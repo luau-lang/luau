@@ -2,7 +2,6 @@
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Frontend.h"
-#include "Luau/Parser.h"
 #include "Luau/RequireTracer.h"
 
 #include "Fixture.h"
@@ -46,32 +45,44 @@ NaiveModuleResolver naiveModuleResolver;
 
 struct NaiveFileResolver : NullFileResolver
 {
-    std::optional<ModuleName> fromAstFragment(AstExpr* expr) const override
+    std::optional<ModuleInfo> resolveModule(const ModuleInfo* context, AstExpr* expr) override
     {
-        AstExprGlobal* g = expr->as<AstExprGlobal>();
-        if (g && g->name == "Modules")
-            return "Modules";
+        if (AstExprGlobal* g = expr->as<AstExprGlobal>())
+        {
+            if (g->name == "Modules")
+                return ModuleInfo{"Modules"};
 
-        if (g && g->name == "game")
-            return "game";
+            if (g->name == "game")
+                return ModuleInfo{"game"};
+        }
+        else if (AstExprIndexName* i = expr->as<AstExprIndexName>())
+        {
+            if (context)
+                return ModuleInfo{context->name + '/' + i->index.value, context->optional};
+        }
+        else if (AstExprCall* call = expr->as<AstExprCall>(); call && call->self && call->args.size >= 1 && context)
+        {
+            if (AstExprConstantString* index = call->args.data[0]->as<AstExprConstantString>())
+            {
+                AstName func = call->func->as<AstExprIndexName>()->index;
+
+                if (func == "GetService" && context->name == "game")
+                    return ModuleInfo{"game/" + std::string(index->value.data, index->value.size)};
+            }
+        }
 
         return std::nullopt;
-    }
-
-    ModuleName concat(const ModuleName& lhs, std::string_view rhs) const override
-    {
-        return lhs + "/" + ModuleName(rhs);
     }
 };
 
 } // namespace
 
-struct FrontendFixture : Fixture
+struct FrontendFixture : BuiltinsFixture
 {
     FrontendFixture()
     {
-        addGlobalBinding(typeChecker, "game", frontend.typeChecker.anyType, "@test");
-        addGlobalBinding(typeChecker, "script", frontend.typeChecker.anyType, "@test");
+        addGlobalBinding(frontend, "game", frontend.typeChecker.anyType, "@test");
+        addGlobalBinding(frontend, "script", frontend.typeChecker.anyType, "@test");
     }
 };
 
@@ -86,8 +97,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "find_a_require")
     NaiveFileResolver naiveFileResolver;
 
     auto res = traceRequires(&naiveFileResolver, program, "");
-    CHECK_EQ(1, res.requires.size());
-    CHECK_EQ(res.requires[0].first, "Modules/Foo/Bar");
+    CHECK_EQ(1, res.requireList.size());
+    CHECK_EQ(res.requireList[0].first, "Modules/Foo/Bar");
 }
 
 // It could be argued that this should not work.
@@ -102,7 +113,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "find_a_require_inside_a_function")
     NaiveFileResolver naiveFileResolver;
 
     auto res = traceRequires(&naiveFileResolver, program, "");
-    CHECK_EQ(1, res.requires.size());
+    CHECK_EQ(1, res.requireList.size());
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "real_source")
@@ -127,7 +138,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "real_source")
     NaiveFileResolver naiveFileResolver;
 
     auto res = traceRequires(&naiveFileResolver, program, "");
-    CHECK_EQ(8, res.requires.size());
+    CHECK_EQ(8, res.requireList.size());
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "automatically_check_dependent_scripts")
@@ -373,6 +384,66 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_error_paths")
     CHECK_EQ(ce2->cycle[1], "game/Gui/Modules/A");
 }
 
+TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface")
+{
+    fileResolver.source["game/A"] = R"(
+        return {hello = 2}
+    )";
+
+    CheckResult result = frontend.check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    fileResolver.source["game/A"] = R"(
+        local me = require(game.A)
+        return {hello = 2}
+    )";
+    frontend.markDirty("game/A");
+
+    result = frontend.check("game/A");
+    LUAU_REQUIRE_ERRORS(result);
+
+    auto ty = requireType("game/A", "me");
+    CHECK_EQ(toString(ty), "any");
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface_longer")
+{
+    fileResolver.source["game/A"] = R"(
+        return {mod_a = 2}
+    )";
+
+    CheckResult result = frontend.check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    fileResolver.source["game/B"] = R"(
+        local me = require(game.A)
+        return {mod_b = 4}
+    )";
+
+    result = frontend.check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    fileResolver.source["game/A"] = R"(
+        local me = require(game.B)
+        return {mod_a_prime = 3}
+    )";
+
+    frontend.markDirty("game/A");
+    frontend.markDirty("game/B");
+
+    result = frontend.check("game/A");
+    LUAU_REQUIRE_ERRORS(result);
+
+    TypeId tyA = requireType("game/A", "me");
+    CHECK_EQ(toString(tyA), "any");
+
+    result = frontend.check("game/B");
+    LUAU_REQUIRE_ERRORS(result);
+
+    TypeId tyB = requireType("game/B", "me");
+    CHECK_EQ(toString(tyB), "any");
+}
+
 TEST_CASE_FIXTURE(FrontendFixture, "dont_reparse_clean_file_when_linting")
 {
     fileResolver.source["Modules/A"] = R"(
@@ -444,6 +515,29 @@ TEST_CASE_FIXTURE(FrontendFixture, "recheck_if_dependent_script_is_dirty")
     REQUIRE(!!bExports);
 
     CHECK_EQ("{| b_value: string |}", toString(*bExports));
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "mark_non_immediate_reverse_deps_as_dirty")
+{
+    fileResolver.source["game/Gui/Modules/A"] = "return {hello=5, world=true}";
+    fileResolver.source["game/Gui/Modules/B"] = R"(
+        return require(game:GetService('Gui').Modules.A)
+    )";
+    fileResolver.source["game/Gui/Modules/C"] = R"(
+        local Modules = game:GetService('Gui').Modules
+        local B = require(Modules.B)
+        return {c_value = B.hello}
+    )";
+
+    frontend.check("game/Gui/Modules/C");
+
+    std::vector<Luau::ModuleName> markedDirty;
+    frontend.markDirty("game/Gui/Modules/A", &markedDirty);
+
+    REQUIRE(markedDirty.size() == 3);
+    CHECK(std::find(markedDirty.begin(), markedDirty.end(), "game/Gui/Modules/A") != markedDirty.end());
+    CHECK(std::find(markedDirty.begin(), markedDirty.end(), "game/Gui/Modules/B") != markedDirty.end());
+    CHECK(std::find(markedDirty.begin(), markedDirty.end(), "game/Gui/Modules/C") != markedDirty.end());
 }
 
 #if 0
@@ -528,7 +622,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "ignore_require_to_nonexistent_file")
 {
     fileResolver.source["Modules/A"] = R"(
         local Modules = script
-        local B = require(Modules.B :: any)
+        local B = require(Modules.B) :: any
     )";
 
     CheckResult result = frontend.check("Modules/A");
@@ -685,26 +779,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_lint_uses_correct_config")
     CHECK_EQ(0, result4.warnings.size());
 }
 
-TEST_CASE_FIXTURE(FrontendFixture, "lintFragment")
-{
-    LintOptions lintOptions;
-    lintOptions.enableWarning(LintWarning::Code_ForRange);
-
-    auto [_sourceModule, result] = frontend.lintFragment(R"(
-        local t = {}
-
-        for i=#t,1 do
-        end
-
-        for i=#t,1,-1 do
-        end
-    )",
-        lintOptions);
-
-    CHECK_EQ(1, result.warnings.size());
-    CHECK_EQ(0, result.errors.size());
-}
-
 TEST_CASE_FIXTURE(FrontendFixture, "discard_type_graphs")
 {
     Frontend fe{&fileResolver, &configResolver, {false}};
@@ -720,6 +794,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "discard_type_graphs")
     CHECK_EQ(0, module->internalTypes.typeVars.size());
     CHECK_EQ(0, module->internalTypes.typePacks.size());
     CHECK_EQ(0, module->astTypes.size());
+    CHECK_EQ(0, module->astResolvedTypes.size());
+    CHECK_EQ(0, module->astResolvedTypePacks.size());
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_full_type_graph_is_discarded")
@@ -885,8 +961,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "clearStats")
 
 TEST_CASE_FIXTURE(FrontendFixture, "typecheck_twice_for_ast_types")
 {
-    ScopedFastFlag sffs("LuauTypeCheckTwice", true);
-
     fileResolver.source["Module/A"] = R"(
         local a = 1
     )";
@@ -915,7 +989,7 @@ return a;
 --!nonstrict
 local a = require(script.Parent.A)
 local b = {}
-function a:b() end -- this should error, but doesn't
+function a:b() end -- this should error, since A doesn't define a:b()
 return b
     )";
 
@@ -930,8 +1004,7 @@ a:b() -- this should error, since A doesn't define a:b()
     LUAU_REQUIRE_NO_ERRORS(resultA);
 
     CheckResult resultB = frontend.check("Module/B");
-    // TODO (CLI-45592): this should error, since we shouldn't be adding properties to objects from other modules
-    LUAU_REQUIRE_NO_ERRORS(resultB);
+    LUAU_REQUIRE_ERRORS(resultB);
 
     CheckResult resultC = frontend.check("Module/C");
     LUAU_REQUIRE_ERRORS(resultC);
@@ -943,7 +1016,6 @@ TEST_CASE("no_use_after_free_with_type_fun_instantiation")
 {
     // This flag forces this test to crash if there's a UAF in this code.
     ScopedFastFlag sff_DebugLuauFreezeArena("DebugLuauFreezeArena", true);
-    ScopedFastFlag sff_LuauCloneCorrectlyBeforeMutatingTableType("LuauCloneCorrectlyBeforeMutatingTableType", true);
 
     FrontendFixture fix;
 
@@ -960,6 +1032,77 @@ return false;
 
     // We don't care about the result. That we haven't crashed is enough.
     fix.frontend.check("Module/B");
+}
+
+TEST_CASE("check_without_builtin_next")
+{
+    TestFileResolver fileResolver;
+    TestConfigResolver configResolver;
+    Frontend frontend(&fileResolver, &configResolver);
+
+    fileResolver.source["Module/A"] = "for k,v in 2 do end";
+    fileResolver.source["Module/B"] = "return next";
+
+    // We don't care about the result. That we haven't crashed is enough.
+    frontend.check("Module/A");
+    frontend.check("Module/B");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_cyclic_type")
+{
+    fileResolver.source["Module/A"] = R"(
+        type F<T> = (set: G<T>) -> ()
+
+        export type G<T> = {
+            forEach: (a: F<T>) -> (),
+        }
+
+        function X<T>(a: F<T>): ()
+        end
+
+        return X
+    )";
+
+    fileResolver.source["Module/B"] = R"(
+        --!strict
+        local A = require(script.Parent.A)
+
+        export type G<T> = A.G<T>
+
+        return {
+            A = A,
+        }
+    )";
+
+    CheckResult result = frontend.check("Module/B");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_type_alias")
+{
+    fileResolver.source["Module/A"] = R"(
+        type KeyOfTestEvents = "test-file-start" | "test-file-success" | "test-file-failure" | "test-case-result"
+        type MyAny = any
+
+        export type TestFileEvent<T = KeyOfTestEvents> = (
+            eventName: T,
+            args: any --[[ ROBLOX TODO: Unhandled node for type: TSIndexedAccessType ]] --[[ TestEvents[T] ]]
+        ) -> MyAny
+
+        return {}
+    )";
+
+    fileResolver.source["Module/B"] = R"(
+        --!strict
+        local A = require(script.Parent.A)
+
+        export type TestFileEvent = A.TestFileEvent
+    )";
+
+    CheckResult result = frontend.check("Module/B");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

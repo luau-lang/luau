@@ -7,15 +7,11 @@
 
 #include "luaconf.h"
 
-// This is a forwarding header for Luau common definition (assertions, flags)
-// Luau consists of several components, including compiler (Ast, Compiler) and VM (virtual machine)
-// These components are fully independent, but they need a common set of utilities defined in this header
-// so it needs to be shared.
-#include "../../Ast/include/Luau/Common.h"
+#include "Luau/Common.h"
 
 typedef LUAI_USER_ALIGNMENT_T L_Umaxalign;
 
-/* internal assertions for in-house debugging */
+// internal assertions for in-house debugging
 #define check_exp(c, e) (LUAU_ASSERT(c), (e))
 #define api_check(l, e) LUAU_ASSERT(e)
 

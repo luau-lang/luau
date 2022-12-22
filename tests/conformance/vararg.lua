@@ -105,6 +105,51 @@ assert(a==5 and b==4 and c==3 and d==2 and e==1)
 a,b,c,d,e = f(4)
 assert(a==nil and b==nil and c==nil and d==nil and e==nil)
 
+-- select tests
+a = {select(3, unpack{10,20,30,40})}
+assert(table.getn(a) == 2 and a[1] == 30 and a[2] == 40)
+a = {select(1)}
+assert(next(a) == nil)
+a = {select(-1, 3, 5, 7)}
+assert(a[1] == 7 and a[2] == nil)
+a = {select(-2, 3, 5, 7)}
+assert(a[1] == 5 and a[2] == 7 and a[3] == nil)
+pcall(select, 10000)
+pcall(select, -10000)
+
+-- select(_, ...) has special optimizations so it needs extra testing
+function selectone(n, ...)
+    local e = select(n, ...)
+    return e
+end
+
+function selectmany(n, ...)
+    return table.concat({select(n, ...)}, ',')
+end
+
+assert(selectone('#') == 0)
+assert(selectmany('#') == "0")
+
+assert(selectone('#', 10, 20, 30) == 3)
+assert(selectmany('#', 10, 20, 30) == "3")
+
+assert(selectone(1, 10, 20, 30) == 10)
+assert(selectmany(1, 10, 20, 30) == "10,20,30")
+
+assert(selectone(2, 10, 20, 30) == 20)
+assert(selectmany(2, 10, 20, 30) == "20,30")
+
+assert(selectone(3, 10, 20, 30) == 30)
+assert(selectmany(3, 10, 20, 30) == "30")
+
+assert(selectone(4, 10, 20, 30) == nil)
+assert(selectmany(4, 10, 20, 30) == "")
+
+assert(selectone(-2, 10, 20, 30) == 20)
+assert(selectmany(-2, 10, 20, 30) == "20,30")
+
+assert(selectone('3', 10, 20, 30) == 30)
+assert(selectmany('3', 10, 20, 30) == "30")
 
 -- varargs for main chunks
 f = loadstring[[ return {...} ]]
@@ -121,17 +166,6 @@ f = loadstring[[
 
 assert(f("a", "b", nil, {}, assert))
 assert(f())
-
-a = {select(3, unpack{10,20,30,40})}
-assert(table.getn(a) == 2 and a[1] == 30 and a[2] == 40)
-a = {select(1)}
-assert(next(a) == nil)
-a = {select(-1, 3, 5, 7)}
-assert(a[1] == 7 and a[2] == nil)
-a = {select(-2, 3, 5, 7)}
-assert(a[1] == 5 and a[2] == 7 and a[3] == nil)
-pcall(select, 10000)
-pcall(select, -10000)
 
 return('OK')
 

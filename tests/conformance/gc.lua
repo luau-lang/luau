@@ -77,7 +77,7 @@ end
 
 local function dosteps (siz)
   collectgarbage()
-  collectgarbage"stop"
+  collectgarbage("stop")
   local a = {}
   for i=1,100 do a[i] = {{}}; local b = {} end
   local x = gcinfo()
@@ -99,11 +99,11 @@ assert(dosteps(10000) == 1)
 do
   local x = gcinfo()
   collectgarbage()
-  collectgarbage"stop"
+  collectgarbage("stop")
   repeat
     local a = {}
   until gcinfo() > 1000
-  collectgarbage"restart"
+  collectgarbage("restart")
   repeat
     local a = {}
   until gcinfo() < 1000
@@ -123,7 +123,7 @@ for n in pairs(b) do
 end
 b = nil
 collectgarbage()
-for n in pairs(a) do error'cannot be here' end
+for n in pairs(a) do error("cannot be here") end
 for i=1,lim do a[i] = i end
 for i=1,lim do assert(a[i] == i) end
 
@@ -180,6 +180,11 @@ x,y,z=nil
 collectgarbage()
 assert(next(a) == string.rep('$', 11))
 
+-- shrinking tables reduce their capacity; confirming the shrinking is difficult but we can at least test the surface level behavior
+a = {}; setmetatable(a, {__mode = 'ks'})
+for i=1,lim do a[{}] = i end
+collectgarbage()
+assert(next(a) == nil)
 
 -- testing userdata
 collectgarbage("stop")   -- stop collection
@@ -247,24 +252,29 @@ if not rawget(_G, "_soft") then
 end
 
 -- create many threads with self-references and open upvalues
-local thread_id = 0
-local threads = {}
+do
+  local thread_id = 0
+  local threads = {}
 
-function fn(thread)
-    local x = {}
-    threads[thread_id] = function()
-                             thread = x
-                         end
-    coroutine.yield()
+  function fn(thread)
+      local x = {}
+      threads[thread_id] = function()
+                               thread = x
+                           end
+      coroutine.yield()
+  end
+
+  while thread_id < 1000 do
+      local thread = coroutine.create(fn)
+      coroutine.resume(thread, thread)
+      thread_id = thread_id + 1
+  end
+
+  collectgarbage()
+
+  -- ensure that we no longer have a lot of reachable threads for subsequent tests
+  threads = {}
 end
-
-while thread_id < 1000 do
-    local thread = coroutine.create(fn)
-    coroutine.resume(thread, thread)
-    thread_id = thread_id + 1
-end
-
-
 
 -- create a userdata to be collected when state is closed
 do
@@ -277,7 +287,7 @@ do
     assert(getmetatable(o) == tt)
     -- create new objects during GC
     local a = 'xuxu'..(10+3)..'joao', {}
-    ___Glob = o  -- ressurect object!
+    ___Glob = o  -- resurrect object!
     newproxy(o)  -- creates a new one with same metatable
     print(">>> closing state " .. "<<<\n")
   end
@@ -289,6 +299,55 @@ do
   getmetatable(u).__gc = function (o) return o + 1 end
   table.insert(___Glob, u)  -- preserve udata until the end
   for i = 1,10 do table.insert(___Glob, newproxy(true)) end
+end
+
+-- create threads that die together with their unmarked upvalues
+do
+  local t = {}
+
+  for i = 1,100 do
+    local c = coroutine.wrap(function()
+      local uv = {i + 1}
+      local function f()
+        return uv[1] * 10
+      end
+      coroutine.yield(uv[1])
+      uv = {i + 2}
+      coroutine.yield(f())
+    end)
+
+    assert(c() == i + 1)
+    table.insert(t, c)
+  end
+
+  for i = 1,100 do
+    t[i] = nil
+  end
+
+  collectgarbage()
+end
+
+-- create a lot of threads with upvalues to force a case where full gc happens after we've marked some upvalues
+do
+  local t = {}
+  for i = 1,100 do
+    local c = coroutine.wrap(function()
+      local uv = {i + 1}
+      local function f()
+        return uv[1] * 10
+      end
+      coroutine.yield(uv[1])
+      uv = {i + 2}
+      coroutine.yield(f())
+    end)
+
+    assert(c() == i + 1)
+    table.insert(t, c)
+  end
+
+  t = {}
+
+  collectgarbage()
 end
 
 return('OK')

@@ -3,7 +3,6 @@
 #pragma once
 
 #include <math.h>
-#include <stdio.h>
 
 #define luai_numadd(a, b) ((a) + (b))
 #define luai_numsub(a, b) ((a) - (b))
@@ -18,12 +17,20 @@
 
 inline bool luai_veceq(const float* a, const float* b)
 {
+#if LUA_VECTOR_SIZE == 4
+    return a[0] == b[0] && a[1] == b[1] && a[2] == b[2] && a[3] == b[3];
+#else
     return a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
+#endif
 }
 
 inline bool luai_vecisnan(const float* a)
 {
+#if LUA_VECTOR_SIZE == 4
+    return a[0] != a[0] || a[1] != a[1] || a[2] != a[2] || a[3] != a[3];
+#else
     return a[0] != a[0] || a[1] != a[1] || a[2] != a[2];
+#endif
 }
 
 LUAU_FASTMATH_BEGIN
@@ -35,7 +42,7 @@ LUAU_FASTMATH_END
 
 #define luai_num2int(i, d) ((i) = (int)(d))
 
-/* On MSVC in 32-bit, double to unsigned cast compiles into a call to __dtoui3, so we invoke x87->int64 conversion path manually */
+// On MSVC in 32-bit, double to unsigned cast compiles into a call to __dtoui3, so we invoke x87->int64 conversion path manually
 #if defined(_MSC_VER) && defined(_M_IX86)
 #define luai_num2unsigned(i, n) \
     { \
@@ -48,5 +55,8 @@ LUAU_FASTMATH_END
 #define luai_num2unsigned(i, n) ((i) = (unsigned)(long long)(n))
 #endif
 
-#define luai_num2str(s, n) snprintf((s), sizeof(s), LUA_NUMBER_FMT, (n))
+#define LUAI_MAXNUM2STR 48
+
+LUAI_FUNC char* luai_num2str(char* buf, double n);
+
 #define luai_str2num(s, p) strtod((s), (p))

@@ -1,5 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Parser.h"
+#include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
 
@@ -31,7 +31,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_nullary_function")
     REQUIRE_EQ("any", toString(args[0]));
     REQUIRE_EQ("any", toString(args[1]));
 
-    auto rets = flatten(ftv->retType).first;
+    auto rets = flatten(ftv->retTypes).first;
     REQUIRE_EQ(0, rets.size());
 }
 
@@ -136,14 +136,9 @@ TEST_CASE_FIXTURE(Fixture, "local_tables_are_not_any")
         T:staticmethod()
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK(std::any_of(result.errors.begin(), result.errors.end(), [](const TypeError& e) {
-        return get<FunctionDoesNotTakeSelf>(e);
-    }));
-    CHECK(std::any_of(result.errors.begin(), result.errors.end(), [](const TypeError& e) {
-        return get<FunctionRequiresSelf>(e);
-    }));
+    CHECK_EQ("This function does not take self. Did you mean to use a dot instead of a colon?", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "offer_a_hint_if_you_use_a_dot_instead_of_a_colon")
@@ -151,16 +146,13 @@ TEST_CASE_FIXTURE(Fixture, "offer_a_hint_if_you_use_a_dot_instead_of_a_colon")
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
-        function T:method() end
-        T.method()
+        function T:method(x: number) end
+        T.method(5)
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    auto e = get<FunctionRequiresSelf>(result.errors[0]);
-    REQUIRE(e != nullptr);
-
-    REQUIRE_EQ(1, e->requiredExtraNils);
+    CHECK_EQ("This function must be called with self. Did you mean to use a colon instead of a dot?", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_props_are_any")
@@ -177,6 +169,7 @@ TEST_CASE_FIXTURE(Fixture, "table_props_are_any")
 
     REQUIRE(ttv != nullptr);
 
+    REQUIRE(ttv->props.count("foo"));
     TypeId fooProp = ttv->props["foo"].type;
     REQUIRE(fooProp != nullptr);
 
@@ -204,7 +197,7 @@ TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
     CHECK_MESSAGE(get<FunctionTypeVar>(ttv->props["three"].type), "Should be a function: " << *ttv->props["three"].type);
 }
 
-TEST_CASE_FIXTURE(Fixture, "for_in_iterator_variables_are_any")
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_variables_are_any")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -223,7 +216,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_iterator_variables_are_any")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_dot_insert_and_recursive_calls")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_insert_and_recursive_calls")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -277,6 +270,40 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_module_return_types_are_ok")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     REQUIRE_EQ("any", toString(getMainModule()->getModuleScope()->returnType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "returning_insufficient_return_values")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+
+        function foo(): (boolean, string?)
+            if true then
+                return true, "hello"
+            else
+                return false
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "returning_too_many_values")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+
+        function foo(): boolean
+            if true then
+                return true, "hello"
+            else
+                return false
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -1,11 +1,13 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Parser.h"
-#include "Luau/TypeInfer.h"
 
+#include "AstQueryDsl.h"
 #include "Fixture.h"
 #include "ScopedFlags.h"
 
 #include "doctest.h"
+
+#include <limits.h>
 
 using namespace Luau;
 
@@ -96,138 +98,6 @@ TEST_CASE("initial_double_is_aligned")
 
 TEST_SUITE_END();
 
-TEST_SUITE_BEGIN("LexerTests");
-
-TEST_CASE("broken_string_works")
-{
-    const std::string testInput = "[[";
-    Luau::Allocator alloc;
-    AstNameTable table(alloc);
-    Lexer lexer(testInput.c_str(), testInput.size(), table);
-    Lexeme lexeme = lexer.next();
-    CHECK_EQ(lexeme.type, Lexeme::Type::BrokenString);
-    CHECK_EQ(lexeme.location, Luau::Location(Luau::Position(0, 0), Luau::Position(0, 2)));
-}
-
-TEST_CASE("broken_comment")
-{
-    const std::string testInput = "--[[  ";
-    Luau::Allocator alloc;
-    AstNameTable table(alloc);
-    Lexer lexer(testInput.c_str(), testInput.size(), table);
-    Lexeme lexeme = lexer.next();
-    CHECK_EQ(lexeme.type, Lexeme::Type::BrokenComment);
-    CHECK_EQ(lexeme.location, Luau::Location(Luau::Position(0, 0), Luau::Position(0, 6)));
-}
-
-TEST_CASE("broken_comment_kept")
-{
-    const std::string testInput = "--[[  ";
-    Luau::Allocator alloc;
-    AstNameTable table(alloc);
-    Lexer lexer(testInput.c_str(), testInput.size(), table);
-    lexer.setSkipComments(true);
-    CHECK_EQ(lexer.next().type, Lexeme::Type::BrokenComment);
-}
-
-TEST_CASE("comment_skipped")
-{
-    const std::string testInput = "--  ";
-    Luau::Allocator alloc;
-    AstNameTable table(alloc);
-    Lexer lexer(testInput.c_str(), testInput.size(), table);
-    lexer.setSkipComments(true);
-    CHECK_EQ(lexer.next().type, Lexeme::Type::Eof);
-}
-
-TEST_CASE("multilineCommentWithLexemeInAndAfter")
-{
-    const std::string testInput = "--[[ function \n"
-                                  "]] end";
-    Luau::Allocator alloc;
-    AstNameTable table(alloc);
-    Lexer lexer(testInput.c_str(), testInput.size(), table);
-    Lexeme comment = lexer.next();
-    Lexeme end = lexer.next();
-
-    CHECK_EQ(comment.type, Lexeme::Type::BlockComment);
-    CHECK_EQ(comment.location, Luau::Location(Luau::Position(0, 0), Luau::Position(1, 2)));
-    CHECK_EQ(end.type, Lexeme::Type::ReservedEnd);
-    CHECK_EQ(end.location, Luau::Location(Luau::Position(1, 3), Luau::Position(1, 6)));
-}
-
-TEST_CASE("testBrokenEscapeTolerant")
-{
-    const std::string testInput = "'\\3729472897292378'";
-    Luau::Allocator alloc;
-    AstNameTable table(alloc);
-    Lexer lexer(testInput.c_str(), testInput.size(), table);
-    Lexeme item = lexer.next();
-
-    CHECK_EQ(item.type, Lexeme::QuotedString);
-    CHECK_EQ(item.location, Luau::Location(Luau::Position(0, 0), Luau::Position(0, int(testInput.size()))));
-}
-
-TEST_CASE("testBigDelimiters")
-{
-    const std::string testInput = "--[===[\n"
-                                  "\n"
-                                  "\n"
-                                  "\n"
-                                  "]===]";
-    Luau::Allocator alloc;
-    AstNameTable table(alloc);
-    Lexer lexer(testInput.c_str(), testInput.size(), table);
-    Lexeme item = lexer.next();
-
-    CHECK_EQ(item.type, Lexeme::Type::BlockComment);
-    CHECK_EQ(item.location, Luau::Location(Luau::Position(0, 0), Luau::Position(4, 5)));
-}
-
-TEST_CASE("lookahead")
-{
-    const std::string testInput = "foo --[[ comment ]] bar : nil end";
-
-    Luau::Allocator alloc;
-    AstNameTable table(alloc);
-    Lexer lexer(testInput.c_str(), testInput.size(), table);
-    lexer.setSkipComments(true);
-    lexer.next(); // must call next() before reading data from lexer at least once
-
-    CHECK_EQ(lexer.current().type, Lexeme::Name);
-    CHECK_EQ(lexer.current().name, std::string("foo"));
-    CHECK_EQ(lexer.lookahead().type, Lexeme::Name);
-    CHECK_EQ(lexer.lookahead().name, std::string("bar"));
-
-    lexer.next();
-
-    CHECK_EQ(lexer.current().type, Lexeme::Name);
-    CHECK_EQ(lexer.current().name, std::string("bar"));
-    CHECK_EQ(lexer.lookahead().type, ':');
-
-    lexer.next();
-
-    CHECK_EQ(lexer.current().type, ':');
-    CHECK_EQ(lexer.lookahead().type, Lexeme::ReservedNil);
-
-    lexer.next();
-
-    CHECK_EQ(lexer.current().type, Lexeme::ReservedNil);
-    CHECK_EQ(lexer.lookahead().type, Lexeme::ReservedEnd);
-
-    lexer.next();
-
-    CHECK_EQ(lexer.current().type, Lexeme::ReservedEnd);
-    CHECK_EQ(lexer.lookahead().type, Lexeme::Eof);
-
-    lexer.next();
-
-    CHECK_EQ(lexer.current().type, Lexeme::Eof);
-    CHECK_EQ(lexer.lookahead().type, Lexeme::Eof);
-}
-
-TEST_SUITE_END();
-
 TEST_SUITE_BEGIN("ParserTests");
 
 TEST_CASE_FIXTURE(Fixture, "basic_parse")
@@ -300,8 +170,9 @@ TEST_CASE_FIXTURE(Fixture, "functions_can_have_return_annotations")
     AstStatFunction* statFunction = block->body.data[0]->as<AstStatFunction>();
     REQUIRE(statFunction != nullptr);
 
-    CHECK_EQ(statFunction->func->returnAnnotation.types.size, 1);
-    CHECK(statFunction->func->returnAnnotation.tailType == nullptr);
+    REQUIRE(statFunction->func->returnAnnotation.has_value());
+    CHECK_EQ(statFunction->func->returnAnnotation->types.size, 1);
+    CHECK(statFunction->func->returnAnnotation->tailType == nullptr);
 }
 
 TEST_CASE_FIXTURE(Fixture, "functions_can_have_a_function_type_annotation")
@@ -316,9 +187,9 @@ TEST_CASE_FIXTURE(Fixture, "functions_can_have_a_function_type_annotation")
     AstStatFunction* statFunc = block->body.data[0]->as<AstStatFunction>();
     REQUIRE(statFunc != nullptr);
 
-    AstArray<AstType*>& retTypes = statFunc->func->returnAnnotation.types;
-    REQUIRE(statFunc->func->hasReturnAnnotation);
-    CHECK(statFunc->func->returnAnnotation.tailType == nullptr);
+    REQUIRE(statFunc->func->returnAnnotation.has_value());
+    CHECK(statFunc->func->returnAnnotation->tailType == nullptr);
+    AstArray<AstType*>& retTypes = statFunc->func->returnAnnotation->types;
     REQUIRE(retTypes.size == 1);
 
     AstTypeFunction* funTy = retTypes.data[0]->as<AstTypeFunction>();
@@ -337,9 +208,9 @@ TEST_CASE_FIXTURE(Fixture, "function_return_type_should_disambiguate_from_functi
     AstStatFunction* statFunc = block->body.data[0]->as<AstStatFunction>();
     REQUIRE(statFunc != nullptr);
 
-    AstArray<AstType*>& retTypes = statFunc->func->returnAnnotation.types;
-    REQUIRE(statFunc->func->hasReturnAnnotation);
-    CHECK(statFunc->func->returnAnnotation.tailType == nullptr);
+    REQUIRE(statFunc->func->returnAnnotation.has_value());
+    CHECK(statFunc->func->returnAnnotation->tailType == nullptr);
+    AstArray<AstType*>& retTypes = statFunc->func->returnAnnotation->types;
     REQUIRE(retTypes.size == 2);
 
     AstTypeReference* ty0 = retTypes.data[0]->as<AstTypeReference>();
@@ -363,9 +234,9 @@ TEST_CASE_FIXTURE(Fixture, "function_return_type_should_parse_as_function_type_a
     AstStatFunction* statFunc = block->body.data[0]->as<AstStatFunction>();
     REQUIRE(statFunc != nullptr);
 
-    AstArray<AstType*>& retTypes = statFunc->func->returnAnnotation.types;
-    REQUIRE(statFunc->func->hasReturnAnnotation);
-    CHECK(statFunc->func->returnAnnotation.tailType == nullptr);
+    REQUIRE(statFunc->func->returnAnnotation.has_value());
+    CHECK(statFunc->func->returnAnnotation->tailType == nullptr);
+    AstArray<AstType*>& retTypes = statFunc->func->returnAnnotation->types;
     REQUIRE(retTypes.size == 1);
 
     AstTypeFunction* funTy = retTypes.data[0]->as<AstTypeFunction>();
@@ -625,10 +496,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_messages")
         )"),
         "Cannot have more than one table indexer");
 
-    ScopedFastFlag sffs1{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauGenericFunctionsParserFix", true};
-    ScopedFastFlag sffs3{"LuauParseGenericFunctions", true};
-
     CHECK_EQ(getParseError(R"(
             type T = <a>foo
         )"),
@@ -711,10 +578,23 @@ TEST_CASE_FIXTURE(Fixture, "mode_is_unset_if_no_hot_comment")
 
 TEST_CASE_FIXTURE(Fixture, "sense_hot_comment_on_first_line")
 {
-    ParseResult result = parseEx("   --!strict ");
+    ParseOptions options;
+    options.captureComments = true;
+
+    ParseResult result = parseEx("   --!strict ", options);
     std::optional<Mode> mode = parseMode(result.hotcomments);
     REQUIRE(bool(mode));
     CHECK_EQ(int(*mode), int(Mode::Strict));
+}
+
+TEST_CASE_FIXTURE(Fixture, "non_header_hot_comments")
+{
+    ParseOptions options;
+    options.captureComments = true;
+
+    ParseResult result = parseEx("do end --!strict", options);
+    std::optional<Mode> mode = parseMode(result.hotcomments);
+    REQUIRE(!mode);
 }
 
 TEST_CASE_FIXTURE(Fixture, "stop_if_line_ends_with_hyphen")
@@ -724,7 +604,10 @@ TEST_CASE_FIXTURE(Fixture, "stop_if_line_ends_with_hyphen")
 
 TEST_CASE_FIXTURE(Fixture, "nonstrict_mode")
 {
-    ParseResult result = parseEx("--!nonstrict");
+    ParseOptions options;
+    options.captureComments = true;
+
+    ParseResult result = parseEx("--!nonstrict", options);
     CHECK(result.errors.empty());
     std::optional<Mode> mode = parseMode(result.hotcomments);
     REQUIRE(bool(mode));
@@ -733,7 +616,10 @@ TEST_CASE_FIXTURE(Fixture, "nonstrict_mode")
 
 TEST_CASE_FIXTURE(Fixture, "nocheck_mode")
 {
-    ParseResult result = parseEx("--!nocheck");
+    ParseOptions options;
+    options.captureComments = true;
+
+    ParseResult result = parseEx("--!nocheck", options);
     CHECK(result.errors.empty());
     std::optional<Mode> mode = parseMode(result.hotcomments);
     REQUIRE(bool(mode));
@@ -771,33 +657,47 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_decimal")
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_hexadecimal")
 {
-    AstStat* stat = parse("return 0xab, 0XAB05, 0xff_ff");
+    AstStat* stat = parse("return 0xab, 0XAB05, 0xff_ff, 0xffffffffffffffff");
     REQUIRE(stat != nullptr);
 
     AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
-    CHECK(str->list.size == 3);
+    CHECK(str->list.size == 4);
     CHECK_EQ(str->list.data[0]->as<AstExprConstantNumber>()->value, 0xab);
     CHECK_EQ(str->list.data[1]->as<AstExprConstantNumber>()->value, 0xAB05);
     CHECK_EQ(str->list.data[2]->as<AstExprConstantNumber>()->value, 0xFFFF);
+    CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, double(ULLONG_MAX));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
 {
-    AstStat* stat = parse("return 0b1, 0b0, 0b101010");
+    AstStat* stat = parse("return 0b1, 0b0, 0b101010, 0b1111111111111111111111111111111111111111111111111111111111111111");
     REQUIRE(stat != nullptr);
 
     AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
-    CHECK(str->list.size == 3);
+    CHECK(str->list.size == 4);
     CHECK_EQ(str->list.data[0]->as<AstExprConstantNumber>()->value, 1);
     CHECK_EQ(str->list.data[1]->as<AstExprConstantNumber>()->value, 0);
     CHECK_EQ(str->list.data[2]->as<AstExprConstantNumber>()->value, 42);
+    CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, double(ULLONG_MAX));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
 {
+    ScopedFastFlag luauErrorDoubleHexPrefix{"LuauErrorDoubleHexPrefix", true};
+
     CHECK_EQ(getParseError("return 0b123"), "Malformed number");
     CHECK_EQ(getParseError("return 123x"), "Malformed number");
     CHECK_EQ(getParseError("return 0xg"), "Malformed number");
+    CHECK_EQ(getParseError("return 0x0x123"), "Malformed number");
+    CHECK_EQ(getParseError("return 0xffffffffffffffffffffllllllg"), "Malformed number");
+    CHECK_EQ(getParseError("return 0x0xffffffffffffffffffffffffffff"), "Malformed number");
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_numbers_error_soft")
+{
+    ScopedFastFlag luauErrorDoubleHexPrefix{"LuauErrorDoubleHexPrefix", false};
+
+    CHECK_EQ(getParseError("return 0x0x0x0x0x0x0x0"), "Malformed number");
 }
 
 TEST_CASE_FIXTURE(Fixture, "break_return_not_last_error")
@@ -1001,6 +901,145 @@ TEST_CASE_FIXTURE(Fixture, "parse_compound_assignment_error_multiple")
     catch (const ParseErrors& e)
     {
         CHECK_EQ("Expected '=' when parsing assignment, got '+='", e.getErrors().front().getMessage());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_begin")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            _ = `{{oops}}`
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ("Double braces are not permitted within interpolated strings. Did you mean '\\{'?", e.getErrors().front().getMessage());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_mid")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            _ = `{nice} {{oops}}`
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ("Double braces are not permitted within interpolated strings. Did you mean '\\{'?", e.getErrors().front().getMessage());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    auto columnOfEndBraceError = [this](const char* code) {
+        try
+        {
+            parse(code);
+            FAIL("Expected ParseErrors to be thrown");
+            return UINT_MAX;
+        }
+        catch (const ParseErrors& e)
+        {
+            CHECK_EQ(e.getErrors().size(), 1);
+
+            auto error = e.getErrors().front();
+            CHECK_EQ("Malformed interpolated string, did you forget to add a '}'?", error.getMessage());
+            return error.getLocation().begin.column;
+        }
+    };
+
+    // This makes sure that the error is coming from the brace itself
+    CHECK_EQ(columnOfEndBraceError("_ = `{a`"), columnOfEndBraceError("_ = `{abcdefg`"));
+    CHECK_NE(columnOfEndBraceError("_ = `{a`"), columnOfEndBraceError("_ =       `{a`"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace_in_table")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            _ = { `{a` }
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ(e.getErrors().size(), 2);
+
+        CHECK_EQ("Malformed interpolated string, did you forget to add a '}'?", e.getErrors().front().getMessage());
+        CHECK_EQ("Expected '}' (to close '{' at line 2), got <eof>", e.getErrors().back().getMessage());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_mid_without_end_brace_in_table")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            _ = { `x {"y"} {z` }
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ(e.getErrors().size(), 2);
+
+        CHECK_EQ("Malformed interpolated string, did you forget to add a '}'?", e.getErrors().front().getMessage());
+        CHECK_EQ("Expected '}' (to close '{' at line 2), got <eof>", e.getErrors().back().getMessage());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_as_type_fail")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            local a: `what` = `???`
+            local b: `what {"the"}` = `???`
+            local c: `what {"the"} heck` = `???`
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& parseErrors)
+    {
+        CHECK_EQ(parseErrors.getErrors().size(), 3);
+
+        for (ParseError error : parseErrors.getErrors())
+            CHECK_EQ(error.getMessage(), "Interpolated string literals cannot be used as types");
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_call_without_parens")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            _ = print `{42}`
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ("Expected identifier when parsing expression, got `{", e.getErrors().front().getMessage());
     }
 }
 
@@ -1257,7 +1296,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_type_group")
 TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_if_statements")
 {
     ScopedFastInt sfis{"LuauRecursionLimit", 10};
-    ScopedFastFlag sff{"LuauIfStatementRecursionGuard", true};
 
     matchParseErrorPrefix(
         "function f() if true then if true then if true then if true then if true then if true then if true then if true then if true "
@@ -1268,7 +1306,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_if_statements")
 TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_changed_elseif_statements")
 {
     ScopedFastInt sfis{"LuauRecursionLimit", 10};
-    ScopedFastFlag sff{"LuauIfStatementRecursionGuard", true};
 
     matchParseErrorPrefix(
         "function f() if false then elseif false then elseif false then elseif false then elseif false then elseif false then elseif "
@@ -1278,7 +1315,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_changed_elseif_statements"
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_ifelse_expressions1")
 {
-    ScopedFastFlag sff{"LuauIfElseExpressionBaseSupport", true};
     ScopedFastInt sfis{"LuauRecursionLimit", 10};
 
     matchParseError("function f() return if true then 1 elseif true then 2 elseif true then 3 elseif true then 4 elseif true then 5 elseif true then "
@@ -1288,7 +1324,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_ifelse_expressions1
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_ifelse_expressions2")
 {
-    ScopedFastFlag sff{"LuauIfElseExpressionBaseSupport", true};
     ScopedFastInt sfis{"LuauRecursionLimit", 10};
 
     matchParseError(
@@ -1504,6 +1539,15 @@ return
     CHECK_EQ(std::string(str->value.data, str->value.size), "\n");
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_error_broken_comment")
+{
+    const char* expected = "Expected identifier when parsing expression, got unfinished comment";
+
+    matchParseError("--[[unfinished work", expected);
+    matchParseError("--!strict\n--[[unfinished work", expected);
+    matchParseError("local x = 1 --[[unfinished work", expected);
+}
+
 TEST_CASE_FIXTURE(Fixture, "string_literals_escapes_broken")
 {
     const char* expected = "String literal contains malformed escape sequence";
@@ -1584,6 +1628,35 @@ TEST_CASE_FIXTURE(Fixture, "end_extent_of_functions_unions_and_intersections")
     CHECK_EQ((Position{3, 42}), block->body.data[2]->location.end);
 }
 
+TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments")
+{
+    AstStatBlock* block = parse(R"(
+        type F = number
+        --comment
+        print('hello')
+    )");
+
+    REQUIRE_EQ(2, block->body.size);
+    CHECK_EQ((Position{1, 23}), block->body.data[0]->location.end);
+}
+
+TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments_even_with_capture")
+{
+    // Same should hold when comments are captured
+    ParseOptions opts;
+    opts.captureComments = true;
+
+    AstStatBlock* block = parse(R"(
+        type F = number
+        --comment
+        print('hello')
+    )",
+        opts);
+
+    REQUIRE_EQ(2, block->body.size);
+    CHECK_EQ((Position{1, 23}), block->body.data[0]->location.end);
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_error_loop_control")
 {
     matchParseError("break", "break statement must be inside a loop");
@@ -1624,6 +1697,17 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_confusing_function_call")
         "statements");
 
     CHECK(result3.errors.size() == 1);
+
+    auto result4 = matchParseError(R"(
+        local t = {}
+        function f() return t end
+        t.x, (f)
+        ().y = 5, 6
+    )",
+        "Ambiguous syntax: this looks like an argument list for a function call, but could also be a start of new statement; use ';' to separate "
+        "statements");
+
+    CHECK(result4.errors.size() == 1);
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_varargs")
@@ -1649,6 +1733,46 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_assignment_lvalue")
 TEST_CASE_FIXTURE(Fixture, "parse_error_type_annotation")
 {
     matchParseError("local a : 2 = 2", "Expected type, got '2'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_error_missing_type_annotation")
+{
+    {
+        ParseResult result = tryParse("local x:");
+        CHECK(result.errors.size() == 1);
+        Position begin = result.errors[0].getLocation().begin;
+        Position end = result.errors[0].getLocation().end;
+        CHECK(begin.line == end.line);
+        int width = end.column - begin.column;
+        CHECK(width == 0);
+        CHECK(result.errors[0].getMessage() == "Expected type, got <eof>");
+    }
+
+    {
+        ParseResult result = tryParse(R"(
+local x:=42
+    )");
+        CHECK(result.errors.size() == 1);
+        Position begin = result.errors[0].getLocation().begin;
+        Position end = result.errors[0].getLocation().end;
+        CHECK(begin.line == end.line);
+        int width = end.column - begin.column;
+        CHECK(width == 1); // Length of `=`
+        CHECK(result.errors[0].getMessage() == "Expected type, got '='");
+    }
+
+    {
+        ParseResult result = tryParse(R"(
+function func():end
+    )");
+        CHECK(result.errors.size() == 1);
+        Position begin = result.errors[0].getLocation().begin;
+        Position end = result.errors[0].getLocation().end;
+        CHECK(begin.line == end.line);
+        int width = end.column - begin.column;
+        CHECK(width == 3); // Length of `end`
+        CHECK(result.errors[0].getMessage() == "Expected type, got 'end'");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_declarations")
@@ -1824,9 +1948,6 @@ TEST_CASE_FIXTURE(Fixture, "variadic_definition_parsing")
 
 TEST_CASE_FIXTURE(Fixture, "generic_pack_parsing")
 {
-    // Doesn't need LuauGenericFunctions
-    ScopedFastFlag sffs{"LuauParseGenericFunctions", true};
-
     ParseResult result = parseEx(R"(
         function f<a...>(...: a...)
         end
@@ -1861,9 +1982,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_pack_parsing")
 
 TEST_CASE_FIXTURE(Fixture, "generic_function_declaration_parsing")
 {
-    // Doesn't need LuauGenericFunctions
-    ScopedFastFlag sffs{"LuauParseGenericFunctions", true};
-
     ParseResult result = parseEx(R"(
         declare function f<a, b, c...>()
     )");
@@ -1953,12 +2071,117 @@ TEST_CASE_FIXTURE(Fixture, "function_type_named_arguments")
     matchParseError("type MyFunc = (a: number, b: string, c: number) -> (d: number, e: string, f: number)",
         "Expected '->' when parsing function type, got <eof>");
 
-    {
-        ScopedFastFlag luauParseGenericFunctions{"LuauParseGenericFunctions", true};
-        ScopedFastFlag luauGenericFunctionsParserFix{"LuauGenericFunctionsParserFix", true};
+    matchParseError("type MyFunc = (number) -> (d: number) <a, b, c> -> number", "Expected '->' when parsing function type, got '<'");
+}
 
-        matchParseError("type MyFunc = (number) -> (d: number) <a, b, c> -> number", "Expected '->' when parsing function type, got '<'");
+TEST_CASE_FIXTURE(Fixture, "function_type_matching_parenthesis")
+{
+    matchParseError("local a: <T>(number -> string", "Expected ')' (to close '(' at column 13), got '->'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_type_alias_default_type")
+{
+    AstStat* stat = parse(R"(
+type A<T = string> = {}
+type B<T... = ...number> = {}
+type C<T..., U... = T...> = {}
+type D<T..., U... = ()> = {}
+type E<T... = (), U... = ()> = {}
+type F<T... = (string), U... = ()> = (T...) -> U...
+type G<T... = ...number, U... = (string, number, boolean)> = (U...) -> T...
+    )");
+
+    REQUIRE(stat != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_type_alias_default_type_errors")
+{
+    matchParseError("type Y<T = number, U> = {}", "Expected default type after type name", Location{{0, 20}, {0, 21}});
+    matchParseError("type Y<T... = ...number, U...> = {}", "Expected default type pack after type pack name", Location{{0, 29}, {0, 30}});
+    matchParseError("type Y<T... = (string) -> number> = {}", "Expected type pack after '=', got type", Location{{0, 14}, {0, 32}});
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_type_pack_errors")
+{
+    matchParseError("type Y<T...> = {a: T..., b: number}", "Unexpected '...' after type name; type pack is not allowed in this context",
+        Location{{0, 20}, {0, 23}});
+    matchParseError("type Y<T...> = {a: (number | string)...", "Unexpected '...' after type annotation", Location{{0, 36}, {0, 39}});
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_if_else_expression")
+{
+    {
+        AstStat* stat = parse("return if true then 1 else 2");
+
+        REQUIRE(stat != nullptr);
+        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+        REQUIRE(str != nullptr);
+        CHECK(str->list.size == 1);
+        auto* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+        REQUIRE(ifElseExpr != nullptr);
     }
+
+    {
+        AstStat* stat = parse("return if true then 1 elseif true then 2 else 3");
+
+        REQUIRE(stat != nullptr);
+        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+        REQUIRE(str != nullptr);
+        CHECK(str->list.size == 1);
+        auto* ifElseExpr1 = str->list.data[0]->as<AstExprIfElse>();
+        REQUIRE(ifElseExpr1 != nullptr);
+        auto* ifElseExpr2 = ifElseExpr1->falseExpr->as<AstExprIfElse>();
+        REQUIRE(ifElseExpr2 != nullptr);
+    }
+
+    // Use "else if" as opposed to elseif
+    {
+        AstStat* stat = parse("return if true then 1 else if true then 2 else 3");
+
+        REQUIRE(stat != nullptr);
+        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+        REQUIRE(str != nullptr);
+        CHECK(str->list.size == 1);
+        auto* ifElseExpr1 = str->list.data[0]->as<AstExprIfElse>();
+        REQUIRE(ifElseExpr1 != nullptr);
+        auto* ifElseExpr2 = ifElseExpr1->falseExpr->as<AstExprIfElse>();
+        REQUIRE(ifElseExpr2 != nullptr);
+    }
+
+    // Use an if-else expression as the conditional expression of an if-else expression
+    {
+        AstStat* stat = parse("return if if true then false else true then 1 else 2");
+
+        REQUIRE(stat != nullptr);
+        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+        REQUIRE(str != nullptr);
+        CHECK(str->list.size == 1);
+        auto* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+        REQUIRE(ifElseExpr != nullptr);
+        auto* nestedIfElseExpr = ifElseExpr->condition->as<AstExprIfElse>();
+        REQUIRE(nestedIfElseExpr != nullptr);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_type_pack_type_parameters")
+{
+    AstStat* stat = parse(R"(
+type Packed<T...> = () -> T...
+
+type A<X...> = Packed<X...>
+type B<X...> = Packed<...number>
+type C<X...> = Packed<(number, X...)>
+    )");
+    REQUIRE(stat != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "invalid_type_forms")
+{
+    ScopedFastFlag luauFixNamedFunctionParse{"LuauFixNamedFunctionParse", true};
+
+    matchParseError("type A = (b: number)", "Expected '->' when parsing function type, got <eof>");
+    matchParseError("type P<T...> = () -> T... type B = P<(x: number, y: string)>", "Expected '->' when parsing function type, got '>'");
+    matchParseError("type F<T... = (a: string)> = (T...) -> ()", "Expected '->' when parsing function type, got '>'");
 }
 
 TEST_SUITE_END();
@@ -2302,12 +2525,10 @@ TEST_CASE_FIXTURE(Fixture, "capture_comments")
 
 TEST_CASE_FIXTURE(Fixture, "capture_broken_comment_at_the_start_of_the_file")
 {
-    ScopedFastFlag sff{"LuauCaptureBrokenCommentSpans", true};
-
     ParseOptions options;
     options.captureComments = true;
 
-    ParseResult result = parseEx(R"(
+    ParseResult result = tryParse(R"(
         --[[
     )",
         options);
@@ -2318,8 +2539,6 @@ TEST_CASE_FIXTURE(Fixture, "capture_broken_comment_at_the_start_of_the_file")
 
 TEST_CASE_FIXTURE(Fixture, "capture_broken_comment")
 {
-    ScopedFastFlag sff{"LuauCaptureBrokenCommentSpans", true};
-
     ParseOptions options;
     options.captureComments = true;
 
@@ -2362,8 +2581,6 @@ type Fn = (
         CHECK_EQ("Expected '->' when parsing function type, got ')'", e.getErrors().front().getMessage());
     }
 
-    ScopedFastFlag sffs3{"LuauParseGenericFunctions", true};
-
     try
     {
         parse(R"(type Fn = (any, string | number | <a>()) -> any)");
@@ -2397,8 +2614,6 @@ TEST_CASE_FIXTURE(Fixture, "AstName_comparison")
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_list_recovery")
 {
-    ScopedFastFlag luauParseGenericFunctions{"LuauParseGenericFunctions", true};
-
     try
     {
         parse(R"(
@@ -2462,61 +2677,159 @@ do end
     CHECK_EQ(1, result.errors.size());
 }
 
-TEST_CASE_FIXTURE(Fixture, "parse_if_else_expression")
+TEST_CASE_FIXTURE(Fixture, "recover_expected_type_pack")
 {
-    ScopedFastFlag sff{"LuauIfElseExpressionBaseSupport", true};
+    ParseResult result = tryParse(R"(
+type Y<T..., U = T...> = (T...) -> U...
+    )");
+    CHECK_EQ(1, result.errors.size());
+}
 
-    {
-        AstStat* stat = parse("return if true then 1 else 2");
+TEST_CASE_FIXTURE(Fixture, "recover_unexpected_type_pack")
+{
+    ParseResult result = tryParse(R"(
+type X<T...> = { a: T..., b: number }
+type Y<T> = { a: T..., b: number }
+type Z<T> = { a: string | T..., b: number }
+    )");
+    REQUIRE_EQ(3, result.errors.size());
+}
 
-        REQUIRE(stat != nullptr);
-        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
-        REQUIRE(str != nullptr);
-        CHECK(str->list.size == 1);
-        auto* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
-        REQUIRE(ifElseExpr != nullptr);
-    }
+TEST_CASE_FIXTURE(Fixture, "recover_function_return_type_annotations")
+{
+    ParseResult result = tryParse(R"(
+type Custom<A, B, C> = { x: A, y: B, z: C }
+type Packed<A...> = { x: (A...) -> () }
+type F = (number): Custom<boolean, number, string>
+type G = Packed<(number): (string, number, boolean)>
+local function f(x: number) -> Custom<string, boolean, number>
+end
+    )");
+    REQUIRE_EQ(3, result.errors.size());
+    CHECK_EQ(result.errors[0].getMessage(), "Return types in function type annotations are written after '->' instead of ':'");
+    CHECK_EQ(result.errors[1].getMessage(), "Return types in function type annotations are written after '->' instead of ':'");
+    CHECK_EQ(result.errors[2].getMessage(), "Function return type annotations are written after ':' instead of '->'");
+}
 
-    {
-        AstStat* stat = parse("return if true then 1 elseif true then 2 else 3");
+TEST_CASE_FIXTURE(Fixture, "error_message_for_using_function_as_type_annotation")
+{
+    ParseResult result = tryParse(R"(
+        type Foo = function
+    )");
+    REQUIRE_EQ(1, result.errors.size());
+    CHECK_EQ("Using 'function' as a type annotation is not supported, consider replacing with a function type annotation e.g. '(...any) -> ...any'",
+        result.errors[0].getMessage());
+}
 
-        REQUIRE(stat != nullptr);
-        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
-        REQUIRE(str != nullptr);
-        CHECK(str->list.size == 1);
-        auto* ifElseExpr1 = str->list.data[0]->as<AstExprIfElse>();
-        REQUIRE(ifElseExpr1 != nullptr);
-        auto* ifElseExpr2 = ifElseExpr1->falseExpr->as<AstExprIfElse>();
-        REQUIRE(ifElseExpr2 != nullptr);
-    }
+TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_an_extra_comma_at_the_end_of_a_function_argument_list")
+{
+    ParseResult result = tryParse(R"(
+        foo(a, b, c,)
+    )");
 
-    // Use "else if" as opposed to elseif
-    {
-        AstStat* stat = parse("return if true then 1 else if true then 2 else 3");
+    REQUIRE(1 == result.errors.size());
 
-        REQUIRE(stat != nullptr);
-        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
-        REQUIRE(str != nullptr);
-        CHECK(str->list.size == 1);
-        auto* ifElseExpr1 = str->list.data[0]->as<AstExprIfElse>();
-        REQUIRE(ifElseExpr1 != nullptr);
-        auto* ifElseExpr2 = ifElseExpr1->falseExpr->as<AstExprIfElse>();
-        REQUIRE(ifElseExpr2 != nullptr);
-    }
+    CHECK(Location({1, 20}, {1, 21}) == result.errors[0].getLocation());
+    CHECK("Expected expression after ',' but got ')' instead" == result.errors[0].getMessage());
+}
 
-    // Use an if-else expression as the conditional expression of an if-else expression
-    {
-        AstStat* stat = parse("return if if true then false else true then 1 else 2");
+TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_an_extra_comma_at_the_end_of_a_function_parameter_list")
+{
+    ParseResult result = tryParse(R"(
+        export type VisitFn = (
+            any,
+            Array<TAnyNode | Array<TAnyNode>>, -- extra comma here
+        ) -> any
+    )");
 
-        REQUIRE(stat != nullptr);
-        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
-        REQUIRE(str != nullptr);
-        CHECK(str->list.size == 1);
-        auto* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
-        REQUIRE(ifElseExpr != nullptr);
-        auto* nestedIfElseExpr = ifElseExpr->condition->as<AstExprIfElse>();
-        REQUIRE(nestedIfElseExpr != nullptr);
-    }
+    REQUIRE(1 == result.errors.size());
+
+    CHECK(Location({4, 8}, {4, 9}) == result.errors[0].getLocation());
+    CHECK("Expected type after ',' but got ')' instead" == result.errors[0].getMessage());
+}
+
+TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_an_extra_comma_at_the_end_of_a_generic_parameter_list")
+{
+    ParseResult result = tryParse(R"(
+        export type VisitFn = <A, B,>(a: A, b: B) -> ()
+    )");
+
+    REQUIRE(1 == result.errors.size());
+
+    CHECK(Location({1, 36}, {1, 37}) == result.errors[0].getLocation());
+    CHECK("Expected type after ',' but got '>' instead" == result.errors[0].getMessage());
+
+    REQUIRE(1 == result.root->body.size);
+
+    AstStatTypeAlias* t = result.root->body.data[0]->as<AstStatTypeAlias>();
+    REQUIRE(t != nullptr);
+
+    AstTypeFunction* f = t->type->as<AstTypeFunction>();
+    REQUIRE(f != nullptr);
+
+    CHECK(2 == f->generics.size);
+}
+
+TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_no_comma_between_table_members")
+{
+    ParseResult result = tryParse(R"(
+        local t = {
+            first = 1
+            second = 2,
+            third = 3,
+            fouth = 4,
+        }
+    )");
+
+    REQUIRE(1 == result.errors.size());
+
+    CHECK(Location({3, 12}, {3, 18}) == result.errors[0].getLocation());
+    CHECK("Expected ',' after table constructor element" == result.errors[0].getMessage());
+
+    REQUIRE(1 == result.root->body.size);
+
+    AstExprTable* table = Luau::query<AstExprTable>(result.root);
+    REQUIRE(table);
+    CHECK(table->items.size == 4);
+}
+
+TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_no_comma_after_last_table_member")
+{
+    ParseResult result = tryParse(R"(
+        local t = {
+            first = 1
+
+        local ok = true
+        local good = ok == true
+    )");
+
+    REQUIRE(1 == result.errors.size());
+
+    CHECK(Location({4, 8}, {4, 13}) == result.errors[0].getLocation());
+    CHECK("Expected '}' (to close '{' at line 2), got 'local'" == result.errors[0].getMessage());
+
+    REQUIRE(3 == result.root->body.size);
+
+    AstExprTable* table = Luau::query<AstExprTable>(result.root);
+    REQUIRE(table);
+    CHECK(table->items.size == 1);
+}
+
+TEST_CASE_FIXTURE(Fixture, "missing_default_type_pack_argument_after_variadic_type_parameter")
+{
+    ScopedFastFlag sff{"LuauParserErrorsOnMissingDefaultTypePackArgument", true};
+
+    ParseResult result = tryParse(R"(
+        type Foo<T... = > = nil
+    )");
+
+    REQUIRE_EQ(2, result.errors.size());
+
+    CHECK_EQ(Location{{1, 23}, {1, 25}}, result.errors[0].getLocation());
+    CHECK_EQ("Expected type, got '>'", result.errors[0].getMessage());
+
+    CHECK_EQ(Location{{1, 23}, {1, 24}}, result.errors[1].getLocation());
+    CHECK_EQ("Expected type pack after '=', got type", result.errors[1].getMessage());
 }
 
 TEST_SUITE_END();

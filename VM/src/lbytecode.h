@@ -3,7 +3,4 @@
 #pragma once
 
 // This is a forwarding header for Luau bytecode definition
-// Luau consists of several components, including compiler (Ast, Compiler) and VM (virtual machine)
-// These components are fully independent, but they both need the bytecode format defined in this header
-// so it needs to be shared.
-#include "../../Compiler/include/Luau/Bytecode.h"
+#include "Luau/Bytecode.h"

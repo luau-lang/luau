@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+  <Type Name="Luau::AstArray&lt;*&gt;">
+    <DisplayString>AstArray size={size}</DisplayString>
+    <Expand>
+      <Item Name="[size]">size</Item>
+      <ArrayItems>
+        <Size>size</Size>
+        <ValuePointer>data</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+
+  <Type Name="Luau::TempVector&lt;*&gt;">
+    <Expand>
+      <Item Name="[size]">size_</Item>
+      <ArrayItems>
+        <Size>size_</Size>
+        <ValuePointer>storage._Mypair._Myval2._Myfirst + offset</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+
+  <Type Name="Luau::AstName">
+    <DisplayString>{value,na}</DisplayString>
+  </Type>
+
+  <Type Name="Luau::AstLocal">
+    <DisplayString>{name.value,na}</DisplayString>
+  </Type>
+
+  <Type Name="Luau::Symbol">
+    <DisplayString Condition="local">local {local->name.value,na}</DisplayString>
+    <DisplayString>global {global.value,na}</DisplayString>
+  </Type>
+
+  <Type Name="Luau::Position">
+    <DisplayString>{line}:{column}</DisplayString>
+  </Type>
+
+  <Type Name="Luau::Location">
+    <DisplayString>{begin}-{end}</DisplayString>
+  </Type>
+
+</AutoVisualizer>

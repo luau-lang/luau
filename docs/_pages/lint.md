@@ -145,7 +145,7 @@ In some cases the linter can detect code that is never executed, because all exe
 ```lua
 function cbrt(v)
     if v >= 0 then
-        return v ^ 1/3
+        return v ^ (1/3)
     else
         error('cbrt expects a non-negative argument')
     end
@@ -294,10 +294,58 @@ table.insert(t, 0, 42) -- table.insert uses index 0 but arrays are 1-based; did 
 
 table.insert(t, #t+1, 42) -- table.insert will append the value to the table; consider removing the second argument for efficiency
 ```
+
 ## DuplicateCondition (24)
 
 When checking multiple conditions via `and/or` or `if/elseif`, a copy & paste error may result in checking the same condition redundantly. This almost always indicates a bug, so a warning is emitted when use of a duplicate condition is detected.
 
 ```lua
 assert(self._adorns[normID1] and self._adorns[normID1]) -- Condition has already been checked on column 8
+```
+
+## MisleadingAndOr (25)
+
+In Lua, there is no first-class ternary operator but it can be emulated via `a and b or c` pattern. However, due to how boolean evaluation works, if `b` is `false` or `nil`, the resulting expression evaluates to `c` regardless of the value of `a`. Luau solves this problem with the `if a then b else c` expression; a warning is emitted for and-or expressions where the first alternative is `false` or `nil` because it's almost always a bug.
+
+```lua
+-- The and-or expression always evaluates to the second alternative because the first alternative is false; consider using if-then-else expression instead
+local x = flag and false or true
+```
+
+The code above can be rewritten as follows to avoid the warning and the associated bug:
+
+```lua
+local x = if flag then false else true
+```
+
+## CommentDirective (26)
+
+Luau uses comments that start from `!` to control certain aspects of analysis, for example setting type checking mode via `--!strict` or disabling individual lints with `--!nolint`. Unknown directives are ignored, for example `--!nostrict` doesn't have any effect on the type checking process as the correct spelling is `--!nonstrict`. This warning flags comment directives that are ignored during processing:
+
+```lua
+--!nostrict
+-- Unknown comment directive 'nostrict'; did you mean 'nonstrict'?"
+```
+
+## IntegerParsing (27)
+
+Luau parses hexadecimal and binary literals as 64-bit integers before converting them to Luau numbers. As a result, numbers that exceed 2^64 are silently truncated to 2^64, which can result in unexpected program behavior. This warning flags literals that are truncated:
+
+```
+-- Hexadecimal number literal exceeded available precision and has been truncated to 2^64
+local x = 0x1111111111111111111111111111111111111
+```
+
+## ComparisonPrecedence (28)
+
+Because of operator precedence rules, not X == Y parses as (not X) == Y; however, often the intent was to invert the result of the comparison. This warning flags erroneous conditions like that, as well as flagging cases where two comparisons happen in a row without any parentheses:
+
+```
+-- not X == Y is equivalent to (not X) == Y; consider using X ~= Y, or wrap one of the expressions in parentheses to silence
+if not x == 5 then
+end
+
+-- X <= Y <= Z is equivalent to (X <= Y) <= Z; wrap one of the expressions in parentheses to silence
+if 1 <= x <= 3 then
+end
 ```

@@ -2,15 +2,16 @@
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lualib.h"
 
+#include "lcommon.h"
 #include "lnumutils.h"
 
 #define ALLONES ~0u
 #define NBITS int(8 * sizeof(unsigned))
 
-/* macro to trim extra bits */
+// macro to trim extra bits
 #define trim(x) ((x)&ALLONES)
 
-/* builds a number with 'n' ones (1 <= n <= NBITS) */
+// builds a number with 'n' ones (1 <= n <= NBITS)
 #define mask(n) (~((ALLONES << 1) << ((n)-1)))
 
 typedef unsigned b_uint;
@@ -68,7 +69,7 @@ static int b_not(lua_State* L)
 static int b_shift(lua_State* L, b_uint r, int i)
 {
     if (i < 0)
-    { /* shift right? */
+    { // shift right?
         i = -i;
         r = trim(r);
         if (i >= NBITS)
@@ -77,7 +78,7 @@ static int b_shift(lua_State* L, b_uint r, int i)
             r >>= i;
     }
     else
-    { /* shift left */
+    { // shift left
         if (i >= NBITS)
             r = 0;
         else
@@ -105,11 +106,11 @@ static int b_arshift(lua_State* L)
     if (i < 0 || !(r & ((b_uint)1 << (NBITS - 1))))
         return b_shift(L, r, -i);
     else
-    { /* arithmetic shift for 'negative' number */
+    { // arithmetic shift for 'negative' number
         if (i >= NBITS)
             r = ALLONES;
         else
-            r = trim((r >> i) | ~(~(b_uint)0 >> i)); /* add signal bit */
+            r = trim((r >> i) | ~(~(b_uint)0 >> i)); // add signal bit
         lua_pushunsigned(L, r);
         return 1;
     }
@@ -118,9 +119,9 @@ static int b_arshift(lua_State* L)
 static int b_rot(lua_State* L, int i)
 {
     b_uint r = luaL_checkunsigned(L, 1);
-    i &= (NBITS - 1); /* i = i % NBITS */
+    i &= (NBITS - 1); // i = i % NBITS
     r = trim(r);
-    if (i != 0) /* avoid undefined shift of NBITS when i == 0 */
+    if (i != 0) // avoid undefined shift of NBITS when i == 0
         r = (r << i) | (r >> (NBITS - i));
     lua_pushunsigned(L, trim(r));
     return 1;
@@ -171,8 +172,40 @@ static int b_replace(lua_State* L)
     b_uint v = luaL_checkunsigned(L, 2);
     int f = fieldargs(L, 3, &w);
     int m = mask(w);
-    v &= m; /* erase bits outside given width */
+    v &= m; // erase bits outside given width
     r = (r & ~(m << f)) | (v << f);
+    lua_pushunsigned(L, r);
+    return 1;
+}
+
+static int b_countlz(lua_State* L)
+{
+    b_uint v = luaL_checkunsigned(L, 1);
+
+    b_uint r = NBITS;
+    for (int i = 0; i < NBITS; ++i)
+        if (v & (1u << (NBITS - 1 - i)))
+        {
+            r = i;
+            break;
+        }
+
+    lua_pushunsigned(L, r);
+    return 1;
+}
+
+static int b_countrz(lua_State* L)
+{
+    b_uint v = luaL_checkunsigned(L, 1);
+
+    b_uint r = NBITS;
+    for (int i = 0; i < NBITS; ++i)
+        if (v & (1u << i))
+        {
+            r = i;
+            break;
+        }
+
     lua_pushunsigned(L, r);
     return 1;
 }
@@ -190,10 +223,12 @@ static const luaL_Reg bitlib[] = {
     {"replace", b_replace},
     {"rrotate", b_rrot},
     {"rshift", b_rshift},
+    {"countlz", b_countlz},
+    {"countrz", b_countrz},
     {NULL, NULL},
 };
 
-LUALIB_API int luaopen_bit32(lua_State* L)
+int luaopen_bit32(lua_State* L)
 {
     luaL_register(L, LUA_BITLIBNAME, bitlib);
 

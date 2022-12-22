@@ -1,60 +1,79 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Unifiable.h"
 
-LUAU_FASTFLAG(LuauRankNTypes)
+LUAU_FASTFLAG(LuauTypeNormalization2);
 
 namespace Luau
 {
 namespace Unifiable
 {
 
+static int nextIndex = 0;
+
 Free::Free(TypeLevel level)
-    : index(++nextIndex)
+    : index(FFlag::LuauTypeNormalization2 ? ++nextIndex : ++DEPRECATED_nextIndex)
     , level(level)
 {
 }
 
-Free::Free(TypeLevel level, bool DEPRECATED_canBeGeneric)
-    : index(++nextIndex)
-    , level(level)
-    , DEPRECATED_canBeGeneric(DEPRECATED_canBeGeneric)
+Free::Free(Scope* scope)
+    : index(FFlag::LuauTypeNormalization2 ? ++nextIndex : ++DEPRECATED_nextIndex)
+    , scope(scope)
 {
-    LUAU_ASSERT(!FFlag::LuauRankNTypes);
 }
 
-int Free::nextIndex = 0;
+Free::Free(Scope* scope, TypeLevel level)
+    : index(FFlag::LuauTypeNormalization2 ? ++nextIndex : ++DEPRECATED_nextIndex)
+    , level(level)
+    , scope(scope)
+{
+}
+
+int Free::DEPRECATED_nextIndex = 0;
 
 Generic::Generic()
-    : index(++nextIndex)
+    : index(FFlag::LuauTypeNormalization2 ? ++nextIndex : ++DEPRECATED_nextIndex)
     , name("g" + std::to_string(index))
-    , explicitName(false)
 {
 }
 
 Generic::Generic(TypeLevel level)
-    : index(++nextIndex)
+    : index(FFlag::LuauTypeNormalization2 ? ++nextIndex : ++DEPRECATED_nextIndex)
     , level(level)
     , name("g" + std::to_string(index))
-    , explicitName(false)
 {
 }
 
 Generic::Generic(const Name& name)
-    : index(++nextIndex)
+    : index(FFlag::LuauTypeNormalization2 ? ++nextIndex : ++DEPRECATED_nextIndex)
     , name(name)
     , explicitName(true)
 {
 }
 
+Generic::Generic(Scope* scope)
+    : index(FFlag::LuauTypeNormalization2 ? ++nextIndex : ++DEPRECATED_nextIndex)
+    , scope(scope)
+{
+}
+
 Generic::Generic(TypeLevel level, const Name& name)
-    : index(++nextIndex)
+    : index(FFlag::LuauTypeNormalization2 ? ++nextIndex : ++DEPRECATED_nextIndex)
     , level(level)
     , name(name)
     , explicitName(true)
 {
 }
 
-int Generic::nextIndex = 0;
+Generic::Generic(Scope* scope, const Name& name)
+    : index(FFlag::LuauTypeNormalization2 ? ++nextIndex : ++DEPRECATED_nextIndex)
+    , scope(scope)
+    , name(name)
+    , explicitName(true)
+{
+}
+
+int Generic::DEPRECATED_nextIndex = 0;
 
 Error::Error()
     : index(++nextIndex)

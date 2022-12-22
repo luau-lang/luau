@@ -9,10 +9,36 @@
 #include "lgc.h"
 #include "lmem.h"
 #include "lbytecode.h"
+#include "lapi.h"
 
 #include <string.h>
 
-#include <vector>
+// TODO: RAII deallocation doesn't work for longjmp builds if a memory error happens
+template<typename T>
+struct TempBuffer
+{
+    lua_State* L;
+    T* data;
+    size_t count;
+
+    TempBuffer(lua_State* L, size_t count)
+        : L(L)
+        , data(luaM_newarray(L, count, T, 0))
+        , count(count)
+    {
+    }
+
+    ~TempBuffer()
+    {
+        luaM_freearray(L, data, count, T, 0);
+    }
+
+    T& operator[](size_t index)
+    {
+        LUAU_ASSERT(index < count);
+        return data[index];
+    }
+};
 
 void luaV_getimport(lua_State* L, Table* env, TValue* k, uint32_t id, bool propagatenil)
 {
@@ -67,7 +93,7 @@ static unsigned int readVarInt(const char* data, size_t size, size_t& offset)
     return result;
 }
 
-static TString* readString(std::vector<TString*>& strings, const char* data, size_t size, size_t& offset)
+static TString* readString(TempBuffer<TString*>& strings, const char* data, size_t size, size_t& offset)
 {
     unsigned int id = readVarInt(data, size, offset);
 
@@ -88,12 +114,12 @@ static void resolveImportSafe(lua_State* L, Table* env, TValue* k, uint32_t id)
             // note: we call getimport with nil propagation which means that accesses to table chains like A.B.C will resolve in nil
             // this is technically not necessary but it reduces the number of exceptions when loading scripts that rely on getfenv/setfenv for global
             // injection
-            luaV_getimport(L, hvalue(gt(L)), self->k, self->id, /* propagatenil= */ true);
+            luaV_getimport(L, L->gt, self->k, self->id, /* propagatenil= */ true);
         }
     };
 
     ResolveImport ri = {k, id};
-    if (hvalue(gt(L))->safeenv)
+    if (L->gt->safeenv)
     {
         // luaD_pcall will make sure that if any C/Lua calls during import resolution fail, the thread state is restored back
         int oldTop = lua_gettop(L);
@@ -120,31 +146,35 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     uint8_t version = read<uint8_t>(data, size, offset);
 
     // 0 means the rest of the bytecode is the error message
-    if (version == 0 || version != LBC_VERSION)
+    if (version == 0)
     {
-        char chunkid[LUA_IDSIZE];
-        luaO_chunkid(chunkid, chunkname, LUA_IDSIZE);
+        char chunkbuf[LUA_IDSIZE];
+        const char* chunkid = luaO_chunkid(chunkbuf, sizeof(chunkbuf), chunkname, strlen(chunkname));
+        lua_pushfstring(L, "%s%.*s", chunkid, int(size - offset), data + offset);
+        return 1;
+    }
 
-        if (version == 0)
-            lua_pushfstring(L, "%s%.*s", chunkid, int(size - offset), data + offset);
-        else
-            lua_pushfstring(L, "%s: bytecode version mismatch", chunkid);
+    if (version < LBC_VERSION_MIN || version > LBC_VERSION_MAX)
+    {
+        char chunkbuf[LUA_IDSIZE];
+        const char* chunkid = luaO_chunkid(chunkbuf, sizeof(chunkbuf), chunkname, strlen(chunkname));
+        lua_pushfstring(L, "%s: bytecode version mismatch (expected [%d..%d], got %d)", chunkid, LBC_VERSION_MIN, LBC_VERSION_MAX, version);
         return 1;
     }
 
     // pause GC for the duration of deserialization - some objects we're creating aren't rooted
+    // TODO: if an allocation error happens mid-load, we do not unpause GC!
     size_t GCthreshold = L->global->GCthreshold;
     L->global->GCthreshold = SIZE_MAX;
 
-    // env is 0 for current environment and a stack relative index otherwise
-    LUAU_ASSERT(env <= 0 && L->top - L->base >= -env);
-    Table* envt = (env == 0) ? hvalue(gt(L)) : hvalue(L->top + env);
+    // env is 0 for current environment and a stack index otherwise
+    Table* envt = (env == 0) ? L->gt : hvalue(luaA_toobject(L, env));
 
     TString* source = luaS_new(L, chunkname);
 
     // string table
     unsigned int stringCount = readVarInt(data, size, offset);
-    std::vector<TString*> strings(stringCount);
+    TempBuffer<TString*> strings(L, stringCount);
 
     for (unsigned int i = 0; i < stringCount; ++i)
     {
@@ -156,12 +186,13 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
 
     // proto table
     unsigned int protoCount = readVarInt(data, size, offset);
-    std::vector<Proto*> protos(protoCount);
+    TempBuffer<Proto*> protos(L, protoCount);
 
     for (unsigned int i = 0; i < protoCount; ++i)
     {
         Proto* p = luaF_newproto(L);
         p->source = source;
+        p->bytecodeid = int(i);
 
         p->maxstacksize = read<uint8_t>(data, size, offset);
         p->numparams = read<uint8_t>(data, size, offset);
@@ -210,7 +241,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
             case LBC_CONSTANT_STRING:
             {
                 TString* v = readString(strings, data, size, offset);
-                setsvalue2n(L, &p->k[j], v);
+                setsvalue(L, &p->k[j], v);
                 break;
             }
 
@@ -259,6 +290,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
             p->p[j] = protos[fid];
         }
 
+        p->linedefined = readVarInt(data, size, offset);
         p->debugname = readString(strings, data, size, offset);
 
         uint8_t lineinfo = read<uint8_t>(data, size, offset);
@@ -281,11 +313,11 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
                 p->lineinfo[j] = lastoffset;
             }
 
-            int lastLine = 0;
+            int lastline = 0;
             for (int j = 0; j < intervals; ++j)
             {
-                lastLine += read<int32_t>(data, size, offset);
-                p->abslineinfo[j] = lastLine;
+                lastline += read<int32_t>(data, size, offset);
+                p->abslineinfo[j] = lastline;
             }
         }
 
@@ -319,6 +351,8 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     // "main" proto is pushed to Lua stack
     uint32_t mainid = readVarInt(data, size, offset);
     Proto* main = protos[mainid];
+
+    luaC_threadbarrier(L);
 
     Closure* cl = luaF_newLclosure(L, 0, envt, main);
     setclvalue(L, L->top, cl);

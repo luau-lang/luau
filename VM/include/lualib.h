@@ -8,11 +8,12 @@
 #define luaL_typeerror(L, narg, tname) luaL_typeerrorL(L, narg, tname)
 #define luaL_argerror(L, narg, extramsg) luaL_argerrorL(L, narg, extramsg)
 
-typedef struct luaL_Reg
+struct luaL_Reg
 {
     const char* name;
     lua_CFunction func;
-} luaL_Reg;
+};
+typedef struct luaL_Reg luaL_Reg;
 
 LUALIB_API void luaL_register(lua_State* L, const char* libname, const luaL_Reg* l);
 LUALIB_API int luaL_getmetafield(lua_State* L, int obj, const char* e);
@@ -24,10 +25,16 @@ LUALIB_API const char* luaL_optlstring(lua_State* L, int numArg, const char* def
 LUALIB_API double luaL_checknumber(lua_State* L, int numArg);
 LUALIB_API double luaL_optnumber(lua_State* L, int nArg, double def);
 
+LUALIB_API int luaL_checkboolean(lua_State* L, int narg);
+LUALIB_API int luaL_optboolean(lua_State* L, int narg, int def);
+
 LUALIB_API int luaL_checkinteger(lua_State* L, int numArg);
 LUALIB_API int luaL_optinteger(lua_State* L, int nArg, int def);
 LUALIB_API unsigned luaL_checkunsigned(lua_State* L, int numArg);
 LUALIB_API unsigned luaL_optunsigned(lua_State* L, int numArg, unsigned def);
+
+LUALIB_API const float* luaL_checkvector(lua_State* L, int narg);
+LUALIB_API const float* luaL_optvector(lua_State* L, int narg, const float* def);
 
 LUALIB_API void luaL_checkstack(lua_State* L, int sz, const char* msg);
 LUALIB_API void luaL_checktype(lua_State* L, int narg, int t);
@@ -47,6 +54,8 @@ LUALIB_API lua_State* luaL_newstate(void);
 
 LUALIB_API const char* luaL_findtable(lua_State* L, int idx, const char* fname, int szhint);
 
+LUALIB_API const char* luaL_typename(lua_State* L, int idx);
+
 /*
 ** ===============================================================
 ** some useful macros
@@ -59,13 +68,11 @@ LUALIB_API const char* luaL_findtable(lua_State* L, int idx, const char* fname, 
 #define luaL_checkstring(L, n) (luaL_checklstring(L, (n), NULL))
 #define luaL_optstring(L, n, d) (luaL_optlstring(L, (n), (d), NULL))
 
-#define luaL_typename(L, i) lua_typename(L, lua_type(L, (i)))
-
 #define luaL_getmetatable(L, n) (lua_getfield(L, LUA_REGISTRYINDEX, (n)))
 
 #define luaL_opt(L, f, n, d) (lua_isnoneornil(L, (n)) ? (d) : f(L, (n)))
 
-/* generic buffer manipulation */
+// generic buffer manipulation
 
 struct luaL_Buffer
 {
@@ -75,8 +82,9 @@ struct luaL_Buffer
     struct TString* storage;
     char buffer[LUA_BUFFERSIZE];
 };
+typedef struct luaL_Buffer luaL_Buffer;
 
-// when internal buffer storage is exhaused, a mutable string value 'storage' will be placed on the stack
+// when internal buffer storage is exhausted, a mutable string value 'storage' will be placed on the stack
 // in general, functions expect the mutable string buffer to be placed on top of the stack (top-1)
 // with the exception of luaL_addvalue that expects the value at the top and string buffer further away (top-2)
 // functions that accept a 'boxloc' support string buffer placement at any location in the stack
@@ -94,7 +102,7 @@ LUALIB_API void luaL_addvalue(luaL_Buffer* B);
 LUALIB_API void luaL_pushresult(luaL_Buffer* B);
 LUALIB_API void luaL_pushresultsize(luaL_Buffer* B, size_t size);
 
-/* builtin libraries */
+// builtin libraries
 LUALIB_API int luaopen_base(lua_State* L);
 
 #define LUA_COLIBNAME "coroutine"
@@ -121,9 +129,9 @@ LUALIB_API int luaopen_math(lua_State* L);
 #define LUA_DBLIBNAME "debug"
 LUALIB_API int luaopen_debug(lua_State* L);
 
-/* open all builtin libraries */
+// open all builtin libraries
 LUALIB_API void luaL_openlibs(lua_State* L);
 
-/* sandbox libraries and globals */
+// sandbox libraries and globals
 LUALIB_API void luaL_sandbox(lua_State* L);
 LUALIB_API void luaL_sandboxthread(lua_State* L);

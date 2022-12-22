@@ -11,7 +11,7 @@
     if ((char*)L->stack_last - (char*)L->top <= (n) * (int)sizeof(TValue)) \
         luaD_growstack(L, n); \
     else \
-        condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK - 1));
+        condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK));
 
 #define incr_top(L) \
     { \
@@ -34,12 +34,12 @@
 #define saveci(L, p) ((char*)(p) - (char*)L->base_ci)
 #define restoreci(L, n) ((CallInfo*)((char*)L->base_ci + (n)))
 
-/* results from luaD_precall */
-#define PCRLUA 0   /* initiated a call to a Lua function */
-#define PCRC 1     /* did a call to a C function */
-#define PCRYIELD 2 /* C funtion yielded */
+// results from luaD_precall
+#define PCRLUA 0   // initiated a call to a Lua function
+#define PCRC 1     // did a call to a C function
+#define PCRYIELD 2 // C function yielded
 
-/* type of protected functions, to be ran by `runprotected' */
+// type of protected functions, to be ran by `runprotected'
 typedef void (*Pfunc)(lua_State* L, void* ud);
 
 LUAI_FUNC CallInfo* luaD_growCI(lua_State* L);
@@ -49,6 +49,7 @@ LUAI_FUNC int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t oldtop, pt
 LUAI_FUNC void luaD_reallocCI(lua_State* L, int newsize);
 LUAI_FUNC void luaD_reallocstack(lua_State* L, int newsize);
 LUAI_FUNC void luaD_growstack(lua_State* L, int n);
+LUAI_FUNC void luaD_checkCstack(lua_State* L);
 
 LUAI_FUNC l_noret luaD_throw(lua_State* L, int errcode);
 LUAI_FUNC int luaD_rawrunprotected(lua_State* L, Pfunc f, void* ud);

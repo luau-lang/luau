@@ -48,6 +48,7 @@ assert(string.find("", "") == 1)
 assert(string.find('', 'aaa', 1) == nil)
 assert(('alo(.)alo'):find('(.)', 1, 1) == 4)
 assert(string.find('', '1', 2) == nil)
+assert(string.find('123', '2', 0) == 2)
 print('+')
 
 assert(string.len("") == 0)
@@ -88,6 +89,8 @@ assert(string.lower("\0ABCc%$") == "\0abcc%$")
 assert(string.rep('teste', 0) == '')
 assert(string.rep('tés\00tê', 2) == 'tés\0têtés\000tê')
 assert(string.rep('', 10) == '')
+assert(string.rep('', 1e9) == '')
+assert(pcall(string.rep, 'x', 2e9) == false)
 
 assert(string.reverse"" == "")
 assert(string.reverse"\0\1\2\3" == "\3\2\1\0")
@@ -126,9 +129,44 @@ assert(string.format("-%.20s.20s", string.rep("%", 2000)) == "-"..string.rep("%"
 assert(string.format('"-%20s.20s"', string.rep("%", 2000)) ==
        string.format("%q", "-"..string.rep("%", 2000)..".20s"))
 
+assert(string.format("%o %u %x %X", -1, -1, -1, -1) == "1777777777777777777777 18446744073709551615 ffffffffffffffff FFFFFFFFFFFFFFFF")
+
+assert(string.format("%e %E", 1.5, -1.5) == "1.500000e+00 -1.500000E+00")
+
+assert(pcall(string.format, "%##################d", 1) == false)
+assert(pcall(string.format, "%.123d", 1) == false)
+assert(pcall(string.format, "%?", 1) == false)
 
 -- longest number that can be formated
 assert(string.len(string.format('%99.99f', -1e308)) >= 100)
+
+local function return_one_thing()
+	return "hi"
+end
+local function return_two_nils()
+	return nil, nil
+end
+
+assert(string.format("%*", return_one_thing()) == "hi")
+assert(string.format("%* %*", return_two_nils()) == "nil nil")
+assert(pcall(function()
+	string.format("%* %* %*", return_two_nils())
+end) == false)
+
+assert(string.format("%*", "a\0b\0c") == "a\0b\0c")
+assert(string.format("%*", string.rep("doge", 3000)) == string.rep("doge", 3000))
+assert(string.format("%*", 42) == "42")
+assert(string.format("%*", true) == "true")
+
+assert(string.format("%*", setmetatable({}, { __tostring = function() return "ok" end })) == "ok")
+
+local ud = newproxy(true)
+getmetatable(ud).__tostring = function() return "good" end
+assert(string.format("%*", ud) == "good")
+
+assert(pcall(function()
+	string.format("%#*", "bad form")
+end) == false)
 
 assert(loadstring("return 1\n--comentário sem EOL no final")() == 1)
 
@@ -150,6 +188,26 @@ assert(table.concat(a, ",", 1, 2) == "a,b")
 assert(table.concat(a, ",", 2) == "b,c")
 assert(table.concat(a, ",", 3) == "c")
 assert(table.concat(a, ",", 4) == "")
+
+-- string.split
+do
+  local function eq(a, b)
+    if #a ~= #b then
+      return false
+    end
+    for i=1,#a do
+      if a[i] ~= b[i] then
+        return false
+      end
+    end
+    return true
+  end
+
+  assert(eq(string.split("abc", ""), {'a', 'b', 'c'}))
+  assert(eq(string.split("abc", "b"), {'a', 'c'}))
+  assert(eq(string.split("abc", "d"), {'abc'}))
+  assert(eq(string.split("abc", "c"), {'ab', ''}))
+end
 
 --[[
 local locales = { "ptb", "ISO-8859-1", "pt_BR" }

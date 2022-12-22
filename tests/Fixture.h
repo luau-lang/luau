@@ -8,65 +8,35 @@
 #include "Luau/Linter.h"
 #include "Luau/Location.h"
 #include "Luau/ModuleResolver.h"
-#include "Luau/Parser.h"
+#include "Luau/Scope.h"
 #include "Luau/ToString.h"
-#include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
 
 #include "IostreamOptional.h"
 #include "ScopedFlags.h"
 
-#include <iostream>
 #include <string>
 #include <unordered_map>
-
 #include <optional>
 
 namespace Luau
 {
 
+struct TypeChecker;
+
 struct TestFileResolver
     : FileResolver
     , ModuleResolver
 {
-    std::optional<ModuleInfo> resolveModuleInfo(const ModuleName& currentModuleName, const AstExpr& pathExpr) override
-    {
-        if (auto name = pathExprToModuleName(currentModuleName, pathExpr))
-            return {{*name, false}};
+    std::optional<ModuleInfo> resolveModuleInfo(const ModuleName& currentModuleName, const AstExpr& pathExpr) override;
 
-        return std::nullopt;
-    }
+    const ModulePtr getModule(const ModuleName& moduleName) const override;
 
-    const ModulePtr getModule(const ModuleName& moduleName) const override
-    {
-        LUAU_ASSERT(false);
-        return nullptr;
-    }
+    bool moduleExists(const ModuleName& moduleName) const override;
 
-    bool moduleExists(const ModuleName& moduleName) const override
-    {
-        auto it = source.find(moduleName);
-        return (it != source.end());
-    }
+    std::optional<SourceCode> readSource(const ModuleName& name) override;
 
-    std::optional<SourceCode> readSource(const ModuleName& name) override
-    {
-        auto it = source.find(name);
-        if (it == source.end())
-            return std::nullopt;
-
-        SourceCode::Type sourceType = SourceCode::Module;
-
-        auto it2 = sourceTypes.find(name);
-        if (it2 != sourceTypes.end())
-            sourceType = it2->second;
-
-        return SourceCode{it->second, sourceType};
-    }
-
-    std::optional<ModuleName> fromAstFragment(AstExpr* expr) const override;
-    ModuleName concat(const ModuleName& lhs, std::string_view rhs) const override;
-    std::optional<ModuleName> getParentModuleName(const ModuleName& name) const override;
+    std::optional<ModuleInfo> resolveModule(const ModuleInfo* context, AstExpr* expr) override;
 
     std::string getHumanReadableModuleName(const ModuleName& name) const override;
 
@@ -82,19 +52,12 @@ struct TestConfigResolver : ConfigResolver
     Config defaultConfig;
     std::unordered_map<ModuleName, Config> configFiles;
 
-    const Config& getConfig(const ModuleName& name) const override
-    {
-        auto it = configFiles.find(name);
-        if (it != configFiles.end())
-            return it->second;
-
-        return defaultConfig;
-    }
+    const Config& getConfig(const ModuleName& name) const override;
 };
 
 struct Fixture
 {
-    explicit Fixture(bool freeze = true);
+    explicit Fixture(bool freeze = true, bool prepareAutocomplete = false);
     ~Fixture();
 
     // Throws Luau::ParseErrors if the parse fails.
@@ -108,7 +71,7 @@ struct Fixture
     /// Parse with all language extensions enabled
     ParseResult parseEx(const std::string& source, const ParseOptions& parseOptions = {});
     ParseResult tryParse(const std::string& source, const ParseOptions& parseOptions = {});
-    ParseResult matchParseError(const std::string& source, const std::string& message);
+    ParseResult matchParseError(const std::string& source, const std::string& message, std::optional<Location> location = std::nullopt);
     // Verify a parse error occurs and the parse error message has the specified prefix
     ParseResult matchParseErrorPrefix(const std::string& source, const std::string& prefix);
 
@@ -124,17 +87,22 @@ struct Fixture
 
     std::optional<TypeId> findTypeAtPosition(Position position);
     TypeId requireTypeAtPosition(Position position);
+    std::optional<TypeId> findExpectedTypeAtPosition(Position position);
 
     std::optional<TypeId> lookupType(const std::string& name);
     std::optional<TypeId> lookupImportedType(const std::string& moduleAlias, const std::string& name);
 
     ScopedFastFlag sff_DebugLuauFreezeArena;
+    ScopedFastFlag sff_UnknownNever{"LuauUnknownAndNeverType", true};
 
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;
+    NullModuleResolver moduleResolver;
     std::unique_ptr<SourceModule> sourceModule;
     Frontend frontend;
+    InternalErrorReporter ice;
     TypeChecker& typeChecker;
+    NotNull<SingletonTypes> singletonTypes;
 
     std::string decorateWithTypes(const std::string& code);
 
@@ -153,13 +121,9 @@ struct Fixture
     LoadDefinitionFileResult loadDefinition(const std::string& source);
 };
 
-// Disables arena freezing for a given test case.
-// Do not use this in new tests. If you are running into access violations, you
-// are violating Luau's memory model - the fix is not to use UnfrozenFixture.
-// Related: CLI-45692
-struct UnfrozenFixture : Fixture
+struct BuiltinsFixture : Fixture
 {
-    UnfrozenFixture();
+    BuiltinsFixture(bool freeze = true, bool prepareAutocomplete = false);
 };
 
 ModuleName fromString(std::string_view name);
@@ -181,8 +145,13 @@ bool isInArena(TypeId t, const TypeArena& arena);
 void dumpErrors(const ModulePtr& module);
 void dumpErrors(const Module& module);
 void dump(const std::string& name, TypeId ty);
+void dump(const std::vector<Constraint>& constraints);
 
 std::optional<TypeId> lookupName(ScopePtr scope, const std::string& name); // Warning: This function runs in O(n**2)
+
+std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name);
+
+void registerHiddenTypes(Fixture& fixture, TypeArena& arena);
 
 } // namespace Luau
 

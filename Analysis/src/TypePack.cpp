@@ -1,10 +1,22 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypePack.h"
 
+#include "Luau/Error.h"
+#include "Luau/TxnLog.h"
+
 #include <stdexcept>
+
+LUAU_FASTFLAGVARIABLE(LuauTxnLogTypePackIterator, false)
 
 namespace Luau
 {
+
+BlockedTypePack::BlockedTypePack()
+    : index(++nextIndex)
+{
+}
+
+size_t BlockedTypePack::nextIndex = 0;
 
 TypePackVar::TypePackVar(const TypePackVariant& tp)
     : ty(tp)
@@ -34,15 +46,31 @@ TypePackVar& TypePackVar::operator=(TypePackVariant&& tp)
     return *this;
 }
 
+TypePackVar& TypePackVar::operator=(const TypePackVar& rhs)
+{
+    LUAU_ASSERT(owningArena == rhs.owningArena);
+    LUAU_ASSERT(!rhs.persistent);
+
+    reassign(rhs);
+
+    return *this;
+}
+
 TypePackIterator::TypePackIterator(TypePackId typePack)
-    : currentTypePack(follow(typePack))
-    , tp(get<TypePack>(currentTypePack))
+    : TypePackIterator(typePack, TxnLog::empty())
+{
+}
+
+TypePackIterator::TypePackIterator(TypePackId typePack, const TxnLog* log)
+    : currentTypePack(FFlag::LuauTxnLogTypePackIterator ? log->follow(typePack) : follow(typePack))
+    , tp(FFlag::LuauTxnLogTypePackIterator ? log->get<TypePack>(currentTypePack) : get<TypePack>(currentTypePack))
     , currentIndex(0)
+    , log(log)
 {
     while (tp && tp->head.empty())
     {
-        currentTypePack = tp->tail ? follow(*tp->tail) : nullptr;
-        tp = currentTypePack ? get<TypePack>(currentTypePack) : nullptr;
+        currentTypePack = tp->tail ? log->follow(*tp->tail) : nullptr;
+        tp = currentTypePack ? log->getMutable<TypePack>(currentTypePack) : nullptr;
     }
 }
 
@@ -53,8 +81,9 @@ TypePackIterator& TypePackIterator::operator++()
     ++currentIndex;
     while (tp && currentIndex >= tp->head.size())
     {
-        currentTypePack = tp->tail ? follow(*tp->tail) : nullptr;
-        tp = currentTypePack ? get<TypePack>(currentTypePack) : nullptr;
+        currentTypePack = tp->tail ? log->follow(*tp->tail) : nullptr;
+        tp = currentTypePack ? log->getMutable<TypePack>(currentTypePack) : nullptr;
+
         currentIndex = 0;
     }
 
@@ -95,9 +124,14 @@ TypePackIterator begin(TypePackId tp)
     return TypePackIterator{tp};
 }
 
+TypePackIterator begin(TypePackId tp, const TxnLog* log)
+{
+    return TypePackIterator{tp, log};
+}
+
 TypePackIterator end(TypePackId tp)
 {
-    return FFlag::LuauAddMissingFollow ? TypePackIterator{} : TypePackIterator{nullptr};
+    return TypePackIterator{};
 }
 
 bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs)
@@ -160,8 +194,15 @@ bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs)
 
 TypePackId follow(TypePackId tp)
 {
-    auto advance = [](TypePackId ty) -> std::optional<TypePackId> {
-        if (const Unifiable::Bound<TypePackId>* btv = get<Unifiable::Bound<TypePackId>>(ty))
+    return follow(tp, [](TypePackId t) {
+        return t;
+    });
+}
+
+TypePackId follow(TypePackId tp, std::function<TypePackId(TypePackId)> mapper)
+{
+    auto advance = [&mapper](TypePackId ty) -> std::optional<TypePackId> {
+        if (const Unifiable::Bound<TypePackId>* btv = get<Unifiable::Bound<TypePackId>>(mapper(ty)))
             return btv->boundTo;
         else
             return std::nullopt;
@@ -196,32 +237,46 @@ TypePackId follow(TypePackId tp)
                 cycleTester = nullptr;
 
             if (tp == cycleTester)
-                throw std::runtime_error("Luau::follow detected a TypeVar cycle!!");
+                throw InternalCompilerError("Luau::follow detected a TypeVar cycle!!");
         }
     }
 }
 
-size_t size(TypePackId tp)
+size_t size(TypePackId tp, TxnLog* log)
 {
-    if (auto pack = get<TypePack>(FFlag::LuauAddMissingFollow ? follow(tp) : tp))
-        return size(*pack);
+    tp = log ? log->follow(tp) : follow(tp);
+    if (auto pack = get<TypePack>(tp))
+        return size(*pack, log);
     else
         return 0;
 }
 
-size_t size(const TypePack& tp)
+bool finite(TypePackId tp, TxnLog* log)
+{
+    tp = log ? log->follow(tp) : follow(tp);
+
+    if (auto pack = get<TypePack>(tp))
+        return pack->tail ? finite(*pack->tail, log) : true;
+
+    if (get<VariadicTypePack>(tp))
+        return false;
+
+    return true;
+}
+
+size_t size(const TypePack& tp, TxnLog* log)
 {
     size_t result = tp.head.size();
     if (tp.tail)
     {
-        const TypePack* tail = get<TypePack>(FFlag::LuauAddMissingFollow ? follow(*tp.tail) : *tp.tail);
+        const TypePack* tail = get<TypePack>(log ? log->follow(*tp.tail) : follow(*tp.tail));
         if (tail)
-            result += size(*tail);
+            result += size(*tail, log);
     }
     return result;
 }
 
-std::optional<TypeId> first(TypePackId tp)
+std::optional<TypeId> first(TypePackId tp, bool ignoreHiddenVariadics)
 {
     auto it = begin(tp);
     auto endIter = end(tp);
@@ -231,11 +286,21 @@ std::optional<TypeId> first(TypePackId tp)
 
     if (auto tail = it.tail())
     {
-        if (auto vtp = get<VariadicTypePack>(*tail))
+        if (auto vtp = get<VariadicTypePack>(*tail); vtp && (!vtp->hidden || !ignoreHiddenVariadics))
             return vtp->ty;
     }
 
     return std::nullopt;
+}
+
+TypePackVar* asMutable(TypePackId tp)
+{
+    return const_cast<TypePackVar*>(tp);
+}
+
+TypePack* asMutable(const TypePack* tp)
+{
+    return const_cast<TypePack*>(tp);
 }
 
 bool isEmpty(TypePackId tp)
@@ -264,14 +329,70 @@ std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp)
     return {res, iter.tail()};
 }
 
-TypePackVar* asMutable(TypePackId tp)
+std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp, const TxnLog& log)
 {
-    return const_cast<TypePackVar*>(tp);
+    tp = log.follow(tp);
+
+    std::vector<TypeId> flattened;
+    std::optional<TypePackId> tail = std::nullopt;
+
+    TypePackIterator it(tp, &log);
+
+    for (; it != end(tp); ++it)
+    {
+        flattened.push_back(*it);
+    }
+
+    tail = it.tail();
+
+    return {flattened, tail};
 }
 
-TypePack* asMutable(const TypePack* tp)
+bool isVariadic(TypePackId tp)
 {
-    return const_cast<TypePack*>(tp);
+    return isVariadic(tp, *TxnLog::empty());
+}
+
+bool isVariadic(TypePackId tp, const TxnLog& log)
+{
+    std::optional<TypePackId> tail = flatten(tp, log).second;
+
+    if (!tail)
+        return false;
+
+    return isVariadicTail(*tail, log);
+}
+
+bool isVariadicTail(TypePackId tp, const TxnLog& log, bool includeHiddenVariadics)
+{
+    if (log.get<GenericTypePack>(tp))
+        return true;
+
+    if (auto vtp = log.get<VariadicTypePack>(tp); vtp && (includeHiddenVariadics || !vtp->hidden))
+        return true;
+
+    return false;
+}
+
+bool containsNever(TypePackId tp)
+{
+    auto it = begin(tp);
+    auto endIt = end(tp);
+
+    while (it != endIt)
+    {
+        if (get<NeverTypeVar>(follow(*it)))
+            return true;
+        ++it;
+    }
+
+    if (auto tail = it.tail())
+    {
+        if (auto vtp = get<VariadicTypePack>(*tail); vtp && get<NeverTypeVar>(follow(vtp->ty)))
+            return true;
+    }
+
+    return false;
 }
 
 } // namespace Luau

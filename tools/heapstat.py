@@ -15,11 +15,19 @@ def updatesize(d, k, s):
 def sortedsize(p):
     return sorted(p, key = lambda s: s[1][1], reverse = True)
 
+def getkey(heap, obj, key):
+    pairs = obj.get("pairs", [])
+    for i in range(0, len(pairs), 2):
+        if pairs[i] and heap[pairs[i]]["type"] == "string" and heap[pairs[i]]["data"] == key:
+            if pairs[i + 1] and heap[pairs[i + 1]]["type"] == "string":
+                return heap[pairs[i + 1]]["data"]
+            else:
+                return None
+    return None
+
 with open(sys.argv[1]) as f:
     dump = json.load(f)
     heap = dump["objects"]
-
-type_addr = next((addr for addr,obj in heap.items() if obj["type"] == "string" and obj["data"] == "__type"), None)
 
 size_type = {}
 size_udata = {}
@@ -33,11 +41,7 @@ for addr, obj in heap.items():
 
     if obj["type"] == "userdata" and "metatable" in obj:
         metatable = heap[obj["metatable"]]
-        pairs = metatable.get("pairs", [])
-        typemt = "unknown"
-        for i in range(0, len(pairs), 2):
-            if type_addr and pairs[i] == type_addr and pairs[i + 1] and heap[pairs[i + 1]]["type"] == "string":
-                typemt = heap[pairs[i + 1]]["data"]
+        typemt = getkey(heap, metatable, "__type") or "unknown"
         updatesize(size_udata, typemt, obj["size"])
 
 print("objects by type:")
@@ -55,5 +59,6 @@ if len(size_category) != 0:
 
     print("objects by category:")
     for type, (count, size) in sortedsize(size_category.items()):
-        name = dump["stats"]["categories"][type]["name"]
+        cat = dump["stats"]["categories"][type]
+        name = cat["name"] if "name" in cat else str(type)
         print(name.ljust(30), str(size).rjust(8), "bytes", str(count).rjust(5), "objects")

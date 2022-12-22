@@ -1,12 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/FileResolver.h"
-#include "Luau/TypePack.h"
-#include "Luau/TypedAllocator.h"
-#include "Luau/ParseOptions.h"
 #include "Luau/Error.h"
-#include "Luau/Parser.h"
+#include "Luau/FileResolver.h"
+#include "Luau/ParseOptions.h"
+#include "Luau/ParseResult.h"
+#include "Luau/Scope.h"
+#include "Luau/TypeArena.h"
 
 #include <memory>
 #include <vector>
@@ -21,6 +21,9 @@ struct Module;
 using ScopePtr = std::shared_ptr<struct Scope>;
 using ModulePtr = std::shared_ptr<Module>;
 
+class AstType;
+class AstTypePack;
+
 /// Root of the AST of a parsed source file
 struct SourceModule
 {
@@ -29,14 +32,14 @@ struct SourceModule
     std::optional<std::string> environmentName;
     bool cyclic = false;
 
-    std::unique_ptr<Allocator> allocator;
-    std::unique_ptr<AstNameTable> names;
+    std::shared_ptr<Allocator> allocator;
+    std::shared_ptr<AstNameTable> names;
     std::vector<ParseError> parseErrors;
 
     AstStatBlock* root = nullptr;
     std::optional<Mode> mode;
-    uint64_t ignoreLints = 0;
 
+    std::vector<HotComment> hotcomments;
     std::vector<Comment> commentLocations;
 
     SourceModule()
@@ -48,39 +51,11 @@ struct SourceModule
 
 bool isWithinComment(const SourceModule& sourceModule, Position pos);
 
-struct TypeArena
+struct RequireCycle
 {
-    TypedAllocator<TypeVar> typeVars;
-    TypedAllocator<TypePackVar> typePacks;
-
-    void clear();
-
-    template<typename T>
-    TypeId addType(T tv)
-    {
-        return addTV(TypeVar(std::move(tv)));
-    }
-
-    TypeId addTV(TypeVar&& tv);
-
-    TypeId freshType(TypeLevel level);
-
-    TypePackId addTypePack(std::initializer_list<TypeId> types);
-    TypePackId addTypePack(std::vector<TypeId> types);
-    TypePackId addTypePack(TypePack pack);
-    TypePackId addTypePack(TypePackVar pack);
+    Location location;
+    std::vector<ModuleName> path; // one of the paths for a require() to go all the way back to the originating module
 };
-
-void freeze(TypeArena& arena);
-void unfreeze(TypeArena& arena);
-
-// Only exposed so they can be unit tested.
-using SeenTypes = std::unordered_map<TypeId, TypeId>;
-using SeenTypePacks = std::unordered_map<TypePackId, TypePackId>;
-
-TypePackId clone(TypePackId tp, TypeArena& dest, SeenTypes& seenTypes, SeenTypePacks& seenTypePacks, bool* encounteredFreeType = nullptr);
-TypeId clone(TypeId tp, TypeArena& dest, SeenTypes& seenTypes, SeenTypePacks& seenTypePacks, bool* encounteredFreeType = nullptr);
-TypeFun clone(const TypeFun& typeFun, TypeArena& dest, SeenTypes& seenTypes, SeenTypePacks& seenTypePacks, bool* encounteredFreeType = nullptr);
 
 struct Module
 {
@@ -89,23 +64,33 @@ struct Module
     TypeArena interfaceTypes;
     TypeArena internalTypes;
 
+    // Scopes and AST types refer to parse data, so we need to keep that alive
+    std::shared_ptr<Allocator> allocator;
+    std::shared_ptr<AstNameTable> names;
+
     std::vector<std::pair<Location, ScopePtr>> scopes; // never empty
-    std::unordered_map<const AstExpr*, TypeId> astTypes;
-    std::unordered_map<const AstExpr*, TypeId> astExpectedTypes;
-    std::unordered_map<const AstExpr*, TypeId> astOriginalCallTypes;
-    std::unordered_map<const AstExpr*, TypeId> astOverloadResolvedTypes;
+
+    DenseHashMap<const AstExpr*, TypeId> astTypes{nullptr};
+    DenseHashMap<const AstExpr*, TypePackId> astTypePacks{nullptr};
+    DenseHashMap<const AstExpr*, TypeId> astExpectedTypes{nullptr};
+    DenseHashMap<const AstExpr*, TypeId> astOriginalCallTypes{nullptr};
+    DenseHashMap<const AstExpr*, TypeId> astOverloadResolvedTypes{nullptr};
+    DenseHashMap<const AstType*, TypeId> astResolvedTypes{nullptr};
+    DenseHashMap<const AstTypePack*, TypePackId> astResolvedTypePacks{nullptr};
+    // Map AST nodes to the scope they create.  Cannot be NotNull<Scope> because we need a sentinel value for the map.
+    DenseHashMap<const AstNode*, Scope*> astScopes{nullptr};
+
     std::unordered_map<Name, TypeId> declaredGlobals;
     ErrorVec errors;
     Mode mode;
     SourceCode::Type type;
+    bool timeout = false;
 
     ScopePtr getModuleScope() const;
 
     // Once a module has been typechecked, we clone its public interface into a separate arena.
     // This helps us to force TypeVar ownership into a DAG rather than a DCG.
-    // Returns true if there were any free types encountered in the public interface. This
-    // indicates a bug in the type checker that we want to surface.
-    bool clonePublicInterface();
+    void clonePublicInterface(NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice);
 };
 
 } // namespace Luau

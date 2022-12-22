@@ -5,6 +5,7 @@ function test()
 	local band = bit32.band
 	local bnot = bit32.bnot
 	local bxor = bit32.bxor
+	local bor = bit32.bor
 
 	local rrotate = bit32.rrotate
 	local rshift = bit32.rshift
@@ -79,14 +80,14 @@ function test()
 			h, g, f, e, d, c, b, a = g, f, e, d + t1, c, b, a, t1 + t2
 		end
 		
-		hash[1] = band(hash[1] + a)
-		hash[2] = band(hash[2] + b)
-		hash[3] = band(hash[3] + c)
-		hash[4] = band(hash[4] + d)
-		hash[5] = band(hash[5] + e)
-		hash[6] = band(hash[6] + f)
-		hash[7] = band(hash[7] + g)
-		hash[8] = band(hash[8] + h)
+		hash[1] = bor(hash[1] + a, 0)
+		hash[2] = bor(hash[2] + b, 0)
+		hash[3] = bor(hash[3] + c, 0)
+		hash[4] = bor(hash[4] + d, 0)
+		hash[5] = bor(hash[5] + e, 0)
+		hash[6] = bor(hash[6] + f, 0)
+		hash[7] = bor(hash[7] + g, 0)
+		hash[8] = bor(hash[8] + h, 0)
 	end
 
 	local function sha256(msg)

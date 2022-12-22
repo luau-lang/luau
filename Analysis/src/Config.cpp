@@ -1,18 +1,21 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Config.h"
 
-#include "Luau/Parser.h"
+#include "Luau/Lexer.h"
 #include "Luau/StringUtils.h"
 
-namespace
+LUAU_FASTFLAGVARIABLE(LuauEnableNonstrictByDefaultForLuauConfig, false)
+
+namespace Luau
 {
 
 using Error = std::optional<std::string>;
 
-}
-
-namespace Luau
+Config::Config()
+    : mode(FFlag::LuauEnableNonstrictByDefaultForLuauConfig ? Mode::Nonstrict : Mode::NoCheck)
 {
+    enabledLint.setDefaults();
+}
 
 static Error parseBoolean(bool& result, const std::string& value)
 {

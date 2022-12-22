@@ -452,19 +452,22 @@ def display(root, title, colors, flip = False):
         .replace("$gradient-start", gradient_start)
         .replace("$gradient-end", gradient_end)
         .replace("$height", str(svgheight))
-        .replace("$status", str(svgheight - 16 + 3))
+        .replace("$status", str((svgheight - 16 + 3 if flip else 3 * 16 - 3)))
         .replace("$flip", str(int(flip)))
     )
 
     framewidth = 1200 - 20
 
+    def pixels(x):
+        return float(x) / root.width * framewidth if root.width > 0 else 0
+
     for n in root.subtree():
-        if n.width / root.width * framewidth < 0.1:
+        if pixels(n.width) < 0.1:
             continue
 
-        x = 10 + n.offset / root.width * framewidth
+        x = 10 + pixels(n.offset)
         y = (maxdepth - 1 - n.depth if flip else n.depth) * 16 + 3 * 16
-        width = n.width / root.width * framewidth
+        width = pixels(n.width)
         height = 15
 
         if colors == "cold":

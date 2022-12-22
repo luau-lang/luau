@@ -1,6 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
-#include "Luau/Parser.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
 
@@ -12,6 +11,33 @@ using namespace Luau;
 
 TEST_SUITE_BEGIN("DefinitionTests");
 
+TEST_CASE_FIXTURE(Fixture, "definition_file_simple")
+{
+    loadDefinition(R"(
+        declare foo: number
+        declare function bar(x: number): string
+        declare foo2: typeof(foo)
+    )");
+
+    TypeId globalFooTy = getGlobalBinding(frontend, "foo");
+    CHECK_EQ(toString(globalFooTy), "number");
+
+    TypeId globalBarTy = getGlobalBinding(frontend, "bar");
+    CHECK_EQ(toString(globalBarTy), "(number) -> string");
+
+    TypeId globalFoo2Ty = getGlobalBinding(frontend, "foo2");
+    CHECK_EQ(toString(globalFoo2Ty), "number");
+
+    CheckResult result = check(R"(
+        local x: number = foo - 1
+        local y: string = bar(x)
+        local z: number | string = x
+        z = y
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "definition_file_loading")
 {
     loadDefinition(R"(
@@ -22,20 +48,20 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_loading")
         declare function var(...: any): string
     )");
 
-    TypeId globalFooTy = getGlobalBinding(frontend.typeChecker, "foo");
+    TypeId globalFooTy = getGlobalBinding(frontend, "foo");
     CHECK_EQ(toString(globalFooTy), "number");
 
-    std::optional<TypeFun> globalAsdfTy = frontend.typeChecker.globalScope->lookupType("Asdf");
+    std::optional<TypeFun> globalAsdfTy = frontend.getGlobalScope()->lookupType("Asdf");
     REQUIRE(bool(globalAsdfTy));
     CHECK_EQ(toString(globalAsdfTy->type), "number | string");
 
-    TypeId globalBarTy = getGlobalBinding(frontend.typeChecker, "bar");
+    TypeId globalBarTy = getGlobalBinding(frontend, "bar");
     CHECK_EQ(toString(globalBarTy), "(number) -> string");
 
-    TypeId globalFoo2Ty = getGlobalBinding(frontend.typeChecker, "foo2");
+    TypeId globalFoo2Ty = getGlobalBinding(frontend, "foo2");
     CHECK_EQ(toString(globalFoo2Ty), "number");
 
-    TypeId globalVarTy = getGlobalBinding(frontend.typeChecker, "var");
+    TypeId globalVarTy = getGlobalBinding(frontend, "var");
 
     CHECK_EQ(toString(globalVarTy), "(...any) -> string");
 
@@ -59,7 +85,7 @@ TEST_CASE_FIXTURE(Fixture, "load_definition_file_errors_do_not_pollute_global_sc
     freeze(typeChecker.globalTypes);
 
     REQUIRE(!parseFailResult.success);
-    std::optional<Binding> fooTy = tryGetGlobalBinding(typeChecker, "foo");
+    std::optional<Binding> fooTy = tryGetGlobalBinding(frontend, "foo");
     CHECK(!fooTy.has_value());
 
     LoadDefinitionFileResult checkFailResult = loadDefinitionFile(typeChecker, typeChecker.globalScope, R"(
@@ -69,7 +95,7 @@ TEST_CASE_FIXTURE(Fixture, "load_definition_file_errors_do_not_pollute_global_sc
         "@test");
 
     REQUIRE(!checkFailResult.success);
-    std::optional<Binding> barTy = tryGetGlobalBinding(typeChecker, "bar");
+    std::optional<Binding> barTy = tryGetGlobalBinding(frontend, "bar");
     CHECK(!barTy.has_value());
 }
 
@@ -171,9 +197,6 @@ TEST_CASE_FIXTURE(Fixture, "no_cyclic_defined_classes")
 
 TEST_CASE_FIXTURE(Fixture, "declaring_generic_functions")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs4{"LuauParseGenericFunctions", true};
-
     loadDefinition(R"(
         declare function f<a, b>(a: a, b: b): string
         declare function g<a..., b...>(...: a...): b...
@@ -286,6 +309,21 @@ TEST_CASE_FIXTURE(Fixture, "definitions_documentation_symbols")
     CHECK_EQ(yTtv->props["x"].documentationSymbol, "@test/global/y.x");
 }
 
+TEST_CASE_FIXTURE(Fixture, "definitions_symbols_are_generated_for_recursively_referenced_types")
+{
+    loadDefinition(R"(
+        declare class MyClass
+            function myMethod(self)
+        end
+
+        declare function myFunc(): MyClass
+    )");
+
+    std::optional<TypeFun> myClassTy = typeChecker.globalScope->lookupType("MyClass");
+    REQUIRE(bool(myClassTy));
+    CHECK_EQ(myClassTy->type->documentationSymbol, "@test/globaltype/MyClass");
+}
+
 TEST_CASE_FIXTURE(Fixture, "documentation_symbols_dont_attach_to_persistent_types")
 {
     loadDefinition(R"(
@@ -295,6 +333,87 @@ TEST_CASE_FIXTURE(Fixture, "documentation_symbols_dont_attach_to_persistent_type
     std::optional<TypeFun> ty = typeChecker.globalScope->lookupType("Evil");
     REQUIRE(bool(ty));
     CHECK_EQ(ty->type->documentationSymbol, std::nullopt);
+}
+
+TEST_CASE_FIXTURE(Fixture, "single_class_type_identity_in_global_types")
+{
+    loadDefinition(R"(
+declare class Cls
+end
+
+declare GetCls: () -> (Cls)
+    )");
+
+    CheckResult result = check(R"(
+local s : Cls = GetCls()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_definition_overload_metamethods")
+{
+    loadDefinition(R"(
+        declare class Vector3
+        end
+
+        declare class CFrame
+            function __mul(self, other: CFrame): CFrame
+            function __mul(self, other: Vector3): Vector3
+        end
+
+        declare function newVector3(): Vector3
+        declare function newCFrame(): CFrame
+    )");
+
+    CheckResult result = check(R"(
+        local base = newCFrame()
+        local shouldBeCFrame = base * newCFrame()
+        local shouldBeVector = base * newVector3()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType("shouldBeCFrame")), "CFrame");
+    CHECK_EQ(toString(requireType("shouldBeVector")), "Vector3");
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_definition_string_props")
+{
+    loadDefinition(R"(
+        declare class Foo
+            ["a property"]: string
+        end
+    )");
+
+    CheckResult result = check(R"(
+        local x: Foo
+        local y = x["a property"]
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType("y")), "string");
+}
+
+TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
+{
+    ScopedFastFlag LuauDeclareClassPrototype("LuauDeclareClassPrototype", true);
+
+    unfreeze(typeChecker.globalTypes);
+    LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, R"(
+        declare class Channel
+            Messages: { Message }
+            OnMessage: (message: Message) -> ()
+        end
+
+        declare class Message
+            Text: string
+            Channel: Channel
+        end
+    )",
+        "@test");
+    freeze(typeChecker.globalTypes);
+
+    REQUIRE(result.success);
 }
 
 TEST_SUITE_END();

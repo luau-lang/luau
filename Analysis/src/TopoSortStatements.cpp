@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TopoSortStatements.h"
 
+#include "Luau/Error.h"
 /* Decide the order in which we typecheck Lua statements in a block.
  *
  * Algorithm:
@@ -26,9 +27,10 @@
  *     3. Cyclic dependencies can be resolved by picking an arbitrary statement to check first.
  */
 
-#include "Luau/Parser.h"
+#include "Luau/Ast.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Common.h"
+#include "Luau/StringUtils.h"
 
 #include <algorithm>
 #include <deque>
@@ -148,7 +150,7 @@ Identifier mkName(const AstStatFunction& function)
     auto name = mkName(*function.name);
     LUAU_ASSERT(bool(name));
     if (!name)
-        throw std::runtime_error("Internal error: Function declaration has a bad name");
+        throw InternalCompilerError("Internal error: Function declaration has a bad name");
 
     return *name;
 }
@@ -214,6 +216,7 @@ struct ArcCollector : public AstVisitor
         }
     }
 
+    // Adds a dependency from the current node to the named node.
     void add(const Identifier& name)
     {
         Node** it = map.find(name);
@@ -253,7 +256,7 @@ struct ArcCollector : public AstVisitor
     {
         auto name = mkName(*node->name);
         if (!name)
-            throw std::runtime_error("Internal error: AstStatFunction has a bad name");
+            throw InternalCompilerError("Internal error: AstStatFunction has a bad name");
 
         add(*name);
         return true;
@@ -298,7 +301,14 @@ struct ArcCollector : public AstVisitor
 
 struct ContainsFunctionCall : public AstVisitor
 {
+    bool alsoReturn = false;
     bool result = false;
+
+    ContainsFunctionCall() = default;
+    explicit ContainsFunctionCall(bool alsoReturn)
+        : alsoReturn(alsoReturn)
+    {
+    }
 
     bool visit(AstExpr*) override
     {
@@ -316,6 +326,17 @@ struct ContainsFunctionCall : public AstVisitor
         // for in loops perform an implicit function call as part of the iterator protocol
         result = true;
         return false;
+    }
+
+    bool visit(AstStatReturn* stat) override
+    {
+        if (alsoReturn)
+        {
+            result = true;
+            return false;
+        }
+        else
+            return AstVisitor::visit(stat);
     }
 
     bool visit(AstExprFunction*) override
@@ -475,6 +496,13 @@ void drain(NodeList& Q, std::vector<AstStat*>& result, Node* target)
 bool containsFunctionCall(const AstStat& stat)
 {
     detail::ContainsFunctionCall cfc;
+    const_cast<AstStat&>(stat).visit(&cfc);
+    return cfc.result;
+}
+
+bool containsFunctionCallOrReturn(const AstStat& stat)
+{
+    detail::ContainsFunctionCall cfc{true};
     const_cast<AstStat&>(stat).visit(&cfc);
     return cfc.result;
 }

@@ -26,10 +26,9 @@ If you're thinking of adding a new feature to the language, library, analysis to
 Luau team has internal priorities and a roadmap that may or may not align with specific features, so before starting to work on a feature please submit an issue describing the missing feature that you'd like to add.
 
 For features that result in observable change of language syntax or semantics, you'd need to [create an RFC](https://github.com/Roblox/luau/blob/master/rfcs/README.md) to make sure that the feature is needed and well designed.
-Similarly to the above, please create an issue first so that we can see if we should go through with an RFC process.
 
 Finally, please note that Luau tries to carry a minimal feature set. All features must be evaluated not just for the benefits that they provide, but also for the downsides/costs in terms of language simplicity, maintainability, cross-feature interaction etc.
-As such, feature requests may not be accepted, or may get to an RFC stage and get rejected there - don't expect Luau to gain a feature just because another programming language has it.
+As such, feature requests may not be accepted even if a comprehensive RFC is written - don't expect Luau to gain a feature just because another programming language has it.
 
 ## Code style
 
@@ -46,6 +45,12 @@ All pull requests will run through a continuous integration pipeline using GitHu
 You can run the tests yourself using `make test` or using `cmake` to build `Luau.UnitTest` and `Luau.Conformance` and run them.
 
 When making code changes please try to make sure they are covered by an existing test or add a new test accordingly.
+
+## Performance
+
+One of the central feature of Luau is performance; our runtime in particular is heavily optimized for high performance and low memory consumption, and code is generally carefully tuned to result in close to optimal assembly for x64 and AArch64 architectures. The analysis code is not optimized to the same level of detail, but performance is still very important to make sure that we can support interactive IDE features.
+
+As such, it's important to make sure that the changes, including bug fixes, improve or at least do not regress performance. For VM this can be validated by running `bench.py` script from `bench` folder on two binaries built in Release mode, before and after the changes, although note that our benchmark coverage is not complete and in some cases additional performance testing will be necessary to determine if the change can be merged.
 
 ## Feature flags
 

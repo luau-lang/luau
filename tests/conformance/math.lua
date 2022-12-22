@@ -26,6 +26,7 @@ function f(...)
   end
 end
 
+assert(pcall(tonumber) == false)
 assert(tonumber{} == nil)
 assert(tonumber'+0.01' == 1/100 and tonumber'+.01' == 0.01 and
        tonumber'.01' == 0.01    and tonumber'-1.' == -1 and
@@ -151,14 +152,34 @@ assert(eq(a[1000][3], 1000/3, 0.001))
 print('+')
 
 do   -- testing NaN
-  local NaN = 10e500 - 10e400
+  local NaN -- to avoid constant folding
+  NaN = 10e500 - 10e400
+
   assert(NaN ~= NaN)
+  assert(not (NaN == NaN))
+
   assert(not (NaN < NaN))
   assert(not (NaN <= NaN))
   assert(not (NaN > NaN))
   assert(not (NaN >= NaN))
+
+  assert(not (0 == NaN))
   assert(not (0 < NaN))
+  assert(not (0 <= NaN))
+  assert(not (0 > NaN))
+  assert(not (0 >= NaN))
+
+  assert(not (NaN == 0))
   assert(not (NaN < 0))
+  assert(not (NaN <= 0))
+  assert(not (NaN > 0))
+  assert(not (NaN >= 0))
+
+  assert(if NaN < 0 then false else true)
+  assert(if NaN <= 0 then false else true)
+  assert(if NaN > 0 then false else true)
+  assert(if NaN >= 0 then false else true)
+
   local a = {}
   assert(not pcall(function () a[NaN] = 1 end))
   assert(a[NaN] == nil)
@@ -172,7 +193,7 @@ end
 
 a = nil
 
--- testing implicit convertions
+-- testing implicit conversions
 
 local a,b = '10', '20'
 assert(a*b == 200 and a+b == 30 and a-b == -10 and a/b == 0.5 and -b == -20)
@@ -214,6 +235,16 @@ assert(flag);
 
 assert(select(2, pcall(math.random, 1, 2, 3)):match("wrong number of arguments"))
 
+-- min/max
+assert(math.min(1) == 1)
+assert(math.min(1, 2) == 1)
+assert(math.min(1, 2, -1) == -1)
+assert(math.min(1, -1, 2) == -1)
+assert(math.max(1) == 1)
+assert(math.max(1, 2) == 2)
+assert(math.max(1, 2, -1) == 2)
+assert(math.max(1, -1, 2) == 2)
+
 -- noise
 assert(math.noise(0.5) == 0)
 assert(math.noise(0.5, 0.5) == -0.25)
@@ -252,6 +283,13 @@ assert(math.fmod(-3, 2) == -1)
 assert(math.fmod(3, -2) == 1)
 assert(math.fmod(-3, -2) == -1)
 
+-- pow
+assert(math.pow(2, 0) == 1)
+assert(math.pow(2, 2) == 4)
+assert(math.pow(4, 0.5) == 2)
+assert(math.pow(-2, 2) == 4)
+assert(tostring(math.pow(-2, 0.5)) == "nan")
+
 -- most of the tests above go through fastcall path
 -- to make sure the basic implementations are also correct we test these functions with string->number coercions
 assert(math.abs("-4") == 4)
@@ -276,8 +314,10 @@ assert(math.log("10", 10) == 1)
 assert(math.log("9", 3) == 2)
 assert(math.max("1", 2) == 2)
 assert(math.max(2, "1") == 2)
+assert(math.max(1, 2, "3") == 3)
 assert(math.min("1", 2) == 1)
 assert(math.min(2, "1") == 1)
+assert(math.min(1, 2, "3") == 1)
 local v,f = math.modf("1.5")
 assert(v == 1 and f == 0.5)
 assert(math.pow("2", 2) == 4)
@@ -288,9 +328,15 @@ assert(math.sqrt("4") == 2)
 assert(math.tanh("0") == 0)
 assert(math.tan("0") == 0)
 assert(math.clamp("0", 2, 3) == 2)
+assert(math.clamp("4", 2, 3) == 3)
 assert(math.sign("2") == 1)
 assert(math.sign("-2") == -1)
 assert(math.sign("0") == 0)
 assert(math.round("1.8") == 2)
+
+-- test that fastcalls return correct number of results
+assert(select('#', math.floor(1.4)) == 1)
+assert(select('#', math.ceil(1.6)) == 1)
+assert(select('#', math.sqrt(9)) == 1)
 
 return('OK')

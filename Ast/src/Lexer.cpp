@@ -6,6 +6,8 @@
 
 #include <limits.h>
 
+LUAU_FASTFLAG(LuauInterpolatedStringBaseSupport)
+
 namespace Luau
 {
 
@@ -89,7 +91,8 @@ Lexeme::Lexeme(const Location& location, Type type, const char* data, size_t siz
     , length(unsigned(size))
     , data(data)
 {
-    LUAU_ASSERT(type == RawString || type == QuotedString || type == Number || type == Comment || type == BlockComment);
+    LUAU_ASSERT(type == RawString || type == QuotedString || type == InterpStringBegin || type == InterpStringMid || type == InterpStringEnd ||
+                type == InterpStringSimple || type == BrokenInterpDoubleBrace || type == Number || type == Comment || type == BlockComment);
 }
 
 Lexeme::Lexeme(const Location& location, Type type, const char* name)
@@ -99,11 +102,6 @@ Lexeme::Lexeme(const Location& location, Type type, const char* name)
     , name(name)
 {
     LUAU_ASSERT(type == Name || (type >= Reserved_BEGIN && type < Lexeme::Reserved_END));
-}
-
-static bool isComment(const Lexeme& lexeme)
-{
-    return lexeme.type == Lexeme::Comment || lexeme.type == Lexeme::BlockComment;
 }
 
 static const char* kReserved[] = {"and", "break", "do", "else", "elseif", "end", "false", "for", "function", "if", "in", "local", "nil", "not", "or",
@@ -165,6 +163,18 @@ std::string Lexeme::toString() const
     case QuotedString:
         return data ? format("\"%.*s\"", length, data) : "string";
 
+    case InterpStringBegin:
+        return data ? format("`%.*s{", length, data) : "the beginning of an interpolated string";
+
+    case InterpStringMid:
+        return data ? format("}%.*s{", length, data) : "the middle of an interpolated string";
+
+    case InterpStringEnd:
+        return data ? format("}%.*s`", length, data) : "the end of an interpolated string";
+
+    case InterpStringSimple:
+        return data ? format("`%.*s`", length, data) : "interpolated string";
+
     case Number:
         return data ? format("'%.*s'", length, data) : "number";
 
@@ -179,6 +189,9 @@ std::string Lexeme::toString() const
 
     case BrokenComment:
         return "unfinished comment";
+
+    case BrokenInterpDoubleBrace:
+        return "'{{', which is invalid (did you mean '\\{'?)";
 
     case BrokenUnicode:
         if (codepoint)
@@ -282,11 +295,6 @@ AstName AstNameTable::get(const char* name) const
     return getWithType(name, strlen(name)).first;
 }
 
-inline bool isSpace(char ch)
-{
-    return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\v' || ch == '\f';
-}
-
 inline bool isAlpha(char ch)
 {
     // use or trick to convert to lower case and unsigned comparison to do range check
@@ -357,10 +365,10 @@ void Lexer::setReadNames(bool read)
 
 const Lexeme& Lexer::next()
 {
-    return next(this->skipComments);
+    return next(this->skipComments, true);
 }
 
-const Lexeme& Lexer::next(bool skipComments)
+const Lexeme& Lexer::next(bool skipComments, bool updatePrevLocation)
 {
     // in skipComments mode we reject valid comments
     do
@@ -369,10 +377,12 @@ const Lexeme& Lexer::next(bool skipComments)
         while (isSpace(peekch()))
             consume();
 
-        prevLocation = lexeme.location;
+        if (updatePrevLocation)
+            prevLocation = lexeme.location;
 
         lexeme = readNext();
-    } while (skipComments && isComment(lexeme));
+        updatePrevLocation = false;
+    } while (skipComments && (lexeme.type == Lexeme::Comment || lexeme.type == Lexeme::BlockComment));
 
     return lexeme;
 }
@@ -523,6 +533,32 @@ Lexeme Lexer::readLongString(const Position& start, int sep, Lexeme::Type ok, Le
     return Lexeme(Location(start, position()), broken);
 }
 
+void Lexer::readBackslashInString()
+{
+    LUAU_ASSERT(peekch() == '\\');
+    consume();
+    switch (peekch())
+    {
+    case '\r':
+        consume();
+        if (peekch() == '\n')
+            consume();
+        break;
+
+    case 0:
+        break;
+
+    case 'z':
+        consume();
+        while (isSpace(peekch()))
+            consume();
+        break;
+
+    default:
+        consume();
+    }
+}
+
 Lexeme Lexer::readQuotedString()
 {
     Position start = position();
@@ -543,27 +579,7 @@ Lexeme Lexer::readQuotedString()
             return Lexeme(Location(start, position()), Lexeme::BrokenString);
 
         case '\\':
-            consume();
-            switch (peekch())
-            {
-            case '\r':
-                consume();
-                if (peekch() == '\n')
-                    consume();
-                break;
-
-            case 0:
-                break;
-
-            case 'z':
-                consume();
-                while (isSpace(peekch()))
-                    consume();
-                break;
-
-            default:
-                consume();
-            }
+            readBackslashInString();
             break;
 
         default:
@@ -574,6 +590,70 @@ Lexeme Lexer::readQuotedString()
     consume();
 
     return Lexeme(Location(start, position()), Lexeme::QuotedString, &buffer[startOffset], offset - startOffset - 1);
+}
+
+Lexeme Lexer::readInterpolatedStringBegin()
+{
+    LUAU_ASSERT(peekch() == '`');
+
+    Position start = position();
+    consume();
+
+    return readInterpolatedStringSection(start, Lexeme::InterpStringBegin, Lexeme::InterpStringSimple);
+}
+
+Lexeme Lexer::readInterpolatedStringSection(Position start, Lexeme::Type formatType, Lexeme::Type endType)
+{
+    unsigned int startOffset = offset;
+
+    while (peekch() != '`')
+    {
+        switch (peekch())
+        {
+        case 0:
+        case '\r':
+        case '\n':
+            return Lexeme(Location(start, position()), Lexeme::BrokenString);
+
+        case '\\':
+            // Allow for \u{}, which would otherwise be consumed by looking for {
+            if (peekch(1) == 'u' && peekch(2) == '{')
+            {
+                consume(); // backslash
+                consume(); // u
+                consume(); // {
+                break;
+            }
+
+            readBackslashInString();
+            break;
+
+        case '{':
+        {
+            braceStack.push_back(BraceType::InterpolatedString);
+
+            if (peekch(1) == '{')
+            {
+                Lexeme brokenDoubleBrace =
+                    Lexeme(Location(start, position()), Lexeme::BrokenInterpDoubleBrace, &buffer[startOffset], offset - startOffset);
+                consume();
+                consume();
+                return brokenDoubleBrace;
+            }
+
+            consume();
+            Lexeme lexemeOutput(Location(start, position()), Lexeme::InterpStringBegin, &buffer[startOffset], offset - startOffset - 1);
+            return lexemeOutput;
+        }
+
+        default:
+            consume();
+        }
+    }
+
+    consume();
+
+    return Lexeme(Location(start, position()), endType, &buffer[startOffset], offset - startOffset - 1);
 }
 
 Lexeme Lexer::readNumber(const Position& start, unsigned int startOffset)
@@ -668,6 +748,36 @@ Lexeme Lexer::readNext()
         }
     }
 
+    case '{':
+    {
+        consume();
+
+        if (!braceStack.empty())
+            braceStack.push_back(BraceType::Normal);
+
+        return Lexeme(Location(start, 1), '{');
+    }
+
+    case '}':
+    {
+        consume();
+
+        if (braceStack.empty())
+        {
+            return Lexeme(Location(start, 1), '}');
+        }
+
+        const BraceType braceStackTop = braceStack.back();
+        braceStack.pop_back();
+
+        if (braceStackTop != BraceType::InterpolatedString)
+        {
+            return Lexeme(Location(start, 1), '}');
+        }
+
+        return readInterpolatedStringSection(position(), Lexeme::InterpStringMid, Lexeme::InterpStringEnd);
+    }
+
     case '=':
     {
         consume();
@@ -723,6 +833,15 @@ Lexeme Lexer::readNext()
     case '"':
     case '\'':
         return readQuotedString();
+
+    case '`':
+        if (FFlag::LuauInterpolatedStringBaseSupport)
+            return readInterpolatedStringBegin();
+        else
+        {
+            consume();
+            return Lexeme(Location(start, 1), '`');
+        }
 
     case '.':
         consume();
@@ -825,8 +944,6 @@ Lexeme Lexer::readNext()
 
     case '(':
     case ')':
-    case '{':
-    case '}':
     case ']':
     case ';':
     case ',':

@@ -6,6 +6,7 @@
 #include "Luau/Transpiler.h"
 
 #include "Fixture.h"
+#include "ScopedFlags.h"
 
 #include "doctest.h"
 
@@ -21,7 +22,7 @@ local function isPortal(element)
         return false
     end
 
-    return element.component==Core.Portal
+    return element.component == Core.Portal
 end
 )";
 
@@ -223,9 +224,21 @@ TEST_CASE("escaped_strings")
     CHECK_EQ(code, transpile(code).code);
 }
 
+TEST_CASE("escaped_strings_2")
+{
+    const std::string code = R"( local s="\a\b\f\n\r\t\v\'\"\\" )";
+    CHECK_EQ(code, transpile(code).code);
+}
+
 TEST_CASE("need_a_space_between_number_literals_and_dots")
 {
     const std::string code = R"( return point and math.ceil(point* 100000* 100)/ 100000 .. '%'or '' )";
+    CHECK_EQ(code, transpile(code).code);
+}
+
+TEST_CASE("binary_keywords")
+{
+    const std::string code = "local c = a0 ._ or b0 ._";
     CHECK_EQ(code, transpile(code).code);
 }
 
@@ -364,10 +377,10 @@ TEST_CASE_FIXTURE(Fixture, "type_lists_should_be_emitted_correctly")
     )";
 
     std::string expected = R"(
-        local a:(string,number,...string)->(string,...number)=function(a:string,b:number,...:...string): (string,...number)
+        local a:(string,number,...string)->(string,...number)=function(a:string,b:number,...:string): (string,...number)
         end
 
-        local b:(...string)->(...number)=function(...:...string): ...number
+        local b:(...string)->(...number)=function(...:string): ...number
         end
 
         local c:()->()=function(): ()
@@ -376,7 +389,7 @@ TEST_CASE_FIXTURE(Fixture, "type_lists_should_be_emitted_correctly")
 
     std::string actual = decorateWithTypes(code);
 
-    CHECK_EQ(expected, decorateWithTypes(code));
+    CHECK_EQ(expected, actual);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_type_location")
@@ -398,6 +411,290 @@ TEST_CASE_FIXTURE(Fixture, "function_type_location")
     std::string actual = decorateWithTypes(code);
 
     CHECK_EQ(expected, actual);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_type_assertion")
+{
+    std::string code = "local a = 5 :: number";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_if_then_else")
+{
+    std::string code = "local a = if 1 then 2 else 3";
+
+    CHECK_EQ(code, transpile(code).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_type_reference_import")
+{
+    fileResolver.source["game/A"] = R"(
+export type Type = { a: number }
+return {}
+    )";
+
+    std::string code = R"(
+local Import = require(game.A)
+local a: Import.Type
+    )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_type_packs")
+{
+    std::string code = R"(
+type Packed<T...> = (T...)->(T...)
+local a: Packed<>
+local b: Packed<(number, string)>
+    )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_union_type_nested")
+{
+    std::string code = "local a: ((number)->(string))|((string)->(string))";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_union_type_nested_2")
+{
+    std::string code = "local a: (number&string)|(string&boolean)";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_union_type_nested_3")
+{
+    std::string code = "local a: nil | (string & number)";
+
+    CHECK_EQ("local a: (      string & number)?", transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_intersection_type_nested")
+{
+    std::string code = "local a: ((number)->(string))&((string)->(string))";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_intersection_type_nested_2")
+{
+    std::string code = "local a: (number|string)&(string|boolean)";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_varargs")
+{
+    std::string code = "local function f(...) return ... end";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_index_expr")
+{
+    std::string code = "local a = {1, 2, 3} local b = a[2]";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_unary")
+{
+    std::string code = R"(
+local a = 1
+local b = -1
+local c = true
+local d = not c
+local e = 'hello'
+local d = #e
+    )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_break_continue")
+{
+    std::string code = R"(
+local a, b, c
+repeat
+    if a then break end
+    if b then continue end
+until c
+    )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_compound_assignmenr")
+{
+    std::string code = R"(
+local a = 1
+a += 2
+a -= 3
+a *= 4
+a /= 5
+a %= 6
+a ^= 7
+a ..= ' - result'
+    )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_assign_multiple")
+{
+    std::string code = "a, b, c = 1, 2, 3";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_generic_function")
+{
+    std::string code = R"(
+local function foo<T,S...>(a: T, ...: S...) return 1 end
+local f: <T,S...>(T, S...)->(number) = foo
+    )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_union_reverse")
+{
+    std::string code = "local a: nil | number";
+
+    CHECK_EQ("local a:       number?", transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_for_in_multiple")
+{
+    std::string code = "for k,v in next,{}do print(k,v) end";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_error_expr")
+{
+    std::string code = "local a = f:-";
+
+    auto allocator = Allocator{};
+    auto names = AstNameTable{allocator};
+    ParseResult parseResult = Parser::parse(code.data(), code.size(), names, allocator, {});
+
+    CHECK_EQ("local a = (error-expr: f:%error-id%)-(error-expr)", transpileWithTypes(*parseResult.root));
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_error_stat")
+{
+    std::string code = "-";
+
+    auto allocator = Allocator{};
+    auto names = AstNameTable{allocator};
+    ParseResult parseResult = Parser::parse(code.data(), code.size(), names, allocator, {});
+
+    CHECK_EQ("(error-stat: (error-expr))", transpileWithTypes(*parseResult.root));
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_error_type")
+{
+    std::string code = "local a: ";
+
+    auto allocator = Allocator{};
+    auto names = AstNameTable{allocator};
+    ParseResult parseResult = Parser::parse(code.data(), code.size(), names, allocator, {});
+
+    CHECK_EQ("local a:%error-type%", transpileWithTypes(*parseResult.root));
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_parse_error")
+{
+    std::string code = "local a = -";
+
+    auto result = transpile(code);
+    CHECK_EQ("", result.code);
+    CHECK_EQ("Expected identifier when parsing expression, got <eof>", result.parseError);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_to_string")
+{
+    std::string code = "local a: string = 'hello'";
+
+    auto allocator = Allocator{};
+    auto names = AstNameTable{allocator};
+    ParseResult parseResult = Parser::parse(code.data(), code.size(), names, allocator, {});
+
+    REQUIRE(parseResult.root);
+    REQUIRE(parseResult.root->body.size == 1);
+    AstStatLocal* statLocal = parseResult.root->body.data[0]->as<AstStatLocal>();
+    REQUIRE(statLocal);
+    CHECK_EQ("local a: string = 'hello'", toString(statLocal));
+    REQUIRE(statLocal->vars.size == 1);
+    AstLocal* local = statLocal->vars.data[0];
+    REQUIRE(local->annotation);
+    CHECK_EQ("string", toString(local->annotation));
+    REQUIRE(statLocal->values.size == 1);
+    AstExpr* expr = statLocal->values.data[0];
+    CHECK_EQ("'hello'", toString(expr));
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_type_alias_default_type_parameters")
+{
+    std::string code = R"(
+type Packed<T = string, U = T, V... = ...boolean, W... = (T, U, V...)> = (T, U, V...)->(W...)
+local a: Packed<number>
+    )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_singleton_types")
+{
+    std::string code = R"(
+type t1 = 'hello'
+type t2 = true
+type t3 = ''
+type t4 = false
+    )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_array_types")
+{
+    std::string code = R"(
+type t1 = {number}
+type t2 = {[string]: number}
+    )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_for_in_multiple_types")
+{
+    std::string code = "for k:string,v:boolean in next,{}do end";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_string_interp")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    std::string code = R"( local _ = `hello {name}` )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_string_literal_escape")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    std::string code = R"( local _ = ` bracket = \{, backtick = \` = {'ok'} ` )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
 TEST_SUITE_END();

@@ -7,6 +7,9 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <Windows.h>
 
 const size_t kPageSize = 4096;
@@ -14,7 +17,11 @@ const size_t kPageSize = 4096;
 #include <sys/mman.h>
 #include <unistd.h>
 
+#if defined(__FreeBSD__) && !(_POSIX_C_SOURCE >= 200112L)
+const size_t kPageSize = getpagesize();
+#else
 const size_t kPageSize = sysconf(_SC_PAGESIZE);
+#endif
 #endif
 
 #include <stdlib.h>
@@ -24,27 +31,6 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 namespace Luau
 {
 
-static void* systemAllocateAligned(size_t size, size_t align)
-{
-#ifdef _WIN32
-    return _aligned_malloc(size, align);
-#elif defined(__ANDROID__) // for Android 4.1
-    return memalign(align, size);
-#else
-    void* ptr;
-    return posix_memalign(&ptr, align, size) == 0 ? ptr : 0;
-#endif
-}
-
-static void systemDeallocateAligned(void* ptr)
-{
-#ifdef _WIN32
-    _aligned_free(ptr);
-#else
-    free(ptr);
-#endif
-}
-
 static size_t pageAlign(size_t size)
 {
     return (size + kPageSize - 1) & ~(kPageSize - 1);
@@ -52,18 +38,37 @@ static size_t pageAlign(size_t size)
 
 void* pagedAllocate(size_t size)
 {
-    if (FFlag::DebugLuauFreezeArena)
-        return systemAllocateAligned(pageAlign(size), kPageSize);
-    else
+    // By default we use operator new/delete instead of malloc/free so that they can be overridden externally
+    if (!FFlag::DebugLuauFreezeArena)
+    {
         return ::operator new(size, std::nothrow);
+    }
+
+    // On Windows, VirtualAlloc results in 64K granularity allocations; we allocate in chunks of ~32K so aligned_malloc is a little more efficient
+    // On Linux, we must use mmap because using regular heap results in mprotect() fragmenting the page table and us bumping into 64K mmap limit.
+#ifdef _WIN32
+    return _aligned_malloc(size, kPageSize);
+#elif defined(__FreeBSD__)
+    return aligned_alloc(kPageSize, size);
+#else
+    return mmap(nullptr, pageAlign(size), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+#endif
 }
 
-void pagedDeallocate(void* ptr)
+void pagedDeallocate(void* ptr, size_t size)
 {
-    if (FFlag::DebugLuauFreezeArena)
-        systemDeallocateAligned(ptr);
-    else
-        ::operator delete(ptr);
+    // By default we use operator new/delete instead of malloc/free so that they can be overridden externally
+    if (!FFlag::DebugLuauFreezeArena)
+        return ::operator delete(ptr);
+
+#ifdef _WIN32
+    _aligned_free(ptr);
+#elif defined(__FreeBSD__)
+    free(ptr);
+#else
+    int rc = munmap(ptr, size);
+    LUAU_ASSERT(rc == 0);
+#endif
 }
 
 void pagedFreeze(void* ptr, size_t size)

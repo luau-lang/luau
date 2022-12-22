@@ -82,11 +82,13 @@ static void profilerLoop()
 
         if (now - last >= 1.0 / double(gProfiler.frequency))
         {
-            gProfiler.ticks += uint64_t((now - last) * 1e6);
+            int64_t ticks = int64_t((now - last) * 1e6);
+
+            gProfiler.ticks += ticks;
             gProfiler.samples++;
             gProfiler.callbacks->interrupt = profilerTrigger;
 
-            last = now;
+            last += ticks * 1e-6;
         }
         else
         {
@@ -110,12 +112,12 @@ void profilerStop()
     gProfiler.thread.join();
 }
 
-void profilerDump(const char* name)
+void profilerDump(const char* path)
 {
-    FILE* f = fopen(name, "wb");
+    FILE* f = fopen(path, "wb");
     if (!f)
     {
-        fprintf(stderr, "Error opening profile %s\n", name);
+        fprintf(stderr, "Error opening profile %s\n", path);
         return;
     }
 
@@ -129,7 +131,7 @@ void profilerDump(const char* name)
 
     fclose(f);
 
-    printf("Profiler dump written to %s (total runtime %.3f seconds, %lld samples, %lld stacks)\n", name, double(total) / 1e6,
+    printf("Profiler dump written to %s (total runtime %.3f seconds, %lld samples, %lld stacks)\n", path, double(total) / 1e6,
         static_cast<long long>(gProfiler.samples.load()), static_cast<long long>(gProfiler.data.size()));
 
     uint64_t totalgc = 0;

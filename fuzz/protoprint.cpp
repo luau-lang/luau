@@ -11,6 +11,7 @@ static const std::string kNames[] = {
     "__div",
     "__eq",
     "__index",
+    "__iter",
     "__le",
     "__len",
     "__lt",
@@ -41,13 +42,18 @@ static const std::string kNames[] = {
     "ceil",
     "char",
     "charpattern",
+    "clamp",
     "clock",
+    "clone",
+    "close",
     "codepoint",
     "codes",
     "concat",
     "coroutine",
     "cos",
     "cosh",
+    "countlz",
+    "countrz",
     "create",
     "date",
     "debug",
@@ -63,6 +69,7 @@ static const std::string kNames[] = {
     "foreachi",
     "format",
     "frexp",
+    "freeze",
     "function",
     "gcinfo",
     "getfenv",
@@ -72,8 +79,10 @@ static const std::string kNames[] = {
     "gmatch",
     "gsub",
     "huge",
+    "info",
     "insert",
     "ipairs",
+    "isfrozen",
     "isyieldable",
     "ldexp",
     "len",
@@ -93,6 +102,7 @@ static const std::string kNames[] = {
     "newproxy",
     "next",
     "nil",
+    "noise",
     "number",
     "offset",
     "os",
@@ -121,6 +131,7 @@ static const std::string kNames[] = {
     "select",
     "setfenv",
     "setmetatable",
+    "sign",
     "sin",
     "sinh",
     "sort",
@@ -208,6 +219,35 @@ struct ProtoToLuau
         source += std::to_string(name.index() & 0xff);
     }
 
+    template<typename T>
+    void genericidents(const T& node)
+    {
+        if (node.generics_size() || node.genericpacks_size())
+        {
+            source += '<';
+            bool first = true;
+
+            for (size_t i = 0; i < node.generics_size(); ++i)
+            {
+                if (!first)
+                    source += ',';
+                first = false;
+                ident(node.generics(i));
+            }
+
+            for (size_t i = 0; i < node.genericpacks_size(); ++i)
+            {
+                if (!first)
+                    source += ',';
+                first = false;
+                ident(node.genericpacks(i));
+                source += "...";
+            }
+
+            source += '>';
+        }
+    }
+
     void print(const luau::Expr& expr)
     {
         if (expr.has_group())
@@ -240,6 +280,8 @@ struct ProtoToLuau
             print(expr.unary());
         else if (expr.has_binary())
             print(expr.binary());
+        else if (expr.has_ifelse())
+            print(expr.ifelse());
         else
             source += "_";
     }
@@ -350,6 +392,7 @@ struct ProtoToLuau
 
     void function(const luau::ExprFunction& expr)
     {
+        genericidents(expr);
         source += "(";
         for (int i = 0; i < expr.args_size(); ++i)
         {
@@ -476,6 +519,25 @@ struct ProtoToLuau
         print(expr.right());
     }
 
+    void print(const luau::ExprIfElse& expr)
+    {
+        source += "if ";
+        print(expr.cond());
+        source += " then ";
+        print(expr.then());
+
+        if (expr.has_else_())
+        {
+            source += " else ";
+            print(expr.else_());
+        }
+        else if (expr.has_elseif())
+        {
+            source += " else";
+            print(expr.elseif());
+        }
+    }
+
     void print(const luau::LValue& expr)
     {
         if (expr.has_local())
@@ -524,6 +586,8 @@ struct ProtoToLuau
             print(stat.local_function());
         else if (stat.has_type_alias())
             print(stat.type_alias());
+        else if (stat.has_require_into_local())
+            print(stat.require_into_local());
         else
             source += "do end\n";
     }
@@ -794,24 +858,22 @@ struct ProtoToLuau
 
     void print(const luau::StatTypeAlias& stat)
     {
+        if (stat.export_())
+            source += "export ";
+
         source += "type ";
         ident(stat.name());
-
-        if (stat.generics_size())
-        {
-            source += '<';
-            for (size_t i = 0; i < stat.generics_size(); ++i)
-            {
-                if (i != 0)
-                    source += ',';
-                ident(stat.generics(i));
-            }
-            source += '>';
-        }
-
+        genericidents(stat);
         source += " = ";
         print(stat.type());
         source += '\n';
+    }
+
+    void print(const luau::StatRequireIntoLocalHelper& stat)
+    {
+        source += "local ";
+        print(stat.var());
+        source += " = require(module" + std::to_string(stat.modulenum() % 2) + ")\n";
     }
 
     void print(const luau::Type& type)
@@ -834,6 +896,10 @@ struct ProtoToLuau
             print(type.class_());
         else if (type.has_ref())
             print(type.ref());
+        else if (type.has_boolean())
+            print(type.boolean());
+        else if (type.has_string())
+            print(type.string());
         else
             source += "any";
     }
@@ -848,15 +914,28 @@ struct ProtoToLuau
     {
         ident(type.name());
 
-        if (type.generics_size())
+        if (type.generics_size() || type.genericpacks_size())
         {
             source += '<';
+            bool first = true;
+
             for (size_t i = 0; i < type.generics_size(); ++i)
             {
-                if (i != 0)
+                if (!first)
                     source += ',';
-                ident(type.generics(i));
+                first = false;
+                print(type.generics(i));
             }
+
+            for (size_t i = 0; i < type.genericpacks_size(); ++i)
+            {
+                if (!first)
+                    source += ',';
+                first = false;
+                ident(type.genericpacks(i));
+                source += "...";
+            }
+
             source += '>';
         }
     }
@@ -883,6 +962,7 @@ struct ProtoToLuau
 
     void print(const luau::TypeFunction& type)
     {
+        genericidents(type);
         source += '(';
         for (size_t i = 0; i < type.args_size(); ++i)
         {
@@ -940,12 +1020,38 @@ struct ProtoToLuau
         source += '.';
         ident(type.index());
     }
+
+    void print(const luau::TypeBoolean& type)
+    {
+        source += type.val() ? "true" : "false";
+    }
+
+    void print(const luau::TypeString& type)
+    {
+        source += '"';
+        for (char ch : type.val())
+            if (isgraph(ch))
+                source += ch;
+        source += '"';
+    }
 };
 
-std::string protoprint(const luau::StatBlock& stat, bool types)
+std::vector<std::string> protoprint(const luau::ModuleSet& stat, bool types)
 {
+    std::vector<std::string> result;
+
+    if (stat.has_module())
+    {
+        ProtoToLuau printer;
+        printer.types = types;
+        printer.print(stat.module());
+        result.push_back(printer.source);
+    }
+
     ProtoToLuau printer;
     printer.types = types;
-    printer.print(stat);
-    return printer.source;
+    printer.print(stat.program());
+    result.push_back(printer.source);
+
+    return result;
 }

@@ -3,6 +3,10 @@ main:
     url: /news
   - title: Getting Started
     url: /getting-started
+  - title: Demo
+    url: /demo
+  - title: GitHub
+    url: https://github.com/Roblox/luau
 
 pages:
   - title: Getting Started
@@ -21,5 +25,9 @@ pages:
     url: /compatibility
   - title: Typechecking
     url: /typecheck
+  - title: Profiling
+    url: /profile
   - title: Library
     url: /library
+  - title: Grammar
+    url: /grammar

@@ -2,6 +2,8 @@
 
 > Note: this RFC was adapted from an internal proposal that predates RFC process
 
+**Status**: Implemented
+
 ## Summary
 
 Introduce a new kind of type variable, called singleton types. They are just like normal types but has the capability to represent a constant runtime value as a type.
@@ -47,6 +49,18 @@ A constant string token as well as a constant boolean token is now allowed to sh
 type Animals = "Dog" | "Cat" | "Bird"
 type TrueOrNil = true?
 ```
+
+Adding constant strings as type means that it is now legal to write
+`{["foo"]:T}` as a table type. This should be parsed as a property,
+not an indexer. For example:
+```lua
+  type T = {
+    ["foo"]: number,
+    ["$$bar"]: string,
+    baz: boolean,
+  }
+```
+The table type `T` is a table with three properties and no indexer.
 
 ### Semantics
 

@@ -4,6 +4,7 @@
 
 #include "lstate.h"
 #include "lstring.h"
+#include "ludata.h"
 #include "ltable.h"
 #include "lgc.h"
 
@@ -11,7 +12,7 @@
 
 // clang-format off
 const char* const luaT_typenames[] = {
-    /* ORDER TYPE */
+    // ORDER TYPE
     "nil",
     "boolean",
 
@@ -30,12 +31,15 @@ const char* const luaT_typenames[] = {
 };
 
 const char* const luaT_eventname[] = {
-    /* ORDER TM */
+    // ORDER TM
     
     "__index",
     "__newindex",
     "__mode",
     "__namecall",
+    "__call",
+    "__iter",
+    "__len",
 
     "__eq",
 
@@ -49,17 +53,17 @@ const char* const luaT_eventname[] = {
     "__unm",
 
     
-    "__len",
     "__lt",
     "__le",
     "__concat",
-    "__call",
     "__type",
+    "__metatable",
 };
 // clang-format on
 
 static_assert(sizeof(luaT_typenames) / sizeof(luaT_typenames[0]) == LUA_T_COUNT, "luaT_typenames size mismatch");
 static_assert(sizeof(luaT_eventname) / sizeof(luaT_eventname[0]) == TM_N, "luaT_eventname size mismatch");
+static_assert(TM_EQ < 8, "fasttm optimization stores a bitfield with metamethods in a byte");
 
 void luaT_init(lua_State* L)
 {
@@ -67,12 +71,12 @@ void luaT_init(lua_State* L)
     for (i = 0; i < LUA_T_COUNT; i++)
     {
         L->global->ttname[i] = luaS_new(L, luaT_typenames[i]);
-        luaS_fix(L->global->ttname[i]); /* never collect these names */
+        luaS_fix(L->global->ttname[i]); // never collect these names
     }
     for (i = 0; i < TM_N; i++)
     {
         L->global->tmname[i] = luaS_new(L, luaT_eventname[i]);
-        luaS_fix(L->global->tmname[i]); /* never collect these names */
+        luaS_fix(L->global->tmname[i]); // never collect these names
     }
 }
 
@@ -85,8 +89,8 @@ const TValue* luaT_gettm(Table* events, TMS event, TString* ename)
     const TValue* tm = luaH_getstr(events, ename);
     LUAU_ASSERT(event <= TM_EQ);
     if (ttisnil(tm))
-    {                                            /* no tag method? */
-        events->flags |= cast_byte(1u << event); /* cache this fact */
+    {                                              // no tag method?
+        events->tmcache |= cast_byte(1u << event); // cache this fact
         return NULL;
     }
     else
@@ -116,7 +120,7 @@ const TValue* luaT_gettmbyobj(lua_State* L, const TValue* o, TMS event)
 
 const TString* luaT_objtypenamestr(lua_State* L, const TValue* o)
 {
-    if (ttisuserdata(o) && uvalue(o)->tag && uvalue(o)->metatable)
+    if (ttisuserdata(o) && uvalue(o)->tag != UTAG_PROXY && uvalue(o)->metatable)
     {
         const TValue* type = luaH_getstr(uvalue(o)->metatable, L->global->tmname[TM_TYPE]);
 

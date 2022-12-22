@@ -1,5 +1,7 @@
 # Default type alias type parameters
 
+**Status**: Implemented
+
 ## Summary
 
 Introduce syntax to provide default type values inside the type alias type parameter list.
@@ -48,9 +50,12 @@ type A<T, U = V, V = T> = ... -- not allowed
 
 Default type parameter values are also allowed for type packs:
 ```lua
-type A<T, U... = ...string> -- ok, variadic type pack
-type C<T, U... = string>    -- ok, type pack with one element
-type D<T..., U... = T...>   -- ok
+type A<T, U... = ...string>           -- ok, variadic type pack
+type B<T, U... = ()>                  -- ok, type pack with no elements
+type C<T, U... = (string)>            -- ok, type pack with one element
+type D<T, U... = (string, number)>    -- ok, type pack with two elements
+type E<T, U... = (string, ...number)> -- ok, variadic type pack with a different first element
+type F<T..., U... = T...>             -- ok, same type pack as T...
 ```
 
 ---
@@ -68,7 +73,7 @@ If all type parameters have a default type value, it is now possible to referenc
 type All<T = string, U = number> = ...
 
 local a: All -- ok
-local b: All<> -- not allowed
+local b: All<> -- ok as well
 ```
 
 If type is exported from a module, default type parameter values will still be available when module is imported.

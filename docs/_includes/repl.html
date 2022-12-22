@@ -1,0 +1,100 @@
+<form>
+    <div>
+        <label class="header-center"><b>Input</b></label>
+        <br>
+        <textarea rows="10" cols="70" id="script"></textarea>
+        <div class="button-group">
+            <button onclick="executeScript(); return false;" class="demo-button">Run</button>
+            <input type="checkbox" checked="true" class="demo-button" id="output-clear" />
+            <label for="output-clear">Clear Output</label>
+        </div>
+    </div>
+    <div>
+        <label class="header-center"><b>Output</b></label>
+        <br>
+        <textarea readonly rows="10" cols="70" id="output"></textarea>
+    </div>
+</form>
+
+<!-- Styles for editor -->
+<style>
+    .header-center {
+        text-align: center;
+    }
+
+    .demo-button {
+        padding: 7px 7px;
+        vertical-align: middle;
+    }
+    .line-error {
+        background: #e65f55;
+    }
+</style>
+
+<!-- CodeMirror -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/addon/edit/matchbrackets.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/codemirror.min.css" />
+<!-- Luau Parser for CodeMirror -->
+<script src="assets/js/luau_mode.js"></script>
+<!-- CodeMirror Luau Editor (MUST BE LOADED AFTER CODEMIRROR!) -->
+<script>
+    var editor = CodeMirror.fromTextArea(document.getElementById("script"), {
+        theme: "default",
+        mode: "luau",
+        matchBrackets: true,
+        lineNumbers: true,
+        smartIndent: true,
+        indentWithTabs: true,
+        indentUnit: 4,
+    });
+    editor.setValue("print(\"Hello World!\")\n");
+        editor.addKeyMap({
+        "Ctrl-Enter": function(cm) {
+            executeScript();
+        },
+        "Shift-Tab": function (cm) {
+            // dedent functionality
+            cm.execCommand("indentLess");
+        }
+    });
+
+    var lastError = undefined;
+
+    function output(text) {
+        var output_box = document.getElementById("output");
+        output_box.value += text.replace('stdin:', '') + "\n";
+        // scroll to bottom
+        output_box.scrollTop = output_box.scrollHeight;
+    }
+
+    var Module = {
+        'print': function (msg) { output(msg) }
+    };
+
+    function executeScript() {
+        if (lastError) {
+            editor.removeLineClass(lastError, "background", "line-error");
+            lastError = undefined;
+        }
+
+        var output_clear = document.getElementById("output-clear");
+        if (output_clear.checked) {
+            var output_box = document.getElementById("output");
+            output_box.value = '';
+        }
+
+        var err = Module.ccall('executeScript', 'string', ['string'], [editor.getValue()]);
+        if (err) {
+            var err_text = err.replace('stdin:', '');
+            output('Error:' + err_text);
+
+            var err_line = parseInt(err_text);
+            if (err_line) {
+                lastError = editor.addLineClass(err_line-1, "background", "line-error");
+            }
+        }
+    }
+</script>
+<!-- Luau WASM (async fetch; should be the last line) -->
+<script async src="https://github.com/Roblox/luau/releases/latest/download/Luau.Web.js"></script>

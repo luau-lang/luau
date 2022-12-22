@@ -4,6 +4,7 @@
 #include "Luau/Location.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace Luau
@@ -14,6 +15,7 @@ class AstStat;
 class AstNameTable;
 struct TypeChecker;
 struct Module;
+struct HotComment;
 
 using ScopePtr = std::shared_ptr<struct Scope>;
 
@@ -49,6 +51,10 @@ struct LintWarning
         Code_DeprecatedApi = 22,
         Code_TableOperations = 23,
         Code_DuplicateCondition = 24,
+        Code_MisleadingAndOr = 25,
+        Code_CommentDirective = 26,
+        Code_IntegerParsing = 27,
+        Code_ComparisonPrecedence = 28,
 
         Code__Count
     };
@@ -59,7 +65,7 @@ struct LintWarning
 
     static const char* getName(Code code);
     static Code parseName(const char* name);
-    static uint64_t parseMask(const std::vector<std::string>& hotcomments);
+    static uint64_t parseMask(const std::vector<HotComment>& hotcomments);
 };
 
 struct LintResult
@@ -89,7 +95,8 @@ struct LintOptions
     void setDefaults();
 };
 
-std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const ScopePtr& env, const Module* module, const LintOptions& options);
+std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const ScopePtr& env, const Module* module,
+    const std::vector<HotComment>& hotcomments, const LintOptions& options);
 
 std::vector<AstName> getDeprecatedGlobals(const AstNameTable& names);
 

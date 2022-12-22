@@ -25,7 +25,7 @@ local DisplArea = {}
 DisplArea.Width = 300;
 DisplArea.Height = 300;
 
-function DrawLine(From, To)
+local function DrawLine(From, To)
   local x1 = From.V[1];
   local x2 = To.V[1];
   local y1 = From.V[2];
@@ -81,7 +81,7 @@ function DrawLine(From, To)
   Q.LastPx = NumPix;
 end
 
-function CalcCross(V0, V1)
+local function CalcCross(V0, V1)
   local Cross = {};
   Cross[1] = V0[2]*V1[3] - V0[3]*V1[2];
   Cross[2] = V0[3]*V1[1] - V0[1]*V1[3];
@@ -89,7 +89,7 @@ function CalcCross(V0, V1)
   return Cross;
 end
 
-function CalcNormal(V0, V1, V2)
+local function CalcNormal(V0, V1, V2)
   local A = {};   local B = {}; 
   for i = 1,3 do
     A[i] = V0[i] - V1[i];
@@ -102,58 +102,52 @@ function CalcNormal(V0, V1, V2)
   return A;
 end
 
-function CreateP(X,Y,Z)
+local function CreateP(X,Y,Z)
   local result = {}
   result.V = {X,Y,Z,1};
   return result
 end
 
 -- multiplies two matrices
-function MMulti(M1, M2)
+local function MMulti(M1, M2)
   local M = {{},{},{},{}};
-  local i = 1;
-  local j = 1;
-  while i <= 4 do
-    j = 1;
-    while j <= 4 do
-      M[i][j] = M1[i][1] * M2[1][j] + M1[i][2] * M2[2][j] + M1[i][3] * M2[3][j] + M1[i][4] * M2[4][j]; j = j + 1
+  for i = 1,4 do
+    for j = 1,4 do
+      M[i][j] = M1[i][1] * M2[1][j] + M1[i][2] * M2[2][j] + M1[i][3] * M2[3][j] + M1[i][4] * M2[4][j];
     end
-
-    i = i + 1
   end
   return M;
 end
 
 -- multiplies matrix with vector
-function VMulti(M, V)
+local function VMulti(M, V)
   local Vect = {};
-  local i = 1;
-  while i <= 4 do Vect[i] = M[i][1] * V[1] + M[i][2] * V[2] + M[i][3] * V[3] + M[i][4] * V[4]; i = i + 1 end
+  for i = 1,4 do
+    Vect[i] = M[i][1] * V[1] + M[i][2] * V[2] + M[i][3] * V[3] + M[i][4] * V[4];
+  end
   return Vect;
 end
 
-function VMulti2(M, V)
+local function VMulti2(M, V)
   local Vect = {};
-  local i = 1;
-  while i < 4 do Vect[i] = M[i][1] * V[1] + M[i][2] * V[2] + M[i][3] * V[3]; i = i + 1 end
+  for i = 1,3 do
+    Vect[i] = M[i][1] * V[1] + M[i][2] * V[2] + M[i][3] * V[3];
+  end
   return Vect;
 end
 
 -- add to matrices
-function MAdd(M1, M2)
+local function MAdd(M1, M2)
   local M = {{},{},{},{}};
-  local i = 1;
-  local j = 1;
-  while i <= 4 do
-    j = 1;
-    while j <= 4 do M[i][j] = M1[i][j] + M2[i][j]; j = j + 1 end
-
-    i = i + 1
+  for i = 1,4 do
+    for j = 1,4 do
+      M[i][j] = M1[i][j] + M2[i][j];
+    end
   end
   return M;
 end
 
-function Translate(M, Dx, Dy, Dz)
+local function Translate(M, Dx, Dy, Dz)
     local T = {
   {1,0,0,Dx},
   {0,1,0,Dy},
@@ -163,7 +157,7 @@ function Translate(M, Dx, Dy, Dz)
   return MMulti(T, M);
 end
 
-function RotateX(M, Phi)
+local function RotateX(M, Phi)
     local a = Phi;
   a = a * math.pi / 180;
   local Cos = math.cos(a);
@@ -177,7 +171,7 @@ function RotateX(M, Phi)
   return MMulti(R, M);
 end
 
-function RotateY(M, Phi)
+local function RotateY(M, Phi)
     local a = Phi;
   a = a * math.pi / 180;
   local Cos = math.cos(a);
@@ -191,7 +185,7 @@ function RotateY(M, Phi)
   return MMulti(R, M);
 end
 
-function RotateZ(M, Phi)
+local function RotateZ(M, Phi)
     local a = Phi;
   a = a * math.pi / 180;
   local Cos = math.cos(a);
@@ -205,7 +199,7 @@ function RotateZ(M, Phi)
   return MMulti(R, M);
 end
 
-function DrawQube()
+local function DrawQube()
   -- calc current normals
   local CurN = {};
   local i = 5;
@@ -251,7 +245,7 @@ function DrawQube()
   Q.LastPx = 0;
 end
 
-function Loop()
+local function Loop()
   if (Testing.LoopCount > Testing.LoopMax) then return; end
   local TestingStr = tostring(Testing.LoopCount);
   while (#TestingStr < 3) do TestingStr = "0" .. TestingStr; end
@@ -271,7 +265,7 @@ function Loop()
   Loop();
 end
 
-function Init(CubeSize)
+local function Init(CubeSize)
   -- init/reset vars
   Origin.V = {150,150,20,1};
   Testing.LoopCount = 0;

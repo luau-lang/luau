@@ -10,65 +10,8 @@
 #include <limits>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauGenericFunctions)
-
 namespace
 {
-
-std::string escape(std::string_view s)
-{
-    std::string r;
-    r.reserve(s.size() + 50); // arbitrary number to guess how many characters we'll be inserting
-
-    for (uint8_t c : s)
-    {
-        if (c >= ' ' && c != '\\' && c != '\'' && c != '\"')
-            r += c;
-        else
-        {
-            r += '\\';
-
-            switch (c)
-            {
-            case '\a':
-                r += 'a';
-                break;
-            case '\b':
-                r += 'b';
-                break;
-            case '\f':
-                r += 'f';
-                break;
-            case '\n':
-                r += 'n';
-                break;
-            case '\r':
-                r += 'r';
-                break;
-            case '\t':
-                r += 't';
-                break;
-            case '\v':
-                r += 'v';
-                break;
-            case '\'':
-                r += '\'';
-                break;
-            case '\"':
-                r += '\"';
-                break;
-            case '\\':
-                r += '\\';
-                break;
-            default:
-                Luau::formatAppend(r, "%03u", c);
-            }
-        }
-    }
-
-    return r;
-}
-
 bool isIdentifierStartChar(char c)
 {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';
@@ -95,9 +38,6 @@ namespace Luau
 struct Writer
 {
     virtual ~Writer() {}
-
-    virtual void begin() {}
-    virtual void end() {}
 
     virtual void advance(const Position&) = 0;
     virtual void newline() = 0;
@@ -130,6 +70,7 @@ struct StringWriter : Writer
         if (pos.column < newPos.column)
             write(std::string(newPos.column - pos.column, ' '));
     }
+
     void maybeSpace(const Position& newPos, int reserve) override
     {
         if (pos.column + reserve < newPos.column)
@@ -264,26 +205,25 @@ struct Printer
         }
     }
 
-    void visualizeWithSelf(AstExpr& expr, bool self)
+    void visualizeTypePackAnnotation(const AstTypePack& annotation, bool forVarArg)
     {
-        if (!self)
-            return visualize(expr);
-
-        AstExprIndexName* func = expr.as<AstExprIndexName>();
-        LUAU_ASSERT(func);
-
-        visualize(*func->expr);
-        writer.symbol(":");
-        advance(func->indexLocation.begin);
-        writer.identifier(func->index.value);
-    }
-
-    void visualizeTypePackAnnotation(const AstTypePack& annotation)
-    {
-        if (const AstTypePackVariadic* variadic = annotation.as<AstTypePackVariadic>())
+        advance(annotation.location.begin);
+        if (const AstTypePackVariadic* variadicTp = annotation.as<AstTypePackVariadic>())
         {
+            if (!forVarArg)
+                writer.symbol("...");
+
+            visualizeTypeAnnotation(*variadicTp->variadicType);
+        }
+        else if (const AstTypePackGeneric* genericTp = annotation.as<AstTypePackGeneric>())
+        {
+            writer.symbol(genericTp->genericName.value);
             writer.symbol("...");
-            visualizeTypeAnnotation(*variadic->variadicType);
+        }
+        else if (const AstTypePackExplicit* explicitTp = annotation.as<AstTypePackExplicit>())
+        {
+            LUAU_ASSERT(!forVarArg);
+            visualizeTypeList(explicitTp->typeList, true);
         }
         else
         {
@@ -307,7 +247,7 @@ struct Printer
             // Only variadic tail
             if (list.types.size == 0)
             {
-                visualizeTypePackAnnotation(*list.tailType);
+                visualizeTypePackAnnotation(*list.tailType, false);
             }
             else
             {
@@ -335,7 +275,7 @@ struct Printer
             if (list.tailType)
             {
                 writer.symbol(",");
-                visualizeTypePackAnnotation(*list.tailType);
+                visualizeTypePackAnnotation(*list.tailType, false);
             }
 
             writer.symbol(")");
@@ -412,7 +352,7 @@ struct Printer
         }
         else if (const auto& a = expr.as<AstExprCall>())
         {
-            visualizeWithSelf(*a->func, a->self);
+            visualize(*a->func);
             writer.symbol("(");
 
             bool first = true;
@@ -431,7 +371,7 @@ struct Printer
         else if (const auto& a = expr.as<AstExprIndexName>())
         {
             visualize(*a->expr);
-            writer.symbol(".");
+            writer.symbol(std::string(1, a->op));
             writer.write(a->index.value);
         }
         else if (const auto& a = expr.as<AstExprIndexExpr>())
@@ -532,6 +472,7 @@ struct Printer
             case AstExprBinary::CompareLt:
             case AstExprBinary::CompareGt:
                 writer.maybeSpace(a->right->location.begin, 2);
+                writer.symbol(toString(a->op));
                 break;
             case AstExprBinary::Concat:
             case AstExprBinary::CompareNe:
@@ -540,19 +481,57 @@ struct Printer
             case AstExprBinary::CompareGe:
             case AstExprBinary::Or:
                 writer.maybeSpace(a->right->location.begin, 3);
+                writer.keyword(toString(a->op));
                 break;
             case AstExprBinary::And:
                 writer.maybeSpace(a->right->location.begin, 4);
+                writer.keyword(toString(a->op));
                 break;
             }
-
-            writer.symbol(toString(a->op));
 
             visualize(*a->right);
         }
         else if (const auto& a = expr.as<AstExprTypeAssertion>())
         {
             visualize(*a->expr);
+
+            if (writeTypes)
+            {
+                writer.maybeSpace(a->annotation->location.begin, 2);
+                writer.symbol("::");
+                visualizeTypeAnnotation(*a->annotation);
+            }
+        }
+        else if (const auto& a = expr.as<AstExprIfElse>())
+        {
+            writer.keyword("if");
+            visualize(*a->condition);
+            writer.keyword("then");
+            visualize(*a->trueExpr);
+            writer.keyword("else");
+            visualize(*a->falseExpr);
+        }
+        else if (const auto& a = expr.as<AstExprInterpString>())
+        {
+            writer.symbol("`");
+
+            size_t index = 0;
+
+            for (const auto& string : a->strings)
+            {
+                writer.write(escape(std::string_view(string.data, string.size), /* escapeForInterpString = */ true));
+
+                if (index < a->expressions.size)
+                {
+                    writer.symbol("{");
+                    visualize(*a->expressions.data[index]);
+                    writer.symbol("}");
+                }
+
+                index++;
+            }
+
+            writer.symbol("`");
         }
         else if (const auto& a = expr.as<AstExprError>())
         {
@@ -759,24 +738,31 @@ struct Printer
             switch (a->op)
             {
             case AstExprBinary::Add:
+                writer.maybeSpace(a->value->location.begin, 2);
                 writer.symbol("+=");
                 break;
             case AstExprBinary::Sub:
+                writer.maybeSpace(a->value->location.begin, 2);
                 writer.symbol("-=");
                 break;
             case AstExprBinary::Mul:
+                writer.maybeSpace(a->value->location.begin, 2);
                 writer.symbol("*=");
                 break;
             case AstExprBinary::Div:
+                writer.maybeSpace(a->value->location.begin, 2);
                 writer.symbol("/=");
                 break;
             case AstExprBinary::Mod:
+                writer.maybeSpace(a->value->location.begin, 2);
                 writer.symbol("%=");
                 break;
             case AstExprBinary::Pow:
+                writer.maybeSpace(a->value->location.begin, 2);
                 writer.symbol("^=");
                 break;
             case AstExprBinary::Concat:
+                writer.maybeSpace(a->value->location.begin, 3);
                 writer.symbol("..=");
                 break;
             default:
@@ -788,7 +774,7 @@ struct Printer
         else if (const auto& a = program.as<AstStatFunction>())
         {
             writer.keyword("function");
-            visualizeWithSelf(*a->name, a->func->self != nullptr);
+            visualize(*a->name);
             visualizeFunctionBody(*a->func);
         }
         else if (const auto& a = program.as<AstStatLocalFunction>())
@@ -807,7 +793,7 @@ struct Printer
 
                 writer.keyword("type");
                 writer.identifier(a->name.value);
-                if (a->generics.size > 0)
+                if (a->generics.size > 0 || a->genericPacks.size > 0)
                 {
                     writer.symbol("<");
                     CommaSeparatorInserter comma(writer);
@@ -815,8 +801,34 @@ struct Printer
                     for (auto o : a->generics)
                     {
                         comma();
-                        writer.identifier(o.value);
+
+                        writer.advance(o.location.begin);
+                        writer.identifier(o.name.value);
+
+                        if (o.defaultValue)
+                        {
+                            writer.maybeSpace(o.defaultValue->location.begin, 2);
+                            writer.symbol("=");
+                            visualizeTypeAnnotation(*o.defaultValue);
+                        }
                     }
+
+                    for (auto o : a->genericPacks)
+                    {
+                        comma();
+
+                        writer.advance(o.location.begin);
+                        writer.identifier(o.name.value);
+                        writer.symbol("...");
+
+                        if (o.defaultValue)
+                        {
+                            writer.maybeSpace(o.defaultValue->location.begin, 2);
+                            writer.symbol("=");
+                            visualizeTypePackAnnotation(*o.defaultValue, false);
+                        }
+                    }
+
                     writer.symbol(">");
                 }
                 writer.maybeSpace(a->type->location.begin, 2);
@@ -853,19 +865,23 @@ struct Printer
 
     void visualizeFunctionBody(AstExprFunction& func)
     {
-        if (FFlag::LuauGenericFunctions && (func.generics.size > 0 || func.genericPacks.size > 0))
+        if (func.generics.size > 0 || func.genericPacks.size > 0)
         {
             CommaSeparatorInserter comma(writer);
             writer.symbol("<");
             for (const auto& o : func.generics)
             {
                 comma();
-                writer.identifier(o.value);
+
+                writer.advance(o.location.begin);
+                writer.identifier(o.name.value);
             }
             for (const auto& o : func.genericPacks)
             {
                 comma();
-                writer.identifier(o.value);
+
+                writer.advance(o.location.begin);
+                writer.identifier(o.name.value);
                 writer.symbol("...");
             }
             writer.symbol(">");
@@ -892,23 +908,24 @@ struct Printer
         if (func.vararg)
         {
             comma();
+            advance(func.varargLocation.begin);
             writer.symbol("...");
 
             if (func.varargAnnotation)
             {
                 writer.symbol(":");
-                visualizeTypePackAnnotation(*func.varargAnnotation);
+                visualizeTypePackAnnotation(*func.varargAnnotation, true);
             }
         }
 
         writer.symbol(")");
 
-        if (writeTypes && func.hasReturnAnnotation)
+        if (writeTypes && func.returnAnnotation)
         {
             writer.symbol(":");
             writer.space();
 
-            visualizeTypeList(func.returnAnnotation, false);
+            visualizeTypeList(*func.returnAnnotation, false);
         }
 
         visualizeBlock(*func.body);
@@ -959,34 +976,49 @@ struct Printer
         advance(typeAnnotation.location.begin);
         if (const auto& a = typeAnnotation.as<AstTypeReference>())
         {
+            if (a->prefix)
+            {
+                writer.write(a->prefix->value);
+                writer.symbol(".");
+            }
+
             writer.write(a->name.value);
-            if (a->generics.size > 0)
+            if (a->parameters.size > 0 || a->hasParameterList)
             {
                 CommaSeparatorInserter comma(writer);
                 writer.symbol("<");
-                for (auto o : a->generics)
+                for (auto o : a->parameters)
                 {
                     comma();
-                    visualizeTypeAnnotation(*o);
+
+                    if (o.type)
+                        visualizeTypeAnnotation(*o.type);
+                    else
+                        visualizeTypePackAnnotation(*o.typePack, false);
                 }
+
                 writer.symbol(">");
             }
         }
         else if (const auto& a = typeAnnotation.as<AstTypeFunction>())
         {
-            if (FFlag::LuauGenericFunctions && (a->generics.size > 0 || a->genericPacks.size > 0))
+            if (a->generics.size > 0 || a->genericPacks.size > 0)
             {
                 CommaSeparatorInserter comma(writer);
                 writer.symbol("<");
                 for (const auto& o : a->generics)
                 {
                     comma();
-                    writer.identifier(o.value);
+
+                    writer.advance(o.location.begin);
+                    writer.identifier(o.name.value);
                 }
                 for (const auto& o : a->genericPacks)
                 {
                     comma();
-                    writer.identifier(o.value);
+
+                    writer.advance(o.location.begin);
+                    writer.identifier(o.name.value);
                     writer.symbol("...");
                 }
                 writer.symbol(">");
@@ -1001,31 +1033,42 @@ struct Printer
         }
         else if (const auto& a = typeAnnotation.as<AstTypeTable>())
         {
-            CommaSeparatorInserter comma(writer);
+            AstTypeReference* indexType = a->indexer ? a->indexer->indexType->as<AstTypeReference>() : nullptr;
 
-            writer.symbol("{");
-
-            for (std::size_t i = 0; i < a->props.size; ++i)
+            if (a->props.size == 0 && indexType && indexType->name == "number")
             {
-                comma();
-                advance(a->props.data[i].location.begin);
-                writer.identifier(a->props.data[i].name.value);
-                if (a->props.data[i].type)
-                {
-                    writer.symbol(":");
-                    visualizeTypeAnnotation(*a->props.data[i].type);
-                }
-            }
-            if (a->indexer)
-            {
-                comma();
-                writer.symbol("[");
-                visualizeTypeAnnotation(*a->indexer->indexType);
-                writer.symbol("]");
-                writer.symbol(":");
+                writer.symbol("{");
                 visualizeTypeAnnotation(*a->indexer->resultType);
+                writer.symbol("}");
             }
-            writer.symbol("}");
+            else
+            {
+                CommaSeparatorInserter comma(writer);
+
+                writer.symbol("{");
+
+                for (std::size_t i = 0; i < a->props.size; ++i)
+                {
+                    comma();
+                    advance(a->props.data[i].location.begin);
+                    writer.identifier(a->props.data[i].name.value);
+                    if (a->props.data[i].type)
+                    {
+                        writer.symbol(":");
+                        visualizeTypeAnnotation(*a->props.data[i].type);
+                    }
+                }
+                if (a->indexer)
+                {
+                    comma();
+                    writer.symbol("[");
+                    visualizeTypeAnnotation(*a->indexer->indexType);
+                    writer.symbol("]");
+                    writer.symbol(":");
+                    visualizeTypeAnnotation(*a->indexer->resultType);
+                }
+                writer.symbol("}");
+            }
         }
         else if (auto a = typeAnnotation.as<AstTypeTypeof>())
         {
@@ -1049,7 +1092,16 @@ struct Printer
                 auto rta = r->as<AstTypeReference>();
                 if (rta && rta->name == "nil")
                 {
+                    bool wrap = l->as<AstTypeIntersection>() || l->as<AstTypeFunction>();
+
+                    if (wrap)
+                        writer.symbol("(");
+
                     visualizeTypeAnnotation(*l);
+
+                    if (wrap)
+                        writer.symbol(")");
+
                     writer.symbol("?");
                     return;
                 }
@@ -1063,7 +1115,15 @@ struct Printer
                     writer.symbol("|");
                 }
 
+                bool wrap = a->types.data[i]->as<AstTypeIntersection>() || a->types.data[i]->as<AstTypeFunction>();
+
+                if (wrap)
+                    writer.symbol("(");
+
                 visualizeTypeAnnotation(*a->types.data[i]);
+
+                if (wrap)
+                    writer.symbol(")");
             }
         }
         else if (const auto& a = typeAnnotation.as<AstTypeIntersection>())
@@ -1076,8 +1136,24 @@ struct Printer
                     writer.symbol("&");
                 }
 
+                bool wrap = a->types.data[i]->as<AstTypeUnion>() || a->types.data[i]->as<AstTypeFunction>();
+
+                if (wrap)
+                    writer.symbol("(");
+
                 visualizeTypeAnnotation(*a->types.data[i]);
+
+                if (wrap)
+                    writer.symbol(")");
             }
+        }
+        else if (const auto& a = typeAnnotation.as<AstTypeSingletonBool>())
+        {
+            writer.keyword(a->value ? "true" : "false");
+        }
+        else if (const auto& a = typeAnnotation.as<AstTypeSingletonString>())
+        {
+            writer.string(std::string_view(a->value.data, a->value.size));
         }
         else if (typeAnnotation.is<AstTypeError>())
         {
@@ -1090,31 +1166,27 @@ struct Printer
     }
 };
 
-void dump(AstNode* node)
+std::string toString(AstNode* node)
 {
     StringWriter writer;
+    writer.pos = node->location.begin;
+
     Printer printer(writer);
     printer.writeTypes = true;
 
     if (auto statNode = dynamic_cast<AstStat*>(node))
-    {
         printer.visualize(*statNode);
-        printf("%s\n", writer.str().c_str());
-    }
     else if (auto exprNode = dynamic_cast<AstExpr*>(node))
-    {
         printer.visualize(*exprNode);
-        printf("%s\n", writer.str().c_str());
-    }
     else if (auto typeNode = dynamic_cast<AstType*>(node))
-    {
         printer.visualizeTypeAnnotation(*typeNode);
-        printf("%s\n", writer.str().c_str());
-    }
-    else
-    {
-        printf("Can't dump this node\n");
-    }
+
+    return writer.str();
+}
+
+void dump(AstNode* node)
+{
+    printf("%s\n", toString(node).c_str());
 }
 
 std::string transpile(AstStatBlock& block)
@@ -1123,6 +1195,7 @@ std::string transpile(AstStatBlock& block)
     Printer(writer).visualizeBlock(block);
     return writer.str();
 }
+
 std::string transpileWithTypes(AstStatBlock& block)
 {
     StringWriter writer;
@@ -1132,7 +1205,7 @@ std::string transpileWithTypes(AstStatBlock& block)
     return writer.str();
 }
 
-TranspileResult transpile(std::string_view source, ParseOptions options)
+TranspileResult transpile(std::string_view source, ParseOptions options, bool withTypes)
 {
     auto allocator = Allocator{};
     auto names = AstNameTable{allocator};
@@ -1149,6 +1222,9 @@ TranspileResult transpile(std::string_view source, ParseOptions options)
     LUAU_ASSERT(parseResult.root);
     if (!parseResult.root)
         return TranspileResult{"", {}, "Internal error: Parser yielded empty parse tree"};
+
+    if (withTypes)
+        return TranspileResult{transpileWithTypes(*parseResult.root)};
 
     return TranspileResult{transpile(*parseResult.root)};
 }

@@ -2,6 +2,8 @@
 
 > Note: this RFC was adapted from an internal proposal that predates RFC process
 
+**Status**: Implemented
+
 ## Summary
 
 Introduce a form of ternary conditional using `if cond then value else alternative` syntax.
@@ -10,7 +12,7 @@ Introduce a form of ternary conditional using `if cond then value else alternati
 
 Luau does not have a first-class ternary operator; when a ternary operator is needed, it is usually emulated with `and/or` expression, such as `cond and value or alternative`.
 
-This expression evaluates to `value` if `cond` and `value` are truthful, and `alternative` otherwise. In particular it means that when `value` is `false` or `nil`, the result of the entire expression is `alternative` even when `cond` is truthful - which doesn't match the expected ternary logic and is a frequent source of subtle errors.
+This expression evaluates to `value` if `cond` and `value` are truthy, and `alternative` otherwise. In particular it means that when `value` is `false` or `nil`, the result of the entire expression is `alternative` even when `cond` is truthy - which doesn't match the expected ternary logic and is a frequent source of subtle errors.
 
 Instead of `and/or`, `if/else` statement can be used but since that requires a separate mutable variable, this option isn't ergonomic. An immediately invoked function expression is also unergonomic and results in performance issues at runtime.
 
@@ -18,9 +20,9 @@ Instead of `and/or`, `if/else` statement can be used but since that requires a s
 
 To solve these problems, we propose introducing a first-class ternary conditional. Instead of `? :` common in C-like languages, we propose an `if-then-else` expression form that is syntactically similar to `if-then-else` statement, but lacks terminating `end`.
 
-Concretely, the `if-then-else` expression must match `if <expr> then <expr> else <expr>`; it can also contain an arbitrary number of `elseif` clauses, like `if <expr> then <expr> elseif <expr> then <expr> else <expr>`. Note that in either case, `else` is mandatory.
+Concretely, the `if-then-else` expression must match `if <expr> then <expr> else <expr>`; it can also contain an arbitrary number of `elseif` clauses, like `if <expr> then <expr> elseif <expr> then <expr> else <expr>`. Unlike if statements, `else` is mandatory.
 
-The result of the expression is the then-expression when condition is truthful (not `nil` or `false`) and else-expression otherwise. Only one of the two possible resulting expressions is evaluated.
+The result of the expression is the then-expression when condition is truthy (not `nil` or `false`) and else-expression otherwise. Only one of the two possible resulting expressions is evaluated.
 
 Example:
 
@@ -28,10 +30,26 @@ Example:
 local x = if FFlagFoo then A else B
 
 MyComponent.validateProps = t.strictInterface({
-	layoutOrder = t.optional(t.number),
-	newThing = if FFlagUseNewThing then t.whatever() else nil,
+    layoutOrder = t.optional(t.number),
+    newThing = if FFlagUseNewThing then t.whatever() else nil,
 })
 ```
+
+Note that `else` is mandatory because it's always better to be explicit. If it weren't mandatory, it opens the possiblity that someone might be writing a chain of if-then-else and forgot to add in the final `else` that _doesn't_ return a `nil` value! Enforcing this syntactically ensures the program does not run. Also, with it being mandatory, it solves many cases where parsing the expression is ambiguous due to the infamous [dangling else](https://en.wikipedia.org/wiki/Dangling_else).
+
+This example will not do what it looks like it's supposed to do! The if expression will _successfully_ parse and be interpreted as to return `h()` if `g()` evaluates to some falsy value, when in actual fact the clear intention is to evaluate `h()` only if `f()` is falsy.
+
+```lua
+if f() then
+    ...
+    local foo = if g() then x
+else
+    h()
+    ...
+end
+```
+
+The only way to solve this had we chose optional `else` branch would be to wrap the if expression in parentheses or to place a semi-colon. 
 
 ## Drawbacks
 

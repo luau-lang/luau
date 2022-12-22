@@ -4,8 +4,13 @@
 #include "Luau/Common.h"
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
 #else
 #include <dirent.h>
 #include <fcntl.h>
@@ -65,6 +70,25 @@ std::optional<std::string> readFile(const std::string& name)
     fclose(file);
 
     if (read != size_t(length))
+        return std::nullopt;
+
+    // Skip first line if it's a shebang
+    if (length > 2 && result[0] == '#' && result[1] == '!')
+        result.erase(0, result.find('\n'));
+
+    return result;
+}
+
+std::optional<std::string> readStdin()
+{
+    std::string result;
+    char buffer[4096] = {};
+
+    while (fgets(buffer, sizeof(buffer), stdin) != nullptr)
+        result.append(buffer);
+
+    // If eof was not reached for stdin, then a read error occurred
+    if (!feof(stdin))
         return std::nullopt;
 
     return result;
@@ -142,6 +166,7 @@ static bool traverseDirectoryRec(const std::string& path, const std::function<vo
             joinPaths(buf, path.c_str(), data.d_name);
 
             int type = data.d_type;
+            int mode = -1;
 
             // we need to stat DT_UNKNOWN to be able to tell the type
             if (type == DT_UNKNOWN)
@@ -153,18 +178,18 @@ static bool traverseDirectoryRec(const std::string& path, const std::function<vo
                 lstat(buf.c_str(), &st);
 #endif
 
-                type = IFTODT(st.st_mode);
+                mode = st.st_mode;
             }
 
-            if (type == DT_DIR)
+            if (type == DT_DIR || mode == S_IFDIR)
             {
                 traverseDirectoryRec(buf, callback);
             }
-            else if (type == DT_REG)
+            else if (type == DT_REG || mode == S_IFREG)
             {
                 callback(buf);
             }
-            else if (type == DT_LNK)
+            else if (type == DT_LNK || mode == S_IFLNK)
             {
                 // Skip symbolic links to avoid handling cycles
             }
@@ -185,7 +210,10 @@ bool traverseDirectory(const std::string& path, const std::function<void(const s
 bool isDirectory(const std::string& path)
 {
 #ifdef _WIN32
-    return (GetFileAttributesW(fromUtf8(path).c_str()) & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    DWORD fileAttributes = GetFileAttributesW(fromUtf8(path).c_str());
+    if (fileAttributes == INVALID_FILE_ATTRIBUTES)
+        return false;
+    return (fileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
 #else
     struct stat st = {};
     lstat(path.c_str(), &st);
@@ -212,7 +240,7 @@ std::optional<std::string> getParentPath(const std::string& path)
         return std::nullopt;
 #endif
 
-    std::string::size_type slash = path.find_last_of("\\/", path.size() - 1);
+    size_t slash = path.find_last_of("\\/", path.size() - 1);
 
     if (slash == 0)
         return "/";
@@ -221,4 +249,43 @@ std::optional<std::string> getParentPath(const std::string& path)
         return path.substr(0, slash);
 
     return "";
+}
+
+static std::string getExtension(const std::string& path)
+{
+    size_t dot = path.find_last_of(".\\/");
+
+    if (dot == std::string::npos || path[dot] != '.')
+        return "";
+
+    return path.substr(dot);
+}
+
+std::vector<std::string> getSourceFiles(int argc, char** argv)
+{
+    std::vector<std::string> files;
+
+    for (int i = 1; i < argc; ++i)
+    {
+        // Treat '-' as a special file whose source is read from stdin
+        // All other arguments that start with '-' are skipped
+        if (argv[i][0] == '-' && argv[i][1] != '\0')
+            continue;
+
+        if (isDirectory(argv[i]))
+        {
+            traverseDirectory(argv[i], [&](const std::string& name) {
+                std::string ext = getExtension(name);
+
+                if (ext == ".lua" || ext == ".luau")
+                    files.push_back(name);
+            });
+        }
+        else
+        {
+            files.push_back(argv[i]);
+        }
+    }
+
+    return files;
 }

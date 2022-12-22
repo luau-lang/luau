@@ -1,0 +1,10 @@
+type synthetic add -x "^Luau::detail::DenseHashTable<.*>$" -l lldb_formatters.DenseHashTableSyntheticChildrenProvider
+type summary add "Luau::Symbol" -F lldb_formatters.luau_symbol_summary
+
+type synthetic add -x "^Luau::Variant<.+>$" -l lldb_formatters.LuauVariantSyntheticChildrenProvider
+type summary add -x "^Luau::Variant<.+>$" -F lldb_formatters.luau_variant_summary
+
+type synthetic add -x "^Luau::AstArray<.+>$" -l lldb_formatters.AstArraySyntheticChildrenProvider
+
+type summary add --summary-string "${var.line}:${var.column}" Luau::Position
+type summary add --summary-string "${var.begin}-${var.end}" Luau::Location

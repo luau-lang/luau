@@ -1,4 +1,4 @@
-Luau ![CI](https://github.com/Roblox/luau/workflows/build/badge.svg) [![Coverage](https://coveralls.io/repos/github/Roblox/luau/badge.svg?branch=master&t=2PXMow)](https://coveralls.io/github/Roblox/luau?branch=master)
+Luau ![CI](https://github.com/Roblox/luau/workflows/build/badge.svg) [![codecov](https://codecov.io/gh/Roblox/luau/branch/master/graph/badge.svg?token=S3U44WN416)](https://codecov.io/gh/Roblox/luau)
 ====
 
 Luau (lowercase u, /ˈlu.aʊ/) is a fast, small, safe, gradually typed embeddable scripting language derived from [Lua](https://lua.org).
@@ -22,19 +22,31 @@ You can download the binaries from [a recent release](https://github.com/Roblox/
 
 # Building
 
-To build Luau tools or tests yourself, you can use CMake on all platforms, or alternatively make (on Linux/macOS). For example:
+To build Luau tools or tests yourself, you can use CMake on all platforms:
 
 ```sh
 mkdir cmake && cd cmake
 cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI --config RelWithDebInfo
+cmake --build . --target Luau.Repl.CLI --config RelWithDebInfo
+cmake --build . --target Luau.Analyze.CLI --config RelWithDebInfo
+```
+
+Alternatively, on Linux/macOS you can use make:
+
+```sh
+make config=release luau luau-analyze
 ```
 
 To integrate Luau into your CMake application projects, at the minimum you'll need to depend on `Luau.Compiler` and `Luau.VM` projects. From there you need to create a new Luau state (using Lua 5.x API such as `lua_newstate`), compile source to bytecode and load it into the VM like this:
 
-```
-std::string bytecode = Luau::compile(source); // needs Luau/Compiler.h include
-if (luau_load(L, chunkname, bytecode.data(), bytecode.size()) == 0)
+```cpp
+// needs lua.h and luacode.h
+size_t bytecodeSize = 0;
+char* bytecode = luau_compile(source, strlen(source), NULL, &bytecodeSize);
+int result = luau_load(L, chunkname, bytecode, bytecodeSize, 0);
+free(bytecode);
+
+if (result == 0)
     return 1; /* return chunk main function */
 ```
 
@@ -44,7 +56,7 @@ To gain advantage of many performance improvements it's highly recommended to us
 
 # Testing
 
-Luau has an internal test suite; in CMake builds it is split into two targets, `Luau.UnitTest` (for bytecode compiler and type checker/linter tests) and `Luau.Conformance` (for VM tests). The unit tests are written in C++, whereas the conformance tests are largerly written in Luau (see `tests/conformance`).
+Luau has an internal test suite; in CMake builds it is split into two targets, `Luau.UnitTest` (for bytecode compiler and type checker/linter tests) and `Luau.Conformance` (for VM tests). The unit tests are written in C++, whereas the conformance tests are largely written in Luau (see `tests/conformance`).
 
 Makefile builds combine both into a single target and can be ran via `make test`.
 
@@ -52,7 +64,7 @@ Makefile builds combine both into a single target and can be ran via `make test`
 
 Luau uses C++ as its implementation language. The runtime requires C++11, whereas the compiler and analysis components require C++17. It should build without issues using Microsoft Visual Studio 2017 or later, or gcc-7 or clang-7 or later.
 
-Other than the STL/CRT, Luau library components don't have external dependencies. The test suite depends on [doctest](https://github.com/onqtam/doctest) testing framework, and the REPL command-line depends on [cpp-linenoise](https://github.com/yhirose/cpp-linenoise).
+Other than the STL/CRT, Luau library components don't have external dependencies. The test suite depends on [doctest](https://github.com/onqtam/doctest) testing framework, and the REPL command-line depends on [isocline](https://github.com/daanx/isocline).
 
 # License
 

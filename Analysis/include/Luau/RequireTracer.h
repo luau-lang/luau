@@ -6,6 +6,7 @@
 #include "Luau/Location.h"
 
 #include <string>
+#include <vector>
 
 namespace Luau
 {
@@ -17,12 +18,11 @@ struct AstLocal;
 
 struct RequireTraceResult
 {
-    DenseHashMap<const AstExpr*, ModuleName> exprs{0};
-    DenseHashMap<const AstExpr*, bool> optional{0};
+    DenseHashMap<const AstExpr*, ModuleInfo> exprs{nullptr};
 
-    std::vector<std::pair<ModuleName, Location>> requires;
+    std::vector<std::pair<ModuleName, Location>> requireList;
 };
 
-RequireTraceResult traceRequires(FileResolver* fileResolver, AstStatBlock* root, ModuleName currentModuleName);
+RequireTraceResult traceRequires(FileResolver* fileResolver, AstStatBlock* root, const ModuleName& currentModuleName);
 
 } // namespace Luau

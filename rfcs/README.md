@@ -18,6 +18,13 @@ For changes in semantics, we should be asking:
 - Can it be sandboxed assuming malicious usage?
 - Is it compatible with type checking and other forms of static analysis?
 
+For new standard library functions, we should be asking:
+
+- Is the new functionality used/useful often enough in existing code?
+- Does the standard library implementation carry important performance benefits that can't be achieved in user code?
+- Is the behavior general and unambiguous, as opposed to solving a problem / providing an interface that's too specific?
+- Is the function interface amenable to type checking / linting?
+
 In addition to these questions, we also need to consider that every addition carries a cost, and too many features will result in a language that is harder to learn, harder to implement and ensure consistent implementation quality throughout, slower, etc. In addition, any language is greater than the sum of its parts and features often have non-intuitive interactions with each other.
 
 Since reversing these decisions is incredibly costly and can be impossible due to backwards compatibility implications, all user facing changes to Luau language and core libraries must go through an RFC process.
@@ -28,8 +35,6 @@ Process
 To open an RFC, a Pull Request must be opened which creates a new Markdown file in `rfcs/` folder. The RFCs should follow the template `rfcs/TEMPLATE.md`, and should have a file name that is a short human readable description of the feature (using lowercase alphanumeric characters and dashes only). Try using the general area of the RFC as a prefix, e.g. `syntax-generic-functions.md` or `function-debug-info.md`.
 
 **Please make sure to add `rfc` label to PRs *before* creating them!** This makes sure that our automatic notifications work correctly.
-
-> Note: we currently don't accept community contributions for RFCs, although this will likely change in the future.
 
 Every open RFC will be open for at least two calendar weeks. This is to make sure that there is sufficient time to review the proposal and raise concerns or suggest improvements. The discussion points should be reflected on the PR comments; when discussion happens outside of the comment stream, the points salient to the RFC should be summarized as a followup.
 

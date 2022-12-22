@@ -1,5 +1,4 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Parser.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
 
@@ -26,7 +25,7 @@ struct TypePackFixture
 
     TypePackId freshTypePack()
     {
-        typePacks.emplace_back(new TypePackVar{Unifiable::Free{{}}});
+        typePacks.emplace_back(new TypePackVar{Unifiable::Free{TypeLevel{}}});
         return typePacks.back().get();
     }
 
@@ -196,6 +195,20 @@ TEST_CASE_FIXTURE(TypePackFixture, "std_distance")
     auto b = begin(typePack);
     auto e = end(typePack);
     CHECK_EQ(4, std::distance(b, e));
+}
+
+TEST_CASE("content_reassignment")
+{
+    TypePackVar myError{Unifiable::Error{}, /*presistent*/ true};
+
+    TypeArena arena;
+
+    TypePackId futureError = arena.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}});
+    asMutable(futureError)->reassign(myError);
+
+    CHECK(get<ErrorTypeVar>(futureError) != nullptr);
+    CHECK(!futureError->persistent);
+    CHECK(futureError->owningArena == &arena);
 }
 
 TEST_SUITE_END();

@@ -5,6 +5,16 @@ bench.runs = 20
 bench.extraRuns = 4
 
 function bench.runCode(f, description)
+    -- Under Callgrind, run the test only once and measure just the execution cost
+    if callgrind and callgrind("running") then
+        if collectgarbage then collectgarbage() end
+
+        callgrind("zero")
+        f() -- unfortunately we can't easily separate setup cost from runtime cost in f unless it calls callgrind()
+        callgrind("dump", description)
+        return
+    end
+
     local timeTable = {}
 
     for i = 1,bench.runs + bench.extraRuns do

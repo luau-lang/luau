@@ -28,40 +28,40 @@ function test()
 
 local size = 30
 
-function createVector(x,y,z)
+local function createVector(x,y,z)
     return { x,y,z };
 end
 
-function sqrLengthVector(self)
+local function sqrLengthVector(self)
     return self[1] * self[1] + self[2] * self[2] + self[3] * self[3];
 end
 
-function lengthVector(self)
+local function lengthVector(self)
     return math.sqrt(self[1] * self[1] + self[2] * self[2] + self[3] * self[3]);
 end
 
-function addVector(self, v)
+local function addVector(self, v)
     self[1] = self[1] + v[1];
     self[2] = self[2] + v[2];
     self[3] = self[3] + v[3];
     return self;
 end
 
-function subVector(self, v)
+local function subVector(self, v)
     self[1] = self[1] - v[1];
     self[2] = self[2] - v[2];
     self[3] = self[3] - v[3];
     return self;
 end
 
-function scaleVector(self, scale)
+local function scaleVector(self, scale)
     self[1] = self[1] * scale;
     self[2] = self[2] * scale;
     self[3] = self[3] * scale;
     return self;
 end
 
-function normaliseVector(self)
+local function normaliseVector(self)
     local len = math.sqrt(self[1] * self[1] + self[2] * self[2] + self[3] * self[3]);
     self[1] = self[1] / len;
     self[2] = self[2] / len;
@@ -69,39 +69,39 @@ function normaliseVector(self)
     return self;
 end
 
-function add(v1, v2)
+local function add(v1, v2)
     return { v1[1] + v2[1], v1[2] + v2[2], v1[3] + v2[3] };
 end
 
-function sub(v1, v2)
+local function sub(v1, v2)
     return { v1[1] - v2[1], v1[2] - v2[2], v1[3] - v2[3] };
 end
 
-function scalev(v1, v2)
+local function scalev(v1, v2)
     return { v1[1] * v2[1], v1[2] * v2[2], v1[3] * v2[3] };
 end
 
-function dot(v1, v2)
+local function dot(v1, v2)
     return v1[1] * v2[1] + v1[2] * v2[2] + v1[3] * v2[3];
 end
 
-function scale(v, scale)
+local function scale(v, scale)
     return { v[1] * scale, v[2] * scale, v[3] * scale };
 end
 
-function cross(v1, v2)
+local function cross(v1, v2)
     return { v1[2] * v2[3] - v1[3] * v2[2], 
             v1[3] * v2[1] - v1[1] * v2[3],
             v1[1] * v2[2] - v1[2] * v2[1] };
 
 end
 
-function normalise(v)
+local function normalise(v)
     local len = lengthVector(v);
     return { v[1] / len, v[2] / len, v[3] / len };
 end
 
-function transformMatrix(self, v)
+local function transformMatrix(self, v)
     local vals = self;
     local x  = vals[1] * v[1] + vals[2] * v[2] + vals[3] * v[3] + vals[4];
     local y  = vals[5] * v[1] + vals[6] * v[2] + vals[7] * v[3] + vals[8];
@@ -109,7 +109,7 @@ function transformMatrix(self, v)
     return { x, y, z };
 end
 
-function invertMatrix(self)
+local function invertMatrix(self)
     local temp = {}
     local tx = -self[4];
     local ty = -self[8];
@@ -131,7 +131,7 @@ function invertMatrix(self)
 end
 
 -- Triangle intersection using barycentric coord method
-function Triangle(p1, p2, p3)
+local function Triangle(p1, p2, p3)
     local this = {}
 
     local edge1 = sub(p3, p1);
@@ -205,7 +205,7 @@ function Triangle(p1, p2, p3)
     return this
 end
 
-function Scene(a_triangles)
+local function Scene(a_triangles)
     local this = {}
     this.triangles = a_triangles;
     this.lights = {};
@@ -302,7 +302,7 @@ local zero = { 0,0,0 };
 
 -- this camera code is from notes i made ages ago, it is from *somewhere* -- i cannot remember where
 -- that somewhere is
-function Camera(origin, lookat, up)
+local function Camera(origin, lookat, up)
     local this = {}
 
     local zaxis = normaliseVector(subVector(lookat, origin));
@@ -357,7 +357,7 @@ function Camera(origin, lookat, up)
     return this
 end
 
-function raytraceScene()
+local function raytraceScene()
     local startDate = 13154863;
     local numTriangles = 2 * 6;
     local triangles = {}; -- numTriangles);
@@ -450,16 +450,17 @@ function raytraceScene()
     return pixels;
 end
 
-function arrayToCanvasCommands(pixels)
-    local s = '<!DOCTYPE html><html><head><title>Test</title></head><body><canvas id="renderCanvas" width="' .. size .. 'px" height="' .. size .. 'px"></canvas><scr' .. 'ipt>\nvar pixels = [';
+local function arrayToCanvasCommands(pixels)
+    local s = {};
+    table.insert(s, '<!DOCTYPE html><html><head><title>Test</title></head><body><canvas id="renderCanvas" width="' .. size .. 'px" height="' .. size .. 'px"></canvas><scr' .. 'ipt>\nvar pixels = [');
     for y = 0,size-1 do
-        s = s .. "[";
+        table.insert(s, "[");
         for x = 0,size-1 do
-            s = s .. "[" .. math.floor(pixels[y + 1][x + 1][1] * 255) .. "," .. math.floor(pixels[y + 1][x + 1][2] * 255) .. "," .. math.floor(pixels[y + 1][x + 1][3] * 255) .. "],";
+            table.insert(s, "[" .. math.floor(pixels[y + 1][x + 1][1] * 255) .. "," .. math.floor(pixels[y + 1][x + 1][2] * 255) .. "," .. math.floor(pixels[y + 1][x + 1][3] * 255) .. "],");
         end
-        s = s .. "],";
+        table.insert(s, "],");
     end
-    s = s .. '];\n    var canvas = document.getElementById("renderCanvas").getContext("2d");\n\
+    table.insert(s, '];\n    var canvas = document.getElementById("renderCanvas").getContext("2d");\n\
 \n\
 \n\
     var size = ' .. size .. ';\n\
@@ -479,12 +480,12 @@ for (var y = 0; y < size; y++) {\n\
     canvas.setFillColor(l[0], l[1], l[2], 1);\n\
     canvas.fillRect(x, y, 1, 1);\n\
   }\n\
-}</scr' .. 'ipt></body></html>';
+}</script></body></html>');
 
-    return s;
+    return table.concat(s);
 end
 
-testOutput = arrayToCanvasCommands(raytraceScene());
+local testOutput = arrayToCanvasCommands(raytraceScene());
 
 --local f = io.output("output.html")
 --f:write(testOutput)

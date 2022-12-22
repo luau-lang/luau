@@ -3,6 +3,7 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/DenseHash.h"
+#include "Luau/StringUtils.h"
 
 #include <string>
 
@@ -74,10 +75,13 @@ public:
     void expandJumps();
 
     void setDebugFunctionName(StringRef name);
+    void setDebugFunctionLineDefined(int line);
     void setDebugLine(int line);
     void pushDebugLocal(StringRef name, uint8_t reg, uint32_t startpc, uint32_t endpc);
     void pushDebugUpval(StringRef name);
     uint32_t getDebugPC() const;
+
+    void addDebugRemark(const char* format, ...) LUAU_PRINTF_ATTR(2, 3);
 
     void finalize();
 
@@ -87,6 +91,7 @@ public:
         Dump_Lines = 1 << 1,
         Dump_Source = 1 << 2,
         Dump_Locals = 1 << 3,
+        Dump_Remarks = 1 << 4,
     };
 
     void setDumpFlags(uint32_t flags)
@@ -97,6 +102,11 @@ public:
 
     void setDumpSource(const std::string& source);
 
+    bool needsDebugRemarks() const
+    {
+        return (dumpFlags & Dump_Remarks) != 0;
+    }
+
     const std::string& getBytecode() const
     {
         LUAU_ASSERT(!bytecode.empty()); // did you forget to call finalize?
@@ -105,6 +115,9 @@ public:
 
     std::string dumpFunction(uint32_t id) const;
     std::string dumpEverything() const;
+    std::string dumpSourceRemarks() const;
+
+    void annotateInstruction(std::string& result, uint32_t fid, uint32_t instpos) const;
 
     static uint32_t getImportId(int32_t id0);
     static uint32_t getImportId(int32_t id0, int32_t id1);
@@ -113,6 +126,8 @@ public:
     static uint32_t getStringHash(StringRef key);
 
     static std::string getError(const std::string& message);
+
+    static uint8_t getVersion();
 
 private:
     struct Constant
@@ -162,9 +177,11 @@ private:
         bool isvararg = false;
 
         unsigned int debugname = 0;
+        int debuglinedefined = 0;
 
         std::string dump;
         std::string dumpname;
+        std::vector<int> dumpinstoffs;
     };
 
     struct DebugLocal
@@ -218,6 +235,7 @@ private:
 
     DenseHashMap<ConstantKey, int32_t, ConstantKeyHash> constantMap;
     DenseHashMap<TableShape, int32_t, TableShapeHash> tableShapeMap;
+    DenseHashMap<uint32_t, int16_t> protoMap;
 
     int debugLine = 0;
 
@@ -226,18 +244,24 @@ private:
 
     DenseHashMap<StringRef, unsigned int, StringRefHash> stringTable;
 
+    std::vector<std::pair<uint32_t, uint32_t>> debugRemarks;
+    std::string debugRemarkBuffer;
+
     BytecodeEncoder* encoder = nullptr;
     std::string bytecode;
 
     uint32_t dumpFlags = 0;
     std::vector<std::string> dumpSource;
+    std::vector<std::pair<int, std::string>> dumpRemarks;
 
-    std::string (BytecodeBuilder::*dumpFunctionPtr)() const = nullptr;
+    std::string (BytecodeBuilder::*dumpFunctionPtr)(std::vector<int>&) const = nullptr;
 
     void validate() const;
+    void validateInstructions() const;
+    void validateVariadic() const;
 
-    std::string dumpCurrentFunction() const;
-    const uint32_t* dumpInstruction(const uint32_t* opcode, std::string& output) const;
+    std::string dumpCurrentFunction(std::vector<int>& dumpinstoffs) const;
+    void dumpInstruction(const uint32_t* opcode, std::string& output, int targetLabel) const;
 
     void writeFunction(std::string& ss, uint32_t id) const;
     void writeLineInfo(std::string& ss) const;

@@ -10,7 +10,7 @@ namespace Luau
 {
 
 void* pagedAllocate(size_t size);
-void pagedDeallocate(void* ptr);
+void pagedDeallocate(void* ptr, size_t size);
 void pagedFreeze(void* ptr, size_t size);
 void pagedUnfreeze(void* ptr, size_t size);
 
@@ -20,8 +20,14 @@ class TypedAllocator
 public:
     TypedAllocator()
     {
-        appendBlock();
+        currentBlockSize = kBlockSize;
     }
+
+    TypedAllocator(const TypedAllocator&) = delete;
+    TypedAllocator& operator=(const TypedAllocator&) = delete;
+
+    TypedAllocator(TypedAllocator&&) = default;
+    TypedAllocator& operator=(TypedAllocator&&) = default;
 
     ~TypedAllocator()
     {
@@ -59,12 +65,12 @@ public:
 
     bool empty() const
     {
-        return stuff.size() == 1 && currentBlockSize == 0;
+        return stuff.empty();
     }
 
     size_t size() const
     {
-        return kBlockSize * (stuff.size() - 1) + currentBlockSize;
+        return stuff.empty() ? 0 : kBlockSize * (stuff.size() - 1) + currentBlockSize;
     }
 
     void clear()
@@ -72,7 +78,8 @@ public:
         if (frozen)
             unfreeze();
         free();
-        appendBlock();
+
+        currentBlockSize = kBlockSize;
     }
 
     void freeze()
@@ -106,7 +113,7 @@ private:
             for (size_t i = 0; i < blockSize; ++i)
                 block[i].~T();
 
-            pagedDeallocate(block);
+            pagedDeallocate(block, kBlockSizeBytes);
         }
 
         stuff.clear();

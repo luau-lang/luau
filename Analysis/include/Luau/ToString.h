@@ -2,18 +2,34 @@
 #pragma once
 
 #include "Luau/Common.h"
-#include "Luau/TypeVar.h"
 
-#include <unordered_map>
-#include <optional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
 LUAU_FASTINT(LuauTypeMaximumStringifierLength)
 
 namespace Luau
 {
+
+class AstExpr;
+
+struct Scope;
+
+struct TypeVar;
+using TypeId = const TypeVar*;
+
+struct TypePackVar;
+using TypePackId = const TypePackVar*;
+
+struct FunctionTypeVar;
+struct Constraint;
+
+struct Position;
+struct Location;
 
 struct ToStringNameMap
 {
@@ -23,20 +39,23 @@ struct ToStringNameMap
 
 struct ToStringOptions
 {
-    bool exhaustive = false;            // If true, we produce complete output rather than comprehensible output
-    bool useLineBreaks = false;         // If true, we insert new lines to separate long results such as table entries/metatable.
-    bool functionTypeArguments = false; // If true, output function type argument names when they are available
-    bool hideTableKind = false;         // If true, all tables will be surrounded with plain '{}'
+    bool exhaustive = false;                      // If true, we produce complete output rather than comprehensible output
+    bool useLineBreaks = false;                   // If true, we insert new lines to separate long results such as table entries/metatable.
+    bool functionTypeArguments = false;           // If true, output function type argument names when they are available
+    bool hideTableKind = false;                   // If true, all tables will be surrounded with plain '{}'
+    bool hideNamedFunctionTypeParameters = false; // If true, type parameters of functions will be hidden at top-level.
+    bool hideFunctionSelfArgument = false;        // If true, `self: X` will be omitted from the function signature if the function has self
+    bool DEPRECATED_indent = false;               // TODO Deprecated field, prune when clipping flag FFlagLuauLineBreaksDeterminIndents
     size_t maxTableLength = size_t(FInt::LuauTableTypeMaximumStringifierLength); // Only applied to TableTypeVars
     size_t maxTypeLength = size_t(FInt::LuauTypeMaximumStringifierLength);
-    std::optional<ToStringNameMap> nameMap;
+    ToStringNameMap nameMap;
     std::shared_ptr<Scope> scope; // If present, module names will be added and types that are not available in scope will be marked as 'invalid'
+    std::vector<std::string> namedFunctionOverrideArgNames; // If present, named function argument names will be overridden
 };
 
 struct ToStringResult
 {
     std::string name;
-    ToStringNameMap nameMap;
 
     bool invalid = false;
     bool error = false;
@@ -44,11 +63,24 @@ struct ToStringResult
     bool truncated = false;
 };
 
-ToStringResult toStringDetailed(TypeId ty, const ToStringOptions& opts = {});
-ToStringResult toStringDetailed(TypePackId ty, const ToStringOptions& opts = {});
+ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts);
+ToStringResult toStringDetailed(TypePackId ty, ToStringOptions& opts);
 
-std::string toString(TypeId ty, const ToStringOptions& opts);
-std::string toString(TypePackId ty, const ToStringOptions& opts);
+std::string toString(TypeId ty, ToStringOptions& opts);
+std::string toString(TypePackId ty, ToStringOptions& opts);
+
+// These overloads are selected when a temporary ToStringOptions is passed. (eg
+// via an initializer list)
+inline std::string toString(TypePackId ty, ToStringOptions&& opts)
+{
+    // Delegate to the overload (TypePackId, ToStringOptions&)
+    return toString(ty, opts);
+}
+inline std::string toString(TypeId ty, ToStringOptions&& opts)
+{
+    // Delegate to the overload (TypeId, ToStringOptions&)
+    return toString(ty, opts);
+}
 
 // These are offered as overloads rather than a default parameter so that they can be easily invoked from within the MSVC debugger.
 // You can use them in watch expressions!
@@ -61,12 +93,54 @@ inline std::string toString(TypePackId ty)
     return toString(ty, ToStringOptions{});
 }
 
-std::string toString(const TypeVar& tv, const ToStringOptions& opts = {});
-std::string toString(const TypePackVar& tp, const ToStringOptions& opts = {});
+std::string toString(const Constraint& c, ToStringOptions& opts);
+
+inline std::string toString(const Constraint& c, ToStringOptions&& opts)
+{
+    return toString(c, opts);
+}
+
+inline std::string toString(const Constraint& c)
+{
+    return toString(c, ToStringOptions{});
+}
+
+std::string toString(const TypeVar& tv, ToStringOptions& opts);
+std::string toString(const TypePackVar& tp, ToStringOptions& opts);
+
+inline std::string toString(const TypeVar& tv)
+{
+    ToStringOptions opts;
+    return toString(tv, opts);
+}
+
+inline std::string toString(const TypePackVar& tp)
+{
+    ToStringOptions opts;
+    return toString(tp, opts);
+}
+
+std::string toStringNamedFunction(const std::string& funcName, const FunctionTypeVar& ftv, ToStringOptions& opts);
+
+inline std::string toStringNamedFunction(const std::string& funcName, const FunctionTypeVar& ftv)
+{
+    ToStringOptions opts;
+    return toStringNamedFunction(funcName, ftv, opts);
+}
+
+std::optional<std::string> getFunctionNameAsString(const AstExpr& expr);
 
 // It could be useful to see the text representation of a type during a debugging session instead of exploring the content of the class
 // These functions will dump the type to stdout and can be evaluated in Watch/Immediate windows or as gdb/lldb expression
-void dump(TypeId ty);
-void dump(TypePackId ty);
+std::string dump(TypeId ty);
+std::string dump(TypePackId ty);
+std::string dump(const Constraint& c);
+
+std::string dump(const std::shared_ptr<Scope>& scope, const char* name);
+
+std::string generateName(size_t n);
+
+std::string toString(const Position& position);
+std::string toString(const Location& location);
 
 } // namespace Luau

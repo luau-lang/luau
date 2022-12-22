@@ -1,5 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Parser.h"
+#include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
 
@@ -14,7 +14,9 @@ struct TryUnifyFixture : Fixture
     TypeArena arena;
     ScopePtr globalScope{new Scope{arena.addTypePack({TypeId{}})}};
     InternalErrorReporter iceHandler;
-    Unifier state{&arena, Mode::Strict, globalScope, Location{}, Variance::Covariant, &iceHandler};
+    UnifierSharedState unifierState{&iceHandler};
+    Normalizer normalizer{&arena, singletonTypes, NotNull{&unifierState}};
+    Unifier state{NotNull{&normalizer}, Mode::Strict, NotNull{globalScope.get()}, Location{}, Variance::Covariant};
 };
 
 TEST_SUITE_BEGIN("TryUnifyTests");
@@ -24,7 +26,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "primitives_unify")
     TypeVar numberOne{TypeVariant{PrimitiveTypeVar{PrimitiveTypeVar::Number}}};
     TypeVar numberTwo = numberOne;
 
-    state.tryUnify(&numberOne, &numberTwo);
+    state.tryUnify(&numberTwo, &numberOne);
 
     CHECK(state.errors.empty());
 }
@@ -37,8 +39,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "compatible_functions_are_unified")
     TypeVar functionTwo{TypeVariant{
         FunctionTypeVar(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({arena.freshType(globalScope->level)}))}};
 
-    state.tryUnify(&functionOne, &functionTwo);
+    state.tryUnify(&functionTwo, &functionOne);
     CHECK(state.errors.empty());
+
+    state.log.commit();
 
     CHECK_EQ(functionOne, functionTwo);
 }
@@ -57,7 +61,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_functions_are_preserved")
 
     TypeVar functionTwoSaved = functionTwo;
 
-    state.tryUnify(&functionOne, &functionTwo);
+    state.tryUnify(&functionTwo, &functionOne);
     CHECK(!state.errors.empty());
 
     CHECK_EQ(functionOne, functionOneSaved);
@@ -76,9 +80,11 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
 
     CHECK_NE(*getMutable<TableTypeVar>(&tableOne)->props["foo"].type, *getMutable<TableTypeVar>(&tableTwo)->props["foo"].type);
 
-    state.tryUnify(&tableOne, &tableTwo);
+    state.tryUnify(&tableTwo, &tableOne);
 
     CHECK(state.errors.empty());
+
+    state.log.commit();
 
     CHECK_EQ(*getMutable<TableTypeVar>(&tableOne)->props["foo"].type, *getMutable<TableTypeVar>(&tableTwo)->props["foo"].type);
 }
@@ -97,13 +103,73 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
 
     CHECK_NE(*getMutable<TableTypeVar>(&tableOne)->props["foo"].type, *getMutable<TableTypeVar>(&tableTwo)->props["foo"].type);
 
-    state.tryUnify(&tableOne, &tableTwo);
+    state.tryUnify(&tableTwo, &tableOne);
 
     CHECK_EQ(1, state.errors.size());
 
-    state.log.rollback();
-
     CHECK_NE(*getMutable<TableTypeVar>(&tableOne)->props["foo"].type, *getMutable<TableTypeVar>(&tableTwo)->props["foo"].type);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_intersection_sub_never")
+{
+    ScopedFastFlag sffs[]{
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
+    CheckResult result = check(R"(
+        function f(arg : string & number) : never
+          return arg
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_intersection_sub_anything")
+{
+    ScopedFastFlag sffs[]{
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
+    CheckResult result = check(R"(
+        function f(arg : string & number) : boolean
+          return arg
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_table_sub_never")
+{
+    ScopedFastFlag sffs[]{
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+        {"LuauUninhabitedSubAnything2", true},
+    };
+
+    CheckResult result = check(R"(
+        function f(arg : { prop : string & number }) : never
+          return arg
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_table_sub_anything")
+{
+    ScopedFastFlag sffs[]{
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+        {"LuauUninhabitedSubAnything2", true},
+    };
+
+    CheckResult result = check(R"(
+        function f(arg : { prop : string & number }) : boolean
+          return arg
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "members_of_failed_typepack_unification_are_unified_with_errorType")
@@ -117,9 +183,24 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "members_of_failed_typepack_unification_are_u
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    TypeId bType = requireType("b");
+    CHECK_EQ("a", toString(requireType("a")));
+    CHECK_EQ("*error-type*", toString(requireType("b")));
+}
 
-    CHECK_MESSAGE(get<ErrorTypeVar>(bType), "Should be an error: " << toString(bType));
+TEST_CASE_FIXTURE(TryUnifyFixture, "result_of_failed_typepack_unification_is_constrained")
+{
+    CheckResult result = check(R"(
+        function f(arg: number) return arg end
+        local a
+        local b
+        local c = f(a, b)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK_EQ("a", toString(requireType("a")));
+    CHECK_EQ("*error-type*", toString(requireType("b")));
+    CHECK_EQ("number", toString(requireType("c")));
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "typepack_unification_should_trim_free_tails")
@@ -138,7 +219,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "typepack_unification_should_trim_free_tails"
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("(number) -> (boolean)", toString(requireType("f")));
+    CHECK_EQ("(number) -> boolean", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "variadic_type_pack_unification")
@@ -146,7 +227,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "variadic_type_pack_unification")
     TypePackVar testPack{TypePack{{typeChecker.numberType, typeChecker.stringType}, std::nullopt}};
     TypePackVar variadicPack{VariadicTypePack{typeChecker.numberType}};
 
-    state.tryUnify(&variadicPack, &testPack);
+    state.tryUnify(&testPack, &variadicPack);
     CHECK(!state.errors.empty());
 }
 
@@ -156,24 +237,12 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "variadic_tails_respect_progress")
     TypePackVar a{TypePack{{typeChecker.numberType, typeChecker.stringType, typeChecker.booleanType, typeChecker.booleanType}}};
     TypePackVar b{TypePack{{typeChecker.numberType, typeChecker.stringType}, &variadicPack}};
 
-    state.tryUnify(&a, &b);
+    state.tryUnify(&b, &a);
     CHECK(state.errors.empty());
-}
-
-TEST_CASE_FIXTURE(TryUnifyFixture, "unifying_variadic_pack_with_error_should_work")
-{
-    TypePackId variadicPack = arena.addTypePack(TypePackVar{VariadicTypePack{typeChecker.numberType}});
-    TypePackId errorPack = arena.addTypePack(TypePack{{typeChecker.numberType}, arena.addTypePack(TypePackVar{Unifiable::Error{}})});
-
-    state.tryUnify(variadicPack, errorPack);
-    REQUIRE_EQ(0, state.errors.size());
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "variadics_should_use_reversed_properly")
 {
-    ScopedFastFlag sffs2{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs4{"LuauParseGenericFunctions", true};
-
     CheckResult result = check(R"(
         --!strict
         local function f<T>(...: T): ...T
@@ -190,10 +259,8 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "variadics_should_use_reversed_properly")
     CHECK_EQ(toString(tm->wantedType), "string");
 }
 
-TEST_CASE_FIXTURE(TryUnifyFixture, "cli_41095_concat_log_in_sealed_table_unification")
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_41095_concat_log_in_sealed_table_unification")
 {
-    ScopedFastFlag sffs2("LuauGenericFunctions", true);
-
     CheckResult result = check(R"(
         --!strict
         table.insert()
@@ -202,6 +269,111 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "cli_41095_concat_log_in_sealed_table_unifica
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "No overload for function accepts 0 arguments.");
     CHECK_EQ(toString(result.errors[1]), "Available overloads: ({a}, a) -> (); and ({a}, number, a) -> ()");
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "free_tail_is_grown_properly")
+{
+    TypePackId threeNumbers = arena.addTypePack(TypePack{{typeChecker.numberType, typeChecker.numberType, typeChecker.numberType}, std::nullopt});
+    TypePackId numberAndFreeTail = arena.addTypePack(TypePack{{typeChecker.numberType}, arena.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}})});
+
+    ErrorVec unifyErrors = state.canUnify(numberAndFreeTail, threeNumbers);
+    CHECK(unifyErrors.size() == 0);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "recursive_metatable_getmatchtag")
+{
+    TypeVar redirect{FreeTypeVar{TypeLevel{}}};
+    TypeVar table{TableTypeVar{}};
+    TypeVar metatable{MetatableTypeVar{&redirect, &table}};
+    redirect = BoundTypeVar{&metatable}; // Now we have a metatable that is recursive on the table type
+    TypeVar variant{UnionTypeVar{{&metatable, typeChecker.numberType}}};
+
+    state.tryUnify(&metatable, &variant);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "cli_50320_follow_in_any_unification")
+{
+    TypePackVar free{FreeTypePack{TypeLevel{}}};
+    TypePackVar target{TypePack{}};
+
+    TypeVar func{FunctionTypeVar{&free, &free}};
+
+    state.tryUnify(&free, &target);
+    // Shouldn't assert or error.
+    state.tryUnify(&func, typeChecker.anyType);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_type_owner")
+{
+    TypeId a = arena.addType(TypeVar{FreeTypeVar{TypeLevel{}}});
+    TypeId b = typeChecker.numberType;
+
+    state.tryUnify(a, b);
+    state.log.commit();
+
+    CHECK_EQ(a->owningArena, &arena);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_pack_owner")
+{
+    TypePackId a = arena.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}});
+    TypePackId b = typeChecker.anyTypePack;
+
+    state.tryUnify(a, b);
+    state.log.commit();
+
+    CHECK_EQ(a->owningArena, &arena);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "metatables_unify_against_shape_of_free_table")
+{
+    ScopedFastFlag sff("DebugLuauDeferredConstraintResolution", true);
+
+    TableTypeVar::Props freeProps{
+        {"foo", {typeChecker.numberType}},
+    };
+
+    TypeId free = arena.addType(TableTypeVar{freeProps, std::nullopt, TypeLevel{}, TableState::Free});
+
+    TableTypeVar::Props indexProps{
+        {"foo", {typeChecker.stringType}},
+    };
+
+    TypeId index = arena.addType(TableTypeVar{indexProps, std::nullopt, TypeLevel{}, TableState::Sealed});
+
+    TableTypeVar::Props mtProps{
+        {"__index", {index}},
+    };
+
+    TypeId mt = arena.addType(TableTypeVar{mtProps, std::nullopt, TypeLevel{}, TableState::Sealed});
+
+    TypeId target = arena.addType(TableTypeVar{TableState::Unsealed, TypeLevel{}});
+    TypeId metatable = arena.addType(MetatableTypeVar{target, mt});
+
+    state.tryUnify(metatable, free);
+    state.log.commit();
+
+    REQUIRE_EQ(state.errors.size(), 1);
+
+    std::string expected = "Type '{ @metatable {| __index: {| foo: string |} |}, {  } }' could not be converted into '{- foo: number -}'\n"
+                           "caused by:\n"
+                           "  Type 'number' could not be converted into 'string'";
+    CHECK_EQ(toString(state.errors[0]), expected);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "fuzz_tail_unification_issue")
+{
+    ScopedFastFlag luauTxnLogTypePackIterator{"LuauTxnLogTypePackIterator", true};
+
+    TypePackVar variadicAny{VariadicTypePack{typeChecker.anyType}};
+    TypePackVar packTmp{TypePack{{typeChecker.anyType}, &variadicAny}};
+    TypePackVar packSub{TypePack{{typeChecker.anyType, typeChecker.anyType}, &packTmp}};
+
+    TypeVar freeTy{FreeTypeVar{TypeLevel{}}};
+    TypePackVar freeTp{FreeTypePack{TypeLevel{}}};
+    TypePackVar packSuper{TypePack{{&freeTy}, &freeTp}};
+
+    state.tryUnify(&packSub, &packSuper);
 }
 
 TEST_SUITE_END();

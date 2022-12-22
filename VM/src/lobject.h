@@ -11,12 +11,10 @@
 typedef union GCObject GCObject;
 
 /*
-** Common Header for all collectible objects (in macro form, to be
-** included in other objects)
+** Common Header for all collectible objects (in macro form, to be included in other objects)
 */
 // clang-format off
 #define CommonHeader \
-    GCObject* next; \
      uint8_t tt; uint8_t marked; uint8_t memcat
 // clang-format on
 
@@ -47,11 +45,11 @@ typedef union
 typedef struct lua_TValue
 {
     Value value;
-    int extra;
+    int extra[LUA_EXTRA_SIZE];
     int tt;
 } TValue;
 
-/* Macros to test type */
+// Macros to test type
 #define ttisnil(o) (ttype(o) == LUA_TNIL)
 #define ttisnumber(o) (ttype(o) == LUA_TNUMBER)
 #define ttisstring(o) (ttype(o) == LUA_TSTRING)
@@ -64,7 +62,7 @@ typedef struct lua_TValue
 #define ttisvector(o) (ttype(o) == LUA_TVECTOR)
 #define ttisupval(o) (ttype(o) == LUA_TUPVAL)
 
-/* Macros to access values */
+// Macros to access values
 #define ttype(o) ((o)->tt)
 #define gcvalue(o) check_exp(iscollectable(o), (o)->value.gc)
 #define pvalue(o) check_exp(ttislightuserdata(o), (o)->value.p)
@@ -78,15 +76,7 @@ typedef struct lua_TValue
 #define thvalue(o) check_exp(ttisthread(o), &(o)->value.gc->th)
 #define upvalue(o) check_exp(ttisupval(o), &(o)->value.gc->uv)
 
-// beware bit magic: a value is false if it's nil or boolean false
-// baseline implementation: (ttisnil(o) || (ttisboolean(o) && bvalue(o) == 0))
-// we'd like a branchless version of this which helps with performance, and a very fast version
-// so our strategy is to always read the boolean value (not using bvalue(o) because that asserts when type isn't boolean)
-// we then combine it with type to produce 0/1 as follows:
-// - when type is nil (0), & makes the result 0
-// - when type is boolean (1), we effectively only look at the bottom bit, so result is 0 iff boolean value is 0
-// - when type is different, it must have some of the top bits set - we keep all top bits of boolean value so the result is non-0
-#define l_isfalse(o) (!(((o)->value.b | ~1) & ttype(o)))
+#define l_isfalse(o) (ttisnil(o) || (ttisboolean(o) && bvalue(o) == 0))
 
 /*
 ** for internal debug only
@@ -95,7 +85,7 @@ typedef struct lua_TValue
 
 #define checkliveness(g, obj) LUAU_ASSERT(!iscollectable(obj) || ((ttype(obj) == (obj)->value.gc->gch.tt) && !isdead(g, (obj)->value.gc)))
 
-/* Macros to set values */
+// Macros to set values
 #define setnilvalue(obj) ((obj)->tt = LUA_TNIL)
 
 #define setnvalue(obj, x) \
@@ -105,7 +95,19 @@ typedef struct lua_TValue
         i_o->tt = LUA_TNUMBER; \
     }
 
-#define setvvalue(obj, x, y, z) \
+#if LUA_VECTOR_SIZE == 4
+#define setvvalue(obj, x, y, z, w) \
+    { \
+        TValue* i_o = (obj); \
+        float* i_v = i_o->value.v; \
+        i_v[0] = (x); \
+        i_v[1] = (y); \
+        i_v[2] = (z); \
+        i_v[3] = (w); \
+        i_o->tt = LUA_TVECTOR; \
+    }
+#else
+#define setvvalue(obj, x, y, z, w) \
     { \
         TValue* i_o = (obj); \
         float* i_v = i_o->value.v; \
@@ -114,6 +116,7 @@ typedef struct lua_TValue
         i_v[2] = (z); \
         i_o->tt = LUA_TVECTOR; \
     }
+#endif
 
 #define setpvalue(obj, x) \
     { \
@@ -197,26 +200,20 @@ typedef struct lua_TValue
 ** different types of sets, according to destination
 */
 
-/* from stack to (same) stack */
-#define setobjs2s setobj
-/* to stack (not from same stack) */
+// to stack
 #define setobj2s setobj
-#define setsvalue2s setsvalue
-#define sethvalue2s sethvalue
-#define setptvalue2s setptvalue
-/* from table to same table */
+// from table to same table (no barrier)
 #define setobjt2t setobj
-/* to table */
+// to table (needs barrier)
 #define setobj2t setobj
-/* to new object */
+// to new object (no barrier)
 #define setobj2n setobj
-#define setsvalue2n setsvalue
 
 #define setttype(obj, tt) (ttype(obj) = (tt))
 
 #define iscollectable(o) (ttype(o) >= LUA_TSTRING)
 
-typedef TValue* StkId; /* index to stack elements */
+typedef TValue* StkId; // index to stack elements
 
 /*
 ** String headers for string table
@@ -224,8 +221,12 @@ typedef TValue* StkId; /* index to stack elements */
 typedef struct TString
 {
     CommonHeader;
+    // 1 byte padding
 
     int16_t atom;
+    // 2 byte padding
+
+    TString* next; // next string in the hash table bucket
 
     unsigned int hash;
     unsigned int len;
@@ -262,17 +263,21 @@ typedef struct Proto
     CommonHeader;
 
 
-    TValue* k;              /* constants used by the function */
-    Instruction* code;      /* function bytecode */
-    struct Proto** p;       /* functions defined inside the function */
-    uint8_t* lineinfo;      /* for each instruction, line number as a delta from baseline */
-    int* abslineinfo;       /* baseline line info, one entry for each 1<<linegaplog2 instructions; allocated after lineinfo */
-    struct LocVar* locvars; /* information about local variables */
-    TString** upvalues;     /* upvalue names */
+    TValue* k;              // constants used by the function
+    Instruction* code;      // function bytecode
+    struct Proto** p;       // functions defined inside the function
+    uint8_t* lineinfo;      // for each instruction, line number as a delta from baseline
+    int* abslineinfo;       // baseline line info, one entry for each 1<<linegaplog2 instructions; allocated after lineinfo
+    struct LocVar* locvars; // information about local variables
+    TString** upvalues;     // upvalue names
     TString* source;
 
     TString* debugname;
     uint8_t* debuginsn; // a copy of code[] array with just opcodes
+
+#if LUA_CUSTOM_EXECUTION
+    void* execdata;
+#endif
 
     GCObject* gclist;
 
@@ -284,9 +289,11 @@ typedef struct Proto
     int sizek;
     int sizelineinfo;
     int linegaplog2;
+    int linedefined;
+    int bytecodeid;
 
 
-    uint8_t nups; /* number of upvalues */
+    uint8_t nups; // number of upvalues
     uint8_t numparams;
     uint8_t is_vararg;
     uint8_t maxstacksize;
@@ -296,9 +303,9 @@ typedef struct Proto
 typedef struct LocVar
 {
     TString* varname;
-    int startpc; /* first point where variable is active */
-    int endpc;   /* first point where variable is dead */
-    uint8_t reg; /* register slot, relative to base, where variable is stored */
+    int startpc; // first point where variable is active
+    int endpc;   // first point where variable is dead
+    uint8_t reg; // register slot, relative to base, where variable is stored
 } LocVar;
 
 /*
@@ -308,17 +315,27 @@ typedef struct LocVar
 typedef struct UpVal
 {
     CommonHeader;
-    TValue* v; /* points to stack or to its own value */
+    uint8_t markedopen; // set if reachable from an alive thread (only valid during atomic)
+
+    // 4 byte padding (x64)
+
+    TValue* v; // points to stack or to its own value
     union
     {
-        TValue value; /* the value (when closed) */
+        TValue value; // the value (when closed)
         struct
-        { /* double linked list (when open) */
+        {
+            // global double linked list (when open)
             struct UpVal* prev;
             struct UpVal* next;
-        } l;
+
+            // thread linked list (when open)
+            struct UpVal* threadnext;
+        } open;
     } u;
 } UpVal;
+
+#define upisopen(up) ((up)->v != &(up)->u.value)
 
 /*
 ** Closures
@@ -364,9 +381,9 @@ typedef struct Closure
 typedef struct TKey
 {
     ::Value value;
-    int extra;
+    int extra[LUA_EXTRA_SIZE];
     unsigned tt : 4;
-    int next : 28; /* for chaining */
+    int next : 28; // for chaining
 } TKey;
 
 typedef struct LuaNode
@@ -375,24 +392,24 @@ typedef struct LuaNode
     TKey key;
 } LuaNode;
 
-/* copy a value into a key */
+// copy a value into a key
 #define setnodekey(L, node, obj) \
     { \
         LuaNode* n_ = (node); \
         const TValue* i_o = (obj); \
         n_->key.value = i_o->value; \
-        n_->key.extra = i_o->extra; \
+        memcpy(n_->key.extra, i_o->extra, sizeof(n_->key.extra)); \
         n_->key.tt = i_o->tt; \
         checkliveness(L->global, i_o); \
     }
 
-/* copy a value from a key */
+// copy a value from a key
 #define getnodekey(L, obj, node) \
     { \
         TValue* i_o = (obj); \
         const LuaNode* n_ = (node); \
         i_o->value = n_->key.value; \
-        i_o->extra = n_->key.extra; \
+        memcpy(i_o->extra, n_->key.extra, sizeof(i_o->extra)); \
         i_o->tt = n_->key.tt; \
         checkliveness(L->global, i_o); \
     }
@@ -403,22 +420,22 @@ typedef struct Table
     CommonHeader;
 
 
-    uint8_t flags;      /* 1<<p means tagmethod(p) is not present */
-    uint8_t readonly;   /* sandboxing feature to prohibit writes to table */
-    uint8_t safeenv;    /* environment doesn't share globals with other scripts */
-    uint8_t lsizenode;  /* log2 of size of `node' array */
-    uint8_t nodemask8; /* (1<<lsizenode)-1, truncated to 8 bits */
+    uint8_t tmcache;    // 1<<p means tagmethod(p) is not present
+    uint8_t readonly;   // sandboxing feature to prohibit writes to table
+    uint8_t safeenv;    // environment doesn't share globals with other scripts
+    uint8_t lsizenode;  // log2 of size of `node' array
+    uint8_t nodemask8; // (1<<lsizenode)-1, truncated to 8 bits
 
-    int sizearray; /* size of `array' array */
+    int sizearray; // size of `array' array
     union
     {
-        int lastfree;  /* any free position is before this position */
-        int aboundary; /* negated 'boundary' of `array' array; iff aboundary < 0 */
+        int lastfree;  // any free position is before this position
+        int aboundary; // negated 'boundary' of `array' array; iff aboundary < 0
     };
 
 
     struct Table* metatable;
-    TValue* array;  /* array part */
+    TValue* array;  // array part
     LuaNode* node;
     GCObject* gclist;
 } Table;
@@ -444,4 +461,4 @@ LUAI_FUNC int luaO_rawequalKey(const TKey* t1, const TValue* t2);
 LUAI_FUNC int luaO_str2d(const char* s, double* result);
 LUAI_FUNC const char* luaO_pushvfstring(lua_State* L, const char* fmt, va_list argp);
 LUAI_FUNC const char* luaO_pushfstring(lua_State* L, const char* fmt, ...);
-LUAI_FUNC void luaO_chunkid(char* out, const char* source, size_t len);
+LUAI_FUNC const char* luaO_chunkid(char* buf, size_t buflen, const char* source, size_t srclen);

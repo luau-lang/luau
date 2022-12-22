@@ -14,7 +14,7 @@ Today Luau provides only one method to get the callstack, `debug.traceback`. Thi
 
 There are a few cases where this can be inconvenient:
 
-- Sometimes it is useful to pass the resulting call stack to some system expecting a structured input, e.g. for crash aggreggation
+- Sometimes it is useful to pass the resulting call stack to some system expecting a structured input, e.g. for crash aggregation
 - Sometimes it is useful to use the information about the caller for logging or filtering purposes; in these cases using just the script name can be useful, and getting script name out of the traceback is slow and imprecise
 
 Additionally, in some cases instead of getting the information (such as script or function name) from the callstack, it can be useful to get it from a function object for diagnostic purposes. For example, maybe you want to call a callback and if it doesn't return expected results, display a user-friendly error message that contains the function name & script location - these aren't possible today at all.

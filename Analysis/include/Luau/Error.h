@@ -1,7 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/FileResolver.h"
 #include "Luau/Location.h"
 #include "Luau/TypeVar.h"
 #include "Luau/Variant.h"
@@ -9,10 +8,33 @@
 namespace Luau
 {
 
+struct FileResolver;
+struct TypeArena;
+struct TypeError;
+
 struct TypeMismatch
 {
-    TypeId wantedType;
-    TypeId givenType;
+    enum Context
+    {
+        CovariantContext,
+        InvariantContext
+    };
+
+    TypeMismatch() = default;
+    TypeMismatch(TypeId wantedType, TypeId givenType);
+    TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason);
+    TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason, std::optional<TypeError> error);
+
+    TypeMismatch(TypeId wantedType, TypeId givenType, Context context);
+    TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason, Context context);
+    TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason, std::optional<TypeError> error, Context context);
+
+    TypeId wantedType = nullptr;
+    TypeId givenType = nullptr;
+    Context context = CovariantContext;
+
+    std::string reason;
+    std::shared_ptr<TypeError> error;
 
     bool operator==(const TypeMismatch& rhs) const;
 };
@@ -23,7 +45,6 @@ struct UnknownSymbol
     {
         Binding,
         Type,
-        Generic
     };
     Name name;
     Context context;
@@ -71,7 +92,7 @@ struct OnlyTablesCanHaveMethods
 struct DuplicateTypeDefinition
 {
     Name name;
-    Location previousLocation;
+    std::optional<Location> previousLocation;
 
     bool operator==(const DuplicateTypeDefinition& rhs) const;
 };
@@ -81,12 +102,16 @@ struct CountMismatch
     enum Context
     {
         Arg,
-        Result,
+        FunctionResult,
+        ExprListResult,
         Return,
     };
     size_t expected;
+    std::optional<size_t> maximum;
     size_t actual;
     Context context = Arg;
+    bool isVariadic = false;
+    std::string function;
 
     bool operator==(const CountMismatch& rhs) const;
 };
@@ -98,8 +123,6 @@ struct FunctionDoesNotTakeSelf
 
 struct FunctionRequiresSelf
 {
-    int requiredExtraNils = 0;
-
     bool operator==(const FunctionRequiresSelf& rhs) const;
 };
 
@@ -120,6 +143,7 @@ struct IncorrectGenericParameterCount
     Name name;
     TypeFun typeFun;
     size_t actualParameters;
+    size_t actualPackParameters;
 
     bool operator==(const IncorrectGenericParameterCount& rhs) const;
 };
@@ -157,6 +181,13 @@ struct GenericError
     std::string message;
 
     bool operator==(const GenericError& rhs) const;
+};
+
+struct InternalError
+{
+    std::string message;
+
+    bool operator==(const InternalError& rhs) const;
 };
 
 struct CannotCallNonFunction
@@ -267,11 +298,57 @@ struct MissingUnionProperty
     bool operator==(const MissingUnionProperty& rhs) const;
 };
 
+struct TypesAreUnrelated
+{
+    TypeId left;
+    TypeId right;
+
+    bool operator==(const TypesAreUnrelated& rhs) const;
+};
+
+struct NormalizationTooComplex
+{
+    bool operator==(const NormalizationTooComplex&) const
+    {
+        return true;
+    }
+};
+
+struct TypePackMismatch
+{
+    TypePackId wantedTp;
+    TypePackId givenTp;
+
+    bool operator==(const TypePackMismatch& rhs) const;
+};
+
+struct DynamicPropertyLookupOnClassesUnsafe
+{
+    TypeId ty;
+
+    bool operator==(const DynamicPropertyLookupOnClassesUnsafe& rhs) const;
+};
+
 using TypeErrorData = Variant<TypeMismatch, UnknownSymbol, UnknownProperty, NotATable, CannotExtendTable, OnlyTablesCanHaveMethods,
     DuplicateTypeDefinition, CountMismatch, FunctionDoesNotTakeSelf, FunctionRequiresSelf, OccursCheckFailed, UnknownRequire,
-    IncorrectGenericParameterCount, SyntaxError, CodeTooComplex, UnificationTooComplex, UnknownPropButFoundLikeProp, GenericError,
+    IncorrectGenericParameterCount, SyntaxError, CodeTooComplex, UnificationTooComplex, UnknownPropButFoundLikeProp, GenericError, InternalError,
     CannotCallNonFunction, ExtraInformation, DeprecatedApiUsed, ModuleHasCyclicDependency, IllegalRequire, FunctionExitsWithoutReturning,
-    DuplicateGenericParameter, CannotInferBinaryOperation, MissingProperties, SwappedGenericTypeParameter, OptionalValueAccess, MissingUnionProperty>;
+    DuplicateGenericParameter, CannotInferBinaryOperation, MissingProperties, SwappedGenericTypeParameter, OptionalValueAccess, MissingUnionProperty,
+    TypesAreUnrelated, NormalizationTooComplex, TypePackMismatch, DynamicPropertyLookupOnClassesUnsafe>;
+
+struct TypeErrorSummary
+{
+    Location location;
+    ModuleName moduleName;
+    int code;
+
+    TypeErrorSummary(const Location& location, const ModuleName& moduleName, int code)
+        : location(location)
+        , moduleName(moduleName)
+        , code(code)
+    {
+    }
+};
 
 struct TypeError
 {
@@ -279,6 +356,7 @@ struct TypeError
     ModuleName moduleName;
     TypeErrorData data;
 
+    static int minCode();
     int code() const;
 
     TypeError() = default;
@@ -296,6 +374,8 @@ struct TypeError
     }
 
     bool operator==(const TypeError& rhs) const;
+
+    TypeErrorSummary summary() const;
 };
 
 template<typename T>
@@ -312,7 +392,13 @@ T* get(TypeError& e)
 
 using ErrorVec = std::vector<TypeError>;
 
+struct TypeErrorToStringOptions
+{
+    FileResolver* fileResolver = nullptr;
+};
+
 std::string toString(const TypeError& error);
+std::string toString(const TypeError& error, TypeErrorToStringOptions options);
 
 bool containsParseErrorName(const TypeError& error);
 
@@ -327,6 +413,31 @@ struct InternalErrorReporter
 
     [[noreturn]] void ice(const std::string& message, const Location& location);
     [[noreturn]] void ice(const std::string& message);
+};
+
+class InternalCompilerError : public std::exception
+{
+public:
+    explicit InternalCompilerError(const std::string& message)
+        : message(message)
+    {
+    }
+    explicit InternalCompilerError(const std::string& message, const std::string& moduleName)
+        : message(message)
+        , moduleName(moduleName)
+    {
+    }
+    explicit InternalCompilerError(const std::string& message, const std::string& moduleName, const Location& location)
+        : message(message)
+        , moduleName(moduleName)
+        , location(location)
+    {
+    }
+    virtual const char* what() const throw();
+
+    const std::string message;
+    const std::optional<std::string> moduleName;
+    const std::optional<Location> location;
 };
 
 } // namespace Luau

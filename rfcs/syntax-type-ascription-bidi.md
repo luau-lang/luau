@@ -1,5 +1,7 @@
 # Relaxing type assertions
 
+**Status**: Implemented
+
 ## Summary
 
 The way `::` works today is really strange.  The best solution we can come up with is to allow `::` to convert between any two related types.

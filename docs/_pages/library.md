@@ -18,11 +18,11 @@ While most library functions are provided as part of a library like `table`, a f
 function assert<T>(value: T, message: string?): T
 ```
 
-`assert` checks if the value is truthful; if it's not (which means it's `false` or `nil`), it raises an error. The error message can be customized with an optional parameter.
-Upon success the function returns the `condition` argument.
+`assert` checks if the value is truthy; if it's not (which means it's `false` or `nil`), it raises an error. The error message can be customized with an optional parameter.
+Upon success the function returns the `value` argument.
 
 ```
-function error(object: any, level: number?)
+function error(obj: any, level: number?)
 ```
 
 `error` raises an error with the specified object. Note that errors don't have to be strings, although they often are by convention; various error handling mechanisms like `pcall`
@@ -110,7 +110,7 @@ Changes metatable for the given table. Note that unlike `getmetatable`, this fun
 function tonumber(s: string, base: number?): number?
 ```
 
-Converts the input string to the number in base `base` (default 10) and returns the resulting number. If the conversion fails, returns `nil` instead.
+Converts the input string to the number in base `base` (default 10) and returns the resulting number. If the conversion fails (that is, if the input string doesn't represent a valid number in the specified base), returns `nil` instead.
 
 ```
 function tostring(obj: any): string
@@ -128,7 +128,8 @@ Returns the type of the object, which is one of `"nil"`, `"boolean"`, `"number"`
 function typeof(obj: any): string
 ```
 
-Returns the type of the object; for userdata objects that have a metatable with the `__type` field, returns the value for that key.
+Returns the type of the object; for userdata objects that have a metatable with the `__type` field *and* are defined by the host (not `newproxy`), returns the value for that key.
+For custom userdata objects, such as ones returned by `newproxy`, this function returns `"userdata"` to make sure host-defined types can not be spoofed.
 
 ```
 function ipairs(t: table): <iterator>
@@ -146,7 +147,7 @@ Returns the triple (generator, state, nil) that can be used to traverse the tabl
 function pcall(f: function, args: ...any): (boolean, ...any)
 ```
 
-Calls function `f` with parameters `args`. If the function suceeds, returns `true` followed by all return values of `f`. If the function raises an error, returns `false` followed by the error object.
+Calls function `f` with parameters `args`. If the function succeeds, returns `true` followed by all return values of `f`. If the function raises an error, returns `false` followed by the error object.
 Note that `f` can yield, which results in the entire coroutine yielding as well.
 
 ```
@@ -161,7 +162,7 @@ Note that `f` can yield, which results in the entire coroutine yielding as well.
 function unpack<V>(a: {V}, f: number?, t: number?): ...V
 ```
 
-Returns all values of `a` with indices in `[f..t]` range. `f` defaults to 1 and `t` defaults to `#a`.
+Returns all values of `a` with indices in `[f..t]` range. `f` defaults to 1 and `t` defaults to `#a`. Note that this is equivalent to `table.unpack`.
 
 ## math library
 
@@ -205,7 +206,7 @@ Rounds `n` upwards to the next integer boundary.
 function math.cosh(n: number): number
 ```
 
-Returns the hyberbolic cosine of `n`.
+Returns the hyperbolic cosine of `n`.
 
 ```
 function math.cos(n: number): number
@@ -346,19 +347,20 @@ Returns 3D Perlin noise value for the point `(x, y, z)` (`y` and `z` default to 
 function math.clamp(n: number, min: number, max: number): number
 ```
 
-Returns `n` if the number is in `[min, max]` range; otherwise, returns `min` when `n < min`, and `max` otherwise. The function errors if `min > max`.
+Returns `n` if the number is in `[min, max]` range; otherwise, returns `min` when `n < min`, and `max` otherwise. If `n` is NaN, may or may not return NaN.
+The function errors if `min > max`.
 
 ```
 function math.sign(n: number): number
 ```
 
-Returns `-1` if `n` is negative, `1` if `n` is positive, and `0` if `n` is zero.
+Returns `-1` if `n` is negative, `1` if `n` is positive, and `0` if `n` is zero or NaN.
 
 ```
 function math.round(n: number): number
 ```
 
-Rounds `n` to the nearest integer boundary.
+Rounds `n` to the nearest integer boundary. If `n` is exactly halfway between two integers, rounds `n` away from 0.
 
 ## table library
 
@@ -384,7 +386,7 @@ Iterates over numeric keys of the table in `[1..#t]` range in order; for each ke
 function table.getn<V>(t: {V}): number
 ```
 
-Returns the length of table `t` (aka `#t`).
+Returns the length of table `t` (equivalent to `#t`).
 
 ```
 function table.maxn<V>(t: {V}): number
@@ -464,6 +466,13 @@ function table.isfrozen(t: table): boolean
 
 Returns `true` iff the input table is frozen.
 
+```
+function table.clone(t: table): table
+```
+
+Returns a copy of the input table that has the same metatable, same keys and values, and is not frozen even if `t` was.
+The copy is shallow: implementing a deep recursive copy automatically is challenging, and often only certain keys need to be cloned recursively which can be done after the initial clone by modifying the resulting table.
+
 ## string library
 
 ```
@@ -479,7 +488,7 @@ function string.char(args: ...number): string
 Returns the string that contains a byte for every input number; all inputs must be integers in `[0..255]` range.
 
 ```
-function string.find(s: string, p: string, init: number?, plain: boolean?): (number?, number?)
+function string.find(s: string, p: string, init: number?, plain: boolean?): (number?, number?, ...string)
 ```
 
 Tries to find an instance of pattern `p` in the string `s`, starting from position `init` (defaults to 1). When `plain` is true, the search is using raw case-insensitive string equality, otherwise `p` should be a [string pattern](https://www.lua.org/manual/5.3/manual.html#6.4.1). If a match is found, returns the position of the match and the length of the match, followed by the pattern captures; otherwise returns `nil`.
@@ -498,7 +507,7 @@ Returns a formatted version of the input arguments using a [printf-style format 
 - `q`: expects a string and produces the same string quoted using double quotation marks, with escaped special characters if necessary
 - `s`: expects a string and produces the same string verbatim
 
-The formats support modifiers `-`, `+`, ` `, `#` and `0`, as well as field width and precision modifiers - with the exception of `*`.
+The formats support modifiers `-`, `+`, space, `#` and `0`, as well as field width and precision modifiers - with the exception of `*`.
 
 ```
 function string.gmatch(s: string, p: string): <iterator>
@@ -518,7 +527,7 @@ When `f` is a string, the substitution uses the string as a replacement. When `f
 function string.len(s: string): number
 ```
 
-Returns the number of bytes in the string.
+Returns the number of bytes in the string (equivalent to `#s`).
 
 ```
 function string.lower(s: string): string
@@ -527,7 +536,7 @@ function string.lower(s: string): string
 Returns a string where each byte corresponds to the lower-case ASCII version of the input byte in the source string.
 
 ```
-function string.match(s: string, p: string, init: number?): (number?, number?)
+function string.match(s: string, p: string, init: number?): ...string?
 ```
 
 Tries to find an instance of pattern `p` in the string `s`, starting from position `init` (defaults to 1). `p` should be a [string pattern](https://www.lua.org/manual/5.3/manual.html#6.4.1). If a match is found, returns all pattern captures, or entire matching substring if no captures are present, otherwise returns `nil`.
@@ -624,6 +633,12 @@ function coroutine.resume(co: thread, args: ...any): (boolean, ...any)
 
 Resumes the coroutine and passes the arguments along to the suspension point. When the coroutine yields or finishes, returns `true` and all values returned at the suspension point. If an error is raised during coroutine resumption, this function returns `false` and the error object, similarly to `pcall`.
 
+```
+function coroutine.close(co: thread): (boolean, any?)
+```
+
+Closes the coroutine which puts coroutine in the dead state. The coroutine must be dead or suspended - in particular it can't be currently running. If the coroutine that's being closed was in an error state, returns `false` along with an error object; otherwise returns `true`. After closing, the coroutine can't be resumed and the coroutine stack becomes empty.
+
 ## bit32 library
 
 All functions in the `bit32` library treat input numbers as 32-bit unsigned integers in `[0..4294967295]` range. The bit positions start at 0 where 0 corresponds to the least significant bit.
@@ -632,7 +647,7 @@ All functions in the `bit32` library treat input numbers as 32-bit unsigned inte
 function bit32.arshift(n: number, i: number): number
 ```
 
-Shifts `n` by `i` bits to the right (if `i` is negative, a left shift is performed instead). The most significant bit of `n` is propagated during the shift.
+Shifts `n` by `i` bits to the right (if `i` is negative, a left shift is performed instead). The most significant bit of `n` is propagated during the shift. When `i` is larger than 31, returns an integer with all bits set to the sign bit of `n`. When `i` is smaller than `-31`, 0 is returned.
 
 ```
 function bit32.band(args: ...number): number
@@ -668,7 +683,7 @@ Perform a bitwise `and` of all input numbers, and return `true` iff the result i
 function bit32.extract(n: number, f: number, w: number?): number
 ```
 
-Extracts bits at positions `[f..w]` and returns the resulting integer. `w` defaults to `f+1`, so a two-argument version of `extract` returns the bit value at position `f`.
+Extracts bits of `n` at position `f` with a width of `w`, and returns the resulting integer. `w` defaults to `1`, so a two-argument version of `extract` returns the bit value at position `f`. Bits are indexed starting at 0. Errors if `f` and `f+w-1` are not between 0 and 31.
 
 ```
 function bit32.lrotate(n: number, i: number): number
@@ -680,13 +695,13 @@ Rotates `n` to the left by `i` bits (if `i` is negative, a right rotate is perfo
 function bit32.lshift(n: number, i: number): number
 ```
 
-Shifts `n` to the left by `i` bits (if `i` is negative, a right shift is performed instead).
+Shifts `n` to the left by `i` bits (if `i` is negative, a right shift is performed instead). When `i` is outside of `[-31..31]` range, returns 0.
 
 ```
 function bit32.replace(n: number, r: number, f: number, w: number?): number
 ```
 
-Replaces bits at positions `[f..w]` of number `n` with `r` and returns the resulting integer. `w` defaults to `f+1`, so a three-argument version of `replace` changes one bit at position `f` to `r` (which should be 0 or 1) and returns the result.
+Replaces bits of `n` at position `f` and width `w` with `r`, and returns the resulting integer. `w` defaults to `1`, so a three-argument version of `replace` changes one bit at position `f` to `r` (which should be 0 or 1) and returns the result. Bits are indexed starting at 0. Errors if `f` and `f+w-1` are not between 0 and 31.
 
 ```
 function bit32.rrotate(n: number, i: number): number
@@ -698,7 +713,19 @@ Rotates `n` to the right by `i` bits (if `i` is negative, a left rotate is perfo
 function bit32.rshift(n: number, i: number): number
 ```
 
-Shifts `n` to the right by `i` bits (if `i` is negative, a left shift is performed instead).
+Shifts `n` to the right by `i` bits (if `i` is negative, a left shift is performed instead). When `i` is outside of `[-31..31]` range, returns 0.
+
+```
+function bit32.countlz(n: number): number
+```
+
+Returns the number of consecutive zero bits in the 32-bit representation of `n` starting from the left-most (most significant) bit. Returns 32 if `n` is zero.
+
+```
+function bit32.countrz(n: number): number
+```
+
+Returns the number of consecutive zero bits in the 32-bit representation of `n` starting from the right-most (least significant) bit. Returns 32 if `n` is zero.
 
 ## utf8 library
 
@@ -759,7 +786,7 @@ Otherwise, `s` is interpreted as a [date format string](https://www.cplusplus.co
 function os.difftime(a: number, b: number): number
 ```
 
-Calculates the difference in seconds between `a` and `b`; provided for compatibility.
+Calculates the difference in seconds between `a` and `b`; provided for compatibility only. Please use `a - b` instead.
 
 ```
 function os.time(t: table?): number
@@ -792,4 +819,4 @@ function debug.traceback(co: thread, msg: string?, level: number?): string
 function debug.traceback(msg: string?, level: number?): string
 ```
 
-Produces a stringifed callstack of the given thread, or the current thread, starting with level `level`. If `msg` is specified, then the resulting callstack includes the string before the callstack output, separated with a newline. The format of the callstack is human-readable and subject to change.
+Produces a stringified callstack of the given thread, or the current thread, starting with level `level`. If `msg` is specified, then the resulting callstack includes the string before the callstack output, separated with a newline. The format of the callstack is human-readable and subject to change.

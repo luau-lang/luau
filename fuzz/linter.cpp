@@ -1,10 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include <string>
-#include "Luau/TypeInfer.h"
-#include "Luau/Linter.h"
+
 #include "Luau/BuiltinDefinitions.h"
-#include "Luau/ModuleResolver.h"
 #include "Luau/Common.h"
+#include "Luau/Linter.h"
+#include "Luau/ModuleResolver.h"
+#include "Luau/Parser.h"
+#include "Luau/TypeInfer.h"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size)
 {
@@ -19,7 +21,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size)
     static Luau::NullModuleResolver moduleResolver;
     static Luau::InternalErrorReporter iceHandler;
     static Luau::TypeChecker sharedEnv(&moduleResolver, &iceHandler);
-    static int once = (Luau::registerBuiltinTypes(sharedEnv), 1);
+    static int once = (Luau::registerBuiltinGlobals(sharedEnv), 1);
     (void)once;
     static int once2 = (Luau::freeze(sharedEnv.globalTypes), 1);
     (void)once2;
@@ -32,7 +34,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size)
         Luau::LintOptions lintOptions;
         lintOptions.warningMask = ~0ull;
 
-        Luau::lint(parseResult.root, names, typeck.globalScope, nullptr, lintOptions);
+        Luau::lint(parseResult.root, names, typeck.globalScope, nullptr, {}, lintOptions);
     }
 
     return 0;

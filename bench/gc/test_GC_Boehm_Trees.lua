@@ -1,4 +1,4 @@
---!non-strict
+--!nonstrict
 local bench = script and require(script.Parent.bench_support) or require("bench_support")
 
 local stretchTreeDepth = 18 -- about 16Mb
@@ -73,5 +73,8 @@ function test()
         timeConstruction(d)
     end
 end
+
+bench.runs = 6
+bench.extraRuns = 2
 
 bench.runCode(test, "GC: Boehm tree")

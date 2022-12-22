@@ -10,7 +10,7 @@ logo: /assets/images/luau-88.png
 plugins: ["jekyll-include-cache", "jekyll-feed"]
 include: ["_pages"]
 atom_feed:
-  path: feed.xml
+  path: "/feed.xml"
 
 defaults:
  # _docs
