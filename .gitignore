@@ -1,4 +1,4 @@
-^build/
+build/
 ^coverage/
 ^fuzz/luau.pb.*
 ^crash-*
