@@ -4,8 +4,8 @@
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "Luau/Type.h"
+#include "Luau/VisitType.h"
 
 #include "Fixture.h"
 
@@ -175,7 +175,7 @@ TEST_CASE_FIXTURE(Fixture, "can_get_length_of_any")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(PrimitiveTypeVar::Number, getPrimitiveType(requireType("bar")));
+    CHECK_EQ(PrimitiveType::Number, getPrimitiveType(requireType("bar")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "assign_prop_to_table_by_calling_any_yields_any")
@@ -191,7 +191,7 @@ TEST_CASE_FIXTURE(Fixture, "assign_prop_to_table_by_calling_any_yields_any")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    TableTypeVar* ttv = getMutable<TableTypeVar>(requireType("T"));
+    TableType* ttv = getMutable<TableType>(requireType("T"));
     REQUIRE(ttv);
     REQUIRE(ttv->props.count("prop"));
 

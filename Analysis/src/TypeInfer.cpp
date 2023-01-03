@@ -18,8 +18,8 @@
 #include "Luau/ToString.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "Luau/Type.h"
+#include "Luau/VisitType.h"
 
 #include <algorithm>
 #include <iterator>
@@ -50,6 +50,7 @@ LUAU_FASTFLAGVARIABLE(LuauReportShadowedTypeAlias, false)
 LUAU_FASTFLAGVARIABLE(LuauBetterMessagingOnCountMismatch, false)
 LUAU_FASTFLAGVARIABLE(LuauIntersectionTestForEquality, false)
 LUAU_FASTFLAGVARIABLE(LuauImplicitElseRefinement, false)
+LUAU_FASTFLAG(LuauNegatedClassTypes)
 LUAU_FASTFLAGVARIABLE(LuauAllowIndexClassParameters, false)
 LUAU_FASTFLAGVARIABLE(LuauDeclareClassPrototype, false)
 LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
@@ -60,7 +61,7 @@ namespace Luau
 
 static bool typeCouldHaveMetatable(TypeId ty)
 {
-    return get<TableTypeVar>(follow(ty)) || get<ClassTypeVar>(follow(ty)) || get<MetatableTypeVar>(follow(ty));
+    return get<TableType>(follow(ty)) || get<ClassType>(follow(ty)) || get<MetatableType>(follow(ty));
 }
 
 static void defaultLuauPrintLine(const std::string& s)
@@ -222,23 +223,23 @@ size_t HashBoolNamePair::operator()(const std::pair<bool, Name>& pair) const
     return std::hash<bool>()(pair.first) ^ std::hash<Name>()(pair.second);
 }
 
-TypeChecker::TypeChecker(ModuleResolver* resolver, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter* iceHandler)
+TypeChecker::TypeChecker(ModuleResolver* resolver, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter* iceHandler)
     : resolver(resolver)
-    , singletonTypes(singletonTypes)
+    , builtinTypes(builtinTypes)
     , iceHandler(iceHandler)
     , unifierState(iceHandler)
-    , normalizer(nullptr, singletonTypes, NotNull{&unifierState})
-    , nilType(singletonTypes->nilType)
-    , numberType(singletonTypes->numberType)
-    , stringType(singletonTypes->stringType)
-    , booleanType(singletonTypes->booleanType)
-    , threadType(singletonTypes->threadType)
-    , anyType(singletonTypes->anyType)
-    , unknownType(singletonTypes->unknownType)
-    , neverType(singletonTypes->neverType)
-    , anyTypePack(singletonTypes->anyTypePack)
-    , neverTypePack(singletonTypes->neverTypePack)
-    , uninhabitableTypePack(singletonTypes->uninhabitableTypePack)
+    , normalizer(nullptr, builtinTypes, NotNull{&unifierState})
+    , nilType(builtinTypes->nilType)
+    , numberType(builtinTypes->numberType)
+    , stringType(builtinTypes->stringType)
+    , booleanType(builtinTypes->booleanType)
+    , threadType(builtinTypes->threadType)
+    , anyType(builtinTypes->anyType)
+    , unknownType(builtinTypes->unknownType)
+    , neverType(builtinTypes->neverType)
+    , anyTypePack(builtinTypes->anyTypePack)
+    , neverTypePack(builtinTypes->neverTypePack)
+    , uninhabitableTypePack(builtinTypes->uninhabitableTypePack)
     , duplicateTypeAliases{{false, {}}}
 {
     globalScope = std::make_shared<Scope>(globalTypes.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}}));
@@ -338,7 +339,7 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
         normalizer.arena = nullptr;
     }
 
-    currentModule->clonePublicInterface(singletonTypes, *iceHandler);
+    currentModule->clonePublicInterface(builtinTypes, *iceHandler);
 
     // Clear unifier cache since it's keyed off internal types that get deallocated
     // This avoids fake cross-module cache hits and keeps cache size at bay when typechecking large module graphs.
@@ -447,13 +448,13 @@ void TypeChecker::checkBlock(const ScopePtr& scope, const AstStatBlock& block)
     }
 }
 
-struct InplaceDemoter : TypeVarOnceVisitor
+struct InplaceDemoter : TypeOnceVisitor
 {
     TypeLevel newLevel;
     TypeArena* arena;
 
     InplaceDemoter(TypeLevel level, TypeArena* arena)
-        : TypeVarOnceVisitor(/* skipBoundTypes= */ true)
+        : TypeOnceVisitor(/* skipBoundTypes= */ true)
         , newLevel(level)
         , arena(arena)
     {
@@ -670,9 +671,9 @@ LUAU_NOINLINE void TypeChecker::checkBlockTypeAliases(const ScopePtr& scope, std
                 continue;
 
             TypeId type = bindings[name].type;
-            if (get<FreeTypeVar>(follow(type)))
+            if (get<FreeType>(follow(type)))
             {
-                TypeVar* mty = asMutable(follow(type));
+                Type* mty = asMutable(follow(type));
                 mty->reassign(*errorRecoveryType(anyType));
 
                 reportError(TypeError{typealias->location, OccursCheckFailed{}});
@@ -785,7 +786,7 @@ struct Demoter : Substitution
 
     bool isDirty(TypeId ty) override
     {
-        return get<FreeTypeVar>(ty);
+        return get<FreeType>(ty);
     }
 
     bool isDirty(TypePackId tp) override
@@ -795,7 +796,7 @@ struct Demoter : Substitution
 
     bool ignoreChildren(TypeId ty) override
     {
-        if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassTypeVar>(ty))
+        if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassType>(ty))
             return true;
 
         return false;
@@ -803,9 +804,9 @@ struct Demoter : Substitution
 
     TypeId clean(TypeId ty) override
     {
-        auto ftv = get<FreeTypeVar>(ty);
+        auto ftv = get<FreeType>(ty);
         LUAU_ASSERT(ftv);
-        return addType(FreeTypeVar{demotedLevel(ftv->level)});
+        return addType(FreeType{demotedLevel(ftv->level)});
     }
 
     TypePackId clean(TypePackId tp) override
@@ -987,14 +988,14 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatAssign& assign)
             }
 
             // Setting a table entry to nil doesn't mean nil is the type of the indexer, it is just deleting the entry
-            const TableTypeVar* destTableTypeReceivingNil = nullptr;
+            const TableType* destTableTypeReceivingNil = nullptr;
             if (auto indexExpr = dest->as<AstExprIndexExpr>(); isNil(right) && indexExpr)
                 destTableTypeReceivingNil = getTableType(checkExpr(scope, *indexExpr->expr).type);
 
             if (!destTableTypeReceivingNil || !destTableTypeReceivingNil->indexer)
             {
-                // In nonstrict mode, any assignments where the lhs is free and rhs isn't a function, we give it any typevar.
-                if (isNonstrictMode() && get<FreeTypeVar>(follow(left)) && !get<FunctionTypeVar>(follow(right)))
+                // In nonstrict mode, any assignments where the lhs is free and rhs isn't a function, we give it any type.
+                if (isNonstrictMode() && get<FreeType>(follow(left)) && !get<FunctionType>(follow(right)))
                     unify(anyType, left, scope, loc);
                 else
                     unify(right, left, scope, loc);
@@ -1046,7 +1047,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatLocal& local)
             ty = resolveType(scope, *annotation);
 
             // If the annotation type has an error, treat it as if there was no annotation
-            if (get<ErrorTypeVar>(follow(ty)))
+            if (get<ErrorType>(follow(ty)))
                 ty = nullptr;
         }
 
@@ -1102,7 +1103,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatLocal& local)
             {
                 if (rhs->is<AstExprTable>())
                 {
-                    TableTypeVar* ttv = getMutable<TableTypeVar>(follow(*ty));
+                    TableType* ttv = getMutable<TableType>(follow(*ty));
                     if (ttv && !ttv->name && scope == currentModule->getModuleScope())
                         ttv->syntheticName = vars[0]->name.value;
                 }
@@ -1110,7 +1111,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatLocal& local)
                 {
                     if (const AstExprGlobal* global = call->func->as<AstExprGlobal>(); global && global->name == "setmetatable")
                     {
-                        MetatableTypeVar* mtv = getMutable<MetatableTypeVar>(follow(*ty));
+                        MetatableType* mtv = getMutable<MetatableType>(follow(*ty));
                         if (mtv)
                             mtv->syntheticName = vars[0]->name.value;
                     }
@@ -1261,7 +1262,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
         return check(loopScope, *forin.body);
     }
 
-    if (const TableTypeVar* iterTable = get<TableTypeVar>(iterTy))
+    if (const TableType* iterTable = get<TableType>(iterTy))
     {
         // TODO: note that this doesn't cleanly handle iteration over mixed tables and tables without an indexer
         // this behavior is more or less consistent with what we do for pairs(), but really both are pretty wrong and need revisiting
@@ -1294,15 +1295,15 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
         return check(loopScope, *forin.body);
     }
 
-    const FunctionTypeVar* iterFunc = get<FunctionTypeVar>(iterTy);
+    const FunctionType* iterFunc = get<FunctionType>(iterTy);
     if (!iterFunc)
     {
-        TypeId varTy = get<AnyTypeVar>(iterTy) ? anyType : errorRecoveryType(loopScope);
+        TypeId varTy = get<AnyType>(iterTy) ? anyType : errorRecoveryType(loopScope);
 
         for (TypeId var : varTypes)
             unify(varTy, var, scope, forin.location);
 
-        if (!get<ErrorTypeVar>(iterTy) && !get<AnyTypeVar>(iterTy) && !get<FreeTypeVar>(iterTy) && !get<NeverTypeVar>(iterTy))
+        if (!get<ErrorType>(iterTy) && !get<AnyType>(iterTy) && !get<FreeType>(iterTy) && !get<NeverType>(iterTy))
             reportError(firstValue->location, CannotCallNonFunction{iterTy});
 
         return check(loopScope, *forin.body);
@@ -1354,7 +1355,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
         {
             TypeId keyTy = follow(*fty);
 
-            if (get<UnionTypeVar>(keyTy))
+            if (get<UnionType>(keyTy))
             {
                 if (std::optional<TypeId> ty = tryStripUnionFromNil(keyTy))
                     keyTy = *ty;
@@ -1432,7 +1433,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
     else if (auto name = function.name->as<AstExprIndexName>())
     {
         TypeId exprTy = checkExpr(scope, *name->expr).type;
-        TableTypeVar* ttv = getMutableTableType(exprTy);
+        TableType* ttv = getMutableTableType(exprTy);
 
         if (!getIndexTypeFromType(scope, exprTy, name->index.value, name->indexLocation, /* addErrors= */ false))
         {
@@ -1449,7 +1450,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
 
         if (function.func->self)
         {
-            const FunctionTypeVar* funTy = get<FunctionTypeVar>(ty);
+            const FunctionType* funTy = get<FunctionType>(ty);
             if (!funTy)
                 ice("Methods should be functions");
 
@@ -1520,7 +1521,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
 
     for (auto param : binding->typeParams)
     {
-        auto generic = get<GenericTypeVar>(param.ty);
+        auto generic = get<GenericType>(param.ty);
         LUAU_ASSERT(generic);
         aliasScope->privateTypeBindings[generic->name] = TypeFun{{}, param.ty};
     }
@@ -1533,7 +1534,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
     }
 
     TypeId ty = resolveType(aliasScope, *typealias.type);
-    if (auto ttv = getMutable<TableTypeVar>(follow(ty)))
+    if (auto ttv = getMutable<TableType>(follow(ty)))
     {
         // If the table is already named and we want to rename the type function, we have to bind new alias to a copy
         // Additionally, we can't modify types that come from other modules
@@ -1552,7 +1553,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
             if (!ttv->name || ttv->name != name || !sameTys || !sameTps)
             {
                 // This is a shallow clone, original recursive links to self are not updated
-                TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, ttv->state};
+                TableType clone = TableType{ttv->props, ttv->indexer, ttv->level, ttv->state};
                 clone.definitionModuleName = ttv->definitionModuleName;
                 clone.name = name;
 
@@ -1578,7 +1579,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
                 ttv->instantiatedTypePackParams.push_back(param.tp);
         }
     }
-    else if (auto mtv = getMutable<MetatableTypeVar>(follow(ty)))
+    else if (auto mtv = getMutable<MetatableType>(follow(ty)))
     {
         // We can't modify types that come from other modules
         if (follow(ty)->owningArena == &currentModule->internalTypes)
@@ -1634,7 +1635,7 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
                 createGenericTypes(aliasScope, scope->level, typealias, typealias.generics, typealias.genericPacks, /* useCache = */ true);
 
             TypeId ty = freshType(aliasScope);
-            FreeTypeVar* ftv = getMutable<FreeTypeVar>(ty);
+            FreeType* ftv = getMutable<FreeType>(ty);
             LUAU_ASSERT(ftv);
             ftv->forwardedTypeAlias = true;
             bindingsMap[name] = {std::move(generics), std::move(genericPacks), ty};
@@ -1652,7 +1653,7 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
             createGenericTypes(aliasScope, scope->level, typealias, typealias.generics, typealias.genericPacks, /* useCache = */ true);
 
         TypeId ty = freshType(aliasScope);
-        FreeTypeVar* ftv = getMutable<FreeTypeVar>(ty);
+        FreeType* ftv = getMutable<FreeType>(ty);
         LUAU_ASSERT(ftv);
         ftv->forwardedTypeAlias = true;
         bindingsMap[name] = {std::move(generics), std::move(genericPacks), ty};
@@ -1664,8 +1665,7 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
 void TypeChecker::prototype(const ScopePtr& scope, const AstStatDeclareClass& declaredClass)
 {
     LUAU_ASSERT(FFlag::LuauDeclareClassPrototype);
-
-    std::optional<TypeId> superTy = std::nullopt;
+    std::optional<TypeId> superTy = FFlag::LuauNegatedClassTypes ? std::make_optional(builtinTypes->classType) : std::nullopt;
     if (declaredClass.superName)
     {
         Name superName = Name(declaredClass.superName->value);
@@ -1682,7 +1682,7 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatDeclareClass& de
         LUAU_ASSERT(lookupType->typeParams.size() == 0 && lookupType->typePackParams.size() == 0);
         superTy = lookupType->type;
 
-        if (!get<ClassTypeVar>(follow(*superTy)))
+        if (!get<ClassType>(follow(*superTy)))
         {
             reportError(declaredClass.location,
                 GenericError{format("Cannot use non-class type '%s' as a superclass of class '%s'", superName.c_str(), declaredClass.name.value)});
@@ -1693,9 +1693,9 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatDeclareClass& de
 
     Name className(declaredClass.name.value);
 
-    TypeId classTy = addType(ClassTypeVar(className, {}, superTy, std::nullopt, {}, {}, currentModuleName));
-    ClassTypeVar* ctv = getMutable<ClassTypeVar>(classTy);
-    TypeId metaTy = addType(TableTypeVar{TableState::Sealed, scope->level});
+    TypeId classTy = addType(ClassType(className, {}, superTy, std::nullopt, {}, {}, currentModuleName));
+    ClassType* ctv = getMutable<ClassType>(classTy);
+    TypeId metaTy = addType(TableType{TableState::Sealed, scope->level});
 
     ctv->metatable = metaTy;
     scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
@@ -1720,25 +1720,25 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
             ice("Class not predeclared");
 
         TypeId classTy = binding->type;
-        ClassTypeVar* ctv = getMutable<ClassTypeVar>(classTy);
+        ClassType* ctv = getMutable<ClassType>(classTy);
 
         if (!ctv->metatable)
             ice("No metatable for declared class");
 
-        TableTypeVar* metatable = getMutable<TableTypeVar>(*ctv->metatable);
+        TableType* metatable = getMutable<TableType>(*ctv->metatable);
         for (const AstDeclaredClassProp& prop : declaredClass.props)
         {
             Name propName(prop.name.value);
             TypeId propTy = resolveType(scope, *prop.ty);
 
             bool assignToMetatable = isMetamethod(propName);
-            Luau::ClassTypeVar::Props& assignTo = assignToMetatable ? metatable->props : ctv->props;
+            Luau::ClassType::Props& assignTo = assignToMetatable ? metatable->props : ctv->props;
 
             // Function types always take 'self', but this isn't reflected in the
             // parsed annotation. Add it here.
             if (prop.isMethod)
             {
-                if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(propTy))
+                if (FunctionType* ftv = getMutable<FunctionType>(propTy))
                 {
                     ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
                     ftv->argTypes = addTypePack(TypePack{{classTy}, ftv->argTypes});
@@ -1756,17 +1756,17 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
 
                 // We special-case this logic to keep the intersection flat; otherwise we
                 // would create a ton of nested intersection types.
-                if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(currentTy))
+                if (const IntersectionType* itv = get<IntersectionType>(currentTy))
                 {
                     std::vector<TypeId> options = itv->parts;
                     options.push_back(propTy);
-                    TypeId newItv = addType(IntersectionTypeVar{std::move(options)});
+                    TypeId newItv = addType(IntersectionType{std::move(options)});
 
                     assignTo[propName] = {newItv};
                 }
-                else if (get<FunctionTypeVar>(currentTy))
+                else if (get<FunctionType>(currentTy))
                 {
-                    TypeId intersection = addType(IntersectionTypeVar{{currentTy, propTy}});
+                    TypeId intersection = addType(IntersectionType{{currentTy, propTy}});
 
                     assignTo[propName] = {intersection};
                 }
@@ -1779,7 +1779,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
     }
     else
     {
-        std::optional<TypeId> superTy = std::nullopt;
+        std::optional<TypeId> superTy = FFlag::LuauNegatedClassTypes ? std::make_optional(builtinTypes->classType) : std::nullopt;
         if (declaredClass.superName)
         {
             Name superName = Name(declaredClass.superName->value);
@@ -1795,7 +1795,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
             LUAU_ASSERT(lookupType->typeParams.size() == 0 && lookupType->typePackParams.size() == 0);
             superTy = lookupType->type;
 
-            if (!get<ClassTypeVar>(follow(*superTy)))
+            if (!get<ClassType>(follow(*superTy)))
             {
                 reportError(declaredClass.location, GenericError{format("Cannot use non-class type '%s' as a superclass of class '%s'",
                                                         superName.c_str(), declaredClass.name.value)});
@@ -1805,11 +1805,11 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
 
         Name className(declaredClass.name.value);
 
-        TypeId classTy = addType(ClassTypeVar(className, {}, superTy, std::nullopt, {}, {}, currentModuleName));
+        TypeId classTy = addType(ClassType(className, {}, superTy, std::nullopt, {}, {}, currentModuleName));
 
-        ClassTypeVar* ctv = getMutable<ClassTypeVar>(classTy);
-        TypeId metaTy = addType(TableTypeVar{TableState::Sealed, scope->level});
-        TableTypeVar* metatable = getMutable<TableTypeVar>(metaTy);
+        ClassType* ctv = getMutable<ClassType>(classTy);
+        TypeId metaTy = addType(TableType{TableState::Sealed, scope->level});
+        TableType* metatable = getMutable<TableType>(metaTy);
 
         ctv->metatable = metaTy;
 
@@ -1821,13 +1821,13 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
             TypeId propTy = resolveType(scope, *prop.ty);
 
             bool assignToMetatable = isMetamethod(propName);
-            Luau::ClassTypeVar::Props& assignTo = assignToMetatable ? metatable->props : ctv->props;
+            Luau::ClassType::Props& assignTo = assignToMetatable ? metatable->props : ctv->props;
 
             // Function types always take 'self', but this isn't reflected in the
             // parsed annotation. Add it here.
             if (prop.isMethod)
             {
-                if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(propTy))
+                if (FunctionType* ftv = getMutable<FunctionType>(propTy))
                 {
                     ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
                     ftv->argTypes = addTypePack(TypePack{{classTy}, ftv->argTypes});
@@ -1845,17 +1845,17 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
 
                 // We special-case this logic to keep the intersection flat; otherwise we
                 // would create a ton of nested intersection types.
-                if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(currentTy))
+                if (const IntersectionType* itv = get<IntersectionType>(currentTy))
                 {
                     std::vector<TypeId> options = itv->parts;
                     options.push_back(propTy);
-                    TypeId newItv = addType(IntersectionTypeVar{std::move(options)});
+                    TypeId newItv = addType(IntersectionType{std::move(options)});
 
                     assignTo[propName] = {newItv};
                 }
-                else if (get<FunctionTypeVar>(currentTy))
+                else if (get<FunctionType>(currentTy))
                 {
-                    TypeId intersection = addType(IntersectionTypeVar{{currentTy, propTy}});
+                    TypeId intersection = addType(IntersectionType{{currentTy, propTy}});
 
                     assignTo[propName] = {intersection};
                 }
@@ -1888,8 +1888,8 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareFunction& glo
 
     TypePackId argPack = resolveTypePack(funScope, global.params);
     TypePackId retPack = resolveTypePack(funScope, global.retTypes);
-    TypeId fnType = addType(FunctionTypeVar{funScope->level, std::move(genericTys), std::move(genericTps), argPack, retPack});
-    FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(fnType);
+    TypeId fnType = addType(FunctionType{funScope->level, std::move(genericTys), std::move(genericTps), argPack, retPack});
+    FunctionType* ftv = getMutable<FunctionType>(fnType);
 
     ftv->argNames.reserve(global.paramNames.size);
     for (const auto& el : global.paramNames)
@@ -2018,7 +2018,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         *asMutable(varargPack) = TypePack{{head}, tail};
         return {head};
     }
-    if (get<ErrorTypeVar>(varargPack))
+    if (get<ErrorType>(varargPack))
         return {errorRecoveryType(scope)};
     else if (auto vtp = get<VariadicTypePack>(varargPack))
         return {vtp->ty};
@@ -2085,7 +2085,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 std::optional<TypeId> TypeChecker::findTablePropertyRespectingMeta(TypeId lhsType, Name name, const Location& location, bool addErrors)
 {
     ErrorVec errors;
-    auto result = Luau::findTablePropertyRespectingMeta(singletonTypes, errors, lhsType, name, location);
+    auto result = Luau::findTablePropertyRespectingMeta(builtinTypes, errors, lhsType, name, location);
     if (addErrors)
         reportErrors(errors);
     return result;
@@ -2094,7 +2094,7 @@ std::optional<TypeId> TypeChecker::findTablePropertyRespectingMeta(TypeId lhsTyp
 std::optional<TypeId> TypeChecker::findMetatableEntry(TypeId type, std::string entry, const Location& location, bool addErrors)
 {
     ErrorVec errors;
-    auto result = Luau::findMetatableEntry(singletonTypes, errors, type, entry, location);
+    auto result = Luau::findMetatableEntry(builtinTypes, errors, type, entry, location);
     if (addErrors)
         reportErrors(errors);
     return result;
@@ -2118,7 +2118,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
 {
     type = follow(type);
 
-    if (get<ErrorTypeVar>(type) || get<AnyTypeVar>(type) || get<NeverTypeVar>(type))
+    if (get<ErrorType>(type) || get<AnyType>(type) || get<NeverType>(type))
         return type;
 
     tablify(type);
@@ -2130,7 +2130,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
         type = *mtIndex;
     }
 
-    if (TableTypeVar* tableType = getMutableTableType(type))
+    if (TableType* tableType = getMutableTableType(type))
     {
         if (auto it = tableType->props.find(name); it != tableType->props.end())
             return it->second.type;
@@ -2157,13 +2157,13 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
         if (auto found = findTablePropertyRespectingMeta(type, name, location, addErrors))
             return *found;
     }
-    else if (const ClassTypeVar* cls = get<ClassTypeVar>(type))
+    else if (const ClassType* cls = get<ClassType>(type))
     {
         const Property* prop = lookupClassProp(cls, name);
         if (prop)
             return prop->type;
     }
-    else if (const UnionTypeVar* utv = get<UnionTypeVar>(type))
+    else if (const UnionType* utv = get<UnionType>(type))
     {
         std::vector<TypeId> goodOptions;
         std::vector<TypeId> badOptions;
@@ -2173,7 +2173,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
             RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit);
 
             // Not needed when we normalize types.
-            if (get<AnyTypeVar>(follow(t)))
+            if (get<AnyType>(follow(t)))
                 return t;
 
             if (std::optional<TypeId> ty = getIndexTypeFromType(scope, t, name, location, /* addErrors= */ false))
@@ -2201,9 +2201,9 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
         if (result.size() == 1)
             return result[0];
 
-        return addType(UnionTypeVar{std::move(result)});
+        return addType(UnionType{std::move(result)});
     }
-    else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(type))
+    else if (const IntersectionType* itv = get<IntersectionType>(type))
     {
         std::vector<TypeId> parts;
 
@@ -2226,7 +2226,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
         if (parts.size() == 1)
             return parts[0];
 
-        return addType(IntersectionTypeVar{std::move(parts)}); // Not at all correct.
+        return addType(IntersectionType{std::move(parts)}); // Not at all correct.
     }
 
     if (addErrors)
@@ -2237,7 +2237,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
 
 std::optional<TypeId> TypeChecker::tryStripUnionFromNil(TypeId ty)
 {
-    if (const UnionTypeVar* utv = get<UnionTypeVar>(ty))
+    if (const UnionType* utv = get<UnionType>(ty))
     {
         if (!std::any_of(begin(utv), end(utv), isNil))
             return ty;
@@ -2253,7 +2253,7 @@ std::optional<TypeId> TypeChecker::tryStripUnionFromNil(TypeId ty)
         if (result.empty())
             return std::nullopt;
 
-        return result.size() == 1 ? result[0] : addType(UnionTypeVar{std::move(result)});
+        return result.size() == 1 ? result[0] : addType(UnionType{std::move(result)});
     }
 
     return std::nullopt;
@@ -2263,7 +2263,7 @@ TypeId TypeChecker::stripFromNilAndReport(TypeId ty, const Location& location)
 {
     ty = follow(ty);
 
-    if (auto utv = get<UnionTypeVar>(ty))
+    if (auto utv = get<UnionType>(ty))
     {
         if (!std::any_of(begin(utv), end(utv), isNil))
             return ty;
@@ -2301,14 +2301,14 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 TypeId TypeChecker::checkExprTable(
     const ScopePtr& scope, const AstExprTable& expr, const std::vector<std::pair<TypeId, TypeId>>& fieldTypes, std::optional<TypeId> expectedType)
 {
-    TableTypeVar::Props props;
+    TableType::Props props;
     std::optional<TableIndexer> indexer;
 
-    const TableTypeVar* expectedTable = nullptr;
+    const TableType* expectedTable = nullptr;
 
     if (expectedType)
     {
-        if (auto ttv = get<TableTypeVar>(follow(*expectedType)))
+        if (auto ttv = get<TableType>(follow(*expectedType)))
         {
             if (ttv->state == TableState::Sealed)
                 expectedTable = ttv;
@@ -2342,7 +2342,7 @@ TypeId TypeChecker::checkExprTable(
             if (auto key = k->as<AstExprConstantString>())
             {
                 TypeId exprType = follow(valueType);
-                if (isNonstrictMode() && !getTableType(exprType) && !get<FunctionTypeVar>(exprType))
+                if (isNonstrictMode() && !getTableType(exprType) && !get<FunctionType>(exprType))
                     exprType = anyType;
 
                 if (expectedTable)
@@ -2388,7 +2388,7 @@ TypeId TypeChecker::checkExprTable(
     }
 
     TableState state = TableState::Unsealed;
-    TableTypeVar table = TableTypeVar{std::move(props), indexer, scope->level, state};
+    TableType table = TableType{std::move(props), indexer, scope->level, state};
     table.definitionModuleName = currentModuleName;
     return addType(table);
 }
@@ -2404,14 +2404,14 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 
     std::vector<std::pair<TypeId, TypeId>> fieldTypes(expr.items.size);
 
-    const TableTypeVar* expectedTable = nullptr;
-    const UnionTypeVar* expectedUnion = nullptr;
+    const TableType* expectedTable = nullptr;
+    const UnionType* expectedUnion = nullptr;
     std::optional<TypeId> expectedIndexType;
     std::optional<TypeId> expectedIndexResultType;
 
     if (expectedType)
     {
-        if (auto ttv = get<TableTypeVar>(follow(*expectedType)))
+        if (auto ttv = get<TableType>(follow(*expectedType)))
         {
             if (ttv->state == TableState::Sealed)
             {
@@ -2424,7 +2424,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
                 }
             }
         }
-        else if (const UnionTypeVar* utv = get<UnionTypeVar>(follow(*expectedType)))
+        else if (const UnionType* utv = get<UnionType>(follow(*expectedType)))
             expectedUnion = utv;
     }
 
@@ -2455,7 +2455,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
                     std::vector<TypeId> expectedResultTypes;
                     for (TypeId expectedOption : expectedUnion)
                     {
-                        if (const TableTypeVar* ttv = get<TableTypeVar>(follow(expectedOption)))
+                        if (const TableType* ttv = get<TableType>(follow(expectedOption)))
                         {
                             if (auto prop = ttv->props.find(key->value.data); prop != ttv->props.end())
                                 expectedResultTypes.push_back(prop->second.type);
@@ -2467,7 +2467,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
                     if (expectedResultTypes.size() == 1)
                         expectedResultType = expectedResultTypes[0];
                     else if (expectedResultTypes.size() > 1)
-                        expectedResultType = addType(UnionTypeVar{expectedResultTypes});
+                        expectedResultType = addType(UnionType{expectedResultTypes});
                 }
             }
             else
@@ -2500,7 +2500,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         return {booleanType, {NotPredicate{std::move(result.predicates)}}};
     case AstExprUnary::Minus:
     {
-        const bool operandIsAny = get<AnyTypeVar>(operandType) || get<ErrorTypeVar>(operandType) || get<NeverTypeVar>(operandType);
+        const bool operandIsAny = get<AnyType>(operandType) || get<ErrorType>(operandType) || get<NeverType>(operandType);
 
         if (operandIsAny)
             return {operandType};
@@ -2512,7 +2512,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
                 TypeId actualFunctionType = instantiate(scope, *fnt, expr.location);
                 TypePackId arguments = addTypePack({operandType});
                 TypePackId retTypePack = freshTypePack(scope);
-                TypeId expectedFunctionType = addType(FunctionTypeVar(scope->level, arguments, retTypePack));
+                TypeId expectedFunctionType = addType(FunctionType(scope->level, arguments, retTypePack));
 
                 Unifier state = mkUnifier(scope, expr.location);
                 state.tryUnify(actualFunctionType, expectedFunctionType, /*isFunctionCall*/ true);
@@ -2542,8 +2542,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         operandType = stripFromNilAndReport(operandType, expr.location);
 
         // # operator is guaranteed to return number
-        if ((FFlag::LuauNeverTypesAndOperatorsInference && get<AnyTypeVar>(operandType)) || get<ErrorTypeVar>(operandType) ||
-            get<NeverTypeVar>(operandType))
+        if ((FFlag::LuauNeverTypesAndOperatorsInference && get<AnyType>(operandType)) || get<ErrorType>(operandType) || get<NeverType>(operandType))
         {
             if (FFlag::LuauNeverTypesAndOperatorsInference)
                 return {numberType};
@@ -2560,7 +2559,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
                 TypeId actualFunctionType = instantiate(scope, *fnt, expr.location);
                 TypePackId arguments = addTypePack({operandType});
                 TypePackId retTypePack = addTypePack({numberType});
-                TypeId expectedFunctionType = addType(FunctionTypeVar(scope->level, arguments, retTypePack));
+                TypeId expectedFunctionType = addType(FunctionType(scope->level, arguments, retTypePack));
 
                 Unifier state = mkUnifier(scope, expr.location);
                 state.tryUnify(actualFunctionType, expectedFunctionType, /*isFunctionCall*/ true);
@@ -2617,7 +2616,7 @@ TypeId TypeChecker::unionOfTypes(TypeId a, TypeId b, const ScopePtr& scope, cons
     a = follow(a);
     b = follow(b);
 
-    if (unifyFreeTypes && (get<FreeTypeVar>(a) || get<FreeTypeVar>(b)))
+    if (unifyFreeTypes && (get<FreeType>(a) || get<FreeType>(b)))
     {
         if (unify(b, a, scope, location))
             return a;
@@ -2635,7 +2634,7 @@ TypeId TypeChecker::unionOfTypes(TypeId a, TypeId b, const ScopePtr& scope, cons
     if (types.size() == 1)
         return types[0];
 
-    return addType(UnionTypeVar{types});
+    return addType(UnionType{types});
 }
 
 static std::optional<std::string> getIdentifierOfBaseVar(AstExpr* node)
@@ -2663,7 +2662,7 @@ static std::optional<std::string> getIdentifierOfBaseVar(AstExpr* node)
  * types have any overlap at all.
  *
  * In order to make things work smoothly with the greedy solver, this function
- * exempts any and FreeTypeVars from this requirement.
+ * exempts any and FreeTypes from this requirement.
  *
  * This function does not (yet?) take into account extra Lua restrictions like
  * that two tables can only be compared if they have the same metatable.  That
@@ -2680,13 +2679,13 @@ static std::optional<bool> areEqComparable(NotNull<TypeArena> arena, NotNull<Nor
     b = follow(b);
 
     auto isExempt = [](TypeId t) {
-        return isNil(t) || get<FreeTypeVar>(t);
+        return isNil(t) || get<FreeType>(t);
     };
 
     if (isExempt(a) || isExempt(b))
         return true;
 
-    TypeId c = arena->addType(IntersectionTypeVar{{a, b}});
+    TypeId c = arena->addType(IntersectionType{{a, b}});
     const NormalizedType* n = normalizer->normalize(c);
     if (!n)
         return std::nullopt;
@@ -2705,7 +2704,7 @@ TypeId TypeChecker::checkRelationalOperation(
         if (!isNonstrictMode() && !isOrOp)
             return ty;
 
-        if (get<UnionTypeVar>(ty))
+        if (get<UnionType>(ty))
         {
             std::optional<TypeId> cleaned = tryStripUnionFromNil(ty);
 
@@ -2726,7 +2725,7 @@ TypeId TypeChecker::checkRelationalOperation(
 
     // If we know nothing at all about the lhs type, we can usually say nothing about the result.
     // The notable exception to this is the equality and inequality operators, which always produce a boolean.
-    const bool lhsIsAny = get<AnyTypeVar>(lhsType) || get<ErrorTypeVar>(lhsType) || get<NeverTypeVar>(lhsType);
+    const bool lhsIsAny = get<AnyType>(lhsType) || get<ErrorType>(lhsType) || get<NeverType>(lhsType);
 
     // Peephole check for `cond and a or b -> type(a)|type(b)`
     // TODO: Kill this when singleton types arrive. :(
@@ -2749,7 +2748,7 @@ TypeId TypeChecker::checkRelationalOperation(
         if (isNonstrictMode() && (isNil(lhsType) || isNil(rhsType)))
             return booleanType;
 
-        const bool rhsIsAny = get<AnyTypeVar>(rhsType) || get<ErrorTypeVar>(rhsType) || get<NeverTypeVar>(rhsType);
+        const bool rhsIsAny = get<AnyType>(rhsType) || get<ErrorType>(rhsType) || get<NeverType>(rhsType);
         if (lhsIsAny || rhsIsAny)
             return booleanType;
 
@@ -2763,7 +2762,7 @@ TypeId TypeChecker::checkRelationalOperation(
         if (FFlag::LuauNeverTypesAndOperatorsInference)
         {
             // If one of the operand is never, it doesn't make sense to unify these.
-            if (get<NeverTypeVar>(lhsType) || get<NeverTypeVar>(rhsType))
+            if (get<NeverType>(lhsType) || get<NeverType>(rhsType))
                 return booleanType;
         }
 
@@ -2804,11 +2803,11 @@ TypeId TypeChecker::checkRelationalOperation(
         const bool needsMetamethod = !isEquality;
 
         TypeId leftType = follow(lhsType);
-        if (get<PrimitiveTypeVar>(leftType) || get<AnyTypeVar>(leftType) || get<ErrorTypeVar>(leftType) || get<UnionTypeVar>(leftType))
+        if (get<PrimitiveType>(leftType) || get<AnyType>(leftType) || get<ErrorType>(leftType) || get<UnionType>(leftType))
         {
             reportErrors(state.errors);
 
-            if (!isEquality && state.errors.empty() && (get<UnionTypeVar>(leftType) || isBoolean(leftType)))
+            if (!isEquality && state.errors.empty() && (get<UnionType>(leftType) || isBoolean(leftType)))
             {
                 reportError(expr.location, GenericError{format("Type '%s' cannot be compared with relational operator %s", toString(leftType).c_str(),
                                                toString(expr.op).c_str())});
@@ -2819,19 +2818,19 @@ TypeId TypeChecker::checkRelationalOperation(
 
         std::string metamethodName = opToMetaTableEntry(expr.op);
 
-        std::optional<TypeId> leftMetatable = isString(lhsType) ? std::nullopt : getMetatable(follow(lhsType), singletonTypes);
-        std::optional<TypeId> rightMetatable = isString(rhsType) ? std::nullopt : getMetatable(follow(rhsType), singletonTypes);
+        std::optional<TypeId> leftMetatable = isString(lhsType) ? std::nullopt : getMetatable(follow(lhsType), builtinTypes);
+        std::optional<TypeId> rightMetatable = isString(rhsType) ? std::nullopt : getMetatable(follow(rhsType), builtinTypes);
 
         if (leftMetatable != rightMetatable)
         {
             bool matches = false;
             if (isEquality)
             {
-                if (const UnionTypeVar* utv = get<UnionTypeVar>(leftType); utv && rightMetatable)
+                if (const UnionType* utv = get<UnionType>(leftType); utv && rightMetatable)
                 {
                     for (TypeId leftOption : utv)
                     {
-                        if (getMetatable(follow(leftOption), singletonTypes) == rightMetatable)
+                        if (getMetatable(follow(leftOption), builtinTypes) == rightMetatable)
                         {
                             matches = true;
                             break;
@@ -2841,11 +2840,11 @@ TypeId TypeChecker::checkRelationalOperation(
 
                 if (!matches)
                 {
-                    if (const UnionTypeVar* utv = get<UnionTypeVar>(rhsType); utv && leftMetatable)
+                    if (const UnionType* utv = get<UnionType>(rhsType); utv && leftMetatable)
                     {
                         for (TypeId rightOption : utv)
                         {
-                            if (getMetatable(follow(rightOption), singletonTypes) == leftMetatable)
+                            if (getMetatable(follow(rightOption), builtinTypes) == leftMetatable)
                             {
                                 matches = true;
                                 break;
@@ -2869,7 +2868,7 @@ TypeId TypeChecker::checkRelationalOperation(
             std::optional<TypeId> metamethod = findMetatableEntry(lhsType, metamethodName, expr.location, /* addErrors= */ true);
             if (metamethod)
             {
-                if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(*metamethod))
+                if (const FunctionType* ftv = get<FunctionType>(*metamethod))
                 {
                     if (isEquality)
                     {
@@ -2888,7 +2887,7 @@ TypeId TypeChecker::checkRelationalOperation(
 
                 reportErrors(state.errors);
 
-                TypeId actualFunctionType = addType(FunctionTypeVar(scope->level, addTypePack({lhsType, rhsType}), addTypePack({booleanType})));
+                TypeId actualFunctionType = addType(FunctionType(scope->level, addTypePack({lhsType, rhsType}), addTypePack({booleanType})));
                 state.tryUnify(
                     instantiate(scope, actualFunctionType, expr.location), instantiate(scope, *metamethod, expr.location), /*isFunctionCall*/ true);
 
@@ -2905,7 +2904,7 @@ TypeId TypeChecker::checkRelationalOperation(
             }
         }
 
-        if (get<FreeTypeVar>(follow(lhsType)) && !isEquality)
+        if (get<FreeType>(follow(lhsType)) && !isEquality)
         {
             auto name = getIdentifierOfBaseVar(expr.left);
             reportError(expr.location, CannotInferBinaryOperation{expr.op, name, CannotInferBinaryOperation::Comparison});
@@ -2930,8 +2929,8 @@ TypeId TypeChecker::checkRelationalOperation(
         else if (FFlag::LuauTryhardAnd)
         {
             // If lhs is free, we can't tell which 'falsy' components it has, if any
-            if (get<FreeTypeVar>(lhsType))
-                return unionOfTypes(addType(UnionTypeVar{{nilType, singletonType(false)}}), rhsType, scope, expr.location, false);
+            if (get<FreeType>(lhsType))
+                return unionOfTypes(addType(UnionType{{nilType, singletonType(false)}}), rhsType, scope, expr.location, false);
 
             auto [oty, notNever] = pickTypesFromSense(lhsType, false, neverType); // Filter out falsy types
 
@@ -2999,7 +2998,7 @@ TypeId TypeChecker::checkBinaryOperation(
     lhsType = follow(lhsType);
     rhsType = follow(rhsType);
 
-    if (!isNonstrictMode() && get<FreeTypeVar>(lhsType))
+    if (!isNonstrictMode() && get<FreeType>(lhsType))
     {
         auto name = getIdentifierOfBaseVar(expr.left);
         reportError(expr.location, CannotInferBinaryOperation{expr.op, name, CannotInferBinaryOperation::Operation});
@@ -3008,17 +3007,17 @@ TypeId TypeChecker::checkBinaryOperation(
 
     // If we know nothing at all about the lhs type, we can usually say nothing about the result.
     // The notable exception to this is the equality and inequality operators, which always produce a boolean.
-    const bool lhsIsAny = get<AnyTypeVar>(lhsType) || get<ErrorTypeVar>(lhsType) ||
-                          (FFlag::LuauUnknownAndNeverType && FFlag::LuauNeverTypesAndOperatorsInference && get<NeverTypeVar>(lhsType));
-    const bool rhsIsAny = get<AnyTypeVar>(rhsType) || get<ErrorTypeVar>(rhsType) ||
-                          (FFlag::LuauUnknownAndNeverType && FFlag::LuauNeverTypesAndOperatorsInference && get<NeverTypeVar>(rhsType));
+    const bool lhsIsAny = get<AnyType>(lhsType) || get<ErrorType>(lhsType) ||
+                          (FFlag::LuauUnknownAndNeverType && FFlag::LuauNeverTypesAndOperatorsInference && get<NeverType>(lhsType));
+    const bool rhsIsAny = get<AnyType>(rhsType) || get<ErrorType>(rhsType) ||
+                          (FFlag::LuauUnknownAndNeverType && FFlag::LuauNeverTypesAndOperatorsInference && get<NeverType>(rhsType));
 
     if (lhsIsAny)
         return lhsType;
     if (rhsIsAny)
         return rhsType;
 
-    if (get<FreeTypeVar>(lhsType))
+    if (get<FreeType>(lhsType))
     {
         // Inferring this accurately will get a bit weird.
         // If the lhs type is not known, it could be assumed that it is a table or class that has a metatable
@@ -3027,7 +3026,7 @@ TypeId TypeChecker::checkBinaryOperation(
         return anyType;
     }
 
-    if (get<FreeTypeVar>(rhsType))
+    if (get<FreeType>(rhsType))
         unify(rhsType, lhsType, scope, expr.location);
 
     if (typeCouldHaveMetatable(lhsType) || typeCouldHaveMetatable(rhsType))
@@ -3036,7 +3035,7 @@ TypeId TypeChecker::checkBinaryOperation(
             TypeId actualFunctionType = instantiate(scope, fnt, expr.location);
             TypePackId arguments = addTypePack({lhst, rhst});
             TypePackId retTypePack = freshTypePack(scope);
-            TypeId expectedFunctionType = addType(FunctionTypeVar(scope->level, arguments, retTypePack));
+            TypeId expectedFunctionType = addType(FunctionType(scope->level, arguments, retTypePack));
 
             Unifier state = mkUnifier(scope, expr.location);
             state.tryUnify(actualFunctionType, expectedFunctionType, /*isFunctionCall*/ true);
@@ -3049,7 +3048,7 @@ TypeId TypeChecker::checkBinaryOperation(
                 // If there are unification errors, the return type may still be unknown
                 // so we loosen the argument types to see if that helps.
                 TypePackId fallbackArguments = freshTypePack(scope);
-                TypeId fallbackFunctionType = addType(FunctionTypeVar(scope->level, fallbackArguments, retTypePack));
+                TypeId fallbackFunctionType = addType(FunctionType(scope->level, fallbackArguments, retTypePack));
                 state.errors.clear();
                 state.log.clear();
 
@@ -3088,8 +3087,8 @@ TypeId TypeChecker::checkBinaryOperation(
     switch (expr.op)
     {
     case AstExprBinary::Concat:
-        reportErrors(tryUnify(lhsType, addType(UnionTypeVar{{stringType, numberType}}), scope, expr.left->location));
-        reportErrors(tryUnify(rhsType, addType(UnionTypeVar{{stringType, numberType}}), scope, expr.right->location));
+        reportErrors(tryUnify(lhsType, addType(UnionType{{stringType, numberType}}), scope, expr.left->location));
+        reportErrors(tryUnify(rhsType, addType(UnionType{{stringType, numberType}}), scope, expr.right->location));
         return stringType;
     case AstExprBinary::Add:
     case AstExprBinary::Sub:
@@ -3215,7 +3214,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     std::vector<TypeId> types = reduceUnion({trueType.type, falseType.type});
     if (FFlag::LuauUnknownAndNeverType && types.empty())
         return {neverType};
-    return {types.size() == 1 ? types[0] : addType(UnionTypeVar{std::move(types)})};
+    return {types.size() == 1 ? types[0] : addType(UnionType{std::move(types)})};
 }
 
 WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprInterpString& expr)
@@ -3256,7 +3255,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprLocal
     if (std::optional<TypeId> ty = scope->lookup(expr.local))
     {
         ty = follow(*ty);
-        return get<NeverTypeVar>(*ty) ? unknownType : *ty;
+        return get<NeverType>(*ty) ? unknownType : *ty;
     }
 
     reportError(expr.location, UnknownSymbol{expr.local->name.value, UnknownSymbol::Binding});
@@ -3273,7 +3272,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprGloba
     if (it != moduleScope->bindings.end())
     {
         TypeId ty = follow(it->second.typeId);
-        return get<NeverTypeVar>(ty) ? unknownType : ty;
+        return get<NeverType>(ty) ? unknownType : ty;
     }
 
     TypeId result = freshType(scope);
@@ -3292,10 +3291,10 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
 {
     TypeId lhs = checkExpr(scope, *expr.expr).type;
 
-    if (get<ErrorTypeVar>(lhs) || get<AnyTypeVar>(lhs))
+    if (get<ErrorType>(lhs) || get<AnyType>(lhs))
         return lhs;
 
-    if (get<NeverTypeVar>(lhs))
+    if (get<NeverType>(lhs))
         return unknownType;
 
     tablify(lhs);
@@ -3304,7 +3303,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
 
     lhs = stripFromNilAndReport(lhs, expr.expr->location);
 
-    if (TableTypeVar* lhsTable = getMutableTableType(lhs))
+    if (TableType* lhsTable = getMutableTableType(lhs))
     {
         const auto& it = lhsTable->props.find(name);
         if (it != lhsTable->props.end())
@@ -3346,7 +3345,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
             return errorRecoveryType(scope);
         }
     }
-    else if (const ClassTypeVar* lhsClass = get<ClassTypeVar>(lhs))
+    else if (const ClassType* lhsClass = get<ClassType>(lhs))
     {
         const Property* prop = lookupClassProp(lhsClass, name);
         if (!prop)
@@ -3357,7 +3356,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
 
         return prop->type;
     }
-    else if (get<IntersectionTypeVar>(lhs))
+    else if (get<IntersectionType>(lhs))
     {
         if (std::optional<TypeId> ty = getIndexTypeFromType(scope, lhs, name, expr.location, /* addErrors= */ false))
             return *ty;
@@ -3386,17 +3385,17 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
     if (FFlag::LuauFollowInLvalueIndexCheck)
         exprType = follow(exprType);
 
-    if (get<AnyTypeVar>(exprType) || get<ErrorTypeVar>(exprType))
+    if (get<AnyType>(exprType) || get<ErrorType>(exprType))
         return exprType;
 
-    if (get<NeverTypeVar>(exprType))
+    if (get<NeverType>(exprType))
         return unknownType;
 
     AstExprConstantString* value = expr.index->as<AstExprConstantString>();
 
     if (value)
     {
-        if (const ClassTypeVar* exprClass = get<ClassTypeVar>(exprType))
+        if (const ClassType* exprClass = get<ClassType>(exprType))
         {
             const Property* prop = lookupClassProp(exprClass, value->value.data);
             if (!prop)
@@ -3409,7 +3408,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
     }
     else if (FFlag::LuauAllowIndexClassParameters)
     {
-        if (const ClassTypeVar* exprClass = get<ClassTypeVar>(exprType))
+        if (const ClassType* exprClass = get<ClassType>(exprType))
         {
             if (isNonstrictMode())
                 return unknownType;
@@ -3418,7 +3417,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
         }
     }
 
-    TableTypeVar* exprTable = getMutableTableType(exprType);
+    TableType* exprTable = getMutableTableType(exprType);
 
     if (!exprTable)
     {
@@ -3504,7 +3503,7 @@ TypeId TypeChecker::checkFunctionName(const ScopePtr& scope, AstExpr& funName, T
     else if (auto indexName = funName.as<AstExprIndexName>())
     {
         TypeId lhsType = checkExpr(scope, *indexName->expr).type;
-        TableTypeVar* ttv = getMutableTableType(lhsType);
+        TableType* ttv = getMutableTableType(lhsType);
 
         if (!ttv || ttv->state == TableState::Sealed)
         {
@@ -3549,22 +3548,22 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(const ScopePtr& 
 {
     ScopePtr funScope = childFunctionScope(scope, expr.location, subLevel);
 
-    const FunctionTypeVar* expectedFunctionType = nullptr;
+    const FunctionType* expectedFunctionType = nullptr;
 
     if (expectedType)
     {
         LUAU_ASSERT(!expr.self);
 
-        if (auto ftv = get<FunctionTypeVar>(follow(*expectedType)))
+        if (auto ftv = get<FunctionType>(follow(*expectedType)))
         {
             expectedFunctionType = ftv;
         }
-        else if (auto utv = get<UnionTypeVar>(follow(*expectedType)))
+        else if (auto utv = get<UnionType>(follow(*expectedType)))
         {
             // Look for function type in a union. Other types can be ignored since current expression is a function
             for (auto option : utv)
             {
-                if (auto ftv = get<FunctionTypeVar>(follow(option)))
+                if (auto ftv = get<FunctionType>(follow(option)))
                 {
                     if (!expectedFunctionType)
                     {
@@ -3677,7 +3676,7 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(const ScopePtr& 
             argType = resolveType(funScope, *local->annotation);
 
             // If the annotation type has an error, treat it as if there was no annotation
-            if (get<ErrorTypeVar>(follow(argType)))
+            if (get<ErrorType>(follow(argType)))
                 argType = anyIfNonstrict(freshType(funScope));
         }
         else
@@ -3741,9 +3740,9 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(const ScopePtr& 
     }
 
     TypeId funTy =
-        addType(FunctionTypeVar(funScope->level, std::move(genericTys), std::move(genericTps), argPack, retPack, std::move(defn), bool(expr.self)));
+        addType(FunctionType(funScope->level, std::move(genericTys), std::move(genericTps), argPack, retPack, std::move(defn), bool(expr.self)));
 
-    FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(funTy);
+    FunctionType* ftv = getMutable<FunctionType>(funTy);
 
     ftv->argNames.reserve(expr.args.size + (expr.self ? 1 : 0));
 
@@ -3760,7 +3759,7 @@ static bool allowsNoReturnValues(const TypePackId tp)
 {
     for (TypeId ty : tp)
     {
-        if (!get<ErrorTypeVar>(follow(ty)))
+        if (!get<ErrorType>(follow(ty)))
         {
             return false;
         }
@@ -3791,7 +3790,7 @@ void TypeChecker::checkFunctionBody(const ScopePtr& scope, TypeId ty, const AstE
     else
         LUAU_TIMETRACE_ARGUMENT("line", std::to_string(function.location.begin.line).c_str());
 
-    if (FunctionTypeVar* funTy = getMutable<FunctionTypeVar>(ty))
+    if (FunctionType* funTy = getMutable<FunctionType>(ty))
     {
         check(scope, *function.body);
 
@@ -3970,7 +3969,7 @@ void TypeChecker::checkArgumentList(const ScopePtr& scope, const AstExpr& funNam
                 if (isOptional(t))
                 {
                 } // ok
-                else if (state.log.getMutable<ErrorTypeVar>(t))
+                else if (state.log.getMutable<ErrorType>(t))
                 {
                 } // ok
                 else
@@ -4117,11 +4116,11 @@ WithPredicate<TypePackId> TypeChecker::checkExprPackHelper(const ScopePtr& scope
     }
 
     TypePackId retPack;
-    if (auto free = get<FreeTypeVar>(actualFunctionType))
+    if (auto free = get<FreeType>(actualFunctionType))
     {
         retPack = freshTypePack(free->level);
         TypePackId freshArgPack = freshTypePack(free->level);
-        asMutable(actualFunctionType)->ty.emplace<FunctionTypeVar>(free->level, freshArgPack, retPack);
+        asMutable(actualFunctionType)->ty.emplace<FunctionType>(free->level, freshArgPack, retPack);
     }
     else
         retPack = freshTypePack(scope->level);
@@ -4188,11 +4187,11 @@ WithPredicate<TypePackId> TypeChecker::checkExprPackHelper(const ScopePtr& scope
 
     reportOverloadResolutionError(scope, expr, retPack, argPack, argLocations, overloads, overloadsThatMatchArgCount, errors);
 
-    const FunctionTypeVar* overload = nullptr;
+    const FunctionType* overload = nullptr;
     if (!overloadsThatMatchArgCount.empty())
-        overload = get<FunctionTypeVar>(overloadsThatMatchArgCount[0]);
+        overload = get<FunctionType>(overloadsThatMatchArgCount[0]);
     if (!overload && !overloadsThatDont.empty())
-        overload = get<FunctionTypeVar>(overloadsThatDont[0]);
+        overload = get<FunctionType>(overloadsThatDont[0]);
     if (overload)
         return {errorRecoveryTypePack(overload->retTypes)};
 
@@ -4222,14 +4221,14 @@ std::vector<std::optional<TypeId>> TypeChecker::getExpectedTypesForCall(const st
                 if (FFlag::LuauUnknownAndNeverType && result.empty())
                     el = neverType;
                 else
-                    el = result.size() == 1 ? result[0] : addType(UnionTypeVar{std::move(result)});
+                    el = result.size() == 1 ? result[0] : addType(UnionType{std::move(result)});
             }
         }
     };
 
     for (const TypeId overload : overloads)
     {
-        if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(overload))
+        if (const FunctionType* ftv = get<FunctionType>(overload))
         {
             auto [argsHead, argsTail] = flatten(ftv->argTypes);
 
@@ -4265,26 +4264,26 @@ std::optional<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(const Sc
 
     fn = stripFromNilAndReport(fn, expr.func->location);
 
-    if (get<AnyTypeVar>(fn))
+    if (get<AnyType>(fn))
     {
         unify(anyTypePack, argPack, scope, expr.location);
         return {{anyTypePack}};
     }
 
-    if (get<ErrorTypeVar>(fn))
+    if (get<ErrorType>(fn))
     {
         return {{errorRecoveryTypePack(scope)}};
     }
 
-    if (get<NeverTypeVar>(fn))
+    if (get<NeverType>(fn))
         return {{uninhabitableTypePack}};
 
-    if (auto ftv = get<FreeTypeVar>(fn))
+    if (auto ftv = get<FreeType>(fn))
     {
         // fn is one of the overloads of actualFunctionType, which
         // has been instantiated, so is a monotype. We can therefore
         // unify it with a monomorphic function.
-        TypeId r = addType(FunctionTypeVar(scope->level, argPack, retPack));
+        TypeId r = addType(FunctionType(scope->level, argPack, retPack));
 
         UnifierOptions options;
         options.isFunctionCall = true;
@@ -4297,11 +4296,11 @@ std::optional<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(const Sc
 
     // Might be a callable table or class
     std::optional<TypeId> callTy = std::nullopt;
-    if (const MetatableTypeVar* mttv = get<MetatableTypeVar>(fn))
+    if (const MetatableType* mttv = get<MetatableType>(fn))
     {
         callTy = getIndexTypeFromType(scope, mttv->metatable, "__call", expr.func->location, /* addErrors= */ false);
     }
-    else if (const ClassTypeVar* ctv = get<ClassTypeVar>(fn); FFlag::LuauCallableClasses && ctv && ctv->metatable)
+    else if (const ClassType* ctv = get<ClassType>(fn); FFlag::LuauCallableClasses && ctv && ctv->metatable)
     {
         callTy = getIndexTypeFromType(scope, *ctv->metatable, "__call", expr.func->location, /* addErrors= */ false);
     }
@@ -4324,7 +4323,7 @@ std::optional<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(const Sc
         argLocations = &metaArgLocations;
     }
 
-    const FunctionTypeVar* ftv = get<FunctionTypeVar>(fn);
+    const FunctionType* ftv = get<FunctionType>(fn);
     if (!ftv)
     {
         reportError(TypeError{expr.func->location, CannotCallNonFunction{fn}});
@@ -4481,7 +4480,7 @@ void TypeChecker::reportOverloadResolutionError(const ScopePtr& scope, const Ast
         // Remove the overload we are reporting errors about, from the list of alternative
         overloadTypes.erase(std::remove(overloadTypes.begin(), overloadTypes.end(), overload), overloadTypes.end());
 
-        const FunctionTypeVar* ftv = get<FunctionTypeVar>(overload);
+        const FunctionType* ftv = get<FunctionType>(overload);
 
         auto error = std::find_if(errors.begin(), errors.end(), [ftv](const OverloadErrorEntry& e) {
             return ftv == std::get<2>(e);
@@ -4502,7 +4501,7 @@ void TypeChecker::reportOverloadResolutionError(const ScopePtr& scope, const Ast
         Unifier state = mkUnifier(scope, expr.location);
 
         // Unify return types
-        if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(overload))
+        if (const FunctionType* ftv = get<FunctionType>(overload))
         {
             checkArgumentList(scope, *expr.func, state, retPack, ftv->retTypes, {});
             checkArgumentList(scope, *expr.func, state, argPack, ftv->argTypes, argLocations);
@@ -4586,7 +4585,7 @@ WithPredicate<TypePackId> TypeChecker::checkExprList(const ScopePtr& scope, cons
             auto [type, exprPredicates] = checkExpr(scope, *expr, expectedType);
             insert(exprPredicates);
 
-            if (FFlag::LuauUnknownAndNeverType && get<NeverTypeVar>(type))
+            if (FFlag::LuauUnknownAndNeverType && get<NeverType>(type))
             {
                 // f(), g() where f() returns (never, string) or (string, never) means this whole TypePackId is uninhabitable, so return (never,
                 // ...never)
@@ -4705,8 +4704,8 @@ void TypeChecker::tablify(TypeId type)
 {
     type = follow(type);
 
-    if (auto f = get<FreeTypeVar>(type))
-        *asMutable(type) = TableTypeVar{TableState::Free, f->level};
+    if (auto f = get<FreeType>(type))
+        *asMutable(type) = TableType{TableState::Free, f->level};
 }
 
 TypeId TypeChecker::anyIfNonstrict(TypeId ty) const
@@ -4807,14 +4806,14 @@ TypeId TypeChecker::quantify(const ScopePtr& scope, TypeId ty, Location location
 
     if (FFlag::DebugLuauSharedSelf)
     {
-        if (auto ftv = get<FunctionTypeVar>(ty))
+        if (auto ftv = get<FunctionType>(ty))
             Luau::quantify(ty, scope->level);
         else if (auto ttv = getTableType(ty); ttv && ttv->selfTy)
             Luau::quantify(ty, scope->level);
     }
     else
     {
-        const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty);
+        const FunctionType* ftv = get<FunctionType>(ty);
 
         if (ftv)
             Luau::quantify(ty, scope->level);
@@ -4827,7 +4826,7 @@ TypeId TypeChecker::instantiate(const ScopePtr& scope, TypeId ty, Location locat
 {
     ty = follow(ty);
 
-    const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty);
+    const FunctionType* ftv = get<FunctionType>(ty);
     if (ftv && ftv->hasNoGenerics)
         return ty;
 
@@ -4848,7 +4847,7 @@ TypeId TypeChecker::instantiate(const ScopePtr& scope, TypeId ty, Location locat
 
 TypeId TypeChecker::anyify(const ScopePtr& scope, TypeId ty, Location location)
 {
-    Anyification anyification{&currentModule->internalTypes, scope, singletonTypes, iceHandler, anyType, anyTypePack};
+    Anyification anyification{&currentModule->internalTypes, scope, builtinTypes, iceHandler, anyType, anyTypePack};
     std::optional<TypeId> any = anyification.substitute(ty);
     if (anyification.normalizationTooComplex)
         reportError(location, NormalizationTooComplex{});
@@ -4863,7 +4862,7 @@ TypeId TypeChecker::anyify(const ScopePtr& scope, TypeId ty, Location location)
 
 TypePackId TypeChecker::anyify(const ScopePtr& scope, TypePackId ty, Location location)
 {
-    Anyification anyification{&currentModule->internalTypes, scope, singletonTypes, iceHandler, anyType, anyTypePack};
+    Anyification anyification{&currentModule->internalTypes, scope, builtinTypes, iceHandler, anyType, anyTypePack};
     std::optional<TypePackId> any = anyification.substitute(ty);
     if (any.has_value())
         return *any;
@@ -4881,7 +4880,7 @@ TypePackId TypeChecker::anyifyModuleReturnTypePackGenerics(TypePackId tp)
     if (const VariadicTypePack* vtp = get<VariadicTypePack>(tp))
     {
         TypeId ty = FFlag::LuauTypeInferMissingFollows ? follow(vtp->ty) : vtp->ty;
-        return get<GenericTypeVar>(ty) ? anyTypePack : tp;
+        return get<GenericType>(ty) ? anyTypePack : tp;
     }
 
     if (!get<TypePack>(follow(tp)))
@@ -4895,7 +4894,7 @@ TypePackId TypeChecker::anyifyModuleReturnTypePackGenerics(TypePackId tp)
     for (TypePackIterator e = end(tp); it != e; ++it)
     {
         TypeId ty = follow(*it);
-        resultTypes.push_back(get<GenericTypeVar>(ty) ? anyType : ty);
+        resultTypes.push_back(get<GenericType>(ty) ? anyType : ty);
     }
 
     if (std::optional<TypePackId> tail = it.tail())
@@ -4954,7 +4953,7 @@ void TypeChecker::diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& d
     std::string_view sv(utk->key);
     std::set<Name> candidates;
 
-    auto accumulate = [&](const TableTypeVar::Props& props) {
+    auto accumulate = [&](const TableType::Props& props) {
         for (const auto& [name, ty] : props)
         {
             if (sv != name && equalsLower(sv, name))
@@ -4964,7 +4963,7 @@ void TypeChecker::diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& d
 
     if (auto ttv = getTableType(utk->table))
         accumulate(ttv->props);
-    else if (auto ctv = get<ClassTypeVar>(follow(utk->table)))
+    else if (auto ctv = get<ClassType>(follow(utk->table)))
     {
         while (ctv)
         {
@@ -4973,7 +4972,7 @@ void TypeChecker::diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& d
             if (!ctv->parent)
                 break;
 
-            ctv = get<ClassTypeVar>(*ctv->parent);
+            ctv = get<ClassType>(*ctv->parent);
             LUAU_ASSERT(ctv);
         }
     }
@@ -5009,15 +5008,15 @@ ScopePtr TypeChecker::childScope(const ScopePtr& parent, const Location& locatio
 void TypeChecker::merge(RefinementMap& l, const RefinementMap& r)
 {
     Luau::merge(l, r, [this](TypeId a, TypeId b) {
-        // TODO: normalize(UnionTypeVar{{a, b}})
+        // TODO: normalize(UnionType{{a, b}})
         std::unordered_set<TypeId> set;
 
-        if (auto utv = get<UnionTypeVar>(follow(a)))
+        if (auto utv = get<UnionType>(follow(a)))
             set.insert(begin(utv), end(utv));
         else
             set.insert(a);
 
-        if (auto utv = get<UnionTypeVar>(follow(b)))
+        if (auto utv = get<UnionType>(follow(b)))
             set.insert(begin(utv), end(utv));
         else
             set.insert(b);
@@ -5025,7 +5024,7 @@ void TypeChecker::merge(RefinementMap& l, const RefinementMap& r)
         std::vector<TypeId> options(set.begin(), set.end());
         if (set.size() == 1)
             return options[0];
-        return addType(UnionTypeVar{std::move(options)});
+        return addType(UnionType{std::move(options)});
     });
 }
 
@@ -5041,53 +5040,53 @@ TypeId TypeChecker::freshType(const ScopePtr& scope)
 
 TypeId TypeChecker::freshType(TypeLevel level)
 {
-    return currentModule->internalTypes.addType(TypeVar(FreeTypeVar(level)));
+    return currentModule->internalTypes.addType(Type(FreeType(level)));
 }
 
 TypeId TypeChecker::singletonType(bool value)
 {
-    return value ? singletonTypes->trueType : singletonTypes->falseType;
+    return value ? builtinTypes->trueType : builtinTypes->falseType;
 }
 
 TypeId TypeChecker::singletonType(std::string value)
 {
     // TODO: cache singleton types
-    return currentModule->internalTypes.addType(TypeVar(SingletonTypeVar(StringSingleton{std::move(value)})));
+    return currentModule->internalTypes.addType(Type(SingletonType(StringSingleton{std::move(value)})));
 }
 
 TypeId TypeChecker::errorRecoveryType(const ScopePtr& scope)
 {
-    return singletonTypes->errorRecoveryType();
+    return builtinTypes->errorRecoveryType();
 }
 
 TypeId TypeChecker::errorRecoveryType(TypeId guess)
 {
-    return singletonTypes->errorRecoveryType(guess);
+    return builtinTypes->errorRecoveryType(guess);
 }
 
 TypePackId TypeChecker::errorRecoveryTypePack(const ScopePtr& scope)
 {
-    return singletonTypes->errorRecoveryTypePack();
+    return builtinTypes->errorRecoveryTypePack();
 }
 
 TypePackId TypeChecker::errorRecoveryTypePack(TypePackId guess)
 {
-    return singletonTypes->errorRecoveryTypePack(guess);
+    return builtinTypes->errorRecoveryTypePack(guess);
 }
 
 TypeIdPredicate TypeChecker::mkTruthyPredicate(bool sense, TypeId emptySetTy)
 {
     return [this, sense, emptySetTy](TypeId ty) -> std::optional<TypeId> {
         // any/error/free gets a special pass unconditionally because they can't be decided.
-        if (get<AnyTypeVar>(ty) || get<ErrorTypeVar>(ty) || get<FreeTypeVar>(ty))
+        if (get<AnyType>(ty) || get<ErrorType>(ty) || get<FreeType>(ty))
             return ty;
 
         // maps boolean primitive to the corresponding singleton equal to sense
-        if (isPrim(ty, PrimitiveTypeVar::Boolean))
+        if (isPrim(ty, PrimitiveType::Boolean))
             return singletonType(sense);
 
         // if we have boolean singleton, eliminate it if the sense doesn't match with that singleton
-        if (auto boolean = get<BooleanSingleton>(get<SingletonTypeVar>(ty)))
+        if (auto boolean = get<BooleanSingleton>(get<SingletonType>(ty)))
             return boolean->value == sense ? std::optional<TypeId>(ty) : std::nullopt;
 
         // if we have nil, eliminate it if sense is true, otherwise take it
@@ -5103,7 +5102,7 @@ std::optional<TypeId> TypeChecker::filterMapImpl(TypeId type, TypeIdPredicate pr
 {
     std::vector<TypeId> types = Luau::filterMap(type, predicate);
     if (!types.empty())
-        return types.size() == 1 ? types[0] : addType(UnionTypeVar{std::move(types)});
+        return types.size() == 1 ? types[0] : addType(UnionType{std::move(types)});
     return std::nullopt;
 }
 
@@ -5112,7 +5111,7 @@ std::pair<std::optional<TypeId>, bool> TypeChecker::filterMap(TypeId type, TypeI
     if (FFlag::LuauUnknownAndNeverType)
     {
         TypeId ty = filterMapImpl(type, predicate).value_or(neverType);
-        return {ty, !bool(get<NeverTypeVar>(ty))};
+        return {ty, !bool(get<NeverType>(ty))};
     }
     else
     {
@@ -5126,7 +5125,7 @@ std::pair<std::optional<TypeId>, bool> TypeChecker::pickTypesFromSense(TypeId ty
     return filterMap(type, mkTruthyPredicate(sense, emptySetTy));
 }
 
-TypeId TypeChecker::addTV(TypeVar&& tv)
+TypeId TypeChecker::addTV(Type&& tv)
 {
     return currentModule->internalTypes.addType(std::move(tv));
 }
@@ -5381,7 +5380,7 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
     }
     else if (const auto& table = annotation.as<AstTypeTable>())
     {
-        TableTypeVar::Props props;
+        TableType::Props props;
         std::optional<TableIndexer> tableIndexer;
 
         for (const auto& prop : table->props)
@@ -5390,7 +5389,7 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
         if (const auto& indexer = table->indexer)
             tableIndexer = TableIndexer(resolveType(scope, *indexer->indexType), resolveType(scope, *indexer->resultType));
 
-        TableTypeVar ttv{props, tableIndexer, scope->level, TableState::Sealed};
+        TableType ttv{props, tableIndexer, scope->level, TableState::Sealed};
         ttv.definitionModuleName = currentModuleName;
         return addType(std::move(ttv));
     }
@@ -5416,9 +5415,9 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
             return el.tp;
         });
 
-        TypeId fnType = addType(FunctionTypeVar{funcScope->level, std::move(genericTys), std::move(genericTps), argTypes, retTypes});
+        TypeId fnType = addType(FunctionType{funcScope->level, std::move(genericTys), std::move(genericTps), argTypes, retTypes});
 
-        FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(fnType);
+        FunctionType* ftv = getMutable<FunctionType>(fnType);
 
         ftv->argNames.reserve(func->argNames.size);
         for (const auto& el : func->argNames)
@@ -5442,7 +5441,7 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
         for (AstType* ann : un->types)
             types.push_back(resolveType(scope, *ann));
 
-        return addType(UnionTypeVar{types});
+        return addType(UnionType{types});
     }
     else if (const auto& un = annotation.as<AstTypeIntersection>())
     {
@@ -5450,7 +5449,7 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
         for (AstType* ann : un->types)
             types.push_back(resolveType(scope, *ann));
 
-        return addType(IntersectionTypeVar{types});
+        return addType(IntersectionType{types});
     }
     else if (const auto& tsb = annotation.as<AstTypeSingletonBool>())
     {
@@ -5566,7 +5565,7 @@ TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf,
     TypeId target = follow(instantiated);
     bool needsClone = follow(tf.type) == target;
     bool shouldMutate = getTableType(tf.type);
-    TableTypeVar* ttv = getMutableTableType(target);
+    TableType* ttv = getMutableTableType(target);
 
     if (shouldMutate && ttv && needsClone)
     {
@@ -5574,17 +5573,17 @@ TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf,
         // want to mutate its table, so we need to explicitly clone that table as
         // well. If we don't, we will mutate another module's type surface and cause
         // a use-after-free.
-        if (get<MetatableTypeVar>(target))
+        if (get<MetatableType>(target))
         {
             instantiated = applyTypeFunction.clone(tf.type);
-            MetatableTypeVar* mtv = getMutable<MetatableTypeVar>(instantiated);
+            MetatableType* mtv = getMutable<MetatableType>(instantiated);
             mtv->table = applyTypeFunction.clone(mtv->table);
-            ttv = getMutable<TableTypeVar>(mtv->table);
+            ttv = getMutable<TableType>(mtv->table);
         }
-        if (get<TableTypeVar>(target))
+        if (get<TableType>(target))
         {
             instantiated = applyTypeFunction.clone(tf.type);
-            ttv = getMutable<TableTypeVar>(instantiated);
+            ttv = getMutable<TableType>(instantiated);
         }
     }
 
@@ -5617,7 +5616,7 @@ GenericTypeDefinitions TypeChecker::createGenericTypes(const ScopePtr& scope, st
         Name n = generic.name.value;
 
         // These generics are the only thing that will ever be added to scope, so we can be certain that
-        // a collision can only occur when two generic typevars have the same name.
+        // a collision can only occur when two generic types have the same name.
         if (scope->privateTypeBindings.count(n) || scope->privateTypePackBindings.count(n))
         {
             // TODO(jhuelsman): report the exact span of the generic type parameter whose name is a duplicate.
@@ -5629,7 +5628,7 @@ GenericTypeDefinitions TypeChecker::createGenericTypes(const ScopePtr& scope, st
         {
             TypeId& cached = scope->parent->typeAliasTypeParameters[n];
             if (!cached)
-                cached = addType(GenericTypeVar{level, n});
+                cached = addType(GenericType{level, n});
             g = cached;
         }
         else
@@ -5653,7 +5652,7 @@ GenericTypeDefinitions TypeChecker::createGenericTypes(const ScopePtr& scope, st
         Name n = genericPack.name.value;
 
         // These generics are the only thing that will ever be added to scope, so we can be certain that
-        // a collision can only occur when two generic typevars have the same name.
+        // a collision can only occur when two generic types have the same name.
         if (scope->privateTypePackBindings.count(n) || scope->privateTypeBindings.count(n))
         {
             // TODO(jhuelsman): report the exact span of the generic type parameter whose name is a duplicate.
@@ -5685,7 +5684,7 @@ void TypeChecker::refineLValue(const LValue& lvalue, RefinementMap& refis, const
     if (auto base = baseof(lvalue))
     {
         std::optional<TypeId> baseTy = resolveLValue(scope, *base);
-        if (baseTy && get<UnionTypeVar>(follow(*baseTy)))
+        if (baseTy && get<UnionType>(follow(*baseTy)))
         {
             ty = baseTy;
             target = base;
@@ -5713,7 +5712,7 @@ void TypeChecker::refineLValue(const LValue& lvalue, RefinementMap& refis, const
     }
 
     // Otherwise, we'll want to walk each option of ty, get its index type, and filter that.
-    auto utv = get<UnionTypeVar>(follow(*ty));
+    auto utv = get<UnionType>(follow(*ty));
     LUAU_ASSERT(utv);
 
     std::unordered_set<TypeId> viableTargetOptions;
@@ -5733,7 +5732,7 @@ void TypeChecker::refineLValue(const LValue& lvalue, RefinementMap& refis, const
         auto [result, ok] = filterMap(*discriminantTy, predicate);
         if (FFlag::LuauUnknownAndNeverType)
         {
-            if (!get<NeverTypeVar>(*result))
+            if (!get<NeverType>(*result))
             {
                 viableTargetOptions.insert(option);
                 viableChildOptions.insert(*result);
@@ -5753,12 +5752,12 @@ void TypeChecker::refineLValue(const LValue& lvalue, RefinementMap& refis, const
         if (s.empty())
             return std::nullopt;
 
-        // TODO: allocate UnionTypeVar and just normalize.
+        // TODO: allocate UnionType and just normalize.
         std::vector<TypeId> options(s.begin(), s.end());
         if (options.size() == 1)
             return options[0];
 
-        return addType(UnionTypeVar{std::move(options)});
+        return addType(UnionType{std::move(options)});
     };
 
     if (std::optional<TypeId> viableTargetType = intoType(viableTargetOptions))
@@ -5852,7 +5851,7 @@ std::optional<TypeId> TypeChecker::resolveLValue(const RefinementMap& refis, con
 static bool isUndecidable(TypeId ty)
 {
     ty = follow(ty);
-    return get<AnyTypeVar>(ty) || get<ErrorTypeVar>(ty) || get<FreeTypeVar>(ty);
+    return get<AnyType>(ty) || get<ErrorType>(ty) || get<FreeType>(ty);
 }
 
 void TypeChecker::resolve(const PredicateVec& predicates, const ScopePtr& scope, bool sense)
@@ -5964,7 +5963,7 @@ void TypeChecker::resolve(const IsAPredicate& isaP, RefinementMap& refis, const 
             // So we can just return the right hand side immediately.
 
             // typeof(x) == "Instance" where x : any
-            auto ttv = get<TableTypeVar>(option);
+            auto ttv = get<TableType>(option);
             if (isUndecidable(option) || (ttv && ttv->state == TableState::Free))
                 return sense ? isaP.ty : option;
 
@@ -6001,7 +6000,7 @@ void TypeChecker::resolve(const TypeGuardPredicate& typeguardP, RefinementMap& r
 
     auto refine = [this, &lvalue = typeguardP.lvalue, &refis, &scope, sense](bool(f)(TypeId), std::optional<TypeId> mapsTo = std::nullopt) {
         TypeIdPredicate predicate = [f, mapsTo, sense](TypeId ty) -> std::optional<TypeId> {
-            if (FFlag::LuauUnknownAndNeverType && sense && get<UnknownTypeVar>(ty))
+            if (FFlag::LuauUnknownAndNeverType && sense && get<UnknownType>(ty))
                 return mapsTo.value_or(ty);
 
             if (f(ty) == sense)
@@ -6030,20 +6029,20 @@ void TypeChecker::resolve(const TypeGuardPredicate& typeguardP, RefinementMap& r
     else if (typeguardP.kind == "table")
     {
         return refine([](TypeId ty) -> bool {
-            return isTableIntersection(ty) || get<TableTypeVar>(ty) || get<MetatableTypeVar>(ty);
+            return isTableIntersection(ty) || get<TableType>(ty) || get<MetatableType>(ty);
         });
     }
     else if (typeguardP.kind == "function")
     {
         return refine([](TypeId ty) -> bool {
-            return isOverloadedFunction(ty) || get<FunctionTypeVar>(ty);
+            return isOverloadedFunction(ty) || get<FunctionType>(ty);
         });
     }
     else if (typeguardP.kind == "userdata")
     {
         // For now, we don't really care about being accurate with userdata if the typeguard was using typeof.
         return refine([](TypeId ty) -> bool {
-            return get<ClassTypeVar>(ty);
+            return get<ClassType>(ty);
         });
     }
 
@@ -6056,8 +6055,18 @@ void TypeChecker::resolve(const TypeGuardPredicate& typeguardP, RefinementMap& r
 
     TypeId type = follow(typeFun->type);
 
+    // You cannot refine to the top class type.
+    if (FFlag::LuauNegatedClassTypes)
+    {
+        if (type == builtinTypes->classType)
+        {
+            return addRefinement(refis, typeguardP.lvalue, errorRecoveryType(scope));
+        }
+    }
+
     // We're only interested in the root class of any classes.
-    if (auto ctv = get<ClassTypeVar>(type); !ctv || ctv->parent)
+    if (auto ctv = get<ClassType>(type);
+        !ctv || (FFlag::LuauNegatedClassTypes ? (ctv->parent != builtinTypes->classType) : (ctv->parent != std::nullopt)))
         return addRefinement(refis, typeguardP.lvalue, errorRecoveryType(scope));
 
     // This probably hints at breaking out type filtering functions from the predicate solver so that typeof is not tightly coupled with IsA.
@@ -6069,7 +6078,7 @@ void TypeChecker::resolve(const EqPredicate& eqP, RefinementMap& refis, const Sc
 {
     // This refinement will require success typing to do everything correctly. For now, we can get most of the way there.
     auto options = [](TypeId ty) -> std::vector<TypeId> {
-        if (auto utv = get<UnionTypeVar>(follow(ty)))
+        if (auto utv = get<UnionType>(follow(ty)))
             return std::vector<TypeId>(begin(utv), end(utv));
         return {ty};
     };
@@ -6120,7 +6129,7 @@ void TypeChecker::resolve(const EqPredicate& eqP, RefinementMap& refis, const Sc
                 }
                 else
                 {
-                    bool isOptionSingleton = get<SingletonTypeVar>(option);
+                    bool isOptionSingleton = get<SingletonType>(option);
                     if (!isOptionSingleton)
                         return option;
                     else if (optionIsSubtype && targetIsSubtype)

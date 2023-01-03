@@ -5,8 +5,8 @@
 #include "Luau/Scope.h"
 #include "Luau/Substitution.h"
 #include "Luau/TxnLog.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "Luau/Type.h"
+#include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(DebugLuauSharedSelf)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
@@ -15,7 +15,7 @@ LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 namespace Luau
 {
 
-struct Quantifier final : TypeVarOnceVisitor
+struct Quantifier final : TypeOnceVisitor
 {
     TypeLevel level;
     std::vector<TypeId> generics;
@@ -43,24 +43,24 @@ struct Quantifier final : TypeVarOnceVisitor
         return false;
     }
 
-    bool visit(TypeId ty, const FreeTypeVar& ftv) override
+    bool visit(TypeId ty, const FreeType& ftv) override
     {
         seenMutableType = true;
 
         if (!level.subsumes(ftv.level))
             return false;
 
-        *asMutable(ty) = GenericTypeVar{level};
+        *asMutable(ty) = GenericType{level};
 
         generics.push_back(ty);
 
         return false;
     }
 
-    bool visit(TypeId ty, const TableTypeVar&) override
+    bool visit(TypeId ty, const TableType&) override
     {
-        LUAU_ASSERT(getMutable<TableTypeVar>(ty));
-        TableTypeVar& ttv = *getMutable<TableTypeVar>(ty);
+        LUAU_ASSERT(getMutable<TableType>(ty));
+        TableType& ttv = *getMutable<TableType>(ty);
 
         if (ttv.state == TableState::Generic)
             seenGenericType = true;
@@ -117,7 +117,7 @@ void quantify(TypeId ty, TypeLevel level)
 
             for (const auto& [_, prop] : ttv->props)
             {
-                auto ftv = getMutable<FunctionTypeVar>(follow(prop.type));
+                auto ftv = getMutable<FunctionType>(follow(prop.type));
                 if (!ftv || !ftv->hasSelf)
                     continue;
 
@@ -128,7 +128,7 @@ void quantify(TypeId ty, TypeLevel level)
                 }
             }
         }
-        else if (auto ftv = getMutable<FunctionTypeVar>(ty))
+        else if (auto ftv = getMutable<FunctionType>(ty))
         {
             Quantifier q{level};
             q.traverse(ty);
@@ -145,7 +145,7 @@ void quantify(TypeId ty, TypeLevel level)
         Quantifier q{level};
         q.traverse(ty);
 
-        FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty);
+        FunctionType* ftv = getMutable<FunctionType>(ty);
         LUAU_ASSERT(ftv);
         ftv->generics.insert(ftv->generics.end(), q.generics.begin(), q.generics.end());
         ftv->genericPacks.insert(ftv->genericPacks.end(), q.genericPacks.begin(), q.genericPacks.end());
@@ -168,11 +168,11 @@ struct PureQuantifier : Substitution
     {
         LUAU_ASSERT(ty == follow(ty));
 
-        if (auto ftv = get<FreeTypeVar>(ty))
+        if (auto ftv = get<FreeType>(ty))
         {
             return subsumes(scope, ftv->scope);
         }
-        else if (auto ttv = get<TableTypeVar>(ty))
+        else if (auto ttv = get<TableType>(ty))
         {
             return ttv->state == TableState::Free && subsumes(scope, ttv->scope);
         }
@@ -192,16 +192,16 @@ struct PureQuantifier : Substitution
 
     TypeId clean(TypeId ty) override
     {
-        if (auto ftv = get<FreeTypeVar>(ty))
+        if (auto ftv = get<FreeType>(ty))
         {
-            TypeId result = arena->addType(GenericTypeVar{scope});
+            TypeId result = arena->addType(GenericType{scope});
             insertedGenerics.push_back(result);
             return result;
         }
-        else if (auto ttv = get<TableTypeVar>(ty))
+        else if (auto ttv = get<TableType>(ty))
         {
-            TypeId result = arena->addType(TableTypeVar{});
-            TableTypeVar* resultTable = getMutable<TableTypeVar>(result);
+            TypeId result = arena->addType(TableType{});
+            TableType* resultTable = getMutable<TableType>(result);
             LUAU_ASSERT(resultTable);
 
             *resultTable = *ttv;
@@ -229,7 +229,7 @@ struct PureQuantifier : Substitution
 
     bool ignoreChildren(TypeId ty) override
     {
-        if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassTypeVar>(ty))
+        if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassType>(ty))
             return true;
 
         return ty->persistent;
@@ -246,7 +246,7 @@ TypeId quantify(TypeArena* arena, TypeId ty, Scope* scope)
     std::optional<TypeId> result = quantifier.substitute(ty);
     LUAU_ASSERT(result);
 
-    FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(*result);
+    FunctionType* ftv = getMutable<FunctionType>(*result);
     LUAU_ASSERT(ftv);
     ftv->scope = scope;
     ftv->generics.insert(ftv->generics.end(), quantifier.insertedGenerics.begin(), quantifier.insertedGenerics.end());

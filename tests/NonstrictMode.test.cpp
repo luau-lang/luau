@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 
 #include "Fixture.h"
 
@@ -23,7 +23,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_nullary_function")
     TypeId fooType = requireType("foo");
     REQUIRE(fooType);
 
-    const FunctionTypeVar* ftv = get<FunctionTypeVar>(fooType);
+    const FunctionType* ftv = get<FunctionType>(fooType);
     REQUIRE_MESSAGE(ftv != nullptr, "Expected a function, got " << toString(fooType));
 
     auto args = flatten(ftv->argTypes).first;
@@ -165,7 +165,7 @@ TEST_CASE_FIXTURE(Fixture, "table_props_are_any")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    TableTypeVar* ttv = getMutable<TableTypeVar>(requireType("T"));
+    TableType* ttv = getMutable<TableType>(requireType("T"));
 
     REQUIRE(ttv != nullptr);
 
@@ -189,12 +189,12 @@ TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    TableTypeVar* ttv = getMutable<TableTypeVar>(requireType("T"));
+    TableType* ttv = getMutable<TableType>(requireType("T"));
     REQUIRE_MESSAGE(ttv, "Should be a table: " << toString(requireType("T")));
 
     CHECK_EQ(*typeChecker.anyType, *ttv->props["one"].type);
     CHECK_EQ(*typeChecker.anyType, *ttv->props["two"].type);
-    CHECK_MESSAGE(get<FunctionTypeVar>(ttv->props["three"].type), "Should be a function: " << *ttv->props["three"].type);
+    CHECK_MESSAGE(get<FunctionType>(ttv->props["three"].type), "Should be a function: " << *ttv->props["three"].type);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_variables_are_any")

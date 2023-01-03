@@ -4,7 +4,7 @@
 #include "Luau/Module.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 #include "Luau/ToString.h"
 
 #include "Luau/Common.h"
@@ -447,7 +447,7 @@ static std::optional<DocumentationSymbol> checkOverloadedDocumentationSymbol(
         return std::nullopt;
 
     // This might be an overloaded function.
-    if (get<IntersectionTypeVar>(follow(ty)))
+    if (get<IntersectionType>(follow(ty)))
     {
         TypeId matchingOverload = nullptr;
         if (parentExpr && parentExpr->is<AstExprCall>())
@@ -487,12 +487,12 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
             if (auto it = module.astTypes.find(indexName->expr))
             {
                 TypeId parentTy = follow(*it);
-                if (const TableTypeVar* ttv = get<TableTypeVar>(parentTy))
+                if (const TableType* ttv = get<TableType>(parentTy))
                 {
                     if (auto propIt = ttv->props.find(indexName->index.value); propIt != ttv->props.end())
                         return checkOverloadedDocumentationSymbol(module, propIt->second.type, parentExpr, propIt->second.documentationSymbol);
                 }
-                else if (const ClassTypeVar* ctv = get<ClassTypeVar>(parentTy))
+                else if (const ClassType* ctv = get<ClassType>(parentTy))
                 {
                     if (auto propIt = ctv->props.find(indexName->index.value); propIt != ctv->props.end())
                         return checkOverloadedDocumentationSymbol(module, propIt->second.type, parentExpr, propIt->second.documentationSymbol);

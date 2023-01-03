@@ -3,7 +3,7 @@
 
 #include "Luau/ToString.h"
 #include "Luau/TypePack.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 #include "Luau/StringUtils.h"
 
 #include <unordered_map>
@@ -49,10 +49,10 @@ struct StateDot
 
 bool StateDot::canDuplicatePrimitive(TypeId ty)
 {
-    if (get<BoundTypeVar>(ty))
+    if (get<BoundType>(ty))
         return false;
 
-    return get<PrimitiveTypeVar>(ty) || get<AnyTypeVar>(ty);
+    return get<PrimitiveType>(ty) || get<AnyType>(ty);
 }
 
 void StateDot::visitChild(TypeId ty, int parentIndex, const char* linkName)
@@ -72,9 +72,9 @@ void StateDot::visitChild(TypeId ty, int parentIndex, const char* linkName)
 
     if (opts.duplicatePrimitives && canDuplicatePrimitive(ty))
     {
-        if (get<PrimitiveTypeVar>(ty))
+        if (get<PrimitiveType>(ty))
             formatAppend(result, "n%d [label=\"%s\"];\n", index, toString(ty).c_str());
-        else if (get<AnyTypeVar>(ty))
+        else if (get<AnyType>(ty))
             formatAppend(result, "n%d [label=\"any\"];\n", index);
     }
     else
@@ -139,31 +139,31 @@ void StateDot::visitChildren(TypeId ty, int index)
     startNode(index);
     startNodeLabel();
 
-    if (const BoundTypeVar* btv = get<BoundTypeVar>(ty))
+    if (const BoundType* btv = get<BoundType>(ty))
     {
-        formatAppend(result, "BoundTypeVar %d", index);
+        formatAppend(result, "BoundType %d", index);
         finishNodeLabel(ty);
         finishNode();
 
         visitChild(btv->boundTo, index);
     }
-    else if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
+    else if (const FunctionType* ftv = get<FunctionType>(ty))
     {
-        formatAppend(result, "FunctionTypeVar %d", index);
+        formatAppend(result, "FunctionType %d", index);
         finishNodeLabel(ty);
         finishNode();
 
         visitChild(ftv->argTypes, index, "arg");
         visitChild(ftv->retTypes, index, "ret");
     }
-    else if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
+    else if (const TableType* ttv = get<TableType>(ty))
     {
         if (ttv->name)
-            formatAppend(result, "TableTypeVar %s", ttv->name->c_str());
+            formatAppend(result, "TableType %s", ttv->name->c_str());
         else if (ttv->syntheticName)
-            formatAppend(result, "TableTypeVar %s", ttv->syntheticName->c_str());
+            formatAppend(result, "TableType %s", ttv->syntheticName->c_str());
         else
-            formatAppend(result, "TableTypeVar %d", index);
+            formatAppend(result, "TableType %d", index);
         finishNodeLabel(ty);
         finishNode();
 
@@ -183,69 +183,69 @@ void StateDot::visitChildren(TypeId ty, int index)
         for (TypePackId itp : ttv->instantiatedTypePackParams)
             visitChild(itp, index, "typePackParam");
     }
-    else if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
+    else if (const MetatableType* mtv = get<MetatableType>(ty))
     {
-        formatAppend(result, "MetatableTypeVar %d", index);
+        formatAppend(result, "MetatableType %d", index);
         finishNodeLabel(ty);
         finishNode();
 
         visitChild(mtv->table, index, "table");
         visitChild(mtv->metatable, index, "metatable");
     }
-    else if (const UnionTypeVar* utv = get<UnionTypeVar>(ty))
+    else if (const UnionType* utv = get<UnionType>(ty))
     {
-        formatAppend(result, "UnionTypeVar %d", index);
+        formatAppend(result, "UnionType %d", index);
         finishNodeLabel(ty);
         finishNode();
 
         for (TypeId opt : utv->options)
             visitChild(opt, index);
     }
-    else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(ty))
+    else if (const IntersectionType* itv = get<IntersectionType>(ty))
     {
-        formatAppend(result, "IntersectionTypeVar %d", index);
+        formatAppend(result, "IntersectionType %d", index);
         finishNodeLabel(ty);
         finishNode();
 
         for (TypeId part : itv->parts)
             visitChild(part, index);
     }
-    else if (const GenericTypeVar* gtv = get<GenericTypeVar>(ty))
+    else if (const GenericType* gtv = get<GenericType>(ty))
     {
         if (gtv->explicitName)
-            formatAppend(result, "GenericTypeVar %s", gtv->name.c_str());
+            formatAppend(result, "GenericType %s", gtv->name.c_str());
         else
-            formatAppend(result, "GenericTypeVar %d", index);
+            formatAppend(result, "GenericType %d", index);
         finishNodeLabel(ty);
         finishNode();
     }
-    else if (const FreeTypeVar* ftv = get<FreeTypeVar>(ty))
+    else if (const FreeType* ftv = get<FreeType>(ty))
     {
-        formatAppend(result, "FreeTypeVar %d", index);
+        formatAppend(result, "FreeType %d", index);
         finishNodeLabel(ty);
         finishNode();
     }
-    else if (get<AnyTypeVar>(ty))
+    else if (get<AnyType>(ty))
     {
-        formatAppend(result, "AnyTypeVar %d", index);
+        formatAppend(result, "AnyType %d", index);
         finishNodeLabel(ty);
         finishNode();
     }
-    else if (get<PrimitiveTypeVar>(ty))
+    else if (get<PrimitiveType>(ty))
     {
-        formatAppend(result, "PrimitiveTypeVar %s", toString(ty).c_str());
+        formatAppend(result, "PrimitiveType %s", toString(ty).c_str());
         finishNodeLabel(ty);
         finishNode();
     }
-    else if (get<ErrorTypeVar>(ty))
+    else if (get<ErrorType>(ty))
     {
-        formatAppend(result, "ErrorTypeVar %d", index);
+        formatAppend(result, "ErrorType %d", index);
         finishNodeLabel(ty);
         finishNode();
     }
-    else if (const ClassTypeVar* ctv = get<ClassTypeVar>(ty))
+    else if (const ClassType* ctv = get<ClassType>(ty))
     {
-        formatAppend(result, "ClassTypeVar %s", ctv->name.c_str());
+        formatAppend(result, "ClassType %s", ctv->name.c_str());
         finishNodeLabel(ty);
         finishNode();
 
@@ -258,7 +258,7 @@ void StateDot::visitChildren(TypeId ty, int index)
         if (ctv->metatable)
             visitChild(*ctv->metatable, index, "[metatable]");
     }
-    else if (const SingletonTypeVar* stv = get<SingletonTypeVar>(ty))
+    else if (const SingletonType* stv = get<SingletonType>(ty))
     {
         std::string res;
 
@@ -276,7 +276,7 @@ void StateDot::visitChildren(TypeId ty, int index)
         else
             LUAU_ASSERT(!"unknown singleton type");
 
-        formatAppend(result, "SingletonTypeVar %s", res.c_str());
+        formatAppend(result, "SingletonType %s", res.c_str());
         finishNodeLabel(ty);
         finishNode();
     }

@@ -4,8 +4,8 @@
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "Luau/Type.h"
+#include "Luau/VisitType.h"
 
 #include "Fixture.h"
 

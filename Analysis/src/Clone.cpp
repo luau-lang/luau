@@ -48,21 +48,21 @@ struct TypeCloner
     void operator()(const Unifiable::Generic& t);
     void operator()(const Unifiable::Bound<TypeId>& t);
     void operator()(const Unifiable::Error& t);
-    void operator()(const BlockedTypeVar& t);
-    void operator()(const PendingExpansionTypeVar& t);
-    void operator()(const PrimitiveTypeVar& t);
-    void operator()(const SingletonTypeVar& t);
-    void operator()(const FunctionTypeVar& t);
-    void operator()(const TableTypeVar& t);
-    void operator()(const MetatableTypeVar& t);
-    void operator()(const ClassTypeVar& t);
-    void operator()(const AnyTypeVar& t);
-    void operator()(const UnionTypeVar& t);
-    void operator()(const IntersectionTypeVar& t);
-    void operator()(const LazyTypeVar& t);
-    void operator()(const UnknownTypeVar& t);
-    void operator()(const NeverTypeVar& t);
-    void operator()(const NegationTypeVar& t);
+    void operator()(const BlockedType& t);
+    void operator()(const PendingExpansionType& t);
+    void operator()(const PrimitiveType& t);
+    void operator()(const SingletonType& t);
+    void operator()(const FunctionType& t);
+    void operator()(const TableType& t);
+    void operator()(const MetatableType& t);
+    void operator()(const ClassType& t);
+    void operator()(const AnyType& t);
+    void operator()(const UnionType& t);
+    void operator()(const IntersectionType& t);
+    void operator()(const LazyType& t);
+    void operator()(const UnknownType& t);
+    void operator()(const NeverType& t);
+    void operator()(const NegationType& t);
 };
 
 struct TypePackCloner
@@ -107,7 +107,7 @@ struct TypePackCloner
         defaultClone(t);
     }
 
-    // While we are a-cloning, we can flatten out bound TypeVars and make things a bit tighter.
+    // While we are a-cloning, we can flatten out bound Types and make things a bit tighter.
     // We just need to be sure that we rewrite pointers both to the binder and the bindee to the same pointer.
     void operator()(const Unifiable::Bound<TypePackId>& t)
     {
@@ -159,7 +159,7 @@ void TypeCloner::operator()(const Unifiable::Bound<TypeId>& t)
 {
     TypeId boundTo = clone(t.boundTo, dest, cloneState);
     if (FFlag::DebugLuauCopyBeforeNormalizing)
-        boundTo = dest.addType(BoundTypeVar{boundTo});
+        boundTo = dest.addType(BoundType{boundTo});
     seenTypes[typeId] = boundTo;
 }
 
@@ -168,15 +168,15 @@ void TypeCloner::operator()(const Unifiable::Error& t)
     defaultClone(t);
 }
 
-void TypeCloner::operator()(const BlockedTypeVar& t)
+void TypeCloner::operator()(const BlockedType& t)
 {
     defaultClone(t);
 }
 
-void TypeCloner::operator()(const PendingExpansionTypeVar& t)
+void TypeCloner::operator()(const PendingExpansionType& t)
 {
-    TypeId res = dest.addType(PendingExpansionTypeVar{t.prefix, t.name, t.typeArguments, t.packArguments});
-    PendingExpansionTypeVar* petv = getMutable<PendingExpansionTypeVar>(res);
+    TypeId res = dest.addType(PendingExpansionType{t.prefix, t.name, t.typeArguments, t.packArguments});
+    PendingExpansionType* petv = getMutable<PendingExpansionType>(res);
     LUAU_ASSERT(petv);
 
     seenTypes[typeId] = res;
@@ -193,23 +193,23 @@ void TypeCloner::operator()(const PendingExpansionTypeVar& t)
     petv->packArguments = std::move(packArguments);
 }
 
-void TypeCloner::operator()(const PrimitiveTypeVar& t)
+void TypeCloner::operator()(const PrimitiveType& t)
 {
     defaultClone(t);
 }
 
-void TypeCloner::operator()(const SingletonTypeVar& t)
+void TypeCloner::operator()(const SingletonType& t)
 {
     defaultClone(t);
 }
 
-void TypeCloner::operator()(const FunctionTypeVar& t)
+void TypeCloner::operator()(const FunctionType& t)
 {
     // FISHY: We always erase the scope when we clone things.  clone() was
     // originally written so that we could copy a module's type surface into an
     // export arena.  This probably dates to that.
-    TypeId result = dest.addType(FunctionTypeVar{TypeLevel{0, 0}, {}, {}, nullptr, nullptr, t.definition, t.hasSelf});
-    FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(result);
+    TypeId result = dest.addType(FunctionType{TypeLevel{0, 0}, {}, {}, nullptr, nullptr, t.definition, t.hasSelf});
+    FunctionType* ftv = getMutable<FunctionType>(result);
     LUAU_ASSERT(ftv != nullptr);
 
     seenTypes[typeId] = result;
@@ -227,7 +227,7 @@ void TypeCloner::operator()(const FunctionTypeVar& t)
     ftv->hasNoGenerics = t.hasNoGenerics;
 }
 
-void TypeCloner::operator()(const TableTypeVar& t)
+void TypeCloner::operator()(const TableType& t)
 {
     // If table is now bound to another one, we ignore the content of the original
     if (!FFlag::DebugLuauCopyBeforeNormalizing && t.boundTo)
@@ -237,8 +237,8 @@ void TypeCloner::operator()(const TableTypeVar& t)
         return;
     }
 
-    TypeId result = dest.addType(TableTypeVar{});
-    TableTypeVar* ttv = getMutable<TableTypeVar>(result);
+    TypeId result = dest.addType(TableType{});
+    TableType* ttv = getMutable<TableType>(result);
     LUAU_ASSERT(ttv != nullptr);
 
     *ttv = t;
@@ -266,20 +266,20 @@ void TypeCloner::operator()(const TableTypeVar& t)
     ttv->tags = t.tags;
 }
 
-void TypeCloner::operator()(const MetatableTypeVar& t)
+void TypeCloner::operator()(const MetatableType& t)
 {
-    TypeId result = dest.addType(MetatableTypeVar{});
-    MetatableTypeVar* mtv = getMutable<MetatableTypeVar>(result);
+    TypeId result = dest.addType(MetatableType{});
+    MetatableType* mtv = getMutable<MetatableType>(result);
     seenTypes[typeId] = result;
 
     mtv->table = clone(t.table, dest, cloneState);
     mtv->metatable = clone(t.metatable, dest, cloneState);
 }
 
-void TypeCloner::operator()(const ClassTypeVar& t)
+void TypeCloner::operator()(const ClassType& t)
 {
-    TypeId result = dest.addType(ClassTypeVar{t.name, {}, std::nullopt, std::nullopt, t.tags, t.userData, t.definitionModuleName});
-    ClassTypeVar* ctv = getMutable<ClassTypeVar>(result);
+    TypeId result = dest.addType(ClassType{t.name, {}, std::nullopt, std::nullopt, t.tags, t.userData, t.definitionModuleName});
+    ClassType* ctv = getMutable<ClassType>(result);
 
     seenTypes[typeId] = result;
 
@@ -293,12 +293,12 @@ void TypeCloner::operator()(const ClassTypeVar& t)
         ctv->metatable = clone(*t.metatable, dest, cloneState);
 }
 
-void TypeCloner::operator()(const AnyTypeVar& t)
+void TypeCloner::operator()(const AnyType& t)
 {
     defaultClone(t);
 }
 
-void TypeCloner::operator()(const UnionTypeVar& t)
+void TypeCloner::operator()(const UnionType& t)
 {
     std::vector<TypeId> options;
     options.reserve(t.options.size());
@@ -306,44 +306,44 @@ void TypeCloner::operator()(const UnionTypeVar& t)
     for (TypeId ty : t.options)
         options.push_back(clone(ty, dest, cloneState));
 
-    TypeId result = dest.addType(UnionTypeVar{std::move(options)});
+    TypeId result = dest.addType(UnionType{std::move(options)});
     seenTypes[typeId] = result;
 }
 
-void TypeCloner::operator()(const IntersectionTypeVar& t)
+void TypeCloner::operator()(const IntersectionType& t)
 {
-    TypeId result = dest.addType(IntersectionTypeVar{});
+    TypeId result = dest.addType(IntersectionType{});
     seenTypes[typeId] = result;
 
-    IntersectionTypeVar* option = getMutable<IntersectionTypeVar>(result);
+    IntersectionType* option = getMutable<IntersectionType>(result);
     LUAU_ASSERT(option != nullptr);
 
     for (TypeId ty : t.parts)
         option->parts.push_back(clone(ty, dest, cloneState));
 }
 
-void TypeCloner::operator()(const LazyTypeVar& t)
+void TypeCloner::operator()(const LazyType& t)
 {
     defaultClone(t);
 }
 
-void TypeCloner::operator()(const UnknownTypeVar& t)
+void TypeCloner::operator()(const UnknownType& t)
 {
     defaultClone(t);
 }
 
-void TypeCloner::operator()(const NeverTypeVar& t)
+void TypeCloner::operator()(const NeverType& t)
 {
     defaultClone(t);
 }
 
-void TypeCloner::operator()(const NegationTypeVar& t)
+void TypeCloner::operator()(const NegationType& t)
 {
-    TypeId result = dest.addType(AnyTypeVar{});
+    TypeId result = dest.addType(AnyType{});
     seenTypes[typeId] = result;
 
     TypeId ty = clone(t.ty, dest, cloneState);
-    asMutable(result)->ty = NegationTypeVar{ty};
+    asMutable(result)->ty = NegationType{ty};
 }
 
 } // anonymous namespace
@@ -430,9 +430,9 @@ TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysCl
     if (auto pty = log->pending(ty))
         ty = &pty->pending;
 
-    if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
+    if (const FunctionType* ftv = get<FunctionType>(ty))
     {
-        FunctionTypeVar clone = FunctionTypeVar{ftv->level, ftv->scope, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
+        FunctionType clone = FunctionType{ftv->level, ftv->scope, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
         clone.generics = ftv->generics;
         clone.genericPacks = ftv->genericPacks;
         clone.magicFunction = ftv->magicFunction;
@@ -441,10 +441,10 @@ TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysCl
         clone.argNames = ftv->argNames;
         result = dest.addType(std::move(clone));
     }
-    else if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
+    else if (const TableType* ttv = get<TableType>(ty))
     {
         LUAU_ASSERT(!ttv->boundTo);
-        TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, ttv->scope, ttv->state};
+        TableType clone = TableType{ttv->props, ttv->indexer, ttv->level, ttv->scope, ttv->state};
         clone.definitionModuleName = ttv->definitionModuleName;
         clone.name = ttv->name;
         clone.syntheticName = ttv->syntheticName;
@@ -453,41 +453,41 @@ TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysCl
         clone.tags = ttv->tags;
         result = dest.addType(std::move(clone));
     }
-    else if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
+    else if (const MetatableType* mtv = get<MetatableType>(ty))
     {
-        MetatableTypeVar clone = MetatableTypeVar{mtv->table, mtv->metatable};
+        MetatableType clone = MetatableType{mtv->table, mtv->metatable};
         clone.syntheticName = mtv->syntheticName;
         result = dest.addType(std::move(clone));
     }
-    else if (const UnionTypeVar* utv = get<UnionTypeVar>(ty))
+    else if (const UnionType* utv = get<UnionType>(ty))
     {
-        UnionTypeVar clone;
+        UnionType clone;
         clone.options = utv->options;
         result = dest.addType(std::move(clone));
     }
-    else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(ty))
+    else if (const IntersectionType* itv = get<IntersectionType>(ty))
     {
-        IntersectionTypeVar clone;
+        IntersectionType clone;
         clone.parts = itv->parts;
         result = dest.addType(std::move(clone));
     }
-    else if (const PendingExpansionTypeVar* petv = get<PendingExpansionTypeVar>(ty))
+    else if (const PendingExpansionType* petv = get<PendingExpansionType>(ty))
     {
-        PendingExpansionTypeVar clone{petv->prefix, petv->name, petv->typeArguments, petv->packArguments};
+        PendingExpansionType clone{petv->prefix, petv->name, petv->typeArguments, petv->packArguments};
         result = dest.addType(std::move(clone));
     }
-    else if (const ClassTypeVar* ctv = get<ClassTypeVar>(ty); FFlag::LuauClonePublicInterfaceLess && ctv && alwaysClone)
+    else if (const ClassType* ctv = get<ClassType>(ty); FFlag::LuauClonePublicInterfaceLess && ctv && alwaysClone)
     {
-        ClassTypeVar clone{ctv->name, ctv->props, ctv->parent, ctv->metatable, ctv->tags, ctv->userData, ctv->definitionModuleName};
+        ClassType clone{ctv->name, ctv->props, ctv->parent, ctv->metatable, ctv->tags, ctv->userData, ctv->definitionModuleName};
         result = dest.addType(std::move(clone));
     }
     else if (FFlag::LuauClonePublicInterfaceLess && alwaysClone)
     {
         result = dest.addType(*ty);
     }
-    else if (const NegationTypeVar* ntv = get<NegationTypeVar>(ty))
+    else if (const NegationType* ntv = get<NegationType>(ty))
     {
-        result = dest.addType(NegationTypeVar{ntv->ty});
+        result = dest.addType(NegationType{ntv->ty});
     }
     else
         return result;

@@ -28,7 +28,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
     if (auto pty = log->pending(ty))
         ty = &pty->pending;
 
-    if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
+    if (const FunctionType* ftv = get<FunctionType>(ty))
     {
         if (FFlag::LuauSubstitutionFixMissingFields)
         {
@@ -41,7 +41,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
         visitChild(ftv->argTypes);
         visitChild(ftv->retTypes);
     }
-    else if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
+    else if (const TableType* ttv = get<TableType>(ty))
     {
         LUAU_ASSERT(!ttv->boundTo);
         for (const auto& [name, prop] : ttv->props)
@@ -58,22 +58,22 @@ void Tarjan::visitChildren(TypeId ty, int index)
         for (TypePackId itp : ttv->instantiatedTypePackParams)
             visitChild(itp);
     }
-    else if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
+    else if (const MetatableType* mtv = get<MetatableType>(ty))
     {
         visitChild(mtv->table);
         visitChild(mtv->metatable);
     }
-    else if (const UnionTypeVar* utv = get<UnionTypeVar>(ty))
+    else if (const UnionType* utv = get<UnionType>(ty))
     {
         for (TypeId opt : utv->options)
             visitChild(opt);
     }
-    else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(ty))
+    else if (const IntersectionType* itv = get<IntersectionType>(ty))
     {
         for (TypeId part : itv->parts)
             visitChild(part);
     }
-    else if (const PendingExpansionTypeVar* petv = get<PendingExpansionTypeVar>(ty))
+    else if (const PendingExpansionType* petv = get<PendingExpansionType>(ty))
     {
         for (TypeId a : petv->typeArguments)
             visitChild(a);
@@ -81,7 +81,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
         for (TypePackId a : petv->packArguments)
             visitChild(a);
     }
-    else if (const ClassTypeVar* ctv = get<ClassTypeVar>(ty); FFlag::LuauClassTypeVarsInSubstitution && ctv)
+    else if (const ClassType* ctv = get<ClassType>(ty); FFlag::LuauClassTypeVarsInSubstitution && ctv)
     {
         for (auto [name, prop] : ctv->props)
             visitChild(prop.type);
@@ -92,7 +92,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
         if (ctv->metatable)
             visitChild(*ctv->metatable);
     }
-    else if (const NegationTypeVar* ntv = get<NegationTypeVar>(ty))
+    else if (const NegationType* ntv = get<NegationType>(ty))
     {
         visitChild(ntv->ty);
     }
@@ -559,7 +559,7 @@ void Substitution::replaceChildren(TypeId ty)
     if (ty->owningArena != arena)
         return;
 
-    if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty))
+    if (FunctionType* ftv = getMutable<FunctionType>(ty))
     {
         if (FFlag::LuauSubstitutionFixMissingFields)
         {
@@ -572,7 +572,7 @@ void Substitution::replaceChildren(TypeId ty)
         ftv->argTypes = replace(ftv->argTypes);
         ftv->retTypes = replace(ftv->retTypes);
     }
-    else if (TableTypeVar* ttv = getMutable<TableTypeVar>(ty))
+    else if (TableType* ttv = getMutable<TableType>(ty))
     {
         LUAU_ASSERT(!ttv->boundTo);
         for (auto& [name, prop] : ttv->props)
@@ -589,22 +589,22 @@ void Substitution::replaceChildren(TypeId ty)
         for (TypePackId& itp : ttv->instantiatedTypePackParams)
             itp = replace(itp);
     }
-    else if (MetatableTypeVar* mtv = getMutable<MetatableTypeVar>(ty))
+    else if (MetatableType* mtv = getMutable<MetatableType>(ty))
     {
         mtv->table = replace(mtv->table);
         mtv->metatable = replace(mtv->metatable);
     }
-    else if (UnionTypeVar* utv = getMutable<UnionTypeVar>(ty))
+    else if (UnionType* utv = getMutable<UnionType>(ty))
     {
         for (TypeId& opt : utv->options)
             opt = replace(opt);
     }
-    else if (IntersectionTypeVar* itv = getMutable<IntersectionTypeVar>(ty))
+    else if (IntersectionType* itv = getMutable<IntersectionType>(ty))
     {
         for (TypeId& part : itv->parts)
             part = replace(part);
     }
-    else if (PendingExpansionTypeVar* petv = getMutable<PendingExpansionTypeVar>(ty))
+    else if (PendingExpansionType* petv = getMutable<PendingExpansionType>(ty))
     {
         for (TypeId& a : petv->typeArguments)
             a = replace(a);
@@ -612,7 +612,7 @@ void Substitution::replaceChildren(TypeId ty)
         for (TypePackId& a : petv->packArguments)
             a = replace(a);
     }
-    else if (ClassTypeVar* ctv = getMutable<ClassTypeVar>(ty); FFlag::LuauClassTypeVarsInSubstitution && ctv)
+    else if (ClassType* ctv = getMutable<ClassType>(ty); FFlag::LuauClassTypeVarsInSubstitution && ctv)
     {
         for (auto& [name, prop] : ctv->props)
             prop.type = replace(prop.type);
@@ -623,7 +623,7 @@ void Substitution::replaceChildren(TypeId ty)
         if (ctv->metatable)
             ctv->metatable = replace(*ctv->metatable);
     }
-    else if (NegationTypeVar* ntv = getMutable<NegationTypeVar>(ty))
+    else if (NegationType* ntv = getMutable<NegationType>(ty))
     {
         ntv->ty = replace(ntv->ty);
     }

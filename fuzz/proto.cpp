@@ -101,32 +101,32 @@ int registerTypes(Luau::TypeChecker& env)
     TypeArena& arena = env.globalTypes;
 
     // Vector3 stub
-    TypeId vector3MetaType = arena.addType(TableTypeVar{});
+    TypeId vector3MetaType = arena.addType(TableType{});
 
-    TypeId vector3InstanceType = arena.addType(ClassTypeVar{"Vector3", {}, nullopt, vector3MetaType, {}, {}, "Test"});
-    getMutable<ClassTypeVar>(vector3InstanceType)->props = {
+    TypeId vector3InstanceType = arena.addType(ClassType{"Vector3", {}, nullopt, vector3MetaType, {}, {}, "Test"});
+    getMutable<ClassType>(vector3InstanceType)->props = {
         {"X", {env.numberType}},
         {"Y", {env.numberType}},
         {"Z", {env.numberType}},
     };
 
-    getMutable<TableTypeVar>(vector3MetaType)->props = {
+    getMutable<TableType>(vector3MetaType)->props = {
         {"__add", {makeFunction(arena, nullopt, {vector3InstanceType, vector3InstanceType}, {vector3InstanceType})}},
     };
 
     env.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vector3InstanceType};
 
     // Instance stub
-    TypeId instanceType = arena.addType(ClassTypeVar{"Instance", {}, nullopt, nullopt, {}, {}, "Test"});
-    getMutable<ClassTypeVar>(instanceType)->props = {
+    TypeId instanceType = arena.addType(ClassType{"Instance", {}, nullopt, nullopt, {}, {}, "Test"});
+    getMutable<ClassType>(instanceType)->props = {
         {"Name", {env.stringType}},
     };
 
     env.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, instanceType};
 
     // Part stub
-    TypeId partType = arena.addType(ClassTypeVar{"Part", {}, instanceType, nullopt, {}, {}, "Test"});
-    getMutable<ClassTypeVar>(partType)->props = {
+    TypeId partType = arena.addType(ClassType{"Part", {}, instanceType, nullopt, {}, {}, "Test"});
+    getMutable<ClassType>(partType)->props = {
         {"Position", {vector3InstanceType}},
     };
 

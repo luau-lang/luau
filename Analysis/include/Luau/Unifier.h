@@ -25,13 +25,13 @@ enum Variance
 // A substitution which replaces singleton types by their wider types
 struct Widen : Substitution
 {
-    Widen(TypeArena* arena, NotNull<SingletonTypes> singletonTypes)
+    Widen(TypeArena* arena, NotNull<BuiltinTypes> builtinTypes)
         : Substitution(TxnLog::empty(), arena)
-        , singletonTypes(singletonTypes)
+        , builtinTypes(builtinTypes)
     {
     }
 
-    NotNull<SingletonTypes> singletonTypes;
+    NotNull<BuiltinTypes> builtinTypes;
 
     bool isDirty(TypeId ty) override;
     bool isDirty(TypePackId ty) override;
@@ -52,7 +52,7 @@ struct UnifierOptions
 struct Unifier
 {
     TypeArena* const types;
-    NotNull<SingletonTypes> singletonTypes;
+    NotNull<BuiltinTypes> builtinTypes;
     NotNull<Normalizer> normalizer;
     Mode mode;
 
@@ -82,10 +82,10 @@ struct Unifier
 
 private:
     void tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall = false, bool isIntersection = false);
-    void tryUnifyUnionWithType(TypeId subTy, const UnionTypeVar* uv, TypeId superTy);
-    void tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionTypeVar* uv, bool cacheEnabled, bool isFunctionCall);
-    void tryUnifyTypeWithIntersection(TypeId subTy, TypeId superTy, const IntersectionTypeVar* uv);
-    void tryUnifyIntersectionWithType(TypeId subTy, const IntersectionTypeVar* uv, TypeId superTy, bool cacheEnabled, bool isFunctionCall);
+    void tryUnifyUnionWithType(TypeId subTy, const UnionType* uv, TypeId superTy);
+    void tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionType* uv, bool cacheEnabled, bool isFunctionCall);
+    void tryUnifyTypeWithIntersection(TypeId subTy, TypeId superTy, const IntersectionType* uv);
+    void tryUnifyIntersectionWithType(TypeId subTy, const IntersectionType* uv, TypeId superTy, bool cacheEnabled, bool isFunctionCall);
     void tryUnifyNormalizedTypes(TypeId subTy, TypeId superTy, const NormalizedType& subNorm, const NormalizedType& superNorm, std::string reason,
         std::optional<TypeError> error = std::nullopt);
     void tryUnifyPrimitives(TypeId subTy, TypeId superTy);

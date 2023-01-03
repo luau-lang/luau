@@ -456,7 +456,7 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
     //
     //     (*blocked*) -> () <: (number) -> (b...)
     //
-    // We solve this by searching both types for BlockedTypeVars and block the
+    // We solve this by searching both types for BlockedTypes and block the
     // constraint on any we find.  It also gets the job done, but I'm worried
     // about the efficiency of doing so many deep type traversals and it may
     // make us more prone to getting stuck on constraint cycles.
@@ -473,19 +473,19 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
 TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 {
     TypeArena arena;
-    TypeId nilType = singletonTypes->nilType;
+    TypeId nilType = builtinTypes->nilType;
 
-    std::unique_ptr scope = std::make_unique<Scope>(singletonTypes->anyTypePack);
+    std::unique_ptr scope = std::make_unique<Scope>(builtinTypes->anyTypePack);
 
     TypeId free1 = arena.addType(FreeTypePack{scope.get()});
-    TypeId option1 = arena.addType(UnionTypeVar{{nilType, free1}});
+    TypeId option1 = arena.addType(UnionType{{nilType, free1}});
 
     TypeId free2 = arena.addType(FreeTypePack{scope.get()});
-    TypeId option2 = arena.addType(UnionTypeVar{{nilType, free2}});
+    TypeId option2 = arena.addType(UnionType{{nilType, free2}});
 
     InternalErrorReporter iceHandler;
     UnifierSharedState sharedState{&iceHandler};
-    Normalizer normalizer{&arena, singletonTypes, NotNull{&sharedState}};
+    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
     Unifier u{NotNull{&normalizer}, Mode::Strict, NotNull{scope.get()}, Location{}, Variance::Covariant};
 
     u.tryUnify(option1, option2);
@@ -550,7 +550,7 @@ return wrapStrictTable(Constants, "Constants")
 
     std::optional<TypeId> result = first(m->getModuleScope()->returnType);
     REQUIRE(result);
-    CHECK(get<AnyTypeVar>(*result));
+    CHECK(get<AnyType>(*result));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_leak_to_module_interface_variadic")
@@ -589,7 +589,7 @@ return wrapStrictTable(Constants, "Constants")
 
     std::optional<TypeId> result = first(m->getModuleScope()->returnType);
     REQUIRE(result);
-    CHECK(get<AnyTypeVar>(*result));
+    CHECK(get<AnyType>(*result));
 }
 
 // We need a simplification step to make this do the right thing. ("normalization-lite")
@@ -620,7 +620,7 @@ struct IsSubtypeFixture : Fixture
 {
     bool isSubtype(TypeId a, TypeId b)
     {
-        return ::Luau::isSubtype(a, b, NotNull{getMainModule()->getModuleScope().get()}, singletonTypes, ice);
+        return ::Luau::isSubtype(a, b, NotNull{getMainModule()->getModuleScope().get()}, builtinTypes, ice);
     }
 };
 } // namespace

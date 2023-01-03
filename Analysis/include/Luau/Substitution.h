@@ -3,7 +3,7 @@
 
 #include "Luau/TypeArena.h"
 #include "Luau/TypePack.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 #include "Luau/DenseHash.h"
 
 // We provide an implementation of substitution on types,

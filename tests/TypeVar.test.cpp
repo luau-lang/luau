@@ -1,8 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "Luau/Type.h"
+#include "Luau/VisitType.h"
 
 #include "Fixture.h"
 #include "ScopedFlags.h"
@@ -11,7 +11,7 @@
 
 using namespace Luau;
 
-TEST_SUITE_BEGIN("TypeVarTests");
+TEST_SUITE_BEGIN("TypeTests");
 
 TEST_CASE_FIXTURE(Fixture, "primitives_are_equal")
 {
@@ -20,18 +20,18 @@ TEST_CASE_FIXTURE(Fixture, "primitives_are_equal")
 
 TEST_CASE_FIXTURE(Fixture, "bound_type_is_equal_to_that_which_it_is_bound")
 {
-    TypeVar bound(BoundTypeVar(typeChecker.booleanType));
+    Type bound(BoundType(typeChecker.booleanType));
     REQUIRE_EQ(bound, *typeChecker.booleanType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "equivalent_cyclic_tables_are_equal")
 {
-    TypeVar cycleOne{TypeVariant(TableTypeVar())};
-    TableTypeVar* tableOne = getMutable<TableTypeVar>(&cycleOne);
+    Type cycleOne{TypeVariant(TableType())};
+    TableType* tableOne = getMutable<TableType>(&cycleOne);
     tableOne->props["self"] = {&cycleOne};
 
-    TypeVar cycleTwo{TypeVariant(TableTypeVar())};
-    TableTypeVar* tableTwo = getMutable<TableTypeVar>(&cycleTwo);
+    Type cycleTwo{TypeVariant(TableType())};
+    TableType* tableTwo = getMutable<TableType>(&cycleTwo);
     tableTwo->props["self"] = {&cycleTwo};
 
     CHECK_EQ(cycleOne, cycleTwo);
@@ -39,12 +39,12 @@ TEST_CASE_FIXTURE(Fixture, "equivalent_cyclic_tables_are_equal")
 
 TEST_CASE_FIXTURE(Fixture, "different_cyclic_tables_are_not_equal")
 {
-    TypeVar cycleOne{TypeVariant(TableTypeVar())};
-    TableTypeVar* tableOne = getMutable<TableTypeVar>(&cycleOne);
+    Type cycleOne{TypeVariant(TableType())};
+    TableType* tableOne = getMutable<TableType>(&cycleOne);
     tableOne->props["self"] = {&cycleOne};
 
-    TypeVar cycleTwo{TypeVariant(TableTypeVar())};
-    TableTypeVar* tableTwo = getMutable<TableTypeVar>(&cycleTwo);
+    Type cycleTwo{TypeVariant(TableType())};
+    TableType* tableTwo = getMutable<TableType>(&cycleTwo);
     tableTwo->props["this"] = {&cycleTwo};
 
     CHECK_NE(cycleOne, cycleTwo);
@@ -54,7 +54,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_function_is_not_parenthesized_if_just
 {
     auto emptyArgumentPack = TypePackVar{TypePack{}};
     auto returnPack = TypePackVar{TypePack{{typeChecker.numberType}}};
-    auto returnsTwo = TypeVar(FunctionTypeVar(typeChecker.globalScope->level, &emptyArgumentPack, &returnPack));
+    auto returnsTwo = Type(FunctionType(typeChecker.globalScope->level, &emptyArgumentPack, &returnPack));
 
     std::string res = toString(&returnsTwo);
     CHECK_EQ("() -> number", res);
@@ -64,7 +64,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_function_is_parenthesized_if_not_just
 {
     auto emptyArgumentPack = TypePackVar{TypePack{}};
     auto returnPack = TypePackVar{TypePack{{typeChecker.numberType, typeChecker.numberType}}};
-    auto returnsTwo = TypeVar(FunctionTypeVar(typeChecker.globalScope->level, &emptyArgumentPack, &returnPack));
+    auto returnsTwo = Type(FunctionType(typeChecker.globalScope->level, &emptyArgumentPack, &returnPack));
 
     std::string res = toString(&returnsTwo);
     CHECK_EQ("() -> (number, number)", res);
@@ -76,7 +76,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_function_is_parenthesized_if_tail_is_
     auto free = Unifiable::Free(TypeLevel());
     auto freePack = TypePackVar{TypePackVariant{free}};
     auto returnPack = TypePackVar{TypePack{{typeChecker.numberType}, &freePack}};
-    auto returnsTwo = TypeVar(FunctionTypeVar(typeChecker.globalScope->level, &emptyArgumentPack, &returnPack));
+    auto returnsTwo = Type(FunctionType(typeChecker.globalScope->level, &emptyArgumentPack, &returnPack));
 
     std::string res = toString(&returnsTwo);
     CHECK_EQ(res, "() -> (number, a...)");
@@ -84,7 +84,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_function_is_parenthesized_if_tail_is_
 
 TEST_CASE_FIXTURE(Fixture, "subset_check")
 {
-    UnionTypeVar super, sub, notSub;
+    UnionType super, sub, notSub;
     super.options = {typeChecker.numberType, typeChecker.stringType, typeChecker.booleanType};
     sub.options = {typeChecker.numberType, typeChecker.stringType};
     notSub.options = {typeChecker.numberType, typeChecker.nilType};
@@ -93,9 +93,9 @@ TEST_CASE_FIXTURE(Fixture, "subset_check")
     CHECK(!isSubset(super, notSub));
 }
 
-TEST_CASE_FIXTURE(Fixture, "iterate_over_UnionTypeVar")
+TEST_CASE_FIXTURE(Fixture, "iterate_over_UnionType")
 {
-    UnionTypeVar utv;
+    UnionType utv;
     utv.options = {typeChecker.numberType, typeChecker.stringType, typeChecker.anyType};
 
     std::vector<TypeId> result;
@@ -105,13 +105,13 @@ TEST_CASE_FIXTURE(Fixture, "iterate_over_UnionTypeVar")
     CHECK(result == utv.options);
 }
 
-TEST_CASE_FIXTURE(Fixture, "iterating_over_nested_UnionTypeVars")
+TEST_CASE_FIXTURE(Fixture, "iterating_over_nested_UnionTypes")
 {
-    TypeVar subunion{UnionTypeVar{}};
-    UnionTypeVar* innerUtv = getMutable<UnionTypeVar>(&subunion);
+    Type subunion{UnionType{}};
+    UnionType* innerUtv = getMutable<UnionType>(&subunion);
     innerUtv->options = {typeChecker.numberType, typeChecker.stringType};
 
-    UnionTypeVar utv;
+    UnionType utv;
     utv.options = {typeChecker.anyType, &subunion};
 
     std::vector<TypeId> result;
@@ -124,13 +124,13 @@ TEST_CASE_FIXTURE(Fixture, "iterating_over_nested_UnionTypeVars")
     CHECK_EQ(result[1], typeChecker.numberType);
 }
 
-TEST_CASE_FIXTURE(Fixture, "iterator_detects_cyclic_UnionTypeVars_and_skips_over_them")
+TEST_CASE_FIXTURE(Fixture, "iterator_detects_cyclic_UnionTypes_and_skips_over_them")
 {
-    TypeVar atv{UnionTypeVar{}};
-    UnionTypeVar* utv1 = getMutable<UnionTypeVar>(&atv);
+    Type atv{UnionType{}};
+    UnionType* utv1 = getMutable<UnionType>(&atv);
 
-    TypeVar btv{UnionTypeVar{}};
-    UnionTypeVar* utv2 = getMutable<UnionTypeVar>(&btv);
+    Type btv{UnionType{}};
+    UnionType* utv2 = getMutable<UnionType>(&btv);
     utv2->options.push_back(typeChecker.numberType);
     utv2->options.push_back(typeChecker.stringType);
     utv2->options.push_back(&atv);
@@ -148,9 +148,9 @@ TEST_CASE_FIXTURE(Fixture, "iterator_detects_cyclic_UnionTypeVars_and_skips_over
 
 TEST_CASE_FIXTURE(Fixture, "iterator_descends_on_nested_in_first_operator*")
 {
-    TypeVar tv1{UnionTypeVar{{typeChecker.stringType, typeChecker.numberType}}};
-    TypeVar tv2{UnionTypeVar{{&tv1, typeChecker.booleanType}}};
-    auto utv = get<UnionTypeVar>(&tv2);
+    Type tv1{UnionType{{typeChecker.stringType, typeChecker.numberType}}};
+    Type tv2{UnionType{{&tv1, typeChecker.booleanType}}};
+    auto utv = get<UnionType>(&tv2);
 
     std::vector<TypeId> result;
     for (TypeId ty : utv)
@@ -162,30 +162,30 @@ TEST_CASE_FIXTURE(Fixture, "iterator_descends_on_nested_in_first_operator*")
     CHECK_EQ(result[2], typeChecker.booleanType);
 }
 
-TEST_CASE_FIXTURE(Fixture, "UnionTypeVarIterator_with_vector_iter_ctor")
+TEST_CASE_FIXTURE(Fixture, "UnionTypeIterator_with_vector_iter_ctor")
 {
-    TypeVar tv1{UnionTypeVar{{typeChecker.stringType, typeChecker.numberType}}};
-    TypeVar tv2{UnionTypeVar{{&tv1, typeChecker.booleanType}}};
-    auto utv = get<UnionTypeVar>(&tv2);
+    Type tv1{UnionType{{typeChecker.stringType, typeChecker.numberType}}};
+    Type tv2{UnionType{{&tv1, typeChecker.booleanType}}};
+    auto utv = get<UnionType>(&tv2);
 
     std::vector<TypeId> actual(begin(utv), end(utv));
     std::vector<TypeId> expected{typeChecker.stringType, typeChecker.numberType, typeChecker.booleanType};
     CHECK_EQ(actual, expected);
 }
 
-TEST_CASE_FIXTURE(Fixture, "UnionTypeVarIterator_with_empty_union")
+TEST_CASE_FIXTURE(Fixture, "UnionTypeIterator_with_empty_union")
 {
-    TypeVar tv{UnionTypeVar{}};
-    auto utv = get<UnionTypeVar>(&tv);
+    Type tv{UnionType{}};
+    auto utv = get<UnionType>(&tv);
 
     std::vector<TypeId> actual(begin(utv), end(utv));
     CHECK(actual.empty());
 }
 
-TEST_CASE_FIXTURE(Fixture, "UnionTypeVarIterator_with_only_cyclic_union")
+TEST_CASE_FIXTURE(Fixture, "UnionTypeIterator_with_only_cyclic_union")
 {
-    TypeVar tv{UnionTypeVar{}};
-    auto utv = getMutable<UnionTypeVar>(&tv);
+    Type tv{UnionType{}};
+    auto utv = getMutable<UnionType>(&tv);
     utv->options.push_back(&tv);
     utv->options.push_back(&tv);
 
@@ -200,44 +200,44 @@ TEST_CASE_FIXTURE(Fixture, "UnionTypeVarIterator_with_only_cyclic_union")
  */
 TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 {
-    TypeVar ftv11{FreeTypeVar{TypeLevel{}}};
+    Type ftv11{FreeType{TypeLevel{}}};
 
     TypePackVar tp24{TypePack{{&ftv11}}};
     TypePackVar tp17{TypePack{}};
 
-    TypeVar ftv23{FunctionTypeVar{&tp24, &tp17}};
+    Type ftv23{FunctionType{&tp24, &tp17}};
 
-    TypeVar ttvConnection2{TableTypeVar{}};
-    TableTypeVar* ttvConnection2_ = getMutable<TableTypeVar>(&ttvConnection2);
+    Type ttvConnection2{TableType{}};
+    TableType* ttvConnection2_ = getMutable<TableType>(&ttvConnection2);
     ttvConnection2_->instantiatedTypeParams.push_back(&ftv11);
     ttvConnection2_->props["f"] = {&ftv23};
 
     TypePackVar tp21{TypePack{{&ftv11}}};
     TypePackVar tp20{TypePack{}};
 
-    TypeVar ftv19{FunctionTypeVar{&tp21, &tp20}};
+    Type ftv19{FunctionType{&tp21, &tp20}};
 
-    TypeVar ttvSignal{TableTypeVar{}};
-    TableTypeVar* ttvSignal_ = getMutable<TableTypeVar>(&ttvSignal);
+    Type ttvSignal{TableType{}};
+    TableType* ttvSignal_ = getMutable<TableType>(&ttvSignal);
     ttvSignal_->instantiatedTypeParams.push_back(&ftv11);
     ttvSignal_->props["f"] = {&ftv19};
 
     // Back edge
     ttvConnection2_->props["signal"] = {&ttvSignal};
 
-    TypeVar gtvK2{GenericTypeVar{}};
-    TypeVar gtvV2{GenericTypeVar{}};
+    Type gtvK2{GenericType{}};
+    Type gtvV2{GenericType{}};
 
-    TypeVar ttvTweenResult2{TableTypeVar{}};
-    TableTypeVar* ttvTweenResult2_ = getMutable<TableTypeVar>(&ttvTweenResult2);
+    Type ttvTweenResult2{TableType{}};
+    TableType* ttvTweenResult2_ = getMutable<TableType>(&ttvTweenResult2);
     ttvTweenResult2_->instantiatedTypeParams.push_back(&gtvK2);
     ttvTweenResult2_->instantiatedTypeParams.push_back(&gtvV2);
 
     TypePackVar tp13{TypePack{{&ttvTweenResult2}}};
-    TypeVar ftv12{FunctionTypeVar{&tp13, &tp17}};
+    Type ftv12{FunctionType{&tp13, &tp17}};
 
-    TypeVar ttvConnection{TableTypeVar{}};
-    TableTypeVar* ttvConnection_ = getMutable<TableTypeVar>(&ttvConnection);
+    Type ttvConnection{TableType{}};
+    TableType* ttvConnection_ = getMutable<TableType>(&ttvConnection);
     ttvConnection_->instantiatedTypeParams.push_back(&ttvTweenResult2);
     ttvConnection_->props["f"] = {&ftv12};
     ttvConnection_->props["signal"] = {&ttvSignal};
@@ -245,10 +245,10 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
     TypePackVar tp9{TypePack{}};
     TypePackVar tp10{TypePack{{&ttvConnection}}};
 
-    TypeVar ftv8{FunctionTypeVar{&tp9, &tp10}};
+    Type ftv8{FunctionType{&tp9, &tp10}};
 
-    TypeVar ttvTween{TableTypeVar{}};
-    TableTypeVar* ttvTween_ = getMutable<TableTypeVar>(&ttvTween);
+    Type ttvTween{TableType{}};
+    TableType* ttvTween_ = getMutable<TableType>(&ttvTween);
     ttvTween_->instantiatedTypeParams.push_back(&gtvK2);
     ttvTween_->instantiatedTypeParams.push_back(&gtvV2);
     ttvTween_->props["f"] = {&ftv8};
@@ -256,16 +256,16 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
     TypePackVar tp4{TypePack{}};
     TypePackVar tp5{TypePack{{&ttvTween}}};
 
-    TypeVar ftv3{FunctionTypeVar{&tp4, &tp5}};
+    Type ftv3{FunctionType{&tp4, &tp5}};
 
     // Back edge
     ttvTweenResult2_->props["f"] = {&ftv3};
 
-    TypeVar gtvK{GenericTypeVar{}};
-    TypeVar gtvV{GenericTypeVar{}};
+    Type gtvK{GenericType{}};
+    Type gtvV{GenericType{}};
 
-    TypeVar ttvTweenResult{TableTypeVar{}};
-    TableTypeVar* ttvTweenResult_ = getMutable<TableTypeVar>(&ttvTweenResult);
+    Type ttvTweenResult{TableType{}};
+    TableType* ttvTweenResult_ = getMutable<TableType>(&ttvTweenResult);
     ttvTweenResult_->instantiatedTypeParams.push_back(&gtvK);
     ttvTweenResult_->instantiatedTypeParams.push_back(&gtvV);
     ttvTweenResult_->props["f"] = {&ftv3};
@@ -273,7 +273,7 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
     TypeId root = &ttvTweenResult;
 
     typeChecker.currentModule = std::make_shared<Module>();
-    typeChecker.currentModule->scopes.emplace_back(Location{}, std::make_shared<Scope>(singletonTypes->anyTypePack));
+    typeChecker.currentModule->scopes.emplace_back(Location{}, std::make_shared<Scope>(builtinTypes->anyTypePack));
 
     TypeId result = typeChecker.anyify(typeChecker.globalScope, root, Location{});
 
@@ -282,7 +282,7 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 
 TEST_CASE("tagging_tables")
 {
-    TypeVar ttv{TableTypeVar{}};
+    Type ttv{TableType{}};
     CHECK(!Luau::hasTag(&ttv, "foo"));
     Luau::attachTag(&ttv, "foo");
     CHECK(Luau::hasTag(&ttv, "foo"));
@@ -290,7 +290,7 @@ TEST_CASE("tagging_tables")
 
 TEST_CASE("tagging_classes")
 {
-    TypeVar base{ClassTypeVar{"Base", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"}};
+    Type base{ClassType{"Base", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"}};
     CHECK(!Luau::hasTag(&base, "foo"));
     Luau::attachTag(&base, "foo");
     CHECK(Luau::hasTag(&base, "foo"));
@@ -298,8 +298,8 @@ TEST_CASE("tagging_classes")
 
 TEST_CASE("tagging_subclasses")
 {
-    TypeVar base{ClassTypeVar{"Base", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"}};
-    TypeVar derived{ClassTypeVar{"Derived", {}, &base, std::nullopt, {}, nullptr, "Test"}};
+    Type base{ClassType{"Base", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"}};
+    Type derived{ClassType{"Derived", {}, &base, std::nullopt, {}, nullptr, "Test"}};
 
     CHECK(!Luau::hasTag(&base, "foo"));
     CHECK(!Luau::hasTag(&derived, "foo"));
@@ -316,7 +316,7 @@ TEST_CASE("tagging_subclasses")
 TEST_CASE("tagging_functions")
 {
     TypePackVar empty{TypePack{}};
-    TypeVar ftv{FunctionTypeVar{&empty, &empty}};
+    Type ftv{FunctionType{&empty, &empty}};
     CHECK(!Luau::hasTag(&ftv, "foo"));
     Luau::attachTag(&ftv, "foo");
     CHECK(Luau::hasTag(&ftv, "foo"));
@@ -330,7 +330,7 @@ TEST_CASE("tagging_props")
     CHECK(Luau::hasTag(prop, "foo"));
 }
 
-struct VisitCountTracker final : TypeVarOnceVisitor
+struct VisitCountTracker final : TypeOnceVisitor
 {
     std::unordered_map<TypeId, unsigned> tyVisits;
     std::unordered_map<TypePackId, unsigned> tpVisits;
@@ -385,65 +385,65 @@ local b: (T, T, T) -> T
 
 TEST_CASE("isString_on_string_singletons")
 {
-    TypeVar helloString{SingletonTypeVar{StringSingleton{"hello"}}};
+    Type helloString{SingletonType{StringSingleton{"hello"}}};
     CHECK(isString(&helloString));
 }
 
 TEST_CASE("isString_on_unions_of_various_string_singletons")
 {
-    TypeVar helloString{SingletonTypeVar{StringSingleton{"hello"}}};
-    TypeVar byeString{SingletonTypeVar{StringSingleton{"bye"}}};
-    TypeVar union_{UnionTypeVar{{&helloString, &byeString}}};
+    Type helloString{SingletonType{StringSingleton{"hello"}}};
+    Type byeString{SingletonType{StringSingleton{"bye"}}};
+    Type union_{UnionType{{&helloString, &byeString}}};
 
     CHECK(isString(&union_));
 }
 
 TEST_CASE("proof_that_isString_uses_all_of")
 {
-    TypeVar helloString{SingletonTypeVar{StringSingleton{"hello"}}};
-    TypeVar byeString{SingletonTypeVar{StringSingleton{"bye"}}};
-    TypeVar booleanType{PrimitiveTypeVar{PrimitiveTypeVar::Boolean}};
-    TypeVar union_{UnionTypeVar{{&helloString, &byeString, &booleanType}}};
+    Type helloString{SingletonType{StringSingleton{"hello"}}};
+    Type byeString{SingletonType{StringSingleton{"bye"}}};
+    Type booleanType{PrimitiveType{PrimitiveType::Boolean}};
+    Type union_{UnionType{{&helloString, &byeString, &booleanType}}};
 
     CHECK(!isString(&union_));
 }
 
 TEST_CASE("isBoolean_on_boolean_singletons")
 {
-    TypeVar trueBool{SingletonTypeVar{BooleanSingleton{true}}};
+    Type trueBool{SingletonType{BooleanSingleton{true}}};
     CHECK(isBoolean(&trueBool));
 }
 
 TEST_CASE("isBoolean_on_unions_of_true_or_false_singletons")
 {
-    TypeVar trueBool{SingletonTypeVar{BooleanSingleton{true}}};
-    TypeVar falseBool{SingletonTypeVar{BooleanSingleton{false}}};
-    TypeVar union_{UnionTypeVar{{&trueBool, &falseBool}}};
+    Type trueBool{SingletonType{BooleanSingleton{true}}};
+    Type falseBool{SingletonType{BooleanSingleton{false}}};
+    Type union_{UnionType{{&trueBool, &falseBool}}};
 
     CHECK(isBoolean(&union_));
 }
 
 TEST_CASE("proof_that_isBoolean_uses_all_of")
 {
-    TypeVar trueBool{SingletonTypeVar{BooleanSingleton{true}}};
-    TypeVar falseBool{SingletonTypeVar{BooleanSingleton{false}}};
-    TypeVar stringType{PrimitiveTypeVar{PrimitiveTypeVar::String}};
-    TypeVar union_{UnionTypeVar{{&trueBool, &falseBool, &stringType}}};
+    Type trueBool{SingletonType{BooleanSingleton{true}}};
+    Type falseBool{SingletonType{BooleanSingleton{false}}};
+    Type stringType{PrimitiveType{PrimitiveType::String}};
+    Type union_{UnionType{{&trueBool, &falseBool, &stringType}}};
 
     CHECK(!isBoolean(&union_));
 }
 
 TEST_CASE("content_reassignment")
 {
-    TypeVar myAny{AnyTypeVar{}, /*presistent*/ true};
+    Type myAny{AnyType{}, /*presistent*/ true};
     myAny.documentationSymbol = "@global/any";
 
     TypeArena arena;
 
-    TypeId futureAny = arena.addType(FreeTypeVar{TypeLevel{}});
+    TypeId futureAny = arena.addType(FreeType{TypeLevel{}});
     asMutable(futureAny)->reassign(myAny);
 
-    CHECK(get<AnyTypeVar>(futureAny) != nullptr);
+    CHECK(get<AnyType>(futureAny) != nullptr);
     CHECK(!futureAny->persistent);
     CHECK(futureAny->documentationSymbol == "@global/any");
     CHECK(futureAny->owningArena == &arena);

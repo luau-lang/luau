@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Location.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 
 #include <unordered_map>
 #include <string>
@@ -65,7 +65,7 @@ struct AutocompleteEntry
     // Set if this suggestion matches the type expected in the context
     TypeCorrectKind typeCorrect = TypeCorrectKind::None;
 
-    std::optional<const ClassTypeVar*> containingClass = std::nullopt;
+    std::optional<const ClassType*> containingClass = std::nullopt;
     std::optional<const Property*> prop = std::nullopt;
     std::optional<std::string> documentationSymbol = std::nullopt;
     Tags tags;
@@ -89,7 +89,7 @@ struct AutocompleteResult
 };
 
 using ModuleName = std::string;
-using StringCompletionCallback = std::function<std::optional<AutocompleteEntryMap>(std::string tag, std::optional<const ClassTypeVar*> ctx)>;
+using StringCompletionCallback = std::function<std::optional<AutocompleteEntryMap>(std::string tag, std::optional<const ClassType*> ctx)>;
 
 AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName, Position position, StringCompletionCallback callback);
 

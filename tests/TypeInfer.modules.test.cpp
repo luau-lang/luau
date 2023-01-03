@@ -4,7 +4,7 @@
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 
 #include "Fixture.h"
 
@@ -105,7 +105,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "require_types")
     REQUIRE(b != nullptr);
 
     TypeId hType = requireType(b, "h");
-    REQUIRE_MESSAGE(bool(get<TableTypeVar>(hType)), "Expected table but got " << toString(hType));
+    REQUIRE_MESSAGE(bool(get<TableType>(hType)), "Expected table but got " << toString(hType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "require_a_variadic_function")
@@ -128,7 +128,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "require_a_variadic_function")
 
     TypeId f = follow(requireType(bModule, "f"));
 
-    const FunctionTypeVar* ftv = get<FunctionTypeVar>(f);
+    const FunctionType* ftv = get<FunctionType>(f);
     REQUIRE(ftv);
 
     auto iter = begin(ftv->argTypes);
@@ -351,7 +351,7 @@ local arrayops = require(game.A)
 local tbl = {}
 tbl.a = 2
 function tbl:foo(b: number, c: number)
-    -- introduce BoundTypeVar to imported type
+    -- introduce BoundType to imported type
     arrayops.foo(self._regions)
 end
 -- this alias decreases function type level and causes a demotion of its type
@@ -376,7 +376,7 @@ local arrayops = require(game.A)
 local tbl = {}
 tbl.a = 2
 function tbl:foo(b: number, c: number)
-    -- introduce boundTo TableTypeVar to imported type
+    -- introduce boundTo TableType to imported type
     self.x.a = 2
     arrayops.foo(self.x)
 end

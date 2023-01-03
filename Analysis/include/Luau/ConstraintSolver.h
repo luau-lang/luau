@@ -7,7 +7,7 @@
 #include "Luau/Module.h"
 #include "Luau/Normalize.h"
 #include "Luau/ToString.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 #include "Luau/Variant.h"
 
 #include <vector>
@@ -44,7 +44,7 @@ struct HashInstantiationSignature
 struct ConstraintSolver
 {
     TypeArena* arena;
-    NotNull<SingletonTypes> singletonTypes;
+    NotNull<BuiltinTypes> builtinTypes;
     InternalErrorReporter iceReporter;
     NotNull<Normalizer> normalizer;
     // The entire set of constraints that the solver is trying to resolve.
@@ -126,13 +126,13 @@ struct ConstraintSolver
 
     void block(NotNull<const Constraint> target, NotNull<const Constraint> constraint);
     /**
-     * Block a constraint on the resolution of a TypeVar.
+     * Block a constraint on the resolution of a Type.
      * @returns false always.  This is just to allow tryDispatch to return the result of block()
      */
     bool block(TypeId target, NotNull<const Constraint> constraint);
     bool block(TypePackId target, NotNull<const Constraint> constraint);
 
-    // Traverse the type.  If any blocked or pending typevars are found, block
+    // Traverse the type.  If any blocked or pending types are found, block
     // the constraint on them.
     //
     // Returns false if a type blocks the constraint.

@@ -2,7 +2,7 @@
 #include "Luau/Parser.h"
 #include "Luau/TypeAttach.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 #include "Luau/Transpiler.h"
 
 #include "Fixture.h"

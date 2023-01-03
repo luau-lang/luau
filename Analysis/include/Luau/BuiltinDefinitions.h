@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Scope.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 
 #include <optional>
 
@@ -48,7 +48,7 @@ void attachDcrMagicFunction(TypeId ty, DcrMagicFunction fn);
 void attachDcrMagicRefinement(TypeId ty, DcrMagicRefinement fn);
 
 Property makeProperty(TypeId ty, std::optional<std::string> documentationSymbol = std::nullopt);
-void assignPropDocumentationSymbols(TableTypeVar::Props& props, const std::string& baseName);
+void assignPropDocumentationSymbols(TableType::Props& props, const std::string& baseName);
 
 std::string getBuiltinDefinitionSource();
 

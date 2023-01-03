@@ -59,14 +59,14 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_non_persistent_primitive")
 
     // Create a new number type that isn't persistent
     unfreeze(typeChecker.globalTypes);
-    TypeId oldNumber = typeChecker.globalTypes.addType(PrimitiveTypeVar{PrimitiveTypeVar::Number});
+    TypeId oldNumber = typeChecker.globalTypes.addType(PrimitiveType{PrimitiveType::Number});
     freeze(typeChecker.globalTypes);
     TypeId newNumber = clone(oldNumber, dest, cloneState);
 
     CHECK_NE(newNumber, oldNumber);
     CHECK_EQ(*oldNumber, *newNumber);
     CHECK_EQ("number", toString(newNumber));
-    CHECK_EQ(1, dest.typeVars.size());
+    CHECK_EQ(1, dest.types.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
@@ -91,7 +91,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
     CloneState cloneState;
     TypeId counterCopy = clone(counterType, dest, cloneState);
 
-    TableTypeVar* ttv = getMutable<TableTypeVar>(counterCopy);
+    TableType* ttv = getMutable<TableType>(counterCopy);
     REQUIRE(ttv != nullptr);
 
     CHECK_EQ(std::optional<std::string>{"Cyclic"}, ttv->syntheticName);
@@ -99,7 +99,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
     TypeId methodType = ttv->props["get"].type;
     REQUIRE(methodType != nullptr);
 
-    const FunctionTypeVar* ftv = get<FunctionTypeVar>(methodType);
+    const FunctionType* ftv = get<FunctionType>(methodType);
     REQUIRE(ftv != nullptr);
 
     std::optional<TypeId> methodReturnType = first(ftv->retTypes);
@@ -107,7 +107,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
 
     CHECK_EQ(methodReturnType, counterCopy);
     CHECK_EQ(2, dest.typePacks.size()); // one for the function args, and another for its return type
-    CHECK_EQ(2, dest.typeVars.size());  // One table and one function
+    CHECK_EQ(2, dest.types.size());     // One table and one function
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")
@@ -124,7 +124,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")
 
     REQUIRE(isInArena(*exports, module->interfaceTypes));
 
-    TableTypeVar* exportsTable = getMutable<TableTypeVar>(*exports);
+    TableType* exportsTable = getMutable<TableType>(*exports);
     REQUIRE(exportsTable != nullptr);
 
     TypeId signType = exportsTable->props["sign"].type;
@@ -143,13 +143,13 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_union")
     CloneState cloneState;
 
     unfreeze(typeChecker.globalTypes);
-    TypeId oldUnion = typeChecker.globalTypes.addType(UnionTypeVar{{typeChecker.numberType, typeChecker.stringType}});
+    TypeId oldUnion = typeChecker.globalTypes.addType(UnionType{{typeChecker.numberType, typeChecker.stringType}});
     freeze(typeChecker.globalTypes);
     TypeId newUnion = clone(oldUnion, dest, cloneState);
 
     CHECK_NE(newUnion, oldUnion);
     CHECK_EQ("number | string", toString(newUnion));
-    CHECK_EQ(1, dest.typeVars.size());
+    CHECK_EQ(1, dest.types.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "deepClone_intersection")
@@ -158,23 +158,23 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_intersection")
     CloneState cloneState;
 
     unfreeze(typeChecker.globalTypes);
-    TypeId oldIntersection = typeChecker.globalTypes.addType(IntersectionTypeVar{{typeChecker.numberType, typeChecker.stringType}});
+    TypeId oldIntersection = typeChecker.globalTypes.addType(IntersectionType{{typeChecker.numberType, typeChecker.stringType}});
     freeze(typeChecker.globalTypes);
     TypeId newIntersection = clone(oldIntersection, dest, cloneState);
 
     CHECK_NE(newIntersection, oldIntersection);
     CHECK_EQ("number & string", toString(newIntersection));
-    CHECK_EQ(1, dest.typeVars.size());
+    CHECK_EQ(1, dest.types.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "clone_class")
 {
-    TypeVar exampleMetaClass{ClassTypeVar{"ExampleClassMeta",
+    Type exampleMetaClass{ClassType{"ExampleClassMeta",
         {
             {"__add", {typeChecker.anyType}},
         },
         std::nullopt, std::nullopt, {}, {}, "Test"}};
-    TypeVar exampleClass{ClassTypeVar{"ExampleClass",
+    Type exampleClass{ClassType{"ExampleClass",
         {
             {"PropOne", {typeChecker.numberType}},
             {"PropTwo", {typeChecker.stringType}},
@@ -185,11 +185,11 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
     CloneState cloneState;
 
     TypeId cloned = clone(&exampleClass, dest, cloneState);
-    const ClassTypeVar* ctv = get<ClassTypeVar>(cloned);
+    const ClassType* ctv = get<ClassType>(cloned);
     REQUIRE(ctv != nullptr);
 
     REQUIRE(ctv->metatable);
-    const ClassTypeVar* metatable = get<ClassTypeVar>(*ctv->metatable);
+    const ClassType* metatable = get<ClassType>(*ctv->metatable);
     REQUIRE(metatable);
 
     CHECK_EQ("ExampleClass", ctv->name);
@@ -198,14 +198,14 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
 
 TEST_CASE_FIXTURE(Fixture, "clone_free_types")
 {
-    TypeVar freeTy(FreeTypeVar{TypeLevel{}});
+    Type freeTy(FreeType{TypeLevel{}});
     TypePackVar freeTp(FreeTypePack{TypeLevel{}});
 
     TypeArena dest;
     CloneState cloneState;
 
     TypeId clonedTy = clone(&freeTy, dest, cloneState);
-    CHECK(get<FreeTypeVar>(clonedTy));
+    CHECK(get<FreeType>(clonedTy));
 
     cloneState = {};
     TypePackId clonedTp = clone(&freeTp, dest, cloneState);
@@ -214,15 +214,15 @@ TEST_CASE_FIXTURE(Fixture, "clone_free_types")
 
 TEST_CASE_FIXTURE(Fixture, "clone_free_tables")
 {
-    TypeVar tableTy{TableTypeVar{}};
-    TableTypeVar* ttv = getMutable<TableTypeVar>(&tableTy);
+    Type tableTy{TableType{}};
+    TableType* ttv = getMutable<TableType>(&tableTy);
     ttv->state = TableState::Free;
 
     TypeArena dest;
     CloneState cloneState;
 
     TypeId cloned = clone(&tableTy, dest, cloneState);
-    const TableTypeVar* clonedTtv = get<TableTypeVar>(cloned);
+    const TableType* clonedTtv = get<TableType>(cloned);
     CHECK_EQ(clonedTtv->state, TableState::Free);
 }
 
@@ -264,14 +264,14 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
 
     TypeArena src;
 
-    TypeId table = src.addType(TableTypeVar{});
+    TypeId table = src.addType(TableType{});
     TypeId nested = table;
 
     for (int i = 0; i < limit + 100; i++)
     {
-        TableTypeVar* ttv = getMutable<TableTypeVar>(nested);
+        TableType* ttv = getMutable<TableType>(nested);
 
-        ttv->props["a"].type = src.addType(TableTypeVar{});
+        ttv->props["a"].type = src.addType(TableType{});
         nested = ttv->props["a"].type;
     }
 
@@ -332,7 +332,7 @@ return {}
     REQUIRE(modBiter != modB->getModuleScope()->exportedTypeBindings.end());
     TypeId typeA = modAiter->second.type;
     TypeId typeB = modBiter->second.type;
-    TableTypeVar* tableB = getMutable<TableTypeVar>(typeB);
+    TableType* tableB = getMutable<TableType>(typeB);
     REQUIRE(tableB);
     CHECK(typeA == tableB->props["q"].type);
 }
@@ -368,8 +368,8 @@ return exports
     std::optional<TypeId> typeB = first(modB->getModuleScope()->returnType);
     REQUIRE(typeA);
     REQUIRE(typeB);
-    TableTypeVar* tableA = getMutable<TableTypeVar>(*typeA);
-    TableTypeVar* tableB = getMutable<TableTypeVar>(*typeB);
+    TableType* tableA = getMutable<TableType>(*typeA);
+    TableType* tableB = getMutable<TableType>(*typeB);
     CHECK(tableA->props["a"].type == tableB->props["b"].type);
 }
 

@@ -69,46 +69,45 @@ using ScopePtr = std::shared_ptr<Scope>;
 struct TypePackVar;
 using TypePackId = const TypePackVar*;
 
-// TODO: rename to Type? CLI-39100
-struct TypeVar;
+struct Type;
 
 // Should never be null
-using TypeId = const TypeVar*;
+using TypeId = const Type*;
 
 using Name = std::string;
 
 // A free type var is one whose exact shape has yet to be fully determined.
-using FreeTypeVar = Unifiable::Free;
+using FreeType = Unifiable::Free;
 
 // When a free type var is unified with any other, it is then "bound"
 // to that type var, indicating that the two types are actually the same type.
-using BoundTypeVar = Unifiable::Bound<TypeId>;
+using BoundType = Unifiable::Bound<TypeId>;
 
-using GenericTypeVar = Unifiable::Generic;
+using GenericType = Unifiable::Generic;
 
 using Tags = std::vector<std::string>;
 
 using ModuleName = std::string;
 
-/** A TypeVar that cannot be computed.
+/** A Type that cannot be computed.
  *
- * BlockedTypeVars essentially serve as a way to encode partial ordering on the
- * constraint graph. Until a BlockedTypeVar is unblocked by its owning
+ * BlockedTypes essentially serve as a way to encode partial ordering on the
+ * constraint graph. Until a BlockedType is unblocked by its owning
  * constraint, nothing at all can be said about it. Constraints that need to
- * process a BlockedTypeVar cannot be dispatched.
+ * process a BlockedType cannot be dispatched.
  *
- * Whenever a BlockedTypeVar is added to the graph, we also record a constraint
+ * Whenever a BlockedType is added to the graph, we also record a constraint
  * that will eventually unblock it.
  */
-struct BlockedTypeVar
+struct BlockedType
 {
-    BlockedTypeVar();
+    BlockedType();
     int index;
 
     static int nextIndex;
 };
 
-struct PrimitiveTypeVar
+struct PrimitiveType
 {
     enum Type
     {
@@ -123,12 +122,12 @@ struct PrimitiveTypeVar
     Type type;
     std::optional<TypeId> metatable; // string has a metatable
 
-    explicit PrimitiveTypeVar(Type type)
+    explicit PrimitiveType(Type type)
         : type(type)
     {
     }
 
-    explicit PrimitiveTypeVar(Type type, TypeId metatable)
+    explicit PrimitiveType(Type type, TypeId metatable)
         : type(type)
         , metatable(metatable)
     {
@@ -173,25 +172,25 @@ struct StringSingleton
 
 using SingletonVariant = Luau::Variant<BooleanSingleton, StringSingleton>;
 
-struct SingletonTypeVar
+struct SingletonType
 {
-    explicit SingletonTypeVar(const SingletonVariant& variant)
+    explicit SingletonType(const SingletonVariant& variant)
         : variant(variant)
     {
     }
 
-    explicit SingletonTypeVar(SingletonVariant&& variant)
+    explicit SingletonType(SingletonVariant&& variant)
         : variant(std::move(variant))
     {
     }
 
     // Default operator== is C++20.
-    bool operator==(const SingletonTypeVar& rhs) const
+    bool operator==(const SingletonType& rhs) const
     {
         return variant == rhs.variant;
     }
 
-    bool operator!=(const SingletonTypeVar& rhs) const
+    bool operator!=(const SingletonType& rhs) const
     {
         return !(*this == rhs);
     }
@@ -200,7 +199,7 @@ struct SingletonTypeVar
 };
 
 template<typename T>
-const T* get(const SingletonTypeVar* stv)
+const T* get(const SingletonType* stv)
 {
     if (stv)
         return get_if<T>(&stv->variant);
@@ -240,7 +239,7 @@ struct FunctionDefinition
 
 // TODO: Come up with a better name.
 // TODO: Do we actually need this? We'll find out later if we can delete this.
-// Does not exactly belong in TypeVar.h, but this is the only way to appease the compiler.
+// Does not exactly belong in Type.h, but this is the only way to appease the compiler.
 template<typename T>
 struct WithPredicate
 {
@@ -273,24 +272,24 @@ struct MagicRefinementContext
 
 using DcrMagicRefinement = std::vector<ConnectiveId> (*)(const MagicRefinementContext&);
 
-struct FunctionTypeVar
+struct FunctionType
 {
     // Global monomorphic function
-    FunctionTypeVar(TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
+    FunctionType(TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
 
     // Global polymorphic function
-    FunctionTypeVar(std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes, TypePackId retTypes,
+    FunctionType(std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes, TypePackId retTypes,
         std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
 
     // Local monomorphic function
-    FunctionTypeVar(TypeLevel level, TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
-    FunctionTypeVar(
+    FunctionType(TypeLevel level, TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
+    FunctionType(
         TypeLevel level, Scope* scope, TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
 
     // Local polymorphic function
-    FunctionTypeVar(TypeLevel level, std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes, TypePackId retTypes,
+    FunctionType(TypeLevel level, std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes, TypePackId retTypes,
         std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
-    FunctionTypeVar(TypeLevel level, Scope* scope, std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes,
+    FunctionType(TypeLevel level, Scope* scope, std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes,
         TypePackId retTypes, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
 
     std::optional<FunctionDefinition> definition;
@@ -348,7 +347,7 @@ struct Property
     std::optional<std::string> documentationSymbol;
 };
 
-struct TableTypeVar
+struct TableType
 {
     // We choose std::map over unordered_map here just because we have unit tests that compare
     // textual outputs.  I don't want to spend the effort making them resilient in the case where
@@ -356,10 +355,10 @@ struct TableTypeVar
     // If this shows up in a profile, we can revisit it.
     using Props = std::map<Name, Property>;
 
-    TableTypeVar() = default;
-    explicit TableTypeVar(TableState state, TypeLevel level, Scope* scope = nullptr);
-    TableTypeVar(const Props& props, const std::optional<TableIndexer>& indexer, TypeLevel level, TableState state);
-    TableTypeVar(const Props& props, const std::optional<TableIndexer>& indexer, TypeLevel level, Scope* scope, TableState state);
+    TableType() = default;
+    explicit TableType(TableState state, TypeLevel level, Scope* scope = nullptr);
+    TableType(const Props& props, const std::optional<TableIndexer>& indexer, TypeLevel level, TableState state);
+    TableType(const Props& props, const std::optional<TableIndexer>& indexer, TypeLevel level, Scope* scope, TableState state);
 
     Props props;
     std::optional<TableIndexer> indexer;
@@ -384,12 +383,12 @@ struct TableTypeVar
     std::optional<TypeId> selfTy;
 };
 
-// Represents a metatable attached to a table typevar. Somewhat analogous to a bound typevar.
-struct MetatableTypeVar
+// Represents a metatable attached to a table type. Somewhat analogous to a bound type.
+struct MetatableType
 {
-    // Always points to a TableTypeVar.
+    // Always points to a TableType.
     TypeId table;
-    // Always points to either a TableTypeVar or a MetatableTypeVar.
+    // Always points to either a TableType or a MetatableType.
     TypeId metatable;
 
     std::optional<std::string> syntheticName;
@@ -409,9 +408,9 @@ struct ClassUserData
  * Classes optionally have a parent class.
  * Two different classes that share the same properties are nevertheless distinct and mutually incompatible.
  */
-struct ClassTypeVar
+struct ClassType
 {
-    using Props = TableTypeVar::Props;
+    using Props = TableType::Props;
 
     Name name;
     Props props;
@@ -421,7 +420,7 @@ struct ClassTypeVar
     std::shared_ptr<ClassUserData> userData;
     ModuleName definitionModuleName;
 
-    ClassTypeVar(Name name, Props props, std::optional<TypeId> parent, std::optional<TypeId> metatable, Tags tags,
+    ClassType(Name name, Props props, std::optional<TypeId> parent, std::optional<TypeId> metatable, Tags tags,
         std::shared_ptr<ClassUserData> userData, ModuleName definitionModuleName)
         : name(name)
         , props(props)
@@ -474,13 +473,13 @@ struct TypeFun
  *
  * In order to afford (co)recursive type aliases, we need to reason about a
  * partially-complete instantiation. This requires encoding more information in
- * a type variable than a BlockedTypeVar affords, hence this. Each
- * PendingExpansionTypeVar has a corresponding TypeAliasExpansionConstraint
+ * a type variable than a BlockedType affords, hence this. Each
+ * PendingExpansionType has a corresponding TypeAliasExpansionConstraint
  * enqueued in the solver to convert it to an actual instantiated type
  */
-struct PendingExpansionTypeVar
+struct PendingExpansionType
 {
-    PendingExpansionTypeVar(std::optional<AstName> prefix, AstName name, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments);
+    PendingExpansionType(std::optional<AstName> prefix, AstName name, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments);
     std::optional<AstName> prefix;
     AstName name;
     std::vector<TypeId> typeArguments;
@@ -491,69 +490,68 @@ struct PendingExpansionTypeVar
 };
 
 // Anything!  All static checking is off.
-struct AnyTypeVar
+struct AnyType
 {
 };
 
 // T | U
-struct UnionTypeVar
+struct UnionType
 {
     std::vector<TypeId> options;
 };
 
 // T & U
-struct IntersectionTypeVar
+struct IntersectionType
 {
     std::vector<TypeId> parts;
 };
 
-struct LazyTypeVar
+struct LazyType
 {
     std::function<TypeId()> thunk;
 };
 
-struct UnknownTypeVar
+struct UnknownType
 {
 };
 
-struct NeverTypeVar
+struct NeverType
 {
 };
 
 // ~T
 // TODO: Some simplification step that overwrites the type graph to make sure negation
 // types disappear from the user's view, and (?) a debug flag to disable that
-struct NegationTypeVar
+struct NegationType
 {
     TypeId ty;
 };
 
-using ErrorTypeVar = Unifiable::Error;
+using ErrorType = Unifiable::Error;
 
-using TypeVariant =
-    Unifiable::Variant<TypeId, PrimitiveTypeVar, BlockedTypeVar, PendingExpansionTypeVar, SingletonTypeVar, FunctionTypeVar, TableTypeVar,
-        MetatableTypeVar, ClassTypeVar, AnyTypeVar, UnionTypeVar, IntersectionTypeVar, LazyTypeVar, UnknownTypeVar, NeverTypeVar, NegationTypeVar>;
+using TypeVariant = Unifiable::Variant<TypeId, PrimitiveType, BlockedType, PendingExpansionType, SingletonType, FunctionType, TableType,
+    MetatableType, ClassType, AnyType, UnionType, IntersectionType, LazyType, UnknownType, NeverType, NegationType>;
 
-struct TypeVar final
+struct Type final
 {
-    explicit TypeVar(const TypeVariant& ty)
+    explicit Type(const TypeVariant& ty)
         : ty(ty)
     {
     }
 
-    explicit TypeVar(TypeVariant&& ty)
+    explicit Type(TypeVariant&& ty)
         : ty(std::move(ty))
     {
     }
 
-    TypeVar(const TypeVariant& ty, bool persistent)
+    Type(const TypeVariant& ty, bool persistent)
         : ty(ty)
         , persistent(persistent)
     {
     }
 
     // Re-assignes the content of the type, but doesn't change the owning arena and can't make type persistent.
-    void reassign(const TypeVar& rhs)
+    void reassign(const Type& rhs)
     {
         ty = rhs.ty;
         documentationSymbol = rhs.documentationSymbol;
@@ -561,9 +559,9 @@ struct TypeVar final
 
     TypeVariant ty;
 
-    // Kludge: A persistent TypeVar is one that belongs to the global scope.
+    // Kludge: A persistent Type is one that belongs to the global scope.
     // Global type bindings are immutable but are reused many times.
-    // Persistent TypeVars do not get cloned.
+    // Persistent Types do not get cloned.
     bool persistent = false;
 
     std::optional<std::string> documentationSymbol;
@@ -571,25 +569,25 @@ struct TypeVar final
     // Pointer to the type arena that allocated this type.
     TypeArena* owningArena = nullptr;
 
-    bool operator==(const TypeVar& rhs) const;
-    bool operator!=(const TypeVar& rhs) const;
+    bool operator==(const Type& rhs) const;
+    bool operator!=(const Type& rhs) const;
 
-    TypeVar& operator=(const TypeVariant& rhs);
-    TypeVar& operator=(TypeVariant&& rhs);
+    Type& operator=(const TypeVariant& rhs);
+    Type& operator=(TypeVariant&& rhs);
 
-    TypeVar& operator=(const TypeVar& rhs);
+    Type& operator=(const Type& rhs);
 };
 
 using SeenSet = std::set<std::pair<const void*, const void*>>;
-bool areEqual(SeenSet& seen, const TypeVar& lhs, const TypeVar& rhs);
+bool areEqual(SeenSet& seen, const Type& lhs, const Type& rhs);
 
-// Follow BoundTypeVars until we get to something real
+// Follow BoundTypes until we get to something real
 TypeId follow(TypeId t);
 TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper);
 
 std::vector<TypeId> flattenIntersection(TypeId ty);
 
-bool isPrim(TypeId ty, PrimitiveTypeVar::Type primType);
+bool isPrim(TypeId ty, PrimitiveType::Type primType);
 bool isNil(TypeId ty);
 bool isBoolean(TypeId ty);
 bool isNumber(TypeId ty);
@@ -602,9 +600,9 @@ bool isOverloadedFunction(TypeId ty);
 // True when string is a subtype of ty
 bool maybeString(TypeId ty);
 
-std::optional<TypeId> getMetatable(TypeId type, NotNull<struct SingletonTypes> singletonTypes);
-TableTypeVar* getMutableTableType(TypeId type);
-const TableTypeVar* getTableType(TypeId type);
+std::optional<TypeId> getMetatable(TypeId type, NotNull<struct BuiltinTypes> builtinTypes);
+TableType* getMutableTableType(TypeId type);
+const TableType* getTableType(TypeId type);
 
 // If the type has a name, return that.  Else if it has a synthetic name, return that.
 // Returns nullptr if the type has no name.
@@ -614,7 +612,7 @@ const std::string* getName(TypeId type);
 std::optional<ModuleName> getDefinitionModuleName(TypeId type);
 
 // Checks whether a union contains all types of another union.
-bool isSubset(const UnionTypeVar& super, const UnionTypeVar& sub);
+bool isSubset(const UnionType& super, const UnionType& sub);
 
 // Checks if a type contains generic type binders
 bool isGeneric(const TypeId ty);
@@ -628,12 +626,12 @@ bool maybeSingleton(TypeId ty);
 // Checks if the length operator can be applied on the value of type
 bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount);
 
-struct SingletonTypes
+struct BuiltinTypes
 {
-    SingletonTypes();
-    ~SingletonTypes();
-    SingletonTypes(const SingletonTypes&) = delete;
-    void operator=(const SingletonTypes&) = delete;
+    BuiltinTypes();
+    ~BuiltinTypes();
+    BuiltinTypes(const BuiltinTypes&) = delete;
+    void operator=(const BuiltinTypes&) = delete;
 
     TypeId errorRecoveryType(TypeId guess);
     TypePackId errorRecoveryTypePack(TypePackId guess);
@@ -653,6 +651,7 @@ public:
     const TypeId booleanType;
     const TypeId threadType;
     const TypeId functionType;
+    const TypeId classType;
     const TypeId trueType;
     const TypeId falseType;
     const TypeId anyType;
@@ -676,18 +675,18 @@ TypeLevel* getMutableLevel(TypeId ty);
 
 std::optional<TypeLevel> getLevel(TypePackId tp);
 
-const Property* lookupClassProp(const ClassTypeVar* cls, const Name& name);
-bool isSubclass(const ClassTypeVar* cls, const ClassTypeVar* parent);
+const Property* lookupClassProp(const ClassType* cls, const Name& name);
+bool isSubclass(const ClassType* cls, const ClassType* parent);
 
-TypeVar* asMutable(TypeId ty);
+Type* asMutable(TypeId ty);
 
 template<typename T>
 const T* get(TypeId tv)
 {
     LUAU_ASSERT(tv);
 
-    if constexpr (!std::is_same_v<T, BoundTypeVar>)
-        LUAU_ASSERT(get_if<BoundTypeVar>(&tv->ty) == nullptr);
+    if constexpr (!std::is_same_v<T, BoundType>)
+        LUAU_ASSERT(get_if<BoundType>(&tv->ty) == nullptr);
 
     return get_if<T>(&tv->ty);
 }
@@ -697,25 +696,25 @@ T* getMutable(TypeId tv)
 {
     LUAU_ASSERT(tv);
 
-    if constexpr (!std::is_same_v<T, BoundTypeVar>)
-        LUAU_ASSERT(get_if<BoundTypeVar>(&tv->ty) == nullptr);
+    if constexpr (!std::is_same_v<T, BoundType>)
+        LUAU_ASSERT(get_if<BoundType>(&tv->ty) == nullptr);
 
     return get_if<T>(&asMutable(tv)->ty);
 }
 
-const std::vector<TypeId>& getTypes(const UnionTypeVar* utv);
-const std::vector<TypeId>& getTypes(const IntersectionTypeVar* itv);
+const std::vector<TypeId>& getTypes(const UnionType* utv);
+const std::vector<TypeId>& getTypes(const IntersectionType* itv);
 
 template<typename T>
 struct TypeIterator;
 
-using UnionTypeVarIterator = TypeIterator<UnionTypeVar>;
-UnionTypeVarIterator begin(const UnionTypeVar* utv);
-UnionTypeVarIterator end(const UnionTypeVar* utv);
+using UnionTypeIterator = TypeIterator<UnionType>;
+UnionTypeIterator begin(const UnionType* utv);
+UnionTypeIterator end(const UnionType* utv);
 
-using IntersectionTypeVarIterator = TypeIterator<IntersectionTypeVar>;
-IntersectionTypeVarIterator begin(const IntersectionTypeVar* itv);
-IntersectionTypeVarIterator end(const IntersectionTypeVar* itv);
+using IntersectionTypeIterator = TypeIterator<IntersectionType>;
+IntersectionTypeIterator begin(const IntersectionType* itv);
+IntersectionTypeIterator end(const IntersectionType* itv);
 
 /* Traverses the type T yielding each TypeId.
  * If the iterator encounters a nested type T, it will instead yield each TypeId within.
@@ -788,8 +787,8 @@ struct TypeIterator
 
     // Normally, we'd have `begin` and `end` be a template but there's too much trouble
     // with templates portability in this area, so not worth it. Thanks MSVC.
-    friend UnionTypeVarIterator end(const UnionTypeVar*);
-    friend IntersectionTypeVarIterator end(const IntersectionTypeVar*);
+    friend UnionTypeIterator end(const UnionType*);
+    friend IntersectionTypeIterator end(const IntersectionType*);
 
 private:
     TypeIterator() = default;

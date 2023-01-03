@@ -2,7 +2,7 @@
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 
 #include "Fixture.h"
 #include "ClassFixture.h"

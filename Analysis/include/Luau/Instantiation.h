@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Substitution.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 #include "Luau/Unifiable.h"
 
 namespace Luau

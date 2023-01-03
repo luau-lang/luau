@@ -3,7 +3,7 @@
 
 #include "Luau/Error.h"
 #include "Luau/Location.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 #include "Luau/Ast.h"
 
 #include <ostream>
@@ -43,7 +43,7 @@ std::ostream& operator<<(std::ostream& lhs, const MissingUnionProperty& error);
 std::ostream& operator<<(std::ostream& lhs, const TypesAreUnrelated& error);
 
 std::ostream& operator<<(std::ostream& lhs, const TableState& tv);
-std::ostream& operator<<(std::ostream& lhs, const TypeVar& tv);
+std::ostream& operator<<(std::ostream& lhs, const Type& tv);
 std::ostream& operator<<(std::ostream& lhs, const TypePackVar& tv);
 
 std::ostream& operator<<(std::ostream& lhs, const TypeErrorData& ted);

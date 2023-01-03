@@ -130,8 +130,8 @@ struct Frontend
     Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options = {});
 
     CheckResult check(const ModuleName& name, std::optional<FrontendOptions> optionOverride = {}); // new shininess
-    LintResult lint(const ModuleName& name, std::optional<LintOptions> enabledLintWarnings = {});
 
+    LintResult lint(const ModuleName& name, std::optional<LintOptions> enabledLintWarnings = {});
     LintResult lint(const SourceModule& module, std::optional<LintOptions> enabledLintWarnings = {});
 
     bool isDirty(const ModuleName& name, bool forAutocomplete = false) const;
@@ -165,22 +165,22 @@ private:
     ModulePtr check(const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope, std::vector<RequireCycle> requireCycles,
         bool forAutocomplete = false);
 
-    std::pair<SourceNode*, SourceModule*> getSourceNode(CheckResult& checkResult, const ModuleName& name);
+    std::pair<SourceNode*, SourceModule*> getSourceNode(const ModuleName& name);
     SourceModule parse(const ModuleName& name, std::string_view src, const ParseOptions& parseOptions);
 
-    bool parseGraph(std::vector<ModuleName>& buildQueue, CheckResult& checkResult, const ModuleName& root, bool forAutocomplete);
+    bool parseGraph(std::vector<ModuleName>& buildQueue, const ModuleName& root, bool forAutocomplete);
 
     static LintResult classifyLints(const std::vector<LintWarning>& warnings, const Config& config);
 
-    ScopePtr getModuleEnvironment(const SourceModule& module, const Config& config, bool forAutocomplete = false);
+    ScopePtr getModuleEnvironment(const SourceModule& module, const Config& config, bool forAutocomplete);
 
     std::unordered_map<std::string, ScopePtr> environments;
     std::unordered_map<std::string, std::function<void(TypeChecker&, ScopePtr)>> builtinDefinitions;
 
-    SingletonTypes singletonTypes_;
+    BuiltinTypes builtinTypes_;
 
 public:
-    const NotNull<SingletonTypes> singletonTypes;
+    const NotNull<BuiltinTypes> builtinTypes;
 
     FileResolver* fileResolver;
     FrontendModuleResolver moduleResolver;
