@@ -9,7 +9,7 @@
 #include "Luau/Substitution.h"
 #include "Luau/TxnLog.h"
 #include "Luau/TypePack.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 #include "Luau/Unifier.h"
 #include "Luau/UnifierSharedState.h"
 
@@ -28,7 +28,7 @@ struct ModuleResolver;
 
 using Name = std::string;
 using ScopePtr = std::shared_ptr<Scope>;
-using OverloadErrorEntry = std::tuple<std::vector<TypeError>, std::vector<TypeId>, const FunctionTypeVar*>;
+using OverloadErrorEntry = std::tuple<std::vector<TypeError>, std::vector<TypeId>, const FunctionType*>;
 
 bool doesCallError(const AstExprCall* call);
 bool hasBreak(AstStat* node);
@@ -57,11 +57,11 @@ public:
     }
 };
 
-// All TypeVars are retained via Environment::typeVars.  All TypeIds
+// All Types are retained via Environment::types.  All TypeIds
 // within a program are borrowed pointers into this set.
 struct TypeChecker
 {
-    explicit TypeChecker(ModuleResolver* resolver, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter* iceHandler);
+    explicit TypeChecker(ModuleResolver* resolver, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter* iceHandler);
     TypeChecker(const TypeChecker&) = delete;
     TypeChecker& operator=(const TypeChecker&) = delete;
 
@@ -163,7 +163,7 @@ struct TypeChecker
     // Reports an error if the type is already some kind of non-table.
     void tablify(TypeId type);
 
-    /** In nonstrict mode, many typevars need to be replaced by any.
+    /** In nonstrict mode, many types need to be replaced by any.
      */
     TypeId anyIfNonstrict(TypeId ty) const;
 
@@ -287,14 +287,14 @@ private:
     TypeId unionOfTypes(TypeId a, TypeId b, const ScopePtr& scope, const Location& location, bool unifyFreeTypes = true);
 
     // ex
-    //      TypeId id = addType(FreeTypeVar());
+    //      TypeId id = addType(FreeType());
     template<typename T>
     TypeId addType(const T& tv)
     {
-        return addTV(TypeVar(tv));
+        return addTV(Type(tv));
     }
 
-    TypeId addTV(TypeVar&& tv);
+    TypeId addTV(Type&& tv);
 
     TypePackId addTypePack(TypePackVar&& tp);
     TypePackId addTypePack(TypePack&& tp);
@@ -343,7 +343,7 @@ public:
      * Calling this function means submitting evidence that the pack must have the length provided.
      * If the pack is known not to have the correct length, an error will be reported.
      * The return vector is always of the exact requested length.  In the event that the pack's length does
-     * not match up, excess TypeIds will be ErrorTypeVars.
+     * not match up, excess TypeIds will be ErrorTypes.
      */
     std::vector<TypeId> unTypePack(const ScopePtr& scope, TypePackId pack, size_t expectedLength, const Location& location);
 
@@ -356,7 +356,7 @@ public:
     ModuleName currentModuleName;
 
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope;
-    NotNull<SingletonTypes> singletonTypes;
+    NotNull<BuiltinTypes> builtinTypes;
     InternalErrorReporter* iceHandler;
 
     UnifierSharedState unifierState;

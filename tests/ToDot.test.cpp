@@ -17,16 +17,16 @@ struct ToDotClassFixture : Fixture
 
         unfreeze(arena);
 
-        TypeId baseClassMetaType = arena.addType(TableTypeVar{});
+        TypeId baseClassMetaType = arena.addType(TableType{});
 
-        TypeId baseClassInstanceType = arena.addType(ClassTypeVar{"BaseClass", {}, std::nullopt, baseClassMetaType, {}, {}, "Test"});
-        getMutable<ClassTypeVar>(baseClassInstanceType)->props = {
+        TypeId baseClassInstanceType = arena.addType(ClassType{"BaseClass", {}, std::nullopt, baseClassMetaType, {}, {}, "Test"});
+        getMutable<ClassType>(baseClassInstanceType)->props = {
             {"BaseField", {typeChecker.numberType}},
         };
         typeChecker.globalScope->exportedTypeBindings["BaseClass"] = TypeFun{{}, baseClassInstanceType};
 
-        TypeId childClassInstanceType = arena.addType(ClassTypeVar{"ChildClass", {}, baseClassInstanceType, std::nullopt, {}, {}, "Test"});
-        getMutable<ClassTypeVar>(childClassInstanceType)->props = {
+        TypeId childClassInstanceType = arena.addType(ClassType{"ChildClass", {}, baseClassInstanceType, std::nullopt, {}, {}, "Test"});
+        getMutable<ClassType>(childClassInstanceType)->props = {
             {"ChildField", {typeChecker.stringType}},
         };
         typeChecker.globalScope->exportedTypeBindings["ChildClass"] = TypeFun{{}, childClassInstanceType};
@@ -66,12 +66,12 @@ n1 [label="any"];
     opts.duplicatePrimitives = false;
 
     CHECK_EQ(R"(digraph graphname {
-n1 [label="PrimitiveTypeVar number"];
+n1 [label="PrimitiveType number"];
 })",
         toDot(requireType("b"), opts));
 
     CHECK_EQ(R"(digraph graphname {
-n1 [label="AnyTypeVar 1"];
+n1 [label="AnyType 1"];
 })",
         toDot(requireType("c"), opts));
 }
@@ -90,7 +90,7 @@ local b = a()
     ToDotOptions opts;
     opts.showPointers = false;
     CHECK_EQ(R"(digraph graphname {
-n1 [label="BoundTypeVar 1"];
+n1 [label="BoundType 1"];
 n1 -> n2;
 n2 [label="number"];
 })",
@@ -110,11 +110,11 @@ local function f(a, ...: string) return a end
     opts.showPointers = false;
 
     CHECK_EQ(R"(digraph graphname {
-n1 [label="FunctionTypeVar 1"];
+n1 [label="FunctionType 1"];
 n1 -> n2 [label="arg"];
 n2 [label="TypePack 2"];
 n2 -> n3;
-n3 [label="GenericTypeVar 3"];
+n3 [label="GenericType 3"];
 n2 -> n4 [label="tail"];
 n4 [label="VariadicTypePack 4"];
 n4 -> n5;
@@ -138,7 +138,7 @@ local a: string | number
     ToDotOptions opts;
     opts.showPointers = false;
     CHECK_EQ(R"(digraph graphname {
-n1 [label="UnionTypeVar 1"];
+n1 [label="UnionType 1"];
 n1 -> n2;
 n2 [label="string"];
 n1 -> n3;
@@ -157,7 +157,7 @@ local a: string & number -- uninhabited
     ToDotOptions opts;
     opts.showPointers = false;
     CHECK_EQ(R"(digraph graphname {
-n1 [label="IntersectionTypeVar 1"];
+n1 [label="IntersectionType 1"];
 n1 -> n2;
 n2 [label="string"];
 n1 -> n3;
@@ -177,11 +177,11 @@ local a: A<number, ...string>
     ToDotOptions opts;
     opts.showPointers = false;
     CHECK_EQ(R"(digraph graphname {
-n1 [label="TableTypeVar A"];
+n1 [label="TableType A"];
 n1 -> n2 [label="x"];
 n2 [label="number"];
 n1 -> n3 [label="y"];
-n3 [label="FunctionTypeVar 3"];
+n3 [label="FunctionType 3"];
 n3 -> n4 [label="arg"];
 n4 [label="VariadicTypePack 4"];
 n4 -> n5;
@@ -212,47 +212,47 @@ local a: typeof(setmetatable({}, {}))
     ToDotOptions opts;
     opts.showPointers = false;
     CHECK_EQ(R"(digraph graphname {
-n1 [label="MetatableTypeVar 1"];
+n1 [label="MetatableType 1"];
 n1 -> n2 [label="table"];
-n2 [label="TableTypeVar 2"];
+n2 [label="TableType 2"];
 n1 -> n3 [label="metatable"];
-n3 [label="TableTypeVar 3"];
+n3 [label="TableType 3"];
 })",
         toDot(requireType("a"), opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "free")
 {
-    TypeVar type{TypeVariant{FreeTypeVar{TypeLevel{0, 0}}}};
+    Type type{TypeVariant{FreeType{TypeLevel{0, 0}}}};
 
     ToDotOptions opts;
     opts.showPointers = false;
     CHECK_EQ(R"(digraph graphname {
-n1 [label="FreeTypeVar 1"];
+n1 [label="FreeType 1"];
 })",
         toDot(&type, opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "error")
 {
-    TypeVar type{TypeVariant{ErrorTypeVar{}}};
+    Type type{TypeVariant{ErrorType{}}};
 
     ToDotOptions opts;
     opts.showPointers = false;
     CHECK_EQ(R"(digraph graphname {
-n1 [label="ErrorTypeVar 1"];
+n1 [label="ErrorType 1"];
 })",
         toDot(&type, opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic")
 {
-    TypeVar type{TypeVariant{GenericTypeVar{"T"}}};
+    Type type{TypeVariant{GenericType{"T"}}};
 
     ToDotOptions opts;
     opts.showPointers = false;
     CHECK_EQ(R"(digraph graphname {
-n1 [label="GenericTypeVar T"];
+n1 [label="GenericType T"];
 })",
         toDot(&type, opts));
 }
@@ -267,15 +267,15 @@ local a: ChildClass
     ToDotOptions opts;
     opts.showPointers = false;
     CHECK_EQ(R"(digraph graphname {
-n1 [label="ClassTypeVar ChildClass"];
+n1 [label="ClassType ChildClass"];
 n1 -> n2 [label="ChildField"];
 n2 [label="string"];
 n1 -> n3 [label="[parent]"];
-n3 [label="ClassTypeVar BaseClass"];
+n3 [label="ClassType BaseClass"];
 n3 -> n4 [label="BaseField"];
 n4 [label="number"];
 n3 -> n5 [label="[metatable]"];
-n5 [label="TableTypeVar 5"];
+n5 [label="TableType 5"];
 })",
         toDot(requireType("a"), opts));
 }
@@ -358,16 +358,16 @@ b = a
     ToDotOptions opts;
     opts.showPointers = false;
     CHECK_EQ(R"(digraph graphname {
-n1 [label="TableTypeVar 1"];
+n1 [label="TableType 1"];
 n1 -> n2 [label="boundTo"];
-n2 [label="TableTypeVar a"];
+n2 [label="TableType a"];
 n2 -> n3 [label="x"];
 n3 [label="number"];
 })",
         toDot(*ty, opts));
 }
 
-TEST_CASE_FIXTURE(Fixture, "singletontypes")
+TEST_CASE_FIXTURE(Fixture, "builtintypes")
 {
     CheckResult result = check(R"(
         local x: "hi" | "\"hello\"" | true | false
@@ -377,17 +377,17 @@ TEST_CASE_FIXTURE(Fixture, "singletontypes")
     opts.showPointers = false;
 
     CHECK_EQ(R"(digraph graphname {
-n1 [label="UnionTypeVar 1"];
+n1 [label="UnionType 1"];
 n1 -> n2;
-n2 [label="SingletonTypeVar string: hi"];
+n2 [label="SingletonType string: hi"];
 n1 -> n3;
 )"
-             "n3 [label=\"SingletonTypeVar string: \\\"hello\\\"\"];"
+             "n3 [label=\"SingletonType string: \\\"hello\\\"\"];"
              R"(
 n1 -> n4;
-n4 [label="SingletonTypeVar boolean: true"];
+n4 [label="SingletonType boolean: true"];
 n1 -> n5;
-n5 [label="SingletonTypeVar boolean: false"];
+n5 [label="SingletonType boolean: false"];
 })",
         toDot(requireType("x"), opts));
 }

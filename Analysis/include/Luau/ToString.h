@@ -19,13 +19,13 @@ class AstExpr;
 
 struct Scope;
 
-struct TypeVar;
-using TypeId = const TypeVar*;
+struct Type;
+using TypeId = const Type*;
 
 struct TypePackVar;
 using TypePackId = const TypePackVar*;
 
-struct FunctionTypeVar;
+struct FunctionType;
 struct Constraint;
 
 struct Position;
@@ -33,7 +33,7 @@ struct Location;
 
 struct ToStringNameMap
 {
-    std::unordered_map<TypeId, std::string> typeVars;
+    std::unordered_map<TypeId, std::string> types;
     std::unordered_map<TypePackId, std::string> typePacks;
 };
 
@@ -46,7 +46,7 @@ struct ToStringOptions
     bool hideNamedFunctionTypeParameters = false; // If true, type parameters of functions will be hidden at top-level.
     bool hideFunctionSelfArgument = false;        // If true, `self: X` will be omitted from the function signature if the function has self
     bool DEPRECATED_indent = false;               // TODO Deprecated field, prune when clipping flag FFlagLuauLineBreaksDeterminIndents
-    size_t maxTableLength = size_t(FInt::LuauTableTypeMaximumStringifierLength); // Only applied to TableTypeVars
+    size_t maxTableLength = size_t(FInt::LuauTableTypeMaximumStringifierLength); // Only applied to TableTypes
     size_t maxTypeLength = size_t(FInt::LuauTypeMaximumStringifierLength);
     ToStringNameMap nameMap;
     std::shared_ptr<Scope> scope; // If present, module names will be added and types that are not available in scope will be marked as 'invalid'
@@ -105,10 +105,10 @@ inline std::string toString(const Constraint& c)
     return toString(c, ToStringOptions{});
 }
 
-std::string toString(const TypeVar& tv, ToStringOptions& opts);
+std::string toString(const Type& tv, ToStringOptions& opts);
 std::string toString(const TypePackVar& tp, ToStringOptions& opts);
 
-inline std::string toString(const TypeVar& tv)
+inline std::string toString(const Type& tv)
 {
     ToStringOptions opts;
     return toString(tv, opts);
@@ -120,9 +120,9 @@ inline std::string toString(const TypePackVar& tp)
     return toString(tp, opts);
 }
 
-std::string toStringNamedFunction(const std::string& funcName, const FunctionTypeVar& ftv, ToStringOptions& opts);
+std::string toStringNamedFunction(const std::string& funcName, const FunctionType& ftv, ToStringOptions& opts);
 
-inline std::string toStringNamedFunction(const std::string& funcName, const FunctionTypeVar& ftv)
+inline std::string toStringNamedFunction(const std::string& funcName, const FunctionType& ftv)
 {
     ToStringOptions opts;
     return toStringNamedFunction(funcName, ftv, opts);

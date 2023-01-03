@@ -3,7 +3,7 @@
 
 #include <Luau/NotNull.h>
 #include "Luau/TypeArena.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 
 #include <unordered_map>
 

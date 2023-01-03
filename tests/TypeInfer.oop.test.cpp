@@ -4,8 +4,8 @@
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "Luau/Type.h"
+#include "Luau/VisitType.h"
 
 #include "Fixture.h"
 
@@ -93,8 +93,8 @@ TEST_CASE_FIXTURE(Fixture, "methods_are_topologically_sorted")
     LUAU_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 
-    CHECK_EQ(PrimitiveTypeVar::Number, getPrimitiveType(requireType("a")));
-    CHECK_EQ(PrimitiveTypeVar::String, getPrimitiveType(requireType("b")));
+    CHECK_EQ(PrimitiveType::Number, getPrimitiveType(requireType("a")));
+    CHECK_EQ(PrimitiveType::String, getPrimitiveType(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "quantify_methods_defined_using_dot_syntax_and_explicit_self_parameter")
@@ -139,7 +139,7 @@ TEST_CASE_FIXTURE(Fixture, "inferring_hundreds_of_self_calls_should_not_suffocat
     )");
 
     ModulePtr module = getMainModule();
-    CHECK_GE(50, module->internalTypes.typeVars.size());
+    CHECK_GE(50, module->internalTypes.types.size());
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "object_constructor_can_refer_to_method_of_self")

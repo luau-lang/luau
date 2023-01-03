@@ -4,8 +4,8 @@
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "Luau/Type.h"
+#include "Luau/VisitType.h"
 
 #include "Fixture.h"
 #include "ScopedFlags.h"
@@ -28,7 +28,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_hello_world")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     TypeId aType = requireType("a");
-    CHECK_EQ(getPrimitiveType(aType), PrimitiveTypeVar::Number);
+    CHECK_EQ(getPrimitiveType(aType), PrimitiveType::Number);
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_propagation")
@@ -37,7 +37,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_propagation")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     TypeId bType = requireType("b");
-    CHECK_EQ(getPrimitiveType(bType), PrimitiveTypeVar::Number);
+    CHECK_EQ(getPrimitiveType(bType), PrimitiveType::Number);
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_error")
@@ -65,7 +65,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_locals_with_nil_value")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     TypeId ty = requireType("f");
-    CHECK_EQ(getPrimitiveType(ty), PrimitiveTypeVar::String);
+    CHECK_EQ(getPrimitiveType(ty), PrimitiveType::String);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_locals_via_assignment_from_its_call_site")
@@ -213,7 +213,7 @@ TEST_CASE_FIXTURE(Fixture, "crazy_complexity")
         A:A():A():A():A():A():A():A():A():A():A():A()
     )");
 
-    std::cout << "OK!  Allocated " << typeChecker.typeVars.size() << " typevars" << std::endl;
+    std::cout << "OK!  Allocated " << typeChecker.types.size() << " types" << std::endl;
 }
 #endif
 
@@ -294,7 +294,7 @@ TEST_CASE_FIXTURE(Fixture, "exponential_blowup_from_copying_types")
 
     // If we're not careful about copying, this ends up with O(2^N) types rather than O(N)
     // (in this case 5 vs 31).
-    CHECK_GE(5, module->interfaceTypes.typeVars.size());
+    CHECK_GE(5, module->interfaceTypes.types.size());
 }
 
 // In these tests, a successful parse is required, so we need the parser to return the AST and then we can test the recursion depth limit in type
@@ -455,7 +455,7 @@ end
 )");
 }
 
-struct FindFreeTypeVars
+struct FindFreeTypes
 {
     bool foundOne = false;
 
@@ -487,7 +487,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_after_error_recovery")
     LUAU_REQUIRE_ERRORS(result);
 
     TypeId aType = requireType("a");
-    CHECK_EQ(getPrimitiveType(aType), PrimitiveTypeVar::Number);
+    CHECK_EQ(getPrimitiveType(aType), PrimitiveType::Number);
 }
 
 // Check that type checker knows about error expressions
@@ -758,7 +758,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions1")
     CheckResult result = check(R"(local a = if true then "true" else "false")");
     LUAU_REQUIRE_NO_ERRORS(result);
     TypeId aType = requireType("a");
-    CHECK_EQ(getPrimitiveType(aType), PrimitiveTypeVar::String);
+    CHECK_EQ(getPrimitiveType(aType), PrimitiveType::String);
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions2")
@@ -769,7 +769,7 @@ local a = if false then "a" elseif false then "b" else "c"
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
     TypeId aType = requireType("a");
-    CHECK_EQ(getPrimitiveType(aType), PrimitiveTypeVar::String);
+    CHECK_EQ(getPrimitiveType(aType), PrimitiveType::String);
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_type_union")
@@ -854,11 +854,11 @@ TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_constant_type")
  *
  * We had an issue here where the scope for the `if` block here would
  * have an elevated TypeLevel even though there is no function nesting going on.
- * This would result in a free typevar for the type of _ that was much higher than
+ * This would result in a free type for the type of _ that was much higher than
  * it should be.  This type would be erroneously quantified in the definition of `aaa`.
  * This in turn caused an ice when evaluating `_()` in the while loop.
  */
-TEST_CASE_FIXTURE(Fixture, "free_typevars_introduced_within_control_flow_constructs_do_not_get_an_elevated_TypeLevel")
+TEST_CASE_FIXTURE(Fixture, "free_types_introduced_within_control_flow_constructs_do_not_get_an_elevated_TypeLevel")
 {
     check(R"(
         --!strict

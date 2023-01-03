@@ -3,7 +3,7 @@
 
 #include "Luau/Substitution.h"
 #include "Luau/TxnLog.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 
 namespace Luau
 {

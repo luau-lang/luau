@@ -614,6 +614,11 @@ void AssemblyBuilderX64::vdivsd(OperandX64 dst, OperandX64 src1, OperandX64 src2
     placeAvx("vdivsd", dst, src1, src2, 0x5e, false, AVX_0F, AVX_F2);
 }
 
+void AssemblyBuilderX64::vandpd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vandpd", dst, src1, src2, 0x54, false, AVX_0F, AVX_66);
+}
+
 void AssemblyBuilderX64::vxorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
     placeAvx("vxorpd", dst, src1, src2, 0x57, false, AVX_0F, AVX_66);
@@ -697,6 +702,36 @@ void AssemblyBuilderX64::vmovupd(OperandX64 dst, OperandX64 src)
 void AssemblyBuilderX64::vmovups(OperandX64 dst, OperandX64 src)
 {
     placeAvx("vmovups", dst, src, 0x10, 0x11, false, AVX_0F, AVX_NP);
+}
+
+void AssemblyBuilderX64::vmovq(OperandX64 dst, OperandX64 src)
+{
+    if (dst.base.size == SizeX64::xmmword)
+    {
+        LUAU_ASSERT(dst.cat == CategoryX64::reg);
+        LUAU_ASSERT(src.base.size == SizeX64::qword);
+        placeAvx("vmovq", dst, src, 0x6e, true, AVX_0F, AVX_66);
+    }
+    else if (dst.base.size == SizeX64::qword)
+    {
+        LUAU_ASSERT(src.cat == CategoryX64::reg);
+        LUAU_ASSERT(src.base.size == SizeX64::xmmword);
+        placeAvx("vmovq", src, dst, 0x7e, true, AVX_0F, AVX_66);
+    }
+    else
+    {
+        LUAU_ASSERT(!"No encoding for left operand of this category");
+    }
+}
+
+void AssemblyBuilderX64::vmaxsd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vmaxsd", dst, src1, src2, 0x5f, false, AVX_0F, AVX_F2);
+}
+
+void AssemblyBuilderX64::vminsd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vminsd", dst, src1, src2, 0x5d, false, AVX_0F, AVX_F2);
 }
 
 void AssemblyBuilderX64::finalize()

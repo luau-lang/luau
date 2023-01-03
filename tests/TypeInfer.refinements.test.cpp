@@ -8,6 +8,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauNegatedClassTypes)
 
 using namespace Luau;
 
@@ -63,30 +64,32 @@ struct RefinementClassFixture : BuiltinsFixture
         TypeArena& arena = typeChecker.globalTypes;
         NotNull<Scope> scope{typeChecker.globalScope.get()};
 
+        std::optional<TypeId> rootSuper = FFlag::LuauNegatedClassTypes ? std::make_optional(typeChecker.builtinTypes->classType) : std::nullopt;
+
         unfreeze(arena);
-        TypeId vec3 = arena.addType(ClassTypeVar{"Vector3", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"});
-        getMutable<ClassTypeVar>(vec3)->props = {
+        TypeId vec3 = arena.addType(ClassType{"Vector3", {}, rootSuper, std::nullopt, {}, nullptr, "Test"});
+        getMutable<ClassType>(vec3)->props = {
             {"X", Property{typeChecker.numberType}},
             {"Y", Property{typeChecker.numberType}},
             {"Z", Property{typeChecker.numberType}},
         };
 
-        TypeId inst = arena.addType(ClassTypeVar{"Instance", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"});
+        TypeId inst = arena.addType(ClassType{"Instance", {}, rootSuper, std::nullopt, {}, nullptr, "Test"});
 
         TypePackId isAParams = arena.addTypePack({inst, typeChecker.stringType});
         TypePackId isARets = arena.addTypePack({typeChecker.booleanType});
-        TypeId isA = arena.addType(FunctionTypeVar{isAParams, isARets});
-        getMutable<FunctionTypeVar>(isA)->magicFunction = magicFunctionInstanceIsA;
-        getMutable<FunctionTypeVar>(isA)->dcrMagicRefinement = dcrMagicRefinementInstanceIsA;
+        TypeId isA = arena.addType(FunctionType{isAParams, isARets});
+        getMutable<FunctionType>(isA)->magicFunction = magicFunctionInstanceIsA;
+        getMutable<FunctionType>(isA)->dcrMagicRefinement = dcrMagicRefinementInstanceIsA;
 
-        getMutable<ClassTypeVar>(inst)->props = {
+        getMutable<ClassType>(inst)->props = {
             {"Name", Property{typeChecker.stringType}},
             {"IsA", Property{isA}},
         };
 
-        TypeId folder = typeChecker.globalTypes.addType(ClassTypeVar{"Folder", {}, inst, std::nullopt, {}, nullptr, "Test"});
-        TypeId part = typeChecker.globalTypes.addType(ClassTypeVar{"Part", {}, inst, std::nullopt, {}, nullptr, "Test"});
-        getMutable<ClassTypeVar>(part)->props = {
+        TypeId folder = typeChecker.globalTypes.addType(ClassType{"Folder", {}, inst, std::nullopt, {}, nullptr, "Test"});
+        TypeId part = typeChecker.globalTypes.addType(ClassType{"Part", {}, inst, std::nullopt, {}, nullptr, "Test"});
+        getMutable<ClassType>(part)->props = {
             {"Position", Property{vec3}},
         };
 

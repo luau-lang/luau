@@ -78,7 +78,22 @@ struct NativeContext
 
     void (*luaF_close)(lua_State* L, StkId level) = nullptr;
 
+    double (*libm_exp)(double) = nullptr;
     double (*libm_pow)(double, double) = nullptr;
+    double (*libm_fmod)(double, double) = nullptr;
+    double (*libm_asin)(double) = nullptr;
+    double (*libm_sin)(double) = nullptr;
+    double (*libm_sinh)(double) = nullptr;
+    double (*libm_acos)(double) = nullptr;
+    double (*libm_cos)(double) = nullptr;
+    double (*libm_cosh)(double) = nullptr;
+    double (*libm_atan)(double) = nullptr;
+    double (*libm_atan2)(double, double) = nullptr;
+    double (*libm_tan)(double) = nullptr;
+    double (*libm_tanh)(double) = nullptr;
+    double (*libm_log)(double) = nullptr;
+    double (*libm_log2)(double) = nullptr;
+    double (*libm_log10)(double) = nullptr;
 
     // Helper functions
     bool (*forgLoopNodeIter)(lua_State* L, Table* h, int index, TValue* ra) = nullptr;

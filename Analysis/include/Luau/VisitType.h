@@ -6,7 +6,7 @@
 #include "Luau/DenseHash.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/TypePack.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
 LUAU_FASTFLAG(LuauCompleteVisitor);
@@ -19,7 +19,7 @@ namespace visit_detail
 /**
  * Apply f(tid, t, seen) if doing so would pass type checking, else apply f(tid, t)
  *
- * We do this to permit (but not require) TypeVar visitors to accept the seen set as an argument.
+ * We do this to permit (but not require) Type visitors to accept the seen set as an argument.
  */
 template<typename F, typename A, typename B, typename C>
 auto apply(A tid, const B& t, C& c, F& f) -> decltype(f(tid, t, c))
@@ -58,13 +58,13 @@ inline void unsee(std::unordered_set<void*>& seen, const void* tv)
 
 inline void unsee(DenseHashSet<void*>& seen, const void* tv)
 {
-    // When DenseHashSet is used for 'visitTypeVarOnce', where don't forget visited elements
+    // When DenseHashSet is used for 'visitTypeOnce', where don't forget visited elements
 }
 
 } // namespace visit_detail
 
 template<typename S>
-struct GenericTypeVarVisitor
+struct GenericTypeVisitor
 {
     using Set = S;
 
@@ -72,9 +72,9 @@ struct GenericTypeVarVisitor
     bool skipBoundTypes = false;
     int recursionCounter = 0;
 
-    GenericTypeVarVisitor() = default;
+    GenericTypeVisitor() = default;
 
-    explicit GenericTypeVarVisitor(Set seen, bool skipBoundTypes = false)
+    explicit GenericTypeVisitor(Set seen, bool skipBoundTypes = false)
         : seen(std::move(seen))
         , skipBoundTypes(skipBoundTypes)
     {
@@ -87,75 +87,75 @@ struct GenericTypeVarVisitor
     {
         return true;
     }
-    virtual bool visit(TypeId ty, const BoundTypeVar& btv)
+    virtual bool visit(TypeId ty, const BoundType& btv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const FreeTypeVar& ftv)
+    virtual bool visit(TypeId ty, const FreeType& ftv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const GenericTypeVar& gtv)
+    virtual bool visit(TypeId ty, const GenericType& gtv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const ErrorTypeVar& etv)
+    virtual bool visit(TypeId ty, const ErrorType& etv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const PrimitiveTypeVar& ptv)
+    virtual bool visit(TypeId ty, const PrimitiveType& ptv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const FunctionTypeVar& ftv)
+    virtual bool visit(TypeId ty, const FunctionType& ftv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const TableTypeVar& ttv)
+    virtual bool visit(TypeId ty, const TableType& ttv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const MetatableTypeVar& mtv)
+    virtual bool visit(TypeId ty, const MetatableType& mtv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const ClassTypeVar& ctv)
+    virtual bool visit(TypeId ty, const ClassType& ctv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const AnyTypeVar& atv)
+    virtual bool visit(TypeId ty, const AnyType& atv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const UnknownTypeVar& utv)
+    virtual bool visit(TypeId ty, const UnknownType& utv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const NeverTypeVar& ntv)
+    virtual bool visit(TypeId ty, const NeverType& ntv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const UnionTypeVar& utv)
+    virtual bool visit(TypeId ty, const UnionType& utv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const IntersectionTypeVar& itv)
+    virtual bool visit(TypeId ty, const IntersectionType& itv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const BlockedTypeVar& btv)
+    virtual bool visit(TypeId ty, const BlockedType& btv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const PendingExpansionTypeVar& petv)
+    virtual bool visit(TypeId ty, const PendingExpansionType& petv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const SingletonTypeVar& stv)
+    virtual bool visit(TypeId ty, const SingletonType& stv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const NegationTypeVar& ntv)
+    virtual bool visit(TypeId ty, const NegationType& ntv)
     {
         return visit(ty);
     }
@@ -203,22 +203,22 @@ struct GenericTypeVarVisitor
             return;
         }
 
-        if (auto btv = get<BoundTypeVar>(ty))
+        if (auto btv = get<BoundType>(ty))
         {
             if (skipBoundTypes)
                 traverse(btv->boundTo);
             else if (visit(ty, *btv))
                 traverse(btv->boundTo);
         }
-        else if (auto ftv = get<FreeTypeVar>(ty))
+        else if (auto ftv = get<FreeType>(ty))
             visit(ty, *ftv);
-        else if (auto gtv = get<GenericTypeVar>(ty))
+        else if (auto gtv = get<GenericType>(ty))
             visit(ty, *gtv);
-        else if (auto etv = get<ErrorTypeVar>(ty))
+        else if (auto etv = get<ErrorType>(ty))
             visit(ty, *etv);
-        else if (auto ptv = get<PrimitiveTypeVar>(ty))
+        else if (auto ptv = get<PrimitiveType>(ty))
             visit(ty, *ptv);
-        else if (auto ftv = get<FunctionTypeVar>(ty))
+        else if (auto ftv = get<FunctionType>(ty))
         {
             if (visit(ty, *ftv))
             {
@@ -226,7 +226,7 @@ struct GenericTypeVarVisitor
                 traverse(ftv->retTypes);
             }
         }
-        else if (auto ttv = get<TableTypeVar>(ty))
+        else if (auto ttv = get<TableType>(ty))
         {
             // Some visitors want to see bound tables, that's why we traverse the original type
             if (skipBoundTypes && ttv->boundTo)
@@ -252,7 +252,7 @@ struct GenericTypeVarVisitor
                 }
             }
         }
-        else if (auto mtv = get<MetatableTypeVar>(ty))
+        else if (auto mtv = get<MetatableType>(ty))
         {
             if (visit(ty, *mtv))
             {
@@ -260,7 +260,7 @@ struct GenericTypeVarVisitor
                 traverse(mtv->metatable);
             }
         }
-        else if (auto ctv = get<ClassTypeVar>(ty))
+        else if (auto ctv = get<ClassType>(ty))
         {
             if (visit(ty, *ctv))
             {
@@ -274,9 +274,9 @@ struct GenericTypeVarVisitor
                     traverse(*ctv->metatable);
             }
         }
-        else if (auto atv = get<AnyTypeVar>(ty))
+        else if (auto atv = get<AnyType>(ty))
             visit(ty, *atv);
-        else if (auto utv = get<UnionTypeVar>(ty))
+        else if (auto utv = get<UnionType>(ty))
         {
             if (visit(ty, *utv))
             {
@@ -284,7 +284,7 @@ struct GenericTypeVarVisitor
                     traverse(optTy);
             }
         }
-        else if (auto itv = get<IntersectionTypeVar>(ty))
+        else if (auto itv = get<IntersectionType>(ty))
         {
             if (visit(ty, *itv))
             {
@@ -292,21 +292,21 @@ struct GenericTypeVarVisitor
                     traverse(partTy);
             }
         }
-        else if (get<LazyTypeVar>(ty))
+        else if (get<LazyType>(ty))
         {
-            // Visiting into LazyTypeVar may necessarily cause infinite expansion, so we don't do that on purpose.
-            // Asserting also makes no sense, because the type _will_ happen here, most likely as a property of some ClassTypeVar
+            // Visiting into LazyType may necessarily cause infinite expansion, so we don't do that on purpose.
+            // Asserting also makes no sense, because the type _will_ happen here, most likely as a property of some ClassType
             // that doesn't need to be expanded.
         }
-        else if (auto stv = get<SingletonTypeVar>(ty))
+        else if (auto stv = get<SingletonType>(ty))
             visit(ty, *stv);
-        else if (auto btv = get<BlockedTypeVar>(ty))
+        else if (auto btv = get<BlockedType>(ty))
             visit(ty, *btv);
-        else if (auto utv = get<UnknownTypeVar>(ty))
+        else if (auto utv = get<UnknownType>(ty))
             visit(ty, *utv);
-        else if (auto ntv = get<NeverTypeVar>(ty))
+        else if (auto ntv = get<NeverType>(ty))
             visit(ty, *ntv);
-        else if (auto petv = get<PendingExpansionTypeVar>(ty))
+        else if (auto petv = get<PendingExpansionType>(ty))
         {
             if (visit(ty, *petv))
             {
@@ -317,12 +317,12 @@ struct GenericTypeVarVisitor
                     traverse(a);
             }
         }
-        else if (auto ntv = get<NegationTypeVar>(ty))
+        else if (auto ntv = get<NegationType>(ty))
             visit(ty, *ntv);
         else if (!FFlag::LuauCompleteVisitor)
             return visit_detail::unsee(seen, ty);
         else
-            LUAU_ASSERT(!"GenericTypeVarVisitor::traverse(TypeId) is not exhaustive!");
+            LUAU_ASSERT(!"GenericTypeVisitor::traverse(TypeId) is not exhaustive!");
 
         visit_detail::unsee(seen, ty);
     }
@@ -372,7 +372,7 @@ struct GenericTypeVarVisitor
             visit(tp, *btp);
 
         else
-            LUAU_ASSERT(!"GenericTypeVarVisitor::traverse(TypePackId) is not exhaustive!");
+            LUAU_ASSERT(!"GenericTypeVisitor::traverse(TypePackId) is not exhaustive!");
 
         visit_detail::unsee(seen, tp);
     }
@@ -381,21 +381,21 @@ struct GenericTypeVarVisitor
 /** Visit each type under a given type.  Skips over cycles and keeps recursion depth under control.
  *
  * The same type may be visited multiple times if there are multiple distinct paths to it.  If this is undesirable, use
- * TypeVarOnceVisitor.
+ * TypeOnceVisitor.
  */
-struct TypeVarVisitor : GenericTypeVarVisitor<std::unordered_set<void*>>
+struct TypeVisitor : GenericTypeVisitor<std::unordered_set<void*>>
 {
-    explicit TypeVarVisitor(bool skipBoundTypes = false)
-        : GenericTypeVarVisitor{{}, skipBoundTypes}
+    explicit TypeVisitor(bool skipBoundTypes = false)
+        : GenericTypeVisitor{{}, skipBoundTypes}
     {
     }
 };
 
 /// Visit each type under a given type.  Each type will only be checked once even if there are multiple paths to it.
-struct TypeVarOnceVisitor : GenericTypeVarVisitor<DenseHashSet<void*>>
+struct TypeOnceVisitor : GenericTypeVisitor<DenseHashSet<void*>>
 {
-    explicit TypeVarOnceVisitor(bool skipBoundTypes = false)
-        : GenericTypeVarVisitor{DenseHashSet<void*>{nullptr}, skipBoundTypes}
+    explicit TypeOnceVisitor(bool skipBoundTypes = false)
+        : GenericTypeVisitor{DenseHashSet<void*>{nullptr}, skipBoundTypes}
     {
     }
 };

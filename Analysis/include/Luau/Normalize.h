@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/NotNull.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 #include "Luau/UnifierSharedState.h"
 
 #include <memory>
@@ -13,12 +13,12 @@ namespace Luau
 struct InternalErrorReporter;
 struct Module;
 struct Scope;
-struct SingletonTypes;
+struct BuiltinTypes;
 
 using ModulePtr = std::shared_ptr<Module>;
 
-bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice);
-bool isSubtype(TypePackId subTy, TypePackId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice);
+bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice);
+bool isSubtype(TypePackId subTy, TypePackId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice);
 
 class TypeIds
 {
@@ -31,7 +31,7 @@ public:
     using iterator = std::vector<TypeId>::iterator;
     using const_iterator = std::vector<TypeId>::const_iterator;
 
-    TypeIds(const TypeIds&) = delete;
+    TypeIds(const TypeIds&) = default;
     TypeIds(TypeIds&&) = default;
     TypeIds() = default;
     ~TypeIds() = default;
@@ -155,6 +155,32 @@ struct NormalizedStringType
 
 bool isSubtype(const NormalizedStringType& subStr, const NormalizedStringType& superStr);
 
+struct NormalizedClassType
+{
+    /** Has the following structure:
+     *
+     * (C1 & ~N11 & ... & ~Nn) | (C2 & ~N21 & ... & ~N2n) | ...
+     *
+     * C2 is either not a subtype of any other Cm, or it is and is also a
+     * subtype of one of Nmn types within the same cluster.
+     *
+     * Each TypeId is a class type.
+     */
+    std::unordered_map<TypeId, TypeIds> classes;
+
+    /**
+     * In order to maintain a consistent insertion order, we use this vector to
+     * keep track of it. An ordered std::map will sort by pointer identity,
+     * which is undesirable.
+     */
+    std::vector<TypeId> ordering;
+
+    void pushPair(TypeId ty, TypeIds negations);
+
+    void resetToNever();
+    bool isNever() const;
+};
+
 // A normalized function type can be `never`, the top function type `function`,
 // or an intersection of function types.
 //
@@ -200,9 +226,11 @@ struct NormalizedType
     // This type is either never, boolean type, or a boolean singleton.
     TypeId booleans;
 
+    NormalizedClassType classes;
+
     // The class part of the type.
     // Each element of this set is a class, and none of the classes are subclasses of each other.
-    TypeIds classes;
+    TypeIds DEPRECATED_classes;
 
     // The error part of the type.
     // This type is either never or the error type.
@@ -234,7 +262,7 @@ struct NormalizedType
     // The generic/free part of the type.
     NormalizedTyvars tyvars;
 
-    NormalizedType(NotNull<SingletonTypes> singletonTypes);
+    NormalizedType(NotNull<BuiltinTypes> builtinTypes);
 
     NormalizedType() = delete;
     ~NormalizedType() = default;
@@ -256,10 +284,10 @@ class Normalizer
 
 public:
     TypeArena* arena;
-    NotNull<SingletonTypes> singletonTypes;
+    NotNull<BuiltinTypes> builtinTypes;
     NotNull<UnifierSharedState> sharedState;
 
-    Normalizer(TypeArena* arena, NotNull<SingletonTypes> singletonTypes, NotNull<UnifierSharedState> sharedState);
+    Normalizer(TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> sharedState);
     Normalizer(const Normalizer&) = delete;
     Normalizer(Normalizer&&) = delete;
     Normalizer() = delete;
@@ -283,6 +311,8 @@ public:
     TypeId unionOfBools(TypeId here, TypeId there);
     void unionClassesWithClass(TypeIds& heres, TypeId there);
     void unionClasses(TypeIds& heres, const TypeIds& theres);
+    void unionClassesWithClass(NormalizedClassType& heres, TypeId there);
+    void unionClasses(NormalizedClassType& heres, const NormalizedClassType& theres);
     void unionStrings(NormalizedStringType& here, const NormalizedStringType& there);
     std::optional<TypePackId> unionOfTypePacks(TypePackId here, TypePackId there);
     std::optional<TypeId> unionOfFunctions(TypeId here, TypeId there);
@@ -304,8 +334,10 @@ public:
     // ------- Normalizing intersections
     TypeId intersectionOfTops(TypeId here, TypeId there);
     TypeId intersectionOfBools(TypeId here, TypeId there);
-    void intersectClasses(TypeIds& heres, const TypeIds& theres);
-    void intersectClassesWithClass(TypeIds& heres, TypeId there);
+    void DEPRECATED_intersectClasses(TypeIds& heres, const TypeIds& theres);
+    void DEPRECATED_intersectClassesWithClass(TypeIds& heres, TypeId there);
+    void intersectClasses(NormalizedClassType& heres, const NormalizedClassType& theres);
+    void intersectClassesWithClass(NormalizedClassType& heres, TypeId there);
     void intersectStrings(NormalizedStringType& here, const NormalizedStringType& there);
     std::optional<TypePackId> intersectionOfTypePacks(TypePackId here, TypePackId there);
     std::optional<TypeId> intersectionOfTables(TypeId here, TypeId there);

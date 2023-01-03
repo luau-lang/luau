@@ -11,7 +11,7 @@ namespace Luau
 
 bool Instantiation::isDirty(TypeId ty)
 {
-    if (const FunctionTypeVar* ftv = log->getMutable<FunctionTypeVar>(ty))
+    if (const FunctionType* ftv = log->getMutable<FunctionType>(ty))
     {
         if (ftv->hasNoGenerics)
             return false;
@@ -31,9 +31,9 @@ bool Instantiation::isDirty(TypePackId tp)
 
 bool Instantiation::ignoreChildren(TypeId ty)
 {
-    if (log->getMutable<FunctionTypeVar>(ty))
+    if (log->getMutable<FunctionType>(ty))
         return true;
-    else if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassTypeVar>(ty))
+    else if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassType>(ty))
         return true;
     else
         return false;
@@ -41,10 +41,10 @@ bool Instantiation::ignoreChildren(TypeId ty)
 
 TypeId Instantiation::clean(TypeId ty)
 {
-    const FunctionTypeVar* ftv = log->getMutable<FunctionTypeVar>(ty);
+    const FunctionType* ftv = log->getMutable<FunctionType>(ty);
     LUAU_ASSERT(ftv);
 
-    FunctionTypeVar clone = FunctionTypeVar{level, scope, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
+    FunctionType clone = FunctionType{level, scope, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
     clone.magicFunction = ftv->magicFunction;
     clone.dcrMagicFunction = ftv->dcrMagicFunction;
     clone.tags = ftv->tags;
@@ -71,7 +71,7 @@ TypePackId Instantiation::clean(TypePackId tp)
 
 bool ReplaceGenerics::ignoreChildren(TypeId ty)
 {
-    if (const FunctionTypeVar* ftv = log->getMutable<FunctionTypeVar>(ty))
+    if (const FunctionType* ftv = log->getMutable<FunctionType>(ty))
     {
         if (ftv->hasNoGenerics)
             return true;
@@ -83,7 +83,7 @@ bool ReplaceGenerics::ignoreChildren(TypeId ty)
         // whenever we quantify, so the vectors overlap if and only if they are equal.
         return (!generics.empty() || !genericPacks.empty()) && (ftv->generics == generics) && (ftv->genericPacks == genericPacks);
     }
-    else if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassTypeVar>(ty))
+    else if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassType>(ty))
         return true;
     else
     {
@@ -93,9 +93,9 @@ bool ReplaceGenerics::ignoreChildren(TypeId ty)
 
 bool ReplaceGenerics::isDirty(TypeId ty)
 {
-    if (const TableTypeVar* ttv = log->getMutable<TableTypeVar>(ty))
+    if (const TableType* ttv = log->getMutable<TableType>(ty))
         return ttv->state == TableState::Generic;
-    else if (log->getMutable<GenericTypeVar>(ty))
+    else if (log->getMutable<GenericType>(ty))
         return std::find(generics.begin(), generics.end(), ty) != generics.end();
     else
         return false;
@@ -112,14 +112,14 @@ bool ReplaceGenerics::isDirty(TypePackId tp)
 TypeId ReplaceGenerics::clean(TypeId ty)
 {
     LUAU_ASSERT(isDirty(ty));
-    if (const TableTypeVar* ttv = log->getMutable<TableTypeVar>(ty))
+    if (const TableType* ttv = log->getMutable<TableType>(ty))
     {
-        TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, level, scope, TableState::Free};
+        TableType clone = TableType{ttv->props, ttv->indexer, level, scope, TableState::Free};
         clone.definitionModuleName = ttv->definitionModuleName;
         return addType(std::move(clone));
     }
     else
-        return addType(FreeTypeVar{scope, level});
+        return addType(FreeType{scope, level});
 }
 
 TypePackId ReplaceGenerics::clean(TypePackId tp)

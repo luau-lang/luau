@@ -215,7 +215,7 @@ std::ostream& operator<<(std::ostream& stream, const TableState& tv)
     return stream << static_cast<std::underlying_type<TableState>::type>(tv);
 }
 
-std::ostream& operator<<(std::ostream& stream, const TypeVar& tv)
+std::ostream& operator<<(std::ostream& stream, const Type& tv)
 {
     return stream << toString(tv);
 }

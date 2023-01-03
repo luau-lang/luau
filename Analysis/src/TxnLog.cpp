@@ -87,7 +87,7 @@ void TxnLog::concatAsIntersections(TxnLog rhs, NotNull<TypeArena> arena)
         {
             TypeId leftTy = arena->addType((*leftRep)->pending);
             TypeId rightTy = arena->addType(rightRep->pending);
-            typeVarChanges[ty]->pending.ty = IntersectionTypeVar{{leftTy, rightTy}};
+            typeVarChanges[ty]->pending.ty = IntersectionType{{leftTy, rightTy}};
         }
         else
             typeVarChanges[ty] = std::move(rightRep);
@@ -105,7 +105,7 @@ void TxnLog::concatAsUnion(TxnLog rhs, NotNull<TypeArena> arena)
         {
             TypeId leftTy = arena->addType((*leftRep)->pending);
             TypeId rightTy = arena->addType(rightRep->pending);
-            typeVarChanges[ty]->pending.ty = UnionTypeVar{{leftTy, rightTy}};
+            typeVarChanges[ty]->pending.ty = UnionType{{leftTy, rightTy}};
         }
         else
             typeVarChanges[ty] = std::move(rightRep);
@@ -261,7 +261,7 @@ PendingTypePack* TxnLog::pending(TypePackId tp) const
     return nullptr;
 }
 
-PendingType* TxnLog::replace(TypeId ty, TypeVar replacement)
+PendingType* TxnLog::replace(TypeId ty, Type replacement)
 {
     PendingType* newTy = queue(ty);
     newTy->pending.reassign(replacement);
@@ -277,10 +277,10 @@ PendingTypePack* TxnLog::replace(TypePackId tp, TypePackVar replacement)
 
 PendingType* TxnLog::bindTable(TypeId ty, std::optional<TypeId> newBoundTo)
 {
-    LUAU_ASSERT(get<TableTypeVar>(ty));
+    LUAU_ASSERT(get<TableType>(ty));
 
     PendingType* newTy = queue(ty);
-    if (TableTypeVar* ttv = Luau::getMutable<TableTypeVar>(newTy))
+    if (TableType* ttv = Luau::getMutable<TableType>(newTy))
         ttv->boundTo = newBoundTo;
 
     return newTy;
@@ -288,19 +288,19 @@ PendingType* TxnLog::bindTable(TypeId ty, std::optional<TypeId> newBoundTo)
 
 PendingType* TxnLog::changeLevel(TypeId ty, TypeLevel newLevel)
 {
-    LUAU_ASSERT(get<FreeTypeVar>(ty) || get<TableTypeVar>(ty) || get<FunctionTypeVar>(ty));
+    LUAU_ASSERT(get<FreeType>(ty) || get<TableType>(ty) || get<FunctionType>(ty));
 
     PendingType* newTy = queue(ty);
-    if (FreeTypeVar* ftv = Luau::getMutable<FreeTypeVar>(newTy))
+    if (FreeType* ftv = Luau::getMutable<FreeType>(newTy))
     {
         ftv->level = newLevel;
     }
-    else if (TableTypeVar* ttv = Luau::getMutable<TableTypeVar>(newTy))
+    else if (TableType* ttv = Luau::getMutable<TableType>(newTy))
     {
         LUAU_ASSERT(ttv->state == TableState::Free || ttv->state == TableState::Generic);
         ttv->level = newLevel;
     }
-    else if (FunctionTypeVar* ftv = Luau::getMutable<FunctionTypeVar>(newTy))
+    else if (FunctionType* ftv = Luau::getMutable<FunctionType>(newTy))
     {
         ftv->level = newLevel;
     }
@@ -323,19 +323,19 @@ PendingTypePack* TxnLog::changeLevel(TypePackId tp, TypeLevel newLevel)
 
 PendingType* TxnLog::changeScope(TypeId ty, NotNull<Scope> newScope)
 {
-    LUAU_ASSERT(get<FreeTypeVar>(ty) || get<TableTypeVar>(ty) || get<FunctionTypeVar>(ty));
+    LUAU_ASSERT(get<FreeType>(ty) || get<TableType>(ty) || get<FunctionType>(ty));
 
     PendingType* newTy = queue(ty);
-    if (FreeTypeVar* ftv = Luau::getMutable<FreeTypeVar>(newTy))
+    if (FreeType* ftv = Luau::getMutable<FreeType>(newTy))
     {
         ftv->scope = newScope;
     }
-    else if (TableTypeVar* ttv = Luau::getMutable<TableTypeVar>(newTy))
+    else if (TableType* ttv = Luau::getMutable<TableType>(newTy))
     {
         LUAU_ASSERT(ttv->state == TableState::Free || ttv->state == TableState::Generic);
         ttv->scope = newScope;
     }
-    else if (FunctionTypeVar* ftv = Luau::getMutable<FunctionTypeVar>(newTy))
+    else if (FunctionType* ftv = Luau::getMutable<FunctionType>(newTy))
     {
         ftv->scope = newScope;
     }
@@ -358,10 +358,10 @@ PendingTypePack* TxnLog::changeScope(TypePackId tp, NotNull<Scope> newScope)
 
 PendingType* TxnLog::changeIndexer(TypeId ty, std::optional<TableIndexer> indexer)
 {
-    LUAU_ASSERT(get<TableTypeVar>(ty));
+    LUAU_ASSERT(get<TableType>(ty));
 
     PendingType* newTy = queue(ty);
-    if (TableTypeVar* ttv = Luau::getMutable<TableTypeVar>(newTy))
+    if (TableType* ttv = Luau::getMutable<TableType>(newTy))
     {
         ttv->indexer = indexer;
     }
@@ -371,11 +371,11 @@ PendingType* TxnLog::changeIndexer(TypeId ty, std::optional<TableIndexer> indexe
 
 std::optional<TypeLevel> TxnLog::getLevel(TypeId ty) const
 {
-    if (FreeTypeVar* ftv = getMutable<FreeTypeVar>(ty))
+    if (FreeType* ftv = getMutable<FreeType>(ty))
         return ftv->level;
-    else if (TableTypeVar* ttv = getMutable<TableTypeVar>(ty); ttv && (ttv->state == TableState::Free || ttv->state == TableState::Generic))
+    else if (TableType* ttv = getMutable<TableType>(ty); ttv && (ttv->state == TableState::Free || ttv->state == TableState::Generic))
         return ttv->level;
-    else if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty))
+    else if (FunctionType* ftv = getMutable<FunctionType>(ty))
         return ftv->level;
 
     return std::nullopt;
@@ -392,7 +392,7 @@ TypeId TxnLog::follow(TypeId ty) const
         // Ugly: Fabricate a TypeId that doesn't adhere to most of the invariants
         // that normally apply. This is safe because follow will only call get<>
         // on the returned pointer.
-        return const_cast<const TypeVar*>(&state->pending);
+        return const_cast<const Type*>(&state->pending);
     });
 }
 

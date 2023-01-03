@@ -1,6 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 
 #include "Fixture.h"
 
@@ -22,12 +22,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lib_documentation_symbols")
         CHECK_MESSAGE(
             actualRootSymbol == expectedRootSymbol, "expected symbol ", expectedRootSymbol, " for global ", nameString, ", got ", actualRootSymbol);
 
-        const TableTypeVar::Props* props = nullptr;
-        if (const TableTypeVar* ttv = get<TableTypeVar>(binding.typeId))
+        const TableType::Props* props = nullptr;
+        if (const TableType* ttv = get<TableType>(binding.typeId))
         {
             props = &ttv->props;
         }
-        else if (const ClassTypeVar* ctv = get<ClassTypeVar>(binding.typeId))
+        else if (const ClassType* ctv = get<ClassType>(binding.typeId))
         {
             props = &ctv->props;
         }

@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 #include "Luau/Unifiable.h"
 #include "Luau/Variant.h"
 
@@ -45,7 +45,7 @@ struct VariadicTypePack
 };
 
 /**
- * Analogous to a BlockedTypeVar.
+ * Analogous to a BlockedType.
  */
 struct BlockedTypePack
 {
@@ -83,7 +83,7 @@ struct TypePackVar
 
 /* Walk the set of TypeIds in a TypePack.
  *
- * Like TypeVars, individual TypePacks can be free, generic, or any.
+ * Like Types, individual TypePacks can be free, generic, or any.
  *
  * We afford the ability to work with these kinds of packs by giving the
  * iterator a .tail() property that yields the tail-most TypePack in the

@@ -9,7 +9,7 @@ ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
     , mainModule(new Module)
     , forceTheFlag{"DebugLuauDeferredConstraintResolution", true}
 {
-    BlockedTypeVar::nextIndex = 0;
+    BlockedType::nextIndex = 0;
     BlockedTypePack::nextIndex = 0;
 }
 
@@ -17,7 +17,7 @@ void ConstraintGraphBuilderFixture::generateConstraints(const std::string& code)
 {
     AstStatBlock* root = parse(code);
     dfg = std::make_unique<DataFlowGraph>(DataFlowGraphBuilder::build(root, NotNull{&ice}));
-    cgb = std::make_unique<ConstraintGraphBuilder>("MainModule", mainModule, &arena, NotNull(&moduleResolver), singletonTypes, NotNull(&ice),
+    cgb = std::make_unique<ConstraintGraphBuilder>("MainModule", mainModule, &arena, NotNull(&moduleResolver), builtinTypes, NotNull(&ice),
         frontend.getGlobalScope(), &logger, NotNull{dfg.get()});
     cgb->visit(root);
     rootScope = cgb->rootScope;

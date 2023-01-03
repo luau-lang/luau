@@ -147,12 +147,12 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/TypeInfer.h
     Analysis/include/Luau/TypePack.h
     Analysis/include/Luau/TypeUtils.h
-    Analysis/include/Luau/TypeVar.h
+    Analysis/include/Luau/Type.h
     Analysis/include/Luau/Unifiable.h
     Analysis/include/Luau/Unifier.h
     Analysis/include/Luau/UnifierSharedState.h
     Analysis/include/Luau/Variant.h
-    Analysis/include/Luau/VisitTypeVar.h
+    Analysis/include/Luau/VisitType.h
 
     Analysis/src/Anyification.cpp
     Analysis/src/ApplyTypeFunction.cpp
@@ -196,7 +196,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/TypeInfer.cpp
     Analysis/src/TypePack.cpp
     Analysis/src/TypeUtils.cpp
-    Analysis/src/TypeVar.cpp
+    Analysis/src/Type.cpp
     Analysis/src/Unifiable.cpp
     Analysis/src/Unifier.cpp
 )
@@ -366,7 +366,7 @@ if(TARGET Luau.UnitTest)
         tests/TypePack.test.cpp
         tests/TypeVar.test.cpp
         tests/Variant.test.cpp
-        tests/VisitTypeVar.test.cpp
+        tests/VisitType.test.cpp
         tests/main.cpp)
 endif()
 

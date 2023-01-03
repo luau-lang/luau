@@ -10,8 +10,8 @@ namespace Luau
 {
 
 struct DcrLogger;
-struct SingletonTypes;
+struct BuiltinTypes;
 
-void check(NotNull<SingletonTypes> singletonTypes, DcrLogger* logger, const SourceModule& sourceModule, Module* module);
+void check(NotNull<BuiltinTypes> builtinTypes, DcrLogger* logger, const SourceModule& sourceModule, Module* module);
 
 } // namespace Luau

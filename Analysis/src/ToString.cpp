@@ -4,10 +4,11 @@
 #include "Luau/Constraint.h"
 #include "Luau/Location.h"
 #include "Luau/Scope.h"
+#include "Luau/TxnLog.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "Luau/Type.h"
+#include "Luau/VisitType.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -17,6 +18,7 @@ LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauLineBreaksDetermineIndents, false)
 LUAU_FASTFLAGVARIABLE(LuauFunctionReturnStringificationFixup, false)
 LUAU_FASTFLAGVARIABLE(LuauUnseeArrayTtv, false)
+LUAU_FASTFLAGVARIABLE(LuauSerializeNilUnionAsNil, false)
 
 /*
  * Prefix generic typenames with gen-
@@ -31,7 +33,7 @@ namespace Luau
 namespace
 {
 
-struct FindCyclicTypes final : TypeVarVisitor
+struct FindCyclicTypes final : TypeVisitor
 {
     FindCyclicTypes() = default;
     FindCyclicTypes(const FindCyclicTypes&) = delete;
@@ -63,7 +65,7 @@ struct FindCyclicTypes final : TypeVarVisitor
         return visitedPacks.insert(tp).second;
     }
 
-    bool visit(TypeId ty, const TableTypeVar& ttv) override
+    bool visit(TypeId ty, const TableType& ttv) override
     {
         if (!visited.insert(ty).second)
             return false;
@@ -82,7 +84,7 @@ struct FindCyclicTypes final : TypeVarVisitor
         return true;
     }
 
-    bool visit(TypeId ty, const ClassTypeVar&) override
+    bool visit(TypeId ty, const ClassType&) override
     {
         return false;
     }
@@ -136,7 +138,7 @@ struct StringifierState
         , result(result)
         , exhaustive(opts.exhaustive)
     {
-        for (const auto& [_, v] : opts.nameMap.typeVars)
+        for (const auto& [_, v] : opts.nameMap.types)
             usedNames.insert(v);
         for (const auto& [_, v] : opts.nameMap.typePacks)
             usedNames.insert(v);
@@ -162,8 +164,8 @@ struct StringifierState
 
     std::string getName(TypeId ty)
     {
-        const size_t s = opts.nameMap.typeVars.size();
-        std::string& n = opts.nameMap.typeVars[ty];
+        const size_t s = opts.nameMap.types.size();
+        std::string& n = opts.nameMap.types[ty];
         if (!n.empty())
             return n;
 
@@ -291,11 +293,11 @@ private:
     }
 };
 
-struct TypeVarStringifier
+struct TypeStringifier
 {
     StringifierState& state;
 
-    explicit TypeVarStringifier(StringifierState& state)
+    explicit TypeStringifier(StringifierState& state)
         : state(state)
     {
     }
@@ -393,17 +395,17 @@ struct TypeVarStringifier
         }
     }
 
-    void operator()(TypeId, const BoundTypeVar& btv)
+    void operator()(TypeId, const BoundType& btv)
     {
         stringify(btv.boundTo);
     }
 
-    void operator()(TypeId ty, const GenericTypeVar& gtv)
+    void operator()(TypeId ty, const GenericType& gtv)
     {
         if (gtv.explicitName)
         {
             state.usedNames.insert(gtv.name);
-            state.opts.nameMap.typeVars[ty] = gtv.name;
+            state.opts.nameMap.types[ty] = gtv.name;
             state.emit(gtv.name);
         }
         else
@@ -419,40 +421,40 @@ struct TypeVarStringifier
         }
     }
 
-    void operator()(TypeId, const BlockedTypeVar& btv)
+    void operator()(TypeId, const BlockedType& btv)
     {
         state.emit("*blocked-");
         state.emit(btv.index);
         state.emit("*");
     }
 
-    void operator()(TypeId ty, const PendingExpansionTypeVar& petv)
+    void operator()(TypeId ty, const PendingExpansionType& petv)
     {
         state.emit("*pending-expansion-");
         state.emit(petv.index);
         state.emit("*");
     }
 
-    void operator()(TypeId, const PrimitiveTypeVar& ptv)
+    void operator()(TypeId, const PrimitiveType& ptv)
     {
         switch (ptv.type)
         {
-        case PrimitiveTypeVar::NilType:
+        case PrimitiveType::NilType:
             state.emit("nil");
             return;
-        case PrimitiveTypeVar::Boolean:
+        case PrimitiveType::Boolean:
             state.emit("boolean");
             return;
-        case PrimitiveTypeVar::Number:
+        case PrimitiveType::Number:
             state.emit("number");
             return;
-        case PrimitiveTypeVar::String:
+        case PrimitiveType::String:
             state.emit("string");
             return;
-        case PrimitiveTypeVar::Thread:
+        case PrimitiveType::Thread:
             state.emit("thread");
             return;
-        case PrimitiveTypeVar::Function:
+        case PrimitiveType::Function:
             state.emit("function");
             return;
         default:
@@ -461,7 +463,7 @@ struct TypeVarStringifier
         }
     }
 
-    void operator()(TypeId, const SingletonTypeVar& stv)
+    void operator()(TypeId, const SingletonType& stv)
     {
         if (const BooleanSingleton* bs = Luau::get<BooleanSingleton>(&stv))
             state.emit(bs->value ? "true" : "false");
@@ -478,7 +480,7 @@ struct TypeVarStringifier
         }
     }
 
-    void operator()(TypeId, const FunctionTypeVar& ftv)
+    void operator()(TypeId, const FunctionType& ftv)
     {
         if (state.hasSeen(&ftv))
         {
@@ -540,7 +542,7 @@ struct TypeVarStringifier
         state.unsee(&ftv);
     }
 
-    void operator()(TypeId, const TableTypeVar& ttv)
+    void operator()(TypeId, const TableType& ttv)
     {
         if (ttv.boundTo)
             return stringify(*ttv.boundTo);
@@ -682,7 +684,7 @@ struct TypeVarStringifier
         state.unsee(&ttv);
     }
 
-    void operator()(TypeId, const MetatableTypeVar& mtv)
+    void operator()(TypeId, const MetatableType& mtv)
     {
         state.result.invalid = true;
         if (!state.exhaustive && mtv.syntheticName)
@@ -699,17 +701,17 @@ struct TypeVarStringifier
         state.emit(" }");
     }
 
-    void operator()(TypeId, const ClassTypeVar& ctv)
+    void operator()(TypeId, const ClassType& ctv)
     {
         state.emit(ctv.name);
     }
 
-    void operator()(TypeId, const AnyTypeVar&)
+    void operator()(TypeId, const AnyType&)
     {
         state.emit("any");
     }
 
-    void operator()(TypeId, const UnionTypeVar& uv)
+    void operator()(TypeId, const UnionType& uv)
     {
         if (state.hasSeen(&uv))
         {
@@ -719,6 +721,7 @@ struct TypeVarStringifier
         }
 
         bool optional = false;
+        bool hasNonNilDisjunct = false;
 
         std::vector<std::string> results = {};
         for (auto el : &uv)
@@ -730,10 +733,14 @@ struct TypeVarStringifier
                 optional = true;
                 continue;
             }
+            else
+            {
+                hasNonNilDisjunct = true;
+            }
 
             std::string saved = std::move(state.result.name);
 
-            bool needParens = !state.cycleNames.count(el) && (get<IntersectionTypeVar>(el) || get<FunctionTypeVar>(el));
+            bool needParens = !state.cycleNames.count(el) && (get<IntersectionType>(el) || get<FunctionType>(el));
 
             if (needParens)
                 state.emit("(");
@@ -772,11 +779,17 @@ struct TypeVarStringifier
             if (results.size() > 1)
                 s = ")?";
 
+            if (FFlag::LuauSerializeNilUnionAsNil)
+            {
+                if (!hasNonNilDisjunct)
+                    s = "nil";
+            }
+
             state.emit(s);
         }
     }
 
-    void operator()(TypeId, const IntersectionTypeVar& uv)
+    void operator()(TypeId, const IntersectionType& uv)
     {
         if (state.hasSeen(&uv))
         {
@@ -792,7 +805,7 @@ struct TypeVarStringifier
 
             std::string saved = std::move(state.result.name);
 
-            bool needParens = !state.cycleNames.count(el) && (get<UnionTypeVar>(el) || get<FunctionTypeVar>(el));
+            bool needParens = !state.cycleNames.count(el) && (get<UnionType>(el) || get<FunctionType>(el));
 
             if (needParens)
                 state.emit("(");
@@ -823,35 +836,35 @@ struct TypeVarStringifier
         }
     }
 
-    void operator()(TypeId, const ErrorTypeVar& tv)
+    void operator()(TypeId, const ErrorType& tv)
     {
         state.result.error = true;
         state.emit(FFlag::LuauUnknownAndNeverType ? "*error-type*" : "*unknown*");
     }
 
-    void operator()(TypeId, const LazyTypeVar& ltv)
+    void operator()(TypeId, const LazyType& ltv)
     {
         state.result.invalid = true;
         state.emit("lazy?");
     }
 
-    void operator()(TypeId, const UnknownTypeVar& ttv)
+    void operator()(TypeId, const UnknownType& ttv)
     {
         state.emit("unknown");
     }
 
-    void operator()(TypeId, const NeverTypeVar& ttv)
+    void operator()(TypeId, const NeverType& ttv)
     {
         state.emit("never");
     }
 
-    void operator()(TypeId, const NegationTypeVar& ntv)
+    void operator()(TypeId, const NegationType& ntv)
     {
         state.emit("~");
 
         // The precedence of `~` should be less than `|` and `&`.
         TypeId followed = follow(ntv.ty);
-        bool parens = get<UnionTypeVar>(followed) || get<IntersectionTypeVar>(followed);
+        bool parens = get<UnionType>(followed) || get<IntersectionType>(followed);
 
         if (parens)
             state.emit("(");
@@ -885,7 +898,7 @@ struct TypePackStringifier
 
     void stringify(TypeId tv)
     {
-        TypeVarStringifier tvs{state};
+        TypeStringifier tvs{state};
         tvs.stringify(tv);
     }
 
@@ -1035,13 +1048,13 @@ struct TypePackStringifier
     }
 };
 
-void TypeVarStringifier::stringify(TypePackId tp)
+void TypeStringifier::stringify(TypePackId tp)
 {
     TypePackStringifier tps(state);
     tps.stringify(tp);
 }
 
-void TypeVarStringifier::stringify(TypePackId tpid, const std::vector<std::optional<FunctionArgument>>& names)
+void TypeStringifier::stringify(TypePackId tpid, const std::vector<std::optional<FunctionArgument>>& names)
 {
     TypePackStringifier tps(state, names);
     tps.stringify(tpid);
@@ -1057,7 +1070,7 @@ static void assignCycleNames(const std::set<TypeId>& cycles, const std::set<Type
         std::string name;
 
         // TODO: use the stringified type list if there are no cycles
-        if (auto ttv = get<TableTypeVar>(follow(cycleTy)); !exhaustive && ttv && (ttv->syntheticName || ttv->name))
+        if (auto ttv = get<TableType>(follow(cycleTy)); !exhaustive && ttv && (ttv->syntheticName || ttv->name))
         {
             // If we have a cycle type in type parameters, assign a cycle name for this named table
             if (std::find_if(ttv->instantiatedTypeParams.begin(), ttv->instantiatedTypeParams.end(),
@@ -1087,13 +1100,12 @@ static void assignCycleNames(const std::set<TypeId>& cycles, const std::set<Type
 ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
 {
     /*
-     * 1. Walk the TypeVar and track seen TypeIds.  When you reencounter a TypeId, add it to a set of seen cycles.
+     * 1. Walk the Type and track seen TypeIds.  When you reencounter a TypeId, add it to a set of seen cycles.
      * 2. Generate some names for each cycle.  For a starting point, we can just call them t0, t1 and so on.
      * 3. For each seen cycle, stringify it like we do now, but replace each known cycle with its name.
      * 4. Print out the root of the type using the same algorithm as step 3.
      */
     ty = follow(ty);
-
     ToStringResult result;
 
     StringifierState state{opts, result};
@@ -1105,11 +1117,11 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
 
     assignCycleNames(cycles, cycleTPs, state.cycleNames, state.cycleTpNames, opts.exhaustive);
 
-    TypeVarStringifier tvs{state};
+    TypeStringifier tvs{state};
 
     if (!opts.exhaustive)
     {
-        if (auto ttv = get<TableTypeVar>(ty); ttv && (ttv->name || ttv->syntheticName))
+        if (auto ttv = get<TableType>(ty); ttv && (ttv->name || ttv->syntheticName))
         {
             if (ttv->syntheticName)
                 result.invalid = true;
@@ -1132,7 +1144,7 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
 
             return result;
         }
-        else if (auto mtv = get<MetatableTypeVar>(ty); mtv && mtv->syntheticName)
+        else if (auto mtv = get<MetatableType>(ty); mtv && mtv->syntheticName)
         {
             result.invalid = true;
             result.name = *mtv->syntheticName;
@@ -1220,7 +1232,7 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
 ToStringResult toStringDetailed(TypePackId tp, ToStringOptions& opts)
 {
     /*
-     * 1. Walk the TypeVar and track seen TypeIds.  When you reencounter a TypeId, add it to a set of seen cycles.
+     * 1. Walk the Type and track seen TypeIds.  When you reencounter a TypeId, add it to a set of seen cycles.
      * 2. Generate some names for each cycle.  For a starting point, we can just call them t0, t1 and so on.
      * 3. For each seen cycle, stringify it like we do now, but replace each known cycle with its name.
      * 4. Print out the root of the type using the same algorithm as step 3.
@@ -1235,7 +1247,7 @@ ToStringResult toStringDetailed(TypePackId tp, ToStringOptions& opts)
 
     assignCycleNames(cycles, cycleTPs, state.cycleNames, state.cycleTpNames, opts.exhaustive);
 
-    TypeVarStringifier tvs{state};
+    TypeStringifier tvs{state};
 
     /* If the root itself is a cycle, we special case a little.
      * We go out of our way to print the following:
@@ -1299,7 +1311,7 @@ std::string toString(TypePackId tp, ToStringOptions& opts)
     return toStringDetailed(tp, opts).name;
 }
 
-std::string toString(const TypeVar& tv, ToStringOptions& opts)
+std::string toString(const Type& tv, ToStringOptions& opts)
 {
     return toString(const_cast<TypeId>(&tv), opts);
 }
@@ -1309,11 +1321,11 @@ std::string toString(const TypePackVar& tp, ToStringOptions& opts)
     return toString(const_cast<TypePackId>(&tp), opts);
 }
 
-std::string toStringNamedFunction(const std::string& funcName, const FunctionTypeVar& ftv, ToStringOptions& opts)
+std::string toStringNamedFunction(const std::string& funcName, const FunctionType& ftv, ToStringOptions& opts)
 {
     ToStringResult result;
     StringifierState state{opts, result};
-    TypeVarStringifier tvs{state};
+    TypeStringifier tvs{state};
 
     state.emit(funcName);
 

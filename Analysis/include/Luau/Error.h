@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Location.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 #include "Luau/Variant.h"
 
 namespace Luau

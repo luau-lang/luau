@@ -9,13 +9,13 @@ namespace Luau
 
 void TypeArena::clear()
 {
-    typeVars.clear();
+    types.clear();
     typePacks.clear();
 }
 
-TypeId TypeArena::addTV(TypeVar&& tv)
+TypeId TypeArena::addTV(Type&& tv)
 {
-    TypeId allocated = typeVars.allocate(std::move(tv));
+    TypeId allocated = types.allocate(std::move(tv));
 
     asMutable(allocated)->owningArena = this;
 
@@ -24,7 +24,7 @@ TypeId TypeArena::addTV(TypeVar&& tv)
 
 TypeId TypeArena::freshType(TypeLevel level)
 {
-    TypeId allocated = typeVars.allocate(FreeTypeVar{level});
+    TypeId allocated = types.allocate(FreeType{level});
 
     asMutable(allocated)->owningArena = this;
 
@@ -33,7 +33,7 @@ TypeId TypeArena::freshType(TypeLevel level)
 
 TypeId TypeArena::freshType(Scope* scope)
 {
-    TypeId allocated = typeVars.allocate(FreeTypeVar{scope});
+    TypeId allocated = types.allocate(FreeType{scope});
 
     asMutable(allocated)->owningArena = this;
 
@@ -42,7 +42,7 @@ TypeId TypeArena::freshType(Scope* scope)
 
 TypeId TypeArena::freshType(Scope* scope, TypeLevel level)
 {
-    TypeId allocated = typeVars.allocate(FreeTypeVar{scope, level});
+    TypeId allocated = types.allocate(FreeType{scope, level});
 
     asMutable(allocated)->owningArena = this;
 
@@ -99,7 +99,7 @@ void freeze(TypeArena& arena)
     if (!FFlag::DebugLuauFreezeArena)
         return;
 
-    arena.typeVars.freeze();
+    arena.types.freeze();
     arena.typePacks.freeze();
 }
 
@@ -108,7 +108,7 @@ void unfreeze(TypeArena& arena)
     if (!FFlag::DebugLuauFreezeArena)
         return;
 
-    arena.typeVars.unfreeze();
+    arena.types.unfreeze();
     arena.typePacks.unfreeze();
 }
 

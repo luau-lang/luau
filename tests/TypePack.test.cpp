@@ -1,6 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 
 #include "Fixture.h"
 
@@ -14,10 +14,10 @@ struct TypePackFixture
 {
     TypePackFixture()
     {
-        typeVars.emplace_back(new TypeVar(PrimitiveTypeVar(PrimitiveTypeVar::NilType)));
-        typeVars.emplace_back(new TypeVar(PrimitiveTypeVar(PrimitiveTypeVar::Boolean)));
-        typeVars.emplace_back(new TypeVar(PrimitiveTypeVar(PrimitiveTypeVar::Number)));
-        typeVars.emplace_back(new TypeVar(PrimitiveTypeVar(PrimitiveTypeVar::String)));
+        typeVars.emplace_back(new Type(PrimitiveType(PrimitiveType::NilType)));
+        typeVars.emplace_back(new Type(PrimitiveType(PrimitiveType::Boolean)));
+        typeVars.emplace_back(new Type(PrimitiveType(PrimitiveType::Number)));
+        typeVars.emplace_back(new Type(PrimitiveType(PrimitiveType::String)));
 
         for (const auto& ptr : typeVars)
             types.push_back(ptr.get());
@@ -37,7 +37,7 @@ struct TypePackFixture
 
     std::vector<std::unique_ptr<TypePackVar>> typePacks;
 
-    std::vector<std::unique_ptr<TypeVar>> typeVars;
+    std::vector<std::unique_ptr<Type>> typeVars;
     std::vector<TypeId> types;
 };
 
@@ -54,7 +54,7 @@ TEST_CASE_FIXTURE(TypePackFixture, "type_pack_hello")
 
 TEST_CASE_FIXTURE(TypePackFixture, "first_chases_Bound_TypePackVars")
 {
-    TypeVar nilType{PrimitiveTypeVar{PrimitiveTypeVar::NilType}};
+    Type nilType{PrimitiveType{PrimitiveType::NilType}};
 
     auto tp1 = TypePackVar{TypePack{{&nilType}, std::nullopt}};
 
@@ -206,7 +206,7 @@ TEST_CASE("content_reassignment")
     TypePackId futureError = arena.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}});
     asMutable(futureError)->reassign(myError);
 
-    CHECK(get<ErrorTypeVar>(futureError) != nullptr);
+    CHECK(get<ErrorType>(futureError) != nullptr);
     CHECK(!futureError->persistent);
     CHECK(futureError->owningArena == &arena);
 }

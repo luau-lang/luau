@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 
 #include "Fixture.h"
 
@@ -294,7 +294,7 @@ TEST_CASE_FIXTURE(Fixture, "definitions_documentation_symbols")
     REQUIRE(bool(barTy));
     CHECK_EQ(barTy->type->documentationSymbol, "@test/globaltype/Bar");
 
-    ClassTypeVar* barClass = getMutable<ClassTypeVar>(barTy->type);
+    ClassType* barClass = getMutable<ClassType>(barTy->type);
     REQUIRE(bool(barClass));
     REQUIRE_EQ(barClass->props.count("prop"), 1);
     CHECK_EQ(barClass->props["prop"].documentationSymbol, "@test/globaltype/Bar.prop");
@@ -303,7 +303,7 @@ TEST_CASE_FIXTURE(Fixture, "definitions_documentation_symbols")
     REQUIRE(bool(yBinding));
     CHECK_EQ(yBinding->documentationSymbol, "@test/global/y");
 
-    TableTypeVar* yTtv = getMutable<TableTypeVar>(yBinding->typeId);
+    TableType* yTtv = getMutable<TableType>(yBinding->typeId);
     REQUIRE(bool(yTtv));
     REQUIRE_EQ(yTtv->props.count("x"), 1);
     CHECK_EQ(yTtv->props["x"].documentationSymbol, "@test/global/y.x");

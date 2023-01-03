@@ -13,8 +13,8 @@ struct Binding;
 struct SourceModule;
 struct Module;
 
-struct TypeVar;
-using TypeId = const TypeVar*;
+struct Type;
+using TypeId = const Type*;
 
 using ScopePtr = std::shared_ptr<struct Scope>;
 

@@ -9,7 +9,7 @@
 #include "Luau/ModuleResolver.h"
 #include "Luau/NotNull.h"
 #include "Luau/Symbol.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 #include "Luau/Variant.h"
 
 #include <memory>
@@ -61,7 +61,7 @@ struct ConstraintGraphBuilder
 
     ModuleName moduleName;
     ModulePtr module;
-    NotNull<SingletonTypes> singletonTypes;
+    NotNull<BuiltinTypes> builtinTypes;
     const NotNull<TypeArena> arena;
     // The root scope of the module we're generating constraints for.
     // This is null when the CGB is initially constructed.
@@ -114,7 +114,7 @@ struct ConstraintGraphBuilder
     DcrLogger* logger;
 
     ConstraintGraphBuilder(const ModuleName& moduleName, ModulePtr module, TypeArena* arena, NotNull<ModuleResolver> moduleResolver,
-        NotNull<SingletonTypes> singletonTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope, DcrLogger* logger,
+        NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope, DcrLogger* logger,
         NotNull<DataFlowGraph> dfg);
 
     /**

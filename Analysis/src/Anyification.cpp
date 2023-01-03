@@ -11,20 +11,20 @@ LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 namespace Luau
 {
 
-Anyification::Anyification(TypeArena* arena, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter* iceHandler,
+Anyification::Anyification(TypeArena* arena, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter* iceHandler,
     TypeId anyType, TypePackId anyTypePack)
     : Substitution(TxnLog::empty(), arena)
     , scope(scope)
-    , singletonTypes(singletonTypes)
+    , builtinTypes(builtinTypes)
     , iceHandler(iceHandler)
     , anyType(anyType)
     , anyTypePack(anyTypePack)
 {
 }
 
-Anyification::Anyification(TypeArena* arena, const ScopePtr& scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter* iceHandler,
+Anyification::Anyification(TypeArena* arena, const ScopePtr& scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter* iceHandler,
     TypeId anyType, TypePackId anyTypePack)
-    : Anyification(arena, NotNull{scope.get()}, singletonTypes, iceHandler, anyType, anyTypePack)
+    : Anyification(arena, NotNull{scope.get()}, builtinTypes, iceHandler, anyType, anyTypePack)
 {
 }
 
@@ -33,9 +33,9 @@ bool Anyification::isDirty(TypeId ty)
     if (ty->persistent)
         return false;
 
-    if (const TableTypeVar* ttv = log->getMutable<TableTypeVar>(ty))
+    if (const TableType* ttv = log->getMutable<TableType>(ty))
         return (ttv->state == TableState::Free || ttv->state == TableState::Unsealed);
-    else if (log->getMutable<FreeTypeVar>(ty))
+    else if (log->getMutable<FreeType>(ty))
         return true;
     else
         return false;
@@ -55,9 +55,9 @@ bool Anyification::isDirty(TypePackId tp)
 TypeId Anyification::clean(TypeId ty)
 {
     LUAU_ASSERT(isDirty(ty));
-    if (const TableTypeVar* ttv = log->getMutable<TableTypeVar>(ty))
+    if (const TableType* ttv = log->getMutable<TableType>(ty))
     {
-        TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, TableState::Sealed};
+        TableType clone = TableType{ttv->props, ttv->indexer, ttv->level, TableState::Sealed};
         clone.definitionModuleName = ttv->definitionModuleName;
         clone.name = ttv->name;
         clone.syntheticName = ttv->syntheticName;
@@ -77,7 +77,7 @@ TypePackId Anyification::clean(TypePackId tp)
 
 bool Anyification::ignoreChildren(TypeId ty)
 {
-    if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassTypeVar>(ty))
+    if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassType>(ty))
         return true;
 
     return ty->persistent;
