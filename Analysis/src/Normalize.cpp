@@ -1835,6 +1835,7 @@ void Normalizer::intersectClassesWithClass(NormalizedClassType& heres, TypeId th
             it = heres.ordering.erase(it);
             heres.classes.erase(hereTy);
             heres.pushPair(there, std::move(negations));
+            break;
         }
         // If the incoming class is a superclass of the current class, we don't
         // insert it into the map.
