@@ -408,6 +408,7 @@ struct NormalizeFixture : Fixture
 
     const NormalizedType* toNormalizedType(const std::string& annotation)
     {
+        normalizer.clearCaches();
         CheckResult result = check("type _Res = " + annotation);
         LUAU_REQUIRE_NO_ERRORS(result);
         std::optional<TypeId> ty = lookupType("_Res");
