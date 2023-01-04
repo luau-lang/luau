@@ -5,8 +5,8 @@ namespace Luau
 {
 
 Position::Position(unsigned int line, unsigned int column)
-        : line(line)
-        , column(column)
+    : line(line)
+    , column(column)
 {
 }
 

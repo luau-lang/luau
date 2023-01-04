@@ -2,8 +2,8 @@
 #include "Luau/Autocomplete.h"
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "Luau/Type.h"
+#include "Luau/VisitType.h"
 #include "Luau/StringUtils.h"
 
 #include "Fixture.h"
@@ -18,7 +18,7 @@ LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 
 using namespace Luau;
 
-static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassTypeVar*> ptr)
+static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr)
 {
     return std::nullopt;
 }
@@ -499,7 +499,7 @@ TEST_CASE_FIXTURE(ACFixture, "bias_toward_inner_scope")
     CHECK_EQ(ac.context, AutocompleteContext::Statement);
 
     TypeId t = follow(*ac.entryMap["A"].type);
-    const TableTypeVar* tt = get<TableTypeVar>(t);
+    const TableType* tt = get<TableType>(t);
     REQUIRE(tt);
 
     CHECK(tt->props.count("two"));
@@ -1244,7 +1244,7 @@ end
 
     REQUIRE(ac.entryMap.count("Table"));
     REQUIRE(ac.entryMap["Table"].type);
-    const TableTypeVar* tv = get<TableTypeVar>(follow(*ac.entryMap["Table"].type));
+    const TableType* tv = get<TableType>(follow(*ac.entryMap["Table"].type));
     REQUIRE(tv);
     CHECK(tv->props.count("x"));
 }

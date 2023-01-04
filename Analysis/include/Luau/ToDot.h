@@ -7,8 +7,8 @@
 
 namespace Luau
 {
-struct TypeVar;
-using TypeId = const TypeVar*;
+struct Type;
+using TypeId = const Type*;
 
 struct TypePackVar;
 using TypePackId = const TypePackVar*;

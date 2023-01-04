@@ -107,6 +107,8 @@ public:
     void vmulsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vdivsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
+    void vandpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+
     void vxorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
     void vucomisd(OperandX64 src1, OperandX64 src2);
@@ -129,6 +131,11 @@ public:
     void vmovaps(OperandX64 dst, OperandX64 src);
     void vmovupd(OperandX64 dst, OperandX64 src);
     void vmovups(OperandX64 dst, OperandX64 src);
+    void vmovq(OperandX64 lhs, OperandX64 rhs);
+
+    void vmaxsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vminsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+
 
     // Run final checks
     void finalize();

@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 
 #include "Fixture.h"
 
@@ -15,7 +15,7 @@ struct TryUnifyFixture : Fixture
     ScopePtr globalScope{new Scope{arena.addTypePack({TypeId{}})}};
     InternalErrorReporter iceHandler;
     UnifierSharedState unifierState{&iceHandler};
-    Normalizer normalizer{&arena, singletonTypes, NotNull{&unifierState}};
+    Normalizer normalizer{&arena, builtinTypes, NotNull{&unifierState}};
     Unifier state{NotNull{&normalizer}, Mode::Strict, NotNull{globalScope.get()}, Location{}, Variance::Covariant};
 };
 
@@ -23,8 +23,8 @@ TEST_SUITE_BEGIN("TryUnifyTests");
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "primitives_unify")
 {
-    TypeVar numberOne{TypeVariant{PrimitiveTypeVar{PrimitiveTypeVar::Number}}};
-    TypeVar numberTwo = numberOne;
+    Type numberOne{TypeVariant{PrimitiveType{PrimitiveType::Number}}};
+    Type numberTwo = numberOne;
 
     state.tryUnify(&numberTwo, &numberOne);
 
@@ -33,11 +33,11 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "primitives_unify")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "compatible_functions_are_unified")
 {
-    TypeVar functionOne{
-        TypeVariant{FunctionTypeVar(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({typeChecker.numberType}))}};
+    Type functionOne{
+        TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({typeChecker.numberType}))}};
 
-    TypeVar functionTwo{TypeVariant{
-        FunctionTypeVar(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({arena.freshType(globalScope->level)}))}};
+    Type functionTwo{TypeVariant{
+        FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({arena.freshType(globalScope->level)}))}};
 
     state.tryUnify(&functionTwo, &functionOne);
     CHECK(state.errors.empty());
@@ -50,16 +50,16 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "compatible_functions_are_unified")
 TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_functions_are_preserved")
 {
     TypePackVar argPackOne{TypePack{{arena.freshType(globalScope->level)}, std::nullopt}};
-    TypeVar functionOne{
-        TypeVariant{FunctionTypeVar(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({typeChecker.numberType}))}};
+    Type functionOne{
+        TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({typeChecker.numberType}))}};
 
-    TypeVar functionOneSaved = functionOne;
+    Type functionOneSaved = functionOne;
 
     TypePackVar argPackTwo{TypePack{{arena.freshType(globalScope->level)}, std::nullopt}};
-    TypeVar functionTwo{
-        TypeVariant{FunctionTypeVar(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({typeChecker.stringType}))}};
+    Type functionTwo{
+        TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({typeChecker.stringType}))}};
 
-    TypeVar functionTwoSaved = functionTwo;
+    Type functionTwoSaved = functionTwo;
 
     state.tryUnify(&functionTwo, &functionOne);
     CHECK(!state.errors.empty());
@@ -70,15 +70,15 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_functions_are_preserved")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
 {
-    TypeVar tableOne{TypeVariant{
-        TableTypeVar{{{"foo", {arena.freshType(globalScope->level)}}}, std::nullopt, globalScope->level, TableState::Unsealed},
+    Type tableOne{TypeVariant{
+        TableType{{{"foo", {arena.freshType(globalScope->level)}}}, std::nullopt, globalScope->level, TableState::Unsealed},
     }};
 
-    TypeVar tableTwo{TypeVariant{
-        TableTypeVar{{{"foo", {arena.freshType(globalScope->level)}}}, std::nullopt, globalScope->level, TableState::Unsealed},
+    Type tableTwo{TypeVariant{
+        TableType{{{"foo", {arena.freshType(globalScope->level)}}}, std::nullopt, globalScope->level, TableState::Unsealed},
     }};
 
-    CHECK_NE(*getMutable<TableTypeVar>(&tableOne)->props["foo"].type, *getMutable<TableTypeVar>(&tableTwo)->props["foo"].type);
+    CHECK_NE(*getMutable<TableType>(&tableOne)->props["foo"].type, *getMutable<TableType>(&tableTwo)->props["foo"].type);
 
     state.tryUnify(&tableTwo, &tableOne);
 
@@ -86,28 +86,28 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
 
     state.log.commit();
 
-    CHECK_EQ(*getMutable<TableTypeVar>(&tableOne)->props["foo"].type, *getMutable<TableTypeVar>(&tableTwo)->props["foo"].type);
+    CHECK_EQ(*getMutable<TableType>(&tableOne)->props["foo"].type, *getMutable<TableType>(&tableTwo)->props["foo"].type);
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
 {
-    TypeVar tableOne{TypeVariant{
-        TableTypeVar{{{"foo", {arena.freshType(globalScope->level)}}, {"bar", {typeChecker.numberType}}}, std::nullopt, globalScope->level,
+    Type tableOne{TypeVariant{
+        TableType{{{"foo", {arena.freshType(globalScope->level)}}, {"bar", {typeChecker.numberType}}}, std::nullopt, globalScope->level,
             TableState::Unsealed},
     }};
 
-    TypeVar tableTwo{TypeVariant{
-        TableTypeVar{{{"foo", {arena.freshType(globalScope->level)}}, {"bar", {typeChecker.stringType}}}, std::nullopt, globalScope->level,
+    Type tableTwo{TypeVariant{
+        TableType{{{"foo", {arena.freshType(globalScope->level)}}, {"bar", {typeChecker.stringType}}}, std::nullopt, globalScope->level,
             TableState::Unsealed},
     }};
 
-    CHECK_NE(*getMutable<TableTypeVar>(&tableOne)->props["foo"].type, *getMutable<TableTypeVar>(&tableTwo)->props["foo"].type);
+    CHECK_NE(*getMutable<TableType>(&tableOne)->props["foo"].type, *getMutable<TableType>(&tableTwo)->props["foo"].type);
 
     state.tryUnify(&tableTwo, &tableOne);
 
     CHECK_EQ(1, state.errors.size());
 
-    CHECK_NE(*getMutable<TableTypeVar>(&tableOne)->props["foo"].type, *getMutable<TableTypeVar>(&tableTwo)->props["foo"].type);
+    CHECK_NE(*getMutable<TableType>(&tableOne)->props["foo"].type, *getMutable<TableType>(&tableTwo)->props["foo"].type);
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_intersection_sub_never")
@@ -282,11 +282,11 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "free_tail_is_grown_properly")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "recursive_metatable_getmatchtag")
 {
-    TypeVar redirect{FreeTypeVar{TypeLevel{}}};
-    TypeVar table{TableTypeVar{}};
-    TypeVar metatable{MetatableTypeVar{&redirect, &table}};
-    redirect = BoundTypeVar{&metatable}; // Now we have a metatable that is recursive on the table type
-    TypeVar variant{UnionTypeVar{{&metatable, typeChecker.numberType}}};
+    Type redirect{FreeType{TypeLevel{}}};
+    Type table{TableType{}};
+    Type metatable{MetatableType{&redirect, &table}};
+    redirect = BoundType{&metatable}; // Now we have a metatable that is recursive on the table type
+    Type variant{UnionType{{&metatable, typeChecker.numberType}}};
 
     state.tryUnify(&metatable, &variant);
 }
@@ -296,7 +296,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "cli_50320_follow_in_any_unification")
     TypePackVar free{FreeTypePack{TypeLevel{}}};
     TypePackVar target{TypePack{}};
 
-    TypeVar func{FunctionTypeVar{&free, &free}};
+    Type func{FunctionType{&free, &free}};
 
     state.tryUnify(&free, &target);
     // Shouldn't assert or error.
@@ -305,7 +305,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "cli_50320_follow_in_any_unification")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_type_owner")
 {
-    TypeId a = arena.addType(TypeVar{FreeTypeVar{TypeLevel{}}});
+    TypeId a = arena.addType(Type{FreeType{TypeLevel{}}});
     TypeId b = typeChecker.numberType;
 
     state.tryUnify(a, b);
@@ -329,26 +329,26 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "metatables_unify_against_shape_of_free_table
 {
     ScopedFastFlag sff("DebugLuauDeferredConstraintResolution", true);
 
-    TableTypeVar::Props freeProps{
+    TableType::Props freeProps{
         {"foo", {typeChecker.numberType}},
     };
 
-    TypeId free = arena.addType(TableTypeVar{freeProps, std::nullopt, TypeLevel{}, TableState::Free});
+    TypeId free = arena.addType(TableType{freeProps, std::nullopt, TypeLevel{}, TableState::Free});
 
-    TableTypeVar::Props indexProps{
+    TableType::Props indexProps{
         {"foo", {typeChecker.stringType}},
     };
 
-    TypeId index = arena.addType(TableTypeVar{indexProps, std::nullopt, TypeLevel{}, TableState::Sealed});
+    TypeId index = arena.addType(TableType{indexProps, std::nullopt, TypeLevel{}, TableState::Sealed});
 
-    TableTypeVar::Props mtProps{
+    TableType::Props mtProps{
         {"__index", {index}},
     };
 
-    TypeId mt = arena.addType(TableTypeVar{mtProps, std::nullopt, TypeLevel{}, TableState::Sealed});
+    TypeId mt = arena.addType(TableType{mtProps, std::nullopt, TypeLevel{}, TableState::Sealed});
 
-    TypeId target = arena.addType(TableTypeVar{TableState::Unsealed, TypeLevel{}});
-    TypeId metatable = arena.addType(MetatableTypeVar{target, mt});
+    TypeId target = arena.addType(TableType{TableState::Unsealed, TypeLevel{}});
+    TypeId metatable = arena.addType(MetatableType{target, mt});
 
     state.tryUnify(metatable, free);
     state.log.commit();
@@ -369,7 +369,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "fuzz_tail_unification_issue")
     TypePackVar packTmp{TypePack{{typeChecker.anyType}, &variadicAny}};
     TypePackVar packSub{TypePack{{typeChecker.anyType, typeChecker.anyType}, &packTmp}};
 
-    TypeVar freeTy{FreeTypeVar{TypeLevel{}}};
+    Type freeTy{FreeType{TypeLevel{}}};
     TypePackVar freeTp{FreeTypePack{TypeLevel{}}};
     TypePackVar packSuper{TypePack{{&freeTy}, &freeTp}};
 

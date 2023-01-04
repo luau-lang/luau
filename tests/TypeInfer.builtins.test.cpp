@@ -185,7 +185,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_tables_sealed")
     )LUA");
     TypeId bit32 = requireType("b");
     REQUIRE(bit32 != nullptr);
-    const TableTypeVar* bit32t = get<TableTypeVar>(bit32);
+    const TableType* bit32t = get<TableType>(bit32);
     REQUIRE(bit32t != nullptr);
     CHECK_EQ(bit32t->state, TableState::Sealed);
 }
@@ -508,7 +508,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_should_not_mutate_persisted_typ
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     auto stringType = requireType("string");
-    auto ttv = get<TableTypeVar>(stringType);
+    auto ttv = get<TableType>(stringType);
     REQUIRE(ttv);
 }
 
@@ -915,13 +915,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_add_definitions_to_persistent_types")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     TypeId fType = requireType("f");
-    const FunctionTypeVar* ftv = get<FunctionTypeVar>(fType);
+    const FunctionType* ftv = get<FunctionType>(fType);
     REQUIRE(fType);
     REQUIRE(fType->persistent);
     REQUIRE(!ftv->definition);
 
     TypeId gType = requireType("g");
-    const FunctionTypeVar* gtv = get<FunctionTypeVar>(gType);
+    const FunctionType* gtv = get<FunctionType>(gType);
     REQUIRE(gType);
     REQUIRE(!gType->persistent);
     REQUIRE(gtv->definition);
@@ -1029,9 +1029,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_persistent_typelevel_change")
 {
     TypeId mathTy = requireType(typeChecker.globalScope, "math");
     REQUIRE(mathTy);
-    TableTypeVar* ttv = getMutable<TableTypeVar>(mathTy);
+    TableType* ttv = getMutable<TableType>(mathTy);
     REQUIRE(ttv);
-    const FunctionTypeVar* ftv = get<FunctionTypeVar>(ttv->props["frexp"].type);
+    const FunctionType* ftv = get<FunctionType>(ttv->props["frexp"].type);
     REQUIRE(ftv);
     auto original = ftv->level;
 

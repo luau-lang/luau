@@ -14,18 +14,18 @@ static void merge(TypeArena& arena, RefinementMap& l, const RefinementMap& r)
         // TODO: normalize here also.
         std::unordered_set<TypeId> s;
 
-        if (auto utv = get<UnionTypeVar>(follow(a)))
+        if (auto utv = get<UnionType>(follow(a)))
             s.insert(begin(utv), end(utv));
         else
             s.insert(a);
 
-        if (auto utv = get<UnionTypeVar>(follow(b)))
+        if (auto utv = get<UnionType>(follow(b)))
             s.insert(begin(utv), end(utv));
         else
             s.insert(b);
 
         std::vector<TypeId> options(s.begin(), s.end());
-        return options.size() == 1 ? options[0] : arena.addType(UnionTypeVar{std::move(options)});
+        return options.size() == 1 ? options[0] : arena.addType(UnionType{std::move(options)});
     });
 }
 
@@ -36,7 +36,7 @@ static LValue mkSymbol(const std::string& s)
 
 struct LValueFixture
 {
-    SingletonTypes singletonTypes;
+    BuiltinTypes builtinTypes;
 };
 
 TEST_SUITE_BEGIN("LValue");
@@ -48,14 +48,14 @@ TEST_CASE_FIXTURE(LValueFixture, "Luau_merge_hashmap_order")
     std::string c = "c";
 
     RefinementMap m{{
-        {mkSymbol(b), singletonTypes.stringType},
-        {mkSymbol(c), singletonTypes.numberType},
+        {mkSymbol(b), builtinTypes.stringType},
+        {mkSymbol(c), builtinTypes.numberType},
     }};
 
     RefinementMap other{{
-        {mkSymbol(a), singletonTypes.stringType},
-        {mkSymbol(b), singletonTypes.stringType},
-        {mkSymbol(c), singletonTypes.booleanType},
+        {mkSymbol(a), builtinTypes.stringType},
+        {mkSymbol(b), builtinTypes.stringType},
+        {mkSymbol(c), builtinTypes.booleanType},
     }};
 
     TypeArena arena;
@@ -78,14 +78,14 @@ TEST_CASE_FIXTURE(LValueFixture, "Luau_merge_hashmap_order2")
     std::string c = "c";
 
     RefinementMap m{{
-        {mkSymbol(a), singletonTypes.stringType},
-        {mkSymbol(b), singletonTypes.stringType},
-        {mkSymbol(c), singletonTypes.numberType},
+        {mkSymbol(a), builtinTypes.stringType},
+        {mkSymbol(b), builtinTypes.stringType},
+        {mkSymbol(c), builtinTypes.numberType},
     }};
 
     RefinementMap other{{
-        {mkSymbol(b), singletonTypes.stringType},
-        {mkSymbol(c), singletonTypes.booleanType},
+        {mkSymbol(b), builtinTypes.stringType},
+        {mkSymbol(c), builtinTypes.booleanType},
     }};
 
     TypeArena arena;
@@ -110,15 +110,15 @@ TEST_CASE_FIXTURE(LValueFixture, "one_map_has_overlap_at_end_whereas_other_has_i
     std::string e = "e";
 
     RefinementMap m{{
-        {mkSymbol(a), singletonTypes.stringType},
-        {mkSymbol(b), singletonTypes.numberType},
-        {mkSymbol(c), singletonTypes.booleanType},
+        {mkSymbol(a), builtinTypes.stringType},
+        {mkSymbol(b), builtinTypes.numberType},
+        {mkSymbol(c), builtinTypes.booleanType},
     }};
 
     RefinementMap other{{
-        {mkSymbol(c), singletonTypes.stringType},
-        {mkSymbol(d), singletonTypes.numberType},
-        {mkSymbol(e), singletonTypes.booleanType},
+        {mkSymbol(c), builtinTypes.stringType},
+        {mkSymbol(d), builtinTypes.numberType},
+        {mkSymbol(e), builtinTypes.booleanType},
     }};
 
     TypeArena arena;
@@ -159,8 +159,8 @@ TEST_CASE_FIXTURE(LValueFixture, "hashing_lvalue_global_prop_access")
     CHECK_EQ(LValueHasher{}(t_x2), LValueHasher{}(t_x2));
 
     RefinementMap m;
-    m[t_x1] = singletonTypes.stringType;
-    m[t_x2] = singletonTypes.numberType;
+    m[t_x1] = builtinTypes.stringType;
+    m[t_x2] = builtinTypes.numberType;
 
     CHECK_EQ(1, m.size());
 }
@@ -188,8 +188,8 @@ TEST_CASE_FIXTURE(LValueFixture, "hashing_lvalue_local_prop_access")
     CHECK_EQ(LValueHasher{}(t_x2), LValueHasher{}(t_x2));
 
     RefinementMap m;
-    m[t_x1] = singletonTypes.stringType;
-    m[t_x2] = singletonTypes.numberType;
+    m[t_x1] = builtinTypes.stringType;
+    m[t_x2] = builtinTypes.numberType;
 
     CHECK_EQ(2, m.size());
 }

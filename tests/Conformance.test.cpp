@@ -440,27 +440,27 @@ TEST_CASE("Vector")
 
 static void populateRTTI(lua_State* L, Luau::TypeId type)
 {
-    if (auto p = Luau::get<Luau::PrimitiveTypeVar>(type))
+    if (auto p = Luau::get<Luau::PrimitiveType>(type))
     {
         switch (p->type)
         {
-        case Luau::PrimitiveTypeVar::Boolean:
+        case Luau::PrimitiveType::Boolean:
             lua_pushstring(L, "boolean");
             break;
 
-        case Luau::PrimitiveTypeVar::NilType:
+        case Luau::PrimitiveType::NilType:
             lua_pushstring(L, "nil");
             break;
 
-        case Luau::PrimitiveTypeVar::Number:
+        case Luau::PrimitiveType::Number:
             lua_pushstring(L, "number");
             break;
 
-        case Luau::PrimitiveTypeVar::String:
+        case Luau::PrimitiveType::String:
             lua_pushstring(L, "string");
             break;
 
-        case Luau::PrimitiveTypeVar::Thread:
+        case Luau::PrimitiveType::Thread:
             lua_pushstring(L, "thread");
             break;
 
@@ -468,7 +468,7 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
             LUAU_ASSERT(!"Unknown primitive type");
         }
     }
-    else if (auto t = Luau::get<Luau::TableTypeVar>(type))
+    else if (auto t = Luau::get<Luau::TableType>(type))
     {
         lua_newtable(L);
 
@@ -478,18 +478,18 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
             lua_setfield(L, -2, name.c_str());
         }
     }
-    else if (Luau::get<Luau::FunctionTypeVar>(type))
+    else if (Luau::get<Luau::FunctionType>(type))
     {
         lua_pushstring(L, "function");
     }
-    else if (Luau::get<Luau::AnyTypeVar>(type))
+    else if (Luau::get<Luau::AnyType>(type))
     {
         lua_pushstring(L, "any");
     }
-    else if (auto i = Luau::get<Luau::IntersectionTypeVar>(type))
+    else if (auto i = Luau::get<Luau::IntersectionType>(type))
     {
         for (const auto& part : i->parts)
-            LUAU_ASSERT(Luau::get<Luau::FunctionTypeVar>(part));
+            LUAU_ASSERT(Luau::get<Luau::FunctionType>(part));
 
         lua_pushstring(L, "function");
     }
@@ -504,8 +504,8 @@ TEST_CASE("Types")
     runConformance("types.lua", [](lua_State* L) {
         Luau::NullModuleResolver moduleResolver;
         Luau::InternalErrorReporter iceHandler;
-        Luau::SingletonTypes singletonTypes;
-        Luau::TypeChecker env(&moduleResolver, Luau::NotNull{&singletonTypes}, &iceHandler);
+        Luau::BuiltinTypes builtinTypes;
+        Luau::TypeChecker env(&moduleResolver, Luau::NotNull{&builtinTypes}, &iceHandler);
 
         Luau::registerBuiltinGlobals(env);
         Luau::freeze(env.globalTypes);

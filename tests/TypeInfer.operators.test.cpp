@@ -4,8 +4,8 @@
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "Luau/Type.h"
+#include "Luau/VisitType.h"
 
 #include "Fixture.h"
 #include "ClassFixture.h"
@@ -125,7 +125,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "primitive_arith_no_metatable")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    const FunctionTypeVar* functionType = get<FunctionTypeVar>(requireType("add"));
+    const FunctionType* functionType = get<FunctionType>(requireType("add"));
 
     std::optional<TypeId> retType = first(functionType->retTypes);
     REQUIRE(retType.has_value());
@@ -1017,7 +1017,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "mm_ops_must_return_a_value")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK(requireType("y") == singletonTypes->errorRecoveryType());
+    CHECK(requireType("y") == builtinTypes->errorRecoveryType());
 
     const GenericError* ge = get<GenericError>(result.errors[0]);
     REQUIRE(ge);
@@ -1051,8 +1051,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "mm_comparisons_must_return_a_boolean")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    CHECK(requireType("v1") == singletonTypes->booleanType);
-    CHECK(requireType("v2") == singletonTypes->booleanType);
+    CHECK(requireType("v1") == builtinTypes->booleanType);
+    CHECK(requireType("v2") == builtinTypes->booleanType);
 
     CHECK(toString(result.errors[0]) == "Metamethod '__lt' must return type 'boolean'");
     CHECK(toString(result.errors[1]) == "Metamethod '__lt' must return type 'boolean'");

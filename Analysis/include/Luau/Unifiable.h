@@ -11,7 +11,7 @@ namespace Luau
 struct Scope;
 
 /**
- * The 'level' of a TypeVar is an indirect way to talk about the scope that it 'belongs' too.
+ * The 'level' of a Type is an indirect way to talk about the scope that it 'belongs' too.
  * To start, read http://okmij.org/ftp/ML/generalization.html
  *
  * We extend the idea by adding a "sub-level" which helps us to differentiate sibling scopes
@@ -132,7 +132,7 @@ private:
 
 struct Error
 {
-    // This constructor has to be public, since it's used in TypeVar and TypePack,
+    // This constructor has to be public, since it's used in Type and TypePack,
     // but shouldn't be called directly. Please use errorRecoveryType() instead.
     Error();
 

@@ -80,7 +80,23 @@ void initHelperFunctions(NativeState& data)
 
     data.context.luaF_close = luaF_close;
 
+    data.context.libm_exp = exp;
     data.context.libm_pow = pow;
+    data.context.libm_fmod = fmod;
+    data.context.libm_log = log;
+    data.context.libm_log2 = log2;
+    data.context.libm_log10 = log10;
+
+    data.context.libm_asin = asin;
+    data.context.libm_sin = sin;
+    data.context.libm_sinh = sinh;
+    data.context.libm_acos = acos;
+    data.context.libm_cos = cos;
+    data.context.libm_cosh = cosh;
+    data.context.libm_atan = atan;
+    data.context.libm_atan2 = atan2;
+    data.context.libm_tan = tan;
+    data.context.libm_tanh = tanh;
 
     data.context.forgLoopNodeIter = forgLoopNodeIter;
     data.context.forgLoopNonTableFallback = forgLoopNonTableFallback;

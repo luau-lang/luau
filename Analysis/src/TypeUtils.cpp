@@ -12,20 +12,20 @@ namespace Luau
 {
 
 std::optional<TypeId> findMetatableEntry(
-    NotNull<SingletonTypes> singletonTypes, ErrorVec& errors, TypeId type, const std::string& entry, Location location)
+    NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId type, const std::string& entry, Location location)
 {
     type = follow(type);
 
-    std::optional<TypeId> metatable = getMetatable(type, singletonTypes);
+    std::optional<TypeId> metatable = getMetatable(type, builtinTypes);
     if (!metatable)
         return std::nullopt;
 
     TypeId unwrapped = follow(*metatable);
 
-    if (get<AnyTypeVar>(unwrapped))
-        return singletonTypes->anyType;
+    if (get<AnyType>(unwrapped))
+        return builtinTypes->anyType;
 
-    const TableTypeVar* mtt = getTableType(unwrapped);
+    const TableType* mtt = getTableType(unwrapped);
     if (!mtt)
     {
         errors.push_back(TypeError{location, GenericError{"Metatable was not a table"}});
@@ -40,19 +40,19 @@ std::optional<TypeId> findMetatableEntry(
 }
 
 std::optional<TypeId> findTablePropertyRespectingMeta(
-    NotNull<SingletonTypes> singletonTypes, ErrorVec& errors, TypeId ty, const std::string& name, Location location)
+    NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId ty, const std::string& name, Location location)
 {
-    if (get<AnyTypeVar>(ty))
+    if (get<AnyType>(ty))
         return ty;
 
-    if (const TableTypeVar* tableType = getTableType(ty))
+    if (const TableType* tableType = getTableType(ty))
     {
         const auto& it = tableType->props.find(name);
         if (it != tableType->props.end())
             return it->second.type;
     }
 
-    std::optional<TypeId> mtIndex = findMetatableEntry(singletonTypes, errors, ty, "__index", location);
+    std::optional<TypeId> mtIndex = findMetatableEntry(builtinTypes, errors, ty, "__index", location);
     int count = 0;
     while (mtIndex)
     {
@@ -69,20 +69,20 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
             if (fit != itt->props.end())
                 return fit->second.type;
         }
-        else if (const auto& itf = get<FunctionTypeVar>(index))
+        else if (const auto& itf = get<FunctionType>(index))
         {
             std::optional<TypeId> r = first(follow(itf->retTypes));
             if (!r)
-                return singletonTypes->nilType;
+                return builtinTypes->nilType;
             else
                 return *r;
         }
-        else if (get<AnyTypeVar>(index))
-            return singletonTypes->anyType;
+        else if (get<AnyType>(index))
+            return builtinTypes->anyType;
         else
             errors.push_back(TypeError{location, GenericError{"__index should either be a function or table. Got " + toString(index)}});
 
-        mtIndex = findMetatableEntry(singletonTypes, errors, *mtIndex, "__index", location);
+        mtIndex = findMetatableEntry(builtinTypes, errors, *mtIndex, "__index", location);
     }
 
     return std::nullopt;
@@ -117,7 +117,7 @@ std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, 
         return {minCount, minCount + optionalCount};
 }
 
-TypePack extendTypePack(TypeArena& arena, NotNull<SingletonTypes> singletonTypes, TypePackId pack, size_t length)
+TypePack extendTypePack(TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, TypePackId pack, size_t length)
 {
     TypePack result;
 
@@ -193,7 +193,7 @@ TypePack extendTypePack(TypeArena& arena, NotNull<SingletonTypes> singletonTypes
         else if (const Unifiable::Error* etp = getMutable<Unifiable::Error>(pack))
         {
             while (result.head.size() < length)
-                result.head.push_back(singletonTypes->errorRecoveryType());
+                result.head.push_back(builtinTypes->errorRecoveryType());
 
             result.tail = pack;
             return result;
@@ -214,20 +214,20 @@ std::vector<TypeId> reduceUnion(const std::vector<TypeId>& types)
     for (TypeId t : types)
     {
         t = follow(t);
-        if (get<NeverTypeVar>(t))
+        if (get<NeverType>(t))
             continue;
 
-        if (get<ErrorTypeVar>(t) || get<AnyTypeVar>(t))
+        if (get<ErrorType>(t) || get<AnyType>(t))
             return {t};
 
-        if (const UnionTypeVar* utv = get<UnionTypeVar>(t))
+        if (const UnionType* utv = get<UnionType>(t))
         {
             for (TypeId ty : utv)
             {
                 ty = follow(ty);
-                if (get<NeverTypeVar>(ty))
+                if (get<NeverType>(ty))
                     continue;
-                if (get<ErrorTypeVar>(ty) || get<AnyTypeVar>(ty))
+                if (get<ErrorType>(ty) || get<AnyType>(ty))
                     return {ty};
 
                 if (result.end() == std::find(result.begin(), result.end(), ty))
@@ -243,7 +243,7 @@ std::vector<TypeId> reduceUnion(const std::vector<TypeId>& types)
 
 static std::optional<TypeId> tryStripUnionFromNil(TypeArena& arena, TypeId ty)
 {
-    if (const UnionTypeVar* utv = get<UnionTypeVar>(ty))
+    if (const UnionType* utv = get<UnionType>(ty))
     {
         if (!std::any_of(begin(utv), end(utv), isNil))
             return ty;
@@ -259,23 +259,23 @@ static std::optional<TypeId> tryStripUnionFromNil(TypeArena& arena, TypeId ty)
         if (result.empty())
             return std::nullopt;
 
-        return result.size() == 1 ? result[0] : arena.addType(UnionTypeVar{std::move(result)});
+        return result.size() == 1 ? result[0] : arena.addType(UnionType{std::move(result)});
     }
 
     return std::nullopt;
 }
 
-TypeId stripNil(NotNull<SingletonTypes> singletonTypes, TypeArena& arena, TypeId ty)
+TypeId stripNil(NotNull<BuiltinTypes> builtinTypes, TypeArena& arena, TypeId ty)
 {
     ty = follow(ty);
 
-    if (get<UnionTypeVar>(ty))
+    if (get<UnionType>(ty))
     {
         std::optional<TypeId> cleaned = tryStripUnionFromNil(arena, ty);
 
         // If there is no union option without 'nil'
         if (!cleaned)
-            return singletonTypes->nilType;
+            return builtinTypes->nilType;
 
         return follow(*cleaned);
     }

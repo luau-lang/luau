@@ -2144,14 +2144,14 @@ private:
         if (!ty)
             return true;
 
-        if (const ClassTypeVar* cty = get<ClassTypeVar>(follow(*ty)))
+        if (const ClassType* cty = get<ClassType>(follow(*ty)))
         {
             const Property* prop = lookupClassProp(cty, node->index.value);
 
             if (prop && prop->deprecated)
                 report(node->location, *prop, cty->name.c_str(), node->index.value);
         }
-        else if (const TableTypeVar* tty = get<TableTypeVar>(follow(*ty)))
+        else if (const TableType* tty = get<TableType>(follow(*ty)))
         {
             auto prop = tty->props.find(node->index.value);
 
@@ -2302,16 +2302,16 @@ private:
 
     size_t getReturnCount(TypeId ty)
     {
-        if (auto ftv = get<FunctionTypeVar>(ty))
+        if (auto ftv = get<FunctionType>(ty))
             return size(ftv->retTypes);
 
-        if (auto itv = get<IntersectionTypeVar>(ty))
+        if (auto itv = get<IntersectionType>(ty))
         {
             // We don't process the type recursively to avoid having to deal with self-recursive intersection types
             size_t result = 0;
 
             for (TypeId part : itv->parts)
-                if (auto ftv = get<FunctionTypeVar>(follow(part)))
+                if (auto ftv = get<FunctionType>(follow(part)))
                     result = std::max(result, size(ftv->retTypes));
 
             return result;

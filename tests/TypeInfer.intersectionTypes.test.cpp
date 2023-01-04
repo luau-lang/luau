@@ -1,6 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 
 #include "Fixture.h"
 
@@ -162,14 +162,14 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_property_guarante
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    const IntersectionTypeVar* r = get<IntersectionTypeVar>(requireType("r"));
+    const IntersectionType* r = get<IntersectionType>(requireType("r"));
     REQUIRE(r);
 
-    TableTypeVar* a = getMutable<TableTypeVar>(r->parts[0]);
+    TableType* a = getMutable<TableType>(r->parts[0]);
     REQUIRE(a);
     CHECK_EQ(typeChecker.numberType, a->props["y"].type);
 
-    TableTypeVar* b = getMutable<TableTypeVar>(r->parts[1]);
+    TableType* b = getMutable<TableType>(r->parts[1]);
     REQUIRE(b);
     CHECK_EQ(typeChecker.numberType, b->props["y"].type);
 }

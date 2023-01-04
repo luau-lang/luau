@@ -65,14 +65,14 @@ static void generateDocumentationSymbols(TypeId ty, const std::string& rootName)
 
     asMutable(ty)->documentationSymbol = rootName;
 
-    if (TableTypeVar* ttv = getMutable<TableTypeVar>(ty))
+    if (TableType* ttv = getMutable<TableType>(ty))
     {
         for (auto& [name, prop] : ttv->props)
         {
             prop.documentationSymbol = rootName + "." + name;
         }
     }
-    else if (ClassTypeVar* ctv = getMutable<ClassTypeVar>(ty))
+    else if (ClassType* ctv = getMutable<ClassType>(ty))
     {
         for (auto& [name, prop] : ctv->props)
         {
@@ -408,12 +408,12 @@ double getTimestamp()
 } // namespace
 
 Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options)
-    : singletonTypes(NotNull{&singletonTypes_})
+    : builtinTypes(NotNull{&builtinTypes_})
     , fileResolver(fileResolver)
     , moduleResolver(this)
     , moduleResolverForAutocomplete(this)
-    , typeChecker(&moduleResolver, singletonTypes, &iceHandler)
-    , typeCheckerForAutocomplete(&moduleResolverForAutocomplete, singletonTypes, &iceHandler)
+    , typeChecker(&moduleResolver, builtinTypes, &iceHandler)
+    , typeCheckerForAutocomplete(&moduleResolverForAutocomplete, builtinTypes, &iceHandler)
     , configResolver(configResolver)
     , options(options)
     , globalScope(typeChecker.globalScope)
@@ -455,12 +455,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
     }
 
     std::vector<ModuleName> buildQueue;
-    bool cycleDetected = parseGraph(buildQueue, checkResult, name, frontendOptions.forAutocomplete);
-
-    // Keep track of which AST nodes we've reported cycles in
-    std::unordered_set<AstNode*> reportedCycles;
-
-    double autocompleteTimeLimit = FInt::LuauAutocompleteCheckTimeoutMs / 1000.0;
+    bool cycleDetected = parseGraph(buildQueue, name, frontendOptions.forAutocomplete);
 
     for (const ModuleName& moduleName : buildQueue)
     {
@@ -498,6 +493,8 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
             // The autocomplete typecheck is always in strict mode with DM awareness
             // to provide better type information for IDE features
             typeCheckerForAutocomplete.requireCycles = requireCycles;
+
+            double autocompleteTimeLimit = FInt::LuauAutocompleteCheckTimeoutMs / 1000.0;
 
             if (autocompleteTimeLimit != 0.0)
                 typeCheckerForAutocomplete.finishTime = TimeTrace::getClock() + autocompleteTimeLimit;
@@ -599,7 +596,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
     return checkResult;
 }
 
-bool Frontend::parseGraph(std::vector<ModuleName>& buildQueue, CheckResult& checkResult, const ModuleName& root, bool forAutocomplete)
+bool Frontend::parseGraph(std::vector<ModuleName>& buildQueue, const ModuleName& root, bool forAutocomplete)
 {
     LUAU_TIMETRACE_SCOPE("Frontend::parseGraph", "Frontend");
     LUAU_TIMETRACE_ARGUMENT("root", root.c_str());
@@ -618,7 +615,7 @@ bool Frontend::parseGraph(std::vector<ModuleName>& buildQueue, CheckResult& chec
     bool cyclic = false;
 
     {
-        auto [sourceNode, _] = getSourceNode(checkResult, root);
+        auto [sourceNode, _] = getSourceNode(root);
         if (sourceNode)
             stack.push_back(sourceNode);
     }
@@ -682,7 +679,7 @@ bool Frontend::parseGraph(std::vector<ModuleName>& buildQueue, CheckResult& chec
                     }
                 }
 
-                auto [sourceNode, _] = getSourceNode(checkResult, dep);
+                auto [sourceNode, _] = getSourceNode(dep);
                 if (sourceNode)
                 {
                     stack.push_back(sourceNode);
@@ -729,8 +726,7 @@ LintResult Frontend::lint(const ModuleName& name, std::optional<Luau::LintOption
     LUAU_TIMETRACE_SCOPE("Frontend::lint", "Frontend");
     LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
 
-    CheckResult checkResult;
-    auto [_sourceNode, sourceModule] = getSourceNode(checkResult, name);
+    auto [_sourceNode, sourceModule] = getSourceNode(name);
 
     if (!sourceModule)
         return LintResult{}; // FIXME: We really should do something a bit more obvious when a file is too broken to lint.
@@ -761,7 +757,7 @@ LintResult Frontend::lint(const SourceModule& module, std::optional<Luau::LintOp
         options.disableWarning(Luau::LintWarning::Code_ImplicitReturn);
     }
 
-    ScopePtr environmentScope = getModuleEnvironment(module, config);
+    ScopePtr environmentScope = getModuleEnvironment(module, config, /*forAutocomplete*/ false);
 
     ModulePtr modulePtr = moduleResolver.getModule(module.name);
 
@@ -873,14 +869,14 @@ ModulePtr Frontend::check(
     const NotNull<ModuleResolver> mr{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver};
     const ScopePtr& globalScope{forAutocomplete ? typeCheckerForAutocomplete.globalScope : typeChecker.globalScope};
 
-    Normalizer normalizer{&result->internalTypes, singletonTypes, NotNull{&typeChecker.unifierState}};
+    Normalizer normalizer{&result->internalTypes, builtinTypes, NotNull{&typeChecker.unifierState}};
 
     ConstraintGraphBuilder cgb{
         sourceModule.name,
         result,
         &result->internalTypes,
         mr,
-        singletonTypes,
+        builtinTypes,
         NotNull(&iceHandler),
         globalScope,
         logger.get(),
@@ -910,7 +906,12 @@ ModulePtr Frontend::check(
     result->astResolvedTypePacks = std::move(cgb.astResolvedTypePacks);
     result->type = sourceModule.type;
 
-    Luau::check(singletonTypes, logger.get(), sourceModule, result.get());
+    result->clonePublicInterface(builtinTypes, iceHandler);
+
+    freeze(result->internalTypes);
+    freeze(result->interfaceTypes);
+
+    Luau::check(builtinTypes, logger.get(), sourceModule, result.get());
 
     if (FFlag::DebugLuauLogSolverToJson)
     {
@@ -918,13 +919,11 @@ ModulePtr Frontend::check(
         printf("%s\n", output.c_str());
     }
 
-    result->clonePublicInterface(singletonTypes, iceHandler);
-
     return result;
 }
 
 // Read AST into sourceModules if necessary.  Trace require()s.  Report parse errors.
-std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(CheckResult& checkResult, const ModuleName& name)
+std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(const ModuleName& name)
 {
     LUAU_TIMETRACE_SCOPE("Frontend::getSourceNode", "Frontend");
     LUAU_TIMETRACE_ARGUMENT("name", name.c_str());

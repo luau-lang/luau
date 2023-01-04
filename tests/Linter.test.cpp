@@ -610,11 +610,11 @@ return foo1
 TEST_CASE_FIXTURE(Fixture, "UnknownType")
 {
     unfreeze(typeChecker.globalTypes);
-    TableTypeVar::Props instanceProps{
+    TableType::Props instanceProps{
         {"ClassName", {typeChecker.anyType}},
     };
 
-    TableTypeVar instanceTable{instanceProps, std::nullopt, typeChecker.globalScope->level, Luau::TableState::Sealed};
+    TableType instanceTable{instanceProps, std::nullopt, typeChecker.globalScope->level, Luau::TableState::Sealed};
     TypeId instanceType = typeChecker.globalTypes.addType(instanceTable);
     TypeFun instanceTypeFun{{}, instanceType};
 
@@ -1448,19 +1448,19 @@ TEST_CASE_FIXTURE(Fixture, "LintHygieneUAF")
 TEST_CASE_FIXTURE(Fixture, "DeprecatedApi")
 {
     unfreeze(typeChecker.globalTypes);
-    TypeId instanceType = typeChecker.globalTypes.addType(ClassTypeVar{"Instance", {}, std::nullopt, std::nullopt, {}, {}, "Test"});
+    TypeId instanceType = typeChecker.globalTypes.addType(ClassType{"Instance", {}, std::nullopt, std::nullopt, {}, {}, "Test"});
     persist(instanceType);
     typeChecker.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, instanceType};
 
-    getMutable<ClassTypeVar>(instanceType)->props = {
+    getMutable<ClassType>(instanceType)->props = {
         {"Name", {typeChecker.stringType}},
         {"DataCost", {typeChecker.numberType, /* deprecated= */ true}},
         {"Wait", {typeChecker.anyType, /* deprecated= */ true}},
     };
 
-    TypeId colorType = typeChecker.globalTypes.addType(TableTypeVar{{}, std::nullopt, typeChecker.globalScope->level, Luau::TableState::Sealed});
+    TypeId colorType = typeChecker.globalTypes.addType(TableType{{}, std::nullopt, typeChecker.globalScope->level, Luau::TableState::Sealed});
 
-    getMutable<TableTypeVar>(colorType)->props = {{"toHSV", {typeChecker.anyType, /* deprecated= */ true, "Color3:ToHSV"}}};
+    getMutable<TableType>(colorType)->props = {{"toHSV", {typeChecker.anyType, /* deprecated= */ true, "Color3:ToHSV"}}};
 
     addGlobalBinding(frontend, "Color3", Binding{colorType, {}});
 

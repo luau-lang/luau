@@ -612,4 +612,3 @@ const Instruction* execute_LOP_BREAK(lua_State* L, const Instruction* pc, StkId 
     LUAU_ASSERT(!"Unsupported deprecated opcode");
     LUAU_UNREACHABLE();
 }
-

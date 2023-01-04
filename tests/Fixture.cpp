@@ -7,7 +7,7 @@
 #include "Luau/ModuleResolver.h"
 #include "Luau/NotNull.h"
 #include "Luau/Parser.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 #include "Luau/TypeAttach.h"
 #include "Luau/Transpiler.h"
 
@@ -141,7 +141,7 @@ Fixture::Fixture(bool freeze, bool prepareAutocomplete)
     , frontend(&fileResolver, &configResolver,
           {/* retainFullTypeGraphs= */ true, /* forAutocomplete */ false, /* randomConstraintResolutionSeed */ randomSeed})
     , typeChecker(frontend.typeChecker)
-    , singletonTypes(frontend.singletonTypes)
+    , builtinTypes(frontend.builtinTypes)
 {
     configResolver.defaultConfig.mode = Mode::Strict;
     configResolver.defaultConfig.enabledLint.warningMask = ~0ull;
@@ -293,14 +293,14 @@ SourceModule* Fixture::getMainSourceModule()
     return frontend.getSourceModule(fromString(mainModuleName));
 }
 
-std::optional<PrimitiveTypeVar::Type> Fixture::getPrimitiveType(TypeId ty)
+std::optional<PrimitiveType::Type> Fixture::getPrimitiveType(TypeId ty)
 {
     REQUIRE(ty != nullptr);
 
     TypeId aType = follow(ty);
     REQUIRE(aType != nullptr);
 
-    const PrimitiveTypeVar* pt = get<PrimitiveTypeVar>(aType);
+    const PrimitiveType* pt = get<PrimitiveType>(aType);
     if (pt != nullptr)
         return pt->type;
     else
@@ -513,7 +513,7 @@ std::string rep(const std::string& s, size_t n)
 
 bool isInArena(TypeId t, const TypeArena& arena)
 {
-    return arena.typeVars.contains(t);
+    return arena.types.contains(t);
 }
 
 void dumpErrors(const ModulePtr& module)
@@ -554,12 +554,13 @@ std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name)
 
 void registerHiddenTypes(Fixture& fixture, TypeArena& arena)
 {
-    TypeId t = arena.addType(GenericTypeVar{"T"});
+    TypeId t = arena.addType(GenericType{"T"});
     GenericTypeDefinition genericT{t};
 
     ScopePtr moduleScope = fixture.frontend.getGlobalScope();
-    moduleScope->exportedTypeBindings["Not"] = TypeFun{{genericT}, arena.addType(NegationTypeVar{t})};
-    moduleScope->exportedTypeBindings["fun"] = TypeFun{{}, fixture.singletonTypes->functionType};
+    moduleScope->exportedTypeBindings["Not"] = TypeFun{{genericT}, arena.addType(NegationType{t})};
+    moduleScope->exportedTypeBindings["fun"] = TypeFun{{}, fixture.builtinTypes->functionType};
+    moduleScope->exportedTypeBindings["cls"] = TypeFun{{}, fixture.builtinTypes->classType};
 }
 
 void dump(const std::vector<Constraint>& constraints)

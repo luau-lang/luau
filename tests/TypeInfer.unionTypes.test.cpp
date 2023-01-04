@@ -1,6 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 
 #include "Fixture.h"
 
@@ -26,7 +26,7 @@ TEST_CASE_FIXTURE(Fixture, "return_types_can_be_disjoint")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    const FunctionTypeVar* utv = get<FunctionTypeVar>(requireType("most_of_the_natural_numbers"));
+    const FunctionType* utv = get<FunctionType>(requireType("most_of_the_natural_numbers"));
     REQUIRE(utv != nullptr);
 }
 

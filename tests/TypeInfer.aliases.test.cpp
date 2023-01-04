@@ -78,8 +78,8 @@ TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
                                       Location{{1, 21}, {1, 26}},
                                       getMainSourceModule()->name,
                                       TypeMismatch{
-                                          singletonTypes->numberType,
-                                          singletonTypes->stringType,
+                                          builtinTypes->numberType,
+                                          builtinTypes->stringType,
                                       },
                                   });
     }
@@ -89,8 +89,8 @@ TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
                                       Location{{1, 8}, {1, 26}},
                                       getMainSourceModule()->name,
                                       TypeMismatch{
-                                          singletonTypes->numberType,
-                                          singletonTypes->stringType,
+                                          builtinTypes->numberType,
+                                          builtinTypes->stringType,
                                       },
                                   });
     }
@@ -512,13 +512,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "general_require_multi_assign")
 
     std::optional<TypeId> aTypeId = lookupName(m->getModuleScope(), "a");
     REQUIRE(aTypeId);
-    const Luau::TableTypeVar* aType = get<TableTypeVar>(follow(*aTypeId));
+    const Luau::TableType* aType = get<TableType>(follow(*aTypeId));
     REQUIRE(aType);
     REQUIRE(aType->props.size() == 2);
 
     std::optional<TypeId> bTypeId = lookupName(m->getModuleScope(), "b");
     REQUIRE(bTypeId);
-    const Luau::TableTypeVar* bType = get<TableTypeVar>(follow(*bTypeId));
+    const Luau::TableType* bType = get<TableType>(follow(*bTypeId));
     REQUIRE(bType);
     REQUIRE(bType->props.size() == 3);
 }
@@ -535,7 +535,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_import_mutation")
     else
         CHECK(toString(ty) == "table");
 
-    const TableTypeVar* ttv = get<TableTypeVar>(ty);
+    const TableType* ttv = get<TableType>(ty);
     REQUIRE(ttv);
 
     CHECK(ttv->instantiatedTypeParams.empty());
@@ -554,7 +554,7 @@ type NotCool<x> = Cool
     REQUIRE(ty);
     CHECK_EQ(toString(*ty), "Cool");
 
-    const TableTypeVar* ttv = get<TableTypeVar>(*ty);
+    const TableType* ttv = get<TableType>(*ty);
     REQUIRE(ttv);
 
     CHECK(ttv->instantiatedTypeParams.empty());
@@ -590,7 +590,7 @@ type Cool = typeof(c)
     std::optional<TypeId> ty = requireType("c");
     REQUIRE(ty);
 
-    const TableTypeVar* ttv = get<TableTypeVar>(*ty);
+    const TableType* ttv = get<TableType>(*ty);
     REQUIRE(ttv);
     CHECK_EQ(ttv->name, "Cool");
 }
@@ -801,9 +801,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_quantify_unresolved_aliases")
 }
 
 /*
- * We keep a cache of type alias onto TypeVar to prevent infinite types from
+ * We keep a cache of type alias onto Type to prevent infinite types from
  * being constructed via recursive or corecursive aliases.  We have to adjust
- * the TypeLevels of those generic TypeVars so that the unifier doesn't think
+ * the TypeLevels of those generic Types so that the unifier doesn't think
  * they have improperly leaked out of their scope.
  */
 TEST_CASE_FIXTURE(Fixture, "generic_typevars_are_not_considered_to_escape_their_scope_if_they_are_reused_in_multiple_aliases")
@@ -817,7 +817,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_typevars_are_not_considered_to_escape_their_
 }
 
 /*
- * The two-pass alias definition system starts by ascribing a free TypeVar to each alias.  It then
+ * The two-pass alias definition system starts by ascribing a free Type to each alias.  It then
  * circles back to fill in the actual type later on.
  *
  * If this free type is unified with something degenerate like `any`, we need to take extra care
@@ -913,11 +913,11 @@ TEST_CASE_FIXTURE(Fixture, "report_shadowed_aliases")
 
     std::optional<TypeId> t1 = lookupType("MyString");
     REQUIRE(t1);
-    CHECK(isPrim(*t1, PrimitiveTypeVar::String));
+    CHECK(isPrim(*t1, PrimitiveType::String));
 
     std::optional<TypeId> t2 = lookupType("string");
     REQUIRE(t2);
-    CHECK(isPrim(*t2, PrimitiveTypeVar::String));
+    CHECK(isPrim(*t2, PrimitiveType::String));
 }
 
 TEST_CASE_FIXTURE(Fixture, "it_is_ok_to_shadow_user_defined_alias")

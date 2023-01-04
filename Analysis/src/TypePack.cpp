@@ -237,7 +237,7 @@ TypePackId follow(TypePackId tp, std::function<TypePackId(TypePackId)> mapper)
                 cycleTester = nullptr;
 
             if (tp == cycleTester)
-                throw InternalCompilerError("Luau::follow detected a TypeVar cycle!!");
+                throw InternalCompilerError("Luau::follow detected a Type cycle!!");
         }
     }
 }
@@ -381,14 +381,14 @@ bool containsNever(TypePackId tp)
 
     while (it != endIt)
     {
-        if (get<NeverTypeVar>(follow(*it)))
+        if (get<NeverType>(follow(*it)))
             return true;
         ++it;
     }
 
     if (auto tail = it.tail())
     {
-        if (auto vtp = get<VariadicTypePack>(*tail); vtp && get<NeverTypeVar>(follow(vtp->ty)))
+        if (auto vtp = get<VariadicTypePack>(*tail); vtp && get<NeverType>(follow(vtp->ty)))
             return true;
     }
 

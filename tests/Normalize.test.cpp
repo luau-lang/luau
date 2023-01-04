@@ -3,7 +3,7 @@
 #include "Fixture.h"
 
 #include "Luau/Common.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 #include "doctest.h"
 
 #include "Luau/Normalize.h"
@@ -17,7 +17,7 @@ struct IsSubtypeFixture : Fixture
 {
     bool isSubtype(TypeId a, TypeId b)
     {
-        return ::Luau::isSubtype(a, b, NotNull{getMainModule()->getModuleScope().get()}, singletonTypes, ice);
+        return ::Luau::isSubtype(a, b, NotNull{getMainModule()->getModuleScope().get()}, builtinTypes, ice);
     }
 };
 } // namespace
@@ -28,9 +28,9 @@ void createSomeClasses(Frontend& frontend)
 
     unfreeze(arena);
 
-    TypeId parentType = arena.addType(ClassTypeVar{"Parent", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"});
+    TypeId parentType = arena.addType(ClassType{"Parent", {}, frontend.builtinTypes->classType, std::nullopt, {}, nullptr, "Test"});
 
-    ClassTypeVar* parentClass = getMutable<ClassTypeVar>(parentType);
+    ClassType* parentClass = getMutable<ClassType>(parentType);
     parentClass->props["method"] = {makeFunction(arena, parentType, {}, {})};
 
     parentClass->props["virtual_method"] = {makeFunction(arena, parentType, {}, {})};
@@ -38,15 +38,15 @@ void createSomeClasses(Frontend& frontend)
     addGlobalBinding(frontend, "Parent", {parentType});
     frontend.getGlobalScope()->exportedTypeBindings["Parent"] = TypeFun{{}, parentType};
 
-    TypeId childType = arena.addType(ClassTypeVar{"Child", {}, parentType, std::nullopt, {}, nullptr, "Test"});
+    TypeId childType = arena.addType(ClassType{"Child", {}, parentType, std::nullopt, {}, nullptr, "Test"});
 
-    ClassTypeVar* childClass = getMutable<ClassTypeVar>(childType);
+    ClassType* childClass = getMutable<ClassType>(childType);
     childClass->props["virtual_method"] = {makeFunction(arena, childType, {}, {})};
 
     addGlobalBinding(frontend, "Child", {childType});
     frontend.getGlobalScope()->exportedTypeBindings["Child"] = TypeFun{{}, childType};
 
-    TypeId unrelatedType = arena.addType(ClassTypeVar{"Unrelated", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"});
+    TypeId unrelatedType = arena.addType(ClassType{"Unrelated", {}, frontend.builtinTypes->classType, std::nullopt, {}, nullptr, "Test"});
 
     addGlobalBinding(frontend, "Unrelated", {unrelatedType});
     frontend.getGlobalScope()->exportedTypeBindings["Unrelated"] = TypeFun{{}, unrelatedType};
@@ -394,11 +394,12 @@ TEST_SUITE_END();
 struct NormalizeFixture : Fixture
 {
     ScopedFastFlag sff1{"LuauNegatedFunctionTypes", true};
+    ScopedFastFlag sff2{"LuauNegatedClassTypes", true};
 
     TypeArena arena;
     InternalErrorReporter iceHandler;
     UnifierSharedState unifierState{&iceHandler};
-    Normalizer normalizer{&arena, singletonTypes, NotNull{&unifierState}};
+    Normalizer normalizer{&arena, builtinTypes, NotNull{&unifierState}};
 
     NormalizeFixture()
     {
@@ -407,6 +408,7 @@ struct NormalizeFixture : Fixture
 
     const NormalizedType* toNormalizedType(const std::string& annotation)
     {
+        normalizer.clearCaches();
         CheckResult result = check("type _Res = " + annotation);
         LUAU_REQUIRE_NO_ERRORS(result);
         std::optional<TypeId> ty = lookupType("_Res");
@@ -524,7 +526,9 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union_function_and_top_function")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negated_function_is_anything_except_a_function")
 {
-    CHECK("(boolean | number | string | thread)?" == toString(normal(R"(
+    ScopedFastFlag{"LuauNegatedClassTypes", true};
+
+    CHECK("(boolean | class | number | string | thread)?" == toString(normal(R"(
         Not<fun>
     )")));
 }
@@ -536,8 +540,9 @@ TEST_CASE_FIXTURE(NormalizeFixture, "specific_functions_cannot_be_negated")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "bare_negated_boolean")
 {
+    ScopedFastFlag{"LuauNegatedClassTypes", true};
     // TODO: We don't yet have a way to say number | string | thread | nil | Class | Table | Function
-    CHECK("(function | number | string | thread)?" == toString(normal(R"(
+    CHECK("(class | function | number | string | thread)?" == toString(normal(R"(
         Not<boolean>
     )")));
 }
@@ -601,6 +606,63 @@ export type t0 = (((any)&({_:l0.t0,n0:t0,_G:any,}))&({_:any,}))&(((any)&({_:l0.t
     )");
 
     LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "unions_of_classes")
+{
+    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
+
+    createSomeClasses(frontend);
+    CHECK("Parent | Unrelated" == toString(normal("Parent | Unrelated")));
+    CHECK("Parent" == toString(normal("Parent | Child")));
+    CHECK("Parent | Unrelated" == toString(normal("Parent | Child | Unrelated")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "intersections_of_classes")
+{
+    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
+
+    createSomeClasses(frontend);
+    CHECK("Child" == toString(normal("Parent & Child")));
+    CHECK("never" == toString(normal("Child & Unrelated")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "narrow_union_of_classes_with_intersection")
+{
+    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
+
+    createSomeClasses(frontend);
+    CHECK("Child" == toString(normal("(Child | Unrelated) & Child")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_classes")
+{
+    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
+
+    createSomeClasses(frontend);
+    CHECK("(Parent & ~Child) | Unrelated" == toString(normal("(Parent & Not<Child>) | Unrelated")));
+    CHECK("((class & ~Child) | boolean | function | number | string | thread)?" == toString(normal("Not<Child>")));
+    CHECK("Child" == toString(normal("Not<Parent> & Child")));
+    CHECK("((class & ~Parent) | Child | boolean | function | number | string | thread)?" == toString(normal("Not<Parent> | Child")));
+    CHECK("(boolean | function | number | string | thread)?" == toString(normal("Not<cls>")));
+    CHECK("(Parent | Unrelated | boolean | function | number | string | thread)?" ==
+          toString(normal("Not<cls & Not<Parent> & Not<Child> & Not<Unrelated>>")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "classes_and_unknown")
+{
+    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
+
+    createSomeClasses(frontend);
+    CHECK("Parent" == toString(normal("Parent & unknown")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "classes_and_never")
+{
+    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
+
+    createSomeClasses(frontend);
+    CHECK("never" == toString(normal("Parent & never")));
 }
 
 TEST_SUITE_END();

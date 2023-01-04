@@ -19,7 +19,7 @@ struct ConstraintGraphBuilderFixture : Fixture
     ModulePtr mainModule;
     DcrLogger logger;
     UnifierSharedState sharedState{&ice};
-    Normalizer normalizer{&arena, singletonTypes, NotNull{&sharedState}};
+    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
 
     std::unique_ptr<DataFlowGraph> dfg;
     std::unique_ptr<ConstraintGraphBuilder> cgb;

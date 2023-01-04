@@ -3,7 +3,7 @@
 
 #include "Luau/Location.h"
 #include "Luau/NotNull.h"
-#include "Luau/TypeVar.h"
+#include "Luau/Type.h"
 
 #include <unordered_map>
 #include <optional>
