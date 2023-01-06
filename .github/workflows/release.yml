@@ -14,9 +14,9 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu, macos, windows]
-    name: ${{matrix.os}}
-    runs-on: ${{matrix.os}}-latest
+        os: [{name: ubuntu, version: ubuntu-20.04}, {name: macos, version: macos-latest}, {name: windows, version: windows-latest}]
+    name: ${{matrix.os.name}}
+    runs-on: ${{matrix.os.version}}
     steps:
     - uses: actions/checkout@v1
     - name: configure
@@ -24,18 +24,18 @@ jobs:
     - name: build
       run: cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI --config Release -j 2
     - uses: actions/upload-artifact@v2
-      if: matrix.os != 'windows'
+      if: matrix.os.name != 'windows'
       with:
-        name: luau-${{matrix.os}}
+        name: luau-${{matrix.os.name}}
         path: luau*
     - uses: actions/upload-artifact@v2
-      if: matrix.os == 'windows'
+      if: matrix.os.name == 'windows'
       with:
-        name: luau-${{matrix.os}}
+        name: luau-${{matrix.os.name}}
         path: Release\luau*.exe
 
   web:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v1
     - uses: actions/checkout@v2

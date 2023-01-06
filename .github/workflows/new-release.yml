@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   create-release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
@@ -30,9 +30,9 @@ jobs:
     needs: ["create-release"]
     strategy:
       matrix:
-        os: [ubuntu, macos, windows]
-    name: ${{matrix.os}}
-    runs-on: ${{matrix.os}}-latest
+        os: [{name: ubuntu, version: ubuntu-20.04}, {name: macos, version: macos-latest}, {name: windows, version: windows-latest}]
+    name: ${{matrix.os.name}}
+    runs-on: ${{matrix.os.version}}
     steps:
     - uses: actions/checkout@v1
     - name: configure
@@ -40,23 +40,23 @@ jobs:
     - name: build
       run: cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI --config Release -j 2
     - name: pack
-      if: matrix.os != 'windows'
-      run: zip luau-${{matrix.os}}.zip luau*
+      if: matrix.os.name != 'windows'
+      run: zip luau-${{matrix.os.name}}.zip luau*
     - name: pack
-      if: matrix.os == 'windows'
-      run: 7z a luau-${{matrix.os}}.zip .\Release\luau*.exe
+      if: matrix.os.name == 'windows'
+      run: 7z a luau-${{matrix.os.name}}.zip .\Release\luau*.exe
     - uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: luau-${{matrix.os}}.zip
-        asset_name: luau-${{matrix.os}}.zip
+        asset_path: luau-${{matrix.os.name}}.zip
+        asset_name: luau-${{matrix.os.name}}.zip
         asset_content_type: application/octet-stream
 
   web:
     needs: ["create-release"]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v1
     - uses: actions/checkout@v2
