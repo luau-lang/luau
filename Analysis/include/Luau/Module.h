@@ -73,12 +73,19 @@ struct Module
     DenseHashMap<const AstExpr*, TypeId> astTypes{nullptr};
     DenseHashMap<const AstExpr*, TypePackId> astTypePacks{nullptr};
     DenseHashMap<const AstExpr*, TypeId> astExpectedTypes{nullptr};
-    DenseHashMap<const AstExpr*, TypeId> astOriginalCallTypes{nullptr};
-    DenseHashMap<const AstExpr*, TypeId> astOverloadResolvedTypes{nullptr};
+
+    // Pointers are either AstExpr or AstStat.
+    DenseHashMap<const void*, TypeId> astOriginalCallTypes{nullptr};
+
+    // Pointers are either AstExpr or AstStat.
+    DenseHashMap<const void*, TypeId> astOverloadResolvedTypes{nullptr};
+
     DenseHashMap<const AstType*, TypeId> astResolvedTypes{nullptr};
     DenseHashMap<const AstTypePack*, TypePackId> astResolvedTypePacks{nullptr};
     // Map AST nodes to the scope they create.  Cannot be NotNull<Scope> because we need a sentinel value for the map.
     DenseHashMap<const AstNode*, Scope*> astScopes{nullptr};
+
+    std::unique_ptr<struct TypeReduction> reduction;
 
     std::unordered_map<Name, TypeId> declaredGlobals;
     ErrorVec errors;
@@ -86,6 +93,10 @@ struct Module
     SourceCode::Type type;
     bool timeout = false;
 
+    TypePackId returnType = nullptr;
+    std::unordered_map<Name, TypeFun> exportedTypeBindings;
+
+    bool hasModuleScope() const;
     ScopePtr getModuleScope() const;
 
     // Once a module has been typechecked, we clone its public interface into a separate arena.

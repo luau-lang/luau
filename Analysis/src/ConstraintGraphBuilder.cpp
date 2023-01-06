@@ -15,6 +15,7 @@ LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
 LUAU_FASTFLAG(LuauNegatedClassTypes);
+LUAU_FASTFLAG(LuauScopelessModule);
 
 namespace Luau
 {
@@ -520,7 +521,8 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
                     const Name name{local->vars.data[i]->name.value};
 
                     if (ModulePtr module = moduleResolver->getModule(moduleInfo->name))
-                        scope->importedTypeBindings[name] = module->getModuleScope()->exportedTypeBindings;
+                        scope->importedTypeBindings[name] =
+                            FFlag::LuauScopelessModule ? module->exportedTypeBindings : module->getModuleScope()->exportedTypeBindings;
                 }
             }
         }
@@ -733,16 +735,15 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatAssign* assign)
 
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatCompoundAssign* assign)
 {
-    // Synthesize A = A op B from A op= B and then build constraints for that instead.
+    // We need to tweak the BinaryConstraint that we emit, so we cannot use the
+    // strategy of falsifying an AST fragment.
+    TypeId varId = checkLValue(scope, assign->var);
+    Inference valueInf = check(scope, assign->value);
 
-    AstExprBinary exprBinary{assign->location, assign->op, assign->var, assign->value};
-    AstExpr* exprBinaryPtr = &exprBinary;
-
-    AstArray<AstExpr*> vars{&assign->var, 1};
-    AstArray<AstExpr*> values{&exprBinaryPtr, 1};
-    AstStatAssign syntheticAssign{assign->location, vars, values};
-
-    visit(scope, &syntheticAssign);
+    TypeId resultType = arena->addType(BlockedType{});
+    addConstraint(scope, assign->location,
+        BinaryConstraint{assign->op, varId, valueInf.ty, resultType, assign, &astOriginalCallTypes, &astOverloadResolvedTypes});
+    addConstraint(scope, assign->location, SubtypeConstraint{resultType, varId});
 }
 
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatIf* ifStatement)

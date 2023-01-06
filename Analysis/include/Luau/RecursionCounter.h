@@ -32,7 +32,7 @@ struct RecursionCounter
         --(*count);
     }
 
-private:
+protected:
     int* count;
 };
 

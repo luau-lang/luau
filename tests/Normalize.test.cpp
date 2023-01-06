@@ -17,45 +17,16 @@ struct IsSubtypeFixture : Fixture
 {
     bool isSubtype(TypeId a, TypeId b)
     {
-        return ::Luau::isSubtype(a, b, NotNull{getMainModule()->getModuleScope().get()}, builtinTypes, ice);
+        ModulePtr module = getMainModule();
+        REQUIRE(module);
+
+        if (!module->hasModuleScope())
+            FAIL("isSubtype: module scope data is not available");
+
+        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, ice);
     }
 };
 } // namespace
-
-void createSomeClasses(Frontend& frontend)
-{
-    auto& arena = frontend.globalTypes;
-
-    unfreeze(arena);
-
-    TypeId parentType = arena.addType(ClassType{"Parent", {}, frontend.builtinTypes->classType, std::nullopt, {}, nullptr, "Test"});
-
-    ClassType* parentClass = getMutable<ClassType>(parentType);
-    parentClass->props["method"] = {makeFunction(arena, parentType, {}, {})};
-
-    parentClass->props["virtual_method"] = {makeFunction(arena, parentType, {}, {})};
-
-    addGlobalBinding(frontend, "Parent", {parentType});
-    frontend.getGlobalScope()->exportedTypeBindings["Parent"] = TypeFun{{}, parentType};
-
-    TypeId childType = arena.addType(ClassType{"Child", {}, parentType, std::nullopt, {}, nullptr, "Test"});
-
-    ClassType* childClass = getMutable<ClassType>(childType);
-    childClass->props["virtual_method"] = {makeFunction(arena, childType, {}, {})};
-
-    addGlobalBinding(frontend, "Child", {childType});
-    frontend.getGlobalScope()->exportedTypeBindings["Child"] = TypeFun{{}, childType};
-
-    TypeId unrelatedType = arena.addType(ClassType{"Unrelated", {}, frontend.builtinTypes->classType, std::nullopt, {}, nullptr, "Test"});
-
-    addGlobalBinding(frontend, "Unrelated", {unrelatedType});
-    frontend.getGlobalScope()->exportedTypeBindings["Unrelated"] = TypeFun{{}, unrelatedType};
-
-    for (const auto& [name, ty] : frontend.getGlobalScope()->exportedTypeBindings)
-        persist(ty.type);
-
-    freeze(arena);
-}
 
 TEST_SUITE_BEGIN("isSubtype");
 
@@ -352,7 +323,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "cyclic_table")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "classes")
 {
-    createSomeClasses(frontend);
+    createSomeClasses(&frontend);
 
     check(""); // Ensure that we have a main Module.
 
@@ -403,11 +374,12 @@ struct NormalizeFixture : Fixture
 
     NormalizeFixture()
     {
-        registerHiddenTypes(*this, arena);
+        registerHiddenTypes(&frontend);
     }
 
     const NormalizedType* toNormalizedType(const std::string& annotation)
     {
+        normalizer.clearCaches();
         CheckResult result = check("type _Res = " + annotation);
         LUAU_REQUIRE_NO_ERRORS(result);
         std::optional<TypeId> ty = lookupType("_Res");
@@ -588,7 +560,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "skip_force_normal_on_external_types")
 {
-    createSomeClasses(frontend);
+    createSomeClasses(&frontend);
 
     CheckResult result = check(R"(
 export type t0 = { a: Child }
@@ -611,7 +583,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "unions_of_classes")
 {
     ScopedFastFlag sff{"LuauNegatedClassTypes", true};
 
-    createSomeClasses(frontend);
+    createSomeClasses(&frontend);
     CHECK("Parent | Unrelated" == toString(normal("Parent | Unrelated")));
     CHECK("Parent" == toString(normal("Parent | Child")));
     CHECK("Parent | Unrelated" == toString(normal("Parent | Child | Unrelated")));
@@ -621,7 +593,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersections_of_classes")
 {
     ScopedFastFlag sff{"LuauNegatedClassTypes", true};
 
-    createSomeClasses(frontend);
+    createSomeClasses(&frontend);
     CHECK("Child" == toString(normal("Parent & Child")));
     CHECK("never" == toString(normal("Child & Unrelated")));
 }
@@ -630,7 +602,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "narrow_union_of_classes_with_intersection")
 {
     ScopedFastFlag sff{"LuauNegatedClassTypes", true};
 
-    createSomeClasses(frontend);
+    createSomeClasses(&frontend);
     CHECK("Child" == toString(normal("(Child | Unrelated) & Child")));
 }
 
@@ -638,7 +610,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_classes")
 {
     ScopedFastFlag sff{"LuauNegatedClassTypes", true};
 
-    createSomeClasses(frontend);
+    createSomeClasses(&frontend);
     CHECK("(Parent & ~Child) | Unrelated" == toString(normal("(Parent & Not<Child>) | Unrelated")));
     CHECK("((class & ~Child) | boolean | function | number | string | thread)?" == toString(normal("Not<Child>")));
     CHECK("Child" == toString(normal("Not<Parent> & Child")));
@@ -652,7 +624,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "classes_and_unknown")
 {
     ScopedFastFlag sff{"LuauNegatedClassTypes", true};
 
-    createSomeClasses(frontend);
+    createSomeClasses(&frontend);
     CHECK("Parent" == toString(normal("Parent & unknown")));
 }
 
@@ -660,7 +632,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "classes_and_never")
 {
     ScopedFastFlag sff{"LuauNegatedClassTypes", true};
 
-    createSomeClasses(frontend);
+    createSomeClasses(&frontend);
     CHECK("never" == toString(normal("Parent & never")));
 }
 

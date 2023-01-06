@@ -428,8 +428,12 @@ type E = X<(number, ...string)>
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(*lookupType("D")), "(...number) -> (string, ...number)");
-    CHECK_EQ(toString(*lookupType("E")), "(number, ...string) -> (string, number, ...string)");
+    auto d = lookupType("D");
+    REQUIRE(d);
+    auto e = lookupType("E");
+    REQUIRE(e);
+    CHECK_EQ(toString(*d), "(...number) -> (string, ...number)");
+    CHECK_EQ(toString(*e), "(number, ...string) -> (string, number, ...string)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_multi")
@@ -887,9 +891,13 @@ TEST_CASE_FIXTURE(Fixture, "unifying_vararg_pack_with_fixed_length_pack_produces
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    REQUIRE(bool(getMainModule()->getModuleScope()->varargPack));
+    ModulePtr mainModule = getMainModule();
+    REQUIRE(mainModule);
+    REQUIRE(mainModule->hasModuleScope());
 
-    TypePackId varargPack = *getMainModule()->getModuleScope()->varargPack;
+    REQUIRE(bool(mainModule->getModuleScope()->varargPack));
+
+    TypePackId varargPack = *mainModule->getModuleScope()->varargPack;
 
     auto iter = begin(varargPack);
     auto endIter = end(varargPack);

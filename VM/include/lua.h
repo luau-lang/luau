@@ -17,9 +17,9 @@
 /*
 ** pseudo-indices
 */
-#define LUA_REGISTRYINDEX (-10000)
-#define LUA_ENVIRONINDEX (-10001)
-#define LUA_GLOBALSINDEX (-10002)
+#define LUA_REGISTRYINDEX (-LUAI_MAXCSTACK - 2000)
+#define LUA_ENVIRONINDEX (-LUAI_MAXCSTACK - 2001)
+#define LUA_GLOBALSINDEX (-LUAI_MAXCSTACK - 2002)
 #define lua_upvalueindex(i) (LUA_GLOBALSINDEX - (i))
 #define lua_ispseudo(i) ((i) <= LUA_REGISTRYINDEX)
 

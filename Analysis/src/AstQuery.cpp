@@ -256,7 +256,8 @@ AstExpr* findExprAtPosition(const SourceModule& source, Position pos)
 
 ScopePtr findScopeAtPosition(const Module& module, Position pos)
 {
-    LUAU_ASSERT(!module.scopes.empty());
+    if (module.scopes.empty())
+        return nullptr;
 
     Location scopeLocation = module.scopes.front().first;
     ScopePtr scope = module.scopes.front().second;
@@ -320,7 +321,6 @@ std::optional<Binding> findBindingAtPosition(const Module& module, const SourceM
         return std::nullopt;
 
     ScopePtr currentScope = findScopeAtPosition(module, pos);
-    LUAU_ASSERT(currentScope);
 
     while (currentScope)
     {

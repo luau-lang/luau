@@ -20,7 +20,7 @@ struct NegationFixture : Fixture
 
     NegationFixture()
     {
-        registerHiddenTypes(*this, arena);
+        registerHiddenTypes(&frontend);
     }
 };
 

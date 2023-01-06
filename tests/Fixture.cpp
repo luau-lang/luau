@@ -312,6 +312,9 @@ std::optional<TypeId> Fixture::getType(const std::string& name)
     ModulePtr module = getMainModule();
     REQUIRE(module);
 
+    if (!module->hasModuleScope())
+        return std::nullopt;
+
     if (FFlag::DebugLuauDeferredConstraintResolution)
         return linearSearchForBinding(module->getModuleScope().get(), name.c_str());
     else
@@ -329,11 +332,14 @@ TypeId Fixture::requireType(const ModuleName& moduleName, const std::string& nam
 {
     ModulePtr module = frontend.moduleResolver.getModule(moduleName);
     REQUIRE(module);
-    return requireType(module->getModuleScope(), name);
+    return requireType(module, name);
 }
 
 TypeId Fixture::requireType(const ModulePtr& module, const std::string& name)
 {
+    if (!module->hasModuleScope())
+        FAIL("requireType: module scope data is not available");
+
     return requireType(module->getModuleScope(), name);
 }
 
@@ -367,7 +373,12 @@ TypeId Fixture::requireTypeAtPosition(Position position)
 
 std::optional<TypeId> Fixture::lookupType(const std::string& name)
 {
-    if (auto typeFun = getMainModule()->getModuleScope()->lookupType(name))
+    ModulePtr module = getMainModule();
+
+    if (!module->hasModuleScope())
+        return std::nullopt;
+
+    if (auto typeFun = module->getModuleScope()->lookupType(name))
         return typeFun->type;
 
     return std::nullopt;
@@ -375,10 +386,22 @@ std::optional<TypeId> Fixture::lookupType(const std::string& name)
 
 std::optional<TypeId> Fixture::lookupImportedType(const std::string& moduleAlias, const std::string& name)
 {
-    if (auto typeFun = getMainModule()->getModuleScope()->lookupImportedType(moduleAlias, name))
+    ModulePtr module = getMainModule();
+
+    if (!module->hasModuleScope())
+        FAIL("lookupImportedType: module scope data is not available");
+
+    if (auto typeFun = module->getModuleScope()->lookupImportedType(moduleAlias, name))
         return typeFun->type;
 
     return std::nullopt;
+}
+
+TypeId Fixture::requireTypeAlias(const std::string& name)
+{
+    std::optional<TypeId> ty = lookupType(name);
+    REQUIRE(ty);
+    return *ty;
 }
 
 std::string Fixture::decorateWithTypes(const std::string& code)
@@ -552,15 +575,52 @@ std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name)
     return std::nullopt;
 }
 
-void registerHiddenTypes(Fixture& fixture, TypeArena& arena)
+void registerHiddenTypes(Frontend* frontend)
 {
-    TypeId t = arena.addType(GenericType{"T"});
+    TypeId t = frontend->globalTypes.addType(GenericType{"T"});
     GenericTypeDefinition genericT{t};
 
-    ScopePtr moduleScope = fixture.frontend.getGlobalScope();
-    moduleScope->exportedTypeBindings["Not"] = TypeFun{{genericT}, arena.addType(NegationType{t})};
-    moduleScope->exportedTypeBindings["fun"] = TypeFun{{}, fixture.builtinTypes->functionType};
-    moduleScope->exportedTypeBindings["cls"] = TypeFun{{}, fixture.builtinTypes->classType};
+    ScopePtr globalScope = frontend->getGlobalScope();
+    globalScope->exportedTypeBindings["Not"] = TypeFun{{genericT}, frontend->globalTypes.addType(NegationType{t})};
+    globalScope->exportedTypeBindings["fun"] = TypeFun{{}, frontend->builtinTypes->functionType};
+    globalScope->exportedTypeBindings["cls"] = TypeFun{{}, frontend->builtinTypes->classType};
+    globalScope->exportedTypeBindings["err"] = TypeFun{{}, frontend->builtinTypes->errorType};
+}
+
+void createSomeClasses(Frontend* frontend)
+{
+    TypeArena& arena = frontend->globalTypes;
+    unfreeze(arena);
+
+    ScopePtr moduleScope = frontend->getGlobalScope();
+
+    TypeId parentType = arena.addType(ClassType{"Parent", {}, frontend->builtinTypes->classType, std::nullopt, {}, nullptr, "Test"});
+
+    ClassType* parentClass = getMutable<ClassType>(parentType);
+    parentClass->props["method"] = {makeFunction(arena, parentType, {}, {})};
+
+    parentClass->props["virtual_method"] = {makeFunction(arena, parentType, {}, {})};
+
+    addGlobalBinding(*frontend, "Parent", {parentType});
+    moduleScope->exportedTypeBindings["Parent"] = TypeFun{{}, parentType};
+
+    TypeId childType = arena.addType(ClassType{"Child", {}, parentType, std::nullopt, {}, nullptr, "Test"});
+
+    ClassType* childClass = getMutable<ClassType>(childType);
+    childClass->props["virtual_method"] = {makeFunction(arena, childType, {}, {})};
+
+    addGlobalBinding(*frontend, "Child", {childType});
+    moduleScope->exportedTypeBindings["Child"] = TypeFun{{}, childType};
+
+    TypeId unrelatedType = arena.addType(ClassType{"Unrelated", {}, frontend->builtinTypes->classType, std::nullopt, {}, nullptr, "Test"});
+
+    addGlobalBinding(*frontend, "Unrelated", {unrelatedType});
+    moduleScope->exportedTypeBindings["Unrelated"] = TypeFun{{}, unrelatedType};
+
+    for (const auto& [name, ty] : moduleScope->exportedTypeBindings)
+        persist(ty.type);
+
+    freeze(arena);
 }
 
 void dump(const std::vector<Constraint>& constraints)

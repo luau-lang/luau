@@ -26,6 +26,7 @@ LUAU_FASTFLAGVARIABLE(LuauSerializeNilUnionAsNil, false)
  * Fair warning: Setting this will break a lot of Luau unit tests.
  */
 LUAU_FASTFLAGVARIABLE(DebugLuauVerboseTypeNames, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauToStringNoLexicalSort, false)
 
 namespace Luau
 {
@@ -755,7 +756,8 @@ struct TypeStringifier
 
         state.unsee(&uv);
 
-        std::sort(results.begin(), results.end());
+        if (!FFlag::DebugLuauToStringNoLexicalSort)
+            std::sort(results.begin(), results.end());
 
         if (optional && results.size() > 1)
             state.emit("(");
@@ -820,7 +822,8 @@ struct TypeStringifier
 
         state.unsee(&uv);
 
-        std::sort(results.begin(), results.end());
+        if (!FFlag::DebugLuauToStringNoLexicalSort)
+            std::sort(results.begin(), results.end());
 
         bool first = true;
         for (std::string& ss : results)

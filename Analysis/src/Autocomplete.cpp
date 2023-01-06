@@ -150,6 +150,8 @@ static TypeCorrectKind checkTypeCorrectKind(
 {
     ty = follow(ty);
 
+    LUAU_ASSERT(module.hasModuleScope());
+
     NotNull<Scope> moduleScope{module.getModuleScope().get()};
 
     auto typeAtPosition = findExpectedTypeAt(module, node, position);
@@ -182,8 +184,7 @@ static TypeCorrectKind checkTypeCorrectKind(
         }
     }
 
-    return checkTypeMatch(ty, expectedType, NotNull{module.getModuleScope().get()}, typeArena, builtinTypes) ? TypeCorrectKind::Correct
-                                                                                                             : TypeCorrectKind::None;
+    return checkTypeMatch(ty, expectedType, moduleScope, typeArena, builtinTypes) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
 }
 
 enum class PropIndexType
@@ -1328,12 +1329,10 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(const Source
 }
 
 static AutocompleteResult autocomplete(const SourceModule& sourceModule, const ModulePtr& module, NotNull<BuiltinTypes> builtinTypes,
-    Scope* globalScope, Position position, StringCompletionCallback callback)
+    TypeArena* typeArena, Scope* globalScope, Position position, StringCompletionCallback callback)
 {
     if (isWithinComment(sourceModule, position))
         return {};
-
-    TypeArena typeArena;
 
     std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(sourceModule, position);
     LUAU_ASSERT(!ancestry.empty());
@@ -1360,7 +1359,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         TypeId ty = follow(*it);
         PropIndexType indexType = indexName->op == ':' ? PropIndexType::Colon : PropIndexType::Point;
 
-        return {autocompleteProps(*module, &typeArena, builtinTypes, ty, indexType, ancestry), ancestry, AutocompleteContext::Property};
+        return {autocompleteProps(*module, typeArena, builtinTypes, ty, indexType, ancestry), ancestry, AutocompleteContext::Property};
     }
     else if (auto typeReference = node->as<AstTypeReference>())
     {
@@ -1378,7 +1377,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         if (statLocal->vars.size == 1 && (!statLocal->equalsSignLocation || position < statLocal->equalsSignLocation->begin))
             return {{{"function", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Unknown};
         else if (statLocal->equalsSignLocation && position >= statLocal->equalsSignLocation->end)
-            return autocompleteExpression(sourceModule, *module, builtinTypes, &typeArena, ancestry, position);
+            return autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
         else
             return {};
     }
@@ -1392,7 +1391,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
 
             if (statFor->from->location.containsClosed(position) || statFor->to->location.containsClosed(position) ||
                 (statFor->step && statFor->step->location.containsClosed(position)))
-                return autocompleteExpression(sourceModule, *module, builtinTypes, &typeArena, ancestry, position);
+                return autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
 
             return {};
         }
@@ -1422,7 +1421,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             AstExpr* lastExpr = statForIn->values.data[statForIn->values.size - 1];
 
             if (lastExpr->location.containsClosed(position))
-                return autocompleteExpression(sourceModule, *module, builtinTypes, &typeArena, ancestry, position);
+                return autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
 
             if (position > lastExpr->location.end)
                 return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
@@ -1446,7 +1445,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
 
         if (!statWhile->hasDo || position < statWhile->doLocation.begin)
-            return autocompleteExpression(sourceModule, *module, builtinTypes, &typeArena, ancestry, position);
+            return autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
 
         if (statWhile->hasDo && position > statWhile->doLocation.end)
             return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
@@ -1463,7 +1462,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
     else if (AstStatIf* statIf = parent->as<AstStatIf>(); statIf && node->is<AstStatBlock>())
     {
         if (statIf->condition->is<AstExprError>())
-            return autocompleteExpression(sourceModule, *module, builtinTypes, &typeArena, ancestry, position);
+            return autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
         else if (!statIf->thenLocation || statIf->thenLocation->containsClosed(position))
             return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
     }
@@ -1471,7 +1470,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
              statIf && (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)))
         return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
     else if (AstStatRepeat* statRepeat = node->as<AstStatRepeat>(); statRepeat && statRepeat->condition->is<AstExprError>())
-        return autocompleteExpression(sourceModule, *module, builtinTypes, &typeArena, ancestry, position);
+        return autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
     else if (AstStatRepeat* statRepeat = extractStat<AstStatRepeat>(ancestry); statRepeat)
         return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
     else if (AstExprTable* exprTable = parent->as<AstExprTable>();
@@ -1484,7 +1483,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             {
                 if (auto it = module->astExpectedTypes.find(exprTable))
                 {
-                    auto result = autocompleteProps(*module, &typeArena, builtinTypes, *it, PropIndexType::Key, ancestry);
+                    auto result = autocompleteProps(*module, typeArena, builtinTypes, *it, PropIndexType::Key, ancestry);
 
                     if (FFlag::LuauCompleteTableKeysBetter)
                     {
@@ -1518,7 +1517,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
 
                     // If we know for sure that a key is being written, do not offer general expression suggestions
                     if (!key)
-                        autocompleteExpression(sourceModule, *module, builtinTypes, &typeArena, ancestry, position, result);
+                        autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position, result);
 
                     return {result, ancestry, AutocompleteContext::Property};
                 }
@@ -1546,7 +1545,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             if (auto idxExpr = ancestry.at(ancestry.size() - 2)->as<AstExprIndexExpr>())
             {
                 if (auto it = module->astTypes.find(idxExpr->expr))
-                    autocompleteProps(*module, &typeArena, builtinTypes, follow(*it), PropIndexType::Point, ancestry, result);
+                    autocompleteProps(*module, typeArena, builtinTypes, follow(*it), PropIndexType::Point, ancestry, result);
             }
             else if (auto binExpr = ancestry.at(ancestry.size() - 2)->as<AstExprBinary>())
             {
@@ -1572,7 +1571,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         return {};
 
     if (node->asExpr())
-        return autocompleteExpression(sourceModule, *module, builtinTypes, &typeArena, ancestry, position);
+        return autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
     else if (node->asStat())
         return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
 
@@ -1599,9 +1598,8 @@ AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName
     NotNull<BuiltinTypes> builtinTypes = frontend.builtinTypes;
     Scope* globalScope = frontend.typeCheckerForAutocomplete.globalScope.get();
 
-    AutocompleteResult autocompleteResult = autocomplete(*sourceModule, module, builtinTypes, globalScope, position, callback);
-
-    return autocompleteResult;
+    TypeArena typeArena;
+    return autocomplete(*sourceModule, module, builtinTypes, &typeArena, globalScope, position, callback);
 }
 
 } // namespace Luau

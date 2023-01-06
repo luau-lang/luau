@@ -18,7 +18,6 @@ LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError)
-LUAU_FASTFLAG(LuauNewLibraryTypeNames)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -1730,16 +1729,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_table_names")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    if (FFlag::LuauNewLibraryTypeNames)
-    {
-        CHECK_EQ("Cannot add property 'h' to table 'typeof(os)'", toString(result.errors[0]));
-        CHECK_EQ("Cannot add property 'k' to table 'typeof(string)'", toString(result.errors[1]));
-    }
-    else
-    {
-        CHECK_EQ("Cannot add property 'h' to table 'os'", toString(result.errors[0]));
-        CHECK_EQ("Cannot add property 'k' to table 'string'", toString(result.errors[1]));
-    }
+    CHECK_EQ("Cannot add property 'h' to table 'typeof(os)'", toString(result.errors[0]));
+    CHECK_EQ("Cannot add property 'k' to table 'typeof(string)'", toString(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "persistent_sealed_table_is_immutable")
@@ -1750,10 +1741,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "persistent_sealed_table_is_immutable")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauNewLibraryTypeNames)
-        CHECK_EQ("Cannot add property 'bad' to table 'typeof(os)'", toString(result.errors[0]));
-    else
-        CHECK_EQ("Cannot add property 'bad' to table 'os'", toString(result.errors[0]));
+    CHECK_EQ("Cannot add property 'bad' to table 'typeof(os)'", toString(result.errors[0]));
 
     const TableType* osType = get<TableType>(requireType("os"));
     REQUIRE(osType != nullptr);
@@ -2967,6 +2955,8 @@ TEST_CASE_FIXTURE(Fixture, "inferred_properties_of_a_table_should_start_with_the
 // The real bug here was that we weren't always uncondionally typechecking a trailing return statement last.
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_leak_free_table_props")
 {
+    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
+
     CheckResult result = check(R"(
         local function a(state)
             print(state.blah)
@@ -2988,7 +2978,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_leak_free_table_props")
 
     CHECK_EQ("<a>({+ blah: a +}) -> ()", toString(requireType("a")));
     CHECK_EQ("<a>({+ gwar: a +}) -> ()", toString(requireType("b")));
-    CHECK_EQ("() -> <a, b>({+ blah: a, gwar: b +}) -> ()", toString(getMainModule()->getModuleScope()->returnType));
+    CHECK_EQ("() -> <a, b>({+ blah: a, gwar: b +}) -> ()", toString(getMainModule()->returnType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "inferred_return_type_of_free_table")
@@ -3230,8 +3220,6 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shap
 TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_shape_type")
 {
     ScopedFastFlag sff{"LuauScalarShapeSubtyping", true};
-    if (!FFlag::LuauNewLibraryTypeNames)
-        return;
 
     CheckResult result = check(R"(
         local function f(s)
@@ -3280,8 +3268,6 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_can_turn_into_a_scalar_if_it_is_compati
 TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_compatible")
 {
     ScopedFastFlag sff{"LuauScalarShapeSubtyping", true};
-    if (!FFlag::LuauNewLibraryTypeNames)
-        return;
 
     CheckResult result = check(R"(
         local function f(s): string

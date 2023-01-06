@@ -146,6 +146,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/TypedAllocator.h
     Analysis/include/Luau/TypeInfer.h
     Analysis/include/Luau/TypePack.h
+    Analysis/include/Luau/TypeReduction.h
     Analysis/include/Luau/TypeUtils.h
     Analysis/include/Luau/Type.h
     Analysis/include/Luau/Unifiable.h
@@ -195,6 +196,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/TypedAllocator.cpp
     Analysis/src/TypeInfer.cpp
     Analysis/src/TypePack.cpp
+    Analysis/src/TypeReduction.cpp
     Analysis/src/TypeUtils.cpp
     Analysis/src/Type.cpp
     Analysis/src/Unifiable.cpp
@@ -364,6 +366,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.unionTypes.test.cpp
         tests/TypeInfer.unknownnever.test.cpp
         tests/TypePack.test.cpp
+        tests/TypeReduction.test.cpp
         tests/TypeVar.test.cpp
         tests/Variant.test.cpp
         tests/VisitType.test.cpp

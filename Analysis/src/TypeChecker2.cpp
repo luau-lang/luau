@@ -626,8 +626,11 @@ struct TypeChecker2
 
     void visit(AstStatCompoundAssign* stat)
     {
-        visit(stat->var);
-        visit(stat->value);
+        AstExprBinary fake{stat->location, stat->op, stat->var, stat->value};
+        TypeId resultTy = visit(&fake, stat);
+        TypeId varTy = lookupType(stat->var);
+
+        reportErrors(tryUnify(stack.back(), stat->location, resultTy, varTy));
     }
 
     void visit(AstStatFunction* stat)
@@ -737,7 +740,10 @@ struct TypeChecker2
         else if (auto e = expr->as<AstExprUnary>())
             return visit(e);
         else if (auto e = expr->as<AstExprBinary>())
-            return visit(e);
+        {
+            visit(e);
+            return;
+        }
         else if (auto e = expr->as<AstExprTypeAssertion>())
             return visit(e);
         else if (auto e = expr->as<AstExprIfElse>())
@@ -1045,7 +1051,7 @@ struct TypeChecker2
         }
     }
 
-    void visit(AstExprBinary* expr)
+    TypeId visit(AstExprBinary* expr, void* overrideKey = nullptr)
     {
         visit(expr->left);
         visit(expr->right);
@@ -1066,8 +1072,10 @@ struct TypeChecker2
 
         bool isStringOperation = isString(leftType) && isString(rightType);
 
-        if (get<AnyType>(leftType) || get<ErrorType>(leftType) || get<AnyType>(rightType) || get<ErrorType>(rightType))
-            return;
+        if (get<AnyType>(leftType) || get<ErrorType>(leftType))
+            return leftType;
+        else if (get<AnyType>(rightType) || get<ErrorType>(rightType))
+            return rightType;
 
         if ((get<BlockedType>(leftType) || get<FreeType>(leftType)) && !isEquality && !isLogical)
         {
@@ -1075,14 +1083,13 @@ struct TypeChecker2
             reportError(CannotInferBinaryOperation{expr->op, name,
                             isComparison ? CannotInferBinaryOperation::OpKind::Comparison : CannotInferBinaryOperation::OpKind::Operation},
                 expr->location);
-            return;
+            return leftType;
         }
 
         if (auto it = kBinaryOpMetamethods.find(expr->op); it != kBinaryOpMetamethods.end())
         {
             std::optional<TypeId> leftMt = getMetatable(leftType, builtinTypes);
             std::optional<TypeId> rightMt = getMetatable(rightType, builtinTypes);
-
             bool matches = leftMt == rightMt;
             if (isEquality && !matches)
             {
@@ -1114,7 +1121,7 @@ struct TypeChecker2
                                 toString(leftType).c_str(), toString(rightType).c_str(), toString(expr->op).c_str())},
                     expr->location);
 
-                return;
+                return builtinTypes->errorRecoveryType();
             }
 
             std::optional<TypeId> mm;
@@ -1128,7 +1135,11 @@ struct TypeChecker2
 
             if (mm)
             {
-                TypeId instantiatedMm = module->astOverloadResolvedTypes[expr];
+                void* key = expr;
+                if (overrideKey != nullptr)
+                    key = overrideKey;
+
+                TypeId instantiatedMm = module->astOverloadResolvedTypes[key];
                 if (!instantiatedMm)
                     reportError(CodeTooComplex{}, expr->location);
 
@@ -1146,20 +1157,50 @@ struct TypeChecker2
                         expectedArgs = testArena.addTypePack({leftType, rightType});
                     }
 
-                    reportErrors(tryUnify(scope, expr->location, ftv->argTypes, expectedArgs));
-
+                    TypePackId expectedRets;
                     if (expr->op == AstExprBinary::CompareEq || expr->op == AstExprBinary::CompareNe || expr->op == AstExprBinary::CompareGe ||
                         expr->op == AstExprBinary::CompareGt || expr->op == AstExprBinary::Op::CompareLe || expr->op == AstExprBinary::Op::CompareLt)
                     {
-                        TypePackId expectedRets = testArena.addTypePack({builtinTypes->booleanType});
-                        if (!isSubtype(ftv->retTypes, expectedRets, scope))
+                        expectedRets = testArena.addTypePack({builtinTypes->booleanType});
+                    }
+                    else
+                    {
+                        expectedRets = testArena.addTypePack({testArena.freshType(scope, TypeLevel{})});
+                    }
+
+                    TypeId expectedTy = testArena.addType(FunctionType(expectedArgs, expectedRets));
+
+                    reportErrors(tryUnify(scope, expr->location, follow(*mm), expectedTy));
+
+                    std::optional<TypeId> ret = first(ftv->retTypes);
+                    if (ret)
+                    {
+                        if (isComparison)
                         {
-                            reportError(GenericError{format("Metamethod '%s' must return type 'boolean'", it->second)}, expr->location);
+                            if (!isBoolean(follow(*ret)))
+                            {
+                                reportError(GenericError{format("Metamethod '%s' must return a boolean", it->second)}, expr->location);
+                            }
+
+                            return builtinTypes->booleanType;
+                        }
+                        else
+                        {
+                            return follow(*ret);
                         }
                     }
-                    else if (!first(ftv->retTypes))
+                    else
                     {
-                        reportError(GenericError{format("Metamethod '%s' must return a value", it->second)}, expr->location);
+                        if (isComparison)
+                        {
+                            reportError(GenericError{format("Metamethod '%s' must return a boolean", it->second)}, expr->location);
+                        }
+                        else
+                        {
+                            reportError(GenericError{format("Metamethod '%s' must return a value", it->second)}, expr->location);
+                        }
+
+                        return builtinTypes->errorRecoveryType();
                     }
                 }
                 else
@@ -1167,13 +1208,13 @@ struct TypeChecker2
                     reportError(CannotCallNonFunction{*mm}, expr->location);
                 }
 
-                return;
+                return builtinTypes->errorRecoveryType();
             }
             // If this is a string comparison, or a concatenation of strings, we
             // want to fall through to primitive behavior.
             else if (!isEquality && !(isStringOperation && (expr->op == AstExprBinary::Op::Concat || isComparison)))
             {
-                if (leftMt || rightMt)
+                if ((leftMt && !isString(leftType)) || (rightMt && !isString(rightType)))
                 {
                     if (isComparison)
                     {
@@ -1190,7 +1231,7 @@ struct TypeChecker2
                             expr->location);
                     }
 
-                    return;
+                    return builtinTypes->errorRecoveryType();
                 }
                 else if (!leftMt && !rightMt && (get<TableType>(leftType) || get<TableType>(rightType)))
                 {
@@ -1207,7 +1248,7 @@ struct TypeChecker2
                             expr->location);
                     }
 
-                    return;
+                    return builtinTypes->errorRecoveryType();
                 }
             }
         }
@@ -1223,34 +1264,44 @@ struct TypeChecker2
             reportErrors(tryUnify(scope, expr->left->location, leftType, builtinTypes->numberType));
             reportErrors(tryUnify(scope, expr->right->location, rightType, builtinTypes->numberType));
 
-            break;
+            return builtinTypes->numberType;
         case AstExprBinary::Op::Concat:
             reportErrors(tryUnify(scope, expr->left->location, leftType, builtinTypes->stringType));
             reportErrors(tryUnify(scope, expr->right->location, rightType, builtinTypes->stringType));
 
-            break;
+            return builtinTypes->stringType;
         case AstExprBinary::Op::CompareGe:
         case AstExprBinary::Op::CompareGt:
         case AstExprBinary::Op::CompareLe:
         case AstExprBinary::Op::CompareLt:
             if (isNumber(leftType))
+            {
                 reportErrors(tryUnify(scope, expr->right->location, rightType, builtinTypes->numberType));
+                return builtinTypes->numberType;
+            }
             else if (isString(leftType))
+            {
                 reportErrors(tryUnify(scope, expr->right->location, rightType, builtinTypes->stringType));
+                return builtinTypes->stringType;
+            }
             else
+            {
                 reportError(GenericError{format("Types '%s' and '%s' cannot be compared with relational operator %s", toString(leftType).c_str(),
                                 toString(rightType).c_str(), toString(expr->op).c_str())},
                     expr->location);
-
-            break;
+                return builtinTypes->errorRecoveryType();
+            }
         case AstExprBinary::Op::And:
         case AstExprBinary::Op::Or:
         case AstExprBinary::Op::CompareEq:
         case AstExprBinary::Op::CompareNe:
-            break;
+            // Ugly case: we don't care about this possibility, because a
+            // compound assignment will never exist with one of these operators.
+            return builtinTypes->anyType;
         default:
             // Unhandled AstExprBinary::Op possibility.
             LUAU_ASSERT(false);
+            return builtinTypes->errorRecoveryType();
         }
     }
 

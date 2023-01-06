@@ -397,8 +397,6 @@ local e = a.z
 
 TEST_CASE_FIXTURE(Fixture, "optional_iteration")
 {
-    ScopedFastFlag luauNilIterator{"LuauNilIterator", true};
-
     CheckResult result = check(R"(
 function foo(values: {number}?)
     local s = 0

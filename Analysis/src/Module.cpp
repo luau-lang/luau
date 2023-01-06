@@ -7,9 +7,10 @@
 #include "Luau/Normalize.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Scope.h"
+#include "Luau/Type.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
-#include "Luau/Type.h"
+#include "Luau/TypeReduction.h"
 #include "Luau/VisitType.h"
 
 #include <algorithm>
@@ -17,6 +18,7 @@
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAGVARIABLE(LuauClonePublicInterfaceLess, false);
 LUAU_FASTFLAG(LuauSubstitutionReentrant);
+LUAU_FASTFLAG(LuauScopelessModule);
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution);
 LUAU_FASTFLAG(LuauSubstitutionFixMissingFields);
 
@@ -189,7 +191,6 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
 
     TypePackId returnType = moduleScope->returnType;
     std::optional<TypePackId> varargPack = FFlag::DebugLuauDeferredConstraintResolution ? std::nullopt : moduleScope->varargPack;
-    std::unordered_map<Name, TypeFun>* exportedTypeBindings = &moduleScope->exportedTypeBindings;
 
     TxnLog log;
     ClonePublicInterface clonePublicInterface{&log, builtinTypes, this};
@@ -209,15 +210,12 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
         moduleScope->varargPack = varargPack;
     }
 
-    if (exportedTypeBindings)
+    for (auto& [name, tf] : moduleScope->exportedTypeBindings)
     {
-        for (auto& [name, tf] : *exportedTypeBindings)
-        {
-            if (FFlag::LuauClonePublicInterfaceLess)
-                tf = clonePublicInterface.cloneTypeFun(tf);
-            else
-                tf = clone(tf, interfaceTypes, cloneState);
-        }
+        if (FFlag::LuauClonePublicInterfaceLess)
+            tf = clonePublicInterface.cloneTypeFun(tf);
+        else
+            tf = clone(tf, interfaceTypes, cloneState);
     }
 
     for (auto& [name, ty] : declaredGlobals)
@@ -228,13 +226,25 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
             ty = clone(ty, interfaceTypes, cloneState);
     }
 
+    // Copy external stuff over to Module itself
+    if (FFlag::LuauScopelessModule)
+    {
+        this->returnType = moduleScope->returnType;
+        this->exportedTypeBindings = std::move(moduleScope->exportedTypeBindings);
+    }
+
     freeze(internalTypes);
     freeze(interfaceTypes);
 }
 
+bool Module::hasModuleScope() const
+{
+    return !scopes.empty();
+}
+
 ScopePtr Module::getModuleScope() const
 {
-    LUAU_ASSERT(!scopes.empty());
+    LUAU_ASSERT(hasModuleScope());
     return scopes.front().second;
 }
 

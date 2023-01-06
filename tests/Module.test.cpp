@@ -112,6 +112,8 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")
 {
+    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
+
     CheckResult result = check(R"(
         return {sign=math.sign}
     )");
@@ -119,7 +121,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     ModulePtr module = frontend.moduleResolver.getModule("MainModule");
-    std::optional<TypeId> exports = first(module->getModuleScope()->returnType);
+    std::optional<TypeId> exports = first(module->returnType);
     REQUIRE(bool(exports));
 
     REQUIRE(isInArena(*exports, module->interfaceTypes));
@@ -283,6 +285,8 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
 
 TEST_CASE_FIXTURE(Fixture, "any_persistance_does_not_leak")
 {
+    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
+
     fileResolver.source["Module/A"] = R"(
 export type A = B
 type B = A
@@ -294,8 +298,8 @@ type B = A
     LUAU_REQUIRE_ERRORS(result);
 
     auto mod = frontend.moduleResolver.getModule("Module/A");
-    auto it = mod->getModuleScope()->exportedTypeBindings.find("A");
-    REQUIRE(it != mod->getModuleScope()->exportedTypeBindings.end());
+    auto it = mod->exportedTypeBindings.find("A");
+    REQUIRE(it != mod->exportedTypeBindings.end());
     CHECK(toString(it->second.type) == "any");
 }
 
@@ -306,6 +310,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_reexports")
         {"LuauSubstitutionReentrant", true},
         {"LuauClassTypeVarsInSubstitution", true},
         {"LuauSubstitutionFixMissingFields", true},
+        {"LuauScopelessModule", true},
     };
 
     fileResolver.source["Module/A"] = R"(
@@ -326,10 +331,10 @@ return {}
     ModulePtr modB = frontend.moduleResolver.getModule("Module/B");
     REQUIRE(modA);
     REQUIRE(modB);
-    auto modAiter = modA->getModuleScope()->exportedTypeBindings.find("A");
-    auto modBiter = modB->getModuleScope()->exportedTypeBindings.find("B");
-    REQUIRE(modAiter != modA->getModuleScope()->exportedTypeBindings.end());
-    REQUIRE(modBiter != modB->getModuleScope()->exportedTypeBindings.end());
+    auto modAiter = modA->exportedTypeBindings.find("A");
+    auto modBiter = modB->exportedTypeBindings.find("B");
+    REQUIRE(modAiter != modA->exportedTypeBindings.end());
+    REQUIRE(modBiter != modB->exportedTypeBindings.end());
     TypeId typeA = modAiter->second.type;
     TypeId typeB = modBiter->second.type;
     TableType* tableB = getMutable<TableType>(typeB);
@@ -344,6 +349,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_types_of_reexported_values")
         {"LuauSubstitutionReentrant", true},
         {"LuauClassTypeVarsInSubstitution", true},
         {"LuauSubstitutionFixMissingFields", true},
+        {"LuauScopelessModule", true},
     };
 
     fileResolver.source["Module/A"] = R"(
@@ -364,8 +370,8 @@ return exports
     ModulePtr modB = frontend.moduleResolver.getModule("Module/B");
     REQUIRE(modA);
     REQUIRE(modB);
-    std::optional<TypeId> typeA = first(modA->getModuleScope()->returnType);
-    std::optional<TypeId> typeB = first(modB->getModuleScope()->returnType);
+    std::optional<TypeId> typeA = first(modA->returnType);
+    std::optional<TypeId> typeB = first(modB->returnType);
     REQUIRE(typeA);
     REQUIRE(typeB);
     TableType* tableA = getMutable<TableType>(*typeA);

@@ -9,7 +9,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError)
-LUAU_FASTFLAG(LuauNewLibraryTypeNames)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -506,19 +505,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "general_require_multi_assign")
 
     CheckResult result = frontend.check("workspace/C");
     LUAU_REQUIRE_NO_ERRORS(result);
-    ModulePtr m = frontend.moduleResolver.modules["workspace/C"];
 
-    REQUIRE(m != nullptr);
-
-    std::optional<TypeId> aTypeId = lookupName(m->getModuleScope(), "a");
-    REQUIRE(aTypeId);
-    const Luau::TableType* aType = get<TableType>(follow(*aTypeId));
+    TypeId aTypeId = requireType("workspace/C", "a");
+    const Luau::TableType* aType = get<TableType>(follow(aTypeId));
     REQUIRE(aType);
     REQUIRE(aType->props.size() == 2);
 
-    std::optional<TypeId> bTypeId = lookupName(m->getModuleScope(), "b");
-    REQUIRE(bTypeId);
-    const Luau::TableType* bType = get<TableType>(follow(*bTypeId));
+    TypeId bTypeId = requireType("workspace/C", "b");
+    const Luau::TableType* bType = get<TableType>(follow(bTypeId));
     REQUIRE(bType);
     REQUIRE(bType->props.size() == 3);
 }
@@ -530,10 +524,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_import_mutation")
 
     TypeId ty = getGlobalBinding(frontend, "table");
 
-    if (FFlag::LuauNewLibraryTypeNames)
-        CHECK(toString(ty) == "typeof(table)");
-    else
-        CHECK(toString(ty) == "table");
+    CHECK(toString(ty) == "typeof(table)");
 
     const TableType* ttv = get<TableType>(ty);
     REQUIRE(ttv);
