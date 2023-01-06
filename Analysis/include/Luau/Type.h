@@ -494,13 +494,13 @@ struct AnyType
 {
 };
 
-// T | U
+// `T | U`
 struct UnionType
 {
     std::vector<TypeId> options;
 };
 
-// T & U
+// `T & U`
 struct IntersectionType
 {
     std::vector<TypeId> parts;
@@ -519,9 +519,7 @@ struct NeverType
 {
 };
 
-// ~T
-// TODO: Some simplification step that overwrites the type graph to make sure negation
-// types disappear from the user's view, and (?) a debug flag to disable that
+// `~T`
 struct NegationType
 {
     TypeId ty;
@@ -676,6 +674,8 @@ TypeLevel* getMutableLevel(TypeId ty);
 std::optional<TypeLevel> getLevel(TypePackId tp);
 
 const Property* lookupClassProp(const ClassType* cls, const Name& name);
+
+// Whether `cls` is a subclass of `parent`
 bool isSubclass(const ClassType* cls, const ClassType* parent);
 
 Type* asMutable(TypeId ty);
@@ -767,7 +767,7 @@ struct TypeIterator
         return !(*this == rhs);
     }
 
-    const TypeId& operator*()
+    TypeId operator*()
     {
         descend();
 
@@ -779,8 +779,8 @@ struct TypeIterator
         const std::vector<TypeId>& types = getTypes(t);
         LUAU_ASSERT(currentIndex < types.size());
 
-        const TypeId& ty = types[currentIndex];
-        LUAU_ASSERT(!get<T>(follow(ty)));
+        TypeId ty = follow(types[currentIndex]);
+        LUAU_ASSERT(!get<T>(ty));
 
         return ty;
     }

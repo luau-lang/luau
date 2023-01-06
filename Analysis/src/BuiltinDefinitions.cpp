@@ -18,9 +18,7 @@
 LUAU_FASTFLAGVARIABLE(LuauSetMetaTableArgsCheck, false)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauBuiltInMetatableNoBadSynthetic, false)
-LUAU_FASTFLAG(LuauOptionalNextKey)
 LUAU_FASTFLAG(LuauReportShadowedTypeAlias)
-LUAU_FASTFLAG(LuauNewLibraryTypeNames)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -289,38 +287,18 @@ void registerBuiltinGlobals(TypeChecker& typeChecker)
 
     addGlobalBinding(typeChecker, "string", it->second.type, "@luau");
 
-    if (FFlag::LuauOptionalNextKey)
-    {
-        // next<K, V>(t: Table<K, V>, i: K?) -> (K?, V)
-        TypePackId nextArgsTypePack = arena.addTypePack(TypePack{{mapOfKtoV, makeOption(typeChecker, arena, genericK)}});
-        TypePackId nextRetsTypePack = arena.addTypePack(TypePack{{makeOption(typeChecker, arena, genericK), genericV}});
-        addGlobalBinding(typeChecker, "next", arena.addType(FunctionType{{genericK, genericV}, {}, nextArgsTypePack, nextRetsTypePack}), "@luau");
+    // next<K, V>(t: Table<K, V>, i: K?) -> (K?, V)
+    TypePackId nextArgsTypePack = arena.addTypePack(TypePack{{mapOfKtoV, makeOption(typeChecker, arena, genericK)}});
+    TypePackId nextRetsTypePack = arena.addTypePack(TypePack{{makeOption(typeChecker, arena, genericK), genericV}});
+    addGlobalBinding(typeChecker, "next", arena.addType(FunctionType{{genericK, genericV}, {}, nextArgsTypePack, nextRetsTypePack}), "@luau");
 
-        TypePackId pairsArgsTypePack = arena.addTypePack({mapOfKtoV});
+    TypePackId pairsArgsTypePack = arena.addTypePack({mapOfKtoV});
 
-        TypeId pairsNext = arena.addType(FunctionType{nextArgsTypePack, nextRetsTypePack});
-        TypePackId pairsReturnTypePack = arena.addTypePack(TypePack{{pairsNext, mapOfKtoV, nilType}});
+    TypeId pairsNext = arena.addType(FunctionType{nextArgsTypePack, nextRetsTypePack});
+    TypePackId pairsReturnTypePack = arena.addTypePack(TypePack{{pairsNext, mapOfKtoV, nilType}});
 
-        // pairs<K, V>(t: Table<K, V>) -> ((Table<K, V>, K?) -> (K, V), Table<K, V>, nil)
-        addGlobalBinding(
-            typeChecker, "pairs", arena.addType(FunctionType{{genericK, genericV}, {}, pairsArgsTypePack, pairsReturnTypePack}), "@luau");
-    }
-    else
-    {
-        // next<K, V>(t: Table<K, V>, i: K?) -> (K, V)
-        TypePackId nextArgsTypePack = arena.addTypePack(TypePack{{mapOfKtoV, makeOption(typeChecker, arena, genericK)}});
-        addGlobalBinding(typeChecker, "next",
-            arena.addType(FunctionType{{genericK, genericV}, {}, nextArgsTypePack, arena.addTypePack(TypePack{{genericK, genericV}})}), "@luau");
-
-        TypePackId pairsArgsTypePack = arena.addTypePack({mapOfKtoV});
-
-        TypeId pairsNext = arena.addType(FunctionType{nextArgsTypePack, arena.addTypePack(TypePack{{genericK, genericV}})});
-        TypePackId pairsReturnTypePack = arena.addTypePack(TypePack{{pairsNext, mapOfKtoV, nilType}});
-
-        // pairs<K, V>(t: Table<K, V>) -> ((Table<K, V>, K?) -> (K, V), Table<K, V>, nil)
-        addGlobalBinding(
-            typeChecker, "pairs", arena.addType(FunctionType{{genericK, genericV}, {}, pairsArgsTypePack, pairsReturnTypePack}), "@luau");
-    }
+    // pairs<K, V>(t: Table<K, V>) -> ((Table<K, V>, K?) -> (K, V), Table<K, V>, nil)
+    addGlobalBinding(typeChecker, "pairs", arena.addType(FunctionType{{genericK, genericV}, {}, pairsArgsTypePack, pairsReturnTypePack}), "@luau");
 
     TypeId genericMT = arena.addType(GenericType{"MT"});
 
@@ -352,12 +330,7 @@ void registerBuiltinGlobals(TypeChecker& typeChecker)
         if (TableType* ttv = getMutable<TableType>(pair.second.typeId))
         {
             if (!ttv->name)
-            {
-                if (FFlag::LuauNewLibraryTypeNames)
-                    ttv->name = "typeof(" + toString(pair.first) + ")";
-                else
-                    ttv->name = toString(pair.first);
-            }
+                ttv->name = "typeof(" + toString(pair.first) + ")";
         }
     }
 
@@ -408,36 +381,18 @@ void registerBuiltinGlobals(Frontend& frontend)
 
     addGlobalBinding(frontend, "string", it->second.type, "@luau");
 
-    if (FFlag::LuauOptionalNextKey)
-    {
-        // next<K, V>(t: Table<K, V>, i: K?) -> (K?, V)
-        TypePackId nextArgsTypePack = arena.addTypePack(TypePack{{mapOfKtoV, makeOption(frontend, arena, genericK)}});
-        TypePackId nextRetsTypePack = arena.addTypePack(TypePack{{makeOption(frontend, arena, genericK), genericV}});
-        addGlobalBinding(frontend, "next", arena.addType(FunctionType{{genericK, genericV}, {}, nextArgsTypePack, nextRetsTypePack}), "@luau");
+    // next<K, V>(t: Table<K, V>, i: K?) -> (K?, V)
+    TypePackId nextArgsTypePack = arena.addTypePack(TypePack{{mapOfKtoV, makeOption(frontend, arena, genericK)}});
+    TypePackId nextRetsTypePack = arena.addTypePack(TypePack{{makeOption(frontend, arena, genericK), genericV}});
+    addGlobalBinding(frontend, "next", arena.addType(FunctionType{{genericK, genericV}, {}, nextArgsTypePack, nextRetsTypePack}), "@luau");
 
-        TypePackId pairsArgsTypePack = arena.addTypePack({mapOfKtoV});
+    TypePackId pairsArgsTypePack = arena.addTypePack({mapOfKtoV});
 
-        TypeId pairsNext = arena.addType(FunctionType{nextArgsTypePack, nextRetsTypePack});
-        TypePackId pairsReturnTypePack = arena.addTypePack(TypePack{{pairsNext, mapOfKtoV, frontend.builtinTypes->nilType}});
+    TypeId pairsNext = arena.addType(FunctionType{nextArgsTypePack, nextRetsTypePack});
+    TypePackId pairsReturnTypePack = arena.addTypePack(TypePack{{pairsNext, mapOfKtoV, frontend.builtinTypes->nilType}});
 
-        // pairs<K, V>(t: Table<K, V>) -> ((Table<K, V>, K?) -> (K?, V), Table<K, V>, nil)
-        addGlobalBinding(frontend, "pairs", arena.addType(FunctionType{{genericK, genericV}, {}, pairsArgsTypePack, pairsReturnTypePack}), "@luau");
-    }
-    else
-    {
-        // next<K, V>(t: Table<K, V>, i: K?) -> (K, V)
-        TypePackId nextArgsTypePack = arena.addTypePack(TypePack{{mapOfKtoV, makeOption(frontend, arena, genericK)}});
-        addGlobalBinding(frontend, "next",
-            arena.addType(FunctionType{{genericK, genericV}, {}, nextArgsTypePack, arena.addTypePack(TypePack{{genericK, genericV}})}), "@luau");
-
-        TypePackId pairsArgsTypePack = arena.addTypePack({mapOfKtoV});
-
-        TypeId pairsNext = arena.addType(FunctionType{nextArgsTypePack, arena.addTypePack(TypePack{{genericK, genericV}})});
-        TypePackId pairsReturnTypePack = arena.addTypePack(TypePack{{pairsNext, mapOfKtoV, frontend.builtinTypes->nilType}});
-
-        // pairs<K, V>(t: Table<K, V>) -> ((Table<K, V>, K?) -> (K, V), Table<K, V>, nil)
-        addGlobalBinding(frontend, "pairs", arena.addType(FunctionType{{genericK, genericV}, {}, pairsArgsTypePack, pairsReturnTypePack}), "@luau");
-    }
+    // pairs<K, V>(t: Table<K, V>) -> ((Table<K, V>, K?) -> (K?, V), Table<K, V>, nil)
+    addGlobalBinding(frontend, "pairs", arena.addType(FunctionType{{genericK, genericV}, {}, pairsArgsTypePack, pairsReturnTypePack}), "@luau");
 
     TypeId genericMT = arena.addType(GenericType{"MT"});
 
@@ -469,12 +424,7 @@ void registerBuiltinGlobals(Frontend& frontend)
         if (TableType* ttv = getMutable<TableType>(pair.second.typeId))
         {
             if (!ttv->name)
-            {
-                if (FFlag::LuauNewLibraryTypeNames)
-                    ttv->name = "typeof(" + toString(pair.first) + ")";
-                else
-                    ttv->name = toString(pair.first);
-            }
+                ttv->name = "typeof(" + toString(pair.first) + ")";
         }
     }
 

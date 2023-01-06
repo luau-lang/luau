@@ -18,6 +18,7 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false);
+LUAU_FASTFLAG(LuauScopelessModule);
 
 namespace Luau
 {
@@ -681,8 +682,8 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
                 asMutable(resultType)->ty.emplace<BoundType>(mmResult);
                 unblock(resultType);
 
-                (*c.astOriginalCallTypes)[c.expr] = *mm;
-                (*c.astOverloadResolvedTypes)[c.expr] = *instantiatedMm;
+                (*c.astOriginalCallTypes)[c.astFragment] = *mm;
+                (*c.astOverloadResolvedTypes)[c.astFragment] = *instantiatedMm;
                 return true;
             }
         }
@@ -1895,7 +1896,7 @@ TypeId ConstraintSolver::resolveModule(const ModuleInfo& info, const Location& l
         return errorRecoveryType();
     }
 
-    TypePackId modulePack = module->getModuleScope()->returnType;
+    TypePackId modulePack = FFlag::LuauScopelessModule ? module->returnType : module->getModuleScope()->returnType;
     if (get<Unifiable::Error>(modulePack))
         return errorRecoveryType();
 

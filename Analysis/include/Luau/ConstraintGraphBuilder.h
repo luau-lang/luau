@@ -82,11 +82,11 @@ struct ConstraintGraphBuilder
 
     // If the node was applied as a function, this is the unspecialized type of
     // that expression.
-    DenseHashMap<const AstExpr*, TypeId> astOriginalCallTypes{nullptr};
+    DenseHashMap<const void*, TypeId> astOriginalCallTypes{nullptr};
 
     // If overload resolution was performed on this element, this is the
     // overload that was selected.
-    DenseHashMap<const AstExpr*, TypeId> astOverloadResolvedTypes{nullptr};
+    DenseHashMap<const void*, TypeId> astOverloadResolvedTypes{nullptr};
 
     // Types resolved from type annotations. Analogous to astTypes.
     DenseHashMap<const AstType*, TypeId> astResolvedTypes{nullptr};

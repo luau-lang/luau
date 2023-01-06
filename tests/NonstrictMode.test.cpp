@@ -253,6 +253,8 @@ TEST_CASE_FIXTURE(Fixture, "delay_function_does_not_require_its_argument_to_retu
 
 TEST_CASE_FIXTURE(Fixture, "inconsistent_module_return_types_are_ok")
 {
+    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
+
     CheckResult result = check(R"(
         --!nonstrict
 
@@ -269,7 +271,7 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_module_return_types_are_ok")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    REQUIRE_EQ("any", toString(getMainModule()->getModuleScope()->returnType));
+    REQUIRE_EQ("any", toString(getMainModule()->returnType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "returning_insufficient_return_values")

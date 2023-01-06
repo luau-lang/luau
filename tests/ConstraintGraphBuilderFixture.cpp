@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "ConstraintGraphBuilderFixture.h"
 
+#include "Luau/TypeReduction.h"
+
 namespace Luau
 {
 
@@ -9,6 +11,8 @@ ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
     , mainModule(new Module)
     , forceTheFlag{"DebugLuauDeferredConstraintResolution", true}
 {
+    mainModule->reduction = std::make_unique<TypeReduction>(NotNull{&mainModule->internalTypes}, builtinTypes, NotNull{&ice});
+
     BlockedType::nextIndex = 0;
     BlockedTypePack::nextIndex = 0;
 }

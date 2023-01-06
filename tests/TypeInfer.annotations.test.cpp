@@ -319,10 +319,10 @@ TEST_CASE_FIXTURE(Fixture, "self_referential_type_alias")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    std::optional<TypeFun> res = getMainModule()->getModuleScope()->lookupType("O");
+    std::optional<TypeId> res = lookupType("O");
     REQUIRE(res);
 
-    TypeId oType = follow(res->type);
+    TypeId oType = follow(*res);
     const TableType* oTable = get<TableType>(oType);
     REQUIRE(oTable);
 
@@ -347,6 +347,8 @@ TEST_CASE_FIXTURE(Fixture, "define_generic_type_alias")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     ModulePtr mainModule = getMainModule();
+    REQUIRE(mainModule);
+    REQUIRE(mainModule->hasModuleScope());
 
     auto it = mainModule->getModuleScope()->privateTypeBindings.find("Array");
     REQUIRE(it != mainModule->getModuleScope()->privateTypeBindings.end());
@@ -463,6 +465,8 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_always_resolve_to_a_real_type")
 
 TEST_CASE_FIXTURE(Fixture, "interface_types_belong_to_interface_arena")
 {
+    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
+
     CheckResult result = check(R"(
         export type A = {field: number}
 
@@ -475,12 +479,12 @@ TEST_CASE_FIXTURE(Fixture, "interface_types_belong_to_interface_arena")
 
     Module& mod = *getMainModule();
 
-    const TypeFun& a = mod.getModuleScope()->exportedTypeBindings["A"];
+    const TypeFun& a = mod.exportedTypeBindings["A"];
 
     CHECK(isInArena(a.type, mod.interfaceTypes));
     CHECK(!isInArena(a.type, typeChecker.globalTypes));
 
-    std::optional<TypeId> exportsType = first(mod.getModuleScope()->returnType);
+    std::optional<TypeId> exportsType = first(mod.returnType);
     REQUIRE(exportsType);
 
     TableType* exportsTable = getMutable<TableType>(*exportsType);
@@ -494,6 +498,8 @@ TEST_CASE_FIXTURE(Fixture, "interface_types_belong_to_interface_arena")
 
 TEST_CASE_FIXTURE(Fixture, "generic_aliases_are_cloned_properly")
 {
+    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
+
     CheckResult result = check(R"(
         export type Array<T> = { [number]: T }
     )");
@@ -501,7 +507,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases_are_cloned_properly")
     dumpErrors(result);
 
     Module& mod = *getMainModule();
-    const auto& typeBindings = mod.getModuleScope()->exportedTypeBindings;
+    const auto& typeBindings = mod.exportedTypeBindings;
 
     auto it = typeBindings.find("Array");
     REQUIRE(typeBindings.end() != it);
@@ -521,6 +527,8 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases_are_cloned_properly")
 
 TEST_CASE_FIXTURE(Fixture, "cloned_interface_maintains_pointers_between_definitions")
 {
+    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
+
     CheckResult result = check(R"(
         export type Record = { name: string, location: string }
         local a: Record = { name="Waldo", location="?????" }
@@ -533,9 +541,9 @@ TEST_CASE_FIXTURE(Fixture, "cloned_interface_maintains_pointers_between_definiti
 
     Module& mod = *getMainModule();
 
-    TypeId recordType = mod.getModuleScope()->exportedTypeBindings["Record"].type;
+    TypeId recordType = mod.exportedTypeBindings["Record"].type;
 
-    std::optional<TypeId> exportsType = first(mod.getModuleScope()->returnType);
+    std::optional<TypeId> exportsType = first(mod.returnType);
     REQUIRE(exportsType);
 
     TableType* exportsTable = getMutable<TableType>(*exportsType);

@@ -109,6 +109,8 @@ TEST_CASE_FIXTURE(Fixture, "vararg_functions_should_allow_calls_of_any_types_and
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
 {
+    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
+
     CheckResult result = check(R"(
         local T = {}
         function T.f(...)
@@ -129,7 +131,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    auto r = first(getMainModule()->getModuleScope()->returnType);
+    auto r = first(getMainModule()->returnType);
     REQUIRE(r);
 
     TableType* ttv = getMutable<TableType>(*r);
@@ -1772,7 +1774,7 @@ z = y -- Not OK, so the line is colorable
 TEST_CASE_FIXTURE(Fixture, "function_is_supertype_of_concrete_functions")
 {
     ScopedFastFlag sff{"LuauNegatedFunctionTypes", true};
-    registerHiddenTypes(*this, frontend.globalTypes);
+    registerHiddenTypes(&frontend);
 
     CheckResult result = check(R"(
         function foo(f: fun) end
@@ -1791,7 +1793,7 @@ TEST_CASE_FIXTURE(Fixture, "function_is_supertype_of_concrete_functions")
 TEST_CASE_FIXTURE(Fixture, "concrete_functions_are_not_supertypes_of_function")
 {
     ScopedFastFlag sff{"LuauNegatedFunctionTypes", true};
-    registerHiddenTypes(*this, frontend.globalTypes);
+    registerHiddenTypes(&frontend);
 
     CheckResult result = check(R"(
         local a: fun = function() end
@@ -1812,7 +1814,7 @@ TEST_CASE_FIXTURE(Fixture, "concrete_functions_are_not_supertypes_of_function")
 TEST_CASE_FIXTURE(Fixture, "other_things_are_not_related_to_function")
 {
     ScopedFastFlag sff{"LuauNegatedFunctionTypes", true};
-    registerHiddenTypes(*this, frontend.globalTypes);
+    registerHiddenTypes(&frontend);
 
     CheckResult result = check(R"(
         local a: fun = function() end
