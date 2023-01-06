@@ -16,9 +16,10 @@
 #include "Luau/TopoSortStatements.h"
 #include "Luau/ToString.h"
 #include "Luau/ToString.h"
-#include "Luau/TypePack.h"
-#include "Luau/TypeUtils.h"
 #include "Luau/Type.h"
+#include "Luau/TypePack.h"
+#include "Luau/TypeReduction.h"
+#include "Luau/TypeUtils.h"
 #include "Luau/VisitType.h"
 
 #include <algorithm>
@@ -35,17 +36,16 @@ LUAU_FASTFLAG(LuauTypeNormalization2)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
-LUAU_FASTFLAGVARIABLE(LuauNilIterator, false)
 LUAU_FASTFLAGVARIABLE(LuauUnknownAndNeverType, false)
 LUAU_FASTFLAGVARIABLE(LuauTypeInferMissingFollows, false)
 LUAU_FASTFLAGVARIABLE(LuauBinaryNeedsExpectedTypesToo, false)
 LUAU_FASTFLAGVARIABLE(LuauNeverTypesAndOperatorsInference, false)
+LUAU_FASTFLAGVARIABLE(LuauScopelessModule, false)
 LUAU_FASTFLAGVARIABLE(LuauFollowInLvalueIndexCheck, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnsFromCallsitesAreNotWidened, false)
 LUAU_FASTFLAGVARIABLE(LuauTryhardAnd, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauCompleteVisitor, false)
-LUAU_FASTFLAGVARIABLE(LuauOptionalNextKey, false)
 LUAU_FASTFLAGVARIABLE(LuauReportShadowedTypeAlias, false)
 LUAU_FASTFLAGVARIABLE(LuauBetterMessagingOnCountMismatch, false)
 LUAU_FASTFLAGVARIABLE(LuauIntersectionTestForEquality, false)
@@ -276,6 +276,7 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     LUAU_TIMETRACE_ARGUMENT("module", module.name.c_str());
 
     currentModule.reset(new Module);
+    currentModule->reduction = std::make_unique<TypeReduction>(NotNull{&currentModule->internalTypes}, builtinTypes, NotNull{iceHandler});
     currentModule->type = module.type;
     currentModule->allocator = module.allocator;
     currentModule->names = module.names;
@@ -1136,7 +1137,8 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatLocal& local)
                     const Name name{local.vars.data[i]->name.value};
 
                     if (ModulePtr module = resolver->getModule(moduleInfo->name))
-                        scope->importedTypeBindings[name] = module->getModuleScope()->exportedTypeBindings;
+                        scope->importedTypeBindings[name] =
+                            FFlag::LuauScopelessModule ? module->exportedTypeBindings : module->getModuleScope()->exportedTypeBindings;
 
                     // In non-strict mode we force the module type on the variable, in strict mode it is already unified
                     if (isNonstrictMode())
@@ -1248,8 +1250,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
         iterTy = instantiate(scope, checkExpr(scope, *firstValue).type, firstValue->location);
     }
 
-    if (FFlag::LuauNilIterator)
-        iterTy = stripFromNilAndReport(iterTy, firstValue->location);
+    iterTy = stripFromNilAndReport(iterTy, firstValue->location);
 
     if (std::optional<TypeId> iterMM = findMetatableEntry(iterTy, "__iter", firstValue->location, /* addErrors= */ true))
     {
@@ -1334,61 +1335,40 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
         reportErrors(state.errors);
     }
 
-    if (FFlag::LuauOptionalNextKey)
+    TypePackId retPack = iterFunc->retTypes;
+
+    if (forin.values.size >= 2)
     {
-        TypePackId retPack = iterFunc->retTypes;
+        AstArray<AstExpr*> arguments{forin.values.data + 1, forin.values.size - 1};
 
-        if (forin.values.size >= 2)
-        {
-            AstArray<AstExpr*> arguments{forin.values.data + 1, forin.values.size - 1};
+        Position start = firstValue->location.begin;
+        Position end = values[forin.values.size - 1]->location.end;
+        AstExprCall exprCall{Location(start, end), firstValue, arguments, /* self= */ false, Location()};
 
-            Position start = firstValue->location.begin;
-            Position end = values[forin.values.size - 1]->location.end;
-            AstExprCall exprCall{Location(start, end), firstValue, arguments, /* self= */ false, Location()};
-
-            retPack = checkExprPack(scope, exprCall).type;
-        }
-
-        // We need to remove 'nil' from the set of options of the first return value
-        // Because for loop stops when it gets 'nil', this result is never actually assigned to the first variable
-        if (std::optional<TypeId> fty = first(retPack); fty && !varTypes.empty())
-        {
-            TypeId keyTy = follow(*fty);
-
-            if (get<UnionType>(keyTy))
-            {
-                if (std::optional<TypeId> ty = tryStripUnionFromNil(keyTy))
-                    keyTy = *ty;
-            }
-
-            unify(keyTy, varTypes.front(), scope, forin.location);
-
-            // We have already handled the first variable type, make it match in the pack check
-            varTypes.front() = *fty;
-        }
-
-        TypePackId varPack = addTypePack(TypePackVar{TypePack{varTypes, freshTypePack(scope)}});
-
-        unify(retPack, varPack, scope, forin.location);
+        retPack = checkExprPack(scope, exprCall).type;
     }
-    else
+
+    // We need to remove 'nil' from the set of options of the first return value
+    // Because for loop stops when it gets 'nil', this result is never actually assigned to the first variable
+    if (std::optional<TypeId> fty = first(retPack); fty && !varTypes.empty())
     {
-        TypePackId varPack = addTypePack(TypePackVar{TypePack{varTypes, freshTypePack(scope)}});
+        TypeId keyTy = follow(*fty);
 
-        if (forin.values.size >= 2)
+        if (get<UnionType>(keyTy))
         {
-            AstArray<AstExpr*> arguments{forin.values.data + 1, forin.values.size - 1};
-
-            Position start = firstValue->location.begin;
-            Position end = values[forin.values.size - 1]->location.end;
-            AstExprCall exprCall{Location(start, end), firstValue, arguments, /* self= */ false, Location()};
-
-            TypePackId retPack = checkExprPack(scope, exprCall).type;
-            unify(retPack, varPack, scope, forin.location);
+            if (std::optional<TypeId> ty = tryStripUnionFromNil(keyTy))
+                keyTy = *ty;
         }
-        else
-            unify(iterFunc->retTypes, varPack, scope, forin.location);
+
+        unify(keyTy, varTypes.front(), scope, forin.location);
+
+        // We have already handled the first variable type, make it match in the pack check
+        varTypes.front() = *fty;
     }
+
+    TypePackId varPack = addTypePack(TypePackVar{TypePack{varTypes, freshTypePack(scope)}});
+
+    unify(retPack, varPack, scope, forin.location);
 
     check(loopScope, *forin.body);
 }
@@ -4685,7 +4665,7 @@ TypeId TypeChecker::checkRequire(const ScopePtr& scope, const ModuleInfo& module
         return errorRecoveryType(scope);
     }
 
-    TypePackId modulePack = module->getModuleScope()->returnType;
+    TypePackId modulePack = FFlag::LuauScopelessModule ? module->returnType : module->getModuleScope()->returnType;
 
     if (get<Unifiable::Error>(modulePack))
         return errorRecoveryType(scope);

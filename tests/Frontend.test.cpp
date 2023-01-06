@@ -10,6 +10,8 @@
 
 #include <algorithm>
 
+LUAU_FASTFLAG(LuauScopelessModule)
+
 using namespace Luau;
 
 namespace
@@ -143,6 +145,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "real_source")
 
 TEST_CASE_FIXTURE(FrontendFixture, "automatically_check_dependent_scripts")
 {
+    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
+
     fileResolver.source["game/Gui/Modules/A"] = "return {hello=5, world=true}";
     fileResolver.source["game/Gui/Modules/B"] = R"(
         local Modules = game:GetService('Gui').Modules
@@ -157,7 +161,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "automatically_check_dependent_scripts")
     CHECK(bModule->errors.empty());
     Luau::dumpErrors(bModule);
 
-    auto bExports = first(bModule->getModuleScope()->returnType);
+    auto bExports = first(bModule->returnType);
     REQUIRE(!!bExports);
 
     CHECK_EQ("{| b_value: number |}", toString(*bExports));
@@ -220,6 +224,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "any_annotation_breaks_cycle")
 
 TEST_CASE_FIXTURE(FrontendFixture, "nocheck_modules_are_typed")
 {
+    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
+
     fileResolver.source["game/Gui/Modules/A"] = R"(
         --!nocheck
         export type Foo = number
@@ -243,13 +249,13 @@ TEST_CASE_FIXTURE(FrontendFixture, "nocheck_modules_are_typed")
     ModulePtr aModule = frontend.moduleResolver.modules["game/Gui/Modules/A"];
     REQUIRE(bool(aModule));
 
-    std::optional<TypeId> aExports = first(aModule->getModuleScope()->returnType);
+    std::optional<TypeId> aExports = first(aModule->returnType);
     REQUIRE(bool(aExports));
 
     ModulePtr bModule = frontend.moduleResolver.modules["game/Gui/Modules/B"];
     REQUIRE(bool(bModule));
 
-    std::optional<TypeId> bExports = first(bModule->getModuleScope()->returnType);
+    std::optional<TypeId> bExports = first(bModule->returnType);
     REQUIRE(bool(bExports));
 
     CHECK_EQ(toString(*aExports), toString(*bExports));
@@ -275,6 +281,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_detection_between_check_and_nocheck")
 
 TEST_CASE_FIXTURE(FrontendFixture, "nocheck_cycle_used_by_checked")
 {
+    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
+
     fileResolver.source["game/Gui/Modules/A"] = R"(
         --!nocheck
         local Modules = game:GetService('Gui').Modules
@@ -300,7 +308,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "nocheck_cycle_used_by_checked")
     ModulePtr cModule = frontend.moduleResolver.modules["game/Gui/Modules/C"];
     REQUIRE(bool(cModule));
 
-    std::optional<TypeId> cExports = first(cModule->getModuleScope()->returnType);
+    std::optional<TypeId> cExports = first(cModule->returnType);
     REQUIRE(bool(cExports));
     CHECK_EQ("{| a: any, b: any |}", toString(*cExports));
 }
@@ -493,6 +501,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "dont_recheck_script_that_hasnt_been_marked_d
 
 TEST_CASE_FIXTURE(FrontendFixture, "recheck_if_dependent_script_is_dirty")
 {
+    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
+
     fileResolver.source["game/Gui/Modules/A"] = "return {hello=5, world=true}";
     fileResolver.source["game/Gui/Modules/B"] = R"(
         local Modules = game:GetService('Gui').Modules
@@ -511,7 +521,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "recheck_if_dependent_script_is_dirty")
     CHECK(bModule->errors.empty());
     Luau::dumpErrors(bModule);
 
-    auto bExports = first(bModule->getModuleScope()->returnType);
+    auto bExports = first(bModule->returnType);
     REQUIRE(!!bExports);
 
     CHECK_EQ("{| b_value: string |}", toString(*bExports));

@@ -1025,6 +1025,8 @@ L0: RETURN R0 0
 
 TEST_CASE("AndOr")
 {
+    ScopedFastFlag luauSelfAssignmentSkip{"LuauSelfAssignmentSkip", true};
+
     // codegen for constant, local, global for and
     CHECK_EQ("\n" + compileFunction0("local a = 1 a = a and 2 return a"), R"(
 LOADN R0 1
@@ -1079,7 +1081,6 @@ RETURN R0 1
     // note: `a = a` assignment is to disable constant folding for testing purposes
     CHECK_EQ("\n" + compileFunction0("local a = 1 a = a b = 2 local c = a and b return c"), R"(
 LOADN R0 1
-MOVE R0 R0
 LOADN R1 2
 SETGLOBAL R1 K0
 MOVE R1 R0
@@ -1090,7 +1091,6 @@ L0: RETURN R1 1
 
     CHECK_EQ("\n" + compileFunction0("local a = 1 a = a b = 2 local c = a or b return c"), R"(
 LOADN R0 1
-MOVE R0 R0
 LOADN R1 2
 SETGLOBAL R1 K0
 MOVE R1 R0
@@ -2260,6 +2260,8 @@ L1: RETURN R3 -1
 
 TEST_CASE("UpvaluesLoopsBytecode")
 {
+    ScopedFastFlag luauSelfAssignmentSkip{"LuauSelfAssignmentSkip", true};
+
     CHECK_EQ("\n" + compileFunction(R"(
 function test()
     for i=1,10 do
@@ -2279,7 +2281,6 @@ LOADN R0 10
 LOADN R1 1
 FORNPREP R0 L2
 L0: MOVE R3 R2
-MOVE R3 R3
 GETIMPORT R4 1
 NEWCLOSURE R5 P0
 CAPTURE REF R3
@@ -2312,8 +2313,7 @@ GETIMPORT R0 1
 GETIMPORT R1 3
 CALL R0 1 3
 FORGPREP_INEXT R0 L2
-L0: MOVE R3 R3
-GETIMPORT R5 5
+L0: GETIMPORT R5 5
 NEWCLOSURE R6 P0
 CAPTURE REF R3
 CALL R5 1 0
@@ -5159,6 +5159,8 @@ RETURN R1 1
 
 TEST_CASE("InlineMutate")
 {
+    ScopedFastFlag luauSelfAssignmentSkip{"LuauSelfAssignmentSkip", true};
+
     // if the argument is mutated, it gets a register even if the value is constant
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a)
@@ -5231,7 +5233,6 @@ return x
                         1, 2),
         R"(
 DUPCLOSURE R0 K0
-MOVE R0 R0
 MOVE R1 R0
 LOADN R2 42
 CALL R1 1 1
@@ -6787,6 +6788,33 @@ LOADK R4 K2
 GETIMPORT R1 5
 CALL R1 3 -1
 L0: RETURN R1 -1
+)");
+}
+
+TEST_CASE("SkipSelfAssignment")
+{
+    ScopedFastFlag luauSelfAssignmentSkip{"LuauSelfAssignmentSkip", true};
+
+    CHECK_EQ("\n" + compileFunction0("local a a = a"), R"(
+LOADNIL R0
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0("local a a = a :: number"), R"(
+LOADNIL R0
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0("local a a = (((a)))"), R"(
+LOADNIL R0
+RETURN R0 0
+)");
+
+    // Keep it on optimization level 0
+    CHECK_EQ("\n" + compileFunction("local a a = a", 0, 0), R"(
+LOADNIL R0
+MOVE R0 R0
+RETURN R0 0
 )");
 }
 

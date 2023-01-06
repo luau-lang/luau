@@ -487,8 +487,11 @@ public:
         AstType* annotation = local->annotation;
         if (!annotation)
         {
-            if (auto result = getScope(local->location)->lookup(local))
-                local->annotation = typeAst(*result);
+            if (auto scope = getScope(local->location))
+            {
+                if (auto result = scope->lookup(local))
+                    local->annotation = typeAst(*result);
+            }
         }
         return true;
     }

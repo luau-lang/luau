@@ -405,17 +405,41 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compound_assign_metatable")
         type V2B = { x: number, y: number }
         local v2b: V2B = { x = 0, y = 0 }
         local VMT = {}
-        type V2 = typeof(setmetatable(v2b, VMT))
 
-        function VMT.__add(a: V2, b: V2): V2
+        VMT.__add = function(a: V2, b: V2): V2
             return setmetatable({ x = a.x + b.x, y = a.y + b.y }, VMT)
         end
+
+        type V2 = typeof(setmetatable(v2b, VMT))
 
         local v1: V2 = setmetatable({ x = 1, y = 2 }, VMT)
         local v2: V2 = setmetatable({ x = 3, y = 4 }, VMT)
         v1 += v2
     )");
-    CHECK_EQ(0, result.errors.size());
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "compound_assign_result_must_be_compatible_with_var")
+{
+    CheckResult result = check(R"(
+        function __add(left, right)
+            return 123
+        end
+
+        local mt = {
+            __add = __add,
+        }
+
+        local x = setmetatable({}, mt)
+        local v: number
+
+        v += x -- okay: number + x -> number
+        x += v -- not okay: x </: number
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(result.errors[0] == TypeError{Location{{13, 8}, {13, 14}}, TypeMismatch{requireType("x"), builtinTypes->numberType}});
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "compound_assign_mismatch_metatable")
@@ -1015,11 +1039,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "mm_ops_must_return_a_value")
         local y = x + 123
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
 
     CHECK(requireType("y") == builtinTypes->errorRecoveryType());
 
-    const GenericError* ge = get<GenericError>(result.errors[0]);
+    const GenericError* ge = get<GenericError>(result.errors[1]);
     REQUIRE(ge);
     CHECK(ge->message == "Metamethod '__add' must return a value");
 }
@@ -1049,13 +1073,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "mm_comparisons_must_return_a_boolean")
         local v2 = o2 < o2
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
 
     CHECK(requireType("v1") == builtinTypes->booleanType);
     CHECK(requireType("v2") == builtinTypes->booleanType);
 
-    CHECK(toString(result.errors[0]) == "Metamethod '__lt' must return type 'boolean'");
-    CHECK(toString(result.errors[1]) == "Metamethod '__lt' must return type 'boolean'");
+    CHECK(toString(result.errors[1]) == "Metamethod '__lt' must return a boolean");
+    CHECK(toString(result.errors[3]) == "Metamethod '__lt' must return a boolean");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "reworked_and")

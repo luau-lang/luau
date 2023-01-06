@@ -1021,9 +1021,9 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
 
     LUAU_REQUIRE_ERRORS(result);
 
-    std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
+    std::optional<TypeId> t0 = lookupType("t0");
     REQUIRE(t0);
-    CHECK_EQ("*error-type*", toString(t0->type));
+    CHECK_EQ("*error-type*", toString(*t0));
 
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
         return get<OccursCheckFailed>(err);

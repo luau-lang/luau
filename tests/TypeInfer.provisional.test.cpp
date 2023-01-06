@@ -516,6 +516,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators")
 // Ideally, we would not try to export a function type with generic types from incorrect scope
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_leak_to_module_interface")
 {
+    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
+
     fileResolver.source["game/A"] = R"(
 local wrapStrictTable
 
@@ -548,13 +550,15 @@ return wrapStrictTable(Constants, "Constants")
     ModulePtr m = frontend.moduleResolver.modules["game/B"];
     REQUIRE(m);
 
-    std::optional<TypeId> result = first(m->getModuleScope()->returnType);
+    std::optional<TypeId> result = first(m->returnType);
     REQUIRE(result);
     CHECK(get<AnyType>(*result));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_leak_to_module_interface_variadic")
 {
+    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
+
     fileResolver.source["game/A"] = R"(
 local wrapStrictTable
 
@@ -587,7 +591,7 @@ return wrapStrictTable(Constants, "Constants")
     ModulePtr m = frontend.moduleResolver.modules["game/B"];
     REQUIRE(m);
 
-    std::optional<TypeId> result = first(m->getModuleScope()->returnType);
+    std::optional<TypeId> result = first(m->returnType);
     REQUIRE(result);
     CHECK(get<AnyType>(*result));
 }
@@ -620,7 +624,13 @@ struct IsSubtypeFixture : Fixture
 {
     bool isSubtype(TypeId a, TypeId b)
     {
-        return ::Luau::isSubtype(a, b, NotNull{getMainModule()->getModuleScope().get()}, builtinTypes, ice);
+        ModulePtr module = getMainModule();
+        REQUIRE(module);
+
+        if (!module->hasModuleScope())
+            FAIL("isSubtype: module scope data is not available");
+
+        return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, ice);
     }
 };
 } // namespace

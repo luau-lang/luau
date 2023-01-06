@@ -26,7 +26,6 @@ LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauMaybeGenericIntersectionTypes, false)
-LUAU_FASTFLAGVARIABLE(LuauNewLibraryTypeNames, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 
 namespace Luau
@@ -865,7 +864,7 @@ TypeId BuiltinTypes::makeStringMetatable()
     TypeId tableType = arena->addType(TableType{std::move(stringLib), std::nullopt, TypeLevel{}, TableState::Sealed});
 
     if (TableType* ttv = getMutable<TableType>(tableType))
-        ttv->name = FFlag::LuauNewLibraryTypeNames ? "typeof(string)" : "string";
+        ttv->name = "typeof(string)";
 
     return arena->addType(TableType{{{{"__index", {tableType}}}}, std::nullopt, TypeLevel{}, TableState::Sealed});
 }
