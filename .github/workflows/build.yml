@@ -20,9 +20,9 @@ jobs:
   unix:
     strategy:
       matrix:
-        os: [ubuntu, macos]
-    name: ${{matrix.os}}
-    runs-on: ${{matrix.os}}-latest
+        os: [{name: ubuntu, version: ubuntu-20.04}, {name: macos, version: macos-latest}]
+    name: ${{matrix.os.name}}
+    runs-on: ${{matrix.os.version}}
     steps:
     - uses: actions/checkout@v1
     - name: make tests
@@ -81,7 +81,7 @@ jobs:
         Debug/luau-analyze tests/conformance/assert.lua
 
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v2
     - name: install
@@ -89,7 +89,7 @@ jobs:
         sudo apt install llvm
     - name: make coverage
       run: |
-        CXX=clang++ make -j2 config=coverage native=1 coverage
+        CXX=clang++-10 make -j2 config=coverage native=1 coverage
     - name: upload coverage
       uses: codecov/codecov-action@v3
       with:
@@ -97,7 +97,7 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
 
   web:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
     - uses: actions/checkout@v1
     - uses: actions/checkout@v2
