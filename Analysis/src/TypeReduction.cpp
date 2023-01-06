@@ -27,7 +27,7 @@ struct RecursionGuard : RecursionLimiter
         , seen(seen)
     {
         // count has been incremented, which should imply that seen has already had an element pushed in.
-        LUAU_ASSERT(*count == seen->size());
+        LUAU_ASSERT(size_t(*count) == seen->size());
     }
 
     ~RecursionGuard()
