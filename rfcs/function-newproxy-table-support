@@ -2,7 +2,7 @@
 
 ## Summary
 
-Introduce a new way of creating `userdata` objects from Luau with an existing metatable.
+Allow `newproxy` to be called with a table or nil instead of a boolean. This table (if specified) will be used as the metatable of the userdata.
 
 ## Motivation
 
@@ -22,8 +22,10 @@ Passing a boolean to `newproxy` will continue to be supported for backwards comp
 
 ## Drawbacks
 
-TODO: It will increase the usage of newproxy which may not be desirable.
+`newproxy` was never documented in Lua 5.1 and was later removed in Lua 5.2 after support for the `__gc` metamethod was added to tables. If we make this change adoption of `newproxy` is likely to increase which may not be desirable for similar reasons that it was removed from Lua.
 
 ## Alternatives
 
-TODO: New method entirely - add more support for userdata
+### Replace newproxy with a new method
+
+`newproxy` was never documented in Lua 5.1 and removed in Lua 5.2. Rather than improving it we could add a new method which replaces `newproxy` altogether. Since this method would be almost identical to `newproxy` and we cannot remove `newproxy` due to backwards compatability it makes sense to change the existing method rather than introduce yet another API.
