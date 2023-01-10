@@ -9,7 +9,7 @@ Allow `newproxy` to be called with a table or nil instead of a boolean. This tab
 Since Luau is derived from Lua 5.1 it retains the `newproxy` function used to create custom userdata objects from Lua. While this function is used by a number of libraries it has its limitations.
 
 The `newproxy` function accepts a single, boolean parameter which specifies if the newly created userdata should be initialized with a metatable or not. If the userdata is initialized with a metatable then it can be retrieved and edited by calling `getmetatable`. Unfortunately, this means that a userdata created through `newproxy` cannot share a metatable with another userdata. There are two main implications of this:
-- Memory - A userdata with a metatable has the same cost as a table with a metatable.
+- Memory - A userdata with a metatable has a similar cost to a table with a metatable.
 - Usability - userdata with the same 'type' do not have the same metatable.
 
 ## Design
