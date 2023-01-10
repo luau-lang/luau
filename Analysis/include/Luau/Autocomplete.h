@@ -89,7 +89,8 @@ struct AutocompleteResult
 };
 
 using ModuleName = std::string;
-using StringCompletionCallback = std::function<std::optional<AutocompleteEntryMap>(std::string tag, std::optional<const ClassType*> ctx)>;
+using StringCompletionCallback =
+    std::function<std::optional<AutocompleteEntryMap>(std::string tag, std::optional<const ClassType*> ctx, std::optional<std::string> contents)>;
 
 AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName, Position position, StringCompletionCallback callback);
 

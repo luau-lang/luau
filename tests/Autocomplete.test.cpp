@@ -18,7 +18,7 @@ LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 
 using namespace Luau;
 
-static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr)
+static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr, std::optional<std::string> contents)
 {
     return std::nullopt;
 }
@@ -36,9 +36,9 @@ struct ACFixtureImpl : BaseType
         return Luau::autocomplete(this->frontend, "MainModule", Position{row, column}, nullCallback);
     }
 
-    AutocompleteResult autocomplete(char marker)
+    AutocompleteResult autocomplete(char marker, StringCompletionCallback callback = nullCallback)
     {
-        return Luau::autocomplete(this->frontend, "MainModule", getPosition(marker), nullCallback);
+        return Luau::autocomplete(this->frontend, "MainModule", getPosition(marker), callback);
     }
 
     CheckResult check(const std::string& source)
@@ -3361,6 +3361,33 @@ TEST_CASE_FIXTURE(ACFixture, "type_reduction_is_hooked_up_to_autocomplete")
     REQUIRE(ty2);
     CHECK("{| x: (number & string)? |}" == toString(*ty2, opts));
     // CHECK("{| x: nil |}" == toString(*ty2, opts));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "string_contents_is_available_to_callback")
+{
+    loadDefinition(R"(
+        declare function require(path: string): any
+    )");
+
+    std::optional<Binding> require = frontend.typeCheckerForAutocomplete.globalScope->linearSearchForBinding("require");
+    REQUIRE(require);
+    Luau::unfreeze(frontend.typeCheckerForAutocomplete.globalTypes);
+    attachTag(require->typeId, "RequireCall");
+    Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
+
+    check(R"(
+        local x = require("testing/@1")
+    )");
+
+    bool isCorrect = false;
+    auto ac1 = autocomplete('1',
+        [&isCorrect](std::string, std::optional<const ClassType*>, std::optional<std::string> contents) -> std::optional<AutocompleteEntryMap>
+        {
+            isCorrect = contents.has_value() && contents.value() == "testing/";
+            return std::nullopt;
+        });
+
+    CHECK(isCorrect);
 }
 
 TEST_SUITE_END();

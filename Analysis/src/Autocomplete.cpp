@@ -1262,6 +1262,23 @@ static bool isSimpleInterpolatedString(const AstNode* node)
     return interpString != nullptr && interpString->expressions.size == 0;
 }
 
+static std::optional<std::string> getStringContents(const AstNode* node)
+{
+    if (const AstExprConstantString* string = node->as<AstExprConstantString>())
+    {
+        return std::string(string->value.data, string->value.size);
+    }
+    else if (const AstExprInterpString* interpString = node->as<AstExprInterpString>(); interpString && interpString->expressions.size == 0)
+    {
+        LUAU_ASSERT(interpString->strings.size == 1);
+        return std::string(interpString->strings.data->data, interpString->strings.data->size);
+    }
+    else
+    {
+        return std::nullopt;
+    }
+}
+
 static std::optional<AutocompleteEntryMap> autocompleteStringParams(const SourceModule& sourceModule, const ModulePtr& module,
     const std::vector<AstNode*>& nodes, Position position, StringCompletionCallback callback)
 {
@@ -1274,6 +1291,8 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(const Source
     {
         return std::nullopt;
     }
+
+    std::optional<std::string> candidateString = getStringContents(nodes.back());
 
     AstExprCall* candidate = nodes.at(nodes.size() - 2)->as<AstExprCall>();
     if (!candidate)
@@ -1294,10 +1313,11 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(const Source
         return std::nullopt;
     }
 
-    auto performCallback = [&](const FunctionType* funcType) -> std::optional<AutocompleteEntryMap> {
+    auto performCallback = [&](const FunctionType* funcType) -> std::optional<AutocompleteEntryMap>
+    {
         for (const std::string& tag : funcType->tags)
         {
-            if (std::optional<AutocompleteEntryMap> ret = callback(tag, getMethodContainingClass(module, candidate->func)))
+            if (std::optional<AutocompleteEntryMap> ret = callback(tag, getMethodContainingClass(module, candidate->func), candidateString))
             {
                 return ret;
             }
