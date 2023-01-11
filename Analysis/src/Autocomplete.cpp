@@ -1292,8 +1292,6 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(const Source
         return std::nullopt;
     }
 
-    std::optional<std::string> candidateString = getStringContents(nodes.back());
-
     AstExprCall* candidate = nodes.at(nodes.size() - 2)->as<AstExprCall>();
     if (!candidate)
     {
@@ -1312,6 +1310,8 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(const Source
     {
         return std::nullopt;
     }
+
+    std::optional<std::string> candidateString = getStringContents(nodes.back());
 
     auto performCallback = [&](const FunctionType* funcType) -> std::optional<AutocompleteEntryMap>
     {
