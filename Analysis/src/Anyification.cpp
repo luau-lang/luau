@@ -59,6 +59,7 @@ TypeId Anyification::clean(TypeId ty)
     {
         TableType clone = TableType{ttv->props, ttv->indexer, ttv->level, TableState::Sealed};
         clone.definitionModuleName = ttv->definitionModuleName;
+        clone.definitionLocation = ttv->definitionLocation;
         clone.name = ttv->name;
         clone.syntheticName = ttv->syntheticName;
         clone.tags = ttv->tags;
