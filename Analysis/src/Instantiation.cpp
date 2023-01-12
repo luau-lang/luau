@@ -116,6 +116,7 @@ TypeId ReplaceGenerics::clean(TypeId ty)
     {
         TableType clone = TableType{ttv->props, ttv->indexer, level, scope, TableState::Free};
         clone.definitionModuleName = ttv->definitionModuleName;
+        clone.definitionLocation = ttv->definitionLocation;
         return addType(std::move(clone));
     }
     else
