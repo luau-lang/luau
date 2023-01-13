@@ -51,6 +51,16 @@ struct TypeReducer
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<InternalErrorReporter> handle;
 
+    std::unordered_map<TypeId, TypeId> copies;
+    std::deque<const void*> seen;
+    int depth = 0;
+
+    // When we encounter _any type_ that which is usually mutated in-place, we need to not cache the result.
+    // e.g. `'a & {} T` may have an upper bound constraint `{}` placed upon `'a`, but this constraint was not
+    // known when we decided to reduce this intersection type. By not caching, we'll always be forced to perform
+    // the reduction calculus over again.
+    bool cacheOk = true;
+
     TypeId reduce(TypeId ty);
     TypePackId reduce(TypePackId tp);
 
@@ -60,13 +70,11 @@ struct TypeReducer
     TypeId functionType(TypeId ty);
     TypeId negationType(TypeId ty);
 
-    std::deque<const void*> seen;
-    int depth = 0;
-
     RecursionGuard guard(TypeId ty);
     RecursionGuard guard(TypePackId tp);
 
-    std::unordered_map<TypeId, TypeId> copies;
+    void checkCacheable(TypeId ty);
+    void checkCacheable(TypePackId tp);
 
     template<typename T>
     LUAU_NOINLINE std::pair<TypeId, T*> copy(TypeId ty, const T* t)
@@ -153,6 +161,7 @@ TypeId TypeReducer::reduce(TypeId ty)
         return ty;
 
     RecursionGuard rg = guard(ty);
+    checkCacheable(ty);
 
     if (auto i = get<IntersectionType>(ty))
         return foldl<IntersectionType>(begin(i), end(i), &TypeReducer::intersectionType);
@@ -176,6 +185,7 @@ TypePackId TypeReducer::reduce(TypePackId tp)
         return tp;
 
     RecursionGuard rg = guard(tp);
+    checkCacheable(tp);
 
     TypePackIterator it = begin(tp);
 
@@ -213,6 +223,14 @@ std::optional<TypeId> TypeReducer::intersectionType(TypeId left, TypeId right)
         return right; // any & T ~ T
     else if (get<AnyType>(right))
         return left; // T & any ~ T
+    else if (get<FreeType>(left))
+        return std::nullopt; // 'a & T ~ 'a & T
+    else if (get<FreeType>(right))
+        return std::nullopt; // T & 'a ~ T & 'a
+    else if (get<GenericType>(left))
+        return std::nullopt; // G & T ~ G & T
+    else if (get<GenericType>(right))
+        return std::nullopt; // T & G ~ T & G
     else if (get<ErrorType>(left))
         return std::nullopt; // error & T ~ error & T
     else if (get<ErrorType>(right))
@@ -701,6 +719,32 @@ RecursionGuard TypeReducer::guard(TypePackId tp)
     return RecursionGuard{&depth, FInt::LuauTypeReductionRecursionLimit, &seen};
 }
 
+void TypeReducer::checkCacheable(TypeId ty)
+{
+    if (!cacheOk)
+        return;
+
+    ty = follow(ty);
+
+    // Only does shallow check, the TypeReducer itself already does deep traversal.
+    if (get<FreeType>(ty) || get<BlockedType>(ty) || get<PendingExpansionType>(ty))
+        cacheOk = false;
+    else if (auto tt = get<TableType>(ty); tt && (tt->state == TableState::Free || tt->state == TableState::Unsealed))
+        cacheOk = false;
+}
+
+void TypeReducer::checkCacheable(TypePackId tp)
+{
+    if (!cacheOk)
+        return;
+
+    tp = follow(tp);
+
+    // Only does shallow check, the TypeReducer itself already does deep traversal.
+    if (get<FreeTypePack>(tp) || get<BlockedTypePack>(tp))
+        cacheOk = false;
+}
+
 } // namespace
 
 TypeReduction::TypeReduction(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> handle)
@@ -715,13 +759,11 @@ std::optional<TypeId> TypeReduction::reduce(TypeId ty)
     if (auto found = cachedTypes.find(ty))
         return *found;
 
-    if (auto reduced = reduceImpl(ty))
-    {
-        cachedTypes[ty] = *reduced;
-        return *reduced;
-    }
+    auto [reducedTy, cacheOk] = reduceImpl(ty);
+    if (cacheOk)
+        cachedTypes[ty] = *reducedTy;
 
-    return std::nullopt;
+    return reducedTy;
 }
 
 std::optional<TypePackId> TypeReduction::reduce(TypePackId tp)
@@ -729,50 +771,48 @@ std::optional<TypePackId> TypeReduction::reduce(TypePackId tp)
     if (auto found = cachedTypePacks.find(tp))
         return *found;
 
-    if (auto reduced = reduceImpl(tp))
-    {
-        cachedTypePacks[tp] = *reduced;
-        return *reduced;
-    }
+    auto [reducedTp, cacheOk] = reduceImpl(tp);
+    if (cacheOk)
+        cachedTypePacks[tp] = *reducedTp;
 
-    return std::nullopt;
+    return reducedTp;
 }
 
-std::optional<TypeId> TypeReduction::reduceImpl(TypeId ty)
+std::pair<std::optional<TypeId>, bool> TypeReduction::reduceImpl(TypeId ty)
 {
     if (FFlag::DebugLuauDontReduceTypes)
-        return ty;
+        return {ty, false};
 
     if (hasExceededCartesianProductLimit(ty))
-        return std::nullopt;
+        return {std::nullopt, false};
 
     try
     {
         TypeReducer reducer{arena, builtinTypes, handle};
-        return reducer.reduce(ty);
+        return {reducer.reduce(ty), reducer.cacheOk};
     }
     catch (const RecursionLimitException&)
     {
-        return std::nullopt;
+        return {std::nullopt, false};
     }
 }
 
-std::optional<TypePackId> TypeReduction::reduceImpl(TypePackId tp)
+std::pair<std::optional<TypePackId>, bool> TypeReduction::reduceImpl(TypePackId tp)
 {
     if (FFlag::DebugLuauDontReduceTypes)
-        return tp;
+        return {tp, false};
 
     if (hasExceededCartesianProductLimit(tp))
-        return std::nullopt;
+        return {std::nullopt, false};
 
     try
     {
         TypeReducer reducer{arena, builtinTypes, handle};
-        return reducer.reduce(tp);
+        return {reducer.reduce(tp), reducer.cacheOk};
     }
     catch (const RecursionLimitException&)
     {
-        return std::nullopt;
+        return {std::nullopt, false};
     }
 }
 

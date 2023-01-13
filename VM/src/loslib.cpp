@@ -151,7 +151,7 @@ static int os_date(lua_State* L)
                 char buff[200]; // should be big enough for any conversion result
                 cc[1] = *(++s);
                 reslen = strftime(buff, sizeof(buff), cc, stm);
-                luaL_addlstring(&b, buff, reslen);
+                luaL_addlstring(&b, buff, reslen, -1);
             }
         }
         luaL_pushresult(&b);

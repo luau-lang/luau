@@ -137,7 +137,7 @@ static int db_traceback(lua_State* L)
                 *--lineptr = '0' + (r % 10);
 
             luaL_addchar(&buf, ':');
-            luaL_addlstring(&buf, lineptr, lineend - lineptr);
+            luaL_addlstring(&buf, lineptr, lineend - lineptr, -1);
         }
 
         if (ar.name)

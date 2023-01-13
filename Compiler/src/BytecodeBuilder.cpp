@@ -318,7 +318,12 @@ unsigned int BytecodeBuilder::addStringTableEntry(StringRef value)
 
     // note: bytecode serialization format uses 1-based table indices, 0 is reserved to mean nil
     if (index == 0)
+    {
         index = uint32_t(stringTable.size());
+
+        if ((dumpFlags & Dump_Code) != 0)
+            debugStrings.push_back(value);
+    }
 
     return index;
 }
@@ -868,6 +873,15 @@ uint32_t BytecodeBuilder::getImportId(int32_t id0, int32_t id1, int32_t id2)
     LUAU_ASSERT(unsigned(id0 | id1 | id2) < 1024);
 
     return (3u << 30) | (id0 << 20) | (id1 << 10) | id2;
+}
+
+int BytecodeBuilder::decomposeImportId(uint32_t ids, int32_t& id0, int32_t& id1, int32_t& id2)
+{
+    int count = ids >> 30;
+    id0 = count > 0 ? int(ids >> 20) & 1023 : -1;
+    id1 = count > 1 ? int(ids >> 10) & 1023 : -1;
+    id2 = count > 2 ? int(ids) & 1023 : -1;
+    return count;
 }
 
 uint32_t BytecodeBuilder::getStringHash(StringRef key)
@@ -1598,6 +1612,95 @@ void BytecodeBuilder::validateVariadic() const
 }
 #endif
 
+static bool printableStringConstant(const char* str, size_t len)
+{
+    for (size_t i = 0; i < len; ++i)
+    {
+        if (unsigned(str[i]) < ' ')
+            return false;
+    }
+
+    return true;
+}
+
+void BytecodeBuilder::dumpConstant(std::string& result, int k) const
+{
+    LUAU_ASSERT(unsigned(k) < constants.size());
+    const Constant& data = constants[k];
+
+    switch (data.type)
+    {
+    case Constant::Type_Nil:
+        formatAppend(result, "nil");
+        break;
+    case Constant::Type_Boolean:
+        formatAppend(result, "%s", data.valueBoolean ? "true" : "false");
+        break;
+    case Constant::Type_Number:
+        formatAppend(result, "%.17g", data.valueNumber);
+        break;
+    case Constant::Type_String:
+    {
+        const StringRef& str = debugStrings[data.valueString - 1];
+
+        if (printableStringConstant(str.data, str.length))
+        {
+            if (str.length < 32)
+                formatAppend(result, "'%.*s'", int(str.length), str.data);
+            else
+                formatAppend(result, "'%.*s'...", 32, str.data);
+        }
+        break;
+    }
+    case Constant::Type_Import:
+    {
+        int id0 = -1, id1 = -1, id2 = -1;
+        if (int count = decomposeImportId(data.valueImport, id0, id1, id2))
+        {
+            {
+                const Constant& id = constants[id0];
+                LUAU_ASSERT(id.type == Constant::Type_String && id.valueString <= debugStrings.size());
+
+                const StringRef& str = debugStrings[id.valueString - 1];
+                formatAppend(result, "%.*s", int(str.length), str.data);
+            }
+
+            if (count > 1)
+            {
+                const Constant& id = constants[id1];
+                LUAU_ASSERT(id.type == Constant::Type_String && id.valueString <= debugStrings.size());
+
+                const StringRef& str = debugStrings[id.valueString - 1];
+                formatAppend(result, ".%.*s", int(str.length), str.data);
+            }
+
+            if (count > 2)
+            {
+                const Constant& id = constants[id2];
+                LUAU_ASSERT(id.type == Constant::Type_String && id.valueString <= debugStrings.size());
+
+                const StringRef& str = debugStrings[id.valueString - 1];
+                formatAppend(result, ".%.*s", int(str.length), str.data);
+            }
+        }
+        break;
+    }
+    case Constant::Type_Table:
+        formatAppend(result, "{...}");
+        break;
+    case Constant::Type_Closure:
+    {
+        const Function& func = functions[data.valueClosure];
+
+        if (!func.dumpname.empty())
+            formatAppend(result, "'%s'", func.dumpname.c_str());
+        break;
+    }
+    default:
+        LUAU_UNREACHABLE();
+    }
+}
+
 void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result, int targetLabel) const
 {
     uint32_t insn = *code++;
@@ -1620,7 +1723,9 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_LOADK:
-        formatAppend(result, "LOADK R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_D(insn));
+        formatAppend(result, "LOADK R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_D(insn));
+        dumpConstant(result, LUAU_INSN_D(insn));
+        result.append("]\n");
         break;
 
     case LOP_MOVE:
@@ -1628,11 +1733,17 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_GETGLOBAL:
-        formatAppend(result, "GETGLOBAL R%d K%d\n", LUAU_INSN_A(insn), *code++);
+        formatAppend(result, "GETGLOBAL R%d K%d [", LUAU_INSN_A(insn), *code);
+        dumpConstant(result, *code);
+        result.append("]\n");
+        code++;
         break;
 
     case LOP_SETGLOBAL:
-        formatAppend(result, "SETGLOBAL R%d K%d\n", LUAU_INSN_A(insn), *code++);
+        formatAppend(result, "SETGLOBAL R%d K%d [", LUAU_INSN_A(insn), *code);
+        dumpConstant(result, *code);
+        result.append("]\n");
+        code++;
         break;
 
     case LOP_GETUPVAL:
@@ -1648,7 +1759,9 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_GETIMPORT:
-        formatAppend(result, "GETIMPORT R%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_D(insn));
+        formatAppend(result, "GETIMPORT R%d %d [", LUAU_INSN_A(insn), LUAU_INSN_D(insn));
+        dumpConstant(result, LUAU_INSN_D(insn));
+        result.append("]\n");
         code++; // AUX
         break;
 
@@ -1661,11 +1774,17 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_GETTABLEKS:
-        formatAppend(result, "GETTABLEKS R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code++);
+        formatAppend(result, "GETTABLEKS R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code);
+        dumpConstant(result, *code);
+        result.append("]\n");
+        code++;
         break;
 
     case LOP_SETTABLEKS:
-        formatAppend(result, "SETTABLEKS R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code++);
+        formatAppend(result, "SETTABLEKS R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code);
+        dumpConstant(result, *code);
+        result.append("]\n");
+        code++;
         break;
 
     case LOP_GETTABLEN:
@@ -1681,7 +1800,10 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_NAMECALL:
-        formatAppend(result, "NAMECALL R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code++);
+        formatAppend(result, "NAMECALL R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code);
+        dumpConstant(result, *code);
+        result.append("]\n");
+        code++;
         break;
 
     case LOP_CALL:
@@ -1753,27 +1875,39 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_ADDK:
-        formatAppend(result, "ADDK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "ADDK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        dumpConstant(result, LUAU_INSN_C(insn));
+        result.append("]\n");
         break;
 
     case LOP_SUBK:
-        formatAppend(result, "SUBK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "SUBK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        dumpConstant(result, LUAU_INSN_C(insn));
+        result.append("]\n");
         break;
 
     case LOP_MULK:
-        formatAppend(result, "MULK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "MULK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        dumpConstant(result, LUAU_INSN_C(insn));
+        result.append("]\n");
         break;
 
     case LOP_DIVK:
-        formatAppend(result, "DIVK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "DIVK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        dumpConstant(result, LUAU_INSN_C(insn));
+        result.append("]\n");
         break;
 
     case LOP_MODK:
-        formatAppend(result, "MODK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "MODK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        dumpConstant(result, LUAU_INSN_C(insn));
+        result.append("]\n");
         break;
 
     case LOP_POWK:
-        formatAppend(result, "POWK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "POWK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        dumpConstant(result, LUAU_INSN_C(insn));
+        result.append("]\n");
         break;
 
     case LOP_AND:
@@ -1785,11 +1919,15 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_ANDK:
-        formatAppend(result, "ANDK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "ANDK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        dumpConstant(result, LUAU_INSN_C(insn));
+        result.append("]\n");
         break;
 
     case LOP_ORK:
-        formatAppend(result, "ORK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "ORK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        dumpConstant(result, LUAU_INSN_C(insn));
+        result.append("]\n");
         break;
 
     case LOP_CONCAT:
@@ -1850,7 +1988,9 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_DUPCLOSURE:
-        formatAppend(result, "DUPCLOSURE R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_D(insn));
+        formatAppend(result, "DUPCLOSURE R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_D(insn));
+        dumpConstant(result, LUAU_INSN_D(insn));
+        result.append("]\n");
         break;
 
     case LOP_BREAK:
@@ -1862,7 +2002,10 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_LOADKX:
-        formatAppend(result, "LOADKX R%d K%d\n", LUAU_INSN_A(insn), *code++);
+        formatAppend(result, "LOADKX R%d K%d [", LUAU_INSN_A(insn), *code);
+        dumpConstant(result, *code);
+        result.append("]\n");
+        code++;
         break;
 
     case LOP_JUMPX:
@@ -1876,18 +2019,18 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
     case LOP_FASTCALL1:
         formatAppend(result, "FASTCALL1 %d R%d L%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), targetLabel);
         break;
+
     case LOP_FASTCALL2:
-    {
-        uint32_t aux = *code++;
-        formatAppend(result, "FASTCALL2 %d R%d R%d L%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), aux, targetLabel);
+        formatAppend(result, "FASTCALL2 %d R%d R%d L%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code, targetLabel);
+        code++;
         break;
-    }
+
     case LOP_FASTCALL2K:
-    {
-        uint32_t aux = *code++;
-        formatAppend(result, "FASTCALL2K %d R%d K%d L%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), aux, targetLabel);
+        formatAppend(result, "FASTCALL2K %d R%d K%d L%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code, targetLabel);
+        dumpConstant(result, *code);
+        result.append("]\n");
+        code++;
         break;
-    }
 
     case LOP_COVERAGE:
         formatAppend(result, "COVERAGE\n");
@@ -1910,12 +2053,16 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_JUMPXEQKN:
-        formatAppend(result, "JUMPXEQKN R%d K%d L%d%s\n", LUAU_INSN_A(insn), *code & 0xffffff, targetLabel, *code >> 31 ? " NOT" : "");
+        formatAppend(result, "JUMPXEQKN R%d K%d L%d%s [", LUAU_INSN_A(insn), *code & 0xffffff, targetLabel, *code >> 31 ? " NOT" : "");
+        dumpConstant(result, *code & 0xffffff);
+        result.append("]\n");
         code++;
         break;
 
     case LOP_JUMPXEQKS:
-        formatAppend(result, "JUMPXEQKS R%d K%d L%d%s\n", LUAU_INSN_A(insn), *code & 0xffffff, targetLabel, *code >> 31 ? " NOT" : "");
+        formatAppend(result, "JUMPXEQKS R%d K%d L%d%s [", LUAU_INSN_A(insn), *code & 0xffffff, targetLabel, *code >> 31 ? " NOT" : "");
+        dumpConstant(result, *code & 0xffffff);
+        result.append("]\n");
         code++;
         break;
 

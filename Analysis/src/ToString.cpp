@@ -15,10 +15,8 @@
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
-LUAU_FASTFLAGVARIABLE(LuauLineBreaksDetermineIndents, false)
 LUAU_FASTFLAGVARIABLE(LuauFunctionReturnStringificationFixup, false)
 LUAU_FASTFLAGVARIABLE(LuauUnseeArrayTtv, false)
-LUAU_FASTFLAGVARIABLE(LuauSerializeNilUnionAsNil, false)
 
 /*
  * Prefix generic typenames with gen-
@@ -277,20 +275,10 @@ struct StringifierState
 private:
     void emitIndentation()
     {
-        if (!FFlag::LuauLineBreaksDetermineIndents)
-        {
-            if (!opts.DEPRECATED_indent)
-                return;
+        if (!opts.useLineBreaks)
+            return;
 
-            emit(std::string(indentation, ' '));
-        }
-        else
-        {
-            if (!opts.useLineBreaks)
-                return;
-
-            emit(std::string(indentation, ' '));
-        }
+        emit(std::string(indentation, ' '));
     }
 };
 
@@ -781,11 +769,8 @@ struct TypeStringifier
             if (results.size() > 1)
                 s = ")?";
 
-            if (FFlag::LuauSerializeNilUnionAsNil)
-            {
-                if (!hasNonNilDisjunct)
-                    s = "nil";
-            }
+            if (!hasNonNilDisjunct)
+                s = "nil";
 
             state.emit(s);
         }

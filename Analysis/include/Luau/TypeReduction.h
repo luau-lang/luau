@@ -27,8 +27,8 @@ private:
     DenseHashMap<TypeId, TypeId> cachedTypes{nullptr};
     DenseHashMap<TypePackId, TypePackId> cachedTypePacks{nullptr};
 
-    std::optional<TypeId> reduceImpl(TypeId ty);
-    std::optional<TypePackId> reduceImpl(TypePackId tp);
+    std::pair<std::optional<TypeId>, bool> reduceImpl(TypeId ty);
+    std::pair<std::optional<TypePackId>, bool> reduceImpl(TypePackId tp);
 
     // Computes an *estimated length* of the cartesian product of the given type.
     size_t cartesianProductSize(TypeId ty) const;

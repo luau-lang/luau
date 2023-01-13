@@ -88,6 +88,96 @@ TEST_CASE_FIXTURE(ReductionFixture, "cartesian_product_is_zero")
     CHECK(ty);
 }
 
+TEST_CASE_FIXTURE(ReductionFixture, "stress_test_recursion_limits")
+{
+    TypeId ty = arena.addType(IntersectionType{{builtinTypes->numberType, builtinTypes->stringType}});
+    for (size_t i = 0; i < 20'000; ++i)
+    {
+        TableType table;
+        table.state = TableState::Sealed;
+        table.props["x"] = {ty};
+        ty = arena.addType(IntersectionType{{arena.addType(table), arena.addType(table)}});
+    }
+
+    CHECK(!reduction.reduce(ty));
+}
+
+TEST_CASE_FIXTURE(ReductionFixture, "caching")
+{
+    SUBCASE("free_tables")
+    {
+        TypeId ty1 = arena.addType(TableType{});
+        getMutable<TableType>(ty1)->state = TableState::Free;
+        getMutable<TableType>(ty1)->props["x"] = {builtinTypes->stringType};
+
+        TypeId ty2 = arena.addType(TableType{});
+        getMutable<TableType>(ty2)->state = TableState::Sealed;
+
+        TypeId intersectionTy = arena.addType(IntersectionType{{ty1, ty2}});
+
+        ToStringOptions opts;
+        opts.exhaustive = true;
+
+        CHECK("{- x: string -} & {|  |}" == toString(reductionof(intersectionTy)));
+
+        getMutable<TableType>(ty1)->state = TableState::Sealed;
+        CHECK("{| x: string |}" == toString(reductionof(intersectionTy)));
+    }
+
+    SUBCASE("unsealed_tables")
+    {
+        TypeId ty1 = arena.addType(TableType{});
+        getMutable<TableType>(ty1)->state = TableState::Unsealed;
+        getMutable<TableType>(ty1)->props["x"] = {builtinTypes->stringType};
+
+        TypeId ty2 = arena.addType(TableType{});
+        getMutable<TableType>(ty2)->state = TableState::Sealed;
+
+        TypeId intersectionTy = arena.addType(IntersectionType{{ty1, ty2}});
+
+        ToStringOptions opts;
+        opts.exhaustive = true;
+
+        CHECK("{| x: string |}" == toString(reductionof(intersectionTy)));
+
+        getMutable<TableType>(ty1)->state = TableState::Sealed;
+        CHECK("{| x: string |}" == toString(reductionof(intersectionTy)));
+    }
+
+    SUBCASE("free_types")
+    {
+        TypeId ty1 = arena.freshType(nullptr);
+        TypeId ty2 = arena.addType(TableType{});
+        getMutable<TableType>(ty2)->state = TableState::Sealed;
+
+        TypeId intersectionTy = arena.addType(IntersectionType{{ty1, ty2}});
+
+        ToStringOptions opts;
+        opts.exhaustive = true;
+
+        CHECK("a & {|  |}" == toString(reductionof(intersectionTy)));
+
+        *asMutable(ty1) = BoundType{ty2};
+        CHECK("{|  |}" == toString(reductionof(intersectionTy)));
+    }
+
+    SUBCASE("we_can_see_that_the_cache_works_if_we_mutate_a_normally_not_mutated_type")
+    {
+        TypeId ty1 = arena.addType(BoundType{builtinTypes->stringType});
+        TypeId ty2 = builtinTypes->numberType;
+
+        TypeId intersectionTy = arena.addType(IntersectionType{{ty1, ty2}});
+
+        ToStringOptions opts;
+        opts.exhaustive = true;
+
+        CHECK("never" == toString(reductionof(intersectionTy))); // Bound<string> & number ~ never
+
+        *asMutable(ty1) = BoundType{ty2};
+        CHECK("never" == toString(reductionof(intersectionTy))); // Bound<number> & number ~ number, but the cache is `never`.
+    }
+} // caching
+
 TEST_CASE_FIXTURE(ReductionFixture, "intersections_without_negations")
 {
     SUBCASE("string_and_string")
@@ -358,6 +448,34 @@ TEST_CASE_FIXTURE(ReductionFixture, "intersections_without_negations")
     {
         TypeId ty = reductionof("{ p: string } & { p: string, [string]: number }");
         CHECK("{| [string]: number, p: string |}" == toString(ty));
+    }
+
+    SUBCASE("fresh_type_and_string")
+    {
+        TypeId freshTy = arena.freshType(nullptr);
+        TypeId ty = reductionof(arena.addType(IntersectionType{{freshTy, builtinTypes->stringType}}));
+        CHECK("a & string" == toString(ty));
+    }
+
+    SUBCASE("string_and_fresh_type")
+    {
+        TypeId freshTy = arena.freshType(nullptr);
+        TypeId ty = reductionof(arena.addType(IntersectionType{{builtinTypes->stringType, freshTy}}));
+        CHECK("a & string" == toString(ty));
+    }
+
+    SUBCASE("generic_and_string")
+    {
+        TypeId genericTy = arena.addType(GenericType{"G"});
+        TypeId ty = reductionof(arena.addType(IntersectionType{{genericTy, builtinTypes->stringType}}));
+        CHECK("G & string" == toString(ty));
+    }
+
+    SUBCASE("string_and_generic")
+    {
+        TypeId genericTy = arena.addType(GenericType{"G"});
+        TypeId ty = reductionof(arena.addType(IntersectionType{{builtinTypes->stringType, genericTy}}));
+        CHECK("G & string" == toString(ty));
     }
 } // intersections_without_negations
 
@@ -1230,20 +1348,6 @@ TEST_CASE_FIXTURE(ReductionFixture, "cycles")
         CHECK("{| x: {| x: t1 |} & {| x: t1 |} & {| x: t2 & t2 & {| x: t1 |} & {| x: t1 |} |} |} where t1 = t2 & {| x: t1 |} ; t2 = {| x: t1 |}" ==
               toString(ty));
     }
-}
-
-TEST_CASE_FIXTURE(ReductionFixture, "stress_test_recursion_limits")
-{
-    TypeId ty = arena.addType(IntersectionType{{builtinTypes->numberType, builtinTypes->stringType}});
-    for (size_t i = 0; i < 20'000; ++i)
-    {
-        TableType table;
-        table.state = TableState::Sealed;
-        table.props["x"] = {ty};
-        ty = arena.addType(IntersectionType{{arena.addType(table), arena.addType(table)}});
-    }
-
-    CHECK(!reduction.reduce(ty));
 }
 
 TEST_SUITE_END();

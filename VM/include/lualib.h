@@ -91,13 +91,13 @@ typedef struct luaL_Buffer luaL_Buffer;
 // all the buffer users we have in Luau match this pattern, but it's something to keep in mind for new uses of buffers
 
 #define luaL_addchar(B, c) ((void)((B)->p < (B)->end || luaL_extendbuffer(B, 1, -1)), (*(B)->p++ = (char)(c)))
-#define luaL_addstring(B, s) luaL_addlstring(B, s, strlen(s))
+#define luaL_addstring(B, s) luaL_addlstring(B, s, strlen(s), -1)
 
 LUALIB_API void luaL_buffinit(lua_State* L, luaL_Buffer* B);
 LUALIB_API char* luaL_buffinitsize(lua_State* L, luaL_Buffer* B, size_t size);
 LUALIB_API char* luaL_extendbuffer(luaL_Buffer* B, size_t additionalsize, int boxloc);
 LUALIB_API void luaL_reservebuffer(luaL_Buffer* B, size_t size, int boxloc);
-LUALIB_API void luaL_addlstring(luaL_Buffer* B, const char* s, size_t l);
+LUALIB_API void luaL_addlstring(luaL_Buffer* B, const char* s, size_t l, int boxloc);
 LUALIB_API void luaL_addvalue(luaL_Buffer* B);
 LUALIB_API void luaL_pushresult(luaL_Buffer* B);
 LUALIB_API void luaL_pushresultsize(luaL_Buffer* B, size_t size);

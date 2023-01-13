@@ -15,6 +15,7 @@
 
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
+LUAU_FASTFLAG(LuauFixAutocompleteInIf)
 
 using namespace Luau;
 
@@ -789,14 +790,30 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_if_middle_keywords")
     CHECK_EQ(ac2.entryMap.count("end"), 0);
     CHECK_EQ(ac2.context, AutocompleteContext::Keyword);
 
-    check(R"(
-        if x t@1
-    )");
+    if (FFlag::LuauFixAutocompleteInIf)
+    {
+        check(R"(
+            if x t@1
+        )");
 
-    auto ac3 = autocomplete('1');
-    CHECK_EQ(1, ac3.entryMap.size());
-    CHECK_EQ(ac3.entryMap.count("then"), 1);
-    CHECK_EQ(ac3.context, AutocompleteContext::Keyword);
+        auto ac3 = autocomplete('1');
+        CHECK_EQ(3, ac3.entryMap.size());
+        CHECK_EQ(ac3.entryMap.count("then"), 1);
+        CHECK_EQ(ac3.entryMap.count("and"), 1);
+        CHECK_EQ(ac3.entryMap.count("or"), 1);
+        CHECK_EQ(ac3.context, AutocompleteContext::Keyword);
+    }
+    else
+    {
+        check(R"(
+            if x t@1
+        )");
+
+        auto ac3 = autocomplete('1');
+        CHECK_EQ(1, ac3.entryMap.size());
+        CHECK_EQ(ac3.entryMap.count("then"), 1);
+        CHECK_EQ(ac3.context, AutocompleteContext::Keyword);
+    }
 
     check(R"(
         if x then
@@ -839,6 +856,23 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_if_middle_keywords")
     CHECK_EQ(ac5.entryMap.count("elseif"), 0);
     CHECK_EQ(ac5.entryMap.count("end"), 0);
     CHECK_EQ(ac5.context, AutocompleteContext::Statement);
+    
+    if (FFlag::LuauFixAutocompleteInIf)
+    {
+        check(R"(
+            if t@1
+        )");
+
+        auto ac6 = autocomplete('1');
+        CHECK_EQ(ac6.entryMap.count("true"), 1);
+        CHECK_EQ(ac6.entryMap.count("false"), 1);
+        CHECK_EQ(ac6.entryMap.count("then"), 0);
+        CHECK_EQ(ac6.entryMap.count("function"), 1);
+        CHECK_EQ(ac6.entryMap.count("else"), 0);
+        CHECK_EQ(ac6.entryMap.count("elseif"), 0);
+        CHECK_EQ(ac6.entryMap.count("end"), 0);
+        CHECK_EQ(ac6.context, AutocompleteContext::Expression);
+    }
 }
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_until_in_repeat")

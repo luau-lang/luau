@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
 # This code can be used to split lvmexecute.cpp VM switch into separate functions for use as native code generation fallbacks
@@ -34,7 +34,7 @@ source = """// This file is part of the Luau programming language and is license
 function = ""
 signature = ""
 
-includeInsts = ["LOP_NEWCLOSURE", "LOP_NAMECALL", "LOP_FORGPREP", "LOP_GETVARARGS", "LOP_DUPCLOSURE", "LOP_PREPVARARGS", "LOP_COVERAGE", "LOP_BREAK", "LOP_GETGLOBAL", "LOP_SETGLOBAL", "LOP_GETTABLEKS", "LOP_SETTABLEKS"]
+includeInsts = ["LOP_NEWCLOSURE", "LOP_NAMECALL", "LOP_FORGPREP", "LOP_GETVARARGS", "LOP_DUPCLOSURE", "LOP_PREPVARARGS", "LOP_BREAK", "LOP_GETGLOBAL", "LOP_SETGLOBAL", "LOP_GETTABLEKS", "LOP_SETTABLEKS"]
 
 state = 0
 

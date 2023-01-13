@@ -83,7 +83,6 @@ TEST_CASE_FIXTURE(Fixture, "table_respects_use_line_break")
 
     ToStringOptions opts;
     opts.useLineBreaks = true;
-    opts.DEPRECATED_indent = true;
 
     //clang-format off
     CHECK_EQ("{|\n"
@@ -97,7 +96,6 @@ TEST_CASE_FIXTURE(Fixture, "table_respects_use_line_break")
 
 TEST_CASE_FIXTURE(Fixture, "nil_or_nil_is_nil_not_question_mark")
 {
-    ScopedFastFlag sff("LuauSerializeNilUnionAsNil", true);
     CheckResult result = check(R"(
       type nil_ty = nil | nil
       local a : nil_ty = nil
@@ -109,7 +107,6 @@ TEST_CASE_FIXTURE(Fixture, "nil_or_nil_is_nil_not_question_mark")
 
 TEST_CASE_FIXTURE(Fixture, "long_disjunct_of_nil_is_nil_not_question_mark")
 {
-    ScopedFastFlag sff("LuauSerializeNilUnionAsNil", true);
     CheckResult result = check(R"(
       type nil_ty = nil | nil | nil | nil | nil
       local a : nil_ty = nil

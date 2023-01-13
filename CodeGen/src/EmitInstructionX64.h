@@ -17,6 +17,7 @@ class AssemblyBuilderX64;
 enum class ConditionX64 : uint8_t;
 struct Label;
 struct ModuleHelpers;
+struct NativeState;
 
 void emitInstLoadNil(AssemblyBuilderX64& build, const Instruction* pc);
 void emitInstLoadB(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
@@ -24,6 +25,7 @@ void emitInstLoadN(AssemblyBuilderX64& build, const Instruction* pc);
 void emitInstLoadK(AssemblyBuilderX64& build, const Instruction* pc);
 void emitInstLoadKX(AssemblyBuilderX64& build, const Instruction* pc);
 void emitInstMove(AssemblyBuilderX64& build, const Instruction* pc);
+void emitInstNameCall(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, const TValue* k, Label& next, Label& fallback);
 void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Instruction* pc, int pcpos);
 void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Instruction* pc, int pcpos);
 void emitInstJump(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
@@ -84,6 +86,7 @@ void emitInstSetTableKS(AssemblyBuilderX64& build, const Instruction* pc, int pc
 void emitInstGetGlobal(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& fallback);
 void emitInstSetGlobal(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& next, Label& fallback);
 void emitInstConcat(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& next);
+void emitInstCoverage(AssemblyBuilderX64& build, int pcpos);
 
 } // namespace CodeGen
 } // namespace Luau
