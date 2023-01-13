@@ -28,6 +28,7 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 LUAU_FASTFLAG(LuauInterpolatedStringBaseSupport)
 LUAU_FASTFLAGVARIABLE(LuauMultiAssignmentConflictFix, false)
 LUAU_FASTFLAGVARIABLE(LuauSelfAssignmentSkip, false)
+LUAU_FASTFLAGVARIABLE(LuauCompileInterpStringLimit, false)
 
 namespace Luau
 {
@@ -1580,7 +1581,8 @@ struct Compiler
 
         RegScope rs(this);
 
-        uint8_t baseReg = allocReg(expr, uint8_t(2 + expr->expressions.size));
+        uint8_t baseReg = FFlag::LuauCompileInterpStringLimit ? allocReg(expr, unsigned(2 + expr->expressions.size))
+                                                              : allocReg(expr, uint8_t(2 + expr->expressions.size));
 
         emitLoadK(baseReg, formatStringIndex);
 

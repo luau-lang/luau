@@ -67,8 +67,10 @@ constexpr OperandX64 sArg6 = noreg;
 constexpr unsigned kTValueSizeLog2 = 4;
 constexpr unsigned kLuaNodeSizeLog2 = 5;
 constexpr unsigned kLuaNodeTagMask = 0xf;
+constexpr unsigned kNextBitOffset = 4;
 
 constexpr unsigned kOffsetOfLuaNodeTag = 12; // offsetof cannot be used on a bit field
+constexpr unsigned kOffsetOfLuaNodeNext = 12; // offsetof cannot be used on a bit field
 constexpr unsigned kOffsetOfInstructionC = 3;
 
 // Leaf functions that are placed in every module to perform common instruction sequences
@@ -168,6 +170,12 @@ inline void jumpIfTagIsNot(AssemblyBuilderX64& build, int ri, lua_Type tag, Labe
     build.jcc(ConditionX64::NotEqual, label);
 }
 
+inline void jumpIfTagIsNot(AssemblyBuilderX64& build, RegisterX64 reg, lua_Type tag, Label& label)
+{
+    build.cmp(dword[reg + offsetof(TValue, tt)], tag);
+    build.jcc(ConditionX64::NotEqual, label);
+}
+
 // Note: fallthrough label should be placed after this condition
 inline void jumpIfFalsy(AssemblyBuilderX64& build, int ri, Label& target, Label& fallthrough)
 {
@@ -224,6 +232,13 @@ inline void jumpIfNodeValueTagIs(AssemblyBuilderX64& build, RegisterX64 node, lu
     build.jcc(ConditionX64::Equal, label);
 }
 
+inline void jumpIfNodeHasNext(AssemblyBuilderX64& build, RegisterX64 node, Label& label)
+{
+    build.mov(ecx, dword[node + offsetof(LuaNode, key) + kOffsetOfLuaNodeNext]);
+    build.shr(ecx, kNextBitOffset);
+    build.jcc(ConditionX64::NotZero, label);
+}
+
 inline void jumpIfNodeKeyNotInExpectedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 node, OperandX64 expectedKey, Label& label)
 {
     jumpIfNodeKeyTagIsNot(build, tmp, node, LUA_TSTRING, label);
@@ -250,6 +265,7 @@ void callBarrierTable(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 ta
 void callBarrierObject(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 object, int ra, Label& skip);
 void callBarrierTableFast(AssemblyBuilderX64& build, RegisterX64 table, Label& skip);
 void callCheckGc(AssemblyBuilderX64& build, int pcpos, bool savepc, Label& skip);
+void callGetFastTmOrFallback(AssemblyBuilderX64& build, RegisterX64 table, TMS tm, Label& fallback);
 
 void emitExit(AssemblyBuilderX64& build, bool continueInVm);
 void emitUpdateBase(AssemblyBuilderX64& build);
@@ -258,7 +274,6 @@ void emitInterrupt(AssemblyBuilderX64& build, int pcpos);
 void emitFallback(AssemblyBuilderX64& build, NativeState& data, int op, int pcpos);
 
 void emitContinueCallInVm(AssemblyBuilderX64& build);
-void emitExitFromLastReturn(AssemblyBuilderX64& build);
 
 } // namespace CodeGen
 } // namespace Luau

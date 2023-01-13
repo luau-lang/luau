@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
 # Given a profile dump, this tool generates a flame graph based on the stacks listed in the profile

@@ -239,6 +239,22 @@ void callCheckGc(AssemblyBuilderX64& build, int pcpos, bool savepc, Label& skip)
     emitUpdateBase(build);
 }
 
+void callGetFastTmOrFallback(AssemblyBuilderX64& build, RegisterX64 table, TMS tm, Label& fallback)
+{
+    build.mov(rArg1, qword[table + offsetof(Table, metatable)]);
+    build.test(rArg1, rArg1);
+    build.jcc(ConditionX64::Zero, fallback); // no metatable
+
+    build.test(byte[rArg1 + offsetof(Table, tmcache)], 1 << tm);
+    build.jcc(ConditionX64::NotZero, fallback); // no tag method
+
+    // rArg1 is already prepared
+    build.mov(rArg2, tm);
+    build.mov(rax, qword[rState + offsetof(lua_State, global)]);
+    build.mov(rArg3, qword[rax + offsetof(global_State, tmname[tm])]);
+    build.call(qword[rNativeContext + offsetof(NativeContext, luaT_gettm)]);
+}
+
 void emitExit(AssemblyBuilderX64& build, bool continueInVm)
 {
     if (continueInVm)

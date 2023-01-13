@@ -13,6 +13,7 @@
 #include <utility>
 
 LUAU_FASTFLAGVARIABLE(LuauCompleteTableKeysBetter, false);
+LUAU_FASTFLAGVARIABLE(LuauFixAutocompleteInIf, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -1487,8 +1488,22 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
     }
     else if (AstStatIf* statIf = extractStat<AstStatIf>(ancestry);
-             statIf && (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)))
-        return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
+             statIf && (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)) && 
+             (!FFlag::LuauFixAutocompleteInIf || (statIf->condition && !statIf->condition->location.containsClosed(position))))
+    {
+        if (FFlag::LuauFixAutocompleteInIf)
+        {
+            AutocompleteEntryMap ret;
+            ret["then"] = {AutocompleteEntryKind::Keyword};
+            ret["and"] = {AutocompleteEntryKind::Keyword};
+            ret["or"] = {AutocompleteEntryKind::Keyword};
+            return {std::move(ret), ancestry, AutocompleteContext::Keyword};
+        }
+        else
+        {
+            return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
+        }
+    }
     else if (AstStatRepeat* statRepeat = node->as<AstStatRepeat>(); statRepeat && statRepeat->condition->is<AstExprError>())
         return autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
     else if (AstStatRepeat* statRepeat = extractStat<AstStatRepeat>(ancestry); statRepeat)

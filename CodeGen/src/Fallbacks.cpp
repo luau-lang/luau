@@ -594,19 +594,6 @@ const Instruction* execute_LOP_PREPVARARGS(lua_State* L, const Instruction* pc, 
     return pc;
 }
 
-const Instruction* execute_LOP_COVERAGE(lua_State* L, const Instruction* pc, StkId base, TValue* k)
-{
-    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
-    Instruction insn = *pc++;
-    int hits = LUAU_INSN_E(insn);
-
-    // update hits with saturated add and patch the instruction in place
-    hits = (hits < (1 << 23) - 1) ? hits + 1 : hits;
-    VM_PATCH_E(pc - 1, hits);
-
-    return pc;
-}
-
 const Instruction* execute_LOP_BREAK(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
     LUAU_ASSERT(!"Unsupported deprecated opcode");

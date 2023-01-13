@@ -78,6 +78,8 @@ struct NativeContext
 
     void (*luaF_close)(lua_State* L, StkId level) = nullptr;
 
+    const TValue* (*luaT_gettm)(Table* events, TMS event, TString* ename) = nullptr;
+
     double (*libm_exp)(double) = nullptr;
     double (*libm_pow)(double, double) = nullptr;
     double (*libm_fmod)(double, double) = nullptr;

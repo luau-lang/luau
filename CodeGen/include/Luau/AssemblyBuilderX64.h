@@ -78,6 +78,7 @@ public:
 
     void test(OperandX64 lhs, OperandX64 rhs);
     void lea(OperandX64 lhs, OperandX64 rhs);
+    void setcc(ConditionX64 cond, OperandX64 op);
 
     void push(OperandX64 op);
     void pop(OperandX64 op);
@@ -189,8 +190,8 @@ private:
         const char* name, OperandX64 dst, OperandX64 src1, OperandX64 src2, uint8_t imm8, uint8_t code, bool setW, uint8_t mode, uint8_t prefix);
 
     // Instruction components
-    void placeRegAndModRegMem(OperandX64 lhs, OperandX64 rhs);
-    void placeModRegMem(OperandX64 rhs, uint8_t regop);
+    void placeRegAndModRegMem(OperandX64 lhs, OperandX64 rhs, int32_t extraCodeBytes = 0);
+    void placeModRegMem(OperandX64 rhs, uint8_t regop, int32_t extraCodeBytes = 0);
     void placeRex(RegisterX64 op);
     void placeRex(OperandX64 op);
     void placeRexNoW(OperandX64 op);

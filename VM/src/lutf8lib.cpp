@@ -175,7 +175,7 @@ static int utfchar(lua_State* L)
         for (int i = 1; i <= n; i++)
         {
             int l = buffutfchar(L, i, buff, &charstr);
-            luaL_addlstring(&b, charstr, l);
+            luaL_addlstring(&b, charstr, l, -1);
         }
         luaL_pushresult(&b);
     }

@@ -91,6 +91,9 @@ static int emitInst(AssemblyBuilderX64& build, NativeState& data, ModuleHelpers&
     case LOP_SETGLOBAL:
         emitInstSetGlobal(build, pc, i, next, fallback);
         break;
+    case LOP_NAMECALL:
+        emitInstNameCall(build, pc, i, proto->k, next, fallback);
+        break;
     case LOP_CALL:
         emitInstCall(build, helpers, pc, i);
         break;
@@ -270,6 +273,9 @@ static int emitInst(AssemblyBuilderX64& build, NativeState& data, ModuleHelpers&
     case LOP_CONCAT:
         emitInstConcat(build, pc, i, next);
         break;
+    case LOP_COVERAGE:
+        emitInstCoverage(build, i);
+        break;
     default:
         emitFallback(build, data, op, i);
         break;
@@ -297,6 +303,10 @@ static void emitInstFallback(AssemblyBuilderX64& build, NativeState& data, LuauO
         break;
     case LOP_SETTABLEN:
         emitInstSetTableNFallback(build, pc, i);
+        break;
+    case LOP_NAMECALL:
+        // TODO: fast-paths that we've handled can be removed from the fallback
+        emitFallback(build, data, op, i);
         break;
     case LOP_JUMPIFEQ:
         emitInstJumpIfEqFallback(build, pc, i, labelarr, /* not_ */ false);

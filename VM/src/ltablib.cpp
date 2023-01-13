@@ -238,7 +238,7 @@ static int tconcat(lua_State* L)
     for (; i < last; i++)
     {
         addfield(L, &b, i);
-        luaL_addlstring(&b, sep, lsep);
+        luaL_addlstring(&b, sep, lsep, -1);
     }
     if (i == last) // add last value (if interval was not empty)
         addfield(L, &b, i);

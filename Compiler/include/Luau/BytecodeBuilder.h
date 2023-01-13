@@ -123,6 +123,8 @@ public:
     static uint32_t getImportId(int32_t id0, int32_t id1);
     static uint32_t getImportId(int32_t id0, int32_t id1, int32_t id2);
 
+    static int decomposeImportId(uint32_t ids, int32_t& id0, int32_t& id1, int32_t& id2);
+
     static uint32_t getStringHash(StringRef key);
 
     static std::string getError(const std::string& message);
@@ -243,6 +245,7 @@ private:
     std::vector<DebugUpval> debugUpvals;
 
     DenseHashMap<StringRef, unsigned int, StringRefHash> stringTable;
+    std::vector<StringRef> debugStrings;
 
     std::vector<std::pair<uint32_t, uint32_t>> debugRemarks;
     std::string debugRemarkBuffer;
@@ -261,6 +264,7 @@ private:
     void validateVariadic() const;
 
     std::string dumpCurrentFunction(std::vector<int>& dumpinstoffs) const;
+    void dumpConstant(std::string& result, int k) const;
     void dumpInstruction(const uint32_t* opcode, std::string& output, int targetLabel) const;
 
     void writeFunction(std::string& ss, uint32_t id) const;

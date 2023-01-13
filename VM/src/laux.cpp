@@ -414,10 +414,10 @@ void luaL_reservebuffer(luaL_Buffer* B, size_t size, int boxloc)
         luaL_extendbuffer(B, size - (B->end - B->p), boxloc);
 }
 
-void luaL_addlstring(luaL_Buffer* B, const char* s, size_t len)
+void luaL_addlstring(luaL_Buffer* B, const char* s, size_t len, int boxloc)
 {
     if (size_t(B->end - B->p) < len)
-        luaL_extendbuffer(B, len - (B->end - B->p), -1);
+        luaL_extendbuffer(B, len - (B->end - B->p), boxloc);
 
     memcpy(B->p, s, len);
     B->p += len;

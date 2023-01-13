@@ -243,6 +243,12 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfLea")
     SINGLE_COMPARE(lea(rax, addr[r13 + r12 * 4 + 4]), 0x4b, 0x8d, 0x44, 0xa5, 0x04);
 }
 
+TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfSetcc")
+{
+    SINGLE_COMPARE(setcc(ConditionX64::NotEqual, bl), 0x0f, 0x95, 0xc3);
+    SINGLE_COMPARE(setcc(ConditionX64::BelowEqual, byte[rcx]), 0x0f, 0x96, 0x01);
+}
+
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfAbsoluteJumps")
 {
     SINGLE_COMPARE(jmp(rax), 0xff, 0xe0);
