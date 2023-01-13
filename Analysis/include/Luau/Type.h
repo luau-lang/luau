@@ -375,6 +375,7 @@ struct TableType
     std::vector<TypeId> instantiatedTypeParams;
     std::vector<TypePackId> instantiatedTypePackParams;
     ModuleName definitionModuleName;
+    Location definitionLocation;
 
     std::optional<TypeId> boundTo;
     Tags tags;

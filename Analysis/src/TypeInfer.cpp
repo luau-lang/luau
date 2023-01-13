@@ -1535,6 +1535,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
                 // This is a shallow clone, original recursive links to self are not updated
                 TableType clone = TableType{ttv->props, ttv->indexer, ttv->level, ttv->state};
                 clone.definitionModuleName = ttv->definitionModuleName;
+                clone.definitionLocation = ttv->definitionLocation;
                 clone.name = name;
 
                 for (auto param : binding->typeParams)
@@ -2370,6 +2371,7 @@ TypeId TypeChecker::checkExprTable(
     TableState state = TableState::Unsealed;
     TableType table = TableType{std::move(props), indexer, scope->level, state};
     table.definitionModuleName = currentModuleName;
+    table.definitionLocation = expr.location;
     return addType(table);
 }
 
@@ -5371,6 +5373,7 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
 
         TableType ttv{props, tableIndexer, scope->level, TableState::Sealed};
         ttv.definitionModuleName = currentModuleName;
+        ttv.definitionLocation = annotation.location;
         return addType(std::move(ttv));
     }
     else if (const auto& func = annotation.as<AstTypeFunction>())
@@ -5572,6 +5575,7 @@ TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf,
         ttv->instantiatedTypeParams = typeParams;
         ttv->instantiatedTypePackParams = typePackParams;
         ttv->definitionModuleName = currentModuleName;
+        ttv->definitionLocation = location;
     }
 
     return instantiated;
