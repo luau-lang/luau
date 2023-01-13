@@ -31,6 +31,8 @@ SomethingWithAGenericTable({meow = 5}) --OK
 SomethingWithAGenericTable(5) --not OK
 ```
 
+> TODO: Partially constrained generics, where part of the type is known but can be expaned upon, similar to TypeScript's `extends` keyword.
+
 ## Drawbacks
 
 This adds unusual syntax, as well as adding to the complexity of the language.
@@ -39,4 +41,9 @@ This also doesn't address how this should be approached around type packs.
 
 ## Alternatives
 
-Do nothing, and use the `assert(type(T) == T)` syntax, though this creates extra bytecode.
+Use something similar to Rust's `where` syntax:
+```lua
+local function SomethingWithAGenericTable<T>(tab: T) where T: {[string]: any}
+```
+
+Do nothing, and use the `assert(type(T) == T)` syntax, though this creates extra bytecode. It also casts the object as `never`, which removes the type errors, however no autocomplete information is generated.
