@@ -17,9 +17,13 @@ static const uint8_t codeForCondition[] = {
     0x0, 0x1, 0x2, 0x3, 0x2, 0x6, 0x7, 0x3, 0x4, 0xc, 0xe, 0xf, 0xd, 0x3, 0x7, 0x6, 0x2, 0x5, 0xd, 0xf, 0xe, 0xc, 0x4, 0x5, 0xa, 0xb};
 static_assert(sizeof(codeForCondition) / sizeof(codeForCondition[0]) == size_t(ConditionX64::Count), "all conditions have to be covered");
 
-static const char* textForCondition[] = {"jo", "jno", "jc", "jnc", "jb", "jbe", "ja", "jae", "je", "jl", "jle", "jg", "jge", "jnb", "jnbe", "jna",
+static const char* jccTextForCondition[] = {"jo", "jno", "jc", "jnc", "jb", "jbe", "ja", "jae", "je", "jl", "jle", "jg", "jge", "jnb", "jnbe", "jna",
     "jnae", "jne", "jnl", "jnle", "jng", "jnge", "jz", "jnz", "jp", "jnp"};
-static_assert(sizeof(textForCondition) / sizeof(textForCondition[0]) == size_t(ConditionX64::Count), "all conditions have to be covered");
+static_assert(sizeof(jccTextForCondition) / sizeof(jccTextForCondition[0]) == size_t(ConditionX64::Count), "all conditions have to be covered");
+
+static const char* setccTextForCondition[] = {"seto", "setno", "setc", "setnc", "setb", "setbe", "seta", "setae", "sete", "setl", "setle", "setg",
+    "setge", "setnb", "setnbe", "setna", "setnae", "setne", "setnl", "setnle", "setng", "setnge", "setz", "setnz", "setp", "setnp"};
+static_assert(sizeof(setccTextForCondition) / sizeof(setccTextForCondition[0]) == size_t(ConditionX64::Count), "all conditions have to be covered");
 
 #define OP_PLUS_REG(op, reg) ((op) + (reg & 0x7))
 #define OP_PLUS_CC(op, cc) ((op) + uint8_t(cc))
@@ -169,7 +173,7 @@ void AssemblyBuilderX64::mov(OperandX64 lhs, OperandX64 rhs)
         if (size == SizeX64::byte)
         {
             place(0xc6);
-            placeModRegMem(lhs, 0);
+            placeModRegMem(lhs, 0, /*extraCodeBytes=*/1);
             placeImm8(rhs.imm);
         }
         else
@@ -177,7 +181,7 @@ void AssemblyBuilderX64::mov(OperandX64 lhs, OperandX64 rhs)
             LUAU_ASSERT(size == SizeX64::dword || size == SizeX64::qword);
 
             place(0xc7);
-            placeModRegMem(lhs, 0);
+            placeModRegMem(lhs, 0, /*extraCodeBytes=*/4);
             placeImm32(rhs.imm);
         }
     }
@@ -304,13 +308,13 @@ void AssemblyBuilderX64::imul(OperandX64 dst, OperandX64 lhs, int32_t rhs)
     if (int8_t(rhs) == rhs)
     {
         place(0x6b);
-        placeRegAndModRegMem(dst, lhs);
+        placeRegAndModRegMem(dst, lhs, /*extraCodeBytes=*/1);
         placeImm8(rhs);
     }
     else
     {
         place(0x69);
-        placeRegAndModRegMem(dst, lhs);
+        placeRegAndModRegMem(dst, lhs, /*extraCodeBytes=*/4);
         placeImm32(rhs);
     }
 
@@ -366,9 +370,24 @@ void AssemblyBuilderX64::ret()
     commit();
 }
 
+void AssemblyBuilderX64::setcc(ConditionX64 cond, OperandX64 op)
+{
+    SizeX64 size = op.cat == CategoryX64::reg ? op.base.size : op.memSize;
+    LUAU_ASSERT(size == SizeX64::byte);
+
+    if (logText)
+        log(setccTextForCondition[size_t(cond)], op);
+
+    placeRex(op);
+    place(0x0f);
+    place(0x90 | codeForCondition[size_t(cond)]);
+    placeModRegMem(op, 0);
+    commit();
+}
+
 void AssemblyBuilderX64::jcc(ConditionX64 cond, Label& label)
 {
-    placeJcc(textForCondition[size_t(cond)], label, codeForCondition[size_t(cond)]);
+    placeJcc(jccTextForCondition[size_t(cond)], label, codeForCondition[size_t(cond)]);
 }
 
 void AssemblyBuilderX64::jmp(Label& label)
@@ -866,7 +885,7 @@ void AssemblyBuilderX64::placeBinaryRegMemAndImm(OperandX64 lhs, OperandX64 rhs,
     if (size == SizeX64::byte)
     {
         place(code8);
-        placeModRegMem(lhs, opreg);
+        placeModRegMem(lhs, opreg, /*extraCodeBytes=*/1);
         placeImm8(rhs.imm);
     }
     else
@@ -876,13 +895,13 @@ void AssemblyBuilderX64::placeBinaryRegMemAndImm(OperandX64 lhs, OperandX64 rhs,
         if (int8_t(rhs.imm) == rhs.imm && code != codeImm8)
         {
             place(codeImm8);
-            placeModRegMem(lhs, opreg);
+            placeModRegMem(lhs, opreg, /*extraCodeBytes=*/1);
             placeImm8(rhs.imm);
         }
         else
         {
             place(code);
-            placeModRegMem(lhs, opreg);
+            placeModRegMem(lhs, opreg, /*extraCodeBytes=*/4);
             placeImm32(rhs.imm);
         }
     }
@@ -950,7 +969,7 @@ void AssemblyBuilderX64::placeShift(const char* name, OperandX64 lhs, OperandX64
         LUAU_ASSERT(int8_t(rhs.imm) == rhs.imm);
 
         place(size == SizeX64::byte ? 0xc0 : 0xc1);
-        placeModRegMem(lhs, opreg);
+        placeModRegMem(lhs, opreg, /*extraCodeBytes=*/1);
         placeImm8(rhs.imm);
     }
     else
@@ -1042,7 +1061,7 @@ void AssemblyBuilderX64::placeAvx(
 
     placeVex(dst, src1, src2, setW, mode, prefix);
     place(code);
-    placeRegAndModRegMem(dst, src2);
+    placeRegAndModRegMem(dst, src2, /*extraCodeBytes=*/1);
     placeImm8(imm8);
 
     commit();
@@ -1118,14 +1137,14 @@ static uint8_t getScaleEncoding(uint8_t scale)
     return scales[scale];
 }
 
-void AssemblyBuilderX64::placeRegAndModRegMem(OperandX64 lhs, OperandX64 rhs)
+void AssemblyBuilderX64::placeRegAndModRegMem(OperandX64 lhs, OperandX64 rhs, int32_t extraCodeBytes)
 {
     LUAU_ASSERT(lhs.cat == CategoryX64::reg);
 
-    placeModRegMem(rhs, lhs.base.index);
+    placeModRegMem(rhs, lhs.base.index, extraCodeBytes);
 }
 
-void AssemblyBuilderX64::placeModRegMem(OperandX64 rhs, uint8_t regop)
+void AssemblyBuilderX64::placeModRegMem(OperandX64 rhs, uint8_t regop, int32_t extraCodeBytes)
 {
     if (rhs.cat == CategoryX64::reg)
     {
@@ -1180,7 +1199,12 @@ void AssemblyBuilderX64::placeModRegMem(OperandX64 rhs, uint8_t regop)
         else if (base == rip)
         {
             place(MOD_RM(0b00, regop, 0b101));
-            placeImm32(-int32_t(getCodeSize() + 4) + rhs.imm);
+
+            // As a reminder: we do (getCodeSize() + 4) here to calculate the offset of the end of the current instruction we are placing.
+            // Since we have already placed all of the instruction bytes for this instruction, we add +4 to account for the imm32 displacement.
+            // Some instructions, however, are encoded such that an additional imm8 byte, or imm32 bytes, is placed after the ModRM byte, thus,
+            // we need to account for that case here as well.
+            placeImm32(-int32_t(getCodeSize() + 4 + extraCodeBytes) + rhs.imm);
         }
         else if (base != noreg)
         {

@@ -45,7 +45,6 @@ struct ToStringOptions
     bool hideTableKind = false;                   // If true, all tables will be surrounded with plain '{}'
     bool hideNamedFunctionTypeParameters = false; // If true, type parameters of functions will be hidden at top-level.
     bool hideFunctionSelfArgument = false;        // If true, `self: X` will be omitted from the function signature if the function has self
-    bool DEPRECATED_indent = false;               // TODO Deprecated field, prune when clipping flag FFlagLuauLineBreaksDeterminIndents
     size_t maxTableLength = size_t(FInt::LuauTableTypeMaximumStringifierLength); // Only applied to TableTypes
     size_t maxTypeLength = size_t(FInt::LuauTypeMaximumStringifierLength);
     ToStringNameMap nameMap;

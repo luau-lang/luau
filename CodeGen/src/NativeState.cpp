@@ -42,7 +42,6 @@ void initFallbackTable(NativeState& data)
     CODEGEN_SET_FALLBACK(LOP_GETVARARGS, 0);
     CODEGEN_SET_FALLBACK(LOP_DUPCLOSURE, 0);
     CODEGEN_SET_FALLBACK(LOP_PREPVARARGS, 0);
-    CODEGEN_SET_FALLBACK(LOP_COVERAGE, 0);
     CODEGEN_SET_FALLBACK(LOP_BREAK, 0);
 
     // Fallbacks that are called from partial implementation of an instruction
@@ -79,6 +78,8 @@ void initHelperFunctions(NativeState& data)
     data.context.luaC_step = luaC_step;
 
     data.context.luaF_close = luaF_close;
+
+    data.context.luaT_gettm = luaT_gettm;
 
     data.context.libm_exp = exp;
     data.context.libm_pow = pow;

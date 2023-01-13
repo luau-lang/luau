@@ -686,4 +686,18 @@ do
   assert(pcall(table.clear, table.freeze({})) == false)
 end
 
+-- check that namecall lookup doesn't give up on entries missing from cached slot position
+do
+  for i = 1,10 do
+    local t = setmetatable({}, { __index = { foo = 1 }})
+
+    assert(t.foo == 1)
+
+    t[-i] = 2
+    t.foo = function(t, i) return -i end
+
+    assert(t:foo(i) == -i)
+  end
+end
+
 return"OK"

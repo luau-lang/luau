@@ -2177,8 +2177,6 @@ type C<X...> = Packed<(number, X...)>
 
 TEST_CASE_FIXTURE(Fixture, "invalid_type_forms")
 {
-    ScopedFastFlag luauFixNamedFunctionParse{"LuauFixNamedFunctionParse", true};
-
     matchParseError("type A = (b: number)", "Expected '->' when parsing function type, got <eof>");
     matchParseError("type P<T...> = () -> T... type B = P<(x: number, y: string)>", "Expected '->' when parsing function type, got '>'");
     matchParseError("type F<T... = (a: string)> = (T...) -> ()", "Expected '->' when parsing function type, got '>'");

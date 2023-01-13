@@ -82,6 +82,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/EmitCommonX64.cpp
     CodeGen/src/EmitInstructionX64.cpp
     CodeGen/src/Fallbacks.cpp
+    CodeGen/src/IrDump.cpp
     CodeGen/src/NativeState.cpp
     CodeGen/src/UnwindBuilderDwarf2.cpp
     CodeGen/src/UnwindBuilderWin.cpp
@@ -95,6 +96,9 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/EmitInstructionX64.h
     CodeGen/src/Fallbacks.h
     CodeGen/src/FallbacksProlog.h
+    CodeGen/src/IrDump.h
+    CodeGen/src/IrData.h
+    CodeGen/src/IrUtils.h
     CodeGen/src/NativeState.h
 )
 

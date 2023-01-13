@@ -59,14 +59,14 @@ TEST_CASE("CompileToBytecode")
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 LOADN R0 5
-LOADK R1 K0
+LOADK R1 K0 [6.5]
 RETURN R0 2
 )");
 
     CHECK_EQ("\n" + bcb.dumpEverything(), R"(
 Function 0 (??):
 LOADN R0 5
-LOADK R1 K0
+LOADK R1 K0 [6.5]
 RETURN R0 2
 
 )");
@@ -102,7 +102,7 @@ TEST_CASE("BasicFunction")
     Luau::compileOrThrow(bcb, "local function foo(a, b) return b end");
 
     CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 RETURN R0 0
 )");
 
@@ -129,15 +129,15 @@ TEST_CASE("FunctionCallOptimization")
 {
     // direct call into local
     CHECK_EQ("\n" + compileFunction0("local foo = math.foo()"), R"(
-GETIMPORT R0 2
+GETIMPORT R0 2 [math.foo]
 CALL R0 0 1
 RETURN R0 0
 )");
 
     // direct call into temp
     CHECK_EQ("\n" + compileFunction0("local foo = math.foo(math.bar())"), R"(
-GETIMPORT R0 2
-GETIMPORT R1 4
+GETIMPORT R0 2 [math.foo]
+GETIMPORT R1 4 [math.bar]
 CALL R1 0 -1
 CALL R0 -1 1
 RETURN R0 0
@@ -146,7 +146,7 @@ RETURN R0 0
     // can't directly call into local since foo might be used as arguments of caller
     CHECK_EQ("\n" + compileFunction0("local foo foo = math.foo(foo)"), R"(
 LOADNIL R0
-GETIMPORT R1 2
+GETIMPORT R1 2 [math.foo]
 MOVE R2 R0
 CALL R1 1 1
 MOVE R0 R1
@@ -162,19 +162,19 @@ part.Size = Vector3.new(1, 2, 3)
 return part.Size.Z * part:GetMass()
 )"),
         R"(
-GETIMPORT R0 2
-LOADK R1 K3
-GETIMPORT R2 5
+GETIMPORT R0 2 [Instance.new]
+LOADK R1 K3 ['Part']
+GETIMPORT R2 5 [workspace]
 CALL R0 2 1
-GETIMPORT R1 7
+GETIMPORT R1 7 [Vector3.new]
 LOADN R2 1
 LOADN R3 2
 LOADN R4 3
 CALL R1 3 1
-SETTABLEKS R1 R0 K8
-GETTABLEKS R3 R0 K8
-GETTABLEKS R2 R3 K9
-NAMECALL R3 R0 K10
+SETTABLEKS R1 R0 K8 ['Size']
+GETTABLEKS R3 R0 K8 ['Size']
+GETTABLEKS R2 R3 K9 ['Z']
+NAMECALL R3 R0 K10 ['GetMass']
 CALL R3 1 1
 MUL R1 R2 R3
 RETURN R1 1
@@ -185,9 +185,9 @@ TEST_CASE("ImportCall")
 {
     CHECK_EQ("\n" + compileFunction0("return math.max(1, 2)"), R"(
 LOADN R1 1
-FASTCALL2K 18 R1 K0 L0
-LOADK R2 K0
-GETIMPORT R0 3
+FASTCALL2K 18 R1 K0 L0 [2]
+LOADK R2 K0 [2]
+GETIMPORT R0 3 [math.max]
 CALL R0 2 -1
 L0: RETURN R0 -1
 )");
@@ -198,8 +198,8 @@ TEST_CASE("FakeImportCall")
     const char* source = "math = {} function math.max() return 0 end function test() return math.max(1, 2) end";
 
     CHECK_EQ("\n" + compileFunction(source, 1), R"(
-GETGLOBAL R1 K0
-GETTABLEKS R0 R1 K1
+GETGLOBAL R1 K0 ['math']
+GETTABLEKS R0 R1 K1 ['max']
 LOADN R1 1
 LOADN R2 2
 CALL R0 2 -1
@@ -220,7 +220,7 @@ TEST_CASE("AssignmentGlobal")
 {
     CHECK_EQ("\n" + compileFunction0("a = 2"), R"(
 LOADN R0 2
-SETGLOBAL R0 K0
+SETGLOBAL R0 K0 ['a']
 RETURN R0 0
 )");
 }
@@ -233,8 +233,8 @@ TEST_CASE("AssignmentTable")
 GETVARARGS R0 1
 NEWTABLE R1 1 0
 LOADN R2 2
-SETTABLEKS R2 R1 K0
-SETTABLEKS R0 R1 K0
+SETTABLEKS R2 R1 K0 ['b']
+SETTABLEKS R0 R1 K0 ['b']
 RETURN R0 0
 )");
 }
@@ -242,25 +242,25 @@ RETURN R0 0
 TEST_CASE("ConcatChainOptimization")
 {
     CHECK_EQ("\n" + compileFunction0("return '1' .. '2'"), R"(
-LOADK R1 K0
-LOADK R2 K1
+LOADK R1 K0 ['1']
+LOADK R2 K1 ['2']
 CONCAT R0 R1 R2
 RETURN R0 1
 )");
 
     CHECK_EQ("\n" + compileFunction0("return '1' .. '2' .. '3'"), R"(
-LOADK R1 K0
-LOADK R2 K1
-LOADK R3 K2
+LOADK R1 K0 ['1']
+LOADK R2 K1 ['2']
+LOADK R3 K2 ['3']
 CONCAT R0 R1 R3
 RETURN R0 1
 )");
 
     CHECK_EQ("\n" + compileFunction0("return ('1' .. '2') .. '3'"), R"(
-LOADK R3 K0
-LOADK R4 K1
+LOADK R3 K0 ['1']
+LOADK R4 K1 ['2']
 CONCAT R1 R3 R4
-LOADK R2 K2
+LOADK R2 K2 ['3']
 CONCAT R0 R1 R2
 RETURN R0 1
 )");
@@ -271,10 +271,10 @@ TEST_CASE("RepeatLocals")
     CHECK_EQ("\n" + compileFunction0("repeat local a a = 5 until a - 4 < 0 or a - 4 >= 0"), R"(
 L0: LOADNIL R0
 LOADN R0 5
-SUBK R1 R0 K0
+SUBK R1 R0 K0 [4]
 LOADN R2 0
 JUMPIFLT R1 R2 L1
-SUBK R1 R0 K0
+SUBK R1 R0 K0 [4]
 LOADN R2 0
 JUMPIFLE R2 R1 L1
 JUMPBACK L0
@@ -290,7 +290,7 @@ LOADN R2 1
 LOADN R0 5
 LOADN R1 1
 FORNPREP R0 L1
-L0: GETIMPORT R3 1
+L0: GETIMPORT R3 1 [print]
 MOVE R4 R2
 CALL R3 1 0
 FORNLOOP R0 L0
@@ -305,7 +305,7 @@ LOADN R1 1
 FORNPREP R0 L1
 L0: MOVE R3 R2
 LOADN R3 7
-GETIMPORT R4 1
+GETIMPORT R4 1 [print]
 MOVE R5 R3
 CALL R4 1 0
 FORNLOOP R0 L0
@@ -314,12 +314,12 @@ L1: RETURN R0 0
 
     // basic for-in loop, generic version
     CHECK_EQ("\n" + compileFunction0("for word in string.gmatch(\"Hello Lua user\", \"%a+\") do print(word) end"), R"(
-GETIMPORT R0 2
-LOADK R1 K3
-LOADK R2 K4
+GETIMPORT R0 2 [string.gmatch]
+LOADK R1 K3 ['Hello Lua user']
+LOADK R2 K4 ['%a+']
 CALL R0 2 3
 FORGPREP R0 L1
-L0: GETIMPORT R5 6
+L0: GETIMPORT R5 6 [print]
 MOVE R6 R3
 CALL R5 1 0
 L1: FORGLOOP R0 L0 1
@@ -328,11 +328,11 @@ RETURN R0 0
 
     // basic for-in loop, using inext specialization
     CHECK_EQ("\n" + compileFunction0("for k,v in ipairs({}) do print(k,v) end"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [ipairs]
 NEWTABLE R1 0 0
 CALL R0 1 3
 FORGPREP_INEXT R0 L1
-L0: GETIMPORT R5 3
+L0: GETIMPORT R5 3 [print]
 MOVE R6 R3
 MOVE R7 R4
 CALL R5 2 0
@@ -342,11 +342,11 @@ RETURN R0 0
 
     // basic for-in loop, using next specialization
     CHECK_EQ("\n" + compileFunction0("for k,v in pairs({}) do print(k,v) end"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [pairs]
 NEWTABLE R1 0 0
 CALL R0 1 3
 FORGPREP_NEXT R0 L1
-L0: GETIMPORT R5 3
+L0: GETIMPORT R5 3 [print]
 MOVE R6 R3
 MOVE R7 R4
 CALL R5 2 0
@@ -355,11 +355,11 @@ RETURN R0 0
 )");
 
     CHECK_EQ("\n" + compileFunction0("for k,v in next,{} do print(k,v) end"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [next]
 NEWTABLE R1 0 0
 LOADNIL R2
 FORGPREP_NEXT R0 L1
-L0: GETIMPORT R5 3
+L0: GETIMPORT R5 3 [print]
 MOVE R6 R3
 MOVE R7 R4
 CALL R5 2 0
@@ -372,7 +372,7 @@ TEST_CASE("ForBytecodeBuiltin")
 {
     // we generally recognize builtins like pairs/ipairs and emit special opcodes
     CHECK_EQ("\n" + compileFunction0("for k,v in ipairs({}) do end"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [ipairs]
 NEWTABLE R1 0 0
 CALL R0 1 3
 FORGPREP_INEXT R0 L0
@@ -382,7 +382,7 @@ RETURN R0 0
 
     // ... even if they are using a local variable
     CHECK_EQ("\n" + compileFunction0("local ip = ipairs for k,v in ip({}) do end"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [ipairs]
 MOVE R1 R0
 NEWTABLE R2 0 0
 CALL R1 1 3
@@ -403,8 +403,8 @@ RETURN R0 0
 
     // but if it's reassigned then all bets are off
     CHECK_EQ("\n" + compileFunction0("local ip = ipairs ip = pairs for k,v in ip({}) do end"), R"(
-GETIMPORT R0 1
-GETIMPORT R0 3
+GETIMPORT R0 1 [ipairs]
+GETIMPORT R0 3 [pairs]
 MOVE R1 R0
 NEWTABLE R2 0 0
 CALL R1 1 3
@@ -415,9 +415,9 @@ RETURN R0 0
 
     // or if the global is hijacked
     CHECK_EQ("\n" + compileFunction0("ipairs = pairs for k,v in ipairs({}) do end"), R"(
-GETIMPORT R0 1
-SETGLOBAL R0 K2
-GETGLOBAL R0 K2
+GETIMPORT R0 1 [pairs]
+SETGLOBAL R0 K2 ['ipairs']
+GETGLOBAL R0 K2 ['ipairs']
 NEWTABLE R1 0 0
 CALL R0 1 3
 FORGPREP R0 L0
@@ -427,7 +427,7 @@ RETURN R0 0
 
     // or if we don't even know the global to begin with
     CHECK_EQ("\n" + compileFunction0("for k,v in unknown({}) do end"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [unknown]
 NEWTABLE R1 0 0
 CALL R0 1 3
 FORGPREP R0 L0
@@ -512,11 +512,11 @@ RETURN R0 1
     CHECK_EQ("\n" + compileFunction0("return {a=1,b=2,c=3}"), R"(
 DUPTABLE R0 3
 LOADN R1 1
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['a']
 LOADN R1 2
-SETTABLEKS R1 R0 K1
+SETTABLEKS R1 R0 K1 ['b']
 LOADN R1 3
-SETTABLEKS R1 R0 K2
+SETTABLEKS R1 R0 K2 ['c']
 RETURN R0 1
 )");
 
@@ -524,9 +524,9 @@ RETURN R0 1
     CHECK_EQ("\n" + compileFunction0("return {a=1,b=2,3,4}"), R"(
 NEWTABLE R0 2 2
 LOADN R3 1
-SETTABLEKS R3 R0 K0
+SETTABLEKS R3 R0 K0 ['a']
 LOADN R3 2
-SETTABLEKS R3 R0 K1
+SETTABLEKS R3 R0 K1 ['b']
 LOADN R1 3
 LOADN R2 4
 SETLIST R0 R1 2 [1]
@@ -536,9 +536,9 @@ RETURN R0 1
     // expression assignment
     CHECK_EQ("\n" + compileFunction0("a = 7 return {[a]=42}"), R"(
 LOADN R0 7
-SETGLOBAL R0 K0
+SETGLOBAL R0 K0 ['a']
 NEWTABLE R0 1 0
-GETGLOBAL R1 K0
+GETGLOBAL R1 K0 ['a']
 LOADN R2 42
 SETTABLE R2 R0 R1
 RETURN R0 1
@@ -548,19 +548,19 @@ RETURN R0 1
     CHECK_EQ("\n" + compileFunction0("return {a=1,b=2},{b=3,a=4},{a=5,b=6}"), R"(
 DUPTABLE R0 2
 LOADN R1 1
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['a']
 LOADN R1 2
-SETTABLEKS R1 R0 K1
+SETTABLEKS R1 R0 K1 ['b']
 DUPTABLE R1 3
 LOADN R2 3
-SETTABLEKS R2 R1 K1
+SETTABLEKS R2 R1 K1 ['b']
 LOADN R2 4
-SETTABLEKS R2 R1 K0
+SETTABLEKS R2 R1 K0 ['a']
 DUPTABLE R2 2
 LOADN R3 5
-SETTABLEKS R3 R2 K0
+SETTABLEKS R3 R2 K0 ['a']
 LOADN R3 6
-SETTABLEKS R3 R2 K1
+SETTABLEKS R3 R2 K1 ['b']
 RETURN R0 3
 )");
 }
@@ -624,9 +624,9 @@ RETURN R0 1
     CHECK_EQ("\n" + compileFunction0("return {key = 1, value = 2, [1] = 42}"), R"(
 NEWTABLE R0 2 1
 LOADN R1 1
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['key']
 LOADN R1 2
-SETTABLEKS R1 R0 K1
+SETTABLEKS R1 R0 K1 ['value']
 LOADN R1 42
 SETTABLEN R1 R0 1
 RETURN R0 1
@@ -643,9 +643,9 @@ TEST_CASE("TableLiteralsIndexConstant")
         R"(
 NEWTABLE R0 2 0
 LOADN R1 42
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['key']
 LOADN R1 0
-SETTABLEKS R1 R0 K1
+SETTABLEKS R1 R0 K1 ['value']
 RETURN R0 1
 )");
 
@@ -681,23 +681,23 @@ t.i = 1
         R"(
 NEWTABLE R0 16 0
 LOADN R1 1
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['a']
 LOADN R1 1
-SETTABLEKS R1 R0 K1
+SETTABLEKS R1 R0 K1 ['b']
 LOADN R1 1
-SETTABLEKS R1 R0 K2
+SETTABLEKS R1 R0 K2 ['c']
 LOADN R1 1
-SETTABLEKS R1 R0 K3
+SETTABLEKS R1 R0 K3 ['d']
 LOADN R1 1
-SETTABLEKS R1 R0 K4
+SETTABLEKS R1 R0 K4 ['e']
 LOADN R1 1
-SETTABLEKS R1 R0 K5
+SETTABLEKS R1 R0 K5 ['f']
 LOADN R1 1
-SETTABLEKS R1 R0 K6
+SETTABLEKS R1 R0 K6 ['g']
 LOADN R1 1
-SETTABLEKS R1 R0 K7
+SETTABLEKS R1 R0 K7 ['h']
 LOADN R1 1
-SETTABLEKS R1 R0 K8
+SETTABLEKS R1 R0 K8 ['i']
 RETURN R0 0
 )");
 
@@ -716,23 +716,23 @@ t.x = 9
         R"(
 NEWTABLE R0 1 0
 LOADN R1 1
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['x']
 LOADN R1 2
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['x']
 LOADN R1 3
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['x']
 LOADN R1 4
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['x']
 LOADN R1 5
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['x']
 LOADN R1 6
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['x']
 LOADN R1 7
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['x']
 LOADN R1 8
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['x']
 LOADN R1 9
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['x']
 RETURN R0 0
 )");
 
@@ -789,9 +789,9 @@ return t
         R"(
 NEWTABLE R0 2 0
 LOADN R1 1
-SETTABLEKS R1 R0 K0
-DUPCLOSURE R1 K1
-SETTABLEKS R1 R0 K2
+SETTABLEKS R1 R0 K0 ['field']
+DUPCLOSURE R1 K1 ['getfield']
+SETTABLEKS R1 R0 K2 ['getfield']
 RETURN R0 1
 )");
 }
@@ -806,14 +806,14 @@ return t
 )"),
         R"(
 NEWTABLE R1 2 0
-FASTCALL2K 61 R1 K0 L0
-LOADK R2 K0
-GETIMPORT R0 2
+FASTCALL2K 61 R1 K0 L0 [nil]
+LOADK R2 K0 [nil]
+GETIMPORT R0 2 [setmetatable]
 CALL R0 2 1
 L0: LOADN R1 1
-SETTABLEKS R1 R0 K3
+SETTABLEKS R1 R0 K3 ['field1']
 LOADN R1 2
-SETTABLEKS R1 R0 K4
+SETTABLEKS R1 R0 K4 ['field2']
 RETURN R0 1
 )");
 }
@@ -843,7 +843,7 @@ L1: RETURN R0 1
 TEST_CASE("ReflectionEnums")
 {
     CHECK_EQ("\n" + compileFunction0("return Enum.EasingStyle.Linear"), R"(
-GETIMPORT R0 3
+GETIMPORT R0 3 [Enum.EasingStyle.Linear]
 RETURN R0 1
 )");
 }
@@ -877,7 +877,7 @@ RETURN R0 0
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 GETUPVAL R0 0
 LOADN R1 5
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['_tweakingTooltipFrame']
 RETURN R0 0
 )");
 }
@@ -1030,7 +1030,7 @@ TEST_CASE("AndOr")
     // codegen for constant, local, global for and
     CHECK_EQ("\n" + compileFunction0("local a = 1 a = a and 2 return a"), R"(
 LOADN R0 1
-ANDK R0 R0 K0
+ANDK R0 R0 K0 [2]
 RETURN R0 1
 )");
 
@@ -1044,10 +1044,10 @@ RETURN R0 1
     CHECK_EQ("\n" + compileFunction0("local a = 1 b = 2 a = a and b return a"), R"(
 LOADN R0 1
 LOADN R1 2
-SETGLOBAL R1 K0
+SETGLOBAL R1 K0 ['b']
 MOVE R1 R0
 JUMPIFNOT R1 L0
-GETGLOBAL R1 K0
+GETGLOBAL R1 K0 ['b']
 L0: MOVE R0 R1
 RETURN R0 1
 )");
@@ -1055,7 +1055,7 @@ RETURN R0 1
     // codegen for constant, local, global for or
     CHECK_EQ("\n" + compileFunction0("local a = 1 a = a or 2 return a"), R"(
 LOADN R0 1
-ORK R0 R0 K0
+ORK R0 R0 K0 [2]
 RETURN R0 1
 )");
 
@@ -1069,10 +1069,10 @@ RETURN R0 1
     CHECK_EQ("\n" + compileFunction0("local a = 1 b = 2 a = a or b return a"), R"(
 LOADN R0 1
 LOADN R1 2
-SETGLOBAL R1 K0
+SETGLOBAL R1 K0 ['b']
 MOVE R1 R0
 JUMPIF R1 L0
-GETGLOBAL R1 K0
+GETGLOBAL R1 K0 ['b']
 L0: MOVE R0 R1
 RETURN R0 1
 )");
@@ -1082,20 +1082,20 @@ RETURN R0 1
     CHECK_EQ("\n" + compileFunction0("local a = 1 a = a b = 2 local c = a and b return c"), R"(
 LOADN R0 1
 LOADN R1 2
-SETGLOBAL R1 K0
+SETGLOBAL R1 K0 ['b']
 MOVE R1 R0
 JUMPIFNOT R1 L0
-GETGLOBAL R1 K0
+GETGLOBAL R1 K0 ['b']
 L0: RETURN R1 1
 )");
 
     CHECK_EQ("\n" + compileFunction0("local a = 1 a = a b = 2 local c = a or b return c"), R"(
 LOADN R0 1
 LOADN R1 2
-SETGLOBAL R1 K0
+SETGLOBAL R1 K0 ['b']
 MOVE R1 R0
 JUMPIF R1 L0
-GETGLOBAL R1 K0
+GETGLOBAL R1 K0 ['b']
 L0: RETURN R1 1
 )");
 }
@@ -1108,7 +1108,7 @@ RETURN R0 0
 )");
 
     CHECK_EQ("\n" + compileFunction0("local a = true if a or b then b() end"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [b]
 CALL R0 0 0
 RETURN R0 0
 )");
@@ -1116,18 +1116,18 @@ RETURN R0 0
     // however, if right hand side is constant we can't constant fold the entire expression
     // (note that we don't need to evaluate the right hand side, but we do need a branch)
     CHECK_EQ("\n" + compileFunction0("local a = false if b and a then b() end"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [b]
 JUMPIFNOT R0 L0
 RETURN R0 0
-GETIMPORT R0 1
+GETIMPORT R0 1 [b]
 CALL R0 0 0
 L0: RETURN R0 0
 )");
 
     CHECK_EQ("\n" + compileFunction0("local a = true if b or a then b() end"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [b]
 JUMPIF R0 L0
-L0: GETIMPORT R0 1
+L0: GETIMPORT R0 1 [b]
 CALL R0 0 0
 RETURN R0 0
 )");
@@ -1144,22 +1144,22 @@ TEST_CASE("AndOrChainCodegen")
 
     CHECK_EQ("\n" + compileFunction0(source), R"(
 LOADN R2 1
-GETIMPORT R3 1
+GETIMPORT R3 1 [verticalGradientTurbulence]
 SUB R1 R2 R3
-GETIMPORT R3 4
-ADDK R2 R3 K2
+GETIMPORT R3 4 [waterLevel]
+ADDK R2 R3 K2 [0.014999999999999999]
 JUMPIFNOTLT R1 R2 L0
-GETIMPORT R0 8
+GETIMPORT R0 8 [Enum.Material.Sand]
 JUMPIF R0 L2
-L0: GETIMPORT R1 10
+L0: GETIMPORT R1 10 [sandbank]
 LOADN R2 0
 JUMPIFNOTLT R2 R1 L1
-GETIMPORT R1 10
+GETIMPORT R1 10 [sandbank]
 LOADN R2 1
 JUMPIFNOTLT R1 R2 L1
-GETIMPORT R0 8
+GETIMPORT R0 8 [Enum.Material.Sand]
 JUMPIF R0 L2
-L1: GETIMPORT R0 12
+L1: GETIMPORT R0 12 [Enum.Material.Sandstone]
 L2: RETURN R0 1
 )");
 }
@@ -1205,7 +1205,7 @@ RETURN R0 1
 
     // codegen for a non-constant condition
     CHECK_EQ("\n" + compileFunction0("return if condition then 10 else 20"), R"(
-GETIMPORT R1 1
+GETIMPORT R1 1 [condition]
 JUMPIFNOT R1 L0
 LOADN R0 10
 RETURN R0 1
@@ -1215,18 +1215,18 @@ RETURN R0 1
 
     // codegen for a non-constant condition using an assignment
     CHECK_EQ("\n" + compileFunction0("result = if condition then 10 else 20"), R"(
-GETIMPORT R1 1
+GETIMPORT R1 1 [condition]
 JUMPIFNOT R1 L0
 LOADN R0 10
 JUMP L1
 L0: LOADN R0 20
-L1: SETGLOBAL R0 K2
+L1: SETGLOBAL R0 K2 ['result']
 RETURN R0 0
 )");
 
     // codegen for a non-constant condition using an assignment to a local variable
     CHECK_EQ("\n" + compileFunction0("local result = if condition then 10 else 20"), R"(
-GETIMPORT R1 1
+GETIMPORT R1 1 [condition]
 JUMPIFNOT R1 L0
 LOADN R0 10
 RETURN R0 0
@@ -1236,20 +1236,20 @@ RETURN R0 0
 
     // codegen for an if-else expression with multiple elseif's
     CHECK_EQ("\n" + compileFunction0("result = if condition1 then 10 elseif condition2 then 20 elseif condition3 then 30 else 40"), R"(
-GETIMPORT R1 1
+GETIMPORT R1 1 [condition1]
 JUMPIFNOT R1 L0
 LOADN R0 10
 JUMP L3
-L0: GETIMPORT R1 3
+L0: GETIMPORT R1 3 [condition2]
 JUMPIFNOT R1 L1
 LOADN R0 20
 JUMP L3
-L1: GETIMPORT R1 5
+L1: GETIMPORT R1 5 [condition3]
 JUMPIFNOT R1 L2
 LOADN R0 30
 JUMP L3
 L2: LOADN R0 40
-L3: SETGLOBAL R0 K6
+L3: SETGLOBAL R0 K6 ['result']
 RETURN R0 0
 )");
 }
@@ -1288,9 +1288,9 @@ TEST_CASE("InterpStringZeroCost")
 
     CHECK_EQ("\n" + compileFunction0(R"(local _ = `hello, {"world"}!`)"),
         R"(
-LOADK R1 K0
-LOADK R3 K1
-NAMECALL R1 R1 K2
+LOADK R1 K0 ['hello, %*!']
+LOADK R3 K1 ['world']
+NAMECALL R1 R1 K2 ['format']
 CALL R1 2 1
 MOVE R0 R1
 RETURN R0 0
@@ -1309,18 +1309,27 @@ TEST_CASE("InterpStringRegisterCleanup")
 
         R"(
 LOADNIL R0
-LOADK R1 K0
-LOADK R2 K1
-LOADK R3 K2
-LOADK R5 K3
-NAMECALL R3 R3 K4
+LOADK R1 K0 ['um']
+LOADK R2 K1 ['uh oh']
+LOADK R3 K2 ['foo%*']
+LOADK R5 K3 ['bar']
+NAMECALL R3 R3 K4 ['format']
 CALL R3 2 1
 MOVE R0 R3
-GETIMPORT R3 6
+GETIMPORT R3 6 [print]
 MOVE R4 R0
 CALL R3 1 0
 RETURN R0 0
 )");
+}
+
+TEST_CASE("InterpStringRegisterLimit")
+{
+    ScopedFastFlag luauInterpolatedStringBaseSupport{"LuauInterpolatedStringBaseSupport", true};
+    ScopedFastFlag luauCompileInterpStringLimit{"LuauCompileInterpStringLimit", true};
+
+    CHECK_THROWS_AS(compileFunction0(("local a = `" + rep("{1}", 254) + "`").c_str()), std::exception);
+    CHECK_THROWS_AS(compileFunction0(("local a = `" + rep("{1}", 253) + "`").c_str()), std::exception);
 }
 
 TEST_CASE("ConstantFoldArith")
@@ -1485,7 +1494,7 @@ RETURN R0 2
     // local values for multiple assignments w/multret
     CHECK_EQ("\n" + compileFunction0("local a, b = ... return a + 1, b"), R"(
 GETVARARGS R0 2
-ADDK R2 R0 K0
+ADDK R2 R0 K0 [1]
 MOVE R3 R1
 RETURN R2 2
 )");
@@ -1534,7 +1543,7 @@ RETURN R0 1
 
     // and/or constant folding when left hand side is constant
     CHECK_EQ("\n" + compileFunction0("return true and a"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [a]
 RETURN R0 1
 )");
 
@@ -1549,22 +1558,22 @@ RETURN R0 1
 )");
 
     CHECK_EQ("\n" + compileFunction0("return false or a"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [a]
 RETURN R0 1
 )");
 
     // constant fold parts in chains of and/or statements
     CHECK_EQ("\n" + compileFunction0("return a and true and b"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [a]
 JUMPIFNOT R0 L0
-GETIMPORT R0 3
+GETIMPORT R0 3 [b]
 L0: RETURN R0 1
 )");
 
     CHECK_EQ("\n" + compileFunction0("return a or false or b"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [a]
 JUMPIF R0 L0
-GETIMPORT R0 3
+GETIMPORT R0 3 [b]
 L0: RETURN R0 1
 )");
 }
@@ -1574,7 +1583,7 @@ TEST_CASE("ConstantFoldConditionalAndOr")
     CHECK_EQ("\n" + compileFunction0("local a = ... if false or a then print(1) end"), R"(
 GETVARARGS R0 1
 JUMPIFNOT R0 L0
-GETIMPORT R1 1
+GETIMPORT R1 1 [print]
 LOADN R2 1
 CALL R1 1 0
 L0: RETURN R0 0
@@ -1583,7 +1592,7 @@ L0: RETURN R0 0
     CHECK_EQ("\n" + compileFunction0("local a = ... if not (false or a) then print(1) end"), R"(
 GETVARARGS R0 1
 JUMPIF R0 L0
-GETIMPORT R1 1
+GETIMPORT R1 1 [print]
 LOADN R2 1
 CALL R1 1 0
 L0: RETURN R0 0
@@ -1592,7 +1601,7 @@ L0: RETURN R0 0
     CHECK_EQ("\n" + compileFunction0("local a = ... if true and a then print(1) end"), R"(
 GETVARARGS R0 1
 JUMPIFNOT R0 L0
-GETIMPORT R1 1
+GETIMPORT R1 1 [print]
 LOADN R2 1
 CALL R1 1 0
 L0: RETURN R0 0
@@ -1601,7 +1610,7 @@ L0: RETURN R0 0
     CHECK_EQ("\n" + compileFunction0("local a = ... if not (true and a) then print(1) end"), R"(
 GETVARARGS R0 1
 JUMPIF R0 L0
-GETIMPORT R1 1
+GETIMPORT R1 1 [print]
 LOADN R2 1
 CALL R1 1 0
 L0: RETURN R0 0
@@ -1612,7 +1621,7 @@ TEST_CASE("ConstantFoldFlowControl")
 {
     // if
     CHECK_EQ("\n" + compileFunction0("if true then print(1) end"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [print]
 LOADN R1 1
 CALL R0 1 0
 RETURN R0 0
@@ -1623,14 +1632,14 @@ RETURN R0 0
 )");
 
     CHECK_EQ("\n" + compileFunction0("if true then print(1) else print(2) end"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [print]
 LOADN R1 1
 CALL R0 1 0
 RETURN R0 0
 )");
 
     CHECK_EQ("\n" + compileFunction0("if false then print(1) else print(2) end"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [print]
 LOADN R1 2
 CALL R0 1 0
 RETURN R0 0
@@ -1638,7 +1647,7 @@ RETURN R0 0
 
     // while
     CHECK_EQ("\n" + compileFunction0("while true do print(1) end"), R"(
-L0: GETIMPORT R0 1
+L0: GETIMPORT R0 1 [print]
 LOADN R1 1
 CALL R0 1 0
 JUMPBACK L0
@@ -1651,14 +1660,14 @@ RETURN R0 0
 
     // repeat
     CHECK_EQ("\n" + compileFunction0("repeat print(1) until true"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [print]
 LOADN R1 1
 CALL R0 1 0
 RETURN R0 0
 )");
 
     CHECK_EQ("\n" + compileFunction0("repeat print(1) until false"), R"(
-L0: GETIMPORT R0 1
+L0: GETIMPORT R0 1 [print]
 LOADN R1 1
 CALL R0 1 0
 JUMPBACK L0
@@ -1667,10 +1676,10 @@ RETURN R0 0
 
     // there's an odd case in repeat..until compilation where we evaluate the expression that is always false for side-effects of the left hand side
     CHECK_EQ("\n" + compileFunction0("repeat print(1) until five and false"), R"(
-L0: GETIMPORT R0 1
+L0: GETIMPORT R0 1 [print]
 LOADN R1 1
 CALL R0 1 0
-GETIMPORT R0 3
+GETIMPORT R0 3 [five]
 JUMPIFNOT R0 L1
 L1: JUMPBACK L0
 RETURN R0 0
@@ -1681,9 +1690,9 @@ TEST_CASE("LoopBreak")
 {
     // default codegen: compile breaks as unconditional jumps
     CHECK_EQ("\n" + compileFunction0("while true do if math.random() < 0.5 then break else end end"), R"(
-L0: GETIMPORT R0 2
+L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFNOTLT R0 R1 L1
 RETURN R0 0
 JUMP L1
@@ -1693,9 +1702,9 @@ RETURN R0 0
 
     // optimization: if then body is a break statement, flip the branches
     CHECK_EQ("\n" + compileFunction0("while true do if math.random() < 0.5 then break end end"), R"(
-L0: GETIMPORT R0 2
+L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFLT R0 R1 L1
 JUMPBACK L0
 L1: RETURN R0 0
@@ -1706,28 +1715,28 @@ TEST_CASE("LoopContinue")
 {
     // default codegen: compile continue as unconditional jumps
     CHECK_EQ("\n" + compileFunction0("repeat if math.random() < 0.5 then continue else end break until false error()"), R"(
-L0: GETIMPORT R0 2
+L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFNOTLT R0 R1 L2
 JUMP L1
 JUMP L2
 JUMP L2
 L1: JUMPBACK L0
-L2: GETIMPORT R0 5
+L2: GETIMPORT R0 5 [error]
 CALL R0 0 0
 RETURN R0 0
 )");
 
     // optimization: if then body is a continue statement, flip the branches
     CHECK_EQ("\n" + compileFunction0("repeat if math.random() < 0.5 then continue end break until false error()"), R"(
-L0: GETIMPORT R0 2
+L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFLT R0 R1 L1
 JUMP L2
 L1: JUMPBACK L0
-L2: GETIMPORT R0 5
+L2: GETIMPORT R0 5 [error]
 CALL R0 0 0
 RETURN R0 0
 )");
@@ -1737,12 +1746,12 @@ TEST_CASE("LoopContinueUntil")
 {
     // it's valid to use locals defined inside the loop in until expression if they're defined before continue
     CHECK_EQ("\n" + compileFunction0("repeat local r = math.random() if r > 0.5 then continue end r = r + 0.3 until r < 0.5"), R"(
-L0: GETIMPORT R0 2
+L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFLT R1 R0 L1
-ADDK R0 R0 K4
-L1: LOADK R1 K3
+ADDK R0 R0 K4 [0.29999999999999999]
+L1: LOADK R1 K3 [0.5]
 JUMPIFLT R0 R1 L2
 JUMPBACK L0
 L2: RETURN R0 0
@@ -1776,13 +1785,13 @@ until rr < 0.5
     CHECK_EQ("\n" + compileFunction0(
                         "repeat local r = math.random() repeat if r > 0.5 then continue end r = r - 0.1 until true r = r + 0.3 until r < 0.5"),
         R"(
-L0: GETIMPORT R0 2
+L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFLT R1 R0 L1
-SUBK R0 R0 K4
-L1: ADDK R0 R0 K5
-LOADK R1 K3
+SUBK R0 R0 K4 [0.10000000000000001]
+L1: ADDK R0 R0 K5 [0.29999999999999999]
+LOADK R1 K3 [0.5]
 JUMPIFLT R0 R1 L2
 JUMPBACK L0
 L2: RETURN R0 0
@@ -1793,13 +1802,13 @@ L2: RETURN R0 0
         "\n" + compileFunction(
                    "repeat local r = math.random() if r > 0.5 then continue end r = r + 0.3 until (function() local a = r return a < 0.5 end)()", 1),
         R"(
-L0: GETIMPORT R0 2
+L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFNOTLT R1 R0 L1
 CLOSEUPVALS R0
 JUMP L2
-L1: ADDK R0 R0 K4
+L1: ADDK R0 R0 K4 [0.29999999999999999]
 L2: NEWCLOSURE R1 P0
 CAPTURE REF R0
 CALL R1 0 1
@@ -1837,14 +1846,14 @@ until (function() return rr end)() < 0.5
     CHECK_EQ("\n" + compileFunction0("local stop = false stop = true function test() repeat local r = math.random() if r > 0.5 then "
                                      "continue end r = r + 0.3 until stop or r < 0.5 end"),
         R"(
-L0: GETIMPORT R0 2
+L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFLT R1 R0 L1
-ADDK R0 R0 K4
+ADDK R0 R0 K4 [0.29999999999999999]
 L1: GETUPVAL R1 0
 JUMPIF R1 L2
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFLT R0 R1 L2
 JUMPBACK L0
 L2: RETURN R0 0
@@ -1855,13 +1864,13 @@ L2: RETURN R0 0
                                     "end r = r + 0.3 until (function() return stop or r < 0.5 end)() end",
                         1),
         R"(
-L0: GETIMPORT R0 2
+L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFNOTLT R1 R0 L1
 CLOSEUPVALS R0
 JUMP L2
-L1: ADDK R0 R0 K4
+L1: ADDK R0 R0 K4 [0.29999999999999999]
 L2: NEWCLOSURE R1 P0
 CAPTURE UPVAL U0
 CAPTURE REF R0
@@ -1906,7 +1915,7 @@ end
 )",
                         0),
         R"(
-ORK R2 R1 K0
+ORK R2 R1 K0 [0.5]
 SUB R0 R0 R2
 LOADN R4 1
 LOADN R8 0
@@ -1914,7 +1923,7 @@ JUMPIFNOTLT R0 R8 L0
 MINUS R7 R0
 JUMPIF R7 L1
 L0: MOVE R7 R0
-L1: MULK R6 R7 K1
+L1: MULK R6 R7 K1 [1]
 LOADN R8 1
 SUB R7 R8 R2
 DIV R5 R6 R7
@@ -1931,12 +1940,12 @@ end
                         0),
         R"(
 LOADB R2 0
-LOADK R4 K0
-MULK R5 R1 K1
+LOADK R4 K0 [0.5]
+MULK R5 R1 K1 [0.40000000000000002]
 SUB R3 R4 R5
 JUMPIFNOTLT R3 R0 L1
-LOADK R4 K0
-MULK R5 R1 K1
+LOADK R4 K0 [0.5]
+MULK R5 R1 K1 [0.40000000000000002]
 ADD R3 R4 R5
 JUMPIFLT R0 R3 L0
 LOADB R2 0 +1
@@ -1953,12 +1962,12 @@ end
                         0),
         R"(
 LOADB R2 1
-LOADK R4 K0
-MULK R5 R1 K1
+LOADK R4 K0 [0.5]
+MULK R5 R1 K1 [0.40000000000000002]
 SUB R3 R4 R5
 JUMPIFLT R0 R3 L1
-LOADK R4 K0
-MULK R5 R1 K1
+LOADK R4 K0 [0.5]
+MULK R5 R1 K1 [0.40000000000000002]
 ADD R3 R4 R5
 JUMPIFLT R3 R0 L0
 LOADB R2 0 +1
@@ -2006,7 +2015,7 @@ TEST_CASE("JumpFold")
 {
     // jump-to-return folding to return
     CHECK_EQ("\n" + compileFunction0("return a and 1 or 0"), R"(
-GETIMPORT R1 1
+GETIMPORT R1 1 [a]
 JUMPIFNOT R1 L0
 LOADN R0 1
 RETURN R0 1
@@ -2016,26 +2025,26 @@ RETURN R0 1
 
     // conditional jump in the inner if() folding to jump out of the expression (JUMPIFNOT+5 skips over all jumps, JUMP+1 skips over JUMP+0)
     CHECK_EQ("\n" + compileFunction0("if a then if b then b() else end else end d()"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [a]
 JUMPIFNOT R0 L0
-GETIMPORT R0 3
+GETIMPORT R0 3 [b]
 JUMPIFNOT R0 L0
-GETIMPORT R0 3
+GETIMPORT R0 3 [b]
 CALL R0 0 0
 JUMP L0
 JUMP L0
-L0: GETIMPORT R0 5
+L0: GETIMPORT R0 5 [d]
 CALL R0 0 0
 RETURN R0 0
 )");
 
     // same as example before but the unconditional jumps are folded with RETURN
     CHECK_EQ("\n" + compileFunction0("if a then if b then b() else end else end"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [a]
 JUMPIFNOT R0 L0
-GETIMPORT R0 3
+GETIMPORT R0 3 [b]
 JUMPIFNOT R0 L0
-GETIMPORT R0 3
+GETIMPORT R0 3 [b]
 CALL R0 0 0
 RETURN R0 0
 RETURN R0 0
@@ -2057,33 +2066,33 @@ end
 )",
                         0),
         R"(
-ORK R6 R3 K0
-ORK R7 R4 K1
+ORK R6 R3 K0 [0]
+ORK R7 R4 K1 [1]
 JUMPIF R5 L0
-GETIMPORT R10 5
+GETIMPORT R10 5 [math.noise]
 DIV R13 R0 R7
-MULK R14 R6 K6
+MULK R14 R6 K6 [17]
 ADD R12 R13 R14
-GETIMPORT R13 8
+GETIMPORT R13 8 [masterSeed]
 ADD R11 R12 R13
 DIV R13 R1 R7
-GETIMPORT R14 8
+GETIMPORT R14 8 [masterSeed]
 SUB R12 R13 R14
 DIV R14 R2 R7
 MUL R15 R6 R6
 SUB R13 R14 R15
 CALL R10 3 1
-MULK R9 R10 K2
-ADDK R8 R9 K2
+MULK R9 R10 K2 [0.5]
+ADDK R8 R9 K2 [0.5]
 RETURN R8 1
-L0: GETIMPORT R8 5
+L0: GETIMPORT R8 5 [math.noise]
 DIV R11 R0 R7
-MULK R12 R6 K6
+MULK R12 R6 K6 [17]
 ADD R10 R11 R12
-GETIMPORT R11 8
+GETIMPORT R11 8 [masterSeed]
 ADD R9 R10 R11
 DIV R11 R1 R7
-GETIMPORT R12 8
+GETIMPORT R12 8 [masterSeed]
 SUB R10 R11 R12
 DIV R12 R2 R7
 MUL R13 R6 R6
@@ -2248,11 +2257,11 @@ TEST_CASE("NestedFunctionCalls")
 FASTCALL2 18 R0 R1 L0
 MOVE R5 R0
 MOVE R6 R1
-GETIMPORT R4 2
+GETIMPORT R4 2 [math.max]
 CALL R4 2 1
 L0: FASTCALL2 19 R4 R2 L1
 MOVE R5 R2
-GETIMPORT R3 4
+GETIMPORT R3 4 [math.min]
 CALL R3 2 -1
 L1: RETURN R3 -1
 )");
@@ -2281,11 +2290,11 @@ LOADN R0 10
 LOADN R1 1
 FORNPREP R0 L2
 L0: MOVE R3 R2
-GETIMPORT R4 1
+GETIMPORT R4 1 [foo]
 NEWCLOSURE R5 P0
 CAPTURE REF R3
 CALL R4 1 0
-GETIMPORT R4 3
+GETIMPORT R4 3 [bar]
 JUMPIFNOT R4 L1
 CLOSEUPVALS R3
 JUMP L2
@@ -2309,15 +2318,15 @@ end
 )",
                         1),
         R"(
-GETIMPORT R0 1
-GETIMPORT R1 3
+GETIMPORT R0 1 [ipairs]
+GETIMPORT R1 3 [data]
 CALL R0 1 3
 FORGPREP_INEXT R0 L2
-L0: GETIMPORT R5 5
+L0: GETIMPORT R5 5 [foo]
 NEWCLOSURE R6 P0
 CAPTURE REF R3
 CALL R5 1 0
-GETIMPORT R5 7
+GETIMPORT R5 7 [bar]
 JUMPIFNOT R5 L1
 CLOSEUPVALS R3
 JUMP L3
@@ -2349,12 +2358,12 @@ L0: LOADN R1 5
 JUMPIFNOTLT R0 R1 L2
 LOADNIL R1
 MOVE R1 R0
-GETIMPORT R2 1
+GETIMPORT R2 1 [foo]
 NEWCLOSURE R3 P0
 CAPTURE REF R1
 CALL R2 1 0
-ADDK R0 R0 K2
-GETIMPORT R2 4
+ADDK R0 R0 K2 [1]
+GETIMPORT R2 4 [bar]
 JUMPIFNOT R2 L1
 CLOSEUPVALS R1
 JUMP L2
@@ -2384,12 +2393,12 @@ end
 LOADN R0 0
 L0: LOADNIL R1
 MOVE R1 R0
-GETIMPORT R2 1
+GETIMPORT R2 1 [foo]
 NEWCLOSURE R3 P0
 CAPTURE REF R1
 CALL R2 1 0
-ADDK R0 R0 K2
-GETIMPORT R2 4
+ADDK R0 R0 K2 [1]
+GETIMPORT R2 4 [bar]
 JUMPIFNOT R2 L1
 CLOSEUPVALS R1
 JUMP L3
@@ -2437,25 +2446,25 @@ return result
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 2: NEWTABLE R0 16 0
 3: LOADB R1 1
-3: SETTABLEKS R1 R0 K0
+3: SETTABLEKS R1 R0 K0 ['Mountains']
 4: LOADB R1 1
-4: SETTABLEKS R1 R0 K1
+4: SETTABLEKS R1 R0 K1 ['Canyons']
 5: LOADB R1 1
-5: SETTABLEKS R1 R0 K2
+5: SETTABLEKS R1 R0 K2 ['Dunes']
 6: LOADB R1 1
-6: SETTABLEKS R1 R0 K3
+6: SETTABLEKS R1 R0 K3 ['Arctic']
 7: LOADB R1 1
-7: SETTABLEKS R1 R0 K4
+7: SETTABLEKS R1 R0 K4 ['Lavaflow']
 8: LOADB R1 1
-8: SETTABLEKS R1 R0 K5
+8: SETTABLEKS R1 R0 K5 ['Hills']
 9: LOADB R1 1
-9: SETTABLEKS R1 R0 K6
+9: SETTABLEKS R1 R0 K6 ['Plains']
 10: LOADB R1 1
-10: SETTABLEKS R1 R0 K7
+10: SETTABLEKS R1 R0 K7 ['Marsh']
 11: LOADB R1 1
-11: SETTABLEKS R1 R0 K8
-13: LOADK R1 K9
-14: GETIMPORT R2 11
+11: SETTABLEKS R1 R0 K8 ['Water']
+13: LOADK R1 K9 ['']
+14: GETIMPORT R2 11 [pairs]
 14: MOVE R3 R0
 14: CALL R2 1 3
 14: FORGPREP_NEXT R2 L1
@@ -2490,7 +2499,7 @@ end
 7: LOADN R1 2
 9: LOADN R2 3
 9: FORGPREP R0 L1
-11: L0: GETIMPORT R5 1
+11: L0: GETIMPORT R5 1 [print]
 11: MOVE R6 R3
 11: CALL R5 1 0
 2: L1: FORGLOOP R0 L0 1
@@ -2515,11 +2524,11 @@ end
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 2: LOADN R0 0
-4: L0: ADDK R0 R0 K0
+4: L0: ADDK R0 R0 K0 [1]
 5: LOADN R1 1
 5: JUMPIFNOTLT R1 R0 L1
-6: GETIMPORT R1 2
-6: LOADK R2 K3
+6: GETIMPORT R1 2 [print]
+6: LOADK R2 K3 ['done!']
 6: CALL R1 1 0
 10: RETURN R0 0
 3: L1: JUMPBACK L0
@@ -2543,14 +2552,14 @@ until f == 0
                         0),
         R"(
 2: LOADN R0 0
-4: L0: ADDK R0 R0 K0
-5: JUMPXEQKN R0 K0 L1 NOT
-6: GETIMPORT R1 2
+4: L0: ADDK R0 R0 K0 [1]
+5: JUMPXEQKN R0 K0 L1 NOT [1]
+6: GETIMPORT R1 2 [print]
 6: MOVE R2 R0
 6: CALL R1 1 0
 6: JUMP L2
 8: L1: LOADN R0 0
-10: L2: JUMPXEQKN R0 K3 L3
+10: L2: JUMPXEQKN R0 K3 L3 [0]
 10: JUMPBACK L0
 11: L3: RETURN R0 0
 )");
@@ -2575,14 +2584,14 @@ Table.SubTable["Key"] = {
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 2: GETVARARGS R0 3
 3: NEWTABLE R3 0 0
-5: GETTABLEKS R4 R3 K0
+5: GETTABLEKS R4 R3 K0 ['SubTable']
 5: DUPTABLE R5 5
-6: SETTABLEKS R0 R5 K1
-7: SETTABLEKS R1 R5 K2
-8: SETTABLEKS R2 R5 K3
+6: SETTABLEKS R0 R5 K1 ['Key1']
+7: SETTABLEKS R1 R5 K2 ['Key2']
+8: SETTABLEKS R2 R5 K3 ['Key3']
 9: LOADB R6 1
-9: SETTABLEKS R6 R5 K4
-5: SETTABLEKS R5 R4 K6
+9: SETTABLEKS R6 R5 K4 ['Key4']
+5: SETTABLEKS R5 R4 K6 ['Key']
 11: RETURN R0 0
 )");
 }
@@ -2605,7 +2614,7 @@ Foo:Bar(
 5: LOADN R3 1
 6: LOADN R4 2
 7: LOADN R5 3
-4: NAMECALL R1 R0 K0
+4: NAMECALL R1 R0 K0 ['Bar']
 4: CALL R1 4 0
 8: RETURN R0 0
 )");
@@ -2627,12 +2636,12 @@ Foo
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 2: GETVARARGS R0 1
 5: LOADN R4 1
-5: NAMECALL R2 R0 K0
+5: NAMECALL R2 R0 K0 ['Bar']
 5: CALL R2 2 1
 6: LOADN R4 2
-6: NAMECALL R2 R2 K1
+6: NAMECALL R2 R2 K1 ['Baz']
 6: CALL R2 2 1
-7: GETTABLEKS R1 R2 K2
+7: GETTABLEKS R1 R2 K2 ['Qux']
 7: LOADN R2 3
 7: CALL R1 1 0
 8: RETURN R0 0
@@ -2657,7 +2666,7 @@ return
 5: FASTCALL2 18 R0 R1 L0
 5: MOVE R3 R0
 5: MOVE R4 R1
-5: GETIMPORT R2 2
+5: GETIMPORT R2 2 [math.max]
 5: CALL R2 2 -1
 5: L0: RETURN R2 -1
 )");
@@ -2681,13 +2690,13 @@ a
 2: DUPTABLE R1 3
 2: DUPTABLE R2 5
 2: LOADN R3 3
-2: SETTABLEKS R3 R2 K4
-2: SETTABLEKS R2 R1 K2
-2: SETTABLEKS R1 R0 K0
-5: GETTABLEKS R2 R0 K0
-6: GETTABLEKS R1 R2 K2
+2: SETTABLEKS R3 R2 K4 ['d']
+2: SETTABLEKS R2 R1 K2 ['c']
+2: SETTABLEKS R1 R0 K0 ['b']
+5: GETTABLEKS R2 R0 K0 ['b']
+6: GETTABLEKS R1 R2 K2 ['c']
 7: LOADN R2 4
-7: SETTABLEKS R2 R1 K4
+7: SETTABLEKS R2 R1 K4 ['d']
 8: RETURN R0 0
 )");
 }
@@ -2724,35 +2733,35 @@ return result
 NEWTABLE R0 16 0
     3:     ['Mountains'] = true,
 LOADB R1 1
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['Mountains']
     4:     ['Canyons'] = true,
 LOADB R1 1
-SETTABLEKS R1 R0 K1
+SETTABLEKS R1 R0 K1 ['Canyons']
     5:     ['Dunes'] = true,
 LOADB R1 1
-SETTABLEKS R1 R0 K2
+SETTABLEKS R1 R0 K2 ['Dunes']
     6:     ['Arctic'] = true,
 LOADB R1 1
-SETTABLEKS R1 R0 K3
+SETTABLEKS R1 R0 K3 ['Arctic']
     7:     ['Lavaflow'] = true,
 LOADB R1 1
-SETTABLEKS R1 R0 K4
+SETTABLEKS R1 R0 K4 ['Lavaflow']
     8:     ['Hills'] = true,
 LOADB R1 1
-SETTABLEKS R1 R0 K5
+SETTABLEKS R1 R0 K5 ['Hills']
     9:     ['Plains'] = true,
 LOADB R1 1
-SETTABLEKS R1 R0 K6
+SETTABLEKS R1 R0 K6 ['Plains']
    10:     ['Marsh'] = true,
 LOADB R1 1
-SETTABLEKS R1 R0 K7
+SETTABLEKS R1 R0 K7 ['Marsh']
    11:     ['Water'] = true,
 LOADB R1 1
-SETTABLEKS R1 R0 K8
+SETTABLEKS R1 R0 K8 ['Water']
    13: local result = ""
-LOADK R1 K9
+LOADK R1 K9 ['']
    14: for k in pairs(kSelectedBiomes) do
-GETIMPORT R2 11
+GETIMPORT R2 11 [pairs]
 MOVE R3 R0
 CALL R2 1 3
 FORGPREP_NEXT R2 L1
@@ -2817,25 +2826,25 @@ local 8: reg 3, start pc 35 line 21, end pc 35 line 21
 4: LOADN R3 3
 4: LOADN R4 1
 4: FORNPREP R3 L1
-5: L0: GETIMPORT R6 1
+5: L0: GETIMPORT R6 1 [print]
 5: MOVE R7 R5
 5: CALL R6 1 0
 4: FORNLOOP R3 L0
-7: L1: GETIMPORT R3 3
+7: L1: GETIMPORT R3 3 [pairs]
 7: CALL R3 0 3
 7: FORGPREP_NEXT R3 L3
-8: L2: GETIMPORT R8 1
+8: L2: GETIMPORT R8 1 [print]
 8: MOVE R9 R6
 8: MOVE R10 R7
 8: CALL R8 2 0
 7: L3: FORGLOOP R3 L2 2
 11: LOADN R3 2
-12: GETIMPORT R4 1
+12: GETIMPORT R4 1 [print]
 12: LOADN R5 2
 12: CALL R4 1 0
 15: LOADN R3 2
-16: GETIMPORT R4 1
-16: GETIMPORT R5 5
+16: GETIMPORT R4 1 [print]
+16: GETIMPORT R5 5 [b]
 16: CALL R4 1 0
 18: NEWCLOSURE R3 P0
 18: CAPTURE VAL R3
@@ -2944,7 +2953,7 @@ RETURN R0 0
 LOADNIL R0
 LOADN R1 1
 LOADN R2 2
-SETTABLEKS R2 R0 K0
+SETTABLEKS R2 R0 K0 ['foo']
 MOVE R0 R1
 RETURN R0 0
 )");
@@ -2952,7 +2961,7 @@ RETURN R0 0
     // ... or a table index ...
     CHECK_EQ("\n" + compileFunction0("local a a, foo[a] = 1, 2"), R"(
 LOADNIL R0
-GETIMPORT R1 1
+GETIMPORT R1 1 [foo]
 LOADN R2 1
 LOADN R3 2
 SETTABLE R3 R1 R0
@@ -2987,8 +2996,8 @@ RETURN R0 0
     // into a temp register
     CHECK_EQ("\n" + compileFunction0("local a a, foo[a + 1] = 1, 2"), R"(
 LOADNIL R0
-GETIMPORT R1 1
-ADDK R2 R0 K2
+GETIMPORT R1 1 [foo]
+ADDK R2 R0 K2 [1]
 LOADN R0 1
 LOADN R3 2
 SETTABLE R3 R1 R2
@@ -3002,14 +3011,14 @@ TEST_CASE("FastcallBytecode")
     CHECK_EQ("\n" + compileFunction0("return math.abs(-5)"), R"(
 LOADN R1 -5
 FASTCALL1 2 R1 L0
-GETIMPORT R0 2
+GETIMPORT R0 2 [math.abs]
 CALL R0 1 -1
 L0: RETURN R0 -1
 )");
 
     // call through a local variable
     CHECK_EQ("\n" + compileFunction0("local abs = math.abs return abs(-5)"), R"(
-GETIMPORT R0 2
+GETIMPORT R0 2 [math.abs]
 LOADN R2 -5
 FASTCALL1 2 R2 L0
 MOVE R1 R0
@@ -3029,9 +3038,9 @@ L0: RETURN R0 -1
     // mutating the global in the script breaks the optimization
     CHECK_EQ("\n" + compileFunction0("math = {} return math.abs(-5)"), R"(
 NEWTABLE R0 0 0
-SETGLOBAL R0 K0
-GETGLOBAL R1 K0
-GETTABLEKS R0 R1 K1
+SETGLOBAL R0 K0 ['math']
+GETGLOBAL R1 K0 ['math']
+GETTABLEKS R0 R1 K1 ['abs']
 LOADN R1 -5
 CALL R0 1 -1
 RETURN R0 -1
@@ -3039,7 +3048,7 @@ RETURN R0 -1
 
     // mutating the local in the script breaks the optimization
     CHECK_EQ("\n" + compileFunction0("local abs = math.abs abs = nil return abs(-5)"), R"(
-GETIMPORT R0 2
+GETIMPORT R0 2 [math.abs]
 LOADNIL R0
 MOVE R1 R0
 LOADN R2 -5
@@ -3049,10 +3058,10 @@ RETURN R1 -1
 
     // mutating the global in the script breaks the optimization, even if you do this after computing the local (for simplicity)
     CHECK_EQ("\n" + compileFunction0("local abs = math.abs math = {} return abs(-5)"), R"(
-GETGLOBAL R1 K0
-GETTABLEKS R0 R1 K1
+GETGLOBAL R1 K0 ['math']
+GETTABLEKS R0 R1 K1 ['abs']
 NEWTABLE R1 0 0
-SETGLOBAL R1 K0
+SETGLOBAL R1 K0 ['math']
 MOVE R1 R0
 LOADN R2 -5
 CALL R1 1 -1
@@ -3064,9 +3073,9 @@ TEST_CASE("FastcallSelect")
 {
     // select(_, ...) compiles to a builtin call
     CHECK_EQ("\n" + compileFunction0("return (select('#', ...))"), R"(
-LOADK R1 K0
+LOADK R1 K0 ['#']
 FASTCALL1 57 R1 L0
-GETIMPORT R0 2
+GETIMPORT R0 2 [select]
 GETVARARGS R2 -1
 CALL R0 -1 1
 L0: RETURN R0 1
@@ -3083,16 +3092,16 @@ return sum
         R"(
 LOADN R0 0
 LOADN R3 1
-LOADK R5 K0
+LOADK R5 K0 ['#']
 FASTCALL1 57 R5 L0
-GETIMPORT R4 2
+GETIMPORT R4 2 [select]
 GETVARARGS R6 -1
 CALL R4 -1 1
 L0: MOVE R1 R4
 LOADN R2 1
 FORNPREP R1 L3
 L1: FASTCALL1 57 R3 L2
-GETIMPORT R4 2
+GETIMPORT R4 2 [select]
 MOVE R5 R3
 GETVARARGS R6 -1
 CALL R4 -1 1
@@ -3103,8 +3112,8 @@ L3: RETURN R0 1
 
     // currently we assume a single value return to avoid dealing with stack resizing
     CHECK_EQ("\n" + compileFunction0("return select('#', ...)"), R"(
-GETIMPORT R0 1
-LOADK R1 K2
+GETIMPORT R0 1 [select]
+LOADK R1 K2 ['#']
 GETVARARGS R2 -1
 CALL R0 -1 -1
 RETURN R0 -1
@@ -3112,17 +3121,17 @@ RETURN R0 -1
 
     // note that select with a non-variadic second argument doesn't get optimized
     CHECK_EQ("\n" + compileFunction0("return select('#')"), R"(
-GETIMPORT R0 1
-LOADK R1 K2
+GETIMPORT R0 1 [select]
+LOADK R1 K2 ['#']
 CALL R0 1 -1
 RETURN R0 -1
 )");
 
     // note that select with a non-variadic second argument doesn't get optimized
     CHECK_EQ("\n" + compileFunction0("return select('#', foo())"), R"(
-GETIMPORT R0 1
-LOADK R1 K2
-GETIMPORT R2 4
+GETIMPORT R0 1 [select]
+LOADK R1 K2 ['#']
+GETIMPORT R2 4 [foo]
 CALL R2 0 -1
 CALL R0 -1 -1
 RETURN R0 -1
@@ -3194,7 +3203,7 @@ RETURN R0 1
 )");
 
     CHECK_EQ("\n" + compileFunction0("return -0"), R"(
-LOADK R0 K0
+LOADK R0 K0 [-0]
 RETURN R0 1
 )");
 }
@@ -3253,14 +3262,14 @@ RETURN R0 1
 
     // recursive capture
     CHECK_EQ("\n" + compileFunction("local function foo() return foo() end", 1), R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 CAPTURE VAL R0
 RETURN R0 0
 )");
 
     // multi-level recursive capture
     CHECK_EQ("\n" + compileFunction("local function foo() return function() return foo() end end", 1), R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 []
 CAPTURE UPVAL U0
 RETURN R0 1
 )");
@@ -3411,12 +3420,12 @@ TEST_CASE("FastCallImportFallback")
     // note: it's important that GETGLOBAL below doesn't overwrite R2
     CHECK_EQ("\n" + fragment, R"(
 LOADN R1 1024
-LOADK R2 K1023
+LOADK R2 K1023 ['1024']
 SETTABLE R2 R0 R1
 LOADN R2 -1
 FASTCALL1 2 R2 L0
-GETGLOBAL R3 K1024
-GETTABLEKS R1 R3 K1025
+GETGLOBAL R3 K1024 ['math']
+GETTABLEKS R1 R3 K1025 ['abs']
 CALL R1 1 -1
 )");
 }
@@ -3425,25 +3434,25 @@ TEST_CASE("CompoundAssignment")
 {
     // globals vs constants
     CHECK_EQ("\n" + compileFunction0("a += 1"), R"(
-GETGLOBAL R0 K0
-ADDK R0 R0 K1
-SETGLOBAL R0 K0
+GETGLOBAL R0 K0 ['a']
+ADDK R0 R0 K1 [1]
+SETGLOBAL R0 K0 ['a']
 RETURN R0 0
 )");
 
     // globals vs expressions
     CHECK_EQ("\n" + compileFunction0("a -= a"), R"(
-GETGLOBAL R0 K0
-GETGLOBAL R1 K0
+GETGLOBAL R0 K0 ['a']
+GETGLOBAL R1 K0 ['a']
 SUB R0 R0 R1
-SETGLOBAL R0 K0
+SETGLOBAL R0 K0 ['a']
 RETURN R0 0
 )");
 
     // locals vs constants
     CHECK_EQ("\n" + compileFunction0("local a = 1 a *= 2"), R"(
 LOADN R0 1
-MULK R0 R0 K0
+MULK R0 R0 K0 [2]
 RETURN R0 0
 )");
 
@@ -3457,7 +3466,7 @@ RETURN R0 0
     // locals vs expressions
     CHECK_EQ("\n" + compileFunction0("local a = 1 a /= a + 1"), R"(
 LOADN R0 1
-ADDK R1 R0 K0
+ADDK R1 R0 K0 [1]
 DIV R0 R0 R1
 RETURN R0 0
 )");
@@ -3465,7 +3474,7 @@ RETURN R0 0
     // upvalues
     CHECK_EQ("\n" + compileFunction0("local a = 1 function foo() a += 4 end"), R"(
 GETUPVAL R0 0
-ADDK R0 R0 K0
+ADDK R0 R0 K0 [4]
 SETUPVAL R0 0
 RETURN R0 0
 )");
@@ -3473,16 +3482,16 @@ RETURN R0 0
     // table variants (indexed by string, number, variable)
     CHECK_EQ("\n" + compileFunction0("local a = {} a.foo += 5"), R"(
 NEWTABLE R0 0 0
-GETTABLEKS R1 R0 K0
-ADDK R1 R1 K1
-SETTABLEKS R1 R0 K0
+GETTABLEKS R1 R0 K0 ['foo']
+ADDK R1 R1 K1 [5]
+SETTABLEKS R1 R0 K0 ['foo']
 RETURN R0 0
 )");
 
     CHECK_EQ("\n" + compileFunction0("local a = {} a[1] += 5"), R"(
 NEWTABLE R0 0 0
 GETTABLEN R1 R0 1
-ADDK R1 R1 K0
+ADDK R1 R1 K0 [5]
 SETTABLEN R1 R0 1
 RETURN R0 0
 )");
@@ -3490,19 +3499,19 @@ RETURN R0 0
     CHECK_EQ("\n" + compileFunction0("local a = {} a[a] += 5"), R"(
 NEWTABLE R0 0 0
 GETTABLE R1 R0 R0
-ADDK R1 R1 K0
+ADDK R1 R1 K0 [5]
 SETTABLE R1 R0 R0
 RETURN R0 0
 )");
 
     // left hand side is evaluated once
     CHECK_EQ("\n" + compileFunction0("foo()[bar()] += 5"), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [foo]
 CALL R0 0 1
-GETIMPORT R1 3
+GETIMPORT R1 3 [bar]
 CALL R1 0 1
 GETTABLE R2 R0 R1
-ADDK R2 R2 K4
+ADDK R2 R2 K4 [5]
 SETTABLE R2 R0 R1
 RETURN R0 0
 )");
@@ -3512,40 +3521,40 @@ TEST_CASE("CompoundAssignmentConcat")
 {
     // basic concat
     CHECK_EQ("\n" + compileFunction0("local a = '' a ..= 'a'"), R"(
-LOADK R0 K0
+LOADK R0 K0 ['']
 MOVE R1 R0
-LOADK R2 K1
+LOADK R2 K1 ['a']
 CONCAT R0 R1 R2
 RETURN R0 0
 )");
 
     // concat chains
     CHECK_EQ("\n" + compileFunction0("local a = '' a ..= 'a' .. 'b'"), R"(
-LOADK R0 K0
+LOADK R0 K0 ['']
 MOVE R1 R0
-LOADK R2 K1
-LOADK R3 K2
+LOADK R2 K1 ['a']
+LOADK R3 K2 ['b']
 CONCAT R0 R1 R3
 RETURN R0 0
 )");
 
     CHECK_EQ("\n" + compileFunction0("local a = '' a ..= 'a' .. 'b' .. 'c'"), R"(
-LOADK R0 K0
+LOADK R0 K0 ['']
 MOVE R1 R0
-LOADK R2 K1
-LOADK R3 K2
-LOADK R4 K3
+LOADK R2 K1 ['a']
+LOADK R3 K2 ['b']
+LOADK R4 K3 ['c']
 CONCAT R0 R1 R4
 RETURN R0 0
 )");
 
     // concat on non-local
     CHECK_EQ("\n" + compileFunction0("_VERSION ..= 'a' .. 'b'"), R"(
-GETGLOBAL R1 K0
-LOADK R2 K1
-LOADK R3 K2
+GETGLOBAL R1 K0 ['_VERSION']
+LOADK R2 K1 ['a']
+LOADK R3 K2 ['b']
 CONCAT R0 R1 R3
-SETGLOBAL R0 K0
+SETGLOBAL R0 K0 ['_VERSION']
 RETURN R0 0
 )");
 }
@@ -3588,12 +3597,12 @@ JUMP L1
 L0: JUMPX L14543
 L1: FORNPREP R1 L0
 L2: ADD R0 R0 R3
-LOADK R4 K0
+LOADK R4 K0 [150000]
 JUMP L4
 L3: JUMPX L14543
 L4: JUMPIFLT R4 R0 L3
 ADD R0 R0 R3
-LOADK R4 K0
+LOADK R4 K0 [150000]
 JUMP L6
 L5: JUMPX L14543
 )");
@@ -3606,10 +3615,10 @@ L5: JUMPX L14543
 
     CHECK_EQ("\n" + tail, R"(
 ADD R0 R0 R3
-LOADK R4 K0
+LOADK R4 K0 [150000]
 JUMPIFLT R4 R0 L14543
 ADD R0 R0 R3
-LOADK R4 K0
+LOADK R4 K0 [150000]
 JUMPIFLT R4 R0 L14543
 JUMP L14542
 L14541: JUMPX L2
@@ -3634,13 +3643,13 @@ return obj:Method(1):Method(2):Method(3)
         R"(
 GETVARARGS R0 1
 LOADN R3 1
-NAMECALL R1 R0 K0
+NAMECALL R1 R0 K0 ['Method']
 CALL R1 2 1
 LOADN R3 2
-NAMECALL R1 R1 K0
+NAMECALL R1 R1 K0 ['Method']
 CALL R1 2 1
 LOADN R3 3
-NAMECALL R1 R1 K0
+NAMECALL R1 R1 K0 ['Method']
 CALL R1 2 -1
 RETURN R1 -1
 )");
@@ -3664,7 +3673,7 @@ local a = g()
 return a
 )"),
         R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [g]
 CALL R0 0 1
 RETURN R0 1
 )");
@@ -3676,7 +3685,7 @@ return a
 )"),
         R"(
 LOADN R0 1
-GETIMPORT R1 1
+GETIMPORT R1 1 [g]
 CALL R1 0 1
 RETURN R0 1
 )");
@@ -3690,7 +3699,7 @@ local b = obj == 1
 )"),
         R"(
 GETVARARGS R0 1
-JUMPXEQKN R0 K0 L0
+JUMPXEQKN R0 K0 L0 [1]
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
@@ -3702,7 +3711,7 @@ local b = 1 == obj
 )"),
         R"(
 GETVARARGS R0 1
-JUMPXEQKN R0 K0 L0
+JUMPXEQKN R0 K0 L0 [1]
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
@@ -3714,7 +3723,7 @@ local b = "Hello, Sailor!" == obj
 )"),
         R"(
 GETVARARGS R0 1
-JUMPXEQKS R0 K0 L0
+JUMPXEQKS R0 K0 L0 ['Hello, Sailor!']
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
@@ -3780,8 +3789,8 @@ return t['a']
         R"(
 DUPTABLE R0 1
 LOADN R1 2
-SETTABLEKS R1 R0 K0
-GETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['a']
+GETTABLEKS R1 R0 K0 ['a']
 RETURN R1 1
 )");
 
@@ -3792,7 +3801,7 @@ t['a'] = 2
         R"(
 NEWTABLE R0 0 0
 LOADN R1 2
-SETTABLEKS R1 R0 K0
+SETTABLEKS R1 R0 K0 ['a']
 RETURN R0 0
 )");
 }
@@ -3807,11 +3816,11 @@ print(2)
                         1),
         R"(
 2: COVERAGE
-2: GETIMPORT R0 1
+2: GETIMPORT R0 1 [print]
 2: LOADN R1 1
 2: CALL R0 1 0
 3: COVERAGE
-3: GETIMPORT R0 1
+3: GETIMPORT R0 1 [print]
 3: LOADN R1 2
 3: CALL R0 1 0
 4: RETURN R0 0
@@ -3828,15 +3837,15 @@ end
                         1),
         R"(
 2: COVERAGE
-2: GETIMPORT R0 1
+2: GETIMPORT R0 1 [x]
 2: JUMPIFNOT R0 L0
 3: COVERAGE
-3: GETIMPORT R0 3
+3: GETIMPORT R0 3 [print]
 3: LOADN R1 1
 3: CALL R0 1 0
 7: RETURN R0 0
 5: L0: COVERAGE
-5: GETIMPORT R0 3
+5: GETIMPORT R0 3 [print]
 5: LOADN R1 2
 5: CALL R0 1 0
 7: RETURN R0 0
@@ -3856,15 +3865,15 @@ end
                         1),
         R"(
 2: COVERAGE
-2: GETIMPORT R0 1
+2: GETIMPORT R0 1 [x]
 2: JUMPIFNOT R0 L0
 4: COVERAGE
-4: GETIMPORT R0 3
+4: GETIMPORT R0 3 [print]
 4: LOADN R1 1
 4: CALL R0 1 0
 9: RETURN R0 0
 7: L0: COVERAGE
-7: GETIMPORT R0 3
+7: GETIMPORT R0 3 [print]
 7: LOADN R1 2
 7: CALL R0 1 0
 9: RETURN R0 0
@@ -3891,13 +3900,13 @@ local t = {
 4: COVERAGE
 4: COVERAGE
 4: LOADN R2 1
-4: SETTABLEKS R2 R1 K0
+4: SETTABLEKS R2 R1 K0 ['a']
 5: COVERAGE
 5: COVERAGE
 5: LOADN R2 2
-5: SETTABLEKS R2 R1 K1
+5: SETTABLEKS R2 R1 K1 ['b']
 6: COVERAGE
-6: SETTABLEKS R0 R1 K2
+6: SETTABLEKS R0 R1 K2 ['c']
 8: RETURN R0 0
 )");
 }
@@ -3910,7 +3919,7 @@ return function() end
 )",
                         1),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 []
 RETURN R0 1
 )");
 
@@ -3920,7 +3929,7 @@ return function() print("hi") end
 )",
                         1),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 []
 RETURN R0 1
 )");
 
@@ -3933,7 +3942,7 @@ end
 )",
                         1),
         R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [print]
 NEWCLOSURE R1 P0
 CAPTURE VAL R0
 RETURN R1 1
@@ -3946,7 +3955,7 @@ return function() print("hi") end
 )",
                         1),
         R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [setfenv]
 LOADN R1 1
 NEWTABLE R2 0 0
 CALL R0 2 0
@@ -3978,7 +3987,7 @@ end
 )",
                         1),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 []
 CAPTURE UPVAL U0
 RETURN R0 1
 )");
@@ -4027,9 +4036,9 @@ end
 )",
                         2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['bar']
 CAPTURE UPVAL U0
-DUPCLOSURE R1 K1
+DUPCLOSURE R1 K1 []
 CAPTURE VAL R0
 RETURN R1 1
 )");
@@ -4055,7 +4064,7 @@ RETURN R2 1
 
     // we also allow recursive function captures to share the object, even when it's not top-level
     CHECK_EQ("\n" + compileFunction("function test() local function foo() return foo() end end", 1), R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 CAPTURE VAL R0
 RETURN R0 0
 )");
@@ -4097,16 +4106,16 @@ LOADN R2 1
 LOADN R0 10
 LOADN R1 1
 FORNPREP R0 L1
-L0: GETIMPORT R3 1
+L0: GETIMPORT R3 1 [print]
 NEWCLOSURE R4 P0
 CAPTURE VAL R2
 CALL R3 1 0
 FORNLOOP R0 L0
-L1: GETIMPORT R0 3
+L1: GETIMPORT R0 3 [pairs]
 GETVARARGS R1 -1
 CALL R0 -1 3
 FORGPREP_NEXT R0 L3
-L2: GETIMPORT R5 1
+L2: GETIMPORT R5 1 [print]
 NEWCLOSURE R6 P1
 CAPTURE VAL R3
 CALL R5 1 0
@@ -4115,7 +4124,7 @@ LOADN R2 1
 LOADN R0 10
 LOADN R1 1
 FORNPREP R0 L5
-L4: GETIMPORT R3 1
+L4: GETIMPORT R3 1 [print]
 NEWCLOSURE R4 P2
 CAPTURE VAL R2
 CALL R3 1 0
@@ -4140,24 +4149,24 @@ workspace.print()
 
     // Check Roblox globals are no longer here
     CHECK_EQ("\n" + compileFunction0(source), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [print]
 CALL R0 0 0
-GETIMPORT R0 3
+GETIMPORT R0 3 [Game.print]
 CALL R0 0 0
-GETIMPORT R0 5
+GETIMPORT R0 5 [Workspace.print]
 CALL R0 0 0
-GETIMPORT R1 7
-GETTABLEKS R0 R1 K0
+GETIMPORT R1 7 [_G]
+GETTABLEKS R0 R1 K0 ['print']
 CALL R0 0 0
-GETIMPORT R0 9
+GETIMPORT R0 9 [game.print]
 CALL R0 0 0
-GETIMPORT R0 11
+GETIMPORT R0 11 [plugin.print]
 CALL R0 0 0
-GETIMPORT R0 13
+GETIMPORT R0 13 [script.print]
 CALL R0 0 0
-GETIMPORT R0 15
+GETIMPORT R0 15 [shared.print]
 CALL R0 0 0
-GETIMPORT R0 17
+GETIMPORT R0 17 [workspace.print]
 CALL R0 0 0
 RETURN R0 0
 )");
@@ -4171,31 +4180,31 @@ RETURN R0 0
     Luau::compileOrThrow(bcb, source, options);
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [print]
 CALL R0 0 0
-GETIMPORT R1 3
-GETTABLEKS R0 R1 K0
+GETIMPORT R1 3 [Game]
+GETTABLEKS R0 R1 K0 ['print']
 CALL R0 0 0
-GETIMPORT R1 5
-GETTABLEKS R0 R1 K0
+GETIMPORT R1 5 [Workspace]
+GETTABLEKS R0 R1 K0 ['print']
 CALL R0 0 0
-GETIMPORT R1 7
-GETTABLEKS R0 R1 K0
+GETIMPORT R1 7 [_G]
+GETTABLEKS R0 R1 K0 ['print']
 CALL R0 0 0
-GETIMPORT R1 9
-GETTABLEKS R0 R1 K0
+GETIMPORT R1 9 [game]
+GETTABLEKS R0 R1 K0 ['print']
 CALL R0 0 0
-GETIMPORT R1 11
-GETTABLEKS R0 R1 K0
+GETIMPORT R1 11 [plugin]
+GETTABLEKS R0 R1 K0 ['print']
 CALL R0 0 0
-GETIMPORT R1 13
-GETTABLEKS R0 R1 K0
+GETIMPORT R1 13 [script]
+GETTABLEKS R0 R1 K0 ['print']
 CALL R0 0 0
-GETIMPORT R1 15
-GETTABLEKS R0 R1 K0
+GETIMPORT R1 15 [shared]
+GETTABLEKS R0 R1 K0 ['print']
 CALL R0 0 0
-GETIMPORT R1 17
-GETTABLEKS R0 R1 K0
+GETIMPORT R1 17 [workspace]
+GETTABLEKS R0 R1 K0 ['print']
 CALL R0 0 0
 RETURN R0 0
 )");
@@ -4214,8 +4223,8 @@ TEST_CASE("ConstantsNoFolding")
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 LOADNIL R0
 LOADB R1 1
-LOADK R2 K0
-LOADK R3 K1
+LOADK R2 K0 [42]
+LOADK R3 K1 ['hello']
 RETURN R0 4
 )");
 }
@@ -4236,7 +4245,7 @@ LOADN R1 1
 LOADN R2 2
 LOADN R3 3
 FASTCALL 54 L0
-GETIMPORT R0 2
+GETIMPORT R0 2 [Vector3.new]
 CALL R0 3 -1
 L0: RETURN R0 -1
 )");
@@ -4249,8 +4258,8 @@ TEST_CASE("TypeAssertion")
 print(foo() :: typeof(error("compile time")))
 )"),
         R"(
-GETIMPORT R0 1
-GETIMPORT R1 3
+GETIMPORT R0 1 [print]
+GETIMPORT R1 3 [foo]
 CALL R1 0 1
 CALL R0 1 0
 RETURN R0 0
@@ -4261,8 +4270,8 @@ RETURN R0 0
 print(foo())
 )"),
         R"(
-GETIMPORT R0 1
-GETIMPORT R1 3
+GETIMPORT R0 1 [print]
+GETIMPORT R1 3 [foo]
 CALL R1 0 -1
 CALL R0 -1 0
 RETURN R0 0
@@ -4295,12 +4304,12 @@ return a + 1, a - 1, a / 1, a * 1, a % 1, a ^ 1
 )"),
         R"(
 GETVARARGS R0 1
-ADDK R1 R0 K0
-SUBK R2 R0 K0
-DIVK R3 R0 K0
-MULK R4 R0 K0
-MODK R5 R0 K0
-POWK R6 R0 K0
+ADDK R1 R0 K0 [1]
+SUBK R2 R0 K0 [1]
+DIVK R3 R0 K0 [1]
+MULK R4 R0 K0 [1]
+MODK R5 R0 K0 [1]
+POWK R6 R0 K0 [1]
 RETURN R1 6
 )");
 }
@@ -4413,20 +4422,20 @@ LOADN R3 0
 LOADN R1 3
 LOADN R2 1
 FORNPREP R1 L1
-L0: MULK R5 R3 K1
-ADDK R4 R5 K0
+L0: MULK R5 R3 K1 [4]
+ADDK R4 R5 K0 [1]
 LOADN R5 0
 SETTABLE R5 R0 R4
-MULK R5 R3 K1
-ADDK R4 R5 K2
+MULK R5 R3 K1 [4]
+ADDK R4 R5 K2 [2]
 LOADN R5 0
 SETTABLE R5 R0 R4
-MULK R5 R3 K1
-ADDK R4 R5 K3
+MULK R5 R3 K1 [4]
+ADDK R4 R5 K3 [3]
 LOADN R5 0
 SETTABLE R5 R0 R4
-MULK R5 R3 K1
-ADDK R4 R5 K1
+MULK R5 R3 K1 [4]
+ADDK R4 R5 K1 [4]
 LOADN R5 0
 SETTABLE R5 R0 R4
 FORNLOOP R1 L0
@@ -4464,9 +4473,9 @@ end
 )",
                         0, 2),
         R"(
-GETIMPORT R2 1
-GETIMPORT R0 3
-GETIMPORT R1 5
+GETIMPORT R2 1 [x]
+GETIMPORT R0 3 [y]
+GETIMPORT R1 5 [z]
 FORNPREP R0 L1
 L0: FORNLOOP R0 L0
 L1: RETURN R0 0
@@ -4496,7 +4505,7 @@ end
         R"(
 LOADN R2 1
 LOADN R0 2
-LOADK R1 K0
+LOADK R1 K0 [0.10000000000000001]
 FORNPREP R0 L1
 L0: FORNLOOP R0 L0
 L1: RETURN R0 0
@@ -4509,8 +4518,8 @@ end
 )",
                         0, 2),
         R"(
-LOADK R2 K0
-LOADK R0 K1
+LOADK R2 K0 [4294967295]
+LOADK R0 K1 [4294967296]
 LOADN R1 1
 FORNPREP R0 L1
 L0: FORNLOOP R0 L0
@@ -4535,17 +4544,17 @@ end
 )",
                         0, 2),
         R"(
-GETIMPORT R0 2
+GETIMPORT R0 2 [math.random]
 CALL R0 0 1
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFLT R0 R1 L0
-GETIMPORT R0 2
+GETIMPORT R0 2 [math.random]
 CALL R0 0 1
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFLT R0 R1 L0
-GETIMPORT R0 2
+GETIMPORT R0 2 [math.random]
 CALL R0 0 1
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFLT R0 R1 L0
 L0: RETURN R0 0
 )");
@@ -4561,25 +4570,25 @@ end
 )",
                         0, 2),
         R"(
-GETIMPORT R0 2
+GETIMPORT R0 2 [math.random]
 CALL R0 0 1
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFLT R0 R1 L0
-GETIMPORT R0 5
+GETIMPORT R0 5 [print]
 LOADN R1 1
 CALL R0 1 0
-L0: GETIMPORT R0 2
+L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFLT R0 R1 L1
-GETIMPORT R0 5
+GETIMPORT R0 5 [print]
 LOADN R1 2
 CALL R0 1 0
-L1: GETIMPORT R0 2
+L1: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
-LOADK R1 K3
+LOADK R1 K3 [0.5]
 JUMPIFLT R0 R1 L2
-GETIMPORT R0 5
+GETIMPORT R0 5 [print]
 LOADN R1 3
 CALL R0 1 0
 L2: RETURN R0 0
@@ -4598,20 +4607,20 @@ end
 )",
                         1, 2),
         R"(
-GETIMPORT R0 1
+GETIMPORT R0 1 [global]
 LOADN R1 1
 CALL R0 1 1
-GETIMPORT R1 3
+GETIMPORT R1 3 [print]
 NEWCLOSURE R2 P0
 CAPTURE REF R0
 CALL R1 1 0
-GETIMPORT R1 6
+GETIMPORT R1 6 [math.random]
 CALL R1 0 1
-LOADK R2 K7
+LOADK R2 K7 [0.5]
 JUMPIFNOTLT R1 R2 L0
 CLOSEUPVALS R0
 RETURN R0 0
-L0: ADDK R0 R0 K8
+L0: ADDK R0 R0 K8 [1]
 CLOSEUPVALS R0
 RETURN R0 0
 )");
@@ -4797,10 +4806,10 @@ LOADN R2 1
 FORNPREP R1 L3
 L0: FASTCALL1 24 R3 L1
 MOVE R6 R3
-GETIMPORT R5 2
+GETIMPORT R5 2 [math.sin]
 CALL R5 1 -1
 L1: FASTCALL 2 L2
-GETIMPORT R4 4
+GETIMPORT R4 4 [math.abs]
 CALL R4 -1 1
 L2: SETTABLE R4 R0 R3
 FORNLOOP R1 L0
@@ -4825,7 +4834,7 @@ LOADN R1 1
 FORNPREP R0 L1
 L0: MOVE R3 R2
 LOADN R3 3
-GETIMPORT R4 1
+GETIMPORT R4 1 [print]
 MOVE R5 R3
 CALL R4 1 0
 FORNLOOP R0 L0
@@ -4850,44 +4859,44 @@ end
 )",
                         0, 2),
         R"(
-FASTCALL2K 39 R1 K0 L0
+FASTCALL2K 39 R1 K0 L0 [0]
 MOVE R4 R1
-LOADK R5 K0
-GETIMPORT R3 3
+LOADK R5 K0 [0]
+GETIMPORT R3 3 [bit32.rshift]
 CALL R3 2 1
-L0: FASTCALL2K 29 R3 K4 L1
-LOADK R4 K4
-GETIMPORT R2 6
+L0: FASTCALL2K 29 R3 K4 L1 [255]
+LOADK R4 K4 [255]
+GETIMPORT R2 6 [bit32.band]
 CALL R2 2 1
 L1: SETTABLEN R2 R0 1
-FASTCALL2K 39 R1 K7 L2
+FASTCALL2K 39 R1 K7 L2 [8]
 MOVE R4 R1
-LOADK R5 K7
-GETIMPORT R3 3
+LOADK R5 K7 [8]
+GETIMPORT R3 3 [bit32.rshift]
 CALL R3 2 1
-L2: FASTCALL2K 29 R3 K4 L3
-LOADK R4 K4
-GETIMPORT R2 6
+L2: FASTCALL2K 29 R3 K4 L3 [255]
+LOADK R4 K4 [255]
+GETIMPORT R2 6 [bit32.band]
 CALL R2 2 1
 L3: SETTABLEN R2 R0 2
-FASTCALL2K 39 R1 K8 L4
+FASTCALL2K 39 R1 K8 L4 [16]
 MOVE R4 R1
-LOADK R5 K8
-GETIMPORT R3 3
+LOADK R5 K8 [16]
+GETIMPORT R3 3 [bit32.rshift]
 CALL R3 2 1
-L4: FASTCALL2K 29 R3 K4 L5
-LOADK R4 K4
-GETIMPORT R2 6
+L4: FASTCALL2K 29 R3 K4 L5 [255]
+LOADK R4 K4 [255]
+GETIMPORT R2 6 [bit32.band]
 CALL R2 2 1
 L5: SETTABLEN R2 R0 3
-FASTCALL2K 39 R1 K9 L6
+FASTCALL2K 39 R1 K9 L6 [24]
 MOVE R4 R1
-LOADK R5 K9
-GETIMPORT R3 3
+LOADK R5 K9 [24]
+GETIMPORT R3 3 [bit32.rshift]
 CALL R3 2 1
-L6: FASTCALL2K 29 R3 K4 L7
-LOADK R4 K4
-GETIMPORT R2 6
+L6: FASTCALL2K 29 R3 K4 L7 [255]
+LOADK R4 K4 [255]
+GETIMPORT R2 6 [bit32.band]
 CALL R2 2 1
 L7: SETTABLEN R2 R0 4
 RETURN R0 0
@@ -4909,13 +4918,13 @@ LOADN R4 0
 LOADN R2 3
 LOADN R3 1
 FORNPREP R2 L1
-L0: ADDK R5 R4 K0
-GETGLOBAL R7 K1
-GETTABLEKS R6 R7 K2
-GETGLOBAL R8 K1
-GETTABLEKS R7 R8 K3
+L0: ADDK R5 R4 K0 [1]
+GETGLOBAL R7 K1 ['bit32']
+GETTABLEKS R6 R7 K2 ['band']
+GETGLOBAL R8 K1 ['bit32']
+GETTABLEKS R7 R8 K3 ['rshift']
 MOVE R8 R1
-MULK R9 R4 K4
+MULK R9 R4 K4 [8]
 CALL R7 2 1
 LOADN R8 255
 CALL R6 2 1
@@ -4938,11 +4947,11 @@ LOADN R4 0
 LOADN R2 3
 LOADN R3 1
 FORNPREP R2 L3
-L0: ADDK R5 R4 K0
-MULK R9 R4 K1
+L0: ADDK R5 R4 K0 [1]
+MULK R9 R4 K1 [8]
 FASTCALL2 39 R1 R9 L1
 MOVE R8 R1
-GETIMPORT R7 4
+GETIMPORT R7 4 [bit32.rshift]
 CALL R7 2 1
 L1: LOADN R8 255
 LOADN R9 255
@@ -4950,7 +4959,7 @@ LOADN R10 255
 LOADN R11 255
 LOADN R12 255
 FASTCALL 29 L2
-GETIMPORT R6 6
+GETIMPORT R6 6 [bit32.band]
 CALL R6 6 1
 L2: SETTABLE R6 R0 R5
 FORNLOOP R2 L0
@@ -4971,7 +4980,7 @@ return x
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 LOADN R1 42
 RETURN R1 1
 )");
@@ -4987,7 +4996,7 @@ return x
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 LOADN R1 42
 RETURN R1 1
 )");
@@ -5007,8 +5016,8 @@ return x
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
-GETIMPORT R2 3
+DUPCLOSURE R0 K0 ['foo']
+GETIMPORT R2 3 [math.random]
 CALL R2 0 1
 MOVE R1 R2
 RETURN R1 1
@@ -5030,8 +5039,8 @@ return x
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
-GETIMPORT R2 3
+DUPCLOSURE R0 K0 ['foo']
+GETIMPORT R2 3 [math.random]
 CALL R2 0 1
 LOADN R1 5
 RETURN R1 1
@@ -5052,7 +5061,7 @@ return x
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 CALL R1 0 1
 RETURN R1 1
@@ -5070,10 +5079,10 @@ return x
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 CALL R1 0 1
-GETIMPORT R2 2
+GETIMPORT R2 2 [getfenv]
 CALL R2 0 0
 RETURN R1 1
 )");
@@ -5095,7 +5104,7 @@ return x
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 NEWTABLE R2 0 0
 LOADN R3 1
 SETTABLEN R3 R2 1
@@ -5121,7 +5130,7 @@ return x
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 NEWTABLE R2 0 0
 LOADN R3 1
 SETTABLEN R3 R2 1
@@ -5147,7 +5156,7 @@ return x
 )",
                         2, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 LOADN R2 1
 NEWCLOSURE R1 P1
 CAPTURE VAL R2
@@ -5173,9 +5182,9 @@ return x
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 LOADN R2 42
-ORK R2 R2 K1
+ORK R2 R2 K1 [5]
 MOVE R1 R2
 RETURN R1 1
 )");
@@ -5192,7 +5201,7 @@ return y
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
 MOVE R2 R1
 RETURN R2 1
@@ -5211,7 +5220,7 @@ return y
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
 LOADNIL R1
 MOVE R3 R1
@@ -5232,7 +5241,7 @@ return x
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 LOADN R2 42
 CALL R1 1 1
@@ -5276,7 +5285,7 @@ return x
                         1, 2),
         R"(
 GETVARARGS R0 1
-DUPCLOSURE R1 K0
+DUPCLOSURE R1 K0 ['foo']
 CAPTURE VAL R0
 LOADN R3 42
 ADD R2 R3 R0
@@ -5298,7 +5307,7 @@ end
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 CAPTURE UPVAL U0
 LOADN R2 42
 GETUPVAL R3 0
@@ -5321,7 +5330,7 @@ return y
 )",
                         2, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
 NEWCLOSURE R2 P1
 CAPTURE VAL R1
@@ -5339,7 +5348,7 @@ return y
 )",
                         2, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 LOADN R2 42
 NEWCLOSURE R1 P1
 CAPTURE VAL R2
@@ -5358,7 +5367,7 @@ return y
 )",
                         2, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 LOADNIL R1
 LOADN R1 42
 MOVE R3 R1
@@ -5379,9 +5388,9 @@ return y
 )",
                         2, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 LOADNIL R2
-ORK R2 R2 K1
+ORK R2 R2 K1 [42]
 NEWCLOSURE R1 P1
 CAPTURE REF R2
 CLOSEUPVALS R2
@@ -5401,11 +5410,11 @@ return y
 )",
                         2, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
 MOVE R3 R1
-ORK R3 R3 K1
-GETIMPORT R4 3
+ORK R3 R3 K1 [42]
+GETIMPORT R4 3 [print]
 NEWCLOSURE R5 P1
 CAPTURE REF R3
 CALL R4 1 0
@@ -5431,7 +5440,7 @@ return y, x
 )",
                         2, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
 JUMPIF R1 L0
 LOADNIL R3
@@ -5460,7 +5469,7 @@ return a, b
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 LOADNIL R1
 LOADNIL R2
 RETURN R1 2
@@ -5477,7 +5486,7 @@ return a, b
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 LOADNIL R1
 LOADNIL R2
 RETURN R1 2
@@ -5493,7 +5502,7 @@ return foo()
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 CALL R1 0 -1
 RETURN R1 -1
@@ -5515,7 +5524,7 @@ return x
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 LOADNIL R1
 RETURN R1 1
 )");
@@ -5531,10 +5540,10 @@ return x
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
-LOADK R3 K1
+DUPCLOSURE R0 K0 ['foo']
+LOADK R3 K1 [1.5]
 FASTCALL1 20 R3 L0
-GETIMPORT R2 4
+GETIMPORT R2 4 [math.modf]
 CALL R2 1 2
 L0: ADD R1 R2 R3
 RETURN R1 1
@@ -5551,7 +5560,7 @@ return x
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R2 2
 ADD R1 R2 R3
 RETURN R1 1
@@ -5568,8 +5577,8 @@ return x
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
-GETIMPORT R2 2
+DUPCLOSURE R0 K0 ['foo']
+GETIMPORT R2 2 [print]
 CALL R2 0 1
 LOADN R1 42
 RETURN R1 1
@@ -5587,7 +5596,7 @@ return x
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 LOADNIL R2
 LOADN R2 42
 MOVE R1 R2
@@ -5612,9 +5621,9 @@ return a, b, c, d
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 2
-ADDK R3 R1 K1
+ADDK R3 R1 K1 [1]
 LOADN R5 1
 ADD R4 R5 R1
 LOADN R5 3
@@ -5643,9 +5652,9 @@ return (baz())
 )",
                         3, 2),
         R"(
-DUPCLOSURE R0 K0
-DUPCLOSURE R1 K1
-DUPCLOSURE R2 K2
+DUPCLOSURE R0 K0 ['foo']
+DUPCLOSURE R1 K1 ['bar']
+DUPCLOSURE R2 K2 ['baz']
 LOADN R4 43
 LOADN R5 41
 MUL R3 R4 R5
@@ -5671,7 +5680,7 @@ return (foo())
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 CALL R1 0 1
 RETURN R1 1
@@ -5687,7 +5696,7 @@ return (foo())
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 CALL R1 0 1
 RETURN R1 1
@@ -5711,9 +5720,9 @@ return (baz())
 )",
                         3, 2),
         R"(
-DUPCLOSURE R0 K0
-DUPCLOSURE R1 K1
-DUPCLOSURE R2 K2
+DUPCLOSURE R0 K0 ['foo']
+DUPCLOSURE R1 K1 ['bar']
+DUPCLOSURE R2 K2 ['baz']
 MOVE R4 R0
 LOADN R5 42
 LOADN R6 1
@@ -5772,7 +5781,7 @@ foo(foo(foo,foo(foo,foo))[foo])
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 MOVE R2 R0
 MOVE R3 R0
 MOVE R4 R0
@@ -5797,17 +5806,17 @@ set({})
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['set']
 NEWTABLE R2 0 0
-FASTCALL2K 49 R2 K1 L0
-LOADK R3 K1
-GETIMPORT R1 3
+FASTCALL2K 49 R2 K1 L0 [false]
+LOADK R3 K1 [false]
+GETIMPORT R1 3 [rawset]
 CALL R1 2 0
 L0: NEWTABLE R1 0 0
 NEWTABLE R3 0 0
 FASTCALL2 49 R3 R1 L1
 MOVE R4 R1
-GETIMPORT R2 3
+GETIMPORT R2 3 [rawset]
 CALL R2 2 0
 L1: RETURN R0 0
 )");
@@ -5838,7 +5847,7 @@ end
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 []
 L0: LOADNIL R4
 LOADNIL R5
 CALL R4 1 1
@@ -5847,7 +5856,7 @@ GETTABLE R3 R4 R5
 JUMPIFNOT R3 L1
 JUMPBACK L0
 L1: LOADNIL R2
-GETTABLEKS R1 R2 K1
+GETTABLEKS R1 R2 K1 ['']
 JUMPIFNOT R1 L2
 RETURN R0 0
 L2: JUMPIFNOT R1 L3
@@ -5889,7 +5898,7 @@ return y
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
 MOVE R3 R1
 LOADN R3 42
@@ -5912,13 +5921,13 @@ return y
 )",
                         2, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
 NEWCLOSURE R2 P1
 CAPTURE REF R1
-SETGLOBAL R2 K1
+SETGLOBAL R2 K1 ['mutator']
 MOVE R3 R1
-GETGLOBAL R4 K1
+GETGLOBAL R4 K1 ['mutator']
 CALL R4 0 0
 MOVE R2 R3
 CLOSEUPVALS R1
@@ -5938,7 +5947,7 @@ return foo(42)
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 LOADN R2 42
 CALL R1 1 -1
@@ -5955,7 +5964,7 @@ return foo(42)
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 LOADN R1 42
 RETURN R1 1
 )");
@@ -5974,8 +5983,8 @@ return bar(42)
 )",
                         2, 2),
         R"(
-DUPCLOSURE R0 K0
-DUPCLOSURE R1 K1
+DUPCLOSURE R0 K0 ['foo']
+DUPCLOSURE R1 K1 ['bar']
 LOADN R2 42
 RETURN R2 1
 )");
@@ -5990,7 +5999,7 @@ return foo(42)
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 CAPTURE VAL R0
 MOVE R1 R0
 LOADN R2 42
@@ -6008,7 +6017,7 @@ return foo(42)
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 LOADN R2 42
 CALL R1 1 -1
@@ -6046,7 +6055,7 @@ return x, y + 1
         R"(
 GETVARARGS R0 2
 MOVE R2 R0
-ADDK R3 R1 K0
+ADDK R3 R1 K0 [1]
 RETURN R2 2
 )");
 
@@ -6093,7 +6102,7 @@ return foo(42)
 )",
                         1, 1),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 LOADN R2 42
 CALL R1 1 -1
@@ -6111,7 +6120,7 @@ return foo(42)
 )",
                         1, 1),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 LOADN R1 42
 RETURN R1 1
 )");
@@ -6126,7 +6135,7 @@ return foo(42)
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 LOADN R1 42
 RETURN R1 1
 )");
@@ -6142,7 +6151,7 @@ return foo(42)
 )",
                         1, 2),
         R"(
-DUPCLOSURE R0 K0
+DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 LOADN R2 42
 CALL R1 1 -1
@@ -6235,7 +6244,7 @@ LOADN R22 0
 LOADN R23 3
 LOADN R24 0
 LOADN R25 0
-LOADK R26 K0
+LOADK R26 K0 [4294967291]
 LOADN R27 5
 LOADN R28 1
 LOADN R29 1
@@ -6248,19 +6257,19 @@ LOADN R35 200
 LOADN R36 106
 LOADN R37 200
 LOADN R38 50
-LOADK R39 K1
+LOADK R39 K1 ['number']
 LOADN R40 97
 LOADN R41 98
 LOADN R42 3
-LOADK R43 K2
+LOADK R43 K2 ['boolean']
 LOADN R44 0
 LOADN R45 1
 LOADN R46 8
 LOADN R47 1
 LOADN R48 101
 LOADN R49 2
-LOADK R50 K3
-LOADK R51 K4
+LOADK R50 K3 ['nil']
+LOADK R51 K4 ['string']
 RETURN R0 52
 )");
 }
@@ -6283,53 +6292,53 @@ return
                         0, 2),
         R"(
 FASTCALL 2 L0
-GETIMPORT R0 2
+GETIMPORT R0 2 [math.abs]
 CALL R0 0 1
 L0: LOADN R2 1
-FASTCALL2K 18 R2 K3 L1
-LOADK R3 K3
-GETIMPORT R1 5
+FASTCALL2K 18 R2 K3 L1 [true]
+LOADK R3 K3 [true]
+GETIMPORT R1 5 [math.max]
 CALL R1 2 1
-L1: LOADK R3 K6
-FASTCALL2K 41 R3 K7 L2
-LOADK R4 K7
-GETIMPORT R2 10
+L1: LOADK R3 K6 ['abc']
+FASTCALL2K 41 R3 K7 L2 [42]
+LOADK R4 K7 [42]
+GETIMPORT R2 10 [string.byte]
 CALL R2 2 1
 L2: LOADN R4 10
-FASTCALL2K 39 R4 K7 L3
-LOADK R5 K7
-GETIMPORT R3 13
+FASTCALL2K 39 R4 K7 L3 [42]
+LOADK R5 K7 [42]
+GETIMPORT R3 13 [bit32.rshift]
 CALL R3 2 1
 L3: LOADN R5 1
 LOADN R6 2
-LOADK R7 K14
+LOADK R7 K14 ['3']
 FASTCALL 34 L4
-GETIMPORT R4 16
+GETIMPORT R4 16 [bit32.extract]
 CALL R4 3 1
 L4: LOADN R6 1
-FASTCALL2K 31 R6 K3 L5
-LOADK R7 K3
-GETIMPORT R5 18
+FASTCALL2K 31 R6 K3 L5 [true]
+LOADK R7 K3 [true]
+GETIMPORT R5 18 [bit32.bor]
 CALL R5 2 1
 L5: LOADN R7 1
-FASTCALL2K 29 R7 K3 L6
-LOADK R8 K3
-GETIMPORT R6 20
+FASTCALL2K 29 R7 K3 L6 [true]
+LOADK R8 K3 [true]
+GETIMPORT R6 20 [bit32.band]
 CALL R6 2 1
 L6: LOADN R8 1
-FASTCALL2K 32 R8 K3 L7
-LOADK R9 K3
-GETIMPORT R7 22
+FASTCALL2K 32 R8 K3 L7 [true]
+LOADK R9 K3 [true]
+GETIMPORT R7 22 [bit32.bxor]
 CALL R7 2 1
 L7: LOADN R9 1
-FASTCALL2K 33 R9 K3 L8
-LOADK R10 K3
-GETIMPORT R8 24
+FASTCALL2K 33 R9 K3 L8 [true]
+LOADK R10 K3 [true]
+GETIMPORT R8 24 [bit32.btest]
 CALL R8 2 1
 L8: LOADN R10 1
-FASTCALL2K 19 R10 K3 L9
-LOADK R11 K3
-GETIMPORT R9 26
+FASTCALL2K 19 R10 K3 L9 [true]
+LOADK R11 K3 [true]
+GETIMPORT R9 26 [math.min]
 CALL R9 2 -1
 L9: RETURN R0 -1
 )");
@@ -6414,20 +6423,20 @@ end
 )",
                         0, 2),
         R"(
-GETTABLEKS R2 R0 K0
-FASTCALL2K 29 R2 K1 L0
-LOADK R3 K1
-GETIMPORT R1 4
+GETTABLEKS R2 R0 K0 ['pendingLanes']
+FASTCALL2K 29 R2 K1 L0 [3221225471]
+LOADK R3 K1 [3221225471]
+GETIMPORT R1 4 [bit32.band]
 CALL R1 2 1
-L0: JUMPXEQKN R1 K5 L1
+L0: JUMPXEQKN R1 K5 L1 [0]
 RETURN R1 1
-L1: FASTCALL2K 29 R1 K6 L2
+L1: FASTCALL2K 29 R1 K6 L2 [1073741824]
 MOVE R3 R1
-LOADK R4 K6
-GETIMPORT R2 4
+LOADK R4 K6 [1073741824]
+GETIMPORT R2 4 [bit32.band]
 CALL R2 2 1
-L2: JUMPXEQKN R2 K5 L3
-LOADK R2 K6
+L2: JUMPXEQKN R2 K5 L3 [0]
+LOADK R2 K6 [1073741824]
 RETURN R2 1
 L3: LOADN R2 0
 RETURN R2 1
@@ -6482,9 +6491,9 @@ end
 )"),
         R"(
 MOVE R2 R0
-ADDK R2 R2 K0
+ADDK R2 R2 K0 [0]
 MOVE R3 R1
-ADDK R1 R1 K0
+ADDK R1 R1 K0 [0]
 ADD R4 R2 R3
 RETURN R4 1
 )");
@@ -6543,11 +6552,11 @@ TEST_CASE("MultipleAssignments")
         R"(
 LOADNIL R0
 LOADNIL R1
-GETIMPORT R2 1
+GETIMPORT R2 1 [f]
 LOADN R3 1
 CALL R2 1 1
 MOVE R0 R2
-GETIMPORT R2 1
+GETIMPORT R2 1 [f]
 LOADN R3 2
 CALL R2 1 1
 MOVE R1 R2
@@ -6597,8 +6606,8 @@ RETURN R0 0
 GETVARARGS R0 4
 MOVE R0 R1
 MOVE R1 R2
-ADDK R2 R2 K0
-SUBK R3 R3 K0
+ADDK R2 R2 K0 [1]
+SUBK R3 R3 K0 [1]
 RETURN R0 0
 )");
 
@@ -6670,7 +6679,7 @@ RETURN R0 0
         R"(
 GETVARARGS R0 4
 LOADN R0 1
-GETIMPORT R4 1
+GETIMPORT R4 1 [foo]
 CALL R4 0 3
 MOVE R1 R4
 MOVE R2 R5
@@ -6686,7 +6695,7 @@ RETURN R0 0
         R"(
 GETVARARGS R0 4
 LOADN R4 1
-GETIMPORT R6 1
+GETIMPORT R6 1 [foo]
 CALL R6 0 3
 SETTABLE R6 R1 R0
 SETTABLE R7 R2 R3
@@ -6704,7 +6713,7 @@ RETURN R0 0
         R"(
 GETVARARGS R0 4
 LOADN R0 1
-GETIMPORT R4 1
+GETIMPORT R4 1 [foo]
 LOADNIL R5
 LOADNIL R6
 MOVE R1 R4
@@ -6720,7 +6729,7 @@ RETURN R0 0
     )"),
         R"(
 GETVARARGS R0 2
-ADDK R2 R1 K0
+ADDK R2 R1 K0 [1]
 SETTABLEN R1 R0 1
 SETTABLEN R2 R0 2
 RETURN R0 0
@@ -6763,7 +6772,7 @@ RETURN R0 0
     )"),
         R"(
 GETVARARGS R0 2
-ADDK R2 R1 K0
+ADDK R2 R1 K0 [1]
 SETTABLEN R1 R0 1
 MOVE R1 R2
 RETURN R0 0
@@ -6781,11 +6790,11 @@ return bit32.extract(v, 1, 3)
 )"),
         R"(
 GETVARARGS R0 1
-FASTCALL2K 59 R0 K0 L0
+FASTCALL2K 59 R0 K0 L0 [65]
 MOVE R2 R0
-LOADK R3 K1
-LOADK R4 K2
-GETIMPORT R1 5
+LOADK R3 K1 [1]
+LOADK R4 K2 [3]
+GETIMPORT R1 5 [bit32.extract]
 CALL R1 3 -1
 L0: RETURN R1 -1
 )");

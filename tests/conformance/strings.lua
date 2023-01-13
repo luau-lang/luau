@@ -164,6 +164,16 @@ local ud = newproxy(true)
 getmetatable(ud).__tostring = function() return "good" end
 assert(string.format("%*", ud) == "good")
 
+assert(string.format(string.rep("%*", 100), table.unpack(table.create(100, 1))) == string.rep("1", 100))
+
+do
+	local a = "1234567890"
+	a = string.format("%*%*%*%*%*", a, a, a, a, a)
+	a = string.format("%*%*%*%*%*", a, a, a, a, a)
+	a = string.format("%*%*%*%*%*", a, a, a, a, a)
+	assert(a == string.rep("1234567890", 125))
+end
+
 assert(pcall(function()
 	string.format("%#*", "bad form")
 end) == false)
