@@ -27,6 +27,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauMaybeGenericIntersectionTypes, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAGVARIABLE(LuauMatchReturnsOptionalString, false);
 
 namespace Luau
 {
@@ -768,15 +769,16 @@ BuiltinTypes::BuiltinTypes()
     , errorType(arena->addType(Type{ErrorType{}, /*persistent*/ true}))
     , falsyType(arena->addType(Type{UnionType{{falseType, nilType}}, /*persistent*/ true}))
     , truthyType(arena->addType(Type{NegationType{falsyType}, /*persistent*/ true}))
+    , optionalNumberType(arena->addType(Type{UnionType{{numberType, nilType}}, /*persistent*/ true}))
+    , optionalStringType(arena->addType(Type{UnionType{{stringType, nilType}}, /*persistent*/ true}))
     , anyTypePack(arena->addTypePack(TypePackVar{VariadicTypePack{anyType}, /*persistent*/ true}))
     , neverTypePack(arena->addTypePack(TypePackVar{VariadicTypePack{neverType}, /*persistent*/ true}))
-    , uninhabitableTypePack(arena->addTypePack({neverType}, neverTypePack))
+    , uninhabitableTypePack(arena->addTypePack(TypePackVar{TypePack{{neverType}, neverTypePack}, /*persistent*/ true}))
     , errorTypePack(arena->addTypePack(TypePackVar{Unifiable::Error{}, /*persistent*/ true}))
 {
     TypeId stringMetatable = makeStringMetatable();
     asMutable(stringType)->ty = PrimitiveType{PrimitiveType::String, stringMetatable};
     persist(stringMetatable);
-    persist(uninhabitableTypePack);
 
     freeze(*arena);
 }
@@ -1231,12 +1233,12 @@ static std::vector<TypeId> parsePatternString(NotNull<BuiltinTypes> builtinTypes
             if (i + 1 < size && data[i + 1] == ')')
             {
                 i++;
-                result.push_back(builtinTypes->numberType);
+                result.push_back(FFlag::LuauMatchReturnsOptionalString ? builtinTypes->optionalNumberType : builtinTypes->numberType);
                 continue;
             }
 
             ++depth;
-            result.push_back(builtinTypes->stringType);
+            result.push_back(FFlag::LuauMatchReturnsOptionalString ? builtinTypes->optionalStringType : builtinTypes->stringType);
         }
         else if (data[i] == ')')
         {
@@ -1254,7 +1256,7 @@ static std::vector<TypeId> parsePatternString(NotNull<BuiltinTypes> builtinTypes
         return std::vector<TypeId>();
 
     if (result.empty())
-        result.push_back(builtinTypes->stringType);
+        result.push_back(FFlag::LuauMatchReturnsOptionalString ? builtinTypes->optionalStringType : builtinTypes->stringType);
 
     return result;
 }

@@ -318,7 +318,10 @@ struct GenericTypeVisitor
             }
         }
         else if (auto ntv = get<NegationType>(ty))
-            visit(ty, *ntv);
+        {
+            if (visit(ty, *ntv))
+                traverse(ntv->ty);
+        }
         else if (!FFlag::LuauCompleteVisitor)
             return visit_detail::unsee(seen, ty);
         else

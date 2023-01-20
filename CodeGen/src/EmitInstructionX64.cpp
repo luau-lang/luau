@@ -1010,17 +1010,15 @@ static int emitInstFastCallN(
 
     if (nparams == LUA_MULTRET)
     {
-        // TODO: for SystemV ABI we can compute the result directly into rArg6
         // L->top - (ra + 1)
-        build.mov(rcx, qword[rState + offsetof(lua_State, top)]);
+        RegisterX64 reg = (build.abi == ABIX64::Windows) ? rcx : rArg6;
+        build.mov(reg, qword[rState + offsetof(lua_State, top)]);
         build.lea(rdx, addr[rBase + (ra + 1) * sizeof(TValue)]);
-        build.sub(rcx, rdx);
-        build.shr(rcx, kTValueSizeLog2);
+        build.sub(reg, rdx);
+        build.shr(reg, kTValueSizeLog2);
 
         if (build.abi == ABIX64::Windows)
-            build.mov(sArg6, rcx);
-        else
-            build.mov(rArg6, rcx);
+            build.mov(sArg6, reg);
     }
     else
     {
@@ -1126,7 +1124,7 @@ void emitInstForNPrep(AssemblyBuilderX64& build, const Instruction* pc, int pcpo
     build.setLabel(exit);
 }
 
-void emitInstForNLoop(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& loopRepeat)
+void emitInstForNLoop(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& loopRepeat, Label& loopExit)
 {
     emitInterrupt(build, pcpos);
 
@@ -1144,20 +1142,18 @@ void emitInstForNLoop(AssemblyBuilderX64& build, const Instruction* pc, int pcpo
     build.vaddsd(idx, idx, step);
     build.vmovsd(luauRegValue(ra + 2), idx);
 
-    Label reverse, exit;
+    Label reverse;
 
     // step <= 0
     jumpOnNumberCmp(build, noreg, step, zero, ConditionX64::LessEqual, reverse);
 
     // false: idx <= limit
     jumpOnNumberCmp(build, noreg, idx, limit, ConditionX64::LessEqual, loopRepeat);
-    build.jmp(exit);
+    build.jmp(loopExit);
 
     // true: limit <= idx
     build.setLabel(reverse);
     jumpOnNumberCmp(build, noreg, limit, idx, ConditionX64::LessEqual, loopRepeat);
-
-    build.setLabel(exit);
 }
 
 void emitinstForGLoop(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& loopRepeat, Label& loopExit, Label& fallback)

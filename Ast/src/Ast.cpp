@@ -647,10 +647,11 @@ void AstStatLocalFunction::visit(AstVisitor* visitor)
         func->visit(visitor);
 }
 
-AstStatTypeAlias::AstStatTypeAlias(const Location& location, const AstName& name, const AstArray<AstGenericType>& generics,
-    const AstArray<AstGenericTypePack>& genericPacks, AstType* type, bool exported)
+AstStatTypeAlias::AstStatTypeAlias(const Location& location, const AstName& name, const Location& nameLocation,
+    const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks, AstType* type, bool exported)
     : AstStat(ClassIndex(), location)
     , name(name)
+    , nameLocation(nameLocation)
     , generics(generics)
     , genericPacks(genericPacks)
     , type(type)

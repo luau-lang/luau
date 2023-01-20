@@ -20,6 +20,7 @@ message Expr {
 		ExprUnary unary = 14;
 		ExprBinary binary = 15;
 		ExprIfElse ifelse = 16;
+		ExprInterpString interpstring = 17;
 	}
 }
 
@@ -159,6 +160,10 @@ message ExprIfElse {
 		Expr else = 3;
 		ExprIfElse elseif = 4;
 	}
+}
+
+message ExprInterpString {
+	repeated Expr parts = 1;
 }
 
 message LValue {

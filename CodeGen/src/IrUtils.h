@@ -98,6 +98,7 @@ inline bool isBlockTerminator(IrCmd cmd)
     case IrCmd::JUMP_CMP_NUM:
     case IrCmd::JUMP_CMP_STR:
     case IrCmd::JUMP_CMP_ANY:
+    case IrCmd::LOP_NAMECALL:
     case IrCmd::LOP_RETURN:
     case IrCmd::LOP_FORNPREP:
     case IrCmd::LOP_FORNLOOP:

@@ -800,7 +800,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_guard_can_filter_for_intersection_of_ta
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("{| x: number |} & {| y: number |}", toString(requireTypeAtPosition({4, 28})));
+    ToStringOptions opts;
+    opts.exhaustive = true;
+    CHECK_EQ("{| x: number |} & {| y: number |}", toString(requireTypeAtPosition({4, 28}), opts));
     CHECK_EQ("nil", toString(requireTypeAtPosition({6, 28})));
 }
 
@@ -1436,6 +1438,32 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "type_narrow_for_all_the_userdata")
     CHECK_EQ("number | string", toString(requireTypeAtPosition({5, 28})));
 }
 
+TEST_CASE_FIXTURE(RefinementClassFixture, "type_narrow_but_the_discriminant_type_isnt_a_class")
+{
+    CheckResult result = check(R"(
+        local function f(x: string | number | Instance | Vector3)
+            if type(x) == "any" then
+                local foo = x
+            else
+                local foo = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(Instance | Vector3 | number | string) & never", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("(Instance | Vector3 | number | string) & ~never", toString(requireTypeAtPosition({5, 28})));
+    }
+    else
+    {
+        CHECK_EQ("*error-type*", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("*error-type*", toString(requireTypeAtPosition({5, 28})));
+    }
+}
+
 TEST_CASE_FIXTURE(RefinementClassFixture, "eliminate_subclasses_of_instance")
 {
     CheckResult result = check(R"(
@@ -1721,8 +1749,6 @@ TEST_CASE_FIXTURE(Fixture, "else_with_no_explicit_expression_should_also_refine_
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_filtered_refined_types_are_followed")
 {
-    ScopedFastFlag luauTypeInferMissingFollows{"LuauTypeInferMissingFollows", true};
-
     CheckResult result = check(R"(
 local _
 do

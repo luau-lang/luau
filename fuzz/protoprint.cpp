@@ -282,6 +282,8 @@ struct ProtoToLuau
             print(expr.binary());
         else if (expr.has_ifelse())
             print(expr.ifelse());
+        else if (expr.has_interpstring())
+            print(expr.interpstring());
         else
             source += "_";
     }
@@ -536,6 +538,28 @@ struct ProtoToLuau
             source += " else";
             print(expr.elseif());
         }
+    }
+
+    void print(const luau::ExprInterpString& expr)
+    {
+        source += "`";
+
+        for (int i = 0; i < expr.parts_size(); ++i)
+        {
+            if (expr.parts(i).has_string())
+            {
+                // String literal is added surrounded with "", but that's ok
+                print(expr.parts(i));
+            }
+            else
+            {
+                source += "{";
+                print(expr.parts(i));
+                source += "}";
+            }
+        }
+
+        source += "`";
     }
 
     void print(const luau::LValue& expr)

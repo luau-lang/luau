@@ -35,7 +35,10 @@ inline AssertHandler& assertHandler()
     return handler;
 }
 
-inline int assertCallHandler(const char* expression, const char* file, int line, const char* function)
+// We want 'inline' to correctly link this function declared in the header
+// But we also want to prevent compiler from inlining this function when optimization and assertions are enabled together
+// Reason for that is that compilation times can increase significantly in such a configuration
+LUAU_NOINLINE inline int assertCallHandler(const char* expression, const char* file, int line, const char* function)
 {
     if (AssertHandler handler = assertHandler())
         return handler(expression, file, line, function);

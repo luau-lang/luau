@@ -112,11 +112,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_intersection_sub_never")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         function f(arg : string & number) : never
           return arg
@@ -127,11 +122,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_intersection_sub_never")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_intersection_sub_anything")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         function f(arg : string & number) : boolean
           return arg
@@ -143,8 +133,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_intersection_sub_anything")
 TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_table_sub_never")
 {
     ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
         {"LuauUninhabitedSubAnything2", true},
     };
 
@@ -159,8 +147,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_table_sub_never")
 TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_table_sub_anything")
 {
     ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
         {"LuauUninhabitedSubAnything2", true},
     };
 
@@ -363,8 +349,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "metatables_unify_against_shape_of_free_table
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "fuzz_tail_unification_issue")
 {
-    ScopedFastFlag luauTxnLogTypePackIterator{"LuauTxnLogTypePackIterator", true};
-
     TypePackVar variadicAny{VariadicTypePack{typeChecker.anyType}};
     TypePackVar packTmp{TypePack{{typeChecker.anyType}, &variadicAny}};
     TypePackVar packSub{TypePack{{typeChecker.anyType, typeChecker.anyType}, &packTmp}};
@@ -374,6 +358,20 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "fuzz_tail_unification_issue")
     TypePackVar packSuper{TypePack{{&freeTy}, &freeTp}};
 
     state.tryUnify(&packSub, &packSuper);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_unify_any_should_check_log")
+{
+    ScopedFastFlag luauUnifyAnyTxnLog{"LuauUnifyAnyTxnLog", true};
+
+    CheckResult result = check(R"(
+repeat
+_._,_ = nil
+until _
+local l0:(any)&(typeof(_)),l0:(any)|(any) = _,_
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

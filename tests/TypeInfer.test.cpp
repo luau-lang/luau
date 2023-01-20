@@ -1029,10 +1029,6 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_no_ice")
 TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
 {
     ScopedFastInt sfi("LuauTypeInferRecursionLimit", 10);
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
 
     CheckResult result = check(R"(
         function f<a,b,c,d,e,f,g,h,i,j>()
@@ -1048,10 +1044,6 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
 TEST_CASE_FIXTURE(Fixture, "type_infer_cache_limit_normalizer")
 {
     ScopedFastInt sfi("LuauNormalizeCacheLimit", 10);
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
 
     CheckResult result = check(R"(
         local x : ((number) -> number) & ((string) -> string) & ((nil) -> nil) & (({}) -> {})
@@ -1161,8 +1153,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "it_is_ok_to_have_inconsistent_number_of_retu
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_free_table_type_change_during_index_check")
 {
-    ScopedFastFlag luauFollowInLvalueIndexCheck{"LuauFollowInLvalueIndexCheck", true};
-
     CheckResult result = check(R"(
 local _ = nil
 while _["" >= _] do

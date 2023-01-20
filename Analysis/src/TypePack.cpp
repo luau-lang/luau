@@ -6,8 +6,6 @@
 
 #include <stdexcept>
 
-LUAU_FASTFLAGVARIABLE(LuauTxnLogTypePackIterator, false)
-
 namespace Luau
 {
 
@@ -62,8 +60,8 @@ TypePackIterator::TypePackIterator(TypePackId typePack)
 }
 
 TypePackIterator::TypePackIterator(TypePackId typePack, const TxnLog* log)
-    : currentTypePack(FFlag::LuauTxnLogTypePackIterator ? log->follow(typePack) : follow(typePack))
-    , tp(FFlag::LuauTxnLogTypePackIterator ? log->get<TypePack>(currentTypePack) : get<TypePack>(currentTypePack))
+    : currentTypePack(log->follow(typePack))
+    , tp(log->get<TypePack>(currentTypePack))
     , currentIndex(0)
     , log(log)
 {

@@ -475,8 +475,6 @@ return l0
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_anyify_variadic_return_must_follow")
 {
-    ScopedFastFlag luauTypeInferMissingFollows{"LuauTypeInferMissingFollows", true};
-
     CheckResult result = check(R"(
 return unpack(l0[_])
     )");

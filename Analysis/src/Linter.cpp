@@ -13,7 +13,6 @@
 #include <limits.h>
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
-LUAU_FASTFLAGVARIABLE(LuauLintGlobalNeverReadBeforeWritten, false)
 
 namespace Luau
 {
@@ -331,8 +330,7 @@ private:
                         "Global '%s' is only used in the enclosing function defined at line %d; consider changing it to local",
                         g.firstRef->name.value, top->location.begin.line + 1);
             }
-            else if (FFlag::LuauLintGlobalNeverReadBeforeWritten && g.assigned && !g.readBeforeWritten && !g.definedInModuleScope &&
-                     g.firstRef->name != context->placeholder)
+            else if (g.assigned && !g.readBeforeWritten && !g.definedInModuleScope && g.firstRef->name != context->placeholder)
             {
                 emitWarning(*context, LintWarning::Code_GlobalUsedAsLocal, g.firstRef->location,
                     "Global '%s' is never read before being written. Consider changing it to local", g.firstRef->name.value);
@@ -353,7 +351,7 @@ private:
 
     bool visit(AstExprGlobal* node) override
     {
-        if (FFlag::LuauLintGlobalNeverReadBeforeWritten && !functionStack.empty() && !functionStack.back().dominatedGlobals.contains(node->name))
+        if (!functionStack.empty() && !functionStack.back().dominatedGlobals.contains(node->name))
         {
             Global& g = globals[node->name];
             g.readBeforeWritten = true;
@@ -386,18 +384,15 @@ private:
             {
                 Global& g = globals[gv->name];
 
-                if (FFlag::LuauLintGlobalNeverReadBeforeWritten)
+                if (functionStack.empty())
                 {
-                    if (functionStack.empty())
+                    g.definedInModuleScope = true;
+                }
+                else
+                {
+                    if (!functionStack.back().conditionalExecution)
                     {
-                        g.definedInModuleScope = true;
-                    }
-                    else
-                    {
-                        if (!functionStack.back().conditionalExecution)
-                        {
-                            functionStack.back().dominatedGlobals.insert(gv->name);
-                        }
+                        functionStack.back().dominatedGlobals.insert(gv->name);
                     }
                 }
 
@@ -437,11 +432,8 @@ private:
             else
             {
                 g.assigned = true;
-                if (FFlag::LuauLintGlobalNeverReadBeforeWritten)
-                {
-                    g.definedAsFunction = true;
-                    g.definedInModuleScope = functionStack.empty();
-                }
+                g.definedAsFunction = true;
+                g.definedInModuleScope = functionStack.empty();
             }
 
             trackGlobalRef(gv);
@@ -475,9 +467,6 @@ private:
 
     bool visit(AstStatIf* node) override
     {
-        if (!FFlag::LuauLintGlobalNeverReadBeforeWritten)
-            return true;
-
         HoldConditionalExecution ce(*this);
         node->condition->visit(this);
         node->thenbody->visit(this);
@@ -489,9 +478,6 @@ private:
 
     bool visit(AstStatWhile* node) override
     {
-        if (!FFlag::LuauLintGlobalNeverReadBeforeWritten)
-            return true;
-
         HoldConditionalExecution ce(*this);
         node->condition->visit(this);
         node->body->visit(this);
@@ -501,9 +487,6 @@ private:
 
     bool visit(AstStatRepeat* node) override
     {
-        if (!FFlag::LuauLintGlobalNeverReadBeforeWritten)
-            return true;
-
         HoldConditionalExecution ce(*this);
         node->condition->visit(this);
         node->body->visit(this);
@@ -513,9 +496,6 @@ private:
 
     bool visit(AstStatFor* node) override
     {
-        if (!FFlag::LuauLintGlobalNeverReadBeforeWritten)
-            return true;
-
         HoldConditionalExecution ce(*this);
         node->from->visit(this);
         node->to->visit(this);
@@ -530,9 +510,6 @@ private:
 
     bool visit(AstStatForIn* node) override
     {
-        if (!FFlag::LuauLintGlobalNeverReadBeforeWritten)
-            return true;
-
         HoldConditionalExecution ce(*this);
         for (AstExpr* expr : node->values)
             expr->visit(this);

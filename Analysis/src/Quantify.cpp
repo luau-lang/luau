@@ -157,6 +157,8 @@ struct PureQuantifier : Substitution
     Scope* scope;
     std::vector<TypeId> insertedGenerics;
     std::vector<TypePackId> insertedGenericPacks;
+    bool seenMutableType = false;
+    bool seenGenericType = false;
 
     PureQuantifier(TypeArena* arena, Scope* scope)
         : Substitution(TxnLog::empty(), arena)
@@ -170,11 +172,18 @@ struct PureQuantifier : Substitution
 
         if (auto ftv = get<FreeType>(ty))
         {
-            return subsumes(scope, ftv->scope);
+            bool result = subsumes(scope, ftv->scope);
+            seenMutableType |= result;
+            return result;
         }
         else if (auto ttv = get<TableType>(ty))
         {
-            return ttv->state == TableState::Free && subsumes(scope, ttv->scope);
+            if (ttv->state == TableState::Free)
+                seenMutableType = true;
+            else if (ttv->state == TableState::Generic)
+                seenGenericType = true;
+
+            return ttv->state == TableState::Unsealed || (ttv->state == TableState::Free && subsumes(scope, ttv->scope));
         }
 
         return false;
@@ -207,7 +216,11 @@ struct PureQuantifier : Substitution
             *resultTable = *ttv;
             resultTable->level = TypeLevel{};
             resultTable->scope = scope;
-            resultTable->state = TableState::Generic;
+
+            if (ttv->state == TableState::Free)
+                resultTable->state = TableState::Generic;
+            else if (ttv->state == TableState::Unsealed)
+                resultTable->state = TableState::Sealed;
 
             return result;
         }
@@ -251,7 +264,7 @@ TypeId quantify(TypeArena* arena, TypeId ty, Scope* scope)
     ftv->scope = scope;
     ftv->generics.insert(ftv->generics.end(), quantifier.insertedGenerics.begin(), quantifier.insertedGenerics.end());
     ftv->genericPacks.insert(ftv->genericPacks.end(), quantifier.insertedGenericPacks.begin(), quantifier.insertedGenericPacks.end());
-    ftv->hasNoGenerics = ftv->generics.empty() && ftv->genericPacks.empty();
+    ftv->hasNoGenerics = ftv->generics.empty() && ftv->genericPacks.empty() && !quantifier.seenGenericType && !quantifier.seenMutableType;
 
     return *result;
 }

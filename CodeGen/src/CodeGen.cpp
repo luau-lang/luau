@@ -244,7 +244,7 @@ static int emitInst(AssemblyBuilderX64& build, NativeState& data, ModuleHelpers&
         emitInstForNPrep(build, pc, i, labelarr[i + 1 + LUAU_INSN_D(*pc)]);
         break;
     case LOP_FORNLOOP:
-        emitInstForNLoop(build, pc, i, labelarr[i + 1 + LUAU_INSN_D(*pc)]);
+        emitInstForNLoop(build, pc, i, labelarr[i + 1 + LUAU_INSN_D(*pc)], next);
         break;
     case LOP_FORGLOOP:
         emitinstForGLoop(build, pc, i, labelarr[i + 1 + LUAU_INSN_D(*pc)], next, fallback);

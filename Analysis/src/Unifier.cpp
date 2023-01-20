@@ -18,15 +18,13 @@
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit);
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
-LUAU_FASTFLAGVARIABLE(LuauReportTypeMismatchForTypePackUnificationFailure, false)
-LUAU_FASTFLAGVARIABLE(LuauSubtypeNormalizer, false);
 LUAU_FASTFLAGVARIABLE(LuauScalarShapeSubtyping, false)
+LUAU_FASTFLAGVARIABLE(LuauUnifyAnyTxnLog, false)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
-LUAU_FASTFLAGVARIABLE(LuauOverloadedFunctionSubtypingPerf, false);
 LUAU_FASTFLAGVARIABLE(LuauScalarShapeUnifyToMtOwner2, false)
 LUAU_FASTFLAGVARIABLE(LuauUninhabitedSubAnything2, false)
+LUAU_FASTFLAGVARIABLE(LuauMaintainScopesInUnifier, false)
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
-LUAU_FASTFLAG(LuauTxnLogTypePackIterator)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauNegatedFunctionTypes)
 LUAU_FASTFLAG(LuauNegatedClassTypes)
@@ -378,7 +376,7 @@ Unifier::Unifier(NotNull<Normalizer> normalizer, Mode mode, NotNull<Scope> scope
     , variance(variance)
     , sharedState(*normalizer->sharedState)
 {
-    normalize = FFlag::LuauSubtypeNormalizer;
+    normalize = true;
     LUAU_ASSERT(sharedState.iceHandler);
 }
 
@@ -480,17 +478,40 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         return;
     }
 
-    if (get<ErrorType>(superTy) || get<AnyType>(superTy) || get<UnknownType>(superTy))
-        return tryUnifyWithAny(subTy, superTy);
+    if (FFlag::LuauUnifyAnyTxnLog)
+    {
+        if (log.get<AnyType>(superTy))
+            return tryUnifyWithAny(subTy, builtinTypes->anyType);
 
-    if (get<AnyType>(subTy))
-        return tryUnifyWithAny(superTy, subTy);
+        if (log.get<ErrorType>(superTy))
+            return tryUnifyWithAny(subTy, builtinTypes->errorType);
 
-    if (log.get<ErrorType>(subTy))
-        return tryUnifyWithAny(superTy, subTy);
+        if (log.get<UnknownType>(superTy))
+            return tryUnifyWithAny(subTy, builtinTypes->unknownType);
 
-    if (log.get<NeverType>(subTy))
-        return tryUnifyWithAny(superTy, subTy);
+        if (log.get<AnyType>(subTy))
+            return tryUnifyWithAny(superTy, builtinTypes->anyType);
+
+        if (log.get<ErrorType>(subTy))
+            return tryUnifyWithAny(superTy, builtinTypes->errorType);
+
+        if (log.get<NeverType>(subTy))
+            return tryUnifyWithAny(superTy, builtinTypes->neverType);
+    }
+    else
+    {
+        if (get<ErrorType>(superTy) || get<AnyType>(superTy) || get<UnknownType>(superTy))
+            return tryUnifyWithAny(subTy, superTy);
+
+        if (get<AnyType>(subTy))
+            return tryUnifyWithAny(superTy, subTy);
+
+        if (log.get<ErrorType>(subTy))
+            return tryUnifyWithAny(superTy, subTy);
+
+        if (log.get<NeverType>(subTy))
+            return tryUnifyWithAny(superTy, subTy);
+    }
 
     auto& cache = sharedState.cachedUnify;
 
@@ -523,10 +544,6 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     if (const UnionType* subUnion = log.getMutable<UnionType>(subTy))
     {
         tryUnifyUnionWithType(subTy, subUnion, superTy);
-    }
-    else if (const UnionType* uv = (FFlag::LuauSubtypeNormalizer ? nullptr : log.getMutable<UnionType>(superTy)))
-    {
-        tryUnifyTypeWithUnion(subTy, superTy, uv, cacheEnabled, isFunctionCall);
     }
     else if (const IntersectionType* uv = log.getMutable<IntersectionType>(superTy))
     {
@@ -915,8 +932,6 @@ void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionType*
 void Unifier::tryUnifyNormalizedTypes(
     TypeId subTy, TypeId superTy, const NormalizedType& subNorm, const NormalizedType& superNorm, std::string reason, std::optional<TypeError> error)
 {
-    LUAU_ASSERT(FFlag::LuauSubtypeNormalizer);
-
     if (get<UnknownType>(superNorm.tops) || get<AnyType>(superNorm.tops) || get<AnyType>(subNorm.tops))
         return;
     else if (get<UnknownType>(subNorm.tops))
@@ -1096,12 +1111,9 @@ TypePackId Unifier::tryApplyOverloadedFunction(TypeId function, const Normalized
                     log.concat(std::move(innerState.log));
                     if (result)
                     {
-                        if (FFlag::LuauOverloadedFunctionSubtypingPerf)
-                        {
-                            innerState.log.clear();
-                            innerState.tryUnify_(*result, ftv->retTypes);
-                        }
-                        if (FFlag::LuauOverloadedFunctionSubtypingPerf && innerState.errors.empty())
+                        innerState.log.clear();
+                        innerState.tryUnify_(*result, ftv->retTypes);
+                        if (innerState.errors.empty())
                             log.concat(std::move(innerState.log));
                         // Annoyingly, since we don't support intersection of generic type packs,
                         // the intersection may fail. We rather arbitrarily use the first matching overload
@@ -1250,8 +1262,11 @@ struct WeirdIter
         LUAU_ASSERT(canGrow());
         LUAU_ASSERT(log.getMutable<TypePack>(newTail));
 
-        level = log.getMutable<Unifiable::Free>(packId)->level;
-        scope = log.getMutable<Unifiable::Free>(packId)->scope;
+        auto freePack = log.getMutable<Unifiable::Free>(packId);
+
+        level = freePack->level;
+        if (FFlag::LuauMaintainScopesInUnifier && freePack->scope != nullptr)
+            scope = freePack->scope;
         log.replace(packId, BoundTypePack(newTail));
         packId = newTail;
         pack = log.getMutable<TypePack>(newTail);
@@ -1380,6 +1395,12 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
         auto superIter = WeirdIter(superTp, log);
         auto subIter = WeirdIter(subTp, log);
 
+        if (FFlag::LuauMaintainScopesInUnifier)
+        {
+            superIter.scope = scope.get();
+            subIter.scope = scope.get();
+        }
+
         auto mkFreshType = [this](Scope* scope, TypeLevel level) {
             return types->freshType(scope, level);
         };
@@ -1420,15 +1441,9 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
             // If both are at the end, we're done
             if (!superIter.good() && !subIter.good())
             {
-                if (!FFlag::LuauTxnLogTypePackIterator && subTpv->tail && superTpv->tail)
-                {
-                    tryUnify_(*subTpv->tail, *superTpv->tail);
-                    break;
-                }
-
                 const bool lFreeTail = superTpv->tail && log.getMutable<FreeTypePack>(log.follow(*superTpv->tail)) != nullptr;
                 const bool rFreeTail = subTpv->tail && log.getMutable<FreeTypePack>(log.follow(*subTpv->tail)) != nullptr;
-                if (FFlag::LuauTxnLogTypePackIterator && lFreeTail && rFreeTail)
+                if (lFreeTail && rFreeTail)
                 {
                     tryUnify_(*subTpv->tail, *superTpv->tail);
                 }
@@ -1440,7 +1455,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
                 {
                     tryUnify_(emptyTp, *subTpv->tail);
                 }
-                else if (FFlag::LuauTxnLogTypePackIterator && subTpv->tail && superTpv->tail)
+                else if (subTpv->tail && superTpv->tail)
                 {
                     if (log.getMutable<VariadicTypePack>(superIter.packId))
                         tryUnifyVariadics(subIter.packId, superIter.packId, false, int(subIter.index));
@@ -1523,10 +1538,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
     }
     else
     {
-        if (FFlag::LuauReportTypeMismatchForTypePackUnificationFailure)
-            reportError(location, TypePackMismatch{subTp, superTp});
-        else
-            reportError(location, GenericError{"Failed to unify type packs"});
+        reportError(location, TypePackMismatch{subTp, superTp});
     }
 }
 
@@ -2356,11 +2368,11 @@ void Unifier::tryUnifyVariadics(TypePackId subTp, TypePackId superTp, bool rever
     if (!superVariadic)
         ice("passed non-variadic pack to tryUnifyVariadics");
 
-    if (const VariadicTypePack* subVariadic = FFlag::LuauTxnLogTypePackIterator ? log.get<VariadicTypePack>(subTp) : get<VariadicTypePack>(subTp))
+    if (const VariadicTypePack* subVariadic = log.get<VariadicTypePack>(subTp))
     {
         tryUnify_(reversed ? superVariadic->ty : subVariadic->ty, reversed ? subVariadic->ty : superVariadic->ty);
     }
-    else if (FFlag::LuauTxnLogTypePackIterator ? log.get<TypePack>(subTp) : get<TypePack>(subTp))
+    else if (log.get<TypePack>(subTp))
     {
         TypePackIterator subIter = begin(subTp, &log);
         TypePackIterator subEnd = end(subTp);
@@ -2465,9 +2477,18 @@ void Unifier::tryUnifyWithAny(TypeId subTy, TypeId anyTy)
 {
     LUAU_ASSERT(get<AnyType>(anyTy) || get<ErrorType>(anyTy) || get<UnknownType>(anyTy) || get<NeverType>(anyTy));
 
-    // These types are not visited in general loop below
-    if (get<PrimitiveType>(subTy) || get<AnyType>(subTy) || get<ClassType>(subTy))
-        return;
+    if (FFlag::LuauUnifyAnyTxnLog)
+    {
+        // These types are not visited in general loop below
+        if (log.get<PrimitiveType>(subTy) || log.get<AnyType>(subTy) || log.get<ClassType>(subTy))
+            return;
+    }
+    else
+    {
+        // These types are not visited in general loop below
+        if (get<PrimitiveType>(subTy) || get<AnyType>(subTy) || get<ClassType>(subTy))
+            return;
+    }
 
     TypePackId anyTp;
     if (FFlag::LuauUnknownAndNeverType)

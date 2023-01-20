@@ -701,8 +701,7 @@ TEST_CASE("NDebugGetUpValue")
     copts.optimizationLevel = 0;
 
     runConformance(
-        "ndebug_upvalues.lua",
-        nullptr,
+        "ndebug_upvalues.lua", nullptr,
         [](lua_State* L) {
             lua_checkstack(L, LUA_MINSTACK);
 
