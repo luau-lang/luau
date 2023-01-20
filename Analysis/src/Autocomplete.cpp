@@ -14,6 +14,9 @@
 
 LUAU_FASTFLAGVARIABLE(LuauCompleteTableKeysBetter, false);
 LUAU_FASTFLAGVARIABLE(LuauFixAutocompleteInIf, false);
+LUAU_FASTFLAGVARIABLE(LuauFixAutocompleteInWhile, false);
+LUAU_FASTFLAGVARIABLE(LuauFixAutocompleteInFor, false);
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteStringContent, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -1265,6 +1268,9 @@ static bool isSimpleInterpolatedString(const AstNode* node)
 
 static std::optional<std::string> getStringContents(const AstNode* node)
 {
+    if (!FFlag::LuauAutocompleteStringContent)
+        return std::nullopt;
+
     if (const AstExprConstantString* string = node->as<AstExprConstantString>())
     {
         return std::string(string->value.data, string->value.size);
@@ -1314,8 +1320,7 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(const Source
 
     std::optional<std::string> candidateString = getStringContents(nodes.back());
 
-    auto performCallback = [&](const FunctionType* funcType) -> std::optional<AutocompleteEntryMap>
-    {
+    auto performCallback = [&](const FunctionType* funcType) -> std::optional<AutocompleteEntryMap> {
         for (const std::string& tag : funcType->tags)
         {
             if (std::optional<AutocompleteEntryMap> ret = callback(tag, getMethodContainingClass(module, candidate->func), candidateString))
@@ -1347,6 +1352,15 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(const Source
     }
 
     return std::nullopt;
+}
+
+static AutocompleteResult autocompleteWhileLoopKeywords(std::vector<AstNode*> ancestry)
+{
+    AutocompleteEntryMap ret;
+    ret["do"] = {AutocompleteEntryKind::Keyword};
+    ret["and"] = {AutocompleteEntryKind::Keyword};
+    ret["or"] = {AutocompleteEntryKind::Keyword};
+    return {std::move(ret), std::move(ancestry), AutocompleteContext::Keyword};
 }
 
 static AutocompleteResult autocomplete(const SourceModule& sourceModule, const ModulePtr& module, NotNull<BuiltinTypes> builtinTypes,
@@ -1407,13 +1421,24 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
     {
         if (!statFor->hasDo || position < statFor->doLocation.begin)
         {
-            if (!statFor->from->is<AstExprError>() && !statFor->to->is<AstExprError>() && (!statFor->step || !statFor->step->is<AstExprError>()))
-                return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
+            if (FFlag::LuauFixAutocompleteInFor)
+            {
+                if (statFor->from->location.containsClosed(position) || statFor->to->location.containsClosed(position) ||
+                    (statFor->step && statFor->step->location.containsClosed(position)))
+                    return autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
 
-            if (statFor->from->location.containsClosed(position) || statFor->to->location.containsClosed(position) ||
-                (statFor->step && statFor->step->location.containsClosed(position)))
-                return autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
+                if (!statFor->from->is<AstExprError>() && !statFor->to->is<AstExprError>() && (!statFor->step || !statFor->step->is<AstExprError>()))
+                    return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
+            }
+            else
+            {
+                if (!statFor->from->is<AstExprError>() && !statFor->to->is<AstExprError>() && (!statFor->step || !statFor->step->is<AstExprError>()))
+                    return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
 
+                if (statFor->from->location.containsClosed(position) || statFor->to->location.containsClosed(position) ||
+                    (statFor->step && statFor->step->location.containsClosed(position)))
+                    return autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
+            }
             return {};
         }
 
@@ -1463,7 +1488,16 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
     else if (AstStatWhile* statWhile = parent->as<AstStatWhile>(); node->is<AstStatBlock>() && statWhile)
     {
         if (!statWhile->hasDo && !statWhile->condition->is<AstStatError>() && position > statWhile->condition->location.end)
-            return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
+        {
+            if (FFlag::LuauFixAutocompleteInWhile)
+            {
+                return autocompleteWhileLoopKeywords(ancestry);
+            }
+            else
+            {
+                return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
+            }
+        }
 
         if (!statWhile->hasDo || position < statWhile->doLocation.begin)
             return autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
@@ -1472,9 +1506,20 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
     }
 
-    else if (AstStatWhile* statWhile = extractStat<AstStatWhile>(ancestry); statWhile && !statWhile->hasDo)
-        return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
-
+    else if (AstStatWhile* statWhile = extractStat<AstStatWhile>(ancestry);
+             FFlag::LuauFixAutocompleteInWhile ? (statWhile && (!statWhile->hasDo || statWhile->doLocation.containsClosed(position)) &&
+                                                     statWhile->condition && !statWhile->condition->location.containsClosed(position))
+                                               : (statWhile && !statWhile->hasDo))
+    {
+        if (FFlag::LuauFixAutocompleteInWhile)
+        {
+            return autocompleteWhileLoopKeywords(ancestry);
+        }
+        else
+        {
+            return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
+        }
+    }
     else if (AstStatIf* statIf = node->as<AstStatIf>(); statIf && !statIf->elseLocation.has_value())
     {
         return {{{"else", AutocompleteEntry{AutocompleteEntryKind::Keyword}}, {"elseif", AutocompleteEntry{AutocompleteEntryKind::Keyword}}},
@@ -1488,7 +1533,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
     }
     else if (AstStatIf* statIf = extractStat<AstStatIf>(ancestry);
-             statIf && (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)) && 
+             statIf && (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)) &&
              (!FFlag::LuauFixAutocompleteInIf || (statIf->condition && !statIf->condition->location.containsClosed(position))))
     {
         if (FFlag::LuauFixAutocompleteInIf)

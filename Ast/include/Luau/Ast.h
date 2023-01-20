@@ -983,12 +983,13 @@ class AstStatTypeAlias : public AstStat
 public:
     LUAU_RTTI(AstStatTypeAlias)
 
-    AstStatTypeAlias(const Location& location, const AstName& name, const AstArray<AstGenericType>& generics,
+    AstStatTypeAlias(const Location& location, const AstName& name, const Location& nameLocation, const AstArray<AstGenericType>& generics,
         const AstArray<AstGenericTypePack>& genericPacks, AstType* type, bool exported);
 
     void visit(AstVisitor* visitor) override;
 
     AstName name;
+    Location nameLocation;
     AstArray<AstGenericType> generics;
     AstArray<AstGenericTypePack> genericPacks;
     AstType* type;

@@ -186,6 +186,8 @@ const char* getCmdName(IrCmd cmd)
         return "CAPTURE";
     case IrCmd::LOP_SETLIST:
         return "LOP_SETLIST";
+    case IrCmd::LOP_NAMECALL:
+        return "LOP_NAMECALL";
     case IrCmd::LOP_CALL:
         return "LOP_CALL";
     case IrCmd::LOP_RETURN:
@@ -220,6 +222,8 @@ const char* getCmdName(IrCmd cmd)
         return "LOP_OR";
     case IrCmd::LOP_ORK:
         return "LOP_ORK";
+    case IrCmd::LOP_COVERAGE:
+        return "LOP_COVERAGE";
     case IrCmd::FALLBACK_GETGLOBAL:
         return "FALLBACK_GETGLOBAL";
     case IrCmd::FALLBACK_SETGLOBAL:
@@ -240,8 +244,6 @@ const char* getCmdName(IrCmd cmd)
         return "FALLBACK_DUPCLOSURE";
     case IrCmd::FALLBACK_FORGPREP:
         return "FALLBACK_FORGPREP";
-    case IrCmd::FALLBACK_COVERAGE:
-        return "FALLBACK_COVERAGE";
     }
 
     LUAU_UNREACHABLE();
@@ -373,6 +375,49 @@ void toStringDetailed(IrToStringContext& ctx, IrInst inst, uint32_t index)
         append(ctx.result, "; %%%u, has side-effects\n", index);
     else
         append(ctx.result, "; useCount: %d, lastUse: %%%u\n", inst.useCount, inst.lastUse);
+}
+
+std::string dump(IrFunction& function)
+{
+    std::string result;
+    IrToStringContext ctx{result, function.blocks, function.constants};
+
+    for (size_t i = 0; i < function.blocks.size(); i++)
+    {
+        IrBlock& block = function.blocks[i];
+
+        append(ctx.result, "%s_%u:\n", getBlockKindName(block.kind), unsigned(i));
+
+        if (block.start == ~0u)
+        {
+            append(ctx.result, " *empty*\n\n");
+            continue;
+        }
+
+        for (uint32_t index = block.start; true; index++)
+        {
+            LUAU_ASSERT(index < function.instructions.size());
+
+            IrInst& inst = function.instructions[index];
+
+            // Nop is used to replace dead instructions in-place, so it's not that useful to see them
+            if (inst.cmd == IrCmd::NOP)
+                continue;
+
+            append(ctx.result, " ");
+            toStringDetailed(ctx, inst, index);
+
+            if (isBlockTerminator(inst.cmd))
+            {
+                append(ctx.result, "\n");
+                break;
+            }
+        }
+    }
+
+    printf("%s\n", result.c_str());
+
+    return result;
 }
 
 } // namespace CodeGen

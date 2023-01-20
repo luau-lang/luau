@@ -72,17 +72,6 @@ TEST_CASE_FIXTURE(Fixture, "string_function_indirect")
     CHECK_EQ(*requireType("p"), *typeChecker.stringType);
 }
 
-TEST_CASE_FIXTURE(Fixture, "string_function_other")
-{
-    CheckResult result = check(R"(
-        local s:string
-        local p = s:match("foo")
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(requireType("p")), "string");
-}
-
 TEST_CASE_FIXTURE(Fixture, "CheckMethodsOfNumber")
 {
     CheckResult result = check(R"(

@@ -417,7 +417,7 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
     else if (auto hpc = get<HasPropConstraint>(*constraint))
         success = tryDispatch(*hpc, constraint);
     else if (auto spc = get<SetPropConstraint>(*constraint))
-        success = tryDispatch(*spc, constraint);
+        success = tryDispatch(*spc, constraint, force);
     else if (auto sottc = get<SingletonOrTopTypeConstraint>(*constraint))
         success = tryDispatch(*sottc, constraint);
     else
@@ -933,13 +933,11 @@ struct InfiniteTypeFinder : TypeOnceVisitor
 struct InstantiationQueuer : TypeOnceVisitor
 {
     ConstraintSolver* solver;
-    const InstantiationSignature& signature;
     NotNull<Scope> scope;
     Location location;
 
-    explicit InstantiationQueuer(NotNull<Scope> scope, const Location& location, ConstraintSolver* solver, const InstantiationSignature& signature)
+    explicit InstantiationQueuer(NotNull<Scope> scope, const Location& location, ConstraintSolver* solver)
         : solver(solver)
-        , signature(signature)
         , scope(scope)
         , location(location)
     {
@@ -1061,8 +1059,17 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     TypeId instantiated = *maybeInstantiated;
     TypeId target = follow(instantiated);
 
+    // The application is not recursive, so we need to queue up application of
+    // any child type function instantiations within the result in order for it
+    // to be complete.
+    InstantiationQueuer queuer{constraint->scope, constraint->location, this};
+    queuer.traverse(target);
+
     if (target->persistent)
+    {
+        bindResult(target);
         return true;
+    }
 
     // Type function application will happily give us the exact same type if
     // there are e.g. generic saturatedTypeArguments that go unused.
@@ -1101,12 +1108,6 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     }
 
     bindResult(target);
-
-    // The application is not recursive, so we need to queue up application of
-    // any child type function instantiations within the result in order for it
-    // to be complete.
-    InstantiationQueuer queuer{constraint->scope, constraint->location, this, signature};
-    queuer.traverse(target);
 
     instantiatedAliases[signature] = target;
 
@@ -1326,11 +1327,14 @@ static std::optional<TypeId> updateTheTableType(NotNull<TypeArena> arena, TypeId
     return res;
 }
 
-bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Constraint> constraint)
+bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     TypeId subjectType = follow(c.subjectType);
 
     if (isBlocked(subjectType))
+        return block(subjectType, constraint);
+
+    if (!force && get<FreeType>(subjectType))
         return block(subjectType, constraint);
 
     std::optional<TypeId> existingPropType = subjectType;
@@ -1398,6 +1402,13 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
             bind(c.resultType, subjectType);
             return true;
         }
+    }
+    else if (get<ClassType>(subjectType))
+    {
+        // Classes never change shape as a result of property assignments.
+        // The result is always the subject.
+        bind(c.resultType, subjectType);
+        return true;
     }
     else if (get<AnyType>(subjectType) || get<ErrorType>(subjectType))
     {

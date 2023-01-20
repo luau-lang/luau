@@ -174,11 +174,6 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_any_prop")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "intersection")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     check(R"(
         local a: number & string
         local b: number

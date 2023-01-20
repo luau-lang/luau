@@ -814,8 +814,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_self_param")
 
 TEST_CASE_FIXTURE(Fixture, "tostring_unsee_ttv_if_array")
 {
-    ScopedFastFlag sff("LuauUnseeArrayTtv", true);
-
     CheckResult result = check(R"(
         local x: {string}
         -- This code is constructed very specifically to use the same (by pointer

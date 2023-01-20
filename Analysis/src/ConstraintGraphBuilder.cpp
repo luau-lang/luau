@@ -16,6 +16,7 @@ LUAU_FASTFLAG(DebugLuauLogSolverToJson);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
 LUAU_FASTFLAG(LuauNegatedClassTypes);
 LUAU_FASTFLAG(LuauScopelessModule);
+LUAU_FASTFLAG(SupportTypeAliasGoToDeclaration);
 
 namespace Luau
 {
@@ -418,7 +419,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
         TypeId ty = nullptr;
 
         if (local->annotation)
-            ty = resolveType(scope, local->annotation, /* topLevel */ true);
+            ty = resolveType(scope, local->annotation, /* inTypeArguments */ false);
 
         varTypes.push_back(ty);
     }
@@ -521,8 +522,12 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
                     const Name name{local->vars.data[i]->name.value};
 
                     if (ModulePtr module = moduleResolver->getModule(moduleInfo->name))
+                    {
                         scope->importedTypeBindings[name] =
                             FFlag::LuauScopelessModule ? module->exportedTypeBindings : module->getModuleScope()->exportedTypeBindings;
+                        if (FFlag::SupportTypeAliasGoToDeclaration)
+                            scope->importedModules[name] = moduleName;
+                    }
                 }
             }
         }
@@ -775,7 +780,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatTypeAlias* alia
     }
 
     ScopePtr resolvingScope = *defnIt;
-    TypeId ty = resolveType(resolvingScope, alias->type, /* topLevel */ true);
+    TypeId ty = resolveType(resolvingScope, alias->type, /* inTypeArguments */ false);
 
     if (alias->exported)
     {
@@ -798,7 +803,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareGlobal* 
 {
     LUAU_ASSERT(global->type);
 
-    TypeId globalTy = resolveType(scope, global->type);
+    TypeId globalTy = resolveType(scope, global->type, /* inTypeArguments */ false);
     Name globalName(global->name.value);
 
     module->declaredGlobals[globalName] = globalTy;
@@ -854,7 +859,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareClass* d
     for (const AstDeclaredClassProp& prop : declaredClass->props)
     {
         Name propName(prop.name.value);
-        TypeId propTy = resolveType(scope, prop.ty);
+        TypeId propTy = resolveType(scope, prop.ty, /* inTypeArguments */ false);
 
         bool assignToMetatable = isMetamethod(propName);
 
@@ -937,8 +942,8 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareFunction
     if (!generics.empty() || !genericPacks.empty())
         funScope = childScope(global, scope);
 
-    TypePackId paramPack = resolveTypePack(funScope, global->params);
-    TypePackId retPack = resolveTypePack(funScope, global->retTypes);
+    TypePackId paramPack = resolveTypePack(funScope, global->params, /* inTypeArguments */ false);
+    TypePackId retPack = resolveTypePack(funScope, global->retTypes, /* inTypeArguments */ false);
     TypeId fnType = arena->addType(FunctionType{TypeLevel{}, funScope.get(), std::move(genericTys), std::move(genericTps), paramPack, retPack});
     FunctionType* ftv = getMutable<FunctionType>(fnType);
 
@@ -1501,7 +1506,7 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIfElse* if
 Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert)
 {
     check(scope, typeAssert->expr, std::nullopt);
-    return Inference{resolveType(scope, typeAssert->annotation)};
+    return Inference{resolveType(scope, typeAssert->annotation, /* inTypeArguments */ false)};
 }
 
 std::tuple<TypeId, TypeId, ConnectiveId> ConstraintGraphBuilder::checkBinary(
@@ -1563,7 +1568,7 @@ std::tuple<TypeId, TypeId, ConnectiveId> ConstraintGraphBuilder::checkBinary(
             TypeId ty = follow(typeFun->type);
 
             // We're only interested in the root class of any classes.
-            if (auto ctv = get<ClassType>(ty); !ctv || !ctv->parent)
+            if (auto ctv = get<ClassType>(ty); !ctv || (FFlag::LuauNegatedClassTypes ? (ctv->parent == builtinTypes->classType) : !ctv->parent))
                 discriminantTy = ty;
         }
 
@@ -1619,39 +1624,6 @@ TypePackId ConstraintGraphBuilder::checkLValues(const ScopePtr& scope, AstArray<
 }
 
 /**
- * If the expr is a dotted set of names, and if the root symbol refers to an
- * unsealed table, return that table type, plus the indeces that follow as a
- * vector.
- */
-static std::optional<std::pair<Symbol, std::vector<const char*>>> extractDottedName(AstExpr* expr)
-{
-    std::vector<const char*> names;
-
-    while (expr)
-    {
-        if (auto global = expr->as<AstExprGlobal>())
-        {
-            std::reverse(begin(names), end(names));
-            return std::pair{global->name, std::move(names)};
-        }
-        else if (auto local = expr->as<AstExprLocal>())
-        {
-            std::reverse(begin(names), end(names));
-            return std::pair{local->local, std::move(names)};
-        }
-        else if (auto indexName = expr->as<AstExprIndexName>())
-        {
-            names.push_back(indexName->index.value);
-            expr = indexName->expr;
-        }
-        else
-            return std::nullopt;
-    }
-
-    return std::nullopt;
-}
-
-/**
  * This function is mostly about identifying properties that are being inserted into unsealed tables.
  *
  * If expr has the form name.a.b.c
@@ -1671,12 +1643,37 @@ TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
     else if (!expr->is<AstExprIndexName>())
         return check(scope, expr).ty;
 
-    auto dottedPath = extractDottedName(expr);
-    if (!dottedPath)
-        return check(scope, expr).ty;
-    const auto [sym, segments] = std::move(*dottedPath);
+    Symbol sym;
+    std::vector<std::string> segments;
+    std::vector<AstExpr*> exprs;
+
+    AstExpr* e = expr;
+    while (e)
+    {
+        if (auto global = e->as<AstExprGlobal>())
+        {
+            sym = global->name;
+            break;
+        }
+        else if (auto local = e->as<AstExprLocal>())
+        {
+            sym = local->local;
+            break;
+        }
+        else if (auto indexName = e->as<AstExprIndexName>())
+        {
+            segments.push_back(indexName->index.value);
+            exprs.push_back(e);
+            e = indexName->expr;
+        }
+        else
+            return check(scope, expr).ty;
+    }
 
     LUAU_ASSERT(!segments.empty());
+
+    std::reverse(begin(segments), end(segments));
+    std::reverse(begin(exprs), end(exprs));
 
     auto lookupResult = scope->lookupEx(sym);
     if (!lookupResult)
@@ -1695,7 +1692,18 @@ TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
     symbolScope->bindings[sym].typeId = updatedType;
     symbolScope->dcrRefinements[*def] = updatedType;
 
-    astTypes[expr] = propTy;
+    TypeId prevSegmentTy = updatedType;
+    for (size_t i = 0; i < segments.size(); ++i)
+    {
+        TypeId segmentTy = arena->addType(BlockedType{});
+        astTypes[exprs[i]] = segmentTy;
+        addConstraint(scope, expr->location, HasPropConstraint{segmentTy, prevSegmentTy, segments[i]});
+        prevSegmentTy = segmentTy;
+    }
+
+    astTypes[expr] = prevSegmentTy;
+    astTypes[e] = updatedType;
+    // astTypes[expr] = propTy;
 
     return propTy;
 }
@@ -1845,7 +1853,7 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
 
         if (local->annotation)
         {
-            annotationTy = resolveType(signatureScope, local->annotation, /* topLevel */ true);
+            annotationTy = resolveType(signatureScope, local->annotation, /* inTypeArguments */ false);
             addConstraint(signatureScope, local->annotation->location, SubtypeConstraint{t, annotationTy});
         }
         else if (i < expectedArgPack.head.size())
@@ -1866,7 +1874,7 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
     {
         if (fn->varargAnnotation)
         {
-            TypePackId annotationType = resolveTypePack(signatureScope, fn->varargAnnotation);
+            TypePackId annotationType = resolveTypePack(signatureScope, fn->varargAnnotation, /* inTypeArguments */ false);
             varargPack = annotationType;
         }
         else if (expectedArgPack.tail && get<VariadicTypePack>(*expectedArgPack.tail))
@@ -1893,7 +1901,7 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
     // Type checking will sort out any discrepancies later.
     if (fn->returnAnnotation)
     {
-        TypePackId annotatedRetType = resolveTypePack(signatureScope, *fn->returnAnnotation);
+        TypePackId annotatedRetType = resolveTypePack(signatureScope, *fn->returnAnnotation, /* inTypeArguments */ false);
 
         // We bind the annotated type directly here so that, when we need to
         // generate constraints for return types, we have a guarantee that we
@@ -1942,7 +1950,7 @@ void ConstraintGraphBuilder::checkFunctionBody(const ScopePtr& scope, AstExprFun
     }
 }
 
-TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, bool topLevel)
+TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, bool inTypeArguments)
 {
     TypeId result = nullptr;
 
@@ -1960,7 +1968,7 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
                     return builtinTypes->errorRecoveryType();
                 }
                 else
-                    return resolveType(scope, ref->parameters.data[0].type, topLevel);
+                    return resolveType(scope, ref->parameters.data[0].type, inTypeArguments);
             }
         }
 
@@ -1994,11 +2002,11 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
                     // that is done in the parser.
                     if (p.type)
                     {
-                        parameters.push_back(resolveType(scope, p.type));
+                        parameters.push_back(resolveType(scope, p.type, /* inTypeArguments */ true));
                     }
                     else if (p.typePack)
                     {
-                        packParameters.push_back(resolveTypePack(scope, p.typePack));
+                        packParameters.push_back(resolveTypePack(scope, p.typePack, /* inTypeArguments */ true));
                     }
                     else
                     {
@@ -2010,10 +2018,11 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
 
                 result = arena->addType(PendingExpansionType{ref->prefix, ref->name, parameters, packParameters});
 
-                if (topLevel)
-                {
+                // If we're not in a type argument context, we need to create a constraint that expands this.
+                // The dispatching of the above constraint will queue up additional constraints for nested
+                // type function applications.
+                if (!inTypeArguments)
                     addConstraint(scope, ty->location, TypeAliasExpansionConstraint{/* target */ result});
-                }
             }
         }
         else
@@ -2035,7 +2044,7 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
         {
             std::string name = prop.name.value;
             // TODO: Recursion limit.
-            TypeId propTy = resolveType(scope, prop.type);
+            TypeId propTy = resolveType(scope, prop.type, inTypeArguments);
             // TODO: Fill in location.
             props[name] = {propTy};
         }
@@ -2044,8 +2053,8 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
         {
             // TODO: Recursion limit.
             indexer = TableIndexer{
-                resolveType(scope, tab->indexer->indexType),
-                resolveType(scope, tab->indexer->resultType),
+                resolveType(scope, tab->indexer->indexType, inTypeArguments),
+                resolveType(scope, tab->indexer->resultType, inTypeArguments),
             };
         }
 
@@ -2089,8 +2098,8 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
             signatureScope = scope;
         }
 
-        TypePackId argTypes = resolveTypePack(signatureScope, fn->argTypes);
-        TypePackId returnTypes = resolveTypePack(signatureScope, fn->returnTypes);
+        TypePackId argTypes = resolveTypePack(signatureScope, fn->argTypes, inTypeArguments);
+        TypePackId returnTypes = resolveTypePack(signatureScope, fn->returnTypes, inTypeArguments);
 
         // TODO: FunctionType needs a pointer to the scope so that we know
         // how to quantify/instantiate it.
@@ -2130,7 +2139,7 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
         for (AstType* part : unionAnnotation->types)
         {
             // TODO: Recursion limit.
-            parts.push_back(resolveType(scope, part, topLevel));
+            parts.push_back(resolveType(scope, part, inTypeArguments));
         }
 
         result = arena->addType(UnionType{parts});
@@ -2141,7 +2150,7 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
         for (AstType* part : intersectionAnnotation->types)
         {
             // TODO: Recursion limit.
-            parts.push_back(resolveType(scope, part, topLevel));
+            parts.push_back(resolveType(scope, part, inTypeArguments));
         }
 
         result = arena->addType(IntersectionType{parts});
@@ -2168,16 +2177,16 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
     return result;
 }
 
-TypePackId ConstraintGraphBuilder::resolveTypePack(const ScopePtr& scope, AstTypePack* tp)
+TypePackId ConstraintGraphBuilder::resolveTypePack(const ScopePtr& scope, AstTypePack* tp, bool inTypeArgument)
 {
     TypePackId result;
     if (auto expl = tp->as<AstTypePackExplicit>())
     {
-        result = resolveTypePack(scope, expl->typeList);
+        result = resolveTypePack(scope, expl->typeList, inTypeArgument);
     }
     else if (auto var = tp->as<AstTypePackVariadic>())
     {
-        TypeId ty = resolveType(scope, var->variadicType);
+        TypeId ty = resolveType(scope, var->variadicType, inTypeArgument);
         result = arena->addTypePack(TypePackVar{VariadicTypePack{ty}});
     }
     else if (auto gen = tp->as<AstTypePackGeneric>())
@@ -2202,19 +2211,19 @@ TypePackId ConstraintGraphBuilder::resolveTypePack(const ScopePtr& scope, AstTyp
     return result;
 }
 
-TypePackId ConstraintGraphBuilder::resolveTypePack(const ScopePtr& scope, const AstTypeList& list)
+TypePackId ConstraintGraphBuilder::resolveTypePack(const ScopePtr& scope, const AstTypeList& list, bool inTypeArguments)
 {
     std::vector<TypeId> head;
 
     for (AstType* headTy : list.types)
     {
-        head.push_back(resolveType(scope, headTy));
+        head.push_back(resolveType(scope, headTy, inTypeArguments));
     }
 
     std::optional<TypePackId> tail = std::nullopt;
     if (list.tailType)
     {
-        tail = resolveTypePack(scope, list.tailType);
+        tail = resolveTypePack(scope, list.tailType, inTypeArguments);
     }
 
     return arena->addTypePack(TypePack{head, tail});
@@ -2229,7 +2238,7 @@ std::vector<std::pair<Name, GenericTypeDefinition>> ConstraintGraphBuilder::crea
         std::optional<TypeId> defaultTy = std::nullopt;
 
         if (generic.defaultValue)
-            defaultTy = resolveType(scope, generic.defaultValue);
+            defaultTy = resolveType(scope, generic.defaultValue, /* inTypeArguments */ false);
 
         result.push_back({generic.name.value, GenericTypeDefinition{genericTy, defaultTy}});
     }
@@ -2247,7 +2256,7 @@ std::vector<std::pair<Name, GenericTypePackDefinition>> ConstraintGraphBuilder::
         std::optional<TypePackId> defaultTy = std::nullopt;
 
         if (generic.defaultValue)
-            defaultTy = resolveTypePack(scope, generic.defaultValue);
+            defaultTy = resolveTypePack(scope, generic.defaultValue, /* inTypeArguments */ false);
 
         result.push_back({generic.name.value, GenericTypePackDefinition{genericTy, defaultTy}});
     }

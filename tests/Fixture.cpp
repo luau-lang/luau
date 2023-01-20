@@ -606,11 +606,13 @@ void createSomeClasses(Frontend* frontend)
 
     TypeId childType = arena.addType(ClassType{"Child", {}, parentType, std::nullopt, {}, nullptr, "Test"});
 
-    ClassType* childClass = getMutable<ClassType>(childType);
-    childClass->props["virtual_method"] = {makeFunction(arena, childType, {}, {})};
-
     addGlobalBinding(*frontend, "Child", {childType});
     moduleScope->exportedTypeBindings["Child"] = TypeFun{{}, childType};
+
+    TypeId anotherChildType = arena.addType(ClassType{"AnotherChild", {}, parentType, std::nullopt, {}, nullptr, "Test"});
+
+    addGlobalBinding(*frontend, "AnotherChild", {anotherChildType});
+    moduleScope->exportedTypeBindings["AnotherChild"] = TypeFun{{}, anotherChildType};
 
     TypeId unrelatedType = arena.addType(ClassType{"Unrelated", {}, frontend->builtinTypes->classType, std::nullopt, {}, nullptr, "Test"});
 

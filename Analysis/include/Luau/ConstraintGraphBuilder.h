@@ -240,20 +240,28 @@ struct ConstraintGraphBuilder
      * Resolves a type from its AST annotation.
      * @param scope the scope that the type annotation appears within.
      * @param ty the AST annotation to resolve.
-     * @param topLevel whether the annotation is a "top-level" annotation.
+     * @param inTypeArguments whether we are resolving a type that's contained within type arguments, `<...>`.
      * @return the type of the AST annotation.
      **/
-    TypeId resolveType(const ScopePtr& scope, AstType* ty, bool topLevel = false);
+    TypeId resolveType(const ScopePtr& scope, AstType* ty, bool inTypeArguments);
 
     /**
      * Resolves a type pack from its AST annotation.
      * @param scope the scope that the type annotation appears within.
      * @param tp the AST annotation to resolve.
+     * @param inTypeArguments whether we are resolving a type that's contained within type arguments, `<...>`.
      * @return the type pack of the AST annotation.
      **/
-    TypePackId resolveTypePack(const ScopePtr& scope, AstTypePack* tp);
+    TypePackId resolveTypePack(const ScopePtr& scope, AstTypePack* tp, bool inTypeArguments);
 
-    TypePackId resolveTypePack(const ScopePtr& scope, const AstTypeList& list);
+    /**
+     * Resolves a type pack from its AST annotation.
+     * @param scope the scope that the type annotation appears within.
+     * @param list the AST annotation to resolve.
+     * @param inTypeArguments whether we are resolving a type that's contained within type arguments, `<...>`.
+     * @return the type pack of the AST annotation.
+     **/
+    TypePackId resolveTypePack(const ScopePtr& scope, const AstTypeList& list, bool inTypeArguments);
 
     std::vector<std::pair<Name, GenericTypeDefinition>> createGenerics(const ScopePtr& scope, AstArray<AstGenericType> generics);
     std::vector<std::pair<Name, GenericTypePackDefinition>> createGenericPacks(const ScopePtr& scope, AstArray<AstGenericTypePack> packs);

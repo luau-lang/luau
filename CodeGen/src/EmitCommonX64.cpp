@@ -251,7 +251,7 @@ void callGetFastTmOrFallback(AssemblyBuilderX64& build, RegisterX64 table, TMS t
     // rArg1 is already prepared
     build.mov(rArg2, tm);
     build.mov(rax, qword[rState + offsetof(lua_State, global)]);
-    build.mov(rArg3, qword[rax + offsetof(global_State, tmname[tm])]);
+    build.mov(rArg3, qword[rax + offsetof(global_State, tmname) + tm * sizeof(TString*)]);
     build.call(qword[rNativeContext + offsetof(NativeContext, luaT_gettm)]);
 }
 

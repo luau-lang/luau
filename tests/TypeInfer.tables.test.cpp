@@ -55,7 +55,10 @@ TEST_CASE_FIXTURE(Fixture, "augment_table")
 
 TEST_CASE_FIXTURE(Fixture, "augment_nested_table")
 {
-    CheckResult result = check("local t = { p = {} }  t.p.foo = 'bar'");
+    CheckResult result = check(R"(
+        local t = { p = {} }
+        t.p.foo = 'bar'
+    )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
     TableType* tType = getMutable<TableType>(requireType("t"));
@@ -70,19 +73,28 @@ TEST_CASE_FIXTURE(Fixture, "augment_nested_table")
 
 TEST_CASE_FIXTURE(Fixture, "cannot_augment_sealed_table")
 {
-    CheckResult result = check("function mkt() return {prop=999} end    local t = mkt()    t.foo = 'bar'");
+    CheckResult result = check(R"(
+        function mkt()
+            return {prop=999}
+        end
+
+        local t = mkt()
+        t.foo = 'bar'
+    )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     TypeError& err = result.errors[0];
+
+    CHECK(err.location == Location{Position{6, 8}, Position{6, 13}});
+
     CannotExtendTable* error = get<CannotExtendTable>(err);
-    REQUIRE(error != nullptr);
+    REQUIRE_MESSAGE(error != nullptr, "Expected CannotExtendTable but got: " << toString(err));
 
     // TODO: better, more robust comparison of type vars
     auto s = toString(error->tableType, ToStringOptions{/*exhaustive*/ true});
     CHECK_EQ(s, "{| prop: number |}");
     CHECK_EQ(error->prop, "foo");
     CHECK_EQ(error->context, CannotExtendTable::Property);
-    CHECK_EQ(err.location, (Location{Position{0, 59}, Position{0, 64}}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_seal_an_unsealed_table_by_passing_it_to_a_function_that_takes_a_sealed_table")
