@@ -310,8 +310,7 @@ struct TypeStringifier
         }
 
         Luau::visit(
-            [this, tv](auto&& t)
-            {
+            [this, tv](auto&& t) {
                 return (*this)(tv, t);
             },
             tv->ty);
@@ -907,8 +906,7 @@ struct TypePackStringifier
         }
 
         Luau::visit(
-            [this, tp](auto&& t)
-            {
+            [this, tp](auto&& t) {
                 return (*this)(tp, t);
             },
             tp->ty);
@@ -1058,11 +1056,9 @@ static void assignCycleNames(const std::set<TypeId>& cycles, const std::set<Type
         if (auto ttv = get<TableType>(follow(cycleTy)); !exhaustive && ttv && (ttv->syntheticName || ttv->name))
         {
             // If we have a cycle type in type parameters, assign a cycle name for this named table
-            if (std::find_if(ttv->instantiatedTypeParams.begin(), ttv->instantiatedTypeParams.end(),
-                    [&](auto&& el)
-                    {
-                        return cycles.count(follow(el));
-                    }) != ttv->instantiatedTypeParams.end())
+            if (std::find_if(ttv->instantiatedTypeParams.begin(), ttv->instantiatedTypeParams.end(), [&](auto&& el) {
+                    return cycles.count(follow(el));
+                }) != ttv->instantiatedTypeParams.end())
                 cycleNames[cycleTy] = ttv->name ? *ttv->name : *ttv->syntheticName;
 
             continue;
@@ -1157,11 +1153,9 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
     state.exhaustive = true;
 
     std::vector<std::pair<TypeId, std::string>> sortedCycleNames{state.cycleNames.begin(), state.cycleNames.end()};
-    std::sort(sortedCycleNames.begin(), sortedCycleNames.end(),
-        [](const auto& a, const auto& b)
-        {
-            return a.second < b.second;
-        });
+    std::sort(sortedCycleNames.begin(), sortedCycleNames.end(), [](const auto& a, const auto& b) {
+        return a.second < b.second;
+    });
 
     bool semi = false;
     for (const auto& [cycleTy, name] : sortedCycleNames)
@@ -1172,8 +1166,7 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
         state.emit(name);
         state.emit(" = ");
         Luau::visit(
-            [&tvs, cycleTy = cycleTy](auto&& t)
-            {
+            [&tvs, cycleTy = cycleTy](auto&& t) {
                 return tvs(cycleTy, t);
             },
             cycleTy->ty);
@@ -1254,11 +1247,9 @@ ToStringResult toStringDetailed(TypePackId tp, ToStringOptions& opts)
     state.exhaustive = true;
 
     std::vector<std::pair<TypeId, std::string>> sortedCycleNames{state.cycleNames.begin(), state.cycleNames.end()};
-    std::sort(sortedCycleNames.begin(), sortedCycleNames.end(),
-        [](const auto& a, const auto& b)
-        {
-            return a.second < b.second;
-        });
+    std::sort(sortedCycleNames.begin(), sortedCycleNames.end(), [](const auto& a, const auto& b) {
+        return a.second < b.second;
+    });
 
     bool semi = false;
     for (const auto& [cycleTy, name] : sortedCycleNames)
@@ -1269,8 +1260,7 @@ ToStringResult toStringDetailed(TypePackId tp, ToStringOptions& opts)
         state.emit(name);
         state.emit(" = ");
         Luau::visit(
-            [&tvs, cycleTy = cycleTy](auto t)
-            {
+            [&tvs, cycleTy = cycleTy](auto t) {
                 return tvs(cycleTy, t);
             },
             cycleTy->ty);
