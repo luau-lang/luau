@@ -544,11 +544,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_union_write_indirect")
 
 TEST_CASE_FIXTURE(Fixture, "union_true_and_false")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         local x : boolean
         local y1 : (true | false) = x -- OK
@@ -562,11 +557,6 @@ TEST_CASE_FIXTURE(Fixture, "union_true_and_false")
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         local x : (number) -> number?
         local y : ((number?) -> number?) | ((number) -> number) = x -- OK
@@ -599,11 +589,6 @@ TEST_CASE_FIXTURE(Fixture, "union_of_generic_typepack_functions")
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generics")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
       function f<a,b>()
         local x : (a) -> a?
@@ -619,11 +604,6 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generics")
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generic_typepacks")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
       function f<a...>()
         local x : (number, a...) -> (number?, a...)
@@ -639,11 +619,6 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generic_typepacks")
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_arities")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         local x : (number) -> number?
         local y : ((number?) -> number) | ((number | string) -> nil) = x -- OK
@@ -657,11 +632,6 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_arities")
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_arities")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         local x : () -> (number | string)
         local y : (() -> number) | (() -> string) = x -- OK
@@ -675,11 +645,6 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_arities")
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_variadics")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         local x : (...nil) -> (...number?)
         local y : ((...string?) -> (...number)) | ((...number?) -> nil) = x -- OK
@@ -693,11 +658,6 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_variadics")
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_variadics")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         local x : (number) -> ()
         local y : ((number?) -> ()) | ((...number) -> ()) = x -- OK
@@ -711,11 +671,6 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_variadics")
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_variadics")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         local x : () -> (number?, ...number)
         local y : (() -> (...number)) | (() -> nil) = x -- OK

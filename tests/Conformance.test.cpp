@@ -693,6 +693,33 @@ TEST_CASE("Debugger")
         CHECK(stephits > 100); // note; this will depend on number of instructions which can vary, so we just make sure the callback gets hit often
 }
 
+TEST_CASE("NDebugGetUpValue")
+{
+    lua_CompileOptions copts = defaultOptions();
+    copts.debugLevel = 0;
+    // Don't optimize away any upvalues
+    copts.optimizationLevel = 0;
+
+    runConformance(
+        "ndebug_upvalues.lua", nullptr,
+        [](lua_State* L) {
+            lua_checkstack(L, LUA_MINSTACK);
+
+            // push the second frame's closure to the stack
+            lua_Debug ar = {};
+            REQUIRE(lua_getinfo(L, 1, "f", &ar));
+
+            // get the first upvalue
+            const char* u = lua_getupvalue(L, -1, 1);
+            REQUIRE(u);
+            // upvalue name is unknown without debug info
+            CHECK(strcmp(u, "") == 0);
+            CHECK(lua_tointeger(L, -1) == 5);
+            lua_pop(L, 2);
+        },
+        nullptr, &copts, /* skipCodegen */ false);
+}
+
 TEST_CASE("SameHash")
 {
     extern unsigned int luaS_hash(const char* str, size_t len); // internal function, declared in lstring.h - not exposed via lua.h

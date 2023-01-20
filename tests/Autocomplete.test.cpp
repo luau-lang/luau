@@ -16,10 +16,12 @@
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTFLAG(LuauFixAutocompleteInIf)
+LUAU_FASTFLAG(LuauFixAutocompleteInWhile)
+LUAU_FASTFLAG(LuauFixAutocompleteInFor)
 
 using namespace Luau;
 
-static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr)
+static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassType*> ptr, std::optional<std::string> contents)
 {
     return std::nullopt;
 }
@@ -37,9 +39,9 @@ struct ACFixtureImpl : BaseType
         return Luau::autocomplete(this->frontend, "MainModule", Position{row, column}, nullCallback);
     }
 
-    AutocompleteResult autocomplete(char marker)
+    AutocompleteResult autocomplete(char marker, StringCompletionCallback callback = nullCallback)
     {
-        return Luau::autocomplete(this->frontend, "MainModule", getPosition(marker), nullCallback);
+        return Luau::autocomplete(this->frontend, "MainModule", getPosition(marker), callback);
     }
 
     CheckResult check(const std::string& source)
@@ -380,7 +382,7 @@ TEST_CASE_FIXTURE(ACFixture, "table_intersection")
 {
     check(R"(
         type t1 = { a1 : string, b2 : number }
-        type t2 = { b2 : string, c3 : string }
+        type t2 = { b2 : number, c3 : string }
         function func(abc : t1 & t2)
             abc.  @1
         end
@@ -629,9 +631,19 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_for_middle_keywords")
     )");
 
     auto ac5 = autocomplete('1');
-    CHECK_EQ(ac5.entryMap.count("do"), 1);
-    CHECK_EQ(ac5.entryMap.count("end"), 0);
-    CHECK_EQ(ac5.context, AutocompleteContext::Keyword);
+    if (FFlag::LuauFixAutocompleteInFor)
+    {
+        CHECK_EQ(ac5.entryMap.count("math"), 1);
+        CHECK_EQ(ac5.entryMap.count("do"), 0);
+        CHECK_EQ(ac5.entryMap.count("end"), 0);
+        CHECK_EQ(ac5.context, AutocompleteContext::Expression);
+    }
+    else
+    {
+        CHECK_EQ(ac5.entryMap.count("do"), 1);
+        CHECK_EQ(ac5.entryMap.count("end"), 0);
+        CHECK_EQ(ac5.context, AutocompleteContext::Keyword);
+    }
 
     check(R"(
         for x = 1, 2, 5 f@1
@@ -649,6 +661,31 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_for_middle_keywords")
     auto ac7 = autocomplete('1');
     CHECK_EQ(ac7.entryMap.count("end"), 1);
     CHECK_EQ(ac7.context, AutocompleteContext::Statement);
+
+    if (FFlag::LuauFixAutocompleteInFor)
+    {
+        check(R"(local Foo = 1
+            for x = @11, @22, @35
+        )");
+
+        for (int i = 0; i < 3; ++i)
+        {
+            auto ac8 = autocomplete('1' + i);
+            CHECK_EQ(ac8.entryMap.count("Foo"), 1);
+            CHECK_EQ(ac8.entryMap.count("do"), 0);
+        }
+
+        check(R"(local Foo = 1
+            for x = @11, @22
+        )");
+
+        for (int i = 0; i < 2; ++i)
+        {
+            auto ac9 = autocomplete('1' + i);
+            CHECK_EQ(ac9.entryMap.count("Foo"), 1);
+            CHECK_EQ(ac9.entryMap.count("do"), 0);
+        }
+    }
 }
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_for_in_middle_keywords")
@@ -740,8 +777,18 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_while_middle_keywords")
     )");
 
     auto ac2 = autocomplete('1');
-    CHECK_EQ(1, ac2.entryMap.size());
-    CHECK_EQ(ac2.entryMap.count("do"), 1);
+    if (FFlag::LuauFixAutocompleteInWhile)
+    {
+        CHECK_EQ(3, ac2.entryMap.size());
+        CHECK_EQ(ac2.entryMap.count("do"), 1);
+        CHECK_EQ(ac2.entryMap.count("and"), 1);
+        CHECK_EQ(ac2.entryMap.count("or"), 1);
+    }
+    else
+    {
+        CHECK_EQ(1, ac2.entryMap.size());
+        CHECK_EQ(ac2.entryMap.count("do"), 1);
+    }
     CHECK_EQ(ac2.context, AutocompleteContext::Keyword);
 
     check(R"(
@@ -757,9 +804,31 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_while_middle_keywords")
     )");
 
     auto ac4 = autocomplete('1');
-    CHECK_EQ(1, ac4.entryMap.size());
-    CHECK_EQ(ac4.entryMap.count("do"), 1);
+    if (FFlag::LuauFixAutocompleteInWhile)
+    {
+        CHECK_EQ(3, ac4.entryMap.size());
+        CHECK_EQ(ac4.entryMap.count("do"), 1);
+        CHECK_EQ(ac4.entryMap.count("and"), 1);
+        CHECK_EQ(ac4.entryMap.count("or"), 1);
+    }
+    else
+    {
+        CHECK_EQ(1, ac4.entryMap.size());
+        CHECK_EQ(ac4.entryMap.count("do"), 1);
+    }
     CHECK_EQ(ac4.context, AutocompleteContext::Keyword);
+
+    if (FFlag::LuauFixAutocompleteInWhile)
+    {
+        check(R"(
+            while t@1
+        )");
+
+        auto ac5 = autocomplete('1');
+        CHECK_EQ(ac5.entryMap.count("do"), 0);
+        CHECK_EQ(ac5.entryMap.count("true"), 1);
+        CHECK_EQ(ac5.entryMap.count("false"), 1);
+    }
 }
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_if_middle_keywords")
@@ -856,7 +925,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_if_middle_keywords")
     CHECK_EQ(ac5.entryMap.count("elseif"), 0);
     CHECK_EQ(ac5.entryMap.count("end"), 0);
     CHECK_EQ(ac5.context, AutocompleteContext::Statement);
-    
+
     if (FFlag::LuauFixAutocompleteInIf)
     {
         check(R"(
@@ -3395,6 +3464,34 @@ TEST_CASE_FIXTURE(ACFixture, "type_reduction_is_hooked_up_to_autocomplete")
     REQUIRE(ty2);
     CHECK("{| x: (number & string)? |}" == toString(*ty2, opts));
     // CHECK("{| x: nil |}" == toString(*ty2, opts));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "string_contents_is_available_to_callback")
+{
+    ScopedFastFlag luauAutocompleteStringContent{"LuauAutocompleteStringContent", true};
+
+    loadDefinition(R"(
+        declare function require(path: string): any
+    )");
+
+    std::optional<Binding> require = frontend.typeCheckerForAutocomplete.globalScope->linearSearchForBinding("require");
+    REQUIRE(require);
+    Luau::unfreeze(frontend.typeCheckerForAutocomplete.globalTypes);
+    attachTag(require->typeId, "RequireCall");
+    Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
+
+    check(R"(
+        local x = require("testing/@1")
+    )");
+
+    bool isCorrect = false;
+    auto ac1 = autocomplete(
+        '1', [&isCorrect](std::string, std::optional<const ClassType*>, std::optional<std::string> contents) -> std::optional<AutocompleteEntryMap> {
+            isCorrect = contents && *contents == "testing/";
+            return std::nullopt;
+        });
+
+    CHECK(isCorrect);
 }
 
 TEST_SUITE_END();

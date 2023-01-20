@@ -923,6 +923,21 @@ assert((function()
     return table.concat(res, ',')
 end)() == "6,8,10")
 
+-- checking for a CFG issue that was missed in IR
+assert((function(b)
+    local res = 0
+
+    if b then
+        for i = 1, 100 do
+            res += i
+        end
+    else
+        res += 100000
+    end
+
+    return res
+end)(true) == 5050)
+
 -- typeof and type require an argument
 assert(pcall(typeof) == false)
 assert(pcall(type) == false)

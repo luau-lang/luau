@@ -1285,10 +1285,12 @@ static const char* aux_upvalue(StkId fi, int n, TValue** val)
     else
     {
         Proto* p = f->l.p;
-        if (!(1 <= n && n <= p->sizeupvalues))
+        if (!(1 <= n && n <= p->nups)) // not a valid upvalue
             return NULL;
         TValue* r = &f->l.uprefs[n - 1];
         *val = ttisupval(r) ? upvalue(r)->v : r;
+        if (!(1 <= n && n <= p->sizeupvalues)) // don't have a name for this upvalue
+            return "";
         return getstr(p->upvalues[n - 1]);
     }
 }

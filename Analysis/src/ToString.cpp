@@ -16,7 +16,6 @@
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauFunctionReturnStringificationFixup, false)
-LUAU_FASTFLAGVARIABLE(LuauUnseeArrayTtv, false)
 
 /*
  * Prefix generic typenames with gen-
@@ -606,9 +605,7 @@ struct TypeStringifier
             stringify(ttv.indexer->indexResultType);
             state.emit("}");
 
-            if (FFlag::LuauUnseeArrayTtv)
-                state.unsee(&ttv);
-
+            state.unsee(&ttv);
             return;
         }
 
@@ -1403,11 +1400,29 @@ std::string dump(TypeId ty)
     return s;
 }
 
+std::string dump(const std::optional<TypeId>& ty)
+{
+    if (ty)
+        return dump(*ty);
+
+    printf("nullopt\n");
+    return "nullopt";
+}
+
 std::string dump(TypePackId ty)
 {
     std::string s = toString(ty, dumpOptions());
     printf("%s\n", s.c_str());
     return s;
+}
+
+std::string dump(const std::optional<TypePackId>& ty)
+{
+    if (ty)
+        return dump(*ty);
+
+    printf("nullopt\n");
+    return "nullopt";
 }
 
 std::string dump(const ScopePtr& scope, const char* name)

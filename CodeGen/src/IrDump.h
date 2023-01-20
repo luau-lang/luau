@@ -28,5 +28,7 @@ void toString(std::string& result, IrConst constant);
 
 void toStringDetailed(IrToStringContext& ctx, IrInst inst, uint32_t index);
 
+std::string dump(IrFunction& function);
+
 } // namespace CodeGen
 } // namespace Luau

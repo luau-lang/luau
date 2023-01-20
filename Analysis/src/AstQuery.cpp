@@ -12,6 +12,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauCompleteTableKeysBetter);
+LUAU_FASTFLAGVARIABLE(SupportTypeAliasGoToDeclaration, false);
 
 namespace Luau
 {
@@ -183,14 +184,31 @@ struct FindFullAncestry final : public AstVisitor
     std::vector<AstNode*> nodes;
     Position pos;
     Position documentEnd;
+    bool includeTypes = false;
 
-    explicit FindFullAncestry(Position pos, Position documentEnd)
+    explicit FindFullAncestry(Position pos, Position documentEnd, bool includeTypes = false)
         : pos(pos)
         , documentEnd(documentEnd)
+        , includeTypes(includeTypes)
     {
     }
 
-    bool visit(AstNode* node)
+    bool visit(AstType* type) override
+    {
+        if (FFlag::SupportTypeAliasGoToDeclaration)
+        {
+            if (includeTypes)
+                return visit(static_cast<AstNode*>(type));
+            else
+                return false;
+        }
+        else
+        {
+            return AstVisitor::visit(type);
+        }
+    }
+
+    bool visit(AstNode* node) override
     {
         if (node->location.contains(pos))
         {
@@ -220,13 +238,13 @@ std::vector<AstNode*> findAncestryAtPositionForAutocomplete(const SourceModule& 
     return finder.ancestry;
 }
 
-std::vector<AstNode*> findAstAncestryOfPosition(const SourceModule& source, Position pos)
+std::vector<AstNode*> findAstAncestryOfPosition(const SourceModule& source, Position pos, bool includeTypes)
 {
     const Position end = source.root->location.end;
     if (pos > end)
         pos = end;
 
-    FindFullAncestry finder(pos, end);
+    FindFullAncestry finder(pos, end, includeTypes);
     source.root->visit(&finder);
     return finder.nodes;
 }

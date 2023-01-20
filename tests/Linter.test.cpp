@@ -171,7 +171,6 @@ return bar()
 
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalMultiFx")
 {
-    ScopedFastFlag sff{"LuauLintGlobalNeverReadBeforeWritten", true};
     LintResult result = lint(R"(
 function bar()
     foo = 6
@@ -192,7 +191,6 @@ return bar() + baz()
 
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalMultiFxWithRead")
 {
-    ScopedFastFlag sff{"LuauLintGlobalNeverReadBeforeWritten", true};
     LintResult result = lint(R"(
 function bar()
     foo = 6
@@ -216,7 +214,6 @@ return bar() + baz() + read()
 
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalWithConditional")
 {
-    ScopedFastFlag sff{"LuauLintGlobalNeverReadBeforeWritten", true};
     LintResult result = lint(R"(
 function bar()
     if true then foo = 6 end
@@ -236,7 +233,6 @@ return bar() + baz()
 
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocal3WithConditionalRead")
 {
-    ScopedFastFlag sff{"LuauLintGlobalNeverReadBeforeWritten", true};
     LintResult result = lint(R"(
 function bar()
     foo = 6
@@ -260,7 +256,6 @@ return bar() + baz() + read()
 
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalInnerRead")
 {
-    ScopedFastFlag sff{"LuauLintGlobalNeverReadBeforeWritten", true};
     LintResult result = lint(R"(
 function foo()
    local f = function() return bar end

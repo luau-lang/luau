@@ -17,13 +17,10 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
 // This could theoretically be 2000 on amd64, but x86 requires this.
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
-LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineTableFix, false);
-LUAU_FASTFLAGVARIABLE(LuauTypeNormalization2, false);
 LUAU_FASTFLAGVARIABLE(LuauNegatedClassTypes, false);
 LUAU_FASTFLAGVARIABLE(LuauNegatedFunctionTypes, false);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAG(LuauOverloadedFunctionSubtypingPerf);
 LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
 
 namespace Luau
@@ -2165,7 +2162,7 @@ std::optional<TypeId> Normalizer::intersectionOfFunctions(TypeId here, TypeId th
         argTypes = *argTypesOpt;
         retTypes = hftv->retTypes;
     }
-    else if (FFlag::LuauOverloadedFunctionSubtypingPerf && hftv->argTypes == tftv->argTypes)
+    else if (hftv->argTypes == tftv->argTypes)
     {
         std::optional<TypePackId> retTypesOpt = intersectionOfTypePacks(hftv->argTypes, tftv->argTypes);
         if (!retTypesOpt)

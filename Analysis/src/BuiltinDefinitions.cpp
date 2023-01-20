@@ -15,7 +15,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAGVARIABLE(LuauSetMetaTableArgsCheck, false)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauBuiltInMetatableNoBadSynthetic, false)
 LUAU_FASTFLAG(LuauReportShadowedTypeAlias)
@@ -583,7 +582,7 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
 
             TypeId mtTy = arena.addType(mtv);
 
-            if (FFlag::LuauSetMetaTableArgsCheck && expr.args.size < 1)
+            if (expr.args.size < 1)
             {
                 if (FFlag::LuauUnknownAndNeverType)
                     return std::nullopt;
@@ -591,7 +590,7 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
                     return WithPredicate<TypePackId>{};
             }
 
-            if (!FFlag::LuauSetMetaTableArgsCheck || !expr.self)
+            if (!expr.self)
             {
                 AstExpr* targetExpr = expr.args.data[0];
                 if (AstExprLocal* targetLocal = targetExpr->as<AstExprLocal>())

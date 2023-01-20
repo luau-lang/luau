@@ -9,6 +9,8 @@
 
 #include <stdint.h>
 
+struct Proto;
+
 namespace Luau
 {
 namespace CodeGen
@@ -99,6 +101,7 @@ enum class IrCmd : uint8_t
 
     // Operations that don't have an IR representation yet
     LOP_SETLIST,
+    LOP_NAMECALL,
     LOP_CALL,
     LOP_RETURN,
     LOP_FASTCALL,
@@ -116,21 +119,21 @@ enum class IrCmd : uint8_t
     LOP_ANDK,
     LOP_OR,
     LOP_ORK,
+    LOP_COVERAGE,
 
     // Operations that have a translation, but use a full instruction fallback
     FALLBACK_GETGLOBAL,
     FALLBACK_SETGLOBAL,
     FALLBACK_GETTABLEKS,
     FALLBACK_SETTABLEKS,
+    FALLBACK_NAMECALL,
 
     // Operations that don't have assembly lowering at all
-    FALLBACK_NAMECALL,
     FALLBACK_PREPVARARGS,
     FALLBACK_GETVARARGS,
     FALLBACK_NEWCLOSURE,
     FALLBACK_DUPCLOSURE,
     FALLBACK_FORGPREP,
-    FALLBACK_COVERAGE,
 };
 
 enum class IrConstKind : uint8_t
@@ -274,6 +277,8 @@ struct IrFunction
     std::vector<IrConst> constants;
 
     std::vector<BytecodeMapping> bcMapping;
+
+    Proto* proto = nullptr;
 };
 
 } // namespace CodeGen

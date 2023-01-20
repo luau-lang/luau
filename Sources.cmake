@@ -4,6 +4,7 @@ if(NOT ${CMAKE_VERSION} VERSION_LESS "3.19")
     target_sources(Luau.Common PRIVATE
         Common/include/Luau/Common.h
         Common/include/Luau/Bytecode.h
+        Common/include/Luau/DenseHash.h
         Common/include/Luau/ExperimentalFlags.h
     )
 endif()
@@ -12,7 +13,6 @@ endif()
 target_sources(Luau.Ast PRIVATE
     Ast/include/Luau/Ast.h
     Ast/include/Luau/Confusables.h
-    Ast/include/Luau/DenseHash.h
     Ast/include/Luau/Lexer.h
     Ast/include/Luau/Location.h
     Ast/include/Luau/ParseOptions.h
@@ -82,7 +82,9 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/EmitCommonX64.cpp
     CodeGen/src/EmitInstructionX64.cpp
     CodeGen/src/Fallbacks.cpp
+    CodeGen/src/IrBuilder.cpp
     CodeGen/src/IrDump.cpp
+    CodeGen/src/IrTranslation.cpp
     CodeGen/src/NativeState.cpp
     CodeGen/src/UnwindBuilderDwarf2.cpp
     CodeGen/src/UnwindBuilderWin.cpp
@@ -96,8 +98,10 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/EmitInstructionX64.h
     CodeGen/src/Fallbacks.h
     CodeGen/src/FallbacksProlog.h
+    CodeGen/src/IrBuilder.h
     CodeGen/src/IrDump.h
     CodeGen/src/IrData.h
+    CodeGen/src/IrTranslation.h
     CodeGen/src/IrUtils.h
     CodeGen/src/NativeState.h
 )

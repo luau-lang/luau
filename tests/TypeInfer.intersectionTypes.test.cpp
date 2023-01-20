@@ -463,11 +463,6 @@ TEST_CASE_FIXTURE(Fixture, "intersect_false_and_bool_and_false")
 
 TEST_CASE_FIXTURE(Fixture, "intersect_saturate_overloaded_functions")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         local x : ((number?) -> number?) & ((string?) -> string?)
         local y : (nil) -> nil = x -- OK
@@ -481,11 +476,6 @@ TEST_CASE_FIXTURE(Fixture, "intersect_saturate_overloaded_functions")
 
 TEST_CASE_FIXTURE(Fixture, "union_saturate_overloaded_functions")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         local x : ((number) -> number) & ((string) -> string)
         local y : ((number | string) -> (number | string)) = x -- OK
@@ -499,11 +489,6 @@ TEST_CASE_FIXTURE(Fixture, "union_saturate_overloaded_functions")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         local x : { p : number?, q : string? } & { p : number?, q : number?, r : number? }
         local y : { p : number?, q : nil, r : number? } = x -- OK
@@ -531,8 +516,6 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
 TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_never_properties")
 {
     ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
         {"LuauUninhabitedSubAnything2", true},
     };
 
@@ -547,11 +530,6 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_never_properties")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         local x : ((number?) -> ({ p : number } & { q : number })) & ((string?) -> ({ p : number } & { r : number }))
         local y : (nil) -> { p : number, q : number, r : number} = x -- OK
@@ -566,11 +544,6 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generic")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
       function f<a>()
         local x : ((number?) -> (a | number)) & ((string?) -> (a | string))
@@ -586,11 +559,6 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generic")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generics")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
       function f<a,b,c>()
         local x : ((a?) -> (a | b)) & ((c?) -> (b | c))
@@ -606,11 +574,6 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generics")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generic_packs")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
       function f<a...,b...>()
         local x : ((number?, a...) -> (number?, b...)) & ((string?, a...) -> (string?, b...))
@@ -626,11 +589,6 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generic_packs")
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_result")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
       function f<a...,b...>()
         local x : ((number) -> number) & ((nil) -> unknown)
@@ -646,11 +604,6 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_result")
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_arguments")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
       function f<a...,b...>()
         local x : ((number) -> number?) & ((unknown) -> string?)
@@ -666,11 +619,6 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_arguments")
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_never_result")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
       function f<a...,b...>()
         local x : ((number) -> number) & ((nil) -> never)
@@ -686,11 +634,6 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_never_result")
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_never_arguments")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
       function f<a...,b...>()
         local x : ((number) -> number?) & ((never) -> string?)
@@ -779,11 +722,6 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_4")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         local a : string? = nil
         local b : number? = nil
@@ -807,11 +745,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_subtypes")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         local x = setmetatable({ a = 5 }, { p = 5 });
         local y = setmetatable({ b = "hi" }, { p = 5, q = "hi" });
@@ -833,11 +766,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_subtypes")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables_with_properties")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         local x = setmetatable({ a = 5 }, { p = 5 });
         local y = setmetatable({ b = "hi" }, { q = "hi" });
@@ -856,11 +784,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables_with_properties")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_with_table")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         local x = setmetatable({ a = 5 }, { p = 5 });
         local z = setmetatable({ a = 5, b = "hi" }, { p = 5 });
@@ -881,11 +804,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_with_table")
 
 TEST_CASE_FIXTURE(Fixture, "CLI-44817")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-    };
-
     CheckResult result = check(R"(
         type X = {x: number}
         type Y = {y: number}

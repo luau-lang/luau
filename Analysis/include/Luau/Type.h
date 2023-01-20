@@ -375,6 +375,7 @@ struct TableType
     std::vector<TypeId> instantiatedTypeParams;
     std::vector<TypePackId> instantiatedTypePackParams;
     ModuleName definitionModuleName;
+    Location definitionLocation;
 
     std::optional<TypeId> boundTo;
     Tags tags;
@@ -656,8 +657,11 @@ public:
     const TypeId unknownType;
     const TypeId neverType;
     const TypeId errorType;
-    const TypeId falsyType;  // No type binding!
-    const TypeId truthyType; // No type binding!
+    const TypeId falsyType;
+    const TypeId truthyType;
+
+    const TypeId optionalNumberType;
+    const TypeId optionalStringType;
 
     const TypePackId anyTypePack;
     const TypePackId neverTypePack;

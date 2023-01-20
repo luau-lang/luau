@@ -14,9 +14,6 @@ namespace
 struct NegationFixture : Fixture
 {
     TypeArena arena;
-    ScopedFastFlag sff[1]{
-        {"LuauSubtypeNormalizer", true},
-    };
 
     NegationFixture()
     {

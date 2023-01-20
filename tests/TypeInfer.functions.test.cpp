@@ -1726,12 +1726,6 @@ foo(string.find("hello", "e"))
 
 TEST_CASE_FIXTURE(Fixture, "luau_subtyping_is_np_hard")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauSubtypeNormalizer", true},
-        {"LuauTypeNormalization2", true},
-        {"LuauOverloadedFunctionSubtypingPerf", true},
-    };
-
     CheckResult result = check(R"(
 --!strict
 
@@ -1834,8 +1828,6 @@ TEST_CASE_FIXTURE(Fixture, "other_things_are_not_related_to_function")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_must_follow_in_overload_resolution")
 {
-    ScopedFastFlag luauTypeInferMissingFollows{"LuauTypeInferMissingFollows", true};
-
     CheckResult result = check(R"(
 for _ in function<t0>():(t0)&((()->())&(()->()))
 end do

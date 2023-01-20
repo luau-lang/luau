@@ -1039,8 +1039,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "generalize_expectedTypes_with_proper_scope")
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_typepack_iter_follow")
 {
-    ScopedFastFlag luauTxnLogTypePackIterator{"LuauTxnLogTypePackIterator", true};
-
     CheckResult result = check(R"(
 local _
 local _ = _,_(),_(_)
@@ -1051,8 +1049,6 @@ local _ = _,_(),_(_)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_typepack_iter_follow_2")
 {
-    ScopedFastFlag luauTxnLogTypePackIterator{"LuauTxnLogTypePackIterator", true};
-
     CheckResult result = check(R"(
 function test(name, searchTerm)
     local found = string.find(name:lower(), searchTerm:lower())
