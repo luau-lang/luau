@@ -31,8 +31,6 @@ SomethingWithAGenericTable({meow = 5}) --OK
 SomethingWithAGenericTable(5) --not OK
 ```
 
-> TODO: Partially constrained generics, where part of the type is known but can be expaned upon, similar to TypeScript's `extends` keyword.
-
 ## Drawbacks
 
 This adds unusual syntax, as well as adding to the complexity of the language.
