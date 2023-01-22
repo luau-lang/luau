@@ -50,14 +50,17 @@ static bool dcrMagicFunctionFind(MagicFunctionCallContext context);
 
 TypeId follow(TypeId t)
 {
-    return follow(t, [](TypeId t) {
-        return t;
-    });
+    return follow(t,
+        [](TypeId t)
+        {
+            return t;
+        });
 }
 
 TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
 {
-    auto advance = [&mapper](TypeId ty) -> std::optional<TypeId> {
+    auto advance = [&mapper](TypeId ty) -> std::optional<TypeId>
+    {
         if (auto btv = get<Unifiable::Bound<TypeId>>(mapper(ty)))
             return btv->boundTo;
         else if (auto ttv = get<TableType>(mapper(ty)))
@@ -66,7 +69,8 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
             return std::nullopt;
     };
 
-    auto force = [&mapper](TypeId ty) {
+    auto force = [&mapper](TypeId ty)
+    {
         if (auto ltv = get_if<LazyType>(&mapper(ty)->ty))
         {
             TypeId res = ltv->thunk();
@@ -237,7 +241,8 @@ bool isOverloadedFunction(TypeId ty)
     if (!get<IntersectionType>(follow(ty)))
         return false;
 
-    auto isFunction = [](TypeId part) -> bool {
+    auto isFunction = [](TypeId part) -> bool
+    {
         return get<FunctionType>(part);
     };
 
@@ -1076,11 +1081,11 @@ IntersectionTypeIterator end(const IntersectionType* itv)
     return IntersectionTypeIterator{};
 }
 
-static std::vector<UnionType> parseFormatString(NotNull<BuiltinTypes> builtinTypes, const char* data, size_t size)
+static std::vector<TypeId> parseFormatString(NotNull<BuiltinTypes> builtinTypes, const char* data, size_t size)
 {
     const char* options = "cdiouxXeEfgGqs*";
 
-    std::vector<UnionType> result;
+    std::vector<TypeId> result;
 
     for (size_t i = 0; i < size; ++i)
     {
@@ -1099,13 +1104,17 @@ static std::vector<UnionType> parseFormatString(NotNull<BuiltinTypes> builtinTyp
                 break;
 
             if (data[i] == 'q' || data[i] == 's')
-                result.push_back(UnionType {{builtinTypes->stringType, builtinTypes->numberType}});
+            {
+                // there has to be a better way than this help :(
+                TypeId unionFormatId = (new TypeArena)->addType(UnionType{{builtinTypes->stringType, builtinTypes->numberType}});
+                result.push_back(unionFormatId);
+            }
             else if (data[i] == '*')
-                result.push_back(UnionType {{builtinTypes->unknownType}});
+                result.push_back(builtinTypes->unknownType);
             else if (strchr(options, data[i]))
-                result.push_back(UnionType {{builtinTypes->numberType}});
+                result.push_back(builtinTypes->numberType);
             else
-                result.push_back(UnionType {{builtinTypes->errorRecoveryType(builtinTypes->anyType)}});
+                result.push_back(builtinTypes->errorRecoveryType(builtinTypes->anyType));
         }
     }
 
@@ -1134,7 +1143,7 @@ std::optional<WithPredicate<TypePackId>> magicFunctionFormat(
     if (!fmt)
         return std::nullopt;
 
-    std::vector<UnionType> expected = parseFormatString(typechecker.builtinTypes, fmt->value.data, fmt->value.size);
+    std::vector<TypeId> expected = parseFormatString(typechecker.builtinTypes, fmt->value.data, fmt->value.size);
     const auto& [params, tail] = flatten(paramPack);
 
     size_t paramOffset = 1;
@@ -1144,10 +1153,7 @@ std::optional<WithPredicate<TypePackId>> magicFunctionFormat(
     for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
     {
         Location location = expr.args.data[std::min(i + dataOffset, expr.args.size - 1)]->location;
-
-				// use arena to flatten union type
-				const TypeId formatTypes = arena.addType(expected[i]);
-        typechecker.unify(params[i + paramOffset], formatTypes, scope, location);
+        typechecker.unify(params[i + paramOffset], expected[i], scope, location);
     }
 
     // if we know the argument count or if we have too many arguments for sure, we can issue an error
@@ -1179,7 +1185,7 @@ static bool dcrMagicFunctionFormat(MagicFunctionCallContext context)
     if (!fmt)
         return false;
 
-    std::vector<UnionType> expected = parseFormatString(context.solver->builtinTypes, fmt->value.data, fmt->value.size);
+    std::vector<TypeId> expected = parseFormatString(context.solver->builtinTypes, fmt->value.data, fmt->value.size);
     const auto& [params, tail] = flatten(context.arguments);
 
     size_t paramOffset = 1;
@@ -1187,8 +1193,7 @@ static bool dcrMagicFunctionFormat(MagicFunctionCallContext context)
     // unify the prefix one argument at a time
     for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
     {
-				const TypeId formatTypes = arena->addType(expected[i]);
-        context.solver->unify(params[i + paramOffset], formatTypes, context.solver->rootScope);
+        context.solver->unify(params[i + paramOffset], expected[i], context.solver->rootScope);
     }
 
     // if we know the argument count or if we have too many arguments for sure, we can issue an error
