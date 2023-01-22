@@ -50,17 +50,14 @@ static bool dcrMagicFunctionFind(MagicFunctionCallContext context);
 
 TypeId follow(TypeId t)
 {
-    return follow(t,
-        [](TypeId t)
-        {
-            return t;
-        });
+    return follow(t, [](TypeId t) {
+        return t;
+    });
 }
 
 TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
 {
-    auto advance = [&mapper](TypeId ty) -> std::optional<TypeId>
-    {
+    auto advance = [&mapper](TypeId ty) -> std::optional<TypeId> {
         if (auto btv = get<Unifiable::Bound<TypeId>>(mapper(ty)))
             return btv->boundTo;
         else if (auto ttv = get<TableType>(mapper(ty)))
@@ -69,8 +66,7 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
             return std::nullopt;
     };
 
-    auto force = [&mapper](TypeId ty)
-    {
+    auto force = [&mapper](TypeId ty) {
         if (auto ltv = get_if<LazyType>(&mapper(ty)->ty))
         {
             TypeId res = ltv->thunk();
@@ -241,8 +237,7 @@ bool isOverloadedFunction(TypeId ty)
     if (!get<IntersectionType>(follow(ty)))
         return false;
 
-    auto isFunction = [](TypeId part) -> bool
-    {
+    auto isFunction = [](TypeId part) -> bool {
         return get<FunctionType>(part);
     };
 
