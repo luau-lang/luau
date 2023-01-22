@@ -53,7 +53,7 @@ fieldlist = field {fieldsep field} [fieldsep]
 field = '[' exp ']' '=' exp | NAME '=' exp | exp
 fieldsep = ',' | ';'
 
-compoundop :: '+=' | '-=' | '*=' | '/=' | '%=' | '^=' | '..='
+compoundop = '+=' | '-=' | '*=' | '/=' | '%=' | '^=' | '..='
 binop = '+' | '-' | '*' | '/' | '^' | '%' | '..' | '<' | '<=' | '>' | '>=' | '==' | '~=' | 'and' | 'or'
 unop = '-' | 'not' | '#'
 
