@@ -6,7 +6,6 @@
 #include "Luau/ConstraintSolver.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Error.h"
-#include "Luau/Normalize.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/StringUtils.h"
 #include "Luau/ToString.h"
