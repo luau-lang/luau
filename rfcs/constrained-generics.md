@@ -52,6 +52,14 @@ Enum {"None", "Some", "All"} -- Not OK (generic must be have string keys)
 Enum(0) -- Not ok (generic must be a table)
 ```
 
+Finally, this will also give the autocomplete the correct information about the Enum, correctly containing the "None", "Some" and "All" keys
+```lua
+Enum. --> GetEnumItems: (Enum) -> {None: number, Some: number, All: number}
+      --> None: number
+      --> Some: number
+      --> All: number
+```
+
 ## Drawbacks
 
 More of the complexity budget spent.
