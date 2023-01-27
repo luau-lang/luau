@@ -201,11 +201,11 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases")
 
     const char* expectedError;
     if (FFlag::LuauTypeMismatchInvarianceInError)
-        expectedError = "Type '{ v: string }' could not be converted into 'T<number>'\n"
+        expectedError = "Type 'bad' could not be converted into 'T<number>'\n"
                         "caused by:\n"
                         "  Property 'v' is not compatible. Type 'string' could not be converted into 'number' in an invariant context";
     else
-        expectedError = "Type '{ v: string }' could not be converted into 'T<number>'\n"
+        expectedError = "Type 'bad' could not be converted into 'T<number>'\n"
                         "caused by:\n"
                         "  Property 'v' is not compatible. Type 'string' could not be converted into 'number'";
 
@@ -228,13 +228,13 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 
     const char* expectedError;
     if (FFlag::LuauTypeMismatchInvarianceInError)
-        expectedError = "Type '{ t: { v: string } }' could not be converted into 'U<number>'\n"
+        expectedError = "Type 'bad' could not be converted into 'U<number>'\n"
                         "caused by:\n"
                         "  Property 't' is not compatible. Type '{ v: string }' could not be converted into 'T<number>'\n"
                         "caused by:\n"
                         "  Property 'v' is not compatible. Type 'string' could not be converted into 'number' in an invariant context";
     else
-        expectedError = "Type '{ t: { v: string } }' could not be converted into 'U<number>'\n"
+        expectedError = "Type 'bad' could not be converted into 'U<number>'\n"
                         "caused by:\n"
                         "  Property 't' is not compatible. Type '{ v: string }' could not be converted into 'T<number>'\n"
                         "caused by:\n"
@@ -890,8 +890,6 @@ TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_not_ok")
 
 TEST_CASE_FIXTURE(Fixture, "report_shadowed_aliases")
 {
-    ScopedFastFlag sff{"LuauReportShadowedTypeAlias", true};
-
     // We allow a previous type alias to depend on a future type alias. That exact feature enables a confusing example, like the following snippet,
     // which has the type alias FakeString point to the type alias `string` that which points to `number`.
     CheckResult result = check(R"(

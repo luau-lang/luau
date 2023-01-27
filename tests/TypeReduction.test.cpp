@@ -521,6 +521,30 @@ TEST_CASE_FIXTURE(ReductionFixture, "intersections_without_negations")
         TypeId ty = reductionof("(Parent & Child) | (Parent & AnotherChild) | (Parent & Unrelated)");
         CHECK("AnotherChild | Child" == toString(ty));
     }
+
+    SUBCASE("top_table_and_table")
+    {
+        TypeId ty = reductionof("tbl & {}");
+        CHECK("{|  |}" == toString(ty));
+    }
+
+    SUBCASE("top_table_and_non_table")
+    {
+        TypeId ty = reductionof("tbl & \"foo\"");
+        CHECK("never" == toString(ty));
+    }
+
+    SUBCASE("top_table_and_metatable")
+    {
+        BuiltinsFixture fixture;
+        registerHiddenTypes(&fixture.frontend);
+        fixture.check(R"(
+            type Ty = tbl & typeof(setmetatable({}, {}))
+        )");
+
+        TypeId ty = reductionof(fixture.requireTypeAlias("Ty"));
+        CHECK("{ @metatable {  }, {  } }" == toString(ty));
+    }
 } // intersections_without_negations
 
 TEST_CASE_FIXTURE(ReductionFixture, "intersections_with_negations")
@@ -685,6 +709,24 @@ TEST_CASE_FIXTURE(ReductionFixture, "intersections_with_negations")
     {
         TypeId ty = reductionof("{ x: { p: string } } & { x: { p: Not<number> } }");
         CHECK("{| x: {| p: string |} |}" == toStringFull(ty));
+    }
+
+    SUBCASE("not_top_table_and_table")
+    {
+        TypeId ty = reductionof("Not<tbl> & {}");
+        CHECK("never" == toString(ty));
+    }
+
+    SUBCASE("not_top_table_and_metatable")
+    {
+        BuiltinsFixture fixture;
+        registerHiddenTypes(&fixture.frontend);
+        fixture.check(R"(
+            type Ty = Not<tbl> & typeof(setmetatable({}, {}))
+        )");
+
+        TypeId ty = reductionof(fixture.requireTypeAlias("Ty"));
+        CHECK("never" == toString(ty));
     }
 } // intersections_with_negations
 
@@ -911,6 +953,30 @@ TEST_CASE_FIXTURE(ReductionFixture, "unions_without_negations")
         TypeId ty = reductionof("string | err");
         CHECK("*error-type* | string" == toStringFull(ty));
     }
+
+    SUBCASE("top_table_or_table")
+    {
+        TypeId ty = reductionof("tbl | {}");
+        CHECK("table" == toString(ty));
+    }
+
+    SUBCASE("top_table_or_metatable")
+    {
+        BuiltinsFixture fixture;
+        registerHiddenTypes(&fixture.frontend);
+        fixture.check(R"(
+            type Ty = tbl | typeof(setmetatable({}, {}))
+        )");
+
+        TypeId ty = reductionof(fixture.requireTypeAlias("Ty"));
+        CHECK("table" == toString(ty));
+    }
+
+    SUBCASE("top_table_or_non_table")
+    {
+        TypeId ty = reductionof("tbl | number");
+        CHECK("number | table" == toString(ty));
+    }
 } // unions_without_negations
 
 TEST_CASE_FIXTURE(ReductionFixture, "unions_with_negations")
@@ -1123,6 +1189,24 @@ TEST_CASE_FIXTURE(ReductionFixture, "unions_with_negations")
     {
         TypeId ty = reductionof("string | Not<err>");
         CHECK("string | ~*error-type*" == toStringFull(ty));
+    }
+
+    SUBCASE("not_top_table_or_table")
+    {
+        TypeId ty = reductionof("Not<tbl> | {}");
+        CHECK("{|  |} | ~table" == toString(ty));
+    }
+
+    SUBCASE("not_top_table_or_metatable")
+    {
+        BuiltinsFixture fixture;
+        registerHiddenTypes(&fixture.frontend);
+        fixture.check(R"(
+            type Ty = Not<tbl> | typeof(setmetatable({}, {}))
+        )");
+
+        TypeId ty = reductionof(fixture.requireTypeAlias("Ty"));
+        CHECK("{ @metatable {  }, {  } } | ~table" == toString(ty));
     }
 } // unions_with_negations
 

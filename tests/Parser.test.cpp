@@ -906,8 +906,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_compound_assignment_error_multiple")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_begin")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     try
     {
         parse(R"(
@@ -923,8 +921,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_begin")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_mid")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     try
     {
         parse(R"(
@@ -940,8 +936,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_mid")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     auto columnOfEndBraceError = [this](const char* code) {
         try
         {
@@ -966,8 +960,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace_in_table")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     try
     {
         parse(R"(
@@ -986,8 +978,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace_in_table
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_mid_without_end_brace_in_table")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     try
     {
         parse(R"(
@@ -1006,8 +996,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_mid_without_end_brace_in_t
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_as_type_fail")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     try
     {
         parse(R"(
@@ -1028,8 +1016,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_as_type_fail")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_call_without_parens")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     try
     {
         parse(R"(

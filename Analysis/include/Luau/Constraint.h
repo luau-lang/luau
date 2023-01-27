@@ -89,6 +89,7 @@ struct NameConstraint
 {
     TypeId namedType;
     std::string name;
+    bool synthetic = false;
 };
 
 // target ~ inst target

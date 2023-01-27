@@ -13,6 +13,9 @@
 #include "CodeGenX64.h"
 #include "EmitCommonX64.h"
 #include "EmitInstructionX64.h"
+#include "IrAnalysis.h"
+#include "IrBuilder.h"
+#include "IrLoweringX64.h"
 #include "NativeState.h"
 
 #include "lapi.h"
@@ -26,6 +29,8 @@
 #include <cpuid.h> // __cpuid
 #endif
 #endif
+
+LUAU_FASTFLAGVARIABLE(DebugUseOldCodegen, false)
 
 namespace Luau
 {
@@ -241,7 +246,7 @@ static int emitInst(AssemblyBuilderX64& build, NativeState& data, ModuleHelpers&
         skip = emitInstFastCall2K(build, pc, i, next);
         break;
     case LOP_FORNPREP:
-        emitInstForNPrep(build, pc, i, labelarr[i + 1 + LUAU_INSN_D(*pc)]);
+        emitInstForNPrep(build, pc, i, next, labelarr[i + 1 + LUAU_INSN_D(*pc)]);
         break;
     case LOP_FORNLOOP:
         emitInstForNLoop(build, pc, i, labelarr[i + 1 + LUAU_INSN_D(*pc)], next);
@@ -404,7 +409,7 @@ static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& dat
 
     result->proto = proto;
 
-    if (build.logText)
+    if (options.includeAssembly || options.includeIr)
     {
         if (proto->debugname)
             build.logAppend("; function %s()", getstr(proto->debugname));
@@ -415,6 +420,38 @@ static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& dat
             build.logAppend(" line %d\n", proto->linedefined);
         else
             build.logAppend("\n");
+    }
+
+    if (!FFlag::DebugUseOldCodegen)
+    {
+        build.align(kFunctionAlignment, AlignmentDataX64::Ud2);
+
+        Label start = build.setLabel();
+
+        IrBuilder builder;
+        builder.buildFunctionIr(proto);
+
+        updateUseInfo(builder.function);
+
+        IrLoweringX64 lowering(build, helpers, data, proto, builder.function);
+
+        lowering.lower(options);
+
+        result->instTargets = new uintptr_t[proto->sizecode];
+
+        for (int i = 0; i < proto->sizecode; i++)
+        {
+            auto [irLocation, asmLocation] = builder.function.bcMapping[i];
+
+            result->instTargets[i] = irLocation == ~0u ? 0 : asmLocation - start.location;
+        }
+
+        result->location = start.location;
+
+        if (build.logText)
+            build.logAppend("\n");
+
+        return result;
     }
 
     std::vector<Label> instLabels;
@@ -457,7 +494,7 @@ static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& dat
     size_t textSize = build.text.size();
     uint32_t codeSize = build.getCodeSize();
 
-    if (options.annotator && !options.skipOutlinedCode)
+    if (options.annotator && options.includeOutlinedCode)
         build.logAppend("; outlined instructions\n");
 
     for (auto [pcpos, length] : instOutlines)
@@ -474,7 +511,7 @@ static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& dat
 
             build.setLabel(instLabels[i]);
 
-            if (options.annotator && !options.skipOutlinedCode)
+            if (options.annotator && options.includeOutlinedCode)
                 options.annotator(options.annotatorContext, build.text, proto->bytecodeid, i);
 
             Label& next = nexti < proto->sizecode ? instLabels[nexti] : start; // Last instruction can't use 'next' label
@@ -489,7 +526,7 @@ static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& dat
             build.jmp(instLabels[i]);
     }
 
-    if (options.annotator && !options.skipOutlinedCode)
+    if (options.annotator && options.includeOutlinedCode)
         build.logAppend("; outlined code\n");
 
     for (int i = 0, instid = 0; i < proto->sizecode; ++instid)
@@ -506,7 +543,7 @@ static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& dat
             continue;
         }
 
-        if (options.annotator && !options.skipOutlinedCode)
+        if (options.annotator && options.includeOutlinedCode)
             options.annotator(options.annotatorContext, build.text, proto->bytecodeid, instid);
 
         build.setLabel(instFallbacks[i]);
@@ -521,7 +558,7 @@ static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& dat
     }
 
     // Truncate assembly output if we don't care for outlined code part
-    if (options.skipOutlinedCode)
+    if (!options.includeOutlinedCode)
     {
         build.text.resize(textSize);
 
@@ -730,7 +767,7 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
     LUAU_ASSERT(lua_isLfunction(L, idx));
     const TValue* func = luaA_toobject(L, idx);
 
-    AssemblyBuilderX64 build(/* logText= */ !options.outputBinary);
+    AssemblyBuilderX64 build(/* logText= */ options.includeAssembly);
 
     NativeState data;
     initFallbackTable(data);

@@ -3214,8 +3214,6 @@ local b = a.x
 
 TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shape_type")
 {
-    ScopedFastFlag sff{"LuauScalarShapeSubtyping", true};
-
     CheckResult result = check(R"(
         local function f(s)
             return s:lower()
@@ -3231,8 +3229,6 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shap
 
 TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_shape_type")
 {
-    ScopedFastFlag sff{"LuauScalarShapeSubtyping", true};
-
     CheckResult result = check(R"(
         local function f(s)
             return s:absolutely_no_scalar_has_this_method()
@@ -3263,7 +3259,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "a_free_shape_can_turn_into_a_scalar_if_it_is_compatible")
 {
-    ScopedFastFlag sff{"LuauScalarShapeSubtyping", true};
     ScopedFastFlag luauScalarShapeUnifyToMtOwner{"LuauScalarShapeUnifyToMtOwner2", true}; // Changes argument from table type to primitive
 
     CheckResult result = check(R"(
@@ -3279,8 +3274,6 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_can_turn_into_a_scalar_if_it_is_compati
 
 TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_compatible")
 {
-    ScopedFastFlag sff{"LuauScalarShapeSubtyping", true};
-
     CheckResult result = check(R"(
         local function f(s): string
             local foo = s:absolutely_no_scalar_has_this_method()
@@ -3298,7 +3291,6 @@ caused by:
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "a_free_shape_can_turn_into_a_scalar_directly")
 {
-    ScopedFastFlag luauScalarShapeSubtyping{"LuauScalarShapeSubtyping", true};
     ScopedFastFlag luauScalarShapeUnifyToMtOwner{"LuauScalarShapeUnifyToMtOwner2", true};
 
     CheckResult result = check(R"(
@@ -3385,7 +3377,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_has_a_side_effect")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK(toString(requireType("foo")) == "{ @metatable { __add: <a, b>(a, b) -> number }, {  } }");
+    CHECK(toString(requireType("foo")) == "{ @metatable mt, foo }");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tables_should_be_fully_populated")

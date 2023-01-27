@@ -342,8 +342,6 @@ TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_variadic_pack")
 // Belongs in TypeInfer.builtins.test.cpp.
 TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_returns_at_least_two_value_but_function_returns_nothing")
 {
-    ScopedFastFlag sff{"LuauBetterMessagingOnCountMismatch", true};
-
     CheckResult result = check(R"(
         local function f(): () end
         local ok, res = pcall(f)

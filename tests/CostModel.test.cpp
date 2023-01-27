@@ -227,8 +227,6 @@ end
 
 TEST_CASE("InterpString")
 {
-    ScopedFastFlag sff("LuauInterpolatedStringBaseSupport", true);
-
     uint64_t model = modelFunction(R"(
 function test(a)
     return `hello, {a}!`

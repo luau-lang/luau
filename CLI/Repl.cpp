@@ -48,8 +48,10 @@ enum class CompileFormat
     Text,
     Binary,
     Remarks,
-    Codegen,
-    CodegenVerbose,
+    Codegen,        // Prints annotated native code including IR and assembly
+    CodegenAsm,     // Prints annotated native code assembly
+    CodegenIr,      // Prints annotated native code IR
+    CodegenVerbose, // Prints annotated native code including IR, assembly and outlined code
     CodegenNull,
     Null
 };
@@ -716,7 +718,19 @@ static bool compileFile(const char* name, CompileFormat format, CompileStats& st
     try
     {
         Luau::BytecodeBuilder bcb;
-        Luau::CodeGen::AssemblyOptions options = {format == CompileFormat::CodegenNull, format == CompileFormat::Codegen, annotateInstruction, &bcb};
+
+        Luau::CodeGen::AssemblyOptions options;
+        options.outputBinary = format == CompileFormat::CodegenNull;
+
+        if (!options.outputBinary)
+        {
+            options.includeAssembly = format != CompileFormat::CodegenIr;
+            options.includeIr = format != CompileFormat::CodegenAsm;
+            options.includeOutlinedCode = format == CompileFormat::CodegenVerbose;
+        }
+
+        options.annotator = annotateInstruction;
+        options.annotatorContext = &bcb;
 
         if (format == CompileFormat::Text)
         {
@@ -729,7 +743,8 @@ static bool compileFile(const char* name, CompileFormat format, CompileStats& st
             bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Remarks);
             bcb.setDumpSource(*source);
         }
-        else if (format == CompileFormat::Codegen || format == CompileFormat::CodegenVerbose)
+        else if (format == CompileFormat::Codegen || format == CompileFormat::CodegenAsm || format == CompileFormat::CodegenIr ||
+                 format == CompileFormat::CodegenVerbose)
         {
             bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals |
                              Luau::BytecodeBuilder::Dump_Remarks);
@@ -760,6 +775,8 @@ static bool compileFile(const char* name, CompileFormat format, CompileStats& st
             fwrite(bcb.getBytecode().data(), 1, bcb.getBytecode().size(), stdout);
             break;
         case CompileFormat::Codegen:
+        case CompileFormat::CodegenAsm:
+        case CompileFormat::CodegenIr:
         case CompileFormat::CodegenVerbose:
             printf("%s", getCodegenAssembly(name, bcb.getBytecode(), options).c_str());
             break;
@@ -849,6 +866,14 @@ int replMain(int argc, char** argv)
         else if (strcmp(argv[1], "--compile=codegen") == 0)
         {
             compileFormat = CompileFormat::Codegen;
+        }
+        else if (strcmp(argv[1], "--compile=codegenasm") == 0)
+        {
+            compileFormat = CompileFormat::CodegenAsm;
+        }
+        else if (strcmp(argv[1], "--compile=codegenir") == 0)
+        {
+            compileFormat = CompileFormat::CodegenIr;
         }
         else if (strcmp(argv[1], "--compile=codegenverbose") == 0)
         {

@@ -922,10 +922,10 @@ ModulePtr Frontend::check(
 
     for (TypeError& e : cs.errors)
         result->errors.emplace_back(std::move(e));
-
     result->scopes = std::move(cgb.scopes);
     result->astTypes = std::move(cgb.astTypes);
     result->astTypePacks = std::move(cgb.astTypePacks);
+    result->astExpectedTypes = std::move(cgb.astExpectedTypes);
     result->astOriginalCallTypes = std::move(cgb.astOriginalCallTypes);
     result->astOverloadResolvedTypes = std::move(cgb.astOverloadResolvedTypes);
     result->astResolvedTypes = std::move(cgb.astResolvedTypes);

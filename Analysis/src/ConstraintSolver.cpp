@@ -883,7 +883,12 @@ bool ConstraintSolver::tryDispatch(const NameConstraint& c, NotNull<const Constr
         return true;
 
     if (TableType* ttv = getMutable<TableType>(target))
-        ttv->name = c.name;
+    {
+        if (c.synthetic && !ttv->name)
+            ttv->syntheticName = c.name;
+        else
+            ttv->name = c.name;
+    }
     else if (MetatableType* mtv = getMutable<MetatableType>(target))
         mtv->syntheticName = c.name;
     else if (get<IntersectionType>(target) || get<UnionType>(target))
@@ -1594,7 +1599,7 @@ bool ConstraintSolver::tryDispatchIterableFunction(
     const TypeId firstIndex = isNil(firstIndexTy) ? arena->freshType(constraint->scope) // FIXME: Surely this should be a union (free | nil)
                                                   : firstIndexTy;
 
-    // nextTy : (tableTy, indexTy?) -> (indexTy, valueTailTy...)
+    // nextTy : (tableTy, indexTy?) -> (indexTy?, valueTailTy...)
     const TypePackId nextArgPack = arena->addTypePack({tableTy, arena->addType(UnionType{{firstIndex, builtinTypes->nilType}})});
     const TypePackId valueTailTy = arena->addTypePack(FreeTypePack{constraint->scope});
     const TypePackId nextRetPack = arena->addTypePack(TypePack{{firstIndex}, valueTailTy});
@@ -1602,7 +1607,25 @@ bool ConstraintSolver::tryDispatchIterableFunction(
     const TypeId expectedNextTy = arena->addType(FunctionType{TypeLevel{}, constraint->scope, nextArgPack, nextRetPack});
     unify(nextTy, expectedNextTy, constraint->scope);
 
-    pushConstraint(constraint->scope, constraint->location, PackSubtypeConstraint{c.variables, nextRetPack});
+    auto it = begin(nextRetPack);
+    std::vector<TypeId> modifiedNextRetHead;
+
+    // The first value is never nil in the context of the loop, even if it's nil
+    // in the next function's return type, because the loop will not advance if
+    // it's nil.
+    if (it != end(nextRetPack))
+    {
+        TypeId firstRet = *it;
+        TypeId modifiedFirstRet = stripNil(builtinTypes, *arena, firstRet);
+        modifiedNextRetHead.push_back(modifiedFirstRet);
+        ++it;
+    }
+
+    for (; it != end(nextRetPack); ++it)
+        modifiedNextRetHead.push_back(*it);
+
+    TypePackId modifiedNextRetPack = arena->addTypePack(std::move(modifiedNextRetHead), it.tail());
+    pushConstraint(constraint->scope, constraint->location, PackSubtypeConstraint{c.variables, modifiedNextRetPack});
 
     return true;
 }
@@ -1649,8 +1672,8 @@ std::optional<TypeId> ConstraintSolver::lookupTableProp(TypeId subjectType, cons
             resultType = parts[0];
         else if (parts.size() > 1)
             resultType = arena->addType(UnionType{std::move(parts)});
-        else
-            LUAU_ASSERT(false); // parts.size() == 0
+
+        // otherwise, nothing: no matching property
     }
     else if (auto itv = get<IntersectionType>(subjectType))
     {
@@ -1662,8 +1685,8 @@ std::optional<TypeId> ConstraintSolver::lookupTableProp(TypeId subjectType, cons
             resultType = parts[0];
         else if (parts.size() > 1)
             resultType = arena->addType(IntersectionType{std::move(parts)});
-        else
-            LUAU_ASSERT(false); // parts.size() == 0
+
+        // otherwise, nothing: no matching property
     }
 
     return resultType;

@@ -1014,7 +1014,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "merge_should_be_fully_agnostic_of_hashmap_or
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        CHECK_EQ("(never | string) & (string | {| x: string |}) & string", toString(requireTypeAtPosition({6, 28})));
+        CHECK_EQ("(string | table) & (string | {| x: string |}) & string", toString(requireTypeAtPosition({6, 28})));
     }
     else
     {
@@ -1241,8 +1241,6 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_tag")
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_tag_with_implicit_else")
 {
-    ScopedFastFlag sff{"LuauImplicitElseRefinement", true};
-
     CheckResult result = check(R"(
         type Cat = {tag: "Cat", name: string, catfood: string}
         type Dog = {tag: "Dog", name: string, dogfood: string}
@@ -1561,7 +1559,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "refine_param_of_type_instance_without
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         CHECK_EQ("Folder & Instance", toString(requireTypeAtPosition({3, 28})));
-        CHECK_EQ("Instance & ~Folder & never", toString(requireTypeAtPosition({5, 28})));
+        CHECK_EQ("Instance & ~Folder & table", toString(requireTypeAtPosition({5, 28})));
     }
     else
     {
@@ -1728,8 +1726,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "what_nonsensical_condition")
 
 TEST_CASE_FIXTURE(Fixture, "else_with_no_explicit_expression_should_also_refine_the_tagged_union")
 {
-    ScopedFastFlag sff{"LuauImplicitElseRefinement", true};
-
     CheckResult result = check(R"(
         type Ok<T> = { tag: "ok", value: T }
         type Err<E> = { tag: "err", err: E }

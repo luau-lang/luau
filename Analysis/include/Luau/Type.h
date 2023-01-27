@@ -117,6 +117,7 @@ struct PrimitiveType
         String,
         Thread,
         Function,
+        Table,
     };
 
     Type type;
@@ -651,6 +652,7 @@ public:
     const TypeId threadType;
     const TypeId functionType;
     const TypeId classType;
+    const TypeId tableType;
     const TypeId trueType;
     const TypeId falseType;
     const TypeId anyType;

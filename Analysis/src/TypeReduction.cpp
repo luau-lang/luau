@@ -56,12 +56,6 @@ struct TypeReducer
     TypeId memoize(TypeId ty, TypeId reducedTy);
     TypePackId memoize(TypePackId tp, TypePackId reducedTp);
 
-    // It's either cyclic with no memoized result, so we should terminate, or
-    // there is a memoized result but one that's being reduced top-down, so
-    // we need to return the root of that memoized result to tighten up things.
-    TypeId memoizedOr(TypeId ty) const;
-    TypePackId memoizedOr(TypePackId tp) const;
-
     using BinaryFold = std::optional<TypeId> (TypeReducer::*)(TypeId, TypeId);
     using UnaryFold = TypeId (TypeReducer::*)(TypeId);
 
@@ -319,6 +313,24 @@ std::optional<TypeId> TypeReducer::intersectionType(TypeId left, TypeId right)
     }
     else if (auto [f, p] = get2<FunctionType, PrimitiveType>(left, right); f && p)
         return intersectionType(right, left); // () -> () & P ~ P & () -> ()
+    else if (auto [p, t] = get2<PrimitiveType, TableType>(left, right); p && t)
+    {
+        if (p->type == PrimitiveType::Table)
+            return right; // table & {} ~ {}
+        else
+            return builtinTypes->neverType; // string & {} ~ never
+    }
+    else if (auto [p, t] = get2<PrimitiveType, MetatableType>(left, right); p && t)
+    {
+        if (p->type == PrimitiveType::Table)
+            return right; // table & {} ~ {}
+        else
+            return builtinTypes->neverType; // string & {} ~ never
+    }
+    else if (auto [t, p] = get2<TableType, PrimitiveType>(left, right); t && p)
+        return intersectionType(right, left); // {} & P ~ P & {}
+    else if (auto [t, p] = get2<MetatableType, PrimitiveType>(left, right); t && p)
+        return intersectionType(right, left); // M & P ~ P & M
     else if (auto [s1, s2] = get2<SingletonType, SingletonType>(left, right); s1 && s2)
     {
         if (*s1 == *s2)
@@ -472,6 +484,20 @@ std::optional<TypeId> TypeReducer::intersectionType(TypeId left, TypeId right)
             else
                 return right; // ~Base & Unrelated ~ Unrelated
         }
+        else if (auto [np, t] = get2<PrimitiveType, TableType>(nlTy, right); np && t)
+        {
+            if (np->type == PrimitiveType::Table)
+                return builtinTypes->neverType; // ~table & {} ~ never
+            else
+                return right; // ~string & {} ~ {}
+        }
+        else if (auto [np, t] = get2<PrimitiveType, MetatableType>(nlTy, right); np && t)
+        {
+            if (np->type == PrimitiveType::Table)
+                return builtinTypes->neverType; // ~table & {} ~ never
+            else
+                return right; // ~string & {} ~ {}
+        }
         else
             return std::nullopt; // TODO
     }
@@ -529,6 +555,24 @@ std::optional<TypeId> TypeReducer::unionType(TypeId left, TypeId right)
     }
     else if (auto [f, p] = get2<FunctionType, PrimitiveType>(left, right); f && p)
         return unionType(right, left); // () -> () | P ~ P | () -> ()
+    else if (auto [p, t] = get2<PrimitiveType, TableType>(left, right); p && t)
+    {
+        if (p->type == PrimitiveType::Table)
+            return left; // table | {} ~ table
+        else
+            return std::nullopt; // P | {} ~ P | {}
+    }
+    else if (auto [p, t] = get2<PrimitiveType, MetatableType>(left, right); p && t)
+    {
+        if (p->type == PrimitiveType::Table)
+            return left; // table | {} ~ table
+        else
+            return std::nullopt; // P | {} ~ P | {}
+    }
+    else if (auto [t, p] = get2<TableType, PrimitiveType>(left, right); t && p)
+        return unionType(right, left); // {} | P ~ P | {}
+    else if (auto [t, p] = get2<MetatableType, PrimitiveType>(left, right); t && p)
+        return unionType(right, left); // M | P ~ P | M
     else if (auto [s1, s2] = get2<SingletonType, SingletonType>(left, right); s1 && s2)
     {
         if (*s1 == *s2)
@@ -641,6 +685,20 @@ std::optional<TypeId> TypeReducer::unionType(TypeId left, TypeId right)
                 return std::nullopt; // ~Base | Derived ~ ~Base | Derived
             else
                 return left; // ~Base | Unrelated ~ ~Base
+        }
+        else if (auto [np, t] = get2<PrimitiveType, TableType>(nlTy, right); np && t)
+        {
+            if (np->type == PrimitiveType::Table)
+                return std::nullopt; // ~table | {} ~ ~table | {}
+            else
+                return right; // ~P | {} ~ ~P | {}
+        }
+        else if (auto [np, t] = get2<PrimitiveType, MetatableType>(nlTy, right); np && t)
+        {
+            if (np->type == PrimitiveType::Table)
+                return std::nullopt; // ~table | {} ~ ~table | {}
+            else
+                return right; // ~P | M ~ ~P | M
         }
         else
             return std::nullopt; // TODO
@@ -849,26 +907,6 @@ TypePackId TypeReducer::memoize(TypePackId tp, TypePackId reducedTp)
     (*memoizedTypePacks)[reducedTp] = {reducedTp, irreducible};
     return reducedTp;
 }
-
-TypeId TypeReducer::memoizedOr(TypeId ty) const
-{
-    ty = follow(ty);
-
-    if (auto ctx = memoizedTypes->find(ty))
-        return ctx->type;
-    else
-        return ty;
-};
-
-TypePackId TypeReducer::memoizedOr(TypePackId tp) const
-{
-    tp = follow(tp);
-
-    if (auto ctx = memoizedTypePacks->find(tp))
-        return ctx->type;
-    else
-        return tp;
-};
 
 struct MarkCycles : TypeVisitor
 {

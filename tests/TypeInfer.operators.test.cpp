@@ -519,7 +519,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus")
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        CHECK(toString(result.errors[0]) == "Type '{ value: number }' could not be converted into 'number'");
+        CHECK(toString(result.errors[0]) == "Type 'bar' could not be converted into 'number'");
     }
     else
     {
@@ -978,8 +978,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "equality_operations_succeed_if_any_union_bra
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "expected_types_through_binary_and")
 {
-    ScopedFastFlag sff{"LuauBinaryNeedsExpectedTypesToo", true};
-
     CheckResult result = check(R"(
         local x: "a" | "b" | boolean = math.random() > 0.5 and "a"
     )");
@@ -989,8 +987,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "expected_types_through_binary_and")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "expected_types_through_binary_or")
 {
-    ScopedFastFlag sff{"LuauBinaryNeedsExpectedTypesToo", true};
-
     CheckResult result = check(R"(
         local x: "a" | "b" | boolean = math.random() > 0.5 or "b"
     )");

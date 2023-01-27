@@ -52,246 +52,12 @@ struct AstName
     }
 };
 
-class AstVisitor
-{
-public:
-    virtual ~AstVisitor() {}
-
-    virtual bool visit(class AstNode*)
-    {
-        return true;
-    }
-
-    virtual bool visit(class AstExpr* node)
-    {
-        return visit((class AstNode*)node);
-    }
-
-    virtual bool visit(class AstExprGroup* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprConstantNil* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprConstantBool* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprConstantNumber* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprConstantString* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprLocal* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprGlobal* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprVarargs* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprCall* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprIndexName* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprIndexExpr* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprFunction* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprTable* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprUnary* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprBinary* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprTypeAssertion* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprIfElse* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprInterpString* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-    virtual bool visit(class AstExprError* node)
-    {
-        return visit((class AstExpr*)node);
-    }
-
-    virtual bool visit(class AstStat* node)
-    {
-        return visit((class AstNode*)node);
-    }
-
-    virtual bool visit(class AstStatBlock* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatIf* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatWhile* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatRepeat* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatBreak* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatContinue* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatReturn* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatExpr* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatLocal* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatFor* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatForIn* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatAssign* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatCompoundAssign* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatFunction* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatLocalFunction* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatTypeAlias* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatDeclareFunction* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatDeclareGlobal* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatDeclareClass* node)
-    {
-        return visit((class AstStat*)node);
-    }
-    virtual bool visit(class AstStatError* node)
-    {
-        return visit((class AstStat*)node);
-    }
-
-    // By default visiting type annotations is disabled; override this in your visitor if you need to!
-    virtual bool visit(class AstType* node)
-    {
-        return false;
-    }
-
-    virtual bool visit(class AstTypeReference* node)
-    {
-        return visit((class AstType*)node);
-    }
-    virtual bool visit(class AstTypeTable* node)
-    {
-        return visit((class AstType*)node);
-    }
-    virtual bool visit(class AstTypeFunction* node)
-    {
-        return visit((class AstType*)node);
-    }
-    virtual bool visit(class AstTypeTypeof* node)
-    {
-        return visit((class AstType*)node);
-    }
-    virtual bool visit(class AstTypeUnion* node)
-    {
-        return visit((class AstType*)node);
-    }
-    virtual bool visit(class AstTypeIntersection* node)
-    {
-        return visit((class AstType*)node);
-    }
-    virtual bool visit(class AstTypeSingletonBool* node)
-    {
-        return visit((class AstType*)node);
-    }
-    virtual bool visit(class AstTypeSingletonString* node)
-    {
-        return visit((class AstType*)node);
-    }
-    virtual bool visit(class AstTypeError* node)
-    {
-        return visit((class AstType*)node);
-    }
-
-    virtual bool visit(class AstTypePack* node)
-    {
-        return false;
-    }
-    virtual bool visit(class AstTypePackExplicit* node)
-    {
-        return visit((class AstTypePack*)node);
-    }
-    virtual bool visit(class AstTypePackVariadic* node)
-    {
-        return visit((class AstTypePack*)node);
-    }
-    virtual bool visit(class AstTypePackGeneric* node)
-    {
-        return visit((class AstTypePack*)node);
-    }
-};
-
 class AstType;
+class AstVisitor;
+class AstStat;
+class AstStatBlock;
+class AstExpr;
+class AstTypePack;
 
 struct AstLocal
 {
@@ -1275,6 +1041,245 @@ public:
     void visit(AstVisitor* visitor) override;
 
     AstName genericName;
+};
+
+class AstVisitor
+{
+public:
+    virtual ~AstVisitor() {}
+
+    virtual bool visit(class AstNode*)
+    {
+        return true;
+    }
+
+    virtual bool visit(class AstExpr* node)
+    {
+        return visit(static_cast<AstNode*>(node));
+    }
+
+    virtual bool visit(class AstExprGroup* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprConstantNil* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprConstantBool* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprConstantNumber* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprConstantString* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprLocal* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprGlobal* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprVarargs* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprCall* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprIndexName* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprIndexExpr* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprFunction* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprTable* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprUnary* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprBinary* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprTypeAssertion* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprIfElse* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprInterpString* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+    virtual bool visit(class AstExprError* node)
+    {
+        return visit(static_cast<AstExpr*>(node));
+    }
+
+    virtual bool visit(class AstStat* node)
+    {
+        return visit(static_cast<AstNode*>(node));
+    }
+
+    virtual bool visit(class AstStatBlock* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatIf* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatWhile* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatRepeat* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatBreak* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatContinue* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatReturn* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatExpr* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatLocal* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatFor* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatForIn* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatAssign* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatCompoundAssign* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatFunction* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatLocalFunction* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatTypeAlias* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatDeclareFunction* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatDeclareGlobal* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatDeclareClass* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+    virtual bool visit(class AstStatError* node)
+    {
+        return visit(static_cast<AstStat*>(node));
+    }
+
+    // By default visiting type annotations is disabled; override this in your visitor if you need to!
+    virtual bool visit(class AstType* node)
+    {
+        return false;
+    }
+
+    virtual bool visit(class AstTypeReference* node)
+    {
+        return visit(static_cast<AstType*>(node));
+    }
+    virtual bool visit(class AstTypeTable* node)
+    {
+        return visit(static_cast<AstType*>(node));
+    }
+    virtual bool visit(class AstTypeFunction* node)
+    {
+        return visit(static_cast<AstType*>(node));
+    }
+    virtual bool visit(class AstTypeTypeof* node)
+    {
+        return visit(static_cast<AstType*>(node));
+    }
+    virtual bool visit(class AstTypeUnion* node)
+    {
+        return visit(static_cast<AstType*>(node));
+    }
+    virtual bool visit(class AstTypeIntersection* node)
+    {
+        return visit(static_cast<AstType*>(node));
+    }
+    virtual bool visit(class AstTypeSingletonBool* node)
+    {
+        return visit(static_cast<AstType*>(node));
+    }
+    virtual bool visit(class AstTypeSingletonString* node)
+    {
+        return visit(static_cast<AstType*>(node));
+    }
+    virtual bool visit(class AstTypeError* node)
+    {
+        return visit(static_cast<AstType*>(node));
+    }
+
+    virtual bool visit(class AstTypePack* node)
+    {
+        return false;
+    }
+    virtual bool visit(class AstTypePackExplicit* node)
+    {
+        return visit(static_cast<AstTypePack*>(node));
+    }
+    virtual bool visit(class AstTypePackVariadic* node)
+    {
+        return visit(static_cast<AstTypePack*>(node));
+    }
+    virtual bool visit(class AstTypePackGeneric* node)
+    {
+        return visit(static_cast<AstTypePack*>(node));
+    }
 };
 
 AstName getIdentifier(AstExpr*);

@@ -1077,11 +1077,11 @@ int emitInstFastCall(AssemblyBuilderX64& build, const Instruction* pc, int pcpos
     return emitInstFastCallN(build, pc, /* customParams */ false, /* customParamCount */ 0, /* customArgs */ 0, pcpos, fallback);
 }
 
-void emitInstForNPrep(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& loopExit)
+void emitInstForNPrep(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& loopStart, Label& loopExit)
 {
     int ra = LUAU_INSN_A(*pc);
 
-    Label tryConvert, exit;
+    Label tryConvert;
 
     jumpIfTagIsNot(build, ra + 0, LUA_TNUMBER, tryConvert);
     jumpIfTagIsNot(build, ra + 1, LUA_TNUMBER, tryConvert);
@@ -1107,12 +1107,12 @@ void emitInstForNPrep(AssemblyBuilderX64& build, const Instruction* pc, int pcpo
 
     // TODO: target branches can probably be arranged better, but we need tests for NaN behavior preservation
     // false: idx <= limit
-    jumpOnNumberCmp(build, noreg, idx, limit, ConditionX64::LessEqual, exit);
+    jumpOnNumberCmp(build, noreg, idx, limit, ConditionX64::LessEqual, loopStart);
     build.jmp(loopExit);
 
     // true: limit <= idx
     build.setLabel(reverse);
-    jumpOnNumberCmp(build, noreg, limit, idx, ConditionX64::LessEqual, exit);
+    jumpOnNumberCmp(build, noreg, limit, idx, ConditionX64::LessEqual, loopStart);
     build.jmp(loopExit);
 
     // TOOD: place at the end of the function
@@ -1120,8 +1120,6 @@ void emitInstForNPrep(AssemblyBuilderX64& build, const Instruction* pc, int pcpo
     emitSetSavedPc(build, pcpos + 1);
     callPrepareForN(build, ra + 0, ra + 1, ra + 2);
     build.jmp(retry);
-
-    build.setLabel(exit);
 }
 
 void emitInstForNLoop(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& loopRepeat, Label& loopExit)
