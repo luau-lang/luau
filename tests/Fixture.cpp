@@ -21,8 +21,6 @@
 static const char* mainModuleName = "MainModule";
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauUnknownAndNeverType)
-LUAU_FASTFLAG(LuauReportShadowedTypeAlias)
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
@@ -585,6 +583,7 @@ void registerHiddenTypes(Frontend* frontend)
     globalScope->exportedTypeBindings["fun"] = TypeFun{{}, frontend->builtinTypes->functionType};
     globalScope->exportedTypeBindings["cls"] = TypeFun{{}, frontend->builtinTypes->classType};
     globalScope->exportedTypeBindings["err"] = TypeFun{{}, frontend->builtinTypes->errorType};
+    globalScope->exportedTypeBindings["tbl"] = TypeFun{{}, frontend->builtinTypes->tableType};
 }
 
 void createSomeClasses(Frontend* frontend)

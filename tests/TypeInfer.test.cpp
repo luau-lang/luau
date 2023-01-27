@@ -816,8 +816,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_basic")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     CheckResult result = check(R"(
         local foo: string = `hello {"world"}`
     )");
@@ -827,8 +825,6 @@ TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_basic")
 
 TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_with_invalid_expression")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     CheckResult result = check(R"(
         local function f(x: number) end
 
@@ -840,8 +836,6 @@ TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_with_invalid_expression")
 
 TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_constant_type")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     CheckResult result = check(R"(
         local foo: "hello" = `hello`
     )");
@@ -1153,6 +1147,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "it_is_ok_to_have_inconsistent_number_of_retu
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_free_table_type_change_during_index_check")
 {
+    ScopedFastFlag sff{"LuauScalarShapeUnifyToMtOwner2", true};
+
     CheckResult result = check(R"(
 local _ = nil
 while _["" >= _] do

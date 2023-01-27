@@ -14,7 +14,6 @@
 #include <stdexcept>
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauFunctionReturnStringificationFixup, false)
 
 /*
@@ -444,6 +443,9 @@ struct TypeStringifier
         case PrimitiveType::Function:
             state.emit("function");
             return;
+        case PrimitiveType::Table:
+            state.emit("table");
+            return;
         default:
             LUAU_ASSERT(!"Unknown primitive type");
             throw InternalCompilerError("Unknown primitive type " + std::to_string(ptv.type));
@@ -823,7 +825,7 @@ struct TypeStringifier
     void operator()(TypeId, const ErrorType& tv)
     {
         state.result.error = true;
-        state.emit(FFlag::LuauUnknownAndNeverType ? "*error-type*" : "*unknown*");
+        state.emit("*error-type*");
     }
 
     void operator()(TypeId, const LazyType& ltv)
@@ -962,7 +964,7 @@ struct TypePackStringifier
     void operator()(TypePackId, const Unifiable::Error& error)
     {
         state.result.error = true;
-        state.emit(FFlag::LuauUnknownAndNeverType ? "*error-type*" : "*unknown*");
+        state.emit("*error-type*");
     }
 
     void operator()(TypePackId, const VariadicTypePack& pack)

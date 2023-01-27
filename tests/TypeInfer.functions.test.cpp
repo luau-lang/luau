@@ -865,8 +865,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "calling_function_with_anytypepack_doesnt_lea
 
 TEST_CASE_FIXTURE(Fixture, "too_many_return_values")
 {
-    ScopedFastFlag sff{"LuauBetterMessagingOnCountMismatch", true};
-
     CheckResult result = check(R"(
         --!strict
 
@@ -888,8 +886,6 @@ TEST_CASE_FIXTURE(Fixture, "too_many_return_values")
 
 TEST_CASE_FIXTURE(Fixture, "too_many_return_values_in_parentheses")
 {
-    ScopedFastFlag sff{"LuauBetterMessagingOnCountMismatch", true};
-
     CheckResult result = check(R"(
         --!strict
 
@@ -911,8 +907,6 @@ TEST_CASE_FIXTURE(Fixture, "too_many_return_values_in_parentheses")
 
 TEST_CASE_FIXTURE(Fixture, "too_many_return_values_no_function")
 {
-    ScopedFastFlag sff{"LuauBetterMessagingOnCountMismatch", true};
-
     CheckResult result = check(R"(
         --!strict
 

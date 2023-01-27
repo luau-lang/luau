@@ -8,8 +8,6 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAG(LuauUnknownAndNeverType)
-
 namespace Luau
 {
 

@@ -318,9 +318,12 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     }
     case LOP_FORNPREP:
     {
+        IrOp loopStart = blockAtInst(i + getOpLength(LOP_FORNPREP));
         IrOp loopExit = blockAtInst(i + 1 + LUAU_INSN_D(*pc));
 
-        inst(IrCmd::LOP_FORNPREP, constUint(i), loopExit);
+        inst(IrCmd::LOP_FORNPREP, constUint(i), loopStart, loopExit);
+
+        beginBlock(loopStart);
         break;
     }
     case LOP_FORNLOOP:
@@ -437,7 +440,11 @@ bool IrBuilder::isInternalBlock(IrOp block)
 
 void IrBuilder::beginBlock(IrOp block)
 {
-    function.blocks[block.index].start = uint32_t(function.instructions.size());
+    IrBlock& target = function.blocks[block.index];
+
+    LUAU_ASSERT(target.start == ~0u || target.start == uint32_t(function.instructions.size()));
+
+    target.start = uint32_t(function.instructions.size());
 }
 
 IrOp IrBuilder::constBool(bool value)

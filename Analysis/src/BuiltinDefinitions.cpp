@@ -15,9 +15,7 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauBuiltInMetatableNoBadSynthetic, false)
-LUAU_FASTFLAG(LuauReportShadowedTypeAlias)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -252,11 +250,8 @@ void registerBuiltinTypes(Frontend& frontend)
     frontend.getGlobalScope()->addBuiltinTypeBinding("string", TypeFun{{}, frontend.builtinTypes->stringType});
     frontend.getGlobalScope()->addBuiltinTypeBinding("boolean", TypeFun{{}, frontend.builtinTypes->booleanType});
     frontend.getGlobalScope()->addBuiltinTypeBinding("thread", TypeFun{{}, frontend.builtinTypes->threadType});
-    if (FFlag::LuauUnknownAndNeverType)
-    {
-        frontend.getGlobalScope()->addBuiltinTypeBinding("unknown", TypeFun{{}, frontend.builtinTypes->unknownType});
-        frontend.getGlobalScope()->addBuiltinTypeBinding("never", TypeFun{{}, frontend.builtinTypes->neverType});
-    }
+    frontend.getGlobalScope()->addBuiltinTypeBinding("unknown", TypeFun{{}, frontend.builtinTypes->unknownType});
+    frontend.getGlobalScope()->addBuiltinTypeBinding("never", TypeFun{{}, frontend.builtinTypes->neverType});
 }
 
 void registerBuiltinGlobals(TypeChecker& typeChecker)
@@ -315,7 +310,7 @@ void registerBuiltinGlobals(TypeChecker& typeChecker)
             FunctionType{
                 {genericMT},
                 {},
-                arena.addTypePack(TypePack{{FFlag::LuauUnknownAndNeverType ? tabTy : tableMetaMT, genericMT}}),
+                arena.addTypePack(TypePack{{tabTy, genericMT}}),
                 arena.addTypePack(TypePack{{tableMetaMT}})
             }
         ), "@luau"
@@ -357,8 +352,7 @@ void registerBuiltinGlobals(Frontend& frontend)
     LUAU_ASSERT(!frontend.globalTypes.types.isFrozen());
     LUAU_ASSERT(!frontend.globalTypes.typePacks.isFrozen());
 
-    if (FFlag::LuauReportShadowedTypeAlias)
-        registerBuiltinTypes(frontend);
+    registerBuiltinTypes(frontend);
 
     TypeArena& arena = frontend.globalTypes;
     NotNull<BuiltinTypes> builtinTypes = frontend.builtinTypes;
@@ -409,7 +403,7 @@ void registerBuiltinGlobals(Frontend& frontend)
             FunctionType{
                 {genericMT},
                 {},
-                arena.addTypePack(TypePack{{FFlag::LuauUnknownAndNeverType ? tabTy : tableMetaMT, genericMT}}),
+                arena.addTypePack(TypePack{{tabTy, genericMT}}),
                 arena.addTypePack(TypePack{{tableMetaMT}})
             }
         ), "@luau"
@@ -537,11 +531,8 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
 {
     auto [paramPack, _predicates] = withPredicate;
 
-    if (FFlag::LuauUnknownAndNeverType)
-    {
-        if (size(paramPack) < 2 && finite(paramPack))
-            return std::nullopt;
-    }
+    if (size(paramPack) < 2 && finite(paramPack))
+        return std::nullopt;
 
     TypeArena& arena = typechecker.currentModule->internalTypes;
 
@@ -550,11 +541,8 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
     TypeId target = follow(expectedArgs[0]);
     TypeId mt = follow(expectedArgs[1]);
 
-    if (FFlag::LuauUnknownAndNeverType)
-    {
-        typechecker.tablify(target);
-        typechecker.tablify(mt);
-    }
+    typechecker.tablify(target);
+    typechecker.tablify(mt);
 
     if (const auto& tab = get<TableType>(target))
     {
@@ -564,9 +552,6 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
         }
         else
         {
-            if (!FFlag::LuauUnknownAndNeverType)
-                typechecker.tablify(mt);
-
             const TableType* mtTtv = get<TableType>(mt);
             MetatableType mtv{target, mt};
             if ((tab->name || tab->syntheticName) && (mtTtv && (mtTtv->name || mtTtv->syntheticName)))
@@ -583,12 +568,7 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
             TypeId mtTy = arena.addType(mtv);
 
             if (expr.args.size < 1)
-            {
-                if (FFlag::LuauUnknownAndNeverType)
-                    return std::nullopt;
-                else
-                    return WithPredicate<TypePackId>{};
-            }
+                return std::nullopt;
 
             if (!expr.self)
             {
@@ -635,20 +615,10 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionAssert(
     if (head.size() > 0)
     {
         auto [ty, ok] = typechecker.pickTypesFromSense(head[0], true, typechecker.builtinTypes->nilType);
-        if (FFlag::LuauUnknownAndNeverType)
-        {
-            if (get<NeverType>(*ty))
-                head = {*ty};
-            else
-                head[0] = *ty;
-        }
+        if (get<NeverType>(*ty))
+            head = {*ty};
         else
-        {
-            if (!ty)
-                head = {typechecker.nilType};
-            else
-                head[0] = *ty;
-        }
+            head[0] = *ty;
     }
 
     return WithPredicate<TypePackId>{arena.addTypePack(TypePack{std::move(head), tail})};

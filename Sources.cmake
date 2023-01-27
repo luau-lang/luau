@@ -82,8 +82,10 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/EmitCommonX64.cpp
     CodeGen/src/EmitInstructionX64.cpp
     CodeGen/src/Fallbacks.cpp
+    CodeGen/src/IrAnalysis.cpp
     CodeGen/src/IrBuilder.cpp
     CodeGen/src/IrDump.cpp
+    CodeGen/src/IrLoweringX64.cpp
     CodeGen/src/IrTranslation.cpp
     CodeGen/src/NativeState.cpp
     CodeGen/src/UnwindBuilderDwarf2.cpp
@@ -98,9 +100,11 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/EmitInstructionX64.h
     CodeGen/src/Fallbacks.h
     CodeGen/src/FallbacksProlog.h
+    CodeGen/src/IrAnalysis.h
     CodeGen/src/IrBuilder.h
     CodeGen/src/IrDump.h
     CodeGen/src/IrData.h
+    CodeGen/src/IrLoweringX64.h
     CodeGen/src/IrTranslation.h
     CodeGen/src/IrUtils.h
     CodeGen/src/NativeState.h
@@ -330,6 +334,7 @@ if(TARGET Luau.UnitTest)
         tests/ConstraintSolver.test.cpp
         tests/CostModel.test.cpp
         tests/DataFlowGraph.test.cpp
+        tests/DenseHash.test.cpp
         tests/Error.test.cpp
         tests/Frontend.test.cpp
         tests/JsonEmitter.test.cpp

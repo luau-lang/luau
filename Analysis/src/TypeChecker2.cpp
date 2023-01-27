@@ -372,7 +372,7 @@ struct TypeChecker2
                         break;
                     }
 
-                    AstLocal* var = local->vars.data[i];
+                    AstLocal* var = local->vars.data[j];
                     if (var->annotation)
                     {
                         TypeId varType = lookupAnnotation(var->annotation);
@@ -754,6 +754,8 @@ struct TypeChecker2
         else if (auto e = expr->as<AstExprTypeAssertion>())
             return visit(e);
         else if (auto e = expr->as<AstExprIfElse>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprInterpString>())
             return visit(e);
         else if (auto e = expr->as<AstExprError>())
             return visit(e);
@@ -1356,6 +1358,12 @@ struct TypeChecker2
         visit(expr->condition, RValue);
         visit(expr->trueExpr, RValue);
         visit(expr->falseExpr, RValue);
+    }
+
+    void visit(AstExprInterpString* interpString)
+    {
+        for (AstExpr* expr : interpString->expressions)
+            visit(expr, RValue);
     }
 
     void visit(AstExprError* expr)

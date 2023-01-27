@@ -417,7 +417,7 @@ n1 [label="BoundType 1"];
 n1 -> n2;
 n2 [label="TableType 2"];
 n2 -> n3 [label="boundTo"];
-n3 [label="TableType 3"];
+n3 [label="TableType a"];
 n3 -> n4 [label="x"];
 n4 [label="number"];
 })",

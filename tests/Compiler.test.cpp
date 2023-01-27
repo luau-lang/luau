@@ -1277,15 +1277,11 @@ RETURN R1 1
 
 TEST_CASE("InterpStringWithNoExpressions")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     CHECK_EQ(compileFunction0(R"(return "hello")"), compileFunction0("return `hello`"));
 }
 
 TEST_CASE("InterpStringZeroCost")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     CHECK_EQ("\n" + compileFunction0(R"(local _ = `hello, {"world"}!`)"),
         R"(
 LOADK R1 K0 ['hello, %*!']
@@ -1299,8 +1295,6 @@ RETURN R0 0
 
 TEST_CASE("InterpStringRegisterCleanup")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     CHECK_EQ("\n" + compileFunction0(R"(
             local a, b, c = nil, "um", "uh oh"
             a = `foo{"bar"}`
@@ -1325,7 +1319,6 @@ RETURN R0 0
 
 TEST_CASE("InterpStringRegisterLimit")
 {
-    ScopedFastFlag luauInterpolatedStringBaseSupport{"LuauInterpolatedStringBaseSupport", true};
     ScopedFastFlag luauCompileInterpStringLimit{"LuauCompileInterpStringLimit", true};
 
     CHECK_THROWS_AS(compileFunction0(("local a = `" + rep("{1}", 254) + "`").c_str()), std::exception);

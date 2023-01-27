@@ -414,6 +414,10 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
     std::vector<TypeId> varTypes;
     varTypes.reserve(local->vars.size);
 
+    // Used to name the first value type, even if it's not placed in varTypes,
+    // for the purpose of synthetic name attribution.
+    std::optional<TypeId> firstValueType;
+
     for (AstLocal* local : local->vars)
     {
         TypeId ty = nullptr;
@@ -456,6 +460,9 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
                 else
                     varTypes[i] = exprType;
             }
+
+            if (i == 0)
+                firstValueType = exprType;
         }
         else
         {
@@ -484,6 +491,22 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
                 std::vector<TypeId> tailValues{varTypes.begin() + i, varTypes.end()};
                 TypePackId tailPack = arena->addTypePack(std::move(tailValues));
                 addConstraint(scope, local->location, PackSubtypeConstraint{exprPack, tailPack});
+            }
+        }
+    }
+
+    if (local->vars.size == 1 && local->values.size == 1 && firstValueType)
+    {
+        AstLocal* var = local->vars.data[0];
+        AstExpr* value = local->values.data[0];
+
+        if (value->is<AstExprTable>())
+            addConstraint(scope, value->location, NameConstraint{*firstValueType, var->name.value, /*synthetic*/ true});
+        else if (const AstExprCall* call = value->as<AstExprCall>())
+        {
+            if (const AstExprGlobal* global = call->func->as<AstExprGlobal>(); global && global->name == "setmetatable")
+            {
+                addConstraint(scope, value->location, NameConstraint{*firstValueType, var->name.value, /*synthetic*/ true});
             }
         }
     }
@@ -1138,7 +1161,13 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
         TypeId resultTy = arena->addType(mtv);
 
         if (AstExprLocal* targetLocal = targetExpr->as<AstExprLocal>())
+        {
             scope->bindings[targetLocal->local].typeId = resultTy;
+            auto def = dfg->getDef(targetLocal->local);
+            if (def)
+                scope->dcrRefinements[*def] = resultTy; // TODO: typestates: track this as an assignment
+        }
+
 
         return InferencePack{arena->addTypePack({resultTy}), std::move(returnConnectives)};
     }
@@ -1248,6 +1277,8 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr, st
         result = check(scope, ifElse, expectedType);
     else if (auto typeAssert = expr->as<AstExprTypeAssertion>())
         result = check(scope, typeAssert);
+    else if (auto interpString = expr->as<AstExprInterpString>())
+        result = check(scope, interpString);
     else if (auto err = expr->as<AstExprError>())
     {
         // Open question: Should we traverse into this?
@@ -1264,6 +1295,8 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr, st
 
     LUAU_ASSERT(result.ty);
     astTypes[expr] = result.ty;
+    if (expectedType)
+        astExpectedTypes[expr] = *expectedType;
     return result;
 }
 
@@ -1509,6 +1542,14 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTypeAssert
     return Inference{resolveType(scope, typeAssert->annotation, /* inTypeArguments */ false)};
 }
 
+Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprInterpString* interpString)
+{
+    for (AstExpr* expr : interpString->expressions)
+        check(scope, expr);
+
+    return Inference{builtinTypes->stringType};
+}
+
 std::tuple<TypeId, TypeId, ConnectiveId> ConstraintGraphBuilder::checkBinary(
     const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType)
 {
@@ -1551,7 +1592,7 @@ std::tuple<TypeId, TypeId, ConnectiveId> ConstraintGraphBuilder::checkBinary(
         else if (typeguard->type == "boolean")
             discriminantTy = builtinTypes->threadType;
         else if (typeguard->type == "table")
-            discriminantTy = builtinTypes->neverType; // TODO: replace with top table type
+            discriminantTy = builtinTypes->tableType;
         else if (typeguard->type == "function")
             discriminantTy = builtinTypes->functionType;
         else if (typeguard->type == "userdata")

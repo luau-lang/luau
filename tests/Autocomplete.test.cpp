@@ -2814,8 +2814,6 @@ a = if temp then even else abc@3
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string_constant")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     check(R"(f(`@1`))");
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.empty());
@@ -2839,8 +2837,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string_constant")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string_expression")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     check(R"(f(`expression = {@1}`))");
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("table"));
@@ -2849,8 +2845,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string_expression")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string_expression_with_comments")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     check(R"(f(`expression = {--[[ bla bla bla ]]@1`))");
 
     auto ac = autocomplete('1');
@@ -2866,8 +2860,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string_expression_with_c
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string_as_singleton")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
     check(R"(
         --!strict
         local function f(a: "cat" | "dog") end
