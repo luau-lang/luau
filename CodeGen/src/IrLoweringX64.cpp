@@ -1115,7 +1115,7 @@ RegisterX64 IrLoweringX64::allocGprRegOrReuse(SizeX64 preferredSize, uint32_t in
             LUAU_ASSERT(source.regX64 != noreg);
 
             source.reusedReg = true;
-            return {preferredSize, source.regX64.index};
+            return RegisterX64{preferredSize, source.regX64.index};
         }
     }
 
