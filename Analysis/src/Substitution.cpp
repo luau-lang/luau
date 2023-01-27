@@ -12,7 +12,6 @@ LUAU_FASTFLAGVARIABLE(LuauSubstitutionFixMissingFields, false)
 LUAU_FASTFLAG(LuauClonePublicInterfaceLess)
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAGVARIABLE(LuauClassTypeVarsInSubstitution, false)
-LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauSubstitutionReentrant, false)
 
 namespace Luau
@@ -184,7 +183,7 @@ TarjanResult Tarjan::loop()
         if (currEdge == -1)
         {
             ++childCount;
-            if (childLimit > 0 && (FFlag::LuauUnknownAndNeverType ? childLimit <= childCount : childLimit < childCount))
+            if (childLimit > 0 && childLimit <= childCount)
                 return TarjanResult::TooManyChildren;
 
             stack.push_back(index);

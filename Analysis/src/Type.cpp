@@ -24,7 +24,6 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauMaybeGenericIntersectionTypes, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauMatchReturnsOptionalString, false);
@@ -213,7 +212,7 @@ bool isOptional(TypeId ty)
 
     ty = follow(ty);
 
-    if (get<AnyType>(ty) || (FFlag::LuauUnknownAndNeverType && get<UnknownType>(ty)))
+    if (get<AnyType>(ty) || get<UnknownType>(ty))
         return true;
 
     auto utv = get<UnionType>(ty);
@@ -761,6 +760,7 @@ BuiltinTypes::BuiltinTypes()
     , threadType(arena->addType(Type{PrimitiveType{PrimitiveType::Thread}, /*persistent*/ true}))
     , functionType(arena->addType(Type{PrimitiveType{PrimitiveType::Function}, /*persistent*/ true}))
     , classType(arena->addType(Type{ClassType{"class", {}, std::nullopt, std::nullopt, {}, {}, {}}, /*persistent*/ true}))
+    , tableType(arena->addType(Type{PrimitiveType{PrimitiveType::Table}, /*persistent*/ true}))
     , trueType(arena->addType(Type{SingletonType{BooleanSingleton{true}}, /*persistent*/ true}))
     , falseType(arena->addType(Type{SingletonType{BooleanSingleton{false}}, /*persistent*/ true}))
     , anyType(arena->addType(Type{AnyType{}, /*persistent*/ true}))

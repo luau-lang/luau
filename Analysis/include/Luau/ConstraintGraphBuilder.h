@@ -80,6 +80,8 @@ struct ConstraintGraphBuilder
     // A mapping of AST node to TypePackId.
     DenseHashMap<const AstExpr*, TypePackId> astTypePacks{nullptr};
 
+    DenseHashMap<const AstExpr*, TypeId> astExpectedTypes{nullptr};
+
     // If the node was applied as a function, this is the unspecialized type of
     // that expression.
     DenseHashMap<const void*, TypeId> astOriginalCallTypes{nullptr};
@@ -87,6 +89,8 @@ struct ConstraintGraphBuilder
     // If overload resolution was performed on this element, this is the
     // overload that was selected.
     DenseHashMap<const void*, TypeId> astOverloadResolvedTypes{nullptr};
+
+
 
     // Types resolved from type annotations. Analogous to astTypes.
     DenseHashMap<const AstType*, TypeId> astResolvedTypes{nullptr};
@@ -207,6 +211,7 @@ struct ConstraintGraphBuilder
     Inference check(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
     Inference check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType);
     Inference check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
+    Inference check(const ScopePtr& scope, AstExprInterpString* interpString);
     Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
     std::tuple<TypeId, TypeId, ConnectiveId> checkBinary(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
 

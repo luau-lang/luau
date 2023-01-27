@@ -304,8 +304,6 @@ TEST_CASE("Strings")
 
 TEST_CASE("StringInterp")
 {
-    ScopedFastFlag sffInterpStrings{"LuauInterpolatedStringBaseSupport", true};
-
     runConformance("stringinterp.lua");
 }
 

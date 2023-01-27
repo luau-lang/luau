@@ -22,7 +22,10 @@ using annotatorFn = void (*)(void* context, std::string& result, int fid, int in
 struct AssemblyOptions
 {
     bool outputBinary = false;
-    bool skipOutlinedCode = false;
+
+    bool includeAssembly = false;
+    bool includeIr = false;
+    bool includeOutlinedCode = false;
 
     // Optional annotator function can be provided to describe each instruction, it takes function id and sequential instruction id
     annotatorFn annotator = nullptr;

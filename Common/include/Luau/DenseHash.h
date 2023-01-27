@@ -236,9 +236,9 @@ public:
         std::swap(capacity, newtable.capacity);
     }
 
-    void rehash_if_full()
+    void rehash_if_full(const Key& key)
     {
-        if (count >= capacity * 3 / 4)
+        if (count >= capacity * 3 / 4 && !find(key))
         {
             rehash();
         }
@@ -489,7 +489,7 @@ public:
 
     const Key& insert(const Key& key)
     {
-        impl.rehash_if_full();
+        impl.rehash_if_full(key);
         return *impl.insert_unsafe(key);
     }
 
@@ -559,7 +559,7 @@ public:
     // Note: this reference is invalidated by any insert operation (i.e. operator[])
     Value& operator[](const Key& key)
     {
-        impl.rehash_if_full();
+        impl.rehash_if_full(key);
         return impl.insert_unsafe(key)->second;
     }
 

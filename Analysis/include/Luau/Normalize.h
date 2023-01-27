@@ -253,7 +253,8 @@ struct NormalizedType
     TypeId threads;
 
     // The (meta)table part of the type.
-    // Each element of this set is a (meta)table type.
+    // Each element of this set is a (meta)table type, or the top `table` type.
+    // An empty set denotes never.
     TypeIds tables;
 
     // The function part of the type.
