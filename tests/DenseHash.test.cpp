@@ -29,9 +29,9 @@ TEST_CASE("overwriting_an_existing_field_when_full_shouldnt_rehash")
     for (auto [k, a] : m)
         m[k] = a + 1;
 
-    for (int i = 0; i < m.size(); ++i)
+    for (size_t i = 0; i < m.size(); ++i)
     {
-        int* a = m.find(i);
+        int* a = m.find(int(i));
         REQUIRE(a);
         CHECK(i + 1 == *a);
     }
@@ -65,9 +65,9 @@ TEST_CASE("merging_another_map_and_resolve_conflicts_that_also_just_so_happens_t
     }
 
     REQUIRE(m1.size() == 24);
-    for (int i = 0; i < m1.size(); ++i)
+    for (size_t i = 0; i < m1.size(); ++i)
     {
-        int* a = m1.find(i);
+        int* a = m1.find(int(i));
         REQUIRE(a);
         if (i < 8 || i >= 12)
             CHECK(i == *a);

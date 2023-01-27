@@ -37,7 +37,7 @@ void IrLoweringX64::lower(AssemblyOptions options)
     // While we will need a better block ordering in the future, right now we want to mostly preserve build order with fallbacks outlined
     std::vector<uint32_t> sortedBlocks;
     sortedBlocks.reserve(function.blocks.size());
-    for (int i = 0; i < function.blocks.size(); i++)
+    for (uint32_t i = 0; i < function.blocks.size(); i++)
         sortedBlocks.push_back(i);
 
     std::sort(sortedBlocks.begin(), sortedBlocks.end(), [&](uint32_t idxA, uint32_t idxB) {
