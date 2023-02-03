@@ -28,13 +28,6 @@ print(`You have {balance}!`)
 --> You have $500!
 ```
 
-Known Limitations
-Script editor will not support auto-formatting string interpolations.
+To find out more details about this feature, check out [Luau Syntax page](syntax).
 
-Luau currently does not define any format specifiers for string interpolations.
-
-Luau currently does not support any_function_call`with backticks without parentheses`.
-
-Luau currently does not support backtick string literals as a type annotation, so type Foo = `Foo` is invalid.
-
-Please post any comments or concerns you may have!
+This is also the first major language feature implemented by a contribution from the open-source community!

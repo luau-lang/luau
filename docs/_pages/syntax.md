@@ -222,3 +222,54 @@ The default iteration order for tables is specified to be consecutive for elemen
 
 ## String interpolation
 
+Luau adds additional way to define string values that allows you to place runtime expressions directly inside specific spots of the literal.
+
+This is a more ergonomic alternative over using `string.format` or `("literal"):format`.
+
+To use string interpolation, use a backtick string literal:
+
+```lua
+local count = 3
+print(`Bob has {count} apple(s)!`)
+--> Bob has 3 apple(s)!
+```
+
+Any expression can be used inside `{}`:
+
+```lua
+local combos = {2, 7, 1, 8, 5}
+print(`The lock combination is {table.concat(combos)}.`)
+--> The lock combination is 27185.
+```
+
+Inside backtick string literal, `\` is used to escape `` ` ``, `{`, `\` itself and a newline:
+
+```lua
+print(`Some example escaping the braces \{like so}`)
+--> Some example escaping the braces {like so}
+
+print(`Backslash \ that escapes the space is not a part of the string...`)
+--> Backslash  that escapes the space is not a part of the string...
+
+print(`Backslash \\ will escape the second backslash...`)
+--> Backslash \ will escape the second backslash...
+
+print(`Some text that also includes \`...`)
+--> Some text that also includes `...
+
+local name = "Luau"
+
+print(`Welcome to {
+    name
+}!`)
+--> Welcome to Luau!
+```
+
+### Restrictions and limitations
+
+The sequence of two opening braces (`{{`) is rejected with a parse error.
+This restriction is made to prevent developers using other programming languages with a similar feature from trying to attempt that as a way to escape a single `{` and getting unexpected results in Luau.
+
+Luau currently does not support backtick string literals as a type annotation, so ``type Foo = `Foo` `` is invalid.
+
+Function calls with a backtick string literal without parenthesis is not supported, so ``print`hello` `` is invalid.
