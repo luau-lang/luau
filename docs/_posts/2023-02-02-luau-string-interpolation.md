@@ -30,4 +30,4 @@ print(`You have {balance}!`)
 
 To find out more details about this feature, check out [Luau Syntax page](/syntax#string-interpolation).
 
-This is also the first major language feature implemented in a contribution from the open-source community!
+This is also the first major language feature implemented in a [contribution](https://github.com/Roblox/luau/pull/614) from the open-source community. Thanks [Kampfkarren](https://github.com/Kampfkarren)!
