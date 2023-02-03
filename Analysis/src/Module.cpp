@@ -232,9 +232,6 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
         this->returnType = moduleScope->returnType;
         this->exportedTypeBindings = std::move(moduleScope->exportedTypeBindings);
     }
-
-    freeze(internalTypes);
-    freeze(interfaceTypes);
 }
 
 bool Module::hasModuleScope() const

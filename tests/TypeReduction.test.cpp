@@ -482,6 +482,24 @@ TEST_CASE_FIXTURE(ReductionFixture, "intersections_without_negations")
         CHECK("{| [string]: number, p: string |}" == toStringFull(ty));
     }
 
+    SUBCASE("array_number_and_array_string")
+    {
+        TypeId ty = reductionof("{number} & {string}");
+        CHECK("{never}" == toStringFull(ty));
+    }
+
+    SUBCASE("array_string_and_array_string")
+    {
+        TypeId ty = reductionof("{string} & {string}");
+        CHECK("{string}" == toStringFull(ty));
+    }
+
+    SUBCASE("array_string_or_number_and_array_string")
+    {
+        TypeId ty = reductionof("{string | number} & {string}");
+        CHECK("{string}" == toStringFull(ty));
+    }
+
     SUBCASE("fresh_type_and_string")
     {
         TypeId freshTy = arena.freshType(nullptr);
@@ -690,7 +708,7 @@ TEST_CASE_FIXTURE(ReductionFixture, "intersections_with_negations")
     SUBCASE("string_and_not_error")
     {
         TypeId ty = reductionof("string & Not<err>");
-        CHECK("string & ~*error-type*" == toStringFull(ty));
+        CHECK("string" == toStringFull(ty));
     }
 
     SUBCASE("table_p_string_and_table_p_not_number")
@@ -709,6 +727,12 @@ TEST_CASE_FIXTURE(ReductionFixture, "intersections_with_negations")
     {
         TypeId ty = reductionof("{ x: { p: string } } & { x: { p: Not<number> } }");
         CHECK("{| x: {| p: string |} |}" == toStringFull(ty));
+    }
+
+    SUBCASE("table_or_nil_and_truthy")
+    {
+        TypeId ty = reductionof("({ x: number | string }?) & Not<false?>");
+        CHECK("{| x: number | string |}" == toString(ty));
     }
 
     SUBCASE("not_top_table_and_table")
@@ -1250,6 +1274,12 @@ TEST_CASE_FIXTURE(ReductionFixture, "tables")
     {
         TypeId ty = reductionof("{ x: { y: string & number } }");
         CHECK("never" == toStringFull(ty));
+    }
+
+    SUBCASE("array_of_never")
+    {
+        TypeId ty = reductionof("{never}");
+        CHECK("{never}" == toStringFull(ty));
     }
 }
 

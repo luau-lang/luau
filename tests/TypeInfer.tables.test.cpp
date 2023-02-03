@@ -3435,4 +3435,62 @@ _ = _._
     LUAU_REQUIRE_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_table_unify_instantiated_table")
+{
+    ScopedFastFlag sff[]{
+        {"LuauInstantiateInSubtyping", true},
+        {"LuauScalarShapeUnifyToMtOwner2", true},
+        {"LuauTableUnifyInstantiationFix", true},
+    };
+
+    CheckResult result = check(R"(
+function _(...)
+end
+local function l0():typeof(_()()[_()()[_]])
+end
+return _[_()()[_]] <= _
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzz_table_unify_instantiated_table_with_prop_realloc")
+{
+    ScopedFastFlag sff[]{
+        {"LuauInstantiateInSubtyping", true},
+        {"LuauScalarShapeUnifyToMtOwner2", true},
+        {"LuauTableUnifyInstantiationFix", true},
+    };
+
+    CheckResult result = check(R"(
+function _(l0,l0)
+do
+_ = _().n0
+end
+l0(_()._,_)
+end
+_(_,function(...)
+end)
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_table_unify_prop_realloc")
+{
+    // For this test, we don't need LuauInstantiateInSubtyping
+    ScopedFastFlag sff[]{
+        {"LuauScalarShapeUnifyToMtOwner2", true},
+        {"LuauTableUnifyInstantiationFix", true},
+    };
+
+    CheckResult result = check(R"(
+n3,_ = nil
+_ = _[""]._,_[l0][_._][{[_]=_,_=_,}][_G].number
+_ = {_,}
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
 TEST_SUITE_END();

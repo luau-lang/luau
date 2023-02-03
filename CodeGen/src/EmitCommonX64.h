@@ -38,6 +38,7 @@ constexpr unsigned kLocalsSize = 24;     // 3 extra slots for our custom locals 
 
 constexpr OperandX64 sClosure = qword[rsp + kStackSize + 0]; // Closure* cl
 constexpr OperandX64 sCode = qword[rsp + kStackSize + 8];    // Instruction* code
+constexpr OperandX64 sTemporarySlot = addr[rsp + kStackSize + 16];
 
 // TODO: These should be replaced with a portable call function that checks the ABI at runtime and reorders moves accordingly to avoid conflicts
 #if defined(_WIN32)

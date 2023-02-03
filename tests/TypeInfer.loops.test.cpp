@@ -661,4 +661,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_ok_with_inference")
     CHECK(toString(requireType("b")) == "string");
 }
 
+TEST_CASE_FIXTURE(Fixture, "for_loop_lower_bound_is_string")
+{
+    CheckResult result = check(R"(
+        for i: unknown = 1, 10 do end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "for_loop_lower_bound_is_string_2")
+{
+    CheckResult result = check(R"(
+        for i: never = 1, 10 do end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Type 'number' could not be converted into 'never'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "for_loop_lower_bound_is_string_3")
+{
+    CheckResult result = check(R"(
+        for i: number | string = 1, 10 do end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

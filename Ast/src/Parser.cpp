@@ -14,14 +14,7 @@
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 
-LUAU_FASTFLAGVARIABLE(LuauErrorDoubleHexPrefix, false)
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseIntegerIssues, false)
-
 LUAU_FASTFLAGVARIABLE(LuauParserErrorsOnMissingDefaultTypePackArgument, false)
-
-bool lua_telemetry_parsed_out_of_range_bin_integer = false;
-bool lua_telemetry_parsed_out_of_range_hex_integer = false;
-bool lua_telemetry_parsed_double_prefix_hex_integer = false;
 
 #define ERROR_INVALID_INTERP_DOUBLE_BRACE "Double braces are not permitted within interpolated strings. Did you mean '\\{'?"
 
@@ -2093,17 +2086,7 @@ static ConstantNumberParseResult parseInteger(double& result, const char* data, 
         value = strtoull(data, &end, base);
 
         if (errno == ERANGE)
-        {
-            if (DFFlag::LuaReportParseIntegerIssues)
-            {
-                if (base == 2)
-                    lua_telemetry_parsed_out_of_range_bin_integer = true;
-                else
-                    lua_telemetry_parsed_out_of_range_hex_integer = true;
-            }
-
             return base == 2 ? ConstantNumberParseResult::BinOverflow : ConstantNumberParseResult::HexOverflow;
-        }
     }
 
     return ConstantNumberParseResult::Ok;
@@ -2117,18 +2100,7 @@ static ConstantNumberParseResult parseDouble(double& result, const char* data)
 
     // hexadecimal literal
     if (data[0] == '0' && (data[1] == 'x' || data[1] == 'X') && data[2])
-    {
-        if (!FFlag::LuauErrorDoubleHexPrefix && data[2] == '0' && (data[3] == 'x' || data[3] == 'X'))
-        {
-            if (DFFlag::LuaReportParseIntegerIssues)
-                lua_telemetry_parsed_double_prefix_hex_integer = true;
-
-            ConstantNumberParseResult parseResult = parseInteger(result, data + 2, 16);
-            return parseResult == ConstantNumberParseResult::Malformed ? parseResult : ConstantNumberParseResult::DoublePrefix;
-        }
-
         return parseInteger(result, data, 16); // pass in '0x' prefix, it's handled by 'strtoull'
-    }
 
     char* end = nullptr;
     double value = strtod(data, &end);

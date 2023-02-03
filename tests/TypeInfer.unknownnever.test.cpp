@@ -116,11 +116,23 @@ TEST_CASE_FIXTURE(Fixture, "type_packs_containing_never_is_itself_uninhabitable"
         local x, y, z = f()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ("Function only returns 2 values, but 3 are required here", toString(result.errors[0]));
 
-    CHECK_EQ("never", toString(requireType("x")));
-    CHECK_EQ("never", toString(requireType("y")));
-    CHECK_EQ("never", toString(requireType("z")));
+        CHECK_EQ("string", toString(requireType("x")));
+        CHECK_EQ("never", toString(requireType("y")));
+        CHECK_EQ("*error-type*", toString(requireType("z")));
+    }
+    else
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+
+        CHECK_EQ("never", toString(requireType("x")));
+        CHECK_EQ("never", toString(requireType("y")));
+        CHECK_EQ("never", toString(requireType("z")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_packs_containing_never_is_itself_uninhabitable2")
@@ -135,10 +147,20 @@ TEST_CASE_FIXTURE(Fixture, "type_packs_containing_never_is_itself_uninhabitable2
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("never", toString(requireType("x1")));
-    CHECK_EQ("never", toString(requireType("x2")));
-    CHECK_EQ("never", toString(requireType("y1")));
-    CHECK_EQ("never", toString(requireType("y2")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("string", toString(requireType("x1")));
+        CHECK_EQ("never", toString(requireType("x2")));
+        CHECK_EQ("never", toString(requireType("y1")));
+        CHECK_EQ("string", toString(requireType("y2")));
+    }
+    else
+    {
+        CHECK_EQ("never", toString(requireType("x1")));
+        CHECK_EQ("never", toString(requireType("x2")));
+        CHECK_EQ("never", toString(requireType("y1")));
+        CHECK_EQ("never", toString(requireType("y2")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "index_on_never")
@@ -290,8 +312,14 @@ TEST_CASE_FIXTURE(Fixture, "dont_unify_operands_if_one_of_the_operand_is_never_i
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    // Widening doesn't normalize yet, so the result is a bit strange
-    CHECK_EQ("<a>(nil, a) -> boolean | boolean", toString(requireType("ord")));
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("<a>(nil, a) -> boolean", toString(requireType("ord")));
+    else
+    {
+        // Widening doesn't normalize yet, so the result is a bit strange
+        CHECK_EQ("<a>(nil, a) -> boolean | boolean", toString(requireType("ord")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "math_operators_and_never")

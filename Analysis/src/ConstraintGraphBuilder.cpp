@@ -191,16 +191,16 @@ static void unionRefinements(const std::unordered_map<DefId, TypeId>& lhs, const
     }
 }
 
-static void computeRefinement(const ScopePtr& scope, ConnectiveId connective, std::unordered_map<DefId, TypeId>* refis, bool sense,
+static void computeRefinement(const ScopePtr& scope, RefinementId refinement, std::unordered_map<DefId, TypeId>* refis, bool sense,
     NotNull<TypeArena> arena, bool eq, std::vector<ConstraintV>* constraints)
 {
     using RefinementMap = std::unordered_map<DefId, TypeId>;
 
-    if (!connective)
+    if (!refinement)
         return;
-    else if (auto negation = get<Negation>(connective))
-        return computeRefinement(scope, negation->connective, refis, !sense, arena, eq, constraints);
-    else if (auto conjunction = get<Conjunction>(connective))
+    else if (auto negation = get<Negation>(refinement))
+        return computeRefinement(scope, negation->refinement, refis, !sense, arena, eq, constraints);
+    else if (auto conjunction = get<Conjunction>(refinement))
     {
         RefinementMap lhsRefis;
         RefinementMap rhsRefis;
@@ -211,7 +211,7 @@ static void computeRefinement(const ScopePtr& scope, ConnectiveId connective, st
         if (!sense)
             unionRefinements(lhsRefis, rhsRefis, *refis, arena);
     }
-    else if (auto disjunction = get<Disjunction>(connective))
+    else if (auto disjunction = get<Disjunction>(refinement))
     {
         RefinementMap lhsRefis;
         RefinementMap rhsRefis;
@@ -222,12 +222,12 @@ static void computeRefinement(const ScopePtr& scope, ConnectiveId connective, st
         if (sense)
             unionRefinements(lhsRefis, rhsRefis, *refis, arena);
     }
-    else if (auto equivalence = get<Equivalence>(connective))
+    else if (auto equivalence = get<Equivalence>(refinement))
     {
         computeRefinement(scope, equivalence->lhs, refis, sense, arena, true, constraints);
         computeRefinement(scope, equivalence->rhs, refis, sense, arena, true, constraints);
     }
-    else if (auto proposition = get<Proposition>(connective))
+    else if (auto proposition = get<Proposition>(refinement))
     {
         TypeId discriminantTy = proposition->discriminantTy;
         if (!sense && !eq)
@@ -264,14 +264,14 @@ static std::pair<DefId, TypeId> computeDiscriminantType(NotNull<TypeArena> arena
     return {def, discriminantTy};
 }
 
-void ConstraintGraphBuilder::applyRefinements(const ScopePtr& scope, Location location, ConnectiveId connective)
+void ConstraintGraphBuilder::applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement)
 {
-    if (!connective)
+    if (!refinement)
         return;
 
     std::unordered_map<DefId, TypeId> refinements;
     std::vector<ConstraintV> constraints;
-    computeRefinement(scope, connective, &refinements, /*sense*/ true, arena, /*eq*/ false, &constraints);
+    computeRefinement(scope, refinement, &refinements, /*sense*/ true, arena, /*eq*/ false, &constraints);
 
     for (auto [def, discriminantTy] : refinements)
     {
@@ -559,7 +559,10 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
 
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFor* for_)
 {
-    auto checkNumber = [&](AstExpr* expr) {
+    if (for_->var->annotation)
+        resolveType(scope, for_->var->annotation, /* inTypeArguments */ false);
+
+    auto inferNumber = [&](AstExpr* expr) {
         if (!expr)
             return;
 
@@ -567,9 +570,9 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFor* for_)
         addConstraint(scope, expr->location, SubtypeConstraint{t, builtinTypes->numberType});
     };
 
-    checkNumber(for_->from);
-    checkNumber(for_->to);
-    checkNumber(for_->step);
+    inferNumber(for_->from);
+    inferNumber(for_->to);
+    inferNumber(for_->step);
 
     ScopePtr forScope = childScope(for_, scope);
     forScope->bindings[for_->var] = Binding{builtinTypes->numberType, for_->var->location};
@@ -770,23 +773,23 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatCompoundAssign*
 
     TypeId resultType = arena->addType(BlockedType{});
     addConstraint(scope, assign->location,
-        BinaryConstraint{assign->op, varId, valueInf.ty, resultType, assign, &astOriginalCallTypes, &astOverloadResolvedTypes});
+        BinaryConstraint{assign->op, varId, valueInf.ty, resultType, assign, &module->astOriginalCallTypes, &module->astOverloadResolvedTypes});
     addConstraint(scope, assign->location, SubtypeConstraint{resultType, varId});
 }
 
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatIf* ifStatement)
 {
     ScopePtr condScope = childScope(ifStatement->condition, scope);
-    auto [_, connective] = check(condScope, ifStatement->condition, std::nullopt);
+    auto [_, refinement] = check(condScope, ifStatement->condition, std::nullopt);
 
     ScopePtr thenScope = childScope(ifStatement->thenbody, scope);
-    applyRefinements(thenScope, Location{}, connective);
+    applyRefinements(thenScope, Location{}, refinement);
     visit(thenScope, ifStatement->thenbody);
 
     if (ifStatement->elsebody)
     {
         ScopePtr elseScope = childScope(ifStatement->elsebody, scope);
-        applyRefinements(elseScope, Location{}, connectiveArena.negation(connective));
+        applyRefinements(elseScope, Location{}, refinementArena.negation(refinement));
         visit(elseScope, ifStatement->elsebody);
     }
 }
@@ -1049,7 +1052,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* 
     }
 
     LUAU_ASSERT(result.tp);
-    astTypePacks[expr] = result.tp;
+    module->astTypePacks[expr] = result.tp;
     return result;
 }
 
@@ -1096,7 +1099,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
 
     std::vector<TypeId> args;
     std::optional<TypePackId> argTail;
-    std::vector<ConnectiveId> argumentConnectives;
+    std::vector<RefinementId> argumentRefinements;
 
     Checkpoint argCheckpoint = checkpoint(this);
 
@@ -1113,7 +1116,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
             // computing fnType.  If computing that did not cause us to exceed a
             // recursion limit, we can fetch it from astTypes rather than
             // recomputing it.
-            TypeId* selfTy = astTypes.find(exprArgs[0]);
+            TypeId* selfTy = module->astTypes.find(exprArgs[0]);
             if (selfTy)
                 args.push_back(*selfTy);
             else
@@ -1121,9 +1124,9 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
         }
         else if (i < exprArgs.size() - 1 || !(arg->is<AstExprCall>() || arg->is<AstExprVarargs>()))
         {
-            auto [ty, connective] = check(scope, arg, expectedType);
+            auto [ty, refinement] = check(scope, arg, expectedType);
             args.push_back(ty);
-            argumentConnectives.push_back(connective);
+            argumentRefinements.push_back(refinement);
         }
         else
             argTail = checkPack(scope, arg, {}).tp; // FIXME? not sure about expectedTypes here
@@ -1137,11 +1140,11 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
         constraint->dependencies.push_back(extractArgsConstraint);
     });
 
-    std::vector<ConnectiveId> returnConnectives;
+    std::vector<RefinementId> returnRefinements;
     if (auto ftv = get<FunctionType>(follow(fnType)); ftv && ftv->dcrMagicRefinement)
     {
-        MagicRefinementContext ctx{scope, NotNull{this}, dfg, NotNull{&connectiveArena}, std::move(argumentConnectives), call};
-        returnConnectives = ftv->dcrMagicRefinement(ctx);
+        MagicRefinementContext ctx{scope, NotNull{this}, dfg, NotNull{&refinementArena}, std::move(argumentRefinements), call};
+        returnRefinements = ftv->dcrMagicRefinement(ctx);
     }
 
     if (matchSetmetatable(*call))
@@ -1169,11 +1172,11 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
         }
 
 
-        return InferencePack{arena->addTypePack({resultTy}), std::move(returnConnectives)};
+        return InferencePack{arena->addTypePack({resultTy}), std::move(returnRefinements)};
     }
     else
     {
-        astOriginalCallTypes[call->func] = fnType;
+        module->astOriginalCallTypes[call->func] = fnType;
 
         TypeId instantiatedType = arena->addType(BlockedType{});
         // TODO: How do expectedTypes play into this?  Do they?
@@ -1208,7 +1211,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
             fcc->dependencies.emplace_back(constraint.get());
         });
 
-        return InferencePack{rets, std::move(returnConnectives)};
+        return InferencePack{rets, std::move(returnRefinements)};
     }
 }
 
@@ -1261,7 +1264,7 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr, st
             gc->dependencies.emplace_back(constraint.get());
         });
 
-        return Inference{generalizedTy};
+        result = Inference{generalizedTy};
     }
     else if (auto indexName = expr->as<AstExprIndexName>())
         result = check(scope, indexName);
@@ -1294,9 +1297,9 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr, st
     }
 
     LUAU_ASSERT(result.ty);
-    astTypes[expr] = result.ty;
+    module->astTypes[expr] = result.ty;
     if (expectedType)
-        astExpectedTypes[expr] = *expectedType;
+        module->astExpectedTypes[expr] = *expectedType;
     return result;
 }
 
@@ -1366,7 +1369,7 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprLocal* loc
         return Inference{builtinTypes->errorRecoveryType()}; // TODO: replace with ice, locals should never exist before its definition.
 
     if (def)
-        return Inference{*resultTy, connectiveArena.proposition(*def, builtinTypes->truthyType)};
+        return Inference{*resultTy, refinementArena.proposition(*def, builtinTypes->truthyType)};
     else
         return Inference{*resultTy};
 }
@@ -1456,7 +1459,7 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexName*
     if (def)
     {
         if (auto ty = scope->lookup(*def))
-            return Inference{*ty, connectiveArena.proposition(*def, builtinTypes->truthyType)};
+            return Inference{*ty, refinementArena.proposition(*def, builtinTypes->truthyType)};
         else
             scope->dcrRefinements[*def] = result;
     }
@@ -1470,7 +1473,7 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexName*
     addConstraint(scope, indexName->expr->location, SubtypeConstraint{obj, expectedTableType});
 
     if (def)
-        return Inference{result, connectiveArena.proposition(*def, builtinTypes->truthyType)};
+        return Inference{result, refinementArena.proposition(*def, builtinTypes->truthyType)};
     else
         return Inference{result};
 }
@@ -1492,48 +1495,40 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexExpr*
 
 Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprUnary* unary)
 {
-    auto [operandType, connective] = check(scope, unary->expr);
+    auto [operandType, refinement] = check(scope, unary->expr);
     TypeId resultType = arena->addType(BlockedType{});
     addConstraint(scope, unary->location, UnaryConstraint{unary->op, operandType, resultType});
 
     if (unary->op == AstExprUnary::Not)
-        return Inference{resultType, connectiveArena.negation(connective)};
+        return Inference{resultType, refinementArena.negation(refinement)};
     else
         return Inference{resultType};
 }
 
 Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType)
 {
-    auto [leftType, rightType, connective] = checkBinary(scope, binary, expectedType);
+    auto [leftType, rightType, refinement] = checkBinary(scope, binary, expectedType);
 
     TypeId resultType = arena->addType(BlockedType{});
     addConstraint(scope, binary->location,
-        BinaryConstraint{binary->op, leftType, rightType, resultType, binary, &astOriginalCallTypes, &astOverloadResolvedTypes});
-    return Inference{resultType, std::move(connective)};
+        BinaryConstraint{binary->op, leftType, rightType, resultType, binary, &module->astOriginalCallTypes, &module->astOverloadResolvedTypes});
+    return Inference{resultType, std::move(refinement)};
 }
 
 Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType)
 {
     ScopePtr condScope = childScope(ifElse->condition, scope);
-    auto [_, connective] = check(scope, ifElse->condition);
+    auto [_, refinement] = check(scope, ifElse->condition);
 
     ScopePtr thenScope = childScope(ifElse->trueExpr, scope);
-    applyRefinements(thenScope, ifElse->trueExpr->location, connective);
+    applyRefinements(thenScope, ifElse->trueExpr->location, refinement);
     TypeId thenType = check(thenScope, ifElse->trueExpr, expectedType).ty;
 
     ScopePtr elseScope = childScope(ifElse->falseExpr, scope);
-    applyRefinements(elseScope, ifElse->falseExpr->location, connectiveArena.negation(connective));
+    applyRefinements(elseScope, ifElse->falseExpr->location, refinementArena.negation(refinement));
     TypeId elseType = check(elseScope, ifElse->falseExpr, expectedType).ty;
 
-    if (ifElse->hasElse)
-    {
-        TypeId resultType = expectedType ? *expectedType : freshType(scope);
-        addConstraint(scope, ifElse->trueExpr->location, SubtypeConstraint{thenType, resultType});
-        addConstraint(scope, ifElse->falseExpr->location, SubtypeConstraint{elseType, resultType});
-        return Inference{resultType};
-    }
-
-    return Inference{thenType};
+    return Inference{expectedType ? *expectedType : arena->addType(UnionType{{thenType, elseType}})};
 }
 
 Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert)
@@ -1550,28 +1545,28 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprInterpStri
     return Inference{builtinTypes->stringType};
 }
 
-std::tuple<TypeId, TypeId, ConnectiveId> ConstraintGraphBuilder::checkBinary(
+std::tuple<TypeId, TypeId, RefinementId> ConstraintGraphBuilder::checkBinary(
     const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType)
 {
     if (binary->op == AstExprBinary::And)
     {
-        auto [leftType, leftConnective] = check(scope, binary->left, expectedType);
+        auto [leftType, leftRefinement] = check(scope, binary->left, expectedType);
 
         ScopePtr rightScope = childScope(binary->right, scope);
-        applyRefinements(rightScope, binary->right->location, leftConnective);
-        auto [rightType, rightConnective] = check(rightScope, binary->right, expectedType);
+        applyRefinements(rightScope, binary->right->location, leftRefinement);
+        auto [rightType, rightRefinement] = check(rightScope, binary->right, expectedType);
 
-        return {leftType, rightType, connectiveArena.conjunction(leftConnective, rightConnective)};
+        return {leftType, rightType, refinementArena.conjunction(leftRefinement, rightRefinement)};
     }
     else if (binary->op == AstExprBinary::Or)
     {
-        auto [leftType, leftConnective] = check(scope, binary->left, expectedType);
+        auto [leftType, leftRefinement] = check(scope, binary->left, expectedType);
 
         ScopePtr rightScope = childScope(binary->right, scope);
-        applyRefinements(rightScope, binary->right->location, connectiveArena.negation(leftConnective));
-        auto [rightType, rightConnective] = check(rightScope, binary->right, expectedType);
+        applyRefinements(rightScope, binary->right->location, refinementArena.negation(leftRefinement));
+        auto [rightType, rightRefinement] = check(rightScope, binary->right, expectedType);
 
-        return {leftType, rightType, connectiveArena.disjunction(leftConnective, rightConnective)};
+        return {leftType, rightType, refinementArena.disjunction(leftRefinement, rightRefinement)};
     }
     else if (auto typeguard = matchTypeGuard(binary))
     {
@@ -1613,11 +1608,11 @@ std::tuple<TypeId, TypeId, ConnectiveId> ConstraintGraphBuilder::checkBinary(
                 discriminantTy = ty;
         }
 
-        ConnectiveId proposition = connectiveArena.proposition(*def, discriminantTy);
+        RefinementId proposition = refinementArena.proposition(*def, discriminantTy);
         if (binary->op == AstExprBinary::CompareEq)
             return {leftType, rightType, proposition};
         else if (binary->op == AstExprBinary::CompareNe)
-            return {leftType, rightType, connectiveArena.negation(proposition)};
+            return {leftType, rightType, refinementArena.negation(proposition)};
         else
             ice->ice("matchTypeGuard should only return a Some under `==` or `~=`!");
     }
@@ -1626,21 +1621,21 @@ std::tuple<TypeId, TypeId, ConnectiveId> ConstraintGraphBuilder::checkBinary(
         TypeId leftType = check(scope, binary->left, expectedType, true).ty;
         TypeId rightType = check(scope, binary->right, expectedType, true).ty;
 
-        ConnectiveId leftConnective = nullptr;
+        RefinementId leftRefinement = nullptr;
         if (auto def = dfg->getDef(binary->left))
-            leftConnective = connectiveArena.proposition(*def, rightType);
+            leftRefinement = refinementArena.proposition(*def, rightType);
 
-        ConnectiveId rightConnective = nullptr;
+        RefinementId rightRefinement = nullptr;
         if (auto def = dfg->getDef(binary->right))
-            rightConnective = connectiveArena.proposition(*def, leftType);
+            rightRefinement = refinementArena.proposition(*def, leftType);
 
         if (binary->op == AstExprBinary::CompareNe)
         {
-            leftConnective = connectiveArena.negation(leftConnective);
-            rightConnective = connectiveArena.negation(rightConnective);
+            leftRefinement = refinementArena.negation(leftRefinement);
+            rightRefinement = refinementArena.negation(rightRefinement);
         }
 
-        return {leftType, rightType, connectiveArena.equivalence(leftConnective, rightConnective)};
+        return {leftType, rightType, refinementArena.equivalence(leftRefinement, rightRefinement)};
     }
     else
     {
@@ -1737,13 +1732,13 @@ TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
     for (size_t i = 0; i < segments.size(); ++i)
     {
         TypeId segmentTy = arena->addType(BlockedType{});
-        astTypes[exprs[i]] = segmentTy;
+        module->astTypes[exprs[i]] = segmentTy;
         addConstraint(scope, expr->location, HasPropConstraint{segmentTy, prevSegmentTy, segments[i]});
         prevSegmentTy = segmentTy;
     }
 
-    astTypes[expr] = prevSegmentTy;
-    astTypes[e] = updatedType;
+    module->astTypes[expr] = prevSegmentTy;
+    module->astTypes[e] = updatedType;
     // astTypes[expr] = propTy;
 
     return propTy;
@@ -1895,6 +1890,10 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
         if (local->annotation)
         {
             annotationTy = resolveType(signatureScope, local->annotation, /* inTypeArguments */ false);
+            // If we provide an annotation that is wrong, type inference should ignore the annotation
+            // and try to infer a fresh type, like in the old solver
+            if (get<ErrorType>(follow(annotationTy)))
+                annotationTy = freshType(signatureScope);
             addConstraint(signatureScope, local->annotation->location, SubtypeConstraint{t, annotationTy});
         }
         else if (i < expectedArgPack.head.size())
@@ -1964,7 +1963,7 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
 
     TypeId actualFunctionType = arena->addType(std::move(actualFunction));
     LUAU_ASSERT(actualFunctionType);
-    astTypes[fn] = actualFunctionType;
+    module->astTypes[fn] = actualFunctionType;
 
     if (expectedType && get<FreeType>(*expectedType))
     {
@@ -2214,7 +2213,7 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
         result = builtinTypes->errorRecoveryType();
     }
 
-    astResolvedTypes[ty] = result;
+    module->astResolvedTypes[ty] = result;
     return result;
 }
 
@@ -2248,7 +2247,7 @@ TypePackId ConstraintGraphBuilder::resolveTypePack(const ScopePtr& scope, AstTyp
         result = builtinTypes->errorRecoveryTypePack();
     }
 
-    astResolvedTypePacks[tp] = result;
+    module->astResolvedTypePacks[tp] = result;
     return result;
 }
 
@@ -2307,13 +2306,13 @@ std::vector<std::pair<Name, GenericTypePackDefinition>> ConstraintGraphBuilder::
 
 Inference ConstraintGraphBuilder::flattenPack(const ScopePtr& scope, Location location, InferencePack pack)
 {
-    const auto& [tp, connectives] = pack;
-    ConnectiveId connective = nullptr;
-    if (!connectives.empty())
-        connective = connectives[0];
+    const auto& [tp, refinements] = pack;
+    RefinementId refinement = nullptr;
+    if (!refinements.empty())
+        refinement = refinements[0];
 
     if (auto f = first(tp))
-        return Inference{*f, connective};
+        return Inference{*f, refinement};
 
     TypeId typeResult = freshType(scope);
     TypePack onePack{{typeResult}, freshTypePack(scope)};
@@ -2321,7 +2320,7 @@ Inference ConstraintGraphBuilder::flattenPack(const ScopePtr& scope, Location lo
 
     addConstraint(scope, location, PackSubtypeConstraint{tp, oneTypePack});
 
-    return Inference{typeResult, connective};
+    return Inference{typeResult, refinement};
 }
 
 void ConstraintGraphBuilder::reportError(Location location, TypeErrorData err)

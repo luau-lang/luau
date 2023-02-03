@@ -579,6 +579,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
                 module->astOriginalCallTypes.clear();
                 module->astOverloadResolvedTypes.clear();
                 module->astResolvedTypes.clear();
+                module->astOriginalResolvedTypes.clear();
                 module->astResolvedTypePacks.clear();
                 module->astScopes.clear();
 
@@ -591,6 +592,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
                 module->astOriginalCallTypes.clear();
                 module->astResolvedTypes.clear();
                 module->astResolvedTypePacks.clear();
+                module->astOriginalResolvedTypes.clear();
                 module->scopes.resize(1);
             }
         }
@@ -922,22 +924,21 @@ ModulePtr Frontend::check(
 
     for (TypeError& e : cs.errors)
         result->errors.emplace_back(std::move(e));
+
     result->scopes = std::move(cgb.scopes);
-    result->astTypes = std::move(cgb.astTypes);
-    result->astTypePacks = std::move(cgb.astTypePacks);
-    result->astExpectedTypes = std::move(cgb.astExpectedTypes);
-    result->astOriginalCallTypes = std::move(cgb.astOriginalCallTypes);
-    result->astOverloadResolvedTypes = std::move(cgb.astOverloadResolvedTypes);
-    result->astResolvedTypes = std::move(cgb.astResolvedTypes);
-    result->astResolvedTypePacks = std::move(cgb.astResolvedTypePacks);
     result->type = sourceModule.type;
 
     result->clonePublicInterface(builtinTypes, iceHandler);
 
+    Luau::check(builtinTypes, logger.get(), sourceModule, result.get());
+
+    // Ideally we freeze the arenas before the call into Luau::check, but TypeReduction
+    // needs to allocate new types while Luau::check is in progress, so here we are.
+    //
+    // It does mean that mutations to the type graph can happen after the constraints
+    // have been solved, which will cause hard-to-debug problems. We should revisit this.
     freeze(result->internalTypes);
     freeze(result->interfaceTypes);
-
-    Luau::check(builtinTypes, logger.get(), sourceModule, result.get());
 
     if (FFlag::DebugLuauLogSolverToJson)
     {

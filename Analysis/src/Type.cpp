@@ -414,7 +414,7 @@ bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
     if (seen.contains(ty))
         return true;
 
-    if (isString(ty) || get<AnyType>(ty) || get<TableType>(ty) || get<MetatableType>(ty))
+    if (isString(ty) || isPrim(ty, PrimitiveType::Table) || get<AnyType>(ty) || get<TableType>(ty) || get<MetatableType>(ty))
         return true;
 
     if (auto uty = get<UnionType>(ty))

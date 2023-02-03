@@ -96,6 +96,10 @@ struct NativeContext
     double (*libm_log)(double) = nullptr;
     double (*libm_log2)(double) = nullptr;
     double (*libm_log10)(double) = nullptr;
+    double (*libm_ldexp)(double, int) = nullptr;
+    double (*libm_round)(double) = nullptr;
+    double (*libm_frexp)(double, int*) = nullptr;
+    double (*libm_modf)(double, double*) = nullptr;
 
     // Helper functions
     bool (*forgLoopNodeIter)(lua_State* L, Table* h, int index, TValue* ra) = nullptr;

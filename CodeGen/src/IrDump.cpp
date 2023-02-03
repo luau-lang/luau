@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "IrDump.h"
+#include "Luau/IrDump.h"
 
-#include "IrUtils.h"
+#include "Luau/IrUtils.h"
 
 #include "lua.h"
 

@@ -3,8 +3,7 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/Common.h"
-
-#include "IrData.h"
+#include "Luau/IrData.h"
 
 namespace Luau
 {

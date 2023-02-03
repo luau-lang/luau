@@ -80,14 +80,9 @@ n1 [label="AnyType 1"];
 
 TEST_CASE_FIXTURE(Fixture, "bound")
 {
-    CheckResult result = check(R"(
-function a(): number return 444 end
-local b = a()
-)");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    TypeArena arena;
 
-    std::optional<TypeId> ty = getType("b");
-    REQUIRE(bool(ty));
+    TypeId ty = arena.addType(BoundType{builtinTypes->numberType});
 
     ToDotOptions opts;
     opts.showPointers = false;
@@ -96,7 +91,7 @@ n1 [label="BoundType 1"];
 n1 -> n2;
 n2 [label="number"];
 })",
-        toDot(*ty, opts));
+        toDot(ty, opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "function")
@@ -172,10 +167,9 @@ n3 [label="number"];
 
 TEST_CASE_FIXTURE(Fixture, "intersection")
 {
-    CheckResult result = check(R"(
-local a: string & number -- uninhabited
-)");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    TypeArena arena;
+
+    TypeId ty = arena.addType(IntersectionType{{builtinTypes->stringType, builtinTypes->numberType}});
 
     ToDotOptions opts;
     opts.showPointers = false;
@@ -186,7 +180,7 @@ n2 [label="string"];
 n1 -> n3;
 n3 [label="number"];
 })",
-        toDot(requireType("a"), opts));
+        toDot(ty, opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "table")
@@ -396,44 +390,25 @@ n3 [label="number"];
 
 TEST_CASE_FIXTURE(Fixture, "bound_table")
 {
-    CheckResult result = check(R"(
-local a = {x=2}
-local b
-b.x = 2
-b = a
-)");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    TypeArena arena;
 
-    std::optional<TypeId> ty = getType("b");
-    REQUIRE(bool(ty));
+    TypeId ty = arena.addType(TableType{});
+    getMutable<TableType>(ty)->props["x"] = {builtinTypes->numberType};
+
+    TypeId boundTy = arena.addType(TableType{});
+    getMutable<TableType>(boundTy)->boundTo = ty;
 
     ToDotOptions opts;
     opts.showPointers = false;
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-    {
-        CHECK_EQ(R"(digraph graphname {
-n1 [label="BoundType 1"];
-n1 -> n2;
-n2 [label="TableType 2"];
-n2 -> n3 [label="boundTo"];
-n3 [label="TableType a"];
-n3 -> n4 [label="x"];
-n4 [label="number"];
-})",
-            toDot(*ty, opts));
-    }
-    else
-    {
-        CHECK_EQ(R"(digraph graphname {
+    CHECK_EQ(R"(digraph graphname {
 n1 [label="TableType 1"];
 n1 -> n2 [label="boundTo"];
-n2 [label="TableType a"];
+n2 [label="TableType 2"];
 n2 -> n3 [label="x"];
 n3 [label="number"];
 })",
-            toDot(*ty, opts));
-    }
+        toDot(boundTy, opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "builtintypes")

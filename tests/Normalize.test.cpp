@@ -2,12 +2,15 @@
 
 #include "Fixture.h"
 
+#include "Luau/AstQuery.h"
 #include "Luau/Common.h"
 #include "Luau/Type.h"
 #include "doctest.h"
 
 #include "Luau/Normalize.h"
 #include "Luau/BuiltinDefinitions.h"
+
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 using namespace Luau;
 
@@ -377,9 +380,25 @@ struct NormalizeFixture : Fixture
         normalizer.clearCaches();
         CheckResult result = check("type _Res = " + annotation);
         LUAU_REQUIRE_NO_ERRORS(result);
-        std::optional<TypeId> ty = lookupType("_Res");
-        REQUIRE(ty);
-        return normalizer.normalize(*ty);
+
+        if (FFlag::DebugLuauDeferredConstraintResolution)
+        {
+            SourceModule* sourceModule = getMainSourceModule();
+            REQUIRE(sourceModule);
+            AstNode* node = findNodeAtPosition(*sourceModule, {0, 5});
+            REQUIRE(node);
+            AstStatTypeAlias* alias = node->as<AstStatTypeAlias>();
+            REQUIRE(alias);
+            TypeId* originalTy = getMainModule()->astOriginalResolvedTypes.find(alias->type);
+            REQUIRE(originalTy);
+            return normalizer.normalize(*originalTy);
+        }
+        else
+        {
+            std::optional<TypeId> ty = lookupType("_Res");
+            REQUIRE(ty);
+            return normalizer.normalize(*ty);
+        }
     }
 
     TypeId normal(const std::string& annotation)
