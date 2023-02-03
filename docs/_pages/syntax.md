@@ -270,6 +270,6 @@ print(`Welcome to {
 The sequence of two opening braces {{ "(`{{`)" }} is rejected with a parse error.
 This restriction is made to prevent developers using other programming languages with a similar feature from trying to attempt that as a way to escape a single `{` and getting unexpected results in Luau.
 
-Luau currently does not support backtick string literals as a type annotation, so ``type Foo = `Foo` `` is invalid.
+Luau currently does not support backtick string literals as a type annotation, so `` type Foo = `Foo` `` is invalid.
 
-Function calls with a backtick string literal without parenthesis is not supported, so ``print`hello` `` is invalid.
+Function calls with a backtick string literal without parenthesis is not supported, so `` print`hello` `` is invalid.
