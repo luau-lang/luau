@@ -2,8 +2,7 @@
 #include "IrTranslation.h"
 
 #include "Luau/Bytecode.h"
-
-#include "IrBuilder.h"
+#include "Luau/IrBuilder.h"
 
 #include "lobject.h"
 #include "ltm.h"

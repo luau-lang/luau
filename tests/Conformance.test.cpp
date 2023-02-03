@@ -297,8 +297,6 @@ TEST_CASE("Clear")
 
 TEST_CASE("Strings")
 {
-    ScopedFastFlag luauStringFormatAnyFix{"LuauStringFormatAnyFix", true};
-
     runConformance("strings.lua");
 }
 

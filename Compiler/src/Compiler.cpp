@@ -25,10 +25,6 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAGVARIABLE(LuauMultiAssignmentConflictFix, false)
-LUAU_FASTFLAGVARIABLE(LuauSelfAssignmentSkip, false)
-LUAU_FASTFLAGVARIABLE(LuauCompileInterpStringLimit, false)
-
 namespace Luau
 {
 
@@ -1580,8 +1576,7 @@ struct Compiler
 
         RegScope rs(this);
 
-        uint8_t baseReg = FFlag::LuauCompileInterpStringLimit ? allocReg(expr, unsigned(2 + expr->expressions.size))
-                                                              : allocReg(expr, uint8_t(2 + expr->expressions.size));
+        uint8_t baseReg = allocReg(expr, unsigned(2 + expr->expressions.size));
 
         emitLoadK(baseReg, formatStringIndex);
 
@@ -2030,7 +2025,7 @@ struct Compiler
             if (int reg = getExprLocalReg(expr); reg >= 0)
             {
                 // Optimization: we don't need to move if target happens to be in the same register
-                if (!FFlag::LuauSelfAssignmentSkip || options.optimizationLevel == 0 || target != reg)
+                if (options.optimizationLevel == 0 || target != reg)
                     bytecode.emitABC(LOP_MOVE, target, uint8_t(reg), 0);
             }
             else
@@ -2982,46 +2977,29 @@ struct Compiler
 
         Visitor visitor(this);
 
-        if (FFlag::LuauMultiAssignmentConflictFix)
+        // mark any registers that are used *after* assignment as conflicting
+
+        // first we go through assignments to locals, since they are performed before assignments to other l-values
+        for (size_t i = 0; i < vars.size(); ++i)
         {
-            // mark any registers that are used *after* assignment as conflicting
+            const LValue& li = vars[i].lvalue;
 
-            // first we go through assignments to locals, since they are performed before assignments to other l-values
-            for (size_t i = 0; i < vars.size(); ++i)
+            if (li.kind == LValue::Kind_Local)
             {
-                const LValue& li = vars[i].lvalue;
-
-                if (li.kind == LValue::Kind_Local)
-                {
-                    if (i < values.size)
-                        values.data[i]->visit(&visitor);
-
-                    visitor.assigned[li.reg] = true;
-                }
-            }
-
-            // and now we handle all other l-values
-            for (size_t i = 0; i < vars.size(); ++i)
-            {
-                const LValue& li = vars[i].lvalue;
-
-                if (li.kind != LValue::Kind_Local && i < values.size)
-                    values.data[i]->visit(&visitor);
-            }
-        }
-        else
-        {
-            // mark any registers that are used *after* assignment as conflicting
-            for (size_t i = 0; i < vars.size(); ++i)
-            {
-                const LValue& li = vars[i].lvalue;
-
                 if (i < values.size)
                     values.data[i]->visit(&visitor);
 
-                if (li.kind == LValue::Kind_Local)
-                    visitor.assigned[li.reg] = true;
+                visitor.assigned[li.reg] = true;
             }
+        }
+
+        // and now we handle all other l-values
+        for (size_t i = 0; i < vars.size(); ++i)
+        {
+            const LValue& li = vars[i].lvalue;
+
+            if (li.kind != LValue::Kind_Local && i < values.size)
+                values.data[i]->visit(&visitor);
         }
 
         // mark any registers used in trailing expressions as conflicting as well

@@ -2616,10 +2616,6 @@ private:
             emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
                 "Hexadecimal number literal exceeded available precision and has been truncated to 2^64");
             break;
-        case ConstantNumberParseResult::DoublePrefix:
-            emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
-                "Hexadecimal number literal has a double prefix, which will fail to parse in the future; remove the extra 0x to fix");
-            break;
         }
 
         return true;

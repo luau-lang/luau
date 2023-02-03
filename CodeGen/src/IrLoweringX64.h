@@ -2,8 +2,7 @@
 #pragma once
 
 #include "Luau/AssemblyBuilderX64.h"
-
-#include "IrData.h"
+#include "Luau/IrData.h"
 
 #include <array>
 #include <initializer_list>

@@ -2,7 +2,7 @@
 #pragma once
 
 #include "Luau/Ast.h"
-#include "Luau/Connective.h"
+#include "Luau/Refinement.h"
 #include "Luau/Constraint.h"
 #include "Luau/DataFlowGraph.h"
 #include "Luau/Module.h"
@@ -27,13 +27,13 @@ struct DcrLogger;
 struct Inference
 {
     TypeId ty = nullptr;
-    ConnectiveId connective = nullptr;
+    RefinementId refinement = nullptr;
 
     Inference() = default;
 
-    explicit Inference(TypeId ty, ConnectiveId connective = nullptr)
+    explicit Inference(TypeId ty, RefinementId refinement = nullptr)
         : ty(ty)
-        , connective(connective)
+        , refinement(refinement)
     {
     }
 };
@@ -41,13 +41,13 @@ struct Inference
 struct InferencePack
 {
     TypePackId tp = nullptr;
-    std::vector<ConnectiveId> connectives;
+    std::vector<RefinementId> refinements;
 
     InferencePack() = default;
 
-    explicit InferencePack(TypePackId tp, const std::vector<ConnectiveId>& connectives = {})
+    explicit InferencePack(TypePackId tp, const std::vector<RefinementId>& refinements = {})
         : tp(tp)
-        , connectives(connectives)
+        , refinements(refinements)
     {
     }
 };
@@ -74,35 +74,11 @@ struct ConstraintGraphBuilder
     // will enqueue them during solving.
     std::vector<ConstraintPtr> unqueuedConstraints;
 
-    // A mapping of AST node to TypeId.
-    DenseHashMap<const AstExpr*, TypeId> astTypes{nullptr};
-
-    // A mapping of AST node to TypePackId.
-    DenseHashMap<const AstExpr*, TypePackId> astTypePacks{nullptr};
-
-    DenseHashMap<const AstExpr*, TypeId> astExpectedTypes{nullptr};
-
-    // If the node was applied as a function, this is the unspecialized type of
-    // that expression.
-    DenseHashMap<const void*, TypeId> astOriginalCallTypes{nullptr};
-
-    // If overload resolution was performed on this element, this is the
-    // overload that was selected.
-    DenseHashMap<const void*, TypeId> astOverloadResolvedTypes{nullptr};
-
-
-
-    // Types resolved from type annotations. Analogous to astTypes.
-    DenseHashMap<const AstType*, TypeId> astResolvedTypes{nullptr};
-
-    // Type packs resolved from type annotations. Analogous to astTypePacks.
-    DenseHashMap<const AstTypePack*, TypePackId> astResolvedTypePacks{nullptr};
-
-    // Defining scopes for AST nodes.
+    // The private scope of type aliases for which the type parameters belong to.
     DenseHashMap<const AstStatTypeAlias*, ScopePtr> astTypeAliasDefiningScopes{nullptr};
 
     NotNull<const DataFlowGraph> dfg;
-    ConnectiveArena connectiveArena;
+    RefinementArena refinementArena;
 
     int recursionCount = 0;
 
@@ -156,7 +132,7 @@ struct ConstraintGraphBuilder
      */
     NotNull<Constraint> addConstraint(const ScopePtr& scope, std::unique_ptr<Constraint> c);
 
-    void applyRefinements(const ScopePtr& scope, Location location, ConnectiveId connective);
+    void applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement);
 
     /**
      * The entry point to the ConstraintGraphBuilder. This will construct a set
@@ -213,7 +189,7 @@ struct ConstraintGraphBuilder
     Inference check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
     Inference check(const ScopePtr& scope, AstExprInterpString* interpString);
     Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
-    std::tuple<TypeId, TypeId, ConnectiveId> checkBinary(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
+    std::tuple<TypeId, TypeId, RefinementId> checkBinary(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
 
     TypePackId checkLValues(const ScopePtr& scope, AstArray<AstExpr*> exprs);
 

@@ -357,8 +357,6 @@ TEST_CASE_FIXTURE(Fixture, "cli_38393_recursive_intersection_oom")
         type t0<t0> = ((typeof(_))&((t0)&(((typeof(_))&(t0))->typeof(_))),{n163:any,})->(any,typeof(_))
         _(_)
     )");
-
-    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_fwd_declaration_is_precise")

@@ -251,7 +251,6 @@ enum class ConstantNumberParseResult
     Malformed,
     BinOverflow,
     HexOverflow,
-    DoublePrefix,
 };
 
 class AstExprConstantNumber : public AstExpr

@@ -3,7 +3,7 @@
 
 #include "Luau/Ast.h"
 #include "Luau/Common.h"
-#include "Luau/Connective.h"
+#include "Luau/Refinement.h"
 #include "Luau/DataFlowGraph.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Def.h"
@@ -266,12 +266,12 @@ struct MagicRefinementContext
     ScopePtr scope;
     NotNull<struct ConstraintGraphBuilder> cgb;
     NotNull<const DataFlowGraph> dfg;
-    NotNull<ConnectiveArena> connectiveArena;
-    std::vector<ConnectiveId> argumentConnectives;
+    NotNull<RefinementArena> refinementArena;
+    std::vector<RefinementId> argumentRefinements;
     const class AstExprCall* callSite;
 };
 
-using DcrMagicRefinement = std::vector<ConnectiveId> (*)(const MagicRefinementContext&);
+using DcrMagicRefinement = std::vector<RefinementId> (*)(const MagicRefinementContext&);
 
 struct FunctionType
 {

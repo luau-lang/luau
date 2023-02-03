@@ -3,8 +3,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/Bytecode.h"
-
-#include "IrData.h"
+#include "Luau/IrData.h"
 
 #include <vector>
 

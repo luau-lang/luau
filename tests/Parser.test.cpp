@@ -683,21 +683,12 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
 {
-    ScopedFastFlag luauErrorDoubleHexPrefix{"LuauErrorDoubleHexPrefix", true};
-
     CHECK_EQ(getParseError("return 0b123"), "Malformed number");
     CHECK_EQ(getParseError("return 123x"), "Malformed number");
     CHECK_EQ(getParseError("return 0xg"), "Malformed number");
     CHECK_EQ(getParseError("return 0x0x123"), "Malformed number");
     CHECK_EQ(getParseError("return 0xffffffffffffffffffffllllllg"), "Malformed number");
     CHECK_EQ(getParseError("return 0x0xffffffffffffffffffffffffffff"), "Malformed number");
-}
-
-TEST_CASE_FIXTURE(Fixture, "parse_numbers_error_soft")
-{
-    ScopedFastFlag luauErrorDoubleHexPrefix{"LuauErrorDoubleHexPrefix", false};
-
-    CHECK_EQ(getParseError("return 0x0x0x0x0x0x0x0"), "Malformed number");
 }
 
 TEST_CASE_FIXTURE(Fixture, "break_return_not_last_error")

@@ -323,6 +323,8 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     normalizer.arena = nullptr;
 
     currentModule->clonePublicInterface(builtinTypes, *iceHandler);
+    freeze(currentModule->internalTypes);
+    freeze(currentModule->interfaceTypes);
 
     // Clear unifier cache since it's keyed off internal types that get deallocated
     // This avoids fake cross-module cache hits and keeps cache size at bay when typechecking large module graphs.

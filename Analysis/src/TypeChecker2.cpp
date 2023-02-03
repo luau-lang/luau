@@ -4,22 +4,24 @@
 #include "Luau/Ast.h"
 #include "Luau/AstQuery.h"
 #include "Luau/Clone.h"
+#include "Luau/DcrLogger.h"
 #include "Luau/Error.h"
 #include "Luau/Instantiation.h"
 #include "Luau/Metamethods.h"
 #include "Luau/Normalize.h"
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
-#include "Luau/TypeUtils.h"
 #include "Luau/Type.h"
+#include "Luau/TypeReduction.h"
+#include "Luau/TypeUtils.h"
 #include "Luau/Unifier.h"
-#include "Luau/ToString.h"
-#include "Luau/DcrLogger.h"
 
 #include <algorithm>
 
-LUAU_FASTFLAG(DebugLuauLogSolverToJson);
-LUAU_FASTFLAG(DebugLuauMagicTypes);
+LUAU_FASTFLAG(DebugLuauLogSolverToJson)
+LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(DebugLuauDontReduceTypes)
+
 LUAU_FASTFLAG(LuauNegatedClassTypes)
 
 namespace Luau
@@ -223,10 +225,7 @@ struct TypeChecker2
     {
         auto pusher = pushStack(stat);
 
-        if (0)
-        {
-        }
-        else if (auto s = stat->as<AstStatBlock>())
+        if (auto s = stat->as<AstStatBlock>())
             return visit(s);
         else if (auto s = stat->as<AstStatIf>())
             return visit(s);
@@ -340,8 +339,7 @@ struct TypeChecker2
             if (value)
                 visit(value, RValue);
 
-            TypeId* maybeValueType = value ? module->astTypes.find(value) : nullptr;
-            if (i != local->values.size - 1 || maybeValueType)
+            if (i != local->values.size - 1 || value)
             {
                 AstLocal* var = i < local->vars.size ? local->vars.data[i] : nullptr;
 
@@ -391,13 +389,26 @@ struct TypeChecker2
 
     void visit(AstStatFor* forStatement)
     {
-        if (forStatement->var->annotation)
-            visit(forStatement->var->annotation);
+        NotNull<Scope> scope = stack.back();
 
-        visit(forStatement->from, RValue);
-        visit(forStatement->to, RValue);
-        if (forStatement->step)
-            visit(forStatement->step, RValue);
+        if (forStatement->var->annotation)
+        {
+            visit(forStatement->var->annotation);
+            reportErrors(tryUnify(scope, forStatement->var->location, builtinTypes->numberType, lookupAnnotation(forStatement->var->annotation)));
+        }
+
+        auto checkNumber = [this, scope](AstExpr* expr) {
+            if (!expr)
+                return;
+
+            visit(expr, RValue);
+            reportErrors(tryUnify(scope, expr->location, lookupType(expr), builtinTypes->numberType));
+        };
+
+        checkNumber(forStatement->from);
+        checkNumber(forStatement->to);
+        checkNumber(forStatement->step);
+
         visit(forStatement->body);
     }
 
@@ -543,7 +554,7 @@ struct TypeChecker2
             else
                 reportError(GenericError{"Cannot iterate over a table without indexer"}, forInStatement->values.data[0]->location);
         }
-        else if (get<AnyType>(iteratorTy) || get<ErrorType>(iteratorTy))
+        else if (get<AnyType>(iteratorTy) || get<ErrorType>(iteratorTy) || get<NeverType>(iteratorTy))
         {
             // nothing
         }
@@ -623,6 +634,9 @@ struct TypeChecker2
             AstExpr* rhs = assign->values.data[i];
             visit(rhs, RValue);
             TypeId rhsType = lookupType(rhs);
+
+            if (get<NeverType>(lhsType))
+                continue;
 
             if (!isSubtype(rhsType, lhsType, stack.back()))
             {
@@ -715,10 +729,7 @@ struct TypeChecker2
     {
         auto StackPusher = pushStack(expr);
 
-        if (0)
-        {
-        }
-        else if (auto e = expr->as<AstExprGroup>())
+        if (auto e = expr->as<AstExprGroup>())
             return visit(e, context);
         else if (auto e = expr->as<AstExprConstantNil>())
             return visit(e);
@@ -770,34 +781,34 @@ struct TypeChecker2
 
     void visit(AstExprConstantNil* expr)
     {
-        // TODO!
+        NotNull<Scope> scope = stack.back();
+        TypeId actualType = lookupType(expr);
+        TypeId expectedType = builtinTypes->nilType;
+        LUAU_ASSERT(isSubtype(actualType, expectedType, scope));
     }
 
     void visit(AstExprConstantBool* expr)
     {
-        // TODO!
+        NotNull<Scope> scope = stack.back();
+        TypeId actualType = lookupType(expr);
+        TypeId expectedType = builtinTypes->booleanType;
+        LUAU_ASSERT(isSubtype(actualType, expectedType, scope));
     }
 
-    void visit(AstExprConstantNumber* number)
+    void visit(AstExprConstantNumber* expr)
     {
-        TypeId actualType = lookupType(number);
-        TypeId numberType = builtinTypes->numberType;
-
-        if (!isSubtype(numberType, actualType, stack.back()))
-        {
-            reportError(TypeMismatch{actualType, numberType}, number->location);
-        }
+        NotNull<Scope> scope = stack.back();
+        TypeId actualType = lookupType(expr);
+        TypeId expectedType = builtinTypes->numberType;
+        LUAU_ASSERT(isSubtype(actualType, expectedType, scope));
     }
 
-    void visit(AstExprConstantString* string)
+    void visit(AstExprConstantString* expr)
     {
-        TypeId actualType = lookupType(string);
-        TypeId stringType = builtinTypes->stringType;
-
-        if (!isSubtype(actualType, stringType, stack.back()))
-        {
-            reportError(TypeMismatch{actualType, stringType}, string->location);
-        }
+        NotNull<Scope> scope = stack.back();
+        TypeId actualType = lookupType(expr);
+        TypeId expectedType = builtinTypes->stringType;
+        LUAU_ASSERT(isSubtype(actualType, expectedType, scope));
     }
 
     void visit(AstExprLocal* expr)
@@ -832,7 +843,7 @@ struct TypeChecker2
         std::vector<Location> argLocs;
         argLocs.reserve(call->args.size + 1);
 
-        if (get<AnyType>(functionType) || get<ErrorType>(functionType))
+        if (get<AnyType>(functionType) || get<ErrorType>(functionType) || get<NeverType>(functionType))
             return;
         else if (std::optional<TypeId> callMm = findMetatableEntry(builtinTypes, module->errors, functionType, "__call", call->func->location))
         {
@@ -1080,7 +1091,7 @@ struct TypeChecker2
         }
     }
 
-    TypeId visit(AstExprBinary* expr, void* overrideKey = nullptr)
+    TypeId visit(AstExprBinary* expr, AstNode* overrideKey = nullptr)
     {
         visit(expr->left, LValue);
         visit(expr->right, LValue);
@@ -1164,7 +1175,7 @@ struct TypeChecker2
 
             if (mm)
             {
-                void* key = expr;
+                AstNode* key = expr;
                 if (overrideKey != nullptr)
                     key = overrideKey;
 
@@ -1381,19 +1392,8 @@ struct TypeChecker2
     {
         pack = follow(pack);
 
-        while (true)
-        {
-            auto tp = get<TypePack>(pack);
-            if (tp && tp->head.empty() && tp->tail)
-                pack = *tp->tail;
-            else
-                break;
-        }
-
-        if (auto ty = first(pack))
-            return *ty;
-        else if (auto vtp = get<VariadicTypePack>(pack))
-            return vtp->ty;
+        if (auto fst = first(pack, /*ignoreHiddenVariadics*/ false))
+            return *fst;
         else if (auto ftp = get<FreeTypePack>(pack))
         {
             TypeId result = testArena.addType(FreeType{ftp->scope});
@@ -1407,6 +1407,8 @@ struct TypeChecker2
         }
         else if (get<Unifiable::Error>(pack))
             return builtinTypes->errorRecoveryType();
+        else if (finite(pack) && size(pack) == 0)
+            return builtinTypes->nilType; // `(f())` where `f()` returns no values is coerced into `nil`
         else
             ice.ice("flattenPack got a weird pack!");
     }
@@ -1652,6 +1654,69 @@ struct TypeChecker2
         }
     }
 
+    void reduceTypes()
+    {
+        if (FFlag::DebugLuauDontReduceTypes)
+            return;
+
+        for (auto [_, scope] : module->scopes)
+        {
+            for (auto& [_, b] : scope->bindings)
+            {
+                if (auto reduced = module->reduction->reduce(b.typeId))
+                    b.typeId = *reduced;
+            }
+
+            if (auto reduced = module->reduction->reduce(scope->returnType))
+                scope->returnType = *reduced;
+
+            if (scope->varargPack)
+            {
+                if (auto reduced = module->reduction->reduce(*scope->varargPack))
+                    scope->varargPack = *reduced;
+            }
+
+            auto reduceMap = [this](auto& map) {
+                for (auto& [_, tf] : map)
+                {
+                    if (auto reduced = module->reduction->reduce(tf))
+                        tf = *reduced;
+                }
+            };
+
+            reduceMap(scope->exportedTypeBindings);
+            reduceMap(scope->privateTypeBindings);
+            reduceMap(scope->privateTypePackBindings);
+            for (auto& [_, space] : scope->importedTypeBindings)
+                reduceMap(space);
+        }
+
+        auto reduceOrError = [this](auto& map) {
+            for (auto [ast, t] : map)
+            {
+                if (!t)
+                    continue; // Reminder: this implies that the recursion limit was exceeded.
+                else if (auto reduced = module->reduction->reduce(t))
+                    map[ast] = *reduced;
+                else
+                    reportError(NormalizationTooComplex{}, ast->location);
+            }
+        };
+
+        module->astOriginalResolvedTypes = module->astResolvedTypes;
+
+        // Both [`Module::returnType`] and [`Module::exportedTypeBindings`] are empty here, and
+        // is populated by [`Module::clonePublicInterface`] in the future, so by that point these
+        // two aforementioned fields will only contain types that are irreducible.
+        reduceOrError(module->astTypes);
+        reduceOrError(module->astTypePacks);
+        reduceOrError(module->astExpectedTypes);
+        reduceOrError(module->astOriginalCallTypes);
+        reduceOrError(module->astOverloadResolvedTypes);
+        reduceOrError(module->astResolvedTypes);
+        reduceOrError(module->astResolvedTypePacks);
+    }
+
     template<typename TID>
     bool isSubtype(TID subTy, TID superTy, NotNull<Scope> scope)
     {
@@ -1797,7 +1862,7 @@ struct TypeChecker2
 void check(NotNull<BuiltinTypes> builtinTypes, DcrLogger* logger, const SourceModule& sourceModule, Module* module)
 {
     TypeChecker2 typeChecker{builtinTypes, logger, &sourceModule, module};
-
+    typeChecker.reduceTypes();
     typeChecker.visit(sourceModule.root);
 
     unfreeze(module->interfaceTypes);

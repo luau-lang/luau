@@ -1,11 +1,11 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "IrBuilder.h"
+#include "Luau/IrBuilder.h"
 
 #include "Luau/Common.h"
+#include "Luau/IrUtils.h"
 
 #include "CustomExecUtils.h"
 #include "IrTranslation.h"
-#include "IrUtils.h"
 
 #include "lapi.h"
 

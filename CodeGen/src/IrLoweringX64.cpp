@@ -3,11 +3,11 @@
 
 #include "Luau/CodeGen.h"
 #include "Luau/DenseHash.h"
+#include "Luau/IrDump.h"
+#include "Luau/IrUtils.h"
 
 #include "EmitCommonX64.h"
 #include "EmitInstructionX64.h"
-#include "IrDump.h"
-#include "IrUtils.h"
 #include "NativeState.h"
 
 #include "lstate.h"

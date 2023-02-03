@@ -1014,7 +1014,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_packs_with_tails_in_vararg_adjustment")
                 end)
                 return result
             end
-        end 
+        end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);

@@ -109,8 +109,10 @@ public:
     void vdivsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
     void vandpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vandnpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
     void vxorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
     void vucomisd(OperandX64 src1, OperandX64 src2);
 
@@ -137,6 +139,10 @@ public:
     void vmaxsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vminsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
+    void vcmpltsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+
+    void vblendvpd(RegisterX64 dst, RegisterX64 src1, OperandX64 mask, RegisterX64 src3);
+
 
     // Run final checks
     void finalize();
@@ -152,6 +158,7 @@ public:
     OperandX64 f32(float value);
     OperandX64 f64(double value);
     OperandX64 f32x4(float x, float y, float z, float w);
+    OperandX64 f64x2(double x, double y);
     OperandX64 bytes(const void* ptr, size_t size, size_t align = 8);
 
     void logAppend(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
