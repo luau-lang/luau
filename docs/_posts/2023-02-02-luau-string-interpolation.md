@@ -28,6 +28,6 @@ print(`You have {balance}!`)
 --> You have $500!
 ```
 
-To find out more details about this feature, check out [Luau Syntax page](/docs/syntax#string-interpolation).
+To find out more details about this feature, check out [Luau Syntax page](/syntax#string-interpolation).
 
 This is also the first major language feature implemented by a contribution from the open-source community!
