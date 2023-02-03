@@ -7,13 +7,13 @@
 #include "Luau/ToString.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
+#include "Luau/TypeReduction.h"
 
 #include <algorithm>
 #include <unordered_set>
 #include <utility>
 
 LUAU_FASTFLAGVARIABLE(LuauCompleteTableKeysBetter, false);
-LUAU_FASTFLAGVARIABLE(LuauFixAutocompleteInIf, false);
 LUAU_FASTFLAGVARIABLE(LuauFixAutocompleteInWhile, false);
 LUAU_FASTFLAGVARIABLE(LuauFixAutocompleteInFor, false);
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteStringContent, false);
@@ -1534,20 +1534,13 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
     }
     else if (AstStatIf* statIf = extractStat<AstStatIf>(ancestry);
              statIf && (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)) &&
-             (!FFlag::LuauFixAutocompleteInIf || (statIf->condition && !statIf->condition->location.containsClosed(position))))
+             (statIf->condition && !statIf->condition->location.containsClosed(position)))
     {
-        if (FFlag::LuauFixAutocompleteInIf)
-        {
-            AutocompleteEntryMap ret;
-            ret["then"] = {AutocompleteEntryKind::Keyword};
-            ret["and"] = {AutocompleteEntryKind::Keyword};
-            ret["or"] = {AutocompleteEntryKind::Keyword};
-            return {std::move(ret), ancestry, AutocompleteContext::Keyword};
-        }
-        else
-        {
-            return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
-        }
+        AutocompleteEntryMap ret;
+        ret["then"] = {AutocompleteEntryKind::Keyword};
+        ret["and"] = {AutocompleteEntryKind::Keyword};
+        ret["or"] = {AutocompleteEntryKind::Keyword};
+        return {std::move(ret), ancestry, AutocompleteContext::Keyword};
     }
     else if (AstStatRepeat* statRepeat = node->as<AstStatRepeat>(); statRepeat && statRepeat->condition->is<AstExprError>())
         return autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
@@ -1671,7 +1664,6 @@ AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName
         return {};
 
     ModulePtr module = frontend.moduleResolverForAutocomplete.getModule(moduleName);
-
     if (!module)
         return {};
 

@@ -1706,23 +1706,6 @@ local _ = 0x10000000000000000
     CHECK_EQ(result.warnings[1].text, "Hexadecimal number literal exceeded available precision and has been truncated to 2^64");
 }
 
-// TODO: remove with FFlagLuauErrorDoubleHexPrefix
-TEST_CASE_FIXTURE(Fixture, "IntegerParsingDoublePrefix")
-{
-    ScopedFastFlag luauErrorDoubleHexPrefix{"LuauErrorDoubleHexPrefix", false}; // Lint will be available until we start rejecting code
-
-    LintResult result = lint(R"(
-local _ = 0x0x123
-local _ = 0x0xffffffffffffffffffffffffffffffffff
-)");
-
-    REQUIRE(2 == result.warnings.size());
-    CHECK_EQ(result.warnings[0].text,
-        "Hexadecimal number literal has a double prefix, which will fail to parse in the future; remove the extra 0x to fix");
-    CHECK_EQ(result.warnings[1].text,
-        "Hexadecimal number literal has a double prefix, which will fail to parse in the future; remove the extra 0x to fix");
-}
-
 TEST_CASE_FIXTURE(Fixture, "ComparisonPrecedence")
 {
     LintResult result = lint(R"(

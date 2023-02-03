@@ -1,8 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "IrAnalysis.h"
+#include "Luau/IrAnalysis.h"
 
-#include "IrData.h"
-#include "IrUtils.h"
+#include "Luau/IrData.h"
+#include "Luau/IrUtils.h"
 
 #include <stddef.h>
 

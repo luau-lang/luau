@@ -22,6 +22,7 @@ LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauScalarShapeUnifyToMtOwner2, false)
 LUAU_FASTFLAGVARIABLE(LuauUninhabitedSubAnything2, false)
 LUAU_FASTFLAGVARIABLE(LuauMaintainScopesInUnifier, false)
+LUAU_FASTFLAGVARIABLE(LuauTableUnifyInstantiationFix, false)
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauNegatedFunctionTypes)
@@ -600,11 +601,8 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     else if (log.getMutable<ClassType>(subTy))
         tryUnifyWithClass(subTy, superTy, /*reversed*/ true);
 
-    else if (log.get<NegationType>(superTy))
-        tryUnifyTypeWithNegation(subTy, superTy);
-
-    else if (log.get<NegationType>(subTy))
-        tryUnifyNegationWithType(subTy, superTy);
+    else if (log.get<NegationType>(superTy) || log.get<NegationType>(subTy))
+        tryUnifyNegations(subTy, superTy);
 
     else if (FFlag::LuauUninhabitedSubAnything2 && !normalizer->isInhabited(subTy))
     {
@@ -857,6 +855,22 @@ void Unifier::tryUnifyTypeWithIntersection(TypeId subTy, TypeId superTy, const I
         reportError(location, TypeMismatch{superTy, subTy, "Not all intersection parts are compatible.", *firstFailedOption, mismatchContext()});
 }
 
+struct NegationTypeFinder : TypeOnceVisitor
+{
+    bool found = false;
+
+    bool visit(TypeId ty) override
+    {
+        return !found;
+    }
+
+    bool visit(TypeId ty, const NegationType&) override
+    {
+        found = true;
+        return !found;
+    }
+};
+
 void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionType* uv, TypeId superTy, bool cacheEnabled, bool isFunctionCall)
 {
     // A & B <: T if A <: T or B <: T
@@ -878,6 +892,28 @@ void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionType*
                 startIndex = i;
                 break;
             }
+        }
+    }
+
+    if (FFlag::DebugLuauDeferredConstraintResolution && normalize)
+    {
+        // Sometimes a negation type is inside one of the types, e.g. { p: number } & { p: ~number }.
+        NegationTypeFinder finder;
+        finder.traverse(subTy);
+
+        if (finder.found)
+        {
+            // It is possible that A & B <: T even though A </: T and B </: T
+            // for example (string?) & ~nil <: string.
+            // We deal with this by type normalization.
+            const NormalizedType* subNorm = normalizer->normalize(subTy);
+            const NormalizedType* superNorm = normalizer->normalize(superTy);
+            if (subNorm && superNorm)
+                tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the intersection parts are compatible");
+            else
+                reportError(location, UnificationTooComplex{});
+
+            return;
         }
     }
 
@@ -1728,9 +1764,10 @@ struct Resetter
 
 void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
 {
+    TypeId activeSubTy = subTy;
     TableType* superTable = log.getMutable<TableType>(superTy);
     TableType* subTable = log.getMutable<TableType>(subTy);
-    TableType* instantiatedSubTable = subTable;
+    TableType* instantiatedSubTable = subTable; // TODO: remove with FFlagLuauTableUnifyInstantiationFix
 
     if (!superTable || !subTable)
         ice("passed non-table types to unifyTables");
@@ -1747,8 +1784,16 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
             std::optional<TypeId> instantiated = instantiation.substitute(subTy);
             if (instantiated.has_value())
             {
-                subTable = log.getMutable<TableType>(*instantiated);
-                instantiatedSubTable = subTable;
+                if (FFlag::LuauTableUnifyInstantiationFix)
+                {
+                    activeSubTy = *instantiated;
+                    subTable = log.getMutable<TableType>(activeSubTy);
+                }
+                else
+                {
+                    subTable = log.getMutable<TableType>(*instantiated);
+                    instantiatedSubTable = subTable;
+                }
 
                 if (!subTable)
                     ice("instantiation made a table type into a non-table type in tryUnifyTables");
@@ -1838,7 +1883,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         }
         else if (subTable->state == TableState::Free)
         {
-            PendingType* pendingSub = log.queue(subTy);
+            PendingType* pendingSub = log.queue(activeSubTy);
             TableType* ttv = getMutable<TableType>(pendingSub);
             LUAU_ASSERT(ttv);
             ttv->props[name] = prop;
@@ -1851,12 +1896,12 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         // table. If we detect that this has happened, we start over, with the updated
         // txn log.
         TypeId superTyNew = FFlag::LuauScalarShapeUnifyToMtOwner2 ? log.follow(superTy) : superTy;
-        TypeId subTyNew = FFlag::LuauScalarShapeUnifyToMtOwner2 ? log.follow(subTy) : subTy;
+        TypeId subTyNew = FFlag::LuauScalarShapeUnifyToMtOwner2 ? log.follow(activeSubTy) : activeSubTy;
 
         if (FFlag::LuauScalarShapeUnifyToMtOwner2)
         {
             // If one of the types stopped being a table altogether, we need to restart from the top
-            if ((superTy != superTyNew || subTy != subTyNew) && errors.empty())
+            if ((superTy != superTyNew || activeSubTy != subTyNew) && errors.empty())
                 return tryUnify(subTy, superTy, false, isIntersection);
         }
 
@@ -1864,7 +1909,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         TableType* newSuperTable = log.getMutable<TableType>(superTyNew);
         TableType* newSubTable = log.getMutable<TableType>(subTyNew);
 
-        if (superTable != newSuperTable || (subTable != newSubTable && subTable != instantiatedSubTable))
+        if (superTable != newSuperTable || (subTable != newSubTable && (FFlag::LuauTableUnifyInstantiationFix || subTable != instantiatedSubTable)))
         {
             if (errors.empty())
                 return tryUnifyTables(subTy, superTy, isIntersection);
@@ -1922,12 +1967,12 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
             extraProperties.push_back(name);
 
         TypeId superTyNew = FFlag::LuauScalarShapeUnifyToMtOwner2 ? log.follow(superTy) : superTy;
-        TypeId subTyNew = FFlag::LuauScalarShapeUnifyToMtOwner2 ? log.follow(subTy) : subTy;
+        TypeId subTyNew = FFlag::LuauScalarShapeUnifyToMtOwner2 ? log.follow(activeSubTy) : activeSubTy;
 
         if (FFlag::LuauScalarShapeUnifyToMtOwner2)
         {
             // If one of the types stopped being a table altogether, we need to restart from the top
-            if ((superTy != superTyNew || subTy != subTyNew) && errors.empty())
+            if ((superTy != superTyNew || activeSubTy != subTyNew) && errors.empty())
                 return tryUnify(subTy, superTy, false, isIntersection);
         }
 
@@ -1936,7 +1981,8 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         // txn log.
         TableType* newSuperTable = log.getMutable<TableType>(superTyNew);
         TableType* newSubTable = log.getMutable<TableType>(subTyNew);
-        if (superTable != newSuperTable || (subTable != newSubTable && subTable != instantiatedSubTable))
+
+        if (superTable != newSuperTable || (subTable != newSubTable && (FFlag::LuauTableUnifyInstantiationFix || subTable != instantiatedSubTable)))
         {
             if (errors.empty())
                 return tryUnifyTables(subTy, superTy, isIntersection);
@@ -1992,7 +2038,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
     if (FFlag::LuauScalarShapeUnifyToMtOwner2)
     {
         superTable = log.getMutable<TableType>(log.follow(superTy));
-        subTable = log.getMutable<TableType>(log.follow(subTy));
+        subTable = log.getMutable<TableType>(log.follow(activeSubTy));
 
         if (!superTable || !subTable)
             return;
@@ -2000,7 +2046,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
     else
     {
         superTable = log.getMutable<TableType>(superTy);
-        subTable = log.getMutable<TableType>(subTy);
+        subTable = log.getMutable<TableType>(activeSubTy);
     }
 
     if (!missingProperties.empty())
@@ -2313,11 +2359,10 @@ void Unifier::tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed)
         return fail();
 }
 
-void Unifier::tryUnifyTypeWithNegation(TypeId subTy, TypeId superTy)
+void Unifier::tryUnifyNegations(TypeId subTy, TypeId superTy)
 {
-    const NegationType* ntv = get<NegationType>(superTy);
-    if (!ntv)
-        ice("tryUnifyTypeWithNegation superTy must be a negation type");
+    if (!log.get<NegationType>(subTy) && !log.get<NegationType>(superTy))
+        ice("tryUnifyNegations superTy or subTy must be a negation type");
 
     const NormalizedType* subNorm = normalizer->normalize(subTy);
     const NormalizedType* superNorm = normalizer->normalize(superTy);
@@ -2329,16 +2374,6 @@ void Unifier::tryUnifyTypeWithNegation(TypeId subTy, TypeId superTy)
     state.tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "");
     if (state.errors.empty())
         reportError(location, TypeMismatch{superTy, subTy, mismatchContext()});
-}
-
-void Unifier::tryUnifyNegationWithType(TypeId subTy, TypeId superTy)
-{
-    const NegationType* ntv = get<NegationType>(subTy);
-    if (!ntv)
-        ice("tryUnifyNegationWithType subTy must be a negation type");
-
-    // TODO: ~T </: U iff T <: U
-    reportError(location, TypeMismatch{superTy, subTy, mismatchContext()});
 }
 
 static void queueTypePack(std::vector<TypeId>& queue, DenseHashSet<TypePackId>& seenTypePacks, Unifier& state, TypePackId a, TypePackId anyTypePack)

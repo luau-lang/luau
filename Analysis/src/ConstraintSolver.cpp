@@ -528,7 +528,7 @@ bool ConstraintSolver::tryDispatch(const UnaryConstraint& c, NotNull<const Const
     }
     case AstExprUnary::Minus:
     {
-        if (isNumber(operandType) || get<AnyType>(operandType) || get<ErrorType>(operandType))
+        if (isNumber(operandType) || get<AnyType>(operandType) || get<ErrorType>(operandType) || get<NeverType>(operandType))
         {
             asMutable(c.resultType)->ty.emplace<BoundType>(c.operandType);
         }
@@ -1415,7 +1415,7 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
         bind(c.resultType, subjectType);
         return true;
     }
-    else if (get<AnyType>(subjectType) || get<ErrorType>(subjectType))
+    else if (get<AnyType>(subjectType) || get<ErrorType>(subjectType) || get<NeverType>(subjectType))
     {
         bind(c.resultType, subjectType);
         return true;

@@ -42,7 +42,7 @@ static bool dcrMagicFunctionSelect(MagicFunctionCallContext context);
 static bool dcrMagicFunctionRequire(MagicFunctionCallContext context);
 static bool dcrMagicFunctionPack(MagicFunctionCallContext context);
 
-static std::vector<ConnectiveId> dcrMagicRefinementAssert(const MagicRefinementContext& context);
+static std::vector<RefinementId> dcrMagicRefinementAssert(const MagicRefinementContext& context);
 
 TypeId makeUnion(TypeArena& arena, std::vector<TypeId>&& types)
 {
@@ -624,12 +624,12 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionAssert(
     return WithPredicate<TypePackId>{arena.addTypePack(TypePack{std::move(head), tail})};
 }
 
-static std::vector<ConnectiveId> dcrMagicRefinementAssert(const MagicRefinementContext& ctx)
+static std::vector<RefinementId> dcrMagicRefinementAssert(const MagicRefinementContext& ctx)
 {
-    if (ctx.argumentConnectives.empty())
+    if (ctx.argumentRefinements.empty())
         return {};
 
-    ctx.cgb->applyRefinements(ctx.scope, ctx.callSite->location, ctx.argumentConnectives[0]);
+    ctx.cgb->applyRefinements(ctx.scope, ctx.callSite->location, ctx.argumentRefinements[0]);
     return {};
 }
 

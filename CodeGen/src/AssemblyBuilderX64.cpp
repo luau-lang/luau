@@ -638,9 +638,19 @@ void AssemblyBuilderX64::vandpd(OperandX64 dst, OperandX64 src1, OperandX64 src2
     placeAvx("vandpd", dst, src1, src2, 0x54, false, AVX_0F, AVX_66);
 }
 
+void AssemblyBuilderX64::vandnpd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vandnpd", dst, src1, src2, 0x55, false, AVX_0F, AVX_66);
+}
+
 void AssemblyBuilderX64::vxorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
     placeAvx("vxorpd", dst, src1, src2, 0x57, false, AVX_0F, AVX_66);
+}
+
+void AssemblyBuilderX64::vorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vorpd", dst, src1, src2, 0x56, false, AVX_0F, AVX_66);
 }
 
 void AssemblyBuilderX64::vucomisd(OperandX64 src1, OperandX64 src2)
@@ -753,6 +763,17 @@ void AssemblyBuilderX64::vminsd(OperandX64 dst, OperandX64 src1, OperandX64 src2
     placeAvx("vminsd", dst, src1, src2, 0x5d, false, AVX_0F, AVX_F2);
 }
 
+void AssemblyBuilderX64::vcmpltsd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vcmpltsd", dst, src1, src2, 0x01, 0xc2, false, AVX_0F, AVX_F2);
+}
+
+void AssemblyBuilderX64::vblendvpd(RegisterX64 dst, RegisterX64 src1, OperandX64 mask, RegisterX64 src3)
+{
+    // bits [7:4] of imm8 are used to select register for operand 4
+    placeAvx("vblendvpd", dst, src1, mask, src3.index << 4, 0x4b, false, AVX_0F3A, AVX_66);
+}
+
 void AssemblyBuilderX64::finalize()
 {
     code.resize(codePos - code.data());
@@ -831,6 +852,14 @@ OperandX64 AssemblyBuilderX64::f32x4(float x, float y, float z, float w)
     writef32(&data[pos + 4], y);
     writef32(&data[pos + 8], z);
     writef32(&data[pos + 12], w);
+    return OperandX64(SizeX64::xmmword, noreg, 1, rip, int32_t(pos - data.size()));
+}
+
+OperandX64 AssemblyBuilderX64::f64x2(double x, double y)
+{
+    size_t pos = allocateData(16, 16);
+    writef64(&data[pos], x);
+    writef64(&data[pos + 8], y);
     return OperandX64(SizeX64::xmmword, noreg, 1, rip, int32_t(pos - data.size()));
 }
 

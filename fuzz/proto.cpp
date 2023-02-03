@@ -4,6 +4,7 @@
 
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/BytecodeBuilder.h"
+#include "Luau/CodeGen.h"
 #include "Luau/Common.h"
 #include "Luau/Compiler.h"
 #include "Luau/Frontend.h"
@@ -25,11 +26,13 @@ const bool kFuzzLinter = true;
 const bool kFuzzTypeck = true;
 const bool kFuzzVM = true;
 const bool kFuzzTranspile = true;
+const bool kFuzzCodegen = true;
 
 // Should we generate type annotations?
 const bool kFuzzTypes = true;
 
 static_assert(!(kFuzzVM && !kFuzzCompiler), "VM requires the compiler!");
+static_assert(!(kFuzzCodegen && !kFuzzVM), "Codegen requires the VM!");
 
 std::vector<std::string> protoprint(const luau::ModuleSet& stat, bool types);
 
@@ -82,6 +85,9 @@ void* allocate(void* ud, void* ptr, size_t osize, size_t nsize)
 lua_State* createGlobalState()
 {
     lua_State* L = lua_newstate(allocate, NULL);
+
+    if (kFuzzCodegen && Luau::CodeGen::isSupported())
+        Luau::CodeGen::create(L);
 
     lua_callbacks(L)->interrupt = interrupt;
 
@@ -349,20 +355,30 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     {
         static lua_State* globalState = createGlobalState();
 
-        lua_State* L = lua_newthread(globalState);
-        luaL_sandboxthread(L);
+        auto runCode = [](const std::string& bytecode, bool useCodegen) {
+            lua_State* L = lua_newthread(globalState);
+            luaL_sandboxthread(L);
 
-        if (luau_load(L, "=fuzz", bytecode.data(), bytecode.size(), 0) == 0)
-        {
-            interruptDeadline = std::chrono::system_clock::now() + kInterruptTimeout;
+            if (luau_load(L, "=fuzz", bytecode.data(), bytecode.size(), 0) == 0)
+            {
+                if (useCodegen)
+                    Luau::CodeGen::compile(L, -1);
 
-            lua_resume(L, NULL, 0);
-        }
+                interruptDeadline = std::chrono::system_clock::now() + kInterruptTimeout;
 
-        lua_pop(globalState, 1);
+                lua_resume(L, NULL, 0);
+            }
 
-        // we'd expect full GC to reclaim all memory allocated by the script
-        lua_gc(globalState, LUA_GCCOLLECT, 0);
-        LUAU_ASSERT(heapSize < 256 * 1024);
+            lua_pop(globalState, 1);
+
+            // we'd expect full GC to reclaim all memory allocated by the script
+            lua_gc(globalState, LUA_GCCOLLECT, 0);
+            LUAU_ASSERT(heapSize < 256 * 1024);
+        };
+
+        runCode(bytecode, false);
+
+        if (kFuzzCodegen && Luau::CodeGen::isSupported())
+            runCode(bytecode, true);
     }
 }

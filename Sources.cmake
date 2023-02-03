@@ -63,6 +63,11 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/CodeGen.h
     CodeGen/include/Luau/ConditionA64.h
     CodeGen/include/Luau/ConditionX64.h
+    CodeGen/include/Luau/IrAnalysis.h
+    CodeGen/include/Luau/IrBuilder.h
+    CodeGen/include/Luau/IrDump.h
+    CodeGen/include/Luau/IrData.h
+    CodeGen/include/Luau/IrUtils.h
     CodeGen/include/Luau/Label.h
     CodeGen/include/Luau/OperandX64.h
     CodeGen/include/Luau/RegisterA64.h
@@ -100,13 +105,8 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/EmitInstructionX64.h
     CodeGen/src/Fallbacks.h
     CodeGen/src/FallbacksProlog.h
-    CodeGen/src/IrAnalysis.h
-    CodeGen/src/IrBuilder.h
-    CodeGen/src/IrDump.h
-    CodeGen/src/IrData.h
     CodeGen/src/IrLoweringX64.h
     CodeGen/src/IrTranslation.h
-    CodeGen/src/IrUtils.h
     CodeGen/src/NativeState.h
 )
 
@@ -120,7 +120,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/BuiltinDefinitions.h
     Analysis/include/Luau/Clone.h
     Analysis/include/Luau/Config.h
-    Analysis/include/Luau/Connective.h
+    Analysis/include/Luau/Refinement.h
     Analysis/include/Luau/Constraint.h
     Analysis/include/Luau/ConstraintGraphBuilder.h
     Analysis/include/Luau/ConstraintSolver.h
@@ -175,7 +175,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/BuiltinDefinitions.cpp
     Analysis/src/Clone.cpp
     Analysis/src/Config.cpp
-    Analysis/src/Connective.cpp
+    Analysis/src/Refinement.cpp
     Analysis/src/Constraint.cpp
     Analysis/src/ConstraintGraphBuilder.cpp
     Analysis/src/ConstraintSolver.cpp

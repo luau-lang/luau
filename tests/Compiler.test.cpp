@@ -1025,8 +1025,6 @@ L0: RETURN R0 0
 
 TEST_CASE("AndOr")
 {
-    ScopedFastFlag luauSelfAssignmentSkip{"LuauSelfAssignmentSkip", true};
-
     // codegen for constant, local, global for and
     CHECK_EQ("\n" + compileFunction0("local a = 1 a = a and 2 return a"), R"(
 LOADN R0 1
@@ -1319,8 +1317,6 @@ RETURN R0 0
 
 TEST_CASE("InterpStringRegisterLimit")
 {
-    ScopedFastFlag luauCompileInterpStringLimit{"LuauCompileInterpStringLimit", true};
-
     CHECK_THROWS_AS(compileFunction0(("local a = `" + rep("{1}", 254) + "`").c_str()), std::exception);
     CHECK_THROWS_AS(compileFunction0(("local a = `" + rep("{1}", 253) + "`").c_str()), std::exception);
 }
@@ -2262,8 +2258,6 @@ L1: RETURN R3 -1
 
 TEST_CASE("UpvaluesLoopsBytecode")
 {
-    ScopedFastFlag luauSelfAssignmentSkip{"LuauSelfAssignmentSkip", true};
-
     CHECK_EQ("\n" + compileFunction(R"(
 function test()
     for i=1,10 do
@@ -5161,8 +5155,6 @@ RETURN R1 1
 
 TEST_CASE("InlineMutate")
 {
-    ScopedFastFlag luauSelfAssignmentSkip{"LuauSelfAssignmentSkip", true};
-
     // if the argument is mutated, it gets a register even if the value is constant
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a)
@@ -6756,8 +6748,6 @@ MOVE R1 R3
 RETURN R0 0
 )");
 
-    ScopedFastFlag luauMultiAssignmentConflictFix{"LuauMultiAssignmentConflictFix", true};
-
     // because we perform assignments to complex l-values after assignments to locals, we make sure register conflicts are tracked accordingly
     CHECK_EQ("\n" + compileFunction0(R"(
         local a, b = ...
@@ -6795,8 +6785,6 @@ L0: RETURN R1 -1
 
 TEST_CASE("SkipSelfAssignment")
 {
-    ScopedFastFlag luauSelfAssignmentSkip{"LuauSelfAssignmentSkip", true};
-
     CHECK_EQ("\n" + compileFunction0("local a a = a"), R"(
 LOADNIL R0
 RETURN R0 0

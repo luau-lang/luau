@@ -71,9 +71,9 @@ struct BinaryConstraint
 
     // When we dispatch this constraint, we update the key at this map to record
     // the overload that we selected.
-    const void* astFragment;
-    DenseHashMap<const void*, TypeId>* astOriginalCallTypes;
-    DenseHashMap<const void*, TypeId>* astOverloadResolvedTypes;
+    const AstNode* astFragment;
+    DenseHashMap<const AstNode*, TypeId>* astOriginalCallTypes;
+    DenseHashMap<const AstNode*, TypeId>* astOverloadResolvedTypes;
 };
 
 // iteratee is iterable

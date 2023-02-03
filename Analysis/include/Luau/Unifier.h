@@ -95,8 +95,7 @@ private:
     void tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed);
-    void tryUnifyTypeWithNegation(TypeId subTy, TypeId superTy);
-    void tryUnifyNegationWithType(TypeId subTy, TypeId superTy);
+    void tryUnifyNegations(TypeId subTy, TypeId superTy);
 
     TypePackId tryApplyOverloadedFunction(TypeId function, const NormalizedFunctionType& overloads, TypePackId args);
 
