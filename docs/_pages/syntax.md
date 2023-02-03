@@ -219,3 +219,6 @@ end
 ```
 
 The default iteration order for tables is specified to be consecutive for elements `1..#t` and unordered after that, visiting every element; similarly to iteration using `pairs`, modifying the table entries for keys other than the current one results in unspecified behavior.
+
+## String interpolation
+
