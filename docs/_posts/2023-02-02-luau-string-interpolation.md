@@ -15,7 +15,7 @@ print(`The lock combination is {table.concat(combos)}. Again, {table.concat(comb
 --> The lock combination is 27185. Again, 2, 7, 1, 8, 5.
 ```
 
-String interpolation also composes well with `__tostring` metamethod.
+String interpolation also composes well with the `__tostring` metamethod.
 
 ```lua
 local balance = setmetatable({ value = 500 }, {

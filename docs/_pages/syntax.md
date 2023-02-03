@@ -222,7 +222,7 @@ The default iteration order for tables is specified to be consecutive for elemen
 
 ## String interpolation
 
-Luau adds additional way to define string values that allows you to place runtime expressions directly inside specific spots of the literal.
+Luau adds an additional way to define string values that allows you to place runtime expressions directly inside specific spots of the literal.
 
 This is a more ergonomic alternative over using `string.format` or `("literal"):format`.
 
