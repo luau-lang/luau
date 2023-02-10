@@ -15,7 +15,6 @@ LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
 LUAU_FASTFLAG(LuauNegatedClassTypes);
-LUAU_FASTFLAG(LuauScopelessModule);
 LUAU_FASTFLAG(SupportTypeAliasGoToDeclaration);
 
 namespace Luau
@@ -94,6 +93,18 @@ static std::optional<TypeGuard> matchTypeGuard(const AstExprBinary* binary)
         /*target*/ call->args.data[0],
         /*type*/ std::string(string->value.data, string->value.size),
     };
+}
+
+static bool matchAssert(const AstExprCall& call)
+{
+    if (call.args.size < 1)
+        return false;
+
+    const AstExprGlobal* funcAsGlobal = call.func->as<AstExprGlobal>();
+    if (!funcAsGlobal || funcAsGlobal->name != "assert")
+        return false;
+
+    return true;
 }
 
 namespace
@@ -198,6 +209,11 @@ static void computeRefinement(const ScopePtr& scope, RefinementId refinement, st
 
     if (!refinement)
         return;
+    else if (auto variadic = get<Variadic>(refinement))
+    {
+        for (RefinementId refi : variadic->refinements)
+            computeRefinement(scope, refi, refis, sense, arena, eq, constraints);
+    }
     else if (auto negation = get<Negation>(refinement))
         return computeRefinement(scope, negation->refinement, refis, !sense, arena, eq, constraints);
     else if (auto conjunction = get<Conjunction>(refinement))
@@ -546,8 +562,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
 
                     if (ModulePtr module = moduleResolver->getModule(moduleInfo->name))
                     {
-                        scope->importedTypeBindings[name] =
-                            FFlag::LuauScopelessModule ? module->exportedTypeBindings : module->getModuleScope()->exportedTypeBindings;
+                        scope->importedTypeBindings[name] = module->exportedTypeBindings;
                         if (FFlag::SupportTypeAliasGoToDeclaration)
                             scope->importedModules[name] = moduleName;
                     }
@@ -697,18 +712,9 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction* funct
     }
     else if (AstExprIndexName* indexName = function->name->as<AstExprIndexName>())
     {
-        TypeId containingTableType = check(scope, indexName->expr).ty;
-
-        // TODO look into stack utilization.  This is probably ok because it scales with AST depth.
-        TypeId prospectiveTableType = arena->addType(TableType{TableState::Unsealed, TypeLevel{}, scope.get()});
-
-        NotNull<TableType> prospectiveTable{getMutable<TableType>(prospectiveTableType)};
-
-        Property& prop = prospectiveTable->props[indexName->index.value];
-        prop.type = generalizedType;
-        prop.location = function->name->location;
-
-        addConstraint(scope, indexName->location, SubtypeConstraint{containingTableType, prospectiveTableType});
+        TypeId lvalueType = checkLValue(scope, indexName);
+        // TODO figure out how to populate the location field of the table Property.
+        addConstraint(scope, indexName->location, SubtypeConstraint{lvalueType, generalizedType});
     }
     else if (AstExprError* err = function->name->as<AstExprError>())
     {
@@ -783,13 +789,13 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatIf* ifStatement
     auto [_, refinement] = check(condScope, ifStatement->condition, std::nullopt);
 
     ScopePtr thenScope = childScope(ifStatement->thenbody, scope);
-    applyRefinements(thenScope, Location{}, refinement);
+    applyRefinements(thenScope, ifStatement->condition->location, refinement);
     visit(thenScope, ifStatement->thenbody);
 
     if (ifStatement->elsebody)
     {
         ScopePtr elseScope = childScope(ifStatement->elsebody, scope);
-        applyRefinements(elseScope, Location{}, refinementArena.negation(refinement));
+        applyRefinements(elseScope, ifStatement->elseLocation.value_or(ifStatement->condition->location), refinementArena.negation(refinement));
         visit(elseScope, ifStatement->elsebody);
     }
 }
@@ -1059,6 +1065,10 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* 
 InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCall* call, const std::vector<TypeId>& expectedTypes)
 {
     std::vector<AstExpr*> exprArgs;
+
+    std::vector<RefinementId> returnRefinements;
+    std::vector<std::optional<TypeId>> discriminantTypes;
+
     if (call->self)
     {
         AstExprIndexName* indexExpr = call->func->as<AstExprIndexName>();
@@ -1066,12 +1076,36 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
             ice->ice("method call expression has no 'self'");
 
         exprArgs.push_back(indexExpr->expr);
+
+        if (auto def = dfg->getDef(indexExpr->expr))
+        {
+            TypeId discriminantTy = arena->addType(BlockedType{});
+            returnRefinements.push_back(refinementArena.proposition(*def, discriminantTy));
+            discriminantTypes.push_back(discriminantTy);
+        }
+        else
+            discriminantTypes.push_back(std::nullopt);
     }
-    exprArgs.insert(exprArgs.end(), call->args.begin(), call->args.end());
+
+    for (AstExpr* arg : call->args)
+    {
+        exprArgs.push_back(arg);
+
+        if (auto def = dfg->getDef(arg))
+        {
+            TypeId discriminantTy = arena->addType(BlockedType{});
+            returnRefinements.push_back(refinementArena.proposition(*def, discriminantTy));
+            discriminantTypes.push_back(discriminantTy);
+        }
+        else
+            discriminantTypes.push_back(std::nullopt);
+    }
 
     Checkpoint startCheckpoint = checkpoint(this);
     TypeId fnType = check(scope, call->func).ty;
     Checkpoint fnEndCheckpoint = checkpoint(this);
+
+    module->astOriginalCallTypes[call->func] = fnType;
 
     TypePackId expectedArgPack = arena->freshTypePack(scope.get());
     TypePackId expectedRetPack = arena->freshTypePack(scope.get());
@@ -1129,7 +1163,11 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
             argumentRefinements.push_back(refinement);
         }
         else
-            argTail = checkPack(scope, arg, {}).tp; // FIXME? not sure about expectedTypes here
+        {
+            auto [tp, refis] = checkPack(scope, arg, {}); // FIXME? not sure about expectedTypes here
+            argTail = tp;
+            argumentRefinements.insert(argumentRefinements.end(), refis.begin(), refis.end());
+        }
     }
 
     Checkpoint argEndCheckpoint = checkpoint(this);
@@ -1139,13 +1177,6 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
     forEachConstraint(argCheckpoint, argEndCheckpoint, this, [extractArgsConstraint](const ConstraintPtr& constraint) {
         constraint->dependencies.push_back(extractArgsConstraint);
     });
-
-    std::vector<RefinementId> returnRefinements;
-    if (auto ftv = get<FunctionType>(follow(fnType)); ftv && ftv->dcrMagicRefinement)
-    {
-        MagicRefinementContext ctx{scope, NotNull{this}, dfg, NotNull{&refinementArena}, std::move(argumentRefinements), call};
-        returnRefinements = ftv->dcrMagicRefinement(ctx);
-    }
 
     if (matchSetmetatable(*call))
     {
@@ -1171,12 +1202,12 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
                 scope->dcrRefinements[*def] = resultTy; // TODO: typestates: track this as an assignment
         }
 
-
-        return InferencePack{arena->addTypePack({resultTy}), std::move(returnRefinements)};
+        return InferencePack{arena->addTypePack({resultTy}), {refinementArena.variadic(returnRefinements)}};
     }
     else
     {
-        module->astOriginalCallTypes[call->func] = fnType;
+        if (matchAssert(*call) && !argumentRefinements.empty())
+            applyRefinements(scope, call->args.data[0]->location, argumentRefinements[0]);
 
         TypeId instantiatedType = arena->addType(BlockedType{});
         // TODO: How do expectedTypes play into this?  Do they?
@@ -1200,6 +1231,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
                 argPack,
                 rets,
                 call,
+                std::move(discriminantTypes),
             });
 
         // We force constraints produced by checking function arguments to wait
@@ -1211,7 +1243,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
             fcc->dependencies.emplace_back(constraint.get());
         });
 
-        return InferencePack{rets, std::move(returnRefinements)};
+        return InferencePack{rets, {refinementArena.variadic(returnRefinements)}};
     }
 }
 
@@ -1386,74 +1418,10 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprGlobal* gl
     return Inference{builtinTypes->errorRecoveryType()};
 }
 
-static std::optional<TypeId> lookupProp(TypeId ty, const std::string& propName, NotNull<TypeArena> arena)
-{
-    ty = follow(ty);
-
-    if (auto ctv = get<ClassType>(ty))
-    {
-        if (auto prop = lookupClassProp(ctv, propName))
-            return prop->type;
-    }
-    else if (auto ttv = get<TableType>(ty))
-    {
-        if (auto it = ttv->props.find(propName); it != ttv->props.end())
-            return it->second.type;
-    }
-    else if (auto utv = get<IntersectionType>(ty))
-    {
-        std::vector<TypeId> types;
-
-        for (TypeId ty : utv)
-        {
-            if (auto prop = lookupProp(ty, propName, arena))
-            {
-                if (std::find(begin(types), end(types), *prop) == end(types))
-                    types.push_back(*prop);
-            }
-            else
-                return std::nullopt;
-        }
-
-        if (types.size() == 1)
-            return types[0];
-        else
-            return arena->addType(IntersectionType{std::move(types)});
-    }
-    else if (auto utv = get<UnionType>(ty))
-    {
-        std::vector<TypeId> types;
-
-        for (TypeId ty : utv)
-        {
-            if (auto prop = lookupProp(ty, propName, arena))
-            {
-                if (std::find(begin(types), end(types), *prop) == end(types))
-                    types.push_back(*prop);
-            }
-            else
-                return std::nullopt;
-        }
-
-        if (types.size() == 1)
-            return types[0];
-        else
-            return arena->addType(UnionType{std::move(types)});
-    }
-
-    return std::nullopt;
-}
-
 Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexName* indexName)
 {
     TypeId obj = check(scope, indexName->expr).ty;
-
-    // HACK: We need to return the actual type for type refinements so that it can invoke the dcrMagicRefinement function.
-    TypeId result;
-    if (auto prop = lookupProp(obj, indexName->index.value, arena))
-        result = *prop;
-    else
-        result = freshType(scope);
+    TypeId result = freshType(scope);
 
     std::optional<DefId> def = dfg->getDef(indexName);
     if (def)
@@ -1723,11 +1691,6 @@ TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
     TypeId updatedType = arena->addType(BlockedType{});
     addConstraint(scope, expr->location, SetPropConstraint{updatedType, subjectType, std::move(segmentStrings), propTy});
 
-    std::optional<DefId> def = dfg->getDef(sym);
-    LUAU_ASSERT(def);
-    symbolScope->bindings[sym].typeId = updatedType;
-    symbolScope->dcrRefinements[*def] = updatedType;
-
     TypeId prevSegmentTy = updatedType;
     for (size_t i = 0; i < segments.size(); ++i)
     {
@@ -1739,7 +1702,16 @@ TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
 
     module->astTypes[expr] = prevSegmentTy;
     module->astTypes[e] = updatedType;
-    // astTypes[expr] = propTy;
+
+    symbolScope->bindings[sym].typeId = updatedType;
+
+    std::optional<DefId> def = dfg->getDef(sym);
+    if (def)
+    {
+        // This can fail if the user is erroneously trying to augment a builtin
+        // table like os or string.
+        symbolScope->dcrRefinements[*def] = updatedType;
+    }
 
     return propTy;
 }
@@ -1765,9 +1737,30 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTable* exp
         addConstraint(scope, location, SubtypeConstraint{ttv->indexer->indexResultType, currentResultType});
     };
 
+    std::optional<TypeId> annotatedKeyType;
+    std::optional<TypeId> annotatedIndexResultType;
+
+    if (expectedType)
+    {
+        if (const TableType* ttv = get<TableType>(follow(*expectedType)))
+        {
+            if (ttv->indexer)
+            {
+                annotatedKeyType.emplace(follow(ttv->indexer->indexType));
+                annotatedIndexResultType.emplace(ttv->indexer->indexResultType);
+            }
+        }
+    }
+
+    bool isIndexedResultType = false;
+    std::optional<TypeId> pinnedIndexResultType;
+
+
     for (const AstExprTable::Item& item : expr->items)
     {
         std::optional<TypeId> expectedValueType;
+        if (item.kind == AstExprTable::Item::Kind::General || item.kind == AstExprTable::Item::Kind::List)
+            isIndexedResultType = true;
 
         if (item.key && expectedType)
         {
@@ -1786,14 +1779,39 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTable* exp
             }
         }
 
-        TypeId itemTy = check(scope, item.value, expectedValueType).ty;
+
+        // We'll resolve the expected index result type here with the following priority:
+        // 1. Record table types - in which key, value pairs must be handled on a k,v pair basis.
+        // In this case, the above if-statement will populate expectedValueType
+        // 2. Someone places an annotation on a General or List table
+        // Trust the annotation and have the solver inform them if they get it wrong
+        // 3. Someone omits the annotation on a general or List table
+        // Use the type of the first indexResultType as the expected type
+        std::optional<TypeId> checkExpectedIndexResultType;
+        if (expectedValueType)
+        {
+            checkExpectedIndexResultType = expectedValueType;
+        }
+        else if (annotatedIndexResultType)
+        {
+            checkExpectedIndexResultType = annotatedIndexResultType;
+        }
+        else if (pinnedIndexResultType)
+        {
+            checkExpectedIndexResultType = pinnedIndexResultType;
+        }
+
+        TypeId itemTy = check(scope, item.value, checkExpectedIndexResultType).ty;
+
+        if (isIndexedResultType && !pinnedIndexResultType)
+            pinnedIndexResultType = itemTy;
 
         if (item.key)
         {
             // Even though we don't need to use the type of the item's key if
             // it's a string constant, we still want to check it to populate
             // astTypes.
-            TypeId keyTy = check(scope, item.key).ty;
+            TypeId keyTy = check(scope, item.key, annotatedKeyType).ty;
 
             if (AstExprConstantString* key = item.key->as<AstExprConstantString>())
             {

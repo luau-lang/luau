@@ -92,19 +92,14 @@ inline bool isBlockTerminator(IrCmd cmd)
     case IrCmd::JUMP_IF_TRUTHY:
     case IrCmd::JUMP_IF_FALSY:
     case IrCmd::JUMP_EQ_TAG:
-    case IrCmd::JUMP_EQ_BOOLEAN:
+    case IrCmd::JUMP_EQ_INT:
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_CMP_NUM:
-    case IrCmd::JUMP_CMP_STR:
     case IrCmd::JUMP_CMP_ANY:
     case IrCmd::LOP_NAMECALL:
     case IrCmd::LOP_RETURN:
-    case IrCmd::LOP_FORNPREP:
-    case IrCmd::LOP_FORNLOOP:
     case IrCmd::LOP_FORGLOOP:
     case IrCmd::LOP_FORGLOOP_FALLBACK:
-    case IrCmd::LOP_FORGPREP_NEXT:
-    case IrCmd::LOP_FORGPREP_INEXT:
     case IrCmd::LOP_FORGPREP_XNEXT_FALLBACK:
     case IrCmd::FALLBACK_FORGPREP:
         return true;
@@ -142,6 +137,7 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::NEW_TABLE:
     case IrCmd::DUP_TABLE:
     case IrCmd::NUM_TO_INDEX:
+    case IrCmd::INT_TO_NUM:
         return true;
     default:
         break;
@@ -156,6 +152,25 @@ inline bool hasSideEffects(IrCmd cmd)
     // Right now, a full switch would mirror the 'hasResult' function, so we use this simple condition
     return !hasResult(cmd);
 }
+
+// Remove a single instruction
+void kill(IrFunction& function, IrInst& inst);
+
+// Remove a range of instructions
+void kill(IrFunction& function, uint32_t start, uint32_t end);
+
+// Remove a block, including all instructions inside
+void kill(IrFunction& function, IrBlock& block);
+
+void removeUse(IrFunction& function, IrInst& inst);
+void removeUse(IrFunction& function, IrBlock& block);
+
+// Replace a single operand and update use counts (can cause chain removal of dead code)
+void replace(IrFunction& function, IrOp& original, IrOp replacement);
+
+// Replace a single instruction
+// Target instruction index instead of reference is used to handle introduction of a new block terminator
+void replace(IrFunction& function, uint32_t instIdx, IrInst replacement);
 
 } // namespace CodeGen
 } // namespace Luau

@@ -26,6 +26,7 @@
 #include <iterator>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicTypes, false)
+LUAU_FASTFLAGVARIABLE(LuauDontExtendUnsealedRValueTables, false)
 LUAU_FASTINTVARIABLE(LuauTypeInferRecursionLimit, 165)
 LUAU_FASTINTVARIABLE(LuauTypeInferIterationLimit, 20000)
 LUAU_FASTINTVARIABLE(LuauTypeInferTypePackLoopLimit, 5000)
@@ -35,7 +36,6 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
-LUAU_FASTFLAGVARIABLE(LuauScopelessModule, false)
 LUAU_FASTFLAGVARIABLE(LuauTryhardAnd, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauIntersectionTestForEquality, false)
@@ -43,6 +43,7 @@ LUAU_FASTFLAG(LuauNegatedClassTypes)
 LUAU_FASTFLAGVARIABLE(LuauAllowIndexClassParameters, false)
 LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
 LUAU_FASTFLAG(SupportTypeAliasGoToDeclaration)
+LUAU_FASTFLAGVARIABLE(LuauTypecheckTypeguards, false)
 
 namespace Luau
 {
@@ -913,7 +914,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatAssign& assign)
         }
         else
         {
-            expectedTypes.push_back(checkLValue(scope, *dest));
+            expectedTypes.push_back(checkLValue(scope, *dest, ValueContext::LValue));
         }
     }
 
@@ -930,7 +931,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatAssign& assign)
         TypeId left = nullptr;
 
         if (dest->is<AstExprLocal>() || dest->is<AstExprGlobal>())
-            left = checkLValue(scope, *dest);
+            left = checkLValue(scope, *dest, ValueContext::LValue);
         else
             left = *expectedTypes[i];
 
@@ -1119,8 +1120,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatLocal& local)
 
                     if (ModulePtr module = resolver->getModule(moduleInfo->name))
                     {
-                        scope->importedTypeBindings[name] =
-                            FFlag::LuauScopelessModule ? module->exportedTypeBindings : module->getModuleScope()->exportedTypeBindings;
+                        scope->importedTypeBindings[name] = module->exportedTypeBindings;
                         if (FFlag::SupportTypeAliasGoToDeclaration)
                             scope->importedModules[name] = moduleInfo->name;
                     }
@@ -2132,7 +2132,7 @@ TypeId TypeChecker::stripFromNilAndReport(TypeId ty, const Location& location)
 
 WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprIndexExpr& expr)
 {
-    TypeId ty = checkLValue(scope, expr);
+    TypeId ty = checkLValue(scope, expr, ValueContext::RValue);
 
     if (std::optional<LValue> lvalue = tryGetLValue(expr))
         if (std::optional<TypeId> refiTy = resolveLValue(scope, *lvalue))
@@ -2977,13 +2977,22 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     }
     else if (expr.op == AstExprBinary::CompareEq || expr.op == AstExprBinary::CompareNe)
     {
-        if (auto predicate = tryGetTypeGuardPredicate(expr))
-            return {booleanType, {std::move(*predicate)}};
+        if (!FFlag::LuauTypecheckTypeguards)
+        {
+            if (auto predicate = tryGetTypeGuardPredicate(expr))
+                return {booleanType, {std::move(*predicate)}};
+        }
 
         // For these, passing expectedType is worse than simply forcing them, because their implementation
         // may inadvertently check if expectedTypes exist first and use it, instead of forceSingleton first.
         WithPredicate<TypeId> lhs = checkExpr(scope, *expr.left, std::nullopt, /*forceSingleton=*/true);
         WithPredicate<TypeId> rhs = checkExpr(scope, *expr.right, std::nullopt, /*forceSingleton=*/true);
+
+        if (FFlag::LuauTypecheckTypeguards)
+        {
+            if (auto predicate = tryGetTypeGuardPredicate(expr))
+                return {booleanType, {std::move(*predicate)}};
+        }
 
         PredicateVec predicates;
 
@@ -3068,21 +3077,21 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     return {stringType};
 }
 
-TypeId TypeChecker::checkLValue(const ScopePtr& scope, const AstExpr& expr)
+TypeId TypeChecker::checkLValue(const ScopePtr& scope, const AstExpr& expr, ValueContext ctx)
 {
-    return checkLValueBinding(scope, expr);
+    return checkLValueBinding(scope, expr, ctx);
 }
 
-TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExpr& expr)
+TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExpr& expr, ValueContext ctx)
 {
     if (auto a = expr.as<AstExprLocal>())
         return checkLValueBinding(scope, *a);
     else if (auto a = expr.as<AstExprGlobal>())
         return checkLValueBinding(scope, *a);
     else if (auto a = expr.as<AstExprIndexName>())
-        return checkLValueBinding(scope, *a);
+        return checkLValueBinding(scope, *a, ctx);
     else if (auto a = expr.as<AstExprIndexExpr>())
-        return checkLValueBinding(scope, *a);
+        return checkLValueBinding(scope, *a, ctx);
     else if (auto a = expr.as<AstExprError>())
     {
         for (AstExpr* expr : a->expressions)
@@ -3130,7 +3139,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprGloba
     return result;
 }
 
-TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndexName& expr)
+TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndexName& expr, ValueContext ctx)
 {
     TypeId lhs = checkExpr(scope, *expr.expr).type;
 
@@ -3153,7 +3162,15 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
         {
             return it->second.type;
         }
-        else if (lhsTable->state == TableState::Unsealed || lhsTable->state == TableState::Free)
+        else if (!FFlag::LuauDontExtendUnsealedRValueTables && (lhsTable->state == TableState::Unsealed || lhsTable->state == TableState::Free))
+        {
+            TypeId theType = freshType(scope);
+            Property& property = lhsTable->props[name];
+            property.type = theType;
+            property.location = expr.indexLocation;
+            return theType;
+        }
+        else if (FFlag::LuauDontExtendUnsealedRValueTables && ((ctx == ValueContext::LValue && lhsTable->state == TableState::Unsealed) || lhsTable->state == TableState::Free))
         {
             TypeId theType = freshType(scope);
             Property& property = lhsTable->props[name];
@@ -3216,7 +3233,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
     return errorRecoveryType(scope);
 }
 
-TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndexExpr& expr)
+TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndexExpr& expr, ValueContext ctx)
 {
     TypeId exprType = checkExpr(scope, *expr.expr).type;
     tablify(exprType);
@@ -3274,7 +3291,15 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
         {
             return it->second.type;
         }
-        else if (exprTable->state == TableState::Unsealed || exprTable->state == TableState::Free)
+        else if (!FFlag::LuauDontExtendUnsealedRValueTables && (exprTable->state == TableState::Unsealed || exprTable->state == TableState::Free))
+        {
+            TypeId resultType = freshType(scope);
+            Property& property = exprTable->props[value->value.data];
+            property.type = resultType;
+            property.location = expr.index->location;
+            return resultType;
+        }
+        else if (FFlag::LuauDontExtendUnsealedRValueTables && ((ctx == ValueContext::LValue && exprTable->state == TableState::Unsealed) || exprTable->state == TableState::Free))
         {
             TypeId resultType = freshType(scope);
             Property& property = exprTable->props[value->value.data];
@@ -3290,20 +3315,35 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
         unify(indexType, indexer.indexType, scope, expr.index->location);
         return indexer.indexResultType;
     }
-    else if (exprTable->state == TableState::Unsealed || exprTable->state == TableState::Free)
+    else if (!FFlag::LuauDontExtendUnsealedRValueTables && (exprTable->state == TableState::Unsealed || exprTable->state == TableState::Free))
     {
         TypeId resultType = freshType(exprTable->level);
         exprTable->indexer = TableIndexer{anyIfNonstrict(indexType), anyIfNonstrict(resultType)};
         return resultType;
     }
+    else if (FFlag::LuauDontExtendUnsealedRValueTables && ((ctx == ValueContext::LValue && exprTable->state == TableState::Unsealed) || exprTable->state == TableState::Free))
+    {
+        TypeId indexerType = freshType(exprTable->level);
+        unify(indexType, indexerType, scope, expr.location);
+        TypeId indexResultType = freshType(exprTable->level);
+
+        exprTable->indexer = TableIndexer{anyIfNonstrict(indexerType), anyIfNonstrict(indexResultType)};
+        return indexResultType;
+    }
     else
     {
         /*
-         * If we use [] indexing to fetch a property from a sealed table that has no indexer, we have no idea if it will
-         * work, so we just mint a fresh type, return that, and hope for the best.
+         * If we use [] indexing to fetch a property from a sealed table that
+         * has no indexer, we have no idea if it will work so we just return any
+         * and hope for the best.
          */
-        TypeId resultType = freshType(scope);
-        return resultType;
+        if (FFlag::LuauDontExtendUnsealedRValueTables)
+            return anyType;
+        else
+        {
+            TypeId resultType = freshType(scope);
+            return resultType;
+        }
     }
 }
 
@@ -4508,7 +4548,7 @@ TypeId TypeChecker::checkRequire(const ScopePtr& scope, const ModuleInfo& module
         return errorRecoveryType(scope);
     }
 
-    TypePackId modulePack = FFlag::LuauScopelessModule ? module->returnType : module->getModuleScope()->returnType;
+    TypePackId modulePack = module->returnType;
 
     if (get<Unifiable::Error>(modulePack))
         return errorRecoveryType(scope);

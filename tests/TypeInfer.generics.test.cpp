@@ -282,8 +282,14 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_methods")
         function x:f(): string return self:id("hello") end
         function x:g(): number return self:id(37) end
     )");
-    // TODO: Quantification should be doing the conversion, not normalization.
-    LUAU_REQUIRE_ERRORS(result);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        // TODO: Quantification should be doing the conversion, not normalization.
+        LUAU_REQUIRE_ERRORS(result);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "calling_self_generic_methods")
@@ -296,8 +302,14 @@ TEST_CASE_FIXTURE(Fixture, "calling_self_generic_methods")
             local y: number = self:id(37)
         end
     )");
-    // TODO: Should typecheck but currently errors CLI-39916
-    LUAU_REQUIRE_ERRORS(result);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        // TODO: Should typecheck but currently errors CLI-39916
+        LUAU_REQUIRE_ERRORS(result);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_property")

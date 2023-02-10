@@ -47,6 +47,7 @@ TypeId Instantiation::clean(TypeId ty)
     FunctionType clone = FunctionType{level, scope, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
     clone.magicFunction = ftv->magicFunction;
     clone.dcrMagicFunction = ftv->dcrMagicFunction;
+    clone.dcrMagicRefinement = ftv->dcrMagicRefinement;
     clone.tags = ftv->tags;
     clone.argNames = ftv->argNames;
     TypeId result = addType(std::move(clone));

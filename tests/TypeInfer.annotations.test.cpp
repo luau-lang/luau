@@ -465,8 +465,6 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_always_resolve_to_a_real_type")
 
 TEST_CASE_FIXTURE(Fixture, "interface_types_belong_to_interface_arena")
 {
-    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
-
     CheckResult result = check(R"(
         export type A = {field: number}
 
@@ -498,8 +496,6 @@ TEST_CASE_FIXTURE(Fixture, "interface_types_belong_to_interface_arena")
 
 TEST_CASE_FIXTURE(Fixture, "generic_aliases_are_cloned_properly")
 {
-    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
-
     CheckResult result = check(R"(
         export type Array<T> = { [number]: T }
     )");
@@ -527,8 +523,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases_are_cloned_properly")
 
 TEST_CASE_FIXTURE(Fixture, "cloned_interface_maintains_pointers_between_definitions")
 {
-    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
-
     CheckResult result = check(R"(
         export type Record = { name: string, location: string }
         local a: Record = { name="Waldo", location="?????" }

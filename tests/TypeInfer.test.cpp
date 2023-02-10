@@ -1158,4 +1158,18 @@ end
     LUAU_REQUIRE_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "typechecking_in_type_guards")
+{
+    ScopedFastFlag sff{"LuauTypecheckTypeguards", true};
+
+    CheckResult result = check(R"(
+local a = type(foo) == 'nil'
+local b = typeof(foo) ~= 'nil'
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(toString(result.errors[0]) == "Unknown global 'foo'");
+    CHECK(toString(result.errors[1]) == "Unknown global 'foo'");
+}
+
 TEST_SUITE_END();

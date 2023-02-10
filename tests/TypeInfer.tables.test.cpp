@@ -18,6 +18,7 @@ LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError)
+LUAU_FASTFLAG(LuauDontExtendUnsealedRValueTables)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -628,7 +629,7 @@ TEST_CASE_FIXTURE(Fixture, "indexers_get_quantified_too")
 
     const TableIndexer& indexer = *ttv->indexer;
 
-    REQUIRE_EQ(indexer.indexType, typeChecker.numberType);
+    REQUIRE("number" == toString(indexer.indexType));
 
     REQUIRE(nullptr != get<GenericType>(follow(indexer.indexResultType)));
 }
@@ -867,6 +868,51 @@ TEST_CASE_FIXTURE(Fixture, "indexing_from_a_table_should_prefer_properties_when_
     CHECK_EQ(*typeChecker.numberType, *requireType("c"));
 
     CHECK_MESSAGE(nullptr != get<TypeMismatch>(result.errors[0]), "Expected a TypeMismatch but got " << result.errors[0]);
+}
+
+TEST_CASE_FIXTURE(Fixture, "any_when_indexing_into_an_unsealed_table_with_no_indexer_in_nonstrict_mode")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+
+        local constants = {
+            key1 = "value1",
+            key2 = "value2"
+        }
+
+        local function getKey()
+            return "key1"
+        end
+
+        local k1 = constants[getKey()]
+    )");
+
+    CHECK("any" == toString(requireType("k1")));
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "disallow_indexing_into_an_unsealed_table_with_no_indexer_in_strict_mode")
+{
+    CheckResult result = check(R"(
+        local constants = {
+            key1 = "value1",
+            key2 = "value2"
+        }
+
+        function getConstant(key)
+            return constants[key]
+        end
+
+        local k1 = getConstant("key1")
+    )");
+
+    if (FFlag::LuauDontExtendUnsealedRValueTables)
+        CHECK("any" == toString(requireType("k1")));
+    else
+        CHECK("a" == toString(requireType("k1")));
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "assigning_to_an_unsealed_table_with_string_literal_should_infer_new_properties_over_indexer")
@@ -2967,8 +3013,6 @@ TEST_CASE_FIXTURE(Fixture, "inferred_properties_of_a_table_should_start_with_the
 // The real bug here was that we weren't always uncondionally typechecking a trailing return statement last.
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_leak_free_table_props")
 {
-    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
-
     CheckResult result = check(R"(
         local function a(state)
             print(state.blah)
@@ -3491,6 +3535,61 @@ _ = {_,}
     )");
 
     LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "when_augmenting_an_unsealed_table_with_an_indexer_apply_the_correct_scope_to_the_indexer_type")
+{
+    ScopedFastFlag sff{"LuauDontExtendUnsealedRValueTables", true};
+
+    CheckResult result = check(R"(
+        local events = {}
+        local mockObserveEvent = function(_, key, callback)
+            events[key] = callback
+        end
+
+        events['FriendshipNotifications']({
+            EventArgs = {
+                UserId2 = '2'
+            },
+            Type = 'FriendshipDeclined'
+        })
+    )");
+
+    TypeId ty = follow(requireType("events"));
+    const TableType* tt = get<TableType>(ty);
+    REQUIRE_MESSAGE(tt, "Expected table but got " << toString(ty, {true}));
+
+    CHECK(tt->props.empty());
+    REQUIRE(tt->indexer);
+
+    CHECK("string" == toString(tt->indexer->indexType));
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_extend_unsealed_tables_in_rvalue_position")
+{
+    ScopedFastFlag sff{"LuauDontExtendUnsealedRValueTables", true};
+
+    CheckResult result = check(R"(
+        local testDictionary = {
+            FruitName = "Lemon",
+            FruitColor = "Yellow",
+            Sour = true
+        }
+
+        local print: any
+
+        print(testDictionary[""])
+    )");
+
+    TypeId ty = follow(requireType("testDictionary"));
+    const TableType* ttv = get<TableType>(ty);
+    REQUIRE(ttv);
+
+    CHECK(0 == ttv->props.count(""));
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

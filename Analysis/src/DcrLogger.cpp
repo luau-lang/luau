@@ -105,6 +105,7 @@ void write(JsonEmitter& emitter, const ConstraintSnapshot& snapshot)
 {
     ObjectEmitter o = emitter.writeObject();
     o.writePair("stringification", snapshot.stringification);
+    o.writePair("location", snapshot.location);
     o.writePair("blocks", snapshot.blocks);
     o.finish();
 }
@@ -293,6 +294,7 @@ void DcrLogger::captureInitialSolverState(const Scope* rootScope, const std::vec
         std::string id = toPointerId(c);
         solveLog.initialState.constraints[id] = {
             toString(*c.get(), opts),
+            c->location,
             snapshotBlocks(c),
         };
     }
@@ -310,6 +312,7 @@ StepSnapshot DcrLogger::prepareStepSnapshot(
         std::string id = toPointerId(c);
         constraints[id] = {
             toString(*c.get(), opts),
+            c->location,
             snapshotBlocks(c),
         };
     }
@@ -337,6 +340,7 @@ void DcrLogger::captureFinalSolverState(const Scope* rootScope, const std::vecto
         std::string id = toPointerId(c);
         solveLog.finalState.constraints[id] = {
             toString(*c.get(), opts),
+            c->location,
             snapshotBlocks(c),
         };
     }

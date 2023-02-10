@@ -263,15 +263,12 @@ using DcrMagicFunction = bool (*)(MagicFunctionCallContext);
 
 struct MagicRefinementContext
 {
-    ScopePtr scope;
-    NotNull<struct ConstraintGraphBuilder> cgb;
-    NotNull<const DataFlowGraph> dfg;
-    NotNull<RefinementArena> refinementArena;
-    std::vector<RefinementId> argumentRefinements;
+    NotNull<Scope> scope;
     const class AstExprCall* callSite;
+    std::vector<std::optional<TypeId>> discriminantTypes;
 };
 
-using DcrMagicRefinement = std::vector<RefinementId> (*)(const MagicRefinementContext&);
+using DcrMagicRefinement = void (*)(const MagicRefinementContext&);
 
 struct FunctionType
 {
@@ -304,8 +301,8 @@ struct FunctionType
     TypePackId argTypes;
     TypePackId retTypes;
     MagicFunction magicFunction = nullptr;
-    DcrMagicFunction dcrMagicFunction = nullptr;     // Fired only while solving constraints
-    DcrMagicRefinement dcrMagicRefinement = nullptr; // Fired only while generating constraints
+    DcrMagicFunction dcrMagicFunction = nullptr;
+    DcrMagicRefinement dcrMagicRefinement = nullptr;
     bool hasSelf;
     bool hasNoGenerics = false;
 };

@@ -172,6 +172,7 @@ endif()
 
 if(LUAU_BUILD_CLI)
     target_compile_options(Luau.Repl.CLI PRIVATE ${LUAU_OPTIONS})
+    target_compile_options(Luau.Reduce.CLI PRIVATE ${LUAU_OPTIONS})
     target_compile_options(Luau.Analyze.CLI PRIVATE ${LUAU_OPTIONS})
     target_compile_options(Luau.Ast.CLI PRIVATE ${LUAU_OPTIONS})
 
