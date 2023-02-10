@@ -11,31 +11,56 @@ namespace Luau
 namespace CodeGen
 {
 
-static void recordUse(IrInst& inst, size_t index)
+void updateUseCounts(IrFunction& function)
 {
-    LUAU_ASSERT(inst.useCount < 0xffff);
+    std::vector<IrBlock>& blocks = function.blocks;
+    std::vector<IrInst>& instructions = function.instructions;
 
-    inst.useCount++;
-    inst.lastUse = uint32_t(index);
+    for (IrBlock& block : blocks)
+        block.useCount = 0;
+
+    for (IrInst& inst : instructions)
+        inst.useCount = 0;
+
+    auto checkOp = [&](IrOp op) {
+        if (op.kind == IrOpKind::Inst)
+        {
+            IrInst& target = instructions[op.index];
+            LUAU_ASSERT(target.useCount < 0xffff);
+            target.useCount++;
+        }
+        else if (op.kind == IrOpKind::Block)
+        {
+            IrBlock& target = blocks[op.index];
+            LUAU_ASSERT(target.useCount < 0xffff);
+            target.useCount++;
+        }
+    };
+
+    for (IrInst& inst : instructions)
+    {
+        checkOp(inst.a);
+        checkOp(inst.b);
+        checkOp(inst.c);
+        checkOp(inst.d);
+        checkOp(inst.e);
+    }
 }
 
-void updateUseInfo(IrFunction& function)
+void updateLastUseLocations(IrFunction& function)
 {
     std::vector<IrInst>& instructions = function.instructions;
 
     for (IrInst& inst : instructions)
-    {
-        inst.useCount = 0;
         inst.lastUse = 0;
-    }
 
-    for (size_t i = 0; i < instructions.size(); ++i)
+    for (size_t instIdx = 0; instIdx < instructions.size(); ++instIdx)
     {
-        IrInst& inst = instructions[i];
+        IrInst& inst = instructions[instIdx];
 
-        auto checkOp = [&instructions, i](IrOp op) {
+        auto checkOp = [&](IrOp op) {
             if (op.kind == IrOpKind::Inst)
-                recordUse(instructions[op.index], i);
+                instructions[op.index].lastUse = uint32_t(instIdx);
         };
 
         checkOp(inst.a);

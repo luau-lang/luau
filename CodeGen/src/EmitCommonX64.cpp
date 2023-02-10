@@ -195,13 +195,20 @@ static void callBarrierImpl(AssemblyBuilderX64& build, RegisterX64 tmp, Register
     if (object == rArg3)
     {
         LUAU_ASSERT(tmp != rArg2);
-        build.mov(rArg2, object);
-        build.mov(rArg3, tmp);
+
+        if (rArg2 != object)
+            build.mov(rArg2, object);
+
+        if (rArg3 != tmp)
+            build.mov(rArg3, tmp);
     }
     else
     {
-        build.mov(rArg3, tmp);
-        build.mov(rArg2, object);
+        if (rArg3 != tmp)
+            build.mov(rArg3, tmp);
+
+        if (rArg2 != object)
+            build.mov(rArg2, object);
     }
 
     build.mov(rArg1, rState);

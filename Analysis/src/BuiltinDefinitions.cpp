@@ -42,8 +42,6 @@ static bool dcrMagicFunctionSelect(MagicFunctionCallContext context);
 static bool dcrMagicFunctionRequire(MagicFunctionCallContext context);
 static bool dcrMagicFunctionPack(MagicFunctionCallContext context);
 
-static std::vector<RefinementId> dcrMagicRefinementAssert(const MagicRefinementContext& context);
-
 TypeId makeUnion(TypeArena& arena, std::vector<TypeId>&& types)
 {
     return arena.addType(UnionType{std::move(types)});
@@ -422,7 +420,6 @@ void registerBuiltinGlobals(Frontend& frontend)
     }
 
     attachMagicFunction(getGlobalBinding(frontend, "assert"), magicFunctionAssert);
-    attachDcrMagicRefinement(getGlobalBinding(frontend, "assert"), dcrMagicRefinementAssert);
     attachMagicFunction(getGlobalBinding(frontend, "setmetatable"), magicFunctionSetMetaTable);
     attachMagicFunction(getGlobalBinding(frontend, "select"), magicFunctionSelect);
     attachDcrMagicFunction(getGlobalBinding(frontend, "select"), dcrMagicFunctionSelect);
@@ -622,15 +619,6 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionAssert(
     }
 
     return WithPredicate<TypePackId>{arena.addTypePack(TypePack{std::move(head), tail})};
-}
-
-static std::vector<RefinementId> dcrMagicRefinementAssert(const MagicRefinementContext& ctx)
-{
-    if (ctx.argumentRefinements.empty())
-        return {};
-
-    ctx.cgb->applyRefinements(ctx.scope, ctx.callSite->location, ctx.argumentRefinements[0]);
-    return {};
 }
 
 static std::optional<WithPredicate<TypePackId>> magicFunctionPack(

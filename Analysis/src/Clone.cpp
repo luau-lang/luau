@@ -438,6 +438,7 @@ TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysCl
         clone.genericPacks = ftv->genericPacks;
         clone.magicFunction = ftv->magicFunction;
         clone.dcrMagicFunction = ftv->dcrMagicFunction;
+        clone.dcrMagicRefinement = ftv->dcrMagicRefinement;
         clone.tags = ftv->tags;
         clone.argNames = ftv->argNames;
         result = dest.addType(std::move(clone));

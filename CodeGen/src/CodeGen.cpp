@@ -7,6 +7,7 @@
 #include "Luau/CodeBlockUnwind.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/IrBuilder.h"
+#include "Luau/OptimizeFinalX64.h"
 #include "Luau/UnwindBuilder.h"
 #include "Luau/UnwindBuilderDwarf2.h"
 #include "Luau/UnwindBuilderWin.h"
@@ -431,7 +432,7 @@ static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& dat
         IrBuilder builder;
         builder.buildFunctionIr(proto);
 
-        updateUseInfo(builder.function);
+        optimizeMemoryOperandsX64(builder.function);
 
         IrLoweringX64 lowering(build, helpers, data, proto, builder.function);
 

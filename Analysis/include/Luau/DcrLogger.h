@@ -65,6 +65,7 @@ struct ConstraintBlock
 struct ConstraintSnapshot
 {
     std::string stringification;
+    Location location;
     std::vector<ConstraintBlock> blocks;
 };
 

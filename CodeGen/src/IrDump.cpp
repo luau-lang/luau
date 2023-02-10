@@ -29,6 +29,14 @@ static void append(std::string& result, const char* fmt, ...)
     result.append(buf);
 }
 
+static void padToDetailColumn(std::string& result, size_t lineStart)
+{
+    int pad = kDetailsAlignColumn - int(result.size() - lineStart);
+
+    if (pad > 0)
+        result.append(pad, ' ');
+}
+
 static const char* getTagName(uint8_t tag)
 {
     switch (tag)
@@ -122,14 +130,12 @@ const char* getCmdName(IrCmd cmd)
         return "JUMP_IF_FALSY";
     case IrCmd::JUMP_EQ_TAG:
         return "JUMP_EQ_TAG";
-    case IrCmd::JUMP_EQ_BOOLEAN:
-        return "JUMP_EQ_BOOLEAN";
+    case IrCmd::JUMP_EQ_INT:
+        return "JUMP_EQ_INT";
     case IrCmd::JUMP_EQ_POINTER:
         return "JUMP_EQ_POINTER";
     case IrCmd::JUMP_CMP_NUM:
         return "JUMP_CMP_NUM";
-    case IrCmd::JUMP_CMP_STR:
-        return "JUMP_CMP_STR";
     case IrCmd::JUMP_CMP_ANY:
         return "JUMP_CMP_ANY";
     case IrCmd::TABLE_LEN:
@@ -140,6 +146,8 @@ const char* getCmdName(IrCmd cmd)
         return "DUP_TABLE";
     case IrCmd::NUM_TO_INDEX:
         return "NUM_TO_INDEX";
+    case IrCmd::INT_TO_NUM:
+        return "INT_TO_NUM";
     case IrCmd::DO_ARITH:
         return "DO_ARITH";
     case IrCmd::DO_LEN:
@@ -156,6 +164,8 @@ const char* getCmdName(IrCmd cmd)
         return "GET_UPVALUE";
     case IrCmd::SET_UPVALUE:
         return "SET_UPVALUE";
+    case IrCmd::PREPARE_FORN:
+        return "PREPARE_FORN";
     case IrCmd::CHECK_TAG:
         return "CHECK_TAG";
     case IrCmd::CHECK_READONLY:
@@ -200,18 +210,10 @@ const char* getCmdName(IrCmd cmd)
         return "LOP_FASTCALL2";
     case IrCmd::LOP_FASTCALL2K:
         return "LOP_FASTCALL2K";
-    case IrCmd::LOP_FORNPREP:
-        return "LOP_FORNPREP";
-    case IrCmd::LOP_FORNLOOP:
-        return "LOP_FORNLOOP";
     case IrCmd::LOP_FORGLOOP:
         return "LOP_FORGLOOP";
     case IrCmd::LOP_FORGLOOP_FALLBACK:
         return "LOP_FORGLOOP_FALLBACK";
-    case IrCmd::LOP_FORGPREP_NEXT:
-        return "LOP_FORGPREP_NEXT";
-    case IrCmd::LOP_FORGPREP_INEXT:
-        return "LOP_FORGPREP_INEXT";
     case IrCmd::LOP_FORGPREP_XNEXT_FALLBACK:
         return "LOP_FORGPREP_XNEXT_FALLBACK";
     case IrCmd::LOP_AND:
@@ -259,12 +261,14 @@ const char* getBlockKindName(IrBlockKind kind)
         return "bb_fallback";
     case IrBlockKind::Internal:
         return "bb";
+    case IrBlockKind::Dead:
+        return "dead";
     }
 
     LUAU_UNREACHABLE();
 }
 
-void toString(IrToStringContext& ctx, IrInst inst, uint32_t index)
+void toString(IrToStringContext& ctx, const IrInst& inst, uint32_t index)
 {
     append(ctx.result, "  ");
 
@@ -303,6 +307,11 @@ void toString(IrToStringContext& ctx, IrInst inst, uint32_t index)
         append(ctx.result, ", ");
         toString(ctx, inst.e);
     }
+}
+
+void toString(IrToStringContext& ctx, const IrBlock& block, uint32_t index)
+{
+    append(ctx.result, "%s_%u:", getBlockKindName(block.kind), index);
 }
 
 void toString(IrToStringContext& ctx, IrOp op)
@@ -358,18 +367,12 @@ void toString(std::string& result, IrConst constant)
     }
 }
 
-void toStringDetailed(IrToStringContext& ctx, IrInst inst, uint32_t index)
+void toStringDetailed(IrToStringContext& ctx, const IrInst& inst, uint32_t index)
 {
     size_t start = ctx.result.size();
 
     toString(ctx, inst, index);
-
-    int pad = kDetailsAlignColumn - int(ctx.result.size() - start);
-
-    if (pad > 0)
-        ctx.result.append(pad, ' ');
-
-    LUAU_ASSERT(inst.useCount == 0 || inst.lastUse != 0);
+    padToDetailColumn(ctx.result, start);
 
     if (inst.useCount == 0 && hasSideEffects(inst.cmd))
         append(ctx.result, "; %%%u, has side-effects\n", index);
@@ -377,7 +380,17 @@ void toStringDetailed(IrToStringContext& ctx, IrInst inst, uint32_t index)
         append(ctx.result, "; useCount: %d, lastUse: %%%u\n", inst.useCount, inst.lastUse);
 }
 
-std::string dump(IrFunction& function)
+void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t index)
+{
+    size_t start = ctx.result.size();
+
+    toString(ctx, block, index);
+    padToDetailColumn(ctx.result, start);
+
+    append(ctx.result, "; useCount: %d\n", block.useCount);
+}
+
+std::string toString(IrFunction& function, bool includeDetails)
 {
     std::string result;
     IrToStringContext ctx{result, function.blocks, function.constants};
@@ -386,7 +399,18 @@ std::string dump(IrFunction& function)
     {
         IrBlock& block = function.blocks[i];
 
-        append(ctx.result, "%s_%u:\n", getBlockKindName(block.kind), unsigned(i));
+        if (block.kind == IrBlockKind::Dead)
+            continue;
+
+        if (includeDetails)
+        {
+            toStringDetailed(ctx, block, uint32_t(i));
+        }
+        else
+        {
+            toString(ctx, block, uint32_t(i));
+            ctx.result.append("\n");
+        }
 
         if (block.start == ~0u)
         {
@@ -394,10 +418,9 @@ std::string dump(IrFunction& function)
             continue;
         }
 
-        for (uint32_t index = block.start; true; index++)
+        // To allow dumping blocks that are still being constructed, we can't rely on terminator and need a bounds check
+        for (uint32_t index = block.start; index < uint32_t(function.instructions.size()); index++)
         {
-            LUAU_ASSERT(index < function.instructions.size());
-
             IrInst& inst = function.instructions[index];
 
             // Nop is used to replace dead instructions in-place, so it's not that useful to see them
@@ -405,7 +428,16 @@ std::string dump(IrFunction& function)
                 continue;
 
             append(ctx.result, " ");
-            toStringDetailed(ctx, inst, index);
+
+            if (includeDetails)
+            {
+                toStringDetailed(ctx, inst, index);
+            }
+            else
+            {
+                toString(ctx, inst, index);
+                ctx.result.append("\n");
+            }
 
             if (isBlockTerminator(inst.cmd))
             {
@@ -414,6 +446,13 @@ std::string dump(IrFunction& function)
             }
         }
     }
+
+    return result;
+}
+
+std::string dump(IrFunction& function)
+{
+    std::string result = toString(function, /* includeDetails */ true);
 
     printf("%s\n", result.c_str());
 

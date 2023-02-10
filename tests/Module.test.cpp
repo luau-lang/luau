@@ -112,8 +112,6 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")
 {
-    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
-
     CheckResult result = check(R"(
         return {sign=math.sign}
     )");
@@ -285,8 +283,6 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
 
 TEST_CASE_FIXTURE(Fixture, "any_persistance_does_not_leak")
 {
-    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
-
     fileResolver.source["Module/A"] = R"(
 export type A = B
 type B = A
@@ -310,7 +306,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_reexports")
         {"LuauSubstitutionReentrant", true},
         {"LuauClassTypeVarsInSubstitution", true},
         {"LuauSubstitutionFixMissingFields", true},
-        {"LuauScopelessModule", true},
     };
 
     fileResolver.source["Module/A"] = R"(
@@ -349,7 +344,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_types_of_reexported_values")
         {"LuauSubstitutionReentrant", true},
         {"LuauClassTypeVarsInSubstitution", true},
         {"LuauSubstitutionFixMissingFields", true},
-        {"LuauScopelessModule", true},
     };
 
     fileResolver.source["Module/A"] = R"(

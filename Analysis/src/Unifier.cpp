@@ -1038,6 +1038,24 @@ void Unifier::tryUnifyNormalizedTypes(
                 }
             }
 
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+            {
+                for (TypeId superTable : superNorm.tables)
+                {
+                    Unifier innerState = makeChildUnifier();
+                    innerState.tryUnify(subClass, superTable);
+
+                    if (innerState.errors.empty())
+                    {
+                        found = true;
+                        log.concat(std::move(innerState.log));
+                        break;
+                    }
+                    else if (auto e = hasUnificationTooComplex(innerState.errors))
+                        return reportError(*e);
+                }
+            }
+
             if (!found)
             {
                 return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});

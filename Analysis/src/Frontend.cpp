@@ -31,7 +31,6 @@ LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
 LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
-LUAU_FASTFLAG(LuauScopelessModule);
 
 namespace Luau
 {
@@ -113,9 +112,7 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(std::string_view source, c
     CloneState cloneState;
 
     std::vector<TypeId> typesToPersist;
-    typesToPersist.reserve(
-        checkedModule->declaredGlobals.size() +
-        (FFlag::LuauScopelessModule ? checkedModule->exportedTypeBindings.size() : checkedModule->getModuleScope()->exportedTypeBindings.size()));
+    typesToPersist.reserve(checkedModule->declaredGlobals.size() + checkedModule->exportedTypeBindings.size());
 
     for (const auto& [name, ty] : checkedModule->declaredGlobals)
     {
@@ -127,8 +124,7 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(std::string_view source, c
         typesToPersist.push_back(globalTy);
     }
 
-    for (const auto& [name, ty] :
-        FFlag::LuauScopelessModule ? checkedModule->exportedTypeBindings : checkedModule->getModuleScope()->exportedTypeBindings)
+    for (const auto& [name, ty] : checkedModule->exportedTypeBindings)
     {
         TypeFun globalTy = clone(ty, globalTypes, cloneState);
         std::string documentationSymbol = packageName + "/globaltype/" + name;
@@ -173,9 +169,7 @@ LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr t
     CloneState cloneState;
 
     std::vector<TypeId> typesToPersist;
-    typesToPersist.reserve(
-        checkedModule->declaredGlobals.size() +
-        (FFlag::LuauScopelessModule ? checkedModule->exportedTypeBindings.size() : checkedModule->getModuleScope()->exportedTypeBindings.size()));
+    typesToPersist.reserve(checkedModule->declaredGlobals.size() + checkedModule->exportedTypeBindings.size());
 
     for (const auto& [name, ty] : checkedModule->declaredGlobals)
     {
@@ -187,8 +181,7 @@ LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr t
         typesToPersist.push_back(globalTy);
     }
 
-    for (const auto& [name, ty] :
-        FFlag::LuauScopelessModule ? checkedModule->exportedTypeBindings : checkedModule->getModuleScope()->exportedTypeBindings)
+    for (const auto& [name, ty] : checkedModule->exportedTypeBindings)
     {
         TypeFun globalTy = clone(ty, typeChecker.globalTypes, cloneState);
         std::string documentationSymbol = packageName + "/globaltype/" + name;
@@ -571,30 +564,17 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
             module->internalTypes.clear();
 
-            if (FFlag::LuauScopelessModule)
-            {
-                module->astTypes.clear();
-                module->astTypePacks.clear();
-                module->astExpectedTypes.clear();
-                module->astOriginalCallTypes.clear();
-                module->astOverloadResolvedTypes.clear();
-                module->astResolvedTypes.clear();
-                module->astOriginalResolvedTypes.clear();
-                module->astResolvedTypePacks.clear();
-                module->astScopes.clear();
+            module->astTypes.clear();
+            module->astTypePacks.clear();
+            module->astExpectedTypes.clear();
+            module->astOriginalCallTypes.clear();
+            module->astOverloadResolvedTypes.clear();
+            module->astResolvedTypes.clear();
+            module->astOriginalResolvedTypes.clear();
+            module->astResolvedTypePacks.clear();
+            module->astScopes.clear();
 
-                module->scopes.clear();
-            }
-            else
-            {
-                module->astTypes.clear();
-                module->astExpectedTypes.clear();
-                module->astOriginalCallTypes.clear();
-                module->astResolvedTypes.clear();
-                module->astResolvedTypePacks.clear();
-                module->astOriginalResolvedTypes.clear();
-                module->scopes.resize(1);
-            }
+            module->scopes.clear();
         }
 
         if (mode != Mode::NoCheck)

@@ -50,6 +50,8 @@ struct IrBuilder
     IrOp vmConst(uint32_t index);
     IrOp vmUpvalue(uint8_t index);
 
+    bool inTerminatedBlock = false;
+
     bool activeFastcallFallback = false;
     IrOp fastcallFallbackReturn;
 

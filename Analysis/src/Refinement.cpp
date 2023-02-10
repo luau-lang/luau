@@ -29,4 +29,9 @@ RefinementId RefinementArena::proposition(DefId def, TypeId discriminantTy)
     return NotNull{allocator.allocate(Proposition{def, discriminantTy})};
 }
 
+RefinementId RefinementArena::variadic(const std::vector<RefinementId>& refis)
+{
+    return NotNull{allocator.allocate(Variadic{refis})};
+}
+
 } // namespace Luau
