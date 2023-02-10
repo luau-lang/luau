@@ -28,7 +28,7 @@
 // Upvalues: 0-254. Upvalues refer to the values stored in the closure object.
 // Constants: 0-2^23-1. Constants are stored in a table allocated with each proto; to allow for future bytecode tweaks the encodable value is limited to 23 bits.
 // Closures: 0-2^15-1. Closures are created from child protos via a child index; the limit is for the number of closures immediately referenced in each function.
-// Jumps: -2^23..2^23. Jump offsets are specified in word increments, so jumping over an instruction may sometimes require an offset of 2 or more.
+// Jumps: -2^23..2^23. Jump offsets are specified in word increments, so jumping over an instruction may sometimes require an offset of 2 or more. Note that for jump instructions with AUX, the AUX word is included as part of the jump offset.
 
 // # Bytecode versions
 // Bytecode serialized format embeds a version number, that dictates both the serialized form as well as the allowed instructions. As long as the bytecode version falls into supported
@@ -194,7 +194,7 @@ enum LuauOpcode
 
     // JUMPIFEQ, JUMPIFLE, JUMPIFLT, JUMPIFNOTEQ, JUMPIFNOTLE, JUMPIFNOTLT: jumps to target offset if the comparison is true (or false, for NOT variants)
     // A: source register 1
-    // D: jump offset (-32768..32767; 0 means "next instruction" aka "don't jump")
+    // D: jump offset (-32768..32767; 1 means "next instruction" aka "don't jump")
     // AUX: source register 2
     LOP_JUMPIFEQ,
     LOP_JUMPIFLE,
@@ -376,14 +376,14 @@ enum LuauOpcode
 
     // JUMPXEQKNIL, JUMPXEQKB: jumps to target offset if the comparison with constant is true (or false, see AUX)
     // A: source register 1
-    // D: jump offset (-32768..32767; 0 means "next instruction" aka "don't jump")
+    // D: jump offset (-32768..32767; 1 means "next instruction" aka "don't jump")
     // AUX: constant value (for boolean) in low bit, NOT flag (that flips comparison result) in high bit
     LOP_JUMPXEQKNIL,
     LOP_JUMPXEQKB,
 
     // JUMPXEQKN, JUMPXEQKS: jumps to target offset if the comparison with constant is true (or false, see AUX)
     // A: source register 1
-    // D: jump offset (-32768..32767; 0 means "next instruction" aka "don't jump")
+    // D: jump offset (-32768..32767; 1 means "next instruction" aka "don't jump")
     // AUX: constant table index in low 24 bits, NOT flag (that flips comparison result) in high bit
     LOP_JUMPXEQKN,
     LOP_JUMPXEQKS,

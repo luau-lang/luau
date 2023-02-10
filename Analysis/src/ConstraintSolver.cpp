@@ -18,7 +18,6 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false);
-LUAU_FASTFLAG(LuauScopelessModule);
 
 namespace Luau
 {
@@ -424,9 +423,7 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         LUAU_ASSERT(false);
 
     if (success)
-    {
         unblock(constraint);
-    }
 
     return success;
 }
@@ -1129,6 +1126,28 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         return block(c.fn, constraint);
     }
 
+    auto collapse = [](const auto* t) -> std::optional<TypeId> {
+        auto it = begin(t);
+        auto endIt = end(t);
+
+        LUAU_ASSERT(it != endIt);
+        TypeId fst = follow(*it);
+        while (it != endIt)
+        {
+            if (follow(*it) != fst)
+                return std::nullopt;
+            ++it;
+        }
+
+        return fst;
+    };
+
+    // Sometimes the `fn` type is a union/intersection, but whose constituents are all the same pointer.
+    if (auto ut = get<UnionType>(fn))
+        fn = collapse(ut).value_or(fn);
+    else if (auto it = get<IntersectionType>(fn))
+        fn = collapse(it).value_or(fn);
+
     // We don't support magic __call metamethods.
     if (std::optional<TypeId> callMm = findMetatableEntry(builtinTypes, errors, fn, "__call", constraint->location))
     {
@@ -1140,69 +1159,73 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         TypeId instantiatedType = arena->addType(BlockedType{});
         TypeId inferredFnType = arena->addType(FunctionType(TypeLevel{}, constraint->scope.get(), arena->addTypePack(TypePack{args, {}}), c.result));
 
-        // Alter the inner constraints.
-        LUAU_ASSERT(c.innerConstraints.size() == 2);
-
-        // Anything that is blocked on this constraint must also be blocked on our inner constraints
-        auto blockedIt = blocked.find(constraint.get());
-        if (blockedIt != blocked.end())
-        {
-            for (const auto& ic : c.innerConstraints)
-            {
-                for (const auto& blockedConstraint : blockedIt->second)
-                    block(ic, blockedConstraint);
-            }
-        }
-
         asMutable(*c.innerConstraints.at(0)).c = InstantiationConstraint{instantiatedType, *callMm};
         asMutable(*c.innerConstraints.at(1)).c = SubtypeConstraint{inferredFnType, instantiatedType};
 
-        unsolvedConstraints.insert(end(unsolvedConstraints), begin(c.innerConstraints), end(c.innerConstraints));
-
         asMutable(c.result)->ty.emplace<FreeTypePack>(constraint->scope);
-        unblock(c.result);
-        return true;
-    }
-
-    const FunctionType* ftv = get<FunctionType>(fn);
-    bool usedMagic = false;
-
-    if (ftv && ftv->dcrMagicFunction != nullptr)
-    {
-        usedMagic = ftv->dcrMagicFunction(MagicFunctionCallContext{NotNull(this), c.callSite, c.argsPack, result});
-    }
-
-    if (usedMagic)
-    {
-        // There are constraints that are blocked on these constraints.  If we
-        // are never going to even examine them, then we should not block
-        // anything else on them.
-        //
-        // TODO CLI-58842
-#if 0
-        for (auto& c: c.innerConstraints)
-            unblock(c);
-#endif
     }
     else
     {
-        // Anything that is blocked on this constraint must also be blocked on our inner constraints
-        auto blockedIt = blocked.find(constraint.get());
-        if (blockedIt != blocked.end())
+        const FunctionType* ftv = get<FunctionType>(fn);
+        bool usedMagic = false;
+
+        if (ftv)
         {
-            for (const auto& ic : c.innerConstraints)
-            {
-                for (const auto& blockedConstraint : blockedIt->second)
-                    block(ic, blockedConstraint);
-            }
+            if (ftv->dcrMagicFunction)
+                usedMagic = ftv->dcrMagicFunction(MagicFunctionCallContext{NotNull(this), c.callSite, c.argsPack, result});
+
+            if (ftv->dcrMagicRefinement)
+                ftv->dcrMagicRefinement(MagicRefinementContext{constraint->scope, c.callSite, c.discriminantTypes});
         }
 
-        unsolvedConstraints.insert(end(unsolvedConstraints), begin(c.innerConstraints), end(c.innerConstraints));
-        asMutable(c.result)->ty.emplace<FreeTypePack>(constraint->scope);
+        if (usedMagic)
+        {
+            // There are constraints that are blocked on these constraints.  If we
+            // are never going to even examine them, then we should not block
+            // anything else on them.
+            //
+            // TODO CLI-58842
+#if 0
+            for (auto& c: c.innerConstraints)
+                unblock(c);
+#endif
+        }
+        else
+            asMutable(c.result)->ty.emplace<FreeTypePack>(constraint->scope);
     }
 
-    unblock(c.result);
+    for (std::optional<TypeId> ty : c.discriminantTypes)
+    {
+        if (!ty || !isBlocked(*ty))
+            continue;
 
+        // We use `any` here because the discriminant type may be pointed at by both branches,
+        // where the discriminant type is not negated, and the other where it is negated, i.e.
+        // `unknown ~ unknown` and `~unknown ~ never`, so `T & unknown ~ T` and `T & ~unknown ~ never`
+        // v.s.
+        // `any ~ any` and `~any ~ any`, so `T & any ~ T` and `T & ~any ~ T`
+        //
+        // In practice, users cannot negate `any`, so this is an implementation detail we can always change.
+        *asMutable(follow(*ty)) = BoundType{builtinTypes->anyType};
+    }
+
+    // Alter the inner constraints.
+    LUAU_ASSERT(c.innerConstraints.size() == 2);
+
+    // Anything that is blocked on this constraint must also be blocked on our inner constraints
+    auto blockedIt = blocked.find(constraint.get());
+    if (blockedIt != blocked.end())
+    {
+        for (const auto& ic : c.innerConstraints)
+        {
+            for (const auto& blockedConstraint : blockedIt->second)
+                block(ic, blockedConstraint);
+        }
+    }
+
+    unsolvedConstraints.insert(end(unsolvedConstraints), begin(c.innerConstraints), end(c.innerConstraints));
+
+    unblock(c.result);
     return true;
 }
 
@@ -1930,7 +1953,7 @@ TypeId ConstraintSolver::resolveModule(const ModuleInfo& info, const Location& l
         return errorRecoveryType();
     }
 
-    TypePackId modulePack = FFlag::LuauScopelessModule ? module->returnType : module->getModuleScope()->returnType;
+    TypePackId modulePack = module->returnType;
     if (get<Unifiable::Error>(modulePack))
         return errorRecoveryType();
 

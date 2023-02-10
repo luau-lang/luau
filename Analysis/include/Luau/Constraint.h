@@ -106,6 +106,7 @@ struct FunctionCallConstraint
     TypePackId argsPack;
     TypePackId result;
     class AstExprCall* callSite;
+    std::vector<std::optional<TypeId>> discriminantTypes;
 };
 
 // result ~ prim ExpectedType SomeSingletonType MultitonType
@@ -180,7 +181,7 @@ struct Constraint
     Constraint& operator=(const Constraint&) = delete;
 
     NotNull<Scope> scope;
-    Location location; // TODO: Extract this out into only the constraints that needs a location. Not all constraints needs locations.
+    Location location;
     ConstraintV c;
 
     std::vector<NotNull<Constraint>> dependencies;

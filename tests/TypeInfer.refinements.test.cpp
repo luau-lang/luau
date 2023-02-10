@@ -36,25 +36,26 @@ std::optional<WithPredicate<TypePackId>> magicFunctionInstanceIsA(
     return WithPredicate<TypePackId>{booleanPack, {IsAPredicate{std::move(*lvalue), expr.location, tfun->type}}};
 }
 
-std::vector<RefinementId> dcrMagicRefinementInstanceIsA(const MagicRefinementContext& ctx)
+void dcrMagicRefinementInstanceIsA(const MagicRefinementContext& ctx)
 {
-    if (ctx.callSite->args.size != 1)
-        return {};
+    if (ctx.callSite->args.size != 1 || ctx.discriminantTypes.empty())
+        return;
 
     auto index = ctx.callSite->func->as<Luau::AstExprIndexName>();
     auto str = ctx.callSite->args.data[0]->as<Luau::AstExprConstantString>();
     if (!index || !str)
-        return {};
+        return;
 
-    std::optional<DefId> def = ctx.dfg->getDef(index->expr);
-    if (!def)
-        return {};
+    std::optional<TypeId> discriminantTy = ctx.discriminantTypes[0];
+    if (!discriminantTy)
+        return;
 
     std::optional<TypeFun> tfun = ctx.scope->lookupType(std::string(str->value.data, str->value.size));
     if (!tfun)
-        return {};
+        return;
 
-    return {ctx.refinementArena->proposition(*def, tfun->type)};
+    LUAU_ASSERT(get<BlockedType>(*discriminantTy));
+    asMutable(*discriminantTy)->ty.emplace<BoundType>(tfun->type);
 }
 
 struct RefinementClassFixture : BuiltinsFixture
@@ -1489,6 +1490,47 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_take_the_length
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("table", toString(requireTypeAtPosition({3, 29})));
+}
+
+TEST_CASE_FIXTURE(RefinementClassFixture, "refine_a_param_that_got_resolved_during_constraint_solving_stage")
+{
+    CheckResult result = check(R"(
+        type Id<T> = T
+
+        local function f(x: Id<Id<Part | Folder> | Id<string>>)
+            if typeof(x) ~= "string" and x:IsA("Part") then
+                local foo = x
+            else
+                local foo = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("Part", toString(requireTypeAtPosition({5, 28})));
+    CHECK_EQ("Folder | string", toString(requireTypeAtPosition({7, 28})));
+}
+
+TEST_CASE_FIXTURE(RefinementClassFixture, "refine_a_param_that_got_resolved_during_constraint_solving_stage_2")
+{
+    CheckResult result = check(R"(
+        local function hof(f: (Instance) -> ()) end
+
+        hof(function(inst)
+            if inst:IsA("Part") then
+                local foo = inst
+            else
+                local foo = inst
+            end
+        end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("Part", toString(requireTypeAtPosition({5, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("Instance & ~Part", toString(requireTypeAtPosition({7, 28})));
+    else
+        CHECK_EQ("Instance", toString(requireTypeAtPosition({7, 28})));
 }
 
 TEST_SUITE_END();

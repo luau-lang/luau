@@ -514,8 +514,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators")
 // Ideally, we would not try to export a function type with generic types from incorrect scope
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_leak_to_module_interface")
 {
-    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
-
     fileResolver.source["game/A"] = R"(
 local wrapStrictTable
 
@@ -555,8 +553,6 @@ return wrapStrictTable(Constants, "Constants")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_leak_to_module_interface_variadic")
 {
-    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
-
     fileResolver.source["game/A"] = R"(
 local wrapStrictTable
 

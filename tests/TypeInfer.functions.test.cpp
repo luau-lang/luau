@@ -109,8 +109,6 @@ TEST_CASE_FIXTURE(Fixture, "vararg_functions_should_allow_calls_of_any_types_and
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
 {
-    ScopedFastFlag luauScopelessModule{"LuauScopelessModule", true};
-
     CheckResult result = check(R"(
         local T = {}
         function T.f(...)

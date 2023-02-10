@@ -11,13 +11,19 @@ namespace Luau
 struct Type;
 using TypeId = const Type*;
 
+struct Variadic;
 struct Negation;
 struct Conjunction;
 struct Disjunction;
 struct Equivalence;
 struct Proposition;
-using Refinement = Variant<Negation, Conjunction, Disjunction, Equivalence, Proposition>;
+using Refinement = Variant<Variadic, Negation, Conjunction, Disjunction, Equivalence, Proposition>;
 using RefinementId = Refinement*; // Can and most likely is nullptr.
+
+struct Variadic
+{
+    std::vector<RefinementId> refinements;
+};
 
 struct Negation
 {
@@ -56,13 +62,15 @@ const T* get(RefinementId refinement)
 
 struct RefinementArena
 {
-    TypedAllocator<Refinement> allocator;
-
+    RefinementId variadic(const std::vector<RefinementId>& refis);
     RefinementId negation(RefinementId refinement);
     RefinementId conjunction(RefinementId lhs, RefinementId rhs);
     RefinementId disjunction(RefinementId lhs, RefinementId rhs);
     RefinementId equivalence(RefinementId lhs, RefinementId rhs);
     RefinementId proposition(DefId def, TypeId discriminantTy);
+
+private:
+    TypedAllocator<Refinement> allocator;
 };
 
 } // namespace Luau

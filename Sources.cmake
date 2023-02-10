@@ -70,6 +70,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/IrUtils.h
     CodeGen/include/Luau/Label.h
     CodeGen/include/Luau/OperandX64.h
+    CodeGen/include/Luau/OptimizeFinalX64.h
     CodeGen/include/Luau/RegisterA64.h
     CodeGen/include/Luau/RegisterX64.h
     CodeGen/include/Luau/UnwindBuilder.h
@@ -92,7 +93,9 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/IrDump.cpp
     CodeGen/src/IrLoweringX64.cpp
     CodeGen/src/IrTranslation.cpp
+    CodeGen/src/IrUtils.cpp
     CodeGen/src/NativeState.cpp
+    CodeGen/src/OptimizeFinalX64.cpp
     CodeGen/src/UnwindBuilderDwarf2.cpp
     CodeGen/src/UnwindBuilderWin.cpp
 
@@ -337,6 +340,7 @@ if(TARGET Luau.UnitTest)
         tests/DenseHash.test.cpp
         tests/Error.test.cpp
         tests/Frontend.test.cpp
+        tests/IrBuilder.test.cpp
         tests/JsonEmitter.test.cpp
         tests/Lexer.test.cpp
         tests/Linter.test.cpp

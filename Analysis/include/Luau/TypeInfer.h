@@ -57,6 +57,12 @@ public:
     }
 };
 
+enum class ValueContext
+{
+    LValue,
+    RValue
+};
+
 // All Types are retained via Environment::types.  All TypeIds
 // within a program are borrowed pointers into this set.
 struct TypeChecker
@@ -119,14 +125,14 @@ struct TypeChecker
         std::optional<TypeId> expectedType);
 
     // Returns the type of the lvalue.
-    TypeId checkLValue(const ScopePtr& scope, const AstExpr& expr);
+    TypeId checkLValue(const ScopePtr& scope, const AstExpr& expr, ValueContext ctx);
 
     // Returns the type of the lvalue.
-    TypeId checkLValueBinding(const ScopePtr& scope, const AstExpr& expr);
+    TypeId checkLValueBinding(const ScopePtr& scope, const AstExpr& expr, ValueContext ctx);
     TypeId checkLValueBinding(const ScopePtr& scope, const AstExprLocal& expr);
     TypeId checkLValueBinding(const ScopePtr& scope, const AstExprGlobal& expr);
-    TypeId checkLValueBinding(const ScopePtr& scope, const AstExprIndexName& expr);
-    TypeId checkLValueBinding(const ScopePtr& scope, const AstExprIndexExpr& expr);
+    TypeId checkLValueBinding(const ScopePtr& scope, const AstExprIndexName& expr, ValueContext ctx);
+    TypeId checkLValueBinding(const ScopePtr& scope, const AstExprIndexExpr& expr, ValueContext ctx);
 
     TypeId checkFunctionName(const ScopePtr& scope, AstExpr& funName, TypeLevel level);
     std::pair<TypeId, ScopePtr> checkFunctionSignature(const ScopePtr& scope, int subLevel, const AstExprFunction& expr,
