@@ -33,6 +33,15 @@
 #define LUA_NORETURN __attribute__((__noreturn__))
 #endif
 
+// Can be used to export public APIs to DLL
+#ifdef LUA_API_C_EXPORT 
+#define LUA_API extern "C" __declspec(dllexport)
+#endif 
+
+#ifdef LUA_API_EXPORT
+#define LUA_API extern __declspec(dllexport)
+#endif 
+
 // Can be used to reconfigure visibility/exports for public APIs
 #ifndef LUA_API
 #define LUA_API extern
