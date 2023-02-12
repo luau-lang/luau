@@ -4,11 +4,11 @@
 #include <stddef.h>
 
 // Can be used to export public APIs to DLL
-#ifdef LUA_API_C_EXPORT 
+#ifdef LUACODE_API_C_EXPORT 
 #define LUACODE_API extern "C" __declspec(dllexport)
 #endif 
 
-#ifdef LUA_API_EXPORT
+#ifdef LUACODE_API_EXPORT
 #define LUACODE_API extern __declspec(dllexport)
 #endif 
 
