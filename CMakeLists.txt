@@ -6,13 +6,13 @@ endif()
 
 cmake_minimum_required(VERSION 3.0)
 
-option(LUAU_BUILD_CLI "Build CLI" OFF)
-option(LUAU_BUILD_TESTS "Build tests" OFF)
+option(LUAU_BUILD_CLI "Build CLI" ON)
+option(LUAU_BUILD_TESTS "Build tests" ON)
 option(LUAU_BUILD_WEB "Build Web module" OFF)
 option(LUAU_WERROR "Warnings as errors" OFF)
 option(LUAU_STATIC_CRT "Link with the static CRT (/MT)" OFF)
-option(LUAU_EXTERN_C "Use extern C for all APIs" ON)
-option(LUAU_EXPORT_DLL "Exports to DLL with C linkage" ON)
+option(LUAU_EXTERN_C "Use extern C for all APIs" OFF)
+option(LUAU_EXPORT_DLL "Exports to DLL with C linkage" OFF)
 option(LUAU_NATIVE "Enable support for native code generation" OFF)
 
 if(LUAU_STATIC_CRT)
