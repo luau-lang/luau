@@ -12,7 +12,7 @@ option(LUAU_BUILD_WEB "Build Web module" OFF)
 option(LUAU_WERROR "Warnings as errors" OFF)
 option(LUAU_STATIC_CRT "Link with the static CRT (/MT)" OFF)
 option(LUAU_EXTERN_C "Use extern C for all APIs" OFF)
-option(LUAU_EXPORT_DLL "Exports to DLL with C linkage" OFF)
+option(LUAU_EXPORT_DLL "Exports to DLL" OFF)
 option(LUAU_NATIVE "Enable support for native code generation" OFF)
 
 if(LUAU_STATIC_CRT)
