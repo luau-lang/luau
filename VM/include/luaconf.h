@@ -34,6 +34,19 @@
 #endif
 
 // Can be used to export public APIs to DLL
+#ifdef _WIN32
+#ifdef __GNUC__
+
+#ifdef LUA_API_C_EXPORT 
+#define LUA_API extern "C" __attribute__ ((dllexport))
+#endif 
+
+#ifdef LUA_API_EXPORT
+#define LUA_API extern __attribute__ ((dllexport))
+#endif 
+
+#else 
+
 #ifdef LUA_API_C_EXPORT 
 #define LUA_API extern "C" __declspec(dllexport)
 #endif 
@@ -41,6 +54,21 @@
 #ifdef LUA_API_EXPORT
 #define LUA_API extern __declspec(dllexport)
 #endif 
+
+#endif
+#else 
+#if __GNUC__ >= 4
+
+#ifdef LUA_API_C_EXPORT 
+#define LUA_API extern "C" __attribute__ ((visibility ("default")))
+#endif 
+
+#ifdef LUA_API_EXPORT
+#define LUA_API extern __attribute__ ((visibility ("default")))
+#endif 
+
+#endif
+#endif
 
 // Can be used to reconfigure visibility/exports for public APIs
 #ifndef LUA_API
