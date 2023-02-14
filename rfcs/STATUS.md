@@ -8,6 +8,12 @@ This document tracks unimplemented RFCs.
 
 **Notes**: Implementing this RFC triggers warnings across the board in the apps ecosystem, in particular in testing libraries. Pending code changes / decisions.
 
+## Deprecate table.getn/foreach/foreachi
+
+[RFC: Deprecate table.getn/foreach/foreachi](https://github.com/Roblox/luau/blob/master/rfcs/deprecate-table-getn-foreach.md)
+
+**Status**: Needs implementation.
+
 ## Read-only and write-only properties
 
 [RFC: Read-only properties](https://github.com/Roblox/luau/blob/master/rfcs/property-readonly.md) |
@@ -15,14 +21,8 @@ This document tracks unimplemented RFCs.
 
 **Status**: Needs implementation
 
-## String interpolation
+## Expanded Subtyping for Generic Function Types
 
-[RFC: String interpolation](https://github.com/Roblox/luau/blob/master/rfcs/syntax-string-interpolation.md)
-
-**Status**: Needs implementation
-
-## Lower Bounds Calculation
-
-[RFC: Lower bounds calculation](https://github.com/Roblox/luau/blob/master/rfcs/lower-bounds-calculation.md)
+[RFC: Expanded Subtyping for Generic Function Types](https://github.com/Roblox/luau/blob/master/rfcs/generic-function-subtyping.md)
 
 **Status**: Implemented but not fully rolled out yet.
