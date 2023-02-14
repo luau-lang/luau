@@ -28,12 +28,11 @@ Finally, Lua has had floor division operator since version 5.3, so its addition 
 
 The design mirrors Lua 5.3:
 
-A new operator `//` will be added to the language. The operator performs division of two operands and rounds the result towards negative infinity. By default, the operator is only defined for numbers. The operator has the same precedence as the normal division operator `/`.
+New operators `//` and `//=` will be added to the language. The operator `//` performs division of two operands and rounds the result towards negative infinity. By default, the operator is only defined for numbers. The operator has the same precedence as the normal division operator `/`. `//=` is the compound-assignment operator for floor division, similar to the existing operator `/=`.
 
 A new metamethod `__idiv` will be added. The metamethod is invoked when any operand of floor division is not a number. The metamethod can be used to implement floor division for any user defined data type as well as the built-in vector type.
 
-
-The typechecker does not need special handling of the new operator. It can simply apply the same rules for floor division as it does for normal division operator.
+The typechecker does not need special handling for the new operators. It can simply apply the same rules for floor division as it does for normal division operators.
 
 Examples of usage:
 
@@ -58,4 +57,4 @@ C like languages use `//` for line comments. Using the symbol `//` for floor div
 
 An alternative would be to do nothing but this would not solve the issues the lack of floor division currently has.
 
-An alternative implementation would treat `//` only as syntactic sugar. The addition of new VM opcode for floor division could be omitted and the compiler could be simply modified to automatically emit a call to `math.floor` when necessary. This would require only minimal changes to Luau, but it would not support overloading the floor division operator using metamethods and would not have the performance benefits of the full implementation.
+An alternative implementation would treat `//` and `//=` only as syntactic sugar. The addition of new VM opcode for floor division could be omitted and the compiler could be simply modified to automatically emit a call to `math.floor` when necessary. This would require only minimal changes to Luau, but it would not support overloading the floor division operator using metamethods and would not have the performance benefits of the full implementation.
