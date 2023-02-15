@@ -72,7 +72,7 @@ Prints all arguments to the standard output, using Tab as a separator.
 function rawequal(a: any, b: any): boolean
 ```
 
-Returns true iff `a` and `b` have the same type and point to the same object (for garbage collected types) or are equal (for value types).
+Returns true if `a` and `b` have the same type and point to the same object (for garbage collected types) or are equal (for value types).
 
 ```
 function rawget<K, V>(t: { [K]: V }, k: K): V?
