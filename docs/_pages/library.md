@@ -413,7 +413,7 @@ Removes element `i` from the table and shifts values at indices after that by 1.
 function table.sort<V>(t: {V}, f: ((V, V) -> boolean)?)
 ```
 
-Sorts the table `t` in ascending order, using `f` as a comparison predicate: `f` should return `true` iff the first parameter should be before the second parameter in the resulting table. When `f` is not specified, builtin less-than comparison is used instead.
+Sorts the table `t` in ascending order, using `f` as a comparison predicate: `f` should return `true` if the first parameter should be before the second parameter in the resulting table. When `f` is not specified, builtin less-than comparison is used instead.
 The comparison predicate must establish a strict weak ordering - sort results are undefined otherwise.
 
 ```
@@ -464,7 +464,7 @@ Note that the table is frozen in-place and is not being copied. Additionally, on
 function table.isfrozen(t: table): boolean
 ```
 
-Returns `true` iff the input table is frozen.
+Returns `true` if the input table is frozen.
 
 ```
 function table.clone(t: table): table
@@ -625,7 +625,7 @@ Yields the currently running coroutine and passes all arguments along to the cod
 function coroutine.isyieldable(): boolean
 ```
 
-Returns `true` iff the currently running coroutine can yield. Yielding is prohibited when running inside metamethods like `__index` or C functions like `table.foreach` callback, with the exception of `pcall`/`xpcall`.
+Returns `true` if the currently running coroutine can yield. Yielding is prohibited when running inside metamethods like `__index` or C functions like `table.foreach` callback, with the exception of `pcall`/`xpcall`.
 
 ```
 function coroutine.resume(co: thread, args: ...any): (boolean, ...any)
@@ -677,7 +677,7 @@ Performs a bitwise `xor` (exclusive or) of all input numbers and returns the res
 function bit32.btest(args: ...number): boolean
 ```
 
-Perform a bitwise `and` of all input numbers, and return `true` iff the result is not 0. If the function is called with no arguments, `true` is returned.
+Perform a bitwise `and` of all input numbers, and return `true`  the result is not 0. If the function is called with no arguments, `true` is returned.
 
 ```
 function bit32.extract(n: number, f: number, w: number?): number
