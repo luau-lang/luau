@@ -24,7 +24,6 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAGVARIABLE(LuauMaybeGenericIntersectionTypes, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauMatchReturnsOptionalString, false);
 
@@ -358,39 +357,24 @@ bool maybeGeneric(TypeId ty)
 {
     LUAU_ASSERT(!FFlag::LuauInstantiateInSubtyping);
 
-    if (FFlag::LuauMaybeGenericIntersectionTypes)
-    {
-        ty = follow(ty);
-
-        if (get<FreeType>(ty))
-            return true;
-
-        if (auto ttv = get<TableType>(ty))
-        {
-            // TODO: recurse on table types CLI-39914
-            (void)ttv;
-            return true;
-        }
-
-        if (auto itv = get<IntersectionType>(ty))
-        {
-            return std::any_of(begin(itv), end(itv), maybeGeneric);
-        }
-
-        return isGeneric(ty);
-    }
-
     ty = follow(ty);
+
     if (get<FreeType>(ty))
         return true;
-    else if (auto ttv = get<TableType>(ty))
+
+    if (auto ttv = get<TableType>(ty))
     {
         // TODO: recurse on table types CLI-39914
         (void)ttv;
         return true;
     }
-    else
-        return isGeneric(ty);
+
+    if (auto itv = get<IntersectionType>(ty))
+    {
+        return std::any_of(begin(itv), end(itv), maybeGeneric);
+    }
+
+    return isGeneric(ty);
 }
 
 bool maybeSingleton(TypeId ty)

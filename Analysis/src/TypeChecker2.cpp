@@ -204,12 +204,6 @@ struct TypeChecker2
                     bestLocation = scopeBounds;
                 }
             }
-            else if (scopeBounds.begin > location.end)
-            {
-                // TODO: Is this sound? This relies on the fact that scopes are inserted
-                // into the scope list in the order that they appear in the AST.
-                break;
-            }
         }
 
         return bestScope;
@@ -676,18 +670,7 @@ struct TypeChecker2
 
     void visit(AstStatTypeAlias* stat)
     {
-        for (const AstGenericType& el : stat->generics)
-        {
-            if (el.defaultValue)
-                visit(el.defaultValue);
-        }
-
-        for (const AstGenericTypePack& el : stat->genericPacks)
-        {
-            if (el.defaultValue)
-                visit(el.defaultValue);
-        }
-
+        visitGenerics(stat->generics, stat->genericPacks);
         visit(stat->type);
     }
 
@@ -701,6 +684,7 @@ struct TypeChecker2
 
     void visit(AstStatDeclareFunction* stat)
     {
+        visitGenerics(stat->generics, stat->genericPacks);
         visit(stat->params);
         visit(stat->retTypes);
     }
@@ -973,8 +957,9 @@ struct TypeChecker2
 
     void visit(AstExprIndexName* indexName, ValueContext context)
     {
-        TypeId leftType = lookupType(indexName->expr);
+        visit(indexName->expr, RValue);
 
+        TypeId leftType = lookupType(indexName->expr);
         const NormalizedType* norm = normalizer.normalize(leftType);
         if (!norm)
             reportError(NormalizationTooComplex{}, indexName->indexLocation);
@@ -993,11 +978,18 @@ struct TypeChecker2
     {
         auto StackPusher = pushStack(fn);
 
+        visitGenerics(fn->generics, fn->genericPacks);
+
         TypeId inferredFnTy = lookupType(fn);
         const FunctionType* inferredFtv = get<FunctionType>(inferredFnTy);
         LUAU_ASSERT(inferredFtv);
 
+        // There is no way to write an annotation for the self argument, so we
+        // cannot do anything to check it.
         auto argIt = begin(inferredFtv->argTypes);
+        if (fn->self)
+            ++argIt;
+
         for (const auto& arg : fn->args)
         {
             if (argIt == end(inferredFtv->argTypes))
@@ -1037,6 +1029,7 @@ struct TypeChecker2
 
         NotNull<Scope> scope = stack.back();
         TypeId operandType = lookupType(expr->expr);
+        TypeId resultType = lookupType(expr);
 
         if (get<AnyType>(operandType) || get<ErrorType>(operandType) || get<NeverType>(operandType))
             return;
@@ -1048,9 +1041,6 @@ struct TypeChecker2
             {
                 if (const FunctionType* ftv = get<FunctionType>(follow(*mm)))
                 {
-                    TypePackId expectedArgs = testArena.addTypePack({operandType});
-                    reportErrors(tryUnify(scope, expr->location, expectedArgs, ftv->argTypes));
-
                     if (std::optional<TypeId> ret = first(ftv->retTypes))
                     {
                         if (expr->op == AstExprUnary::Op::Len)
@@ -1061,6 +1051,25 @@ struct TypeChecker2
                     else
                     {
                         reportError(GenericError{format("Metamethod '%s' must return a value", it->second)}, expr->location);
+                    }
+
+                    std::optional<TypeId> firstArg = first(ftv->argTypes);
+                    if (!firstArg)
+                    {
+                        reportError(GenericError{"__unm metamethod must accept one argument"}, expr->location);
+                        return;
+                    }
+
+                    TypePackId expectedArgs = testArena.addTypePack({operandType});
+                    TypePackId expectedRet = testArena.addTypePack({resultType});
+
+                    TypeId expectedFunction = testArena.addType(FunctionType{expectedArgs, expectedRet});
+
+                    ErrorVec errors = tryUnify(scope, expr->location, *mm, expectedFunction);
+                    if (!errors.empty())
+                    {
+                        reportError(TypeMismatch{*firstArg, operandType}, expr->location);
+                        return;
                     }
                 }
 
@@ -1413,6 +1422,33 @@ struct TypeChecker2
             ice.ice("flattenPack got a weird pack!");
     }
 
+    void visitGenerics(AstArray<AstGenericType> generics, AstArray<AstGenericTypePack> genericPacks)
+    {
+        DenseHashSet<AstName> seen{AstName{}};
+
+        for (const auto& g : generics)
+        {
+            if (seen.contains(g.name))
+                reportError(DuplicateGenericParameter{g.name.value}, g.location);
+            else
+                seen.insert(g.name);
+
+            if (g.defaultValue)
+                visit(g.defaultValue);
+        }
+
+        for (const auto& g : genericPacks)
+        {
+            if (seen.contains(g.name))
+                reportError(DuplicateGenericParameter{g.name.value}, g.location);
+            else
+                seen.insert(g.name);
+
+            if (g.defaultValue)
+                visit(g.defaultValue);
+        }
+    }
+
     void visit(AstType* ty)
     {
         if (auto t = ty->as<AstTypeReference>())
@@ -1579,8 +1615,7 @@ struct TypeChecker2
 
     void visit(AstTypeFunction* ty)
     {
-        // TODO!
-
+        visitGenerics(ty->generics, ty->genericPacks);
         visit(ty->argTypes);
         visit(ty->returnTypes);
     }

@@ -362,8 +362,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "fuzz_tail_unification_issue")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_unify_any_should_check_log")
 {
-    ScopedFastFlag luauUnifyAnyTxnLog{"LuauUnifyAnyTxnLog", true};
-
     CheckResult result = check(R"(
 repeat
 _._,_ = nil

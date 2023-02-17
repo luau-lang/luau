@@ -319,6 +319,9 @@ std::string runCode(lua_State* L, const std::string& source)
             lua_insert(T, 1);
             lua_pcall(T, n, 0, 0);
         }
+
+        lua_pop(L, 1);
+        return std::string();
     }
     else
     {
@@ -336,11 +339,9 @@ std::string runCode(lua_State* L, const std::string& source)
         error += "\nstack backtrace:\n";
         error += lua_debugtrace(T);
 
-        fprintf(stdout, "%s", error.c_str());
+        lua_pop(L, 1);
+        return error;
     }
-
-    lua_pop(L, 1);
-    return std::string();
 }
 
 // Replaces the top of the lua stack with the metatable __index for the value

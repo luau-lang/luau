@@ -246,6 +246,8 @@ const char* getCmdName(IrCmd cmd)
         return "FALLBACK_DUPCLOSURE";
     case IrCmd::FALLBACK_FORGPREP:
         return "FALLBACK_FORGPREP";
+    case IrCmd::SUBSTITUTE:
+        return "SUBSTITUTE";
     }
 
     LUAU_UNREACHABLE();
@@ -423,8 +425,8 @@ std::string toString(IrFunction& function, bool includeDetails)
         {
             IrInst& inst = function.instructions[index];
 
-            // Nop is used to replace dead instructions in-place, so it's not that useful to see them
-            if (inst.cmd == IrCmd::NOP)
+            // Skip pseudo instructions unless they are still referenced
+            if (isPseudo(inst.cmd) && inst.useCount == 0)
                 continue;
 
             append(ctx.result, " ");

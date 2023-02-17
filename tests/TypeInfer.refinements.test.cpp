@@ -1478,8 +1478,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_take_the_length")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
-
     CheckResult result = check(R"(
         local function f(x: unknown)
             if typeof(x) == "table" then
@@ -1488,8 +1486,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_take_the_length
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("table", toString(requireTypeAtPosition({3, 29})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK_EQ("a & table", toString(requireTypeAtPosition({3, 29})));
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ("unknown", toString(requireTypeAtPosition({3, 29})));
+    }
 }
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "refine_a_param_that_got_resolved_during_constraint_solving_stage")
