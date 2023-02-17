@@ -162,10 +162,10 @@ struct ConstraintGraphBuilder
     void visit(const ScopePtr& scope, AstStatDeclareFunction* declareFunction);
     void visit(const ScopePtr& scope, AstStatError* error);
 
-    InferencePack checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<TypeId>& expectedTypes = {});
-    InferencePack checkPack(const ScopePtr& scope, AstExpr* expr, const std::vector<TypeId>& expectedTypes = {});
+    InferencePack checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes = {});
+    InferencePack checkPack(const ScopePtr& scope, AstExpr* expr, const std::vector<std::optional<TypeId>>& expectedTypes = {});
 
-    InferencePack checkPack(const ScopePtr& scope, AstExprCall* call, const std::vector<TypeId>& expectedTypes);
+    InferencePack checkPack(const ScopePtr& scope, AstExprCall* call);
 
     /**
      * Checks an expression that is expected to evaluate to one type.
@@ -244,8 +244,10 @@ struct ConstraintGraphBuilder
      **/
     TypePackId resolveTypePack(const ScopePtr& scope, const AstTypeList& list, bool inTypeArguments);
 
-    std::vector<std::pair<Name, GenericTypeDefinition>> createGenerics(const ScopePtr& scope, AstArray<AstGenericType> generics);
-    std::vector<std::pair<Name, GenericTypePackDefinition>> createGenericPacks(const ScopePtr& scope, AstArray<AstGenericTypePack> packs);
+    std::vector<std::pair<Name, GenericTypeDefinition>> createGenerics(
+        const ScopePtr& scope, AstArray<AstGenericType> generics, bool useCache = false);
+    std::vector<std::pair<Name, GenericTypePackDefinition>> createGenericPacks(
+        const ScopePtr& scope, AstArray<AstGenericTypePack> packs, bool useCache = false);
 
     Inference flattenPack(const ScopePtr& scope, Location location, InferencePack pack);
 

@@ -104,7 +104,7 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(std::string_view source, c
     module.root = parseResult.root;
     module.mode = Mode::Definition;
 
-    ModulePtr checkedModule = check(module, Mode::Definition, globalScope, {});
+    ModulePtr checkedModule = check(module, Mode::Definition, {});
 
     if (checkedModule->errors.size() > 0)
         return LoadDefinitionFileResult{false, parseResult, checkedModule};
@@ -517,7 +517,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
                 typeCheckerForAutocomplete.unifierIterationLimit = std::nullopt;
 
             ModulePtr moduleForAutocomplete = FFlag::DebugLuauDeferredConstraintResolution
-                                                  ? check(sourceModule, mode, environmentScope, requireCycles, /*forAutocomplete*/ true)
+                                                  ? check(sourceModule, mode, requireCycles, /*forAutocomplete*/ true)
                                                   : typeCheckerForAutocomplete.check(sourceModule, Mode::Strict, environmentScope);
 
             moduleResolverForAutocomplete.modules[moduleName] = moduleForAutocomplete;
@@ -544,7 +544,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
         typeChecker.requireCycles = requireCycles;
 
-        ModulePtr module = FFlag::DebugLuauDeferredConstraintResolution ? check(sourceModule, mode, environmentScope, requireCycles)
+        ModulePtr module = FFlag::DebugLuauDeferredConstraintResolution ? check(sourceModule, mode, requireCycles)
                                                                         : typeChecker.check(sourceModule, mode, environmentScope);
 
         stats.timeCheck += getTimestamp() - timestamp;
@@ -855,11 +855,19 @@ ScopePtr Frontend::getGlobalScope()
     return globalScope;
 }
 
-ModulePtr Frontend::check(
-    const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope, std::vector<RequireCycle> requireCycles, bool forAutocomplete)
-{
+ModulePtr check(
+    const SourceModule& sourceModule,
+    const std::vector<RequireCycle>& requireCycles,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<InternalErrorReporter> iceHandler,
+    NotNull<ModuleResolver> moduleResolver,
+    NotNull<FileResolver> fileResolver,
+    const ScopePtr& globalScope,
+    NotNull<UnifierSharedState> unifierState,
+    FrontendOptions options
+) {
     ModulePtr result = std::make_shared<Module>();
-    result->reduction = std::make_unique<TypeReduction>(NotNull{&result->internalTypes}, builtinTypes, NotNull{&iceHandler});
+    result->reduction = std::make_unique<TypeReduction>(NotNull{&result->internalTypes}, builtinTypes, iceHandler);
 
     std::unique_ptr<DcrLogger> logger;
     if (FFlag::DebugLuauLogSolverToJson)
@@ -872,20 +880,17 @@ ModulePtr Frontend::check(
         }
     }
 
-    DataFlowGraph dfg = DataFlowGraphBuilder::build(sourceModule.root, NotNull{&iceHandler});
+    DataFlowGraph dfg = DataFlowGraphBuilder::build(sourceModule.root, iceHandler);
 
-    const NotNull<ModuleResolver> mr{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver};
-    const ScopePtr& globalScope{forAutocomplete ? typeCheckerForAutocomplete.globalScope : typeChecker.globalScope};
-
-    Normalizer normalizer{&result->internalTypes, builtinTypes, NotNull{&typeChecker.unifierState}};
+    Normalizer normalizer{&result->internalTypes, builtinTypes, unifierState};
 
     ConstraintGraphBuilder cgb{
         sourceModule.name,
         result,
         &result->internalTypes,
-        mr,
+        moduleResolver,
         builtinTypes,
-        NotNull(&iceHandler),
+        iceHandler,
         globalScope,
         logger.get(),
         NotNull{&dfg},
@@ -894,7 +899,7 @@ ModulePtr Frontend::check(
     cgb.visit(sourceModule.root);
     result->errors = std::move(cgb.errors);
 
-    ConstraintSolver cs{NotNull{&normalizer}, NotNull(cgb.rootScope), borrowConstraints(cgb.constraints), sourceModule.name, NotNull(&moduleResolver),
+    ConstraintSolver cs{NotNull{&normalizer}, NotNull(cgb.rootScope), borrowConstraints(cgb.constraints), sourceModule.name, moduleResolver,
         requireCycles, logger.get()};
 
     if (options.randomizeConstraintResolutionSeed)
@@ -908,7 +913,7 @@ ModulePtr Frontend::check(
     result->scopes = std::move(cgb.scopes);
     result->type = sourceModule.type;
 
-    result->clonePublicInterface(builtinTypes, iceHandler);
+    result->clonePublicInterface(builtinTypes, *iceHandler);
 
     Luau::check(builtinTypes, logger.get(), sourceModule, result.get());
 
@@ -927,6 +932,22 @@ ModulePtr Frontend::check(
     }
 
     return result;
+}
+
+ModulePtr Frontend::check(
+    const SourceModule& sourceModule, Mode mode, std::vector<RequireCycle> requireCycles, bool forAutocomplete)
+{
+    return Luau::check(
+        sourceModule,
+        requireCycles,
+        builtinTypes,
+        NotNull{&iceHandler},
+        NotNull{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver},
+        NotNull{fileResolver},
+        forAutocomplete ? typeCheckerForAutocomplete.globalScope : typeChecker.globalScope,
+        NotNull{&typeChecker.unifierState},
+        options
+    );
 }
 
 // Read AST into sourceModules if necessary.  Trace require()s.  Report parse errors.

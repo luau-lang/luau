@@ -162,7 +162,7 @@ struct Frontend
     ScopePtr getGlobalScope();
 
 private:
-    ModulePtr check(const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope, std::vector<RequireCycle> requireCycles,
+    ModulePtr check(const SourceModule& sourceModule, Mode mode, std::vector<RequireCycle> requireCycles,
         bool forAutocomplete = false);
 
     std::pair<SourceNode*, SourceModule*> getSourceNode(const ModuleName& name);
@@ -201,5 +201,17 @@ public:
 private:
     ScopePtr globalScope;
 };
+
+ModulePtr check(
+    const SourceModule& sourceModule,
+    const std::vector<RequireCycle>& requireCycles,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<InternalErrorReporter> iceHandler,
+    NotNull<ModuleResolver> moduleResolver,
+    NotNull<FileResolver> fileResolver,
+    const ScopePtr& globalScope,
+    NotNull<UnifierSharedState> unifierState,
+    FrontendOptions options
+);
 
 } // namespace Luau

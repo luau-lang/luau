@@ -16,7 +16,6 @@
 LUAU_FASTFLAGVARIABLE(LuauCompleteTableKeysBetter, false);
 LUAU_FASTFLAGVARIABLE(LuauFixAutocompleteInWhile, false);
 LUAU_FASTFLAGVARIABLE(LuauFixAutocompleteInFor, false);
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteStringContent, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -1268,9 +1267,6 @@ static bool isSimpleInterpolatedString(const AstNode* node)
 
 static std::optional<std::string> getStringContents(const AstNode* node)
 {
-    if (!FFlag::LuauAutocompleteStringContent)
-        return std::nullopt;
-
     if (const AstExprConstantString* string = node->as<AstExprConstantString>())
     {
         return std::string(string->value.data, string->value.size);

@@ -464,7 +464,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus")
         local foo
         local mt = {}
 
-        mt.__unm = function(val: typeof(foo)): string
+        mt.__unm = function(val): string
             return tostring(val.value) .. "test"
         end
 

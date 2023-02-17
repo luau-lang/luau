@@ -176,7 +176,22 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
         {
             frontend.lint(*sourceModule);
 
-            typeChecker.check(*sourceModule, sourceModule->mode.value_or(Luau::Mode::Nonstrict));
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+            {
+                Luau::check(
+                    *sourceModule,
+                    {},
+                    frontend.builtinTypes,
+                    NotNull{&ice},
+                    NotNull{&moduleResolver},
+                    NotNull{&fileResolver},
+                    typeChecker.globalScope,
+                    NotNull{&typeChecker.unifierState},
+                    frontend.options
+                );
+            }
+            else
+                typeChecker.check(*sourceModule, sourceModule->mode.value_or(Luau::Mode::Nonstrict));
         }
 
         throw ParseErrors(result.errors);

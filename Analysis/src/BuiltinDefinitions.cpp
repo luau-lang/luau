@@ -15,8 +15,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAGVARIABLE(LuauBuiltInMetatableNoBadSynthetic, false)
-
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
  * Some of them require richer generics than we have.  For instance, we do not yet have a way to talk
@@ -558,8 +556,6 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
 
                 if (tableName == metatableName)
                     mtv.syntheticName = tableName;
-                else if (!FFlag::LuauBuiltInMetatableNoBadSynthetic)
-                    mtv.syntheticName = "{ @metatable: " + metatableName + ", " + tableName + " }";
             }
 
             TypeId mtTy = arena.addType(mtv);

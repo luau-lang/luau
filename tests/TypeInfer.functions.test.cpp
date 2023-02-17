@@ -95,6 +95,26 @@ TEST_CASE_FIXTURE(Fixture, "infer_that_function_does_not_return_a_table")
     CHECK_EQ(result.errors[0], (TypeError{Location{Position{5, 8}, Position{5, 24}}, NotATable{typeChecker.numberType}}));
 }
 
+TEST_CASE_FIXTURE(Fixture, "generalize_table_property")
+{
+    CheckResult result = check(R"(
+        local T = {}
+
+        T.foo = function(x)
+            return x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    TypeId t = requireType("T");
+    const TableType* tt = get<TableType>(follow(t));
+    REQUIRE(tt);
+
+    TypeId fooTy = tt->props.at("foo").type;
+    CHECK("<a>(a) -> a" == toString(fooTy));
+}
+
 TEST_CASE_FIXTURE(Fixture, "vararg_functions_should_allow_calls_of_any_types_and_size")
 {
     CheckResult result = check(R"(

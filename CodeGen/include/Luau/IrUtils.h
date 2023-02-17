@@ -10,6 +10,8 @@ namespace Luau
 namespace CodeGen
 {
 
+struct IrBuilder;
+
 inline bool isJumpD(LuauOpcode op)
 {
     switch (op)
@@ -138,6 +140,7 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::DUP_TABLE:
     case IrCmd::NUM_TO_INDEX:
     case IrCmd::INT_TO_NUM:
+    case IrCmd::SUBSTITUTE:
         return true;
     default:
         break;
@@ -151,6 +154,12 @@ inline bool hasSideEffects(IrCmd cmd)
     // Instructions that don't produce a result most likely have other side-effects to make them useful
     // Right now, a full switch would mirror the 'hasResult' function, so we use this simple condition
     return !hasResult(cmd);
+}
+
+inline bool isPseudo(IrCmd cmd)
+{
+    // Instructions that are used for internal needs and are not a part of final lowering
+    return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE;
 }
 
 // Remove a single instruction
@@ -171,6 +180,18 @@ void replace(IrFunction& function, IrOp& original, IrOp replacement);
 // Replace a single instruction
 // Target instruction index instead of reference is used to handle introduction of a new block terminator
 void replace(IrFunction& function, uint32_t instIdx, IrInst replacement);
+
+// Replace instruction with a different value (using IrCmd::SUBSTITUTE)
+void substitute(IrFunction& function, IrInst& inst, IrOp replacement);
+
+// Replace instruction arguments that point to substitutions with target values
+void applySubstitutions(IrFunction& function, IrOp& op);
+void applySubstitutions(IrFunction& function, IrInst& inst);
+
+// Perform constant folding on instruction at index
+// For most instructions, successful folding results in a IrCmd::SUBSTITUTE
+// But it can also be successful on conditional control-flow, replacing it with an unconditional IrCmd::JUMP
+void foldConstants(IrBuilder& build, IrFunction& function, uint32_t instIdx);
 
 } // namespace CodeGen
 } // namespace Luau
