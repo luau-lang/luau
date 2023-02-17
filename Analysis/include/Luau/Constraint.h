@@ -90,6 +90,8 @@ struct NameConstraint
     TypeId namedType;
     std::string name;
     bool synthetic = false;
+    std::vector<TypeId> typeParameters;
+    std::vector<TypePackId> typePackParameters;
 };
 
 // target ~ inst target
@@ -101,7 +103,6 @@ struct TypeAliasExpansionConstraint
 
 struct FunctionCallConstraint
 {
-    std::vector<NotNull<const struct Constraint>> innerConstraints;
     TypeId fn;
     TypePackId argsPack;
     TypePackId result;

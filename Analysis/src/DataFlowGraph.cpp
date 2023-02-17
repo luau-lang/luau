@@ -372,7 +372,7 @@ ExpressionFlowGraph DataFlowGraphBuilder::visitExpr(DfgScope* scope, AstExprInde
 ExpressionFlowGraph DataFlowGraphBuilder::visitExpr(DfgScope* scope, AstExprIndexExpr* i)
 {
     visitExpr(scope, i->expr);
-    visitExpr(scope, i->expr);
+    visitExpr(scope, i->index);
 
     if (i->index->as<AstExprConstantString>())
     {
@@ -405,6 +405,13 @@ ExpressionFlowGraph DataFlowGraphBuilder::visitExpr(DfgScope* scope, AstExprFunc
 
 ExpressionFlowGraph DataFlowGraphBuilder::visitExpr(DfgScope* scope, AstExprTable* t)
 {
+    for (AstExprTable::Item item : t->items)
+    {
+        if (item.key)
+            visitExpr(scope, item.key);
+        visitExpr(scope, item.value);
+    }
+
     return {};
 }
 

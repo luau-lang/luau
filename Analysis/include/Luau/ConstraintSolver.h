@@ -183,7 +183,7 @@ struct ConstraintSolver
     /** Pushes a new solver constraint to the solver.
      * @param cv the body of the constraint.
      **/
-    void pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv);
+    NotNull<Constraint> pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv);
 
     /**
      * Attempts to resolve a module from its module information. Returns the

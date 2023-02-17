@@ -55,7 +55,7 @@ enum class IrCmd : uint8_t
 
     // Get pointer (TValue) to table array at index
     // A: pointer (Table)
-    // B: unsigned int
+    // B: int
     GET_ARR_ADDR,
 
     // Get pointer (LuaNode) to table node element at the active cached slot index
@@ -177,7 +177,7 @@ enum class IrCmd : uint8_t
     // A: pointer (Table)
     DUP_TABLE,
 
-    // Try to convert a double number into a table index or jump if it's not an integer
+    // Try to convert a double number into a table index (int) or jump if it's not an integer
     // A: double
     // B: block
     NUM_TO_INDEX,
@@ -216,10 +216,10 @@ enum class IrCmd : uint8_t
     // B: unsigned int (import path)
     GET_IMPORT,
 
-    // Concatenate multiple TValues
-    // A: Rn (where to store the result)
-    // B: unsigned int (index of the first VM stack slot)
-    // C: unsigned int (number of stack slots to go over)
+    // Concatenate multiple TValues into a string
+    // A: Rn (value start)
+    // B: unsigned int (number of registers to go over)
+    // Note: result is stored in the register specified in 'A'
     CONCAT,
 
     // Load function upvalue into stack slot
@@ -262,7 +262,8 @@ enum class IrCmd : uint8_t
 
     // Guard against index overflowing the table array size
     // A: pointer (Table)
-    // B: block
+    // B: int (index)
+    // C: block
     CHECK_ARRAY_SIZE,
 
     // Guard against cached table node slot not matching the actual table node slot for a key
@@ -451,8 +452,12 @@ enum class IrCmd : uint8_t
     // Prepare loop variables for a generic for loop, jump to the loop backedge unconditionally
     // A: unsigned int (bytecode instruction index)
     // B: Rn (loop state, updates Rn Rn+1 Rn+2)
-    // B: block
+    // C: block
     FALLBACK_FORGPREP,
+
+    // Instruction that passes value through, it is produced by constant folding and users substitute it with the value
+    SUBSTITUTE,
+    // A: operand of any type
 };
 
 enum class IrConstKind : uint8_t
@@ -658,6 +663,12 @@ struct IrFunction
 
         LUAU_ASSERT(value.kind == IrConstKind::Double);
         return value.valueDouble;
+    }
+
+    IrCondition conditionOp(IrOp op)
+    {
+        LUAU_ASSERT(op.kind == IrOpKind::Condition);
+        return IrCondition(op.index);
     }
 };
 

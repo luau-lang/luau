@@ -20,7 +20,7 @@ namespace Luau
 namespace CodeGen
 {
 
-static RegisterX64 gprAlocOrder[] = {rax, rdx, rcx, rbx, rsi, rdi, r8, r9, r10, r11};
+static const RegisterX64 kGprAllocOrder[] = {rax, rdx, rcx, rbx, rsi, rdi, r8, r9, r10, r11};
 
 IrLoweringX64::IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, NativeState& data, Proto* proto, IrFunction& function)
     : build(build)
@@ -111,7 +111,7 @@ void IrLoweringX64::lower(AssemblyOptions options)
         if (options.includeIr)
         {
             build.logAppend("# ");
-            toStringDetailed(ctx, block, uint32_t(i));
+            toStringDetailed(ctx, block, blockIndex);
         }
 
         build.setLabel(block.label);
@@ -133,9 +133,9 @@ void IrLoweringX64::lower(AssemblyOptions options)
 
             IrInst& inst = function.instructions[index];
 
-            // Nop is used to replace dead instructions in-place
-            // Because it doesn't have any effects aside from output (when enabled), we skip it completely
-            if (inst.cmd == IrCmd::NOP)
+            // Skip pseudo instructions, but make sure they are not used at this stage
+            // This also prevents them from getting into text output when that's enabled
+            if (isPseudo(inst.cmd))
             {
                 LUAU_ASSERT(inst.useCount == 0);
                 continue;
@@ -263,8 +263,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
             build.mov(inst.regX64, qword[regOp(inst.a) + offsetof(Table, array)]);
 
-            if (uintOp(inst.b) != 0)
-                build.lea(inst.regX64, addr[inst.regX64 + uintOp(inst.b) * sizeof(TValue)]);
+            if (intOp(inst.b) != 0)
+                build.lea(inst.regX64, addr[inst.regX64 + intOp(inst.b) * sizeof(TValue)]);
         }
         else
         {
@@ -688,9 +688,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         emitInstGetImportFallback(build, inst.a.index, uintOp(inst.b));
         break;
     case IrCmd::CONCAT:
+        LUAU_ASSERT(inst.a.kind == IrOpKind::VmReg);
+
         build.mov(rArg1, rState);
-        build.mov(dwordReg(rArg2), uintOp(inst.a));
-        build.mov(dwordReg(rArg3), uintOp(inst.b));
+        build.mov(dwordReg(rArg2), uintOp(inst.b));
+        build.mov(dwordReg(rArg3), inst.a.index + uintOp(inst.b) - 1);
         build.call(qword[rNativeContext + offsetof(NativeContext, luaV_concat)]);
 
         emitUpdateBase(build);
@@ -778,7 +780,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         if (inst.b.kind == IrOpKind::Inst)
             build.cmp(dword[regOp(inst.a) + offsetof(Table, sizearray)], regOp(inst.b));
         else if (inst.b.kind == IrOpKind::Constant)
-            build.cmp(dword[regOp(inst.a) + offsetof(Table, sizearray)], uintOp(inst.b));
+            build.cmp(dword[regOp(inst.a) + offsetof(Table, sizearray)], intOp(inst.b));
         else
             LUAU_ASSERT(!"Unsupported instruction form");
 
@@ -897,6 +899,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmReg);
 
         emitInstNameCall(build, pc, uintOp(inst.a), proto->k, blockOp(inst.d).label, blockOp(inst.e).label);
+        jumpOrFallthrough(blockOp(inst.d), next);
         break;
     }
     case IrCmd::LOP_CALL:
@@ -1133,7 +1136,7 @@ RegisterX64 IrLoweringX64::allocGprReg(SizeX64 preferredSize)
     LUAU_ASSERT(
         preferredSize == SizeX64::byte || preferredSize == SizeX64::word || preferredSize == SizeX64::dword || preferredSize == SizeX64::qword);
 
-    for (RegisterX64 reg : gprAlocOrder)
+    for (RegisterX64 reg : kGprAllocOrder)
     {
         if (freeGprMap[reg.index])
         {

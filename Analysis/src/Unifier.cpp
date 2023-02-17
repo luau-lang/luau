@@ -17,7 +17,6 @@
 
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
-LUAU_FASTFLAGVARIABLE(LuauUnifyAnyTxnLog, false)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauScalarShapeUnifyToMtOwner2, false)
 LUAU_FASTFLAGVARIABLE(LuauUninhabitedSubAnything2, false)
@@ -475,40 +474,23 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         return;
     }
 
-    if (FFlag::LuauUnifyAnyTxnLog)
-    {
-        if (log.get<AnyType>(superTy))
-            return tryUnifyWithAny(subTy, builtinTypes->anyType);
+    if (log.get<AnyType>(superTy))
+        return tryUnifyWithAny(subTy, builtinTypes->anyType);
 
-        if (log.get<ErrorType>(superTy))
-            return tryUnifyWithAny(subTy, builtinTypes->errorType);
+    if (log.get<ErrorType>(superTy))
+        return tryUnifyWithAny(subTy, builtinTypes->errorType);
 
-        if (log.get<UnknownType>(superTy))
-            return tryUnifyWithAny(subTy, builtinTypes->unknownType);
+    if (log.get<UnknownType>(superTy))
+        return tryUnifyWithAny(subTy, builtinTypes->unknownType);
 
-        if (log.get<AnyType>(subTy))
-            return tryUnifyWithAny(superTy, builtinTypes->anyType);
+    if (log.get<AnyType>(subTy))
+        return tryUnifyWithAny(superTy, builtinTypes->anyType);
 
-        if (log.get<ErrorType>(subTy))
-            return tryUnifyWithAny(superTy, builtinTypes->errorType);
+    if (log.get<ErrorType>(subTy))
+        return tryUnifyWithAny(superTy, builtinTypes->errorType);
 
-        if (log.get<NeverType>(subTy))
-            return tryUnifyWithAny(superTy, builtinTypes->neverType);
-    }
-    else
-    {
-        if (get<ErrorType>(superTy) || get<AnyType>(superTy) || get<UnknownType>(superTy))
-            return tryUnifyWithAny(subTy, superTy);
-
-        if (get<AnyType>(subTy))
-            return tryUnifyWithAny(superTy, subTy);
-
-        if (log.get<ErrorType>(subTy))
-            return tryUnifyWithAny(superTy, subTy);
-
-        if (log.get<NeverType>(subTy))
-            return tryUnifyWithAny(superTy, subTy);
-    }
+    if (log.get<NeverType>(subTy))
+        return tryUnifyWithAny(superTy, builtinTypes->neverType);
 
     auto& cache = sharedState.cachedUnify;
 
@@ -2535,18 +2517,9 @@ void Unifier::tryUnifyWithAny(TypeId subTy, TypeId anyTy)
 {
     LUAU_ASSERT(get<AnyType>(anyTy) || get<ErrorType>(anyTy) || get<UnknownType>(anyTy) || get<NeverType>(anyTy));
 
-    if (FFlag::LuauUnifyAnyTxnLog)
-    {
-        // These types are not visited in general loop below
-        if (log.get<PrimitiveType>(subTy) || log.get<AnyType>(subTy) || log.get<ClassType>(subTy))
-            return;
-    }
-    else
-    {
-        // These types are not visited in general loop below
-        if (get<PrimitiveType>(subTy) || get<AnyType>(subTy) || get<ClassType>(subTy))
-            return;
-    }
+    // These types are not visited in general loop below
+    if (log.get<PrimitiveType>(subTy) || log.get<AnyType>(subTy) || log.get<ClassType>(subTy))
+        return;
 
     TypePackId anyTp = types->addTypePack(TypePackVar{VariadicTypePack{anyTy}});
 

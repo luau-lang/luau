@@ -226,7 +226,7 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const char* expectedError;
+    std::string expectedError;
     if (FFlag::LuauTypeMismatchInvarianceInError)
         expectedError = "Type 'bad' could not be converted into 'U<number>'\n"
                         "caused by:\n"

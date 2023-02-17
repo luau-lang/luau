@@ -695,10 +695,10 @@ void translateInstGetTableN(IrBuilder& build, const Instruction* pc, int pcpos)
 
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
 
-    build.inst(IrCmd::CHECK_ARRAY_SIZE, vb, build.constUint(c), fallback);
+    build.inst(IrCmd::CHECK_ARRAY_SIZE, vb, build.constInt(c), fallback);
     build.inst(IrCmd::CHECK_NO_METATABLE, vb, fallback);
 
-    IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constUint(c));
+    IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(c));
 
     // TODO: per-component loads and stores might be preferable
     IrOp arrElTval = build.inst(IrCmd::LOAD_TVALUE, arrEl);
@@ -725,11 +725,11 @@ void translateInstSetTableN(IrBuilder& build, const Instruction* pc, int pcpos)
 
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
 
-    build.inst(IrCmd::CHECK_ARRAY_SIZE, vb, build.constUint(c), fallback);
+    build.inst(IrCmd::CHECK_ARRAY_SIZE, vb, build.constInt(c), fallback);
     build.inst(IrCmd::CHECK_NO_METATABLE, vb, fallback);
     build.inst(IrCmd::CHECK_READONLY, vb, fallback);
 
-    IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constUint(c));
+    IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(c));
 
     // TODO: per-component loads and stores might be preferable
     IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
@@ -969,7 +969,7 @@ void translateInstConcat(IrBuilder& build, const Instruction* pc, int pcpos)
     int rc = LUAU_INSN_C(*pc);
 
     build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
-    build.inst(IrCmd::CONCAT, build.constUint(rc - rb + 1), build.constUint(rc));
+    build.inst(IrCmd::CONCAT, build.vmReg(rb), build.constUint(rc - rb + 1));
 
     // TODO: per-component loads and stores might be preferable
     IrOp tvb = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(rb));

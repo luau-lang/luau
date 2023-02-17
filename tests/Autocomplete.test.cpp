@@ -3442,8 +3442,6 @@ TEST_CASE_FIXTURE(ACFixture, "type_reduction_is_hooked_up_to_autocomplete")
 
 TEST_CASE_FIXTURE(ACFixture, "string_contents_is_available_to_callback")
 {
-    ScopedFastFlag luauAutocompleteStringContent{"LuauAutocompleteStringContent", true};
-
     loadDefinition(R"(
         declare function require(path: string): any
     )");

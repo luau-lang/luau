@@ -11,6 +11,8 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Type.h"
 
+#include <algorithm>
+
 LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
@@ -334,13 +336,12 @@ void ConstraintGraphBuilder::visitBlockWithoutChildScope(const ScopePtr& scope, 
 
     // In order to enable mutually-recursive type aliases, we need to
     // populate the type bindings before we actually check any of the
-    // alias statements. Since we're not ready to actually resolve
-    // any of the annotations, we just use a fresh type for now.
+    // alias statements.
     for (AstStat* stat : block->body)
     {
         if (auto alias = stat->as<AstStatTypeAlias>())
         {
-            if (scope->privateTypeBindings.count(alias->name.value) != 0)
+            if (scope->exportedTypeBindings.count(alias->name.value) || scope->privateTypeBindings.count(alias->name.value))
             {
                 auto it = aliasDefinitionLocations.find(alias->name.value);
                 LUAU_ASSERT(it != aliasDefinitionLocations.end());
@@ -348,30 +349,28 @@ void ConstraintGraphBuilder::visitBlockWithoutChildScope(const ScopePtr& scope, 
                 continue;
             }
 
-            bool hasGenerics = alias->generics.size > 0 || alias->genericPacks.size > 0;
+            ScopePtr defnScope = childScope(alias, scope);
 
-            ScopePtr defnScope = scope;
-            if (hasGenerics)
-            {
-                defnScope = childScope(alias, scope);
-            }
+            TypeId initialType = arena->addType(BlockedType{});
+            TypeFun initialFun{initialType};
 
-            TypeId initialType = freshType(scope);
-            TypeFun initialFun = TypeFun{initialType};
-
-            for (const auto& [name, gen] : createGenerics(defnScope, alias->generics))
+            for (const auto& [name, gen] : createGenerics(defnScope, alias->generics, /* useCache */ true))
             {
                 initialFun.typeParams.push_back(gen);
                 defnScope->privateTypeBindings[name] = TypeFun{gen.ty};
             }
 
-            for (const auto& [name, genPack] : createGenericPacks(defnScope, alias->genericPacks))
+            for (const auto& [name, genPack] : createGenericPacks(defnScope, alias->genericPacks, /* useCache */ true))
             {
                 initialFun.typePackParams.push_back(genPack);
                 defnScope->privateTypePackBindings[name] = genPack.tp;
             }
 
-            scope->privateTypeBindings[alias->name.value] = std::move(initialFun);
+            if (alias->exported)
+                scope->exportedTypeBindings[alias->name.value] = std::move(initialFun);
+            else
+                scope->privateTypeBindings[alias->name.value] = std::move(initialFun);
+
             astTypeAliasDefiningScopes[alias] = defnScope;
             aliasDefinitionLocations[alias->name.value] = alias->location;
         }
@@ -387,42 +386,46 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStat* stat)
 
     if (auto s = stat->as<AstStatBlock>())
         visit(scope, s);
+    else if (auto i = stat->as<AstStatIf>())
+        visit(scope, i);
+    else if (auto s = stat->as<AstStatWhile>())
+        visit(scope, s);
+    else if (auto s = stat->as<AstStatRepeat>())
+        visit(scope, s);
+    else if (stat->is<AstStatBreak>() || stat->is<AstStatContinue>())
+    {
+        // Nothing
+    }
+    else if (auto r = stat->as<AstStatReturn>())
+        visit(scope, r);
+    else if (auto e = stat->as<AstStatExpr>())
+        checkPack(scope, e->expr);
     else if (auto s = stat->as<AstStatLocal>())
         visit(scope, s);
     else if (auto s = stat->as<AstStatFor>())
         visit(scope, s);
     else if (auto s = stat->as<AstStatForIn>())
         visit(scope, s);
-    else if (auto s = stat->as<AstStatWhile>())
-        visit(scope, s);
-    else if (auto s = stat->as<AstStatRepeat>())
-        visit(scope, s);
-    else if (auto f = stat->as<AstStatFunction>())
-        visit(scope, f);
-    else if (auto f = stat->as<AstStatLocalFunction>())
-        visit(scope, f);
-    else if (auto r = stat->as<AstStatReturn>())
-        visit(scope, r);
     else if (auto a = stat->as<AstStatAssign>())
         visit(scope, a);
     else if (auto a = stat->as<AstStatCompoundAssign>())
         visit(scope, a);
-    else if (auto e = stat->as<AstStatExpr>())
-        checkPack(scope, e->expr);
-    else if (auto i = stat->as<AstStatIf>())
-        visit(scope, i);
+    else if (auto f = stat->as<AstStatFunction>())
+        visit(scope, f);
+    else if (auto f = stat->as<AstStatLocalFunction>())
+        visit(scope, f);
     else if (auto a = stat->as<AstStatTypeAlias>())
         visit(scope, a);
     else if (auto s = stat->as<AstStatDeclareGlobal>())
         visit(scope, s);
-    else if (auto s = stat->as<AstStatDeclareClass>())
-        visit(scope, s);
     else if (auto s = stat->as<AstStatDeclareFunction>())
+        visit(scope, s);
+    else if (auto s = stat->as<AstStatDeclareClass>())
         visit(scope, s);
     else if (auto s = stat->as<AstStatError>())
         visit(scope, s);
     else
-        LUAU_ASSERT(0);
+        LUAU_ASSERT(0 && "Internal error: Unknown AstStat type");
 }
 
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
@@ -482,7 +485,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
         }
         else
         {
-            std::vector<TypeId> expectedTypes;
+            std::vector<std::optional<TypeId>> expectedTypes;
             if (hasAnnotation)
                 expectedTypes.insert(begin(expectedTypes), begin(varTypes) + i, end(varTypes));
 
@@ -680,6 +683,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction* funct
 
     TypeId generalizedType = arena->addType(BlockedType{});
 
+    Checkpoint start = checkpoint(this);
     FunctionSignature sig = checkFunctionSignature(scope, function->func);
 
     if (AstExprLocal* localName = function->name->as<AstExprLocal>())
@@ -724,7 +728,6 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction* funct
     if (generalizedType == nullptr)
         ice->ice("generalizedType == nullptr", function->location);
 
-    Checkpoint start = checkpoint(this);
     checkFunctionBody(sig.bodyScope, function->func);
     Checkpoint end = checkpoint(this);
 
@@ -745,7 +748,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatReturn* ret)
     // interesting in it is if the function has an explicit return annotation.
     // If this is the case, then we can expect that the return expression
     // conforms to that.
-    std::vector<TypeId> expectedTypes;
+    std::vector<std::optional<TypeId>> expectedTypes;
     for (TypeId ty : scope->returnType)
         expectedTypes.push_back(ty);
 
@@ -764,8 +767,21 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatAssign* assign)
 {
     TypePackId varPackId = checkLValues(scope, assign->vars);
 
-    TypePack expectedTypes = extendTypePack(*arena, builtinTypes, varPackId, assign->values.size);
-    TypePackId valuePack = checkPack(scope, assign->values, expectedTypes.head).tp;
+    TypePack expectedPack = extendTypePack(*arena, builtinTypes, varPackId, assign->values.size);
+
+    std::vector<std::optional<TypeId>> expectedTypes;
+    expectedTypes.reserve(expectedPack.head.size());
+
+    for (TypeId ty : expectedPack.head)
+    {
+        ty = follow(ty);
+        if (get<FreeType>(ty))
+            expectedTypes.push_back(std::nullopt);
+        else
+            expectedTypes.push_back(ty);
+    }
+
+    TypePackId valuePack = checkPack(scope, assign->values, expectedTypes).tp;
 
     addConstraint(scope, assign->location, PackSubtypeConstraint{valuePack, varPackId});
 }
@@ -800,35 +816,70 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatIf* ifStatement
     }
 }
 
+static bool occursCheck(TypeId needle, TypeId haystack)
+{
+    LUAU_ASSERT(get<BlockedType>(needle));
+    haystack = follow(haystack);
+
+    auto checkHaystack = [needle](TypeId haystack) {
+        return occursCheck(needle, haystack);
+    };
+
+    if (needle == haystack)
+        return true;
+    else if (auto ut = get<UnionType>(haystack))
+        return std::any_of(begin(ut), end(ut), checkHaystack);
+    else if (auto it = get<IntersectionType>(haystack))
+        return std::any_of(begin(it), end(it), checkHaystack);
+
+    return false;
+}
+
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatTypeAlias* alias)
 {
-    auto bindingIt = scope->privateTypeBindings.find(alias->name.value);
-    ScopePtr* defnIt = astTypeAliasDefiningScopes.find(alias);
+    ScopePtr* defnScope = astTypeAliasDefiningScopes.find(alias);
+
+    std::unordered_map<Name, TypeFun>* typeBindings;
+    if (alias->exported)
+        typeBindings = &scope->exportedTypeBindings;
+    else
+        typeBindings = &scope->privateTypeBindings;
+
     // These will be undefined if the alias was a duplicate definition, in which
     // case we just skip over it.
-    if (bindingIt == scope->privateTypeBindings.end() || defnIt == nullptr)
-    {
+    auto bindingIt = typeBindings->find(alias->name.value);
+    if (bindingIt == typeBindings->end() || defnScope == nullptr)
         return;
-    }
 
-    ScopePtr resolvingScope = *defnIt;
-    TypeId ty = resolveType(resolvingScope, alias->type, /* inTypeArguments */ false);
+    TypeId ty = resolveType(*defnScope, alias->type, /* inTypeArguments */ false);
 
-    if (alias->exported)
+    TypeId aliasTy = bindingIt->second.type;
+    LUAU_ASSERT(get<BlockedType>(aliasTy));
+
+    if (occursCheck(aliasTy, ty))
     {
-        Name typeName(alias->name.value);
-        scope->exportedTypeBindings[typeName] = TypeFun{ty};
+        asMutable(aliasTy)->ty.emplace<BoundType>(builtinTypes->anyType);
+        reportError(alias->nameLocation, OccursCheckFailed{});
     }
+    else
+        asMutable(aliasTy)->ty.emplace<BoundType>(ty);
 
-    LUAU_ASSERT(get<FreeType>(bindingIt->second.type));
+    std::vector<TypeId> typeParams;
+    for (auto tyParam : createGenerics(*defnScope, alias->generics, /* useCache */ true))
+        typeParams.push_back(tyParam.second.ty);
 
-    // Rather than using a subtype constraint, we instead directly bind
-    // the free type we generated in the first pass to the resolved type.
-    // This prevents a case where you could cause another constraint to
-    // bind the free alias type to an unrelated type, causing havoc.
-    asMutable(bindingIt->second.type)->ty.emplace<BoundType>(ty);
+    std::vector<TypePackId> typePackParams;
+    for (auto tpParam : createGenericPacks(*defnScope, alias->genericPacks, /* useCache */ true))
+        typePackParams.push_back(tpParam.second.tp);
 
-    addConstraint(scope, alias->location, NameConstraint{ty, alias->name.value});
+    addConstraint(scope, alias->type->location,
+        NameConstraint{
+            ty,
+            alias->name.value,
+            /*synthetic=*/false,
+            std::move(typeParams),
+            std::move(typePackParams),
+        });
 }
 
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareGlobal* global)
@@ -997,7 +1048,8 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatError* error)
         check(scope, expr);
 }
 
-InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<TypeId>& expectedTypes)
+InferencePack ConstraintGraphBuilder::checkPack(
+    const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes)
 {
     std::vector<TypeId> head;
     std::optional<TypePackId> tail;
@@ -1010,11 +1062,11 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstArray<
             std::optional<TypeId> expectedType;
             if (i < expectedTypes.size())
                 expectedType = expectedTypes[i];
-            head.push_back(check(scope, expr).ty);
+            head.push_back(check(scope, expr, expectedType).ty);
         }
         else
         {
-            std::vector<TypeId> expectedTailTypes;
+            std::vector<std::optional<TypeId>> expectedTailTypes;
             if (i < expectedTypes.size())
                 expectedTailTypes.assign(begin(expectedTypes) + i, end(expectedTypes));
             tail = checkPack(scope, expr, expectedTailTypes).tp;
@@ -1027,7 +1079,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstArray<
         return InferencePack{arena->addTypePack(TypePack{std::move(head), tail})};
 }
 
-InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* expr, const std::vector<TypeId>& expectedTypes)
+InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* expr, const std::vector<std::optional<TypeId>>& expectedTypes)
 {
     RecursionCounter counter{&recursionCount};
 
@@ -1040,7 +1092,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* 
     InferencePack result;
 
     if (AstExprCall* call = expr->as<AstExprCall>())
-        result = checkPack(scope, call, expectedTypes);
+        result = checkPack(scope, call);
     else if (AstExprVarargs* varargs = expr->as<AstExprVarargs>())
     {
         if (scope->varargPack)
@@ -1062,7 +1114,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* 
     return result;
 }
 
-InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCall* call, const std::vector<TypeId>& expectedTypes)
+InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCall* call)
 {
     std::vector<AstExpr*> exprArgs;
 
@@ -1164,7 +1216,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
         }
         else
         {
-            auto [tp, refis] = checkPack(scope, arg, {}); // FIXME? not sure about expectedTypes here
+            auto [tp, refis] = checkPack(scope, arg, {});
             argTail = tp;
             argumentRefinements.insert(argumentRefinements.end(), refis.begin(), refis.end());
         }
@@ -1209,24 +1261,13 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
         if (matchAssert(*call) && !argumentRefinements.empty())
             applyRefinements(scope, call->args.data[0]->location, argumentRefinements[0]);
 
-        TypeId instantiatedType = arena->addType(BlockedType{});
         // TODO: How do expectedTypes play into this?  Do they?
         TypePackId rets = arena->addTypePack(BlockedTypePack{});
         TypePackId argPack = arena->addTypePack(TypePack{args, argTail});
         FunctionType ftv(TypeLevel{}, scope.get(), argPack, rets);
-        TypeId inferredFnType = arena->addType(ftv);
-
-        unqueuedConstraints.push_back(
-            std::make_unique<Constraint>(NotNull{scope.get()}, call->func->location, InstantiationConstraint{instantiatedType, fnType}));
-        NotNull<const Constraint> ic(unqueuedConstraints.back().get());
-
-        unqueuedConstraints.push_back(
-            std::make_unique<Constraint>(NotNull{scope.get()}, call->func->location, SubtypeConstraint{instantiatedType, inferredFnType}));
-        NotNull<Constraint> sc(unqueuedConstraints.back().get());
 
         NotNull<Constraint> fcc = addConstraint(scope, call->func->location,
             FunctionCallConstraint{
-                {ic, sc},
                 fnType,
                 argPack,
                 rets,
@@ -1276,12 +1317,7 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr, st
     else if (expr->is<AstExprVarargs>())
         result = flattenPack(scope, expr->location, checkPack(scope, expr));
     else if (auto call = expr->as<AstExprCall>())
-    {
-        std::vector<TypeId> expectedTypes;
-        if (expectedType)
-            expectedTypes.push_back(*expectedType);
-        result = flattenPack(scope, expr->location, checkPack(scope, call, expectedTypes)); // TODO: needs predicates too
-    }
+        result = flattenPack(scope, expr->location, checkPack(scope, call)); // TODO: needs predicates too
     else if (auto a = expr->as<AstExprFunction>())
     {
         Checkpoint startCheckpoint = checkpoint(this);
@@ -1883,6 +1919,7 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
     }
 
     std::vector<TypeId> argTypes;
+    std::vector<std::optional<FunctionArgument>> argNames;
     TypePack expectedArgPack;
 
     const FunctionType* expectedFunction = expectedType ? get<FunctionType>(*expectedType) : nullptr;
@@ -1895,13 +1932,26 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
         genericTypePacks = expectedFunction->genericPacks;
     }
 
+    if (fn->self)
+    {
+        TypeId selfType = freshType(signatureScope);
+        argTypes.push_back(selfType);
+        argNames.emplace_back(FunctionArgument{fn->self->name.value, fn->self->location});
+        signatureScope->bindings[fn->self] = Binding{selfType, fn->self->location};
+    }
+
     for (size_t i = 0; i < fn->args.size; ++i)
     {
         AstLocal* local = fn->args.data[i];
 
         TypeId t = freshType(signatureScope);
         argTypes.push_back(t);
+        argNames.emplace_back(FunctionArgument{local->name.value, local->location});
         signatureScope->bindings[local] = Binding{t, local->location};
+
+        auto def = dfg->getDef(local);
+        LUAU_ASSERT(def);
+        signatureScope->dcrRefinements[*def] = t;
 
         TypeId annotationTy = t;
 
@@ -1918,12 +1968,6 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
         {
             addConstraint(signatureScope, local->location, SubtypeConstraint{t, expectedArgPack.head[i]});
         }
-
-        // HACK: This is the one case where the type of the definition will diverge from the type of the binding.
-        // We need to do this because there are cases where type refinements needs to have the information available
-        // at constraint generation time.
-        if (auto def = dfg->getDef(local))
-            signatureScope->dcrRefinements[*def] = annotationTy;
     }
 
     TypePackId varargPack = nullptr;
@@ -1978,6 +2022,7 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
     actualFunction.hasNoGenerics = !hasGenerics;
     actualFunction.generics = std::move(genericTypes);
     actualFunction.genericPacks = std::move(genericTypePacks);
+    actualFunction.argNames = std::move(argNames);
 
     TypeId actualFunctionType = arena->addType(std::move(actualFunction));
     LUAU_ASSERT(actualFunctionType);
@@ -2085,11 +2130,6 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
         }
         else
         {
-            std::string typeName;
-            if (ref->prefix)
-                typeName = std::string(ref->prefix->value) + ".";
-            typeName += ref->name.value;
-
             result = builtinTypes->errorRecoveryType();
         }
     }
@@ -2245,6 +2285,8 @@ TypePackId ConstraintGraphBuilder::resolveTypePack(const ScopePtr& scope, AstTyp
     else if (auto var = tp->as<AstTypePackVariadic>())
     {
         TypeId ty = resolveType(scope, var->variadicType, inTypeArgument);
+        if (get<ErrorType>(follow(ty)))
+            ty = freshType(scope);
         result = arena->addTypePack(TypePackVar{VariadicTypePack{ty}});
     }
     else if (auto gen = tp->as<AstTypePackGeneric>())
@@ -2287,12 +2329,22 @@ TypePackId ConstraintGraphBuilder::resolveTypePack(const ScopePtr& scope, const 
     return arena->addTypePack(TypePack{head, tail});
 }
 
-std::vector<std::pair<Name, GenericTypeDefinition>> ConstraintGraphBuilder::createGenerics(const ScopePtr& scope, AstArray<AstGenericType> generics)
+std::vector<std::pair<Name, GenericTypeDefinition>> ConstraintGraphBuilder::createGenerics(
+    const ScopePtr& scope, AstArray<AstGenericType> generics, bool useCache)
 {
     std::vector<std::pair<Name, GenericTypeDefinition>> result;
     for (const auto& generic : generics)
     {
-        TypeId genericTy = arena->addType(GenericType{scope.get(), generic.name.value});
+        TypeId genericTy = nullptr;
+
+        if (auto it = scope->parent->typeAliasTypeParameters.find(generic.name.value); useCache && it != scope->parent->typeAliasTypeParameters.end())
+            genericTy = it->second;
+        else
+        {
+            genericTy = arena->addType(GenericType{scope.get(), generic.name.value});
+            scope->parent->typeAliasTypeParameters[generic.name.value] = genericTy;
+        }
+
         std::optional<TypeId> defaultTy = std::nullopt;
 
         if (generic.defaultValue)
@@ -2305,12 +2357,22 @@ std::vector<std::pair<Name, GenericTypeDefinition>> ConstraintGraphBuilder::crea
 }
 
 std::vector<std::pair<Name, GenericTypePackDefinition>> ConstraintGraphBuilder::createGenericPacks(
-    const ScopePtr& scope, AstArray<AstGenericTypePack> generics)
+    const ScopePtr& scope, AstArray<AstGenericTypePack> generics, bool useCache)
 {
     std::vector<std::pair<Name, GenericTypePackDefinition>> result;
     for (const auto& generic : generics)
     {
-        TypePackId genericTy = arena->addTypePack(TypePackVar{GenericTypePack{scope.get(), generic.name.value}});
+        TypePackId genericTy;
+
+        if (auto it = scope->parent->typeAliasTypePackParameters.find(generic.name.value);
+            useCache && it != scope->parent->typeAliasTypePackParameters.end())
+            genericTy = it->second;
+        else
+        {
+            genericTy = arena->addTypePack(TypePackVar{GenericTypePack{scope.get(), generic.name.value}});
+            scope->parent->typeAliasTypePackParameters[generic.name.value] = genericTy;
+        }
+
         std::optional<TypePackId> defaultTy = std::nullopt;
 
         if (generic.defaultValue)

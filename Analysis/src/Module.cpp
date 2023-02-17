@@ -227,7 +227,10 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
 
     // Copy external stuff over to Module itself
     this->returnType = moduleScope->returnType;
-    this->exportedTypeBindings = std::move(moduleScope->exportedTypeBindings);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        this->exportedTypeBindings = moduleScope->exportedTypeBindings;
+    else
+        this->exportedTypeBindings = std::move(moduleScope->exportedTypeBindings);
 }
 
 bool Module::hasModuleScope() const
