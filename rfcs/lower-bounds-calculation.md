@@ -1,5 +1,7 @@
 # Lower Bounds Calculation
 
+**Status**: Abandoned in favor of a future design for full local inference
+
 ## Summary
 
 We propose adapting lower bounds calculation from Pierce's Local Type Inference paper into the Luau type inference algorithm.
