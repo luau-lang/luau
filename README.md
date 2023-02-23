@@ -17,29 +17,20 @@ Luau is an embeddable language, but it also comes with two command-line tools by
 
 `luau-analyze` is a command-line type checker and linter; given a set of input files, it produces errors/warnings according to the file configuration, which can be customized by using `--!` comments in the files or [`.luaurc`](https://github.com/Roblox/luau/blob/master/rfcs/config-luaurc.md) files. For details please refer to [type checking]( https://luau-lang.org/typecheck) and [linting](https://luau-lang.org/lint) documentation.
 
-
 # Installation
-You can install and run Luau using the following methods:
 
-1. Homebrew 
-2. Downloading compiled binaries
-3. Building compiled binaries 
+You can install and run Luau by downloading the compiled binaries from [a recent release](https://github.com/Roblox/luau/releases); note that `luau` and `luau-analyze` binaries from the archives will need to be added to PATH or copied to a directory like `/usr/local/bin` on Linux/macOS.
 
-Each method is detailed below, you only need to use one option. After installing, you will want to validate the installation was successful by running the test case [here](https://luau-lang.org/getting-started).
+Alternatively, you can use one of the packaged distributions (note that these are not maintained by Luau development team):
 
-## Homebrew Installation
-1. Install Homebrew following these instructions [here](https://docs.brew.sh/Installation).
-2. Run this command: `brew install luau`. Homebrew will install the program for you.
+- macOS: [Install Homebrew](https://docs.brew.sh/Installation), and run `brew install luau`
+- Arch Linux: run `pacman -S luau`
 
-## Compiled Binaries Installation 
-1. Download the binaries from [a recent release](https://github.com/Roblox/luau/releases).
-2. On mac OS, move `luau` and `luau-analyze` files using this command `mv ../<insert filename here> /usr/local/bin/`.
+After installing, you will want to validate the installation was successful by running the test case [here](https://luau-lang.org/getting-started).
 
+## Building
 
-## Build on Local Machine Installation
-1. Depending on your system, you can compile the code using Option 1) `CMake` or Option 2) `make` 
-
-Option 1: On all platforms, you can use CMake to run the following commands:
+On all platforms, you can use CMake to run the following commands:
 
 ```sh
 mkdir cmake && cd cmake
@@ -48,13 +39,13 @@ cmake --build . --target Luau.Repl.CLI --config RelWithDebInfo
 cmake --build . --target Luau.Analyze.CLI --config RelWithDebInfo
 ```
 
-Option 2: Alternatively, on Linux/macOS you can use `make`:
+Alternatively, on Linux/macOS you can use `make`:
 
 ```sh
 make config=release luau luau-analyze
 ```
 
-2. To integrate Luau into your CMake application projects, at the minimum you'll need to depend on `Luau.Compiler` and `Luau.VM` projects. From there you need to create a new Luau state (using Lua 5.x API such as `lua_newstate`), compile source to bytecode and load it into the VM like this:
+To integrate Luau into your CMake application projects, at the minimum you'll need to depend on `Luau.Compiler` and `Luau.VM` projects. From there you need to create a new Luau state (using Lua 5.x API such as `lua_newstate`), compile source to bytecode and load it into the VM like this:
 
 ```cpp
 // needs lua.h and luacode.h
@@ -67,7 +58,6 @@ if (result == 0)
     return 1; /* return chunk main function */
 ```
 
-## Additional information about usage
 For more details about the use of host API you currently need to consult [Lua 5.x API](https://www.lua.org/manual/5.1/manual.html#3). Luau closely tracks that API but has a few deviations, such as the need to compile source separately (which is important to be able to deploy VM without a compiler), or lack of `__gc` support (use `lua_newuserdatadtor` instead).
 
 To gain advantage of many performance improvements it's highly recommended to use `safeenv` feature, which sandboxes individual scripts' global tables from each other as well as protects builtin libraries from monkey-patching. For this to work you need to call `luaL_sandbox` for the global state and `luaL_sandboxthread` for each new script's execution thread.
