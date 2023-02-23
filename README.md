@@ -23,14 +23,15 @@ You can install and run Luau by downloading the compiled binaries from [a recent
 
 Alternatively, you can use one of the packaged distributions (note that these are not maintained by Luau development team):
 
-- macOS: [Install Homebrew](https://docs.brew.sh/Installation), and run `brew install luau`
-- Arch Linux: run `pacman -S luau`
+- macOS: [Install Homebrew](https://docs.brew.sh/Installation) and run `brew install luau`
+- Arch Linux: Run `pacman -S luau`
+- Alpine Linux: [Enable community repositories](https://wiki.alpinelinux.org/w/index.php?title=Enable_Community_Repository) and run `apk add luau`
 
 After installing, you will want to validate the installation was successful by running the test case [here](https://luau-lang.org/getting-started).
 
 ## Building
 
-On all platforms, you can use CMake to run the following commands:
+On all platforms, you can use CMake to run the following commands to build Luau binaries from source:
 
 ```sh
 mkdir cmake && cd cmake
@@ -45,7 +46,7 @@ Alternatively, on Linux/macOS you can use `make`:
 make config=release luau luau-analyze
 ```
 
-To integrate Luau into your CMake application projects, at the minimum you'll need to depend on `Luau.Compiler` and `Luau.VM` projects. From there you need to create a new Luau state (using Lua 5.x API such as `lua_newstate`), compile source to bytecode and load it into the VM like this:
+To integrate Luau into your CMake application projects as a library, at the minimum you'll need to depend on `Luau.Compiler` and `Luau.VM` projects. From there you need to create a new Luau state (using Lua 5.x API such as `lua_newstate`), compile source to bytecode and load it into the VM like this:
 
 ```cpp
 // needs lua.h and luacode.h
