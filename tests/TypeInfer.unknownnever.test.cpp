@@ -230,7 +230,7 @@ TEST_CASE_FIXTURE(Fixture, "assign_to_subscript_which_is_never")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "assign_to_subscript_which_is_never")
+TEST_CASE_FIXTURE(Fixture, "for_loop_over_never")
 {
     CheckResult result = check(R"(
         for i, v in (5 :: never) do

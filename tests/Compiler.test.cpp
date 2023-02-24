@@ -1677,6 +1677,8 @@ RETURN R0 0
 
 TEST_CASE("LoopBreak")
 {
+    ScopedFastFlag sff("LuauCompileTerminateBC", true);
+
     // default codegen: compile breaks as unconditional jumps
     CHECK_EQ("\n" + compileFunction0("while true do if math.random() < 0.5 then break else end end"), R"(
 L0: GETIMPORT R0 2 [math.random]
@@ -1684,7 +1686,6 @@ CALL R0 0 1
 LOADK R1 K3 [0.5]
 JUMPIFNOTLT R0 R1 L1
 RETURN R0 0
-JUMP L1
 L1: JUMPBACK L0
 RETURN R0 0
 )");
@@ -1702,6 +1703,8 @@ L1: RETURN R0 0
 
 TEST_CASE("LoopContinue")
 {
+    ScopedFastFlag sff("LuauCompileTerminateBC", true);
+
     // default codegen: compile continue as unconditional jumps
     CHECK_EQ("\n" + compileFunction0("repeat if math.random() < 0.5 then continue else end break until false error()"), R"(
 L0: GETIMPORT R0 2 [math.random]
@@ -1709,7 +1712,6 @@ CALL R0 0 1
 LOADK R1 K3 [0.5]
 JUMPIFNOTLT R0 R1 L2
 JUMP L1
-JUMP L2
 JUMP L2
 L1: JUMPBACK L0
 L2: GETIMPORT R0 5 [error]
@@ -6805,6 +6807,61 @@ RETURN R0 0
 LOADNIL R0
 MOVE R0 R0
 RETURN R0 0
+)");
+}
+
+TEST_CASE("ElideJumpAfterIf")
+{
+    ScopedFastFlag sff("LuauCompileTerminateBC", true);
+
+    // break refers to outer loop => we can elide unconditional branches
+    CHECK_EQ("\n" + compileFunction0(R"(
+local foo, bar = ...
+repeat
+    if foo then break
+    elseif bar then break
+    end
+    print(1234)
+until foo == bar
+)"),
+        R"(
+GETVARARGS R0 2
+L0: JUMPIFNOT R0 L1
+RETURN R0 0
+L1: JUMPIF R1 L2
+GETIMPORT R2 1 [print]
+LOADN R3 1234
+CALL R2 1 0
+JUMPIFEQ R0 R1 L2
+JUMPBACK L0
+L2: RETURN R0 0
+)");
+
+    // break refers to inner loop => branches remain
+    CHECK_EQ("\n" + compileFunction0(R"(
+local foo, bar = ...
+repeat
+    if foo then while true do break end
+    elseif bar then while true do break end
+    end
+    print(1234)
+until foo == bar
+)"),
+        R"(
+GETVARARGS R0 2
+L0: JUMPIFNOT R0 L1
+JUMP L2
+JUMPBACK L2
+JUMP L2
+L1: JUMPIFNOT R1 L2
+JUMP L2
+JUMPBACK L2
+L2: GETIMPORT R2 1 [print]
+LOADN R3 1234
+CALL R2 1 0
+JUMPIFEQ R0 R1 L3
+JUMPBACK L0
+L3: RETURN R0 0
 )");
 }
 

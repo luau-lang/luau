@@ -16,10 +16,166 @@ LUAU_FASTFLAGVARIABLE(DebugLuauDontReduceTypes, false)
 namespace Luau
 {
 
+namespace detail
+{
+bool TypeReductionMemoization::isIrreducible(TypeId ty)
+{
+    ty = follow(ty);
+
+    // Only does shallow check, the TypeReducer itself already does deep traversal.
+    if (auto edge = types.find(ty); edge && edge->irreducible)
+        return true;
+    else if (get<FreeType>(ty) || get<BlockedType>(ty) || get<PendingExpansionType>(ty))
+        return false;
+    else if (auto tt = get<TableType>(ty); tt && (tt->state == TableState::Free || tt->state == TableState::Unsealed))
+        return false;
+    else
+        return true;
+}
+
+bool TypeReductionMemoization::isIrreducible(TypePackId tp)
+{
+    tp = follow(tp);
+
+    // Only does shallow check, the TypeReducer itself already does deep traversal.
+    if (auto edge = typePacks.find(tp); edge && edge->irreducible)
+        return true;
+    else if (get<FreeTypePack>(tp) || get<BlockedTypePack>(tp))
+        return false;
+    else if (auto vtp = get<VariadicTypePack>(tp))
+        return isIrreducible(vtp->ty);
+    else
+        return true;
+}
+
+TypeId TypeReductionMemoization::memoize(TypeId ty, TypeId reducedTy)
+{
+    ty = follow(ty);
+    reducedTy = follow(reducedTy);
+
+    // The irreducibility of this [`reducedTy`] depends on whether its contents are themselves irreducible.
+    // We don't need to recurse much further than that, because we already record the irreducibility from
+    // the bottom up.
+    bool irreducible = isIrreducible(reducedTy);
+    if (auto it = get<IntersectionType>(reducedTy))
+    {
+        for (TypeId part : it)
+            irreducible &= isIrreducible(part);
+    }
+    else if (auto ut = get<UnionType>(reducedTy))
+    {
+        for (TypeId option : ut)
+            irreducible &= isIrreducible(option);
+    }
+    else if (auto tt = get<TableType>(reducedTy))
+    {
+        for (auto& [k, p] : tt->props)
+            irreducible &= isIrreducible(p.type);
+
+        if (tt->indexer)
+        {
+            irreducible &= isIrreducible(tt->indexer->indexType);
+            irreducible &= isIrreducible(tt->indexer->indexResultType);
+        }
+
+        for (auto ta : tt->instantiatedTypeParams)
+            irreducible &= isIrreducible(ta);
+
+        for (auto tpa : tt->instantiatedTypePackParams)
+            irreducible &= isIrreducible(tpa);
+    }
+    else if (auto mt = get<MetatableType>(reducedTy))
+    {
+        irreducible &= isIrreducible(mt->table);
+        irreducible &= isIrreducible(mt->metatable);
+    }
+    else if (auto ft = get<FunctionType>(reducedTy))
+    {
+        irreducible &= isIrreducible(ft->argTypes);
+        irreducible &= isIrreducible(ft->retTypes);
+    }
+    else if (auto nt = get<NegationType>(reducedTy))
+        irreducible &= isIrreducible(nt->ty);
+
+    types[ty] = {reducedTy, irreducible};
+    types[reducedTy] = {reducedTy, irreducible};
+    return reducedTy;
+}
+
+TypePackId TypeReductionMemoization::memoize(TypePackId tp, TypePackId reducedTp)
+{
+    tp = follow(tp);
+    reducedTp = follow(reducedTp);
+
+    bool irreducible = isIrreducible(reducedTp);
+    TypePackIterator it = begin(tp);
+    while (it != end(tp))
+    {
+        irreducible &= isIrreducible(*it);
+        ++it;
+    }
+
+    if (it.tail())
+        irreducible &= isIrreducible(*it.tail());
+
+    typePacks[tp] = {reducedTp, irreducible};
+    typePacks[reducedTp] = {reducedTp, irreducible};
+    return reducedTp;
+}
+
+std::optional<ReductionEdge<TypeId>> TypeReductionMemoization::memoizedof(TypeId ty) const
+{
+    auto fetchContext = [this](TypeId ty) -> std::optional<ReductionEdge<TypeId>> {
+        if (auto edge = types.find(ty))
+            return *edge;
+        else
+            return std::nullopt;
+    };
+
+    TypeId currentTy = ty;
+    std::optional<ReductionEdge<TypeId>> lastEdge;
+    while (auto edge = fetchContext(currentTy))
+    {
+        lastEdge = edge;
+        if (edge->irreducible)
+            return edge;
+        else if (edge->type == currentTy)
+            return edge;
+        else
+            currentTy = edge->type;
+    }
+
+    return lastEdge;
+}
+
+std::optional<ReductionEdge<TypePackId>> TypeReductionMemoization::memoizedof(TypePackId tp) const
+{
+    auto fetchContext = [this](TypePackId tp) -> std::optional<ReductionEdge<TypePackId>> {
+        if (auto edge = typePacks.find(tp))
+            return *edge;
+        else
+            return std::nullopt;
+    };
+
+    TypePackId currentTp = tp;
+    std::optional<ReductionEdge<TypePackId>> lastEdge;
+    while (auto edge = fetchContext(currentTp))
+    {
+        lastEdge = edge;
+        if (edge->irreducible)
+            return edge;
+        else if (edge->type == currentTp)
+            return edge;
+        else
+            currentTp = edge->type;
+    }
+
+    return lastEdge;
+}
+} // namespace detail
+
 namespace
 {
-
-using detail::ReductionContext;
 
 template<typename A, typename B, typename Thing>
 std::pair<const A*, const B*> get2(const Thing& one, const Thing& two)
@@ -34,9 +190,7 @@ struct TypeReducer
     NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<InternalErrorReporter> handle;
-
-    DenseHashMap<TypeId, ReductionContext<TypeId>>* memoizedTypes;
-    DenseHashMap<TypePackId, ReductionContext<TypePackId>>* memoizedTypePacks;
+    NotNull<detail::TypeReductionMemoization> memoization;
     DenseHashSet<const void*>* cyclics;
 
     int depth = 0;
@@ -50,12 +204,6 @@ struct TypeReducer
     TypeId functionType(TypeId ty);
     TypeId negationType(TypeId ty);
 
-    bool isIrreducible(TypeId ty);
-    bool isIrreducible(TypePackId tp);
-
-    TypeId memoize(TypeId ty, TypeId reducedTy);
-    TypePackId memoize(TypePackId tp, TypePackId reducedTp);
-
     using BinaryFold = std::optional<TypeId> (TypeReducer::*)(TypeId, TypeId);
     using UnaryFold = TypeId (TypeReducer::*)(TypeId);
 
@@ -64,12 +212,15 @@ struct TypeReducer
     {
         ty = follow(ty);
 
-        if (auto ctx = memoizedTypes->find(ty))
-            return {ctx->type, getMutable<T>(ctx->type)};
+        if (auto edge = memoization->memoizedof(ty))
+            return {edge->type, getMutable<T>(edge->type)};
 
+        // We specifically do not want to use [`detail::TypeReductionMemoization::memoize`] because that will
+        // potentially consider these copiedTy to be reducible, but we need this to resolve cyclic references
+        // without attempting to recursively reduce it, causing copies of copies of copies of...
         TypeId copiedTy = arena->addType(*t);
-        (*memoizedTypes)[ty] = {copiedTy, true};
-        (*memoizedTypes)[copiedTy] = {copiedTy, true};
+        memoization->types[ty] = {copiedTy, true};
+        memoization->types[copiedTy] = {copiedTy, true};
         return {copiedTy, getMutable<T>(copiedTy)};
     }
 
@@ -175,8 +326,13 @@ TypeId TypeReducer::reduce(TypeId ty)
 {
     ty = follow(ty);
 
-    if (auto ctx = memoizedTypes->find(ty); ctx && ctx->irreducible)
-        return ctx->type;
+    if (auto edge = memoization->memoizedof(ty))
+    {
+        if (edge->irreducible)
+            return edge->type;
+        else
+            ty = edge->type;
+    }
     else if (cyclics->contains(ty))
         return ty;
 
@@ -196,15 +352,20 @@ TypeId TypeReducer::reduce(TypeId ty)
     else
         result = ty;
 
-    return memoize(ty, result);
+    return memoization->memoize(ty, result);
 }
 
 TypePackId TypeReducer::reduce(TypePackId tp)
 {
     tp = follow(tp);
 
-    if (auto ctx = memoizedTypePacks->find(tp); ctx && ctx->irreducible)
-        return ctx->type;
+    if (auto edge = memoization->memoizedof(tp))
+    {
+        if (edge->irreducible)
+            return edge->type;
+        else
+            tp = edge->type;
+    }
     else if (cyclics->contains(tp))
         return tp;
 
@@ -237,11 +398,11 @@ TypePackId TypeReducer::reduce(TypePackId tp)
     }
 
     if (!didReduce)
-        return memoize(tp, tp);
+        return memoization->memoize(tp, tp);
     else if (head.empty() && tail)
-        return memoize(tp, *tail);
+        return memoization->memoize(tp, *tail);
     else
-        return memoize(tp, arena->addTypePack(TypePack{std::move(head), tail}));
+        return memoization->memoize(tp, arena->addTypePack(TypePack{std::move(head), tail}));
 }
 
 std::optional<TypeId> TypeReducer::intersectionType(TypeId left, TypeId right)
@@ -832,111 +993,6 @@ TypeId TypeReducer::negationType(TypeId ty)
         return ty; // for all T except the ones handled above, ~T ~ ~T
 }
 
-bool TypeReducer::isIrreducible(TypeId ty)
-{
-    ty = follow(ty);
-
-    // Only does shallow check, the TypeReducer itself already does deep traversal.
-    if (auto ctx = memoizedTypes->find(ty); ctx && ctx->irreducible)
-        return true;
-    else if (get<FreeType>(ty) || get<BlockedType>(ty) || get<PendingExpansionType>(ty))
-        return false;
-    else if (auto tt = get<TableType>(ty); tt && (tt->state == TableState::Free || tt->state == TableState::Unsealed))
-        return false;
-    else
-        return true;
-}
-
-bool TypeReducer::isIrreducible(TypePackId tp)
-{
-    tp = follow(tp);
-
-    // Only does shallow check, the TypeReducer itself already does deep traversal.
-    if (auto ctx = memoizedTypePacks->find(tp); ctx && ctx->irreducible)
-        return true;
-    else if (get<FreeTypePack>(tp) || get<BlockedTypePack>(tp))
-        return false;
-    else if (auto vtp = get<VariadicTypePack>(tp))
-        return isIrreducible(vtp->ty);
-    else
-        return true;
-}
-
-TypeId TypeReducer::memoize(TypeId ty, TypeId reducedTy)
-{
-    ty = follow(ty);
-    reducedTy = follow(reducedTy);
-
-    // The irreducibility of this [`reducedTy`] depends on whether its contents are themselves irreducible.
-    // We don't need to recurse much further than that, because we already record the irreducibility from
-    // the bottom up.
-    bool irreducible = isIrreducible(reducedTy);
-    if (auto it = get<IntersectionType>(reducedTy))
-    {
-        for (TypeId part : it)
-            irreducible &= isIrreducible(part);
-    }
-    else if (auto ut = get<UnionType>(reducedTy))
-    {
-        for (TypeId option : ut)
-            irreducible &= isIrreducible(option);
-    }
-    else if (auto tt = get<TableType>(reducedTy))
-    {
-        for (auto& [k, p] : tt->props)
-            irreducible &= isIrreducible(p.type);
-
-        if (tt->indexer)
-        {
-            irreducible &= isIrreducible(tt->indexer->indexType);
-            irreducible &= isIrreducible(tt->indexer->indexResultType);
-        }
-
-        for (auto ta : tt->instantiatedTypeParams)
-            irreducible &= isIrreducible(ta);
-
-        for (auto tpa : tt->instantiatedTypePackParams)
-            irreducible &= isIrreducible(tpa);
-    }
-    else if (auto mt = get<MetatableType>(reducedTy))
-    {
-        irreducible &= isIrreducible(mt->table);
-        irreducible &= isIrreducible(mt->metatable);
-    }
-    else if (auto ft = get<FunctionType>(reducedTy))
-    {
-        irreducible &= isIrreducible(ft->argTypes);
-        irreducible &= isIrreducible(ft->retTypes);
-    }
-    else if (auto nt = get<NegationType>(reducedTy))
-        irreducible &= isIrreducible(nt->ty);
-
-    (*memoizedTypes)[ty] = {reducedTy, irreducible};
-    (*memoizedTypes)[reducedTy] = {reducedTy, irreducible};
-    return reducedTy;
-}
-
-TypePackId TypeReducer::memoize(TypePackId tp, TypePackId reducedTp)
-{
-    tp = follow(tp);
-    reducedTp = follow(reducedTp);
-
-    bool irreducible = isIrreducible(reducedTp);
-    TypePackIterator it = begin(tp);
-    while (it != end(tp))
-    {
-        irreducible &= isIrreducible(*it);
-        ++it;
-    }
-
-    if (it.tail())
-        irreducible &= isIrreducible(*it.tail());
-
-    (*memoizedTypePacks)[tp] = {reducedTp, irreducible};
-    (*memoizedTypePacks)[reducedTp] = {reducedTp, irreducible};
-    return reducedTp;
-}
-
 struct MarkCycles : TypeVisitor
 {
     DenseHashSet<const void*> cyclics{nullptr};
@@ -961,7 +1017,6 @@ struct MarkCycles : TypeVisitor
         return !cyclics.find(follow(tp));
     }
 };
-
 } // namespace
 
 TypeReduction::TypeReduction(
@@ -981,8 +1036,13 @@ std::optional<TypeId> TypeReduction::reduce(TypeId ty)
         return ty;
     else if (!options.allowTypeReductionsFromOtherArenas && ty->owningArena != arena)
         return ty;
-    else if (auto memoized = memoizedof(ty))
-        return *memoized;
+    else if (auto edge = memoization.memoizedof(ty))
+    {
+        if (edge->irreducible)
+            return edge->type;
+        else
+            ty = edge->type;
+    }
     else if (hasExceededCartesianProductLimit(ty))
         return std::nullopt;
 
@@ -991,7 +1051,7 @@ std::optional<TypeId> TypeReduction::reduce(TypeId ty)
         MarkCycles finder;
         finder.traverse(ty);
 
-        TypeReducer reducer{arena, builtinTypes, handle, &memoizedTypes, &memoizedTypePacks, &finder.cyclics};
+        TypeReducer reducer{arena, builtinTypes, handle, NotNull{&memoization}, &finder.cyclics};
         return reducer.reduce(ty);
     }
     catch (const RecursionLimitException&)
@@ -1008,8 +1068,13 @@ std::optional<TypePackId> TypeReduction::reduce(TypePackId tp)
         return tp;
     else if (!options.allowTypeReductionsFromOtherArenas && tp->owningArena != arena)
         return tp;
-    else if (auto memoized = memoizedof(tp))
-        return *memoized;
+    else if (auto edge = memoization.memoizedof(tp))
+    {
+        if (edge->irreducible)
+            return edge->type;
+        else
+            tp = edge->type;
+    }
     else if (hasExceededCartesianProductLimit(tp))
         return std::nullopt;
 
@@ -1018,7 +1083,7 @@ std::optional<TypePackId> TypeReduction::reduce(TypePackId tp)
         MarkCycles finder;
         finder.traverse(tp);
 
-        TypeReducer reducer{arena, builtinTypes, handle, &memoizedTypes, &memoizedTypePacks, &finder.cyclics};
+        TypeReducer reducer{arena, builtinTypes, handle, NotNull{&memoization}, &finder.cyclics};
         return reducer.reduce(tp);
     }
     catch (const RecursionLimitException&)
@@ -1037,13 +1102,6 @@ std::optional<TypeFun> TypeReduction::reduce(const TypeFun& fun)
         return TypeFun{fun.typeParams, fun.typePackParams, *reducedTy};
 
     return std::nullopt;
-}
-
-TypeReduction TypeReduction::fork(NotNull<TypeArena> arena, const TypeReductionOptions& opts) const
-{
-    TypeReduction child{arena, builtinTypes, handle, opts};
-    child.parent = this;
-    return child;
 }
 
 size_t TypeReduction::cartesianProductSize(TypeId ty) const
@@ -1091,26 +1149,6 @@ bool TypeReduction::hasExceededCartesianProductLimit(TypePackId tp) const
     }
 
     return false;
-}
-
-std::optional<TypeId> TypeReduction::memoizedof(TypeId ty) const
-{
-    if (auto ctx = memoizedTypes.find(ty); ctx && ctx->irreducible)
-        return ctx->type;
-    else if (parent)
-        return parent->memoizedof(ty);
-    else
-        return std::nullopt;
-}
-
-std::optional<TypePackId> TypeReduction::memoizedof(TypePackId tp) const
-{
-    if (auto ctx = memoizedTypePacks.find(tp); ctx && ctx->irreducible)
-        return ctx->type;
-    else if (parent)
-        return parent->memoizedof(tp);
-    else
-        return std::nullopt;
 }
 
 } // namespace Luau

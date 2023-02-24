@@ -15,6 +15,7 @@ namespace CodeGen
 enum class IrCondition : uint8_t;
 struct IrOp;
 struct IrBuilder;
+enum class IrCmd : uint8_t;
 
 void translateInstLoadNil(IrBuilder& build, const Instruction* pc);
 void translateInstLoadB(IrBuilder& build, const Instruction* pc, int pcpos);
@@ -42,6 +43,8 @@ void translateInstDupTable(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstGetUpval(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstSetUpval(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstCloseUpvals(IrBuilder& build, const Instruction* pc);
+void translateFastCallN(
+    IrBuilder& build, const Instruction* pc, int pcpos, bool customParams, int customParamCount, IrOp customArgs, IrOp next, IrCmd fallbackCmd);
 void translateInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstForGPrepNext(IrBuilder& build, const Instruction* pc, int pcpos);

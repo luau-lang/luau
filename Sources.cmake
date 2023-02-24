@@ -70,6 +70,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/IrUtils.h
     CodeGen/include/Luau/Label.h
     CodeGen/include/Luau/OperandX64.h
+    CodeGen/include/Luau/OptimizeConstProp.h
     CodeGen/include/Luau/OptimizeFinalX64.h
     CodeGen/include/Luau/RegisterA64.h
     CodeGen/include/Luau/RegisterX64.h
@@ -92,9 +93,12 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/IrBuilder.cpp
     CodeGen/src/IrDump.cpp
     CodeGen/src/IrLoweringX64.cpp
+    CodeGen/src/IrRegAllocX64.cpp
+    CodeGen/src/IrTranslateBuiltins.cpp
     CodeGen/src/IrTranslation.cpp
     CodeGen/src/IrUtils.cpp
     CodeGen/src/NativeState.cpp
+    CodeGen/src/OptimizeConstProp.cpp
     CodeGen/src/OptimizeFinalX64.cpp
     CodeGen/src/UnwindBuilderDwarf2.cpp
     CodeGen/src/UnwindBuilderWin.cpp
@@ -109,6 +113,8 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/Fallbacks.h
     CodeGen/src/FallbacksProlog.h
     CodeGen/src/IrLoweringX64.h
+    CodeGen/src/IrRegAllocX64.h
+    CodeGen/src/IrTranslateBuiltins.h
     CodeGen/src/IrTranslation.h
     CodeGen/src/NativeState.h
 )

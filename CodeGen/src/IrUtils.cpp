@@ -14,20 +14,6 @@ namespace Luau
 namespace CodeGen
 {
 
-static uint32_t getBlockEnd(IrFunction& function, uint32_t start)
-{
-    LUAU_ASSERT(start < function.instructions.size());
-
-    uint32_t end = start;
-
-    // Find previous block terminator
-    while (!isBlockTerminator(function.instructions[end].cmd))
-        end++;
-
-    LUAU_ASSERT(end < function.instructions.size());
-    return end;
-}
-
 void addUse(IrFunction& function, IrOp op)
 {
     if (op.kind == IrOpKind::Inst)
@@ -44,6 +30,12 @@ void removeUse(IrFunction& function, IrOp op)
         removeUse(function, function.blocks[op.index]);
 }
 
+bool isGCO(uint8_t tag)
+{
+    // mirrors iscollectable(o) from VM/lobject.h
+    return tag >= LUA_TSTRING;
+}
+
 void kill(IrFunction& function, IrInst& inst)
 {
     LUAU_ASSERT(inst.useCount == 0);
@@ -55,12 +47,14 @@ void kill(IrFunction& function, IrInst& inst)
     removeUse(function, inst.c);
     removeUse(function, inst.d);
     removeUse(function, inst.e);
+    removeUse(function, inst.f);
 
     inst.a = {};
     inst.b = {};
     inst.c = {};
     inst.d = {};
     inst.e = {};
+    inst.f = {};
 }
 
 void kill(IrFunction& function, uint32_t start, uint32_t end)
@@ -84,10 +78,9 @@ void kill(IrFunction& function, IrBlock& block)
 
     block.kind = IrBlockKind::Dead;
 
-    uint32_t start = block.start;
-    uint32_t end = getBlockEnd(function, start);
-
-    kill(function, start, end);
+    kill(function, block.start, block.finish);
+    block.start = ~0u;
+    block.finish = ~0u;
 }
 
 void removeUse(IrFunction& function, IrInst& inst)
@@ -117,7 +110,7 @@ void replace(IrFunction& function, IrOp& original, IrOp replacement)
     original = replacement;
 }
 
-void replace(IrFunction& function, uint32_t instIdx, IrInst replacement)
+void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst replacement)
 {
     IrInst& inst = function.instructions[instIdx];
 
@@ -127,19 +120,18 @@ void replace(IrFunction& function, uint32_t instIdx, IrInst replacement)
     addUse(function, replacement.c);
     addUse(function, replacement.d);
     addUse(function, replacement.e);
+    addUse(function, replacement.f);
 
     // If we introduced an earlier terminating instruction, all following instructions become dead
     if (!isBlockTerminator(inst.cmd) && isBlockTerminator(replacement.cmd))
     {
-        uint32_t start = instIdx + 1;
+        // Block has has to be fully constructed before replacement is performed
+        LUAU_ASSERT(block.finish != ~0u);
+        LUAU_ASSERT(instIdx + 1 <= block.finish);
 
-        // If we are in the process of constructing a block, replacement might happen at the last instruction
-        if (start < function.instructions.size())
-        {
-            uint32_t end = getBlockEnd(function, start);
+        kill(function, instIdx + 1, block.finish);
 
-            kill(function, start, end);
-        }
+        block.finish = instIdx;
     }
 
     removeUse(function, inst.a);
@@ -147,6 +139,7 @@ void replace(IrFunction& function, uint32_t instIdx, IrInst replacement)
     removeUse(function, inst.c);
     removeUse(function, inst.d);
     removeUse(function, inst.e);
+    removeUse(function, inst.f);
 
     inst = replacement;
 }
@@ -162,12 +155,14 @@ void substitute(IrFunction& function, IrInst& inst, IrOp replacement)
     removeUse(function, inst.c);
     removeUse(function, inst.d);
     removeUse(function, inst.e);
+    removeUse(function, inst.f);
 
     inst.a = replacement;
     inst.b = {};
     inst.c = {};
     inst.d = {};
     inst.e = {};
+    inst.f = {};
 }
 
 void applySubstitutions(IrFunction& function, IrOp& op)
@@ -203,9 +198,10 @@ void applySubstitutions(IrFunction& function, IrInst& inst)
     applySubstitutions(function, inst.c);
     applySubstitutions(function, inst.d);
     applySubstitutions(function, inst.e);
+    applySubstitutions(function, inst.f);
 }
 
-static bool compare(double a, double b, IrCondition cond)
+bool compare(double a, double b, IrCondition cond)
 {
     switch (cond)
     {
@@ -236,7 +232,7 @@ static bool compare(double a, double b, IrCondition cond)
     return false;
 }
 
-void foldConstants(IrBuilder& build, IrFunction& function, uint32_t index)
+void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint32_t index)
 {
     IrInst& inst = function.instructions[index];
 
@@ -311,27 +307,27 @@ void foldConstants(IrBuilder& build, IrFunction& function, uint32_t index)
         if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
         {
             if (function.tagOp(inst.a) == function.tagOp(inst.b))
-                replace(function, index, {IrCmd::JUMP, inst.c});
+                replace(function, block, index, {IrCmd::JUMP, inst.c});
             else
-                replace(function, index, {IrCmd::JUMP, inst.d});
+                replace(function, block, index, {IrCmd::JUMP, inst.d});
         }
         break;
     case IrCmd::JUMP_EQ_INT:
         if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
         {
             if (function.intOp(inst.a) == function.intOp(inst.b))
-                replace(function, index, {IrCmd::JUMP, inst.c});
+                replace(function, block, index, {IrCmd::JUMP, inst.c});
             else
-                replace(function, index, {IrCmd::JUMP, inst.d});
+                replace(function, block, index, {IrCmd::JUMP, inst.d});
         }
         break;
     case IrCmd::JUMP_CMP_NUM:
         if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
         {
             if (compare(function.doubleOp(inst.a), function.doubleOp(inst.b), function.conditionOp(inst.c)))
-                replace(function, index, {IrCmd::JUMP, inst.d});
+                replace(function, block, index, {IrCmd::JUMP, inst.d});
             else
-                replace(function, index, {IrCmd::JUMP, inst.e});
+                replace(function, block, index, {IrCmd::JUMP, inst.e});
         }
         break;
     case IrCmd::NUM_TO_INDEX:
@@ -347,11 +343,11 @@ void foldConstants(IrBuilder& build, IrFunction& function, uint32_t index)
                 if (double(arrIndex) == value)
                     substitute(function, inst, build.constInt(arrIndex));
                 else
-                    replace(function, index, {IrCmd::JUMP, inst.b});
+                    replace(function, block, index, {IrCmd::JUMP, inst.b});
             }
             else
             {
-                replace(function, index, {IrCmd::JUMP, inst.b});
+                replace(function, block, index, {IrCmd::JUMP, inst.b});
             }
         }
         break;
@@ -365,7 +361,7 @@ void foldConstants(IrBuilder& build, IrFunction& function, uint32_t index)
             if (function.tagOp(inst.a) == function.tagOp(inst.b))
                 kill(function, inst);
             else
-                replace(function, index, {IrCmd::JUMP, inst.c}); // Shows a conflict in assumptions on this path
+                replace(function, block, index, {IrCmd::JUMP, inst.c}); // Shows a conflict in assumptions on this path
         }
         break;
     default:

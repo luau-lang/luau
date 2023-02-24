@@ -159,6 +159,20 @@ struct SetPropConstraint
     TypeId propType;
 };
 
+// result ~ setIndexer subjectType indexType propType
+//
+// If the subject is a table or table-like thing that already has an indexer,
+// unify its indexType and propType with those from this constraint.
+//
+// If the table is a free or unsealed table, we augment it with a new indexer.
+struct SetIndexerConstraint
+{
+    TypeId resultType;
+    TypeId subjectType;
+    TypeId indexType;
+    TypeId propType;
+};
+
 // if negation:
 //   result ~ if isSingleton D then ~D else unknown where D = discriminantType
 // if not negation:
@@ -170,9 +184,19 @@ struct SingletonOrTopTypeConstraint
     bool negated;
 };
 
+// resultType ~ unpack sourceTypePack
+//
+// Similar to PackSubtypeConstraint, but with one important difference: If the
+// sourcePack is blocked, this constraint blocks.
+struct UnpackConstraint
+{
+    TypePackId resultPack;
+    TypePackId sourcePack;
+};
+
 using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, UnaryConstraint,
     BinaryConstraint, IterableConstraint, NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, PrimitiveTypeConstraint,
-    HasPropConstraint, SetPropConstraint, SingletonOrTopTypeConstraint>;
+    HasPropConstraint, SetPropConstraint, SetIndexerConstraint, SingletonOrTopTypeConstraint, UnpackConstraint>;
 
 struct Constraint
 {

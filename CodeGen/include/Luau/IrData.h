@@ -5,6 +5,7 @@
 #include "Luau/RegisterX64.h"
 #include "Luau/RegisterA64.h"
 
+#include <optional>
 #include <vector>
 
 #include <stdint.h>
@@ -186,6 +187,16 @@ enum class IrCmd : uint8_t
     // A: int
     INT_TO_NUM,
 
+    // Adjust stack top (L->top) to point at 'B' TValues *after* the specified register
+    // This is used to return muliple values
+    // A: Rn
+    // B: int (offset)
+    ADJUST_STACK_TO_REG,
+
+    // Restore stack top (L->top) to point to the function stack top (L->ci->top)
+    // This is used to recover after calling a variadic function
+    ADJUST_STACK_TO_TOP,
+
     // Fallback functions
 
     // Perform an arithmetic operation on TValues of any type
@@ -329,7 +340,7 @@ enum class IrCmd : uint8_t
     // Call specified function
     // A: unsigned int (bytecode instruction index)
     // B: Rn (function, followed by arguments)
-    // C: int (argument count or -1 to preserve all arguments up to stack top)
+    // C: int (argument count or -1 to use all arguments up to stack top)
     // D: int (result count or -1 to preserve all results and adjust stack top)
     // Note: return values are placed starting from Rn specified in 'B'
     LOP_CALL,
@@ -337,13 +348,13 @@ enum class IrCmd : uint8_t
     // Return specified values from the function
     // A: unsigned int (bytecode instruction index)
     // B: Rn (value start)
-    // B: int (result count or -1 to return all values up to stack top)
+    // C: int (result count or -1 to return all values up to stack top)
     LOP_RETURN,
 
     // Perform a fast call of a built-in function
     // A: unsigned int (bytecode instruction index)
     // B: Rn (argument start)
-    // C: int (argument count or -1 preserve all arguments up to stack top)
+    // C: int (argument count or -1 use all arguments up to stack top)
     // D: block (fallback)
     // Note: return values are placed starting from Rn specified in 'B'
     LOP_FASTCALL,
@@ -560,6 +571,7 @@ struct IrInst
     IrOp c;
     IrOp d;
     IrOp e;
+    IrOp f;
 
     uint32_t lastUse = 0;
     uint16_t useCount = 0;
@@ -584,9 +596,10 @@ struct IrBlock
 
     uint16_t useCount = 0;
 
-    // Start points to an instruction index in a stream
-    // End is implicit
+    // 'start' and 'finish' define an inclusive range of instructions which belong to this block inside the function
+    // When block has been constructed, 'finish' always points to the first and only terminating instruction
     uint32_t start = ~0u;
+    uint32_t finish = ~0u;
 
     Label label;
 };
@@ -633,11 +646,37 @@ struct IrFunction
         return value.valueTag;
     }
 
+    std::optional<uint8_t> asTagOp(IrOp op)
+    {
+        if (op.kind != IrOpKind::Constant)
+            return std::nullopt;
+
+        IrConst& value = constOp(op);
+
+        if (value.kind != IrConstKind::Tag)
+            return std::nullopt;
+
+        return value.valueTag;
+    }
+
     bool boolOp(IrOp op)
     {
         IrConst& value = constOp(op);
 
         LUAU_ASSERT(value.kind == IrConstKind::Bool);
+        return value.valueBool;
+    }
+
+    std::optional<bool> asBoolOp(IrOp op)
+    {
+        if (op.kind != IrOpKind::Constant)
+            return std::nullopt;
+
+        IrConst& value = constOp(op);
+
+        if (value.kind != IrConstKind::Bool)
+            return std::nullopt;
+
         return value.valueBool;
     }
 
@@ -649,11 +688,37 @@ struct IrFunction
         return value.valueInt;
     }
 
+    std::optional<int> asIntOp(IrOp op)
+    {
+        if (op.kind != IrOpKind::Constant)
+            return std::nullopt;
+
+        IrConst& value = constOp(op);
+
+        if (value.kind != IrConstKind::Int)
+            return std::nullopt;
+
+        return value.valueInt;
+    }
+
     unsigned uintOp(IrOp op)
     {
         IrConst& value = constOp(op);
 
         LUAU_ASSERT(value.kind == IrConstKind::Uint);
+        return value.valueUint;
+    }
+
+    std::optional<unsigned> asUintOp(IrOp op)
+    {
+        if (op.kind != IrOpKind::Constant)
+            return std::nullopt;
+
+        IrConst& value = constOp(op);
+
+        if (value.kind != IrConstKind::Uint)
+            return std::nullopt;
+
         return value.valueUint;
     }
 
@@ -665,10 +730,30 @@ struct IrFunction
         return value.valueDouble;
     }
 
+    std::optional<double> asDoubleOp(IrOp op)
+    {
+        if (op.kind != IrOpKind::Constant)
+            return std::nullopt;
+
+        IrConst& value = constOp(op);
+
+        if (value.kind != IrConstKind::Double)
+            return std::nullopt;
+
+        return value.valueDouble;
+    }
+
     IrCondition conditionOp(IrOp op)
     {
         LUAU_ASSERT(op.kind == IrOpKind::Condition);
         return IrCondition(op.index);
+    }
+
+    uint32_t getBlockIndex(const IrBlock& block)
+    {
+        // Can only be called with blocks from our vector
+        LUAU_ASSERT(&block >= blocks.data() && &block <= blocks.data() + blocks.size());
+        return uint32_t(&block - blocks.data());
     }
 };
 

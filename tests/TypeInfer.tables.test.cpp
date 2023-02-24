@@ -347,8 +347,8 @@ TEST_CASE_FIXTURE(Fixture, "open_table_unification_3")
     const TableType* arg0Table = get<TableType>(follow(arg0));
     REQUIRE(arg0Table != nullptr);
 
-    REQUIRE(arg0Table->props.find("bar") != arg0Table->props.end());
-    REQUIRE(arg0Table->props.find("baz") != arg0Table->props.end());
+    CHECK(arg0Table->props.count("bar"));
+    CHECK(arg0Table->props.count("baz"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_1")
@@ -2482,12 +2482,18 @@ TEST_CASE_FIXTURE(Fixture, "nil_assign_doesnt_hit_indexer")
 
 TEST_CASE_FIXTURE(Fixture, "wrong_assign_does_hit_indexer")
 {
-    CheckResult result = check("local a = {} a[0] = 7  a[0] = 't'");
+    CheckResult result = check(R"(
+        local a = {}
+        a[0] = 7
+        a[0] = 't'
+    )");
+
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 30}, Position{0, 33}}, TypeMismatch{
-                                                                                          typeChecker.numberType,
-                                                                                          typeChecker.stringType,
-                                                                                      }}));
+    CHECK((Location{Position{3, 15}, Position{3, 18}}) == result.errors[0].location);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK(tm->wantedType == typeChecker.numberType);
+    CHECK(tm->givenType == typeChecker.stringType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "nil_assign_doesnt_hit_no_indexer")
@@ -2673,7 +2679,10 @@ TEST_CASE_FIXTURE(Fixture, "inferring_crazy_table_should_also_be_quick")
     )");
 
     ModulePtr module = getMainModule();
-    CHECK_GE(100, module->internalTypes.types.size());
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_GE(500, module->internalTypes.types.size());
+    else
+        CHECK_GE(100, module->internalTypes.types.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "MixedPropertiesAndIndexers")

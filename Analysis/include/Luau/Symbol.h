@@ -37,6 +37,11 @@ struct Symbol
     AstLocal* local;
     AstName global;
 
+    explicit operator bool() const
+    {
+        return local != nullptr || global.value != nullptr;
+    }
+
     bool operator==(const Symbol& rhs) const
     {
         if (local)

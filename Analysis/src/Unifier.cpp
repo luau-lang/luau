@@ -520,7 +520,12 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
 
     size_t errorCount = errors.size();
 
-    if (const UnionType* subUnion = log.getMutable<UnionType>(subTy))
+    if (log.getMutable<BlockedType>(subTy) && log.getMutable<BlockedType>(superTy))
+    {
+        blockedTypes.push_back(subTy);
+        blockedTypes.push_back(superTy);
+    }
+    else if (const UnionType* subUnion = log.getMutable<UnionType>(subTy))
     {
         tryUnifyUnionWithType(subTy, subUnion, superTy);
     }

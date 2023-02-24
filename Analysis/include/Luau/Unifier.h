@@ -67,6 +67,12 @@ struct Unifier
 
     UnifierSharedState& sharedState;
 
+    // When the Unifier is forced to unify two blocked types (or packs), they
+    // get added to these vectors.  The ConstraintSolver can use this to know
+    // when it is safe to reattempt dispatching a constraint.
+    std::vector<TypeId> blockedTypes;
+    std::vector<TypePackId> blockedTypePacks;
+
     Unifier(
         NotNull<Normalizer> normalizer, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance, TxnLog* parentLog = nullptr);
 

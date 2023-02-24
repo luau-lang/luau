@@ -1533,6 +1533,10 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
             const std::string pathStr = c.path.size() == 1 ? "\"" + c.path[0] + "\"" : "[\"" + join(c.path, "\", \"") + "\"]";
             return tos(c.resultType) + " ~ setProp " + tos(c.subjectType) + ", " + pathStr + " " + tos(c.propType);
         }
+        else if constexpr (std::is_same_v<T, SetIndexerConstraint>)
+        {
+            return tos(c.resultType) + " ~ setIndexer " + tos(c.subjectType) + " [ " + tos(c.indexType) + " ] " + tos(c.propType);
+        }
         else if constexpr (std::is_same_v<T, SingletonOrTopTypeConstraint>)
         {
             std::string result = tos(c.resultType);
@@ -1543,6 +1547,8 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
             else
                 return result + " ~ if isSingleton D then D else unknown where D = " + discriminant;
         }
+        else if constexpr (std::is_same_v<T, UnpackConstraint>)
+            return tos(c.resultPack) + " ~ unpack " + tos(c.sourcePack);
         else
             static_assert(always_false_v<T>, "Non-exhaustive constraint switch");
     };

@@ -12,10 +12,35 @@ namespace Luau
 namespace detail
 {
 template<typename T>
-struct ReductionContext
+struct ReductionEdge
 {
     T type = nullptr;
     bool irreducible = false;
+};
+
+struct TypeReductionMemoization
+{
+    TypeReductionMemoization() = default;
+
+    TypeReductionMemoization(const TypeReductionMemoization&) = delete;
+    TypeReductionMemoization& operator=(const TypeReductionMemoization&) = delete;
+
+    TypeReductionMemoization(TypeReductionMemoization&&) = default;
+    TypeReductionMemoization& operator=(TypeReductionMemoization&&) = default;
+
+    DenseHashMap<TypeId, ReductionEdge<TypeId>> types{nullptr};
+    DenseHashMap<TypePackId, ReductionEdge<TypePackId>> typePacks{nullptr};
+
+    bool isIrreducible(TypeId ty);
+    bool isIrreducible(TypePackId tp);
+
+    TypeId memoize(TypeId ty, TypeId reducedTy);
+    TypePackId memoize(TypePackId tp, TypePackId reducedTp);
+
+    // Reducing A into B may have a non-irreducible edge A to B for which B is not irreducible, which means B could be reduced into C.
+    // Because reduction should always be transitive, A should point to C if A points to B and B points to C.
+    std::optional<ReductionEdge<TypeId>> memoizedof(TypeId ty) const;
+    std::optional<ReductionEdge<TypePackId>> memoizedof(TypePackId tp) const;
 };
 } // namespace detail
 
@@ -42,29 +67,19 @@ struct TypeReduction
     std::optional<TypePackId> reduce(TypePackId tp);
     std::optional<TypeFun> reduce(const TypeFun& fun);
 
-    /// Creating a child TypeReduction will allow the parent TypeReduction to share its memoization with the child TypeReductions.
-    /// This is safe as long as the parent's TypeArena continues to outlive both TypeReduction memoization.
-    TypeReduction fork(NotNull<TypeArena> arena, const TypeReductionOptions& opts = {}) const;
-
 private:
-    const TypeReduction* parent = nullptr;
-
     NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<struct InternalErrorReporter> handle;
-    TypeReductionOptions options;
 
-    DenseHashMap<TypeId, detail::ReductionContext<TypeId>> memoizedTypes{nullptr};
-    DenseHashMap<TypePackId, detail::ReductionContext<TypePackId>> memoizedTypePacks{nullptr};
+    TypeReductionOptions options;
+    detail::TypeReductionMemoization memoization;
 
     // Computes an *estimated length* of the cartesian product of the given type.
     size_t cartesianProductSize(TypeId ty) const;
 
     bool hasExceededCartesianProductLimit(TypeId ty) const;
     bool hasExceededCartesianProductLimit(TypePackId tp) const;
-
-    std::optional<TypeId> memoizedof(TypeId ty) const;
-    std::optional<TypePackId> memoizedof(TypePackId tp) const;
 };
 
 } // namespace Luau

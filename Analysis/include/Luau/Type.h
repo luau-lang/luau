@@ -246,6 +246,18 @@ struct WithPredicate
 {
     T type;
     PredicateVec predicates;
+
+    WithPredicate() = default;
+    explicit WithPredicate(T type)
+        : type(type)
+    {
+    }
+
+    WithPredicate(T type, PredicateVec predicates)
+        : type(type)
+        , predicates(std::move(predicates))
+    {
+    }
 };
 
 using MagicFunction = std::function<std::optional<WithPredicate<TypePackId>>(
@@ -852,5 +864,16 @@ void attachTag(Property& prop, const std::string& tagName);
 bool hasTag(TypeId ty, const std::string& tagName);
 bool hasTag(const Property& prop, const std::string& tagName);
 bool hasTag(const Tags& tags, const std::string& tagName); // Do not use in new work.
+
+/*
+ * Use this to change the kind of a particular type.
+ *
+ * LUAU_NOINLINE so that the calling frame doesn't have to pay the stack storage for the new variant.
+ */
+template<typename T, typename... Args>
+LUAU_NOINLINE T* emplaceType(Type* ty, Args&&... args)
+{
+    return &ty->ty.emplace<T>(std::forward<Args>(args)...);
+}
 
 } // namespace Luau
