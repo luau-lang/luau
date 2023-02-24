@@ -487,7 +487,7 @@ int main(int argc, char** argv)
     if (args.size() < 4)
         help(args);
 
-    for (int i = 1; i < args.size(); ++i)
+    for (size_t i = 1; i < args.size(); ++i)
     {
         if (args[i] == "--help")
             help(args);
