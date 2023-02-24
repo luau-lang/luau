@@ -162,6 +162,8 @@ inline bool isPseudo(IrCmd cmd)
     return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE;
 }
 
+bool isGCO(uint8_t tag);
+
 // Remove a single instruction
 void kill(IrFunction& function, IrInst& inst);
 
@@ -179,7 +181,7 @@ void replace(IrFunction& function, IrOp& original, IrOp replacement);
 
 // Replace a single instruction
 // Target instruction index instead of reference is used to handle introduction of a new block terminator
-void replace(IrFunction& function, uint32_t instIdx, IrInst replacement);
+void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst replacement);
 
 // Replace instruction with a different value (using IrCmd::SUBSTITUTE)
 void substitute(IrFunction& function, IrInst& inst, IrOp replacement);
@@ -188,10 +190,13 @@ void substitute(IrFunction& function, IrInst& inst, IrOp replacement);
 void applySubstitutions(IrFunction& function, IrOp& op);
 void applySubstitutions(IrFunction& function, IrInst& inst);
 
+// Compare numbers using IR condition value
+bool compare(double a, double b, IrCondition cond);
+
 // Perform constant folding on instruction at index
 // For most instructions, successful folding results in a IrCmd::SUBSTITUTE
 // But it can also be successful on conditional control-flow, replacing it with an unconditional IrCmd::JUMP
-void foldConstants(IrBuilder& build, IrFunction& function, uint32_t instIdx);
+void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint32_t instIdx);
 
 } // namespace CodeGen
 } // namespace Luau

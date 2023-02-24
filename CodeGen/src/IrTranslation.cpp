@@ -6,6 +6,7 @@
 #include "Luau/IrUtils.h"
 
 #include "CustomExecUtils.h"
+#include "IrTranslateBuiltins.h"
 
 #include "lobject.h"
 #include "ltm.h"
@@ -68,7 +69,6 @@ void translateInstLoadK(IrBuilder& build, const Instruction* pc)
 {
     int ra = LUAU_INSN_A(*pc);
 
-    // TODO: per-component loads and stores might be preferable
     IrOp load = build.inst(IrCmd::LOAD_TVALUE, build.vmConst(LUAU_INSN_D(*pc)));
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), load);
 }
@@ -78,7 +78,6 @@ void translateInstLoadKX(IrBuilder& build, const Instruction* pc)
     int ra = LUAU_INSN_A(*pc);
     uint32_t aux = pc[1];
 
-    // TODO: per-component loads and stores might be preferable
     IrOp load = build.inst(IrCmd::LOAD_TVALUE, build.vmConst(aux));
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), load);
 }
@@ -88,7 +87,6 @@ void translateInstMove(IrBuilder& build, const Instruction* pc)
     int ra = LUAU_INSN_A(*pc);
     int rb = LUAU_INSN_B(*pc);
 
-    // TODO: per-component loads and stores might be preferable
     IrOp load = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(rb));
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), load);
 }
@@ -146,10 +144,11 @@ void translateInstJumpIfEq(IrBuilder& build, const Instruction* pc, int pcpos, b
 
     build.inst(IrCmd::JUMP_CMP_NUM, va, vb, build.cond(IrCondition::NotEqual), not_ ? target : next, not_ ? next : target);
 
-    FallbackStreamScope scope(build, fallback, next);
-
+    build.beginBlock(fallback);
     build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
     build.inst(IrCmd::JUMP_CMP_ANY, build.vmReg(ra), build.vmReg(rb), build.cond(not_ ? IrCondition::NotEqual : IrCondition::Equal), target, next);
+
+    build.beginBlock(next);
 }
 
 void translateInstJumpIfCond(IrBuilder& build, const Instruction* pc, int pcpos, IrCondition cond)
@@ -173,10 +172,11 @@ void translateInstJumpIfCond(IrBuilder& build, const Instruction* pc, int pcpos,
 
     build.inst(IrCmd::JUMP_CMP_NUM, va, vb, build.cond(cond), target, next);
 
-    FallbackStreamScope scope(build, fallback, next);
-
+    build.beginBlock(fallback);
     build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
     build.inst(IrCmd::JUMP_CMP_ANY, build.vmReg(ra), build.vmReg(rb), build.cond(cond), target, next);
+
+    build.beginBlock(next);
 }
 
 void translateInstJumpX(IrBuilder& build, const Instruction* pc, int pcpos)
@@ -479,6 +479,61 @@ void translateInstCloseUpvals(IrBuilder& build, const Instruction* pc)
     build.inst(IrCmd::CLOSE_UPVALS, build.vmReg(ra));
 }
 
+void translateFastCallN(
+    IrBuilder& build, const Instruction* pc, int pcpos, bool customParams, int customParamCount, IrOp customArgs, IrOp next, IrCmd fallbackCmd)
+{
+    int bfid = LUAU_INSN_A(*pc);
+    int skip = LUAU_INSN_C(*pc);
+
+    IrOp fallback = build.block(IrBlockKind::Fallback);
+
+    Instruction call = pc[skip + 1];
+    LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+    int ra = LUAU_INSN_A(call);
+
+    int nparams = customParams ? customParamCount : LUAU_INSN_B(call) - 1;
+    int nresults = LUAU_INSN_C(call) - 1;
+    int arg = customParams ? LUAU_INSN_B(*pc) : ra + 1;
+    IrOp args = customParams ? customArgs : build.vmReg(ra + 2);
+
+    build.inst(IrCmd::CHECK_SAFE_ENV, fallback);
+
+    BuiltinImplResult br = translateBuiltin(build, LuauBuiltinFunction(bfid), ra, arg, args, nparams, nresults, fallback);
+
+    if (br.type == BuiltinImplType::UsesFallback)
+    {
+        if (nresults == LUA_MULTRET)
+            build.inst(IrCmd::ADJUST_STACK_TO_REG, build.vmReg(ra), build.constInt(br.actualResultCount));
+        else if (nparams == LUA_MULTRET)
+            build.inst(IrCmd::ADJUST_STACK_TO_TOP);
+    }
+    else
+    {
+        switch (fallbackCmd)
+        {
+        case IrCmd::LOP_FASTCALL:
+            build.inst(IrCmd::LOP_FASTCALL, build.constUint(pcpos), build.vmReg(ra), build.constInt(nparams), fallback);
+            break;
+        case IrCmd::LOP_FASTCALL1:
+            build.inst(IrCmd::LOP_FASTCALL1, build.constUint(pcpos), build.vmReg(ra), build.vmReg(arg), fallback);
+            break;
+        case IrCmd::LOP_FASTCALL2:
+            build.inst(IrCmd::LOP_FASTCALL2, build.constUint(pcpos), build.vmReg(ra), build.vmReg(arg), build.vmReg(pc[1]), fallback);
+            break;
+        case IrCmd::LOP_FASTCALL2K:
+            build.inst(IrCmd::LOP_FASTCALL2K, build.constUint(pcpos), build.vmReg(ra), build.vmReg(arg), build.vmConst(pc[1]), fallback);
+            break;
+        default:
+            LUAU_ASSERT(!"unexpected command");
+        }
+    }
+
+    build.inst(IrCmd::JUMP, next);
+
+    // this will be filled with IR corresponding to instructions after FASTCALL until skip+1
+    build.beginBlock(fallback);
+}
+
 void translateInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
@@ -589,7 +644,6 @@ void translateInstForGPrepNext(IrBuilder& build, const Instruction* pc, int pcpo
 
     build.inst(IrCmd::JUMP, target);
 
-    // FallbackStreamScope not used here because this instruction doesn't fallthrough to next instruction
     build.beginBlock(fallback);
     build.inst(IrCmd::LOP_FORGPREP_XNEXT_FALLBACK, build.constUint(pcpos), target);
 }
@@ -622,7 +676,6 @@ void translateInstForGPrepInext(IrBuilder& build, const Instruction* pc, int pcp
 
     build.inst(IrCmd::JUMP, target);
 
-    // FallbackStreamScope not used here because this instruction doesn't fallthrough to next instruction
     build.beginBlock(fallback);
     build.inst(IrCmd::LOP_FORGPREP_XNEXT_FALLBACK, build.constUint(pcpos), target);
 }
@@ -700,7 +753,6 @@ void translateInstGetTableN(IrBuilder& build, const Instruction* pc, int pcpos)
 
     IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(c));
 
-    // TODO: per-component loads and stores might be preferable
     IrOp arrElTval = build.inst(IrCmd::LOAD_TVALUE, arrEl);
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), arrElTval);
 
@@ -731,7 +783,6 @@ void translateInstSetTableN(IrBuilder& build, const Instruction* pc, int pcpos)
 
     IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(c));
 
-    // TODO: per-component loads and stores might be preferable
     IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
     build.inst(IrCmd::STORE_TVALUE, arrEl, tva);
 
@@ -771,7 +822,6 @@ void translateInstGetTable(IrBuilder& build, const Instruction* pc, int pcpos)
 
     IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, index);
 
-    // TODO: per-component loads and stores might be preferable
     IrOp arrElTval = build.inst(IrCmd::LOAD_TVALUE, arrEl);
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), arrElTval);
 
@@ -810,7 +860,6 @@ void translateInstSetTable(IrBuilder& build, const Instruction* pc, int pcpos)
 
     IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, index);
 
-    // TODO: per-component loads and stores might be preferable
     IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
     build.inst(IrCmd::STORE_TVALUE, arrEl, tva);
 
@@ -842,7 +891,6 @@ void translateInstGetImport(IrBuilder& build, const Instruction* pc, int pcpos)
 
     build.beginBlock(fastPath);
 
-    // TODO: per-component loads and stores might be preferable
     IrOp tvk = build.inst(IrCmd::LOAD_TVALUE, build.vmConst(k));
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), tvk);
 
@@ -871,7 +919,6 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
 
     build.inst(IrCmd::CHECK_SLOT_MATCH, addrSlotEl, build.vmConst(aux), fallback);
 
-    // TODO: per-component loads and stores might be preferable
     IrOp tvn = build.inst(IrCmd::LOAD_NODE_VALUE_TV, addrSlotEl);
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), tvn);
 
@@ -900,7 +947,6 @@ void translateInstSetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::CHECK_SLOT_MATCH, addrSlotEl, build.vmConst(aux), fallback);
     build.inst(IrCmd::CHECK_READONLY, vb, fallback);
 
-    // TODO: per-component loads and stores might be preferable
     IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
     build.inst(IrCmd::STORE_NODE_VALUE_TV, addrSlotEl, tva);
 
@@ -925,7 +971,6 @@ void translateInstGetGlobal(IrBuilder& build, const Instruction* pc, int pcpos)
 
     build.inst(IrCmd::CHECK_SLOT_MATCH, addrSlotEl, build.vmConst(aux), fallback);
 
-    // TODO: per-component loads and stores might be preferable
     IrOp tvn = build.inst(IrCmd::LOAD_NODE_VALUE_TV, addrSlotEl);
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), tvn);
 
@@ -949,7 +994,6 @@ void translateInstSetGlobal(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::CHECK_SLOT_MATCH, addrSlotEl, build.vmConst(aux), fallback);
     build.inst(IrCmd::CHECK_READONLY, env, fallback);
 
-    // TODO: per-component loads and stores might be preferable
     IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
     build.inst(IrCmd::STORE_NODE_VALUE_TV, addrSlotEl, tva);
 
@@ -971,7 +1015,6 @@ void translateInstConcat(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
     build.inst(IrCmd::CONCAT, build.vmReg(rb), build.constUint(rc - rb + 1));
 
-    // TODO: per-component loads and stores might be preferable
     IrOp tvb = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(rb));
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), tvb);
 

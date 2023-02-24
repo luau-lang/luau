@@ -3,6 +3,7 @@
 #include "Luau/IrAnalysis.h"
 #include "Luau/IrDump.h"
 #include "Luau/IrUtils.h"
+#include "Luau/OptimizeConstProp.h"
 #include "Luau/OptimizeFinalX64.h"
 
 #include "doctest.h"
@@ -16,12 +17,18 @@ class IrBuilderFixture
 public:
     void constantFold()
     {
-        for (size_t i = 0; i < build.function.instructions.size(); i++)
+        for (IrBlock& block : build.function.blocks)
         {
-            IrInst& inst = build.function.instructions[i];
+            if (block.kind == IrBlockKind::Dead)
+                continue;
 
-            applySubstitutions(build.function, inst);
-            foldConstants(build, build.function, uint32_t(i));
+            for (size_t i = block.start; i <= block.finish; i++)
+            {
+                IrInst& inst = build.function.instructions[i];
+
+                applySubstitutions(build.function, inst);
+                foldConstants(build, build.function, block, uint32_t(i));
+            }
         }
     }
 
@@ -96,7 +103,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FinalX64OptCheckTag")
     build.inst(IrCmd::LOP_RETURN, build.constUint(0));
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
     optimizeMemoryOperandsX64(build.function);
@@ -109,7 +116,7 @@ bb_0:
    LOP_RETURN 0u
 
 bb_fallback_1:
-   LOP_RETURN 0u
+   LOP_RETURN 1u
 
 )");
 }
@@ -147,7 +154,6 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FinalX64OptEqTag1")
     IrOp opA = build.inst(IrCmd::LOAD_TAG, build.vmReg(1));
     IrOp opB = build.inst(IrCmd::LOAD_TAG, build.vmReg(2));
     build.inst(IrCmd::JUMP_EQ_TAG, opA, opB, trueBlock, falseBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
 
     build.beginBlock(trueBlock);
     build.inst(IrCmd::LOP_RETURN, build.constUint(0));
@@ -184,7 +190,6 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FinalX64OptEqTag2")
     IrOp opB = build.inst(IrCmd::LOAD_TAG, build.vmReg(2));
     build.inst(IrCmd::STORE_TAG, build.vmReg(6), opA);
     build.inst(IrCmd::JUMP_EQ_TAG, opA, opB, trueBlock, falseBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
 
     build.beginBlock(trueBlock);
     build.inst(IrCmd::LOP_RETURN, build.constUint(0));
@@ -223,7 +228,6 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FinalX64OptEqTag3")
     IrOp arrElem = build.inst(IrCmd::GET_ARR_ADDR, table, build.constInt(0));
     IrOp opA = build.inst(IrCmd::LOAD_TAG, arrElem);
     build.inst(IrCmd::JUMP_EQ_TAG, opA, build.constTag(0), trueBlock, falseBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
 
     build.beginBlock(trueBlock);
     build.inst(IrCmd::LOP_RETURN, build.constUint(0));
@@ -261,7 +265,6 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FinalX64OptJumpCmpNum")
     IrOp opA = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1));
     IrOp opB = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(2));
     build.inst(IrCmd::JUMP_CMP_NUM, opA, opB, trueBlock, falseBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
 
     build.beginBlock(trueBlock);
     build.inst(IrCmd::LOP_RETURN, build.constUint(0));
@@ -466,14 +469,14 @@ bb_3:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "ControlFlowCmpNum")
 {
-    IrOp nan = build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0));
-
     auto compareFold = [this](IrOp lhs, IrOp rhs, IrCondition cond, bool result) {
         IrOp instOp;
         IrInst instExpected;
 
         withTwoBlocks([&](IrOp a, IrOp b) {
-            instOp = build.inst(IrCmd::JUMP_CMP_NUM, lhs, rhs, build.cond(cond), a, b);
+            IrOp nan = build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0));
+            instOp = build.inst(
+                IrCmd::JUMP_CMP_NUM, lhs.kind == IrOpKind::None ? nan : lhs, rhs.kind == IrOpKind::None ? nan : rhs, build.cond(cond), a, b);
             instExpected = IrInst{IrCmd::JUMP, result ? a : b};
         });
 
@@ -481,6 +484,8 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ControlFlowCmpNum")
         constantFold();
         checkEq(instOp, instExpected);
     };
+
+    IrOp nan; // Empty operand is used to signal a placement of a 'nan'
 
     compareFold(build.constDouble(1), build.constDouble(1), IrCondition::Equal, true);
     compareFold(build.constDouble(1), build.constDouble(2), IrCondition::Equal, false);
@@ -529,6 +534,664 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ControlFlowCmpNum")
     compareFold(build.constDouble(1), build.constDouble(2), IrCondition::NotGreaterEqual, true);
     compareFold(build.constDouble(2), build.constDouble(1), IrCondition::NotGreaterEqual, false);
     compareFold(build.constDouble(1), nan, IrCondition::NotGreaterEqual, true);
+}
+
+TEST_SUITE_END();
+
+TEST_SUITE_BEGIN("ConstantPropagation");
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "RememberTagsAndValues")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_INT, build.vmReg(1), build.constInt(10));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), build.constDouble(0.5));
+
+    // We know constants from those loads
+    build.inst(IrCmd::STORE_TAG, build.vmReg(3), build.inst(IrCmd::LOAD_TAG, build.vmReg(0)));
+    build.inst(IrCmd::STORE_INT, build.vmReg(4), build.inst(IrCmd::LOAD_INT, build.vmReg(1)));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(5), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(2)));
+
+    // We know that these overrides have no effect
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_INT, build.vmReg(1), build.constInt(10));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), build.constDouble(0.5));
+
+    // But we can invalidate them with unknown values
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.inst(IrCmd::LOAD_TAG, build.vmReg(6)));
+    build.inst(IrCmd::STORE_INT, build.vmReg(1), build.inst(IrCmd::LOAD_INT, build.vmReg(7)));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(8)));
+
+    // So now the constant stores have to be made
+    build.inst(IrCmd::STORE_TAG, build.vmReg(9), build.inst(IrCmd::LOAD_TAG, build.vmReg(0)));
+    build.inst(IrCmd::STORE_INT, build.vmReg(10), build.inst(IrCmd::LOAD_INT, build.vmReg(1)));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(11), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(2)));
+
+    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   STORE_TAG R0, tnumber
+   STORE_INT R1, 10i
+   STORE_DOUBLE R2, 0.5
+   STORE_TAG R3, tnumber
+   STORE_INT R4, 10i
+   STORE_DOUBLE R5, 0.5
+   %12 = LOAD_TAG R6
+   STORE_TAG R0, %12
+   %14 = LOAD_INT R7
+   STORE_INT R1, %14
+   %16 = LOAD_DOUBLE R8
+   STORE_DOUBLE R2, %16
+   %18 = LOAD_TAG R0
+   STORE_TAG R9, %18
+   %20 = LOAD_INT R1
+   STORE_INT R10, %20
+   %22 = LOAD_DOUBLE R2
+   STORE_DOUBLE R11, %22
+   LOP_RETURN 0u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "PropagateThroughTvalue")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), build.constDouble(0.5));
+
+    IrOp tv = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(0));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(1), tv);
+
+    // We know constants from those loads
+    build.inst(IrCmd::STORE_TAG, build.vmReg(3), build.inst(IrCmd::LOAD_TAG, build.vmReg(1)));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(3), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1)));
+
+    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   STORE_TAG R0, tnumber
+   STORE_DOUBLE R0, 0.5
+   %2 = LOAD_TVALUE R0
+   STORE_TVALUE R1, %2
+   STORE_TAG R3, tnumber
+   STORE_DOUBLE R3, 0.5
+   LOP_RETURN 0u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "SkipCheckTag")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.block(IrBlockKind::Fallback);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
+    build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(0)), build.constTag(tnumber), fallback);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   STORE_TAG R0, tnumber
+   LOP_RETURN 0u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "SkipOncePerBlockChecks")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::CHECK_SAFE_ENV);
+    build.inst(IrCmd::CHECK_SAFE_ENV);
+    build.inst(IrCmd::CHECK_GC);
+    build.inst(IrCmd::CHECK_GC);
+
+    build.inst(IrCmd::DO_LEN, build.vmReg(1), build.vmReg(2)); // Can make env unsafe
+    build.inst(IrCmd::CHECK_SAFE_ENV);
+
+    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   CHECK_SAFE_ENV
+   CHECK_GC
+   DO_LEN R1, R2
+   CHECK_SAFE_ENV
+   LOP_RETURN 0u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "RememberTableState")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.block(IrBlockKind::Fallback);
+
+    build.beginBlock(block);
+
+    IrOp table = build.inst(IrCmd::LOAD_POINTER, build.vmReg(0));
+
+    build.inst(IrCmd::CHECK_NO_METATABLE, table, fallback);
+    build.inst(IrCmd::CHECK_READONLY, table, fallback);
+
+    build.inst(IrCmd::CHECK_NO_METATABLE, table, fallback);
+    build.inst(IrCmd::CHECK_READONLY, table, fallback);
+
+    build.inst(IrCmd::DO_LEN, build.vmReg(1), build.vmReg(2)); // Can access all heap memory
+
+    build.inst(IrCmd::CHECK_NO_METATABLE, table, fallback);
+    build.inst(IrCmd::CHECK_READONLY, table, fallback);
+
+    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   %0 = LOAD_POINTER R0
+   CHECK_NO_METATABLE %0, bb_fallback_1
+   CHECK_READONLY %0, bb_fallback_1
+   DO_LEN R1, R2
+   CHECK_NO_METATABLE %0, bb_fallback_1
+   CHECK_READONLY %0, bb_fallback_1
+   LOP_RETURN 0u
+
+bb_fallback_1:
+   LOP_RETURN 1u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "SkipUselessBarriers")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
+    IrOp table = build.inst(IrCmd::LOAD_POINTER, build.vmReg(1));
+    build.inst(IrCmd::BARRIER_TABLE_FORWARD, table, build.vmReg(0));
+    IrOp something = build.inst(IrCmd::LOAD_POINTER, build.vmReg(2));
+    build.inst(IrCmd::BARRIER_OBJ, something, build.vmReg(0));
+    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   STORE_TAG R0, tnumber
+   LOP_RETURN 0u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "ConcatInvalidation")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
+    build.inst(IrCmd::STORE_INT, build.vmReg(1), build.constInt(10));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), build.constDouble(0.5));
+
+    build.inst(IrCmd::CONCAT, build.vmReg(0), build.vmReg(3)); // Concat invalidates more than the target register
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(3), build.inst(IrCmd::LOAD_TAG, build.vmReg(0)));
+    build.inst(IrCmd::STORE_INT, build.vmReg(4), build.inst(IrCmd::LOAD_INT, build.vmReg(1)));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(5), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(2)));
+
+    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   STORE_TAG R0, tnumber
+   STORE_INT R1, 10i
+   STORE_DOUBLE R2, 0.5
+   CONCAT R0, R3
+   %4 = LOAD_TAG R0
+   STORE_TAG R3, %4
+   %6 = LOAD_INT R1
+   STORE_INT R4, %6
+   %8 = LOAD_DOUBLE R2
+   STORE_DOUBLE R5, %8
+   LOP_RETURN 0u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "BuiltinFastcallsMayInvalidateMemory")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.block(IrBlockKind::Fallback);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), build.constDouble(0.5));
+
+    IrOp table = build.inst(IrCmd::LOAD_POINTER, build.vmReg(0));
+
+    build.inst(IrCmd::CHECK_NO_METATABLE, table, fallback);
+    build.inst(IrCmd::CHECK_READONLY, table, fallback);
+
+    build.inst(IrCmd::LOP_FASTCALL1, build.constUint(0), build.vmReg(1), build.vmReg(2), fallback);
+
+    build.inst(IrCmd::CHECK_NO_METATABLE, table, fallback);
+    build.inst(IrCmd::CHECK_READONLY, table, fallback);
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0))); // At least R0 wasn't touched
+
+    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   STORE_DOUBLE R0, 0.5
+   %1 = LOAD_POINTER R0
+   CHECK_NO_METATABLE %1, bb_fallback_1
+   CHECK_READONLY %1, bb_fallback_1
+   LOP_FASTCALL1 0u, R1, R2, bb_fallback_1
+   CHECK_NO_METATABLE %1, bb_fallback_1
+   CHECK_READONLY %1, bb_fallback_1
+   STORE_DOUBLE R1, 0.5
+   LOP_RETURN 0u
+
+bb_fallback_1:
+   LOP_RETURN 1u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "RedundantStoreCheckConstantType")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), build.constInt(10));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), build.constDouble(0.5));
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), build.constInt(10));
+
+    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   STORE_INT R0, 10i
+   STORE_DOUBLE R0, 0.5
+   STORE_INT R0, 10i
+   LOP_RETURN 0u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "RedundantStoreCheckConstantType")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), build.constInt(10));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), build.constDouble(0.5));
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), build.constInt(10));
+
+    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   STORE_INT R0, 10i
+   STORE_DOUBLE R0, 0.5
+   STORE_INT R0, 10i
+   LOP_RETURN 0u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "TagCheckPropagation")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.block(IrBlockKind::Fallback);
+
+    build.beginBlock(block);
+
+    IrOp unknown = build.inst(IrCmd::LOAD_TAG, build.vmReg(0));
+
+    build.inst(IrCmd::CHECK_TAG, unknown, build.constTag(tnumber), fallback);
+    build.inst(IrCmd::CHECK_TAG, unknown, build.constTag(tnumber), fallback);
+
+    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   %0 = LOAD_TAG R0
+   CHECK_TAG %0, tnumber, bb_fallback_1
+   LOP_RETURN 0u
+
+bb_fallback_1:
+   LOP_RETURN 1u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "TagCheckPropagationConflicting")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.block(IrBlockKind::Fallback);
+
+    build.beginBlock(block);
+
+    IrOp unknown = build.inst(IrCmd::LOAD_TAG, build.vmReg(0));
+
+    build.inst(IrCmd::CHECK_TAG, unknown, build.constTag(tnumber), fallback);
+    build.inst(IrCmd::CHECK_TAG, unknown, build.constTag(tnil), fallback);
+
+    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   %0 = LOAD_TAG R0
+   CHECK_TAG %0, tnumber, bb_fallback_1
+   JUMP bb_fallback_1
+
+bb_fallback_1:
+   LOP_RETURN 1u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "TruthyTestRemoval")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp trueBlock = build.block(IrBlockKind::Internal);
+    IrOp falseBlock = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.block(IrBlockKind::Fallback);
+
+    build.beginBlock(block);
+    IrOp unknown = build.inst(IrCmd::LOAD_TAG, build.vmReg(1));
+    build.inst(IrCmd::CHECK_TAG, unknown, build.constTag(tnumber), fallback);
+    build.inst(IrCmd::JUMP_IF_TRUTHY, build.vmReg(1), trueBlock, falseBlock);
+
+    build.beginBlock(trueBlock);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+
+    build.beginBlock(falseBlock);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(2));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(3));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   %0 = LOAD_TAG R1
+   CHECK_TAG %0, tnumber, bb_fallback_3
+   JUMP bb_1
+
+bb_1:
+   LOP_RETURN 1u
+
+bb_fallback_3:
+   LOP_RETURN 3u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "FalsyTestRemoval")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp trueBlock = build.block(IrBlockKind::Internal);
+    IrOp falseBlock = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.block(IrBlockKind::Fallback);
+
+    build.beginBlock(block);
+    IrOp unknown = build.inst(IrCmd::LOAD_TAG, build.vmReg(1));
+    build.inst(IrCmd::CHECK_TAG, unknown, build.constTag(tnumber), fallback);
+    build.inst(IrCmd::JUMP_IF_FALSY, build.vmReg(1), trueBlock, falseBlock);
+
+    build.beginBlock(trueBlock);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+
+    build.beginBlock(falseBlock);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(2));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(3));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   %0 = LOAD_TAG R1
+   CHECK_TAG %0, tnumber, bb_fallback_3
+   JUMP bb_2
+
+bb_2:
+   LOP_RETURN 2u
+
+bb_fallback_3:
+   LOP_RETURN 3u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "TagEqRemoval")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp trueBlock = build.block(IrBlockKind::Internal);
+    IrOp falseBlock = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+    IrOp tag = build.inst(IrCmd::LOAD_TAG, build.vmReg(1));
+    build.inst(IrCmd::CHECK_TAG, tag, build.constTag(tboolean));
+    build.inst(IrCmd::JUMP_EQ_TAG, tag, build.constTag(tnumber), trueBlock, falseBlock);
+
+    build.beginBlock(trueBlock);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+
+    build.beginBlock(falseBlock);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(2));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   %0 = LOAD_TAG R1
+   CHECK_TAG %0, tboolean
+   JUMP bb_2
+
+bb_2:
+   LOP_RETURN 2u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "IntEqRemoval")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp trueBlock = build.block(IrBlockKind::Internal);
+    IrOp falseBlock = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+    IrOp value = build.inst(IrCmd::LOAD_INT, build.vmReg(1));
+    build.inst(IrCmd::STORE_INT, build.vmReg(1), build.constInt(5));
+    build.inst(IrCmd::JUMP_EQ_INT, value, build.constInt(5), trueBlock, falseBlock);
+
+    build.beginBlock(trueBlock);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+
+    build.beginBlock(falseBlock);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(2));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   STORE_INT R1, 5i
+   JUMP bb_1
+
+bb_1:
+   LOP_RETURN 1u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "NumCmpRemoval")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp trueBlock = build.block(IrBlockKind::Internal);
+    IrOp falseBlock = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+    IrOp value = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), build.constDouble(4.0));
+    build.inst(IrCmd::JUMP_CMP_NUM, value, build.constDouble(8.0), build.cond(IrCondition::Greater), trueBlock, falseBlock);
+
+    build.beginBlock(trueBlock);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+
+    build.beginBlock(falseBlock);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(2));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   STORE_DOUBLE R1, 4
+   JUMP bb_2
+
+bb_2:
+   LOP_RETURN 2u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DataFlowsThroughDirectJumpToUniqueSuccessor")
+{
+    IrOp block1 = build.block(IrBlockKind::Internal);
+    IrOp block2 = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block1);
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
+    build.inst(IrCmd::JUMP, block2);
+
+    build.beginBlock(block2);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.inst(IrCmd::LOAD_TAG, build.vmReg(0)));
+    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   STORE_TAG R0, tnumber
+   JUMP bb_1
+
+bb_1:
+   STORE_TAG R1, tnumber
+   LOP_RETURN 1u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DataDoesNotFlowThroughDirectJumpToNonUniqueSuccessor")
+{
+    IrOp block1 = build.block(IrBlockKind::Internal);
+    IrOp block2 = build.block(IrBlockKind::Internal);
+    IrOp block3 = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block1);
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
+    build.inst(IrCmd::JUMP, block2);
+
+    build.beginBlock(block2);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.inst(IrCmd::LOAD_TAG, build.vmReg(0)));
+    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+
+    build.beginBlock(block3);
+    build.inst(IrCmd::JUMP, block2);
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build);
+
+    CHECK("\n" + toString(build.function, /* includeDetails */ false) == R"(
+bb_0:
+   STORE_TAG R0, tnumber
+   JUMP bb_1
+
+bb_1:
+   %2 = LOAD_TAG R0
+   STORE_TAG R1, %2
+   LOP_RETURN 1u
+
+bb_2:
+   JUMP bb_1
+
+)");
 }
 
 TEST_SUITE_END();

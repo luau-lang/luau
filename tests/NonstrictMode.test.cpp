@@ -194,7 +194,7 @@ TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
 
     CHECK_EQ(*typeChecker.anyType, *ttv->props["one"].type);
     CHECK_EQ(*typeChecker.anyType, *ttv->props["two"].type);
-    CHECK_MESSAGE(get<FunctionType>(ttv->props["three"].type), "Should be a function: " << *ttv->props["three"].type);
+    CHECK_MESSAGE(get<FunctionType>(follow(ttv->props["three"].type)), "Should be a function: " << *ttv->props["three"].type);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_variables_are_any")

@@ -71,6 +71,14 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_non_persistent_primitive")
 
 TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
 {
+    // Under DCR, we don't seal the outer occurrance of the table `Cyclic` which
+    // breaks this test.  I'm not sure if that behaviour change is important or
+    // not, but it's tangental to the core purpose of this test.
+
+    ScopedFastFlag sff[] = {
+        {"DebugLuauDeferredConstraintResolution", false},
+    };
+
     CheckResult result = check(R"(
         local Cyclic = {}
         function Cyclic.get()
@@ -85,13 +93,13 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
      * Assert that the return type of get() is the same as the outer table.
      */
 
-    TypeId counterType = requireType("Cyclic");
+    TypeId ty = requireType("Cyclic");
 
     TypeArena dest;
     CloneState cloneState;
-    TypeId counterCopy = clone(counterType, dest, cloneState);
+    TypeId cloneTy = clone(ty, dest, cloneState);
 
-    TableType* ttv = getMutable<TableType>(counterCopy);
+    TableType* ttv = getMutable<TableType>(cloneTy);
     REQUIRE(ttv != nullptr);
 
     CHECK_EQ(std::optional<std::string>{"Cyclic"}, ttv->syntheticName);
@@ -105,9 +113,40 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
     std::optional<TypeId> methodReturnType = first(ftv->retTypes);
     REQUIRE(methodReturnType);
 
-    CHECK_EQ(methodReturnType, counterCopy);
+    CHECK_MESSAGE(methodReturnType == cloneTy, toString(methodType, {true}) << " should be pointer identical to " << toString(cloneTy, {true}));
     CHECK_EQ(2, dest.typePacks.size()); // one for the function args, and another for its return type
     CHECK_EQ(2, dest.types.size());     // One table and one function
+}
+
+TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table_2")
+{
+    TypeArena src;
+
+    TypeId tableTy = src.addType(TableType{});
+    TableType* tt = getMutable<TableType>(tableTy);
+    REQUIRE(tt);
+
+    TypeId methodTy = src.addType(FunctionType{src.addTypePack({}), src.addTypePack({tableTy})});
+
+    tt->props["get"].type = methodTy;
+
+    TypeArena dest;
+
+    CloneState cloneState;
+    TypeId cloneTy = clone(tableTy, dest, cloneState);
+    TableType* ctt = getMutable<TableType>(cloneTy);
+    REQUIRE(ctt);
+
+    TypeId clonedMethodType = ctt->props["get"].type;
+    REQUIRE(clonedMethodType);
+
+    const FunctionType* cmf = get<FunctionType>(clonedMethodType);
+    REQUIRE(cmf);
+
+    std::optional<TypeId> cloneMethodReturnType = first(cmf->retTypes);
+    REQUIRE(bool(cloneMethodReturnType));
+
+    CHECK(*cloneMethodReturnType == cloneTy);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")

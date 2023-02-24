@@ -4,6 +4,7 @@
 #include "Luau/Constraint.h"
 #include "Luau/NotNull.h"
 #include "Luau/Scope.h"
+#include "Luau/Module.h"
 #include "Luau/ToString.h"
 #include "Luau/Error.h"
 #include "Luau/Variant.h"
@@ -34,11 +35,26 @@ struct TypeBindingSnapshot
     std::string typeString;
 };
 
+struct ExprTypesAtLocation
+{
+    Location location;
+    TypeId ty;
+    std::optional<TypeId> expectedTy;
+};
+
+struct AnnotationTypesAtLocation
+{
+    Location location;
+    TypeId resolvedTy;
+};
+
 struct ConstraintGenerationLog
 {
     std::string source;
-    std::unordered_map<std::string, Location> constraintLocations;
     std::vector<ErrorSnapshot> errors;
+
+    std::vector<ExprTypesAtLocation> exprTypeLocations;
+    std::vector<AnnotationTypesAtLocation> annotationTypeLocations;
 };
 
 struct ScopeSnapshot
@@ -49,16 +65,11 @@ struct ScopeSnapshot
     std::vector<ScopeSnapshot> children;
 };
 
-enum class ConstraintBlockKind
-{
-    TypeId,
-    TypePackId,
-    ConstraintId,
-};
+using ConstraintBlockTarget = Variant<TypeId, TypePackId, NotNull<const Constraint>>;
 
 struct ConstraintBlock
 {
-    ConstraintBlockKind kind;
+    ConstraintBlockTarget target;
     std::string stringification;
 };
 
@@ -71,16 +82,18 @@ struct ConstraintSnapshot
 
 struct BoundarySnapshot
 {
-    std::unordered_map<std::string, ConstraintSnapshot> constraints;
+    DenseHashMap<const Constraint*, ConstraintSnapshot> unsolvedConstraints{nullptr};
     ScopeSnapshot rootScope;
+    DenseHashMap<const void*, std::string> typeStrings{nullptr};
 };
 
 struct StepSnapshot
 {
-    std::string currentConstraint;
+    const Constraint* currentConstraint;
     bool forced;
-    std::unordered_map<std::string, ConstraintSnapshot> unsolvedConstraints;
+    DenseHashMap<const Constraint*, ConstraintSnapshot> unsolvedConstraints{nullptr};
     ScopeSnapshot rootScope;
+    DenseHashMap<const void*, std::string> typeStrings{nullptr};
 };
 
 struct TypeSolveLog
@@ -95,8 +108,6 @@ struct TypeCheckLog
     std::vector<ErrorSnapshot> errors;
 };
 
-using ConstraintBlockTarget = Variant<TypeId, TypePackId, NotNull<const Constraint>>;
-
 struct DcrLogger
 {
     std::string compileOutput();
@@ -104,6 +115,7 @@ struct DcrLogger
     void captureSource(std::string source);
     void captureGenerationError(const TypeError& error);
     void captureConstraintLocation(NotNull<const Constraint> constraint, Location location);
+    void captureGenerationModule(const ModulePtr& module);
 
     void pushBlock(NotNull<const Constraint> constraint, TypeId block);
     void pushBlock(NotNull<const Constraint> constraint, TypePackId block);
@@ -126,9 +138,10 @@ private:
     TypeSolveLog solveLog;
     TypeCheckLog checkLog;
 
-    ToStringOptions opts;
+    ToStringOptions opts{true};
 
     std::vector<ConstraintBlock> snapshotBlocks(NotNull<const Constraint> constraint);
+    void captureBoundaryState(BoundarySnapshot& target, const Scope* rootScope, const std::vector<NotNull<const Constraint>>& unsolvedConstraints);
 };
 
 } // namespace Luau

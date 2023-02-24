@@ -269,17 +269,9 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     case LOP_FASTCALL:
     {
         int skip = LUAU_INSN_C(*pc);
-
-        IrOp fallback = block(IrBlockKind::Fallback);
         IrOp next = blockAtInst(i + skip + 2);
 
-        Instruction call = pc[skip + 1];
-        LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
-
-        inst(IrCmd::LOP_FASTCALL, constUint(i), vmReg(LUAU_INSN_A(call)), constInt(LUAU_INSN_B(call) - 1), fallback);
-        inst(IrCmd::JUMP, next);
-
-        beginBlock(fallback);
+        translateFastCallN(*this, pc, i, false, 0, {}, next, IrCmd::LOP_FASTCALL);
 
         activeFastcallFallback = true;
         fastcallFallbackReturn = next;
@@ -288,17 +280,9 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     case LOP_FASTCALL1:
     {
         int skip = LUAU_INSN_C(*pc);
-
-        IrOp fallback = block(IrBlockKind::Fallback);
         IrOp next = blockAtInst(i + skip + 2);
 
-        Instruction call = pc[skip + 1];
-        LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
-
-        inst(IrCmd::LOP_FASTCALL1, constUint(i), vmReg(LUAU_INSN_A(call)), vmReg(LUAU_INSN_B(*pc)), fallback);
-        inst(IrCmd::JUMP, next);
-
-        beginBlock(fallback);
+        translateFastCallN(*this, pc, i, true, 1, constBool(false), next, IrCmd::LOP_FASTCALL1);
 
         activeFastcallFallback = true;
         fastcallFallbackReturn = next;
@@ -307,17 +291,9 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     case LOP_FASTCALL2:
     {
         int skip = LUAU_INSN_C(*pc);
-
-        IrOp fallback = block(IrBlockKind::Fallback);
         IrOp next = blockAtInst(i + skip + 2);
 
-        Instruction call = pc[skip + 1];
-        LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
-
-        inst(IrCmd::LOP_FASTCALL2, constUint(i), vmReg(LUAU_INSN_A(call)), vmReg(LUAU_INSN_B(*pc)), vmReg(pc[1]), fallback);
-        inst(IrCmd::JUMP, next);
-
-        beginBlock(fallback);
+        translateFastCallN(*this, pc, i, true, 2, vmReg(pc[1]), next, IrCmd::LOP_FASTCALL2);
 
         activeFastcallFallback = true;
         fastcallFallbackReturn = next;
@@ -326,17 +302,9 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     case LOP_FASTCALL2K:
     {
         int skip = LUAU_INSN_C(*pc);
-
-        IrOp fallback = block(IrBlockKind::Fallback);
         IrOp next = blockAtInst(i + skip + 2);
 
-        Instruction call = pc[skip + 1];
-        LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
-
-        inst(IrCmd::LOP_FASTCALL2K, constUint(i), vmReg(LUAU_INSN_A(call)), vmReg(LUAU_INSN_B(*pc)), vmConst(pc[1]), fallback);
-        inst(IrCmd::JUMP, next);
-
-        beginBlock(fallback);
+        translateFastCallN(*this, pc, i, true, 2, vmConst(pc[1]), next, IrCmd::LOP_FASTCALL2K);
 
         activeFastcallFallback = true;
         fastcallFallbackReturn = next;
@@ -449,6 +417,7 @@ bool IrBuilder::isInternalBlock(IrOp block)
 void IrBuilder::beginBlock(IrOp block)
 {
     IrBlock& target = function.blocks[block.index];
+    activeBlockIdx = block.index;
 
     LUAU_ASSERT(target.start == ~0u || target.start == uint32_t(function.instructions.size()));
 
@@ -511,36 +480,46 @@ IrOp IrBuilder::cond(IrCondition cond)
 
 IrOp IrBuilder::inst(IrCmd cmd)
 {
-    return inst(cmd, {}, {}, {}, {}, {});
+    return inst(cmd, {}, {}, {}, {}, {}, {});
 }
 
 IrOp IrBuilder::inst(IrCmd cmd, IrOp a)
 {
-    return inst(cmd, a, {}, {}, {}, {});
+    return inst(cmd, a, {}, {}, {}, {}, {});
 }
 
 IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b)
 {
-    return inst(cmd, a, b, {}, {}, {});
+    return inst(cmd, a, b, {}, {}, {}, {});
 }
 
 IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b, IrOp c)
 {
-    return inst(cmd, a, b, c, {}, {});
+    return inst(cmd, a, b, c, {}, {}, {});
 }
 
 IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d)
 {
-    return inst(cmd, a, b, c, d, {});
+    return inst(cmd, a, b, c, d, {}, {});
 }
 
 IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d, IrOp e)
 {
+    return inst(cmd, a, b, c, d, e, {});
+}
+
+IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d, IrOp e, IrOp f)
+{
     uint32_t index = uint32_t(function.instructions.size());
-    function.instructions.push_back({cmd, a, b, c, d, e});
+    function.instructions.push_back({cmd, a, b, c, d, e, f});
+
+    LUAU_ASSERT(!inTerminatedBlock);
 
     if (isBlockTerminator(cmd))
+    {
+        function.blocks[activeBlockIdx].finish = index;
         inTerminatedBlock = true;
+    }
 
     return {IrOpKind::Inst, index};
 }

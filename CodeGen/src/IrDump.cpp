@@ -148,6 +148,10 @@ const char* getCmdName(IrCmd cmd)
         return "NUM_TO_INDEX";
     case IrCmd::INT_TO_NUM:
         return "INT_TO_NUM";
+    case IrCmd::ADJUST_STACK_TO_REG:
+        return "ADJUST_STACK_TO_REG";
+    case IrCmd::ADJUST_STACK_TO_TOP:
+        return "ADJUST_STACK_TO_TOP";
     case IrCmd::DO_ARITH:
         return "DO_ARITH";
     case IrCmd::DO_LEN:
@@ -280,35 +284,20 @@ void toString(IrToStringContext& ctx, const IrInst& inst, uint32_t index)
 
     ctx.result.append(getCmdName(inst.cmd));
 
-    if (inst.a.kind != IrOpKind::None)
-    {
-        append(ctx.result, " ");
-        toString(ctx, inst.a);
-    }
+    auto checkOp = [&ctx](IrOp op, const char* sep) {
+        if (op.kind != IrOpKind::None)
+        {
+            ctx.result.append(sep);
+            toString(ctx, op);
+        }
+    };
 
-    if (inst.b.kind != IrOpKind::None)
-    {
-        append(ctx.result, ", ");
-        toString(ctx, inst.b);
-    }
-
-    if (inst.c.kind != IrOpKind::None)
-    {
-        append(ctx.result, ", ");
-        toString(ctx, inst.c);
-    }
-
-    if (inst.d.kind != IrOpKind::None)
-    {
-        append(ctx.result, ", ");
-        toString(ctx, inst.d);
-    }
-
-    if (inst.e.kind != IrOpKind::None)
-    {
-        append(ctx.result, ", ");
-        toString(ctx, inst.e);
-    }
+    checkOp(inst.a, " ");
+    checkOp(inst.b, ", ");
+    checkOp(inst.c, ", ");
+    checkOp(inst.d, ", ");
+    checkOp(inst.e, ", ");
+    checkOp(inst.f, ", ");
 }
 
 void toString(IrToStringContext& ctx, const IrBlock& block, uint32_t index)
@@ -421,7 +410,7 @@ std::string toString(IrFunction& function, bool includeDetails)
         }
 
         // To allow dumping blocks that are still being constructed, we can't rely on terminator and need a bounds check
-        for (uint32_t index = block.start; index < uint32_t(function.instructions.size()); index++)
+        for (uint32_t index = block.start; index <= block.finish && index < uint32_t(function.instructions.size()); index++)
         {
             IrInst& inst = function.instructions[index];
 
@@ -440,13 +429,9 @@ std::string toString(IrFunction& function, bool includeDetails)
                 toString(ctx, inst, index);
                 ctx.result.append("\n");
             }
-
-            if (isBlockTerminator(inst.cmd))
-            {
-                append(ctx.result, "\n");
-                break;
-            }
         }
+
+        append(ctx.result, "\n");
     }
 
     return result;

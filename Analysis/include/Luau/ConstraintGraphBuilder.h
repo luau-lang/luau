@@ -191,7 +191,7 @@ struct ConstraintGraphBuilder
     Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
     std::tuple<TypeId, TypeId, RefinementId> checkBinary(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
 
-    TypePackId checkLValues(const ScopePtr& scope, AstArray<AstExpr*> exprs);
+    std::vector<TypeId> checkLValues(const ScopePtr& scope, AstArray<AstExpr*> exprs);
 
     TypeId checkLValue(const ScopePtr& scope, AstExpr* expr);
 
@@ -244,10 +244,31 @@ struct ConstraintGraphBuilder
      **/
     TypePackId resolveTypePack(const ScopePtr& scope, const AstTypeList& list, bool inTypeArguments);
 
+    /**
+     * Creates generic types given a list of AST definitions, resolving default
+     * types as required.
+     * @param scope the scope that the generics should belong to.
+     * @param generics the AST generics to create types for.
+     * @param useCache whether to use the generic type cache for the given
+     * scope.
+     * @param addTypes whether to add the types to the scope's
+     * privateTypeBindings map.
+     **/
     std::vector<std::pair<Name, GenericTypeDefinition>> createGenerics(
-        const ScopePtr& scope, AstArray<AstGenericType> generics, bool useCache = false);
+        const ScopePtr& scope, AstArray<AstGenericType> generics, bool useCache = false, bool addTypes = true);
+
+    /**
+     * Creates generic type packs given a list of AST definitions, resolving
+     * default type packs as required.
+     * @param scope the scope that the generic packs should belong to.
+     * @param generics the AST generics to create type packs for.
+     * @param useCache whether to use the generic type pack cache for the given
+     * scope.
+     * @param addTypes whether to add the types to the scope's
+     * privateTypePackBindings map.
+     **/
     std::vector<std::pair<Name, GenericTypePackDefinition>> createGenericPacks(
-        const ScopePtr& scope, AstArray<AstGenericTypePack> packs, bool useCache = false);
+        const ScopePtr& scope, AstArray<AstGenericTypePack> packs, bool useCache = false, bool addTypes = true);
 
     Inference flattenPack(const ScopePtr& scope, Location location, InferencePack pack);
 

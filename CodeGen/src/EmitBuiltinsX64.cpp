@@ -5,32 +5,17 @@
 #include "Luau/Bytecode.h"
 
 #include "EmitCommonX64.h"
+#include "IrTranslateBuiltins.h" // Used temporarily for shared definition of BuiltinImplResult
 #include "NativeState.h"
 
 #include "lstate.h"
+
+// TODO: LBF_MATH_FREXP and LBF_MATH_MODF can work for 1 result case if second store is removed
 
 namespace Luau
 {
 namespace CodeGen
 {
-
-BuiltinImplResult emitBuiltinAssert(AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults, Label& fallback)
-{
-    if (nparams < 1 || nresults != 0)
-        return {BuiltinImplType::None, -1};
-
-    if (build.logText)
-        build.logAppend("; inlined LBF_ASSERT\n");
-
-    Label skip;
-
-    jumpIfFalsy(build, arg, fallback, skip);
-
-    // TODO: use of 'skip' causes a jump to a jump instruction that skips the fallback - can be optimized
-    build.setLabel(skip);
-
-    return {BuiltinImplType::UsesFallback, 0};
-}
 
 BuiltinImplResult emitBuiltinMathFloor(AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults, Label& fallback)
 {
@@ -620,7 +605,8 @@ BuiltinImplResult emitBuiltin(AssemblyBuilderX64& build, int bfid, int nparams, 
     switch (bfid)
     {
     case LBF_ASSERT:
-        return emitBuiltinAssert(build, nparams, ra, arg, args, nresults, fallback);
+        // This builtin fast-path was already translated to IR
+        return {BuiltinImplType::None, -1};
     case LBF_MATH_FLOOR:
         return emitBuiltinMathFloor(build, nparams, ra, arg, args, nresults, fallback);
     case LBF_MATH_CEIL:

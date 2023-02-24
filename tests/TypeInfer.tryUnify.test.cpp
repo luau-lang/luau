@@ -1,5 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Luau/Common.h"
 #include "Luau/Scope.h"
+#include "Luau/Symbol.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Type.h"
 
@@ -8,6 +10,8 @@
 #include "doctest.h"
 
 using namespace Luau;
+
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 struct TryUnifyFixture : Fixture
 {
@@ -254,7 +258,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_41095_concat_log_in_sealed_table_unifica
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), "No overload for function accepts 0 arguments.");
-    CHECK_EQ(toString(result.errors[1]), "Available overloads: ({a}, a) -> (); and ({a}, number, a) -> ()");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(result.errors[1]), "Available overloads: <V>({V}, V) -> (); and <V>({V}, number, V) -> ()");
+    else
+        CHECK_EQ(toString(result.errors[1]), "Available overloads: ({a}, a) -> (); and ({a}, number, a) -> ()");
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "free_tail_is_grown_properly")

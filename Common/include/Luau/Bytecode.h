@@ -42,7 +42,7 @@
 // Note: due to limitations of the versioning scheme, some bytecode blobs that carry version 2 are using features from version 3. Starting from version 3, version should be sufficient to indicate bytecode compatibility.
 //
 // Version 1: Baseline version for the open-source release. Supported until 0.521.
-// Version 2: Adds Proto::linedefined. Currently supported.
+// Version 2: Adds Proto::linedefined. Supported until 0.544.
 // Version 3: Adds FORGPREP/JUMPXEQK* and enhances AUX encoding for FORGLOOP. Removes FORGLOOP_NEXT/INEXT and JUMPIFEQK/JUMPIFNOTEQK. Currently supported.
 
 // Bytecode opcode, part of the instruction header

@@ -52,7 +52,7 @@ struct Scope
 
     std::optional<TypeId> lookup(Symbol sym) const;
     std::optional<TypeId> lookup(DefId def) const;
-    std::optional<std::pair<TypeId, Scope*>> lookupEx(Symbol sym);
+    std::optional<std::pair<Binding*, Scope*>> lookupEx(Symbol sym);
 
     std::optional<TypeFun> lookupType(const Name& name);
     std::optional<TypeFun> lookupImportedType(const Name& moduleAlias, const Name& name);

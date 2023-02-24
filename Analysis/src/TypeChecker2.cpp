@@ -4,6 +4,7 @@
 #include "Luau/Ast.h"
 #include "Luau/AstQuery.h"
 #include "Luau/Clone.h"
+#include "Luau/Common.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/Error.h"
 #include "Luau/Instantiation.h"
@@ -329,11 +330,12 @@ struct TypeChecker2
         for (size_t i = 0; i < count; ++i)
         {
             AstExpr* value = i < local->values.size ? local->values.data[i] : nullptr;
+            const bool isPack = value && (value->is<AstExprCall>() || value->is<AstExprVarargs>());
 
             if (value)
                 visit(value, RValue);
 
-            if (i != local->values.size - 1 || value)
+            if (i != local->values.size - 1 || !isPack)
             {
                 AstLocal* var = i < local->vars.size ? local->vars.data[i] : nullptr;
 
@@ -351,16 +353,19 @@ struct TypeChecker2
                     visit(var->annotation);
                 }
             }
-            else
+            else if (value)
             {
-                LUAU_ASSERT(value);
+                TypePackId valuePack = lookupPack(value);
+                TypePack valueTypes;
+                if (i < local->vars.size)
+                    valueTypes = extendTypePack(module->internalTypes, builtinTypes, valuePack, local->vars.size - i);
 
-                TypePackId valueTypes = lookupPack(value);
-                auto it = begin(valueTypes);
+                Location errorLocation;
                 for (size_t j = i; j < local->vars.size; ++j)
                 {
-                    if (it == end(valueTypes))
+                    if (j - i >= valueTypes.head.size())
                     {
+                        errorLocation = local->vars.data[j]->location;
                         break;
                     }
 
@@ -368,14 +373,28 @@ struct TypeChecker2
                     if (var->annotation)
                     {
                         TypeId varType = lookupAnnotation(var->annotation);
-                        ErrorVec errors = tryUnify(stack.back(), value->location, *it, varType);
+                        ErrorVec errors = tryUnify(stack.back(), value->location, valueTypes.head[j - i], varType);
                         if (!errors.empty())
                             reportErrors(std::move(errors));
 
                         visit(var->annotation);
                     }
+                }
 
-                    ++it;
+                if (valueTypes.head.size() < local->vars.size - i)
+                {
+                    reportError(
+                        CountMismatch{
+                            // We subtract 1 here because the final AST
+                            // expression is not worth one value.  It is worth 0
+                            // or more depending on valueTypes.head
+                            local->values.size - 1 + valueTypes.head.size(),
+                            std::nullopt,
+                            local->vars.size,
+                            local->values.data[local->values.size - 1]->is<AstExprCall>() ? CountMismatch::FunctionResult
+                                                                                          : CountMismatch::ExprListResult,
+                        },
+                        errorLocation);
                 }
             }
         }
@@ -810,6 +829,95 @@ struct TypeChecker2
         // TODO!
     }
 
+    ErrorVec visitOverload(AstExprCall* call, NotNull<const FunctionType> overloadFunctionType, const std::vector<Location>& argLocs,
+        TypePackId expectedArgTypes, TypePackId expectedRetType)
+    {
+        ErrorVec overloadErrors =
+            tryUnify(stack.back(), call->location, overloadFunctionType->retTypes, expectedRetType, CountMismatch::FunctionResult);
+
+        size_t argIndex = 0;
+        auto inferredArgIt = begin(overloadFunctionType->argTypes);
+        auto expectedArgIt = begin(expectedArgTypes);
+        while (inferredArgIt != end(overloadFunctionType->argTypes) && expectedArgIt != end(expectedArgTypes))
+        {
+            Location argLoc = (argIndex >= argLocs.size()) ? argLocs.back() : argLocs[argIndex];
+            ErrorVec argErrors = tryUnify(stack.back(), argLoc, *expectedArgIt, *inferredArgIt);
+            for (TypeError e : argErrors)
+                overloadErrors.emplace_back(e);
+
+            ++argIndex;
+            ++inferredArgIt;
+            ++expectedArgIt;
+        }
+
+        // piggyback on the unifier for arity checking, but we can't do this for checking the actual arguments since the locations would be bad
+        ErrorVec argumentErrors = tryUnify(stack.back(), call->location, expectedArgTypes, overloadFunctionType->argTypes);
+        for (TypeError e : argumentErrors)
+            if (get<CountMismatch>(e) != nullptr)
+                overloadErrors.emplace_back(std::move(e));
+
+        return overloadErrors;
+    }
+
+    void reportOverloadResolutionErrors(AstExprCall* call, std::vector<TypeId> overloads, TypePackId expectedArgTypes,
+        const std::vector<TypeId>& overloadsThatMatchArgCount, std::vector<std::pair<ErrorVec, const FunctionType*>> overloadsErrors)
+    {
+        if (overloads.size() == 1)
+        {
+            reportErrors(std::get<0>(overloadsErrors.front()));
+            return;
+        }
+
+        std::vector<TypeId> overloadTypes = overloadsThatMatchArgCount;
+        if (overloadsThatMatchArgCount.size() == 0)
+        {
+            reportError(GenericError{"No overload for function accepts " + std::to_string(size(expectedArgTypes)) + " arguments."}, call->location);
+            // If no overloads match argument count, just list all overloads.
+            overloadTypes = overloads;
+        }
+        else
+        {
+            // Report errors of the first argument-count-matching, but failing overload
+            TypeId overload = overloadsThatMatchArgCount[0];
+
+            // Remove the overload we are reporting errors about from the list of alternatives
+            overloadTypes.erase(std::remove(overloadTypes.begin(), overloadTypes.end(), overload), overloadTypes.end());
+
+            const FunctionType* ftv = get<FunctionType>(overload);
+            LUAU_ASSERT(ftv); // overload must be a function type here
+
+            auto error = std::find_if(overloadsErrors.begin(), overloadsErrors.end(), [ftv](const std::pair<ErrorVec, const FunctionType*>& e) {
+                return ftv == std::get<1>(e);
+            });
+
+            LUAU_ASSERT(error != overloadsErrors.end());
+            reportErrors(std::get<0>(*error));
+
+            // If only one overload matched, we don't need this error because we provided the previous errors.
+            if (overloadsThatMatchArgCount.size() == 1)
+                return;
+        }
+
+        std::string s;
+        for (size_t i = 0; i < overloadTypes.size(); ++i)
+        {
+            TypeId overload = follow(overloadTypes[i]);
+
+            if (i > 0)
+                s += "; ";
+
+            if (i > 0 && i == overloadTypes.size() - 1)
+                s += "and ";
+
+            s += toString(overload);
+        }
+
+        if (overloadsThatMatchArgCount.size() == 0)
+            reportError(ExtraInformation{"Available overloads: " + s}, call->func->location);
+        else
+            reportError(ExtraInformation{"Other overloads are also not viable: " + s}, call->func->location);
+    }
+
     void visit(AstExprCall* call)
     {
         visit(call->func, RValue);
@@ -864,6 +972,10 @@ struct TypeChecker2
                 reportError(UnificationTooComplex{}, call->func->location);
                 return;
             }
+        }
+        else if (auto itv = get<IntersectionType>(functionType))
+        {
+            // We do nothing here because we'll flatten the intersection later, but we don't want to report it as a non-function.
         }
         else if (auto utv = get<UnionType>(functionType))
         {
@@ -930,48 +1042,105 @@ struct TypeChecker2
 
         TypePackId expectedArgTypes = arena->addTypePack(args);
 
-        const FunctionType* inferredFunctionType = get<FunctionType>(testFunctionType);
-        LUAU_ASSERT(inferredFunctionType); // testFunctionType should always be a FunctionType here
+        std::vector<TypeId> overloads = flattenIntersection(testFunctionType);
+        std::vector<std::pair<ErrorVec, const FunctionType*>> overloadsErrors;
+        overloadsErrors.reserve(overloads.size());
 
-        size_t argIndex = 0;
-        auto inferredArgIt = begin(inferredFunctionType->argTypes);
-        auto expectedArgIt = begin(expectedArgTypes);
-        while (inferredArgIt != end(inferredFunctionType->argTypes) && expectedArgIt != end(expectedArgTypes))
+        std::vector<TypeId> overloadsThatMatchArgCount;
+
+        for (TypeId overload : overloads)
         {
-            Location argLoc = (argIndex >= argLocs.size()) ? argLocs.back() : argLocs[argIndex];
-            reportErrors(tryUnify(stack.back(), argLoc, *expectedArgIt, *inferredArgIt));
+            overload = follow(overload);
 
-            ++argIndex;
-            ++inferredArgIt;
-            ++expectedArgIt;
+            const FunctionType* overloadFn = get<FunctionType>(overload);
+            if (!overloadFn)
+            {
+                reportError(CannotCallNonFunction{overload}, call->func->location);
+                return;
+            }
+            else
+            {
+                // We may have to instantiate the overload in order for it to typecheck.
+                if (std::optional<TypeId> instantiatedFunctionType = instantiation.substitute(overload))
+                {
+                    overloadFn = get<FunctionType>(*instantiatedFunctionType);
+                }
+                else
+                {
+                    overloadsErrors.emplace_back(std::vector{TypeError{call->func->location, UnificationTooComplex{}}}, overloadFn);
+                    return;
+                }
+            }
+
+            ErrorVec overloadErrors = visitOverload(call, NotNull{overloadFn}, argLocs, expectedArgTypes, expectedRetType);
+            if (overloadErrors.empty())
+                return;
+
+            bool argMismatch = false;
+            for (auto error : overloadErrors)
+            {
+                CountMismatch* cm = get<CountMismatch>(error);
+                if (!cm)
+                    continue;
+
+                if (cm->context == CountMismatch::Arg)
+                {
+                    argMismatch = true;
+                    break;
+                }
+            }
+
+            if (!argMismatch)
+                overloadsThatMatchArgCount.push_back(overload);
+
+            overloadsErrors.emplace_back(std::move(overloadErrors), overloadFn);
         }
 
-        // piggyback on the unifier for arity checking, but we can't do this for checking the actual arguments since the locations would be bad
-        ErrorVec errors = tryUnify(stack.back(), call->location, expectedArgTypes, inferredFunctionType->argTypes);
-        for (TypeError e : errors)
-            if (get<CountMismatch>(e) != nullptr)
-                reportError(std::move(e));
+        reportOverloadResolutionErrors(call, overloads, expectedArgTypes, overloadsThatMatchArgCount, overloadsErrors);
+    }
 
-        reportErrors(tryUnify(stack.back(), call->location, inferredFunctionType->retTypes, expectedRetType, CountMismatch::FunctionResult));
+    void visitExprName(AstExpr* expr, Location location, const std::string& propName, ValueContext context)
+    {
+        visit(expr, RValue);
+
+        TypeId leftType = lookupType(expr);
+        const NormalizedType* norm = normalizer.normalize(leftType);
+        if (!norm)
+            reportError(NormalizationTooComplex{}, location);
+
+        checkIndexTypeFromType(leftType, *norm, propName, location, context);
     }
 
     void visit(AstExprIndexName* indexName, ValueContext context)
     {
-        visit(indexName->expr, RValue);
-
-        TypeId leftType = lookupType(indexName->expr);
-        const NormalizedType* norm = normalizer.normalize(leftType);
-        if (!norm)
-            reportError(NormalizationTooComplex{}, indexName->indexLocation);
-
-        checkIndexTypeFromType(leftType, *norm, indexName->index.value, indexName->location, context);
+        visitExprName(indexName->expr, indexName->location, indexName->index.value, context);
     }
 
     void visit(AstExprIndexExpr* indexExpr, ValueContext context)
     {
+        if (auto str = indexExpr->index->as<AstExprConstantString>())
+        {
+            const std::string stringValue(str->value.data, str->value.size);
+            visitExprName(indexExpr->expr, indexExpr->location, stringValue, context);
+            return;
+        }
+
         // TODO!
         visit(indexExpr->expr, LValue);
         visit(indexExpr->index, RValue);
+
+        NotNull<Scope> scope = stack.back();
+
+        TypeId exprType = lookupType(indexExpr->expr);
+        TypeId indexType = lookupType(indexExpr->index);
+
+        if (auto tt = get<TableType>(exprType))
+        {
+            if (tt->indexer)
+                reportErrors(tryUnify(scope, indexExpr->index->location, indexType, tt->indexer->indexType));
+            else
+                reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
+        }
     }
 
     void visit(AstExprFunction* fn)
@@ -1879,8 +2048,17 @@ struct TypeChecker2
             ty = *mtIndex;
         }
 
-        if (getTableType(ty))
-            return bool(findTablePropertyRespectingMeta(builtinTypes, module->errors, ty, prop, location));
+        if (auto tt = getTableType(ty))
+        {
+            if (findTablePropertyRespectingMeta(builtinTypes, module->errors, ty, prop, location))
+                return true;
+
+            else if (tt->indexer && isPrim(tt->indexer->indexResultType, PrimitiveType::String))
+                return tt->indexer->indexResultType;
+
+            else
+                return false;
+        }
         else if (const ClassType* cls = get<ClassType>(ty))
             return bool(lookupClassProp(cls, prop));
         else if (const UnionType* utv = get<UnionType>(ty))
