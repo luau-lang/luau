@@ -320,6 +320,9 @@ void ConstraintGraphBuilder::visit(AstStatBlock* block)
     prepopulateGlobalScope(scope, block);
 
     visitBlockWithoutChildScope(scope, block);
+
+    if (FFlag::DebugLuauLogSolverToJson)
+        logger->captureGenerationModule(module);
 }
 
 void ConstraintGraphBuilder::visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block)
@@ -357,13 +360,11 @@ void ConstraintGraphBuilder::visitBlockWithoutChildScope(const ScopePtr& scope, 
             for (const auto& [name, gen] : createGenerics(defnScope, alias->generics, /* useCache */ true))
             {
                 initialFun.typeParams.push_back(gen);
-                defnScope->privateTypeBindings[name] = TypeFun{gen.ty};
             }
 
             for (const auto& [name, genPack] : createGenericPacks(defnScope, alias->genericPacks, /* useCache */ true))
             {
                 initialFun.typePackParams.push_back(genPack);
-                defnScope->privateTypePackBindings[name] = genPack.tp;
             }
 
             if (alias->exported)
@@ -503,13 +504,13 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
                         if (j - i < packTypes.head.size())
                             varTypes[j] = packTypes.head[j - i];
                         else
-                            varTypes[j] = freshType(scope);
+                            varTypes[j] = arena->addType(BlockedType{});
                     }
                 }
 
                 std::vector<TypeId> tailValues{varTypes.begin() + i, varTypes.end()};
                 TypePackId tailPack = arena->addTypePack(std::move(tailValues));
-                addConstraint(scope, local->location, PackSubtypeConstraint{exprPack, tailPack});
+                addConstraint(scope, local->location, UnpackConstraint{tailPack, exprPack});
             }
         }
     }
@@ -686,6 +687,8 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction* funct
     Checkpoint start = checkpoint(this);
     FunctionSignature sig = checkFunctionSignature(scope, function->func);
 
+    std::unordered_set<Constraint*> excludeList;
+
     if (AstExprLocal* localName = function->name->as<AstExprLocal>())
     {
         std::optional<TypeId> existingFunctionTy = scope->lookup(localName->local);
@@ -716,9 +719,20 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction* funct
     }
     else if (AstExprIndexName* indexName = function->name->as<AstExprIndexName>())
     {
+        Checkpoint check1 = checkpoint(this);
         TypeId lvalueType = checkLValue(scope, indexName);
+        Checkpoint check2 = checkpoint(this);
+
+        forEachConstraint(check1, check2, this, [&excludeList](const ConstraintPtr& c) {
+            excludeList.insert(c.get());
+        });
+
         // TODO figure out how to populate the location field of the table Property.
-        addConstraint(scope, indexName->location, SubtypeConstraint{lvalueType, generalizedType});
+
+        if (get<FreeType>(lvalueType))
+            asMutable(lvalueType)->ty.emplace<BoundType>(generalizedType);
+        else
+            addConstraint(scope, indexName->location, SubtypeConstraint{lvalueType, generalizedType});
     }
     else if (AstExprError* err = function->name->as<AstExprError>())
     {
@@ -735,8 +749,9 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction* funct
     std::unique_ptr<Constraint> c =
         std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{generalizedType, sig.signature});
 
-    forEachConstraint(start, end, this, [&c](const ConstraintPtr& constraint) {
-        c->dependencies.push_back(NotNull{constraint.get()});
+    forEachConstraint(start, end, this, [&c, &excludeList](const ConstraintPtr& constraint) {
+        if (!excludeList.count(constraint.get()))
+            c->dependencies.push_back(NotNull{constraint.get()});
     });
 
     addConstraint(scope, std::move(c));
@@ -763,16 +778,31 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatBlock* block)
     visitBlockWithoutChildScope(innerScope, block);
 }
 
+static void bindFreeType(TypeId a, TypeId b)
+{
+    FreeType* af = getMutable<FreeType>(a);
+    FreeType* bf = getMutable<FreeType>(b);
+
+    LUAU_ASSERT(af || bf);
+
+    if (!bf)
+        asMutable(a)->ty.emplace<BoundType>(b);
+    else if (!af)
+        asMutable(b)->ty.emplace<BoundType>(a);
+    else if (subsumes(bf->scope, af->scope))
+        asMutable(a)->ty.emplace<BoundType>(b);
+    else if (subsumes(af->scope, bf->scope))
+        asMutable(b)->ty.emplace<BoundType>(a);
+}
+
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatAssign* assign)
 {
-    TypePackId varPackId = checkLValues(scope, assign->vars);
-
-    TypePack expectedPack = extendTypePack(*arena, builtinTypes, varPackId, assign->values.size);
+    std::vector<TypeId> varTypes = checkLValues(scope, assign->vars);
 
     std::vector<std::optional<TypeId>> expectedTypes;
-    expectedTypes.reserve(expectedPack.head.size());
+    expectedTypes.reserve(varTypes.size());
 
-    for (TypeId ty : expectedPack.head)
+    for (TypeId ty : varTypes)
     {
         ty = follow(ty);
         if (get<FreeType>(ty))
@@ -781,9 +811,10 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatAssign* assign)
             expectedTypes.push_back(ty);
     }
 
-    TypePackId valuePack = checkPack(scope, assign->values, expectedTypes).tp;
+    TypePackId exprPack = checkPack(scope, assign->values, expectedTypes).tp;
+    TypePackId varPack = arena->addTypePack({varTypes});
 
-    addConstraint(scope, assign->location, PackSubtypeConstraint{valuePack, varPackId});
+    addConstraint(scope, assign->location, PackSubtypeConstraint{exprPack, varPack});
 }
 
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatCompoundAssign* assign)
@@ -865,11 +896,11 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatTypeAlias* alia
         asMutable(aliasTy)->ty.emplace<BoundType>(ty);
 
     std::vector<TypeId> typeParams;
-    for (auto tyParam : createGenerics(*defnScope, alias->generics, /* useCache */ true))
+    for (auto tyParam : createGenerics(*defnScope, alias->generics, /* useCache */ true, /* addTypes */ false))
         typeParams.push_back(tyParam.second.ty);
 
     std::vector<TypePackId> typePackParams;
-    for (auto tpParam : createGenericPacks(*defnScope, alias->genericPacks, /* useCache */ true))
+    for (auto tpParam : createGenericPacks(*defnScope, alias->genericPacks, /* useCache */ true, /* addTypes */ false))
         typePackParams.push_back(tpParam.second.tp);
 
     addConstraint(scope, alias->type->location,
@@ -1010,7 +1041,6 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareFunction
     for (auto& [name, generic] : generics)
     {
         genericTys.push_back(generic.ty);
-        scope->privateTypeBindings[name] = TypeFun{generic.ty};
     }
 
     std::vector<TypePackId> genericTps;
@@ -1018,7 +1048,6 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareFunction
     for (auto& [name, generic] : genericPacks)
     {
         genericTps.push_back(generic.tp);
-        scope->privateTypePackBindings[name] = generic.tp;
     }
 
     ScopePtr funScope = scope;
@@ -1161,7 +1190,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
 
     TypePackId expectedArgPack = arena->freshTypePack(scope.get());
     TypePackId expectedRetPack = arena->freshTypePack(scope.get());
-    TypeId expectedFunctionType = arena->addType(FunctionType{expectedArgPack, expectedRetPack});
+    TypeId expectedFunctionType = arena->addType(FunctionType{expectedArgPack, expectedRetPack, std::nullopt, call->self});
 
     TypeId instantiatedFnType = arena->addType(BlockedType{});
     addConstraint(scope, call->location, InstantiationConstraint{instantiatedFnType, fnType});
@@ -1264,7 +1293,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
         // TODO: How do expectedTypes play into this?  Do they?
         TypePackId rets = arena->addTypePack(BlockedTypePack{});
         TypePackId argPack = arena->addTypePack(TypePack{args, argTail});
-        FunctionType ftv(TypeLevel{}, scope.get(), argPack, rets);
+        FunctionType ftv(TypeLevel{}, scope.get(), argPack, rets, std::nullopt, call->self);
 
         NotNull<Constraint> fcc = addConstraint(scope, call->func->location,
             FunctionCallConstraint{
@@ -1457,7 +1486,7 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprGlobal* gl
 Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexName* indexName)
 {
     TypeId obj = check(scope, indexName->expr).ty;
-    TypeId result = freshType(scope);
+    TypeId result = arena->addType(BlockedType{});
 
     std::optional<DefId> def = dfg->getDef(indexName);
     if (def)
@@ -1468,13 +1497,7 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexName*
             scope->dcrRefinements[*def] = result;
     }
 
-    TableType::Props props{{indexName->index.value, Property{result}}};
-    const std::optional<TableIndexer> indexer;
-    TableType ttv{std::move(props), indexer, TypeLevel{}, scope.get(), TableState::Free};
-
-    TypeId expectedTableType = arena->addType(std::move(ttv));
-
-    addConstraint(scope, indexName->expr->location, SubtypeConstraint{obj, expectedTableType});
+    addConstraint(scope, indexName->expr->location, HasPropConstraint{result, obj, indexName->index.value});
 
     if (def)
         return Inference{result, refinementArena.proposition(*def, builtinTypes->truthyType)};
@@ -1589,6 +1612,8 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGraphBuilder::checkBinary(
         else if (typeguard->type == "number")
             discriminantTy = builtinTypes->numberType;
         else if (typeguard->type == "boolean")
+            discriminantTy = builtinTypes->booleanType;
+        else if (typeguard->type == "thread")
             discriminantTy = builtinTypes->threadType;
         else if (typeguard->type == "table")
             discriminantTy = builtinTypes->tableType;
@@ -1596,8 +1621,8 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGraphBuilder::checkBinary(
             discriminantTy = builtinTypes->functionType;
         else if (typeguard->type == "userdata")
         {
-            // For now, we don't really care about being accurate with userdata if the typeguard was using typeof
-            discriminantTy = builtinTypes->neverType; // TODO: replace with top class type
+            // For now, we don't really care about being accurate with userdata if the typeguard was using typeof.
+            discriminantTy = builtinTypes->classType;
         }
         else if (!typeguard->isTypeof && typeguard->type == "vector")
             discriminantTy = builtinTypes->neverType; // TODO: figure out a way to deal with this quirky type
@@ -1649,18 +1674,15 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGraphBuilder::checkBinary(
     }
 }
 
-TypePackId ConstraintGraphBuilder::checkLValues(const ScopePtr& scope, AstArray<AstExpr*> exprs)
+std::vector<TypeId> ConstraintGraphBuilder::checkLValues(const ScopePtr& scope, AstArray<AstExpr*> exprs)
 {
     std::vector<TypeId> types;
     types.reserve(exprs.size);
 
-    for (size_t i = 0; i < exprs.size; ++i)
-    {
-        AstExpr* const expr = exprs.data[i];
+    for (AstExpr* expr : exprs)
         types.push_back(checkLValue(scope, expr));
-    }
 
-    return arena->addTypePack(std::move(types));
+    return types;
 }
 
 /**
@@ -1679,6 +1701,28 @@ TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
                 indexExpr->location, indexExpr->expr, syntheticIndex, constantString->location, indexExpr->expr->location.end, '.'};
             return checkLValue(scope, &synthetic);
         }
+
+        // An indexer is only interesting in an lvalue-ey way if it is at the
+        // tail of an expression.
+        //
+        // If the indexer is not at the tail, then we are not interested in
+        // augmenting the lhs data structure with a new indexer.  Constraint
+        // generation can treat it as an ordinary lvalue.
+        //
+        // eg
+        //
+        // a.b.c[1] = 44 -- lvalue
+        // a.b[4].c = 2 -- rvalue
+
+        TypeId resultType = arena->addType(BlockedType{});
+        TypeId subjectType = check(scope, indexExpr->expr).ty;
+        TypeId indexType = check(scope, indexExpr->index).ty;
+        TypeId propType = arena->addType(BlockedType{});
+        addConstraint(scope, expr->location, SetIndexerConstraint{resultType, subjectType, indexType, propType});
+
+        module->astTypes[expr] = propType;
+
+        return propType;
     }
     else if (!expr->is<AstExprIndexName>())
         return check(scope, expr).ty;
@@ -1718,7 +1762,8 @@ TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
     auto lookupResult = scope->lookupEx(sym);
     if (!lookupResult)
         return check(scope, expr).ty;
-    const auto [subjectType, symbolScope] = std::move(*lookupResult);
+    const auto [subjectBinding, symbolScope] = std::move(*lookupResult);
+    TypeId subjectType = subjectBinding->typeId;
 
     TypeId propTy = freshType(scope);
 
@@ -1739,14 +1784,17 @@ TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
     module->astTypes[expr] = prevSegmentTy;
     module->astTypes[e] = updatedType;
 
-    symbolScope->bindings[sym].typeId = updatedType;
-
-    std::optional<DefId> def = dfg->getDef(sym);
-    if (def)
+    if (!subjectType->persistent)
     {
-        // This can fail if the user is erroneously trying to augment a builtin
-        // table like os or string.
-        symbolScope->dcrRefinements[*def] = updatedType;
+        symbolScope->bindings[sym].typeId = updatedType;
+
+        std::optional<DefId> def = dfg->getDef(sym);
+        if (def)
+        {
+            // This can fail if the user is erroneously trying to augment a builtin
+            // table like os or string.
+            symbolScope->dcrRefinements[*def] = updatedType;
+        }
     }
 
     return propTy;
@@ -1904,13 +1952,11 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
         for (const auto& [name, g] : genericDefinitions)
         {
             genericTypes.push_back(g.ty);
-            signatureScope->privateTypeBindings[name] = TypeFun{g.ty};
         }
 
         for (const auto& [name, g] : genericPackDefinitions)
         {
             genericTypePacks.push_back(g.tp);
-            signatureScope->privateTypePackBindings[name] = g.tp;
         }
 
         // Local variable works around an odd gcc 11.3 warning: <anonymous> may be used uninitialized
@@ -2023,15 +2069,14 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
     actualFunction.generics = std::move(genericTypes);
     actualFunction.genericPacks = std::move(genericTypePacks);
     actualFunction.argNames = std::move(argNames);
+    actualFunction.hasSelf = fn->self != nullptr;
 
     TypeId actualFunctionType = arena->addType(std::move(actualFunction));
     LUAU_ASSERT(actualFunctionType);
     module->astTypes[fn] = actualFunctionType;
 
     if (expectedType && get<FreeType>(*expectedType))
-    {
-        asMutable(*expectedType)->ty.emplace<BoundType>(actualFunctionType);
-    }
+        bindFreeType(*expectedType, actualFunctionType);
 
     return {
         /* signature */ actualFunctionType,
@@ -2179,13 +2224,11 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
             for (const auto& [name, g] : genericDefinitions)
             {
                 genericTypes.push_back(g.ty);
-                signatureScope->privateTypeBindings[name] = TypeFun{g.ty};
             }
 
             for (const auto& [name, g] : genericPackDefinitions)
             {
                 genericTypePacks.push_back(g.tp);
-                signatureScope->privateTypePackBindings[name] = g.tp;
             }
         }
         else
@@ -2330,7 +2373,7 @@ TypePackId ConstraintGraphBuilder::resolveTypePack(const ScopePtr& scope, const 
 }
 
 std::vector<std::pair<Name, GenericTypeDefinition>> ConstraintGraphBuilder::createGenerics(
-    const ScopePtr& scope, AstArray<AstGenericType> generics, bool useCache)
+    const ScopePtr& scope, AstArray<AstGenericType> generics, bool useCache, bool addTypes)
 {
     std::vector<std::pair<Name, GenericTypeDefinition>> result;
     for (const auto& generic : generics)
@@ -2350,6 +2393,9 @@ std::vector<std::pair<Name, GenericTypeDefinition>> ConstraintGraphBuilder::crea
         if (generic.defaultValue)
             defaultTy = resolveType(scope, generic.defaultValue, /* inTypeArguments */ false);
 
+        if (addTypes)
+            scope->privateTypeBindings[generic.name.value] = TypeFun{genericTy};
+
         result.push_back({generic.name.value, GenericTypeDefinition{genericTy, defaultTy}});
     }
 
@@ -2357,7 +2403,7 @@ std::vector<std::pair<Name, GenericTypeDefinition>> ConstraintGraphBuilder::crea
 }
 
 std::vector<std::pair<Name, GenericTypePackDefinition>> ConstraintGraphBuilder::createGenericPacks(
-    const ScopePtr& scope, AstArray<AstGenericTypePack> generics, bool useCache)
+    const ScopePtr& scope, AstArray<AstGenericTypePack> generics, bool useCache, bool addTypes)
 {
     std::vector<std::pair<Name, GenericTypePackDefinition>> result;
     for (const auto& generic : generics)
@@ -2378,6 +2424,9 @@ std::vector<std::pair<Name, GenericTypePackDefinition>> ConstraintGraphBuilder::
         if (generic.defaultValue)
             defaultTy = resolveTypePack(scope, generic.defaultValue, /* inTypeArguments */ false);
 
+        if (addTypes)
+            scope->privateTypePackBindings[generic.name.value] = genericTy;
+
         result.push_back({generic.name.value, GenericTypePackDefinition{genericTy, defaultTy}});
     }
 
@@ -2394,11 +2443,9 @@ Inference ConstraintGraphBuilder::flattenPack(const ScopePtr& scope, Location lo
     if (auto f = first(tp))
         return Inference{*f, refinement};
 
-    TypeId typeResult = freshType(scope);
-    TypePack onePack{{typeResult}, freshTypePack(scope)};
-    TypePackId oneTypePack = arena->addTypePack(std::move(onePack));
-
-    addConstraint(scope, location, PackSubtypeConstraint{tp, oneTypePack});
+    TypeId typeResult = arena->addType(BlockedType{});
+    TypePackId resultPack = arena->addTypePack({typeResult}, arena->freshTypePack(scope.get()));
+    addConstraint(scope, location, UnpackConstraint{resultPack, tp});
 
     return Inference{typeResult, refinement};
 }

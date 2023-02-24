@@ -44,6 +44,7 @@ void updateUseCounts(IrFunction& function)
         checkOp(inst.c);
         checkOp(inst.d);
         checkOp(inst.e);
+        checkOp(inst.f);
     }
 }
 
@@ -68,6 +69,7 @@ void updateLastUseLocations(IrFunction& function)
         checkOp(inst.c);
         checkOp(inst.d);
         checkOp(inst.e);
+        checkOp(inst.f);
     }
 }
 

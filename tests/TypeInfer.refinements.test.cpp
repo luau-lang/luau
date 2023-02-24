@@ -1404,6 +1404,40 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknowns")
     }
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_boolean")
+{
+    CheckResult result = check(R"(
+        local function f(x: number | boolean)
+            if typeof(x) == "boolean" then
+                local foo = x
+            else
+                local foo = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("boolean", toString(requireTypeAtPosition({3, 28})));
+    CHECK_EQ("number", toString(requireTypeAtPosition({5, 28})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_thread")
+{
+    CheckResult result = check(R"(
+        local function f(x: number | thread)
+            if typeof(x) == "thread" then
+                local foo = x
+            else
+                local foo = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("thread", toString(requireTypeAtPosition({3, 28})));
+    CHECK_EQ("number", toString(requireTypeAtPosition({5, 28})));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "falsiness_of_TruthyPredicate_narrows_into_nil")
 {
     CheckResult result = check(R"(

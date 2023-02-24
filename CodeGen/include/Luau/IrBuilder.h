@@ -42,6 +42,7 @@ struct IrBuilder
     IrOp inst(IrCmd cmd, IrOp a, IrOp b, IrOp c);
     IrOp inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d);
     IrOp inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d, IrOp e);
+    IrOp inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d, IrOp e, IrOp f);
 
     IrOp block(IrBlockKind kind); // Requested kind can be ignored if we are in an outlined sequence
     IrOp blockAtInst(uint32_t index);
@@ -56,6 +57,8 @@ struct IrBuilder
     IrOp fastcallFallbackReturn;
 
     IrFunction function;
+
+    uint32_t activeBlockIdx = ~0u;
 
     std::vector<uint32_t> instIndexToBlock; // Block index at the bytecode instruction
 };

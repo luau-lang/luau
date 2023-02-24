@@ -660,7 +660,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "higher_order_function_4")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    dumpErrors(result);
 
     /*
      * mergesort takes two arguments: an array of some type T and a function that takes two Ts.
@@ -1424,9 +1423,11 @@ end
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite")
 {
     CheckResult result = check(R"(
-function string.len(): number
-    return 1
-end
+        function string.len(): number
+            return 1
+        end
+
+        local s = string
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -1434,11 +1435,11 @@ end
     // if 'string' library property was replaced with an internal module type, it will be freed and the next check will crash
     frontend.clear();
 
-    result = check(R"(
-print(string.len('hello'))
+    CheckResult result2 = check(R"(
+        print(string.len('hello'))
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_NO_ERRORS(result2);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite_2")

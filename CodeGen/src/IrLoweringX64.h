@@ -4,8 +4,8 @@
 #include "Luau/AssemblyBuilderX64.h"
 #include "Luau/IrData.h"
 
-#include <array>
-#include <initializer_list>
+#include "IrRegAllocX64.h"
+
 #include <vector>
 
 struct Proto;
@@ -46,32 +46,7 @@ struct IrLoweringX64
     IrBlock& blockOp(IrOp op) const;
     Label& labelOp(IrOp op) const;
 
-    // Unscoped register allocation
-    RegisterX64 allocGprReg(SizeX64 preferredSize);
-    RegisterX64 allocXmmReg();
-
-    RegisterX64 allocGprRegOrReuse(SizeX64 preferredSize, uint32_t index, std::initializer_list<IrOp> oprefs);
-    RegisterX64 allocXmmRegOrReuse(uint32_t index, std::initializer_list<IrOp> oprefs);
-
-    void freeReg(RegisterX64 reg);
-    void freeLastUseReg(IrInst& target, uint32_t index);
-    void freeLastUseRegs(const IrInst& inst, uint32_t index);
-
     ConditionX64 getX64Condition(IrCondition cond) const;
-
-    struct ScopedReg
-    {
-        ScopedReg(IrLoweringX64& owner, SizeX64 size);
-        ~ScopedReg();
-
-        ScopedReg(const ScopedReg&) = delete;
-        ScopedReg& operator=(const ScopedReg&) = delete;
-
-        void free();
-
-        IrLoweringX64& owner;
-        RegisterX64 reg;
-    };
 
     AssemblyBuilderX64& build;
     ModuleHelpers& helpers;
@@ -80,8 +55,7 @@ struct IrLoweringX64
 
     IrFunction& function;
 
-    std::array<bool, 16> freeGprMap;
-    std::array<bool, 16> freeXmmMap;
+    IrRegAllocX64 regs;
 };
 
 } // namespace CodeGen

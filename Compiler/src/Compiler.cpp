@@ -25,6 +25,8 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
+LUAU_FASTFLAGVARIABLE(LuauCompileTerminateBC, false)
+
 namespace Luau
 {
 
@@ -132,14 +134,18 @@ struct Compiler
         return uint8_t(upvals.size() - 1);
     }
 
-    bool allPathsEndWithReturn(AstStat* node)
+    // true iff all execution paths through node subtree result in return/break/continue
+    // note: because this function doesn't visit loop nodes, it (correctly) only detects break/continue that refer to the outer control flow
+    bool alwaysTerminates(AstStat* node)
     {
         if (AstStatBlock* stat = node->as<AstStatBlock>())
-            return stat->body.size > 0 && allPathsEndWithReturn(stat->body.data[stat->body.size - 1]);
+            return stat->body.size > 0 && alwaysTerminates(stat->body.data[stat->body.size - 1]);
         else if (node->is<AstStatReturn>())
             return true;
+        else if (FFlag::LuauCompileTerminateBC && (node->is<AstStatBreak>() || node->is<AstStatContinue>()))
+            return true;
         else if (AstStatIf* stat = node->as<AstStatIf>())
-            return stat->elsebody && allPathsEndWithReturn(stat->thenbody) && allPathsEndWithReturn(stat->elsebody);
+            return stat->elsebody && alwaysTerminates(stat->thenbody) && alwaysTerminates(stat->elsebody);
         else
             return false;
     }
@@ -213,7 +219,7 @@ struct Compiler
 
         // valid function bytecode must always end with RETURN
         // we elide this if we're guaranteed to hit a RETURN statement regardless of the control flow
-        if (!allPathsEndWithReturn(stat))
+        if (!alwaysTerminates(stat))
         {
             setDebugLineEnd(stat);
             closeLocals(0);
@@ -257,7 +263,7 @@ struct Compiler
             f.costModel = modelCost(func->body, func->args.data, func->args.size, builtins);
 
             // track functions that only ever return a single value so that we can convert multret calls to fixedret calls
-            if (allPathsEndWithReturn(func->body))
+            if (alwaysTerminates(func->body))
             {
                 ReturnVisitor returnVisitor(this);
                 stat->visit(&returnVisitor);
@@ -640,7 +646,7 @@ struct Compiler
         }
 
         // for the fallthrough path we need to ensure we clear out target registers
-        if (!usedFallthrough && !allPathsEndWithReturn(func->body))
+        if (!usedFallthrough && !alwaysTerminates(func->body))
         {
             for (size_t i = 0; i < targetCount; ++i)
                 bytecode.emitABC(LOP_LOADNIL, uint8_t(target + i), 0, 0);
@@ -2435,9 +2441,9 @@ struct Compiler
 
         if (stat->elsebody && elseJump.size() > 0)
         {
-            // we don't need to skip past "else" body if "then" ends with return
+            // we don't need to skip past "else" body if "then" ends with return/break/continue
             // this is important because, if "else" also ends with return, we may *not* have any statement to skip to!
-            if (allPathsEndWithReturn(stat->thenbody))
+            if (alwaysTerminates(stat->thenbody))
             {
                 size_t elseLabel = bytecode.emitLabel();
 

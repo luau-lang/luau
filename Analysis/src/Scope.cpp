@@ -31,12 +31,12 @@ std::optional<TypeId> Scope::lookup(Symbol sym) const
 {
     auto r = const_cast<Scope*>(this)->lookupEx(sym);
     if (r)
-        return r->first;
+        return r->first->typeId;
     else
         return std::nullopt;
 }
 
-std::optional<std::pair<TypeId, Scope*>> Scope::lookupEx(Symbol sym)
+std::optional<std::pair<Binding*, Scope*>> Scope::lookupEx(Symbol sym)
 {
     Scope* s = this;
 
@@ -44,7 +44,7 @@ std::optional<std::pair<TypeId, Scope*>> Scope::lookupEx(Symbol sym)
     {
         auto it = s->bindings.find(sym);
         if (it != s->bindings.end())
-            return std::pair{it->second.typeId, s};
+            return std::pair{&it->second, s};
 
         if (s->parent)
             s = s->parent.get();

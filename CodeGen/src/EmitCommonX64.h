@@ -151,14 +151,6 @@ inline void setLuauReg(AssemblyBuilderX64& build, RegisterX64 tmp, int ri, Opera
     build.vmovups(luauReg(ri), tmp);
 }
 
-inline void setNodeValue(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 op, int ri)
-{
-    LUAU_ASSERT(op.cat == CategoryX64::mem);
-
-    build.vmovups(tmp, luauReg(ri));
-    build.vmovups(op, tmp);
-}
-
 inline void jumpIfTagIs(AssemblyBuilderX64& build, int ri, lua_Type tag, Label& label)
 {
     build.cmp(luauRegTag(ri), tag);

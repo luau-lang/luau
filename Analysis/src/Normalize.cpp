@@ -1441,6 +1441,8 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
         if (!unionNormals(here, *tn))
             return false;
     }
+    else if (get<BlockedType>(there))
+        LUAU_ASSERT(!"Internal error: Trying to normalize a BlockedType");
     else
         LUAU_ASSERT(!"Unreachable");
 

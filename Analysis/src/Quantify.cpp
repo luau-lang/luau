@@ -183,7 +183,7 @@ struct PureQuantifier : Substitution
             else if (ttv->state == TableState::Generic)
                 seenGenericType = true;
 
-            return ttv->state == TableState::Unsealed || (ttv->state == TableState::Free && subsumes(scope, ttv->scope));
+            return (ttv->state == TableState::Unsealed || ttv->state == TableState::Free) && subsumes(scope, ttv->scope);
         }
 
         return false;
