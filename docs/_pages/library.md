@@ -374,19 +374,19 @@ Concatenate all elements of `a` with indices in range `[f..t]` together, using `
 function table.foreach<K, V, R>(t: { [K]: V }, f: (K, V) -> R?): R?
 ```
 
-Iterates over all elements of the table in unspecified order; for each key-value pair, calls `f` and returns the result of `f` if it's non-nil. If all invocations of `f` returned `nil`, returns no values.
+Iterates over all elements of the table in unspecified order; for each key-value pair, calls `f` and returns the result of `f` if it's non-nil. If all invocations of `f` returned `nil`, returns no values. This function has been deprecated and is not recommended for use in new code; use `for` loop instead.
 
 ```
 function table.foreachi<V, R>(t: {V}, f: (number, V) -> R?): R?
 ```
 
-Iterates over numeric keys of the table in `[1..#t]` range in order; for each key-value pair, calls `f` and returns the result of `f` if it's non-nil. If all invocations of `f` returned `nil`, returns no values.
+Iterates over numeric keys of the table in `[1..#t]` range in order; for each key-value pair, calls `f` and returns the result of `f` if it's non-nil. If all invocations of `f` returned `nil`, returns no values. This function has been deprecated and is not recommended for use in new code; use `for` loop instead.
 
 ```
 function table.getn<V>(t: {V}): number
 ```
 
-Returns the length of table `t` (equivalent to `#t`).
+Returns the length of table `t`. This function has been deprecated and is not recommended for use in new code; use `#t` instead.
 
 ```
 function table.maxn<V>(t: {V}): number
