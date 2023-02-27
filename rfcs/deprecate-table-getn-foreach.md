@@ -6,11 +6,9 @@ Mark table.getn/foreach/foreachi as deprecated
 
 ## Motivation
 
-`table.getn` was deprecated in Lua 5.1 that Luau is based on.
+`table.getn`, `table.foreach` and `table.foreachi` were deprecated in Lua 5.1 that Luau is based on, and removed in Lua 5.2.
 
 `table.getn(x)` is equivalent to `rawlen(x)` when `x` is a table; when `x` is not a table, `table.getn` produces an error. It's difficult to imagine code where `table.getn(x)` is better than either `#x` (idiomatic) or `rawlen(x)` (fully compatible replacement). However, `table.getn` is slower and provides yet another way to perform an operation, leading new users of the language to use it unknowingly.
-
-`table.foreach` and `table.foreachi` were deprecated in Lua 5.2.
 
 `table.foreach` is equivalent to a `for .. pairs` loop; `table.foreachi` is equivalent to a `for .. ipairs` loop; both may also be replaced by generalized iteration. Both functions are significantly slower than equivalent `for` loop replacements, are more restrictive because the function can't yield, and result in new users (particularly coming from JS background) unknowingly using these thus producing non-idiomatic non-performant code.
 
