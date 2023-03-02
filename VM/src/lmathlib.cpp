@@ -300,13 +300,11 @@ static float fade(float t)
     return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
-#ifdef __clang__
 #if __cplusplus <= 201703L
 static float lerp(float t, float a, float b)
 {
     return a + t * (b - a);
 }
-#endif
 #endif
 
 static float grad(unsigned char hash, float x, float y, float z)
