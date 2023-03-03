@@ -14,12 +14,6 @@ namespace Luau
 struct Def;
 using DefId = NotNull<const Def>;
 
-struct FieldMetadata
-{
-    DefId parent;
-    std::string propName;
-};
-
 /**
  * A cell is a "single-object" value.
  *
@@ -29,7 +23,6 @@ struct FieldMetadata
  */
 struct Cell
 {
-    std::optional<struct FieldMetadata> field;
 };
 
 /**
@@ -83,7 +76,6 @@ struct DefArena
     TypedAllocator<Def> allocator;
 
     DefId freshCell();
-    DefId freshCell(DefId parent, const std::string& prop);
     // TODO: implement once we have cases where we need to merge in definitions
     // DefId phi(const std::vector<DefId>& defs);
 };

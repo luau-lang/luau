@@ -10,7 +10,7 @@
 
 using namespace Luau;
 
-class DataFlowGraphFixture
+struct DataFlowGraphFixture
 {
     // Only needed to fix the operator== reflexivity of an empty Symbol.
     ScopedFastFlag dcr{"DebugLuauDeferredConstraintResolution", true};
@@ -23,7 +23,6 @@ class DataFlowGraphFixture
 
     std::optional<DataFlowGraph> graph;
 
-public:
     void dfg(const std::string& code)
     {
         ParseResult parseResult = Parser::parse(code.c_str(), code.size(), names, allocator);
@@ -34,19 +33,19 @@ public:
     }
 
     template<typename T, int N>
-    std::optional<DefId> getDef(const std::vector<Nth>& nths = {nth<T>(N)})
+    NullableBreadcrumbId getBreadcrumb(const std::vector<Nth>& nths = {nth<T>(N)})
     {
         T* node = query<T, N>(module, nths);
         REQUIRE(node);
-        return graph->getDef(node);
+        return graph->getBreadcrumb(node);
     }
 
     template<typename T, int N>
-    DefId requireDef(const std::vector<Nth>& nths = {nth<T>(N)})
+    BreadcrumbId requireBreadcrumb(const std::vector<Nth>& nths = {nth<T>(N)})
     {
-        auto loc = getDef<T, N>(nths);
-        REQUIRE(loc);
-        return NotNull{*loc};
+        auto bc = getBreadcrumb<T, N>(nths);
+        REQUIRE(bc);
+        return NotNull{bc};
     }
 };
 
@@ -59,7 +58,7 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "define_locals_in_local_stat")
         local y = x
     )");
 
-    REQUIRE(getDef<AstExprLocal, 1>());
+    REQUIRE(getBreadcrumb<AstExprLocal, 1>());
 }
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "define_parameters_in_functions")
@@ -70,7 +69,7 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "define_parameters_in_functions")
         end
     )");
 
-    REQUIRE(getDef<AstExprLocal, 1>());
+    REQUIRE(getBreadcrumb<AstExprLocal, 1>());
 }
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "find_aliases")
@@ -81,9 +80,9 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "find_aliases")
         local z = y
     )");
 
-    DefId x = requireDef<AstExprLocal, 1>();
-    DefId y = requireDef<AstExprLocal, 2>();
-    REQUIRE(x != y); // TODO: they should be equal but it's not just locals that can alias, so we'll support this later.
+    BreadcrumbId x = requireBreadcrumb<AstExprLocal, 1>();
+    BreadcrumbId y = requireBreadcrumb<AstExprLocal, 2>();
+    REQUIRE(x != y);
 }
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "independent_locals")
@@ -96,8 +95,8 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "independent_locals")
         local b = y
     )");
 
-    DefId x = requireDef<AstExprLocal, 1>();
-    DefId y = requireDef<AstExprLocal, 2>();
+    BreadcrumbId x = requireBreadcrumb<AstExprLocal, 1>();
+    BreadcrumbId y = requireBreadcrumb<AstExprLocal, 2>();
     REQUIRE(x != y);
 }
 

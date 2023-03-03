@@ -27,6 +27,12 @@ struct IrBuilder
     bool isInternalBlock(IrOp block);
     void beginBlock(IrOp block);
 
+    void loadAndCheckTag(IrOp loc, uint8_t tag, IrOp fallback);
+
+    // Clones all instructions into the current block
+    // Source block that is cloned cannot use values coming in from a predecessor
+    void clone(const IrBlock& source, bool removeCurrentTerminator);
+
     IrOp constBool(bool value);
     IrOp constInt(int value);
     IrOp constUint(unsigned value);

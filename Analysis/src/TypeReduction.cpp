@@ -434,6 +434,14 @@ std::optional<TypeId> TypeReducer::intersectionType(TypeId left, TypeId right)
         return std::nullopt; // error & T ~ error & T
     else if (get<ErrorType>(right))
         return std::nullopt; // T & error ~ T & error
+    else if (get<BlockedType>(left))
+        return std::nullopt; // *blocked* & T ~ *blocked* & T
+    else if (get<BlockedType>(right))
+        return std::nullopt; // T & *blocked* ~ T & *blocked*
+    else if (get<PendingExpansionType>(left))
+        return std::nullopt; // *pending* & T ~ *pending* & T
+    else if (get<PendingExpansionType>(right))
+        return std::nullopt; // T & *pending* ~ T & *pending*
     else if (auto ut = get<UnionType>(left))
         return reduce(distribute<IntersectionType>(begin(ut), end(ut), &TypeReducer::intersectionType, right)); // (A | B) & T ~ (A & T) | (B & T)
     else if (get<UnionType>(right))

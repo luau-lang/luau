@@ -6,12 +6,18 @@ namespace Luau
 namespace CodeGen
 {
 
-class AssemblyBuilderX64;
 struct Label;
+struct IrOp;
+
+namespace X64
+{
+
+class AssemblyBuilderX64;
 struct OperandX64;
-struct BuiltinImplResult;
+struct IrRegAllocX64;
 
-BuiltinImplResult emitBuiltin(AssemblyBuilderX64& build, int bfid, int nparams, int ra, int arg, OperandX64 args, int nresults, Label& fallback);
+void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int ra, int arg, IrOp args, int nparams, int nresults);
 
+} // namespace X64
 } // namespace CodeGen
 } // namespace Luau

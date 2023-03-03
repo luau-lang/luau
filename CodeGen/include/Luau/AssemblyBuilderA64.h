@@ -13,6 +13,8 @@ namespace Luau
 {
 namespace CodeGen
 {
+namespace A64
+{
 
 class AssemblyBuilderA64
 {
@@ -157,5 +159,6 @@ private:
     uint32_t* codeEnd = nullptr;
 };
 
+} // namespace A64
 } // namespace CodeGen
 } // namespace Luau

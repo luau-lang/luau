@@ -20,6 +20,8 @@ namespace Luau
 {
 namespace CodeGen
 {
+namespace X64
+{
 
 IrLoweringX64::IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, NativeState& data, Proto* proto, IrFunction& function)
     : build(build)
@@ -517,6 +519,36 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         break;
     }
+    case IrCmd::MIN_NUM:
+        inst.regX64 = regs.allocXmmRegOrReuse(index, {inst.a, inst.b});
+
+        if (inst.a.kind == IrOpKind::Constant)
+        {
+            ScopedRegX64 tmp{regs, SizeX64::xmmword};
+
+            build.vmovsd(tmp.reg, memRegDoubleOp(inst.a));
+            build.vminsd(inst.regX64, tmp.reg, memRegDoubleOp(inst.b));
+        }
+        else
+        {
+            build.vminsd(inst.regX64, regOp(inst.a), memRegDoubleOp(inst.b));
+        }
+        break;
+    case IrCmd::MAX_NUM:
+        inst.regX64 = regs.allocXmmRegOrReuse(index, {inst.a, inst.b});
+
+        if (inst.a.kind == IrOpKind::Constant)
+        {
+            ScopedRegX64 tmp{regs, SizeX64::xmmword};
+
+            build.vmovsd(tmp.reg, memRegDoubleOp(inst.a));
+            build.vmaxsd(inst.regX64, tmp.reg, memRegDoubleOp(inst.b));
+        }
+        else
+        {
+            build.vmaxsd(inst.regX64, regOp(inst.a), memRegDoubleOp(inst.b));
+        }
+        break;
     case IrCmd::UNM_NUM:
     {
         inst.regX64 = regs.allocXmmRegOrReuse(index, {inst.a});
@@ -624,7 +656,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         ScopedRegX64 tmp{regs, SizeX64::xmmword};
 
         // TODO: jumpOnNumberCmp should work on IrCondition directly
-        jumpOnNumberCmp(build, tmp.reg, memRegDoubleOp(inst.a), memRegDoubleOp(inst.b), getX64Condition(cond), labelOp(inst.d));
+        jumpOnNumberCmp(build, tmp.reg, memRegDoubleOp(inst.a), memRegDoubleOp(inst.b), cond, labelOp(inst.d));
         jumpOrFallthrough(blockOp(inst.e), next);
         break;
     }
@@ -636,7 +668,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         IrCondition cond = IrCondition(inst.c.index);
 
-        jumpOnAnyCmpFallback(build, inst.a.index, inst.b.index, getX64Condition(cond), labelOp(inst.d));
+        jumpOnAnyCmpFallback(build, inst.a.index, inst.b.index, cond, labelOp(inst.d));
         jumpOrFallthrough(blockOp(inst.e), next);
         break;
     }
@@ -714,6 +746,89 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.mov(tmp.reg, qword[rState + offsetof(lua_State, ci)]);
         build.mov(tmp.reg, qword[tmp.reg + offsetof(CallInfo, top)]);
         build.mov(qword[rState + offsetof(lua_State, top)], tmp.reg);
+        break;
+    }
+
+    case IrCmd::FASTCALL:
+        LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
+        LUAU_ASSERT(inst.c.kind == IrOpKind::VmReg);
+        emitBuiltin(regs, build, uintOp(inst.a), inst.b.index, inst.c.index, inst.d, intOp(inst.e), intOp(inst.f));
+        break;
+    case IrCmd::INVOKE_FASTCALL:
+    {
+        LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
+        LUAU_ASSERT(inst.c.kind == IrOpKind::VmReg);
+
+        unsigned bfid = uintOp(inst.a);
+
+        OperandX64 args = 0;
+
+        if (inst.d.kind == IrOpKind::VmReg)
+            args = luauRegAddress(inst.d.index);
+        else if (inst.d.kind == IrOpKind::VmConst)
+            args = luauConstantAddress(inst.d.index);
+        else
+            LUAU_ASSERT(boolOp(inst.d) == false);
+
+        int ra = inst.b.index;
+        int arg = inst.c.index;
+        int nparams = intOp(inst.e);
+        int nresults = intOp(inst.f);
+
+        regs.assertAllFree();
+
+        build.mov(rax, qword[rNativeContext + offsetof(NativeContext, luauF_table) + bfid * sizeof(luau_FastFunction)]);
+
+        // 5th parameter (args) is left unset for LOP_FASTCALL1
+        if (args.cat == CategoryX64::mem)
+        {
+            if (build.abi == ABIX64::Windows)
+            {
+                build.lea(rcx, args);
+                build.mov(sArg5, rcx);
+            }
+            else
+            {
+                build.lea(rArg5, args);
+            }
+        }
+
+        if (nparams == LUA_MULTRET)
+        {
+            // L->top - (ra + 1)
+            RegisterX64 reg = (build.abi == ABIX64::Windows) ? rcx : rArg6;
+            build.mov(reg, qword[rState + offsetof(lua_State, top)]);
+            build.lea(rdx, addr[rBase + (ra + 1) * sizeof(TValue)]);
+            build.sub(reg, rdx);
+            build.shr(reg, kTValueSizeLog2);
+
+            if (build.abi == ABIX64::Windows)
+                build.mov(sArg6, reg);
+        }
+        else
+        {
+            if (build.abi == ABIX64::Windows)
+                build.mov(sArg6, nparams);
+            else
+                build.mov(rArg6, nparams);
+        }
+
+        build.mov(rArg1, rState);
+        build.lea(rArg2, luauRegAddress(ra));
+        build.lea(rArg3, luauRegAddress(arg));
+        build.mov(dwordReg(rArg4), nresults);
+
+        build.call(rax);
+
+        inst.regX64 = regs.takeGprReg(eax); // Result of a builtin call is returned in eax
+        break;
+    }
+    case IrCmd::CHECK_FASTCALL_RES:
+    {
+        RegisterX64 res = regOp(inst.a);
+
+        build.test(res, res);                           // test here will set SF=1 for a negative number and it always sets OF to 0
+        build.jcc(ConditionX64::Less, labelOp(inst.b)); // jl jumps if SF != OF
         break;
     }
     case IrCmd::DO_ARITH:
@@ -1014,41 +1129,18 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         emitInstReturn(build, helpers, pc, uintOp(inst.a));
         break;
     }
-    case IrCmd::LOP_FASTCALL:
-        LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
-        LUAU_ASSERT(inst.c.kind == IrOpKind::Constant);
-
-        emitInstFastCall(build, proto->code + uintOp(inst.a), uintOp(inst.a), labelOp(inst.d));
-        break;
-    case IrCmd::LOP_FASTCALL1:
-        LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
-        LUAU_ASSERT(inst.c.kind == IrOpKind::VmReg);
-
-        emitInstFastCall1(build, proto->code + uintOp(inst.a), uintOp(inst.a), labelOp(inst.d));
-        break;
-    case IrCmd::LOP_FASTCALL2:
-        LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
-        LUAU_ASSERT(inst.c.kind == IrOpKind::VmReg);
-        LUAU_ASSERT(inst.d.kind == IrOpKind::VmReg);
-
-        emitInstFastCall2(build, proto->code + uintOp(inst.a), uintOp(inst.a), labelOp(inst.e));
-        break;
-    case IrCmd::LOP_FASTCALL2K:
-        LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
-        LUAU_ASSERT(inst.c.kind == IrOpKind::VmReg);
-        LUAU_ASSERT(inst.d.kind == IrOpKind::VmConst);
-
-        emitInstFastCall2K(build, proto->code + uintOp(inst.a), uintOp(inst.a), labelOp(inst.e));
-        break;
     case IrCmd::LOP_FORGLOOP:
-        emitinstForGLoop(build, proto->code + uintOp(inst.a), uintOp(inst.a), labelOp(inst.b), labelOp(inst.c), labelOp(inst.d));
+        LUAU_ASSERT(inst.a.kind == IrOpKind::VmReg);
+        emitinstForGLoop(build, inst.a.index, intOp(inst.b), labelOp(inst.c), labelOp(inst.d));
         break;
     case IrCmd::LOP_FORGLOOP_FALLBACK:
-        emitinstForGLoopFallback(build, proto->code + uintOp(inst.a), uintOp(inst.a), labelOp(inst.b));
-        build.jmp(labelOp(inst.c));
+        LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
+        emitinstForGLoopFallback(build, uintOp(inst.a), inst.b.index, intOp(inst.c), labelOp(inst.d));
+        build.jmp(labelOp(inst.e));
         break;
     case IrCmd::LOP_FORGPREP_XNEXT_FALLBACK:
-        emitInstForGPrepXnextFallback(build, proto->code + uintOp(inst.a), uintOp(inst.a), labelOp(inst.b));
+        LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
+        emitInstForGPrepXnextFallback(build, uintOp(inst.a), inst.b.index, labelOp(inst.c));
         break;
     case IrCmd::LOP_AND:
         emitInstAnd(build, proto->code + uintOp(inst.a));
@@ -1224,38 +1316,6 @@ Label& IrLoweringX64::labelOp(IrOp op) const
     return blockOp(op).label;
 }
 
-ConditionX64 IrLoweringX64::getX64Condition(IrCondition cond) const
-{
-    // TODO: this function will not be required when jumpOnNumberCmp starts accepting an IrCondition
-    switch (cond)
-    {
-    case IrCondition::Equal:
-        return ConditionX64::Equal;
-    case IrCondition::NotEqual:
-        return ConditionX64::NotEqual;
-    case IrCondition::Less:
-        return ConditionX64::Less;
-    case IrCondition::NotLess:
-        return ConditionX64::NotLess;
-    case IrCondition::LessEqual:
-        return ConditionX64::LessEqual;
-    case IrCondition::NotLessEqual:
-        return ConditionX64::NotLessEqual;
-    case IrCondition::Greater:
-        return ConditionX64::Greater;
-    case IrCondition::NotGreater:
-        return ConditionX64::NotGreater;
-    case IrCondition::GreaterEqual:
-        return ConditionX64::GreaterEqual;
-    case IrCondition::NotGreaterEqual:
-        return ConditionX64::NotGreaterEqual;
-    default:
-        LUAU_ASSERT(!"unsupported condition");
-        break;
-    }
-
-    return ConditionX64::Count;
-}
-
+} // namespace X64
 } // namespace CodeGen
 } // namespace Luau

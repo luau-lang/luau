@@ -61,8 +61,9 @@ struct Unifier
     ErrorVec errors;
     Location location;
     Variance variance = Covariant;
-    bool normalize;         // Normalize unions and intersections if necessary
-    bool useScopes = false; // If true, we use the scope hierarchy rather than TypeLevels
+    bool normalize = true;      // Normalize unions and intersections if necessary
+    bool checkInhabited = true; // Normalize types to check if they are inhabited
+    bool useScopes = false;     // If true, we use the scope hierarchy rather than TypeLevels
     CountMismatch::Context ctx = CountMismatch::Arg;
 
     UnifierSharedState& sharedState;
@@ -155,5 +156,6 @@ private:
 };
 
 void promoteTypeLevels(TxnLog& log, const TypeArena* arena, TypeLevel minLevel, Scope* outerScope, bool useScope, TypePackId tp);
+std::optional<TypeError> hasUnificationTooComplex(const ErrorVec& errors);
 
 } // namespace Luau

@@ -11,6 +11,8 @@ namespace Luau
 {
 namespace CodeGen
 {
+namespace X64
+{
 
 struct IrRegAllocX64
 {
@@ -22,9 +24,13 @@ struct IrRegAllocX64
     RegisterX64 allocGprRegOrReuse(SizeX64 preferredSize, uint32_t index, std::initializer_list<IrOp> oprefs);
     RegisterX64 allocXmmRegOrReuse(uint32_t index, std::initializer_list<IrOp> oprefs);
 
+    RegisterX64 takeGprReg(RegisterX64 reg);
+
     void freeReg(RegisterX64 reg);
     void freeLastUseReg(IrInst& target, uint32_t index);
     void freeLastUseRegs(const IrInst& inst, uint32_t index);
+
+    void assertAllFree() const;
 
     IrFunction& function;
 
@@ -47,5 +53,6 @@ struct ScopedRegX64
     RegisterX64 reg;
 };
 
+} // namespace X64
 } // namespace CodeGen
 } // namespace Luau

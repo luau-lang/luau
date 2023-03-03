@@ -15,6 +15,8 @@
 
 #include <algorithm>
 
+LUAU_FASTFLAGVARIABLE(LuauDeprecateTableGetnForeach, false)
+
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
  * Some of them require richer generics than we have.  For instance, we do not yet have a way to talk
@@ -335,6 +337,14 @@ void registerBuiltinGlobals(TypeChecker& typeChecker)
         ttv->props["freeze"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.freeze");
         ttv->props["clone"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.clone");
 
+        if (FFlag::LuauDeprecateTableGetnForeach)
+        {
+            ttv->props["getn"].deprecated = true;
+            ttv->props["getn"].deprecatedSuggestion = "#";
+            ttv->props["foreach"].deprecated = true;
+            ttv->props["foreachi"].deprecated = true;
+        }
+
         attachMagicFunction(ttv->props["pack"].type, magicFunctionPack);
         attachDcrMagicFunction(ttv->props["pack"].type, dcrMagicFunctionPack);
     }
@@ -427,6 +437,14 @@ void registerBuiltinGlobals(Frontend& frontend)
         // tabTy is a generic table type which we can't express via declaration syntax yet
         ttv->props["freeze"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.freeze");
         ttv->props["clone"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.clone");
+
+        if (FFlag::LuauDeprecateTableGetnForeach)
+        {
+            ttv->props["getn"].deprecated = true;
+            ttv->props["getn"].deprecatedSuggestion = "#";
+            ttv->props["foreach"].deprecated = true;
+            ttv->props["foreachi"].deprecated = true;
+        }
 
         attachMagicFunction(ttv->props["pack"].type, magicFunctionPack);
     }

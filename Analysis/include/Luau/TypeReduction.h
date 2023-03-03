@@ -54,8 +54,8 @@ struct TypeReductionOptions
 
 struct TypeReduction
 {
-    explicit TypeReduction(
-        NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> handle, const TypeReductionOptions& opts = {});
+    explicit TypeReduction(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<struct InternalErrorReporter> handle,
+        const TypeReductionOptions& opts = {});
 
     TypeReduction(const TypeReduction&) = delete;
     TypeReduction& operator=(const TypeReduction&) = delete;

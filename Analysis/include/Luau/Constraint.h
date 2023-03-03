@@ -2,7 +2,6 @@
 #pragma once
 
 #include "Luau/Ast.h" // Used for some of the enumerations
-#include "Luau/Def.h"
 #include "Luau/DenseHash.h"
 #include "Luau/NotNull.h"
 #include "Luau/Type.h"

@@ -11,6 +11,9 @@ namespace Luau
 {
 namespace CodeGen
 {
+namespace X64
+{
+
 // TODO: more assertions on operand sizes
 
 static const uint8_t codeForCondition[] = {
@@ -1475,5 +1478,6 @@ const char* AssemblyBuilderX64::getRegisterName(RegisterX64 reg) const
     return names[size_t(reg.size)][reg.index];
 }
 
+} // namespace X64
 } // namespace CodeGen
 } // namespace Luau

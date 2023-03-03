@@ -108,6 +108,13 @@ enum class IrCmd : uint8_t
     MOD_NUM,
     POW_NUM,
 
+    // Get the minimum/maximum of two numbers
+    // If one of the values is NaN, 'B' is returned as the result
+    // A, B: double
+    // In final x64 lowering, B can also be Rn or Kn
+    MIN_NUM,
+    MAX_NUM,
+
     // Negate a double number
     // A: double
     UNM_NUM,
@@ -196,6 +203,29 @@ enum class IrCmd : uint8_t
     // Restore stack top (L->top) to point to the function stack top (L->ci->top)
     // This is used to recover after calling a variadic function
     ADJUST_STACK_TO_TOP,
+
+    // Execute fastcall builtin function in-place
+    // A: builtin
+    // B: Rn (result start)
+    // C: Rn (argument start)
+    // D: Rn or Kn or a boolean that's false (optional second argument)
+    // E: int (argument count or -1 to use all arguments up to stack top)
+    // F: int (result count or -1 to preserve all results and adjust stack top)
+    FASTCALL,
+
+    // Call the fastcall builtin function
+    // A: builtin
+    // B: Rn (result start)
+    // C: Rn (argument start)
+    // D: Rn or Kn or a boolean that's false (optional second argument)
+    // E: int (argument count or -1 to use all arguments up to stack top)
+    // F: int (result count or -1 to preserve all results and adjust stack top)
+    INVOKE_FASTCALL,
+
+    // Check that fastcall builtin function invocation was successful (negative result count jumps to fallback)
+    // A: int (result count)
+    // B: block (fallback)
+    CHECK_FASTCALL_RES,
 
     // Fallback functions
 
@@ -351,39 +381,26 @@ enum class IrCmd : uint8_t
     // C: int (result count or -1 to return all values up to stack top)
     LOP_RETURN,
 
-    // Perform a fast call of a built-in function
-    // A: unsigned int (bytecode instruction index)
-    // B: Rn (argument start)
-    // C: int (argument count or -1 use all arguments up to stack top)
-    // D: block (fallback)
-    // Note: return values are placed starting from Rn specified in 'B'
-    LOP_FASTCALL,
-
-    // Perform a fast call of a built-in function using 1 register argument
-    // A: unsigned int (bytecode instruction index)
-    // B: Rn (result start)
-    // C: Rn (arg1)
-    // D: block (fallback)
-    LOP_FASTCALL1,
-
-    // Perform a fast call of a built-in function using 2 register arguments
-    // A: unsigned int (bytecode instruction index)
-    // B: Rn (result start)
-    // C: Rn (arg1)
-    // D: Rn (arg2)
-    // E: block (fallback)
-    LOP_FASTCALL2,
-
-    // Perform a fast call of a built-in function using 1 register argument and 1 constant argument
-    // A: unsigned int (bytecode instruction index)
-    // B: Rn (result start)
-    // C: Rn (arg1)
-    // D: Kn (arg2)
-    // E: block (fallback)
-    LOP_FASTCALL2K,
-
+    // Adjust loop variables for one iteration of a generic for loop, jump back to the loop header if loop needs to continue
+    // A: Rn (loop variable start, updates Rn+2 Rn+3 Rn+4)
+    // B: int (loop variable count, is more than 2, additional registers are set to nil)
+    // C: block (repeat)
+    // D: block (exit)
     LOP_FORGLOOP,
+
+    // Handle LOP_FORGLOOP fallback when variable being iterated is not a table
+    // A: unsigned int (bytecode instruction index)
+    // B: Rn (loop state start, updates Rn+2 Rn+3 Rn+4 Rn+5)
+    // C: int (extra variable count or -1 for ipairs-style iteration)
+    // D: block (repeat)
+    // E: block (exit)
     LOP_FORGLOOP_FALLBACK,
+
+    // Fallback for generic for loop preparation when iterating over builtin pairs/ipairs
+    // It raises an error if 'B' register is not a function
+    // A: unsigned int (bytecode instruction index)
+    // B: Rn
+    // C: block (forgloop location)
     LOP_FORGPREP_XNEXT_FALLBACK,
 
     // Perform `and` or `or` operation (selecting lhs or rhs based on whether the lhs is truthy) and put the result into target register
@@ -462,7 +479,7 @@ enum class IrCmd : uint8_t
 
     // Prepare loop variables for a generic for loop, jump to the loop backedge unconditionally
     // A: unsigned int (bytecode instruction index)
-    // B: Rn (loop state, updates Rn Rn+1 Rn+2)
+    // B: Rn (loop state start, updates Rn Rn+1 Rn+2)
     // C: block
     FALLBACK_FORGPREP,
 
@@ -577,8 +594,8 @@ struct IrInst
     uint16_t useCount = 0;
 
     // Location of the result (optional)
-    RegisterX64 regX64 = noreg;
-    RegisterA64 regA64{KindA64::none, 0};
+    X64::RegisterX64 regX64 = X64::noreg;
+    A64::RegisterA64 regA64 = A64::noreg;
     bool reusedReg = false;
 };
 
@@ -587,6 +604,7 @@ enum class IrBlockKind : uint8_t
     Bytecode,
     Fallback,
     Internal,
+    Linearized,
     Dead,
 };
 

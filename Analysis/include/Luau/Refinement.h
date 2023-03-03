@@ -1,12 +1,14 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Def.h"
+#include "Luau/NotNull.h"
 #include "Luau/TypedAllocator.h"
 #include "Luau/Variant.h"
 
 namespace Luau
 {
+
+using BreadcrumbId = NotNull<const struct Breadcrumb>;
 
 struct Type;
 using TypeId = const Type*;
@@ -50,7 +52,7 @@ struct Equivalence
 
 struct Proposition
 {
-    DefId def;
+    BreadcrumbId breadcrumb;
     TypeId discriminantTy;
 };
 
@@ -67,7 +69,7 @@ struct RefinementArena
     RefinementId conjunction(RefinementId lhs, RefinementId rhs);
     RefinementId disjunction(RefinementId lhs, RefinementId rhs);
     RefinementId equivalence(RefinementId lhs, RefinementId rhs);
-    RefinementId proposition(DefId def, TypeId discriminantTy);
+    RefinementId proposition(BreadcrumbId breadcrumb, TypeId discriminantTy);
 
 private:
     TypedAllocator<Refinement> allocator;

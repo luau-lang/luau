@@ -1445,7 +1445,7 @@ static int str_pack(lua_State* L)
             const char* s = luaL_checklstring(L, arg, &len);
             luaL_argcheck(L, len <= (size_t)size, arg, "string longer than given size");
             luaL_addlstring(&b, s, len, -1); // add string
-            while (len++ < (size_t)size) // pad extra space
+            while (len++ < (size_t)size)     // pad extra space
                 luaL_addchar(&b, LUAL_PACKPADBYTE);
             break;
         }

@@ -5,6 +5,8 @@ namespace Luau
 {
 namespace CodeGen
 {
+namespace A64
+{
 
 enum class ConditionA64
 {
@@ -33,5 +35,6 @@ enum class ConditionA64
     Count
 };
 
+} // namespace A64
 } // namespace CodeGen
 } // namespace Luau

@@ -2653,6 +2653,14 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there)
                 intersectNormals(here, *negated);
             }
         }
+        else if (get<AnyType>(t))
+        {
+            // HACK: Refinements sometimes intersect with ~any under the
+            // assumption that it is the same as any.
+            return true;
+        }
+        else if (auto nt = get<NegationType>(t))
+            return intersectNormalWithTy(here, nt->ty);
         else
         {
             // TODO negated unions, intersections, table, and function.

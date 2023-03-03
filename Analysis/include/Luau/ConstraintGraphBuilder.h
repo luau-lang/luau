@@ -224,7 +224,7 @@ struct ConstraintGraphBuilder
      * @param inTypeArguments whether we are resolving a type that's contained within type arguments, `<...>`.
      * @return the type of the AST annotation.
      **/
-    TypeId resolveType(const ScopePtr& scope, AstType* ty, bool inTypeArguments);
+    TypeId resolveType(const ScopePtr& scope, AstType* ty, bool inTypeArguments, bool replaceErrorWithFresh = false);
 
     /**
      * Resolves a type pack from its AST annotation.
@@ -233,7 +233,7 @@ struct ConstraintGraphBuilder
      * @param inTypeArguments whether we are resolving a type that's contained within type arguments, `<...>`.
      * @return the type pack of the AST annotation.
      **/
-    TypePackId resolveTypePack(const ScopePtr& scope, AstTypePack* tp, bool inTypeArguments);
+    TypePackId resolveTypePack(const ScopePtr& scope, AstTypePack* tp, bool inTypeArguments, bool replaceErrorWithFresh = false);
 
     /**
      * Resolves a type pack from its AST annotation.
@@ -242,7 +242,7 @@ struct ConstraintGraphBuilder
      * @param inTypeArguments whether we are resolving a type that's contained within type arguments, `<...>`.
      * @return the type pack of the AST annotation.
      **/
-    TypePackId resolveTypePack(const ScopePtr& scope, const AstTypeList& list, bool inTypeArguments);
+    TypePackId resolveTypePack(const ScopePtr& scope, const AstTypeList& list, bool inTypeArguments, bool replaceErrorWithFresh = false);
 
     /**
      * Creates generic types given a list of AST definitions, resolving default
@@ -282,10 +282,17 @@ struct ConstraintGraphBuilder
      * initial scan of the AST and note what globals are defined.
      */
     void prepopulateGlobalScope(const ScopePtr& globalScope, AstStatBlock* program);
+
+    /** Given a function type annotation, return a vector describing the expected types of the calls to the function
+     *  For example, calling a function with annotation ((number) -> string & ((string) -> number))
+     *  yields a vector of size 1, with value: [number | string]
+     */
+    std::vector<std::optional<TypeId>> getExpectedCallTypesForFunctionOverloads(const TypeId fnType);
 };
 
 /** Borrow a vector of pointers from a vector of owning pointers to constraints.
  */
 std::vector<NotNull<Constraint>> borrowConstraints(const std::vector<ConstraintPtr>& constraints);
+
 
 } // namespace Luau

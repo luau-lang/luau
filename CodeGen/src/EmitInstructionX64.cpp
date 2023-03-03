@@ -7,7 +7,6 @@
 #include "EmitBuiltinsX64.h"
 #include "EmitCommonX64.h"
 #include "NativeState.h"
-#include "IrTranslateBuiltins.h" // Used temporarily until emitInstFastCallN is removed
 
 #include "lobject.h"
 #include "ltm.h"
@@ -15,6 +14,8 @@
 namespace Luau
 {
 namespace CodeGen
+{
+namespace X64
 {
 
 void emitInstNameCall(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, const TValue* k, Label& next, Label& fallback)
@@ -481,137 +482,12 @@ void emitInstSetList(AssemblyBuilderX64& build, const Instruction* pc, Label& ne
     callBarrierTableFast(build, table, next);
 }
 
-static void emitInstFastCallN(
-    AssemblyBuilderX64& build, const Instruction* pc, bool customParams, int customParamCount, OperandX64 customArgs, int pcpos, Label& fallback)
+void emitinstForGLoop(AssemblyBuilderX64& build, int ra, int aux, Label& loopRepeat, Label& loopExit)
 {
-    int bfid = LUAU_INSN_A(*pc);
-    int skip = LUAU_INSN_C(*pc);
+    // ipairs-style traversal is handled in IR
+    LUAU_ASSERT(aux >= 0);
 
-    Instruction call = pc[skip + 1];
-    LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
-    int ra = LUAU_INSN_A(call);
-
-    int nparams = customParams ? customParamCount : LUAU_INSN_B(call) - 1;
-    int nresults = LUAU_INSN_C(call) - 1;
-    int arg = customParams ? LUAU_INSN_B(*pc) : ra + 1;
-    OperandX64 args = customParams ? customArgs : luauRegAddress(ra + 2);
-
-    BuiltinImplResult br = emitBuiltin(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, fallback);
-
-    if (br.type == BuiltinImplType::UsesFallback)
-    {
-        if (nresults == LUA_MULTRET)
-        {
-            // L->top = ra + n;
-            build.lea(rax, addr[rBase + (ra + br.actualResultCount) * sizeof(TValue)]);
-            build.mov(qword[rState + offsetof(lua_State, top)], rax);
-        }
-        else if (nparams == LUA_MULTRET)
-        {
-            // L->top = L->ci->top;
-            build.mov(rax, qword[rState + offsetof(lua_State, ci)]);
-            build.mov(rax, qword[rax + offsetof(CallInfo, top)]);
-            build.mov(qword[rState + offsetof(lua_State, top)], rax);
-        }
-
-        return;
-    }
-
-    // TODO: we can skip saving pc for some well-behaved builtins which we didn't inline
-    emitSetSavedPc(build, pcpos + 1); // uses rax/rdx
-
-    build.mov(rax, qword[rNativeContext + offsetof(NativeContext, luauF_table) + bfid * sizeof(luau_FastFunction)]);
-
-    // 5th parameter (args) is left unset for LOP_FASTCALL1
-    if (args.cat == CategoryX64::mem)
-    {
-        if (build.abi == ABIX64::Windows)
-        {
-            build.lea(rcx, args);
-            build.mov(sArg5, rcx);
-        }
-        else
-        {
-            build.lea(rArg5, args);
-        }
-    }
-
-    if (nparams == LUA_MULTRET)
-    {
-        // L->top - (ra + 1)
-        RegisterX64 reg = (build.abi == ABIX64::Windows) ? rcx : rArg6;
-        build.mov(reg, qword[rState + offsetof(lua_State, top)]);
-        build.lea(rdx, addr[rBase + (ra + 1) * sizeof(TValue)]);
-        build.sub(reg, rdx);
-        build.shr(reg, kTValueSizeLog2);
-
-        if (build.abi == ABIX64::Windows)
-            build.mov(sArg6, reg);
-    }
-    else
-    {
-        if (build.abi == ABIX64::Windows)
-            build.mov(sArg6, nparams);
-        else
-            build.mov(rArg6, nparams);
-    }
-
-    build.mov(rArg1, rState);
-    build.lea(rArg2, luauRegAddress(ra));
-    build.lea(rArg3, luauRegAddress(arg));
-    build.mov(dwordReg(rArg4), nresults);
-
-    build.call(rax);
-
-    build.test(eax, eax);                    // test here will set SF=1 for a negative number and it always sets OF to 0
-    build.jcc(ConditionX64::Less, fallback); // jl jumps if SF != OF
-
-    if (nresults == LUA_MULTRET)
-    {
-        // L->top = ra + n;
-        build.shl(rax, kTValueSizeLog2);
-        build.lea(rax, addr[rBase + rax + ra * sizeof(TValue)]);
-        build.mov(qword[rState + offsetof(lua_State, top)], rax);
-    }
-    else if (nparams == LUA_MULTRET)
-    {
-        // L->top = L->ci->top;
-        build.mov(rax, qword[rState + offsetof(lua_State, ci)]);
-        build.mov(rax, qword[rax + offsetof(CallInfo, top)]);
-        build.mov(qword[rState + offsetof(lua_State, top)], rax);
-    }
-}
-
-void emitInstFastCall1(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& fallback)
-{
-    return emitInstFastCallN(build, pc, /* customParams */ true, /* customParamCount */ 1, /* customArgs */ 0, pcpos, fallback);
-}
-
-void emitInstFastCall2(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& fallback)
-{
-    return emitInstFastCallN(build, pc, /* customParams */ true, /* customParamCount */ 2, /* customArgs */ luauRegAddress(pc[1]), pcpos, fallback);
-}
-
-void emitInstFastCall2K(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& fallback)
-{
-    return emitInstFastCallN(
-        build, pc, /* customParams */ true, /* customParamCount */ 2, /* customArgs */ luauConstantAddress(pc[1]), pcpos, fallback);
-}
-
-void emitInstFastCall(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& fallback)
-{
-    return emitInstFastCallN(build, pc, /* customParams */ false, /* customParamCount */ 0, /* customArgs */ 0, pcpos, fallback);
-}
-
-void emitinstForGLoop(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& loopRepeat, Label& loopExit, Label& fallback)
-{
-    int ra = LUAU_INSN_A(*pc);
-    int aux = pc[1];
-
-    emitInterrupt(build, pcpos);
-
-    // fast-path: builtin table iteration
-    jumpIfTagIsNot(build, ra, LUA_TNIL, fallback);
+    // This is a fast-path for builtin table iteration, tag check for 'ra' has to be performed before emitting this instruction
 
     // Registers are chosen in this way to simplify fallback code for the node part
     RegisterX64 table = rArg2;
@@ -630,22 +506,19 @@ void emitinstForGLoop(AssemblyBuilderX64& build, const Instruction* pc, int pcpo
     for (int i = 2; i < aux; ++i)
         build.mov(luauRegTag(ra + 3 + i), LUA_TNIL);
 
-    // ipairs-style traversal is terminated early when array part ends of nil array element is encountered
-    bool isIpairsIter = aux < 0;
-
     Label skipArray, skipArrayNil;
 
     // First we advance index through the array portion
     // while (unsigned(index) < unsigned(sizearray))
     Label arrayLoop = build.setLabel();
     build.cmp(dwordReg(index), dword[table + offsetof(Table, sizearray)]);
-    build.jcc(ConditionX64::NotBelow, isIpairsIter ? loopExit : skipArray);
+    build.jcc(ConditionX64::NotBelow, skipArray);
 
     // If element is nil, we increment the index; if it's not, we still need 'index + 1' inside
     build.inc(index);
 
     build.cmp(dword[elemPtr + offsetof(TValue, tt)], LUA_TNIL);
-    build.jcc(ConditionX64::Equal, isIpairsIter ? loopExit : skipArrayNil);
+    build.jcc(ConditionX64::Equal, skipArrayNil);
 
     // setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(index + 1)));
     build.mov(luauRegValue(ra + 2), index);
@@ -661,31 +534,25 @@ void emitinstForGLoop(AssemblyBuilderX64& build, const Instruction* pc, int pcpo
 
     build.jmp(loopRepeat);
 
-    if (!isIpairsIter)
-    {
-        build.setLabel(skipArrayNil);
+    build.setLabel(skipArrayNil);
 
-        // Index already incremented, advance to next array element
-        build.add(elemPtr, sizeof(TValue));
-        build.jmp(arrayLoop);
+    // Index already incremented, advance to next array element
+    build.add(elemPtr, sizeof(TValue));
+    build.jmp(arrayLoop);
 
-        build.setLabel(skipArray);
+    build.setLabel(skipArray);
 
-        // Call helper to assign next node value or to signal loop exit
-        build.mov(rArg1, rState);
-        // rArg2 and rArg3 are already set
-        build.lea(rArg4, luauRegAddress(ra));
-        build.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNodeIter)]);
-        build.test(al, al);
-        build.jcc(ConditionX64::NotZero, loopRepeat);
-    }
+    // Call helper to assign next node value or to signal loop exit
+    build.mov(rArg1, rState);
+    // rArg2 and rArg3 are already set
+    build.lea(rArg4, luauRegAddress(ra));
+    build.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNodeIter)]);
+    build.test(al, al);
+    build.jcc(ConditionX64::NotZero, loopRepeat);
 }
 
-void emitinstForGLoopFallback(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& loopRepeat)
+void emitinstForGLoopFallback(AssemblyBuilderX64& build, int pcpos, int ra, int aux, Label& loopRepeat)
 {
-    int ra = LUAU_INSN_A(*pc);
-    int aux = pc[1];
-
     emitSetSavedPc(build, pcpos + 1);
 
     build.mov(rArg1, rState);
@@ -697,10 +564,8 @@ void emitinstForGLoopFallback(AssemblyBuilderX64& build, const Instruction* pc, 
     build.jcc(ConditionX64::NotZero, loopRepeat);
 }
 
-void emitInstForGPrepXnextFallback(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label& target)
+void emitInstForGPrepXnextFallback(AssemblyBuilderX64& build, int pcpos, int ra, Label& target)
 {
-    int ra = LUAU_INSN_A(*pc);
-
     build.mov(rArg1, rState);
     build.lea(rArg2, luauRegAddress(ra));
     build.mov(dwordReg(rArg3), pcpos + 1);
@@ -836,5 +701,6 @@ void emitInstCoverage(AssemblyBuilderX64& build, int pcpos)
     build.mov(dword[rcx], eax);
 }
 
+} // namespace X64
 } // namespace CodeGen
 } // namespace Luau

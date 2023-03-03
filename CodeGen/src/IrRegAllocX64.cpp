@@ -19,6 +19,8 @@ namespace Luau
 {
 namespace CodeGen
 {
+namespace X64
+{
 
 static const RegisterX64 kGprAllocOrder[] = {rax, rdx, rcx, rbx, rsi, rdi, r8, r9, r10, r11};
 
@@ -106,6 +108,16 @@ RegisterX64 IrRegAllocX64::allocXmmRegOrReuse(uint32_t index, std::initializer_l
     return allocXmmReg();
 }
 
+RegisterX64 IrRegAllocX64::takeGprReg(RegisterX64 reg)
+{
+    // In a more advanced register allocator, this would require a spill for the current register user
+    // But at the current stage we don't have register live ranges intersecting forced register uses
+    LUAU_ASSERT(freeGprMap[reg.index]);
+
+    freeGprMap[reg.index] = false;
+    return reg;
+}
+
 void IrRegAllocX64::freeReg(RegisterX64 reg)
 {
     if (reg.size == SizeX64::xmmword)
@@ -148,6 +160,15 @@ void IrRegAllocX64::freeLastUseRegs(const IrInst& inst, uint32_t index)
     checkOp(inst.f);
 }
 
+void IrRegAllocX64::assertAllFree() const
+{
+    for (RegisterX64 reg : kGprAllocOrder)
+        LUAU_ASSERT(freeGprMap[reg.index]);
+
+    for (bool free : freeXmmMap)
+        LUAU_ASSERT(free);
+}
+
 ScopedRegX64::ScopedRegX64(IrRegAllocX64& owner, SizeX64 size)
     : owner(owner)
 {
@@ -156,7 +177,6 @@ ScopedRegX64::ScopedRegX64(IrRegAllocX64& owner, SizeX64 size)
     else
         reg = owner.allocGprReg(size);
 }
-
 
 ScopedRegX64::ScopedRegX64(IrRegAllocX64& owner, RegisterX64 reg)
     : owner(owner)
@@ -177,5 +197,6 @@ void ScopedRegX64::free()
     reg = noreg;
 }
 
+} // namespace X64
 } // namespace CodeGen
 } // namespace Luau

@@ -1248,7 +1248,11 @@ std::pair<Location, AstTypeList> Parser::parseReturnTypeAnnotation()
         {
             AstType* returnType = parseTypeAnnotation(result, innerBegin);
 
-            return {Location{location, returnType->location}, AstTypeList{copy(&returnType, 1), varargAnnotation}};
+            // If parseTypeAnnotation parses nothing, then returnType->location.end only points at the last non-type-pack
+            // type to successfully parse.  We need the span of the whole annotation.
+            Position endPos = result.size() == 1 ? location.end : returnType->location.end;
+
+            return {Location{location.begin, endPos}, AstTypeList{copy(&returnType, 1), varargAnnotation}};
         }
 
         return {location, AstTypeList{copy(result), varargAnnotation}};
@@ -2622,8 +2626,6 @@ AstExpr* Parser::parseInterpString()
                     currentLexeme.type == Lexeme::InterpStringEnd || currentLexeme.type == Lexeme::InterpStringSimple);
 
         endLocation = currentLexeme.location;
-
-        Location startOfBrace = Location(endLocation.end, 1);
 
         scratchData.assign(currentLexeme.data, currentLexeme.length);
 

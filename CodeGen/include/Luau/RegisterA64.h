@@ -9,6 +9,8 @@ namespace Luau
 {
 namespace CodeGen
 {
+namespace A64
+{
 
 enum class KindA64 : uint8_t
 {
@@ -32,6 +34,8 @@ struct RegisterA64
         return !(*this == rhs);
     }
 };
+
+constexpr RegisterA64 noreg{KindA64::none, 0};
 
 constexpr RegisterA64 w0{KindA64::w, 0};
 constexpr RegisterA64 w1{KindA64::w, 1};
@@ -101,5 +105,6 @@ constexpr RegisterA64 xzr{KindA64::x, 31};
 
 constexpr RegisterA64 sp{KindA64::none, 31};
 
+} // namespace A64
 } // namespace CodeGen
 } // namespace Luau

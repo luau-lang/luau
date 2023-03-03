@@ -108,6 +108,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/CodeGenUtils.h
     CodeGen/src/CodeGenX64.h
     CodeGen/src/EmitBuiltinsX64.h
+    CodeGen/src/EmitCommon.h
     CodeGen/src/EmitCommonX64.h
     CodeGen/src/EmitInstructionX64.h
     CodeGen/src/Fallbacks.h
@@ -126,6 +127,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/AstJsonEncoder.h
     Analysis/include/Luau/AstQuery.h
     Analysis/include/Luau/Autocomplete.h
+    Analysis/include/Luau/Breadcrumb.h
     Analysis/include/Luau/BuiltinDefinitions.h
     Analysis/include/Luau/Clone.h
     Analysis/include/Luau/Config.h

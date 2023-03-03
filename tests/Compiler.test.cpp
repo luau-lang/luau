@@ -4655,6 +4655,8 @@ RETURN R0 0
 
 TEST_CASE("LoopUnrollCost")
 {
+    ScopedFastFlag sff("LuauCompileBuiltinArity", true);
+
     ScopedFastInt sfis[] = {
         {"LuauCompileLoopUnrollThreshold", 25},
         {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
@@ -4796,10 +4798,10 @@ FORNPREP R1 L3
 L0: FASTCALL1 24 R3 L1
 MOVE R6 R3
 GETIMPORT R5 2 [math.sin]
-CALL R5 1 -1
-L1: FASTCALL 2 L2
+CALL R5 1 1
+L1: FASTCALL1 2 R5 L2
 GETIMPORT R4 4 [math.abs]
-CALL R4 -1 1
+CALL R4 1 1
 L2: SETTABLE R4 R0 R3
 FORNLOOP R1 L0
 L3: RETURN R0 1
@@ -5924,6 +5926,8 @@ RETURN R2 1
 
 TEST_CASE("InlineMultret")
 {
+    ScopedFastFlag sff("LuauCompileBuiltinArity", true);
+
     // inlining a function in multret context is prohibited since we can't adjust L->top outside of CALL/GETVARARGS
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a)
@@ -5994,7 +5998,7 @@ CALL R1 1 -1
 RETURN R1 -1
 )");
 
-    // and unfortunately we can't do this analysis for builtins or method calls due to getfenv
+    // we do this for builtins though as we assume getfenv is not used or is not changing arity
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a)
     return math.abs(a)
@@ -6005,10 +6009,8 @@ return foo(42)
                         1, 2),
         R"(
 DUPCLOSURE R0 K0 ['foo']
-MOVE R1 R0
-LOADN R2 42
-CALL R1 1 -1
-RETURN R1 -1
+LOADN R1 42
+RETURN R1 1
 )");
 }
 
@@ -6263,6 +6265,8 @@ RETURN R0 52
 
 TEST_CASE("BuiltinFoldingProhibited")
 {
+    ScopedFastFlag sff("LuauCompileBuiltinArity", true);
+
     CHECK_EQ("\n" + compileFunction(R"(
 return
     math.abs(),
@@ -6326,8 +6330,8 @@ L8: LOADN R10 1
 FASTCALL2K 19 R10 K3 L9 [true]
 LOADK R11 K3 [true]
 GETIMPORT R9 26 [math.min]
-CALL R9 2 -1
-L9: RETURN R0 -1
+CALL R9 2 1
+L9: RETURN R0 10
 )");
 }
 
@@ -6862,6 +6866,113 @@ CALL R2 1 0
 JUMPIFEQ R0 R1 L3
 JUMPBACK L0
 L3: RETURN R0 0
+)");
+}
+
+TEST_CASE("BuiltinArity")
+{
+    ScopedFastFlag sff("LuauCompileBuiltinArity", true);
+
+    // by default we can't assume that we know parameter/result count for builtins as they can be overridden at runtime
+    CHECK_EQ("\n" + compileFunction(R"(
+return math.abs(unknown())
+)",
+                        0, 1),
+        R"(
+GETIMPORT R1 1 [unknown]
+CALL R1 0 -1
+FASTCALL 2 L0
+GETIMPORT R0 4 [math.abs]
+CALL R0 -1 -1
+L0: RETURN R0 -1
+)");
+
+    // however, when using optimization level 2, we assume compile time knowledge about builtin behavior even if we can't deoptimize that with fenv
+    // in the test case below, this allows us to synthesize a more efficient FASTCALL1 (and use a fixed-return call to unknown)
+    CHECK_EQ("\n" + compileFunction(R"(
+return math.abs(unknown())
+)",
+                        0, 2),
+        R"(
+GETIMPORT R1 1 [unknown]
+CALL R1 0 1
+FASTCALL1 2 R1 L0
+GETIMPORT R0 4 [math.abs]
+CALL R0 1 1
+L0: RETURN R0 1
+)");
+
+    // some builtins are variadic, and as such they can't use fixed-length fastcall variants
+    CHECK_EQ("\n" + compileFunction(R"(
+return math.max(0, unknown())
+)",
+                        0, 2),
+        R"(
+LOADN R1 0
+GETIMPORT R2 1 [unknown]
+CALL R2 0 -1
+FASTCALL 18 L0
+GETIMPORT R0 4 [math.max]
+CALL R0 -1 1
+L0: RETURN R0 1
+)");
+
+    // some builtins are not variadic but don't have a fixed number of arguments; we currently don't optimize this although we might start to in the
+    // future
+    CHECK_EQ("\n" + compileFunction(R"(
+return bit32.extract(0, 1, unknown())
+)",
+                        0, 2),
+        R"(
+LOADN R1 0
+LOADN R2 1
+GETIMPORT R3 1 [unknown]
+CALL R3 0 -1
+FASTCALL 34 L0
+GETIMPORT R0 4 [bit32.extract]
+CALL R0 -1 1
+L0: RETURN R0 1
+)");
+
+    // importantly, this optimization also helps us get around the multret inlining restriction for builtin wrappers
+    CHECK_EQ("\n" + compileFunction(R"(
+local function new()
+    return setmetatable({}, MT)
+end
+
+return new()
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0 ['new']
+NEWTABLE R2 0 0
+GETIMPORT R3 2 [MT]
+FASTCALL2 61 R2 R3 L0
+GETIMPORT R1 4 [setmetatable]
+CALL R1 2 1
+L0: RETURN R1 1
+)");
+
+    // note that the results of this optimization are benign in fixed-arg contexts which dampens the effect of fenv substitutions on correctness in
+    // practice
+    CHECK_EQ("\n" + compileFunction(R"(
+local x = ...
+local y, z = type(x)
+return type(y, z)
+)",
+                        0, 2),
+        R"(
+GETVARARGS R0 1
+FASTCALL1 40 R0 L0
+MOVE R2 R0
+GETIMPORT R1 1 [type]
+CALL R1 1 2
+L0: FASTCALL2 40 R1 R2 L1
+MOVE R4 R1
+MOVE R5 R2
+GETIMPORT R3 1 [type]
+CALL R3 2 1
+L1: RETURN R3 1
 )");
 }
 

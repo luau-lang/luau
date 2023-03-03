@@ -131,6 +131,8 @@ TEST_CASE("CodeAllocationWithUnwindCallbacks")
 #if !defined(LUAU_BIG_ENDIAN)
 TEST_CASE("WindowsUnwindCodesX64")
 {
+    using namespace X64;
+
     UnwindBuilderWin unwind;
 
     unwind.start();
@@ -162,6 +164,8 @@ TEST_CASE("WindowsUnwindCodesX64")
 
 TEST_CASE("Dwarf2UnwindCodesX64")
 {
+    using namespace X64;
+
     UnwindBuilderDwarf2 unwind;
 
     unwind.start();
@@ -195,21 +199,23 @@ TEST_CASE("Dwarf2UnwindCodesX64")
 
 #if defined(_WIN32)
 // Windows x64 ABI
-constexpr RegisterX64 rArg1 = rcx;
-constexpr RegisterX64 rArg2 = rdx;
-constexpr RegisterX64 rArg3 = r8;
+constexpr X64::RegisterX64 rArg1 = X64::rcx;
+constexpr X64::RegisterX64 rArg2 = X64::rdx;
+constexpr X64::RegisterX64 rArg3 = X64::r8;
 #else
 // System V AMD64 ABI
-constexpr RegisterX64 rArg1 = rdi;
-constexpr RegisterX64 rArg2 = rsi;
-constexpr RegisterX64 rArg3 = rdx;
+constexpr X64::RegisterX64 rArg1 = X64::rdi;
+constexpr X64::RegisterX64 rArg2 = X64::rsi;
+constexpr X64::RegisterX64 rArg3 = X64::rdx;
 #endif
 
-constexpr RegisterX64 rNonVol1 = r12;
-constexpr RegisterX64 rNonVol2 = rbx;
+constexpr X64::RegisterX64 rNonVol1 = X64::r12;
+constexpr X64::RegisterX64 rNonVol2 = X64::rbx;
 
 TEST_CASE("GeneratedCodeExecutionX64")
 {
+    using namespace X64;
+
     AssemblyBuilderX64 build(/* logText= */ false);
 
     build.mov(rax, rArg1);
@@ -244,6 +250,8 @@ void throwing(int64_t arg)
 
 TEST_CASE("GeneratedCodeExecutionWithThrowX64")
 {
+    using namespace X64;
+
     AssemblyBuilderX64 build(/* logText= */ false);
 
 #if defined(_WIN32)
@@ -320,6 +328,8 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64")
 
 TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
 {
+    using namespace X64;
+
     AssemblyBuilderX64 build(/* logText= */ false);
 
 #if defined(_WIN32)
@@ -437,6 +447,8 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
 
 TEST_CASE("GeneratedCodeExecutionA64")
 {
+    using namespace A64;
+
     AssemblyBuilderA64 build(/* logText= */ false);
 
     Label skip;
