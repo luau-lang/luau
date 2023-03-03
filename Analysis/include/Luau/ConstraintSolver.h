@@ -132,8 +132,8 @@ struct ConstraintSolver
     bool tryDispatchIterableFunction(
         TypeId nextTy, TypeId tableTy, TypeId firstIndexTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
 
-    std::optional<TypeId> lookupTableProp(TypeId subjectType, const std::string& propName);
-    std::optional<TypeId> lookupTableProp(TypeId subjectType, const std::string& propName, std::unordered_set<TypeId>& seen);
+    std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(TypeId subjectType, const std::string& propName);
+    std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(TypeId subjectType, const std::string& propName, std::unordered_set<TypeId>& seen);
 
     void block(NotNull<const Constraint> target, NotNull<const Constraint> constraint);
     /**

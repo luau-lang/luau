@@ -3,6 +3,7 @@
 
 // Do not include LValue. It should never be used here.
 #include "Luau/Ast.h"
+#include "Luau/Breadcrumb.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Def.h"
 #include "Luau/Symbol.h"
@@ -17,16 +18,14 @@ struct DataFlowGraph
     DataFlowGraph(DataFlowGraph&&) = default;
     DataFlowGraph& operator=(DataFlowGraph&&) = default;
 
-    // TODO: AstExprLocal, AstExprGlobal, and AstLocal* are guaranteed never to return nullopt.
-    // We leave them to return an optional as we build it out, but the end state is for them to return a non-optional DefId.
-    std::optional<DefId> getDef(const AstExpr* expr) const;
-    std::optional<DefId> getDef(const AstLocal* local) const;
+    NullableBreadcrumbId getBreadcrumb(const AstExpr* expr) const;
 
-    /// Retrieve the Def that corresponds to the given Symbol.
-    ///
-    /// We do not perform dataflow analysis on globals, so this function always
-    /// yields nullopt when passed a global Symbol.
-    std::optional<DefId> getDef(const Symbol& symbol) const;
+    BreadcrumbId getBreadcrumb(const AstLocal* local) const;
+    BreadcrumbId getBreadcrumb(const AstExprLocal* local) const;
+    BreadcrumbId getBreadcrumb(const AstExprGlobal* global) const;
+
+    BreadcrumbId getBreadcrumb(const AstStatDeclareGlobal* global) const;
+    BreadcrumbId getBreadcrumb(const AstStatDeclareFunction* func) const;
 
 private:
     DataFlowGraph() = default;
@@ -34,9 +33,17 @@ private:
     DataFlowGraph(const DataFlowGraph&) = delete;
     DataFlowGraph& operator=(const DataFlowGraph&) = delete;
 
-    DefArena arena;
-    DenseHashMap<const AstExpr*, const Def*> astDefs{nullptr};
-    DenseHashMap<const AstLocal*, const Def*> localDefs{nullptr};
+    DefArena defs;
+    BreadcrumbArena breadcrumbs;
+
+    DenseHashMap<const AstExpr*, NullableBreadcrumbId> astBreadcrumbs{nullptr};
+
+    // Sometimes we don't have the AstExprLocal* but we have AstLocal*, and sometimes we need to extract that DefId.
+    DenseHashMap<const AstLocal*, NullableBreadcrumbId> localBreadcrumbs{nullptr};
+
+    // There's no AstStatDeclaration, and it feels useless to introduce it just to enforce an invariant in one place.
+    // All keys in this maps are really only statements that ambiently declares a symbol.
+    DenseHashMap<const AstStat*, NullableBreadcrumbId> declaredBreadcrumbs{nullptr};
 
     friend struct DataFlowGraphBuilder;
 };
@@ -44,12 +51,11 @@ private:
 struct DfgScope
 {
     DfgScope* parent;
-    DenseHashMap<Symbol, const Def*> bindings{Symbol{}};
-};
+    DenseHashMap<Symbol, NullableBreadcrumbId> bindings{Symbol{}};
+    DenseHashMap<const Def*, std::unordered_map<std::string, NullableBreadcrumbId>> props{nullptr};
 
-struct ExpressionFlowGraph
-{
-    std::optional<DefId> def;
+    NullableBreadcrumbId lookup(Symbol symbol) const;
+    NullableBreadcrumbId lookup(DefId def, const std::string& key) const;
 };
 
 // Currently unsound. We do not presently track the control flow of the program.
@@ -65,23 +71,19 @@ private:
     DataFlowGraphBuilder& operator=(const DataFlowGraphBuilder&) = delete;
 
     DataFlowGraph graph;
-    NotNull<DefArena> arena{&graph.arena};
-    struct InternalErrorReporter* handle;
+    NotNull<DefArena> defs{&graph.defs};
+    NotNull<BreadcrumbArena> breadcrumbs{&graph.breadcrumbs};
+
+    struct InternalErrorReporter* handle = nullptr;
+    DfgScope* moduleScope = nullptr;
+
     std::vector<std::unique_ptr<DfgScope>> scopes;
 
-    // Does not belong in DataFlowGraphBuilder, but the old solver allows properties to escape the scope they were defined in,
-    // so we will need to be able to emulate this same behavior here too. We can kill this once we have better flow sensitivity.
-    DenseHashMap<const Def*, std::unordered_map<std::string, const Def*>> props{nullptr};
-
     DfgScope* childScope(DfgScope* scope);
-
-    std::optional<DefId> use(DfgScope* scope, Symbol symbol, AstExpr* e);
-    DefId use(DefId def, AstExprIndexName* e);
 
     void visit(DfgScope* scope, AstStatBlock* b);
     void visitBlockWithoutChildScope(DfgScope* scope, AstStatBlock* b);
 
-    // TODO: visit type aliases
     void visit(DfgScope* scope, AstStat* s);
     void visit(DfgScope* scope, AstStatIf* i);
     void visit(DfgScope* scope, AstStatWhile* w);
@@ -97,24 +99,52 @@ private:
     void visit(DfgScope* scope, AstStatCompoundAssign* c);
     void visit(DfgScope* scope, AstStatFunction* f);
     void visit(DfgScope* scope, AstStatLocalFunction* l);
+    void visit(DfgScope* scope, AstStatTypeAlias* t);
+    void visit(DfgScope* scope, AstStatDeclareGlobal* d);
+    void visit(DfgScope* scope, AstStatDeclareFunction* d);
+    void visit(DfgScope* scope, AstStatDeclareClass* d);
+    void visit(DfgScope* scope, AstStatError* error);
 
-    ExpressionFlowGraph visitExpr(DfgScope* scope, AstExpr* e);
-    ExpressionFlowGraph visitExpr(DfgScope* scope, AstExprLocal* l);
-    ExpressionFlowGraph visitExpr(DfgScope* scope, AstExprGlobal* g);
-    ExpressionFlowGraph visitExpr(DfgScope* scope, AstExprCall* c);
-    ExpressionFlowGraph visitExpr(DfgScope* scope, AstExprIndexName* i);
-    ExpressionFlowGraph visitExpr(DfgScope* scope, AstExprIndexExpr* i);
-    ExpressionFlowGraph visitExpr(DfgScope* scope, AstExprFunction* f);
-    ExpressionFlowGraph visitExpr(DfgScope* scope, AstExprTable* t);
-    ExpressionFlowGraph visitExpr(DfgScope* scope, AstExprUnary* u);
-    ExpressionFlowGraph visitExpr(DfgScope* scope, AstExprBinary* b);
-    ExpressionFlowGraph visitExpr(DfgScope* scope, AstExprTypeAssertion* t);
-    ExpressionFlowGraph visitExpr(DfgScope* scope, AstExprIfElse* i);
-    ExpressionFlowGraph visitExpr(DfgScope* scope, AstExprInterpString* i);
+    BreadcrumbId visitExpr(DfgScope* scope, AstExpr* e);
+    BreadcrumbId visitExpr(DfgScope* scope, AstExprLocal* l);
+    BreadcrumbId visitExpr(DfgScope* scope, AstExprGlobal* g);
+    BreadcrumbId visitExpr(DfgScope* scope, AstExprCall* c);
+    BreadcrumbId visitExpr(DfgScope* scope, AstExprIndexName* i);
+    BreadcrumbId visitExpr(DfgScope* scope, AstExprIndexExpr* i);
+    BreadcrumbId visitExpr(DfgScope* scope, AstExprFunction* f);
+    BreadcrumbId visitExpr(DfgScope* scope, AstExprTable* t);
+    BreadcrumbId visitExpr(DfgScope* scope, AstExprUnary* u);
+    BreadcrumbId visitExpr(DfgScope* scope, AstExprBinary* b);
+    BreadcrumbId visitExpr(DfgScope* scope, AstExprTypeAssertion* t);
+    BreadcrumbId visitExpr(DfgScope* scope, AstExprIfElse* i);
+    BreadcrumbId visitExpr(DfgScope* scope, AstExprInterpString* i);
+    BreadcrumbId visitExpr(DfgScope* scope, AstExprError* error);
 
-    // TODO: visitLValue
-    // TODO: visitTypes (because of typeof which has access to values namespace, needs unreachable scope)
-    // TODO: visitTypePacks (because of typeof which has access to values namespace, needs unreachable scope)
+    void visitLValue(DfgScope* scope, AstExpr* e);
+    void visitLValue(DfgScope* scope, AstExprLocal* l);
+    void visitLValue(DfgScope* scope, AstExprGlobal* g);
+    void visitLValue(DfgScope* scope, AstExprIndexName* i);
+    void visitLValue(DfgScope* scope, AstExprIndexExpr* i);
+    void visitLValue(DfgScope* scope, AstExprError* e);
+
+    void visitType(DfgScope* scope, AstType* t);
+    void visitType(DfgScope* scope, AstTypeReference* r);
+    void visitType(DfgScope* scope, AstTypeTable* t);
+    void visitType(DfgScope* scope, AstTypeFunction* f);
+    void visitType(DfgScope* scope, AstTypeTypeof* t);
+    void visitType(DfgScope* scope, AstTypeUnion* u);
+    void visitType(DfgScope* scope, AstTypeIntersection* i);
+    void visitType(DfgScope* scope, AstTypeError* error);
+
+    void visitTypePack(DfgScope* scope, AstTypePack* p);
+    void visitTypePack(DfgScope* scope, AstTypePackExplicit* e);
+    void visitTypePack(DfgScope* scope, AstTypePackVariadic* v);
+    void visitTypePack(DfgScope* scope, AstTypePackGeneric* g);
+
+    void visitTypeList(DfgScope* scope, AstTypeList l);
+
+    void visitGenerics(DfgScope* scope, AstArray<AstGenericType> g);
+    void visitGenericPacks(DfgScope* scope, AstArray<AstGenericTypePack> g);
 };
 
 } // namespace Luau

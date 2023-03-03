@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IrAnalysis.h"
 
+#include "Luau/DenseHash.h"
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
 
@@ -71,6 +72,48 @@ void updateLastUseLocations(IrFunction& function)
         checkOp(inst.e);
         checkOp(inst.f);
     }
+}
+
+std::pair<uint32_t, uint32_t> getLiveInOutValueCount(IrFunction& function, IrBlock& block)
+{
+    uint32_t liveIns = 0;
+    uint32_t liveOuts = 0;
+
+    auto checkOp = [&](IrOp op) {
+        if (op.kind == IrOpKind::Inst)
+        {
+            if (op.index >= block.start && op.index <= block.finish)
+                liveOuts--;
+            else
+                liveIns++;
+        }
+    };
+
+    for (uint32_t instIdx = block.start; instIdx <= block.finish; instIdx++)
+    {
+        IrInst& inst = function.instructions[instIdx];
+
+        liveOuts += inst.useCount;
+
+        checkOp(inst.a);
+        checkOp(inst.b);
+        checkOp(inst.c);
+        checkOp(inst.d);
+        checkOp(inst.e);
+        checkOp(inst.f);
+    }
+
+    return std::make_pair(liveIns, liveOuts);
+}
+
+uint32_t getLiveInValueCount(IrFunction& function, IrBlock& block)
+{
+    return getLiveInOutValueCount(function, block).first;
+}
+
+uint32_t getLiveOutValueCount(IrFunction& function, IrBlock& block)
+{
+    return getLiveInOutValueCount(function, block).second;
 }
 
 } // namespace CodeGen

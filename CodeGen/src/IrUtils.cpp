@@ -286,6 +286,24 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
             substitute(function, inst, build.constDouble(pow(function.doubleOp(inst.a), function.doubleOp(inst.b))));
         break;
+    case IrCmd::MIN_NUM:
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        {
+            double a1 = function.doubleOp(inst.a);
+            double a2 = function.doubleOp(inst.b);
+
+            substitute(function, inst, build.constDouble((a2 < a1) ? a2 : a1));
+        }
+        break;
+    case IrCmd::MAX_NUM:
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        {
+            double a1 = function.doubleOp(inst.a);
+            double a2 = function.doubleOp(inst.b);
+
+            substitute(function, inst, build.constDouble((a2 > a1) ? a2 : a1));
+        }
+        break;
     case IrCmd::UNM_NUM:
         if (inst.a.kind == IrOpKind::Constant)
             substitute(function, inst, build.constDouble(-function.doubleOp(inst.a)));

@@ -17,10 +17,10 @@ public:
 
     void start() override;
 
-    void spill(int espOffset, RegisterX64 reg) override;
-    void save(RegisterX64 reg) override;
+    void spill(int espOffset, X64::RegisterX64 reg) override;
+    void save(X64::RegisterX64 reg) override;
     void allocStack(int size) override;
-    void setupFrameReg(RegisterX64 reg, int espOffset) override;
+    void setupFrameReg(X64::RegisterX64 reg, int espOffset) override;
 
     void finish() override;
 

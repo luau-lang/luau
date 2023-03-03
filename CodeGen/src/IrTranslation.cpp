@@ -479,8 +479,7 @@ void translateInstCloseUpvals(IrBuilder& build, const Instruction* pc)
     build.inst(IrCmd::CLOSE_UPVALS, build.vmReg(ra));
 }
 
-void translateFastCallN(
-    IrBuilder& build, const Instruction* pc, int pcpos, bool customParams, int customParamCount, IrOp customArgs, IrOp next, IrCmd fallbackCmd)
+void translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool customParams, int customParamCount, IrOp customArgs, IrOp next)
 {
     int bfid = LUAU_INSN_A(*pc);
     int skip = LUAU_INSN_C(*pc);
@@ -509,23 +508,17 @@ void translateFastCallN(
     }
     else
     {
-        switch (fallbackCmd)
-        {
-        case IrCmd::LOP_FASTCALL:
-            build.inst(IrCmd::LOP_FASTCALL, build.constUint(pcpos), build.vmReg(ra), build.constInt(nparams), fallback);
-            break;
-        case IrCmd::LOP_FASTCALL1:
-            build.inst(IrCmd::LOP_FASTCALL1, build.constUint(pcpos), build.vmReg(ra), build.vmReg(arg), fallback);
-            break;
-        case IrCmd::LOP_FASTCALL2:
-            build.inst(IrCmd::LOP_FASTCALL2, build.constUint(pcpos), build.vmReg(ra), build.vmReg(arg), build.vmReg(pc[1]), fallback);
-            break;
-        case IrCmd::LOP_FASTCALL2K:
-            build.inst(IrCmd::LOP_FASTCALL2K, build.constUint(pcpos), build.vmReg(ra), build.vmReg(arg), build.vmConst(pc[1]), fallback);
-            break;
-        default:
-            LUAU_ASSERT(!"unexpected command");
-        }
+        // TODO: we can skip saving pc for some well-behaved builtins which we didn't inline
+        build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
+
+        IrOp res = build.inst(IrCmd::INVOKE_FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), args, build.constInt(nparams),
+            build.constInt(nresults));
+        build.inst(IrCmd::CHECK_FASTCALL_RES, res, fallback);
+
+        if (nresults == LUA_MULTRET)
+            build.inst(IrCmd::ADJUST_STACK_TO_REG, build.vmReg(ra), res);
+        else if (nparams == LUA_MULTRET)
+            build.inst(IrCmd::ADJUST_STACK_TO_TOP);
     }
 
     build.inst(IrCmd::JUMP, next);
@@ -645,7 +638,7 @@ void translateInstForGPrepNext(IrBuilder& build, const Instruction* pc, int pcpo
     build.inst(IrCmd::JUMP, target);
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_FORGPREP_XNEXT_FALLBACK, build.constUint(pcpos), target);
+    build.inst(IrCmd::LOP_FORGPREP_XNEXT_FALLBACK, build.constUint(pcpos), build.vmReg(ra), target);
 }
 
 void translateInstForGPrepInext(IrBuilder& build, const Instruction* pc, int pcpos)
@@ -677,7 +670,7 @@ void translateInstForGPrepInext(IrBuilder& build, const Instruction* pc, int pcp
     build.inst(IrCmd::JUMP, target);
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_FORGPREP_XNEXT_FALLBACK, build.constUint(pcpos), target);
+    build.inst(IrCmd::LOP_FORGPREP_XNEXT_FALLBACK, build.constUint(pcpos), build.vmReg(ra), target);
 }
 
 void translateInstForGLoopIpairs(IrBuilder& build, const Instruction* pc, int pcpos)
@@ -728,7 +721,7 @@ void translateInstForGLoopIpairs(IrBuilder& build, const Instruction* pc, int pc
     build.inst(IrCmd::JUMP, loopRepeat);
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_FORGLOOP_FALLBACK, build.constUint(pcpos), loopRepeat, loopExit);
+    build.inst(IrCmd::LOP_FORGLOOP_FALLBACK, build.constUint(pcpos), build.vmReg(ra), build.constInt(int(pc[1])), loopRepeat, loopExit);
 
     // Fallthrough in original bytecode is implicit, so we start next internal block here
     if (build.isInternalBlock(loopExit))

@@ -41,7 +41,7 @@ namespace CodeGen
 
 constexpr uint32_t kFunctionAlignment = 32;
 
-static void assembleHelpers(AssemblyBuilderX64& build, ModuleHelpers& helpers)
+static void assembleHelpers(X64::AssemblyBuilderX64& build, ModuleHelpers& helpers)
 {
     if (build.logText)
         build.logAppend("; exitContinueVm\n");
@@ -59,7 +59,7 @@ static void assembleHelpers(AssemblyBuilderX64& build, ModuleHelpers& helpers)
     emitContinueCallInVm(build);
 }
 
-static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& data, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
+static NativeProto* assembleFunction(X64::AssemblyBuilderX64& build, NativeState& data, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
 {
     NativeProto* result = new NativeProto();
 
@@ -78,7 +78,7 @@ static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& dat
             build.logAppend("\n");
     }
 
-    build.align(kFunctionAlignment, AlignmentDataX64::Ud2);
+    build.align(kFunctionAlignment, X64::AlignmentDataX64::Ud2);
 
     Label start = build.setLabel();
 
@@ -92,7 +92,7 @@ static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& dat
 
     optimizeMemoryOperandsX64(builder.function);
 
-    IrLoweringX64 lowering(build, helpers, data, proto, builder.function);
+    X64::IrLoweringX64 lowering(build, helpers, data, proto, builder.function);
 
     lowering.lower(options);
 
@@ -213,7 +213,7 @@ void create(lua_State* L)
     initFallbackTable(data);
     initHelperFunctions(data);
 
-    if (!x64::initEntryFunction(data))
+    if (!X64::initEntryFunction(data))
     {
         destroyNativeState(L);
         return;
@@ -251,7 +251,7 @@ void compile(lua_State* L, int idx)
     if (!getNativeState(L))
         return;
 
-    AssemblyBuilderX64 build(/* logText= */ false);
+    X64::AssemblyBuilderX64 build(/* logText= */ false);
     NativeState* data = getNativeState(L);
 
     std::vector<Proto*> protos;
@@ -302,7 +302,7 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
     LUAU_ASSERT(lua_isLfunction(L, idx));
     const TValue* func = luaA_toobject(L, idx);
 
-    AssemblyBuilderX64 build(/* logText= */ options.includeAssembly);
+    X64::AssemblyBuilderX64 build(/* logText= */ options.includeAssembly);
 
     NativeState data;
     initFallbackTable(data);

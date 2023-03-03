@@ -4,9 +4,7 @@
 #include "Luau/Ast.h"
 #include "Luau/Common.h"
 #include "Luau/Refinement.h"
-#include "Luau/DataFlowGraph.h"
 #include "Luau/DenseHash.h"
-#include "Luau/Def.h"
 #include "Luau/NotNull.h"
 #include "Luau/Predicate.h"
 #include "Luau/Unifiable.h"
@@ -662,6 +660,7 @@ public:
     const TypeId functionType;
     const TypeId classType;
     const TypeId tableType;
+    const TypeId emptyTableType;
     const TypeId trueType;
     const TypeId falseType;
     const TypeId anyType;

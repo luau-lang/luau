@@ -7,6 +7,8 @@ namespace Luau
 {
 namespace CodeGen
 {
+namespace A64
+{
 
 enum class AddressKindA64 : uint8_t
 {
@@ -49,5 +51,6 @@ struct AddressA64
 
 using mem = AddressA64;
 
+} // namespace A64
 } // namespace CodeGen
 } // namespace Luau

@@ -19,6 +19,9 @@ struct ModuleHelpers;
 struct NativeState;
 struct AssemblyOptions;
 
+namespace X64
+{
+
 struct IrLoweringX64
 {
     // Some of these arguments are only required while we re-use old direct bytecode to x64 lowering
@@ -46,8 +49,6 @@ struct IrLoweringX64
     IrBlock& blockOp(IrOp op) const;
     Label& labelOp(IrOp op) const;
 
-    ConditionX64 getX64Condition(IrCondition cond) const;
-
     AssemblyBuilderX64& build;
     ModuleHelpers& helpers;
     NativeState& data;
@@ -58,5 +59,6 @@ struct IrLoweringX64
     IrRegAllocX64 regs;
 };
 
+} // namespace X64
 } // namespace CodeGen
 } // namespace Luau

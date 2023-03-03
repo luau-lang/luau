@@ -14,6 +14,8 @@ namespace Luau
 {
 namespace CodeGen
 {
+namespace X64
+{
 
 enum class RoundingModeX64
 {
@@ -242,5 +244,6 @@ private:
     uint8_t* codeEnd = nullptr;
 };
 
+} // namespace X64
 } // namespace CodeGen
 } // namespace Luau

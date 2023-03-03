@@ -26,6 +26,7 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileTerminateBC, false)
+LUAU_FASTFLAGVARIABLE(LuauCompileBuiltinArity, false)
 
 namespace Luau
 {
@@ -293,6 +294,12 @@ struct Compiler
         if (isConstant(expr))
             return false;
 
+        // handles builtin calls that can't be constant-folded but are known to return one value
+        // note: optimizationLevel check is technically redundant but it's important that we never optimize based on builtins in O1
+        if (FFlag::LuauCompileBuiltinArity && options.optimizationLevel >= 2)
+            if (int* bfid = builtins.find(expr))
+                return getBuiltinInfo(*bfid).results != 1;
+
         // handles local function calls where we know only one argument is returned
         AstExprFunction* func = getFunctionExpr(expr->func);
         Function* fi = func ? functions.find(func) : nullptr;
@@ -506,6 +513,7 @@ struct Compiler
         // we can't inline multret functions because the caller expects L->top to be adjusted:
         // - inlined return compiles to a JUMP, and we don't have an instruction that adjusts L->top arbitrarily
         // - even if we did, right now all L->top adjustments are immediately consumed by the next instruction, and for now we want to preserve that
+        // - additionally, we can't easily compile multret expressions into designated target as computed call arguments will get clobbered
         if (multRet)
         {
             bytecode.addDebugRemark("inlining failed: can't convert fixed returns to multret");
@@ -755,8 +763,13 @@ struct Compiler
         }
 
         // Optimization: for 1/2 argument fast calls use specialized opcodes
-        if (bfid >= 0 && expr->args.size >= 1 && expr->args.size <= 2 && !isExprMultRet(expr->args.data[expr->args.size - 1]))
-            return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, bfid);
+        if (bfid >= 0 && expr->args.size >= 1 && expr->args.size <= 2)
+        {
+            if (!isExprMultRet(expr->args.data[expr->args.size - 1]))
+                return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, bfid);
+            else if (FFlag::LuauCompileBuiltinArity && options.optimizationLevel >= 2 && int(expr->args.size) == getBuiltinInfo(bfid).params)
+                return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, bfid);
+        }
 
         if (expr->self)
         {

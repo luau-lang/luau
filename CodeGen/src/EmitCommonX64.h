@@ -3,6 +3,8 @@
 
 #include "Luau/AssemblyBuilderX64.h"
 
+#include "EmitCommon.h"
+
 #include "lobject.h"
 #include "ltm.h"
 
@@ -23,7 +25,11 @@ namespace Luau
 namespace CodeGen
 {
 
+enum class IrCondition : uint8_t;
 struct NativeState;
+
+namespace X64
+{
 
 // Data that is very common to access is placed in non-volatile registers
 constexpr RegisterX64 rState = r15;         // lua_State* L
@@ -64,23 +70,6 @@ constexpr OperandX64 sArg5 = noreg;
 constexpr OperandX64 sArg6 = noreg;
 
 #endif
-
-constexpr unsigned kTValueSizeLog2 = 4;
-constexpr unsigned kLuaNodeSizeLog2 = 5;
-constexpr unsigned kLuaNodeTagMask = 0xf;
-constexpr unsigned kNextBitOffset = 4;
-
-constexpr unsigned kOffsetOfLuaNodeTag = 12; // offsetof cannot be used on a bit field
-constexpr unsigned kOffsetOfLuaNodeNext = 12; // offsetof cannot be used on a bit field
-constexpr unsigned kOffsetOfInstructionC = 3;
-
-// Leaf functions that are placed in every module to perform common instruction sequences
-struct ModuleHelpers
-{
-    Label exitContinueVm;
-    Label exitNoContinueVm;
-    Label continueCallInVm;
-};
 
 inline OperandX64 luauReg(int ri)
 {
@@ -243,8 +232,8 @@ inline void jumpIfNodeKeyNotInExpectedSlot(AssemblyBuilderX64& build, RegisterX6
     jumpIfNodeValueTagIs(build, node, LUA_TNIL, label);
 }
 
-void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs, OperandX64 rhs, ConditionX64 cond, Label& label);
-void jumpOnAnyCmpFallback(AssemblyBuilderX64& build, int ra, int rb, ConditionX64 cond, Label& label);
+void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs, OperandX64 rhs, IrCondition cond, Label& label);
+void jumpOnAnyCmpFallback(AssemblyBuilderX64& build, int ra, int rb, IrCondition cond, Label& label);
 
 void getTableNodeAtCachedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 node, RegisterX64 table, int pcpos);
 void convertNumberToIndexOrJump(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 numd, RegisterX64 numi, Label& label);
@@ -268,5 +257,6 @@ void emitFallback(AssemblyBuilderX64& build, NativeState& data, int op, int pcpo
 
 void emitContinueCallInVm(AssemblyBuilderX64& build);
 
+} // namespace X64
 } // namespace CodeGen
 } // namespace Luau

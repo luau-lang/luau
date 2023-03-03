@@ -272,4 +272,22 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "set_prop_of_intersection_containing_metatable")
+{
+    CheckResult result = check(R"(
+        export type Set<T> = typeof(setmetatable(
+            {} :: {
+                add: (self: Set<T>, T) -> Set<T>,
+            },
+            {}
+        ))
+
+        local Set = {} :: Set<any> & {}
+
+        function Set:add(t)
+            return self
+        end
+    )");
+}
+
 TEST_SUITE_END();

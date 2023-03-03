@@ -168,12 +168,12 @@ void UnwindBuilderDwarf2::start()
     // Function call frame instructions to follow
 }
 
-void UnwindBuilderDwarf2::spill(int espOffset, RegisterX64 reg)
+void UnwindBuilderDwarf2::spill(int espOffset, X64::RegisterX64 reg)
 {
     pos = advanceLocation(pos, 5); // REX.W mov [rsp + imm8], reg
 }
 
-void UnwindBuilderDwarf2::save(RegisterX64 reg)
+void UnwindBuilderDwarf2::save(X64::RegisterX64 reg)
 {
     stackOffset += 8;
     pos = advanceLocation(pos, 2); // REX.W push reg
@@ -188,7 +188,7 @@ void UnwindBuilderDwarf2::allocStack(int size)
     pos = defineCfaExpressionOffset(pos, stackOffset);
 }
 
-void UnwindBuilderDwarf2::setupFrameReg(RegisterX64 reg, int espOffset)
+void UnwindBuilderDwarf2::setupFrameReg(X64::RegisterX64 reg, int espOffset)
 {
     if (espOffset != 0)
         pos = advanceLocation(pos, 5); // REX.W lea rbp, [rsp + imm8]

@@ -488,6 +488,20 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negate_boolean_2")
     )")));
 }
 
+TEST_CASE_FIXTURE(NormalizeFixture, "double_negation")
+{
+    CHECK("number" == toString(normal(R"(
+        number & Not<Not<any>>
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "negate_any")
+{
+    CHECK("number" == toString(normal(R"(
+        number & Not<any>
+    )")));
+}
+
 TEST_CASE_FIXTURE(NormalizeFixture, "intersect_function_and_top_function")
 {
     CHECK("() -> ()" == toString(normal(R"(

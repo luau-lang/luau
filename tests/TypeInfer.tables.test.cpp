@@ -519,10 +519,16 @@ TEST_CASE_FIXTURE(Fixture, "okay_to_add_property_to_unsealed_tables_by_function_
         local x = get(t)
     )");
 
-    // Currently this errors but it shouldn't, since set only needs write access
-    // TODO: file a JIRA for this
-    LUAU_REQUIRE_ERRORS(result);
-    // CHECK_EQ("number?", toString(requireType("x")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK_EQ("number", toString(requireType("x")));
+    }
+    else
+    {
+        LUAU_REQUIRE_ERRORS(result);
+        // CHECK_EQ("number?", toString(requireType("x")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "width_subtyping")
@@ -2646,7 +2652,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_quantify_table_that_belongs_to_outer_sc
     const MetatableType* newRet = get<MetatableType>(follow(*newRetType));
     REQUIRE(newRet);
 
-    const TableType* newRetMeta = get<TableType>(newRet->metatable);
+    const TableType* newRetMeta = get<TableType>(follow(newRet->metatable));
     REQUIRE(newRetMeta);
 
     CHECK(newRetMeta->props.count("incr"));
@@ -3599,6 +3605,44 @@ TEST_CASE_FIXTURE(Fixture, "dont_extend_unsealed_tables_in_rvalue_position")
     CHECK(0 == ttv->props.count(""));
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "extend_unsealed_table_with_metatable")
+{
+    CheckResult result = check(R"(
+        local T = setmetatable({}, {
+            __call = function(_, name: string?)
+            end,
+        })
+
+        T.for_ = "for_"
+
+        return T
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "top_table_type_is_isomorphic_to_empty_sealed_table_type")
+{
+    CheckResult result = check(R"(
+        local None = newproxy(true)
+        local mt = getmetatable(None)
+        mt.__tostring = function()
+            return "Object.None"
+        end
+
+        function assign(...)
+            for index = 1, select("#", ...) do
+                local rest = select(index, ...)
+
+                if rest ~= nil and typeof(rest) == "table" then
+                    for key, value in pairs(rest) do
+                    end
+                end
+            end
+        end
+    )");
 }
 
 TEST_SUITE_END();

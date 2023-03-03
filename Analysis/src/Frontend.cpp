@@ -25,12 +25,13 @@
 #include <string>
 
 LUAU_FASTINT(LuauTypeInferIterationLimit)
+LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
 LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
-LUAU_FASTFLAG(DebugLuauLogSolverToJson);
+LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false);
 
 namespace Luau
 {
@@ -517,7 +518,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
                 typeCheckerForAutocomplete.unifierIterationLimit = std::nullopt;
 
             ModulePtr moduleForAutocomplete = FFlag::DebugLuauDeferredConstraintResolution
-                                                  ? check(sourceModule, mode, requireCycles, /*forAutocomplete*/ true)
+                                                  ? check(sourceModule, mode, requireCycles, /*forAutocomplete*/ true, /*recordJsonLog*/ false)
                                                   : typeCheckerForAutocomplete.check(sourceModule, Mode::Strict, environmentScope);
 
             moduleResolverForAutocomplete.modules[moduleName] = moduleForAutocomplete;
@@ -544,7 +545,9 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
         typeChecker.requireCycles = requireCycles;
 
-        ModulePtr module = FFlag::DebugLuauDeferredConstraintResolution ? check(sourceModule, mode, requireCycles)
+        const bool recordJsonLog = FFlag::DebugLuauLogSolverToJson && moduleName == name;
+
+        ModulePtr module = FFlag::DebugLuauDeferredConstraintResolution ? check(sourceModule, mode, requireCycles, /*forAutocomplete*/ false, recordJsonLog)
                                                                         : typeChecker.check(sourceModule, mode, environmentScope);
 
         stats.timeCheck += getTimestamp() - timestamp;
@@ -855,22 +858,23 @@ ScopePtr Frontend::getGlobalScope()
     return globalScope;
 }
 
-ModulePtr check(
-    const SourceModule& sourceModule,
-    const std::vector<RequireCycle>& requireCycles,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<InternalErrorReporter> iceHandler,
-    NotNull<ModuleResolver> moduleResolver,
-    NotNull<FileResolver> fileResolver,
-    const ScopePtr& globalScope,
-    NotNull<UnifierSharedState> unifierState,
-    FrontendOptions options
-) {
+ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle>& requireCycles, NotNull<BuiltinTypes> builtinTypes,
+    NotNull<InternalErrorReporter> iceHandler, NotNull<ModuleResolver> moduleResolver, NotNull<FileResolver> fileResolver,
+    const ScopePtr& globalScope, FrontendOptions options)
+{
+    const bool recordJsonLog = FFlag::DebugLuauLogSolverToJson;
+    return check(sourceModule, requireCycles, builtinTypes, iceHandler, moduleResolver, fileResolver, globalScope, options, recordJsonLog);
+}
+
+ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle>& requireCycles, NotNull<BuiltinTypes> builtinTypes,
+    NotNull<InternalErrorReporter> iceHandler, NotNull<ModuleResolver> moduleResolver, NotNull<FileResolver> fileResolver,
+    const ScopePtr& globalScope, FrontendOptions options, bool recordJsonLog)
+{
     ModulePtr result = std::make_shared<Module>();
     result->reduction = std::make_unique<TypeReduction>(NotNull{&result->internalTypes}, builtinTypes, iceHandler);
 
     std::unique_ptr<DcrLogger> logger;
-    if (FFlag::DebugLuauLogSolverToJson)
+    if (recordJsonLog)
     {
         logger = std::make_unique<DcrLogger>();
         std::optional<SourceCode> source = fileResolver->readSource(sourceModule.name);
@@ -882,7 +886,11 @@ ModulePtr check(
 
     DataFlowGraph dfg = DataFlowGraphBuilder::build(sourceModule.root, iceHandler);
 
-    Normalizer normalizer{&result->internalTypes, builtinTypes, unifierState};
+    UnifierSharedState unifierState{iceHandler};
+    unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
+    unifierState.counters.iterationLimit = FInt::LuauTypeInferIterationLimit;
+
+    Normalizer normalizer{&result->internalTypes, builtinTypes, NotNull{&unifierState}};
 
     ConstraintGraphBuilder cgb{
         sourceModule.name,
@@ -925,7 +933,7 @@ ModulePtr check(
     freeze(result->internalTypes);
     freeze(result->interfaceTypes);
 
-    if (FFlag::DebugLuauLogSolverToJson)
+    if (recordJsonLog)
     {
         std::string output = logger->compileOutput();
         printf("%s\n", output.c_str());
@@ -934,20 +942,11 @@ ModulePtr check(
     return result;
 }
 
-ModulePtr Frontend::check(
-    const SourceModule& sourceModule, Mode mode, std::vector<RequireCycle> requireCycles, bool forAutocomplete)
+ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vector<RequireCycle> requireCycles, bool forAutocomplete, bool recordJsonLog)
 {
-    return Luau::check(
-        sourceModule,
-        requireCycles,
-        builtinTypes,
-        NotNull{&iceHandler},
-        NotNull{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver},
-        NotNull{fileResolver},
-        forAutocomplete ? typeCheckerForAutocomplete.globalScope : typeChecker.globalScope,
-        NotNull{&typeChecker.unifierState},
-        options
-    );
+    return Luau::check(sourceModule, requireCycles, builtinTypes, NotNull{&iceHandler},
+        NotNull{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver}, NotNull{fileResolver},
+        forAutocomplete ? typeCheckerForAutocomplete.globalScope : typeChecker.globalScope, options, recordJsonLog);
 }
 
 // Read AST into sourceModules if necessary.  Trace require()s.  Report parse errors.

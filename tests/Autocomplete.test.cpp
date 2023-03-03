@@ -3198,6 +3198,20 @@ t.@1
     }
 }
 
+TEST_CASE_FIXTURE(ACFixture, "simple")
+{
+    check(R"(
+local t = {}
+function t:m() end
+t:m()
+    )");
+
+    // auto ac = autocomplete('1');
+
+    //  REQUIRE(ac.entryMap.count("m"));
+    // CHECK(!ac.entryMap["m"].wrongIndexType);
+}
+
 TEST_CASE_FIXTURE(ACFixture, "do_compatible_self_calls")
 {
     check(R"(
@@ -3464,6 +3478,35 @@ TEST_CASE_FIXTURE(ACFixture, "string_contents_is_available_to_callback")
         });
 
     CHECK(isCorrect);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_response_perf1" * doctest::timeout(0.5))
+{
+    ScopedFastFlag luauAutocompleteSkipNormalization{"LuauAutocompleteSkipNormalization", true};
+
+    // Build a function type with a large overload set
+    const int parts = 100;
+    std::string source;
+
+    for (int i = 0; i < parts; i++)
+        formatAppend(source, "type T%d = { f%d: number }\n", i, i);
+
+    source += "type Instance = { new: (('s0', extra: Instance?) -> T0)";
+
+    for (int i = 1; i < parts; i++)
+        formatAppend(source, " & (('s%d', extra: Instance?) -> T%d)", i, i);
+
+    source += " }\n";
+
+    source += "local Instance: Instance = {} :: any\n";
+    source += "local function c(): boolean return t@1 end\n";
+
+    check(source);
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("true"));
+    CHECK(ac.entryMap.count("Instance"));
 }
 
 TEST_SUITE_END();
