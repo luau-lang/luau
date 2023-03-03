@@ -19,7 +19,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(DebugLuauLogSolverToJson)
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauDontReduceTypes)
 
@@ -105,8 +104,6 @@ struct TypeChecker2
         , sourceModule(sourceModule)
         , module(module)
     {
-        if (FFlag::DebugLuauLogSolverToJson)
-            LUAU_ASSERT(logger);
     }
 
     std::optional<StackPusher> pushStack(AstNode* node)
@@ -918,13 +915,9 @@ struct TypeChecker2
             reportError(ExtraInformation{"Other overloads are also not viable: " + s}, call->func->location);
     }
 
-    void visit(AstExprCall* call)
+    // Note: this is intentionally separated from `visit(AstExprCall*)` for stack allocation purposes.
+    void visitCall(AstExprCall* call)
     {
-        visit(call->func, RValue);
-
-        for (AstExpr* arg : call->args)
-            visit(arg, RValue);
-
         TypeArena* arena = &testArena;
         Instantiation instantiation{TxnLog::empty(), arena, TypeLevel{}, stack.back()};
 
@@ -1099,6 +1092,16 @@ struct TypeChecker2
         reportOverloadResolutionErrors(call, overloads, expectedArgTypes, overloadsThatMatchArgCount, overloadsErrors);
     }
 
+    void visit(AstExprCall* call)
+    {
+        visit(call->func, RValue);
+
+        for (AstExpr* arg : call->args)
+            visit(arg, RValue);
+
+        visitCall(call);
+    }
+
     void visitExprName(AstExpr* expr, Location location, const std::string& propName, ValueContext context)
     {
         visit(expr, RValue);
@@ -1169,9 +1172,9 @@ struct TypeChecker2
                 TypeId inferredArgTy = *argIt;
                 TypeId annotatedArgTy = lookupAnnotation(arg->annotation);
 
-                if (!isSubtype(annotatedArgTy, inferredArgTy, stack.back()))
+                if (!isSubtype(inferredArgTy, annotatedArgTy, stack.back()))
                 {
-                    reportError(TypeMismatch{annotatedArgTy, inferredArgTy}, arg->location);
+                    reportError(TypeMismatch{inferredArgTy, annotatedArgTy}, arg->location);
                 }
             }
 
@@ -1726,7 +1729,7 @@ struct TypeChecker2
                 }
             }
 
-            for (size_t i = packsProvided; i < packsProvided; ++i)
+            for (size_t i = packsProvided; i < packsRequired; ++i)
             {
                 if (alias->typePackParams[i].defaultValue)
                 {
@@ -1948,7 +1951,7 @@ struct TypeChecker2
     {
         module->errors.emplace_back(location, sourceModule->name, std::move(data));
 
-        if (FFlag::DebugLuauLogSolverToJson)
+        if (logger)
             logger->captureTypeCheckError(module->errors.back());
     }
 
@@ -2053,8 +2056,8 @@ struct TypeChecker2
             if (findTablePropertyRespectingMeta(builtinTypes, module->errors, ty, prop, location))
                 return true;
 
-            else if (tt->indexer && isPrim(tt->indexer->indexResultType, PrimitiveType::String))
-                return tt->indexer->indexResultType;
+            else if (tt->indexer && isPrim(tt->indexer->indexType, PrimitiveType::String))
+                return true;
 
             else
                 return false;

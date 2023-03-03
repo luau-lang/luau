@@ -814,18 +814,4 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_with_a_singleton_argument")
     }
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_clone_it")
-{
-    CheckResult result = check(R"(
-        local function f(x: unknown)
-            if typeof(x) == "table" then
-                local cloned: {} = table.clone(x)
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    // LUAU_REQUIRE_NO_ERRORS(result);
-}
-
 TEST_SUITE_END();

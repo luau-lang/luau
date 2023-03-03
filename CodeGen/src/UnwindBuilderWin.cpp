@@ -49,12 +49,12 @@ void UnwindBuilderWin::start()
     unwindCodes.reserve(16);
 }
 
-void UnwindBuilderWin::spill(int espOffset, RegisterX64 reg)
+void UnwindBuilderWin::spill(int espOffset, X64::RegisterX64 reg)
 {
     prologSize += 5; // REX.W mov [rsp + imm8], reg
 }
 
-void UnwindBuilderWin::save(RegisterX64 reg)
+void UnwindBuilderWin::save(X64::RegisterX64 reg)
 {
     prologSize += 2; // REX.W push reg
     stackOffset += 8;
@@ -70,7 +70,7 @@ void UnwindBuilderWin::allocStack(int size)
     unwindCodes.push_back({prologSize, UWOP_ALLOC_SMALL, uint8_t((size - 8) / 8)});
 }
 
-void UnwindBuilderWin::setupFrameReg(RegisterX64 reg, int espOffset)
+void UnwindBuilderWin::setupFrameReg(X64::RegisterX64 reg, int espOffset)
 {
     LUAU_ASSERT(espOffset < 256 && espOffset % 16 == 0);
 

@@ -39,5 +39,13 @@ Builtin getBuiltin(AstExpr* node, const DenseHashMap<AstName, Global>& globals, 
 void analyzeBuiltins(DenseHashMap<AstExprCall*, int>& result, const DenseHashMap<AstName, Global>& globals,
     const DenseHashMap<AstLocal*, Variable>& variables, const CompileOptions& options, AstNode* root);
 
+struct BuiltinInfo
+{
+    int params;
+    int results;
+};
+
+BuiltinInfo getBuiltinInfo(int bfid);
+
 } // namespace Compile
 } // namespace Luau

@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Def.h"
 #include "Luau/Location.h"
 #include "Luau/NotNull.h"
 #include "Luau/Type.h"

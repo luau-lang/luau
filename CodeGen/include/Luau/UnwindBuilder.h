@@ -21,10 +21,10 @@ public:
 
     virtual void start() = 0;
 
-    virtual void spill(int espOffset, RegisterX64 reg) = 0;
-    virtual void save(RegisterX64 reg) = 0;
+    virtual void spill(int espOffset, X64::RegisterX64 reg) = 0;
+    virtual void save(X64::RegisterX64 reg) = 0;
     virtual void allocStack(int size) = 0;
-    virtual void setupFrameReg(RegisterX64 reg, int espOffset) = 0;
+    virtual void setupFrameReg(X64::RegisterX64 reg, int espOffset) = 0;
 
     virtual void finish() = 0;
 

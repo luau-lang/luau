@@ -458,6 +458,24 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_should_work_when_name_is_also_local")
     REQUIRE(block->body.data[1]->is<AstStatTypeAlias>());
 }
 
+TEST_CASE_FIXTURE(Fixture, "type_alias_span_is_correct")
+{
+    AstStatBlock* block = parse(R"(
+        type Packed1<T...> = (T...) -> (T...)
+        type Packed2<T...> = (Packed1<T...>, T...) -> (Packed1<T...>, T...)
+    )");
+
+    REQUIRE(block != nullptr);
+    REQUIRE(2 == block->body.size);
+    AstStatTypeAlias* t1 = block->body.data[0]->as<AstStatTypeAlias>();
+    REQUIRE(t1);
+    REQUIRE(Location{Position{1, 8}, Position{1, 45}} == t1->location);
+
+    AstStatTypeAlias* t2 = block->body.data[1]->as<AstStatTypeAlias>();
+    REQUIRE(t2);
+    REQUIRE(Location{Position{2, 8}, Position{2, 75}} == t2->location);
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_error_messages")
 {
     CHECK_EQ(getParseError(R"(
@@ -1017,6 +1035,35 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_call_without_parens")
     catch (const ParseErrors& e)
     {
         CHECK_EQ("Expected identifier when parsing expression, got `{", e.getErrors().front().getMessage());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_expression")
+{
+    ScopedFastFlag sff("LuauFixInterpStringMid", true);
+
+    try
+    {
+        parse(R"(
+            print(`{}`)
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ("Malformed interpolated string, expected expression inside '{}'", e.getErrors().front().getMessage());
+    }
+
+    try
+    {
+        parse(R"(
+            print(`{}{1}`)
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ("Malformed interpolated string, expected expression inside '{}'", e.getErrors().front().getMessage());
     }
 }
 

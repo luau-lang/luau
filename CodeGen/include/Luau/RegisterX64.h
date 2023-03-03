@@ -9,6 +9,8 @@ namespace Luau
 {
 namespace CodeGen
 {
+namespace X64
+{
 
 enum class SizeX64 : uint8_t
 {
@@ -133,5 +135,6 @@ constexpr RegisterX64 qwordReg(RegisterX64 reg)
     return RegisterX64{SizeX64::qword, reg.index};
 }
 
+} // namespace X64
 } // namespace CodeGen
 } // namespace Luau

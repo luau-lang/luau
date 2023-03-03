@@ -2,6 +2,7 @@
 #include "Luau/IrBuilder.h"
 
 #include "Luau/Common.h"
+#include "Luau/DenseHash.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/IrUtils.h"
 
@@ -271,7 +272,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         int skip = LUAU_INSN_C(*pc);
         IrOp next = blockAtInst(i + skip + 2);
 
-        translateFastCallN(*this, pc, i, false, 0, {}, next, IrCmd::LOP_FASTCALL);
+        translateFastCallN(*this, pc, i, false, 0, {}, next);
 
         activeFastcallFallback = true;
         fastcallFallbackReturn = next;
@@ -282,7 +283,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         int skip = LUAU_INSN_C(*pc);
         IrOp next = blockAtInst(i + skip + 2);
 
-        translateFastCallN(*this, pc, i, true, 1, constBool(false), next, IrCmd::LOP_FASTCALL1);
+        translateFastCallN(*this, pc, i, true, 1, constBool(false), next);
 
         activeFastcallFallback = true;
         fastcallFallbackReturn = next;
@@ -293,7 +294,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         int skip = LUAU_INSN_C(*pc);
         IrOp next = blockAtInst(i + skip + 2);
 
-        translateFastCallN(*this, pc, i, true, 2, vmReg(pc[1]), next, IrCmd::LOP_FASTCALL2);
+        translateFastCallN(*this, pc, i, true, 2, vmReg(pc[1]), next);
 
         activeFastcallFallback = true;
         fastcallFallbackReturn = next;
@@ -304,7 +305,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         int skip = LUAU_INSN_C(*pc);
         IrOp next = blockAtInst(i + skip + 2);
 
-        translateFastCallN(*this, pc, i, true, 2, vmConst(pc[1]), next, IrCmd::LOP_FASTCALL2K);
+        translateFastCallN(*this, pc, i, true, 2, vmConst(pc[1]), next);
 
         activeFastcallFallback = true;
         fastcallFallbackReturn = next;
@@ -318,21 +319,28 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         break;
     case LOP_FORGLOOP:
     {
+        int aux = int(pc[1]);
+
         // We have a translation for ipairs-style traversal, general loop iteration is still too complex
-        if (int(pc[1]) < 0)
+        if (aux < 0)
         {
             translateInstForGLoopIpairs(*this, pc, i);
         }
         else
         {
+            int ra = LUAU_INSN_A(*pc);
+
             IrOp loopRepeat = blockAtInst(i + 1 + LUAU_INSN_D(*pc));
             IrOp loopExit = blockAtInst(i + getOpLength(LOP_FORGLOOP));
             IrOp fallback = block(IrBlockKind::Fallback);
 
-            inst(IrCmd::LOP_FORGLOOP, constUint(i), loopRepeat, loopExit, fallback);
+            inst(IrCmd::INTERRUPT, constUint(i));
+            loadAndCheckTag(vmReg(ra), LUA_TNIL, fallback);
+
+            inst(IrCmd::LOP_FORGLOOP, vmReg(ra), constInt(aux), loopRepeat, loopExit);
 
             beginBlock(fallback);
-            inst(IrCmd::LOP_FORGLOOP_FALLBACK, constUint(i), loopRepeat, loopExit);
+            inst(IrCmd::LOP_FORGLOOP_FALLBACK, constUint(i), vmReg(ra), constInt(aux), loopRepeat, loopExit);
 
             beginBlock(loopExit);
         }
@@ -424,6 +432,68 @@ void IrBuilder::beginBlock(IrOp block)
     target.start = uint32_t(function.instructions.size());
 
     inTerminatedBlock = false;
+}
+
+void IrBuilder::loadAndCheckTag(IrOp loc, uint8_t tag, IrOp fallback)
+{
+    inst(IrCmd::CHECK_TAG, inst(IrCmd::LOAD_TAG, loc), constTag(tag), fallback);
+}
+
+void IrBuilder::clone(const IrBlock& source, bool removeCurrentTerminator)
+{
+    DenseHashMap<uint32_t, uint32_t> instRedir{~0u};
+
+    auto redirect = [&instRedir](IrOp& op) {
+        if (op.kind == IrOpKind::Inst)
+        {
+            if (const uint32_t* newIndex = instRedir.find(op.index))
+                op.index = *newIndex;
+            else
+                LUAU_ASSERT(!"values can only be used if they are defined in the same block");
+        }
+    };
+
+    if (removeCurrentTerminator && inTerminatedBlock)
+    {
+        IrBlock& active = function.blocks[activeBlockIdx];
+        IrInst& term = function.instructions[active.finish];
+
+        kill(function, term);
+        inTerminatedBlock = false;
+    }
+
+    for (uint32_t index = source.start; index <= source.finish; index++)
+    {
+        LUAU_ASSERT(index < function.instructions.size());
+        IrInst clone = function.instructions[index];
+
+        // Skip pseudo instructions to make clone more compact, but validate that they have no users
+        if (isPseudo(clone.cmd))
+        {
+            LUAU_ASSERT(clone.useCount == 0);
+            continue;
+        }
+
+        redirect(clone.a);
+        redirect(clone.b);
+        redirect(clone.c);
+        redirect(clone.d);
+        redirect(clone.e);
+        redirect(clone.f);
+
+        addUse(function, clone.a);
+        addUse(function, clone.b);
+        addUse(function, clone.c);
+        addUse(function, clone.d);
+        addUse(function, clone.e);
+        addUse(function, clone.f);
+
+        // Instructions that referenced the original will have to be adjusted to use the clone
+        instRedir[index] = uint32_t(function.instructions.size());
+
+        // Reconstruct the fresh clone
+        inst(clone.cmd, clone.a, clone.b, clone.c, clone.d, clone.e, clone.f);
+    }
 }
 
 IrOp IrBuilder::constBool(bool value)

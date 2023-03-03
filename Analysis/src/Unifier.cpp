@@ -312,7 +312,7 @@ TypePackId Widen::operator()(TypePackId tp)
     return substitute(tp).value_or(tp);
 }
 
-static std::optional<TypeError> hasUnificationTooComplex(const ErrorVec& errors)
+std::optional<TypeError> hasUnificationTooComplex(const ErrorVec& errors)
 {
     auto isUnificationTooComplex = [](const TypeError& te) {
         return nullptr != get<UnificationTooComplex>(te);
@@ -375,7 +375,6 @@ Unifier::Unifier(NotNull<Normalizer> normalizer, Mode mode, NotNull<Scope> scope
     , variance(variance)
     , sharedState(*normalizer->sharedState)
 {
-    normalize = true;
     LUAU_ASSERT(sharedState.iceHandler);
 }
 
@@ -561,6 +560,11 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     else if (log.getMutable<FunctionType>(superTy) && log.getMutable<FunctionType>(subTy))
         tryUnifyFunctions(subTy, superTy, isFunctionCall);
 
+    else if (auto table = log.get<PrimitiveType>(superTy); table && table->type == PrimitiveType::Table)
+        tryUnify(subTy, builtinTypes->emptyTableType, isFunctionCall, isIntersection);
+    else if (auto table = log.get<PrimitiveType>(subTy); table && table->type == PrimitiveType::Table)
+        tryUnify(builtinTypes->emptyTableType, superTy, isFunctionCall, isIntersection);
+
     else if (log.getMutable<TableType>(superTy) && log.getMutable<TableType>(subTy))
     {
         tryUnifyTables(subTy, superTy, isIntersection);
@@ -591,7 +595,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     else if (log.get<NegationType>(superTy) || log.get<NegationType>(subTy))
         tryUnifyNegations(subTy, superTy);
 
-    else if (FFlag::LuauUninhabitedSubAnything2 && !normalizer->isInhabited(subTy))
+    else if (FFlag::LuauUninhabitedSubAnything2 && checkInhabited && !normalizer->isInhabited(subTy))
     {
     }
 
@@ -1769,6 +1773,12 @@ struct Resetter
 
 void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
 {
+    if (isPrim(log.follow(subTy), PrimitiveType::Table))
+        subTy = builtinTypes->emptyTableType;
+
+    if (isPrim(log.follow(superTy), PrimitiveType::Table))
+        superTy = builtinTypes->emptyTableType;
+
     TypeId activeSubTy = subTy;
     TableType* superTable = log.getMutable<TableType>(superTy);
     TableType* subTable = log.getMutable<TableType>(subTy);
@@ -2092,7 +2102,7 @@ void Unifier::tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed)
     TypeId osubTy = subTy;
     TypeId osuperTy = superTy;
 
-    if (FFlag::LuauUninhabitedSubAnything2 && !normalizer->isInhabited(subTy))
+    if (FFlag::LuauUninhabitedSubAnything2 && checkInhabited && !normalizer->isInhabited(subTy))
         return;
 
     if (reversed)
@@ -2682,6 +2692,7 @@ Unifier Unifier::makeChildUnifier()
 {
     Unifier u = Unifier{normalizer, mode, scope, location, variance, &log};
     u.normalize = normalize;
+    u.checkInhabited = checkInhabited;
     u.useScopes = useScopes;
     return u;
 }

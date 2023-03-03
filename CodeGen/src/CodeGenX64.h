@@ -8,11 +8,11 @@ namespace CodeGen
 
 struct NativeState;
 
-namespace x64
+namespace X64
 {
 
 bool initEntryFunction(NativeState& data);
 
-} // namespace x64
+} // namespace X64
 } // namespace CodeGen
 } // namespace Luau

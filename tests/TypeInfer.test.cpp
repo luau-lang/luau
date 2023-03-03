@@ -439,7 +439,10 @@ end
 _ += not _
 do end
 )");
+}
 
+TEST_CASE_FIXTURE(Fixture, "cyclic_follow_2")
+{
     check(R"(
 --!nonstrict
 n13,_,table,_,l0,_,_ = ...

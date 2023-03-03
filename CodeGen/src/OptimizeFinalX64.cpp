@@ -41,6 +41,8 @@ static void optimizeMemoryOperandsX64(IrFunction& function, IrBlock& block)
         case IrCmd::DIV_NUM:
         case IrCmd::MOD_NUM:
         case IrCmd::POW_NUM:
+        case IrCmd::MIN_NUM:
+        case IrCmd::MAX_NUM:
         {
             if (inst.b.kind == IrOpKind::Inst)
             {

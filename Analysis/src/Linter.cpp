@@ -14,6 +14,8 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
+LUAU_FASTFLAGVARIABLE(LuauImproveDeprecatedApiLint, false)
+
 namespace Luau
 {
 
@@ -2100,7 +2102,7 @@ class LintDeprecatedApi : AstVisitor
 public:
     LUAU_NOINLINE static void process(LintContext& context)
     {
-        if (!context.module)
+        if (!FFlag::LuauImproveDeprecatedApiLint && !context.module)
             return;
 
         LintDeprecatedApi pass{&context};
@@ -2117,26 +2119,51 @@ private:
 
     bool visit(AstExprIndexName* node) override
     {
-        std::optional<TypeId> ty = context->getType(node->expr);
-        if (!ty)
-            return true;
+        if (std::optional<TypeId> ty = context->getType(node->expr))
+            check(node, follow(*ty));
+        else if (AstExprGlobal* global = node->expr->as<AstExprGlobal>())
+            if (FFlag::LuauImproveDeprecatedApiLint)
+                check(node->location, global->name, node->index);
 
-        if (const ClassType* cty = get<ClassType>(follow(*ty)))
+        return true;
+    }
+
+    void check(AstExprIndexName* node, TypeId ty)
+    {
+        if (const ClassType* cty = get<ClassType>(ty))
         {
             const Property* prop = lookupClassProp(cty, node->index.value);
 
             if (prop && prop->deprecated)
                 report(node->location, *prop, cty->name.c_str(), node->index.value);
         }
-        else if (const TableType* tty = get<TableType>(follow(*ty)))
+        else if (const TableType* tty = get<TableType>(ty))
         {
             auto prop = tty->props.find(node->index.value);
 
             if (prop != tty->props.end() && prop->second.deprecated)
-                report(node->location, prop->second, tty->name ? tty->name->c_str() : nullptr, node->index.value);
+            {
+                // strip synthetic typeof() for builtin tables
+                if (FFlag::LuauImproveDeprecatedApiLint && tty->name && tty->name->compare(0, 7, "typeof(") == 0 && tty->name->back() == ')')
+                    report(node->location, prop->second, tty->name->substr(7, tty->name->length() - 8).c_str(), node->index.value);
+                else
+                    report(node->location, prop->second, tty->name ? tty->name->c_str() : nullptr, node->index.value);
+            }
         }
+    }
 
-        return true;
+    void check(const Location& location, AstName global, AstName index)
+    {
+        if (const LintContext::Global* gv = context->builtinGlobals.find(global))
+        {
+            if (const TableType* tty = get<TableType>(gv->type))
+            {
+                auto prop = tty->props.find(index.value);
+
+                if (prop != tty->props.end() && prop->second.deprecated)
+                    report(location, prop->second, global.value, index.value);
+            }
+        }
     }
 
     void report(const Location& location, const Property& prop, const char* container, const char* field)

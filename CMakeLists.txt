@@ -14,9 +14,11 @@ option(LUAU_STATIC_CRT "Link with the static CRT (/MT)" OFF)
 option(LUAU_EXTERN_C "Use extern C for all APIs" OFF)
 option(LUAU_NATIVE "Enable support for native code generation" OFF)
 
+cmake_policy(SET CMP0054 NEW)
+cmake_policy(SET CMP0091 NEW)
+
 if(LUAU_STATIC_CRT)
     cmake_minimum_required(VERSION 3.15)
-    cmake_policy(SET CMP0091 NEW)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
@@ -88,9 +90,15 @@ set(LUAU_OPTIONS)
 
 if(MSVC)
     list(APPEND LUAU_OPTIONS /D_CRT_SECURE_NO_WARNINGS) # We need to use the portable CRT functions.
-    list(APPEND LUAU_OPTIONS /MP) # Distribute single project compilation across multiple cores
+    list(APPEND LUAU_OPTIONS "/we4018") # Signed/unsigned mismatch
+    list(APPEND LUAU_OPTIONS "/we4388") # Also signed/unsigned mismatch
 else()
     list(APPEND LUAU_OPTIONS -Wall) # All warnings
+    list(APPEND LUAU_OPTIONS -Wsign-compare) # This looks to be included in -Wall for GCC but not clang
+endif()
+
+if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    list(APPEND LUAU_OPTIONS /MP) # Distribute single project compilation across multiple cores
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -115,7 +123,7 @@ endif()
 
 set(ISOCLINE_OPTIONS)
 
-if (NOT MSVC)
+if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     list(APPEND ISOCLINE_OPTIONS -Wno-unused-function)
 endif()
 
@@ -137,7 +145,7 @@ if(LUAU_NATIVE)
     target_compile_definitions(Luau.VM PUBLIC LUA_CUSTOM_EXECUTION=1)
 endif()
 
-if (MSVC AND MSVC_VERSION GREATER_EQUAL 1924)
+if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND MSVC_VERSION GREATER_EQUAL 1924)
     # disable partial redundancy elimination which regresses interpreter codegen substantially in VS2022:
     # https://developercommunity.visualstudio.com/t/performance-regression-on-a-complex-interpreter-lo/1631863
     set_source_files_properties(VM/src/lvmexecute.cpp PROPERTIES COMPILE_FLAGS /d2ssa-pre-)

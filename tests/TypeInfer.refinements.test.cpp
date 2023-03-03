@@ -535,13 +535,20 @@ TEST_CASE_FIXTURE(Fixture, "string_not_equal_to_string_or_nil")
     CHECK_EQ(toString(requireTypeAtPosition({6, 29})), "string");  // a ~= b
     CHECK_EQ(toString(requireTypeAtPosition({6, 32})), "string?"); // a ~= b
 
-    CHECK_EQ(toString(requireTypeAtPosition({8, 29})), "string");  // a == b
-    CHECK_EQ(toString(requireTypeAtPosition({8, 32})), "string?"); // a == b
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({8, 29})), "string?"); // a == b
+        CHECK_EQ(toString(requireTypeAtPosition({8, 32})), "string?"); // a == b
+    }
+    else
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({8, 29})), "string");  // a == b
+        CHECK_EQ(toString(requireTypeAtPosition({8, 32})), "string?"); // a == b
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "narrow_property_of_a_bounded_variable")
 {
-
     CheckResult result = check(R"(
         local t
         local u: {x: number?} = {x = nil}
@@ -804,7 +811,10 @@ TEST_CASE_FIXTURE(Fixture, "not_t_or_some_prop_of_t")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("{| x: boolean |}?", toString(requireTypeAtPosition({3, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{| x: true |}?", toString(requireTypeAtPosition({3, 28})));
+    else
+        CHECK_EQ("{| x: boolean |}?", toString(requireTypeAtPosition({3, 28})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_a_to_be_truthy_then_assert_a_to_be_number")
@@ -1523,12 +1533,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_take_the_length
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK_EQ("a & table", toString(requireTypeAtPosition({3, 29})));
+        CHECK_EQ("table", toString(requireTypeAtPosition({3, 29})));
     }
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         CHECK_EQ("unknown", toString(requireTypeAtPosition({3, 29})));
+    }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_clone_it")
+{
+    CheckResult result = check(R"(
+        local function f(x: unknown)
+            if typeof(x) == "table" then
+                local cloned: {} = table.clone(x)
+            end
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
     }
 }
 
@@ -1571,6 +1601,152 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "refine_a_param_that_got_resolved_duri
         CHECK_EQ("Instance & ~Part", toString(requireTypeAtPosition({7, 28})));
     else
         CHECK_EQ("Instance", toString(requireTypeAtPosition({7, 28})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "refine_a_property_of_some_global")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        foo = { bar = 5 :: number? }
+
+        if foo.bar then
+            local bar = foo.bar
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    CHECK_EQ("*error-type*", toString(requireTypeAtPosition({4, 30})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "dataflow_analysis_can_tell_refinements_when_its_appropriate_to_refine_into_nil_or_never")
+{
+    CheckResult result = check(R"(
+        local function f(t: {string}, s: string)
+            local v1 = t[5]
+            local v2 = v1
+
+            if typeof(v1) == "nil" then
+                local foo = v1
+            else
+                local foo = v1
+            end
+
+            if typeof(v2) == "nil" then
+                local foo = v2
+            else
+                local foo = v2
+            end
+
+            if typeof(s) == "nil" then
+                local foo = s
+            else
+                local foo = s
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("nil", toString(requireTypeAtPosition({6, 28})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({8, 28})));
+
+    CHECK_EQ("nil", toString(requireTypeAtPosition({12, 28})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({14, 28})));
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("never", toString(requireTypeAtPosition({18, 28})));
+        CHECK_EQ("string", toString(requireTypeAtPosition({20, 28})));
+    }
+    else
+    {
+        CHECK_EQ("nil", toString(requireTypeAtPosition({18, 28})));
+        CHECK_EQ("string", toString(requireTypeAtPosition({20, 28})));
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "cat_or_dog_through_a_local")
+{
+    CheckResult result = check(R"(
+        type Cat = { tag: "cat", catfood: string }
+        type Dog = { tag: "dog", dogfood: string }
+        type Animal = Cat | Dog
+
+        local function f(animal: Animal)
+            local tag = animal.tag
+            if tag == "dog" then
+                local dog = animal
+            elseif tag == "cat" then
+                local cat = animal
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("Cat | Dog", toString(requireTypeAtPosition({8, 28})));
+    CHECK_EQ("Cat | Dog", toString(requireTypeAtPosition({10, 28})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "prove_that_dataflow_analysis_isnt_doing_alias_tracking_yet")
+{
+    CheckResult result = check(R"(
+        local function f(tag: "cat" | "dog")
+            local tag2 = tag
+
+            if tag2 == "cat" then
+                local foo = tag
+            else
+                local foo = tag
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(R"("cat" | "dog")", toString(requireTypeAtPosition({5, 28})));
+    CHECK_EQ(R"("cat" | "dog")", toString(requireTypeAtPosition({7, 28})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "fail_to_refine_a_property_of_subscript_expression")
+{
+    CheckResult result = check(R"(
+        type Foo = { foo: number? }
+        local function f(t: {Foo})
+            if t[1].foo then
+                local foo = t[1].foo
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number?", toString(requireTypeAtPosition({4, 34})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_annotations_arent_relevant_when_doing_dataflow_analysis")
+{
+    CheckResult result = check(R"(
+        local function s() return "hello" end
+
+        local function f(t: {string})
+            local s1: string = t[5]
+            local s2: string = s()
+
+            if typeof(s1) == "nil" and typeof(s2) == "nil" then
+                local foo = s1
+                local bar = s2
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("nil", toString(requireTypeAtPosition({8, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("never", toString(requireTypeAtPosition({9, 28})));
+    else
+        CHECK_EQ("nil", toString(requireTypeAtPosition({9, 28})));
 }
 
 TEST_SUITE_END();

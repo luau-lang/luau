@@ -7,6 +7,7 @@
 #include <string.h>
 
 using namespace Luau::CodeGen;
+using namespace Luau::CodeGen::X64;
 
 static std::string bytecodeAsArray(const std::vector<uint8_t>& bytecode)
 {

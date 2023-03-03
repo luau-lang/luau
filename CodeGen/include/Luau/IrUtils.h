@@ -133,6 +133,8 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::DIV_NUM:
     case IrCmd::MOD_NUM:
     case IrCmd::POW_NUM:
+    case IrCmd::MIN_NUM:
+    case IrCmd::MAX_NUM:
     case IrCmd::UNM_NUM:
     case IrCmd::NOT_ANY:
     case IrCmd::TABLE_LEN:
@@ -141,6 +143,7 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::NUM_TO_INDEX:
     case IrCmd::INT_TO_NUM:
     case IrCmd::SUBSTITUTE:
+    case IrCmd::INVOKE_FASTCALL:
         return true;
     default:
         break;
@@ -151,6 +154,9 @@ inline bool hasResult(IrCmd cmd)
 
 inline bool hasSideEffects(IrCmd cmd)
 {
+    if (cmd == IrCmd::INVOKE_FASTCALL)
+        return true;
+
     // Instructions that don't produce a result most likely have other side-effects to make them useful
     // Right now, a full switch would mirror the 'hasResult' function, so we use this simple condition
     return !hasResult(cmd);
@@ -163,6 +169,10 @@ inline bool isPseudo(IrCmd cmd)
 }
 
 bool isGCO(uint8_t tag);
+
+// Manually add or remove use of an operand
+void addUse(IrFunction& function, IrOp op);
+void removeUse(IrFunction& function, IrOp op);
 
 // Remove a single instruction
 void kill(IrFunction& function, IrInst& inst);

@@ -38,7 +38,7 @@ namespace Luau
 {
 namespace CodeGen
 {
-namespace x64
+namespace X64
 {
 
 bool initEntryFunction(NativeState& data)
@@ -143,6 +143,6 @@ bool initEntryFunction(NativeState& data)
     return true;
 }
 
-} // namespace x64
+} // namespace X64
 } // namespace CodeGen
 } // namespace Luau

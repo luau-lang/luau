@@ -27,10 +27,10 @@ public:
 
     void start() override;
 
-    void spill(int espOffset, RegisterX64 reg) override;
-    void save(RegisterX64 reg) override;
+    void spill(int espOffset, X64::RegisterX64 reg) override;
+    void save(X64::RegisterX64 reg) override;
     void allocStack(int size) override;
-    void setupFrameReg(RegisterX64 reg, int espOffset) override;
+    void setupFrameReg(X64::RegisterX64 reg, int espOffset) override;
 
     void finish() override;
 
@@ -45,7 +45,7 @@ private:
     std::vector<UnwindCodeWin> unwindCodes;
 
     uint8_t prologSize = 0;
-    RegisterX64 frameReg = rax; // rax means that frame register is not used
+    X64::RegisterX64 frameReg = X64::rax; // rax means that frame register is not used
     uint8_t frameRegOffset = 0;
     uint32_t stackOffset = 0;
 

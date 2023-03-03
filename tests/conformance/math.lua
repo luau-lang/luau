@@ -261,6 +261,11 @@ assert(math.sign(inf) == 1)
 assert(math.sign(-inf) == -1)
 assert(math.sign(nan) == 0)
 
+assert(math.min(nan, 2) ~= math.min(nan, 2))
+assert(math.min(1, nan) == 1)
+assert(math.max(nan, 2) ~= math.max(nan, 2))
+assert(math.max(1, nan) == 1)
+
 -- clamp
 assert(math.clamp(-1, 0, 1) == 0)
 assert(math.clamp(0.5, 0, 1) == 0.5)

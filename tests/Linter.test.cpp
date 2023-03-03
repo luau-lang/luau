@@ -37,7 +37,7 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobal")
     // Normally this would be defined externally, so hack it in for testing
     addGlobalBinding(frontend, "Wait", Binding{typeChecker.anyType, {}, true, "wait", "@test/global/Wait"});
 
-    LintResult result = lintTyped("Wait(5)");
+    LintResult result = lint("Wait(5)");
 
     REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Global 'Wait' is deprecated, use 'wait' instead");
@@ -49,7 +49,7 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobalNoReplacement")
     const char* deprecationReplacementString = "";
     addGlobalBinding(frontend, "Version", Binding{typeChecker.anyType, {}, true, deprecationReplacementString});
 
-    LintResult result = lintTyped("Version()");
+    LintResult result = lint("Version()");
 
     REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Global 'Version' is deprecated");
@@ -1440,8 +1440,10 @@ TEST_CASE_FIXTURE(Fixture, "LintHygieneUAF")
     REQUIRE(12 == result.warnings.size());
 }
 
-TEST_CASE_FIXTURE(Fixture, "DeprecatedApi")
+TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiTyped")
 {
+    ScopedFastFlag sff("LuauImproveDeprecatedApiLint", true);
+
     unfreeze(typeChecker.globalTypes);
     TypeId instanceType = typeChecker.globalTypes.addType(ClassType{"Instance", {}, std::nullopt, std::nullopt, {}, {}, "Test"});
     persist(instanceType);
@@ -1459,6 +1461,13 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedApi")
 
     addGlobalBinding(frontend, "Color3", Binding{colorType, {}});
 
+    if (TableType* ttv = getMutable<TableType>(getGlobalBinding(typeChecker, "table")))
+    {
+        ttv->props["foreach"].deprecated = true;
+        ttv->props["getn"].deprecated = true;
+        ttv->props["getn"].deprecatedSuggestion = "#";
+    }
+
     freeze(typeChecker.globalTypes);
 
     LintResult result = lintTyped(R"(
@@ -1467,14 +1476,43 @@ return function (i: Instance)
     print(i.Name)
     print(Color3.toHSV())
     print(Color3.doesntexist, i.doesntexist) -- type error, but this verifies we correctly handle non-existent members
+    print(table.getn({}))
+    table.foreach({}, function() end)
+    print(table.nogetn()) -- verify that we correctly handle non-existent members
     return i.DataCost
 end
 )");
 
-    REQUIRE(3 == result.warnings.size());
+    REQUIRE(5 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Member 'Instance.Wait' is deprecated");
     CHECK_EQ(result.warnings[1].text, "Member 'toHSV' is deprecated, use 'Color3:ToHSV' instead");
-    CHECK_EQ(result.warnings[2].text, "Member 'Instance.DataCost' is deprecated");
+    CHECK_EQ(result.warnings[2].text, "Member 'table.getn' is deprecated, use '#' instead");
+    CHECK_EQ(result.warnings[3].text, "Member 'table.foreach' is deprecated");
+    CHECK_EQ(result.warnings[4].text, "Member 'Instance.DataCost' is deprecated");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiUntyped")
+{
+    ScopedFastFlag sff("LuauImproveDeprecatedApiLint", true);
+
+    if (TableType* ttv = getMutable<TableType>(getGlobalBinding(typeChecker, "table")))
+    {
+        ttv->props["foreach"].deprecated = true;
+        ttv->props["getn"].deprecated = true;
+        ttv->props["getn"].deprecatedSuggestion = "#";
+    }
+
+    LintResult result = lint(R"(
+return function ()
+    print(table.getn({}))
+    table.foreach({}, function() end)
+    print(table.nogetn()) -- verify that we correctly handle non-existent members
+end
+)");
+
+    REQUIRE(2 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Member 'table.getn' is deprecated, use '#' instead");
+    CHECK_EQ(result.warnings[1].text, "Member 'table.foreach' is deprecated");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "TableOperations")

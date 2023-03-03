@@ -9,6 +9,8 @@ namespace Luau
 {
 namespace CodeGen
 {
+namespace A64
+{
 
 static const uint8_t codeForCondition[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
 static_assert(sizeof(codeForCondition) / sizeof(codeForCondition[0]) == size_t(ConditionA64::Count), "all conditions have to be covered");
@@ -719,5 +721,6 @@ void AssemblyBuilderA64::log(AddressA64 addr)
     text.append("]");
 }
 
+} // namespace A64
 } // namespace CodeGen
 } // namespace Luau

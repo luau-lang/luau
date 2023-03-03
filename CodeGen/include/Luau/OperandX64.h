@@ -10,6 +10,8 @@ namespace Luau
 {
 namespace CodeGen
 {
+namespace X64
+{
 
 enum class CategoryX64 : uint8_t
 {
@@ -138,5 +140,6 @@ constexpr OperandX64 operator+(RegisterX64 base, OperandX64 op)
     return op;
 }
 
+} // namespace X64
 } // namespace CodeGen
 } // namespace Luau

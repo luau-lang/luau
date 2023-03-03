@@ -16,6 +16,7 @@
 LUAU_FASTFLAGVARIABLE(LuauCompleteTableKeysBetter, false);
 LUAU_FASTFLAGVARIABLE(LuauFixAutocompleteInWhile, false);
 LUAU_FASTFLAGVARIABLE(LuauFixAutocompleteInFor, false);
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteSkipNormalization, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -144,6 +145,13 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
     UnifierSharedState unifierState(&iceReporter);
     Normalizer normalizer{typeArena, builtinTypes, NotNull{&unifierState}};
     Unifier unifier(NotNull<Normalizer>{&normalizer}, Mode::Strict, scope, Location(), Variance::Covariant);
+
+    if (FFlag::LuauAutocompleteSkipNormalization)
+    {
+        // Cost of normalization can be too high for autocomplete response time requirements
+        unifier.normalize = false;
+        unifier.checkInhabited = false;
+    }
 
     return unifier.canUnify(subTy, superTy).empty();
 }
@@ -314,7 +322,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, NotNul
     {
         autocompleteProps(module, typeArena, builtinTypes, rootTy, mt->table, indexType, nodes, result, seen);
 
-        if (auto mtable = get<TableType>(mt->metatable))
+        if (auto mtable = get<TableType>(follow(mt->metatable)))
             fillMetatableProps(mtable);
     }
     else if (auto i = get<IntersectionType>(ty))
@@ -1528,9 +1536,9 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         else if (!statIf->thenLocation || statIf->thenLocation->containsClosed(position))
             return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
     }
-    else if (AstStatIf* statIf = extractStat<AstStatIf>(ancestry);
-             statIf && (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)) &&
-             (statIf->condition && !statIf->condition->location.containsClosed(position)))
+    else if (AstStatIf* statIf = extractStat<AstStatIf>(ancestry); statIf &&
+                                                                   (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)) &&
+                                                                   (statIf->condition && !statIf->condition->location.containsClosed(position)))
     {
         AutocompleteEntryMap ret;
         ret["then"] = {AutocompleteEntryKind::Keyword};

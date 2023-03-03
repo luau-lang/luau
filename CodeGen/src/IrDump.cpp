@@ -118,6 +118,10 @@ const char* getCmdName(IrCmd cmd)
         return "MOD_NUM";
     case IrCmd::POW_NUM:
         return "POW_NUM";
+    case IrCmd::MIN_NUM:
+        return "MIN_NUM";
+    case IrCmd::MAX_NUM:
+        return "MAX_NUM";
     case IrCmd::UNM_NUM:
         return "UNM_NUM";
     case IrCmd::NOT_ANY:
@@ -152,6 +156,12 @@ const char* getCmdName(IrCmd cmd)
         return "ADJUST_STACK_TO_REG";
     case IrCmd::ADJUST_STACK_TO_TOP:
         return "ADJUST_STACK_TO_TOP";
+    case IrCmd::FASTCALL:
+        return "FASTCALL";
+    case IrCmd::INVOKE_FASTCALL:
+        return "INVOKE_FASTCALL";
+    case IrCmd::CHECK_FASTCALL_RES:
+        return "CHECK_FASTCALL_RES";
     case IrCmd::DO_ARITH:
         return "DO_ARITH";
     case IrCmd::DO_LEN:
@@ -206,14 +216,6 @@ const char* getCmdName(IrCmd cmd)
         return "LOP_CALL";
     case IrCmd::LOP_RETURN:
         return "LOP_RETURN";
-    case IrCmd::LOP_FASTCALL:
-        return "LOP_FASTCALL";
-    case IrCmd::LOP_FASTCALL1:
-        return "LOP_FASTCALL1";
-    case IrCmd::LOP_FASTCALL2:
-        return "LOP_FASTCALL2";
-    case IrCmd::LOP_FASTCALL2K:
-        return "LOP_FASTCALL2K";
     case IrCmd::LOP_FORGLOOP:
         return "LOP_FORGLOOP";
     case IrCmd::LOP_FORGLOOP_FALLBACK:
@@ -267,6 +269,8 @@ const char* getBlockKindName(IrBlockKind kind)
         return "bb_fallback";
     case IrBlockKind::Internal:
         return "bb";
+    case IrBlockKind::Linearized:
+        return "bb_linear";
     case IrBlockKind::Dead:
         return "dead";
     }

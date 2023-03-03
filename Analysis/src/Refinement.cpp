@@ -4,6 +4,11 @@
 namespace Luau
 {
 
+RefinementId RefinementArena::variadic(const std::vector<RefinementId>& refis)
+{
+    return NotNull{allocator.allocate(Variadic{refis})};
+}
+
 RefinementId RefinementArena::negation(RefinementId refinement)
 {
     return NotNull{allocator.allocate(Negation{refinement})};
@@ -24,14 +29,9 @@ RefinementId RefinementArena::equivalence(RefinementId lhs, RefinementId rhs)
     return NotNull{allocator.allocate(Equivalence{lhs, rhs})};
 }
 
-RefinementId RefinementArena::proposition(DefId def, TypeId discriminantTy)
+RefinementId RefinementArena::proposition(BreadcrumbId breadcrumb, TypeId discriminantTy)
 {
-    return NotNull{allocator.allocate(Proposition{def, discriminantTy})};
-}
-
-RefinementId RefinementArena::variadic(const std::vector<RefinementId>& refis)
-{
-    return NotNull{allocator.allocate(Variadic{refis})};
+    return NotNull{allocator.allocate(Proposition{breadcrumb, discriminantTy})};
 }
 
 } // namespace Luau

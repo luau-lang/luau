@@ -244,5 +244,158 @@ void analyzeBuiltins(DenseHashMap<AstExprCall*, int>& result, const DenseHashMap
     root->visit(&visitor);
 }
 
+BuiltinInfo getBuiltinInfo(int bfid)
+{
+    switch (LuauBuiltinFunction(bfid))
+    {
+    case LBF_NONE:
+        return {-1, -1};
+
+    case LBF_ASSERT:
+        return {-1, -1};
+        ; // assert() returns all values when first value is truthy
+
+    case LBF_MATH_ABS:
+    case LBF_MATH_ACOS:
+    case LBF_MATH_ASIN:
+        return {1, 1};
+
+    case LBF_MATH_ATAN2:
+        return {2, 1};
+
+    case LBF_MATH_ATAN:
+    case LBF_MATH_CEIL:
+    case LBF_MATH_COSH:
+    case LBF_MATH_COS:
+    case LBF_MATH_DEG:
+    case LBF_MATH_EXP:
+    case LBF_MATH_FLOOR:
+        return {1, 1};
+
+    case LBF_MATH_FMOD:
+        return {2, 1};
+
+    case LBF_MATH_FREXP:
+        return {1, 2};
+
+    case LBF_MATH_LDEXP:
+        return {2, 1};
+
+    case LBF_MATH_LOG10:
+        return {1, 1};
+
+    case LBF_MATH_LOG:
+        return {-1, 1}; // 1 or 2 parameters
+
+    case LBF_MATH_MAX:
+    case LBF_MATH_MIN:
+        return {-1, 1}; // variadic
+
+    case LBF_MATH_MODF:
+        return {1, 2};
+
+    case LBF_MATH_POW:
+        return {2, 1};
+
+    case LBF_MATH_RAD:
+    case LBF_MATH_SINH:
+    case LBF_MATH_SIN:
+    case LBF_MATH_SQRT:
+    case LBF_MATH_TANH:
+    case LBF_MATH_TAN:
+        return {1, 1};
+
+    case LBF_BIT32_ARSHIFT:
+        return {2, 1};
+
+    case LBF_BIT32_BAND:
+        return {-1, 1}; // variadic
+
+    case LBF_BIT32_BNOT:
+        return {1, 1};
+
+    case LBF_BIT32_BOR:
+    case LBF_BIT32_BXOR:
+    case LBF_BIT32_BTEST:
+        return {-1, 1}; // variadic
+
+    case LBF_BIT32_EXTRACT:
+        return {-1, 1}; // 2 or 3 parameters
+
+    case LBF_BIT32_LROTATE:
+    case LBF_BIT32_LSHIFT:
+        return {2, 1};
+
+    case LBF_BIT32_REPLACE:
+        return {-1, 1}; // 3 or 4 parameters
+
+    case LBF_BIT32_RROTATE:
+    case LBF_BIT32_RSHIFT:
+        return {2, 1};
+
+    case LBF_TYPE:
+        return {1, 1};
+
+    case LBF_STRING_BYTE:
+        return {-1, -1}; // 1, 2 or 3 parameters
+
+    case LBF_STRING_CHAR:
+        return {-1, 1}; // variadic
+
+    case LBF_STRING_LEN:
+        return {1, 1};
+
+    case LBF_TYPEOF:
+        return {1, 1};
+
+    case LBF_STRING_SUB:
+        return {-1, 1}; // 2 or 3 parameters
+
+    case LBF_MATH_CLAMP:
+        return {3, 1};
+
+    case LBF_MATH_SIGN:
+    case LBF_MATH_ROUND:
+        return {1, 1};
+
+    case LBF_RAWSET:
+        return {3, 1};
+
+    case LBF_RAWGET:
+    case LBF_RAWEQUAL:
+        return {2, 1};
+
+    case LBF_TABLE_INSERT:
+        return {-1, 0}; // 2 or 3 parameters
+
+    case LBF_TABLE_UNPACK:
+        return {-1, -1}; // 1, 2 or 3 parameters
+
+    case LBF_VECTOR:
+        return {-1, 1}; // 3 or 4 parameters in some configurations
+
+    case LBF_BIT32_COUNTLZ:
+    case LBF_BIT32_COUNTRZ:
+        return {1, 1};
+
+    case LBF_SELECT_VARARG:
+        return {-1, -1}; // variadic
+
+    case LBF_RAWLEN:
+        return {1, 1};
+
+    case LBF_BIT32_EXTRACTK:
+        return {3, 1};
+
+    case LBF_GETMETATABLE:
+        return {1, 1};
+
+    case LBF_SETMETATABLE:
+        return {2, 1};
+    };
+
+    LUAU_UNREACHABLE();
+}
+
 } // namespace Compile
 } // namespace Luau
