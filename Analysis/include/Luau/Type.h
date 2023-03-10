@@ -640,10 +640,10 @@ struct BuiltinTypes
     BuiltinTypes(const BuiltinTypes&) = delete;
     void operator=(const BuiltinTypes&) = delete;
 
-    TypeId errorRecoveryType(TypeId guess);
-    TypePackId errorRecoveryTypePack(TypePackId guess);
-    TypeId errorRecoveryType();
-    TypePackId errorRecoveryTypePack();
+    TypeId errorRecoveryType(TypeId guess) const;
+    TypePackId errorRecoveryTypePack(TypePackId guess) const;
+    TypeId errorRecoveryType() const;
+    TypePackId errorRecoveryTypePack() const;
 
 private:
     std::unique_ptr<struct TypeArena> arena;

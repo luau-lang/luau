@@ -12,8 +12,6 @@
 #include <string.h>
 #include <stdio.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCheckGetInfoIndex, false)
-
 static const char* getfuncname(Closure* f);
 
 static int currentpc(lua_State* L, CallInfo* ci)
@@ -176,18 +174,9 @@ int lua_getinfo(lua_State* L, int level, const char* what, lua_Debug* ar)
     CallInfo* ci = NULL;
     if (level < 0)
     {
-        if (FFlag::LuauCheckGetInfoIndex)
-        {
-            const TValue* func = luaA_toobject(L, level);
-            api_check(L, ttisfunction(func));
-            f = clvalue(func);
-        }
-        else
-        {
-            StkId func = L->top + level;
-            api_check(L, ttisfunction(func));
-            f = clvalue(func);
-        }
+        const TValue* func = luaA_toobject(L, level);
+        api_check(L, ttisfunction(func));
+        f = clvalue(func);
     }
     else if (unsigned(level) < unsigned(L->ci - L->base_ci))
     {

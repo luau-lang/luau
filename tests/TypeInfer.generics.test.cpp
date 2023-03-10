@@ -844,8 +844,8 @@ TEST_CASE_FIXTURE(Fixture, "generic_function")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("<a>(a) -> a", toString(requireType("id")));
-    CHECK_EQ(*typeChecker.numberType, *requireType("a"));
-    CHECK_EQ(*typeChecker.nilType, *requireType("b"));
+    CHECK_EQ(*builtinTypes->numberType, *requireType("a"));
+    CHECK_EQ(*builtinTypes->nilType, *requireType("b"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_table_method")

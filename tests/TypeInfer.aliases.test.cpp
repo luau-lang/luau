@@ -168,7 +168,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_types_of_named_table_fields_do_not_expand_whe
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("Node?", toString(tm->wantedType));
-    CHECK_EQ(typeChecker.numberType, tm->givenType);
+    CHECK_EQ(builtinTypes->numberType, tm->givenType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_aliases")
@@ -329,7 +329,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("Wrapped", toString(tm->wantedType));
-    CHECK_EQ(typeChecker.numberType, tm->givenType);
+    CHECK_EQ(builtinTypes->numberType, tm->givenType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_type2")
@@ -345,7 +345,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("t1 where t1 = ({| a: t1 |}) -> string", toString(tm->wantedType));
-    CHECK_EQ(typeChecker.numberType, tm->givenType);
+    CHECK_EQ(builtinTypes->numberType, tm->givenType);
 }
 
 // Check that recursive intersection type doesn't generate an OOM
@@ -520,7 +520,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_import_mutation")
     CheckResult result = check("type t10<x> = typeof(table)");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    TypeId ty = getGlobalBinding(frontend, "table");
+    TypeId ty = getGlobalBinding(frontend.globals, "table");
 
     CHECK(toString(ty) == "typeof(table)");
 
@@ -920,6 +920,31 @@ TEST_CASE_FIXTURE(Fixture, "cannot_create_cyclic_type_with_unknown_module")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(result.errors[0]) == "Unknown type 'B.AAA'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_locations")
+{
+    check(R"(
+        type T = number
+
+        do
+            type T = string
+            type X = boolean
+        end
+    )");
+
+    ModulePtr mod = getMainModule();
+    REQUIRE(mod);
+    REQUIRE(mod->scopes.size() == 8);
+
+    REQUIRE(mod->scopes[0].second->typeAliasNameLocations.count("T") > 0);
+    CHECK(mod->scopes[0].second->typeAliasNameLocations["T"] == Location(Position(1, 13), 1));
+
+    REQUIRE(mod->scopes[3].second->typeAliasNameLocations.count("T") > 0);
+    CHECK(mod->scopes[3].second->typeAliasNameLocations["T"] == Location(Position(4, 17), 1));
+
+    REQUIRE(mod->scopes[3].second->typeAliasNameLocations.count("X") > 0);
+    CHECK(mod->scopes[3].second->typeAliasNameLocations["X"] == Location(Position(5, 17), 1));
 }
 
 TEST_SUITE_END();

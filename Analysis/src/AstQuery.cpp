@@ -12,7 +12,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauCompleteTableKeysBetter);
-LUAU_FASTFLAGVARIABLE(SupportTypeAliasGoToDeclaration, false);
 
 namespace Luau
 {
@@ -195,17 +194,10 @@ struct FindFullAncestry final : public AstVisitor
 
     bool visit(AstType* type) override
     {
-        if (FFlag::SupportTypeAliasGoToDeclaration)
-        {
-            if (includeTypes)
-                return visit(static_cast<AstNode*>(type));
-            else
-                return false;
-        }
+        if (includeTypes)
+            return visit(static_cast<AstNode*>(type));
         else
-        {
-            return AstVisitor::visit(type);
-        }
+            return false;
     }
 
     bool visit(AstNode* node) override

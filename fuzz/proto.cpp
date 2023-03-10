@@ -97,38 +97,39 @@ lua_State* createGlobalState()
     return L;
 }
 
-int registerTypes(Luau::TypeChecker& env)
+int registerTypes(Luau::TypeChecker& typeChecker, Luau::GlobalTypes& globals)
 {
     using namespace Luau;
     using std::nullopt;
 
-    Luau::registerBuiltinGlobals(env);
+    Luau::registerBuiltinGlobals(typeChecker, globals);
 
-    TypeArena& arena = env.globalTypes;
+    TypeArena& arena = globals.globalTypes;
+    BuiltinTypes& builtinTypes = *globals.builtinTypes;
 
     // Vector3 stub
     TypeId vector3MetaType = arena.addType(TableType{});
 
     TypeId vector3InstanceType = arena.addType(ClassType{"Vector3", {}, nullopt, vector3MetaType, {}, {}, "Test"});
     getMutable<ClassType>(vector3InstanceType)->props = {
-        {"X", {env.numberType}},
-        {"Y", {env.numberType}},
-        {"Z", {env.numberType}},
+        {"X", {builtinTypes.numberType}},
+        {"Y", {builtinTypes.numberType}},
+        {"Z", {builtinTypes.numberType}},
     };
 
     getMutable<TableType>(vector3MetaType)->props = {
         {"__add", {makeFunction(arena, nullopt, {vector3InstanceType, vector3InstanceType}, {vector3InstanceType})}},
     };
 
-    env.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vector3InstanceType};
+    globals.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vector3InstanceType};
 
     // Instance stub
     TypeId instanceType = arena.addType(ClassType{"Instance", {}, nullopt, nullopt, {}, {}, "Test"});
     getMutable<ClassType>(instanceType)->props = {
-        {"Name", {env.stringType}},
+        {"Name", {builtinTypes.stringType}},
     };
 
-    env.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, instanceType};
+    globals.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, instanceType};
 
     // Part stub
     TypeId partType = arena.addType(ClassType{"Part", {}, instanceType, nullopt, {}, {}, "Test"});
@@ -136,9 +137,9 @@ int registerTypes(Luau::TypeChecker& env)
         {"Position", {vector3InstanceType}},
     };
 
-    env.globalScope->exportedTypeBindings["Part"] = TypeFun{{}, partType};
+    globals.globalScope->exportedTypeBindings["Part"] = TypeFun{{}, partType};
 
-    for (const auto& [_, fun] : env.globalScope->exportedTypeBindings)
+    for (const auto& [_, fun] : globals.globalScope->exportedTypeBindings)
         persist(fun.type);
 
     return 0;
@@ -146,11 +147,11 @@ int registerTypes(Luau::TypeChecker& env)
 
 static void setupFrontend(Luau::Frontend& frontend)
 {
-    registerTypes(frontend.typeChecker);
-    Luau::freeze(frontend.typeChecker.globalTypes);
+    registerTypes(frontend.typeChecker, frontend.globals);
+    Luau::freeze(frontend.globals.globalTypes);
 
-    registerTypes(frontend.typeCheckerForAutocomplete);
-    Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
+    registerTypes(frontend.typeCheckerForAutocomplete, frontend.globalsForAutocomplete);
+    Luau::freeze(frontend.globalsForAutocomplete.globalTypes);
 
     frontend.iceHandler.onInternalError = [](const char* error) {
         printf("ICE: %s\n", error);
@@ -264,6 +265,7 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
         static Luau::Frontend frontend(&fileResolver, &configResolver, options);
 
         static int once = (setupFrontend(frontend), 0);
+        (void)once;
 
         // restart
         frontend.clear();
@@ -302,7 +304,7 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
 
         // validate sharedEnv post-typecheck; valuable for debugging some typeck crashes but slows fuzzing down
         // note: it's important for typeck to be destroyed at this point!
-        for (auto& p : frontend.typeChecker.globalScope->bindings)
+        for (auto& p : frontend.globals.globalScope->bindings)
         {
             Luau::ToStringOptions opts;
             opts.exhaustive = true;

@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/IrAnalysis.h"
 #include "Luau/Label.h"
 #include "Luau/RegisterX64.h"
 #include "Luau/RegisterA64.h"
@@ -261,6 +262,7 @@ enum class IrCmd : uint8_t
     // A: Rn (value start)
     // B: unsigned int (number of registers to go over)
     // Note: result is stored in the register specified in 'A'
+    // Note: all referenced registers might be modified in the operation
     CONCAT,
 
     // Load function upvalue into stack slot
@@ -382,16 +384,16 @@ enum class IrCmd : uint8_t
     LOP_RETURN,
 
     // Adjust loop variables for one iteration of a generic for loop, jump back to the loop header if loop needs to continue
-    // A: Rn (loop variable start, updates Rn+2 Rn+3 Rn+4)
-    // B: int (loop variable count, is more than 2, additional registers are set to nil)
+    // A: Rn (loop variable start, updates Rn+2 and 'B' number of registers starting from Rn+3)
+    // B: int (loop variable count, if more than 2, registers starting from Rn+5 are set to nil)
     // C: block (repeat)
     // D: block (exit)
     LOP_FORGLOOP,
 
     // Handle LOP_FORGLOOP fallback when variable being iterated is not a table
     // A: unsigned int (bytecode instruction index)
-    // B: Rn (loop state start, updates Rn+2 Rn+3 Rn+4 Rn+5)
-    // C: int (extra variable count or -1 for ipairs-style iteration)
+    // B: Rn (loop state start, updates Rn+2 and 'C' number of registers starting from Rn+3)
+    // C: int (loop variable count and a MSB set when it's an ipairs-like iteration loop)
     // D: block (repeat)
     // E: block (exit)
     LOP_FORGLOOP_FALLBACK,
@@ -637,6 +639,8 @@ struct IrFunction
     std::vector<BytecodeMapping> bcMapping;
 
     Proto* proto = nullptr;
+
+    CfgInfo cfg;
 
     IrBlock& blockOp(IrOp op)
     {

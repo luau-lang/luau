@@ -325,9 +325,9 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "classes")
 
     check(""); // Ensure that we have a main Module.
 
-    TypeId p = typeChecker.globalScope->lookupType("Parent")->type;
-    TypeId c = typeChecker.globalScope->lookupType("Child")->type;
-    TypeId u = typeChecker.globalScope->lookupType("Unrelated")->type;
+    TypeId p = frontend.globals.globalScope->lookupType("Parent")->type;
+    TypeId c = frontend.globals.globalScope->lookupType("Child")->type;
+    TypeId u = frontend.globals.globalScope->lookupType("Unrelated")->type;
 
     CHECK(isSubtype(c, p));
     CHECK(!isSubtype(p, c));

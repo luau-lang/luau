@@ -40,6 +40,7 @@ struct IrRegAllocX64
 
 struct ScopedRegX64
 {
+    explicit ScopedRegX64(IrRegAllocX64& owner);
     ScopedRegX64(IrRegAllocX64& owner, SizeX64 size);
     ScopedRegX64(IrRegAllocX64& owner, RegisterX64 reg);
     ~ScopedRegX64();
@@ -47,6 +48,7 @@ struct ScopedRegX64
     ScopedRegX64(const ScopedRegX64&) = delete;
     ScopedRegX64& operator=(const ScopedRegX64&) = delete;
 
+    void alloc(SizeX64 size);
     void free();
 
     IrRegAllocX64& owner;

@@ -63,11 +63,22 @@ enum class ValueContext
     RValue
 };
 
+struct GlobalTypes
+{
+    GlobalTypes(NotNull<BuiltinTypes> builtinTypes);
+
+    NotNull<BuiltinTypes> builtinTypes; // Global types are based on builtin types
+
+    TypeArena globalTypes;
+    SourceModule globalNames; // names for symbols entered into globalScope
+    ScopePtr globalScope;     // shared by all modules
+};
+
 // All Types are retained via Environment::types.  All TypeIds
 // within a program are borrowed pointers into this set.
 struct TypeChecker
 {
-    explicit TypeChecker(ModuleResolver* resolver, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter* iceHandler);
+    explicit TypeChecker(const GlobalTypes& globals, ModuleResolver* resolver, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter* iceHandler);
     TypeChecker(const TypeChecker&) = delete;
     TypeChecker& operator=(const TypeChecker&) = delete;
 
@@ -355,11 +366,10 @@ public:
      */
     std::vector<TypeId> unTypePack(const ScopePtr& scope, TypePackId pack, size_t expectedLength, const Location& location);
 
-    TypeArena globalTypes;
+    // TODO: only const version of global scope should be available to make sure nothing else is modified inside of from users of TypeChecker
+    const GlobalTypes& globals;
 
     ModuleResolver* resolver;
-    SourceModule globalNames; // names for symbols entered into globalScope
-    ScopePtr globalScope;     // shared by all modules
     ModulePtr currentModule;
     ModuleName currentModuleName;
 

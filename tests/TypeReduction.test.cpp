@@ -31,6 +31,12 @@ struct ReductionFixture : Fixture
         return *reducedTy;
     }
 
+    std::optional<TypeId> tryReduce(const std::string& annotation)
+    {
+        check("type _Res = " + annotation);
+        return reduction.reduce(requireTypeAlias("_Res"));
+    }
+
     TypeId reductionof(const std::string& annotation)
     {
         check("type _Res = " + annotation);
@@ -1486,6 +1492,18 @@ TEST_CASE_FIXTURE(ReductionFixture, "cycles")
         TypeId ty = reductionof(requireTypeAlias("T"));
         CHECK("t1 where t1 = {| x: t1 |} & {| x: t1 |}" == toStringFull(ty));
     }
+}
+
+TEST_CASE_FIXTURE(ReductionFixture, "string_singletons")
+{
+    TypeId ty = reductionof("(string & Not<\"A\">)?");
+    CHECK("(string & ~\"A\")?" == toStringFull(ty));
+}
+
+TEST_CASE_FIXTURE(ReductionFixture, "string_singletons_2")
+{
+    TypeId ty = reductionof("Not<\"A\"> & Not<\"B\"> & (string?)");
+    CHECK("(string & ~\"A\" & ~\"B\")?" == toStringFull(ty));
 }
 
 TEST_SUITE_END();

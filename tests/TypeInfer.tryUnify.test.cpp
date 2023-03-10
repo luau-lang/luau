@@ -38,7 +38,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "primitives_unify")
 TEST_CASE_FIXTURE(TryUnifyFixture, "compatible_functions_are_unified")
 {
     Type functionOne{
-        TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({typeChecker.numberType}))}};
+        TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({builtinTypes->numberType}))}};
 
     Type functionTwo{TypeVariant{
         FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({arena.freshType(globalScope->level)}))}};
@@ -55,13 +55,13 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_functions_are_preserved")
 {
     TypePackVar argPackOne{TypePack{{arena.freshType(globalScope->level)}, std::nullopt}};
     Type functionOne{
-        TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({typeChecker.numberType}))}};
+        TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({builtinTypes->numberType}))}};
 
     Type functionOneSaved = functionOne;
 
     TypePackVar argPackTwo{TypePack{{arena.freshType(globalScope->level)}, std::nullopt}};
     Type functionTwo{
-        TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({typeChecker.stringType}))}};
+        TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({builtinTypes->stringType}))}};
 
     Type functionTwoSaved = functionTwo;
 
@@ -96,12 +96,12 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
 TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
 {
     Type tableOne{TypeVariant{
-        TableType{{{"foo", {arena.freshType(globalScope->level)}}, {"bar", {typeChecker.numberType}}}, std::nullopt, globalScope->level,
+        TableType{{{"foo", {arena.freshType(globalScope->level)}}, {"bar", {builtinTypes->numberType}}}, std::nullopt, globalScope->level,
             TableState::Unsealed},
     }};
 
     Type tableTwo{TypeVariant{
-        TableType{{{"foo", {arena.freshType(globalScope->level)}}, {"bar", {typeChecker.stringType}}}, std::nullopt, globalScope->level,
+        TableType{{{"foo", {arena.freshType(globalScope->level)}}, {"bar", {builtinTypes->stringType}}}, std::nullopt, globalScope->level,
             TableState::Unsealed},
     }};
 
@@ -214,8 +214,8 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "typepack_unification_should_trim_free_tails"
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "variadic_type_pack_unification")
 {
-    TypePackVar testPack{TypePack{{typeChecker.numberType, typeChecker.stringType}, std::nullopt}};
-    TypePackVar variadicPack{VariadicTypePack{typeChecker.numberType}};
+    TypePackVar testPack{TypePack{{builtinTypes->numberType, builtinTypes->stringType}, std::nullopt}};
+    TypePackVar variadicPack{VariadicTypePack{builtinTypes->numberType}};
 
     state.tryUnify(&testPack, &variadicPack);
     CHECK(!state.errors.empty());
@@ -223,9 +223,9 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "variadic_type_pack_unification")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "variadic_tails_respect_progress")
 {
-    TypePackVar variadicPack{VariadicTypePack{typeChecker.booleanType}};
-    TypePackVar a{TypePack{{typeChecker.numberType, typeChecker.stringType, typeChecker.booleanType, typeChecker.booleanType}}};
-    TypePackVar b{TypePack{{typeChecker.numberType, typeChecker.stringType}, &variadicPack}};
+    TypePackVar variadicPack{VariadicTypePack{builtinTypes->booleanType}};
+    TypePackVar a{TypePack{{builtinTypes->numberType, builtinTypes->stringType, builtinTypes->booleanType, builtinTypes->booleanType}}};
+    TypePackVar b{TypePack{{builtinTypes->numberType, builtinTypes->stringType}, &variadicPack}};
 
     state.tryUnify(&b, &a);
     CHECK(state.errors.empty());
@@ -266,8 +266,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_41095_concat_log_in_sealed_table_unifica
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "free_tail_is_grown_properly")
 {
-    TypePackId threeNumbers = arena.addTypePack(TypePack{{typeChecker.numberType, typeChecker.numberType, typeChecker.numberType}, std::nullopt});
-    TypePackId numberAndFreeTail = arena.addTypePack(TypePack{{typeChecker.numberType}, arena.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}})});
+    TypePackId threeNumbers =
+        arena.addTypePack(TypePack{{builtinTypes->numberType, builtinTypes->numberType, builtinTypes->numberType}, std::nullopt});
+    TypePackId numberAndFreeTail = arena.addTypePack(TypePack{{builtinTypes->numberType}, arena.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}})});
 
     ErrorVec unifyErrors = state.canUnify(numberAndFreeTail, threeNumbers);
     CHECK(unifyErrors.size() == 0);
@@ -279,7 +280,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "recursive_metatable_getmatchtag")
     Type table{TableType{}};
     Type metatable{MetatableType{&redirect, &table}};
     redirect = BoundType{&metatable}; // Now we have a metatable that is recursive on the table type
-    Type variant{UnionType{{&metatable, typeChecker.numberType}}};
+    Type variant{UnionType{{&metatable, builtinTypes->numberType}}};
 
     state.tryUnify(&metatable, &variant);
 }
@@ -293,13 +294,13 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "cli_50320_follow_in_any_unification")
 
     state.tryUnify(&free, &target);
     // Shouldn't assert or error.
-    state.tryUnify(&func, typeChecker.anyType);
+    state.tryUnify(&func, builtinTypes->anyType);
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_type_owner")
 {
     TypeId a = arena.addType(Type{FreeType{TypeLevel{}}});
-    TypeId b = typeChecker.numberType;
+    TypeId b = builtinTypes->numberType;
 
     state.tryUnify(a, b);
     state.log.commit();
@@ -310,7 +311,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_type_owner")
 TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_pack_owner")
 {
     TypePackId a = arena.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}});
-    TypePackId b = typeChecker.anyTypePack;
+    TypePackId b = builtinTypes->anyTypePack;
 
     state.tryUnify(a, b);
     state.log.commit();
@@ -323,13 +324,13 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "metatables_unify_against_shape_of_free_table
     ScopedFastFlag sff("DebugLuauDeferredConstraintResolution", true);
 
     TableType::Props freeProps{
-        {"foo", {typeChecker.numberType}},
+        {"foo", {builtinTypes->numberType}},
     };
 
     TypeId free = arena.addType(TableType{freeProps, std::nullopt, TypeLevel{}, TableState::Free});
 
     TableType::Props indexProps{
-        {"foo", {typeChecker.stringType}},
+        {"foo", {builtinTypes->stringType}},
     };
 
     TypeId index = arena.addType(TableType{indexProps, std::nullopt, TypeLevel{}, TableState::Sealed});
@@ -356,9 +357,9 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "metatables_unify_against_shape_of_free_table
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "fuzz_tail_unification_issue")
 {
-    TypePackVar variadicAny{VariadicTypePack{typeChecker.anyType}};
-    TypePackVar packTmp{TypePack{{typeChecker.anyType}, &variadicAny}};
-    TypePackVar packSub{TypePack{{typeChecker.anyType, typeChecker.anyType}, &packTmp}};
+    TypePackVar variadicAny{VariadicTypePack{builtinTypes->anyType}};
+    TypePackVar packTmp{TypePack{{builtinTypes->anyType}, &variadicAny}};
+    TypePackVar packSub{TypePack{{builtinTypes->anyType, builtinTypes->anyType}, &packTmp}};
 
     Type freeTy{FreeType{TypeLevel{}}};
     TypePackVar freeTp{FreeTypePack{TypeLevel{}}};

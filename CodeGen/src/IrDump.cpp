@@ -306,7 +306,7 @@ void toString(IrToStringContext& ctx, const IrInst& inst, uint32_t index)
 
 void toString(IrToStringContext& ctx, const IrBlock& block, uint32_t index)
 {
-    append(ctx.result, "%s_%u:", getBlockKindName(block.kind), index);
+    append(ctx.result, "%s_%u", getBlockKindName(block.kind), index);
 }
 
 void toString(IrToStringContext& ctx, IrOp op)
@@ -362,33 +362,151 @@ void toString(std::string& result, IrConst constant)
     }
 }
 
-void toStringDetailed(IrToStringContext& ctx, const IrInst& inst, uint32_t index)
+void toStringDetailed(IrToStringContext& ctx, const IrInst& inst, uint32_t index, bool includeUseInfo)
 {
     size_t start = ctx.result.size();
 
     toString(ctx, inst, index);
-    padToDetailColumn(ctx.result, start);
 
-    if (inst.useCount == 0 && hasSideEffects(inst.cmd))
-        append(ctx.result, "; %%%u, has side-effects\n", index);
+    if (includeUseInfo)
+    {
+        padToDetailColumn(ctx.result, start);
+
+        if (inst.useCount == 0 && hasSideEffects(inst.cmd))
+            append(ctx.result, "; %%%u, has side-effects\n", index);
+        else
+            append(ctx.result, "; useCount: %d, lastUse: %%%u\n", inst.useCount, inst.lastUse);
+    }
     else
-        append(ctx.result, "; useCount: %d, lastUse: %%%u\n", inst.useCount, inst.lastUse);
+    {
+        ctx.result.append("\n");
+    }
 }
 
-void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t index)
+static void appendBlockSet(IrToStringContext& ctx, BlockIteratorWrapper blocks)
 {
+    bool comma = false;
+
+    for (uint32_t target : blocks)
+    {
+        if (comma)
+            append(ctx.result, ", ");
+        comma = true;
+
+        toString(ctx, ctx.blocks[target], target);
+    }
+}
+
+static void appendRegisterSet(IrToStringContext& ctx, const RegisterSet& rs)
+{
+    bool comma = false;
+
+    for (size_t i = 0; i < rs.regs.size(); i++)
+    {
+        if (rs.regs.test(i))
+        {
+            if (comma)
+                append(ctx.result, ", ");
+            comma = true;
+
+            append(ctx.result, "R%d", int(i));
+        }
+    }
+
+    if (rs.varargSeq)
+    {
+        if (comma)
+            append(ctx.result, ", ");
+
+        append(ctx.result, "R%d...", rs.varargStart);
+    }
+}
+
+void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t index, bool includeUseInfo)
+{
+    // Report captured registers for entry block
+    if (block.useCount == 0 && block.kind != IrBlockKind::Dead && ctx.cfg.captured.regs.any())
+    {
+        append(ctx.result, "; captured regs: ");
+        appendRegisterSet(ctx, ctx.cfg.captured);
+        append(ctx.result, "\n\n");
+    }
+
     size_t start = ctx.result.size();
 
     toString(ctx, block, index);
-    padToDetailColumn(ctx.result, start);
+    append(ctx.result, ":");
 
-    append(ctx.result, "; useCount: %d\n", block.useCount);
+    if (includeUseInfo)
+    {
+        padToDetailColumn(ctx.result, start);
+
+        append(ctx.result, "; useCount: %d\n", block.useCount);
+    }
+    else
+    {
+        ctx.result.append("\n");
+    }
+
+    // Predecessor list
+    if (!ctx.cfg.predecessors.empty())
+    {
+        BlockIteratorWrapper pred = predecessors(ctx.cfg, index);
+
+        if (!pred.empty())
+        {
+            append(ctx.result, "; predecessors: ");
+
+            appendBlockSet(ctx, pred);
+            append(ctx.result, "\n");
+        }
+    }
+
+    // Successor list
+    if (!ctx.cfg.successors.empty())
+    {
+        BlockIteratorWrapper succ = successors(ctx.cfg, index);
+
+        if (!succ.empty())
+        {
+            append(ctx.result, "; successors: ");
+
+            appendBlockSet(ctx, succ);
+            append(ctx.result, "\n");
+        }
+    }
+
+    // Live-in VM regs
+    if (index < ctx.cfg.in.size())
+    {
+        const RegisterSet& in = ctx.cfg.in[index];
+
+        if (in.regs.any() || in.varargSeq)
+        {
+            append(ctx.result, "; in regs: ");
+            appendRegisterSet(ctx, in);
+            append(ctx.result, "\n");
+        }
+    }
+
+    // Live-out VM regs
+    if (index < ctx.cfg.out.size())
+    {
+        const RegisterSet& out = ctx.cfg.out[index];
+
+        if (out.regs.any() || out.varargSeq)
+        {
+            append(ctx.result, "; out regs: ");
+            appendRegisterSet(ctx, out);
+            append(ctx.result, "\n");
+        }
+    }
 }
 
-std::string toString(IrFunction& function, bool includeDetails)
+std::string toString(IrFunction& function, bool includeUseInfo)
 {
     std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants};
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg};
 
     for (size_t i = 0; i < function.blocks.size(); i++)
     {
@@ -397,15 +515,7 @@ std::string toString(IrFunction& function, bool includeDetails)
         if (block.kind == IrBlockKind::Dead)
             continue;
 
-        if (includeDetails)
-        {
-            toStringDetailed(ctx, block, uint32_t(i));
-        }
-        else
-        {
-            toString(ctx, block, uint32_t(i));
-            ctx.result.append("\n");
-        }
+        toStringDetailed(ctx, block, uint32_t(i), includeUseInfo);
 
         if (block.start == ~0u)
         {
@@ -423,16 +533,7 @@ std::string toString(IrFunction& function, bool includeDetails)
                 continue;
 
             append(ctx.result, " ");
-
-            if (includeDetails)
-            {
-                toStringDetailed(ctx, inst, index);
-            }
-            else
-            {
-                toString(ctx, inst, index);
-                ctx.result.append("\n");
-            }
+            toStringDetailed(ctx, inst, index, includeUseInfo);
         }
 
         append(ctx.result, "\n");
@@ -443,7 +544,7 @@ std::string toString(IrFunction& function, bool includeDetails)
 
 std::string dump(IrFunction& function)
 {
-    std::string result = toString(function, /* includeDetails */ true);
+    std::string result = toString(function, /* includeUseInfo */ true);
 
     printf("%s\n", result.c_str());
 

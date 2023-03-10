@@ -276,6 +276,7 @@ PendingTypePack* TxnLog::replace(TypePackId tp, TypePackVar replacement)
 PendingType* TxnLog::bindTable(TypeId ty, std::optional<TypeId> newBoundTo)
 {
     LUAU_ASSERT(get<TableType>(ty));
+    LUAU_ASSERT(ty != newBoundTo);
 
     PendingType* newTy = queue(ty);
     if (TableType* ttv = Luau::getMutable<TableType>(newTy))

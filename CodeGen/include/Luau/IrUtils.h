@@ -183,9 +183,6 @@ void kill(IrFunction& function, uint32_t start, uint32_t end);
 // Remove a block, including all instructions inside
 void kill(IrFunction& function, IrBlock& block);
 
-void removeUse(IrFunction& function, IrInst& inst);
-void removeUse(IrFunction& function, IrBlock& block);
-
 // Replace a single operand and update use counts (can cause chain removal of dead code)
 void replace(IrFunction& function, IrOp& original, IrOp replacement);
 

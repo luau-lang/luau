@@ -14,6 +14,29 @@ namespace Luau
 namespace CodeGen
 {
 
+static void removeInstUse(IrFunction& function, uint32_t instIdx)
+{
+    IrInst& inst = function.instructions[instIdx];
+
+    LUAU_ASSERT(inst.useCount);
+    inst.useCount--;
+
+    if (inst.useCount == 0)
+        kill(function, inst);
+}
+
+static void removeBlockUse(IrFunction& function, uint32_t blockIdx)
+{
+    IrBlock& block = function.blocks[blockIdx];
+
+    LUAU_ASSERT(block.useCount);
+    block.useCount--;
+
+    // Entry block is never removed because is has an implicit use
+    if (block.useCount == 0 && blockIdx != 0)
+        kill(function, block);
+}
+
 void addUse(IrFunction& function, IrOp op)
 {
     if (op.kind == IrOpKind::Inst)
@@ -25,9 +48,9 @@ void addUse(IrFunction& function, IrOp op)
 void removeUse(IrFunction& function, IrOp op)
 {
     if (op.kind == IrOpKind::Inst)
-        removeUse(function, function.instructions[op.index]);
+        removeInstUse(function, op.index);
     else if (op.kind == IrOpKind::Block)
-        removeUse(function, function.blocks[op.index]);
+        removeBlockUse(function, op.index);
 }
 
 bool isGCO(uint8_t tag)
@@ -83,24 +106,6 @@ void kill(IrFunction& function, IrBlock& block)
     block.finish = ~0u;
 }
 
-void removeUse(IrFunction& function, IrInst& inst)
-{
-    LUAU_ASSERT(inst.useCount);
-    inst.useCount--;
-
-    if (inst.useCount == 0)
-        kill(function, inst);
-}
-
-void removeUse(IrFunction& function, IrBlock& block)
-{
-    LUAU_ASSERT(block.useCount);
-    block.useCount--;
-
-    if (block.useCount == 0)
-        kill(function, block);
-}
-
 void replace(IrFunction& function, IrOp& original, IrOp replacement)
 {
     // Add use before removing new one if that's the last one keeping target operand alive
@@ -122,6 +127,9 @@ void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst repl
     addUse(function, replacement.e);
     addUse(function, replacement.f);
 
+    // An extra reference is added so block will not remove itself
+    block.useCount++;
+
     // If we introduced an earlier terminating instruction, all following instructions become dead
     if (!isBlockTerminator(inst.cmd) && isBlockTerminator(replacement.cmd))
     {
@@ -142,6 +150,10 @@ void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst repl
     removeUse(function, inst.f);
 
     inst = replacement;
+
+    // Removing the earlier extra reference, this might leave the block without users without marking it as dead
+    // This will have to be handled by separate dead code elimination
+    block.useCount--;
 }
 
 void substitute(IrFunction& function, IrInst& inst, IrOp replacement)

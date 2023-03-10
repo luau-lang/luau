@@ -145,14 +145,15 @@ LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
         L->base = L->ci->base;
     }
 
+    // note: the pc expectations of the hook are matching the general "pc points to next instruction"
+    // however, for the hook to be able to continue execution from the same point, this is called with savedpc at the *current* instruction
+    // this needs to be called before luaD_checkstack in case it fails to reallocate stack
+    if (L->ci->savedpc)
+        L->ci->savedpc++;
+
     luaD_checkstack(L, LUA_MINSTACK); // ensure minimum stack size
     L->ci->top = L->top + LUA_MINSTACK;
     LUAU_ASSERT(L->ci->top <= L->stack_last);
-
-    // note: the pc expectations of the hook are matching the general "pc points to next instruction"
-    // however, for the hook to be able to continue execution from the same point, this is called with savedpc at the *current* instruction
-    if (L->ci->savedpc)
-        L->ci->savedpc++;
 
     Closure* cl = clvalue(L->ci->func);
 

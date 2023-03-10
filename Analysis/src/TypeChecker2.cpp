@@ -857,7 +857,7 @@ struct TypeChecker2
     }
 
     void reportOverloadResolutionErrors(AstExprCall* call, std::vector<TypeId> overloads, TypePackId expectedArgTypes,
-        const std::vector<TypeId>& overloadsThatMatchArgCount, std::vector<std::pair<ErrorVec, const FunctionType*>> overloadsErrors)
+        const std::vector<TypeId>& overloadsThatMatchArgCount, std::vector<std::pair<ErrorVec, TypeId>> overloadsErrors)
     {
         if (overloads.size() == 1)
         {
@@ -883,8 +883,8 @@ struct TypeChecker2
             const FunctionType* ftv = get<FunctionType>(overload);
             LUAU_ASSERT(ftv); // overload must be a function type here
 
-            auto error = std::find_if(overloadsErrors.begin(), overloadsErrors.end(), [ftv](const std::pair<ErrorVec, const FunctionType*>& e) {
-                return ftv == std::get<1>(e);
+            auto error = std::find_if(overloadsErrors.begin(), overloadsErrors.end(), [overload](const std::pair<ErrorVec, TypeId>& e) {
+                return overload == e.second;
             });
 
             LUAU_ASSERT(error != overloadsErrors.end());
@@ -1036,7 +1036,7 @@ struct TypeChecker2
         TypePackId expectedArgTypes = arena->addTypePack(args);
 
         std::vector<TypeId> overloads = flattenIntersection(testFunctionType);
-        std::vector<std::pair<ErrorVec, const FunctionType*>> overloadsErrors;
+        std::vector<std::pair<ErrorVec, TypeId>> overloadsErrors;
         overloadsErrors.reserve(overloads.size());
 
         std::vector<TypeId> overloadsThatMatchArgCount;
@@ -1060,7 +1060,7 @@ struct TypeChecker2
                 }
                 else
                 {
-                    overloadsErrors.emplace_back(std::vector{TypeError{call->func->location, UnificationTooComplex{}}}, overloadFn);
+                    overloadsErrors.emplace_back(std::vector{TypeError{call->func->location, UnificationTooComplex{}}}, overload);
                     return;
                 }
             }
@@ -1086,7 +1086,7 @@ struct TypeChecker2
             if (!argMismatch)
                 overloadsThatMatchArgCount.push_back(overload);
 
-            overloadsErrors.emplace_back(std::move(overloadErrors), overloadFn);
+            overloadsErrors.emplace_back(std::move(overloadErrors), overload);
         }
 
         reportOverloadResolutionErrors(call, overloads, expectedArgTypes, overloadsThatMatchArgCount, overloadsErrors);
@@ -1102,11 +1102,54 @@ struct TypeChecker2
         visitCall(call);
     }
 
+    std::optional<TypeId> tryStripUnionFromNil(TypeId ty)
+    {
+        if (const UnionType* utv = get<UnionType>(ty))
+        {
+            if (!std::any_of(begin(utv), end(utv), isNil))
+                return ty;
+
+            std::vector<TypeId> result;
+
+            for (TypeId option : utv)
+            {
+                if (!isNil(option))
+                    result.push_back(option);
+            }
+
+            if (result.empty())
+                return std::nullopt;
+
+            return result.size() == 1 ? result[0] : module->internalTypes.addType(UnionType{std::move(result)});
+        }
+
+        return std::nullopt;
+    }
+
+    TypeId stripFromNilAndReport(TypeId ty, const Location& location)
+    {
+        ty = follow(ty);
+
+        if (auto utv = get<UnionType>(ty))
+        {
+            if (!std::any_of(begin(utv), end(utv), isNil))
+                return ty;
+        }
+
+        if (std::optional<TypeId> strippedUnion = tryStripUnionFromNil(ty))
+        {
+            reportError(OptionalValueAccess{ty}, location);
+            return follow(*strippedUnion);
+        }
+
+        return ty;
+    }
+
     void visitExprName(AstExpr* expr, Location location, const std::string& propName, ValueContext context)
     {
         visit(expr, RValue);
 
-        TypeId leftType = lookupType(expr);
+        TypeId leftType = stripFromNilAndReport(lookupType(expr), location);
         const NormalizedType* norm = normalizer.normalize(leftType);
         if (!norm)
             reportError(NormalizationTooComplex{}, location);
@@ -1766,7 +1809,15 @@ struct TypeChecker2
             }
             else
             {
-                reportError(UnknownSymbol{ty->name.value, UnknownSymbol::Context::Type}, ty->location);
+                std::string symbol = "";
+                if (ty->prefix)
+                {
+                    symbol += (*(ty->prefix)).value;
+                    symbol += ".";
+                }
+                symbol += ty->name.value;
+
+                reportError(UnknownSymbol{symbol, UnknownSymbol::Context::Type}, ty->location);
             }
         }
     }
@@ -2032,7 +2083,11 @@ struct TypeChecker2
         {
             if (foundOneProp)
                 reportError(MissingUnionProperty{tableTy, typesMissingTheProp, prop}, location);
-            else if (context == LValue)
+            // For class LValues, we don't want to report an extension error,
+            // because classes come into being with full knowledge of their
+            // shape. We instead want to report the unknown property error of
+            // the `else` branch.
+            else if (context == LValue && !get<ClassType>(tableTy))
                 reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
             else
                 reportError(UnknownProperty{tableTy, prop}, location);
