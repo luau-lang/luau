@@ -48,7 +48,7 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_superfluous_union")
         local x:string = s
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*requireType("s"), *typeChecker.stringType);
+    CHECK_EQ(*requireType("s"), *builtinTypes->stringType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "and_does_not_always_add_boolean")
@@ -72,7 +72,7 @@ TEST_CASE_FIXTURE(Fixture, "and_adds_boolean_no_superfluous_union")
         local x:boolean = s
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*requireType("x"), *typeChecker.booleanType);
+    CHECK_EQ(*requireType("x"), *builtinTypes->booleanType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "and_or_ternary")
@@ -99,9 +99,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "primitive_arith_no_metatable")
 
     std::optional<TypeId> retType = first(functionType->retTypes);
     REQUIRE(retType.has_value());
-    CHECK_EQ(typeChecker.numberType, follow(*retType));
-    CHECK_EQ(requireType("n"), typeChecker.numberType);
-    CHECK_EQ(requireType("s"), typeChecker.stringType);
+    CHECK_EQ(builtinTypes->numberType, follow(*retType));
+    CHECK_EQ(requireType("n"), builtinTypes->numberType);
+    CHECK_EQ(requireType("s"), builtinTypes->stringType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "primitive_arith_no_metatable_with_follows")
@@ -112,7 +112,7 @@ TEST_CASE_FIXTURE(Fixture, "primitive_arith_no_metatable_with_follows")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(requireType("SOLAR_MASS"), typeChecker.numberType);
+    CHECK_EQ(requireType("SOLAR_MASS"), builtinTypes->numberType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "primitive_arith_possible_metatable")
@@ -248,8 +248,12 @@ TEST_CASE_FIXTURE(Fixture, "cannot_indirectly_compare_types_that_do_not_have_a_m
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     GenericError* gen = get<GenericError>(result.errors[0]);
+    REQUIRE(gen != nullptr);
 
-    REQUIRE_EQ(gen->message, "Type a cannot be compared with < because it has no metatable");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(gen->message == "Types 'a' and 'b' cannot be compared with < because neither type has a metatable");
+    else
+        REQUIRE_EQ(gen->message, "Type a cannot be compared with < because it has no metatable");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_indirectly_compare_types_that_do_not_offer_overloaded_ordering_operators")
@@ -270,7 +274,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_indirectly_compare_types_that_do_not_
 
     GenericError* gen = get<GenericError>(result.errors[0]);
     REQUIRE(gen != nullptr);
-    REQUIRE_EQ(gen->message, "Table M does not offer metamethod __lt");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(gen->message == "Types 'M' and 'M' cannot be compared with < because neither type's metatable has a '__lt' metamethod");
+    else
+        REQUIRE_EQ(gen->message, "Table M does not offer metamethod __lt");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_compare_tables_that_do_not_have_the_same_metatable")
@@ -353,7 +361,7 @@ TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_op")
         s += true
     )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(result.errors[0], (TypeError{Location{{2, 13}, {2, 17}}, TypeMismatch{typeChecker.numberType, typeChecker.booleanType}}));
+    CHECK_EQ(result.errors[0], (TypeError{Location{{2, 13}, {2, 17}}, TypeMismatch{builtinTypes->numberType, builtinTypes->booleanType}}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_result")
@@ -364,8 +372,8 @@ TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_result")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ(result.errors[0], (TypeError{Location{{2, 8}, {2, 9}}, TypeMismatch{typeChecker.numberType, typeChecker.stringType}}));
-    CHECK_EQ(result.errors[1], (TypeError{Location{{2, 8}, {2, 15}}, TypeMismatch{typeChecker.stringType, typeChecker.numberType}}));
+    CHECK_EQ(result.errors[0], (TypeError{Location{{2, 8}, {2, 9}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}}));
+    CHECK_EQ(result.errors[1], (TypeError{Location{{2, 8}, {2, 15}}, TypeMismatch{builtinTypes->stringType, builtinTypes->numberType}}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "compound_assign_metatable")
@@ -521,7 +529,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
     CHECK_EQ("string", toString(requireType("a")));
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE_EQ(*tm->wantedType, *typeChecker.booleanType);
+    REQUIRE_EQ(*tm->wantedType, *builtinTypes->booleanType);
     // given type is the typeof(foo) which is complex to compare against
 }
 
@@ -547,8 +555,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_len_error")
     CHECK_EQ("number", toString(requireType("a")));
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE_EQ(*tm->wantedType, *typeChecker.numberType);
-    REQUIRE_EQ(*tm->givenType, *typeChecker.stringType);
+    REQUIRE_EQ(*tm->wantedType, *builtinTypes->numberType);
+    REQUIRE_EQ(*tm->givenType, *builtinTypes->stringType);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "unary_not_is_boolean")
@@ -596,8 +604,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "disallow_string_and_types_without_metatables
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(*tm->wantedType, *typeChecker.numberType);
-    CHECK_EQ(*tm->givenType, *typeChecker.stringType);
+    CHECK_EQ(*tm->wantedType, *builtinTypes->numberType);
+    CHECK_EQ(*tm->givenType, *builtinTypes->stringType);
 
     GenericError* gen1 = get<GenericError>(result.errors[1]);
     REQUIRE(gen1);
@@ -608,7 +616,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "disallow_string_and_types_without_metatables
 
     TypeMismatch* tm2 = get<TypeMismatch>(result.errors[2]);
     REQUIRE(tm2);
-    CHECK_EQ(*tm2->wantedType, *typeChecker.numberType);
+    CHECK_EQ(*tm2->wantedType, *builtinTypes->numberType);
     CHECK_EQ(*tm2->givenType, *requireType("foo"));
 }
 
@@ -802,7 +810,7 @@ local b: number = 1 or a
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(typeChecker.numberType, tm->wantedType);
+    CHECK_EQ(builtinTypes->numberType, tm->wantedType);
     CHECK_EQ("number?", toString(tm->givenType));
 }
 

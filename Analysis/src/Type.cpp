@@ -856,22 +856,22 @@ TypeId BuiltinTypes::makeStringMetatable()
     return arena->addType(TableType{{{{"__index", {tableType}}}}, std::nullopt, TypeLevel{}, TableState::Sealed});
 }
 
-TypeId BuiltinTypes::errorRecoveryType()
+TypeId BuiltinTypes::errorRecoveryType() const
 {
     return errorType;
 }
 
-TypePackId BuiltinTypes::errorRecoveryTypePack()
+TypePackId BuiltinTypes::errorRecoveryTypePack() const
 {
     return errorTypePack;
 }
 
-TypeId BuiltinTypes::errorRecoveryType(TypeId guess)
+TypeId BuiltinTypes::errorRecoveryType(TypeId guess) const
 {
     return guess;
 }
 
-TypePackId BuiltinTypes::errorRecoveryTypePack(TypePackId guess)
+TypePackId BuiltinTypes::errorRecoveryTypePack(TypePackId guess) const
 {
     return guess;
 }

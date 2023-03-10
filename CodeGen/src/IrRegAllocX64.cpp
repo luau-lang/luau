@@ -169,13 +169,17 @@ void IrRegAllocX64::assertAllFree() const
         LUAU_ASSERT(free);
 }
 
+ScopedRegX64::ScopedRegX64(IrRegAllocX64& owner)
+    : owner(owner)
+    , reg(noreg)
+{
+}
+
 ScopedRegX64::ScopedRegX64(IrRegAllocX64& owner, SizeX64 size)
     : owner(owner)
+    , reg(noreg)
 {
-    if (size == SizeX64::xmmword)
-        reg = owner.allocXmmReg();
-    else
-        reg = owner.allocGprReg(size);
+    alloc(size);
 }
 
 ScopedRegX64::ScopedRegX64(IrRegAllocX64& owner, RegisterX64 reg)
@@ -188,6 +192,16 @@ ScopedRegX64::~ScopedRegX64()
 {
     if (reg != noreg)
         owner.freeReg(reg);
+}
+
+void ScopedRegX64::alloc(SizeX64 size)
+{
+    LUAU_ASSERT(reg == noreg);
+
+    if (size == SizeX64::xmmword)
+        reg = owner.allocXmmReg();
+    else
+        reg = owner.allocGprReg(size);
 }
 
 void ScopedRegX64::free()

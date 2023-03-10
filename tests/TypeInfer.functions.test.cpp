@@ -33,8 +33,8 @@ TEST_CASE_FIXTURE(Fixture, "check_function_bodies")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 44}, Position{0, 48}}, TypeMismatch{
-                                                                                          typeChecker.numberType,
-                                                                                          typeChecker.booleanType,
+                                                                                          builtinTypes->numberType,
+                                                                                          builtinTypes->booleanType,
                                                                                       }}));
 }
 
@@ -70,7 +70,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_return_type")
     std::vector<TypeId> retVec = flatten(takeFiveType->retTypes).first;
     REQUIRE(!retVec.empty());
 
-    REQUIRE_EQ(*follow(retVec[0]), *typeChecker.numberType);
+    REQUIRE_EQ(*follow(retVec[0]), *builtinTypes->numberType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_from_function_return_type")
@@ -78,7 +78,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_from_function_return_type")
     CheckResult result = check("function take_five() return 5 end    local five = take_five()");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*typeChecker.numberType, *follow(requireType("five")));
+    CHECK_EQ(*builtinTypes->numberType, *follow(requireType("five")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_that_function_does_not_return_a_table")
@@ -92,7 +92,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_that_function_does_not_return_a_table")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(result.errors[0], (TypeError{Location{Position{5, 8}, Position{5, 24}}, NotATable{typeChecker.numberType}}));
+    CHECK_EQ(result.errors[0], (TypeError{Location{Position{5, 8}, Position{5, 24}}, NotATable{builtinTypes->numberType}}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generalize_table_property")
@@ -171,8 +171,8 @@ TEST_CASE_FIXTURE(Fixture, "list_only_alternative_overloads_that_match_argument_
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(typeChecker.numberType, tm->wantedType);
-    CHECK_EQ(typeChecker.stringType, tm->givenType);
+    CHECK_EQ(builtinTypes->numberType, tm->wantedType);
+    CHECK_EQ(builtinTypes->stringType, tm->givenType);
 
     ExtraInformation* ei = get<ExtraInformation>(result.errors[1]);
     REQUIRE(ei);
@@ -208,8 +208,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_give_other_overloads_message_if_only_one_argume
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(typeChecker.numberType, tm->wantedType);
-    CHECK_EQ(typeChecker.stringType, tm->givenType);
+    CHECK_EQ(builtinTypes->numberType, tm->wantedType);
+    CHECK_EQ(builtinTypes->stringType, tm->givenType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_return_type_from_selected_overload")
@@ -847,13 +847,13 @@ TEST_CASE_FIXTURE(Fixture, "calling_function_with_incorrect_argument_type_yields
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
     CHECK_EQ(result.errors[0], (TypeError{Location{Position{3, 12}, Position{3, 18}}, TypeMismatch{
-                                                                                          typeChecker.numberType,
-                                                                                          typeChecker.stringType,
+                                                                                          builtinTypes->numberType,
+                                                                                          builtinTypes->stringType,
                                                                                       }}));
 
     CHECK_EQ(result.errors[1], (TypeError{Location{Position{3, 20}, Position{3, 23}}, TypeMismatch{
-                                                                                          typeChecker.stringType,
-                                                                                          typeChecker.numberType,
+                                                                                          builtinTypes->stringType,
+                                                                                          builtinTypes->numberType,
                                                                                       }}));
 }
 
@@ -1669,6 +1669,10 @@ TEST_CASE_FIXTURE(Fixture, "dont_infer_parameter_types_for_functions_from_their_
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("<a>(a) -> a", toString(requireType("f")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("<a>({+ p: {+ q: a +} +}) -> a & ~false", toString(requireType("g")));
+    else
+        CHECK_EQ("({+ p: {+ q: nil +} +}) -> nil", toString(requireType("g")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_mutate_the_underlying_head_of_typepack_when_calling_with_self")
@@ -1849,6 +1853,31 @@ end
     )");
 
     LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "dont_assert_when_the_tarjan_limit_is_exceeded_during_generalization")
+{
+    ScopedFastInt sfi{"LuauTarjanChildLimit", 2};
+    ScopedFastFlag sff[] = {
+        {"DebugLuauDeferredConstraintResolution", true},
+        {"LuauClonePublicInterfaceLess", true},
+        {"LuauSubstitutionReentrant", true},
+        {"LuauSubstitutionFixMissingFields", true},
+    };
+
+    CheckResult result = check(R"(
+        function f(t)
+            t.x.y.z = 441
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    CHECK_MESSAGE(get<CodeTooComplex>(result.errors[0]), "Expected CodeTooComplex but got: " << toString(result.errors[0]));
+    CHECK(Location({1, 17}, {1, 18}) == result.errors[0].location);
+
+    CHECK_MESSAGE(get<UnificationTooComplex>(result.errors[1]), "Expected UnificationTooComplex but got: " << toString(result.errors[1]));
+    CHECK(Location({0, 0}, {4, 4}) == result.errors[1].location);
 }
 
 TEST_SUITE_END();

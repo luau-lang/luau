@@ -48,8 +48,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_clone_persistent_primitive")
     CloneState cloneState;
 
     // numberType is persistent.  We leave it as-is.
-    TypeId newNumber = clone(typeChecker.numberType, dest, cloneState);
-    CHECK_EQ(newNumber, typeChecker.numberType);
+    TypeId newNumber = clone(builtinTypes->numberType, dest, cloneState);
+    CHECK_EQ(newNumber, builtinTypes->numberType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "deepClone_non_persistent_primitive")
@@ -58,9 +58,9 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_non_persistent_primitive")
     CloneState cloneState;
 
     // Create a new number type that isn't persistent
-    unfreeze(typeChecker.globalTypes);
-    TypeId oldNumber = typeChecker.globalTypes.addType(PrimitiveType{PrimitiveType::Number});
-    freeze(typeChecker.globalTypes);
+    unfreeze(frontend.globals.globalTypes);
+    TypeId oldNumber = frontend.globals.globalTypes.addType(PrimitiveType{PrimitiveType::Number});
+    freeze(frontend.globals.globalTypes);
     TypeId newNumber = clone(oldNumber, dest, cloneState);
 
     CHECK_NE(newNumber, oldNumber);
@@ -170,10 +170,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")
     REQUIRE(signType != nullptr);
 
     CHECK(!isInArena(signType, module->interfaceTypes));
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK(isInArena(signType, frontend.globalTypes));
-    else
-        CHECK(isInArena(signType, typeChecker.globalTypes));
+    CHECK(isInArena(signType, frontend.globals.globalTypes));
 }
 
 TEST_CASE_FIXTURE(Fixture, "deepClone_union")
@@ -181,9 +178,9 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_union")
     TypeArena dest;
     CloneState cloneState;
 
-    unfreeze(typeChecker.globalTypes);
-    TypeId oldUnion = typeChecker.globalTypes.addType(UnionType{{typeChecker.numberType, typeChecker.stringType}});
-    freeze(typeChecker.globalTypes);
+    unfreeze(frontend.globals.globalTypes);
+    TypeId oldUnion = frontend.globals.globalTypes.addType(UnionType{{builtinTypes->numberType, builtinTypes->stringType}});
+    freeze(frontend.globals.globalTypes);
     TypeId newUnion = clone(oldUnion, dest, cloneState);
 
     CHECK_NE(newUnion, oldUnion);
@@ -196,9 +193,9 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_intersection")
     TypeArena dest;
     CloneState cloneState;
 
-    unfreeze(typeChecker.globalTypes);
-    TypeId oldIntersection = typeChecker.globalTypes.addType(IntersectionType{{typeChecker.numberType, typeChecker.stringType}});
-    freeze(typeChecker.globalTypes);
+    unfreeze(frontend.globals.globalTypes);
+    TypeId oldIntersection = frontend.globals.globalTypes.addType(IntersectionType{{builtinTypes->numberType, builtinTypes->stringType}});
+    freeze(frontend.globals.globalTypes);
     TypeId newIntersection = clone(oldIntersection, dest, cloneState);
 
     CHECK_NE(newIntersection, oldIntersection);
@@ -210,13 +207,13 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
 {
     Type exampleMetaClass{ClassType{"ExampleClassMeta",
         {
-            {"__add", {typeChecker.anyType}},
+            {"__add", {builtinTypes->anyType}},
         },
         std::nullopt, std::nullopt, {}, {}, "Test"}};
     Type exampleClass{ClassType{"ExampleClass",
         {
-            {"PropOne", {typeChecker.numberType}},
-            {"PropTwo", {typeChecker.stringType}},
+            {"PropOne", {builtinTypes->numberType}},
+            {"PropTwo", {builtinTypes->stringType}},
         },
         std::nullopt, &exampleMetaClass, {}, {}, "Test"}};
 

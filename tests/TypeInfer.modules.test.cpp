@@ -12,6 +12,7 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 using namespace Luau;
 
@@ -480,6 +481,44 @@ return unpack(l0[_])
     )");
 
     LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "check_imported_module_names")
+{
+    fileResolver.source["game/A"] = R"(
+return function(...) end
+    )";
+
+    fileResolver.source["game/B"] = R"(
+local l0 = require(game.A)
+return l0
+    )";
+
+    CheckResult result = check(R"(
+local l0 = require(game.B)
+if true then
+    local l1 = require(game.A)
+end
+return l0
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    ModulePtr mod = getMainModule();
+    REQUIRE(mod);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        REQUIRE(mod->scopes.size() >= 4);
+        CHECK(mod->scopes[0].second->importedModules["l0"] == "game/B");
+        CHECK(mod->scopes[3].second->importedModules["l1"] == "game/A");
+    }
+    else
+    {
+
+        REQUIRE(mod->scopes.size() >= 3);
+        CHECK(mod->scopes[0].second->importedModules["l0"] == "game/B");
+        CHECK(mod->scopes[2].second->importedModules["l1"] == "game/A");
+    }
 }
 
 TEST_SUITE_END();

@@ -18,7 +18,6 @@
 LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
 LUAU_FASTFLAG(LuauNegatedClassTypes);
-LUAU_FASTFLAG(SupportTypeAliasGoToDeclaration);
 
 namespace Luau
 {
@@ -587,8 +586,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
                     if (ModulePtr module = moduleResolver->getModule(moduleInfo->name))
                     {
                         scope->importedTypeBindings[name] = module->exportedTypeBindings;
-                        if (FFlag::SupportTypeAliasGoToDeclaration)
-                            scope->importedModules[name] = moduleName;
+                        scope->importedModules[name] = moduleInfo->name;
                     }
                 }
             }

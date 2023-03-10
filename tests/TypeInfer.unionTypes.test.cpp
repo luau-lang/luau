@@ -131,7 +131,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_property_guaranteed_to_ex
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*typeChecker.numberType, *requireType("r"));
+    CHECK_EQ(*builtinTypes->numberType, *requireType("r"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_mixed_types")
@@ -211,7 +211,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_one_property_of_type_any"
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*typeChecker.anyType, *requireType("r"));
+    CHECK_EQ(*builtinTypes->anyType, *requireType("r"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_equality_comparisons")
@@ -245,7 +245,7 @@ local c = bf.a.y
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(*typeChecker.numberType, *requireType("c"));
+    CHECK_EQ(*builtinTypes->numberType, *requireType("c"));
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
 }
 
@@ -260,7 +260,7 @@ TEST_CASE_FIXTURE(Fixture, "optional_union_functions")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(*typeChecker.numberType, *requireType("c"));
+    CHECK_EQ(*builtinTypes->numberType, *requireType("c"));
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
 }
 
@@ -275,7 +275,7 @@ local c = b:foo(1, 2)
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(*typeChecker.numberType, *requireType("c"));
+    CHECK_EQ(*builtinTypes->numberType, *requireType("c"));
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
 }
 

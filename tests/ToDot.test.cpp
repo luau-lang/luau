@@ -15,7 +15,7 @@ struct ToDotClassFixture : Fixture
 {
     ToDotClassFixture()
     {
-        TypeArena& arena = typeChecker.globalTypes;
+        TypeArena& arena = frontend.globals.globalTypes;
 
         unfreeze(arena);
 
@@ -23,17 +23,17 @@ struct ToDotClassFixture : Fixture
 
         TypeId baseClassInstanceType = arena.addType(ClassType{"BaseClass", {}, std::nullopt, baseClassMetaType, {}, {}, "Test"});
         getMutable<ClassType>(baseClassInstanceType)->props = {
-            {"BaseField", {typeChecker.numberType}},
+            {"BaseField", {builtinTypes->numberType}},
         };
-        typeChecker.globalScope->exportedTypeBindings["BaseClass"] = TypeFun{{}, baseClassInstanceType};
+        frontend.globals.globalScope->exportedTypeBindings["BaseClass"] = TypeFun{{}, baseClassInstanceType};
 
         TypeId childClassInstanceType = arena.addType(ClassType{"ChildClass", {}, baseClassInstanceType, std::nullopt, {}, {}, "Test"});
         getMutable<ClassType>(childClassInstanceType)->props = {
-            {"ChildField", {typeChecker.stringType}},
+            {"ChildField", {builtinTypes->stringType}},
         };
-        typeChecker.globalScope->exportedTypeBindings["ChildClass"] = TypeFun{{}, childClassInstanceType};
+        frontend.globals.globalScope->exportedTypeBindings["ChildClass"] = TypeFun{{}, childClassInstanceType};
 
-        for (const auto& [name, ty] : typeChecker.globalScope->exportedTypeBindings)
+        for (const auto& [name, ty] : frontend.globals.globalScope->exportedTypeBindings)
             persist(ty.type);
 
         freeze(arena);
@@ -373,7 +373,7 @@ n1 [label="GenericTypePack T"];
 
 TEST_CASE_FIXTURE(Fixture, "bound_pack")
 {
-    TypePackVar pack{TypePackVariant{TypePack{{typeChecker.numberType}, {}}}};
+    TypePackVar pack{TypePackVariant{TypePack{{builtinTypes->numberType}, {}}}};
     TypePackVar bound{TypePackVariant{BoundTypePack{&pack}}};
 
     ToDotOptions opts;

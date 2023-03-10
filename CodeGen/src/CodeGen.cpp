@@ -68,9 +68,24 @@ static NativeProto* assembleFunction(X64::AssemblyBuilderX64& build, NativeState
     if (options.includeAssembly || options.includeIr)
     {
         if (proto->debugname)
-            build.logAppend("; function %s()", getstr(proto->debugname));
+            build.logAppend("; function %s(", getstr(proto->debugname));
         else
-            build.logAppend("; function()");
+            build.logAppend("; function(");
+
+        for (int i = 0; i < proto->numparams; i++)
+        {
+            LocVar* var = proto->locvars ? &proto->locvars[proto->sizelocvars - proto->numparams + i] : nullptr;
+
+            if (var && var->varname)
+                build.logAppend("%s%s", i == 0 ? "" : ", ", getstr(var->varname));
+            else
+                build.logAppend("%s$arg%d", i == 0 ? "" : ", ", i);
+        }
+
+        if (proto->numparams != 0 && proto->is_vararg)
+            build.logAppend(", ...)");
+        else
+            build.logAppend(")");
 
         if (proto->linedefined >= 0)
             build.logAppend(" line %d\n", proto->linedefined);
@@ -89,6 +104,10 @@ static NativeProto* assembleFunction(X64::AssemblyBuilderX64& build, NativeState
     {
         constPropInBlockChains(builder);
     }
+
+    // TODO: cfg info has to be computed earlier to use in optimizations
+    // It's done here to appear in text output and to measure performance impact on code generation
+    computeCfgInfo(builder.function);
 
     optimizeMemoryOperandsX64(builder.function);
 

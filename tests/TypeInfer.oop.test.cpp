@@ -290,4 +290,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "set_prop_of_intersection_containing_metatabl
     )");
 }
 
+// DCR once had a bug in the following code where it would erroneously bind the 'self' table to itself.
+TEST_CASE_FIXTURE(Fixture, "dont_bind_free_tables_to_themselves")
+{
+    CheckResult result = check(R"(
+        local T = {}
+        local b: any
+
+        function T:m()
+            local a = b[i]
+            if a then
+                self:n()
+                if self:p(a) then
+                    self:n()
+                end
+            end
+        end
+    )");
+}
+
 TEST_SUITE_END();

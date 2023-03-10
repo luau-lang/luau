@@ -15,8 +15,6 @@
 
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
-LUAU_FASTFLAG(LuauFixAutocompleteInWhile)
-LUAU_FASTFLAG(LuauFixAutocompleteInFor)
 
 using namespace Luau;
 
@@ -85,10 +83,11 @@ struct ACFixtureImpl : BaseType
 
     LoadDefinitionFileResult loadDefinition(const std::string& source)
     {
-        TypeChecker& typeChecker = this->frontend.typeCheckerForAutocomplete;
-        unfreeze(typeChecker.globalTypes);
-        LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, source, "@test");
-        freeze(typeChecker.globalTypes);
+        GlobalTypes& globals = this->frontend.globalsForAutocomplete;
+        unfreeze(globals.globalTypes);
+        LoadDefinitionFileResult result =
+            loadDefinitionFile(this->frontend.typeChecker, globals, globals.globalScope, source, "@test", /* captureComments */ false);
+        freeze(globals.globalTypes);
 
         REQUIRE_MESSAGE(result.success, "loadDefinition: unable to load definition file");
         return result;
@@ -110,10 +109,10 @@ struct ACFixture : ACFixtureImpl<Fixture>
     ACFixture()
         : ACFixtureImpl<Fixture>()
     {
-        addGlobalBinding(frontend, "table", Binding{typeChecker.anyType});
-        addGlobalBinding(frontend, "math", Binding{typeChecker.anyType});
-        addGlobalBinding(frontend.typeCheckerForAutocomplete, "table", Binding{typeChecker.anyType});
-        addGlobalBinding(frontend.typeCheckerForAutocomplete, "math", Binding{typeChecker.anyType});
+        addGlobalBinding(frontend.globals, "table", Binding{builtinTypes->anyType});
+        addGlobalBinding(frontend.globals, "math", Binding{builtinTypes->anyType});
+        addGlobalBinding(frontend.globalsForAutocomplete, "table", Binding{builtinTypes->anyType});
+        addGlobalBinding(frontend.globalsForAutocomplete, "math", Binding{builtinTypes->anyType});
     }
 };
 
@@ -630,19 +629,10 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_for_middle_keywords")
     )");
 
     auto ac5 = autocomplete('1');
-    if (FFlag::LuauFixAutocompleteInFor)
-    {
-        CHECK_EQ(ac5.entryMap.count("math"), 1);
-        CHECK_EQ(ac5.entryMap.count("do"), 0);
-        CHECK_EQ(ac5.entryMap.count("end"), 0);
-        CHECK_EQ(ac5.context, AutocompleteContext::Expression);
-    }
-    else
-    {
-        CHECK_EQ(ac5.entryMap.count("do"), 1);
-        CHECK_EQ(ac5.entryMap.count("end"), 0);
-        CHECK_EQ(ac5.context, AutocompleteContext::Keyword);
-    }
+    CHECK_EQ(ac5.entryMap.count("math"), 1);
+    CHECK_EQ(ac5.entryMap.count("do"), 0);
+    CHECK_EQ(ac5.entryMap.count("end"), 0);
+    CHECK_EQ(ac5.context, AutocompleteContext::Expression);
 
     check(R"(
         for x = 1, 2, 5 f@1
@@ -661,29 +651,26 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_for_middle_keywords")
     CHECK_EQ(ac7.entryMap.count("end"), 1);
     CHECK_EQ(ac7.context, AutocompleteContext::Statement);
 
-    if (FFlag::LuauFixAutocompleteInFor)
+    check(R"(local Foo = 1
+        for x = @11, @22, @35
+    )");
+
+    for (int i = 0; i < 3; ++i)
     {
-        check(R"(local Foo = 1
-            for x = @11, @22, @35
-        )");
+        auto ac8 = autocomplete('1' + i);
+        CHECK_EQ(ac8.entryMap.count("Foo"), 1);
+        CHECK_EQ(ac8.entryMap.count("do"), 0);
+    }
 
-        for (int i = 0; i < 3; ++i)
-        {
-            auto ac8 = autocomplete('1' + i);
-            CHECK_EQ(ac8.entryMap.count("Foo"), 1);
-            CHECK_EQ(ac8.entryMap.count("do"), 0);
-        }
+    check(R"(local Foo = 1
+        for x = @11, @22
+    )");
 
-        check(R"(local Foo = 1
-            for x = @11, @22
-        )");
-
-        for (int i = 0; i < 2; ++i)
-        {
-            auto ac9 = autocomplete('1' + i);
-            CHECK_EQ(ac9.entryMap.count("Foo"), 1);
-            CHECK_EQ(ac9.entryMap.count("do"), 0);
-        }
+    for (int i = 0; i < 2; ++i)
+    {
+        auto ac9 = autocomplete('1' + i);
+        CHECK_EQ(ac9.entryMap.count("Foo"), 1);
+        CHECK_EQ(ac9.entryMap.count("do"), 0);
     }
 }
 
@@ -776,18 +763,10 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_while_middle_keywords")
     )");
 
     auto ac2 = autocomplete('1');
-    if (FFlag::LuauFixAutocompleteInWhile)
-    {
-        CHECK_EQ(3, ac2.entryMap.size());
-        CHECK_EQ(ac2.entryMap.count("do"), 1);
-        CHECK_EQ(ac2.entryMap.count("and"), 1);
-        CHECK_EQ(ac2.entryMap.count("or"), 1);
-    }
-    else
-    {
-        CHECK_EQ(1, ac2.entryMap.size());
-        CHECK_EQ(ac2.entryMap.count("do"), 1);
-    }
+    CHECK_EQ(3, ac2.entryMap.size());
+    CHECK_EQ(ac2.entryMap.count("do"), 1);
+    CHECK_EQ(ac2.entryMap.count("and"), 1);
+    CHECK_EQ(ac2.entryMap.count("or"), 1);
     CHECK_EQ(ac2.context, AutocompleteContext::Keyword);
 
     check(R"(
@@ -803,31 +782,20 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_while_middle_keywords")
     )");
 
     auto ac4 = autocomplete('1');
-    if (FFlag::LuauFixAutocompleteInWhile)
-    {
-        CHECK_EQ(3, ac4.entryMap.size());
-        CHECK_EQ(ac4.entryMap.count("do"), 1);
-        CHECK_EQ(ac4.entryMap.count("and"), 1);
-        CHECK_EQ(ac4.entryMap.count("or"), 1);
-    }
-    else
-    {
-        CHECK_EQ(1, ac4.entryMap.size());
-        CHECK_EQ(ac4.entryMap.count("do"), 1);
-    }
+    CHECK_EQ(3, ac4.entryMap.size());
+    CHECK_EQ(ac4.entryMap.count("do"), 1);
+    CHECK_EQ(ac4.entryMap.count("and"), 1);
+    CHECK_EQ(ac4.entryMap.count("or"), 1);
     CHECK_EQ(ac4.context, AutocompleteContext::Keyword);
 
-    if (FFlag::LuauFixAutocompleteInWhile)
-    {
-        check(R"(
-            while t@1
-        )");
+    check(R"(
+        while t@1
+    )");
 
-        auto ac5 = autocomplete('1');
-        CHECK_EQ(ac5.entryMap.count("do"), 0);
-        CHECK_EQ(ac5.entryMap.count("true"), 1);
-        CHECK_EQ(ac5.entryMap.count("false"), 1);
-    }
+    auto ac5 = autocomplete('1');
+    CHECK_EQ(ac5.entryMap.count("do"), 0);
+    CHECK_EQ(ac5.entryMap.count("true"), 1);
+    CHECK_EQ(ac5.entryMap.count("false"), 1);
 }
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_if_middle_keywords")
@@ -3460,11 +3428,11 @@ TEST_CASE_FIXTURE(ACFixture, "string_contents_is_available_to_callback")
         declare function require(path: string): any
     )");
 
-    std::optional<Binding> require = frontend.typeCheckerForAutocomplete.globalScope->linearSearchForBinding("require");
+    std::optional<Binding> require = frontend.globalsForAutocomplete.globalScope->linearSearchForBinding("require");
     REQUIRE(require);
-    Luau::unfreeze(frontend.typeCheckerForAutocomplete.globalTypes);
+    Luau::unfreeze(frontend.globalsForAutocomplete.globalTypes);
     attachTag(require->typeId, "RequireCall");
-    Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
+    Luau::freeze(frontend.globalsForAutocomplete.globalTypes);
 
     check(R"(
         local x = require("testing/@1")

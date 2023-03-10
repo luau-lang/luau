@@ -27,8 +27,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_multi_return")
     const auto& [returns, tail] = flatten(takeTwoType->retTypes);
 
     CHECK_EQ(2, returns.size());
-    CHECK_EQ(typeChecker.numberType, follow(returns[0]));
-    CHECK_EQ(typeChecker.numberType, follow(returns[1]));
+    CHECK_EQ(builtinTypes->numberType, follow(returns[0]));
+    CHECK_EQ(builtinTypes->numberType, follow(returns[1]));
 
     CHECK(!tail);
 }
@@ -74,9 +74,9 @@ TEST_CASE_FIXTURE(Fixture, "last_element_of_return_statement_can_itself_be_a_pac
     const auto& [rets, tail] = flatten(takeOneMoreType->retTypes);
 
     REQUIRE_EQ(3, rets.size());
-    CHECK_EQ(typeChecker.numberType, follow(rets[0]));
-    CHECK_EQ(typeChecker.numberType, follow(rets[1]));
-    CHECK_EQ(typeChecker.numberType, follow(rets[2]));
+    CHECK_EQ(builtinTypes->numberType, follow(rets[0]));
+    CHECK_EQ(builtinTypes->numberType, follow(rets[1]));
+    CHECK_EQ(builtinTypes->numberType, follow(rets[2]));
 
     CHECK(!tail);
 }
@@ -184,28 +184,28 @@ TEST_CASE_FIXTURE(Fixture, "parenthesized_varargs_returns_any")
 
 TEST_CASE_FIXTURE(Fixture, "variadic_packs")
 {
-    TypeArena& arena = typeChecker.globalTypes;
+    TypeArena& arena = frontend.globals.globalTypes;
 
     unfreeze(arena);
 
-    TypePackId listOfNumbers = arena.addTypePack(TypePackVar{VariadicTypePack{typeChecker.numberType}});
-    TypePackId listOfStrings = arena.addTypePack(TypePackVar{VariadicTypePack{typeChecker.stringType}});
+    TypePackId listOfNumbers = arena.addTypePack(TypePackVar{VariadicTypePack{builtinTypes->numberType}});
+    TypePackId listOfStrings = arena.addTypePack(TypePackVar{VariadicTypePack{builtinTypes->stringType}});
 
     // clang-format off
-    addGlobalBinding(frontend, "foo",
+    addGlobalBinding(frontend.globals, "foo",
         arena.addType(
             FunctionType{
                 listOfNumbers,
-                arena.addTypePack({typeChecker.numberType})
+                arena.addTypePack({builtinTypes->numberType})
             }
         ),
         "@test"
     );
-    addGlobalBinding(frontend, "bar",
+    addGlobalBinding(frontend.globals, "bar",
         arena.addType(
             FunctionType{
-                arena.addTypePack({{typeChecker.numberType}, listOfStrings}),
-                arena.addTypePack({typeChecker.numberType})
+                arena.addTypePack({{builtinTypes->numberType}, listOfStrings}),
+                arena.addTypePack({builtinTypes->numberType})
             }
         ),
         "@test"
@@ -223,9 +223,11 @@ TEST_CASE_FIXTURE(Fixture, "variadic_packs")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    CHECK_EQ(result.errors[0], (TypeError{Location(Position{3, 21}, Position{3, 26}), TypeMismatch{typeChecker.numberType, typeChecker.stringType}}));
+    CHECK_EQ(
+        result.errors[0], (TypeError{Location(Position{3, 21}, Position{3, 26}), TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}}));
 
-    CHECK_EQ(result.errors[1], (TypeError{Location(Position{4, 29}, Position{4, 30}), TypeMismatch{typeChecker.stringType, typeChecker.numberType}}));
+    CHECK_EQ(
+        result.errors[1], (TypeError{Location(Position{4, 29}, Position{4, 30}), TypeMismatch{builtinTypes->stringType, builtinTypes->numberType}}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_pack_syntax")

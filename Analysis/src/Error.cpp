@@ -959,7 +959,7 @@ void copyErrors(ErrorVec& errors, TypeArena& destArena)
         visit(visitErrorData, error.data);
 }
 
-void InternalErrorReporter::ice(const std::string& message, const Location& location)
+void InternalErrorReporter::ice(const std::string& message, const Location& location) const
 {
     InternalCompilerError error(message, moduleName, location);
 
@@ -969,7 +969,7 @@ void InternalErrorReporter::ice(const std::string& message, const Location& loca
     throw error;
 }
 
-void InternalErrorReporter::ice(const std::string& message)
+void InternalErrorReporter::ice(const std::string& message) const
 {
     InternalCompilerError error(message, moduleName);
 

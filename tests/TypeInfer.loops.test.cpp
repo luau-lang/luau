@@ -28,7 +28,7 @@ TEST_CASE_FIXTURE(Fixture, "for_loop")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*typeChecker.numberType, *requireType("q"));
+    CHECK_EQ(*builtinTypes->numberType, *requireType("q"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
@@ -44,8 +44,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*typeChecker.numberType, *requireType("n"));
-    CHECK_EQ(*typeChecker.stringType, *requireType("s"));
+    CHECK_EQ(*builtinTypes->numberType, *requireType("n"));
+    CHECK_EQ(*builtinTypes->stringType, *requireType("s"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next")
@@ -61,8 +61,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*typeChecker.numberType, *requireType("n"));
-    CHECK_EQ(*typeChecker.stringType, *requireType("s"));
+    CHECK_EQ(*builtinTypes->numberType, *requireType("n"));
+    CHECK_EQ(*builtinTypes->stringType, *requireType("s"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_with_an_iterator_of_type_any")
@@ -218,8 +218,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_factory_not_returning_t
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[1]);
     REQUIRE(tm);
-    CHECK_EQ(typeChecker.numberType, tm->wantedType);
-    CHECK_EQ(typeChecker.stringType, tm->givenType);
+    CHECK_EQ(builtinTypes->numberType, tm->wantedType);
+    CHECK_EQ(builtinTypes->stringType, tm->givenType);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_iterator_requiring_args_but_none_given")
@@ -281,8 +281,8 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_custom_iterator")
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(typeChecker.numberType, tm->wantedType);
-    CHECK_EQ(typeChecker.stringType, tm->givenType);
+    CHECK_EQ(builtinTypes->numberType, tm->wantedType);
+    CHECK_EQ(builtinTypes->stringType, tm->givenType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "while_loop")
@@ -296,7 +296,7 @@ TEST_CASE_FIXTURE(Fixture, "while_loop")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*typeChecker.numberType, *requireType("i"));
+    CHECK_EQ(*builtinTypes->numberType, *requireType("i"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "repeat_loop")
@@ -310,7 +310,7 @@ TEST_CASE_FIXTURE(Fixture, "repeat_loop")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*typeChecker.stringType, *requireType("i"));
+    CHECK_EQ(*builtinTypes->stringType, *requireType("i"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "repeat_loop_condition_binds_to_its_block")
@@ -547,7 +547,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*typeChecker.numberType, *requireType("key"));
+    CHECK_EQ(*builtinTypes->numberType, *requireType("key"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
@@ -561,7 +561,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(0, result);
-    CHECK_EQ(*typeChecker.nilType, *requireType("extra"));
+    CHECK_EQ(*builtinTypes->nilType, *requireType("extra"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_strict")

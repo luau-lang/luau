@@ -42,7 +42,6 @@ LUAU_FASTFLAGVARIABLE(LuauIntersectionTestForEquality, false)
 LUAU_FASTFLAG(LuauNegatedClassTypes)
 LUAU_FASTFLAGVARIABLE(LuauAllowIndexClassParameters, false)
 LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
-LUAU_FASTFLAG(SupportTypeAliasGoToDeclaration)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckTypeguards, false)
 
 namespace Luau
@@ -212,8 +211,24 @@ size_t HashBoolNamePair::operator()(const std::pair<bool, Name>& pair) const
     return std::hash<bool>()(pair.first) ^ std::hash<Name>()(pair.second);
 }
 
-TypeChecker::TypeChecker(ModuleResolver* resolver, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter* iceHandler)
-    : resolver(resolver)
+GlobalTypes::GlobalTypes(NotNull<BuiltinTypes> builtinTypes)
+    : builtinTypes(builtinTypes)
+{
+    globalScope = std::make_shared<Scope>(globalTypes.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}}));
+
+    globalScope->addBuiltinTypeBinding("any", TypeFun{{}, builtinTypes->anyType});
+    globalScope->addBuiltinTypeBinding("nil", TypeFun{{}, builtinTypes->nilType});
+    globalScope->addBuiltinTypeBinding("number", TypeFun{{}, builtinTypes->numberType});
+    globalScope->addBuiltinTypeBinding("string", TypeFun{{}, builtinTypes->stringType});
+    globalScope->addBuiltinTypeBinding("boolean", TypeFun{{}, builtinTypes->booleanType});
+    globalScope->addBuiltinTypeBinding("thread", TypeFun{{}, builtinTypes->threadType});
+    globalScope->addBuiltinTypeBinding("unknown", TypeFun{{}, builtinTypes->unknownType});
+    globalScope->addBuiltinTypeBinding("never", TypeFun{{}, builtinTypes->neverType});
+}
+
+TypeChecker::TypeChecker(const GlobalTypes& globals, ModuleResolver* resolver, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter* iceHandler)
+    : globals(globals)
+    , resolver(resolver)
     , builtinTypes(builtinTypes)
     , iceHandler(iceHandler)
     , unifierState(iceHandler)
@@ -231,16 +246,6 @@ TypeChecker::TypeChecker(ModuleResolver* resolver, NotNull<BuiltinTypes> builtin
     , uninhabitableTypePack(builtinTypes->uninhabitableTypePack)
     , duplicateTypeAliases{{false, {}}}
 {
-    globalScope = std::make_shared<Scope>(globalTypes.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}}));
-
-    globalScope->addBuiltinTypeBinding("any", TypeFun{{}, anyType});
-    globalScope->addBuiltinTypeBinding("nil", TypeFun{{}, nilType});
-    globalScope->addBuiltinTypeBinding("number", TypeFun{{}, numberType});
-    globalScope->addBuiltinTypeBinding("string", TypeFun{{}, stringType});
-    globalScope->addBuiltinTypeBinding("boolean", TypeFun{{}, booleanType});
-    globalScope->addBuiltinTypeBinding("thread", TypeFun{{}, threadType});
-    globalScope->addBuiltinTypeBinding("unknown", TypeFun{{}, unknownType});
-    globalScope->addBuiltinTypeBinding("never", TypeFun{{}, neverType});
 }
 
 ModulePtr TypeChecker::check(const SourceModule& module, Mode mode, std::optional<ScopePtr> environmentScope)
@@ -273,7 +278,7 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
     unifierState.counters.iterationLimit = unifierIterationLimit ? *unifierIterationLimit : FInt::LuauTypeInferIterationLimit;
 
-    ScopePtr parentScope = environmentScope.value_or(globalScope);
+    ScopePtr parentScope = environmentScope.value_or(globals.globalScope);
     ScopePtr moduleScope = std::make_shared<Scope>(parentScope);
 
     if (module.cyclic)
@@ -1121,8 +1126,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatLocal& local)
                     if (ModulePtr module = resolver->getModule(moduleInfo->name))
                     {
                         scope->importedTypeBindings[name] = module->exportedTypeBindings;
-                        if (FFlag::SupportTypeAliasGoToDeclaration)
-                            scope->importedModules[name] = moduleInfo->name;
+                        scope->importedModules[name] = moduleInfo->name;
                     }
 
                     // In non-strict mode we force the module type on the variable, in strict mode it is already unified
@@ -1580,7 +1584,7 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
     }
     else
     {
-        if (globalScope->builtinTypeNames.contains(name))
+        if (globals.globalScope->builtinTypeNames.contains(name))
         {
             reportError(typealias.location, DuplicateTypeDefinition{name});
             duplicateTypeAliases.insert({typealias.exported, name});
@@ -1601,8 +1605,7 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
             bindingsMap[name] = {std::move(generics), std::move(genericPacks), ty};
 
             scope->typeAliasLocations[name] = typealias.location;
-            if (FFlag::SupportTypeAliasGoToDeclaration)
-                scope->typeAliasNameLocations[name] = typealias.nameLocation;
+            scope->typeAliasNameLocations[name] = typealias.nameLocation;
         }
     }
 }
@@ -3360,19 +3363,19 @@ TypeId TypeChecker::checkFunctionName(const ScopePtr& scope, AstExpr& funName, T
 
     if (auto globalName = funName.as<AstExprGlobal>())
     {
-        const ScopePtr& globalScope = currentModule->getModuleScope();
+        const ScopePtr& moduleScope = currentModule->getModuleScope();
         Symbol name = globalName->name;
-        if (globalScope->bindings.count(name))
+        if (moduleScope->bindings.count(name))
         {
             if (isNonstrictMode())
-                return globalScope->bindings[name].typeId;
+                return moduleScope->bindings[name].typeId;
 
             return errorRecoveryType(scope);
         }
         else
         {
             TypeId ty = freshTy();
-            globalScope->bindings[name] = {ty, funName.location};
+            moduleScope->bindings[name] = {ty, funName.location};
             return ty;
         }
     }
@@ -5898,7 +5901,7 @@ void TypeChecker::resolve(const TypeGuardPredicate& typeguardP, RefinementMap& r
     if (!typeguardP.isTypeof)
         return addRefinement(refis, typeguardP.lvalue, errorRecoveryType(scope));
 
-    auto typeFun = globalScope->lookupType(typeguardP.kind);
+    auto typeFun = globals.globalScope->lookupType(typeguardP.kind);
     if (!typeFun || !typeFun->typeParams.empty() || !typeFun->typePackParams.empty())
         return addRefinement(refis, typeguardP.lvalue, errorRecoveryType(scope));
 

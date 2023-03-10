@@ -30,7 +30,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_returns_any")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(typeChecker.anyType, requireType("a"));
+    CHECK_EQ(builtinTypes->anyType, requireType("a"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_returns_any2")
@@ -209,7 +209,7 @@ TEST_CASE_FIXTURE(Fixture, "quantify_any_does_not_bind_to_itself")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     TypeId aType = requireType("A");
-    CHECK_EQ(aType, typeChecker.anyType);
+    CHECK_EQ(aType, builtinTypes->anyType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "calling_error_type_yields_error")

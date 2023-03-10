@@ -22,8 +22,8 @@ TEST_CASE_FIXTURE(Fixture, "select_correct_union_fn")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(requireType("b"), typeChecker.stringType);
-    CHECK_EQ(requireType("c"), typeChecker.numberType);
+    CHECK_EQ(requireType("b"), builtinTypes->stringType);
+    CHECK_EQ(requireType("c"), builtinTypes->numberType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_combines")
@@ -123,11 +123,11 @@ TEST_CASE_FIXTURE(Fixture, "should_still_pick_an_overload_whose_arguments_are_un
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*requireType("a1"), *typeChecker.numberType);
-    CHECK_EQ(*requireType("a2"), *typeChecker.numberType);
+    CHECK_EQ(*requireType("a1"), *builtinTypes->numberType);
+    CHECK_EQ(*requireType("a2"), *builtinTypes->numberType);
 
-    CHECK_EQ(*requireType("b1"), *typeChecker.stringType);
-    CHECK_EQ(*requireType("b2"), *typeChecker.stringType);
+    CHECK_EQ(*requireType("b1"), *builtinTypes->stringType);
+    CHECK_EQ(*requireType("b2"), *builtinTypes->stringType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "propagates_name")
@@ -249,7 +249,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_one_property_of_t
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*typeChecker.anyType, *requireType("r"));
+    CHECK_EQ(*builtinTypes->anyType, *requireType("r"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_all_parts_missing_the_property")

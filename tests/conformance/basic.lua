@@ -120,6 +120,8 @@ assert((function() local a a = nil local b = 2 b = a and b return b end)() == ni
 assert((function() local a a = 1 local b = 2 b = a or b return b end)() == 1)
 assert((function() local a a = nil local b = 2 b = a or b return b end)() == 2)
 
+assert((function(a) return 12 % a end)(5) == 2)
+
 -- binary arithmetics coerces strings to numbers (sadly)
 assert(1 + "2" == 3)
 assert(2 * "0xa" == 20)

@@ -81,8 +81,8 @@ struct FrontendFixture : BuiltinsFixture
 {
     FrontendFixture()
     {
-        addGlobalBinding(frontend, "game", frontend.typeChecker.anyType, "@test");
-        addGlobalBinding(frontend, "script", frontend.typeChecker.anyType, "@test");
+        addGlobalBinding(frontend.globals, "game", builtinTypes->anyType, "@test");
+        addGlobalBinding(frontend.globals, "script", builtinTypes->anyType, "@test");
     }
 };
 
@@ -852,12 +852,12 @@ TEST_CASE_FIXTURE(FrontendFixture, "environments")
 {
     ScopePtr testScope = frontend.addEnvironment("test");
 
-    unfreeze(typeChecker.globalTypes);
-    loadDefinitionFile(typeChecker, testScope, R"(
+    unfreeze(frontend.globals.globalTypes);
+    loadDefinitionFile(frontend.typeChecker, frontend.globals, testScope, R"(
         export type Foo = number | string
     )",
-        "@test");
-    freeze(typeChecker.globalTypes);
+        "@test", /* captureComments */ false);
+    freeze(frontend.globals.globalTypes);
 
     fileResolver.source["A"] = R"(
         --!nonstrict
