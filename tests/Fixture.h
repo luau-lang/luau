@@ -101,7 +101,6 @@ struct Fixture
     std::unique_ptr<SourceModule> sourceModule;
     Frontend frontend;
     InternalErrorReporter ice;
-    TypeChecker& typeChecker;
     NotNull<BuiltinTypes> builtinTypes;
 
     std::string decorateWithTypes(const std::string& code);

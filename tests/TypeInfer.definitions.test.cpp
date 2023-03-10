@@ -19,13 +19,13 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_simple")
         declare foo2: typeof(foo)
     )");
 
-    TypeId globalFooTy = getGlobalBinding(frontend, "foo");
+    TypeId globalFooTy = getGlobalBinding(frontend.globals, "foo");
     CHECK_EQ(toString(globalFooTy), "number");
 
-    TypeId globalBarTy = getGlobalBinding(frontend, "bar");
+    TypeId globalBarTy = getGlobalBinding(frontend.globals, "bar");
     CHECK_EQ(toString(globalBarTy), "(number) -> string");
 
-    TypeId globalFoo2Ty = getGlobalBinding(frontend, "foo2");
+    TypeId globalFoo2Ty = getGlobalBinding(frontend.globals, "foo2");
     CHECK_EQ(toString(globalFoo2Ty), "number");
 
     CheckResult result = check(R"(
@@ -48,20 +48,20 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_loading")
         declare function var(...: any): string
     )");
 
-    TypeId globalFooTy = getGlobalBinding(frontend, "foo");
+    TypeId globalFooTy = getGlobalBinding(frontend.globals, "foo");
     CHECK_EQ(toString(globalFooTy), "number");
 
-    std::optional<TypeFun> globalAsdfTy = frontend.getGlobalScope()->lookupType("Asdf");
+    std::optional<TypeFun> globalAsdfTy = frontend.globals.globalScope->lookupType("Asdf");
     REQUIRE(bool(globalAsdfTy));
     CHECK_EQ(toString(globalAsdfTy->type), "number | string");
 
-    TypeId globalBarTy = getGlobalBinding(frontend, "bar");
+    TypeId globalBarTy = getGlobalBinding(frontend.globals, "bar");
     CHECK_EQ(toString(globalBarTy), "(number) -> string");
 
-    TypeId globalFoo2Ty = getGlobalBinding(frontend, "foo2");
+    TypeId globalFoo2Ty = getGlobalBinding(frontend.globals, "foo2");
     CHECK_EQ(toString(globalFoo2Ty), "number");
 
-    TypeId globalVarTy = getGlobalBinding(frontend, "var");
+    TypeId globalVarTy = getGlobalBinding(frontend.globals, "var");
 
     CHECK_EQ(toString(globalVarTy), "(...any) -> string");
 
@@ -77,25 +77,25 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_loading")
 
 TEST_CASE_FIXTURE(Fixture, "load_definition_file_errors_do_not_pollute_global_scope")
 {
-    unfreeze(typeChecker.globalTypes);
-    LoadDefinitionFileResult parseFailResult = loadDefinitionFile(typeChecker, typeChecker.globalScope, R"(
+    unfreeze(frontend.globals.globalTypes);
+    LoadDefinitionFileResult parseFailResult = loadDefinitionFile(frontend.typeChecker, frontend.globals, frontend.globals.globalScope, R"(
         declare foo
     )",
-        "@test");
-    freeze(typeChecker.globalTypes);
+        "@test", /* captureComments */ false);
+    freeze(frontend.globals.globalTypes);
 
     REQUIRE(!parseFailResult.success);
-    std::optional<Binding> fooTy = tryGetGlobalBinding(frontend, "foo");
+    std::optional<Binding> fooTy = tryGetGlobalBinding(frontend.globals, "foo");
     CHECK(!fooTy.has_value());
 
-    LoadDefinitionFileResult checkFailResult = loadDefinitionFile(typeChecker, typeChecker.globalScope, R"(
+    LoadDefinitionFileResult checkFailResult = loadDefinitionFile(frontend.typeChecker, frontend.globals, frontend.globals.globalScope, R"(
         local foo: string = 123
         declare bar: typeof(foo)
     )",
-        "@test");
+        "@test", /* captureComments */ false);
 
     REQUIRE(!checkFailResult.success);
-    std::optional<Binding> barTy = tryGetGlobalBinding(frontend, "bar");
+    std::optional<Binding> barTy = tryGetGlobalBinding(frontend.globals, "bar");
     CHECK(!barTy.has_value());
 }
 
@@ -139,15 +139,15 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_classes")
 
 TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_overload_non_function")
 {
-    unfreeze(typeChecker.globalTypes);
-    LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, R"(
+    unfreeze(frontend.globals.globalTypes);
+    LoadDefinitionFileResult result = loadDefinitionFile(frontend.typeChecker, frontend.globals, frontend.globals.globalScope, R"(
         declare class A
             X: number
             X: string
         end
     )",
-        "@test");
-    freeze(typeChecker.globalTypes);
+        "@test", /* captureComments */ false);
+    freeze(frontend.globals.globalTypes);
 
     REQUIRE(!result.success);
     CHECK_EQ(result.parseResult.errors.size(), 0);
@@ -160,15 +160,15 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_overload_non_function")
 
 TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_extend_non_class")
 {
-    unfreeze(typeChecker.globalTypes);
-    LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, R"(
+    unfreeze(frontend.globals.globalTypes);
+    LoadDefinitionFileResult result = loadDefinitionFile(frontend.typeChecker, frontend.globals, frontend.globals.globalScope, R"(
         type NotAClass = {}
 
         declare class Foo extends NotAClass
         end
     )",
-        "@test");
-    freeze(typeChecker.globalTypes);
+        "@test", /* captureComments */ false);
+    freeze(frontend.globals.globalTypes);
 
     REQUIRE(!result.success);
     CHECK_EQ(result.parseResult.errors.size(), 0);
@@ -181,16 +181,16 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_extend_non_class")
 
 TEST_CASE_FIXTURE(Fixture, "no_cyclic_defined_classes")
 {
-    unfreeze(typeChecker.globalTypes);
-    LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, R"(
+    unfreeze(frontend.globals.globalTypes);
+    LoadDefinitionFileResult result = loadDefinitionFile(frontend.typeChecker, frontend.globals, frontend.globals.globalScope, R"(
         declare class Foo extends Bar
         end
 
         declare class Bar extends Foo
         end
     )",
-        "@test");
-    freeze(typeChecker.globalTypes);
+        "@test", /* captureComments */ false);
+    freeze(frontend.globals.globalTypes);
 
     REQUIRE(!result.success);
 }
@@ -281,16 +281,16 @@ TEST_CASE_FIXTURE(Fixture, "definitions_documentation_symbols")
         }
     )");
 
-    std::optional<Binding> xBinding = typeChecker.globalScope->linearSearchForBinding("x");
+    std::optional<Binding> xBinding = frontend.globals.globalScope->linearSearchForBinding("x");
     REQUIRE(bool(xBinding));
     // note: loadDefinition uses the @test package name.
     CHECK_EQ(xBinding->documentationSymbol, "@test/global/x");
 
-    std::optional<TypeFun> fooTy = typeChecker.globalScope->lookupType("Foo");
+    std::optional<TypeFun> fooTy = frontend.globals.globalScope->lookupType("Foo");
     REQUIRE(bool(fooTy));
     CHECK_EQ(fooTy->type->documentationSymbol, "@test/globaltype/Foo");
 
-    std::optional<TypeFun> barTy = typeChecker.globalScope->lookupType("Bar");
+    std::optional<TypeFun> barTy = frontend.globals.globalScope->lookupType("Bar");
     REQUIRE(bool(barTy));
     CHECK_EQ(barTy->type->documentationSymbol, "@test/globaltype/Bar");
 
@@ -299,7 +299,7 @@ TEST_CASE_FIXTURE(Fixture, "definitions_documentation_symbols")
     REQUIRE_EQ(barClass->props.count("prop"), 1);
     CHECK_EQ(barClass->props["prop"].documentationSymbol, "@test/globaltype/Bar.prop");
 
-    std::optional<Binding> yBinding = typeChecker.globalScope->linearSearchForBinding("y");
+    std::optional<Binding> yBinding = frontend.globals.globalScope->linearSearchForBinding("y");
     REQUIRE(bool(yBinding));
     CHECK_EQ(yBinding->documentationSymbol, "@test/global/y");
 
@@ -319,7 +319,7 @@ TEST_CASE_FIXTURE(Fixture, "definitions_symbols_are_generated_for_recursively_re
         declare function myFunc(): MyClass
     )");
 
-    std::optional<TypeFun> myClassTy = typeChecker.globalScope->lookupType("MyClass");
+    std::optional<TypeFun> myClassTy = frontend.globals.globalScope->lookupType("MyClass");
     REQUIRE(bool(myClassTy));
     CHECK_EQ(myClassTy->type->documentationSymbol, "@test/globaltype/MyClass");
 }
@@ -330,7 +330,7 @@ TEST_CASE_FIXTURE(Fixture, "documentation_symbols_dont_attach_to_persistent_type
         export type Evil = string
     )");
 
-    std::optional<TypeFun> ty = typeChecker.globalScope->lookupType("Evil");
+    std::optional<TypeFun> ty = frontend.globals.globalScope->lookupType("Evil");
     REQUIRE(bool(ty));
     CHECK_EQ(ty->type->documentationSymbol, std::nullopt);
 }
@@ -396,8 +396,8 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_string_props")
 
 TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
 {
-    unfreeze(typeChecker.globalTypes);
-    LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, R"(
+    unfreeze(frontend.globals.globalTypes);
+    LoadDefinitionFileResult result = loadDefinitionFile(frontend.typeChecker, frontend.globals, frontend.globals.globalScope, R"(
         declare class Channel
             Messages: { Message }
             OnMessage: (message: Message) -> ()
@@ -408,8 +408,8 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
             Channel: Channel
         end
     )",
-        "@test");
-    freeze(typeChecker.globalTypes);
+        "@test", /* captureComments */ false);
+    freeze(frontend.globals.globalTypes);
 
     REQUIRE(result.success);
 }

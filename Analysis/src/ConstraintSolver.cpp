@@ -521,12 +521,19 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
     if (isBlocked(c.sourceType))
         return block(c.sourceType, constraint);
 
-    TypeId generalized = quantify(arena, c.sourceType, constraint->scope);
-
-    if (isBlocked(c.generalizedType))
-        asMutable(c.generalizedType)->ty.emplace<BoundType>(generalized);
+    std::optional<TypeId> generalized = quantify(arena, c.sourceType, constraint->scope);
+    if (generalized)
+    {
+        if (isBlocked(c.generalizedType))
+            asMutable(c.generalizedType)->ty.emplace<BoundType>(*generalized);
+        else
+            unify(c.generalizedType, *generalized, constraint->scope);
+    }
     else
-        unify(c.generalizedType, generalized, constraint->scope);
+    {
+        reportError(CodeTooComplex{}, constraint->location);
+        asMutable(c.generalizedType)->ty.emplace<BoundType>(builtinTypes->errorRecoveryType());
+    }
 
     unblock(c.generalizedType);
     unblock(c.sourceType);
@@ -1365,7 +1372,7 @@ static std::optional<TypeId> updateTheTableType(NotNull<TypeArena> arena, TypeId
             if (it == tbl->props.end())
                 return std::nullopt;
 
-            t = it->second.type;
+            t = follow(it->second.type);
         }
 
         // The last path segment should not be a property of the table at all.
@@ -1450,12 +1457,6 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
     if (auto mt = get<MetatableType>(subjectType))
         subjectType = follow(mt->table);
 
-    if (get<AnyType>(subjectType) || get<ErrorType>(subjectType) || get<NeverType>(subjectType))
-    {
-        bind(c.resultType, subjectType);
-        return true;
-    }
-
     if (get<FreeType>(subjectType))
     {
         TypeId ty = arena->freshType(constraint->scope);
@@ -1501,16 +1502,13 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
             return true;
         }
     }
-    else if (get<ClassType>(subjectType))
+    else
     {
-        // Classes and intersections never change shape as a result of property
-        // assignments. The result is always the subject.
+        // Other kinds of types don't change shape when properties are assigned
+        // to them. (if they allow properties at all!)
         bind(c.resultType, subjectType);
         return true;
     }
-
-    LUAU_ASSERT(0);
-    return true;
 }
 
 bool ConstraintSolver::tryDispatch(const SetIndexerConstraint& c, NotNull<const Constraint> constraint, bool force)

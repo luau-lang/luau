@@ -45,7 +45,8 @@ TEST_CASE_FIXTURE(Fixture, "tc_error")
     CheckResult result = check("local a = 7   local b = 'hi'   a = b");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 35}, Position{0, 36}}, TypeMismatch{typeChecker.numberType, typeChecker.stringType}}));
+    CHECK_EQ(
+        result.errors[0], (TypeError{Location{Position{0, 35}, Position{0, 36}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_error_2")
@@ -55,7 +56,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_error_2")
 
     CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 18}, Position{0, 22}}, TypeMismatch{
                                                                                           requireType("a"),
-                                                                                          typeChecker.stringType,
+                                                                                          builtinTypes->stringType,
                                                                                       }}));
 }
 
@@ -123,8 +124,8 @@ TEST_CASE_FIXTURE(Fixture, "if_statement")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*typeChecker.stringType, *requireType("a"));
-    CHECK_EQ(*typeChecker.numberType, *requireType("b"));
+    CHECK_EQ(*builtinTypes->stringType, *requireType("a"));
+    CHECK_EQ(*builtinTypes->numberType, *requireType("b"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "statements_are_topologically_sorted")
@@ -256,7 +257,13 @@ TEST_CASE_FIXTURE(Fixture, "should_be_able_to_infer_this_without_stack_overflowi
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(get<NormalizationTooComplex>(result.errors[0]));
+    }
+    else
+        LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "exponential_blowup_from_copying_types")
@@ -580,7 +587,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_nested_unions_with_optionals")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(typeChecker.numberType, tm->wantedType);
+    CHECK_EQ(builtinTypes->numberType, tm->wantedType);
     CHECK_EQ("(boolean | number | string)?", toString(tm->givenType));
 }
 
@@ -1150,8 +1157,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "it_is_ok_to_have_inconsistent_number_of_retu
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_free_table_type_change_during_index_check")
 {
-    ScopedFastFlag sff{"LuauScalarShapeUnifyToMtOwner2", true};
-
     CheckResult result = check(R"(
 local _ = nil
 while _["" >= _] do
@@ -1173,6 +1178,26 @@ local b = typeof(foo) ~= 'nil'
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(toString(result.errors[0]) == "Unknown global 'foo'");
     CHECK(toString(result.errors[1]) == "Unknown global 'foo'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "dcr_delays_expansion_of_function_containing_blocked_parameter_type")
+{
+    ScopedFastFlag sff[] = {
+        {"DebugLuauDeferredConstraintResolution", true},
+        {"LuauTinyUnifyNormalsFix", true},
+    };
+
+    CheckResult result = check(R"(
+        local b: any
+
+        function f(x)
+            local a = b[1] or 'Cn'
+            local c = x[1]
+
+            if a:sub(1, #c) == c then
+            end
+        end
+    )");
 }
 
 TEST_SUITE_END();

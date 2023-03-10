@@ -10,6 +10,8 @@
 #include "ldebug.h"
 #include "lvm.h"
 
+LUAU_FASTFLAGVARIABLE(LuauOptimizedSort, false)
+
 static int foreachi(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
@@ -305,12 +307,14 @@ static int tunpack(lua_State* L)
 
 static void set2(lua_State* L, int i, int j)
 {
+    LUAU_ASSERT(!FFlag::LuauOptimizedSort);
     lua_rawseti(L, 1, i);
     lua_rawseti(L, 1, j);
 }
 
 static int sort_comp(lua_State* L, int a, int b)
 {
+    LUAU_ASSERT(!FFlag::LuauOptimizedSort);
     if (!lua_isnil(L, 2))
     { // function?
         int res;
@@ -328,6 +332,7 @@ static int sort_comp(lua_State* L, int a, int b)
 
 static void auxsort(lua_State* L, int l, int u)
 {
+    LUAU_ASSERT(!FFlag::LuauOptimizedSort);
     while (l < u)
     { // for tail recursion
         int i, j;
@@ -407,16 +412,145 @@ static void auxsort(lua_State* L, int l, int u)
     }                     // repeat the routine for the larger one
 }
 
-static int sort(lua_State* L)
+typedef int (*SortPredicate)(lua_State* L, const TValue* l, const TValue* r);
+
+static int sort_func(lua_State* L, const TValue* l, const TValue* r)
 {
-    luaL_checktype(L, 1, LUA_TTABLE);
-    int n = lua_objlen(L, 1);
-    luaL_checkstack(L, 40, ""); // assume array is smaller than 2^40
-    if (!lua_isnoneornil(L, 2)) // is there a 2nd argument?
-        luaL_checktype(L, 2, LUA_TFUNCTION);
-    lua_settop(L, 2); // make sure there is two arguments
-    auxsort(L, 1, n);
-    return 0;
+    LUAU_ASSERT(L->top == L->base + 2); // table, function
+
+    setobj2s(L, L->top, &L->base[1]);
+    setobj2s(L, L->top + 1, l);
+    setobj2s(L, L->top + 2, r);
+    L->top += 3; // safe because of LUA_MINSTACK guarantee
+    luaD_call(L, L->top - 3, 1);
+    L->top -= 1; // maintain stack depth
+
+    return !l_isfalse(L->top);
+}
+
+inline void sort_swap(lua_State* L, Table* t, int i, int j)
+{
+    TValue* arr = t->array;
+    int n = t->sizearray;
+    LUAU_ASSERT(unsigned(i) < unsigned(n) && unsigned(j) < unsigned(n)); // contract maintained in sort_less after predicate call
+
+    // no barrier required because both elements are in the array before and after the swap
+    TValue temp;
+    setobj2s(L, &temp, &arr[i]);
+    setobj2t(L, &arr[i], &arr[j]);
+    setobj2t(L, &arr[j], &temp);
+}
+
+inline int sort_less(lua_State* L, Table* t, int i, int j, SortPredicate pred)
+{
+    TValue* arr = t->array;
+    int n = t->sizearray;
+    LUAU_ASSERT(unsigned(i) < unsigned(n) && unsigned(j) < unsigned(n)); // contract maintained in sort_less after predicate call
+
+    int res = pred(L, &arr[i], &arr[j]);
+
+    // predicate call may resize the table, which is invalid
+    if (t->sizearray != n)
+        luaL_error(L, "table modified during sorting");
+
+    return res;
+}
+
+static void sort_rec(lua_State* L, Table* t, int l, int u, SortPredicate pred)
+{
+    // sort range [l..u] (inclusive, 0-based)
+    while (l < u)
+    {
+        int i, j;
+        // sort elements a[l], a[(l+u)/2] and a[u]
+        if (sort_less(L, t, u, l, pred)) // a[u] < a[l]?
+            sort_swap(L, t, u, l);       // swap a[l] - a[u]
+        if (u - l == 1)
+            break;                       // only 2 elements
+        i = l + ((u - l) >> 1);          // midpoint
+        if (sort_less(L, t, i, l, pred)) // a[i]<a[l]?
+            sort_swap(L, t, i, l);
+        else if (sort_less(L, t, u, i, pred)) // a[u]<a[i]?
+            sort_swap(L, t, i, u);
+        if (u - l == 2)
+            break; // only 3 elements
+        // here l, i, u are ordered; i will become the new pivot
+        int p = u - 1;
+        sort_swap(L, t, i, u - 1); // pivot is now (and always) at u-1
+        // a[l] <= P == a[u-1] <= a[u], only need to sort from l+1 to u-2
+        i = l;
+        j = u - 1;
+        for (;;)
+        { // invariant: a[l..i] <= P <= a[j..u]
+            // repeat ++i until a[i] >= P
+            while (sort_less(L, t, ++i, p, pred))
+            {
+                if (i >= u)
+                    luaL_error(L, "invalid order function for sorting");
+            }
+            // repeat --j until a[j] <= P
+            while (sort_less(L, t, p, --j, pred))
+            {
+                if (j <= l)
+                    luaL_error(L, "invalid order function for sorting");
+            }
+            if (j < i)
+                break;
+            sort_swap(L, t, i, j);
+        }
+        // swap pivot (a[u-1]) with a[i], which is the new midpoint
+        sort_swap(L, t, u - 1, i);
+        // a[l..i-1] <= a[i] == P <= a[i+1..u]
+        // adjust so that smaller half is in [j..i] and larger one in [l..u]
+        if (i - l < u - i)
+        {
+            j = l;
+            i = i - 1;
+            l = i + 2;
+        }
+        else
+        {
+            j = i + 1;
+            i = u;
+            u = j - 2;
+        }
+        sort_rec(L, t, j, i, pred); // call recursively the smaller one
+    }                               // repeat the routine for the larger one
+}
+
+static int tsort(lua_State* L)
+{
+    if (FFlag::LuauOptimizedSort)
+    {
+        luaL_checktype(L, 1, LUA_TTABLE);
+        Table* t = hvalue(L->base);
+        int n = luaH_getn(t);
+        if (t->readonly)
+            luaG_readonlyerror(L);
+
+        SortPredicate pred = luaV_lessthan;
+        if (!lua_isnoneornil(L, 2)) // is there a 2nd argument?
+        {
+            luaL_checktype(L, 2, LUA_TFUNCTION);
+            pred = sort_func;
+        }
+        lua_settop(L, 2); // make sure there are two arguments
+
+        if (n > 0)
+            sort_rec(L, t, 0, n - 1, pred);
+        return 0;
+    }
+    else
+    {
+        luaL_checktype(L, 1, LUA_TTABLE);
+        int n = lua_objlen(L, 1);
+        luaL_checkstack(L, 40, ""); // assume array is smaller than 2^40
+        if (!lua_isnoneornil(L, 2)) // is there a 2nd argument?
+            luaL_checktype(L, 2, LUA_TFUNCTION);
+        lua_settop(L, 2); // make sure there is two arguments
+        auxsort(L, 1, n);
+        return 0;
+    }
 }
 
 // }======================================================
@@ -530,7 +664,7 @@ static const luaL_Reg tab_funcs[] = {
     {"maxn", maxn},
     {"insert", tinsert},
     {"remove", tremove},
-    {"sort", sort},
+    {"sort", tsort},
     {"pack", tpack},
     {"unpack", tunpack},
     {"move", tmove},

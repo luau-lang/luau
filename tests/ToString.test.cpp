@@ -184,27 +184,27 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_parenthesized_only_if_needed")
 {
-    auto utv = Type{UnionType{{typeChecker.numberType, typeChecker.stringType}}};
-    auto itv = Type{IntersectionType{{&utv, typeChecker.booleanType}}};
+    auto utv = Type{UnionType{{builtinTypes->numberType, builtinTypes->stringType}}};
+    auto itv = Type{IntersectionType{{&utv, builtinTypes->booleanType}}};
 
     CHECK_EQ(toString(&itv), "(number | string) & boolean");
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_parenthesized_only_if_needed")
 {
-    auto itv = Type{IntersectionType{{typeChecker.numberType, typeChecker.stringType}}};
-    auto utv = Type{UnionType{{&itv, typeChecker.booleanType}}};
+    auto itv = Type{IntersectionType{{builtinTypes->numberType, builtinTypes->stringType}}};
+    auto utv = Type{UnionType{{&itv, builtinTypes->booleanType}}};
 
     CHECK_EQ(toString(&utv), "(number & string) | boolean");
 }
 
 TEST_CASE_FIXTURE(Fixture, "functions_are_always_parenthesized_in_unions_or_intersections")
 {
-    auto stringAndNumberPack = TypePackVar{TypePack{{typeChecker.stringType, typeChecker.numberType}}};
-    auto numberAndStringPack = TypePackVar{TypePack{{typeChecker.numberType, typeChecker.stringType}}};
+    auto stringAndNumberPack = TypePackVar{TypePack{{builtinTypes->stringType, builtinTypes->numberType}}};
+    auto numberAndStringPack = TypePackVar{TypePack{{builtinTypes->numberType, builtinTypes->stringType}}};
 
     auto sn2ns = Type{FunctionType{&stringAndNumberPack, &numberAndStringPack}};
-    auto ns2sn = Type{FunctionType(typeChecker.globalScope->level, &numberAndStringPack, &stringAndNumberPack)};
+    auto ns2sn = Type{FunctionType(frontend.globals.globalScope->level, &numberAndStringPack, &stringAndNumberPack)};
 
     auto utv = Type{UnionType{{&ns2sn, &sn2ns}}};
     auto itv = Type{IntersectionType{{&ns2sn, &sn2ns}}};
@@ -250,7 +250,7 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_table_type_when_length_is_exceeded
 {
     TableType ttv{};
     for (char c : std::string("abcdefghijklmno"))
-        ttv.props[std::string(1, c)] = {typeChecker.numberType};
+        ttv.props[std::string(1, c)] = {builtinTypes->numberType};
 
     Type tv{ttv};
 
@@ -264,7 +264,7 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_is_still_capped_when_exhaust
 {
     TableType ttv{};
     for (char c : std::string("abcdefg"))
-        ttv.props[std::string(1, c)] = {typeChecker.numberType};
+        ttv.props[std::string(1, c)] = {builtinTypes->numberType};
 
     Type tv{ttv};
 
@@ -339,7 +339,7 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_correctly_use_matching_table
 {
     TableType ttv{TableState::Sealed, TypeLevel{}};
     for (char c : std::string("abcdefghij"))
-        ttv.props[std::string(1, c)] = {typeChecker.numberType};
+        ttv.props[std::string(1, c)] = {builtinTypes->numberType};
 
     Type tv{ttv};
 
@@ -350,7 +350,7 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_correctly_use_matching_table
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_cyclic_union_type_bails_early")
 {
-    Type tv{UnionType{{typeChecker.stringType, typeChecker.numberType}}};
+    Type tv{UnionType{{builtinTypes->stringType, builtinTypes->numberType}}};
     UnionType* utv = getMutable<UnionType>(&tv);
     utv->options.push_back(&tv);
     utv->options.push_back(&tv);
@@ -371,11 +371,11 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_cyclic_intersection_type_bails_early")
 TEST_CASE_FIXTURE(Fixture, "stringifying_array_uses_array_syntax")
 {
     TableType ttv{TableState::Sealed, TypeLevel{}};
-    ttv.indexer = TableIndexer{typeChecker.numberType, typeChecker.stringType};
+    ttv.indexer = TableIndexer{builtinTypes->numberType, builtinTypes->stringType};
 
     CHECK_EQ("{string}", toString(Type{ttv}));
 
-    ttv.props["A"] = {typeChecker.numberType};
+    ttv.props["A"] = {builtinTypes->numberType};
     CHECK_EQ("{| [number]: string, A: number |}", toString(Type{ttv}));
 
     ttv.props.clear();
@@ -562,15 +562,15 @@ TEST_CASE_FIXTURE(Fixture, "toString_the_boundTo_table_type_contained_within_a_T
     Type tv1{TableType{}};
     TableType* ttv = getMutable<TableType>(&tv1);
     ttv->state = TableState::Sealed;
-    ttv->props["hello"] = {typeChecker.numberType};
-    ttv->props["world"] = {typeChecker.numberType};
+    ttv->props["hello"] = {builtinTypes->numberType};
+    ttv->props["world"] = {builtinTypes->numberType};
 
     TypePackVar tpv1{TypePack{{&tv1}}};
 
     Type tv2{TableType{}};
     TableType* bttv = getMutable<TableType>(&tv2);
     bttv->state = TableState::Free;
-    bttv->props["hello"] = {typeChecker.numberType};
+    bttv->props["hello"] = {builtinTypes->numberType};
     bttv->boundTo = &tv1;
 
     TypePackVar tpv2{TypePack{{&tv2}}};

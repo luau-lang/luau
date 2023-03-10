@@ -121,6 +121,7 @@ static void displayHelp(const char* argv0)
 static int assertionHandler(const char* expr, const char* file, int line, const char* function)
 {
     printf("%s(%d): ASSERTION FAILED: %s\n", file, line, expr);
+    fflush(stdout);
     return 1;
 }
 
@@ -267,8 +268,8 @@ int main(int argc, char** argv)
     CliConfigResolver configResolver(mode);
     Luau::Frontend frontend(&fileResolver, &configResolver, frontendOptions);
 
-    Luau::registerBuiltinGlobals(frontend.typeChecker);
-    Luau::freeze(frontend.typeChecker.globalTypes);
+    Luau::registerBuiltinGlobals(frontend.typeChecker, frontend.globals);
+    Luau::freeze(frontend.globals.globalTypes);
 
 #ifdef CALLGRIND
     CALLGRIND_ZERO_STATS;

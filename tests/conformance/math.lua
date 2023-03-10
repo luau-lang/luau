@@ -281,6 +281,8 @@ assert(math.round(-0.4) == 0)
 assert(math.round(-0.5) == -1)
 assert(math.round(-3.5) == -4)
 assert(math.round(math.huge) == math.huge)
+assert(math.round(0.49999999999999994) == 0)
+assert(math.round(-0.49999999999999994) == 0)
 
 -- fmod
 assert(math.fmod(3, 2) == 1)

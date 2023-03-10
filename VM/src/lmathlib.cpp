@@ -343,7 +343,8 @@ static float perlin(float x, float y, float z)
     int bb = p[b + 1] + zi;
 
     return math_lerp(w,
-        math_lerp(v, math_lerp(u, grad(p[aa], xf, yf, zf), grad(p[ba], xf - 1, yf, zf)), math_lerp(u, grad(p[ab], xf, yf - 1, zf), grad(p[bb], xf - 1, yf - 1, zf))),
+        math_lerp(v, math_lerp(u, grad(p[aa], xf, yf, zf), grad(p[ba], xf - 1, yf, zf)),
+            math_lerp(u, grad(p[ab], xf, yf - 1, zf), grad(p[bb], xf - 1, yf - 1, zf))),
         math_lerp(v, math_lerp(u, grad(p[aa + 1], xf, yf, zf - 1), grad(p[ba + 1], xf - 1, yf, zf - 1)),
             math_lerp(u, grad(p[ab + 1], xf, yf - 1, zf - 1), grad(p[bb + 1], xf - 1, yf - 1, zf - 1))));
 }

@@ -57,7 +57,7 @@ TEST_CASE_FIXTURE(Fixture, "string_method")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*requireType("p"), *typeChecker.numberType);
+    CHECK_EQ(*requireType("p"), *builtinTypes->numberType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_function_indirect")
@@ -69,7 +69,7 @@ TEST_CASE_FIXTURE(Fixture, "string_function_indirect")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*requireType("p"), *typeChecker.stringType);
+    CHECK_EQ(*requireType("p"), *builtinTypes->stringType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "CheckMethodsOfNumber")

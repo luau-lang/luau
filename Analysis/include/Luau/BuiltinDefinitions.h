@@ -10,12 +10,13 @@ namespace Luau
 {
 
 struct Frontend;
+struct GlobalTypes;
 struct TypeChecker;
 struct TypeArena;
 
-void registerBuiltinTypes(Frontend& frontend);
+void registerBuiltinTypes(GlobalTypes& globals);
 
-void registerBuiltinGlobals(TypeChecker& typeChecker);
+void registerBuiltinGlobals(TypeChecker& typeChecker, GlobalTypes& globals);
 void registerBuiltinGlobals(Frontend& frontend);
 
 TypeId makeUnion(TypeArena& arena, std::vector<TypeId>&& types);
@@ -23,8 +24,7 @@ TypeId makeIntersection(TypeArena& arena, std::vector<TypeId>&& types);
 
 /** Build an optional 't'
  */
-TypeId makeOption(TypeChecker& typeChecker, TypeArena& arena, TypeId t);
-TypeId makeOption(Frontend& frontend, TypeArena& arena, TypeId t);
+TypeId makeOption(NotNull<BuiltinTypes> builtinTypes, TypeArena& arena, TypeId t);
 
 /** Small utility function for building up type definitions from C++.
  */
@@ -52,17 +52,12 @@ void assignPropDocumentationSymbols(TableType::Props& props, const std::string& 
 
 std::string getBuiltinDefinitionSource();
 
-void addGlobalBinding(TypeChecker& typeChecker, const std::string& name, Binding binding);
-void addGlobalBinding(TypeChecker& typeChecker, const std::string& name, TypeId ty, const std::string& packageName);
-void addGlobalBinding(TypeChecker& typeChecker, const ScopePtr& scope, const std::string& name, TypeId ty, const std::string& packageName);
-void addGlobalBinding(TypeChecker& typeChecker, const ScopePtr& scope, const std::string& name, Binding binding);
-void addGlobalBinding(Frontend& frontend, const std::string& name, TypeId ty, const std::string& packageName);
-void addGlobalBinding(Frontend& frontend, const std::string& name, Binding binding);
-void addGlobalBinding(Frontend& frontend, const ScopePtr& scope, const std::string& name, TypeId ty, const std::string& packageName);
-void addGlobalBinding(Frontend& frontend, const ScopePtr& scope, const std::string& name, Binding binding);
-std::optional<Binding> tryGetGlobalBinding(Frontend& frontend, const std::string& name);
-Binding* tryGetGlobalBindingRef(TypeChecker& typeChecker, const std::string& name);
-TypeId getGlobalBinding(Frontend& frontend, const std::string& name);
-TypeId getGlobalBinding(TypeChecker& typeChecker, const std::string& name);
+void addGlobalBinding(GlobalTypes& globals, const std::string& name, TypeId ty, const std::string& packageName);
+void addGlobalBinding(GlobalTypes& globals, const std::string& name, Binding binding);
+void addGlobalBinding(GlobalTypes& globals, const ScopePtr& scope, const std::string& name, TypeId ty, const std::string& packageName);
+void addGlobalBinding(GlobalTypes& globals, const ScopePtr& scope, const std::string& name, Binding binding);
+std::optional<Binding> tryGetGlobalBinding(GlobalTypes& globals, const std::string& name);
+Binding* tryGetGlobalBindingRef(GlobalTypes& globals, const std::string& name);
+TypeId getGlobalBinding(GlobalTypes& globals, const std::string& name);
 
 } // namespace Luau

@@ -407,9 +407,6 @@ TypePackId TypeReducer::reduce(TypePackId tp)
 
 std::optional<TypeId> TypeReducer::intersectionType(TypeId left, TypeId right)
 {
-    LUAU_ASSERT(!get<IntersectionType>(left));
-    LUAU_ASSERT(!get<IntersectionType>(right));
-
     if (get<NeverType>(left))
         return left; // never & T ~ never
     else if (get<NeverType>(right))
@@ -442,6 +439,17 @@ std::optional<TypeId> TypeReducer::intersectionType(TypeId left, TypeId right)
         return std::nullopt; // *pending* & T ~ *pending* & T
     else if (get<PendingExpansionType>(right))
         return std::nullopt; // T & *pending* ~ T & *pending*
+    else if (auto [utl, utr] = get2<UnionType, UnionType>(left, right); utl && utr)
+    {
+        std::vector<TypeId> parts;
+        for (TypeId optionl : utl)
+        {
+            for (TypeId optionr : utr)
+                parts.push_back(apply<IntersectionType>(&TypeReducer::intersectionType, optionl, optionr));
+        }
+
+        return reduce(flatten<UnionType>(std::move(parts))); // (T | U) & (A | B) ~ (T & A) | (T & B) | (U & A) | (U & B)
+    }
     else if (auto ut = get<UnionType>(left))
         return reduce(distribute<IntersectionType>(begin(ut), end(ut), &TypeReducer::intersectionType, right)); // (A | B) & T ~ (A & T) | (B & T)
     else if (get<UnionType>(right))
@@ -789,6 +797,36 @@ std::optional<TypeId> TypeReducer::unionType(TypeId left, TypeId right)
         return reduce(distribute<UnionType>(begin(it), end(it), &TypeReducer::unionType, left)); // ~T | (A & B) ~ (~T | A) & (~T | B)
     else if (auto [it, nt] = get2<IntersectionType, NegationType>(left, right); it && nt)
         return unionType(right, left); // (A & B) | ~T ~ ~T | (A & B)
+    else if (auto it = get<IntersectionType>(left))
+    {
+        bool didReduce = false;
+        std::vector<TypeId> parts;
+        for (TypeId part : it)
+        {
+            auto nt = get<NegationType>(part);
+            if (!nt)
+            {
+                parts.push_back(part);
+                continue;
+            }
+
+            auto redex = unionType(part, right);
+            if (redex && get<UnknownType>(*redex))
+            {
+                didReduce = true;
+                continue;
+            }
+
+            parts.push_back(part);
+        }
+
+        if (didReduce)
+            return flatten<IntersectionType>(std::move(parts)); // (T & ~nil) | nil ~ T
+        else
+            return std::nullopt; // (T & ~nil) | U
+    }
+    else if (get<IntersectionType>(right))
+        return unionType(right, left); // A | (T & U) ~ (T & U) | A
     else if (auto [nl, nr] = get2<NegationType, NegationType>(left, right); nl && nr)
     {
         // These should've been reduced already.

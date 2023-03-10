@@ -201,15 +201,23 @@ static const TValue* get_compTM(lua_State* L, Table* mt1, Table* mt2, TMS event)
     return NULL;
 }
 
-static int call_orderTM(lua_State* L, const TValue* p1, const TValue* p2, TMS event)
+static int call_orderTM(lua_State* L, const TValue* p1, const TValue* p2, TMS event, bool error = false)
 {
     const TValue* tm1 = luaT_gettmbyobj(L, p1, event);
     const TValue* tm2;
     if (ttisnil(tm1))
+    {
+        if (error)
+            luaG_ordererror(L, p1, p2, event);
         return -1; // no metamethod?
+    }
     tm2 = luaT_gettmbyobj(L, p2, event);
     if (!luaO_rawequalObj(tm1, tm2)) // different metamethods?
+    {
+        if (error)
+            luaG_ordererror(L, p1, p2, event);
         return -1;
+    }
     callTMres(L, L->top, tm1, p1, p2);
     return !l_isfalse(L->top);
 }
@@ -239,16 +247,14 @@ int luaV_strcmp(const TString* ls, const TString* rs)
 
 int luaV_lessthan(lua_State* L, const TValue* l, const TValue* r)
 {
-    int res;
-    if (ttype(l) != ttype(r))
+    if (LUAU_UNLIKELY(ttype(l) != ttype(r)))
         luaG_ordererror(L, l, r, TM_LT);
-    else if (ttisnumber(l))
+    else if (LUAU_LIKELY(ttisnumber(l)))
         return luai_numlt(nvalue(l), nvalue(r));
     else if (ttisstring(l))
         return luaV_strcmp(tsvalue(l), tsvalue(r)) < 0;
-    else if ((res = call_orderTM(L, l, r, TM_LT)) == -1)
-        luaG_ordererror(L, l, r, TM_LT);
-    return res;
+    else
+        return call_orderTM(L, l, r, TM_LT, /* error= */ true);
 }
 
 int luaV_lessequal(lua_State* L, const TValue* l, const TValue* r)

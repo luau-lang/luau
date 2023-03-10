@@ -79,7 +79,7 @@ void IrLoweringX64::lower(AssemblyOptions options)
         }
     }
 
-    IrToStringContext ctx{build.text, function.blocks, function.constants};
+    IrToStringContext ctx{build.text, function.blocks, function.constants, function.cfg};
 
     // We use this to skip outlined fallback blocks from IR/asm text output
     size_t textSize = build.text.length();
@@ -112,7 +112,7 @@ void IrLoweringX64::lower(AssemblyOptions options)
         if (options.includeIr)
         {
             build.logAppend("# ");
-            toStringDetailed(ctx, block, blockIndex);
+            toStringDetailed(ctx, block, blockIndex, /* includeUseInfo */ true);
         }
 
         build.setLabel(block.label);
@@ -145,7 +145,7 @@ void IrLoweringX64::lower(AssemblyOptions options)
             if (options.includeIr)
             {
                 build.logAppend("# ");
-                toStringDetailed(ctx, inst, index);
+                toStringDetailed(ctx, inst, index, /* includeUseInfo */ true);
             }
 
             IrBlock& next = i + 1 < sortedBlocks.size() ? function.blocks[sortedBlocks[i + 1]] : dummy;
@@ -416,7 +416,20 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     {
         inst.regX64 = regs.allocXmmRegOrReuse(index, {inst.a, inst.b});
 
-        RegisterX64 lhs = regOp(inst.a);
+        ScopedRegX64 optLhsTmp{regs};
+        RegisterX64 lhs;
+
+        if (inst.a.kind == IrOpKind::Constant)
+        {
+            optLhsTmp.alloc(SizeX64::xmmword);
+
+            build.vmovsd(optLhsTmp.reg, memRegDoubleOp(inst.a));
+            lhs = optLhsTmp.reg;
+        }
+        else
+        {
+            lhs = regOp(inst.a);
+        }
 
         if (inst.b.kind == IrOpKind::Inst)
         {
@@ -444,14 +457,15 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     {
         inst.regX64 = regs.allocXmmRegOrReuse(index, {inst.a, inst.b});
 
-        ScopedRegX64 tmp{regs, SizeX64::xmmword};
-
+        ScopedRegX64 optLhsTmp{regs};
         RegisterX64 lhs;
 
         if (inst.a.kind == IrOpKind::Constant)
         {
-            build.vmovsd(tmp.reg, memRegDoubleOp(inst.a));
-            lhs = tmp.reg;
+            optLhsTmp.alloc(SizeX64::xmmword);
+
+            build.vmovsd(optLhsTmp.reg, memRegDoubleOp(inst.a));
+            lhs = optLhsTmp.reg;
         }
         else
         {

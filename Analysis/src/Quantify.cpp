@@ -253,11 +253,12 @@ struct PureQuantifier : Substitution
     }
 };
 
-TypeId quantify(TypeArena* arena, TypeId ty, Scope* scope)
+std::optional<TypeId> quantify(TypeArena* arena, TypeId ty, Scope* scope)
 {
     PureQuantifier quantifier{arena, scope};
     std::optional<TypeId> result = quantifier.substitute(ty);
-    LUAU_ASSERT(result);
+    if (!result)
+        return std::nullopt;
 
     FunctionType* ftv = getMutable<FunctionType>(*result);
     LUAU_ASSERT(ftv);

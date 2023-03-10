@@ -138,17 +138,16 @@ Fixture::Fixture(bool freeze, bool prepareAutocomplete)
     : sff_DebugLuauFreezeArena("DebugLuauFreezeArena", freeze)
     , frontend(&fileResolver, &configResolver,
           {/* retainFullTypeGraphs= */ true, /* forAutocomplete */ false, /* randomConstraintResolutionSeed */ randomSeed})
-    , typeChecker(frontend.typeChecker)
     , builtinTypes(frontend.builtinTypes)
 {
     configResolver.defaultConfig.mode = Mode::Strict;
     configResolver.defaultConfig.enabledLint.warningMask = ~0ull;
     configResolver.defaultConfig.parseOptions.captureComments = true;
 
-    registerBuiltinTypes(frontend);
+    registerBuiltinTypes(frontend.globals);
 
-    Luau::freeze(frontend.typeChecker.globalTypes);
-    Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
+    Luau::freeze(frontend.globals.globalTypes);
+    Luau::freeze(frontend.globalsForAutocomplete.globalTypes);
 
     Luau::setPrintLine([](auto s) {});
 }
@@ -178,11 +177,11 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
 
             if (FFlag::DebugLuauDeferredConstraintResolution)
             {
-                Luau::check(*sourceModule, {}, frontend.builtinTypes, NotNull{&ice}, NotNull{&moduleResolver}, NotNull{&fileResolver},
-                    typeChecker.globalScope, frontend.options);
+                Luau::check(*sourceModule, {}, builtinTypes, NotNull{&ice}, NotNull{&moduleResolver}, NotNull{&fileResolver},
+                    frontend.globals.globalScope, frontend.options);
             }
             else
-                typeChecker.check(*sourceModule, sourceModule->mode.value_or(Luau::Mode::Nonstrict));
+                frontend.typeChecker.check(*sourceModule, sourceModule->mode.value_or(Luau::Mode::Nonstrict));
         }
 
         throw ParseErrors(result.errors);
@@ -447,9 +446,9 @@ void Fixture::dumpErrors(std::ostream& os, const std::vector<TypeError>& errors)
 
 void Fixture::registerTestTypes()
 {
-    addGlobalBinding(frontend, "game", typeChecker.anyType, "@luau");
-    addGlobalBinding(frontend, "workspace", typeChecker.anyType, "@luau");
-    addGlobalBinding(frontend, "script", typeChecker.anyType, "@luau");
+    addGlobalBinding(frontend.globals, "game", builtinTypes->anyType, "@luau");
+    addGlobalBinding(frontend.globals, "workspace", builtinTypes->anyType, "@luau");
+    addGlobalBinding(frontend.globals, "script", builtinTypes->anyType, "@luau");
 }
 
 void Fixture::dumpErrors(const CheckResult& cr)
@@ -499,9 +498,9 @@ void Fixture::validateErrors(const std::vector<Luau::TypeError>& errors)
 
 LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source)
 {
-    unfreeze(typeChecker.globalTypes);
-    LoadDefinitionFileResult result = frontend.loadDefinitionFile(source, "@test");
-    freeze(typeChecker.globalTypes);
+    unfreeze(frontend.globals.globalTypes);
+    LoadDefinitionFileResult result = frontend.loadDefinitionFile(source, "@test", /* captureComments */ false);
+    freeze(frontend.globals.globalTypes);
 
     if (result.module)
         dumpErrors(result.module);
@@ -512,16 +511,16 @@ LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source)
 BuiltinsFixture::BuiltinsFixture(bool freeze, bool prepareAutocomplete)
     : Fixture(freeze, prepareAutocomplete)
 {
-    Luau::unfreeze(frontend.typeChecker.globalTypes);
-    Luau::unfreeze(frontend.typeCheckerForAutocomplete.globalTypes);
+    Luau::unfreeze(frontend.globals.globalTypes);
+    Luau::unfreeze(frontend.globalsForAutocomplete.globalTypes);
 
     registerBuiltinGlobals(frontend);
     if (prepareAutocomplete)
-        registerBuiltinGlobals(frontend.typeCheckerForAutocomplete);
+        registerBuiltinGlobals(frontend.typeCheckerForAutocomplete, frontend.globalsForAutocomplete);
     registerTestTypes();
 
-    Luau::freeze(frontend.typeChecker.globalTypes);
-    Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
+    Luau::freeze(frontend.globals.globalTypes);
+    Luau::freeze(frontend.globalsForAutocomplete.globalTypes);
 }
 
 ModuleName fromString(std::string_view name)
@@ -581,23 +580,31 @@ std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name)
 
 void registerHiddenTypes(Frontend* frontend)
 {
-    TypeId t = frontend->globalTypes.addType(GenericType{"T"});
+    GlobalTypes& globals = frontend->globals;
+
+    unfreeze(globals.globalTypes);
+
+    TypeId t = globals.globalTypes.addType(GenericType{"T"});
     GenericTypeDefinition genericT{t};
 
-    ScopePtr globalScope = frontend->getGlobalScope();
-    globalScope->exportedTypeBindings["Not"] = TypeFun{{genericT}, frontend->globalTypes.addType(NegationType{t})};
+    ScopePtr globalScope = globals.globalScope;
+    globalScope->exportedTypeBindings["Not"] = TypeFun{{genericT}, globals.globalTypes.addType(NegationType{t})};
     globalScope->exportedTypeBindings["fun"] = TypeFun{{}, frontend->builtinTypes->functionType};
     globalScope->exportedTypeBindings["cls"] = TypeFun{{}, frontend->builtinTypes->classType};
     globalScope->exportedTypeBindings["err"] = TypeFun{{}, frontend->builtinTypes->errorType};
     globalScope->exportedTypeBindings["tbl"] = TypeFun{{}, frontend->builtinTypes->tableType};
+
+    freeze(globals.globalTypes);
 }
 
 void createSomeClasses(Frontend* frontend)
 {
-    TypeArena& arena = frontend->globalTypes;
+    GlobalTypes& globals = frontend->globals;
+
+    TypeArena& arena = globals.globalTypes;
     unfreeze(arena);
 
-    ScopePtr moduleScope = frontend->getGlobalScope();
+    ScopePtr moduleScope = globals.globalScope;
 
     TypeId parentType = arena.addType(ClassType{"Parent", {}, frontend->builtinTypes->classType, std::nullopt, {}, nullptr, "Test"});
 
@@ -606,22 +613,22 @@ void createSomeClasses(Frontend* frontend)
 
     parentClass->props["virtual_method"] = {makeFunction(arena, parentType, {}, {})};
 
-    addGlobalBinding(*frontend, "Parent", {parentType});
+    addGlobalBinding(globals, "Parent", {parentType});
     moduleScope->exportedTypeBindings["Parent"] = TypeFun{{}, parentType};
 
     TypeId childType = arena.addType(ClassType{"Child", {}, parentType, std::nullopt, {}, nullptr, "Test"});
 
-    addGlobalBinding(*frontend, "Child", {childType});
+    addGlobalBinding(globals, "Child", {childType});
     moduleScope->exportedTypeBindings["Child"] = TypeFun{{}, childType};
 
     TypeId anotherChildType = arena.addType(ClassType{"AnotherChild", {}, parentType, std::nullopt, {}, nullptr, "Test"});
 
-    addGlobalBinding(*frontend, "AnotherChild", {anotherChildType});
+    addGlobalBinding(globals, "AnotherChild", {anotherChildType});
     moduleScope->exportedTypeBindings["AnotherChild"] = TypeFun{{}, anotherChildType};
 
     TypeId unrelatedType = arena.addType(ClassType{"Unrelated", {}, frontend->builtinTypes->classType, std::nullopt, {}, nullptr, "Test"});
 
-    addGlobalBinding(*frontend, "Unrelated", {unrelatedType});
+    addGlobalBinding(globals, "Unrelated", {unrelatedType});
     moduleScope->exportedTypeBindings["Unrelated"] = TypeFun{{}, unrelatedType};
 
     for (const auto& [name, ty] : moduleScope->exportedTypeBindings)

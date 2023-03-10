@@ -503,14 +503,15 @@ TEST_CASE("Types")
         Luau::NullModuleResolver moduleResolver;
         Luau::InternalErrorReporter iceHandler;
         Luau::BuiltinTypes builtinTypes;
-        Luau::TypeChecker env(&moduleResolver, Luau::NotNull{&builtinTypes}, &iceHandler);
+        Luau::GlobalTypes globals{Luau::NotNull{&builtinTypes}};
+        Luau::TypeChecker env(globals, &moduleResolver, Luau::NotNull{&builtinTypes}, &iceHandler);
 
-        Luau::registerBuiltinGlobals(env);
-        Luau::freeze(env.globalTypes);
+        Luau::registerBuiltinGlobals(env, globals);
+        Luau::freeze(globals.globalTypes);
 
         lua_newtable(L);
 
-        for (const auto& [name, binding] : env.globalScope->bindings)
+        for (const auto& [name, binding] : globals.globalScope->bindings)
         {
             populateRTTI(L, binding.typeId);
             lua_setfield(L, -2, toString(name).c_str());

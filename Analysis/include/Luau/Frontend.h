@@ -21,6 +21,7 @@ class ParseError;
 struct Frontend;
 struct TypeError;
 struct LintWarning;
+struct GlobalTypes;
 struct TypeChecker;
 struct FileResolver;
 struct ModuleResolver;
@@ -31,11 +32,12 @@ struct LoadDefinitionFileResult
 {
     bool success;
     ParseResult parseResult;
+    SourceModule sourceModule;
     ModulePtr module;
 };
 
-LoadDefinitionFileResult loadDefinitionFile(
-    TypeChecker& typeChecker, ScopePtr targetScope, std::string_view definition, const std::string& packageName);
+LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, GlobalTypes& globals, ScopePtr targetScope, std::string_view definition,
+    const std::string& packageName, bool captureComments);
 
 std::optional<Mode> parseMode(const std::vector<HotComment>& hotcomments);
 
@@ -152,14 +154,12 @@ struct Frontend
     void clear();
 
     ScopePtr addEnvironment(const std::string& environmentName);
-    ScopePtr getEnvironmentScope(const std::string& environmentName);
+    ScopePtr getEnvironmentScope(const std::string& environmentName) const;
 
-    void registerBuiltinDefinition(const std::string& name, std::function<void(TypeChecker&, ScopePtr)>);
+    void registerBuiltinDefinition(const std::string& name, std::function<void(TypeChecker&, GlobalTypes&, ScopePtr)>);
     void applyBuiltinDefinitionToEnvironment(const std::string& environmentName, const std::string& definitionName);
 
-    LoadDefinitionFileResult loadDefinitionFile(std::string_view source, const std::string& packageName);
-
-    ScopePtr getGlobalScope();
+    LoadDefinitionFileResult loadDefinitionFile(std::string_view source, const std::string& packageName, bool captureComments);
 
 private:
     ModulePtr check(const SourceModule& sourceModule, Mode mode, std::vector<RequireCycle> requireCycles, bool forAutocomplete = false, bool recordJsonLog = false);
@@ -171,10 +171,10 @@ private:
 
     static LintResult classifyLints(const std::vector<LintWarning>& warnings, const Config& config);
 
-    ScopePtr getModuleEnvironment(const SourceModule& module, const Config& config, bool forAutocomplete);
+    ScopePtr getModuleEnvironment(const SourceModule& module, const Config& config, bool forAutocomplete) const;
 
     std::unordered_map<std::string, ScopePtr> environments;
-    std::unordered_map<std::string, std::function<void(TypeChecker&, ScopePtr)>> builtinDefinitions;
+    std::unordered_map<std::string, std::function<void(TypeChecker&, GlobalTypes&, ScopePtr)>> builtinDefinitions;
 
     BuiltinTypes builtinTypes_;
 
@@ -184,21 +184,19 @@ public:
     FileResolver* fileResolver;
     FrontendModuleResolver moduleResolver;
     FrontendModuleResolver moduleResolverForAutocomplete;
+    GlobalTypes globals;
+    GlobalTypes globalsForAutocomplete;
     TypeChecker typeChecker;
     TypeChecker typeCheckerForAutocomplete;
     ConfigResolver* configResolver;
     FrontendOptions options;
     InternalErrorReporter iceHandler;
-    TypeArena globalTypes;
 
     std::unordered_map<ModuleName, SourceNode> sourceNodes;
     std::unordered_map<ModuleName, SourceModule> sourceModules;
     std::unordered_map<ModuleName, RequireTraceResult> requireTrace;
 
     Stats stats = {};
-
-private:
-    ScopePtr globalScope;
 };
 
 ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle>& requireCycles, NotNull<BuiltinTypes> builtinTypes,

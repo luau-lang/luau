@@ -90,6 +90,11 @@ struct Unifier
 private:
     void tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall = false, bool isIntersection = false);
     void tryUnifyUnionWithType(TypeId subTy, const UnionType* uv, TypeId superTy);
+
+    // Traverse the two types provided and block on any BlockedTypes we find.
+    // Returns true if any types were blocked on.
+    bool blockOnBlockedTypes(TypeId subTy, TypeId superTy);
+
     void tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionType* uv, bool cacheEnabled, bool isFunctionCall);
     void tryUnifyTypeWithIntersection(TypeId subTy, TypeId superTy, const IntersectionType* uv);
     void tryUnifyIntersectionWithType(TypeId subTy, const IntersectionType* uv, TypeId superTy, bool cacheEnabled, bool isFunctionCall);

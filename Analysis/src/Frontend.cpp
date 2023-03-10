@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
 LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
+LUAU_FASTFLAGVARIABLE(LuauDefinitionFileSourceModule, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false);
 
 namespace Luau
@@ -83,32 +84,31 @@ static void generateDocumentationSymbols(TypeId ty, const std::string& rootName)
     }
 }
 
-LoadDefinitionFileResult Frontend::loadDefinitionFile(std::string_view source, const std::string& packageName)
+LoadDefinitionFileResult Frontend::loadDefinitionFile(std::string_view source, const std::string& packageName, bool captureComments)
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
-        return Luau::loadDefinitionFile(typeChecker, typeChecker.globalScope, source, packageName);
+        return Luau::loadDefinitionFile(typeChecker, globals, globals.globalScope, source, packageName, captureComments);
 
     LUAU_TIMETRACE_SCOPE("loadDefinitionFile", "Frontend");
 
-    Luau::Allocator allocator;
-    Luau::AstNameTable names(allocator);
+    Luau::SourceModule sourceModule;
 
     ParseOptions options;
     options.allowDeclarationSyntax = true;
+    options.captureComments = captureComments;
 
-    Luau::ParseResult parseResult = Luau::Parser::parse(source.data(), source.size(), names, allocator, options);
+    Luau::ParseResult parseResult = Luau::Parser::parse(source.data(), source.size(), *sourceModule.names, *sourceModule.allocator, options);
 
     if (parseResult.errors.size() > 0)
-        return LoadDefinitionFileResult{false, parseResult, nullptr};
+        return LoadDefinitionFileResult{false, parseResult, sourceModule, nullptr};
 
-    Luau::SourceModule module;
-    module.root = parseResult.root;
-    module.mode = Mode::Definition;
+    sourceModule.root = parseResult.root;
+    sourceModule.mode = Mode::Definition;
 
-    ModulePtr checkedModule = check(module, Mode::Definition, {});
+    ModulePtr checkedModule = check(sourceModule, Mode::Definition, {});
 
     if (checkedModule->errors.size() > 0)
-        return LoadDefinitionFileResult{false, parseResult, checkedModule};
+        return LoadDefinitionFileResult{false, parseResult, sourceModule, checkedModule};
 
     CloneState cloneState;
 
@@ -117,20 +117,20 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(std::string_view source, c
 
     for (const auto& [name, ty] : checkedModule->declaredGlobals)
     {
-        TypeId globalTy = clone(ty, globalTypes, cloneState);
+        TypeId globalTy = clone(ty, globals.globalTypes, cloneState);
         std::string documentationSymbol = packageName + "/global/" + name;
         generateDocumentationSymbols(globalTy, documentationSymbol);
-        globalScope->bindings[typeChecker.globalNames.names->getOrAdd(name.c_str())] = {globalTy, Location(), false, {}, documentationSymbol};
+        globals.globalScope->bindings[globals.globalNames.names->getOrAdd(name.c_str())] = {globalTy, Location(), false, {}, documentationSymbol};
 
         typesToPersist.push_back(globalTy);
     }
 
     for (const auto& [name, ty] : checkedModule->exportedTypeBindings)
     {
-        TypeFun globalTy = clone(ty, globalTypes, cloneState);
+        TypeFun globalTy = clone(ty, globals.globalTypes, cloneState);
         std::string documentationSymbol = packageName + "/globaltype/" + name;
         generateDocumentationSymbols(globalTy.type, documentationSymbol);
-        globalScope->exportedTypeBindings[name] = globalTy;
+        globals.globalScope->exportedTypeBindings[name] = globalTy;
 
         typesToPersist.push_back(globalTy.type);
     }
@@ -140,10 +140,11 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(std::string_view source, c
         persist(ty);
     }
 
-    return LoadDefinitionFileResult{true, parseResult, checkedModule};
+    return LoadDefinitionFileResult{true, parseResult, sourceModule, checkedModule};
 }
 
-LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr targetScope, std::string_view source, const std::string& packageName)
+LoadDefinitionFileResult loadDefinitionFile_DEPRECATED(
+    TypeChecker& typeChecker, GlobalTypes& globals, ScopePtr targetScope, std::string_view source, const std::string& packageName)
 {
     LUAU_TIMETRACE_SCOPE("loadDefinitionFile", "Frontend");
 
@@ -156,7 +157,7 @@ LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr t
     Luau::ParseResult parseResult = Luau::Parser::parse(source.data(), source.size(), names, allocator, options);
 
     if (parseResult.errors.size() > 0)
-        return LoadDefinitionFileResult{false, parseResult, nullptr};
+        return LoadDefinitionFileResult{false, parseResult, {}, nullptr};
 
     Luau::SourceModule module;
     module.root = parseResult.root;
@@ -165,7 +166,7 @@ LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr t
     ModulePtr checkedModule = typeChecker.check(module, Mode::Definition);
 
     if (checkedModule->errors.size() > 0)
-        return LoadDefinitionFileResult{false, parseResult, checkedModule};
+        return LoadDefinitionFileResult{false, parseResult, {}, checkedModule};
 
     CloneState cloneState;
 
@@ -174,17 +175,17 @@ LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr t
 
     for (const auto& [name, ty] : checkedModule->declaredGlobals)
     {
-        TypeId globalTy = clone(ty, typeChecker.globalTypes, cloneState);
+        TypeId globalTy = clone(ty, globals.globalTypes, cloneState);
         std::string documentationSymbol = packageName + "/global/" + name;
         generateDocumentationSymbols(globalTy, documentationSymbol);
-        targetScope->bindings[typeChecker.globalNames.names->getOrAdd(name.c_str())] = {globalTy, Location(), false, {}, documentationSymbol};
+        targetScope->bindings[globals.globalNames.names->getOrAdd(name.c_str())] = {globalTy, Location(), false, {}, documentationSymbol};
 
         typesToPersist.push_back(globalTy);
     }
 
     for (const auto& [name, ty] : checkedModule->exportedTypeBindings)
     {
-        TypeFun globalTy = clone(ty, typeChecker.globalTypes, cloneState);
+        TypeFun globalTy = clone(ty, globals.globalTypes, cloneState);
         std::string documentationSymbol = packageName + "/globaltype/" + name;
         generateDocumentationSymbols(globalTy.type, documentationSymbol);
         targetScope->exportedTypeBindings[name] = globalTy;
@@ -197,7 +198,67 @@ LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr t
         persist(ty);
     }
 
-    return LoadDefinitionFileResult{true, parseResult, checkedModule};
+    return LoadDefinitionFileResult{true, parseResult, {}, checkedModule};
+}
+
+LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, GlobalTypes& globals, ScopePtr targetScope, std::string_view source,
+    const std::string& packageName, bool captureComments)
+{
+    if (!FFlag::LuauDefinitionFileSourceModule)
+        return loadDefinitionFile_DEPRECATED(typeChecker, globals, targetScope, source, packageName);
+
+    LUAU_TIMETRACE_SCOPE("loadDefinitionFile", "Frontend");
+
+    Luau::SourceModule sourceModule;
+
+    ParseOptions options;
+    options.allowDeclarationSyntax = true;
+    options.captureComments = captureComments;
+
+    Luau::ParseResult parseResult = Luau::Parser::parse(source.data(), source.size(), *sourceModule.names, *sourceModule.allocator, options);
+
+    if (parseResult.errors.size() > 0)
+        return LoadDefinitionFileResult{false, parseResult, sourceModule, nullptr};
+
+    sourceModule.root = parseResult.root;
+    sourceModule.mode = Mode::Definition;
+
+    ModulePtr checkedModule = typeChecker.check(sourceModule, Mode::Definition);
+
+    if (checkedModule->errors.size() > 0)
+        return LoadDefinitionFileResult{false, parseResult, sourceModule, checkedModule};
+
+    CloneState cloneState;
+
+    std::vector<TypeId> typesToPersist;
+    typesToPersist.reserve(checkedModule->declaredGlobals.size() + checkedModule->exportedTypeBindings.size());
+
+    for (const auto& [name, ty] : checkedModule->declaredGlobals)
+    {
+        TypeId globalTy = clone(ty, globals.globalTypes, cloneState);
+        std::string documentationSymbol = packageName + "/global/" + name;
+        generateDocumentationSymbols(globalTy, documentationSymbol);
+        targetScope->bindings[globals.globalNames.names->getOrAdd(name.c_str())] = {globalTy, Location(), false, {}, documentationSymbol};
+
+        typesToPersist.push_back(globalTy);
+    }
+
+    for (const auto& [name, ty] : checkedModule->exportedTypeBindings)
+    {
+        TypeFun globalTy = clone(ty, globals.globalTypes, cloneState);
+        std::string documentationSymbol = packageName + "/globaltype/" + name;
+        generateDocumentationSymbols(globalTy.type, documentationSymbol);
+        targetScope->exportedTypeBindings[name] = globalTy;
+
+        typesToPersist.push_back(globalTy.type);
+    }
+
+    for (TypeId ty : typesToPersist)
+    {
+        persist(ty);
+    }
+
+    return LoadDefinitionFileResult{true, parseResult, sourceModule, checkedModule};
 }
 
 std::vector<std::string_view> parsePathExpr(const AstExpr& pathExpr)
@@ -414,11 +475,12 @@ Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, c
     , fileResolver(fileResolver)
     , moduleResolver(this)
     , moduleResolverForAutocomplete(this)
-    , typeChecker(&moduleResolver, builtinTypes, &iceHandler)
-    , typeCheckerForAutocomplete(&moduleResolverForAutocomplete, builtinTypes, &iceHandler)
+    , globals(builtinTypes)
+    , globalsForAutocomplete(builtinTypes)
+    , typeChecker(globals, &moduleResolver, builtinTypes, &iceHandler)
+    , typeCheckerForAutocomplete(globalsForAutocomplete, &moduleResolverForAutocomplete, builtinTypes, &iceHandler)
     , configResolver(configResolver)
     , options(options)
-    , globalScope(typeChecker.globalScope)
 {
 }
 
@@ -704,13 +766,13 @@ bool Frontend::parseGraph(std::vector<ModuleName>& buildQueue, const ModuleName&
     return cyclic;
 }
 
-ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config& config, bool forAutocomplete)
+ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config& config, bool forAutocomplete) const
 {
     ScopePtr result;
     if (forAutocomplete)
-        result = typeCheckerForAutocomplete.globalScope;
+        result = globalsForAutocomplete.globalScope;
     else
-        result = typeChecker.globalScope;
+        result = globals.globalScope;
 
     if (module.environmentName)
         result = getEnvironmentScope(*module.environmentName);
@@ -848,16 +910,6 @@ const SourceModule* Frontend::getSourceModule(const ModuleName& moduleName) cons
     return const_cast<Frontend*>(this)->getSourceModule(moduleName);
 }
 
-ScopePtr Frontend::getGlobalScope()
-{
-    if (!globalScope)
-    {
-        globalScope = typeChecker.globalScope;
-    }
-
-    return globalScope;
-}
-
 ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle>& requireCycles, NotNull<BuiltinTypes> builtinTypes,
     NotNull<InternalErrorReporter> iceHandler, NotNull<ModuleResolver> moduleResolver, NotNull<FileResolver> fileResolver,
     const ScopePtr& globalScope, FrontendOptions options)
@@ -946,7 +998,7 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vect
 {
     return Luau::check(sourceModule, requireCycles, builtinTypes, NotNull{&iceHandler},
         NotNull{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver}, NotNull{fileResolver},
-        forAutocomplete ? typeCheckerForAutocomplete.globalScope : typeChecker.globalScope, options, recordJsonLog);
+        forAutocomplete ? globalsForAutocomplete.globalScope : globals.globalScope, options, recordJsonLog);
 }
 
 // Read AST into sourceModules if necessary.  Trace require()s.  Report parse errors.
@@ -1115,7 +1167,7 @@ ScopePtr Frontend::addEnvironment(const std::string& environmentName)
 
     if (environments.count(environmentName) == 0)
     {
-        ScopePtr scope = std::make_shared<Scope>(typeChecker.globalScope);
+        ScopePtr scope = std::make_shared<Scope>(globals.globalScope);
         environments[environmentName] = scope;
         return scope;
     }
@@ -1123,14 +1175,16 @@ ScopePtr Frontend::addEnvironment(const std::string& environmentName)
         return environments[environmentName];
 }
 
-ScopePtr Frontend::getEnvironmentScope(const std::string& environmentName)
+ScopePtr Frontend::getEnvironmentScope(const std::string& environmentName) const
 {
-    LUAU_ASSERT(environments.count(environmentName) > 0);
+    if (auto it = environments.find(environmentName); it != environments.end())
+        return it->second;
 
-    return environments[environmentName];
+    LUAU_ASSERT(!"environment doesn't exist");
+    return {};
 }
 
-void Frontend::registerBuiltinDefinition(const std::string& name, std::function<void(TypeChecker&, ScopePtr)> applicator)
+void Frontend::registerBuiltinDefinition(const std::string& name, std::function<void(TypeChecker&, GlobalTypes&, ScopePtr)> applicator)
 {
     LUAU_ASSERT(builtinDefinitions.count(name) == 0);
 
@@ -1143,7 +1197,7 @@ void Frontend::applyBuiltinDefinitionToEnvironment(const std::string& environmen
     LUAU_ASSERT(builtinDefinitions.count(definitionName) > 0);
 
     if (builtinDefinitions.count(definitionName) > 0)
-        builtinDefinitions[definitionName](typeChecker, getEnvironmentScope(environmentName));
+        builtinDefinitions[definitionName](typeChecker, globals, getEnvironmentScope(environmentName));
 }
 
 LintResult Frontend::classifyLints(const std::vector<LintWarning>& warnings, const Config& config)

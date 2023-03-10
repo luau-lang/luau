@@ -282,4 +282,17 @@ TEST_CASE_FIXTURE(Fixture, "Luau_selectively_query_for_a_different_boolean_2")
     REQUIRE(snd->value == true);
 }
 
+TEST_CASE_FIXTURE(Fixture, "include_types_ancestry")
+{
+    check("local x: number = 4;");
+    const Position pos(0, 10);
+
+    std::vector<AstNode*> ancestryNoTypes = findAstAncestryOfPosition(*getMainSourceModule(), pos);
+    std::vector<AstNode*> ancestryTypes = findAstAncestryOfPosition(*getMainSourceModule(), pos, true);
+
+    CHECK(ancestryTypes.size() > ancestryNoTypes.size());
+    CHECK(!ancestryNoTypes.back()->asType());
+    CHECK(ancestryTypes.back()->asType());
+}
+
 TEST_SUITE_END();

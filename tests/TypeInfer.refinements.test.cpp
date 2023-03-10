@@ -30,9 +30,8 @@ std::optional<WithPredicate<TypePackId>> magicFunctionInstanceIsA(
     if (!lvalue || !tfun)
         return std::nullopt;
 
-    unfreeze(typeChecker.globalTypes);
-    TypePackId booleanPack = typeChecker.globalTypes.addTypePack({typeChecker.booleanType});
-    freeze(typeChecker.globalTypes);
+    ModulePtr module = typeChecker.currentModule;
+    TypePackId booleanPack = module->internalTypes.addTypePack({typeChecker.booleanType});
     return WithPredicate<TypePackId>{booleanPack, {IsAPredicate{std::move(*lvalue), expr.location, tfun->type}}};
 }
 
@@ -62,47 +61,47 @@ struct RefinementClassFixture : BuiltinsFixture
 {
     RefinementClassFixture()
     {
-        TypeArena& arena = typeChecker.globalTypes;
-        NotNull<Scope> scope{typeChecker.globalScope.get()};
+        TypeArena& arena = frontend.globals.globalTypes;
+        NotNull<Scope> scope{frontend.globals.globalScope.get()};
 
-        std::optional<TypeId> rootSuper = FFlag::LuauNegatedClassTypes ? std::make_optional(typeChecker.builtinTypes->classType) : std::nullopt;
+        std::optional<TypeId> rootSuper = FFlag::LuauNegatedClassTypes ? std::make_optional(builtinTypes->classType) : std::nullopt;
 
         unfreeze(arena);
         TypeId vec3 = arena.addType(ClassType{"Vector3", {}, rootSuper, std::nullopt, {}, nullptr, "Test"});
         getMutable<ClassType>(vec3)->props = {
-            {"X", Property{typeChecker.numberType}},
-            {"Y", Property{typeChecker.numberType}},
-            {"Z", Property{typeChecker.numberType}},
+            {"X", Property{builtinTypes->numberType}},
+            {"Y", Property{builtinTypes->numberType}},
+            {"Z", Property{builtinTypes->numberType}},
         };
 
         TypeId inst = arena.addType(ClassType{"Instance", {}, rootSuper, std::nullopt, {}, nullptr, "Test"});
 
-        TypePackId isAParams = arena.addTypePack({inst, typeChecker.stringType});
-        TypePackId isARets = arena.addTypePack({typeChecker.booleanType});
+        TypePackId isAParams = arena.addTypePack({inst, builtinTypes->stringType});
+        TypePackId isARets = arena.addTypePack({builtinTypes->booleanType});
         TypeId isA = arena.addType(FunctionType{isAParams, isARets});
         getMutable<FunctionType>(isA)->magicFunction = magicFunctionInstanceIsA;
         getMutable<FunctionType>(isA)->dcrMagicRefinement = dcrMagicRefinementInstanceIsA;
 
         getMutable<ClassType>(inst)->props = {
-            {"Name", Property{typeChecker.stringType}},
+            {"Name", Property{builtinTypes->stringType}},
             {"IsA", Property{isA}},
         };
 
-        TypeId folder = typeChecker.globalTypes.addType(ClassType{"Folder", {}, inst, std::nullopt, {}, nullptr, "Test"});
-        TypeId part = typeChecker.globalTypes.addType(ClassType{"Part", {}, inst, std::nullopt, {}, nullptr, "Test"});
+        TypeId folder = frontend.globals.globalTypes.addType(ClassType{"Folder", {}, inst, std::nullopt, {}, nullptr, "Test"});
+        TypeId part = frontend.globals.globalTypes.addType(ClassType{"Part", {}, inst, std::nullopt, {}, nullptr, "Test"});
         getMutable<ClassType>(part)->props = {
             {"Position", Property{vec3}},
         };
 
-        typeChecker.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vec3};
-        typeChecker.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, inst};
-        typeChecker.globalScope->exportedTypeBindings["Folder"] = TypeFun{{}, folder};
-        typeChecker.globalScope->exportedTypeBindings["Part"] = TypeFun{{}, part};
+        frontend.globals.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vec3};
+        frontend.globals.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, inst};
+        frontend.globals.globalScope->exportedTypeBindings["Folder"] = TypeFun{{}, folder};
+        frontend.globals.globalScope->exportedTypeBindings["Part"] = TypeFun{{}, part};
 
-        for (const auto& [name, ty] : typeChecker.globalScope->exportedTypeBindings)
+        for (const auto& [name, ty] : frontend.globals.globalScope->exportedTypeBindings)
             persist(ty.type);
 
-        freeze(typeChecker.globalTypes);
+        freeze(frontend.globals.globalTypes);
     }
 };
 } // namespace

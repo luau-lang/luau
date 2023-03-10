@@ -15,6 +15,16 @@
 #include <intrin.h>
 #endif
 
+#ifdef LUAU_TARGET_SSE41
+#include <smmintrin.h>
+
+#ifndef _MSC_VER
+#include <cpuid.h> // on MSVC this comes from intrin.h
+#endif
+#endif
+
+LUAU_FASTFLAGVARIABLE(LuauBuiltinSSE41, false)
+
 // luauF functions implement FASTCALL instruction that performs a direct execution of some builtin functions from the VM
 // The rule of thumb is that FASTCALL functions can not call user code, yield, fail, or reallocate stack.
 // If types of the arguments mismatch, luauF_* needs to return -1 and the execution will fall back to the usual call path
@@ -95,7 +105,9 @@ static int luauF_atan(lua_State* L, StkId res, TValue* arg0, int nresults, StkId
     return -1;
 }
 
+// TODO: LUAU_NOINLINE can be removed with LuauBuiltinSSE41
 LUAU_FASTMATH_BEGIN
+LUAU_NOINLINE
 static int luauF_ceil(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
@@ -158,7 +170,9 @@ static int luauF_exp(lua_State* L, StkId res, TValue* arg0, int nresults, StkId 
     return -1;
 }
 
+// TODO: LUAU_NOINLINE can be removed with LuauBuiltinSSE41
 LUAU_FASTMATH_BEGIN
+LUAU_NOINLINE
 static int luauF_floor(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
@@ -935,7 +949,9 @@ static int luauF_sign(lua_State* L, StkId res, TValue* arg0, int nresults, StkId
     return -1;
 }
 
+// TODO: LUAU_NOINLINE can be removed with LuauBuiltinSSE41
 LUAU_FASTMATH_BEGIN
+LUAU_NOINLINE
 static int luauF_round(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
@@ -1244,6 +1260,78 @@ static int luauF_missing(lua_State* L, StkId res, TValue* arg0, int nresults, St
     return -1;
 }
 
+#ifdef LUAU_TARGET_SSE41
+template<int Rounding>
+LUAU_TARGET_SSE41 inline double roundsd_sse41(double v)
+{
+    __m128d av = _mm_set_sd(v);
+    __m128d rv = _mm_round_sd(av, av, Rounding | _MM_FROUND_NO_EXC);
+    return _mm_cvtsd_f64(rv);
+}
+
+LUAU_TARGET_SSE41 static int luauF_floor_sse41(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (!FFlag::LuauBuiltinSSE41)
+        return luauF_floor(L, res, arg0, nresults, args, nparams);
+
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
+    {
+        double a1 = nvalue(arg0);
+        setnvalue(res, roundsd_sse41<_MM_FROUND_TO_NEG_INF>(a1));
+        return 1;
+    }
+
+    return -1;
+}
+
+LUAU_TARGET_SSE41 static int luauF_ceil_sse41(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (!FFlag::LuauBuiltinSSE41)
+        return luauF_ceil(L, res, arg0, nresults, args, nparams);
+
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
+    {
+        double a1 = nvalue(arg0);
+        setnvalue(res, roundsd_sse41<_MM_FROUND_TO_POS_INF>(a1));
+        return 1;
+    }
+
+    return -1;
+}
+
+LUAU_TARGET_SSE41 static int luauF_round_sse41(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (!FFlag::LuauBuiltinSSE41)
+        return luauF_round(L, res, arg0, nresults, args, nparams);
+
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
+    {
+        double a1 = nvalue(arg0);
+        // roundsd only supports bankers rounding natively, so we need to emulate rounding by using truncation
+        // offset is prevfloat(0.5), which is important so that we round prevfloat(0.5) to 0.
+        const double offset = 0.49999999999999994;
+        setnvalue(res, roundsd_sse41<_MM_FROUND_TO_ZERO>(a1 + (a1 < 0 ? -offset : offset)));
+        return 1;
+    }
+
+    return -1;
+}
+
+static bool luau_hassse41()
+{
+    int cpuinfo[4] = {};
+#ifdef _MSC_VER
+    __cpuid(cpuinfo, 1);
+#else
+    __cpuid(1, cpuinfo[0], cpuinfo[1], cpuinfo[2], cpuinfo[3]);
+#endif
+
+    // We requre SSE4.1 support for ROUNDSD
+    // https://en.wikipedia.org/wiki/CPUID#EAX=1:_Processor_Info_and_Feature_Bits
+    return (cpuinfo[2] & (1 << 19)) != 0;
+}
+#endif
+
 const luau_FastFunction luauF_table[256] = {
     NULL,
     luauF_assert,
@@ -1253,12 +1341,24 @@ const luau_FastFunction luauF_table[256] = {
     luauF_asin,
     luauF_atan2,
     luauF_atan,
+
+#ifdef LUAU_TARGET_SSE41
+    luau_hassse41() ? luauF_ceil_sse41 : luauF_ceil,
+#else
     luauF_ceil,
+#endif
+
     luauF_cosh,
     luauF_cos,
     luauF_deg,
     luauF_exp,
+
+#ifdef LUAU_TARGET_SSE41
+    luau_hassse41() ? luauF_floor_sse41 : luauF_floor,
+#else
     luauF_floor,
+#endif
+
     luauF_fmod,
     luauF_frexp,
     luauF_ldexp,
@@ -1300,7 +1400,12 @@ const luau_FastFunction luauF_table[256] = {
 
     luauF_clamp,
     luauF_sign,
+
+#ifdef LUAU_TARGET_SSE41
+    luau_hassse41() ? luauF_round_sse41 : luauF_round,
+#else
     luauF_round,
+#endif
 
     luauF_rawset,
     luauF_rawget,
