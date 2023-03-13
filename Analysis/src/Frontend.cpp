@@ -370,11 +370,9 @@ ErrorVec accumulateErrors(
 
         Module& module = *it2->second;
 
-        std::sort(module.errors.begin(), module.errors.end(),
-            [](const TypeError& e1, const TypeError& e2) -> bool
-            {
-                return e1.location.begin > e2.location.begin;
-            });
+        std::sort(module.errors.begin(), module.errors.end(), [](const TypeError& e1, const TypeError& e2) -> bool {
+            return e1.location.begin > e2.location.begin;
+        });
 
         result.insert(result.end(), module.errors.begin(), module.errors.end());
     }
@@ -618,9 +616,8 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
         const bool recordJsonLog = FFlag::DebugLuauLogSolverToJson && moduleName == name;
 
-        ModulePtr module = FFlag::DebugLuauDeferredConstraintResolution
-                               ? check(sourceModule, mode, requireCycles, /*forAutocomplete*/ false, recordJsonLog)
-                               : typeChecker.check(sourceModule, mode, environmentScope);
+        ModulePtr module = FFlag::DebugLuauDeferredConstraintResolution ? check(sourceModule, mode, requireCycles, /*forAutocomplete*/ false, recordJsonLog)
+                                                                        : typeChecker.check(sourceModule, mode, environmentScope);
 
         stats.timeCheck += getTimestamp() - timestamp;
         stats.filesStrict += mode == Mode::Strict;
@@ -1004,8 +1001,7 @@ ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle
     return result;
 }
 
-ModulePtr Frontend::check(
-    const SourceModule& sourceModule, Mode mode, std::vector<RequireCycle> requireCycles, bool forAutocomplete, bool recordJsonLog)
+ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vector<RequireCycle> requireCycles, bool forAutocomplete, bool recordJsonLog)
 {
     return Luau::check(sourceModule, requireCycles, builtinTypes, NotNull{&iceHandler},
         NotNull{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver}, NotNull{fileResolver},
