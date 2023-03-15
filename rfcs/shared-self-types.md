@@ -146,7 +146,7 @@ and propose allowing explicit declaration of the shared self type,
 following the common practice of naming the self type after the metatable:
 
 ```lua
-  type Set<E> = { [E] : boolean }
+  type Set<E> = { elements : { [E] : boolean } }
 ```
 
 This type (and its generic type parameters) are used to derive the
@@ -155,7 +155,7 @@ declarations:
 
 ```lua
   type SetSelf<E> = {
-    [E] : boolean,
+    elements : { [E] : boolean },
     @metatable SetMT
   }
 ```
@@ -229,7 +229,7 @@ In calls to `setmetatable(t, mt)`:
 * then `setmetatable(t, mt)` has type `S [ Ts/As ]`.
 
 As currently, this has a side-effect of updating the type state of `t` from
-'T [ Ts/As ]` to `S [ Ts/As ]`.
+`T [ Ts/As ]` to `S [ Ts/As ]`.
 
 For example, in `setmetatable({ elements = {} }, Set)`, we have:
 
