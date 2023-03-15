@@ -343,6 +343,19 @@ This is a similar problem, caused by calling methods directly on
 metatables as well as tables. For example calling `Point:abs()` will
 result in inferring that both `x` and `y` are optional,
 
+### Classes with multiple constructors
+
+With the current greedy unifier, classes with constructors of different types will fail:
+
+```lua
+  local Foo = {}
+  Foo.__index = Foo
+  function Foo.from(x) return setmetatable({ msg = tostring(x) }, Foo) end
+  function Foo.new() return setmetatable({}, Foo) end
+```
+
+rather than inferring an optional field, this will report a type error.
+
 ## Alternatives
 
 We could use new syntax for declaring self types, rather than using
