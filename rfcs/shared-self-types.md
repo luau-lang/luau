@@ -225,7 +225,7 @@ Self types are used in two ways: in calls to `setmetatable`, and in metamethod d
 In calls to `setmetatable(t, mt)`:
 
 * if `mt` has self type parameters `As`, self type definition `T` and self type `S`,
-* and `T` has (final) type `T [ Ts/As ]`
+* and `t` has (final) type `T [ Ts/As ]`
 * then `setmetatable(t, mt)` has type `S [ Ts/As ]`.
 
 As currently, this has a side-effect of updating the type state of `t` from
@@ -256,7 +256,7 @@ long-lived type of `t` rather than its current type state.
 In method declarations `function mt:m`:
 
 * if `mt` has self type parameters `As` and self type `S`,
-* then give the `self` parameter to `MT.m` the type `S [ Xs/As ]` for fresh free Xs (these types are quantified as all other free types are).
+* then give the `self` parameter of `mt:m` the type `S [ Xs/As ]` for fresh free Xs (these types are quantified as all other free types are).
 
 For example, in the method `Set:add(el)`:
 
