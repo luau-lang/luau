@@ -715,4 +715,62 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types_2")
     CHECK_EQ("({| x: number |} | {| x: string |}) -> number | string", toString(requireType("f")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "union_table_any_property")
+{
+    CheckResult result = check(R"(
+        function f(x)
+            -- x : X
+            -- sup : { p : { q : X } }?
+            local sup = if true then { p = { q = x } } else nil
+            local sub : { p : any }
+            sup = nil
+            sup = sub
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "union_function_any_args")
+{
+    CheckResult result = check(R"(
+        local sup : ((...any) -> (...any))?
+        local sub : ((number) -> (...any))
+        sup = sub
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "optional_any")
+{
+    CheckResult result = check(R"(
+        local sup : any?
+        local sub : number
+        sup = sub
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_function_with_optional_arg")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
+    CheckResult result = check(R"(
+        function f<T>(x : T?) : {T}
+            local result = {}
+            if x then
+                result[1] = x
+            end
+            return result
+        end
+        local t : {string} = f(nil)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

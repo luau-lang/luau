@@ -137,7 +137,7 @@ const Config& TestConfigResolver::getConfig(const ModuleName& name) const
 Fixture::Fixture(bool freeze, bool prepareAutocomplete)
     : sff_DebugLuauFreezeArena("DebugLuauFreezeArena", freeze)
     , frontend(&fileResolver, &configResolver,
-          {/* retainFullTypeGraphs= */ true, /* forAutocomplete */ false, /* randomConstraintResolutionSeed */ randomSeed})
+          {/* retainFullTypeGraphs= */ true, /* forAutocomplete */ false, /* runLintChecks */ false, /* randomConstraintResolutionSeed */ randomSeed})
     , builtinTypes(frontend.builtinTypes)
 {
     configResolver.defaultConfig.mode = Mode::Strict;
@@ -173,15 +173,19 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
         // if AST is available, check how lint and typecheck handle error nodes
         if (result.root)
         {
-            frontend.lint(*sourceModule);
-
             if (FFlag::DebugLuauDeferredConstraintResolution)
             {
-                Luau::check(*sourceModule, {}, builtinTypes, NotNull{&ice}, NotNull{&moduleResolver}, NotNull{&fileResolver},
+                ModulePtr module = Luau::check(*sourceModule, {}, builtinTypes, NotNull{&ice}, NotNull{&moduleResolver}, NotNull{&fileResolver},
                     frontend.globals.globalScope, frontend.options);
+
+                Luau::lint(sourceModule->root, *sourceModule->names, frontend.globals.globalScope, module.get(), sourceModule->hotcomments, {});
             }
             else
-                frontend.typeChecker.check(*sourceModule, sourceModule->mode.value_or(Luau::Mode::Nonstrict));
+            {
+                ModulePtr module = frontend.typeChecker.check(*sourceModule, sourceModule->mode.value_or(Luau::Mode::Nonstrict));
+
+                Luau::lint(sourceModule->root, *sourceModule->names, frontend.globals.globalScope, module.get(), sourceModule->hotcomments, {});
+            }
         }
 
         throw ParseErrors(result.errors);
@@ -209,20 +213,23 @@ CheckResult Fixture::check(const std::string& source)
 
 LintResult Fixture::lint(const std::string& source, const std::optional<LintOptions>& lintOptions)
 {
-    ParseOptions parseOptions;
-    parseOptions.captureComments = true;
-    configResolver.defaultConfig.mode = Mode::Nonstrict;
-    parse(source, parseOptions);
+    ModuleName mm = fromString(mainModuleName);
+    configResolver.defaultConfig.mode = Mode::Strict;
+    fileResolver.source[mm] = std::move(source);
+    frontend.markDirty(mm);
 
-    return frontend.lint(*sourceModule, lintOptions);
+    return lintModule(mm);
 }
 
-LintResult Fixture::lintTyped(const std::string& source, const std::optional<LintOptions>& lintOptions)
+LintResult Fixture::lintModule(const ModuleName& moduleName, const std::optional<LintOptions>& lintOptions)
 {
-    check(source);
-    ModuleName mm = fromString(mainModuleName);
+    FrontendOptions options = frontend.options;
+    options.runLintChecks = true;
+    options.enabledLintWarnings = lintOptions;
 
-    return frontend.lint(mm, lintOptions);
+    CheckResult result = frontend.check(moduleName, options);
+
+    return result.lintResult;
 }
 
 ParseResult Fixture::parseEx(const std::string& source, const ParseOptions& options)

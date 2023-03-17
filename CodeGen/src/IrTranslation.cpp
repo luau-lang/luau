@@ -806,7 +806,7 @@ void translateInstGetTable(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
     IrOp vc = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(rc));
 
-    IrOp index = build.inst(IrCmd::NUM_TO_INDEX, vc, fallback);
+    IrOp index = build.inst(IrCmd::TRY_NUM_TO_INDEX, vc, fallback);
 
     index = build.inst(IrCmd::SUB_INT, index, build.constInt(1));
 
@@ -843,7 +843,7 @@ void translateInstSetTable(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
     IrOp vc = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(rc));
 
-    IrOp index = build.inst(IrCmd::NUM_TO_INDEX, vc, fallback);
+    IrOp index = build.inst(IrCmd::TRY_NUM_TO_INDEX, vc, fallback);
 
     index = build.inst(IrCmd::SUB_INT, index, build.constInt(1));
 
@@ -1033,6 +1033,64 @@ void translateInstCapture(IrBuilder& build, const Instruction* pc, int pcpos)
     default:
         LUAU_ASSERT(!"Unknown upvalue capture type");
     }
+}
+
+void translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
+{
+    int ra = LUAU_INSN_A(*pc);
+    int rb = LUAU_INSN_B(*pc);
+    uint32_t aux = pc[1];
+
+    IrOp next = build.blockAtInst(pcpos + getOpLength(LOP_NAMECALL));
+    IrOp fallback = build.block(IrBlockKind::Fallback);
+    IrOp firstFastPathSuccess = build.block(IrBlockKind::Internal);
+    IrOp secondFastPath = build.block(IrBlockKind::Internal);
+
+    build.loadAndCheckTag(build.vmReg(rb), LUA_TTABLE, fallback);
+    IrOp table = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
+
+    LUAU_ASSERT(build.function.proto);
+    IrOp addrNodeEl = build.inst(IrCmd::GET_HASH_NODE_ADDR, table, build.constUint(tsvalue(&build.function.proto->k[aux])->hash));
+
+    // We use 'jump' version instead of 'check' guard because we are jumping away into a non-fallback block
+    // This is required by CFG live range analysis because both non-fallback blocks define the same registers
+    build.inst(IrCmd::JUMP_SLOT_MATCH, addrNodeEl, build.vmConst(aux), firstFastPathSuccess, secondFastPath);
+
+    build.beginBlock(firstFastPathSuccess);
+    build.inst(IrCmd::STORE_POINTER, build.vmReg(ra + 1), table);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(ra + 1), build.constTag(LUA_TTABLE));
+
+    IrOp nodeEl = build.inst(IrCmd::LOAD_NODE_VALUE_TV, addrNodeEl);
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), nodeEl);
+    build.inst(IrCmd::JUMP, next);
+
+    build.beginBlock(secondFastPath);
+
+    build.inst(IrCmd::CHECK_NODE_NO_NEXT, addrNodeEl, fallback);
+
+    IrOp indexPtr = build.inst(IrCmd::TRY_CALL_FASTGETTM, table, build.constInt(TM_INDEX), fallback);
+
+    build.loadAndCheckTag(indexPtr, LUA_TTABLE, fallback);
+    IrOp index = build.inst(IrCmd::LOAD_POINTER, indexPtr);
+
+    IrOp addrIndexNodeEl = build.inst(IrCmd::GET_SLOT_NODE_ADDR, index, build.constUint(pcpos));
+    build.inst(IrCmd::CHECK_SLOT_MATCH, addrIndexNodeEl, build.vmConst(aux), fallback);
+
+    // TODO: original 'table' was clobbered by a call inside 'FASTGETTM'
+    // Ideally, such calls should have to effect on SSA IR values, but simple register allocator doesn't support it
+    IrOp table2 = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
+    build.inst(IrCmd::STORE_POINTER, build.vmReg(ra + 1), table2);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(ra + 1), build.constTag(LUA_TTABLE));
+
+    IrOp indexNodeEl = build.inst(IrCmd::LOAD_NODE_VALUE_TV, addrIndexNodeEl);
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), indexNodeEl);
+    build.inst(IrCmd::JUMP, next);
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::FALLBACK_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+    build.inst(IrCmd::JUMP, next);
+
+    build.beginBlock(next);
 }
 
 } // namespace CodeGen

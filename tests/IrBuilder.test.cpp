@@ -62,22 +62,16 @@ public:
         build.inst(IrCmd::LOP_RETURN, build.constUint(2));
     };
 
-    void checkEq(IrOp lhs, IrOp rhs)
-    {
-        CHECK_EQ(lhs.kind, rhs.kind);
-        LUAU_ASSERT(lhs.kind != IrOpKind::Constant && "can't compare constants, each ref is unique");
-        CHECK_EQ(lhs.index, rhs.index);
-    }
-
     void checkEq(IrOp instOp, const IrInst& inst)
     {
         const IrInst& target = build.function.instOp(instOp);
         CHECK(target.cmd == inst.cmd);
-        checkEq(target.a, inst.a);
-        checkEq(target.b, inst.b);
-        checkEq(target.c, inst.c);
-        checkEq(target.d, inst.d);
-        checkEq(target.e, inst.e);
+        CHECK(target.a == inst.a);
+        CHECK(target.b == inst.b);
+        CHECK(target.c == inst.c);
+        CHECK(target.d == inst.d);
+        CHECK(target.e == inst.e);
+        CHECK(target.f == inst.f);
     }
 
     IrBuilder build;
@@ -405,18 +399,18 @@ bb_11:
 TEST_CASE_FIXTURE(IrBuilderFixture, "NumToIndex")
 {
     withOneBlock([this](IrOp a) {
-        build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::NUM_TO_INDEX, build.constDouble(4), a));
+        build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::TRY_NUM_TO_INDEX, build.constDouble(4), a));
         build.inst(IrCmd::LOP_RETURN, build.constUint(0));
     });
 
     withOneBlock([this](IrOp a) {
-        build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::NUM_TO_INDEX, build.constDouble(1.2), a));
+        build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::TRY_NUM_TO_INDEX, build.constDouble(1.2), a));
         build.inst(IrCmd::LOP_RETURN, build.constUint(0));
     });
 
     withOneBlock([this](IrOp a) {
         IrOp nan = build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0));
-        build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::NUM_TO_INDEX, nan, a));
+        build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::TRY_NUM_TO_INDEX, nan, a));
         build.inst(IrCmd::LOP_RETURN, build.constUint(0));
     });
 
@@ -1672,6 +1666,66 @@ bb_2:
 ; predecessors: bb_0, bb_fallback_1
 ; in regs: R0...
    LOP_RETURN 0u, R0, -1i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "VariadicSequencePeeling")
+{
+    IrOp entry = build.block(IrBlockKind::Internal);
+    IrOp a = build.block(IrBlockKind::Internal);
+    IrOp b = build.block(IrBlockKind::Internal);
+    IrOp exit = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    build.inst(IrCmd::FALLBACK_GETVARARGS, build.constUint(0), build.vmReg(3), build.constInt(-1));
+    build.inst(IrCmd::JUMP_EQ_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(0)), build.constTag(tnumber), a, b);
+
+    build.beginBlock(a);
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(2), build.inst(IrCmd::LOAD_TVALUE, build.vmReg(0)));
+    build.inst(IrCmd::JUMP, exit);
+
+    build.beginBlock(b);
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(2), build.inst(IrCmd::LOAD_TVALUE, build.vmReg(1)));
+    build.inst(IrCmd::JUMP, exit);
+
+    build.beginBlock(exit);
+    build.inst(IrCmd::LOP_RETURN, build.constUint(0), build.vmReg(2), build.constInt(-1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+
+    CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
+bb_0:
+; successors: bb_1, bb_2
+; in regs: R0, R1
+; out regs: R0, R1, R3...
+   FALLBACK_GETVARARGS 0u, R3, -1i
+   %1 = LOAD_TAG R0
+   JUMP_EQ_TAG %1, tnumber, bb_1, bb_2
+
+bb_1:
+; predecessors: bb_0
+; successors: bb_3
+; in regs: R0, R3...
+; out regs: R2...
+   %3 = LOAD_TVALUE R0
+   STORE_TVALUE R2, %3
+   JUMP bb_3
+
+bb_2:
+; predecessors: bb_0
+; successors: bb_3
+; in regs: R1, R3...
+; out regs: R2...
+   %6 = LOAD_TVALUE R1
+   STORE_TVALUE R2, %6
+   JUMP bb_3
+
+bb_3:
+; predecessors: bb_1, bb_2
+; in regs: R2...
+   LOP_RETURN 0u, R2, -1i
 
 )");
 }

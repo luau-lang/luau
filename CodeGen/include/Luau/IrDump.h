@@ -37,5 +37,9 @@ std::string toString(IrFunction& function, bool includeUseInfo);
 
 std::string dump(IrFunction& function);
 
+std::string toDot(IrFunction& function, bool includeInst);
+
+std::string dumpDot(IrFunction& function, bool includeInst);
+
 } // namespace CodeGen
 } // namespace Luau

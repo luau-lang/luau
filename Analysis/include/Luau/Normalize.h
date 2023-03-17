@@ -19,6 +19,8 @@ using ModulePtr = std::shared_ptr<Module>;
 
 bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice);
 bool isSubtype(TypePackId subTy, TypePackId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice);
+bool isConsistentSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice);
+bool isConsistentSubtype(TypePackId subTy, TypePackId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice);
 
 class TypeIds
 {
@@ -203,7 +205,7 @@ struct NormalizedFunctionType
 };
 
 // A normalized generic/free type is a union, where each option is of the form (X & T) where
-// * X is either a free type or a generic
+// * X is either a free type, a generic or a blocked type.
 // * T is a normalized type.
 struct NormalizedType;
 using NormalizedTyvars = std::unordered_map<TypeId, std::unique_ptr<NormalizedType>>;
@@ -214,7 +216,7 @@ bool isInhabited_DEPRECATED(const NormalizedType& norm);
 // * P is a union of primitive types (including singletons, classes and the error type)
 // * T is a union of table types
 // * F is a union of an intersection of function types
-// * G is a union of generic/free normalized types, intersected with a normalized type
+// * G is a union of generic/free/blocked types, intersected with a normalized type
 struct NormalizedType
 {
     // The top part of the type.

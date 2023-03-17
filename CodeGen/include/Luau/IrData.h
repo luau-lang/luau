@@ -22,7 +22,7 @@ namespace CodeGen
 // In the command description, following abbreviations are used:
 // * Rn - VM stack register slot, n in 0..254
 // * Kn - VM proto constant slot, n in 0..2^23-1
-// * UPn - VM function upvalue slot, n in 0..254
+// * UPn - VM function upvalue slot, n in 0..199
 // * A, B, C, D, E are instruction arguments
 enum class IrCmd : uint8_t
 {
@@ -63,6 +63,11 @@ enum class IrCmd : uint8_t
     // Get pointer (LuaNode) to table node element at the active cached slot index
     // A: pointer (Table)
     GET_SLOT_NODE_ADDR,
+
+    // Get pointer (LuaNode) to table node element at the main position of the specified key hash
+    // A: pointer (Table)
+    // B: unsigned int
+    GET_HASH_NODE_ADDR,
 
     // Store a tag into TValue
     // A: Rn
@@ -173,6 +178,13 @@ enum class IrCmd : uint8_t
     // E: block (if false)
     JUMP_CMP_ANY,
 
+    // Perform a conditional jump based on cached table node slot matching the actual table node slot for a key
+    // A: pointer (LuaNode)
+    // B: Kn
+    // C: block (if matches)
+    // D: block (if it doesn't)
+    JUMP_SLOT_MATCH,
+
     // Get table length
     // A: pointer (Table)
     TABLE_LEN,
@@ -189,7 +201,13 @@ enum class IrCmd : uint8_t
     // Try to convert a double number into a table index (int) or jump if it's not an integer
     // A: double
     // B: block
-    NUM_TO_INDEX,
+    TRY_NUM_TO_INDEX,
+
+    // Try to get pointer to tag method TValue inside the table's metatable or jump if there is no such value or metatable
+    // A: table
+    // B: int
+    // C: block
+    TRY_CALL_FASTGETTM,
 
     // Convert integer into a double number
     // A: int
@@ -315,6 +333,11 @@ enum class IrCmd : uint8_t
     // C: block
     CHECK_SLOT_MATCH,
 
+    // Guard against table node with a linked next node to ensure that our lookup hits the main position of the key
+    // A: pointer (LuaNode)
+    // B: block
+    CHECK_NODE_NO_NEXT,
+
     // Special operations
 
     // Check interrupt handler
@@ -360,14 +383,6 @@ enum class IrCmd : uint8_t
     // D: int (count or -1 to assign values up to stack top)
     // E: unsigned int (table index to start from)
     LOP_SETLIST,
-
-    // Load function from source register using name into target register and copying source register into target register + 1
-    // A: unsigned int (bytecode instruction index)
-    // B: Rn (target)
-    // C: Rn (source)
-    // D: block (next)
-    // E: block (fallback)
-    LOP_NAMECALL,
 
     // Call specified function
     // A: unsigned int (bytecode instruction index)
@@ -575,6 +590,16 @@ struct IrOp
         : kind(kind)
         , index(index)
     {
+    }
+
+    bool operator==(const IrOp& rhs) const
+    {
+        return kind == rhs.kind && index == rhs.index;
+    }
+
+    bool operator!=(const IrOp& rhs) const
+    {
+        return !(*this == rhs);
     }
 };
 

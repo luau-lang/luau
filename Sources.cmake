@@ -135,6 +135,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Constraint.h
     Analysis/include/Luau/ConstraintGraphBuilder.h
     Analysis/include/Luau/ConstraintSolver.h
+    Analysis/include/Luau/ControlFlow.h
     Analysis/include/Luau/DataFlowGraph.h
     Analysis/include/Luau/DcrLogger.h
     Analysis/include/Luau/Def.h
@@ -370,6 +371,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.annotations.test.cpp
         tests/TypeInfer.anyerror.test.cpp
         tests/TypeInfer.builtins.test.cpp
+        tests/TypeInfer.cfa.test.cpp
         tests/TypeInfer.classes.test.cpp
         tests/TypeInfer.definitions.test.cpp
         tests/TypeInfer.functions.test.cpp

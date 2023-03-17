@@ -689,4 +689,22 @@ TEST_CASE_FIXTURE(Fixture, "for_loop_lower_bound_is_string_3")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_68448_iterators_need_not_accept_nil")
+{
+    CheckResult result = check(R"(
+        local function makeEnum(members)
+            local enum = {}
+            for _, memberName in ipairs(members) do
+                enum[memberName] = memberName
+            end
+            return enum
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    // HACK (CLI-68453): We name this inner table `enum`. For now, use the
+    // exhaustive switch to see past it.
+    CHECK(toString(requireType("makeEnum"), {true}) == "<a>({a}) -> {| [a]: a |}");
+}
+
 TEST_SUITE_END();

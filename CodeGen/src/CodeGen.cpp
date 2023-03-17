@@ -1,7 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/CodeGen.h"
 
-#include "Luau/AssemblyBuilderX64.h"
 #include "Luau/Common.h"
 #include "Luau/CodeAllocator.h"
 #include "Luau/CodeBlockUnwind.h"
@@ -9,12 +8,17 @@
 #include "Luau/IrBuilder.h"
 #include "Luau/OptimizeConstProp.h"
 #include "Luau/OptimizeFinalX64.h"
+
 #include "Luau/UnwindBuilder.h"
 #include "Luau/UnwindBuilderDwarf2.h"
 #include "Luau/UnwindBuilderWin.h"
 
+#include "Luau/AssemblyBuilderX64.h"
+#include "Luau/AssemblyBuilderA64.h"
+
 #include "CustomExecUtils.h"
 #include "CodeGenX64.h"
+#include "CodeGenA64.h"
 #include "EmitCommonX64.h"
 #include "EmitInstructionX64.h"
 #include "IrLoweringX64.h"
@@ -39,32 +43,55 @@ namespace Luau
 namespace CodeGen
 {
 
-constexpr uint32_t kFunctionAlignment = 32;
-
-static void assembleHelpers(X64::AssemblyBuilderX64& build, ModuleHelpers& helpers)
-{
-    if (build.logText)
-        build.logAppend("; exitContinueVm\n");
-    helpers.exitContinueVm = build.setLabel();
-    emitExit(build, /* continueInVm */ true);
-
-    if (build.logText)
-        build.logAppend("; exitNoContinueVm\n");
-    helpers.exitNoContinueVm = build.setLabel();
-    emitExit(build, /* continueInVm */ false);
-
-    if (build.logText)
-        build.logAppend("; continueCallInVm\n");
-    helpers.continueCallInVm = build.setLabel();
-    emitContinueCallInVm(build);
-}
-
-static NativeProto* assembleFunction(X64::AssemblyBuilderX64& build, NativeState& data, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
+static NativeProto* createNativeProto(Proto* proto, const IrBuilder& ir)
 {
     NativeProto* result = new NativeProto();
 
     result->proto = proto;
+    result->instTargets = new uintptr_t[proto->sizecode];
 
+    for (int i = 0; i < proto->sizecode; i++)
+    {
+        auto [irLocation, asmLocation] = ir.function.bcMapping[i];
+
+        result->instTargets[i] = irLocation == ~0u ? 0 : asmLocation;
+    }
+
+    return result;
+}
+
+[[maybe_unused]] static void lowerIr(
+    X64::AssemblyBuilderX64& build, IrBuilder& ir, NativeState& data, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
+{
+    constexpr uint32_t kFunctionAlignment = 32;
+
+    optimizeMemoryOperandsX64(ir.function);
+
+    build.align(kFunctionAlignment, X64::AlignmentDataX64::Ud2);
+
+    X64::IrLoweringX64 lowering(build, helpers, data, proto, ir.function);
+
+    lowering.lower(options);
+}
+
+[[maybe_unused]] static void lowerIr(
+    A64::AssemblyBuilderA64& build, IrBuilder& ir, NativeState& data, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
+{
+    Label start = build.setLabel();
+
+    build.mov(A64::x0, 1); // finish function in VM
+    build.ret();
+
+    // TODO: This is only needed while we don't support all IR opcodes
+    // When we can't translate some parts of the function, we instead encode a dummy assembly sequence that hands off control to VM
+    // In the future we could return nullptr from assembleFunction and handle it because there may be other reasons for why we refuse to assemble.
+    for (int i = 0; i < proto->sizecode; i++)
+        ir.function.bcMapping[i].asmLocation = build.getLabelOffset(start);
+}
+
+template<typename AssemblyBuilder>
+static NativeProto* assembleFunction(AssemblyBuilder& build, NativeState& data, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
+{
     if (options.includeAssembly || options.includeIr)
     {
         if (proto->debugname)
@@ -93,43 +120,24 @@ static NativeProto* assembleFunction(X64::AssemblyBuilderX64& build, NativeState
             build.logAppend("\n");
     }
 
-    build.align(kFunctionAlignment, X64::AlignmentDataX64::Ud2);
-
-    Label start = build.setLabel();
-
-    IrBuilder builder;
-    builder.buildFunctionIr(proto);
+    IrBuilder ir;
+    ir.buildFunctionIr(proto);
 
     if (!FFlag::DebugCodegenNoOpt)
     {
-        constPropInBlockChains(builder);
+        constPropInBlockChains(ir);
     }
 
     // TODO: cfg info has to be computed earlier to use in optimizations
     // It's done here to appear in text output and to measure performance impact on code generation
-    computeCfgInfo(builder.function);
+    computeCfgInfo(ir.function);
 
-    optimizeMemoryOperandsX64(builder.function);
-
-    X64::IrLoweringX64 lowering(build, helpers, data, proto, builder.function);
-
-    lowering.lower(options);
-
-    result->instTargets = new uintptr_t[proto->sizecode];
-
-    for (int i = 0; i < proto->sizecode; i++)
-    {
-        auto [irLocation, asmLocation] = builder.function.bcMapping[i];
-
-        result->instTargets[i] = irLocation == ~0u ? 0 : asmLocation - start.location;
-    }
-
-    result->location = start.location;
+    lowerIr(build, ir, data, helpers, proto, options);
 
     if (build.logText)
         build.logAppend("\n");
 
-    return result;
+    return createNativeProto(proto, ir);
 }
 
 static void destroyNativeProto(NativeProto* nativeProto)
@@ -208,6 +216,8 @@ bool isSupported()
         return false;
 
     return true;
+#elif defined(__aarch64__)
+    return true;
 #else
     return false;
 #endif
@@ -232,11 +242,19 @@ void create(lua_State* L)
     initFallbackTable(data);
     initHelperFunctions(data);
 
+#if defined(__x86_64__) || defined(_M_X64)
     if (!X64::initEntryFunction(data))
     {
         destroyNativeState(L);
         return;
     }
+#elif defined(__aarch64__)
+    if (!A64::initEntryFunction(data))
+    {
+        destroyNativeState(L);
+        return;
+    }
+#endif
 
     lua_ExecutionCallbacks* ecb = getExecutionCallbacks(L);
 
@@ -270,14 +288,21 @@ void compile(lua_State* L, int idx)
     if (!getNativeState(L))
         return;
 
+#if defined(__aarch64__)
+    A64::AssemblyBuilderA64 build(/* logText= */ false);
+#else
     X64::AssemblyBuilderX64 build(/* logText= */ false);
+#endif
+
     NativeState* data = getNativeState(L);
 
     std::vector<Proto*> protos;
     gatherFunctions(protos, clvalue(func)->l.p);
 
     ModuleHelpers helpers;
-    assembleHelpers(build, helpers);
+#if !defined(__aarch64__)
+    X64::assembleHelpers(build, helpers);
+#endif
 
     std::vector<NativeProto*> results;
     results.reserve(protos.size());
@@ -292,8 +317,8 @@ void compile(lua_State* L, int idx)
     uint8_t* nativeData = nullptr;
     size_t sizeNativeData = 0;
     uint8_t* codeStart = nullptr;
-    if (!data->codeAllocator.allocate(
-            build.data.data(), int(build.data.size()), build.code.data(), int(build.code.size()), nativeData, sizeNativeData, codeStart))
+    if (!data->codeAllocator.allocate(build.data.data(), int(build.data.size()), reinterpret_cast<const uint8_t*>(build.code.data()),
+            int(build.code.size() * sizeof(build.code[0])), nativeData, sizeNativeData, codeStart))
     {
         for (NativeProto* result : results)
             destroyNativeProto(result);
@@ -305,7 +330,7 @@ void compile(lua_State* L, int idx)
     for (NativeProto* result : results)
     {
         for (int i = 0; i < result->proto->sizecode; i++)
-            result->instTargets[i] += uintptr_t(codeStart + result->location);
+            result->instTargets[i] += uintptr_t(codeStart);
 
         LUAU_ASSERT(result->proto->sizecode);
         result->entryTarget = result->instTargets[0];
@@ -321,7 +346,11 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
     LUAU_ASSERT(lua_isLfunction(L, idx));
     const TValue* func = luaA_toobject(L, idx);
 
+#if defined(__aarch64__)
+    A64::AssemblyBuilderA64 build(/* logText= */ options.includeAssembly);
+#else
     X64::AssemblyBuilderX64 build(/* logText= */ options.includeAssembly);
+#endif
 
     NativeState data;
     initFallbackTable(data);
@@ -330,7 +359,9 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
     gatherFunctions(protos, clvalue(func)->l.p);
 
     ModuleHelpers helpers;
-    assembleHelpers(build, helpers);
+#if !defined(__aarch64__)
+    X64::assembleHelpers(build, helpers);
+#endif
 
     for (Proto* p : protos)
         if (p)
@@ -342,7 +373,9 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
     build.finalize();
 
     if (options.outputBinary)
-        return std::string(build.code.begin(), build.code.end()) + std::string(build.data.begin(), build.data.end());
+        return std::string(
+                   reinterpret_cast<const char*>(build.code.data()), reinterpret_cast<const char*>(build.code.data() + build.code.size())) +
+               std::string(build.data.begin(), build.data.end());
     else
         return build.text;
 }

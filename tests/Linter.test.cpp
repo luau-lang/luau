@@ -733,6 +733,7 @@ end
 TEST_CASE_FIXTURE(Fixture, "ImplicitReturn")
 {
     LintResult result = lint(R"(
+--!nonstrict
 function f1(a)
     if not a then
         return 5
@@ -789,20 +790,21 @@ return f1,f2,f3,f4,f5,f6,f7
 )");
 
     REQUIRE(3 == result.warnings.size());
-    CHECK_EQ(result.warnings[0].location.begin.line, 4);
+    CHECK_EQ(result.warnings[0].location.begin.line, 5);
     CHECK_EQ(result.warnings[0].text,
-        "Function 'f1' can implicitly return no values even though there's an explicit return at line 4; add explicit return to silence");
-    CHECK_EQ(result.warnings[1].location.begin.line, 28);
+        "Function 'f1' can implicitly return no values even though there's an explicit return at line 5; add explicit return to silence");
+    CHECK_EQ(result.warnings[1].location.begin.line, 29);
     CHECK_EQ(result.warnings[1].text,
-        "Function 'f4' can implicitly return no values even though there's an explicit return at line 25; add explicit return to silence");
-    CHECK_EQ(result.warnings[2].location.begin.line, 44);
+        "Function 'f4' can implicitly return no values even though there's an explicit return at line 26; add explicit return to silence");
+    CHECK_EQ(result.warnings[2].location.begin.line, 45);
     CHECK_EQ(result.warnings[2].text,
-        "Function can implicitly return no values even though there's an explicit return at line 44; add explicit return to silence");
+        "Function can implicitly return no values even though there's an explicit return at line 45; add explicit return to silence");
 }
 
 TEST_CASE_FIXTURE(Fixture, "ImplicitReturnInfiniteLoop")
 {
     LintResult result = lint(R"(
+--!nonstrict
 function f1(a)
     while true do
         if math.random() > 0.5 then
@@ -845,12 +847,12 @@ return f1,f2,f3,f4
 )");
 
     REQUIRE(2 == result.warnings.size());
-    CHECK_EQ(result.warnings[0].location.begin.line, 25);
+    CHECK_EQ(result.warnings[0].location.begin.line, 26);
     CHECK_EQ(result.warnings[0].text,
-        "Function 'f3' can implicitly return no values even though there's an explicit return at line 21; add explicit return to silence");
-    CHECK_EQ(result.warnings[1].location.begin.line, 36);
+        "Function 'f3' can implicitly return no values even though there's an explicit return at line 22; add explicit return to silence");
+    CHECK_EQ(result.warnings[1].location.begin.line, 37);
     CHECK_EQ(result.warnings[1].text,
-        "Function 'f4' can implicitly return no values even though there's an explicit return at line 32; add explicit return to silence");
+        "Function 'f4' can implicitly return no values even though there's an explicit return at line 33; add explicit return to silence");
 }
 
 TEST_CASE_FIXTURE(Fixture, "TypeAnnotationsShouldNotProduceWarnings")
@@ -1164,7 +1166,7 @@ os.date("!*t")
 
 TEST_CASE_FIXTURE(Fixture, "FormatStringTyped")
 {
-    LintResult result = lintTyped(R"~(
+    LintResult result = lint(R"~(
 local s: string, nons = ...
 
 string.match(s, "[]")
@@ -1285,7 +1287,7 @@ TEST_CASE_FIXTURE(Fixture, "use_all_parent_scopes_for_globals")
         local _bar: typeof(os.clock) = os.clock
     )";
 
-    LintResult result = frontend.lint("A");
+    LintResult result = lintModule("A");
 
     REQUIRE(0 == result.warnings.size());
 }
@@ -1471,7 +1473,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiTyped")
 
     freeze(frontend.globals.globalTypes);
 
-    LintResult result = lintTyped(R"(
+    LintResult result = lint(R"(
 return function (i: Instance)
     i:Wait(1.0)
     print(i.Name)
@@ -1518,7 +1520,7 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "TableOperations")
 {
-    LintResult result = lintTyped(R"(
+    LintResult result = lint(R"(
 local t = {}
 local tt = {}
 

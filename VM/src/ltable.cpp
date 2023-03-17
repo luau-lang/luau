@@ -33,6 +33,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauArrBoundResizeFix, false)
+
 // max size of both array and hash part is 2^MAXBITS
 #define MAXBITS 26
 #define MAXSIZE (1 << MAXBITS)
@@ -454,15 +456,43 @@ static void rehash(lua_State* L, Table* t, const TValue* ek)
     int nasize = numusearray(t, nums);        // count keys in array part
     int totaluse = nasize;                    // all those keys are integer keys
     totaluse += numusehash(t, nums, &nasize); // count keys in hash part
+
     // count extra key
     if (ttisnumber(ek))
         nasize += countint(nvalue(ek), nums);
     totaluse++;
+
     // compute new size for array part
     int na = computesizes(nums, &nasize);
     int nh = totaluse - na;
-    // enforce the boundary invariant; for performance, only do hash lookups if we must
-    nasize = adjustasize(t, nasize, ek);
+
+    if (FFlag::LuauArrBoundResizeFix)
+    {
+        // enforce the boundary invariant; for performance, only do hash lookups if we must
+        int nadjusted = adjustasize(t, nasize, ek);
+
+        // count how many extra elements belong to array part instead of hash part
+        int aextra = nadjusted - nasize;
+
+        if (aextra != 0)
+        {
+            // we no longer need to store those extra array elements in hash part
+            nh -= aextra;
+
+            // because hash nodes are twice as large as array nodes, the memory we saved for hash parts can be used by array part
+            // this follows the general sparse array part optimization where array is allocated when 50% occupation is reached
+            nasize = nadjusted + aextra;
+
+            // since the size was changed, it's again important to enforce the boundary invariant at the new size
+            nasize = adjustasize(t, nasize, ek);
+        }
+    }
+    else
+    {
+        // enforce the boundary invariant; for performance, only do hash lookups if we must
+        nasize = adjustasize(t, nasize, ek);
+    }
+
     // resize the table to new computed sizes
     resize(L, t, nasize, nh);
 }

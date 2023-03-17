@@ -1,8 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IrBuilder.h"
 
-#include "Luau/Common.h"
-#include "Luau/DenseHash.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/IrUtils.h"
 
@@ -11,12 +9,19 @@
 
 #include "lapi.h"
 
+#include <string.h>
+
 namespace Luau
 {
 namespace CodeGen
 {
 
 constexpr unsigned kNoAssociatedBlockIndex = ~0u;
+
+IrBuilder::IrBuilder()
+    : constantMap({IrConstKind::Bool, ~0ull})
+{
+}
 
 void IrBuilder::buildFunctionIr(Proto* proto)
 {
@@ -377,19 +382,8 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstCapture(*this, pc, i);
         break;
     case LOP_NAMECALL:
-    {
-        IrOp next = blockAtInst(i + getOpLength(LOP_NAMECALL));
-        IrOp fallback = block(IrBlockKind::Fallback);
-
-        inst(IrCmd::LOP_NAMECALL, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), next, fallback);
-
-        beginBlock(fallback);
-        inst(IrCmd::FALLBACK_NAMECALL, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), vmConst(pc[1]));
-        inst(IrCmd::JUMP, next);
-
-        beginBlock(next);
+        translateInstNamecall(*this, pc, i);
         break;
-    }
     case LOP_PREPVARARGS:
         inst(IrCmd::FALLBACK_PREPVARARGS, constUint(i), constInt(LUAU_INSN_A(*pc)));
         break;
@@ -501,7 +495,7 @@ IrOp IrBuilder::constBool(bool value)
     IrConst constant;
     constant.kind = IrConstKind::Bool;
     constant.valueBool = value;
-    return constAny(constant);
+    return constAny(constant, uint64_t(value));
 }
 
 IrOp IrBuilder::constInt(int value)
@@ -509,7 +503,7 @@ IrOp IrBuilder::constInt(int value)
     IrConst constant;
     constant.kind = IrConstKind::Int;
     constant.valueInt = value;
-    return constAny(constant);
+    return constAny(constant, uint64_t(value));
 }
 
 IrOp IrBuilder::constUint(unsigned value)
@@ -517,7 +511,7 @@ IrOp IrBuilder::constUint(unsigned value)
     IrConst constant;
     constant.kind = IrConstKind::Uint;
     constant.valueUint = value;
-    return constAny(constant);
+    return constAny(constant, uint64_t(value));
 }
 
 IrOp IrBuilder::constDouble(double value)
@@ -525,7 +519,12 @@ IrOp IrBuilder::constDouble(double value)
     IrConst constant;
     constant.kind = IrConstKind::Double;
     constant.valueDouble = value;
-    return constAny(constant);
+
+    uint64_t asCommonKey;
+    static_assert(sizeof(asCommonKey) == sizeof(value), "Expecting double to be 64-bit");
+    memcpy(&asCommonKey, &value, sizeof(value));
+
+    return constAny(constant, asCommonKey);
 }
 
 IrOp IrBuilder::constTag(uint8_t value)
@@ -533,13 +532,21 @@ IrOp IrBuilder::constTag(uint8_t value)
     IrConst constant;
     constant.kind = IrConstKind::Tag;
     constant.valueTag = value;
-    return constAny(constant);
+    return constAny(constant, uint64_t(value));
 }
 
-IrOp IrBuilder::constAny(IrConst constant)
+IrOp IrBuilder::constAny(IrConst constant, uint64_t asCommonKey)
 {
+    ConstantKey key{constant.kind, asCommonKey};
+
+    if (uint32_t* cache = constantMap.find(key))
+        return {IrOpKind::Constant, *cache};
+
     uint32_t index = uint32_t(function.constants.size());
     function.constants.push_back(constant);
+
+    constantMap[key] = index;
+
     return {IrOpKind::Constant, index};
 }
 

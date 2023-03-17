@@ -200,6 +200,10 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
             build.mov(inst.regX64, luauRegValue(inst.a.index));
         else if (inst.a.kind == IrOpKind::VmConst)
             build.mov(inst.regX64, luauConstantValue(inst.a.index));
+        // If we have a register, we assume it's a pointer to TValue
+        // We might introduce explicit operand types in the future to make this more robust
+        else if (inst.a.kind == IrOpKind::Inst)
+            build.mov(inst.regX64, qword[regOp(inst.a) + offsetof(TValue, value)]);
         else
             LUAU_ASSERT(!"Unsupported instruction form");
         break;
@@ -277,6 +281,25 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         getTableNodeAtCachedSlot(build, tmp.reg, inst.regX64, regOp(inst.a), uintOp(inst.b));
         break;
     }
+    case IrCmd::GET_HASH_NODE_ADDR:
+    {
+        inst.regX64 = regs.allocGprReg(SizeX64::qword);
+
+        // Custom bit shift value can only be placed in cl
+        ScopedRegX64 shiftTmp{regs, regs.takeGprReg(rcx)};
+
+        ScopedRegX64 tmp{regs, SizeX64::qword};
+
+        build.mov(inst.regX64, qword[regOp(inst.a) + offsetof(Table, node)]);
+        build.mov(dwordReg(tmp.reg), 1);
+        build.mov(byteReg(shiftTmp.reg), byte[regOp(inst.a) + offsetof(Table, lsizenode)]);
+        build.shl(dwordReg(tmp.reg), byteReg(shiftTmp.reg));
+        build.dec(dwordReg(tmp.reg));
+        build.and_(dwordReg(tmp.reg), uintOp(inst.b));
+        build.shl(tmp.reg, kLuaNodeSizeLog2);
+        build.add(inst.regX64, tmp.reg);
+        break;
+    };
     case IrCmd::STORE_TAG:
         LUAU_ASSERT(inst.a.kind == IrOpKind::VmReg);
 
@@ -686,6 +709,16 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         jumpOrFallthrough(blockOp(inst.e), next);
         break;
     }
+    case IrCmd::JUMP_SLOT_MATCH:
+    {
+        LUAU_ASSERT(inst.b.kind == IrOpKind::VmConst);
+
+        ScopedRegX64 tmp{regs, SizeX64::qword};
+
+        jumpIfNodeKeyNotInExpectedSlot(build, tmp.reg, regOp(inst.a), luauConstantValue(inst.b.index), labelOp(inst.d));
+        jumpOrFallthrough(blockOp(inst.c), next);
+        break;
+    }
     case IrCmd::TABLE_LEN:
         inst.regX64 = regs.allocXmmReg();
 
@@ -715,13 +748,23 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         if (inst.regX64 != rax)
             build.mov(inst.regX64, rax);
         break;
-    case IrCmd::NUM_TO_INDEX:
+    case IrCmd::TRY_NUM_TO_INDEX:
     {
         inst.regX64 = regs.allocGprReg(SizeX64::dword);
 
         ScopedRegX64 tmp{regs, SizeX64::xmmword};
 
         convertNumberToIndexOrJump(build, tmp.reg, regOp(inst.a), inst.regX64, labelOp(inst.b));
+        break;
+    }
+    case IrCmd::TRY_CALL_FASTGETTM:
+    {
+        inst.regX64 = regs.allocGprReg(SizeX64::qword);
+
+        callGetFastTmOrFallback(build, regOp(inst.a), TMS(intOp(inst.b)), labelOp(inst.c));
+
+        if (inst.regX64 != rax)
+            build.mov(inst.regX64, rax);
         break;
     }
     case IrCmd::INT_TO_NUM:
@@ -1017,6 +1060,9 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         jumpIfNodeKeyNotInExpectedSlot(build, tmp.reg, regOp(inst.a), luauConstantValue(inst.b.index), labelOp(inst.c));
         break;
     }
+    case IrCmd::CHECK_NODE_NO_NEXT:
+        jumpIfNodeHasNext(build, regOp(inst.a), labelOp(inst.b));
+        break;
     case IrCmd::INTERRUPT:
         emitInterrupt(build, uintOp(inst.a));
         break;
@@ -1112,16 +1158,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         Label next;
         emitInstSetList(build, pc, next);
         build.setLabel(next);
-        break;
-    }
-    case IrCmd::LOP_NAMECALL:
-    {
-        const Instruction* pc = proto->code + uintOp(inst.a);
-        LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
-        LUAU_ASSERT(inst.c.kind == IrOpKind::VmReg);
-
-        emitInstNameCall(build, pc, uintOp(inst.a), proto->k, blockOp(inst.d).label, blockOp(inst.e).label);
-        jumpOrFallthrough(blockOp(inst.d), next);
         break;
     }
     case IrCmd::LOP_CALL:

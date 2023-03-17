@@ -1677,8 +1677,6 @@ RETURN R0 0
 
 TEST_CASE("LoopBreak")
 {
-    ScopedFastFlag sff("LuauCompileTerminateBC", true);
-
     // default codegen: compile breaks as unconditional jumps
     CHECK_EQ("\n" + compileFunction0("while true do if math.random() < 0.5 then break else end end"), R"(
 L0: GETIMPORT R0 2 [math.random]
@@ -1703,8 +1701,6 @@ L1: RETURN R0 0
 
 TEST_CASE("LoopContinue")
 {
-    ScopedFastFlag sff("LuauCompileTerminateBC", true);
-
     // default codegen: compile continue as unconditional jumps
     CHECK_EQ("\n" + compileFunction0("repeat if math.random() < 0.5 then continue else end break until false error()"), R"(
 L0: GETIMPORT R0 2 [math.random]
@@ -2213,6 +2209,46 @@ TEST_CASE("RecursionParse")
     catch (std::exception& e)
     {
         CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your block to make the code compile");
+    }
+
+    try
+    {
+        Luau::compileOrThrow(bcb, "local f: " + rep("(", 1500) + "nil" + rep(")", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your type annotation to make the code compile");
+    }
+
+    try
+    {
+        Luau::compileOrThrow(bcb, "local f: () " + rep("-> ()", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your type annotation to make the code compile");
+    }
+
+    try
+    {
+        Luau::compileOrThrow(bcb, "local f: " + rep("{x:", 1500) + "nil" + rep("}", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your type annotation to make the code compile");
+    }
+
+    try
+    {
+        Luau::compileOrThrow(bcb, "local f: " + rep("(nil & ", 1500) + "nil" + rep(")", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your type annotation to make the code compile");
     }
 }
 
@@ -6816,8 +6852,6 @@ RETURN R0 0
 
 TEST_CASE("ElideJumpAfterIf")
 {
-    ScopedFastFlag sff("LuauCompileTerminateBC", true);
-
     // break refers to outer loop => we can elide unconditional branches
     CHECK_EQ("\n" + compileFunction0(R"(
 local foo, bar = ...

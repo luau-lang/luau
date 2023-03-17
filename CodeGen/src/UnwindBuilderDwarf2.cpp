@@ -201,6 +201,7 @@ void UnwindBuilderDwarf2::setupFrameReg(X64::RegisterX64 reg, int espOffset)
 void UnwindBuilderDwarf2::finish()
 {
     LUAU_ASSERT(stackOffset % 16 == 0 && "stack has to be aligned to 16 bytes after prologue");
+    LUAU_ASSERT(fdeEntryStart != nullptr);
 
     pos = alignPosition(fdeEntryStart, pos);
     writeu32(fdeEntryStart, unsigned(pos - fdeEntryStart - 4)); // Length field itself is excluded from length
@@ -220,7 +221,9 @@ void UnwindBuilderDwarf2::finalize(char* target, void* funcAddress, size_t funcS
 {
     memcpy(target, rawData, getSize());
 
+    LUAU_ASSERT(fdeEntryStart != nullptr);
     unsigned fdeEntryStartPos = unsigned(fdeEntryStart - rawData);
+
     writeu64((uint8_t*)target + fdeEntryStartPos + kFdeInitialLocationOffset, uintptr_t(funcAddress));
     writeu64((uint8_t*)target + fdeEntryStartPos + kFdeAddressRangeOffset, funcSize);
 }

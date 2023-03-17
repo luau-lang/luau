@@ -143,6 +143,9 @@ aliases: $(EXECUTABLE_ALIASES)
 test: $(TESTS_TARGET)
 	$(TESTS_TARGET) $(TESTS_ARGS)
 
+conformance: $(TESTS_TARGET)
+	$(TESTS_TARGET) $(TESTS_ARGS) -ts=Conformance
+
 clean:
 	rm -rf $(BUILD)
 	rm -rf $(EXECUTABLE_ALIASES)

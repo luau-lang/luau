@@ -39,7 +39,6 @@ struct NativeProto
     uintptr_t* instTargets = nullptr; // TODO: NativeProto should be variable-size with all target embedded
 
     Proto* proto = nullptr;
-    uint32_t location = 0;
 };
 
 struct NativeContext
@@ -79,6 +78,7 @@ struct NativeContext
     void (*luaF_close)(lua_State* L, StkId level) = nullptr;
 
     const TValue* (*luaT_gettm)(Table* events, TMS event, TString* ename) = nullptr;
+    const TString* (*luaT_objtypenamestr)(lua_State* L, const TValue* o) = nullptr;
 
     double (*libm_exp)(double) = nullptr;
     double (*libm_pow)(double, double) = nullptr;

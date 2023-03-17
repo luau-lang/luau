@@ -25,7 +25,6 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileTerminateBC, false)
 LUAU_FASTFLAGVARIABLE(LuauCompileBuiltinArity, false)
 
 namespace Luau
@@ -143,7 +142,7 @@ struct Compiler
             return stat->body.size > 0 && alwaysTerminates(stat->body.data[stat->body.size - 1]);
         else if (node->is<AstStatReturn>())
             return true;
-        else if (FFlag::LuauCompileTerminateBC && (node->is<AstStatBreak>() || node->is<AstStatContinue>()))
+        else if (node->is<AstStatBreak>() || node->is<AstStatContinue>())
             return true;
         else if (AstStatIf* stat = node->as<AstStatIf>())
             return stat->elsebody && alwaysTerminates(stat->thenbody) && alwaysTerminates(stat->elsebody);

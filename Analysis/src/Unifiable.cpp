@@ -8,6 +8,11 @@ namespace Unifiable
 
 static int nextIndex = 0;
 
+int freshIndex()
+{
+    return ++nextIndex;
+}
+  
 Free::Free(TypeLevel level)
     : index(++nextIndex)
     , level(level)

@@ -1109,4 +1109,28 @@ local f1 = f or 'f'
     CHECK("string" == toString(requireType("f1")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "reducing_and")
+{
+    ScopedFastFlag sff[]{
+        {"LuauTryhardAnd", true},
+        {"LuauReducingAndOr", true},
+    };
+
+    CheckResult result = check(R"(
+type Foo = { name: string?, flag: boolean? }
+local arr: {Foo} = {}
+
+local function foo(arg: {name: string}?)
+    local name = if arg and arg.name then arg.name else nil
+
+    table.insert(arr, {
+        name = name or "",
+        flag = name ~= nil and name ~= "",
+    })
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();
