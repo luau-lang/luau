@@ -66,6 +66,7 @@ struct Scope
 
     RefinementMap refinements;
     DenseHashMap<const Def*, TypeId> dcrRefinements{nullptr};
+    void inheritRefinements(const ScopePtr& childScope);
 
     // For mutually recursive type aliases, it's important that
     // they use the same types for the same names.

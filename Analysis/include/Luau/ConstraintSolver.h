@@ -143,6 +143,14 @@ struct ConstraintSolver
     bool block(TypeId target, NotNull<const Constraint> constraint);
     bool block(TypePackId target, NotNull<const Constraint> constraint);
 
+    /**
+     * For all constraints that are blocked on one constraint, make them block
+     * on a new constraint.
+     * @param source the constraint to copy blocks from.
+     * @param addition the constraint that other constraints should now block on.
+     */
+    void inheritBlocks(NotNull<const Constraint> source, NotNull<const Constraint> addition);
+
     // Traverse the type.  If any blocked or pending types are found, block
     // the constraint on them.
     //

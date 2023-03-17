@@ -1590,8 +1590,16 @@ TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer4")
         local hi: number = foo({ a = "hi" }, "a") -- shouldn't typecheck since at runtime hi is "hi"
     )");
 
-    // This typechecks but shouldn't
-    LUAU_REQUIRE_NO_ERRORS(result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(toString(result.errors[0]) == "Type 'string' could not be converted into 'number'");
+    }
+    else
+    {
+        // This typechecks but shouldn't
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_missing_props_dont_report_multiple_errors")

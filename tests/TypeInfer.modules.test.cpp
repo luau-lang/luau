@@ -485,6 +485,8 @@ return unpack(l0[_])
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "check_imported_module_names")
 {
+    ScopedFastFlag sff{"LuauTinyControlFlowAnalysis", true};
+
     fileResolver.source["game/A"] = R"(
 return function(...) end
     )";
@@ -506,19 +508,10 @@ return l0
 
     ModulePtr mod = getMainModule();
     REQUIRE(mod);
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-    {
-        REQUIRE(mod->scopes.size() >= 4);
-        CHECK(mod->scopes[0].second->importedModules["l0"] == "game/B");
-        CHECK(mod->scopes[3].second->importedModules["l1"] == "game/A");
-    }
-    else
-    {
 
-        REQUIRE(mod->scopes.size() >= 3);
-        CHECK(mod->scopes[0].second->importedModules["l0"] == "game/B");
-        CHECK(mod->scopes[2].second->importedModules["l1"] == "game/A");
-    }
+    REQUIRE(mod->scopes.size() == 4);
+    CHECK(mod->scopes[0].second->importedModules["l0"] == "game/B");
+    CHECK(mod->scopes[3].second->importedModules["l1"] == "game/A");
 }
 
 TEST_SUITE_END();

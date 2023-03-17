@@ -1273,19 +1273,11 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     auto ic = pushConstraintGreedy(InstantiationConstraint{instantiatedTy, fn});
     auto sc = pushConstraintGreedy(SubtypeConstraint{instantiatedTy, inferredTy});
 
-    // Anything that is blocked on this constraint must also be blocked on our
-    // synthesized constraints.
-    auto blockedIt = blocked.find(constraint.get());
-    if (blockedIt != blocked.end())
-    {
-        for (const auto& blockedConstraint : blockedIt->second)
-        {
-            if (ic)
-                block(NotNull{ic}, blockedConstraint);
-            if (sc)
-                block(NotNull{sc}, blockedConstraint);
-        }
-    }
+    if (ic)
+        inheritBlocks(constraint, NotNull{ic});
+
+    if (sc)
+        inheritBlocks(constraint, NotNull{sc});
 
     unblock(c.result);
     return true;
@@ -1330,7 +1322,7 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
         return false;
     }
 
-    asMutable(c.resultType)->ty.emplace<BoundType>(result.value_or(builtinTypes->errorRecoveryType()));
+    asMutable(c.resultType)->ty.emplace<BoundType>(result.value_or(builtinTypes->anyType));
     unblock(c.resultType);
     return true;
 }
@@ -1796,13 +1788,23 @@ bool ConstraintSolver::tryDispatchIterableFunction(
         return false;
     }
 
-    const TypeId firstIndex = isNil(firstIndexTy) ? arena->freshType(constraint->scope) // FIXME: Surely this should be a union (free | nil)
-                                                  : firstIndexTy;
+    TypeId firstIndex;
+    TypeId retIndex;
+    if (isNil(firstIndexTy) || isOptional(firstIndexTy))
+    {
+        firstIndex = arena->addType(UnionType{{arena->freshType(constraint->scope), builtinTypes->nilType}});
+        retIndex = firstIndex;
+    }
+    else
+    {
+        firstIndex = firstIndexTy;
+        retIndex = arena->addType(UnionType{{firstIndexTy, builtinTypes->nilType}});
+    }
 
     // nextTy : (tableTy, indexTy?) -> (indexTy?, valueTailTy...)
-    const TypePackId nextArgPack = arena->addTypePack({tableTy, arena->addType(UnionType{{firstIndex, builtinTypes->nilType}})});
+    const TypePackId nextArgPack = arena->addTypePack({tableTy, firstIndex});
     const TypePackId valueTailTy = arena->addTypePack(FreeTypePack{constraint->scope});
-    const TypePackId nextRetPack = arena->addTypePack(TypePack{{firstIndex}, valueTailTy});
+    const TypePackId nextRetPack = arena->addTypePack(TypePack{{retIndex}, valueTailTy});
 
     const TypeId expectedNextTy = arena->addType(FunctionType{TypeLevel{}, constraint->scope, nextArgPack, nextRetPack});
     unify(nextTy, expectedNextTy, constraint->scope);
@@ -1825,7 +1827,8 @@ bool ConstraintSolver::tryDispatchIterableFunction(
         modifiedNextRetHead.push_back(*it);
 
     TypePackId modifiedNextRetPack = arena->addTypePack(std::move(modifiedNextRetHead), it.tail());
-    pushConstraint(constraint->scope, constraint->location, PackSubtypeConstraint{c.variables, modifiedNextRetPack});
+    auto psc = pushConstraint(constraint->scope, constraint->location, PackSubtypeConstraint{c.variables, modifiedNextRetPack});
+    inheritBlocks(constraint, psc);
 
     return true;
 }
@@ -1883,7 +1886,17 @@ std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTa
             TypeId indexType = follow(indexProp->second.type);
 
             if (auto ft = get<FunctionType>(indexType))
-                return {{}, first(ft->retTypes)};
+            {
+                TypePack rets = extendTypePack(*arena, builtinTypes, ft->retTypes, 1);
+                if (1 == rets.head.size())
+                    return {{}, rets.head[0]};
+                else
+                {
+                    // This should probably be an error: We need the first result of the MT.__index method,
+                    // but it returns 0 values.  See CLI-68672
+                    return {{}, builtinTypes->nilType};
+                }
+            }
             else
                 return lookupTableProp(indexType, propName, seen);
         }
@@ -2007,6 +2020,20 @@ bool ConstraintSolver::block(TypePackId target, NotNull<const Constraint> constr
 
     block_(target, constraint);
     return false;
+}
+
+void ConstraintSolver::inheritBlocks(NotNull<const Constraint> source, NotNull<const Constraint> addition)
+{
+    // Anything that is blocked on this constraint must also be blocked on our
+    // synthesized constraints.
+    auto blockedIt = blocked.find(source.get());
+    if (blockedIt != blocked.end())
+    {
+        for (const auto& blockedConstraint : blockedIt->second)
+        {
+            block(addition, blockedConstraint);
+        }
+    }
 }
 
 struct Blocker : TypeOnceVisitor

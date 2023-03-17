@@ -102,7 +102,7 @@ struct BlockedType
     BlockedType();
     int index;
 
-    static int nextIndex;
+    static int DEPRECATED_nextIndex;
 };
 
 struct PrimitiveType

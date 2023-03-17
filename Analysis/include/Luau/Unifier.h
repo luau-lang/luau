@@ -58,6 +58,7 @@ struct Unifier
 
     NotNull<Scope> scope; // const Scope maybe
     TxnLog log;
+    bool failure = false;
     ErrorVec errors;
     Location location;
     Variance variance = Covariant;
@@ -93,7 +94,7 @@ private:
 
     // Traverse the two types provided and block on any BlockedTypes we find.
     // Returns true if any types were blocked on.
-    bool blockOnBlockedTypes(TypeId subTy, TypeId superTy);
+    bool DEPRECATED_blockOnBlockedTypes(TypeId subTy, TypeId superTy);
 
     void tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionType* uv, bool cacheEnabled, bool isFunctionCall);
     void tryUnifyTypeWithIntersection(TypeId subTy, TypeId superTy, const IntersectionType* uv);

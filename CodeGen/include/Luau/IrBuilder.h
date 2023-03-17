@@ -1,8 +1,9 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Common.h"
 #include "Luau/Bytecode.h"
+#include "Luau/Common.h"
+#include "Luau/DenseHash.h"
 #include "Luau/IrData.h"
 
 #include <vector>
@@ -19,6 +20,8 @@ struct AssemblyOptions;
 
 struct IrBuilder
 {
+    IrBuilder();
+
     void buildFunctionIr(Proto* proto);
 
     void rebuildBytecodeBasicBlocks(Proto* proto);
@@ -38,7 +41,7 @@ struct IrBuilder
     IrOp constUint(unsigned value);
     IrOp constDouble(double value);
     IrOp constTag(uint8_t value);
-    IrOp constAny(IrConst constant);
+    IrOp constAny(IrConst constant, uint64_t asCommonKey);
 
     IrOp cond(IrCondition cond);
 
@@ -67,6 +70,45 @@ struct IrBuilder
     uint32_t activeBlockIdx = ~0u;
 
     std::vector<uint32_t> instIndexToBlock; // Block index at the bytecode instruction
+
+    // Similar to BytecodeBuilder, duplicate constants are removed used the same method
+    struct ConstantKey
+    {
+        IrConstKind kind;
+        // Note: this stores value* from IrConst; when kind is Double, this stores the same bits as double does but in uint64_t.
+        uint64_t value;
+
+        bool operator==(const ConstantKey& key) const
+        {
+            return kind == key.kind && value == key.value;
+        }
+    };
+
+    struct ConstantKeyHash
+    {
+        size_t operator()(const ConstantKey& key) const
+        {
+            // finalizer from MurmurHash64B
+            const uint32_t m = 0x5bd1e995;
+
+            uint32_t h1 = uint32_t(key.value);
+            uint32_t h2 = uint32_t(key.value >> 32) ^ (int(key.kind) * m);
+
+            h1 ^= h2 >> 18;
+            h1 *= m;
+            h2 ^= h1 >> 22;
+            h2 *= m;
+            h1 ^= h2 >> 17;
+            h1 *= m;
+            h2 ^= h1 >> 19;
+            h2 *= m;
+
+            // ... truncated to 32-bit output (normally hash is equal to (uint64_t(h1) << 32) | h2, but we only really need the lower 32-bit half)
+            return size_t(h2);
+        }
+    };
+
+    DenseHashMap<ConstantKey, uint32_t, ConstantKeyHash> constantMap;
 };
 
 } // namespace CodeGen

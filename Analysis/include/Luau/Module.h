@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Error.h"
+#include "Luau/Linter.h"
 #include "Luau/FileResolver.h"
 #include "Luau/ParseOptions.h"
 #include "Luau/ParseResult.h"
@@ -88,6 +89,7 @@ struct Module
 
     std::unordered_map<Name, TypeId> declaredGlobals;
     ErrorVec errors;
+    LintResult lintResult;
     Mode mode;
     SourceCode::Type type;
     bool timeout = false;

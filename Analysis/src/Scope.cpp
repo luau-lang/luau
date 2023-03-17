@@ -149,6 +149,28 @@ std::optional<Binding> Scope::linearSearchForBinding(const std::string& name, bo
     return std::nullopt;
 }
 
+// Updates the `this` scope with the refinements from the `childScope` excluding ones that doesn't exist in `this`.
+void Scope::inheritRefinements(const ScopePtr& childScope)
+{
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        for (const auto& [k, a] : childScope->dcrRefinements)
+        {
+            if (lookup(NotNull{k}))
+                dcrRefinements[k] = a;
+        }
+    }
+    else
+    {
+        for (const auto& [k, a] : childScope->refinements)
+        {
+            Symbol symbol = getBaseSymbol(k);
+            if (lookup(symbol))
+                refinements[k] = a;
+        }
+    }
+}
+
 bool subsumesStrict(Scope* left, Scope* right)
 {
     while (right)

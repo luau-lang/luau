@@ -13,7 +13,7 @@ ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
 {
     mainModule->reduction = std::make_unique<TypeReduction>(NotNull{&mainModule->internalTypes}, builtinTypes, NotNull{&ice});
 
-    BlockedType::nextIndex = 0;
+    BlockedType::DEPRECATED_nextIndex = 0;
     BlockedTypePack::nextIndex = 0;
 }
 

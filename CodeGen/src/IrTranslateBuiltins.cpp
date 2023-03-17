@@ -210,6 +210,34 @@ BuiltinImplResult translateBuiltinMathClamp(IrBuilder& build, int nparams, int r
     return {BuiltinImplType::UsesFallback, 1};
 }
 
+BuiltinImplResult translateBuiltinType(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, IrOp fallback)
+{
+    if (nparams < 1 || nresults > 1)
+        return {BuiltinImplType::None, -1};
+
+    build.inst(
+        IrCmd::FASTCALL, build.constUint(LBF_TYPE), build.vmReg(ra), build.vmReg(arg), args, build.constInt(nparams), build.constInt(nresults));
+
+    // TODO: tag update might not be required, we place it here now because FASTCALL is not modeled in constant propagation yet
+    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TSTRING));
+
+    return {BuiltinImplType::UsesFallback, 1};
+}
+
+BuiltinImplResult translateBuiltinTypeof(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, IrOp fallback)
+{
+    if (nparams < 1 || nresults > 1)
+        return {BuiltinImplType::None, -1};
+
+    build.inst(
+        IrCmd::FASTCALL, build.constUint(LBF_TYPEOF), build.vmReg(ra), build.vmReg(arg), args, build.constInt(nparams), build.constInt(nresults));
+
+    // TODO: tag update might not be required, we place it here now because FASTCALL is not modeled in constant propagation yet
+    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TSTRING));
+
+    return {BuiltinImplType::UsesFallback, 1};
+}
+
 BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, IrOp args, int nparams, int nresults, IrOp fallback)
 {
     switch (bfid)
@@ -254,6 +282,10 @@ BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, 
     case LBF_MATH_FREXP:
     case LBF_MATH_MODF:
         return translateBuiltinNumberTo2Number(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, fallback);
+    case LBF_TYPE:
+        return translateBuiltinType(build, nparams, ra, arg, args, nresults, fallback);
+    case LBF_TYPEOF:
+        return translateBuiltinTypeof(build, nparams, ra, arg, args, nresults, fallback);
     default:
         return {BuiltinImplType::None, -1};
     }

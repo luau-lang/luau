@@ -1615,7 +1615,8 @@ TEST_CASE_FIXTURE(Fixture, "refine_a_property_of_some_global")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(3, result);
-    CHECK_EQ("*error-type*", toString(requireTypeAtPosition({4, 30})));
+
+    CHECK_EQ("~false & ~nil", toString(requireTypeAtPosition({4, 30})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dataflow_analysis_can_tell_refinements_when_its_appropriate_to_refine_into_nil_or_never")

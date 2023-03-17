@@ -286,6 +286,31 @@ void emitBuiltinMathSign(IrRegAllocX64& regs, AssemblyBuilderX64& build, int npa
     build.vmovsd(luauRegValue(ra), tmp0.reg);
 }
 
+void emitBuiltinType(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
+{
+    ScopedRegX64 tmp0{regs, SizeX64::qword};
+    ScopedRegX64 tag{regs, SizeX64::dword};
+
+    build.mov(tag.reg, luauRegTag(arg));
+
+    build.mov(tmp0.reg, qword[rState + offsetof(lua_State, global)]);
+    build.mov(tmp0.reg, qword[tmp0.reg + qwordReg(tag.reg) * sizeof(TString*) + offsetof(global_State, ttname)]);
+
+    build.mov(luauRegValue(ra), tmp0.reg);
+}
+
+void emitBuiltinTypeof(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
+{
+    regs.assertAllFree();
+
+    build.mov(rArg1, rState);
+    build.lea(rArg2, luauRegAddress(arg));
+
+    build.call(qword[rNativeContext + offsetof(NativeContext, luaT_objtypenamestr)]);
+
+    build.mov(luauRegValue(ra), rax);
+}
+
 void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int ra, int arg, IrOp args, int nparams, int nresults)
 {
     OperandX64 argsOp = 0;
@@ -353,6 +378,10 @@ void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int r
         return emitBuiltinMathModf(regs, build, nparams, ra, arg, argsOp, nresults);
     case LBF_MATH_SIGN:
         return emitBuiltinMathSign(regs, build, nparams, ra, arg, argsOp, nresults);
+    case LBF_TYPE:
+        return emitBuiltinType(regs, build, nparams, ra, arg, argsOp, nresults);
+    case LBF_TYPEOF:
+        return emitBuiltinTypeof(regs, build, nparams, ra, arg, argsOp, nresults);
     default:
         LUAU_ASSERT(!"missing x64 lowering");
         break;

@@ -7,16 +7,12 @@ namespace CodeGen
 {
 
 struct NativeState;
-struct ModuleHelpers;
 
-namespace X64
+namespace A64
 {
 
-class AssemblyBuilderX64;
-
 bool initEntryFunction(NativeState& data);
-void assembleHelpers(AssemblyBuilderX64& build, ModuleHelpers& helpers);
 
-} // namespace X64
+} // namespace A64
 } // namespace CodeGen
 } // namespace Luau

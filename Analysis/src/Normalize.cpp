@@ -20,8 +20,10 @@ LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAGVARIABLE(LuauNegatedClassTypes, false);
 LUAU_FASTFLAGVARIABLE(LuauNegatedFunctionTypes, false);
 LUAU_FASTFLAGVARIABLE(LuauNegatedTableTypes, false);
+LUAU_FASTFLAGVARIABLE(LuauNormalizeBlockedTypes, false);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
+LUAU_FASTFLAG(LuauTransitiveSubtyping)
 
 namespace Luau
 {
@@ -325,6 +327,8 @@ static int tyvarIndex(TypeId ty)
         return gtv->index;
     else if (const FreeType* ftv = get<FreeType>(ty))
         return ftv->index;
+    else if (const BlockedType* btv = get<BlockedType>(ty))
+        return btv->index;
     else
         return 0;
 }
@@ -529,7 +533,7 @@ static bool areNormalizedClasses(const NormalizedClassType& tys)
 
 static bool isPlainTyvar(TypeId ty)
 {
-    return (get<FreeType>(ty) || get<GenericType>(ty));
+  return (get<FreeType>(ty) || get<GenericType>(ty) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(ty)));
 }
 
 static bool isNormalizedTyvar(const NormalizedTyvars& tyvars)
@@ -1271,6 +1275,8 @@ void Normalizer::unionTables(TypeIds& heres, const TypeIds& theres)
 bool Normalizer::unionNormals(NormalizedType& here, const NormalizedType& there, int ignoreSmallerTyvars)
 {
     TypeId tops = unionOfTops(here.tops, there.tops);
+    if (FFlag::LuauTransitiveSubtyping && get<UnknownType>(tops) && (get<ErrorType>(here.errors) || get<ErrorType>(there.errors)))
+        tops = builtinTypes->anyType;
     if (!get<NeverType>(tops))
     {
         clearNormal(here);
@@ -1341,12 +1347,21 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
     if (get<AnyType>(there) || get<UnknownType>(there))
     {
         TypeId tops = unionOfTops(here.tops, there);
+        if (FFlag::LuauTransitiveSubtyping && get<UnknownType>(tops) && get<ErrorType>(here.errors))
+            tops = builtinTypes->anyType;
         clearNormal(here);
         here.tops = tops;
         return true;
     }
-    else if (get<NeverType>(there) || !get<NeverType>(here.tops))
+    else if (!FFlag::LuauTransitiveSubtyping && (get<NeverType>(there) || !get<NeverType>(here.tops)))
         return true;
+    else if (FFlag::LuauTransitiveSubtyping && (get<NeverType>(there) || get<AnyType>(here.tops)))
+        return true;
+    else if (FFlag::LuauTransitiveSubtyping && get<ErrorType>(there) && get<UnknownType>(here.tops))
+    {
+        here.tops = builtinTypes->anyType;
+        return true;
+    }
     else if (const UnionType* utv = get<UnionType>(there))
     {
         for (UnionTypeIterator it = begin(utv); it != end(utv); ++it)
@@ -1363,7 +1378,9 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
                 return false;
         return unionNormals(here, norm);
     }
-    else if (get<GenericType>(there) || get<FreeType>(there))
+    else if (FFlag::LuauTransitiveSubtyping && get<UnknownType>(here.tops))
+        return true;
+    else if (get<GenericType>(there) || get<FreeType>(there) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there)))
     {
         if (tyvarIndex(there) <= ignoreSmallerTyvars)
             return true;
@@ -1441,7 +1458,7 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
         if (!unionNormals(here, *tn))
             return false;
     }
-    else if (get<BlockedType>(there))
+    else if (!FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there))
         LUAU_ASSERT(!"Internal error: Trying to normalize a BlockedType");
     else
         LUAU_ASSERT(!"Unreachable");
@@ -2527,7 +2544,7 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there)
                 return false;
         return true;
     }
-    else if (get<GenericType>(there) || get<FreeType>(there))
+    else if (get<GenericType>(there) || get<FreeType>(there) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there)))
     {
         NormalizedType thereNorm{builtinTypes};
         NormalizedType topNorm{builtinTypes};
@@ -2803,6 +2820,32 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
 
 bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
+    if (!FFlag::LuauTransitiveSubtyping)
+        return isConsistentSubtype(subTy, superTy, scope, builtinTypes, ice);
+    UnifierSharedState sharedState{&ice};
+    TypeArena arena;
+    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
+    Unifier u{NotNull{&normalizer}, Mode::Strict, scope, Location{}, Covariant};
+
+    u.tryUnify(subTy, superTy);
+    return !u.failure;
+}
+
+bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
+{
+    if (!FFlag::LuauTransitiveSubtyping)
+        return isConsistentSubtype(subPack, superPack, scope, builtinTypes, ice);
+    UnifierSharedState sharedState{&ice};
+    TypeArena arena;
+    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
+    Unifier u{NotNull{&normalizer}, Mode::Strict, scope, Location{}, Covariant};
+
+    u.tryUnify(subPack, superPack);
+    return !u.failure;
+}
+
+bool isConsistentSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
+{
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
@@ -2813,7 +2856,7 @@ bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<Built
     return ok;
 }
 
-bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
+bool isConsistentSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;

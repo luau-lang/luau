@@ -42,6 +42,7 @@ struct CfgInfo
     std::vector<uint32_t> successorsOffsets;
 
     std::vector<RegisterSet> in;
+    std::vector<RegisterSet> def;
     std::vector<RegisterSet> out;
 
     RegisterSet captured;

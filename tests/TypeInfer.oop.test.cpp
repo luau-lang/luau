@@ -309,4 +309,21 @@ TEST_CASE_FIXTURE(Fixture, "dont_bind_free_tables_to_themselves")
     )");
 }
 
+// We should probably flag an error on this.  See CLI-68672
+TEST_CASE_FIXTURE(BuiltinsFixture, "flag_when_index_metamethod_returns_0_values")
+{
+    CheckResult result = check(R"(
+        local T = {}
+        function T.__index()
+        end
+
+        local a = setmetatable({}, T)
+        local p = a.prop
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("nil" == toString(requireType("p")));
+}
+
 TEST_SUITE_END();
