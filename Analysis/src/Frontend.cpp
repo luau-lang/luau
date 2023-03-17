@@ -29,6 +29,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
+LUAU_FASTFLAGVARIABLE(LuauLintInTypecheck, false)
 LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 LUAU_FASTFLAGVARIABLE(LuauDefinitionFileSourceModule, false)
@@ -330,7 +331,7 @@ std::optional<std::string> pathExprToModuleName(const ModuleName& currentModuleN
 namespace
 {
 
-ErrorVec accumulateErrors(
+static ErrorVec accumulateErrors(
     const std::unordered_map<ModuleName, SourceNode>& sourceNodes, const std::unordered_map<ModuleName, ModulePtr>& modules, const ModuleName& name)
 {
     std::unordered_set<ModuleName> seen;
@@ -373,6 +374,25 @@ ErrorVec accumulateErrors(
     std::reverse(result.begin(), result.end());
 
     return result;
+}
+
+static void filterLintOptions(LintOptions& lintOptions, const std::vector<HotComment>& hotcomments, Mode mode)
+{
+    LUAU_ASSERT(FFlag::LuauLintInTypecheck);
+
+    uint64_t ignoreLints = LintWarning::parseMask(hotcomments);
+
+    lintOptions.warningMask &= ~ignoreLints;
+
+    if (mode != Mode::NoCheck)
+    {
+        lintOptions.disableWarning(Luau::LintWarning::Code_UnknownGlobal);
+    }
+
+    if (mode == Mode::Strict)
+    {
+        lintOptions.disableWarning(Luau::LintWarning::Code_ImplicitReturn);
+    }
 }
 
 // Given a source node (start), find all requires that start a transitive dependency path that ends back at start
@@ -514,8 +534,24 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
                 throw InternalCompilerError("Frontend::modules does not have data for " + name, name);
         }
 
-        return CheckResult{
-            accumulateErrors(sourceNodes, frontendOptions.forAutocomplete ? moduleResolverForAutocomplete.modules : moduleResolver.modules, name)};
+        if (FFlag::LuauLintInTypecheck)
+        {
+            std::unordered_map<ModuleName, ModulePtr>& modules =
+                frontendOptions.forAutocomplete ? moduleResolverForAutocomplete.modules : moduleResolver.modules;
+
+            checkResult.errors = accumulateErrors(sourceNodes, modules, name);
+
+            // Get lint result only for top checked module
+            if (auto it = modules.find(name); it != modules.end())
+                checkResult.lintResult = it->second->lintResult;
+
+            return checkResult;
+        }
+        else
+        {
+            return CheckResult{accumulateErrors(
+                sourceNodes, frontendOptions.forAutocomplete ? moduleResolverForAutocomplete.modules : moduleResolver.modules, name)};
+        }
     }
 
     std::vector<ModuleName> buildQueue;
@@ -579,7 +615,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
             else
                 typeCheckerForAutocomplete.unifierIterationLimit = std::nullopt;
 
-            ModulePtr moduleForAutocomplete = FFlag::DebugLuauDeferredConstraintResolution
+            ModulePtr moduleForAutocomplete = (FFlag::DebugLuauDeferredConstraintResolution && mode == Mode::Strict)
                                                   ? check(sourceModule, mode, requireCycles, /*forAutocomplete*/ true, /*recordJsonLog*/ false)
                                                   : typeCheckerForAutocomplete.check(sourceModule, Mode::Strict, environmentScope);
 
@@ -609,8 +645,9 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
         const bool recordJsonLog = FFlag::DebugLuauLogSolverToJson && moduleName == name;
 
-        ModulePtr module = FFlag::DebugLuauDeferredConstraintResolution ? check(sourceModule, mode, requireCycles, /*forAutocomplete*/ false, recordJsonLog)
-                                                                        : typeChecker.check(sourceModule, mode, environmentScope);
+        ModulePtr module = (FFlag::DebugLuauDeferredConstraintResolution && mode == Mode::Strict)
+                               ? check(sourceModule, mode, requireCycles, /*forAutocomplete*/ false, recordJsonLog)
+                               : typeChecker.check(sourceModule, mode, environmentScope);
 
         stats.timeCheck += getTimestamp() - timestamp;
         stats.filesStrict += mode == Mode::Strict;
@@ -618,6 +655,28 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
         if (module == nullptr)
             throw InternalCompilerError("Frontend::check produced a nullptr module for " + moduleName, moduleName);
+
+        if (FFlag::DebugLuauDeferredConstraintResolution && mode == Mode::NoCheck)
+            module->errors.clear();
+
+        if (frontendOptions.runLintChecks)
+        {
+            LUAU_TIMETRACE_SCOPE("lint", "Frontend");
+
+            LUAU_ASSERT(FFlag::LuauLintInTypecheck);
+
+            LintOptions lintOptions = frontendOptions.enabledLintWarnings.value_or(config.enabledLint);
+            filterLintOptions(lintOptions, sourceModule.hotcomments, mode);
+
+            double timestamp = getTimestamp();
+
+            std::vector<LintWarning> warnings =
+                Luau::lint(sourceModule.root, *sourceModule.names, environmentScope, module.get(), sourceModule.hotcomments, lintOptions);
+
+            stats.timeLint += getTimestamp() - timestamp;
+
+            module->lintResult = classifyLints(warnings, config);
+        }
 
         if (!frontendOptions.retainFullTypeGraphs)
         {
@@ -663,6 +722,16 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
         moduleResolver.modules[moduleName] = std::move(module);
         sourceNode.dirtyModule = false;
+    }
+
+    if (FFlag::LuauLintInTypecheck)
+    {
+        // Get lint result only for top checked module
+        std::unordered_map<ModuleName, ModulePtr>& modules =
+            frontendOptions.forAutocomplete ? moduleResolverForAutocomplete.modules : moduleResolver.modules;
+
+        if (auto it = modules.find(name); it != modules.end())
+            checkResult.lintResult = it->second->lintResult;
     }
 
     return checkResult;
@@ -793,8 +862,10 @@ ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config
     return result;
 }
 
-LintResult Frontend::lint(const ModuleName& name, std::optional<Luau::LintOptions> enabledLintWarnings)
+LintResult Frontend::lint_DEPRECATED(const ModuleName& name, std::optional<Luau::LintOptions> enabledLintWarnings)
 {
+    LUAU_ASSERT(!FFlag::LuauLintInTypecheck);
+
     LUAU_TIMETRACE_SCOPE("Frontend::lint", "Frontend");
     LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
 
@@ -803,11 +874,13 @@ LintResult Frontend::lint(const ModuleName& name, std::optional<Luau::LintOption
     if (!sourceModule)
         return LintResult{}; // FIXME: We really should do something a bit more obvious when a file is too broken to lint.
 
-    return lint(*sourceModule, enabledLintWarnings);
+    return lint_DEPRECATED(*sourceModule, enabledLintWarnings);
 }
 
-LintResult Frontend::lint(const SourceModule& module, std::optional<Luau::LintOptions> enabledLintWarnings)
+LintResult Frontend::lint_DEPRECATED(const SourceModule& module, std::optional<Luau::LintOptions> enabledLintWarnings)
 {
+    LUAU_ASSERT(!FFlag::LuauLintInTypecheck);
+
     LUAU_TIMETRACE_SCOPE("Frontend::lint", "Frontend");
     LUAU_TIMETRACE_ARGUMENT("module", module.name.c_str());
 

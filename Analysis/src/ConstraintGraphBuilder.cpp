@@ -5,6 +5,7 @@
 #include "Luau/Breadcrumb.h"
 #include "Luau/Common.h"
 #include "Luau/Constraint.h"
+#include "Luau/ControlFlow.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/RecursionCounter.h"
@@ -22,6 +23,7 @@ LUAU_FASTFLAG(LuauNegatedClassTypes);
 namespace Luau
 {
 
+bool doesCallError(const AstExprCall* call); // TypeInfer.cpp
 const AstStat* getFallthrough(const AstStat* node); // TypeInfer.cpp
 
 static std::optional<AstExpr*> matchRequire(const AstExprCall& call)
@@ -344,14 +346,14 @@ void ConstraintGraphBuilder::visit(AstStatBlock* block)
         logger->captureGenerationModule(module);
 }
 
-void ConstraintGraphBuilder::visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block)
+ControlFlow ConstraintGraphBuilder::visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block)
 {
     RecursionCounter counter{&recursionCount};
 
     if (recursionCount >= FInt::LuauCheckRecursionLimit)
     {
         reportCodeTooComplex(block->location);
-        return;
+        return ControlFlow::None;
     }
 
     std::unordered_map<Name, Location> aliasDefinitionLocations;
@@ -396,59 +398,77 @@ void ConstraintGraphBuilder::visitBlockWithoutChildScope(const ScopePtr& scope, 
         }
     }
 
+    std::optional<ControlFlow> firstControlFlow;
     for (AstStat* stat : block->body)
-        visit(scope, stat);
+    {
+        ControlFlow cf = visit(scope, stat);
+        if (cf != ControlFlow::None && !firstControlFlow)
+            firstControlFlow = cf;
+    }
+
+    return firstControlFlow.value_or(ControlFlow::None);
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStat* stat)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStat* stat)
 {
     RecursionLimiter limiter{&recursionCount, FInt::LuauCheckRecursionLimit};
 
     if (auto s = stat->as<AstStatBlock>())
-        visit(scope, s);
+        return visit(scope, s);
     else if (auto i = stat->as<AstStatIf>())
-        visit(scope, i);
+        return visit(scope, i);
     else if (auto s = stat->as<AstStatWhile>())
-        visit(scope, s);
+        return visit(scope, s);
     else if (auto s = stat->as<AstStatRepeat>())
-        visit(scope, s);
+        return visit(scope, s);
     else if (stat->is<AstStatBreak>() || stat->is<AstStatContinue>())
     {
         // Nothing
+        return ControlFlow::None; // TODO: ControlFlow::Break/Continue
     }
     else if (auto r = stat->as<AstStatReturn>())
-        visit(scope, r);
+        return visit(scope, r);
     else if (auto e = stat->as<AstStatExpr>())
+    {
         checkPack(scope, e->expr);
+
+        if (auto call = e->expr->as<AstExprCall>(); call && doesCallError(call))
+            return ControlFlow::Throws;
+
+        return ControlFlow::None;
+    }
     else if (auto s = stat->as<AstStatLocal>())
-        visit(scope, s);
+        return visit(scope, s);
     else if (auto s = stat->as<AstStatFor>())
-        visit(scope, s);
+        return visit(scope, s);
     else if (auto s = stat->as<AstStatForIn>())
-        visit(scope, s);
+        return visit(scope, s);
     else if (auto a = stat->as<AstStatAssign>())
-        visit(scope, a);
+        return visit(scope, a);
     else if (auto a = stat->as<AstStatCompoundAssign>())
-        visit(scope, a);
+        return visit(scope, a);
     else if (auto f = stat->as<AstStatFunction>())
-        visit(scope, f);
+        return visit(scope, f);
     else if (auto f = stat->as<AstStatLocalFunction>())
-        visit(scope, f);
+        return visit(scope, f);
     else if (auto a = stat->as<AstStatTypeAlias>())
-        visit(scope, a);
+        return visit(scope, a);
     else if (auto s = stat->as<AstStatDeclareGlobal>())
-        visit(scope, s);
+        return visit(scope, s);
     else if (auto s = stat->as<AstStatDeclareFunction>())
-        visit(scope, s);
+        return visit(scope, s);
     else if (auto s = stat->as<AstStatDeclareClass>())
-        visit(scope, s);
+        return visit(scope, s);
     else if (auto s = stat->as<AstStatError>())
-        visit(scope, s);
+        return visit(scope, s);
     else
+    {
         LUAU_ASSERT(0 && "Internal error: Unknown AstStat type");
+        return ControlFlow::None;
+    }
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
 {
     std::vector<TypeId> varTypes;
     varTypes.reserve(local->vars.size);
@@ -534,7 +554,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
         }
     }
 
-    if (local->vars.size == 1 && local->values.size == 1 && firstValueType)
+    if (local->vars.size == 1 && local->values.size == 1 && firstValueType && scope.get() == rootScope)
     {
         AstLocal* var = local->vars.data[0];
         AstExpr* value = local->values.data[0];
@@ -592,9 +612,11 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
             }
         }
     }
+
+    return ControlFlow::None;
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFor* for_)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFor* for_)
 {
     TypeId annotationTy = builtinTypes->numberType;
     if (for_->var->annotation)
@@ -619,9 +641,11 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFor* for_)
     forScope->dcrRefinements[bc->def] = annotationTy;
 
     visit(forScope, for_->body);
+
+    return ControlFlow::None;
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatForIn* forIn)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatForIn* forIn)
 {
     ScopePtr loopScope = childScope(forIn, scope);
 
@@ -645,27 +669,33 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatForIn* forIn)
     addConstraint(loopScope, getLocation(forIn->values), IterableConstraint{iterator, variablePack});
 
     visit(loopScope, forIn->body);
+
+    return ControlFlow::None;
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatWhile* while_)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatWhile* while_)
 {
     check(scope, while_->condition);
 
     ScopePtr whileScope = childScope(while_, scope);
 
     visit(whileScope, while_->body);
+
+    return ControlFlow::None;
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatRepeat* repeat)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatRepeat* repeat)
 {
     ScopePtr repeatScope = childScope(repeat, scope);
 
     visitBlockWithoutChildScope(repeatScope, repeat->body);
 
     check(repeatScope, repeat->condition);
+
+    return ControlFlow::None;
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocalFunction* function)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocalFunction* function)
 {
     // Local
     // Global
@@ -699,9 +729,11 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocalFunction* 
     });
 
     addConstraint(scope, std::move(c));
+
+    return ControlFlow::None;
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction* function)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction* function)
 {
     // Name could be AstStatLocal, AstStatGlobal, AstStatIndexName.
     // With or without self
@@ -779,9 +811,11 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction* funct
     });
 
     addConstraint(scope, std::move(c));
+
+    return ControlFlow::None;
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatReturn* ret)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatReturn* ret)
 {
     // At this point, the only way scope->returnType should have anything
     // interesting in it is if the function has an explicit return annotation.
@@ -793,13 +827,18 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatReturn* ret)
 
     TypePackId exprTypes = checkPack(scope, ret->list, expectedTypes).tp;
     addConstraint(scope, ret->location, PackSubtypeConstraint{exprTypes, scope->returnType});
+
+    return ControlFlow::Returns;
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatBlock* block)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatBlock* block)
 {
     ScopePtr innerScope = childScope(block, scope);
 
-    visitBlockWithoutChildScope(innerScope, block);
+    ControlFlow flow = visitBlockWithoutChildScope(innerScope, block);
+    scope->inheritRefinements(innerScope);
+
+    return flow;
 }
 
 static void bindFreeType(TypeId a, TypeId b)
@@ -819,7 +858,7 @@ static void bindFreeType(TypeId a, TypeId b)
         asMutable(b)->ty.emplace<BoundType>(a);
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatAssign* assign)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatAssign* assign)
 {
     std::vector<TypeId> varTypes = checkLValues(scope, assign->vars);
 
@@ -839,9 +878,11 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatAssign* assign)
     TypePackId varPack = arena->addTypePack({varTypes});
 
     addConstraint(scope, assign->location, PackSubtypeConstraint{exprPack, varPack});
+
+    return ControlFlow::None;
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatCompoundAssign* assign)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatCompoundAssign* assign)
 {
     // We need to tweak the BinaryConstraint that we emit, so we cannot use the
     // strategy of falsifying an AST fragment.
@@ -852,23 +893,34 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatCompoundAssign*
     addConstraint(scope, assign->location,
         BinaryConstraint{assign->op, varTy, valueTy, resultType, assign, &module->astOriginalCallTypes, &module->astOverloadResolvedTypes});
     addConstraint(scope, assign->location, SubtypeConstraint{resultType, varTy});
+
+    return ControlFlow::None;
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatIf* ifStatement)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatIf* ifStatement)
 {
-    ScopePtr condScope = childScope(ifStatement->condition, scope);
-    RefinementId refinement = check(condScope, ifStatement->condition, std::nullopt).refinement;
+    RefinementId refinement = check(scope, ifStatement->condition, std::nullopt).refinement;
 
     ScopePtr thenScope = childScope(ifStatement->thenbody, scope);
     applyRefinements(thenScope, ifStatement->condition->location, refinement);
-    visit(thenScope, ifStatement->thenbody);
 
+    ScopePtr elseScope = childScope(ifStatement->elsebody ? ifStatement->elsebody : ifStatement, scope);
+    applyRefinements(elseScope, ifStatement->elseLocation.value_or(ifStatement->condition->location), refinementArena.negation(refinement));
+
+    ControlFlow thencf = visit(thenScope, ifStatement->thenbody);
+    ControlFlow elsecf = ControlFlow::None;
     if (ifStatement->elsebody)
-    {
-        ScopePtr elseScope = childScope(ifStatement->elsebody, scope);
-        applyRefinements(elseScope, ifStatement->elseLocation.value_or(ifStatement->condition->location), refinementArena.negation(refinement));
-        visit(elseScope, ifStatement->elsebody);
-    }
+        elsecf = visit(elseScope, ifStatement->elsebody);
+
+    if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && elsecf == ControlFlow::None)
+        scope->inheritRefinements(elseScope);
+    else if (thencf == ControlFlow::None && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
+        scope->inheritRefinements(thenScope);
+
+    if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
+        return ControlFlow::Returns;
+    else
+        return ControlFlow::None;
 }
 
 static bool occursCheck(TypeId needle, TypeId haystack)
@@ -890,7 +942,7 @@ static bool occursCheck(TypeId needle, TypeId haystack)
     return false;
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatTypeAlias* alias)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatTypeAlias* alias)
 {
     ScopePtr* defnScope = astTypeAliasDefiningScopes.find(alias);
 
@@ -904,7 +956,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatTypeAlias* alia
     // case we just skip over it.
     auto bindingIt = typeBindings->find(alias->name.value);
     if (bindingIt == typeBindings->end() || defnScope == nullptr)
-        return;
+        return ControlFlow::None;
 
     TypeId ty = resolveType(*defnScope, alias->type, /* inTypeArguments */ false);
 
@@ -935,9 +987,11 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatTypeAlias* alia
             std::move(typeParams),
             std::move(typePackParams),
         });
+
+    return ControlFlow::None;
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareGlobal* global)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareGlobal* global)
 {
     LUAU_ASSERT(global->type);
 
@@ -949,6 +1003,8 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareGlobal* 
 
     BreadcrumbId bc = dfg->getBreadcrumb(global);
     rootScope->dcrRefinements[bc->def] = globalTy;
+
+    return ControlFlow::None;
 }
 
 static bool isMetamethod(const Name& name)
@@ -958,7 +1014,7 @@ static bool isMetamethod(const Name& name)
            name == "__metatable" || name == "__eq" || name == "__lt" || name == "__le" || name == "__mode" || name == "__iter" || name == "__len";
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareClass* declaredClass)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareClass* declaredClass)
 {
     std::optional<TypeId> superTy = FFlag::LuauNegatedClassTypes ? std::make_optional(builtinTypes->classType) : std::nullopt;
     if (declaredClass->superName)
@@ -969,7 +1025,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareClass* d
         if (!lookupType)
         {
             reportError(declaredClass->location, UnknownSymbol{superName, UnknownSymbol::Type});
-            return;
+            return ControlFlow::None;
         }
 
         // We don't have generic classes, so this assertion _should_ never be hit.
@@ -981,7 +1037,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareClass* d
             reportError(declaredClass->location,
                 GenericError{format("Cannot use non-class type '%s' as a superclass of class '%s'", superName.c_str(), declaredClass->name.value)});
 
-            return;
+            return ControlFlow::None;
         }
     }
 
@@ -1056,9 +1112,11 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareClass* d
             }
         }
     }
+
+    return ControlFlow::None;
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareFunction* global)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareFunction* global)
 {
     std::vector<std::pair<Name, GenericTypeDefinition>> generics = createGenerics(scope, global->generics);
     std::vector<std::pair<Name, GenericTypePackDefinition>> genericPacks = createGenericPacks(scope, global->genericPacks);
@@ -1097,14 +1155,18 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareFunction
 
     BreadcrumbId bc = dfg->getBreadcrumb(global);
     rootScope->dcrRefinements[bc->def] = fnType;
+
+    return ControlFlow::None;
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatError* error)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatError* error)
 {
     for (AstStat* stat : error->statements)
         visit(scope, stat);
     for (AstExpr* expr : error->expressions)
         check(scope, expr);
+
+    return ControlFlow::None;
 }
 
 InferencePack ConstraintGraphBuilder::checkPack(

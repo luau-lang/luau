@@ -27,7 +27,6 @@ struct Quantifier final : TypeOnceVisitor
     explicit Quantifier(TypeLevel level)
         : level(level)
     {
-        LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
     }
 
     /// @return true if outer encloses inner

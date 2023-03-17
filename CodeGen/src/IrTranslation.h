@@ -60,6 +60,7 @@ void translateInstGetGlobal(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstSetGlobal(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstConcat(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstCapture(IrBuilder& build, const Instruction* pc, int pcpos);
+void translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos);
 
 } // namespace CodeGen
 } // namespace Luau

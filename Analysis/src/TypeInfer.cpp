@@ -43,6 +43,8 @@ LUAU_FASTFLAG(LuauNegatedClassTypes)
 LUAU_FASTFLAGVARIABLE(LuauAllowIndexClassParameters, false)
 LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckTypeguards, false)
+LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
+LUAU_FASTFLAGVARIABLE(LuauReducingAndOr, false)
 
 namespace Luau
 {
@@ -344,42 +346,54 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     return std::move(currentModule);
 }
 
-void TypeChecker::check(const ScopePtr& scope, const AstStat& program)
+ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStat& program)
 {
+    if (finishTime && TimeTrace::getClock() > *finishTime)
+        throw TimeLimitError(iceHandler->moduleName);
+
     if (auto block = program.as<AstStatBlock>())
-        check(scope, *block);
+        return check(scope, *block);
     else if (auto if_ = program.as<AstStatIf>())
-        check(scope, *if_);
+        return check(scope, *if_);
     else if (auto while_ = program.as<AstStatWhile>())
-        check(scope, *while_);
+        return check(scope, *while_);
     else if (auto repeat = program.as<AstStatRepeat>())
-        check(scope, *repeat);
-    else if (program.is<AstStatBreak>())
+        return check(scope, *repeat);
+    else if (program.is<AstStatBreak>() || program.is<AstStatContinue>())
     {
-    } // Nothing to do
-    else if (program.is<AstStatContinue>())
-    {
-    } // Nothing to do
+        // Nothing to do
+        return ControlFlow::None;
+    }
     else if (auto return_ = program.as<AstStatReturn>())
-        check(scope, *return_);
+        return check(scope, *return_);
     else if (auto expr = program.as<AstStatExpr>())
+    {
         checkExprPack(scope, *expr->expr);
+
+        if (FFlag::LuauTinyControlFlowAnalysis)
+        {
+            if (auto call = expr->expr->as<AstExprCall>(); call && doesCallError(call))
+                return ControlFlow::Throws;
+        }
+
+        return ControlFlow::None;
+    }
     else if (auto local = program.as<AstStatLocal>())
-        check(scope, *local);
+        return check(scope, *local);
     else if (auto for_ = program.as<AstStatFor>())
-        check(scope, *for_);
+        return check(scope, *for_);
     else if (auto forIn = program.as<AstStatForIn>())
-        check(scope, *forIn);
+        return check(scope, *forIn);
     else if (auto assign = program.as<AstStatAssign>())
-        check(scope, *assign);
+        return check(scope, *assign);
     else if (auto assign = program.as<AstStatCompoundAssign>())
-        check(scope, *assign);
+        return check(scope, *assign);
     else if (program.is<AstStatFunction>())
         ice("Should not be calling two-argument check() on a function statement", program.location);
     else if (program.is<AstStatLocalFunction>())
         ice("Should not be calling two-argument check() on a function statement", program.location);
     else if (auto typealias = program.as<AstStatTypeAlias>())
-        check(scope, *typealias);
+        return check(scope, *typealias);
     else if (auto global = program.as<AstStatDeclareGlobal>())
     {
         TypeId globalType = resolveType(scope, *global->type);
@@ -387,11 +401,13 @@ void TypeChecker::check(const ScopePtr& scope, const AstStat& program)
 
         currentModule->declaredGlobals[globalName] = globalType;
         currentModule->getModuleScope()->bindings[global->name] = Binding{globalType, global->location};
+
+        return ControlFlow::None;
     }
     else if (auto global = program.as<AstStatDeclareFunction>())
-        check(scope, *global);
+        return check(scope, *global);
     else if (auto global = program.as<AstStatDeclareClass>())
-        check(scope, *global);
+        return check(scope, *global);
     else if (auto errorStatement = program.as<AstStatError>())
     {
         const size_t oldSize = currentModule->errors.size();
@@ -405,37 +421,40 @@ void TypeChecker::check(const ScopePtr& scope, const AstStat& program)
         // HACK: We want to run typechecking on the contents of the AstStatError, but
         // we don't think the type errors will be useful most of the time.
         currentModule->errors.resize(oldSize);
+
+        return ControlFlow::None;
     }
     else
         ice("Unknown AstStat");
-
-    if (finishTime && TimeTrace::getClock() > *finishTime)
-        throw TimeLimitError(iceHandler->moduleName);
 }
 
 // This particular overload is for do...end. If you need to not increase the scope level, use checkBlock directly.
-void TypeChecker::check(const ScopePtr& scope, const AstStatBlock& block)
+ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatBlock& block)
 {
     ScopePtr child = childScope(scope, block.location);
-    checkBlock(child, block);
+
+    ControlFlow flow = checkBlock(child, block);
+    scope->inheritRefinements(child);
+
+    return flow;
 }
 
-void TypeChecker::checkBlock(const ScopePtr& scope, const AstStatBlock& block)
+ControlFlow TypeChecker::checkBlock(const ScopePtr& scope, const AstStatBlock& block)
 {
     RecursionCounter _rc(&checkRecursionCount);
     if (FInt::LuauCheckRecursionLimit > 0 && checkRecursionCount >= FInt::LuauCheckRecursionLimit)
     {
         reportErrorCodeTooComplex(block.location);
-        return;
+        return ControlFlow::None;
     }
     try
     {
-        checkBlockWithoutRecursionCheck(scope, block);
+        return checkBlockWithoutRecursionCheck(scope, block);
     }
     catch (const RecursionLimitException&)
     {
         reportErrorCodeTooComplex(block.location);
-        return;
+        return ControlFlow::None;
     }
 }
 
@@ -488,7 +507,7 @@ struct InplaceDemoter : TypeOnceVisitor
     }
 };
 
-void TypeChecker::checkBlockWithoutRecursionCheck(const ScopePtr& scope, const AstStatBlock& block)
+ControlFlow TypeChecker::checkBlockWithoutRecursionCheck(const ScopePtr& scope, const AstStatBlock& block)
 {
     int subLevel = 0;
 
@@ -528,6 +547,7 @@ void TypeChecker::checkBlockWithoutRecursionCheck(const ScopePtr& scope, const A
         }
     };
 
+    std::optional<ControlFlow> firstFlow;
     while (protoIter != sorted.end())
     {
         // protoIter walks forward
@@ -570,7 +590,9 @@ void TypeChecker::checkBlockWithoutRecursionCheck(const ScopePtr& scope, const A
 
             // We do check the current element, so advance checkIter beyond it.
             ++checkIter;
-            check(scope, **protoIter);
+            ControlFlow flow = check(scope, **protoIter);
+            if (flow != ControlFlow::None && !firstFlow)
+                firstFlow = flow;
         }
         else if (auto fun = (*protoIter)->as<AstStatFunction>())
         {
@@ -631,7 +653,11 @@ void TypeChecker::checkBlockWithoutRecursionCheck(const ScopePtr& scope, const A
             scope->bindings[fun->name] = {funTy, fun->name->location};
         }
         else
-            check(scope, **protoIter);
+        {
+            ControlFlow flow = check(scope, **protoIter);
+            if (flow != ControlFlow::None && !firstFlow)
+                firstFlow = flow;
+        }
 
         ++protoIter;
     }
@@ -643,6 +669,8 @@ void TypeChecker::checkBlockWithoutRecursionCheck(const ScopePtr& scope, const A
     }
 
     checkBlockTypeAliases(scope, sorted);
+
+    return firstFlow.value_or(ControlFlow::None);
 }
 
 LUAU_NOINLINE void TypeChecker::checkBlockTypeAliases(const ScopePtr& scope, std::vector<AstStat*>& sorted)
@@ -717,19 +745,45 @@ static std::optional<Predicate> tryGetTypeGuardPredicate(const AstExprBinary& ex
     return predicate;
 }
 
-void TypeChecker::check(const ScopePtr& scope, const AstStatIf& statement)
+ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatIf& statement)
 {
     WithPredicate<TypeId> result = checkExpr(scope, *statement.condition);
 
-    ScopePtr ifScope = childScope(scope, statement.thenbody->location);
-    resolve(result.predicates, ifScope, true);
-    check(ifScope, *statement.thenbody);
+    ScopePtr thenScope = childScope(scope, statement.thenbody->location);
+    resolve(result.predicates, thenScope, true);
 
-    if (statement.elsebody)
+    if (FFlag::LuauTinyControlFlowAnalysis)
     {
-        ScopePtr elseScope = childScope(scope, statement.elsebody->location);
+        ScopePtr elseScope = childScope(scope, statement.elsebody ? statement.elsebody->location : statement.location);
         resolve(result.predicates, elseScope, false);
-        check(elseScope, *statement.elsebody);
+
+        ControlFlow thencf = check(thenScope, *statement.thenbody);
+        ControlFlow elsecf = ControlFlow::None;
+        if (statement.elsebody)
+            elsecf = check(elseScope, *statement.elsebody);
+
+        if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && elsecf == ControlFlow::None)
+            scope->inheritRefinements(elseScope);
+        else if (thencf == ControlFlow::None && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
+            scope->inheritRefinements(thenScope);
+
+        if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
+            return ControlFlow::Returns;
+        else
+            return ControlFlow::None;
+    }
+    else
+    {
+        check(thenScope, *statement.thenbody);
+
+        if (statement.elsebody)
+        {
+            ScopePtr elseScope = childScope(scope, statement.elsebody->location);
+            resolve(result.predicates, elseScope, false);
+            check(elseScope, *statement.elsebody);
+        }
+
+        return ControlFlow::None;
     }
 }
 
@@ -750,22 +804,26 @@ ErrorVec TypeChecker::canUnify(TypePackId subTy, TypePackId superTy, const Scope
     return canUnify_(subTy, superTy, scope, location);
 }
 
-void TypeChecker::check(const ScopePtr& scope, const AstStatWhile& statement)
+ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatWhile& statement)
 {
     WithPredicate<TypeId> result = checkExpr(scope, *statement.condition);
 
     ScopePtr whileScope = childScope(scope, statement.body->location);
     resolve(result.predicates, whileScope, true);
     check(whileScope, *statement.body);
+
+    return ControlFlow::None;
 }
 
-void TypeChecker::check(const ScopePtr& scope, const AstStatRepeat& statement)
+ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatRepeat& statement)
 {
     ScopePtr repScope = childScope(scope, statement.location);
 
     checkBlock(repScope, *statement.body);
 
     checkExpr(repScope, *statement.condition);
+
+    return ControlFlow::None;
 }
 
 struct Demoter : Substitution
@@ -822,7 +880,7 @@ struct Demoter : Substitution
     }
 };
 
-void TypeChecker::check(const ScopePtr& scope, const AstStatReturn& return_)
+ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatReturn& return_)
 {
     std::vector<std::optional<TypeId>> expectedTypes;
     expectedTypes.reserve(return_.list.size);
@@ -858,10 +916,12 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatReturn& return_)
         if (!errors.empty())
             currentModule->getModuleScope()->returnType = addTypePack({anyType});
 
-        return;
+        return FFlag::LuauTinyControlFlowAnalysis ? ControlFlow::Returns : ControlFlow::None;
     }
 
     unify(retPack, scope->returnType, scope, return_.location, CountMismatch::Context::Return);
+
+    return FFlag::LuauTinyControlFlowAnalysis ? ControlFlow::Returns : ControlFlow::None;
 }
 
 template<typename Id>
@@ -893,7 +953,7 @@ ErrorVec TypeChecker::tryUnify(TypePackId subTy, TypePackId superTy, const Scope
     return tryUnify_(subTy, superTy, scope, location);
 }
 
-void TypeChecker::check(const ScopePtr& scope, const AstStatAssign& assign)
+ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatAssign& assign)
 {
     std::vector<std::optional<TypeId>> expectedTypes;
     expectedTypes.reserve(assign.vars.size);
@@ -993,9 +1053,11 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatAssign& assign)
             }
         }
     }
+
+    return ControlFlow::None;
 }
 
-void TypeChecker::check(const ScopePtr& scope, const AstStatCompoundAssign& assign)
+ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatCompoundAssign& assign)
 {
     AstExprBinary expr(assign.location, assign.op, assign.var, assign.value);
 
@@ -1005,9 +1067,11 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatCompoundAssign& assi
     TypeId result = checkBinaryOperation(scope, expr, left, right);
 
     unify(result, left, scope, assign.location);
+
+    return ControlFlow::None;
 }
 
-void TypeChecker::check(const ScopePtr& scope, const AstStatLocal& local)
+ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatLocal& local)
 {
     // Important subtlety: A local variable is not in scope while its initializer is being evaluated.
     // For instance, you cannot do this:
@@ -1144,9 +1208,11 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatLocal& local)
 
     for (const auto& [local, binding] : varBindings)
         scope->bindings[local] = binding;
+
+    return ControlFlow::None;
 }
 
-void TypeChecker::check(const ScopePtr& scope, const AstStatFor& expr)
+ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatFor& expr)
 {
     ScopePtr loopScope = childScope(scope, expr.location);
 
@@ -1169,9 +1235,11 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatFor& expr)
         unify(checkExpr(loopScope, *expr.step).type, loopVarType, scope, expr.step->location);
 
     check(loopScope, *expr.body);
+
+    return ControlFlow::None;
 }
 
-void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
+ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
 {
     ScopePtr loopScope = childScope(scope, forin.location);
 
@@ -1360,9 +1428,11 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
     unify(retPack, varPack, scope, forin.location);
 
     check(loopScope, *forin.body);
+
+    return ControlFlow::None;
 }
 
-void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funScope, const AstStatFunction& function)
+ControlFlow TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funScope, const AstStatFunction& function)
 {
     if (auto exprName = function.name->as<AstExprGlobal>())
     {
@@ -1387,8 +1457,6 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
             globalBindings[name] = oldBinding;
         else
             globalBindings[name] = {quantify(funScope, ty, exprName->location), exprName->location};
-
-        return;
     }
     else if (auto name = function.name->as<AstExprLocal>())
     {
@@ -1397,7 +1465,6 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         checkFunctionBody(funScope, ty, *function.func);
 
         scope->bindings[name->local] = {anyIfNonstrict(quantify(funScope, ty, name->local->location)), name->local->location};
-        return;
     }
     else if (auto name = function.name->as<AstExprIndexName>())
     {
@@ -1444,9 +1511,11 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
 
         checkFunctionBody(funScope, ty, *function.func);
     }
+
+    return ControlFlow::None;
 }
 
-void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funScope, const AstStatLocalFunction& function)
+ControlFlow TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funScope, const AstStatLocalFunction& function)
 {
     Name name = function.name->name.value;
 
@@ -1455,15 +1524,17 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
     checkFunctionBody(funScope, ty, *function.func);
 
     scope->bindings[function.name] = {quantify(funScope, ty, function.name->location), function.name->location};
+
+    return ControlFlow::None;
 }
 
-void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias)
+ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias)
 {
     Name name = typealias.name.value;
 
     // If the alias is missing a name, we can't do anything with it.  Ignore it.
     if (name == kParseNameError)
-        return;
+        return ControlFlow::None;
 
     std::optional<TypeFun> binding;
     if (auto it = scope->exportedTypeBindings.find(name); it != scope->exportedTypeBindings.end())
@@ -1476,7 +1547,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
     // If the first pass failed (this should mean a duplicate definition), the second pass isn't going to be
     // interesting.
     if (duplicateTypeAliases.find({typealias.exported, name}))
-        return;
+        return ControlFlow::None;
 
     // By now this alias must have been `prototype()`d first.
     if (!binding)
@@ -1557,6 +1628,8 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
 
     if (unify(ty, bindingType, aliasScope, typealias.location))
         bindingType = ty;
+
+    return ControlFlow::None;
 }
 
 void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typealias, int subLevel)
@@ -1648,13 +1721,13 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatDeclareClass& de
     scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
 }
 
-void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declaredClass)
+ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declaredClass)
 {
     Name className(declaredClass.name.value);
 
     // Don't bother checking if the class definition was incorrect
     if (incorrectClassDefinitions.find(&declaredClass))
-        return;
+        return ControlFlow::None;
 
     std::optional<TypeFun> binding;
     if (auto it = scope->exportedTypeBindings.find(className); it != scope->exportedTypeBindings.end())
@@ -1721,9 +1794,11 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
             }
         }
     }
+
+    return ControlFlow::None;
 }
 
-void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareFunction& global)
+ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareFunction& global)
 {
     ScopePtr funScope = childFunctionScope(scope, global.location);
 
@@ -1754,6 +1829,8 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareFunction& glo
 
     currentModule->declaredGlobals[fnName] = fnType;
     currentModule->getModuleScope()->bindings[global.name] = Binding{fnType, global.location};
+
+    return ControlFlow::None;
 }
 
 WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExpr& expr, std::optional<TypeId> expectedType, bool forceSingleton)
@@ -2785,6 +2862,16 @@ TypeId TypeChecker::checkRelationalOperation(
             if (notNever)
             {
                 LUAU_ASSERT(oty);
+
+                if (FFlag::LuauReducingAndOr)
+                {
+                    // Perform a limited form of type reduction for booleans
+                    if (isPrim(*oty, PrimitiveType::Boolean) && get<BooleanSingleton>(get<SingletonType>(follow(rhsType))))
+                        return booleanType;
+                    if (isPrim(rhsType, PrimitiveType::Boolean) && get<BooleanSingleton>(get<SingletonType>(follow(*oty))))
+                        return booleanType;
+                }
+
                 return unionOfTypes(*oty, rhsType, scope, expr.location, false);
             }
             else
@@ -2808,6 +2895,16 @@ TypeId TypeChecker::checkRelationalOperation(
             if (notNever)
             {
                 LUAU_ASSERT(oty);
+
+                if (FFlag::LuauReducingAndOr)
+                {
+                    // Perform a limited form of type reduction for booleans
+                    if (isPrim(*oty, PrimitiveType::Boolean) && get<BooleanSingleton>(get<SingletonType>(follow(rhsType))))
+                        return booleanType;
+                    if (isPrim(rhsType, PrimitiveType::Boolean) && get<BooleanSingleton>(get<SingletonType>(follow(*oty))))
+                        return booleanType;
+                }
+
                 return unionOfTypes(*oty, rhsType, scope, expr.location);
             }
             else

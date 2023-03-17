@@ -93,6 +93,13 @@ public:
     // Assigns label position to the current location
     void setLabel(Label& label);
 
+    // Extracts code offset (in bytes) from label
+    uint32_t getLabelOffset(const Label& label)
+    {
+        LUAU_ASSERT(label.location != ~0u);
+        return label.location * 4;
+    }
+
     void logAppend(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
 
     uint32_t getCodeSize() const;

@@ -89,14 +89,21 @@ struct FrontendOptions
     // order to get more precise type information)
     bool forAutocomplete = false;
 
+    bool runLintChecks = false;
+
     // If not empty, randomly shuffle the constraint set before attempting to
     // solve.  Use this value to seed the random number generator.
     std::optional<unsigned> randomizeConstraintResolutionSeed;
+
+    std::optional<LintOptions> enabledLintWarnings;
 };
 
 struct CheckResult
 {
     std::vector<TypeError> errors;
+
+    LintResult lintResult;
+
     std::vector<ModuleName> timeoutHits;
 };
 
@@ -133,8 +140,9 @@ struct Frontend
 
     CheckResult check(const ModuleName& name, std::optional<FrontendOptions> optionOverride = {}); // new shininess
 
-    LintResult lint(const ModuleName& name, std::optional<LintOptions> enabledLintWarnings = {});
-    LintResult lint(const SourceModule& module, std::optional<LintOptions> enabledLintWarnings = {});
+    // Use 'check' with 'runLintChecks' set to true in FrontendOptions (enabledLintWarnings be set there as well)
+    LintResult lint_DEPRECATED(const ModuleName& name, std::optional<LintOptions> enabledLintWarnings = {});
+    LintResult lint_DEPRECATED(const SourceModule& module, std::optional<LintOptions> enabledLintWarnings = {});
 
     bool isDirty(const ModuleName& name, bool forAutocomplete = false) const;
     void markDirty(const ModuleName& name, std::vector<ModuleName>* markedDirty = nullptr);

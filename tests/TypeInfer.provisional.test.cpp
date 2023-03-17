@@ -470,6 +470,10 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
 
 TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 {
+    ScopedFastFlag sff[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
     TypeArena arena;
     TypeId nilType = builtinTypes->nilType;
 
@@ -488,7 +492,7 @@ TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 
     u.tryUnify(option1, option2);
 
-    CHECK(u.errors.empty());
+    CHECK(!u.failure);
 
     u.log.commit();
 
@@ -548,7 +552,10 @@ return wrapStrictTable(Constants, "Constants")
 
     std::optional<TypeId> result = first(m->returnType);
     REQUIRE(result);
-    CHECK(get<AnyType>(*result));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("(any?) & ~table", toString(*result));
+    else
+        CHECK_MESSAGE(get<AnyType>(*result), *result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_leak_to_module_interface_variadic")

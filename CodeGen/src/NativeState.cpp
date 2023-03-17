@@ -80,6 +80,7 @@ void initHelperFunctions(NativeState& data)
     data.context.luaF_close = luaF_close;
 
     data.context.luaT_gettm = luaT_gettm;
+    data.context.luaT_objtypenamestr = luaT_objtypenamestr;
 
     data.context.libm_exp = exp;
     data.context.libm_pow = pow;

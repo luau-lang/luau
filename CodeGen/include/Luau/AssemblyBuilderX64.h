@@ -155,6 +155,13 @@ public:
     // Assigns label position to the current location
     void setLabel(Label& label);
 
+    // Extracts code offset (in bytes) from label
+    uint32_t getLabelOffset(const Label& label)
+    {
+        LUAU_ASSERT(label.location != ~0u);
+        return label.location;
+    }
+
     // Constant allocation (uses rip-relative addressing)
     OperandX64 i64(int64_t value);
     OperandX64 f32(float value);

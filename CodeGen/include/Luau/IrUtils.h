@@ -98,7 +98,7 @@ inline bool isBlockTerminator(IrCmd cmd)
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_CMP_NUM:
     case IrCmd::JUMP_CMP_ANY:
-    case IrCmd::LOP_NAMECALL:
+    case IrCmd::JUMP_SLOT_MATCH:
     case IrCmd::LOP_RETURN:
     case IrCmd::LOP_FORGLOOP:
     case IrCmd::LOP_FORGLOOP_FALLBACK:
@@ -125,6 +125,7 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::LOAD_ENV:
     case IrCmd::GET_ARR_ADDR:
     case IrCmd::GET_SLOT_NODE_ADDR:
+    case IrCmd::GET_HASH_NODE_ADDR:
     case IrCmd::ADD_INT:
     case IrCmd::SUB_INT:
     case IrCmd::ADD_NUM:
@@ -140,7 +141,8 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::TABLE_LEN:
     case IrCmd::NEW_TABLE:
     case IrCmd::DUP_TABLE:
-    case IrCmd::NUM_TO_INDEX:
+    case IrCmd::TRY_NUM_TO_INDEX:
+    case IrCmd::TRY_CALL_FASTGETTM:
     case IrCmd::INT_TO_NUM:
     case IrCmd::SUBSTITUTE:
     case IrCmd::INVOKE_FASTCALL:

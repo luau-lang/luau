@@ -263,9 +263,8 @@ TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
     )LUA";
 
     CheckResult result = check(src);
-    CodeTooComplex ctc;
 
-    CHECK(hasError(result, &ctc));
+    CHECK(hasError<CodeTooComplex>(result));
 }
 
 TEST_SUITE_END();

@@ -90,6 +90,8 @@ const char* getCmdName(IrCmd cmd)
         return "GET_ARR_ADDR";
     case IrCmd::GET_SLOT_NODE_ADDR:
         return "GET_SLOT_NODE_ADDR";
+    case IrCmd::GET_HASH_NODE_ADDR:
+        return "GET_HASH_NODE_ADDR";
     case IrCmd::STORE_TAG:
         return "STORE_TAG";
     case IrCmd::STORE_POINTER:
@@ -142,14 +144,18 @@ const char* getCmdName(IrCmd cmd)
         return "JUMP_CMP_NUM";
     case IrCmd::JUMP_CMP_ANY:
         return "JUMP_CMP_ANY";
+    case IrCmd::JUMP_SLOT_MATCH:
+        return "JUMP_SLOT_MATCH";
     case IrCmd::TABLE_LEN:
         return "TABLE_LEN";
     case IrCmd::NEW_TABLE:
         return "NEW_TABLE";
     case IrCmd::DUP_TABLE:
         return "DUP_TABLE";
-    case IrCmd::NUM_TO_INDEX:
-        return "NUM_TO_INDEX";
+    case IrCmd::TRY_NUM_TO_INDEX:
+        return "TRY_NUM_TO_INDEX";
+    case IrCmd::TRY_CALL_FASTGETTM:
+        return "TRY_CALL_FASTGETTM";
     case IrCmd::INT_TO_NUM:
         return "INT_TO_NUM";
     case IrCmd::ADJUST_STACK_TO_REG:
@@ -192,6 +198,8 @@ const char* getCmdName(IrCmd cmd)
         return "CHECK_ARRAY_SIZE";
     case IrCmd::CHECK_SLOT_MATCH:
         return "CHECK_SLOT_MATCH";
+    case IrCmd::CHECK_NODE_NO_NEXT:
+        return "CHECK_NODE_NO_NEXT";
     case IrCmd::INTERRUPT:
         return "INTERRUPT";
     case IrCmd::CHECK_GC:
@@ -210,8 +218,6 @@ const char* getCmdName(IrCmd cmd)
         return "CAPTURE";
     case IrCmd::LOP_SETLIST:
         return "LOP_SETLIST";
-    case IrCmd::LOP_NAMECALL:
-        return "LOP_NAMECALL";
     case IrCmd::LOP_CALL:
         return "LOP_CALL";
     case IrCmd::LOP_RETURN:
@@ -397,7 +403,7 @@ static void appendBlockSet(IrToStringContext& ctx, BlockIteratorWrapper blocks)
     }
 }
 
-static void appendRegisterSet(IrToStringContext& ctx, const RegisterSet& rs)
+static void appendRegisterSet(IrToStringContext& ctx, const RegisterSet& rs, const char* separator)
 {
     bool comma = false;
 
@@ -406,7 +412,7 @@ static void appendRegisterSet(IrToStringContext& ctx, const RegisterSet& rs)
         if (rs.regs.test(i))
         {
             if (comma)
-                append(ctx.result, ", ");
+                ctx.result.append(separator);
             comma = true;
 
             append(ctx.result, "R%d", int(i));
@@ -416,7 +422,7 @@ static void appendRegisterSet(IrToStringContext& ctx, const RegisterSet& rs)
     if (rs.varargSeq)
     {
         if (comma)
-            append(ctx.result, ", ");
+            ctx.result.append(separator);
 
         append(ctx.result, "R%d...", rs.varargStart);
     }
@@ -428,7 +434,7 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t ind
     if (block.useCount == 0 && block.kind != IrBlockKind::Dead && ctx.cfg.captured.regs.any())
     {
         append(ctx.result, "; captured regs: ");
-        appendRegisterSet(ctx, ctx.cfg.captured);
+        appendRegisterSet(ctx, ctx.cfg.captured, ", ");
         append(ctx.result, "\n\n");
     }
 
@@ -484,7 +490,7 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t ind
         if (in.regs.any() || in.varargSeq)
         {
             append(ctx.result, "; in regs: ");
-            appendRegisterSet(ctx, in);
+            appendRegisterSet(ctx, in, ", ");
             append(ctx.result, "\n");
         }
     }
@@ -497,7 +503,7 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t ind
         if (out.regs.any() || out.varargSeq)
         {
             append(ctx.result, "; out regs: ");
-            appendRegisterSet(ctx, out);
+            appendRegisterSet(ctx, out, ", ");
             append(ctx.result, "\n");
         }
     }
@@ -545,6 +551,109 @@ std::string toString(IrFunction& function, bool includeUseInfo)
 std::string dump(IrFunction& function)
 {
     std::string result = toString(function, /* includeUseInfo */ true);
+
+    printf("%s\n", result.c_str());
+
+    return result;
+}
+
+std::string toDot(IrFunction& function, bool includeInst)
+{
+    std::string result;
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg};
+
+    auto appendLabelRegset = [&ctx](std::vector<RegisterSet>& regSets, size_t blockIdx, const char* name) {
+        if (blockIdx < regSets.size())
+        {
+            const RegisterSet& rs = regSets[blockIdx];
+
+            if (rs.regs.any() || rs.varargSeq)
+            {
+                append(ctx.result, "|{%s|", name);
+                appendRegisterSet(ctx, rs, "|");
+                append(ctx.result, "}");
+            }
+        }
+    };
+
+    append(ctx.result, "digraph CFG {\n");
+    append(ctx.result, "node[shape=record]\n");
+
+    for (size_t i = 0; i < function.blocks.size(); i++)
+    {
+        IrBlock& block = function.blocks[i];
+
+        append(ctx.result, "b%u [", unsigned(i));
+
+        if (block.kind == IrBlockKind::Fallback)
+            append(ctx.result, "style=filled;fillcolor=salmon;");
+        else if (block.kind == IrBlockKind::Bytecode)
+            append(ctx.result, "style=filled;fillcolor=palegreen;");
+
+        append(ctx.result, "label=\"{");
+        toString(ctx, block, uint32_t(i));
+
+        appendLabelRegset(ctx.cfg.in, i, "in");
+
+        if (includeInst && block.start != ~0u)
+        {
+            for (uint32_t instIdx = block.start; instIdx <= block.finish; instIdx++)
+            {
+                IrInst& inst = function.instructions[instIdx];
+
+                // Skip pseudo instructions unless they are still referenced
+                if (isPseudo(inst.cmd) && inst.useCount == 0)
+                    continue;
+
+                append(ctx.result, "|");
+                toString(ctx, inst, instIdx);
+            }
+        }
+
+        appendLabelRegset(ctx.cfg.def, i, "def");
+        appendLabelRegset(ctx.cfg.out, i, "out");
+
+        append(ctx.result, "}\"];\n");
+    }
+
+    for (size_t i = 0; i < function.blocks.size(); i++)
+    {
+        IrBlock& block = function.blocks[i];
+
+        if (block.start == ~0u)
+            continue;
+
+        for (uint32_t instIdx = block.start; instIdx != ~0u && instIdx <= block.finish; instIdx++)
+        {
+            IrInst& inst = function.instructions[instIdx];
+
+            auto checkOp = [&](IrOp op) {
+                if (op.kind == IrOpKind::Block)
+                {
+                    if (function.blocks[op.index].kind != IrBlockKind::Fallback)
+                        append(ctx.result, "b%u -> b%u [weight=10];\n", unsigned(i), op.index);
+                    else
+                        append(ctx.result, "b%u -> b%u;\n", unsigned(i), op.index);
+                }
+            };
+
+            checkOp(inst.a);
+            checkOp(inst.b);
+            checkOp(inst.c);
+            checkOp(inst.d);
+            checkOp(inst.e);
+            checkOp(inst.f);
+        }
+    }
+
+    append(ctx.result, "}\n");
+
+    return result;
+}
+
+std::string dumpDot(IrFunction& function, bool includeInst)
+{
+    std::string result = toDot(function, includeInst);
 
     printf("%s\n", result.c_str());
 

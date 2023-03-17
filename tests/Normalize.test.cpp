@@ -28,6 +28,18 @@ struct IsSubtypeFixture : Fixture
 
         return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, ice);
     }
+
+    bool isConsistentSubtype(TypeId a, TypeId b)
+    {
+        Location location;
+        ModulePtr module = getMainModule();
+        REQUIRE(module);
+
+        if (!module->hasModuleScope())
+            FAIL("isSubtype: module scope data is not available");
+
+        return ::Luau::isConsistentSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, ice);
+    }
 };
 } // namespace
 
@@ -86,8 +98,8 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "functions_and_any")
 
     // any makes things work even when it makes no sense.
 
-    CHECK(isSubtype(b, a));
-    CHECK(isSubtype(a, b));
+    CHECK(isConsistentSubtype(b, a));
+    CHECK(isConsistentSubtype(a, b));
 }
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "variadic_functions_with_no_head")
@@ -163,6 +175,10 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_union_prop")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_any_prop")
 {
+    ScopedFastFlag sffs[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
     check(R"(
         local a: {x: number}
         local b: {x: any}
@@ -172,7 +188,8 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_any_prop")
     TypeId b = requireType("b");
 
     CHECK(isSubtype(a, b));
-    CHECK(isSubtype(b, a));
+    CHECK(!isSubtype(b, a));
+    CHECK(isConsistentSubtype(b, a));
 }
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "intersection")
@@ -216,6 +233,10 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "union_and_intersection")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
 {
+    ScopedFastFlag sffs[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
     check(R"(
         local a: {x: number}
         local b: {x: any}
@@ -229,7 +250,8 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
     TypeId d = requireType("d");
 
     CHECK(isSubtype(a, b));
-    CHECK(isSubtype(b, a));
+    CHECK(!isSubtype(b, a));
+    CHECK(isConsistentSubtype(b, a));
 
     CHECK(!isSubtype(c, a));
     CHECK(!isSubtype(a, c));
@@ -357,6 +379,92 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "metatable" * doctest::expected_failures{1})
      CHECK(isSubtype(a, b));
 }
 #endif
+
+TEST_CASE_FIXTURE(IsSubtypeFixture, "any_is_unknown_union_error")
+{
+    ScopedFastFlag sffs[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
+    check(R"(
+        local err = 5.nope.nope -- err is now an error type
+        local a : any
+        local b : (unknown | typeof(err))
+    )");
+
+    TypeId a = requireType("a");
+    TypeId b = requireType("b");
+
+    CHECK(isSubtype(a, b));
+    CHECK(isSubtype(b, a));
+    CHECK_EQ("*error-type*", toString(requireType("err")));
+}
+
+TEST_CASE_FIXTURE(IsSubtypeFixture, "any_intersect_T_is_T")
+{
+    ScopedFastFlag sffs[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
+    check(R"(
+        local a : (any & string)
+        local b : string
+        local c : number
+    )");
+
+    TypeId a = requireType("a");
+    TypeId b = requireType("b");
+    TypeId c = requireType("c");
+
+    CHECK(isSubtype(a, b));
+    CHECK(isSubtype(b, a));
+    CHECK(!isSubtype(a, c));
+    CHECK(!isSubtype(c, a));
+}
+
+TEST_CASE_FIXTURE(IsSubtypeFixture, "error_suppression")
+{
+    ScopedFastFlag sffs[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
+    check("");
+
+    TypeId any = builtinTypes->anyType;
+    TypeId err = builtinTypes->errorType;
+    TypeId str = builtinTypes->stringType;
+    TypeId unk = builtinTypes->unknownType;
+
+    CHECK(!isSubtype(any, err));
+    CHECK(isSubtype(err, any));
+    CHECK(isConsistentSubtype(any, err));
+    CHECK(isConsistentSubtype(err, any));
+
+    CHECK(!isSubtype(any, str));
+    CHECK(isSubtype(str, any));
+    CHECK(isConsistentSubtype(any, str));
+    CHECK(isConsistentSubtype(str, any));
+
+    CHECK(!isSubtype(any, unk));
+    CHECK(isSubtype(unk, any));
+    CHECK(isConsistentSubtype(any, unk));
+    CHECK(isConsistentSubtype(unk, any));
+
+    CHECK(!isSubtype(err, str));
+    CHECK(!isSubtype(str, err));
+    CHECK(isConsistentSubtype(err, str));
+    CHECK(isConsistentSubtype(str, err));
+
+    CHECK(!isSubtype(err, unk));
+    CHECK(!isSubtype(unk, err));
+    CHECK(isConsistentSubtype(err, unk));
+    CHECK(isConsistentSubtype(unk, err));
+
+    CHECK(isSubtype(str, unk));
+    CHECK(!isSubtype(unk, str));
+    CHECK(isConsistentSubtype(str, unk));
+    CHECK(!isConsistentSubtype(unk, str));
+}
 
 TEST_SUITE_END();
 
@@ -690,6 +798,19 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_tables")
     CHECK(nullptr == toNormalizedType("Not<{}>"));
     CHECK("(boolean | class | function | number | string | thread)?" == toString(normal("Not<tbl>")));
     CHECK("table" == toString(normal("Not<Not<tbl>>")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "normalize_blocked_types")
+{
+    ScopedFastFlag sff[] {
+        {"LuauNormalizeBlockedTypes", true},
+    };
+
+    Type blocked{BlockedType{}};
+
+    const NormalizedType* norm = normalizer.normalize(&blocked);
+
+    CHECK_EQ(normalizer.typeFromNormal(*norm), &blocked);
 }
 
 TEST_SUITE_END();

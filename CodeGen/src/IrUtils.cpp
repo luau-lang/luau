@@ -360,7 +360,7 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                 replace(function, block, index, {IrCmd::JUMP, inst.e});
         }
         break;
-    case IrCmd::NUM_TO_INDEX:
+    case IrCmd::TRY_NUM_TO_INDEX:
         if (inst.a.kind == IrOpKind::Constant)
         {
             double value = function.doubleOp(inst.a);

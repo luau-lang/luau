@@ -704,11 +704,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail_and_strin
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("string", toString(requireType("foo")));
-    else
-        CHECK_EQ("any", toString(requireType("foo")));
-
+    CHECK_EQ("any", toString(requireType("foo")));
     CHECK_EQ("any", toString(requireType("bar")));
     CHECK_EQ("any", toString(requireType("baz")));
     CHECK_EQ("any", toString(requireType("quux")));
@@ -996,11 +992,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Key 'b' not found in table '{| a: number |}'", toString(result.errors[0]));
+    CHECK(Location({13, 18}, {13, 23}) == result.errors[0].location);
 
     CHECK_EQ("number", toString(requireType("a")));
     CHECK_EQ("string", toString(requireType("b")));
     CHECK_EQ("boolean", toString(requireType("c")));
-    CHECK_EQ("*error-type*", toString(requireType("d")));
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("any", toString(requireType("d")));
+    else
+        CHECK_EQ("*error-type*", toString(requireType("d")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "set_metatable_needs_arguments")

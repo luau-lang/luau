@@ -124,6 +124,10 @@ static void requireVariadicSequence(RegisterSet& sourceRs, const RegisterSet& de
 {
     if (!defRs.varargSeq)
     {
+        // Peel away registers from variadic sequence that we define
+        while (defRs.regs.test(varargStart))
+            varargStart++;
+
         LUAU_ASSERT(!sourceRs.varargSeq || sourceRs.varargStart == varargStart);
 
         sourceRs.varargSeq = true;
@@ -296,11 +300,6 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
             use(inst.b);
             useRange(inst.c.index, function.intOp(inst.d));
             break;
-        case IrCmd::LOP_NAMECALL:
-            use(inst.c);
-
-            defRange(inst.b.index, 2);
-            break;
         case IrCmd::LOP_CALL:
             use(inst.b);
             useRange(inst.b.index + 1, function.intOp(inst.c));
@@ -411,6 +410,13 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
             break;
 
         default:
+            // All instructions which reference registers have to be handled explicitly
+            LUAU_ASSERT(inst.a.kind != IrOpKind::VmReg);
+            LUAU_ASSERT(inst.b.kind != IrOpKind::VmReg);
+            LUAU_ASSERT(inst.c.kind != IrOpKind::VmReg);
+            LUAU_ASSERT(inst.d.kind != IrOpKind::VmReg);
+            LUAU_ASSERT(inst.e.kind != IrOpKind::VmReg);
+            LUAU_ASSERT(inst.f.kind != IrOpKind::VmReg);
             break;
         }
     }
@@ -430,16 +436,19 @@ static void computeCfgLiveInOutRegSets(IrFunction& function)
 {
     CfgInfo& info = function.cfg;
 
+    // Clear existing data
+    // 'in' and 'captured' data is not cleared because it will be overwritten below
+    info.def.clear();
+    info.out.clear();
+
     // Try to compute Luau VM register use-def info
     info.in.resize(function.blocks.size());
+    info.def.resize(function.blocks.size());
     info.out.resize(function.blocks.size());
 
     // Captured registers are tracked for the whole function
     // It should be possible to have a more precise analysis for them in the future
     std::bitset<256> capturedRegs;
-
-    std::vector<RegisterSet> defRss;
-    defRss.resize(function.blocks.size());
 
     // First we compute live-in set of each block
     for (size_t blockIdx = 0; blockIdx < function.blocks.size(); blockIdx++)
@@ -449,7 +458,7 @@ static void computeCfgLiveInOutRegSets(IrFunction& function)
         if (block.kind == IrBlockKind::Dead)
             continue;
 
-        info.in[blockIdx] = computeBlockLiveInRegSet(function, block, defRss[blockIdx], capturedRegs);
+        info.in[blockIdx] = computeBlockLiveInRegSet(function, block, info.def[blockIdx], capturedRegs);
     }
 
     info.captured.regs = capturedRegs;
@@ -480,8 +489,8 @@ static void computeCfgLiveInOutRegSets(IrFunction& function)
 
         IrBlock& curr = function.blocks[blockIdx];
         RegisterSet& inRs = info.in[blockIdx];
+        RegisterSet& defRs = info.def[blockIdx];
         RegisterSet& outRs = info.out[blockIdx];
-        RegisterSet& defRs = defRss[blockIdx];
 
         // Current block has to provide all registers in successor blocks
         for (uint32_t succIdx : successors(info, blockIdx))
@@ -546,6 +555,10 @@ static void computeCfgLiveInOutRegSets(IrFunction& function)
 static void computeCfgBlockEdges(IrFunction& function)
 {
     CfgInfo& info = function.cfg;
+
+    // Clear existing data
+    info.predecessorsOffsets.clear();
+    info.successorsOffsets.clear();
 
     // Compute predecessors block edges
     info.predecessorsOffsets.reserve(function.blocks.size());

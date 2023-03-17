@@ -319,10 +319,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         {
             if (inst.b.kind == IrOpKind::Constant)
             {
-                std::optional<double> oldValue = function.asDoubleOp(state.tryGetValue(inst.a));
-                double newValue = function.doubleOp(inst.b);
-
-                if (oldValue && *oldValue == newValue)
+                if (state.tryGetValue(inst.a) == inst.b)
                     kill(function, inst);
                 else
                     state.saveValue(inst.a, inst.b);
@@ -338,10 +335,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         {
             if (inst.b.kind == IrOpKind::Constant)
             {
-                std::optional<int> oldValue = function.asIntOp(state.tryGetValue(inst.a));
-                int newValue = function.intOp(inst.b);
-
-                if (oldValue && *oldValue == newValue)
+                if (state.tryGetValue(inst.a) == inst.b)
                     kill(function, inst);
                 else
                     state.saveValue(inst.a, inst.b);
@@ -504,6 +498,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::LOAD_ENV:
     case IrCmd::GET_ARR_ADDR:
     case IrCmd::GET_SLOT_NODE_ADDR:
+    case IrCmd::GET_HASH_NODE_ADDR:
     case IrCmd::STORE_NODE_VALUE_TV:
     case IrCmd::ADD_INT:
     case IrCmd::SUB_INT:
@@ -519,13 +514,16 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::NOT_ANY:
     case IrCmd::JUMP:
     case IrCmd::JUMP_EQ_POINTER:
+    case IrCmd::JUMP_SLOT_MATCH:
     case IrCmd::TABLE_LEN:
     case IrCmd::NEW_TABLE:
     case IrCmd::DUP_TABLE:
-    case IrCmd::NUM_TO_INDEX:
+    case IrCmd::TRY_NUM_TO_INDEX:
+    case IrCmd::TRY_CALL_FASTGETTM:
     case IrCmd::INT_TO_NUM:
     case IrCmd::CHECK_ARRAY_SIZE:
     case IrCmd::CHECK_SLOT_MATCH:
+    case IrCmd::CHECK_NODE_NO_NEXT:
     case IrCmd::BARRIER_TABLE_BACK:
     case IrCmd::LOP_RETURN:
     case IrCmd::LOP_COVERAGE:
@@ -552,7 +550,6 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::CONCAT:
     case IrCmd::PREPARE_FORN:
     case IrCmd::INTERRUPT: // TODO: it will be important to keep tag/value state, but we have to track register capture
-    case IrCmd::LOP_NAMECALL:
     case IrCmd::LOP_CALL:
     case IrCmd::LOP_FORGLOOP:
     case IrCmd::LOP_FORGLOOP_FALLBACK:
@@ -633,7 +630,7 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
     // * if the successor has multiple uses, it can't have such 'live in' values without phi nodes that we don't have yet
     // Another possibility is to have two paths from 'block' into the target through two intermediate blocks
     // Usually that would mean that we would have a conditional jump at the end of 'block'
-    // But using check guards and fallback clocks it becomes a possible setup
+    // But using check guards and fallback blocks it becomes a possible setup
     // We avoid this by making sure fallbacks rejoin the other immediate successor of 'block'
     LUAU_ASSERT(getLiveOutValueCount(function, *block) == 0);
 

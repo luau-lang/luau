@@ -21,7 +21,6 @@ namespace X64
 
 class AssemblyBuilderX64;
 
-void emitInstNameCall(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, const TValue* k, Label& next, Label& fallback);
 void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Instruction* pc, int pcpos);
 void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Instruction* pc, int pcpos);
 void emitInstSetList(AssemblyBuilderX64& build, const Instruction* pc, Label& next);

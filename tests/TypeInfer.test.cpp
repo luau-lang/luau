@@ -103,6 +103,16 @@ TEST_CASE_FIXTURE(Fixture, "infer_in_nocheck_mode")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "obvious_type_error_in_nocheck_mode")
+{
+    CheckResult result = check(R"(
+        --!nocheck
+        local x: string = 5
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "expr_statement")
 {
     CheckResult result = check("local foo = 5    foo()");
@@ -1185,6 +1195,9 @@ TEST_CASE_FIXTURE(Fixture, "dcr_delays_expansion_of_function_containing_blocked_
     ScopedFastFlag sff[] = {
         {"DebugLuauDeferredConstraintResolution", true},
         {"LuauTinyUnifyNormalsFix", true},
+        // If we run this with error-suppression, it triggers an assertion.
+        // FATAL ERROR: Assertion failed: !"Internal error: Trying to normalize a BlockedType"
+        {"LuauTransitiveSubtyping", false},
     };
 
     CheckResult result = check(R"(

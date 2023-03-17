@@ -18,51 +18,6 @@ namespace CodeGen
 namespace X64
 {
 
-void emitInstNameCall(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, const TValue* k, Label& next, Label& fallback)
-{
-    int ra = LUAU_INSN_A(*pc);
-    int rb = LUAU_INSN_B(*pc);
-    uint32_t aux = pc[1];
-
-    Label secondfpath;
-
-    jumpIfTagIsNot(build, rb, LUA_TTABLE, fallback);
-
-    RegisterX64 table = r8;
-    build.mov(table, luauRegValue(rb));
-
-    // &h->node[tsvalue(kv)->hash & (sizenode(h) - 1)];
-    RegisterX64 node = rdx;
-    build.mov(node, qword[table + offsetof(Table, node)]);
-    build.mov(eax, 1);
-    build.mov(cl, byte[table + offsetof(Table, lsizenode)]);
-    build.shl(eax, cl);
-    build.dec(eax);
-    build.and_(eax, tsvalue(&k[aux])->hash);
-    build.shl(rax, kLuaNodeSizeLog2);
-    build.add(node, rax);
-
-    jumpIfNodeKeyNotInExpectedSlot(build, rax, node, luauConstantValue(aux), secondfpath);
-
-    setLuauReg(build, xmm0, ra + 1, luauReg(rb));
-    setLuauReg(build, xmm0, ra, luauNodeValue(node));
-    build.jmp(next);
-
-    build.setLabel(secondfpath);
-
-    jumpIfNodeHasNext(build, node, fallback);
-    callGetFastTmOrFallback(build, table, TM_INDEX, fallback);
-    jumpIfTagIsNot(build, rax, LUA_TTABLE, fallback);
-
-    build.mov(table, qword[rax + offsetof(TValue, value)]);
-
-    getTableNodeAtCachedSlot(build, rax, node, table, pcpos);
-    jumpIfNodeKeyNotInExpectedSlot(build, rax, node, luauConstantValue(aux), fallback);
-
-    setLuauReg(build, xmm0, ra + 1, luauReg(rb));
-    setLuauReg(build, xmm0, ra, luauNodeValue(node));
-}
-
 void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);

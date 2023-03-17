@@ -27,16 +27,25 @@ TEST_SUITE_BEGIN("TryUnifyTests");
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "primitives_unify")
 {
+    ScopedFastFlag sff[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
     Type numberOne{TypeVariant{PrimitiveType{PrimitiveType::Number}}};
     Type numberTwo = numberOne;
 
     state.tryUnify(&numberTwo, &numberOne);
 
+    CHECK(!state.failure);
     CHECK(state.errors.empty());
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "compatible_functions_are_unified")
 {
+    ScopedFastFlag sff[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
     Type functionOne{
         TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({builtinTypes->numberType}))}};
 
@@ -44,6 +53,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "compatible_functions_are_unified")
         FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({arena.freshType(globalScope->level)}))}};
 
     state.tryUnify(&functionTwo, &functionOne);
+    CHECK(!state.failure);
     CHECK(state.errors.empty());
 
     state.log.commit();
@@ -53,6 +63,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "compatible_functions_are_unified")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_functions_are_preserved")
 {
+    ScopedFastFlag sff[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
     TypePackVar argPackOne{TypePack{{arena.freshType(globalScope->level)}, std::nullopt}};
     Type functionOne{
         TypeVariant{FunctionType(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({builtinTypes->numberType}))}};
@@ -66,6 +80,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_functions_are_preserved")
     Type functionTwoSaved = functionTwo;
 
     state.tryUnify(&functionTwo, &functionOne);
+    CHECK(state.failure);
     CHECK(!state.errors.empty());
 
     CHECK_EQ(functionOne, functionOneSaved);
@@ -74,6 +89,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_functions_are_preserved")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
 {
+    ScopedFastFlag sff[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
     Type tableOne{TypeVariant{
         TableType{{{"foo", {arena.freshType(globalScope->level)}}}, std::nullopt, globalScope->level, TableState::Unsealed},
     }};
@@ -86,6 +105,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
 
     state.tryUnify(&tableTwo, &tableOne);
 
+    CHECK(!state.failure);
     CHECK(state.errors.empty());
 
     state.log.commit();
@@ -95,6 +115,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
 {
+    ScopedFastFlag sff[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
     Type tableOne{TypeVariant{
         TableType{{{"foo", {arena.freshType(globalScope->level)}}, {"bar", {builtinTypes->numberType}}}, std::nullopt, globalScope->level,
             TableState::Unsealed},
@@ -109,6 +133,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
 
     state.tryUnify(&tableTwo, &tableOne);
 
+    CHECK(state.failure);
     CHECK_EQ(1, state.errors.size());
 
     CHECK_NE(*getMutable<TableType>(&tableOne)->props["foo"].type, *getMutable<TableType>(&tableTwo)->props["foo"].type);
@@ -218,6 +243,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "variadic_type_pack_unification")
     TypePackVar variadicPack{VariadicTypePack{builtinTypes->numberType}};
 
     state.tryUnify(&testPack, &variadicPack);
+    CHECK(state.failure);
     CHECK(!state.errors.empty());
 }
 
@@ -228,6 +254,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "variadic_tails_respect_progress")
     TypePackVar b{TypePack{{builtinTypes->numberType, builtinTypes->stringType}, &variadicPack}};
 
     state.tryUnify(&b, &a);
+    CHECK(!state.failure);
     CHECK(state.errors.empty());
 }
 
@@ -270,8 +297,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "free_tail_is_grown_properly")
         arena.addTypePack(TypePack{{builtinTypes->numberType, builtinTypes->numberType, builtinTypes->numberType}, std::nullopt});
     TypePackId numberAndFreeTail = arena.addTypePack(TypePack{{builtinTypes->numberType}, arena.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}})});
 
-    ErrorVec unifyErrors = state.canUnify(numberAndFreeTail, threeNumbers);
-    CHECK(unifyErrors.size() == 0);
+    CHECK(state.canUnify(numberAndFreeTail, threeNumbers).empty());
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "recursive_metatable_getmatchtag")
@@ -321,7 +347,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_pack_owner")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "metatables_unify_against_shape_of_free_table")
 {
-    ScopedFastFlag sff("DebugLuauDeferredConstraintResolution", true);
+    ScopedFastFlag sff[] = {
+        {"LuauTransitiveSubtyping", true},
+        {"DebugLuauDeferredConstraintResolution", true},
+    };
 
     TableType::Props freeProps{
         {"foo", {builtinTypes->numberType}},
