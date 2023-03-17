@@ -23,7 +23,7 @@ For example, `Point` class can be simulated using metatables:
 
   function Point.new()
     local result = {}
-    setmetatable(Point, result)
+    setmetatable(result, Point)
     result.x = 0
     result.y = 0
     return result
@@ -107,7 +107,7 @@ function Set:add(el)
 end
 
 function Set:contains(el)
-    return self.elements[el] != nil
+    return self.elements[el] ~= nil
 end
 ```
 
@@ -239,7 +239,7 @@ For example, in `setmetatable({ elements = {} }, Set)`, we have:
 
 as a result `Set.new` has type `<a>() -> { elements : { [a] : boolean }, @metatable SetMT }`.
 
-As another example, in `setmetatable(Point, result)`:
+As another example, in `setmetatable(result, Point)`:
 
 * `Point` has type `PointMT`, no self type parameters, a free self type definition (call it `T`), and a self type whose table type is `T` and whose metatable is `PointMT`,
 * and `result` has final type `{ x : number, y : number }`,
@@ -280,7 +280,7 @@ this will result in optional types being inferred. For example:
 
 ```lua
   function Point.new()
-    local result = setmetatable(Point, {})
+    local result = setmetatable({}, Point)
     result.x = 0
     print(result:getX())
     result.y = 0
