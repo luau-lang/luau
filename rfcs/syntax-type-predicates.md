@@ -89,6 +89,28 @@ local function processClientEvent(pet: unknown)
 end
 ```
 
+A type predicate function must return a boolean expression:
+
+```lua
+local function isPet(x: unknown): x :: Pet
+    return 5 -- TypeError: Type 'number' could not be converted into 'boolean'
+end
+```
+
+If the variable specified is not a parameter to the function, we will emit a type error:
+
+```lua
+local function isPet(pet: unknown): x :: Pet -- TypeError: Unknown parameter 'x'
+end
+```
+
+If the type we want to assert does not exist, we will emit a type error:
+
+```lua
+local function isDog(dog: unknown): dog :: Dog -- TypeError: Unknown type 'Dog'
+end
+```
+
 ## Drawbacks
 
 One problem with user-defined type predicates, is that they do not completely solve the unsoundness issue, if the user
