@@ -1384,6 +1384,12 @@ void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(lua_State*, void*))
     L->global->udatagc[tag] = dtor;
 }
 
+void (*lua_getuserdatadtor(lua_State* L, int tag))(lua_State*, void*)
+{
+    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
+    return L->global->udatagc[tag];
+}
+
 void lua_clonefunction(lua_State* L, int idx)
 {
     luaC_checkGC(L);
