@@ -1304,9 +1304,9 @@ TEST_CASE("UserdataApi")
     auto dtor = [](lua_State* l, void* data) {
         dtorhits += *(int*)data;
     };
-    CHECK(lua_getuserdatadtor(L, 42) == nullptr);
+    bool dtorIsNull = lua_getuserdatadtor(L, 42) == nullptr; CHECK(dtorIsNull);
     lua_setuserdatadtor(L, 42, dtor);
-    CHECK(lua_getuserdatadtor(L, 42) == dtor);
+    bool dtorIsSet = lua_getuserdatadtor(L, 42) == dtor; CHECK(dtorIsSet);
 
     // light user data
     int lud;
