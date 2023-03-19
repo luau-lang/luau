@@ -24,7 +24,7 @@ Especially with applications dealing with pixel graphics, such as 2D games, inte
 > `floor`: 461 matches, `max`: 224 matches, `sin`: 197 matches, `min`: 195 matches, `clamp`: 171 matches, `cos`: 106 matches, `abs`: 85 matches.
 > The majority of `math.floor` calls disappear from this codebase with the floor division operator.
 
-Finally, Lua has had floor division operator since version 5.3, so its addition to Luau makes it easier to migrate from Lua to Luau and perhaps more importantly use the wide variety of existing Lua libraries in Luau.
+Lua has had floor division operator since version 5.3, so its addition to Luau makes it easier to migrate from Lua to Luau and perhaps more importantly use the wide variety of existing Lua libraries in Luau. Of other languages, most notably Python has floor division operator with same semantics and same syntax. R and Julia also have a similar operator.
 
 ## Design
 
