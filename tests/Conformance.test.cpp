@@ -1304,9 +1304,9 @@ TEST_CASE("UserdataApi")
     auto dtor = [](lua_State* l, void* data) {
         dtorhits += *(int*)data;
     };
-    CHECK((void*)lua_getuserdatadtor(L, 42) == nullptr); // (void*) silences warning C4180 on VS 2017
+    CHECK(lua_getuserdatadtor(L, 42) == nullptr);
     lua_setuserdatadtor(L, 42, dtor);
-    CHECK((void*)lua_getuserdatadtor(L, 42) == dtor);    
+    CHECK(lua_getuserdatadtor(L, 42) == dtor);
 
     // light user data
     int lud;
