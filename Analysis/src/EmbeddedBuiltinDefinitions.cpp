@@ -97,7 +97,7 @@ declare os: {
     clock: () -> number,
 }
 
-declare function require(target: any): any
+declare function require(target: unknown): any
 
 declare function getfenv(target: any): { [string]: any }
 
