@@ -802,7 +802,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_tables")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "normalize_blocked_types")
 {
-    ScopedFastFlag sff[] {
+    ScopedFastFlag sff[]{
         {"LuauNormalizeBlockedTypes", true},
     };
 
@@ -811,6 +811,16 @@ TEST_CASE_FIXTURE(NormalizeFixture, "normalize_blocked_types")
     const NormalizedType* norm = normalizer.normalize(&blocked);
 
     CHECK_EQ(normalizer.typeFromNormal(*norm), &blocked);
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "normalize_pending_expansion_types")
+{
+    AstName name;
+    Type pending{PendingExpansionType{std::nullopt, name, {}, {}}};
+
+    const NormalizedType* norm = normalizer.normalize(&pending);
+
+    CHECK_EQ(normalizer.typeFromNormal(*norm), &pending);
 }
 
 TEST_SUITE_END();

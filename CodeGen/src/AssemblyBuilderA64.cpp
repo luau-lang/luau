@@ -45,9 +45,30 @@ void AssemblyBuilderA64::mov(RegisterA64 dst, RegisterA64 src)
         placeSR2("mov", dst, src, 0b01'01010);
 }
 
-void AssemblyBuilderA64::mov(RegisterA64 dst, uint16_t src, int shift)
+void AssemblyBuilderA64::mov(RegisterA64 dst, int src)
 {
-    placeI16("mov", dst, src, 0b10'100101, shift);
+    if (src >= 0)
+    {
+        movz(dst, src & 0xffff);
+        if (src > 0xffff)
+            movk(dst, src >> 16, 16);
+    }
+    else
+    {
+        movn(dst, ~src & 0xffff);
+        if (src < -0x10000)
+            movk(dst, (src >> 16) & 0xffff, 16);
+    }
+}
+
+void AssemblyBuilderA64::movz(RegisterA64 dst, uint16_t src, int shift)
+{
+    placeI16("movz", dst, src, 0b10'100101, shift);
+}
+
+void AssemblyBuilderA64::movn(RegisterA64 dst, uint16_t src, int shift)
+{
+    placeI16("movn", dst, src, 0b00'100101, shift);
 }
 
 void AssemblyBuilderA64::movk(RegisterA64 dst, uint16_t src, int shift)
@@ -60,7 +81,7 @@ void AssemblyBuilderA64::add(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2
     placeSR3("add", dst, src1, src2, 0b00'01011, shift);
 }
 
-void AssemblyBuilderA64::add(RegisterA64 dst, RegisterA64 src1, int src2)
+void AssemblyBuilderA64::add(RegisterA64 dst, RegisterA64 src1, uint16_t src2)
 {
     placeI12("add", dst, src1, src2, 0b00'10001);
 }
@@ -70,7 +91,7 @@ void AssemblyBuilderA64::sub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2
     placeSR3("sub", dst, src1, src2, 0b10'01011, shift);
 }
 
-void AssemblyBuilderA64::sub(RegisterA64 dst, RegisterA64 src1, int src2)
+void AssemblyBuilderA64::sub(RegisterA64 dst, RegisterA64 src1, uint16_t src2)
 {
     placeI12("sub", dst, src1, src2, 0b10'10001);
 }
@@ -87,7 +108,7 @@ void AssemblyBuilderA64::cmp(RegisterA64 src1, RegisterA64 src2)
     placeSR3("cmp", dst, src1, src2, 0b11'01011);
 }
 
-void AssemblyBuilderA64::cmp(RegisterA64 src1, int src2)
+void AssemblyBuilderA64::cmp(RegisterA64 src1, uint16_t src2)
 {
     RegisterA64 dst = src1.kind == KindA64::x ? xzr : wzr;
 
@@ -186,6 +207,14 @@ void AssemblyBuilderA64::ldrsw(RegisterA64 dst, AddressA64 src)
     placeA("ldrsw", dst, src, 0b11100010, 0b10);
 }
 
+void AssemblyBuilderA64::ldp(RegisterA64 dst1, RegisterA64 dst2, AddressA64 src)
+{
+    LUAU_ASSERT(dst1.kind == KindA64::x || dst1.kind == KindA64::w);
+    LUAU_ASSERT(dst1.kind == dst2.kind);
+
+    placeP("ldp", dst1, dst2, src, 0b101'0'010'1, 0b10 | uint8_t(dst1.kind == KindA64::x));
+}
+
 void AssemblyBuilderA64::str(RegisterA64 src, AddressA64 dst)
 {
     LUAU_ASSERT(src.kind == KindA64::x || src.kind == KindA64::w);
@@ -205,6 +234,14 @@ void AssemblyBuilderA64::strh(RegisterA64 src, AddressA64 dst)
     LUAU_ASSERT(src.kind == KindA64::w);
 
     placeA("strh", src, dst, 0b11100000, 0b01);
+}
+
+void AssemblyBuilderA64::stp(RegisterA64 src1, RegisterA64 src2, AddressA64 dst)
+{
+    LUAU_ASSERT(src1.kind == KindA64::x || src1.kind == KindA64::w);
+    LUAU_ASSERT(src1.kind == src2.kind);
+
+    placeP("stp", src1, src2, dst, 0b101'0'010'0, 0b10 | uint8_t(src1.kind == KindA64::x));
 }
 
 void AssemblyBuilderA64::b(Label& label)
@@ -274,6 +311,11 @@ void AssemblyBuilderA64::adr(RegisterA64 dst, double value)
     placeADR("adr", dst, 0b10000);
 
     patchImm19(location, -int(location) - int((data.size() - pos) / 4));
+}
+
+void AssemblyBuilderA64::adr(RegisterA64 dst, Label& label)
+{
+    placeADR("adr", dst, 0b10000, label);
 }
 
 bool AssemblyBuilderA64::finalize()
@@ -511,6 +553,32 @@ void AssemblyBuilderA64::placeADR(const char* name, RegisterA64 dst, uint8_t op)
     commit();
 }
 
+void AssemblyBuilderA64::placeADR(const char* name, RegisterA64 dst, uint8_t op, Label& label)
+{
+    LUAU_ASSERT(dst.kind == KindA64::x);
+
+    place(dst.index | (op << 24));
+    commit();
+
+    patchLabel(label);
+
+    if (logText)
+        log(name, dst, label);
+}
+
+void AssemblyBuilderA64::placeP(const char* name, RegisterA64 src1, RegisterA64 src2, AddressA64 dst, uint8_t op, uint8_t size)
+{
+    if (logText)
+        log(name, src1, src2, dst);
+
+    LUAU_ASSERT(dst.kind == AddressKindA64::imm);
+    LUAU_ASSERT(dst.data >= -128 * (1 << size) && dst.data <= 127 * (1 << size));
+    LUAU_ASSERT(dst.data % (1 << size) == 0);
+
+    place(src1.index | (dst.base.index << 5) | (src2.index << 10) | (((dst.data >> size) & 127) << 15) | (op << 22) | (size << 31));
+    commit();
+}
+
 void AssemblyBuilderA64::place(uint32_t word)
 {
     LUAU_ASSERT(codePos < codeEnd);
@@ -623,6 +691,17 @@ void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst, AddressA64 src
 {
     logAppend(" %-12s", opcode);
     log(dst);
+    text.append(",");
+    log(src);
+    text.append("\n");
+}
+
+void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst1, RegisterA64 dst2, AddressA64 src)
+{
+    logAppend(" %-12s", opcode);
+    log(dst1);
+    text.append(",");
+    log(dst2);
     text.append(",");
     log(src);
     text.append("\n");

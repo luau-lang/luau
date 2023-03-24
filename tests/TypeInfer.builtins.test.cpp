@@ -9,7 +9,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauMatchReturnsOptionalString);
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -1064,10 +1063,7 @@ TEST_CASE_FIXTURE(Fixture, "string_match")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    if (FFlag::LuauMatchReturnsOptionalString)
-        CHECK_EQ(toString(requireType("p")), "string?");
-    else
-        CHECK_EQ(toString(requireType("p")), "string");
+    CHECK_EQ(toString(requireType("p")), "string?");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types")
@@ -1078,18 +1074,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauMatchReturnsOptionalString)
-    {
-        CHECK_EQ(toString(requireType("a")), "string?");
-        CHECK_EQ(toString(requireType("b")), "number?");
-        CHECK_EQ(toString(requireType("c")), "string?");
-    }
-    else
-    {
-        CHECK_EQ(toString(requireType("a")), "string");
-        CHECK_EQ(toString(requireType("b")), "number");
-        CHECK_EQ(toString(requireType("c")), "string");
-    }
+    CHECK_EQ(toString(requireType("a")), "string?");
+    CHECK_EQ(toString(requireType("b")), "number?");
+    CHECK_EQ(toString(requireType("c")), "string?");
 }
 
 TEST_CASE_FIXTURE(Fixture, "gmatch_capture_types2")
@@ -1100,18 +1087,9 @@ TEST_CASE_FIXTURE(Fixture, "gmatch_capture_types2")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauMatchReturnsOptionalString)
-    {
-        CHECK_EQ(toString(requireType("a")), "string?");
-        CHECK_EQ(toString(requireType("b")), "number?");
-        CHECK_EQ(toString(requireType("c")), "string?");
-    }
-    else
-    {
-        CHECK_EQ(toString(requireType("a")), "string");
-        CHECK_EQ(toString(requireType("b")), "number");
-        CHECK_EQ(toString(requireType("c")), "string");
-    }
+    CHECK_EQ(toString(requireType("a")), "string?");
+    CHECK_EQ(toString(requireType("b")), "number?");
+    CHECK_EQ(toString(requireType("c")), "string?");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_default_capture")
@@ -1128,10 +1106,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_default_capture")
     CHECK_EQ(acm->expected, 1);
     CHECK_EQ(acm->actual, 4);
 
-    if (FFlag::LuauMatchReturnsOptionalString)
-        CHECK_EQ(toString(requireType("a")), "string?");
-    else
-        CHECK_EQ(toString(requireType("a")), "string");
+    CHECK_EQ(toString(requireType("a")), "string?");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_balanced_escaped_parens")
@@ -1148,18 +1123,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_balanced_escaped_parens
     CHECK_EQ(acm->expected, 3);
     CHECK_EQ(acm->actual, 4);
 
-    if (FFlag::LuauMatchReturnsOptionalString)
-    {
-        CHECK_EQ(toString(requireType("a")), "string?");
-        CHECK_EQ(toString(requireType("b")), "string?");
-        CHECK_EQ(toString(requireType("c")), "number?");
-    }
-    else
-    {
-        CHECK_EQ(toString(requireType("a")), "string");
-        CHECK_EQ(toString(requireType("b")), "string");
-        CHECK_EQ(toString(requireType("c")), "number");
-    }
+    CHECK_EQ(toString(requireType("a")), "string?");
+    CHECK_EQ(toString(requireType("b")), "string?");
+    CHECK_EQ(toString(requireType("c")), "number?");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_parens_in_sets_are_ignored")
@@ -1176,16 +1142,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_parens_in_sets_are_igno
     CHECK_EQ(acm->expected, 2);
     CHECK_EQ(acm->actual, 3);
 
-    if (FFlag::LuauMatchReturnsOptionalString)
-    {
-        CHECK_EQ(toString(requireType("a")), "string?");
-        CHECK_EQ(toString(requireType("b")), "number?");
-    }
-    else
-    {
-        CHECK_EQ(toString(requireType("a")), "string");
-        CHECK_EQ(toString(requireType("b")), "number");
-    }
+    CHECK_EQ(toString(requireType("a")), "string?");
+    CHECK_EQ(toString(requireType("b")), "number?");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_set_containing_lbracket")
@@ -1196,16 +1154,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_set_containing_lbracket
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauMatchReturnsOptionalString)
-    {
-        CHECK_EQ(toString(requireType("a")), "number?");
-        CHECK_EQ(toString(requireType("b")), "string?");
-    }
-    else
-    {
-        CHECK_EQ(toString(requireType("a")), "number");
-        CHECK_EQ(toString(requireType("b")), "string");
-    }
+    CHECK_EQ(toString(requireType("a")), "number?");
+    CHECK_EQ(toString(requireType("b")), "string?");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_leading_end_bracket_is_part_of_set")
@@ -1253,18 +1203,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "match_capture_types")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauMatchReturnsOptionalString)
-    {
-        CHECK_EQ(toString(requireType("a")), "string?");
-        CHECK_EQ(toString(requireType("b")), "number?");
-        CHECK_EQ(toString(requireType("c")), "string?");
-    }
-    else
-    {
-        CHECK_EQ(toString(requireType("a")), "string");
-        CHECK_EQ(toString(requireType("b")), "number");
-        CHECK_EQ(toString(requireType("c")), "string");
-    }
+    CHECK_EQ(toString(requireType("a")), "string?");
+    CHECK_EQ(toString(requireType("b")), "number?");
+    CHECK_EQ(toString(requireType("c")), "string?");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "match_capture_types2")
@@ -1280,18 +1221,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "match_capture_types2")
     CHECK_EQ(toString(tm->wantedType), "number?");
     CHECK_EQ(toString(tm->givenType), "string");
 
-    if (FFlag::LuauMatchReturnsOptionalString)
-    {
-        CHECK_EQ(toString(requireType("a")), "string?");
-        CHECK_EQ(toString(requireType("b")), "number?");
-        CHECK_EQ(toString(requireType("c")), "string?");
-    }
-    else
-    {
-        CHECK_EQ(toString(requireType("a")), "string");
-        CHECK_EQ(toString(requireType("b")), "number");
-        CHECK_EQ(toString(requireType("c")), "string");
-    }
+    CHECK_EQ(toString(requireType("a")), "string?");
+    CHECK_EQ(toString(requireType("b")), "number?");
+    CHECK_EQ(toString(requireType("c")), "string?");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types")
@@ -1302,18 +1234,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauMatchReturnsOptionalString)
-    {
-        CHECK_EQ(toString(requireType("a")), "string?");
-        CHECK_EQ(toString(requireType("b")), "number?");
-        CHECK_EQ(toString(requireType("c")), "string?");
-    }
-    else
-    {
-        CHECK_EQ(toString(requireType("a")), "string");
-        CHECK_EQ(toString(requireType("b")), "number");
-        CHECK_EQ(toString(requireType("c")), "string");
-    }
+    CHECK_EQ(toString(requireType("a")), "string?");
+    CHECK_EQ(toString(requireType("b")), "number?");
+    CHECK_EQ(toString(requireType("c")), "string?");
     CHECK_EQ(toString(requireType("d")), "number?");
     CHECK_EQ(toString(requireType("e")), "number?");
 }
@@ -1331,18 +1254,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types2")
     CHECK_EQ(toString(tm->wantedType), "number?");
     CHECK_EQ(toString(tm->givenType), "string");
 
-    if (FFlag::LuauMatchReturnsOptionalString)
-    {
-        CHECK_EQ(toString(requireType("a")), "string?");
-        CHECK_EQ(toString(requireType("b")), "number?");
-        CHECK_EQ(toString(requireType("c")), "string?");
-    }
-    else
-    {
-        CHECK_EQ(toString(requireType("a")), "string");
-        CHECK_EQ(toString(requireType("b")), "number");
-        CHECK_EQ(toString(requireType("c")), "string");
-    }
+    CHECK_EQ(toString(requireType("a")), "string?");
+    CHECK_EQ(toString(requireType("b")), "number?");
+    CHECK_EQ(toString(requireType("c")), "string?");
     CHECK_EQ(toString(requireType("d")), "number?");
     CHECK_EQ(toString(requireType("e")), "number?");
 }
@@ -1360,18 +1274,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types3")
     CHECK_EQ(toString(tm->wantedType), "boolean?");
     CHECK_EQ(toString(tm->givenType), "string");
 
-    if (FFlag::LuauMatchReturnsOptionalString)
-    {
-        CHECK_EQ(toString(requireType("a")), "string?");
-        CHECK_EQ(toString(requireType("b")), "number?");
-        CHECK_EQ(toString(requireType("c")), "string?");
-    }
-    else
-    {
-        CHECK_EQ(toString(requireType("a")), "string");
-        CHECK_EQ(toString(requireType("b")), "number");
-        CHECK_EQ(toString(requireType("c")), "string");
-    }
+    CHECK_EQ(toString(requireType("a")), "string?");
+    CHECK_EQ(toString(requireType("b")), "number?");
+    CHECK_EQ(toString(requireType("c")), "string?");
     CHECK_EQ(toString(requireType("d")), "number?");
     CHECK_EQ(toString(requireType("e")), "number?");
 }

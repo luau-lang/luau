@@ -533,7 +533,7 @@ static bool areNormalizedClasses(const NormalizedClassType& tys)
 
 static bool isPlainTyvar(TypeId ty)
 {
-  return (get<FreeType>(ty) || get<GenericType>(ty) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(ty)));
+    return (get<FreeType>(ty) || get<GenericType>(ty) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(ty)) || get<PendingExpansionType>(ty));
 }
 
 static bool isNormalizedTyvar(const NormalizedTyvars& tyvars)
@@ -1380,7 +1380,8 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
     }
     else if (FFlag::LuauTransitiveSubtyping && get<UnknownType>(here.tops))
         return true;
-    else if (get<GenericType>(there) || get<FreeType>(there) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there)))
+    else if (get<GenericType>(there) || get<FreeType>(there) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there)) ||
+             get<PendingExpansionType>(there))
     {
         if (tyvarIndex(there) <= ignoreSmallerTyvars)
             return true;
@@ -1460,6 +1461,10 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
     }
     else if (!FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there))
         LUAU_ASSERT(!"Internal error: Trying to normalize a BlockedType");
+    else if (get<PendingExpansionType>(there))
+    {
+        // nothing
+    }
     else
         LUAU_ASSERT(!"Unreachable");
 
@@ -2544,7 +2549,8 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there)
                 return false;
         return true;
     }
-    else if (get<GenericType>(there) || get<FreeType>(there) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there)))
+    else if (get<GenericType>(there) || get<FreeType>(there) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there)) ||
+             get<PendingExpansionType>(there))
     {
         NormalizedType thereNorm{builtinTypes};
         NormalizedType topNorm{builtinTypes};
@@ -2856,7 +2862,8 @@ bool isConsistentSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, Not
     return ok;
 }
 
-bool isConsistentSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
+bool isConsistentSubtype(
+    TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;

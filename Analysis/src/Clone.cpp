@@ -7,7 +7,7 @@
 #include "Luau/Unifiable.h"
 
 LUAU_FASTFLAG(DebugLuauCopyBeforeNormalizing)
-LUAU_FASTFLAG(LuauClonePublicInterfaceLess)
+LUAU_FASTFLAG(LuauClonePublicInterfaceLess2)
 
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
 
@@ -420,88 +420,6 @@ TypeFun clone(const TypeFun& typeFun, TypeArena& dest, CloneState& cloneState)
     result.type = clone(typeFun.type, dest, cloneState);
 
     return result;
-}
-
-TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysClone)
-{
-    ty = log->follow(ty);
-
-    TypeId result = ty;
-
-    if (auto pty = log->pending(ty))
-        ty = &pty->pending;
-
-    if (const FunctionType* ftv = get<FunctionType>(ty))
-    {
-        FunctionType clone = FunctionType{ftv->level, ftv->scope, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
-        clone.generics = ftv->generics;
-        clone.genericPacks = ftv->genericPacks;
-        clone.magicFunction = ftv->magicFunction;
-        clone.dcrMagicFunction = ftv->dcrMagicFunction;
-        clone.dcrMagicRefinement = ftv->dcrMagicRefinement;
-        clone.tags = ftv->tags;
-        clone.argNames = ftv->argNames;
-        result = dest.addType(std::move(clone));
-    }
-    else if (const TableType* ttv = get<TableType>(ty))
-    {
-        LUAU_ASSERT(!ttv->boundTo);
-        TableType clone = TableType{ttv->props, ttv->indexer, ttv->level, ttv->scope, ttv->state};
-        clone.definitionModuleName = ttv->definitionModuleName;
-        clone.definitionLocation = ttv->definitionLocation;
-        clone.name = ttv->name;
-        clone.syntheticName = ttv->syntheticName;
-        clone.instantiatedTypeParams = ttv->instantiatedTypeParams;
-        clone.instantiatedTypePackParams = ttv->instantiatedTypePackParams;
-        clone.tags = ttv->tags;
-        result = dest.addType(std::move(clone));
-    }
-    else if (const MetatableType* mtv = get<MetatableType>(ty))
-    {
-        MetatableType clone = MetatableType{mtv->table, mtv->metatable};
-        clone.syntheticName = mtv->syntheticName;
-        result = dest.addType(std::move(clone));
-    }
-    else if (const UnionType* utv = get<UnionType>(ty))
-    {
-        UnionType clone;
-        clone.options = utv->options;
-        result = dest.addType(std::move(clone));
-    }
-    else if (const IntersectionType* itv = get<IntersectionType>(ty))
-    {
-        IntersectionType clone;
-        clone.parts = itv->parts;
-        result = dest.addType(std::move(clone));
-    }
-    else if (const PendingExpansionType* petv = get<PendingExpansionType>(ty))
-    {
-        PendingExpansionType clone{petv->prefix, petv->name, petv->typeArguments, petv->packArguments};
-        result = dest.addType(std::move(clone));
-    }
-    else if (const ClassType* ctv = get<ClassType>(ty); FFlag::LuauClonePublicInterfaceLess && ctv && alwaysClone)
-    {
-        ClassType clone{ctv->name, ctv->props, ctv->parent, ctv->metatable, ctv->tags, ctv->userData, ctv->definitionModuleName};
-        result = dest.addType(std::move(clone));
-    }
-    else if (FFlag::LuauClonePublicInterfaceLess && alwaysClone)
-    {
-        result = dest.addType(*ty);
-    }
-    else if (const NegationType* ntv = get<NegationType>(ty))
-    {
-        result = dest.addType(NegationType{ntv->ty});
-    }
-    else
-        return result;
-
-    asMutable(result)->documentationSymbol = ty->documentationSymbol;
-    return result;
-}
-
-TypeId shallowClone(TypeId ty, NotNull<TypeArena> dest)
-{
-    return shallowClone(ty, *dest, TxnLog::empty());
 }
 
 } // namespace Luau

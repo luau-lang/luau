@@ -501,10 +501,10 @@ void translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
     if (br.type == BuiltinImplType::UsesFallback)
     {
+        LUAU_ASSERT(nparams != LUA_MULTRET && "builtins are not allowed to handle variadic arguments");
+
         if (nresults == LUA_MULTRET)
             build.inst(IrCmd::ADJUST_STACK_TO_REG, build.vmReg(ra), build.constInt(br.actualResultCount));
-        else if (nparams == LUA_MULTRET)
-            build.inst(IrCmd::ADJUST_STACK_TO_TOP);
     }
     else
     {

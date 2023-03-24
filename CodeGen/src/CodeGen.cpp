@@ -6,6 +6,8 @@
 #include "Luau/CodeBlockUnwind.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/IrBuilder.h"
+#include "Luau/IrDump.h"
+#include "Luau/IrUtils.h"
 #include "Luau/OptimizeConstProp.h"
 #include "Luau/OptimizeFinalX64.h"
 
@@ -13,19 +15,24 @@
 #include "Luau/UnwindBuilderDwarf2.h"
 #include "Luau/UnwindBuilderWin.h"
 
-#include "Luau/AssemblyBuilderX64.h"
 #include "Luau/AssemblyBuilderA64.h"
+#include "Luau/AssemblyBuilderX64.h"
 
 #include "CustomExecUtils.h"
-#include "CodeGenX64.h"
+#include "NativeState.h"
+
 #include "CodeGenA64.h"
+#include "EmitCommonA64.h"
+#include "IrLoweringA64.h"
+
+#include "CodeGenX64.h"
 #include "EmitCommonX64.h"
 #include "EmitInstructionX64.h"
 #include "IrLoweringX64.h"
-#include "NativeState.h"
 
 #include "lapi.h"
 
+#include <algorithm>
 #include <memory>
 
 #if defined(__x86_64__) || defined(_M_X64)
@@ -60,6 +67,148 @@ static NativeProto* createNativeProto(Proto* proto, const IrBuilder& ir)
     return result;
 }
 
+template<typename AssemblyBuilder, typename IrLowering>
+static void lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& function, int bytecodeid, AssemblyOptions options)
+{
+    // While we will need a better block ordering in the future, right now we want to mostly preserve build order with fallbacks outlined
+    std::vector<uint32_t> sortedBlocks;
+    sortedBlocks.reserve(function.blocks.size());
+    for (uint32_t i = 0; i < function.blocks.size(); i++)
+        sortedBlocks.push_back(i);
+
+    std::sort(sortedBlocks.begin(), sortedBlocks.end(), [&](uint32_t idxA, uint32_t idxB) {
+        const IrBlock& a = function.blocks[idxA];
+        const IrBlock& b = function.blocks[idxB];
+
+        // Place fallback blocks at the end
+        if ((a.kind == IrBlockKind::Fallback) != (b.kind == IrBlockKind::Fallback))
+            return (a.kind == IrBlockKind::Fallback) < (b.kind == IrBlockKind::Fallback);
+
+        // Try to order by instruction order
+        return a.start < b.start;
+    });
+
+    DenseHashMap<uint32_t, uint32_t> bcLocations{~0u};
+
+    // Create keys for IR assembly locations that original bytecode instruction are interested in
+    for (const auto& [irLocation, asmLocation] : function.bcMapping)
+    {
+        if (irLocation != ~0u)
+            bcLocations[irLocation] = 0;
+    }
+
+    DenseHashMap<uint32_t, uint32_t> indexIrToBc{~0u};
+    bool outputEnabled = options.includeAssembly || options.includeIr;
+
+    if (outputEnabled && options.annotator)
+    {
+        // Create reverse mapping from IR location to bytecode location
+        for (size_t i = 0; i < function.bcMapping.size(); ++i)
+        {
+            uint32_t irLocation = function.bcMapping[i].irLocation;
+
+            if (irLocation != ~0u)
+                indexIrToBc[irLocation] = uint32_t(i);
+        }
+    }
+
+    IrToStringContext ctx{build.text, function.blocks, function.constants, function.cfg};
+
+    // We use this to skip outlined fallback blocks from IR/asm text output
+    size_t textSize = build.text.length();
+    uint32_t codeSize = build.getCodeSize();
+    bool seenFallback = false;
+
+    IrBlock dummy;
+    dummy.start = ~0u;
+
+    for (size_t i = 0; i < sortedBlocks.size(); ++i)
+    {
+        uint32_t blockIndex = sortedBlocks[i];
+
+        IrBlock& block = function.blocks[blockIndex];
+
+        if (block.kind == IrBlockKind::Dead)
+            continue;
+
+        LUAU_ASSERT(block.start != ~0u);
+        LUAU_ASSERT(block.finish != ~0u);
+
+        // If we want to skip fallback code IR/asm, we'll record when those blocks start once we see them
+        if (block.kind == IrBlockKind::Fallback && !seenFallback)
+        {
+            textSize = build.text.length();
+            codeSize = build.getCodeSize();
+            seenFallback = true;
+        }
+
+        if (options.includeIr)
+        {
+            build.logAppend("# ");
+            toStringDetailed(ctx, block, blockIndex, /* includeUseInfo */ true);
+        }
+
+        build.setLabel(block.label);
+
+        for (uint32_t index = block.start; index <= block.finish; index++)
+        {
+            LUAU_ASSERT(index < function.instructions.size());
+
+            // If IR instruction is the first one for the original bytecode, we can annotate it with source code text
+            if (outputEnabled && options.annotator)
+            {
+                if (uint32_t* bcIndex = indexIrToBc.find(index))
+                    options.annotator(options.annotatorContext, build.text, bytecodeid, *bcIndex);
+            }
+
+            // If bytecode needs the location of this instruction for jumps, record it
+            if (uint32_t* bcLocation = bcLocations.find(index))
+            {
+                Label label = (index == block.start) ? block.label : build.setLabel();
+                *bcLocation = build.getLabelOffset(label);
+            }
+
+            IrInst& inst = function.instructions[index];
+
+            // Skip pseudo instructions, but make sure they are not used at this stage
+            // This also prevents them from getting into text output when that's enabled
+            if (isPseudo(inst.cmd))
+            {
+                LUAU_ASSERT(inst.useCount == 0);
+                continue;
+            }
+
+            if (options.includeIr)
+            {
+                build.logAppend("# ");
+                toStringDetailed(ctx, inst, index, /* includeUseInfo */ true);
+            }
+
+            IrBlock& next = i + 1 < sortedBlocks.size() ? function.blocks[sortedBlocks[i + 1]] : dummy;
+
+            lowering.lowerInst(inst, index, next);
+        }
+
+        if (options.includeIr)
+            build.logAppend("#\n");
+    }
+
+    if (outputEnabled && !options.includeOutlinedCode && seenFallback)
+    {
+        build.text.resize(textSize);
+
+        if (options.includeAssembly)
+            build.logAppend("; skipping %u bytes of outlined code\n", unsigned((build.getCodeSize() - codeSize) * sizeof(build.code[0])));
+    }
+
+    // Copy assembly locations of IR instructions that are mapped to bytecode instructions
+    for (auto& [irLocation, asmLocation] : function.bcMapping)
+    {
+        if (irLocation != ~0u)
+            asmLocation = bcLocations[irLocation];
+    }
+}
+
 [[maybe_unused]] static void lowerIr(
     X64::AssemblyBuilderX64& build, IrBuilder& ir, NativeState& data, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
 {
@@ -69,24 +218,34 @@ static NativeProto* createNativeProto(Proto* proto, const IrBuilder& ir)
 
     build.align(kFunctionAlignment, X64::AlignmentDataX64::Ud2);
 
-    X64::IrLoweringX64 lowering(build, helpers, data, proto, ir.function);
+    X64::IrLoweringX64 lowering(build, helpers, data, ir.function);
 
-    lowering.lower(options);
+    lowerImpl(build, lowering, ir.function, proto->bytecodeid, options);
 }
 
 [[maybe_unused]] static void lowerIr(
     A64::AssemblyBuilderA64& build, IrBuilder& ir, NativeState& data, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
 {
-    Label start = build.setLabel();
+    if (A64::IrLoweringA64::canLower(ir.function))
+    {
+        A64::IrLoweringA64 lowering(build, helpers, data, proto, ir.function);
 
-    build.mov(A64::x0, 1); // finish function in VM
-    build.ret();
+        lowerImpl(build, lowering, ir.function, proto->bytecodeid, options);
+    }
+    else
+    {
+        // TODO: This is only needed while we don't support all IR opcodes
+        // When we can't translate some parts of the function, we instead encode a dummy assembly sequence that hands off control to VM
+        // In the future we could return nullptr from assembleFunction and handle it because there may be other reasons for why we refuse to assemble.
+        Label start = build.setLabel();
 
-    // TODO: This is only needed while we don't support all IR opcodes
-    // When we can't translate some parts of the function, we instead encode a dummy assembly sequence that hands off control to VM
-    // In the future we could return nullptr from assembleFunction and handle it because there may be other reasons for why we refuse to assemble.
-    for (int i = 0; i < proto->sizecode; i++)
-        ir.function.bcMapping[i].asmLocation = build.getLabelOffset(start);
+        build.mov(A64::x0, 1); // finish function in VM
+        build.ldr(A64::x1, A64::mem(A64::rNativeContext, offsetof(NativeContext, gateExit)));
+        build.br(A64::x1);
+
+        for (int i = 0; i < proto->sizecode; i++)
+            ir.function.bcMapping[i].asmLocation = build.getLabelOffset(start);
+    }
 }
 
 template<typename AssemblyBuilder>
@@ -123,14 +282,12 @@ static NativeProto* assembleFunction(AssemblyBuilder& build, NativeState& data, 
     IrBuilder ir;
     ir.buildFunctionIr(proto);
 
+    computeCfgInfo(ir.function);
+
     if (!FFlag::DebugCodegenNoOpt)
     {
         constPropInBlockChains(ir);
     }
-
-    // TODO: cfg info has to be computed earlier to use in optimizations
-    // It's done here to appear in text output and to measure performance impact on code generation
-    computeCfgInfo(ir.function);
 
     lowerIr(build, ir, data, helpers, proto, options);
 
@@ -217,7 +374,8 @@ bool isSupported()
 
     return true;
 #elif defined(__aarch64__)
-    return true;
+    // TODO: A64 codegen does not generate correct unwind info at the moment so it requires longjmp instead of C++ exceptions
+    return bool(LUA_USE_LONGJMP);
 #else
     return false;
 #endif
@@ -300,7 +458,9 @@ void compile(lua_State* L, int idx)
     gatherFunctions(protos, clvalue(func)->l.p);
 
     ModuleHelpers helpers;
-#if !defined(__aarch64__)
+#if defined(__aarch64__)
+    A64::assembleHelpers(build, helpers);
+#else
     X64::assembleHelpers(build, helpers);
 #endif
 
@@ -359,7 +519,9 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
     gatherFunctions(protos, clvalue(func)->l.p);
 
     ModuleHelpers helpers;
-#if !defined(__aarch64__)
+#if defined(__aarch64__)
+    A64::assembleHelpers(build, helpers);
+#else
     X64::assembleHelpers(build, helpers);
 #endif
 
@@ -373,8 +535,7 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
     build.finalize();
 
     if (options.outputBinary)
-        return std::string(
-                   reinterpret_cast<const char*>(build.code.data()), reinterpret_cast<const char*>(build.code.data() + build.code.size())) +
+        return std::string(reinterpret_cast<const char*>(build.code.data()), reinterpret_cast<const char*>(build.code.data() + build.code.size())) +
                std::string(build.data.begin(), build.data.end());
     else
         return build.text;

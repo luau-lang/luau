@@ -117,6 +117,11 @@ ifneq ($(native),)
 	TESTS_ARGS+=--codegen
 endif
 
+ifneq ($(nativelj),)
+	CXXFLAGS+=-DLUA_CUSTOM_EXECUTION=1 -DLUA_USE_LONGJMP=1
+	TESTS_ARGS+=--codegen
+endif
+
 # target-specific flags
 $(AST_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include
 $(COMPILER_OBJECTS): CXXFLAGS+=-std=c++17 -ICompiler/include -ICommon/include -IAst/include

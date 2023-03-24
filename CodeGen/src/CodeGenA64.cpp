@@ -6,6 +6,7 @@
 
 #include "CustomExecUtils.h"
 #include "NativeState.h"
+#include "EmitCommonA64.h"
 
 #include "lstate.h"
 
@@ -21,26 +22,50 @@ bool initEntryFunction(NativeState& data)
     AssemblyBuilderA64 build(/* logText= */ false);
     UnwindBuilder& unwind = *data.unwindBuilder.get();
 
-    unwind.start();
-    unwind.allocStack(8); // TODO: this is only necessary to align stack by 16 bytes, as start() allocates 8b return pointer
+    // Arguments: x0 = lua_State*, x1 = Proto*, x2 = native code pointer to jump to, x3 = NativeContext*
 
-    // TODO: prologue goes here
+    unwind.start();
+    unwind.allocStack(8); // TODO: this is just a hack to make UnwindBuilder assertions cooperate
+
+    // prologue
+    build.sub(sp, sp, kStackSize);
+    build.stp(x29, x30, mem(sp)); // fp, lr
+
+    // stash non-volatile registers used for execution environment
+    build.stp(x19, x20, mem(sp, 16));
+    build.stp(x21, x22, mem(sp, 32));
+    build.stp(x23, x24, mem(sp, 48));
+
+    build.mov(x29, sp); // this is only necessary if we maintain frame pointers, which we do in the JIT for now
 
     unwind.finish();
 
     size_t prologueSize = build.setLabel().location;
 
     // Setup native execution environment
-    // TODO: figure out state layout
+    build.mov(rState, x0);
+    build.mov(rNativeContext, x3);
 
-    // Jump to the specified instruction; further control flow will be handled with custom ABI with register setup from EmitCommonX64.h
+    build.ldr(rBase, mem(x0, offsetof(lua_State, base))); // L->base
+    build.ldr(rConstants, mem(x1, offsetof(Proto, k)));   // proto->k
+    build.ldr(rCode, mem(x1, offsetof(Proto, code)));     // proto->code
+
+    build.ldr(x9, mem(x0, offsetof(lua_State, ci)));          // L->ci
+    build.ldr(x9, mem(x9, offsetof(CallInfo, func)));         // L->ci->func
+    build.ldr(rClosure, mem(x9, offsetof(TValue, value.gc))); // L->ci->func->value.gc aka cl
+
+    // Jump to the specified instruction; further control flow will be handled with custom ABI with register setup from EmitCommonA64.h
     build.br(x2);
 
     // Even though we jumped away, we will return here in the end
     Label returnOff = build.setLabel();
 
     // Cleanup and exit
-    // TODO: epilogue
+    build.ldp(x23, x24, mem(sp, 48));
+    build.ldp(x21, x22, mem(sp, 32));
+    build.ldp(x19, x20, mem(sp, 16));
+    build.ldp(x29, x30, mem(sp)); // fp, lr
+    build.add(sp, sp, kStackSize);
 
     build.ret();
 
@@ -59,9 +84,22 @@ bool initEntryFunction(NativeState& data)
     // specified by the unwind information of the entry function
     unwind.setBeginOffset(prologueSize);
 
-    data.context.gateExit = data.context.gateEntry + returnOff.location;
+    data.context.gateExit = data.context.gateEntry + build.getLabelOffset(returnOff);
 
     return true;
+}
+
+void assembleHelpers(AssemblyBuilderA64& build, ModuleHelpers& helpers)
+{
+    if (build.logText)
+        build.logAppend("; exitContinueVm\n");
+    helpers.exitContinueVm = build.setLabel();
+    emitExit(build, /* continueInVm */ true);
+
+    if (build.logText)
+        build.logAppend("; exitNoContinueVm\n");
+    helpers.exitNoContinueVm = build.setLabel();
+    emitExit(build, /* continueInVm */ false);
 }
 
 } // namespace A64

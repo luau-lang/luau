@@ -84,14 +84,18 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/CodeBlockUnwind.cpp
     CodeGen/src/CodeGen.cpp
     CodeGen/src/CodeGenUtils.cpp
+    CodeGen/src/CodeGenA64.cpp
     CodeGen/src/CodeGenX64.cpp
     CodeGen/src/EmitBuiltinsX64.cpp
+    CodeGen/src/EmitCommonA64.cpp
     CodeGen/src/EmitCommonX64.cpp
+    CodeGen/src/EmitInstructionA64.cpp
     CodeGen/src/EmitInstructionX64.cpp
     CodeGen/src/Fallbacks.cpp
     CodeGen/src/IrAnalysis.cpp
     CodeGen/src/IrBuilder.cpp
     CodeGen/src/IrDump.cpp
+    CodeGen/src/IrLoweringA64.cpp
     CodeGen/src/IrLoweringX64.cpp
     CodeGen/src/IrRegAllocX64.cpp
     CodeGen/src/IrTranslateBuiltins.cpp
@@ -106,13 +110,17 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/ByteUtils.h
     CodeGen/src/CustomExecUtils.h
     CodeGen/src/CodeGenUtils.h
+    CodeGen/src/CodeGenA64.h
     CodeGen/src/CodeGenX64.h
     CodeGen/src/EmitBuiltinsX64.h
     CodeGen/src/EmitCommon.h
+    CodeGen/src/EmitCommonA64.h
     CodeGen/src/EmitCommonX64.h
+    CodeGen/src/EmitInstructionA64.h
     CodeGen/src/EmitInstructionX64.h
     CodeGen/src/Fallbacks.h
     CodeGen/src/FallbacksProlog.h
+    CodeGen/src/IrLoweringA64.h
     CodeGen/src/IrLoweringX64.h
     CodeGen/src/IrRegAllocX64.h
     CodeGen/src/IrTranslateBuiltins.h

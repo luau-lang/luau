@@ -465,6 +465,7 @@ TEST_CASE("GeneratedCodeExecutionA64")
 
     build.add(x1, x1, 2);
     build.add(x0, x0, x1, /* LSL */ 1);
+
     build.ret();
 
     build.finalize();
