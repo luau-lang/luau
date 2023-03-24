@@ -1,10 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/AssemblyBuilderX64.h"
+#include "Luau/AssemblyBuilderA64.h"
 #include "Luau/IrData.h"
-
-#include "IrRegAllocX64.h"
 
 #include <vector>
 
@@ -19,12 +17,14 @@ struct ModuleHelpers;
 struct NativeState;
 struct AssemblyOptions;
 
-namespace X64
+namespace A64
 {
 
-struct IrLoweringX64
+struct IrLoweringA64
 {
-    IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, NativeState& data, IrFunction& function);
+    IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, NativeState& data, Proto* proto, IrFunction& function);
+
+    static bool canLower(const IrFunction& function);
 
     void lowerInst(IrInst& inst, uint32_t index, IrBlock& next);
 
@@ -32,9 +32,7 @@ struct IrLoweringX64
     void jumpOrFallthrough(IrBlock& target, IrBlock& next);
 
     // Operand data lookup helpers
-    OperandX64 memRegDoubleOp(IrOp op) const;
-    OperandX64 memRegTagOp(IrOp op) const;
-    RegisterX64 regOp(IrOp op) const;
+    RegisterA64 regOp(IrOp op) const;
 
     IrConst constOp(IrOp op) const;
     uint8_t tagOp(IrOp op) const;
@@ -46,15 +44,17 @@ struct IrLoweringX64
     IrBlock& blockOp(IrOp op) const;
     Label& labelOp(IrOp op) const;
 
-    AssemblyBuilderX64& build;
+    AssemblyBuilderA64& build;
     ModuleHelpers& helpers;
     NativeState& data;
+    Proto* proto = nullptr; // Temporarily required to provide 'Instruction* pc' to old emitInst* methods
 
     IrFunction& function;
 
-    IrRegAllocX64 regs;
+    // TODO:
+    // IrRegAllocA64 regs;
 };
 
-} // namespace X64
+} // namespace A64
 } // namespace CodeGen
 } // namespace Luau

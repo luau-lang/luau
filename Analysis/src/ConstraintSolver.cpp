@@ -3,6 +3,7 @@
 #include "Luau/Anyification.h"
 #include "Luau/ApplyTypeFunction.h"
 #include "Luau/Clone.h"
+#include "Luau/Common.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/Instantiation.h"
@@ -221,17 +222,6 @@ void dump(ConstraintSolver* cs, ToStringOptions& opts)
         auto it = cs->blockedConstraints.find(c);
         int blockCount = it == cs->blockedConstraints.end() ? 0 : int(it->second);
         printf("\t%d\t%s\n", blockCount, toString(*c, opts).c_str());
-
-        for (NotNull<Constraint> dep : c->dependencies)
-        {
-            auto unsolvedIter = std::find(begin(cs->unsolvedConstraints), end(cs->unsolvedConstraints), dep);
-            if (unsolvedIter == cs->unsolvedConstraints.end())
-                continue;
-
-            auto it = cs->blockedConstraints.find(dep);
-            int blockCount = it == cs->blockedConstraints.end() ? 0 : int(it->second);
-            printf("\t%d\t\t%s\n", blockCount, toString(*dep, opts).c_str());
-        }
     }
 }
 
@@ -578,12 +568,16 @@ bool ConstraintSolver::tryDispatch(const UnaryConstraint& c, NotNull<const Const
     case AstExprUnary::Not:
     {
         asMutable(c.resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
+
+        unblock(c.resultType);
         return true;
     }
     case AstExprUnary::Len:
     {
         // __len must return a number.
         asMutable(c.resultType)->ty.emplace<BoundType>(builtinTypes->numberType);
+
+        unblock(c.resultType);
         return true;
     }
     case AstExprUnary::Minus:
@@ -613,6 +607,7 @@ bool ConstraintSolver::tryDispatch(const UnaryConstraint& c, NotNull<const Const
             asMutable(c.resultType)->ty.emplace<BoundType>(builtinTypes->errorRecoveryType());
         }
 
+        unblock(c.resultType);
         return true;
     }
     }
@@ -868,7 +863,7 @@ bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Co
     };
 
     auto [iteratorTypes, iteratorTail] = flatten(c.iterator);
-    if (iteratorTail)
+    if (iteratorTail && isBlocked(*iteratorTail))
         return block_(*iteratorTail);
 
     {
@@ -1249,35 +1244,63 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         *asMutable(follow(*ty)) = BoundType{builtinTypes->anyType};
     }
 
-    TypeId instantiatedTy = arena->addType(BlockedType{});
     TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, constraint->scope.get(), argsPack, c.result});
 
-    auto pushConstraintGreedy = [this, constraint](ConstraintV cv) -> Constraint* {
-        std::unique_ptr<Constraint> c = std::make_unique<Constraint>(constraint->scope, constraint->location, std::move(cv));
-        NotNull<Constraint> borrow{c.get()};
+    std::vector<TypeId> overloads = flattenIntersection(fn);
 
-        bool ok = tryDispatch(borrow, false);
-        if (ok)
-            return nullptr;
+    Instantiation inst(TxnLog::empty(), arena, TypeLevel{}, constraint->scope);
 
-        solverConstraints.push_back(std::move(c));
-        unsolvedConstraints.push_back(borrow);
+    for (TypeId overload : overloads)
+    {
+        overload = follow(overload);
 
-        return borrow;
-    };
+        std::optional<TypeId> instantiated = inst.substitute(overload);
+        LUAU_ASSERT(instantiated); // TODO FIXME HANDLE THIS
 
-    // HACK: We don't want other constraints to act on the free type pack
-    // created above until after these two constraints are solved, so we try to
-    // dispatch them directly.
+        Unifier u{normalizer, Mode::Strict, constraint->scope, Location{}, Covariant};
+        u.useScopes = true;
 
-    auto ic = pushConstraintGreedy(InstantiationConstraint{instantiatedTy, fn});
-    auto sc = pushConstraintGreedy(SubtypeConstraint{instantiatedTy, inferredTy});
+        u.tryUnify(*instantiated, inferredTy, /* isFunctionCall */ true);
 
-    if (ic)
-        inheritBlocks(constraint, NotNull{ic});
+        if (!u.blockedTypes.empty() || !u.blockedTypePacks.empty())
+        {
+            for (TypeId bt : u.blockedTypes)
+                block(bt, constraint);
+            for (TypePackId btp : u.blockedTypePacks)
+                block(btp, constraint);
+            return false;
+        }
 
-    if (sc)
-        inheritBlocks(constraint, NotNull{sc});
+        if (const auto& e = hasUnificationTooComplex(u.errors))
+            reportError(*e);
+
+        if (u.errors.empty())
+        {
+            // We found a matching overload.
+            const auto [changedTypes, changedPacks] = u.log.getChanges();
+            u.log.commit();
+            unblock(changedTypes);
+            unblock(changedPacks);
+
+            unblock(c.result);
+            return true;
+        }
+    }
+
+    // We found no matching overloads.
+    Unifier u{normalizer, Mode::Strict, constraint->scope, Location{}, Covariant};
+    u.useScopes = true;
+
+    u.tryUnify(inferredTy, builtinTypes->anyType);
+    u.tryUnify(fn, builtinTypes->anyType);
+
+    LUAU_ASSERT(u.errors.empty()); // unifying with any should never fail
+
+    const auto [changedTypes, changedPacks] = u.log.getChanges();
+    u.log.commit();
+
+    unblock(changedTypes);
+    unblock(changedPacks);
 
     unblock(c.result);
     return true;
@@ -1291,6 +1314,7 @@ bool ConstraintSolver::tryDispatch(const PrimitiveTypeConstraint& c, NotNull<con
 
     TypeId bindTo = maybeSingleton(expectedType) ? c.singletonType : c.multitonType;
     asMutable(c.resultType)->ty.emplace<BoundType>(bindTo);
+    unblock(c.resultType);
 
     return true;
 }
@@ -1335,20 +1359,17 @@ static bool isUnsealedTable(TypeId ty)
 }
 
 /**
- * Create a shallow copy of `ty` and its properties along `path`.  Insert a new
- * property (the last segment of `path`) into the tail table with the value `t`.
+ * Given a path into a set of nested unsealed tables `ty`, insert a new property `replaceTy` as the leaf-most property.
  *
- * On success, returns the new outermost table type.  If the root table or any
- * of its subkeys are not unsealed tables, the function fails and returns
- * std::nullopt.
+ * Fails and does nothing if every table along the way is not unsealed.
  *
- * TODO: Prove that we completely give up in the face of indexers and
- * metatables.
+ * Mutates the innermost table type in-place.
  */
-static std::optional<TypeId> updateTheTableType(NotNull<TypeArena> arena, TypeId ty, const std::vector<std::string>& path, TypeId replaceTy)
+static void updateTheTableType(
+    NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId ty, const std::vector<std::string>& path, TypeId replaceTy)
 {
     if (path.empty())
-        return std::nullopt;
+        return;
 
     // First walk the path and ensure that it's unsealed tables all the way
     // to the end.
@@ -1357,12 +1378,12 @@ static std::optional<TypeId> updateTheTableType(NotNull<TypeArena> arena, TypeId
         for (size_t i = 0; i < path.size() - 1; ++i)
         {
             if (!isUnsealedTable(t))
-                return std::nullopt;
+                return;
 
             const TableType* tbl = get<TableType>(t);
             auto it = tbl->props.find(path[i]);
             if (it == tbl->props.end())
-                return std::nullopt;
+                return;
 
             t = follow(it->second.type);
         }
@@ -1371,40 +1392,37 @@ static std::optional<TypeId> updateTheTableType(NotNull<TypeArena> arena, TypeId
         // We are not changing property types.  We are only admitting this one
         // new property to be appended.
         if (!isUnsealedTable(t))
-            return std::nullopt;
+            return;
         const TableType* tbl = get<TableType>(t);
         if (0 != tbl->props.count(path.back()))
-            return std::nullopt;
+            return;
     }
 
-    const TypeId res = shallowClone(ty, arena);
-    TypeId t = res;
+    TypeId t = ty;
+    ErrorVec dummy;
 
     for (size_t i = 0; i < path.size() - 1; ++i)
     {
-        const std::string segment = path[i];
+        auto propTy = findTablePropertyRespectingMeta(builtinTypes, dummy, t, path[i], Location{});
+        dummy.clear();
 
-        TableType* ttv = getMutable<TableType>(t);
-        LUAU_ASSERT(ttv);
+        if (!propTy)
+            return;
 
-        auto propIt = ttv->props.find(segment);
-        if (propIt != ttv->props.end())
-        {
-            LUAU_ASSERT(isUnsealedTable(propIt->second.type));
-            t = shallowClone(follow(propIt->second.type), arena);
-            ttv->props[segment].type = t;
-        }
-        else
-            return std::nullopt;
+        t = *propTy;
     }
 
-    TableType* ttv = getMutable<TableType>(t);
-    LUAU_ASSERT(ttv);
+    const std::string& lastSegment = path.back();
 
-    const std::string lastSegment = path.back();
-    LUAU_ASSERT(0 == ttv->props.count(lastSegment));
-    ttv->props[lastSegment] = Property{replaceTy};
-    return res;
+    t = follow(t);
+    TableType* tt = getMutable<TableType>(t);
+    if (auto mt = get<MetatableType>(t))
+        tt = getMutable<TableType>(mt->table);
+
+    if (!tt)
+        return;
+
+    tt->props[lastSegment].type = replaceTy;
 }
 
 bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Constraint> constraint, bool force)
@@ -1443,6 +1461,7 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
         if (!isBlocked(c.propType))
             unify(c.propType, *existingPropType, constraint->scope);
         bind(c.resultType, c.subjectType);
+        unblock(c.resultType);
         return true;
     }
 
@@ -1467,6 +1486,8 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
         bind(subjectType, ty);
         if (follow(c.resultType) != follow(ty))
             bind(c.resultType, ty);
+        unblock(subjectType);
+        unblock(c.resultType);
         return true;
     }
     else if (auto ttv = getMutable<TableType>(subjectType))
@@ -1477,20 +1498,23 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
 
             ttv->props[c.path[0]] = Property{c.propType};
             bind(c.resultType, c.subjectType);
+            unblock(c.resultType);
             return true;
         }
         else if (ttv->state == TableState::Unsealed)
         {
             LUAU_ASSERT(!subjectType->persistent);
 
-            std::optional<TypeId> augmented = updateTheTableType(NotNull{arena}, subjectType, c.path, c.propType);
-            bind(c.resultType, augmented.value_or(subjectType));
-            bind(subjectType, c.resultType);
+            updateTheTableType(builtinTypes, NotNull{arena}, subjectType, c.path, c.propType);
+            bind(c.resultType, c.subjectType);
+            unblock(subjectType);
+            unblock(c.resultType);
             return true;
         }
         else
         {
             bind(c.resultType, subjectType);
+            unblock(c.resultType);
             return true;
         }
     }
@@ -1499,6 +1523,7 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
         // Other kinds of types don't change shape when properties are assigned
         // to them. (if they allow properties at all!)
         bind(c.resultType, subjectType);
+        unblock(c.resultType);
         return true;
     }
 }

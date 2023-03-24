@@ -120,6 +120,10 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Loads")
     SINGLE_COMPARE(ldrsh(x0, x1), 0x79800020);
     SINGLE_COMPARE(ldrsh(w0, x1), 0x79C00020);
     SINGLE_COMPARE(ldrsw(x0, x1), 0xB9800020);
+
+    // paired loads
+    SINGLE_COMPARE(ldp(x0, x1, mem(x2, 8)), 0xA9408440);
+    SINGLE_COMPARE(ldp(w0, w1, mem(x2, -8)), 0x297F0440);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Stores")
@@ -135,15 +139,58 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Stores")
     SINGLE_COMPARE(str(w0, x1), 0xB9000020);
     SINGLE_COMPARE(strb(w0, x1), 0x39000020);
     SINGLE_COMPARE(strh(w0, x1), 0x79000020);
+
+    // paired stores
+    SINGLE_COMPARE(stp(x0, x1, mem(x2, 8)), 0xA9008440);
+    SINGLE_COMPARE(stp(w0, w1, mem(x2, -8)), 0x293F0440);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Moves")
 {
     SINGLE_COMPARE(mov(x0, x1), 0xAA0103E0);
     SINGLE_COMPARE(mov(w0, w1), 0x2A0103E0);
-    SINGLE_COMPARE(mov(x0, 42), 0xD2800540);
-    SINGLE_COMPARE(mov(w0, 42), 0x52800540);
+
+    SINGLE_COMPARE(movz(x0, 42), 0xD2800540);
+    SINGLE_COMPARE(movz(w0, 42), 0x52800540);
+    SINGLE_COMPARE(movn(x0, 42), 0x92800540);
+    SINGLE_COMPARE(movn(w0, 42), 0x12800540);
     SINGLE_COMPARE(movk(x0, 42, 16), 0xF2A00540);
+
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            build.mov(x0, 42);
+        },
+        {0xD2800540}));
+
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            build.mov(x0, 424242);
+        },
+        {0xD28F2640, 0xF2A000C0}));
+
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            build.mov(x0, -42);
+        },
+        {0x92800520}));
+
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            build.mov(x0, -424242);
+        },
+        {0x928F2620, 0xF2BFFF20}));
+
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            build.mov(x0, -65536);
+        },
+        {0x929FFFE0}));
+
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            build.mov(x0, -65537);
+        },
+        {0x92800000, 0xF2BFFFC0}));
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "ControlFlow")
@@ -222,6 +269,22 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Constants")
     // clang-format on
 }
 
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "AddressOfLabel")
+{
+    // clang-format off
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            Label label;
+            build.adr(x0, label);
+            build.add(x0, x0, x0);
+            build.setLabel(label);
+        },
+        {
+            0x10000040, 0x8b000000,
+        }));
+    // clang-format on
+}
+
 TEST_CASE("LogTest")
 {
     AssemblyBuilderA64 build(/* logText= */ true);
@@ -243,6 +306,9 @@ TEST_CASE("LogTest")
     build.b(ConditionA64::Plus, l);
     build.cbz(x7, l);
 
+    build.ldp(x0, x1, mem(x8, 8));
+    build.adr(x0, l);
+
     build.setLabel(l);
     build.ret();
 
@@ -263,6 +329,8 @@ TEST_CASE("LogTest")
  blr         x0
  b.pl        .L1
  cbz         x7,.L1
+ ldp         x0,x1,[x8,#8]
+ adr         x0,.L1
 .L1:
  ret
 )";

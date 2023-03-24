@@ -132,7 +132,10 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstSetGlobal(*this, pc, i);
         break;
     case LOP_CALL:
-        inst(IrCmd::LOP_CALL, constUint(i), vmReg(LUAU_INSN_A(*pc)), constInt(LUAU_INSN_B(*pc) - 1), constInt(LUAU_INSN_C(*pc) - 1));
+        inst(IrCmd::INTERRUPT, constUint(i));
+        inst(IrCmd::SET_SAVEDPC, constUint(i + 1));
+
+        inst(IrCmd::LOP_CALL, vmReg(LUAU_INSN_A(*pc)), constInt(LUAU_INSN_B(*pc) - 1), constInt(LUAU_INSN_C(*pc) - 1));
 
         if (activeFastcallFallback)
         {
@@ -144,7 +147,9 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         }
         break;
     case LOP_RETURN:
-        inst(IrCmd::LOP_RETURN, constUint(i), vmReg(LUAU_INSN_A(*pc)), constInt(LUAU_INSN_B(*pc) - 1));
+        inst(IrCmd::INTERRUPT, constUint(i));
+
+        inst(IrCmd::LOP_RETURN, vmReg(LUAU_INSN_A(*pc)), constInt(LUAU_INSN_B(*pc) - 1));
         break;
     case LOP_GETTABLE:
         translateInstGetTable(*this, pc, i);
@@ -358,16 +363,16 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstForGPrepInext(*this, pc, i);
         break;
     case LOP_AND:
-        inst(IrCmd::LOP_AND, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), vmReg(LUAU_INSN_C(*pc)));
+        inst(IrCmd::LOP_AND, vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), vmReg(LUAU_INSN_C(*pc)));
         break;
     case LOP_ANDK:
-        inst(IrCmd::LOP_ANDK, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), vmConst(LUAU_INSN_C(*pc)));
+        inst(IrCmd::LOP_ANDK, vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), vmConst(LUAU_INSN_C(*pc)));
         break;
     case LOP_OR:
-        inst(IrCmd::LOP_OR, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), vmReg(LUAU_INSN_C(*pc)));
+        inst(IrCmd::LOP_OR, vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), vmReg(LUAU_INSN_C(*pc)));
         break;
     case LOP_ORK:
-        inst(IrCmd::LOP_ORK, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), vmConst(LUAU_INSN_C(*pc)));
+        inst(IrCmd::LOP_ORK, vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), vmConst(LUAU_INSN_C(*pc)));
         break;
     case LOP_COVERAGE:
         inst(IrCmd::LOP_COVERAGE, constUint(i));

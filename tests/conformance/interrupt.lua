@@ -17,4 +17,9 @@ end
 
 bar()
 
+function baz()
+end
+
+baz()
+
 return "OK"

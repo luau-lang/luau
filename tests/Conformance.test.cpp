@@ -1250,7 +1250,9 @@ TEST_CASE("Interrupt")
         13,
         13,
         16,
-        20,
+        23,
+        21,
+        25,
     };
     static int index;
 

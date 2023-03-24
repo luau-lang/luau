@@ -12,7 +12,7 @@ int freshIndex()
 {
     return ++nextIndex;
 }
-  
+
 Free::Free(TypeLevel level)
     : index(++nextIndex)
     , level(level)

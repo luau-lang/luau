@@ -6,7 +6,6 @@ namespace Luau
 namespace CodeGen
 {
 
-struct NativeState;
 struct ModuleHelpers;
 
 namespace A64
@@ -14,8 +13,7 @@ namespace A64
 
 class AssemblyBuilderA64;
 
-bool initEntryFunction(NativeState& data);
-void assembleHelpers(AssemblyBuilderA64& build, ModuleHelpers& helpers);
+void emitInstReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers, int ra, int n);
 
 } // namespace A64
 } // namespace CodeGen

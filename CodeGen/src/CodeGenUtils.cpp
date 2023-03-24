@@ -126,5 +126,42 @@ void callEpilogC(lua_State* L, int nresults, int n)
     L->top = (nresults == LUA_MULTRET) ? res : cip->top;
 }
 
+const Instruction* returnFallback(lua_State* L, StkId ra, int n)
+{
+    // ci is our callinfo, cip is our parent
+    CallInfo* ci = L->ci;
+    CallInfo* cip = ci - 1;
+
+    StkId res = ci->func; // note: we assume CALL always puts func+args and expects results to start at func
+
+    StkId vali = ra;
+    StkId valend = (n == LUA_MULTRET) ? L->top : ra + n; // copy as much as possible for MULTRET calls, and only as much as needed otherwise
+
+    int nresults = ci->nresults;
+
+    // copy return values into parent stack (but only up to nresults!), fill the rest with nil
+    // note: in MULTRET context nresults starts as -1 so i != 0 condition never activates intentionally
+    int i;
+    for (i = nresults; i != 0 && vali < valend; i--)
+        setobj2s(L, res++, vali++);
+    while (i-- > 0)
+        setnilvalue(res++);
+
+    // pop the stack frame
+    L->ci = cip;
+    L->base = cip->base;
+    L->top = (nresults == LUA_MULTRET) ? res : cip->top;
+
+    // we're done!
+    if (LUAU_UNLIKELY(ci->flags & LUA_CALLINFO_RETURN))
+    {
+        L->top = res;
+        return NULL;
+    }
+
+    LUAU_ASSERT(isLua(cip));
+    return cip->savedpc;
+}
+
 } // namespace CodeGen
 } // namespace Luau

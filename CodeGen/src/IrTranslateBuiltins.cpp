@@ -240,6 +240,10 @@ BuiltinImplResult translateBuiltinTypeof(IrBuilder& build, int nparams, int ra, 
 
 BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, IrOp args, int nparams, int nresults, IrOp fallback)
 {
+    // Builtins are not allowed to handle variadic arguments
+    if (nparams == LUA_MULTRET)
+        return {BuiltinImplType::None, -1};
+
     switch (bfid)
     {
     case LBF_ASSERT:

@@ -23,7 +23,7 @@ LUAU_FASTFLAG(LuauNegatedClassTypes);
 namespace Luau
 {
 
-bool doesCallError(const AstExprCall* call); // TypeInfer.cpp
+bool doesCallError(const AstExprCall* call);        // TypeInfer.cpp
 const AstStat* getFallthrough(const AstStat* node); // TypeInfer.cpp
 
 static std::optional<AstExpr*> matchRequire(const AstExprCall& call)
@@ -1359,10 +1359,34 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
         if (argTail && args.size() < 2)
             argTailPack = extendTypePack(*arena, builtinTypes, *argTail, 2 - args.size());
 
-        LUAU_ASSERT(args.size() + argTailPack.head.size() == 2);
+        TypeId target = nullptr;
+        TypeId mt = nullptr;
 
-        TypeId target = args.size() > 0 ? args[0] : argTailPack.head[0];
-        TypeId mt = args.size() > 1 ? args[1] : argTailPack.head[args.size() == 0 ? 1 : 0];
+        if (args.size() + argTailPack.head.size() == 2)
+        {
+            target = args.size() > 0 ? args[0] : argTailPack.head[0];
+            mt = args.size() > 1 ? args[1] : argTailPack.head[args.size() == 0 ? 1 : 0];
+        }
+        else
+        {
+            std::vector<TypeId> unpackedTypes;
+            if (args.size() > 0)
+                target = args[0];
+            else
+            {
+                target = arena->addType(BlockedType{});
+                unpackedTypes.emplace_back(target);
+            }
+
+            mt = arena->addType(BlockedType{});
+            unpackedTypes.emplace_back(mt);
+            TypePackId mtPack = arena->addTypePack(std::move(unpackedTypes));
+
+            addConstraint(scope, call->location, UnpackConstraint{mtPack, *argTail});
+        }
+
+        LUAU_ASSERT(target);
+        LUAU_ASSERT(mt);
 
         AstExpr* targetExpr = call->args.data[0];
 
@@ -2090,6 +2114,19 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
     TypePack expectedArgPack;
 
     const FunctionType* expectedFunction = expectedType ? get<FunctionType>(*expectedType) : nullptr;
+    // This check ensures that expectedType is precisely optional and not any (since any is also an optional type)
+    if (expectedType && isOptional(*expectedType) && !get<AnyType>(*expectedType))
+    {
+        auto ut = get<UnionType>(*expectedType);
+        for (auto u : ut)
+        {
+            if (get<FunctionType>(u) && !isNil(u))
+            {
+                expectedFunction = get<FunctionType>(u);
+                break;
+            }
+        }
+    }
 
     if (expectedFunction)
     {

@@ -52,8 +52,8 @@ void computeCfgInfo(IrFunction& function);
 
 struct BlockIteratorWrapper
 {
-    uint32_t* itBegin = nullptr;
-    uint32_t* itEnd = nullptr;
+    const uint32_t* itBegin = nullptr;
+    const uint32_t* itEnd = nullptr;
 
     bool empty() const
     {
@@ -65,19 +65,19 @@ struct BlockIteratorWrapper
         return size_t(itEnd - itBegin);
     }
 
-    uint32_t* begin() const
+    const uint32_t* begin() const
     {
         return itBegin;
     }
 
-    uint32_t* end() const
+    const uint32_t* end() const
     {
         return itEnd;
     }
 };
 
-BlockIteratorWrapper predecessors(CfgInfo& cfg, uint32_t blockIdx);
-BlockIteratorWrapper successors(CfgInfo& cfg, uint32_t blockIdx);
+BlockIteratorWrapper predecessors(const CfgInfo& cfg, uint32_t blockIdx);
+BlockIteratorWrapper successors(const CfgInfo& cfg, uint32_t blockIdx);
 
 } // namespace CodeGen
 } // namespace Luau

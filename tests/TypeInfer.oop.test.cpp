@@ -326,4 +326,59 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "flag_when_index_metamethod_returns_0_values"
     CHECK("nil" == toString(requireType("p")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "augmenting_an_unsealed_table_with_a_metatable")
+{
+    CheckResult result = check(R"(
+        local A = {number = 8}
+
+        local B = setmetatable({}, A)
+
+        function B:method()
+            return "hello!!"
+        end
+    )");
+
+    CHECK("{ @metatable { number: number }, { method: <a>(a) -> string } }" == toString(requireType("B"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "react_style_oo")
+{
+    CheckResult result = check(R"(
+        local Prototype = {}
+
+        local ClassMetatable = {
+            __index = Prototype
+        }
+
+        local BaseClass = (setmetatable({}, ClassMetatable))
+
+        function BaseClass:extend(name)
+            local class = {
+                name=name
+            }
+
+            class.__index = class
+
+            function class.ctor(props)
+                return setmetatable({props=props}, class)
+            end
+
+            return setmetatable(class, getmetatable(self))
+        end
+
+        local C = BaseClass:extend('C')
+        local i = C.ctor({hello='world'})
+
+        local iName = i.name
+        local cName = C.name
+        local hello = i.props.hello
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("string" == toString(requireType("iName")));
+    CHECK("string" == toString(requireType("cName")));
+    CHECK("string" == toString(requireType("hello")));
+}
+
 TEST_SUITE_END();

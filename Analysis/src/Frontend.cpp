@@ -32,7 +32,6 @@ LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
 LUAU_FASTFLAGVARIABLE(LuauLintInTypecheck, false)
 LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
-LUAU_FASTFLAGVARIABLE(LuauDefinitionFileSourceModule, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false);
 
 namespace Luau
@@ -144,70 +143,9 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(std::string_view source, c
     return LoadDefinitionFileResult{true, parseResult, sourceModule, checkedModule};
 }
 
-LoadDefinitionFileResult loadDefinitionFile_DEPRECATED(
-    TypeChecker& typeChecker, GlobalTypes& globals, ScopePtr targetScope, std::string_view source, const std::string& packageName)
-{
-    LUAU_TIMETRACE_SCOPE("loadDefinitionFile", "Frontend");
-
-    Luau::Allocator allocator;
-    Luau::AstNameTable names(allocator);
-
-    ParseOptions options;
-    options.allowDeclarationSyntax = true;
-
-    Luau::ParseResult parseResult = Luau::Parser::parse(source.data(), source.size(), names, allocator, options);
-
-    if (parseResult.errors.size() > 0)
-        return LoadDefinitionFileResult{false, parseResult, {}, nullptr};
-
-    Luau::SourceModule module;
-    module.root = parseResult.root;
-    module.mode = Mode::Definition;
-
-    ModulePtr checkedModule = typeChecker.check(module, Mode::Definition);
-
-    if (checkedModule->errors.size() > 0)
-        return LoadDefinitionFileResult{false, parseResult, {}, checkedModule};
-
-    CloneState cloneState;
-
-    std::vector<TypeId> typesToPersist;
-    typesToPersist.reserve(checkedModule->declaredGlobals.size() + checkedModule->exportedTypeBindings.size());
-
-    for (const auto& [name, ty] : checkedModule->declaredGlobals)
-    {
-        TypeId globalTy = clone(ty, globals.globalTypes, cloneState);
-        std::string documentationSymbol = packageName + "/global/" + name;
-        generateDocumentationSymbols(globalTy, documentationSymbol);
-        targetScope->bindings[globals.globalNames.names->getOrAdd(name.c_str())] = {globalTy, Location(), false, {}, documentationSymbol};
-
-        typesToPersist.push_back(globalTy);
-    }
-
-    for (const auto& [name, ty] : checkedModule->exportedTypeBindings)
-    {
-        TypeFun globalTy = clone(ty, globals.globalTypes, cloneState);
-        std::string documentationSymbol = packageName + "/globaltype/" + name;
-        generateDocumentationSymbols(globalTy.type, documentationSymbol);
-        targetScope->exportedTypeBindings[name] = globalTy;
-
-        typesToPersist.push_back(globalTy.type);
-    }
-
-    for (TypeId ty : typesToPersist)
-    {
-        persist(ty);
-    }
-
-    return LoadDefinitionFileResult{true, parseResult, {}, checkedModule};
-}
-
 LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, GlobalTypes& globals, ScopePtr targetScope, std::string_view source,
     const std::string& packageName, bool captureComments)
 {
-    if (!FFlag::LuauDefinitionFileSourceModule)
-        return loadDefinitionFile_DEPRECATED(typeChecker, globals, targetScope, source, packageName);
-
     LUAU_TIMETRACE_SCOPE("loadDefinitionFile", "Frontend");
 
     Luau::SourceModule sourceModule;

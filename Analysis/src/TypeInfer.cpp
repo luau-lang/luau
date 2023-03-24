@@ -689,11 +689,10 @@ LUAU_NOINLINE void TypeChecker::checkBlockTypeAliases(const ScopePtr& scope, std
             if (duplicateTypeAliases.contains({typealias->exported, name}))
                 continue;
 
-            TypeId type = bindings[name].type;
-            if (get<FreeType>(follow(type)))
+            TypeId type = follow(bindings[name].type);
+            if (get<FreeType>(type))
             {
-                Type* mty = asMutable(follow(type));
-                mty->reassign(*errorRecoveryType(anyType));
+                asMutable(type)->ty.emplace<BoundType>(errorRecoveryType(anyType));
 
                 reportError(TypeError{typealias->location, OccursCheckFailed{}});
             }

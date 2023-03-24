@@ -109,6 +109,7 @@ void initHelperFunctions(NativeState& data)
     data.context.forgPrepXnextFallback = forgPrepXnextFallback;
     data.context.callProlog = callProlog;
     data.context.callEpilogC = callEpilogC;
+    data.context.returnFallback = returnFallback;
 }
 
 } // namespace CodeGen

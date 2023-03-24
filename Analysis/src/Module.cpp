@@ -16,7 +16,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAGVARIABLE(LuauClonePublicInterfaceLess, false);
+LUAU_FASTFLAGVARIABLE(LuauClonePublicInterfaceLess2, false);
 LUAU_FASTFLAG(LuauSubstitutionReentrant);
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution);
 LUAU_FASTFLAG(LuauSubstitutionFixMissingFields);
@@ -194,7 +194,7 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
     TxnLog log;
     ClonePublicInterface clonePublicInterface{&log, builtinTypes, this};
 
-    if (FFlag::LuauClonePublicInterfaceLess)
+    if (FFlag::LuauClonePublicInterfaceLess2)
         returnType = clonePublicInterface.cloneTypePack(returnType);
     else
         returnType = clone(returnType, interfaceTypes, cloneState);
@@ -202,7 +202,7 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
     moduleScope->returnType = returnType;
     if (varargPack)
     {
-        if (FFlag::LuauClonePublicInterfaceLess)
+        if (FFlag::LuauClonePublicInterfaceLess2)
             varargPack = clonePublicInterface.cloneTypePack(*varargPack);
         else
             varargPack = clone(*varargPack, interfaceTypes, cloneState);
@@ -211,7 +211,7 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
 
     for (auto& [name, tf] : moduleScope->exportedTypeBindings)
     {
-        if (FFlag::LuauClonePublicInterfaceLess)
+        if (FFlag::LuauClonePublicInterfaceLess2)
             tf = clonePublicInterface.cloneTypeFun(tf);
         else
             tf = clone(tf, interfaceTypes, cloneState);
@@ -219,7 +219,7 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
 
     for (auto& [name, ty] : declaredGlobals)
     {
-        if (FFlag::LuauClonePublicInterfaceLess)
+        if (FFlag::LuauClonePublicInterfaceLess2)
             ty = clonePublicInterface.cloneType(ty);
         else
             ty = clone(ty, interfaceTypes, cloneState);
