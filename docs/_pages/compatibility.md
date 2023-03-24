@@ -87,7 +87,7 @@ Ephemeron tables may be implemented at some point since they do have valid uses 
 | bitwise operators | ❌ | `bit32` library covers this in absence of 64-bit integers |
 | basic utf-8 support | ✔️ | we include `utf8` library and other UTF8 features |
 | functions for packing and unpacking values (string.pack/unpack/packsize) | ✔️ | |
-| floor division | ❌ | no strong use cases, syntax overlaps with C comments |
+| floor division | 🔜 | |
 | `ipairs` and the `table` library respect metamethods | ❌ | no strong use cases, performance implications |
 | new function `table.move` | ✔️ | |
 | `collectgarbage("count")` now returns only one result | ✔️ | |
@@ -97,8 +97,6 @@ Ephemeron tables may be implemented at some point since they do have valid uses 
 It's important to highlight integer support and bitwise operators. For Luau, it's rare that a full 64-bit integer type is necessary - double-precision types support integers up to 2^53 (in Lua which is used in embedded space, integers may be more appealing in environments without a native 64-bit FPU). However, there's a *lot* of value in having a single number type, both from performance perspective and for consistency. Notably, Lua doesn't handle integer overflow properly, so using integers also carries compatibility implications.
 
 If integers are taken out of the equation, bitwise operators make less sense, as integers aren't a first class feature; additionally, `bit32` library is more fully featured (includes commonly used operations such as rotates and arithmetic shift; bit extraction/replacement is also more readable). Adding operators along with metamethods for all of them increases complexity, which means this feature isn't worth it on the balance. Common arguments for this include a more familiar syntax, which, while true, gets more nuanced as `^` isn't available as a xor operator, and arithmetic right shift isn't expressible without yet another operator, and performance, which in Luau is substantially better than in Lua because `bit32` library uses VM builtins instead of expensive function calls.
-
-Floor division is much less complex, but it's used rarely enough that `math.floor(a/b)` seems like an adequate replacement; additionally, `//` is a comment in C-derived languages and we may decide to adopt it in addition to `--` at some point.
 
 ## Lua 5.4
 
