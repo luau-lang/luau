@@ -82,7 +82,7 @@ namespace Luau::Unifiable
 using Name = std::string;
 
 int freshIndex();
-  
+
 struct Free
 {
     explicit Free(TypeLevel level);

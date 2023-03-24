@@ -85,6 +85,11 @@ struct FindCyclicTypes final : TypeVisitor
     {
         return false;
     }
+
+    bool visit(TypeId, const PendingExpansionType&) override
+    {
+        return false;
+    }
 };
 
 template<typename TID>
@@ -1518,7 +1523,7 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         }
         else if constexpr (std::is_same_v<T, FunctionCallConstraint>)
         {
-            return "call " + tos(c.fn) + " with { result = " + tos(c.result) + " }";
+            return "call " + tos(c.fn) + "( " + tos(c.argsPack) + " )" + " with { result = " + tos(c.result) + " }";
         }
         else if constexpr (std::is_same_v<T, PrimitiveTypeConstraint>)
         {

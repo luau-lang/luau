@@ -244,11 +244,15 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
             // A <- B, C
         case IrCmd::DO_ARITH:
         case IrCmd::GET_TABLE:
-        case IrCmd::SET_TABLE:
             use(inst.b);
             maybeUse(inst.c); // Argument can also be a VmConst
 
             def(inst.a);
+            break;
+        case IrCmd::SET_TABLE:
+            use(inst.a);
+            use(inst.b);
+            maybeUse(inst.c); // Argument can also be a VmConst
             break;
             // A <- B
         case IrCmd::DO_LEN:
@@ -301,13 +305,13 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
             useRange(inst.c.index, function.intOp(inst.d));
             break;
         case IrCmd::LOP_CALL:
-            use(inst.b);
-            useRange(inst.b.index + 1, function.intOp(inst.c));
+            use(inst.a);
+            useRange(inst.a.index + 1, function.intOp(inst.b));
 
-            defRange(inst.b.index, function.intOp(inst.d));
+            defRange(inst.a.index, function.intOp(inst.c));
             break;
         case IrCmd::LOP_RETURN:
-            useRange(inst.b.index, function.intOp(inst.c));
+            useRange(inst.a.index, function.intOp(inst.b));
             break;
         case IrCmd::FASTCALL:
         case IrCmd::INVOKE_FASTCALL:
@@ -333,7 +337,9 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
                 useVarargs(inst.c.index);
             }
 
-            defRange(inst.b.index, function.intOp(inst.f));
+            // Multiple return sequences (count == -1) are defined by ADJUST_STACK_TO_REG
+            if (int count = function.intOp(inst.f); count != -1)
+                defRange(inst.b.index, count);
             break;
         case IrCmd::LOP_FORGLOOP:
             // First register is not used by instruction, we check that it's still 'nil' with CHECK_TAG
@@ -352,20 +358,20 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
         case IrCmd::LOP_FORGPREP_XNEXT_FALLBACK:
             use(inst.b);
             break;
-            // B <- C, D
+            // A <- B, C
         case IrCmd::LOP_AND:
         case IrCmd::LOP_OR:
+            use(inst.b);
             use(inst.c);
-            use(inst.d);
 
-            def(inst.b);
+            def(inst.a);
             break;
-            // B <- C
+            // A <- B
         case IrCmd::LOP_ANDK:
         case IrCmd::LOP_ORK:
-            use(inst.c);
+            use(inst.b);
 
-            def(inst.b);
+            def(inst.a);
             break;
         case IrCmd::FALLBACK_GETGLOBAL:
             def(inst.b);
@@ -405,8 +411,10 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
             defRange(inst.b.index, 3);
             break;
         case IrCmd::ADJUST_STACK_TO_REG:
+            defRange(inst.a.index, -1);
+            break;
         case IrCmd::ADJUST_STACK_TO_TOP:
-            // While these can be considered as vararg producers and consumers, it is already handled in fastcall instruction
+            // While this can be considered to be a vararg consumer, it is already handled in fastcall instructions
             break;
 
         default:
@@ -626,7 +634,7 @@ void computeCfgInfo(IrFunction& function)
     computeCfgLiveInOutRegSets(function);
 }
 
-BlockIteratorWrapper predecessors(CfgInfo& cfg, uint32_t blockIdx)
+BlockIteratorWrapper predecessors(const CfgInfo& cfg, uint32_t blockIdx)
 {
     LUAU_ASSERT(blockIdx < cfg.predecessorsOffsets.size());
 
@@ -636,7 +644,7 @@ BlockIteratorWrapper predecessors(CfgInfo& cfg, uint32_t blockIdx)
     return BlockIteratorWrapper{cfg.predecessors.data() + start, cfg.predecessors.data() + end};
 }
 
-BlockIteratorWrapper successors(CfgInfo& cfg, uint32_t blockIdx)
+BlockIteratorWrapper successors(const CfgInfo& cfg, uint32_t blockIdx)
 {
     LUAU_ASSERT(blockIdx < cfg.successorsOffsets.size());
 

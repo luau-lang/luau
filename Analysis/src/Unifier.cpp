@@ -192,6 +192,18 @@ struct SkipCacheForType final : TypeOnceVisitor
         return false;
     }
 
+    bool visit(TypeId, const BlockedType&) override
+    {
+        result = true;
+        return false;
+    }
+
+    bool visit(TypeId, const PendingExpansionType&) override
+    {
+        result = true;
+        return false;
+    }
+
     bool visit(TypeId ty, const TableType&) override
     {
         // Types from other modules don't contain mutable elements and are ok to cache
@@ -254,6 +266,12 @@ struct SkipCacheForType final : TypeOnceVisitor
     }
 
     bool visit(TypePackId tp, const GenericTypePack&) override
+    {
+        result = true;
+        return false;
+    }
+
+    bool visit(TypePackId tp, const BlockedTypePack&) override
     {
         result = true;
         return false;
@@ -384,6 +402,12 @@ void Unifier::tryUnify(TypeId subTy, TypeId superTy, bool isFunctionCall, bool i
     sharedState.counters.iterationCount = 0;
 
     tryUnify_(subTy, superTy, isFunctionCall, isIntersection);
+}
+
+static bool isBlocked(const TxnLog& log, TypeId ty)
+{
+    ty = log.follow(ty);
+    return get<BlockedType>(ty) || get<PendingExpansionType>(ty);
 }
 
 void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool isIntersection)
@@ -531,11 +555,15 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
 
     size_t errorCount = errors.size();
 
-    if (log.getMutable<BlockedType>(subTy) && log.getMutable<BlockedType>(superTy))
+    if (isBlocked(log, subTy) && isBlocked(log, superTy))
     {
         blockedTypes.push_back(subTy);
         blockedTypes.push_back(superTy);
     }
+    else if (isBlocked(log, subTy))
+        blockedTypes.push_back(subTy);
+    else if (isBlocked(log, superTy))
+        blockedTypes.push_back(superTy);
     else if (const UnionType* subUnion = log.getMutable<UnionType>(subTy))
     {
         tryUnifyUnionWithType(subTy, subUnion, superTy);
@@ -890,7 +918,8 @@ void Unifier::tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionTyp
         if (!subNorm || !superNorm)
             return reportError(location, UnificationTooComplex{});
         else if ((failedOptionCount == 1 || foundHeuristic) && failedOption)
-            innerState.tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "None of the union options are compatible. For example:", *failedOption);
+            innerState.tryUnifyNormalizedTypes(
+                subTy, superTy, *subNorm, *superNorm, "None of the union options are compatible. For example:", *failedOption);
         else
             innerState.tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the union options are compatible");
         if (!innerState.failure)

@@ -354,7 +354,7 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
     case IrCmd::JUMP_CMP_NUM:
         if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
         {
-            if (compare(function.doubleOp(inst.a), function.doubleOp(inst.b), function.conditionOp(inst.c)))
+            if (compare(function.doubleOp(inst.a), function.doubleOp(inst.b), conditionOp(inst.c)))
                 replace(function, block, index, {IrCmd::JUMP, inst.d});
             else
                 replace(function, block, index, {IrCmd::JUMP, inst.e});

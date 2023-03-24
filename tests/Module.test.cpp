@@ -338,7 +338,7 @@ type B = A
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_reexports")
 {
     ScopedFastFlag flags[] = {
-        {"LuauClonePublicInterfaceLess", true},
+        {"LuauClonePublicInterfaceLess2", true},
         {"LuauSubstitutionReentrant", true},
         {"LuauClassTypeVarsInSubstitution", true},
         {"LuauSubstitutionFixMissingFields", true},
@@ -376,7 +376,7 @@ return {}
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_types_of_reexported_values")
 {
     ScopedFastFlag flags[] = {
-        {"LuauClonePublicInterfaceLess", true},
+        {"LuauClonePublicInterfaceLess2", true},
         {"LuauSubstitutionReentrant", true},
         {"LuauClassTypeVarsInSubstitution", true},
         {"LuauSubstitutionFixMissingFields", true},

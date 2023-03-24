@@ -26,7 +26,6 @@ LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
-LUAU_FASTFLAGVARIABLE(LuauMatchReturnsOptionalString, false);
 
 namespace Luau
 {
@@ -432,7 +431,7 @@ bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
 }
 
 BlockedType::BlockedType()
-  : index(FFlag::LuauNormalizeBlockedTypes ? Unifiable::freshIndex() : ++DEPRECATED_nextIndex)
+    : index(FFlag::LuauNormalizeBlockedTypes ? Unifiable::freshIndex() : ++DEPRECATED_nextIndex)
 {
 }
 
@@ -1219,12 +1218,12 @@ static std::vector<TypeId> parsePatternString(NotNull<BuiltinTypes> builtinTypes
             if (i + 1 < size && data[i + 1] == ')')
             {
                 i++;
-                result.push_back(FFlag::LuauMatchReturnsOptionalString ? builtinTypes->optionalNumberType : builtinTypes->numberType);
+                result.push_back(builtinTypes->optionalNumberType);
                 continue;
             }
 
             ++depth;
-            result.push_back(FFlag::LuauMatchReturnsOptionalString ? builtinTypes->optionalStringType : builtinTypes->stringType);
+            result.push_back(builtinTypes->optionalStringType);
         }
         else if (data[i] == ')')
         {
@@ -1242,7 +1241,7 @@ static std::vector<TypeId> parsePatternString(NotNull<BuiltinTypes> builtinTypes
         return std::vector<TypeId>();
 
     if (result.empty())
-        result.push_back(FFlag::LuauMatchReturnsOptionalString ? builtinTypes->optionalStringType : builtinTypes->stringType);
+        result.push_back(builtinTypes->optionalStringType);
 
     return result;
 }

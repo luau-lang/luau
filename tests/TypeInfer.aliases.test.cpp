@@ -947,4 +947,71 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_locations")
     CHECK(mod->scopes[3].second->typeAliasNameLocations["X"] == Location(Position(5, 17), 1));
 }
 
+/*
+ * We had a bug in DCR where substitution would improperly clone a
+ * PendingExpansionType.
+ *
+ * This cloned type did not have a matching constraint to expand it, so it was
+ * left dangling and unexpanded forever.
+ *
+ * We must also delay the dispatch a constraint if doing so would require
+ * unifying a PendingExpansionType.
+ */
+TEST_CASE_FIXTURE(BuiltinsFixture, "dont_lose_track_of_PendingExpansionTypes_after_substitution")
+{
+    fileResolver.source["game/ReactCurrentDispatcher"] = R"(
+        export type BasicStateAction<S> = ((S) -> S) | S
+        export type Dispatch<A> = (A) -> ()
+
+        export type Dispatcher = {
+            useState: <S>(initialState: (() -> S) | S) -> (S, Dispatch<BasicStateAction<S>>),
+        }
+
+        return {}
+    )";
+
+    // Note: This script path is actually as short as it can be.  Any shorter
+    // and we somehow fail to surface the bug.
+    fileResolver.source["game/React/React/ReactHooks"] = R"(
+        local RCD = require(script.Parent.Parent.Parent.ReactCurrentDispatcher)
+
+        local function resolveDispatcher(): RCD.Dispatcher
+            return (nil :: any) :: RCD.Dispatcher
+        end
+
+        function useState<S>(
+            initialState: (() -> S) | S
+        ): (S, RCD.Dispatch<RCD.BasicStateAction<S>>)
+            local dispatcher = resolveDispatcher()
+            return dispatcher.useState(initialState)
+        end
+    )";
+
+    CheckResult result = frontend.check("game/React/React/ReactHooks");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "another_thing_from_roact")
+{
+    CheckResult result = check(R"(
+        type Map<K, V> = { [K]: V }
+        type Set<T> = { [T]: boolean }
+
+        type FiberRoot = {
+            pingCache: Map<Wakeable, (Set<any> | Map<Wakeable, Set<any>>)> | nil,
+        }
+
+        type Wakeable = {
+            andThen: (self: Wakeable) -> nil | Wakeable,
+        }
+
+        local function attachPingListener(root: FiberRoot, wakeable: Wakeable, lanes: number)
+            local pingCache: Map<Wakeable, (Set<any> | Map<Wakeable, Set<any>>)> | nil = root.pingCache
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

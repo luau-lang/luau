@@ -385,17 +385,15 @@ enum class IrCmd : uint8_t
     LOP_SETLIST,
 
     // Call specified function
-    // A: unsigned int (bytecode instruction index)
-    // B: Rn (function, followed by arguments)
-    // C: int (argument count or -1 to use all arguments up to stack top)
-    // D: int (result count or -1 to preserve all results and adjust stack top)
-    // Note: return values are placed starting from Rn specified in 'B'
+    // A: Rn (function, followed by arguments)
+    // B: int (argument count or -1 to use all arguments up to stack top)
+    // C: int (result count or -1 to preserve all results and adjust stack top)
+    // Note: return values are placed starting from Rn specified in 'A'
     LOP_CALL,
 
     // Return specified values from the function
-    // A: unsigned int (bytecode instruction index)
-    // B: Rn (value start)
-    // C: int (result count or -1 to return all values up to stack top)
+    // A: Rn (value start)
+    // B: int (result count or -1 to return all values up to stack top)
     LOP_RETURN,
 
     // Adjust loop variables for one iteration of a generic for loop, jump back to the loop header if loop needs to continue
@@ -421,10 +419,9 @@ enum class IrCmd : uint8_t
     LOP_FORGPREP_XNEXT_FALLBACK,
 
     // Perform `and` or `or` operation (selecting lhs or rhs based on whether the lhs is truthy) and put the result into target register
-    // A: unsigned int (bytecode instruction index)
-    // B: Rn (target)
-    // C: Rn (lhs)
-    // D: Rn or Kn (rhs)
+    // A: Rn (target)
+    // B: Rn (lhs)
+    // C: Rn or Kn (rhs)
     LOP_AND,
     LOP_ANDK,
     LOP_OR,
@@ -790,12 +787,6 @@ struct IrFunction
         return value.valueDouble;
     }
 
-    IrCondition conditionOp(IrOp op)
-    {
-        LUAU_ASSERT(op.kind == IrOpKind::Condition);
-        return IrCondition(op.index);
-    }
-
     uint32_t getBlockIndex(const IrBlock& block)
     {
         // Can only be called with blocks from our vector
@@ -803,6 +794,30 @@ struct IrFunction
         return uint32_t(&block - blocks.data());
     }
 };
+
+inline IrCondition conditionOp(IrOp op)
+{
+    LUAU_ASSERT(op.kind == IrOpKind::Condition);
+    return IrCondition(op.index);
+}
+
+inline int vmRegOp(IrOp op)
+{
+    LUAU_ASSERT(op.kind == IrOpKind::VmReg);
+    return op.index;
+}
+
+inline int vmConstOp(IrOp op)
+{
+    LUAU_ASSERT(op.kind == IrOpKind::VmConst);
+    return op.index;
+}
+
+inline int vmUpvalueOp(IrOp op)
+{
+    LUAU_ASSERT(op.kind == IrOpKind::VmUpvalue);
+    return op.index;
+}
 
 } // namespace CodeGen
 } // namespace Luau
