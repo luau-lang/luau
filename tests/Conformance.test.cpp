@@ -1078,6 +1078,11 @@ TEST_CASE("ExceptionObject")
         ExceptionResult result = captureException(L, "large_allocation_error");
         CHECK(result.exceptionGenerated);
     }
+
+    {
+        ExceptionResult result = captureException(L, "large_allocation_error_without_handler");
+        CHECK(result.exceptionGenerated);
+    }
 }
 #endif
 

@@ -32,4 +32,16 @@ function large_allocation_error()
     table.create(1000000)
 end
 
+function large_allocation_error_without_handler()
+    -- Create a table that will require more memory than the test's memory
+    -- allocator will allow.
+    local msgh_called = false
+    local ok, err = xpcall(table.create, function() msgh_called = true end, 1000000)
+    -- Check that message handler was not called for memory allocation error
+    if not ok and not msgh_called then
+        -- Propagate error
+        error(err)
+    end
+end
+
 return('OK')

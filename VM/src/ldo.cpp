@@ -550,8 +550,8 @@ int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t e
     int status = luaD_rawrunprotected(L, func, u);
     if (status != 0)
     {
-        // call user-defined error function (used in xpcall)
-        if (ef)
+        // call user-defined error function (used in xpcall) except if allocation error
+        if (ef && status != LUA_ERRMEM)
         {
             // if errfunc fails, we fail with "error in error handling"
             if (luaD_rawrunprotected(L, callerrfunc, restorestack(L, ef)) != 0)
