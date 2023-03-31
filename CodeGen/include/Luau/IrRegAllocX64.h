@@ -24,12 +24,17 @@ struct IrRegAllocX64
     RegisterX64 allocGprRegOrReuse(SizeX64 preferredSize, uint32_t index, std::initializer_list<IrOp> oprefs);
     RegisterX64 allocXmmRegOrReuse(uint32_t index, std::initializer_list<IrOp> oprefs);
 
-    RegisterX64 takeGprReg(RegisterX64 reg);
+    RegisterX64 takeReg(RegisterX64 reg);
 
     void freeReg(RegisterX64 reg);
     void freeLastUseReg(IrInst& target, uint32_t index);
     void freeLastUseRegs(const IrInst& inst, uint32_t index);
 
+    bool isLastUseReg(const IrInst& target, uint32_t index) const;
+
+    bool shouldFreeGpr(RegisterX64 reg) const;
+
+    void assertFree(RegisterX64 reg) const;
     void assertAllFree() const;
 
     IrFunction& function;
@@ -50,6 +55,8 @@ struct ScopedRegX64
 
     void alloc(SizeX64 size);
     void free();
+
+    RegisterX64 release();
 
     IrRegAllocX64& owner;
     RegisterX64 reg;

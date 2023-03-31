@@ -3,8 +3,7 @@
 
 #include "Luau/AssemblyBuilderX64.h"
 #include "Luau/IrData.h"
-
-#include "IrRegAllocX64.h"
+#include "Luau/IrRegAllocX64.h"
 
 #include <vector>
 

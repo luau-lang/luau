@@ -2995,8 +2995,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons")
 
 TEST_CASE_FIXTURE(ACFixture, "string_singleton_as_table_key")
 {
-    ScopedFastFlag sff{"LuauCompleteTableKeysBetter", true};
-
     check(R"(
         type Direction = "up" | "down"
 

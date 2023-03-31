@@ -707,4 +707,26 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_68448_iterators_need_not_accept_nil")
     CHECK(toString(requireType("makeEnum"), {true}) == "<a>({a}) -> {| [a]: a |}");
 }
 
+TEST_CASE_FIXTURE(Fixture, "iterate_over_free_table")
+{
+    CheckResult result = check(R"(
+        function print(x) end
+
+        function dump(tbl)
+            print(tbl.whatever)
+            for k, v in tbl do
+                print(k)
+                print(v)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    GenericError* ge = get<GenericError>(result.errors[0]);
+    REQUIRE(ge);
+
+    CHECK("Cannot iterate over a table without indexer" == ge->message);
+}
+
 TEST_SUITE_END();

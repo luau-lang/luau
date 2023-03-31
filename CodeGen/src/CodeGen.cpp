@@ -43,6 +43,12 @@
 #endif
 #endif
 
+#if defined(__aarch64__)
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#endif
+#endif
+
 LUAU_FASTFLAGVARIABLE(DebugCodegenNoOpt, false)
 
 namespace Luau
@@ -209,7 +215,7 @@ static void lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
     }
 }
 
-[[maybe_unused]] static void lowerIr(
+[[maybe_unused]] static bool lowerIr(
     X64::AssemblyBuilderX64& build, IrBuilder& ir, NativeState& data, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
 {
     constexpr uint32_t kFunctionAlignment = 32;
@@ -221,31 +227,21 @@ static void lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
     X64::IrLoweringX64 lowering(build, helpers, data, ir.function);
 
     lowerImpl(build, lowering, ir.function, proto->bytecodeid, options);
+
+    return true;
 }
 
-[[maybe_unused]] static void lowerIr(
+[[maybe_unused]] static bool lowerIr(
     A64::AssemblyBuilderA64& build, IrBuilder& ir, NativeState& data, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
 {
-    if (A64::IrLoweringA64::canLower(ir.function))
-    {
-        A64::IrLoweringA64 lowering(build, helpers, data, proto, ir.function);
+    if (!A64::IrLoweringA64::canLower(ir.function))
+        return false;
 
-        lowerImpl(build, lowering, ir.function, proto->bytecodeid, options);
-    }
-    else
-    {
-        // TODO: This is only needed while we don't support all IR opcodes
-        // When we can't translate some parts of the function, we instead encode a dummy assembly sequence that hands off control to VM
-        // In the future we could return nullptr from assembleFunction and handle it because there may be other reasons for why we refuse to assemble.
-        Label start = build.setLabel();
+    A64::IrLoweringA64 lowering(build, helpers, data, proto, ir.function);
 
-        build.mov(A64::x0, 1); // finish function in VM
-        build.ldr(A64::x1, A64::mem(A64::rNativeContext, offsetof(NativeContext, gateExit)));
-        build.br(A64::x1);
+    lowerImpl(build, lowering, ir.function, proto->bytecodeid, options);
 
-        for (int i = 0; i < proto->sizecode; i++)
-            ir.function.bcMapping[i].asmLocation = build.getLabelOffset(start);
-    }
+    return true;
 }
 
 template<typename AssemblyBuilder>
@@ -289,7 +285,13 @@ static NativeProto* assembleFunction(AssemblyBuilder& build, NativeState& data, 
         constPropInBlockChains(ir);
     }
 
-    lowerIr(build, ir, data, helpers, proto, options);
+    if (!lowerIr(build, ir, data, helpers, proto, options))
+    {
+        if (build.logText)
+            build.logAppend("; skipping (can't lower)\n\n");
+
+        return nullptr;
+    }
 
     if (build.logText)
         build.logAppend("\n");
@@ -345,6 +347,22 @@ static void onSetBreakpoint(lua_State* L, Proto* proto, int instruction)
     LUAU_ASSERT(!"native breakpoints are not implemented");
 }
 
+#if defined(__aarch64__)
+static unsigned int getCpuFeaturesA64()
+{
+    unsigned int result = 0;
+
+#ifdef __APPLE__
+    int jscvt = 0;
+    size_t jscvtLen = sizeof(jscvt);
+    if (sysctlbyname("hw.optional.arm.FEAT_JSCVT", &jscvt, &jscvtLen, nullptr, 0) == 0 && jscvt == 1)
+        result |= A64::Feature_JSCVT;
+#endif
+
+    return result;
+}
+#endif
+
 bool isSupported()
 {
 #if !LUA_CUSTOM_EXECUTION
@@ -374,8 +392,20 @@ bool isSupported()
 
     return true;
 #elif defined(__aarch64__)
+    if (LUA_EXTRA_SIZE != 1)
+        return false;
+
+    if (sizeof(TValue) != 16)
+        return false;
+
+    if (sizeof(LuaNode) != 32)
+        return false;
+
     // TODO: A64 codegen does not generate correct unwind info at the moment so it requires longjmp instead of C++ exceptions
-    return bool(LUA_USE_LONGJMP);
+    if (!LUA_USE_LONGJMP)
+        return false;
+
+    return true;
 #else
     return false;
 #endif
@@ -447,7 +477,7 @@ void compile(lua_State* L, int idx)
         return;
 
 #if defined(__aarch64__)
-    A64::AssemblyBuilderA64 build(/* logText= */ false);
+    A64::AssemblyBuilderA64 build(/* logText= */ false, getCpuFeaturesA64());
 #else
     X64::AssemblyBuilderX64 build(/* logText= */ false);
 #endif
@@ -470,9 +500,14 @@ void compile(lua_State* L, int idx)
     // Skip protos that have been compiled during previous invocations of CodeGen::compile
     for (Proto* p : protos)
         if (p && getProtoExecData(p) == nullptr)
-            results.push_back(assembleFunction(build, *data, helpers, p, {}));
+            if (NativeProto* np = assembleFunction(build, *data, helpers, p, {}))
+                results.push_back(np);
 
     build.finalize();
+
+    // If no functions were assembled, we don't need to allocate/copy executable pages for helpers
+    if (results.empty())
+        return;
 
     uint8_t* nativeData = nullptr;
     size_t sizeNativeData = 0;
@@ -507,7 +542,7 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
     const TValue* func = luaA_toobject(L, idx);
 
 #if defined(__aarch64__)
-    A64::AssemblyBuilderA64 build(/* logText= */ options.includeAssembly);
+    A64::AssemblyBuilderA64 build(/* logText= */ options.includeAssembly, getCpuFeaturesA64());
 #else
     X64::AssemblyBuilderX64 build(/* logText= */ options.includeAssembly);
 #endif
@@ -527,10 +562,8 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
 
     for (Proto* p : protos)
         if (p)
-        {
-            NativeProto* nativeProto = assembleFunction(build, data, helpers, p, options);
-            destroyNativeProto(nativeProto);
-        }
+            if (NativeProto* np = assembleFunction(build, data, helpers, p, options))
+                destroyNativeProto(np);
 
     build.finalize();
 

@@ -2075,12 +2075,12 @@ struct TypeChecker2
             fetch(builtinTypes->functionType);
         else if (!norm.functions.isNever())
         {
-            if (norm.functions.parts->size() == 1)
-                fetch(norm.functions.parts->front());
+            if (norm.functions.parts.size() == 1)
+                fetch(norm.functions.parts.front());
             else
             {
                 std::vector<TypeId> parts;
-                parts.insert(parts.end(), norm.functions.parts->begin(), norm.functions.parts->end());
+                parts.insert(parts.end(), norm.functions.parts.begin(), norm.functions.parts.end());
                 fetch(testArena.addType(IntersectionType{std::move(parts)}));
             }
         }

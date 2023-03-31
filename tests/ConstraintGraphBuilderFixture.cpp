@@ -31,8 +31,7 @@ void ConstraintGraphBuilderFixture::generateConstraints(const std::string& code)
 void ConstraintGraphBuilderFixture::solve(const std::string& code)
 {
     generateConstraints(code);
-    ConstraintSolver cs{NotNull{&normalizer}, NotNull{rootScope}, constraints, "MainModule", NotNull{mainModule->reduction.get()},
-        NotNull(&moduleResolver), {}, &logger};
+    ConstraintSolver cs{NotNull{&normalizer}, NotNull{rootScope}, constraints, "MainModule", NotNull(&moduleResolver), {}, &logger};
     cs.run();
 }
 

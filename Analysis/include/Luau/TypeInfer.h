@@ -79,7 +79,8 @@ struct GlobalTypes
 // within a program are borrowed pointers into this set.
 struct TypeChecker
 {
-    explicit TypeChecker(const GlobalTypes& globals, ModuleResolver* resolver, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter* iceHandler);
+    explicit TypeChecker(
+        const ScopePtr& globalScope, ModuleResolver* resolver, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter* iceHandler);
     TypeChecker(const TypeChecker&) = delete;
     TypeChecker& operator=(const TypeChecker&) = delete;
 
@@ -367,8 +368,7 @@ public:
      */
     std::vector<TypeId> unTypePack(const ScopePtr& scope, TypePackId pack, size_t expectedLength, const Location& location);
 
-    // TODO: only const version of global scope should be available to make sure nothing else is modified inside of from users of TypeChecker
-    const GlobalTypes& globals;
+    const ScopePtr& globalScope;
 
     ModuleResolver* resolver;
     ModulePtr currentModule;

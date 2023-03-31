@@ -1040,8 +1040,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_call_without_parens")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_expression")
 {
-    ScopedFastFlag sff("LuauFixInterpStringMid", true);
-
     try
     {
         parse(R"(

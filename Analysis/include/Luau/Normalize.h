@@ -191,12 +191,8 @@ struct NormalizedClassType
 // this type may contain `error`.
 struct NormalizedFunctionType
 {
-    NormalizedFunctionType();
-
     bool isTop = false;
-    // TODO: Remove this wrapping optional when clipping
-    // FFlagLuauNegatedFunctionTypes.
-    std::optional<TypeIds> parts;
+    TypeIds parts;
 
     void resetToNever();
     void resetToTop();

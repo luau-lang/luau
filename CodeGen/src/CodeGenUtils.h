@@ -16,7 +16,8 @@ void forgPrepXnextFallback(lua_State* L, TValue* ra, int pc);
 Closure* callProlog(lua_State* L, TValue* ra, StkId argtop, int nresults);
 void callEpilogC(lua_State* L, int nresults, int n);
 
-const Instruction* returnFallback(lua_State* L, StkId ra, int n);
+Closure* callFallback(lua_State* L, StkId ra, StkId argtop, int nresults);
+Closure* returnFallback(lua_State* L, StkId ra, int n);
 
 } // namespace CodeGen
 } // namespace Luau

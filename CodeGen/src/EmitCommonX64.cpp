@@ -2,7 +2,9 @@
 #include "EmitCommonX64.h"
 
 #include "Luau/AssemblyBuilderX64.h"
+#include "Luau/IrCallWrapperX64.h"
 #include "Luau/IrData.h"
+#include "Luau/IrRegAllocX64.h"
 
 #include "CustomExecUtils.h"
 #include "NativeState.h"
@@ -64,18 +66,19 @@ void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs,
     }
 }
 
-void jumpOnAnyCmpFallback(AssemblyBuilderX64& build, int ra, int rb, IrCondition cond, Label& label)
+void jumpOnAnyCmpFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, IrCondition cond, Label& label)
 {
-    build.mov(rArg1, rState);
-    build.lea(rArg2, luauRegAddress(ra));
-    build.lea(rArg3, luauRegAddress(rb));
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::qword, rState);
+    callWrap.addArgument(SizeX64::qword, luauRegAddress(ra));
+    callWrap.addArgument(SizeX64::qword, luauRegAddress(rb));
 
     if (cond == IrCondition::NotLessEqual || cond == IrCondition::LessEqual)
-        build.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessequal)]);
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessequal)]);
     else if (cond == IrCondition::NotLess || cond == IrCondition::Less)
-        build.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessthan)]);
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_lessthan)]);
     else if (cond == IrCondition::NotEqual || cond == IrCondition::Equal)
-        build.call(qword[rNativeContext + offsetof(NativeContext, luaV_equalval)]);
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_equalval)]);
     else
         LUAU_ASSERT(!"Unsupported condition");
 
@@ -119,68 +122,66 @@ void convertNumberToIndexOrJump(AssemblyBuilderX64& build, RegisterX64 tmp, Regi
     build.jcc(ConditionX64::NotZero, label);
 }
 
-void callArithHelper(AssemblyBuilderX64& build, int ra, int rb, OperandX64 c, TMS tm)
+void callArithHelper(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, OperandX64 c, TMS tm)
 {
-    if (build.abi == ABIX64::Windows)
-        build.mov(sArg5, tm);
-    else
-        build.mov(rArg5, tm);
-
-    build.mov(rArg1, rState);
-    build.lea(rArg2, luauRegAddress(ra));
-    build.lea(rArg3, luauRegAddress(rb));
-    build.lea(rArg4, c);
-    build.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarith)]);
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::qword, rState);
+    callWrap.addArgument(SizeX64::qword, luauRegAddress(ra));
+    callWrap.addArgument(SizeX64::qword, luauRegAddress(rb));
+    callWrap.addArgument(SizeX64::qword, c);
+    callWrap.addArgument(SizeX64::dword, tm);
+    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarith)]);
 
     emitUpdateBase(build);
 }
 
-void callLengthHelper(AssemblyBuilderX64& build, int ra, int rb)
+void callLengthHelper(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb)
 {
-    build.mov(rArg1, rState);
-    build.lea(rArg2, luauRegAddress(ra));
-    build.lea(rArg3, luauRegAddress(rb));
-    build.call(qword[rNativeContext + offsetof(NativeContext, luaV_dolen)]);
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::qword, rState);
+    callWrap.addArgument(SizeX64::qword, luauRegAddress(ra));
+    callWrap.addArgument(SizeX64::qword, luauRegAddress(rb));
+    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_dolen)]);
 
     emitUpdateBase(build);
 }
 
-void callPrepareForN(AssemblyBuilderX64& build, int limit, int step, int init)
+void callPrepareForN(IrRegAllocX64& regs, AssemblyBuilderX64& build, int limit, int step, int init)
 {
-    build.mov(rArg1, rState);
-    build.lea(rArg2, luauRegAddress(limit));
-    build.lea(rArg3, luauRegAddress(step));
-    build.lea(rArg4, luauRegAddress(init));
-    build.call(qword[rNativeContext + offsetof(NativeContext, luaV_prepareFORN)]);
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::qword, rState);
+    callWrap.addArgument(SizeX64::qword, luauRegAddress(limit));
+    callWrap.addArgument(SizeX64::qword, luauRegAddress(step));
+    callWrap.addArgument(SizeX64::qword, luauRegAddress(init));
+    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_prepareFORN)]);
 }
 
-void callGetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra)
+void callGetTable(IrRegAllocX64& regs, AssemblyBuilderX64& build, int rb, OperandX64 c, int ra)
 {
-    build.mov(rArg1, rState);
-    build.lea(rArg2, luauRegAddress(rb));
-    build.lea(rArg3, c);
-    build.lea(rArg4, luauRegAddress(ra));
-    build.call(qword[rNativeContext + offsetof(NativeContext, luaV_gettable)]);
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::qword, rState);
+    callWrap.addArgument(SizeX64::qword, luauRegAddress(rb));
+    callWrap.addArgument(SizeX64::qword, c);
+    callWrap.addArgument(SizeX64::qword, luauRegAddress(ra));
+    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_gettable)]);
 
     emitUpdateBase(build);
 }
 
-void callSetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra)
+void callSetTable(IrRegAllocX64& regs, AssemblyBuilderX64& build, int rb, OperandX64 c, int ra)
 {
-    build.mov(rArg1, rState);
-    build.lea(rArg2, luauRegAddress(rb));
-    build.lea(rArg3, c);
-    build.lea(rArg4, luauRegAddress(ra));
-    build.call(qword[rNativeContext + offsetof(NativeContext, luaV_settable)]);
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::qword, rState);
+    callWrap.addArgument(SizeX64::qword, luauRegAddress(rb));
+    callWrap.addArgument(SizeX64::qword, c);
+    callWrap.addArgument(SizeX64::qword, luauRegAddress(ra));
+    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_settable)]);
 
     emitUpdateBase(build);
 }
 
-// works for luaC_barriertable, luaC_barrierf
-static void callBarrierImpl(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 object, int ra, Label& skip, int contextOffset)
+void checkObjectBarrierConditions(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 object, int ra, Label& skip)
 {
-    LUAU_ASSERT(tmp != object);
-
     // iscollectable(ra)
     build.cmp(luauRegTag(ra), LUA_TSTRING);
     build.jcc(ConditionX64::Less, skip);
@@ -193,86 +194,50 @@ static void callBarrierImpl(AssemblyBuilderX64& build, RegisterX64 tmp, Register
     build.mov(tmp, luauRegValue(ra));
     build.test(byte[tmp + offsetof(GCheader, marked)], bit2mask(WHITE0BIT, WHITE1BIT));
     build.jcc(ConditionX64::Zero, skip);
-
-    // TODO: even with re-ordering we have a chance of failure, we have a task to fix this in the future
-    if (object == rArg3)
-    {
-        LUAU_ASSERT(tmp != rArg2);
-
-        if (rArg2 != object)
-            build.mov(rArg2, object);
-
-        if (rArg3 != tmp)
-            build.mov(rArg3, tmp);
-    }
-    else
-    {
-        if (rArg3 != tmp)
-            build.mov(rArg3, tmp);
-
-        if (rArg2 != object)
-            build.mov(rArg2, object);
-    }
-
-    build.mov(rArg1, rState);
-    build.call(qword[rNativeContext + contextOffset]);
 }
 
-void callBarrierTable(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 table, int ra, Label& skip)
+void callBarrierObject(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 object, IrOp objectOp, int ra, Label& skip)
 {
-    callBarrierImpl(build, tmp, table, ra, skip, offsetof(NativeContext, luaC_barriertable));
+    ScopedRegX64 tmp{regs, SizeX64::qword};
+    checkObjectBarrierConditions(build, tmp.reg, object, ra, skip);
+
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::qword, rState);
+    callWrap.addArgument(SizeX64::qword, object, objectOp);
+    callWrap.addArgument(SizeX64::qword, tmp);
+    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaC_barrierf)]);
 }
 
-void callBarrierObject(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 object, int ra, Label& skip)
-{
-    callBarrierImpl(build, tmp, object, ra, skip, offsetof(NativeContext, luaC_barrierf));
-}
-
-void callBarrierTableFast(AssemblyBuilderX64& build, RegisterX64 table, Label& skip)
+void callBarrierTableFast(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 table, IrOp tableOp, Label& skip)
 {
     // isblack(obj2gco(t))
     build.test(byte[table + offsetof(GCheader, marked)], bitmask(BLACKBIT));
     build.jcc(ConditionX64::Zero, skip);
 
-    // Argument setup re-ordered to avoid conflicts with table register
-    if (table != rArg2)
-        build.mov(rArg2, table);
-    build.lea(rArg3, addr[rArg2 + offsetof(Table, gclist)]);
-    build.mov(rArg1, rState);
-    build.call(qword[rNativeContext + offsetof(NativeContext, luaC_barrierback)]);
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::qword, rState);
+    callWrap.addArgument(SizeX64::qword, table, tableOp);
+    callWrap.addArgument(SizeX64::qword, addr[table + offsetof(Table, gclist)]);
+    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaC_barrierback)]);
 }
 
-void callCheckGc(AssemblyBuilderX64& build, int pcpos, bool savepc, Label& skip)
+void callCheckGc(IrRegAllocX64& regs, AssemblyBuilderX64& build, Label& skip)
 {
-    build.mov(rax, qword[rState + offsetof(lua_State, global)]);
-    build.mov(rdx, qword[rax + offsetof(global_State, totalbytes)]);
-    build.cmp(rdx, qword[rax + offsetof(global_State, GCthreshold)]);
-    build.jcc(ConditionX64::Below, skip);
+    {
+        ScopedRegX64 tmp1{regs, SizeX64::qword};
+        ScopedRegX64 tmp2{regs, SizeX64::qword};
 
-    if (savepc)
-        emitSetSavedPc(build, pcpos + 1);
+        build.mov(tmp1.reg, qword[rState + offsetof(lua_State, global)]);
+        build.mov(tmp2.reg, qword[tmp1.reg + offsetof(global_State, totalbytes)]);
+        build.cmp(tmp2.reg, qword[tmp1.reg + offsetof(global_State, GCthreshold)]);
+        build.jcc(ConditionX64::Below, skip);
+    }
 
-    build.mov(rArg1, rState);
-    build.mov(dwordReg(rArg2), 1);
-    build.call(qword[rNativeContext + offsetof(NativeContext, luaC_step)]);
-
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::qword, rState);
+    callWrap.addArgument(SizeX64::dword, 1);
+    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaC_step)]);
     emitUpdateBase(build);
-}
-
-void callGetFastTmOrFallback(AssemblyBuilderX64& build, RegisterX64 table, TMS tm, Label& fallback)
-{
-    build.mov(rArg1, qword[table + offsetof(Table, metatable)]);
-    build.test(rArg1, rArg1);
-    build.jcc(ConditionX64::Zero, fallback); // no metatable
-
-    build.test(byte[rArg1 + offsetof(Table, tmcache)], 1 << tm);
-    build.jcc(ConditionX64::NotZero, fallback); // no tag method
-
-    // rArg1 is already prepared
-    build.mov(rArg2, tm);
-    build.mov(rax, qword[rState + offsetof(lua_State, global)]);
-    build.mov(rArg3, qword[rax + offsetof(global_State, tmname) + tm * sizeof(TString*)]);
-    build.call(qword[rNativeContext + offsetof(NativeContext, luaT_gettm)]);
 }
 
 void emitExit(AssemblyBuilderX64& build, bool continueInVm)
@@ -316,6 +281,8 @@ void emitInterrupt(AssemblyBuilderX64& build, int pcpos)
     build.mov(rArg1, rState);
     build.mov(dwordReg(rArg2), -1); // function accepts 'int' here and using qword reg would've forced 8 byte constant here
     build.call(r8);
+
+    emitUpdateBase(build); // interrupt may have reallocated stack
 
     // Check if we need to exit
     build.mov(al, byte[rState + offsetof(lua_State, status)]);

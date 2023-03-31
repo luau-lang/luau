@@ -18,7 +18,6 @@ LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError)
-LUAU_FASTFLAG(LuauDontExtendUnsealedRValueTables)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -913,10 +912,7 @@ TEST_CASE_FIXTURE(Fixture, "disallow_indexing_into_an_unsealed_table_with_no_ind
         local k1 = getConstant("key1")
     )");
 
-    if (FFlag::LuauDontExtendUnsealedRValueTables)
-        CHECK("any" == toString(requireType("k1")));
-    else
-        CHECK("a" == toString(requireType("k1")));
+    CHECK("any" == toString(requireType("k1")));
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -3542,8 +3538,6 @@ _ = {_,}
 
 TEST_CASE_FIXTURE(Fixture, "when_augmenting_an_unsealed_table_with_an_indexer_apply_the_correct_scope_to_the_indexer_type")
 {
-    ScopedFastFlag sff{"LuauDontExtendUnsealedRValueTables", true};
-
     CheckResult result = check(R"(
         local events = {}
         local mockObserveEvent = function(_, key, callback)
@@ -3572,8 +3566,6 @@ TEST_CASE_FIXTURE(Fixture, "when_augmenting_an_unsealed_table_with_an_indexer_ap
 
 TEST_CASE_FIXTURE(Fixture, "dont_extend_unsealed_tables_in_rvalue_position")
 {
-    ScopedFastFlag sff{"LuauDontExtendUnsealedRValueTables", true};
-
     CheckResult result = check(R"(
         local testDictionary = {
             FruitName = "Lemon",

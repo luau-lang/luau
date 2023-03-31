@@ -55,11 +55,11 @@ struct Scope
     std::optional<TypeId> lookup(DefId def) const;
     std::optional<std::pair<Binding*, Scope*>> lookupEx(Symbol sym);
 
-    std::optional<TypeFun> lookupType(const Name& name);
-    std::optional<TypeFun> lookupImportedType(const Name& moduleAlias, const Name& name);
+    std::optional<TypeFun> lookupType(const Name& name) const;
+    std::optional<TypeFun> lookupImportedType(const Name& moduleAlias, const Name& name) const;
 
     std::unordered_map<Name, TypePackId> privateTypePackBindings;
-    std::optional<TypePackId> lookupPack(const Name& name);
+    std::optional<TypePackId> lookupPack(const Name& name) const;
 
     // WARNING: This function linearly scans for a string key of equal value!  It is thus O(n**2)
     std::optional<Binding> linearSearchForBinding(const std::string& name, bool traverseScopeChain = true) const;

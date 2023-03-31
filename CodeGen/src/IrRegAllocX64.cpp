@@ -1,19 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "IrRegAllocX64.h"
-
-#include "Luau/CodeGen.h"
-#include "Luau/DenseHash.h"
-#include "Luau/IrAnalysis.h"
-#include "Luau/IrDump.h"
-#include "Luau/IrUtils.h"
-
-#include "EmitCommonX64.h"
-#include "EmitInstructionX64.h"
-#include "NativeState.h"
-
-#include "lstate.h"
-
-#include <algorithm>
+#include "Luau/IrRegAllocX64.h"
 
 namespace Luau
 {
@@ -108,13 +94,21 @@ RegisterX64 IrRegAllocX64::allocXmmRegOrReuse(uint32_t index, std::initializer_l
     return allocXmmReg();
 }
 
-RegisterX64 IrRegAllocX64::takeGprReg(RegisterX64 reg)
+RegisterX64 IrRegAllocX64::takeReg(RegisterX64 reg)
 {
     // In a more advanced register allocator, this would require a spill for the current register user
     // But at the current stage we don't have register live ranges intersecting forced register uses
-    LUAU_ASSERT(freeGprMap[reg.index]);
+    if (reg.size == SizeX64::xmmword)
+    {
+        LUAU_ASSERT(freeXmmMap[reg.index]);
+        freeXmmMap[reg.index] = false;
+    }
+    else
+    {
+        LUAU_ASSERT(freeGprMap[reg.index]);
+        freeGprMap[reg.index] = false;
+    }
 
-    freeGprMap[reg.index] = false;
     return reg;
 }
 
@@ -134,7 +128,7 @@ void IrRegAllocX64::freeReg(RegisterX64 reg)
 
 void IrRegAllocX64::freeLastUseReg(IrInst& target, uint32_t index)
 {
-    if (target.lastUse == index && !target.reusedReg)
+    if (isLastUseReg(target, index))
     {
         // Register might have already been freed if it had multiple uses inside a single instruction
         if (target.regX64 == noreg)
@@ -158,6 +152,35 @@ void IrRegAllocX64::freeLastUseRegs(const IrInst& inst, uint32_t index)
     checkOp(inst.d);
     checkOp(inst.e);
     checkOp(inst.f);
+}
+
+bool IrRegAllocX64::isLastUseReg(const IrInst& target, uint32_t index) const
+{
+    return target.lastUse == index && !target.reusedReg;
+}
+
+bool IrRegAllocX64::shouldFreeGpr(RegisterX64 reg) const
+{
+    if (reg == noreg)
+        return false;
+
+    LUAU_ASSERT(reg.size != SizeX64::xmmword);
+
+    for (RegisterX64 gpr : kGprAllocOrder)
+    {
+        if (reg.index == gpr.index)
+            return true;
+    }
+
+    return false;
+}
+
+void IrRegAllocX64::assertFree(RegisterX64 reg) const
+{
+    if (reg.size == SizeX64::xmmword)
+        LUAU_ASSERT(freeXmmMap[reg.index]);
+    else
+        LUAU_ASSERT(freeGprMap[reg.index]);
 }
 
 void IrRegAllocX64::assertAllFree() const
@@ -209,6 +232,13 @@ void ScopedRegX64::free()
     LUAU_ASSERT(reg != noreg);
     owner.freeReg(reg);
     reg = noreg;
+}
+
+RegisterX64 ScopedRegX64::release()
+{
+    RegisterX64 tmp = reg;
+    reg = noreg;
+    return tmp;
 }
 
 } // namespace X64

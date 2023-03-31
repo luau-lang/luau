@@ -99,10 +99,10 @@ inline bool isBlockTerminator(IrCmd cmd)
     case IrCmd::JUMP_CMP_NUM:
     case IrCmd::JUMP_CMP_ANY:
     case IrCmd::JUMP_SLOT_MATCH:
-    case IrCmd::LOP_RETURN:
-    case IrCmd::LOP_FORGLOOP:
-    case IrCmd::LOP_FORGLOOP_FALLBACK:
-    case IrCmd::LOP_FORGPREP_XNEXT_FALLBACK:
+    case IrCmd::RETURN:
+    case IrCmd::FORGLOOP:
+    case IrCmd::FORGLOOP_FALLBACK:
+    case IrCmd::FORGPREP_XNEXT_FALLBACK:
     case IrCmd::FALLBACK_FORGPREP:
         return true;
     default:
@@ -137,6 +137,11 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::MIN_NUM:
     case IrCmd::MAX_NUM:
     case IrCmd::UNM_NUM:
+    case IrCmd::FLOOR_NUM:
+    case IrCmd::CEIL_NUM:
+    case IrCmd::ROUND_NUM:
+    case IrCmd::SQRT_NUM:
+    case IrCmd::ABS_NUM:
     case IrCmd::NOT_ANY:
     case IrCmd::TABLE_LEN:
     case IrCmd::NEW_TABLE:

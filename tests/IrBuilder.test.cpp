@@ -42,7 +42,7 @@ public:
         f(a);
 
         build.beginBlock(a);
-        build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+        build.inst(IrCmd::RETURN, build.constUint(1));
     };
 
     template<typename F>
@@ -56,10 +56,10 @@ public:
         f(a, b);
 
         build.beginBlock(a);
-        build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+        build.inst(IrCmd::RETURN, build.constUint(1));
 
         build.beginBlock(b);
-        build.inst(IrCmd::LOP_RETURN, build.constUint(2));
+        build.inst(IrCmd::RETURN, build.constUint(2));
     };
 
     void checkEq(IrOp instOp, const IrInst& inst)
@@ -94,10 +94,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FinalX64OptCheckTag")
     build.inst(IrCmd::CHECK_TAG, tag1, build.constTag(0), fallback);
     IrOp tag2 = build.inst(IrCmd::LOAD_TAG, build.vmConst(5));
     build.inst(IrCmd::CHECK_TAG, tag2, build.constTag(0), fallback);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+    build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
     optimizeMemoryOperandsX64(build.function);
@@ -107,10 +107,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FinalX64OptCheckTag")
 bb_0:
    CHECK_TAG R2, tnil, bb_fallback_1
    CHECK_TAG K5, tnil, bb_fallback_1
-   LOP_RETURN 0u
+   RETURN 0u
 
 bb_fallback_1:
-   LOP_RETURN 1u
+   RETURN 1u
 
 )");
 }
@@ -123,7 +123,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FinalX64OptBinaryArith")
     IrOp opA = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1));
     IrOp opB = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(2));
     build.inst(IrCmd::ADD_NUM, opA, opB);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
     optimizeMemoryOperandsX64(build.function);
@@ -133,7 +133,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FinalX64OptBinaryArith")
 bb_0:
    %0 = LOAD_DOUBLE R1
    %2 = ADD_NUM %0, R2
-   LOP_RETURN 0u
+   RETURN 0u
 
 )");
 }
@@ -150,10 +150,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FinalX64OptEqTag1")
     build.inst(IrCmd::JUMP_EQ_TAG, opA, opB, trueBlock, falseBlock);
 
     build.beginBlock(trueBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(falseBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
     optimizeMemoryOperandsX64(build.function);
@@ -165,10 +165,10 @@ bb_0:
    JUMP_EQ_TAG R1, %1, bb_1, bb_2
 
 bb_1:
-   LOP_RETURN 0u
+   RETURN 0u
 
 bb_2:
-   LOP_RETURN 0u
+   RETURN 0u
 
 )");
 }
@@ -186,10 +186,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FinalX64OptEqTag2")
     build.inst(IrCmd::JUMP_EQ_TAG, opA, opB, trueBlock, falseBlock);
 
     build.beginBlock(trueBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(falseBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
     optimizeMemoryOperandsX64(build.function);
@@ -203,10 +203,10 @@ bb_0:
    JUMP_EQ_TAG R2, %0, bb_1, bb_2
 
 bb_1:
-   LOP_RETURN 0u
+   RETURN 0u
 
 bb_2:
-   LOP_RETURN 0u
+   RETURN 0u
 
 )");
 }
@@ -224,10 +224,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FinalX64OptEqTag3")
     build.inst(IrCmd::JUMP_EQ_TAG, opA, build.constTag(0), trueBlock, falseBlock);
 
     build.beginBlock(trueBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(falseBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
     optimizeMemoryOperandsX64(build.function);
@@ -241,10 +241,10 @@ bb_0:
    JUMP_EQ_TAG %2, tnil, bb_1, bb_2
 
 bb_1:
-   LOP_RETURN 0u
+   RETURN 0u
 
 bb_2:
-   LOP_RETURN 0u
+   RETURN 0u
 
 )");
 }
@@ -261,10 +261,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FinalX64OptJumpCmpNum")
     build.inst(IrCmd::JUMP_CMP_NUM, opA, opB, trueBlock, falseBlock);
 
     build.beginBlock(trueBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(falseBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
     optimizeMemoryOperandsX64(build.function);
@@ -276,10 +276,10 @@ bb_0:
    JUMP_CMP_NUM R1, %1, bb_1, bb_2
 
 bb_1:
-   LOP_RETURN 0u
+   RETURN 0u
 
 bb_2:
-   LOP_RETURN 0u
+   RETURN 0u
 
 )");
 }
@@ -317,7 +317,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Numeric")
 
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), build.inst(IrCmd::INT_TO_NUM, build.constInt(8)));
 
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
     constantFold();
@@ -342,7 +342,7 @@ bb_0:
    STORE_INT R0, 1i
    STORE_INT R0, 0i
    STORE_DOUBLE R0, 8
-   LOP_RETURN 0u
+   RETURN 0u
 
 )");
 }
@@ -373,25 +373,25 @@ bb_0:
    JUMP bb_1
 
 bb_1:
-   LOP_RETURN 1u
+   RETURN 1u
 
 bb_3:
    JUMP bb_5
 
 bb_5:
-   LOP_RETURN 2u
+   RETURN 2u
 
 bb_6:
    JUMP bb_7
 
 bb_7:
-   LOP_RETURN 1u
+   RETURN 1u
 
 bb_9:
    JUMP bb_11
 
 bb_11:
-   LOP_RETURN 2u
+   RETURN 2u
 
 )");
 }
@@ -400,18 +400,18 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NumToIndex")
 {
     withOneBlock([this](IrOp a) {
         build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::TRY_NUM_TO_INDEX, build.constDouble(4), a));
-        build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+        build.inst(IrCmd::RETURN, build.constUint(0));
     });
 
     withOneBlock([this](IrOp a) {
         build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::TRY_NUM_TO_INDEX, build.constDouble(1.2), a));
-        build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+        build.inst(IrCmd::RETURN, build.constUint(0));
     });
 
     withOneBlock([this](IrOp a) {
         IrOp nan = build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0));
         build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::TRY_NUM_TO_INDEX, nan, a));
-        build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+        build.inst(IrCmd::RETURN, build.constUint(0));
     });
 
     updateUseCounts(build.function);
@@ -420,19 +420,19 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NumToIndex")
     CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
 bb_0:
    STORE_INT R0, 4i
-   LOP_RETURN 0u
+   RETURN 0u
 
 bb_2:
    JUMP bb_3
 
 bb_3:
-   LOP_RETURN 1u
+   RETURN 1u
 
 bb_4:
    JUMP bb_5
 
 bb_5:
-   LOP_RETURN 1u
+   RETURN 1u
 
 )");
 }
@@ -441,12 +441,12 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Guards")
 {
     withOneBlock([this](IrOp a) {
         build.inst(IrCmd::CHECK_TAG, build.constTag(tnumber), build.constTag(tnumber), a);
-        build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+        build.inst(IrCmd::RETURN, build.constUint(0));
     });
 
     withOneBlock([this](IrOp a) {
         build.inst(IrCmd::CHECK_TAG, build.constTag(tnil), build.constTag(tnumber), a);
-        build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+        build.inst(IrCmd::RETURN, build.constUint(0));
     });
 
     updateUseCounts(build.function);
@@ -454,13 +454,13 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Guards")
 
     CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
 bb_0:
-   LOP_RETURN 0u
+   RETURN 0u
 
 bb_2:
    JUMP bb_3
 
 bb_3:
-   LOP_RETURN 1u
+   RETURN 1u
 
 )");
 }
@@ -568,7 +568,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RememberTagsAndValues")
     build.inst(IrCmd::STORE_INT, build.vmReg(10), build.inst(IrCmd::LOAD_INT, build.vmReg(1)));
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(11), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(2)));
 
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -593,7 +593,7 @@ bb_0:
    STORE_INT R10, %20
    %22 = LOAD_DOUBLE R2
    STORE_DOUBLE R11, %22
-   LOP_RETURN 0u
+   RETURN 0u
 
 )");
 }
@@ -614,7 +614,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "PropagateThroughTvalue")
     build.inst(IrCmd::STORE_TAG, build.vmReg(3), build.inst(IrCmd::LOAD_TAG, build.vmReg(1)));
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(3), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1)));
 
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -627,7 +627,7 @@ bb_0:
    STORE_TVALUE R1, %2
    STORE_TAG R3, tnumber
    STORE_DOUBLE R3, 0.5
-   LOP_RETURN 0u
+   RETURN 0u
 
 )");
 }
@@ -641,10 +641,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SkipCheckTag")
 
     build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
     build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(0)), build.constTag(tnumber), fallback);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+    build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -652,7 +652,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SkipCheckTag")
     CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
 bb_0:
    STORE_TAG R0, tnumber
-   LOP_RETURN 0u
+   RETURN 0u
 
 )");
 }
@@ -671,7 +671,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SkipOncePerBlockChecks")
     build.inst(IrCmd::DO_LEN, build.vmReg(1), build.vmReg(2)); // Can make env unsafe
     build.inst(IrCmd::CHECK_SAFE_ENV);
 
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -682,7 +682,7 @@ bb_0:
    CHECK_GC
    DO_LEN R1, R2
    CHECK_SAFE_ENV
-   LOP_RETURN 0u
+   RETURN 0u
 
 )");
 }
@@ -707,10 +707,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RememberTableState")
     build.inst(IrCmd::CHECK_NO_METATABLE, table, fallback);
     build.inst(IrCmd::CHECK_READONLY, table, fallback);
 
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+    build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -723,10 +723,10 @@ bb_0:
    DO_LEN R1, R2
    CHECK_NO_METATABLE %0, bb_fallback_1
    CHECK_READONLY %0, bb_fallback_1
-   LOP_RETURN 0u
+   RETURN 0u
 
 bb_fallback_1:
-   LOP_RETURN 1u
+   RETURN 1u
 
 )");
 }
@@ -742,7 +742,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SkipUselessBarriers")
     build.inst(IrCmd::BARRIER_TABLE_FORWARD, table, build.vmReg(0));
     IrOp something = build.inst(IrCmd::LOAD_POINTER, build.vmReg(2));
     build.inst(IrCmd::BARRIER_OBJ, something, build.vmReg(0));
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -750,7 +750,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SkipUselessBarriers")
     CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
 bb_0:
    STORE_TAG R0, tnumber
-   LOP_RETURN 0u
+   RETURN 0u
 
 )");
 }
@@ -773,7 +773,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ConcatInvalidation")
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(6), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(2)));
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(7), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(3)));
 
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -792,7 +792,7 @@ bb_0:
    %9 = LOAD_DOUBLE R2
    STORE_DOUBLE R6, %9
    STORE_DOUBLE R7, 2
-   LOP_RETURN 0u
+   RETURN 0u
 
 )");
 }
@@ -819,10 +819,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "BuiltinFastcallsMayInvalidateMemory")
 
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0))); // At least R0 wasn't touched
 
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+    build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -837,10 +837,10 @@ bb_0:
    CHECK_NO_METATABLE %1, bb_fallback_1
    CHECK_READONLY %1, bb_fallback_1
    STORE_DOUBLE R1, 0.5
-   LOP_RETURN 0u
+   RETURN 0u
 
 bb_fallback_1:
-   LOP_RETURN 1u
+   RETURN 1u
 
 )");
 }
@@ -855,7 +855,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RedundantStoreCheckConstantType")
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), build.constDouble(0.5));
     build.inst(IrCmd::STORE_INT, build.vmReg(0), build.constInt(10));
 
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -865,7 +865,7 @@ bb_0:
    STORE_INT R0, 10i
    STORE_DOUBLE R0, 0.5
    STORE_INT R0, 10i
-   LOP_RETURN 0u
+   RETURN 0u
 
 )");
 }
@@ -882,10 +882,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TagCheckPropagation")
     build.inst(IrCmd::CHECK_TAG, unknown, build.constTag(tnumber), fallback);
     build.inst(IrCmd::CHECK_TAG, unknown, build.constTag(tnumber), fallback);
 
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+    build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -894,10 +894,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TagCheckPropagation")
 bb_0:
    %0 = LOAD_TAG R0
    CHECK_TAG %0, tnumber, bb_fallback_1
-   LOP_RETURN 0u
+   RETURN 0u
 
 bb_fallback_1:
-   LOP_RETURN 1u
+   RETURN 1u
 
 )");
 }
@@ -914,10 +914,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TagCheckPropagationConflicting")
     build.inst(IrCmd::CHECK_TAG, unknown, build.constTag(tnumber), fallback);
     build.inst(IrCmd::CHECK_TAG, unknown, build.constTag(tnil), fallback);
 
-    build.inst(IrCmd::LOP_RETURN, build.constUint(0));
+    build.inst(IrCmd::RETURN, build.constUint(0));
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+    build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -929,7 +929,7 @@ bb_0:
    JUMP bb_fallback_1
 
 bb_fallback_1:
-   LOP_RETURN 1u
+   RETURN 1u
 
 )");
 }
@@ -947,13 +947,13 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TruthyTestRemoval")
     build.inst(IrCmd::JUMP_IF_TRUTHY, build.vmReg(1), trueBlock, falseBlock);
 
     build.beginBlock(trueBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+    build.inst(IrCmd::RETURN, build.constUint(1));
 
     build.beginBlock(falseBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(2));
+    build.inst(IrCmd::RETURN, build.constUint(2));
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(3));
+    build.inst(IrCmd::RETURN, build.constUint(3));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -965,10 +965,10 @@ bb_0:
    JUMP bb_1
 
 bb_1:
-   LOP_RETURN 1u
+   RETURN 1u
 
 bb_fallback_3:
-   LOP_RETURN 3u
+   RETURN 3u
 
 )");
 }
@@ -986,13 +986,13 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FalsyTestRemoval")
     build.inst(IrCmd::JUMP_IF_FALSY, build.vmReg(1), trueBlock, falseBlock);
 
     build.beginBlock(trueBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+    build.inst(IrCmd::RETURN, build.constUint(1));
 
     build.beginBlock(falseBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(2));
+    build.inst(IrCmd::RETURN, build.constUint(2));
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(3));
+    build.inst(IrCmd::RETURN, build.constUint(3));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -1004,10 +1004,10 @@ bb_0:
    JUMP bb_2
 
 bb_2:
-   LOP_RETURN 2u
+   RETURN 2u
 
 bb_fallback_3:
-   LOP_RETURN 3u
+   RETURN 3u
 
 )");
 }
@@ -1024,10 +1024,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "TagEqRemoval")
     build.inst(IrCmd::JUMP_EQ_TAG, tag, build.constTag(tnumber), trueBlock, falseBlock);
 
     build.beginBlock(trueBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+    build.inst(IrCmd::RETURN, build.constUint(1));
 
     build.beginBlock(falseBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(2));
+    build.inst(IrCmd::RETURN, build.constUint(2));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -1039,7 +1039,7 @@ bb_0:
    JUMP bb_2
 
 bb_2:
-   LOP_RETURN 2u
+   RETURN 2u
 
 )");
 }
@@ -1056,10 +1056,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "IntEqRemoval")
     build.inst(IrCmd::JUMP_EQ_INT, value, build.constInt(5), trueBlock, falseBlock);
 
     build.beginBlock(trueBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+    build.inst(IrCmd::RETURN, build.constUint(1));
 
     build.beginBlock(falseBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(2));
+    build.inst(IrCmd::RETURN, build.constUint(2));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -1070,7 +1070,7 @@ bb_0:
    JUMP bb_1
 
 bb_1:
-   LOP_RETURN 1u
+   RETURN 1u
 
 )");
 }
@@ -1087,10 +1087,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NumCmpRemoval")
     build.inst(IrCmd::JUMP_CMP_NUM, value, build.constDouble(8.0), build.cond(IrCondition::Greater), trueBlock, falseBlock);
 
     build.beginBlock(trueBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+    build.inst(IrCmd::RETURN, build.constUint(1));
 
     build.beginBlock(falseBlock);
-    build.inst(IrCmd::LOP_RETURN, build.constUint(2));
+    build.inst(IrCmd::RETURN, build.constUint(2));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -1101,7 +1101,7 @@ bb_0:
    JUMP bb_2
 
 bb_2:
-   LOP_RETURN 2u
+   RETURN 2u
 
 )");
 }
@@ -1118,7 +1118,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DataFlowsThroughDirectJumpToUniqueSuccessor
 
     build.beginBlock(block2);
     build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.inst(IrCmd::LOAD_TAG, build.vmReg(0)));
-    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+    build.inst(IrCmd::RETURN, build.constUint(1));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -1130,7 +1130,7 @@ bb_0:
 
 bb_1:
    STORE_TAG R1, tnumber
-   LOP_RETURN 1u
+   RETURN 1u
 
 )");
 }
@@ -1148,7 +1148,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "DataDoesNotFlowThroughDirectJumpToNonUnique
 
     build.beginBlock(block2);
     build.inst(IrCmd::STORE_TAG, build.vmReg(1), build.inst(IrCmd::LOAD_TAG, build.vmReg(0)));
-    build.inst(IrCmd::LOP_RETURN, build.constUint(1));
+    build.inst(IrCmd::RETURN, build.constUint(1));
 
     build.beginBlock(block3);
     build.inst(IrCmd::JUMP, block2);
@@ -1164,7 +1164,7 @@ bb_0:
 bb_1:
    %2 = LOAD_TAG R0
    STORE_TAG R1, %2
-   LOP_RETURN 1u
+   RETURN 1u
 
 bb_2:
    JUMP bb_1
@@ -1183,7 +1183,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "EntryBlockUseRemoval")
     build.inst(IrCmd::JUMP_IF_TRUTHY, build.vmReg(0), exit, repeat);
 
     build.beginBlock(exit);
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(0), build.constInt(0));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
 
     build.beginBlock(repeat);
     build.inst(IrCmd::INTERRUPT, build.constUint(0));
@@ -1198,7 +1198,7 @@ bb_0:
    JUMP bb_1
 
 bb_1:
-   LOP_RETURN R0, 0i
+   RETURN R0, 0i
 
 )");
 }
@@ -1211,14 +1211,14 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RecursiveSccUseRemoval1")
     IrOp repeat = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(0), build.constInt(0));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
 
     build.beginBlock(block);
     build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
     build.inst(IrCmd::JUMP_IF_TRUTHY, build.vmReg(0), exit, repeat);
 
     build.beginBlock(exit);
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(0), build.constInt(0));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
 
     build.beginBlock(repeat);
     build.inst(IrCmd::INTERRUPT, build.constUint(0));
@@ -1229,14 +1229,14 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RecursiveSccUseRemoval1")
 
     CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
 bb_0:
-   LOP_RETURN R0, 0i
+   RETURN R0, 0i
 
 bb_1:
    STORE_TAG R0, tnumber
    JUMP bb_2
 
 bb_2:
-   LOP_RETURN R0, 0i
+   RETURN R0, 0i
 
 )");
 }
@@ -1253,14 +1253,14 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RecursiveSccUseRemoval2")
     build.inst(IrCmd::JUMP_EQ_INT, build.constInt(0), build.constInt(1), block, exit1);
 
     build.beginBlock(exit1);
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(0), build.constInt(0));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
 
     build.beginBlock(block);
     build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
     build.inst(IrCmd::JUMP_IF_TRUTHY, build.vmReg(0), exit2, repeat);
 
     build.beginBlock(exit2);
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(0), build.constInt(0));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
 
     build.beginBlock(repeat);
     build.inst(IrCmd::INTERRUPT, build.constUint(0));
@@ -1274,14 +1274,14 @@ bb_0:
    JUMP bb_1
 
 bb_1:
-   LOP_RETURN R0, 0i
+   RETURN R0, 0i
 
 bb_2:
    STORE_TAG R0, tnumber
    JUMP bb_3
 
 bb_3:
-   LOP_RETURN R0, 0i
+   RETURN R0, 0i
 
 )");
 }
@@ -1322,7 +1322,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SimplePathExtraction")
     build.inst(IrCmd::JUMP, block4);
 
     build.beginBlock(block4);
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(0), build.constInt(0));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -1350,10 +1350,10 @@ bb_4:
    JUMP bb_5
 
 bb_5:
-   LOP_RETURN R0, 0i
+   RETURN R0, 0i
 
 bb_linear_6:
-   LOP_RETURN R0, 0i
+   RETURN R0, 0i
 
 )");
 }
@@ -1393,11 +1393,11 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NoPathExtractionForBlocksWithLiveOutValues"
 
     build.beginBlock(block4a);
     build.inst(IrCmd::STORE_TAG, build.vmReg(0), tag3a);
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(0), build.constInt(0));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
 
     build.beginBlock(block4b);
     build.inst(IrCmd::STORE_TAG, build.vmReg(0), tag3a);
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(0), build.constInt(0));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
@@ -1427,11 +1427,11 @@ bb_4:
 
 bb_5:
    STORE_TAG R0, %10
-   LOP_RETURN R0, 0i
+   RETURN R0, 0i
 
 bb_6:
    STORE_TAG R0, %10
-   LOP_RETURN R0, 0i
+   RETURN R0, 0i
 
 )");
 }
@@ -1488,7 +1488,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SimpleDiamond")
     build.inst(IrCmd::JUMP, exit);
 
     build.beginBlock(exit);
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(2), build.constInt(2));
+    build.inst(IrCmd::RETURN, build.vmReg(2), build.constInt(2));
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
@@ -1522,7 +1522,7 @@ bb_2:
 bb_3:
 ; predecessors: bb_1, bb_2
 ; in regs: R2, R3
-   LOP_RETURN R2, 2i
+   RETURN R2, 2i
 
 )");
 }
@@ -1534,11 +1534,11 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ImplicitFixedRegistersInVarargCall")
 
     build.beginBlock(entry);
     build.inst(IrCmd::FALLBACK_GETVARARGS, build.constUint(0), build.vmReg(3), build.constInt(-1));
-    build.inst(IrCmd::LOP_CALL, build.vmReg(0), build.constInt(-1), build.constInt(5));
+    build.inst(IrCmd::CALL, build.vmReg(0), build.constInt(-1), build.constInt(5));
     build.inst(IrCmd::JUMP, exit);
 
     build.beginBlock(exit);
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(0), build.constInt(5));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(5));
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
@@ -1549,13 +1549,13 @@ bb_0:
 ; in regs: R0, R1, R2
 ; out regs: R0, R1, R2, R3, R4
    FALLBACK_GETVARARGS 0u, R3, -1i
-   LOP_CALL R0, -1i, 5i
+   CALL R0, -1i, 5i
    JUMP bb_1
 
 bb_1:
 ; predecessors: bb_0
 ; in regs: R0, R1, R2, R3, R4
-   LOP_RETURN R0, 5i
+   RETURN R0, 5i
 
 )");
 }
@@ -1573,7 +1573,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ExplicitUseOfRegisterInVarargSequence")
     build.inst(IrCmd::JUMP, exit);
 
     build.beginBlock(exit);
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(0), build.constInt(-1));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(-1));
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
@@ -1590,7 +1590,7 @@ bb_0:
 bb_1:
 ; predecessors: bb_0
 ; in regs: R0...
-   LOP_RETURN R0, -1i
+   RETURN R0, -1i
 
 )");
 }
@@ -1601,12 +1601,12 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "VariadicSequenceRestart")
     IrOp exit = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
-    build.inst(IrCmd::LOP_CALL, build.vmReg(1), build.constInt(0), build.constInt(-1));
-    build.inst(IrCmd::LOP_CALL, build.vmReg(0), build.constInt(-1), build.constInt(-1));
+    build.inst(IrCmd::CALL, build.vmReg(1), build.constInt(0), build.constInt(-1));
+    build.inst(IrCmd::CALL, build.vmReg(0), build.constInt(-1), build.constInt(-1));
     build.inst(IrCmd::JUMP, exit);
 
     build.beginBlock(exit);
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(0), build.constInt(-1));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(-1));
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
@@ -1616,14 +1616,14 @@ bb_0:
 ; successors: bb_1
 ; in regs: R0, R1
 ; out regs: R0...
-   LOP_CALL R1, 0i, -1i
-   LOP_CALL R0, -1i, -1i
+   CALL R1, 0i, -1i
+   CALL R0, -1i, -1i
    JUMP bb_1
 
 bb_1:
 ; predecessors: bb_0
 ; in regs: R0...
-   LOP_RETURN R0, -1i
+   RETURN R0, -1i
 
 )");
 }
@@ -1637,15 +1637,15 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "FallbackDoesNotFlowUp")
     build.beginBlock(entry);
     build.inst(IrCmd::FALLBACK_GETVARARGS, build.constUint(0), build.vmReg(1), build.constInt(-1));
     build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(0)), build.constTag(tnumber), fallback);
-    build.inst(IrCmd::LOP_CALL, build.vmReg(0), build.constInt(-1), build.constInt(-1));
+    build.inst(IrCmd::CALL, build.vmReg(0), build.constInt(-1), build.constInt(-1));
     build.inst(IrCmd::JUMP, exit);
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_CALL, build.vmReg(0), build.constInt(-1), build.constInt(-1));
+    build.inst(IrCmd::CALL, build.vmReg(0), build.constInt(-1), build.constInt(-1));
     build.inst(IrCmd::JUMP, exit);
 
     build.beginBlock(exit);
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(0), build.constInt(-1));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(-1));
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
@@ -1658,7 +1658,7 @@ bb_0:
    FALLBACK_GETVARARGS 0u, R1, -1i
    %1 = LOAD_TAG R0
    CHECK_TAG %1, tnumber, bb_fallback_1
-   LOP_CALL R0, -1i, -1i
+   CALL R0, -1i, -1i
    JUMP bb_2
 
 bb_fallback_1:
@@ -1666,13 +1666,13 @@ bb_fallback_1:
 ; successors: bb_2
 ; in regs: R0, R1...
 ; out regs: R0...
-   LOP_CALL R0, -1i, -1i
+   CALL R0, -1i, -1i
    JUMP bb_2
 
 bb_2:
 ; predecessors: bb_0, bb_fallback_1
 ; in regs: R0...
-   LOP_RETURN R0, -1i
+   RETURN R0, -1i
 
 )");
 }
@@ -1697,7 +1697,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "VariadicSequencePeeling")
     build.inst(IrCmd::JUMP, exit);
 
     build.beginBlock(exit);
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(2), build.constInt(-1));
+    build.inst(IrCmd::RETURN, build.vmReg(2), build.constInt(-1));
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
@@ -1732,7 +1732,7 @@ bb_2:
 bb_3:
 ; predecessors: bb_1, bb_2
 ; in regs: R2...
-   LOP_RETURN R2, -1i
+   RETURN R2, -1i
 
 )");
 }
@@ -1746,11 +1746,11 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "BuiltinVariadicStart")
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), build.constDouble(1.0));
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), build.constDouble(2.0));
     build.inst(IrCmd::ADJUST_STACK_TO_REG, build.vmReg(2), build.constInt(1));
-    build.inst(IrCmd::LOP_CALL, build.vmReg(1), build.constInt(-1), build.constInt(1));
+    build.inst(IrCmd::CALL, build.vmReg(1), build.constInt(-1), build.constInt(1));
     build.inst(IrCmd::JUMP, exit);
 
     build.beginBlock(exit);
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(0), build.constInt(2));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(2));
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
@@ -1763,13 +1763,13 @@ bb_0:
    STORE_DOUBLE R1, 1
    STORE_DOUBLE R2, 2
    ADJUST_STACK_TO_REG R2, 1i
-   LOP_CALL R1, -1i, 1i
+   CALL R1, -1i, 1i
    JUMP bb_1
 
 bb_1:
 ; predecessors: bb_0
 ; in regs: R0, R1
-   LOP_RETURN R0, 2i
+   RETURN R0, 2i
 
 )");
 }
@@ -1781,7 +1781,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SetTable")
 
     build.beginBlock(entry);
     build.inst(IrCmd::SET_TABLE, build.vmReg(0), build.vmReg(1), build.constUint(1));
-    build.inst(IrCmd::LOP_RETURN, build.vmReg(0), build.constInt(1));
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(1));
 
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
@@ -1790,7 +1790,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SetTable")
 bb_0:
 ; in regs: R0, R1
    SET_TABLE R0, R1, 1u
-   LOP_RETURN R0, 1i
+   RETURN R0, 1i
 
 )");
 }

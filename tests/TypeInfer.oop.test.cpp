@@ -381,4 +381,29 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "react_style_oo")
     CHECK("string" == toString(requireType("hello")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "cycle_between_object_constructor_and_alias")
+{
+    CheckResult result = check(R"(
+        local T = {}
+        T.__index = T
+
+        function T.new(): T
+            return setmetatable({}, T)
+        end
+
+        export type T = typeof(T.new())
+
+        return T
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto module = getMainModule();
+
+    REQUIRE(module->exportedTypeBindings.count("T"));
+
+    TypeId aliasType = module->exportedTypeBindings["T"].type;
+    CHECK_MESSAGE(get<MetatableType>(follow(aliasType)), "Expected metatable type but got: " << toString(aliasType));
+}
+
 TEST_SUITE_END();

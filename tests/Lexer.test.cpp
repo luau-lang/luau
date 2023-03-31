@@ -157,8 +157,6 @@ TEST_CASE("string_interpolation_basic")
 
 TEST_CASE("string_interpolation_full")
 {
-    ScopedFastFlag sff("LuauFixInterpStringMid", true);
-
     const std::string testInput = R"(`foo {"bar"} {"baz"} end`)";
     Luau::Allocator alloc;
     AstNameTable table(alloc);

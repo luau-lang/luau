@@ -4,6 +4,8 @@
 #include "Luau/AssemblyBuilderA64.h"
 #include "Luau/IrData.h"
 
+#include "IrRegAllocA64.h"
+
 #include <vector>
 
 struct Proto;
@@ -31,6 +33,11 @@ struct IrLoweringA64
     bool isFallthroughBlock(IrBlock target, IrBlock next);
     void jumpOrFallthrough(IrBlock& target, IrBlock& next);
 
+    // Operand data build helpers
+    RegisterA64 tempDouble(IrOp op);
+    RegisterA64 tempInt(IrOp op);
+    AddressA64 tempAddr(IrOp op, int offset);
+
     // Operand data lookup helpers
     RegisterA64 regOp(IrOp op) const;
 
@@ -51,8 +58,7 @@ struct IrLoweringA64
 
     IrFunction& function;
 
-    // TODO:
-    // IrRegAllocA64 regs;
+    IrRegAllocA64 regs;
 };
 
 } // namespace A64

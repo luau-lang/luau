@@ -300,17 +300,17 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
             if (function.boolOp(inst.b))
                 capturedRegs.set(inst.a.index, true);
             break;
-        case IrCmd::LOP_SETLIST:
+        case IrCmd::SETLIST:
             use(inst.b);
             useRange(inst.c.index, function.intOp(inst.d));
             break;
-        case IrCmd::LOP_CALL:
+        case IrCmd::CALL:
             use(inst.a);
             useRange(inst.a.index + 1, function.intOp(inst.b));
 
             defRange(inst.a.index, function.intOp(inst.c));
             break;
-        case IrCmd::LOP_RETURN:
+        case IrCmd::RETURN:
             useRange(inst.a.index, function.intOp(inst.b));
             break;
         case IrCmd::FASTCALL:
@@ -341,7 +341,7 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
             if (int count = function.intOp(inst.f); count != -1)
                 defRange(inst.b.index, count);
             break;
-        case IrCmd::LOP_FORGLOOP:
+        case IrCmd::FORGLOOP:
             // First register is not used by instruction, we check that it's still 'nil' with CHECK_TAG
             use(inst.a, 1);
             use(inst.a, 2);
@@ -349,26 +349,26 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
             def(inst.a, 2);
             defRange(inst.a.index + 3, function.intOp(inst.b));
             break;
-        case IrCmd::LOP_FORGLOOP_FALLBACK:
-            useRange(inst.b.index, 3);
+        case IrCmd::FORGLOOP_FALLBACK:
+            useRange(inst.a.index, 3);
 
-            def(inst.b, 2);
-            defRange(inst.b.index + 3, uint8_t(function.intOp(inst.c))); // ignore most significant bit
+            def(inst.a, 2);
+            defRange(inst.a.index + 3, uint8_t(function.intOp(inst.b))); // ignore most significant bit
             break;
-        case IrCmd::LOP_FORGPREP_XNEXT_FALLBACK:
+        case IrCmd::FORGPREP_XNEXT_FALLBACK:
             use(inst.b);
             break;
             // A <- B, C
-        case IrCmd::LOP_AND:
-        case IrCmd::LOP_OR:
+        case IrCmd::AND:
+        case IrCmd::OR:
             use(inst.b);
             use(inst.c);
 
             def(inst.a);
             break;
             // A <- B
-        case IrCmd::LOP_ANDK:
-        case IrCmd::LOP_ORK:
+        case IrCmd::ANDK:
+        case IrCmd::ORK:
             use(inst.b);
 
             def(inst.a);

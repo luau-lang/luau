@@ -296,46 +296,60 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
     IrOp vb = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(rb));
     IrOp vc;
 
+    IrOp result;
+
     if (opc.kind == IrOpKind::VmConst)
     {
         LUAU_ASSERT(build.function.proto);
         TValue protok = build.function.proto->k[opc.index];
 
         LUAU_ASSERT(protok.tt == LUA_TNUMBER);
-        vc = build.constDouble(protok.value.n);
+
+        // VM has special cases for exponentiation with constants
+        if (tm == TM_POW && protok.value.n == 0.5)
+            result = build.inst(IrCmd::SQRT_NUM, vb);
+        else if (tm == TM_POW && protok.value.n == 2.0)
+            result = build.inst(IrCmd::MUL_NUM, vb, vb);
+        else if (tm == TM_POW && protok.value.n == 3.0)
+            result = build.inst(IrCmd::MUL_NUM, vb, build.inst(IrCmd::MUL_NUM, vb, vb));
+        else
+            vc = build.constDouble(protok.value.n);
     }
     else
     {
         vc = build.inst(IrCmd::LOAD_DOUBLE, opc);
     }
 
-    IrOp va;
-
-    switch (tm)
+    if (result.kind == IrOpKind::None)
     {
-    case TM_ADD:
-        va = build.inst(IrCmd::ADD_NUM, vb, vc);
-        break;
-    case TM_SUB:
-        va = build.inst(IrCmd::SUB_NUM, vb, vc);
-        break;
-    case TM_MUL:
-        va = build.inst(IrCmd::MUL_NUM, vb, vc);
-        break;
-    case TM_DIV:
-        va = build.inst(IrCmd::DIV_NUM, vb, vc);
-        break;
-    case TM_MOD:
-        va = build.inst(IrCmd::MOD_NUM, vb, vc);
-        break;
-    case TM_POW:
-        va = build.inst(IrCmd::POW_NUM, vb, vc);
-        break;
-    default:
-        LUAU_ASSERT(!"unsupported binary op");
+        LUAU_ASSERT(vc.kind != IrOpKind::None);
+
+        switch (tm)
+        {
+        case TM_ADD:
+            result = build.inst(IrCmd::ADD_NUM, vb, vc);
+            break;
+        case TM_SUB:
+            result = build.inst(IrCmd::SUB_NUM, vb, vc);
+            break;
+        case TM_MUL:
+            result = build.inst(IrCmd::MUL_NUM, vb, vc);
+            break;
+        case TM_DIV:
+            result = build.inst(IrCmd::DIV_NUM, vb, vc);
+            break;
+        case TM_MOD:
+            result = build.inst(IrCmd::MOD_NUM, vb, vc);
+            break;
+        case TM_POW:
+            result = build.inst(IrCmd::POW_NUM, vb, vc);
+            break;
+        default:
+            LUAU_ASSERT(!"unsupported binary op");
+        }
     }
 
-    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), va);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), result);
 
     if (ra != rb && ra != rc) // TODO: optimization should handle second check, but we'll test this later
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
@@ -638,7 +652,7 @@ void translateInstForGPrepNext(IrBuilder& build, const Instruction* pc, int pcpo
     build.inst(IrCmd::JUMP, target);
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_FORGPREP_XNEXT_FALLBACK, build.constUint(pcpos), build.vmReg(ra), target);
+    build.inst(IrCmd::FORGPREP_XNEXT_FALLBACK, build.constUint(pcpos), build.vmReg(ra), target);
 }
 
 void translateInstForGPrepInext(IrBuilder& build, const Instruction* pc, int pcpos)
@@ -670,7 +684,7 @@ void translateInstForGPrepInext(IrBuilder& build, const Instruction* pc, int pcp
     build.inst(IrCmd::JUMP, target);
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_FORGPREP_XNEXT_FALLBACK, build.constUint(pcpos), build.vmReg(ra), target);
+    build.inst(IrCmd::FORGPREP_XNEXT_FALLBACK, build.constUint(pcpos), build.vmReg(ra), target);
 }
 
 void translateInstForGLoopIpairs(IrBuilder& build, const Instruction* pc, int pcpos)
@@ -721,7 +735,8 @@ void translateInstForGLoopIpairs(IrBuilder& build, const Instruction* pc, int pc
     build.inst(IrCmd::JUMP, loopRepeat);
 
     build.beginBlock(fallback);
-    build.inst(IrCmd::LOP_FORGLOOP_FALLBACK, build.constUint(pcpos), build.vmReg(ra), build.constInt(int(pc[1])), loopRepeat, loopExit);
+    build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
+    build.inst(IrCmd::FORGLOOP_FALLBACK, build.vmReg(ra), build.constInt(int(pc[1])), loopRepeat, loopExit);
 
     // Fallthrough in original bytecode is implicit, so we start next internal block here
     if (build.isInternalBlock(loopExit))

@@ -53,7 +53,6 @@ struct ConstraintSolver
     NotNull<BuiltinTypes> builtinTypes;
     InternalErrorReporter iceReporter;
     NotNull<Normalizer> normalizer;
-    NotNull<TypeReduction> reducer;
     // The entire set of constraints that the solver is trying to resolve.
     std::vector<NotNull<Constraint>> constraints;
     NotNull<Scope> rootScope;
@@ -85,8 +84,7 @@ struct ConstraintSolver
     DcrLogger* logger;
 
     explicit ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, std::vector<NotNull<Constraint>> constraints,
-        ModuleName moduleName, NotNull<TypeReduction> reducer, NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles,
-        DcrLogger* logger);
+        ModuleName moduleName, NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger);
 
     // Randomize the order in which to dispatch constraints
     void randomize(unsigned seed);
@@ -219,6 +217,20 @@ struct ConstraintSolver
     void reportError(TypeError e);
 
 private:
+
+    /** Helper used by tryDispatch(SubtypeConstraint) and
+     * tryDispatch(PackSubtypeConstraint)
+     *
+     * Attempts to unify subTy with superTy.  If doing so would require unifying
+     * BlockedTypes, fail and block the constraint on those BlockedTypes.
+     *
+     * If unification fails, replace all free types with errorType.
+     *
+     * If unification succeeds, unblock every type changed by the unification.
+     */
+    template <typename TID>
+    bool tryUnify(NotNull<const Constraint> constraint, TID subTy, TID superTy);
+
     /**
      * Marks a constraint as being blocked on a type or type pack. The constraint
      * solver will not attempt to dispatch blocked constraints until their

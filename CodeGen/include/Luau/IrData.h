@@ -125,6 +125,26 @@ enum class IrCmd : uint8_t
     // A: double
     UNM_NUM,
 
+    // Round number to negative infinity (math.floor)
+    // A: double
+    FLOOR_NUM,
+
+    // Round number to positive infinity (math.ceil)
+    // A: double
+    CEIL_NUM,
+
+    // Round number to nearest integer number, rounding half-way cases away from zero (math.round)
+    // A: double
+    ROUND_NUM,
+
+    // Get square root of the argument (math.sqrt)
+    // A: double
+    SQRT_NUM,
+
+    // Get absolute value of the argument (math.abs)
+    // A: double
+    ABS_NUM,
+
     // Compute Luau 'not' operation on destructured TValue
     // A: tag
     // B: double
@@ -252,6 +272,7 @@ enum class IrCmd : uint8_t
     // A: Rn (where to store the result)
     // B: Rn (lhs)
     // C: Rn or Kn (rhs)
+    // D: int (TMS enum with arithmetic type)
     DO_ARITH,
 
     // Get length of a TValue of any type
@@ -382,54 +403,53 @@ enum class IrCmd : uint8_t
     // C: Rn (source start)
     // D: int (count or -1 to assign values up to stack top)
     // E: unsigned int (table index to start from)
-    LOP_SETLIST,
+    SETLIST,
 
     // Call specified function
     // A: Rn (function, followed by arguments)
     // B: int (argument count or -1 to use all arguments up to stack top)
     // C: int (result count or -1 to preserve all results and adjust stack top)
     // Note: return values are placed starting from Rn specified in 'A'
-    LOP_CALL,
+    CALL,
 
     // Return specified values from the function
     // A: Rn (value start)
     // B: int (result count or -1 to return all values up to stack top)
-    LOP_RETURN,
+    RETURN,
 
     // Adjust loop variables for one iteration of a generic for loop, jump back to the loop header if loop needs to continue
     // A: Rn (loop variable start, updates Rn+2 and 'B' number of registers starting from Rn+3)
     // B: int (loop variable count, if more than 2, registers starting from Rn+5 are set to nil)
     // C: block (repeat)
     // D: block (exit)
-    LOP_FORGLOOP,
+    FORGLOOP,
 
     // Handle LOP_FORGLOOP fallback when variable being iterated is not a table
-    // A: unsigned int (bytecode instruction index)
-    // B: Rn (loop state start, updates Rn+2 and 'C' number of registers starting from Rn+3)
-    // C: int (loop variable count and a MSB set when it's an ipairs-like iteration loop)
-    // D: block (repeat)
-    // E: block (exit)
-    LOP_FORGLOOP_FALLBACK,
+    // A: Rn (loop state start, updates Rn+2 and 'B' number of registers starting from Rn+3)
+    // B: int (loop variable count and a MSB set when it's an ipairs-like iteration loop)
+    // C: block (repeat)
+    // D: block (exit)
+    FORGLOOP_FALLBACK,
 
     // Fallback for generic for loop preparation when iterating over builtin pairs/ipairs
     // It raises an error if 'B' register is not a function
     // A: unsigned int (bytecode instruction index)
     // B: Rn
     // C: block (forgloop location)
-    LOP_FORGPREP_XNEXT_FALLBACK,
+    FORGPREP_XNEXT_FALLBACK,
 
     // Perform `and` or `or` operation (selecting lhs or rhs based on whether the lhs is truthy) and put the result into target register
     // A: Rn (target)
     // B: Rn (lhs)
     // C: Rn or Kn (rhs)
-    LOP_AND,
-    LOP_ANDK,
-    LOP_OR,
-    LOP_ORK,
+    AND,
+    ANDK,
+    OR,
+    ORK,
 
     // Increment coverage data (saturating 24 bit add)
     // A: unsigned int (bytecode instruction index)
-    LOP_COVERAGE,
+    COVERAGE,
 
     // Operations that have a translation, but use a full instruction fallback
 
@@ -674,6 +694,14 @@ struct IrFunction
     {
         LUAU_ASSERT(op.kind == IrOpKind::Inst);
         return instructions[op.index];
+    }
+
+    IrInst* asInstOp(IrOp op)
+    {
+        if (op.kind == IrOpKind::Inst)
+            return &instructions[op.index];
+
+        return nullptr;
     }
 
     IrConst& constOp(IrOp op)
