@@ -27,9 +27,12 @@ namespace CodeGen
 
 enum class IrCondition : uint8_t;
 struct NativeState;
+struct IrOp;
 
 namespace X64
 {
+
+struct IrRegAllocX64;
 
 // Data that is very common to access is placed in non-volatile registers
 constexpr RegisterX64 rState = r15;         // lua_State* L
@@ -233,21 +236,20 @@ inline void jumpIfNodeKeyNotInExpectedSlot(AssemblyBuilderX64& build, RegisterX6
 }
 
 void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs, OperandX64 rhs, IrCondition cond, Label& label);
-void jumpOnAnyCmpFallback(AssemblyBuilderX64& build, int ra, int rb, IrCondition cond, Label& label);
+void jumpOnAnyCmpFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, IrCondition cond, Label& label);
 
 void getTableNodeAtCachedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 node, RegisterX64 table, int pcpos);
 void convertNumberToIndexOrJump(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 numd, RegisterX64 numi, Label& label);
 
-void callArithHelper(AssemblyBuilderX64& build, int ra, int rb, OperandX64 c, TMS tm);
-void callLengthHelper(AssemblyBuilderX64& build, int ra, int rb);
-void callPrepareForN(AssemblyBuilderX64& build, int limit, int step, int init);
-void callGetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra);
-void callSetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra);
-void callBarrierTable(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 table, int ra, Label& skip);
-void callBarrierObject(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 object, int ra, Label& skip);
-void callBarrierTableFast(AssemblyBuilderX64& build, RegisterX64 table, Label& skip);
-void callCheckGc(AssemblyBuilderX64& build, int pcpos, bool savepc, Label& skip);
-void callGetFastTmOrFallback(AssemblyBuilderX64& build, RegisterX64 table, TMS tm, Label& fallback);
+void callArithHelper(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, OperandX64 c, TMS tm);
+void callLengthHelper(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb);
+void callPrepareForN(IrRegAllocX64& regs, AssemblyBuilderX64& build, int limit, int step, int init);
+void callGetTable(IrRegAllocX64& regs, AssemblyBuilderX64& build, int rb, OperandX64 c, int ra);
+void callSetTable(IrRegAllocX64& regs, AssemblyBuilderX64& build, int rb, OperandX64 c, int ra);
+void checkObjectBarrierConditions(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 object, int ra, Label& skip);
+void callBarrierObject(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 object, IrOp objectOp, int ra, Label& skip);
+void callBarrierTableFast(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 table, IrOp tableOp, Label& skip);
+void callCheckGc(IrRegAllocX64& regs, AssemblyBuilderX64& build, Label& skip);
 
 void emitExit(AssemblyBuilderX64& build, bool continueInVm);
 void emitUpdateBase(AssemblyBuilderX64& build);

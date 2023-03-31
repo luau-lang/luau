@@ -109,6 +109,8 @@ void initHelperFunctions(NativeState& data)
     data.context.forgPrepXnextFallback = forgPrepXnextFallback;
     data.context.callProlog = callProlog;
     data.context.callEpilogC = callEpilogC;
+
+    data.context.callFallback = callFallback;
     data.context.returnFallback = returnFallback;
 }
 

@@ -503,10 +503,10 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             }
         }
         break;
-    case IrCmd::LOP_AND:
-    case IrCmd::LOP_ANDK:
-    case IrCmd::LOP_OR:
-    case IrCmd::LOP_ORK:
+    case IrCmd::AND:
+    case IrCmd::ANDK:
+    case IrCmd::OR:
+    case IrCmd::ORK:
         state.invalidate(inst.a);
         break;
     case IrCmd::FASTCALL:
@@ -533,6 +533,11 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::MIN_NUM:
     case IrCmd::MAX_NUM:
     case IrCmd::UNM_NUM:
+    case IrCmd::FLOOR_NUM:
+    case IrCmd::CEIL_NUM:
+    case IrCmd::ROUND_NUM:
+    case IrCmd::SQRT_NUM:
+    case IrCmd::ABS_NUM:
     case IrCmd::NOT_ANY:
     case IrCmd::JUMP:
     case IrCmd::JUMP_EQ_POINTER:
@@ -547,10 +552,10 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::CHECK_SLOT_MATCH:
     case IrCmd::CHECK_NODE_NO_NEXT:
     case IrCmd::BARRIER_TABLE_BACK:
-    case IrCmd::LOP_RETURN:
-    case IrCmd::LOP_COVERAGE:
+    case IrCmd::RETURN:
+    case IrCmd::COVERAGE:
     case IrCmd::SET_UPVALUE:
-    case IrCmd::LOP_SETLIST:  // We don't track table state that this can invalidate
+    case IrCmd::SETLIST:      // We don't track table state that this can invalidate
     case IrCmd::SET_SAVEDPC:  // TODO: we may be able to remove some updates to PC
     case IrCmd::CLOSE_UPVALS: // Doesn't change memory that we track
     case IrCmd::CAPTURE:
@@ -599,18 +604,18 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::INTERRUPT:
         state.invalidateUserCall();
         break;
-    case IrCmd::LOP_CALL:
+    case IrCmd::CALL:
         state.invalidateRegistersFrom(inst.a.index);
         state.invalidateUserCall();
         break;
-    case IrCmd::LOP_FORGLOOP:
+    case IrCmd::FORGLOOP:
         state.invalidateRegistersFrom(inst.a.index + 2); // Rn and Rn+1 are not modified
         break;
-    case IrCmd::LOP_FORGLOOP_FALLBACK:
-        state.invalidateRegistersFrom(inst.b.index + 2); // Rn and Rn+1 are not modified
+    case IrCmd::FORGLOOP_FALLBACK:
+        state.invalidateRegistersFrom(inst.a.index + 2); // Rn and Rn+1 are not modified
         state.invalidateUserCall();
         break;
-    case IrCmd::LOP_FORGPREP_XNEXT_FALLBACK:
+    case IrCmd::FORGPREP_XNEXT_FALLBACK:
         // This fallback only conditionally throws an exception
         break;
     case IrCmd::FALLBACK_GETGLOBAL:

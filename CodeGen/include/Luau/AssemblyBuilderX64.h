@@ -41,6 +41,7 @@ enum class ABIX64
 class AssemblyBuilderX64
 {
 public:
+    explicit AssemblyBuilderX64(bool logText, ABIX64 abi);
     explicit AssemblyBuilderX64(bool logText);
     ~AssemblyBuilderX64();
 

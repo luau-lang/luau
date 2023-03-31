@@ -4691,8 +4691,6 @@ RETURN R0 0
 
 TEST_CASE("LoopUnrollCost")
 {
-    ScopedFastFlag sff("LuauCompileBuiltinArity", true);
-
     ScopedFastInt sfis[] = {
         {"LuauCompileLoopUnrollThreshold", 25},
         {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
@@ -5962,8 +5960,6 @@ RETURN R2 1
 
 TEST_CASE("InlineMultret")
 {
-    ScopedFastFlag sff("LuauCompileBuiltinArity", true);
-
     // inlining a function in multret context is prohibited since we can't adjust L->top outside of CALL/GETVARARGS
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a)
@@ -6301,8 +6297,6 @@ RETURN R0 52
 
 TEST_CASE("BuiltinFoldingProhibited")
 {
-    ScopedFastFlag sff("LuauCompileBuiltinArity", true);
-
     CHECK_EQ("\n" + compileFunction(R"(
 return
     math.abs(),
@@ -6905,8 +6899,6 @@ L3: RETURN R0 0
 
 TEST_CASE("BuiltinArity")
 {
-    ScopedFastFlag sff("LuauCompileBuiltinArity", true);
-
     // by default we can't assume that we know parameter/result count for builtins as they can be overridden at runtime
     CHECK_EQ("\n" + compileFunction(R"(
 return math.abs(unknown())

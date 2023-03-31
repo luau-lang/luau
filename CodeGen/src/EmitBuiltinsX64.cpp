@@ -3,9 +3,10 @@
 
 #include "Luau/AssemblyBuilderX64.h"
 #include "Luau/Bytecode.h"
+#include "Luau/IrCallWrapperX64.h"
+#include "Luau/IrRegAllocX64.h"
 
 #include "EmitCommonX64.h"
-#include "IrRegAllocX64.h"
 #include "NativeState.h"
 
 #include "lstate.h"
@@ -19,40 +20,11 @@ namespace CodeGen
 namespace X64
 {
 
-void emitBuiltinMathFloor(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    ScopedRegX64 tmp{regs, SizeX64::xmmword};
-    build.vroundsd(tmp.reg, tmp.reg, luauRegValue(arg), RoundingModeX64::RoundToNegativeInfinity);
-    build.vmovsd(luauRegValue(ra), tmp.reg);
-}
-
-void emitBuiltinMathCeil(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    ScopedRegX64 tmp{regs, SizeX64::xmmword};
-    build.vroundsd(tmp.reg, tmp.reg, luauRegValue(arg), RoundingModeX64::RoundToPositiveInfinity);
-    build.vmovsd(luauRegValue(ra), tmp.reg);
-}
-
-void emitBuiltinMathSqrt(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    ScopedRegX64 tmp{regs, SizeX64::xmmword};
-    build.vsqrtsd(tmp.reg, tmp.reg, luauRegValue(arg));
-    build.vmovsd(luauRegValue(ra), tmp.reg);
-}
-
-void emitBuiltinMathAbs(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    ScopedRegX64 tmp{regs, SizeX64::xmmword};
-    build.vmovsd(tmp.reg, luauRegValue(arg));
-    build.vandpd(tmp.reg, tmp.reg, build.i64(~(1LL << 63)));
-    build.vmovsd(luauRegValue(ra), tmp.reg);
-}
-
 static void emitBuiltinMathSingleArgFunc(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int arg, int32_t offset)
 {
-    regs.assertAllFree();
-    build.vmovsd(xmm0, luauRegValue(arg));
-    build.call(qword[rNativeContext + offset]);
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::xmmword, luauRegValue(arg));
+    callWrap.call(qword[rNativeContext + offset]);
 
     build.vmovsd(luauRegValue(ra), xmm0);
 }
@@ -64,20 +36,10 @@ void emitBuiltinMathExp(IrRegAllocX64& regs, AssemblyBuilderX64& build, int npar
 
 void emitBuiltinMathFmod(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
 {
-    regs.assertAllFree();
-    build.vmovsd(xmm0, luauRegValue(arg));
-    build.vmovsd(xmm1, qword[args + offsetof(TValue, value)]);
-    build.call(qword[rNativeContext + offsetof(NativeContext, libm_fmod)]);
-
-    build.vmovsd(luauRegValue(ra), xmm0);
-}
-
-void emitBuiltinMathPow(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    regs.assertAllFree();
-    build.vmovsd(xmm0, luauRegValue(arg));
-    build.vmovsd(xmm1, qword[args + offsetof(TValue, value)]);
-    build.call(qword[rNativeContext + offsetof(NativeContext, libm_pow)]);
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::xmmword, luauRegValue(arg));
+    callWrap.addArgument(SizeX64::xmmword, qword[args + offsetof(TValue, value)]);
+    callWrap.call(qword[rNativeContext + offsetof(NativeContext, libm_fmod)]);
 
     build.vmovsd(luauRegValue(ra), xmm0);
 }
@@ -129,10 +91,10 @@ void emitBuiltinMathTanh(IrRegAllocX64& regs, AssemblyBuilderX64& build, int npa
 
 void emitBuiltinMathAtan2(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
 {
-    regs.assertAllFree();
-    build.vmovsd(xmm0, luauRegValue(arg));
-    build.vmovsd(xmm1, qword[args + offsetof(TValue, value)]);
-    build.call(qword[rNativeContext + offsetof(NativeContext, libm_atan2)]);
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::xmmword, luauRegValue(arg));
+    callWrap.addArgument(SizeX64::xmmword, qword[args + offsetof(TValue, value)]);
+    callWrap.call(qword[rNativeContext + offsetof(NativeContext, libm_atan2)]);
 
     build.vmovsd(luauRegValue(ra), xmm0);
 }
@@ -194,46 +156,23 @@ void emitBuiltinMathLog(IrRegAllocX64& regs, AssemblyBuilderX64& build, int npar
 
 void emitBuiltinMathLdexp(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
 {
-    regs.assertAllFree();
-    build.vmovsd(xmm0, luauRegValue(arg));
+    ScopedRegX64 tmp{regs, SizeX64::qword};
+    build.vcvttsd2si(tmp.reg, qword[args + offsetof(TValue, value)]);
 
-    if (build.abi == ABIX64::Windows)
-        build.vcvttsd2si(rArg2, qword[args + offsetof(TValue, value)]);
-    else
-        build.vcvttsd2si(rArg1, qword[args + offsetof(TValue, value)]);
-
-    build.call(qword[rNativeContext + offsetof(NativeContext, libm_ldexp)]);
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::xmmword, luauRegValue(arg));
+    callWrap.addArgument(SizeX64::qword, tmp);
+    callWrap.call(qword[rNativeContext + offsetof(NativeContext, libm_ldexp)]);
 
     build.vmovsd(luauRegValue(ra), xmm0);
 }
 
-void emitBuiltinMathRound(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    ScopedRegX64 tmp0{regs, SizeX64::xmmword};
-    ScopedRegX64 tmp1{regs, SizeX64::xmmword};
-    ScopedRegX64 tmp2{regs, SizeX64::xmmword};
-
-    build.vmovsd(tmp0.reg, luauRegValue(arg));
-    build.vandpd(tmp1.reg, tmp0.reg, build.f64x2(-0.0, -0.0));
-    build.vmovsd(tmp2.reg, build.i64(0x3fdfffffffffffff)); // 0.49999999999999994
-    build.vorpd(tmp1.reg, tmp1.reg, tmp2.reg);
-    build.vaddsd(tmp0.reg, tmp0.reg, tmp1.reg);
-    build.vroundsd(tmp0.reg, tmp0.reg, tmp0.reg, RoundingModeX64::RoundToZero);
-
-    build.vmovsd(luauRegValue(ra), tmp0.reg);
-}
-
 void emitBuiltinMathFrexp(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
 {
-    regs.assertAllFree();
-    build.vmovsd(xmm0, luauRegValue(arg));
-
-    if (build.abi == ABIX64::Windows)
-        build.lea(rArg2, sTemporarySlot);
-    else
-        build.lea(rArg1, sTemporarySlot);
-
-    build.call(qword[rNativeContext + offsetof(NativeContext, libm_frexp)]);
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::xmmword, luauRegValue(arg));
+    callWrap.addArgument(SizeX64::qword, sTemporarySlot);
+    callWrap.call(qword[rNativeContext + offsetof(NativeContext, libm_frexp)]);
 
     build.vmovsd(luauRegValue(ra), xmm0);
 
@@ -243,15 +182,10 @@ void emitBuiltinMathFrexp(IrRegAllocX64& regs, AssemblyBuilderX64& build, int np
 
 void emitBuiltinMathModf(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
 {
-    regs.assertAllFree();
-    build.vmovsd(xmm0, luauRegValue(arg));
-
-    if (build.abi == ABIX64::Windows)
-        build.lea(rArg2, sTemporarySlot);
-    else
-        build.lea(rArg1, sTemporarySlot);
-
-    build.call(qword[rNativeContext + offsetof(NativeContext, libm_modf)]);
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::xmmword, luauRegValue(arg));
+    callWrap.addArgument(SizeX64::qword, sTemporarySlot);
+    callWrap.call(qword[rNativeContext + offsetof(NativeContext, libm_modf)]);
 
     build.vmovsd(xmm1, qword[sTemporarySlot + 0]);
     build.vmovsd(luauRegValue(ra), xmm1);
@@ -301,12 +235,10 @@ void emitBuiltinType(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams
 
 void emitBuiltinTypeof(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
 {
-    regs.assertAllFree();
-
-    build.mov(rArg1, rState);
-    build.lea(rArg2, luauRegAddress(arg));
-
-    build.call(qword[rNativeContext + offsetof(NativeContext, luaT_objtypenamestr)]);
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::qword, rState);
+    callWrap.addArgument(SizeX64::qword, luauRegAddress(arg));
+    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaT_objtypenamestr)]);
 
     build.mov(luauRegValue(ra), rax);
 }
@@ -328,22 +260,18 @@ void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int r
     case LBF_MATH_MIN:
     case LBF_MATH_MAX:
     case LBF_MATH_CLAMP:
+    case LBF_MATH_FLOOR:
+    case LBF_MATH_CEIL:
+    case LBF_MATH_SQRT:
+    case LBF_MATH_POW:
+    case LBF_MATH_ABS:
+    case LBF_MATH_ROUND:
         // These instructions are fully translated to IR
         break;
-    case LBF_MATH_FLOOR:
-        return emitBuiltinMathFloor(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_CEIL:
-        return emitBuiltinMathCeil(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_SQRT:
-        return emitBuiltinMathSqrt(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_ABS:
-        return emitBuiltinMathAbs(regs, build, nparams, ra, arg, argsOp, nresults);
     case LBF_MATH_EXP:
         return emitBuiltinMathExp(regs, build, nparams, ra, arg, argsOp, nresults);
     case LBF_MATH_FMOD:
         return emitBuiltinMathFmod(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_POW:
-        return emitBuiltinMathPow(regs, build, nparams, ra, arg, argsOp, nresults);
     case LBF_MATH_ASIN:
         return emitBuiltinMathAsin(regs, build, nparams, ra, arg, argsOp, nresults);
     case LBF_MATH_SIN:
@@ -370,8 +298,6 @@ void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int r
         return emitBuiltinMathLog(regs, build, nparams, ra, arg, argsOp, nresults);
     case LBF_MATH_LDEXP:
         return emitBuiltinMathLdexp(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_ROUND:
-        return emitBuiltinMathRound(regs, build, nparams, ra, arg, argsOp, nresults);
     case LBF_MATH_FREXP:
         return emitBuiltinMathFrexp(regs, build, nparams, ra, arg, argsOp, nresults);
     case LBF_MATH_MODF:

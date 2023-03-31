@@ -320,6 +320,26 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         if (inst.a.kind == IrOpKind::Constant)
             substitute(function, inst, build.constDouble(-function.doubleOp(inst.a)));
         break;
+    case IrCmd::FLOOR_NUM:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(floor(function.doubleOp(inst.a))));
+        break;
+    case IrCmd::CEIL_NUM:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(ceil(function.doubleOp(inst.a))));
+        break;
+    case IrCmd::ROUND_NUM:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(round(function.doubleOp(inst.a))));
+        break;
+    case IrCmd::SQRT_NUM:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(sqrt(function.doubleOp(inst.a))));
+        break;
+    case IrCmd::ABS_NUM:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(fabs(function.doubleOp(inst.a))));
+        break;
     case IrCmd::NOT_ANY:
         if (inst.a.kind == IrOpKind::Constant)
         {

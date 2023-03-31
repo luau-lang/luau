@@ -1194,7 +1194,6 @@ TEST_CASE_FIXTURE(Fixture, "dcr_delays_expansion_of_function_containing_blocked_
 {
     ScopedFastFlag sff[] = {
         {"DebugLuauDeferredConstraintResolution", true},
-        {"LuauTinyUnifyNormalsFix", true},
         // If we run this with error-suppression, it triggers an assertion.
         // FATAL ERROR: Assertion failed: !"Internal error: Trying to normalize a BlockedType"
         {"LuauTransitiveSubtyping", false},

@@ -100,6 +100,16 @@ void assembleHelpers(AssemblyBuilderA64& build, ModuleHelpers& helpers)
         build.logAppend("; exitNoContinueVm\n");
     helpers.exitNoContinueVm = build.setLabel();
     emitExit(build, /* continueInVm */ false);
+
+    if (build.logText)
+        build.logAppend("; reentry\n");
+    helpers.reentry = build.setLabel();
+    emitReentry(build, helpers);
+
+    if (build.logText)
+        build.logAppend("; interrupt\n");
+    helpers.interrupt = build.setLabel();
+    emitInterrupt(build);
 }
 
 } // namespace A64

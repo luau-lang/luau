@@ -71,9 +71,9 @@ static ABIX64 getCurrentX64ABI()
 #endif
 }
 
-AssemblyBuilderX64::AssemblyBuilderX64(bool logText)
+AssemblyBuilderX64::AssemblyBuilderX64(bool logText, ABIX64 abi)
     : logText(logText)
-    , abi(getCurrentX64ABI())
+    , abi(abi)
 {
     data.resize(4096);
     dataPos = data.size(); // data is filled backwards
@@ -81,6 +81,11 @@ AssemblyBuilderX64::AssemblyBuilderX64(bool logText)
     code.resize(4096);
     codePos = code.data();
     codeEnd = code.data() + code.size();
+}
+
+AssemblyBuilderX64::AssemblyBuilderX64(bool logText)
+    : AssemblyBuilderX64(logText, getCurrentX64ABI())
+{
 }
 
 AssemblyBuilderX64::~AssemblyBuilderX64()

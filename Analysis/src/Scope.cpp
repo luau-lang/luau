@@ -65,7 +65,7 @@ std::optional<TypeId> Scope::lookup(DefId def) const
     return std::nullopt;
 }
 
-std::optional<TypeFun> Scope::lookupType(const Name& name)
+std::optional<TypeFun> Scope::lookupType(const Name& name) const
 {
     const Scope* scope = this;
     while (true)
@@ -85,7 +85,7 @@ std::optional<TypeFun> Scope::lookupType(const Name& name)
     }
 }
 
-std::optional<TypeFun> Scope::lookupImportedType(const Name& moduleAlias, const Name& name)
+std::optional<TypeFun> Scope::lookupImportedType(const Name& moduleAlias, const Name& name) const
 {
     const Scope* scope = this;
     while (scope)
@@ -110,7 +110,7 @@ std::optional<TypeFun> Scope::lookupImportedType(const Name& moduleAlias, const 
     return std::nullopt;
 }
 
-std::optional<TypePackId> Scope::lookupPack(const Name& name)
+std::optional<TypePackId> Scope::lookupPack(const Name& name) const
 {
     const Scope* scope = this;
     while (true)

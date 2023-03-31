@@ -470,7 +470,6 @@ TEST_SUITE_END();
 
 struct NormalizeFixture : Fixture
 {
-    ScopedFastFlag sff1{"LuauNegatedFunctionTypes", true};
     ScopedFastFlag sff2{"LuauNegatedClassTypes", true};
 
     TypeArena arena;

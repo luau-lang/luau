@@ -435,8 +435,8 @@ Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, c
     , moduleResolverForAutocomplete(this)
     , globals(builtinTypes)
     , globalsForAutocomplete(builtinTypes)
-    , typeChecker(globals, &moduleResolver, builtinTypes, &iceHandler)
-    , typeCheckerForAutocomplete(globalsForAutocomplete, &moduleResolverForAutocomplete, builtinTypes, &iceHandler)
+    , typeChecker(globals.globalScope, &moduleResolver, builtinTypes, &iceHandler)
+    , typeCheckerForAutocomplete(globalsForAutocomplete.globalScope, &moduleResolverForAutocomplete, builtinTypes, &iceHandler)
     , configResolver(configResolver)
     , options(options)
 {
@@ -970,8 +970,8 @@ ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle
     cgb.visit(sourceModule.root);
     result->errors = std::move(cgb.errors);
 
-    ConstraintSolver cs{NotNull{&normalizer}, NotNull(cgb.rootScope), borrowConstraints(cgb.constraints), sourceModule.name,
-        NotNull{result->reduction.get()}, moduleResolver, requireCycles, logger.get()};
+    ConstraintSolver cs{NotNull{&normalizer}, NotNull(cgb.rootScope), borrowConstraints(cgb.constraints), sourceModule.name, moduleResolver,
+        requireCycles, logger.get()};
 
     if (options.randomizeConstraintResolutionSeed)
         cs.randomize(*options.randomizeConstraintResolutionSeed);

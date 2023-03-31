@@ -226,12 +226,10 @@ void dump(ConstraintSolver* cs, ToStringOptions& opts)
 }
 
 ConstraintSolver::ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, std::vector<NotNull<Constraint>> constraints,
-    ModuleName moduleName, NotNull<TypeReduction> reducer, NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles,
-    DcrLogger* logger)
+    ModuleName moduleName, NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger)
     : arena(normalizer->arena)
     , builtinTypes(normalizer->builtinTypes)
     , normalizer(normalizer)
-    , reducer(reducer)
     , constraints(std::move(constraints))
     , rootScope(rootScope)
     , currentModuleName(std::move(moduleName))
@@ -458,40 +456,7 @@ bool ConstraintSolver::tryDispatch(const SubtypeConstraint& c, NotNull<const Con
     else if (isBlocked(c.superType))
         return block(c.superType, constraint);
 
-    Unifier u{normalizer, Mode::Strict, constraint->scope, Location{}, Covariant};
-    u.useScopes = true;
-
-    u.tryUnify(c.subType, c.superType);
-
-    if (!u.blockedTypes.empty() || !u.blockedTypePacks.empty())
-    {
-        for (TypeId bt : u.blockedTypes)
-            block(bt, constraint);
-        for (TypePackId btp : u.blockedTypePacks)
-            block(btp, constraint);
-        return false;
-    }
-
-    if (const auto& e = hasUnificationTooComplex(u.errors))
-        reportError(*e);
-
-    if (!u.errors.empty())
-    {
-        TypeId errorType = errorRecoveryType();
-        u.tryUnify(c.subType, errorType);
-        u.tryUnify(c.superType, errorType);
-    }
-
-    const auto [changedTypes, changedPacks] = u.log.getChanges();
-
-    u.log.commit();
-
-    unblock(changedTypes);
-    unblock(changedPacks);
-
-    // unify(c.subType, c.superType, constraint->scope);
-
-    return true;
+    return tryUnify(constraint, c.subType, c.superType);
 }
 
 bool ConstraintSolver::tryDispatch(const PackSubtypeConstraint& c, NotNull<const Constraint> constraint, bool force)
@@ -501,9 +466,7 @@ bool ConstraintSolver::tryDispatch(const PackSubtypeConstraint& c, NotNull<const
     else if (isBlocked(c.superPack))
         return block(c.superPack, constraint);
 
-    unify(c.subPack, c.superPack, constraint->scope);
-
-    return true;
+    return tryUnify(constraint, c.subPack, c.superPack);
 }
 
 bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<const Constraint> constraint, bool force)
@@ -1117,7 +1080,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     InstantiationQueuer queuer{constraint->scope, constraint->location, this};
     queuer.traverse(target);
 
-    if (target->persistent)
+    if (target->persistent || target->owningArena != arena)
     {
         bindResult(target);
         return true;
@@ -1334,8 +1297,6 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
         unblock(c.resultType);
         return true;
     }
-
-    subjectType = reducer->reduce(subjectType).value_or(subjectType);
 
     auto [blocked, result] = lookupTableProp(subjectType, c.prop);
     if (!blocked.empty())
@@ -1716,8 +1677,15 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
 
     if (auto iteratorTable = get<TableType>(iteratorTy))
     {
-        if (iteratorTable->state == TableState::Free)
-            return block_(iteratorTy);
+        /*
+         * We try not to dispatch IterableConstraints over free tables because
+         * it's possible that there are other constraints on the table that will
+         * clarify what we should do.
+         *
+         * We should eventually introduce a type family to talk about iteration.
+         */
+        if (iteratorTable->state == TableState::Free && !force)
+            return block(iteratorTy, constraint);
 
         if (iteratorTable->indexer)
         {
@@ -1957,14 +1925,14 @@ std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTa
     else if (auto utv = get<UnionType>(subjectType))
     {
         std::vector<TypeId> blocked;
-        std::vector<TypeId> options;
+        std::set<TypeId> options;
 
         for (TypeId ty : utv)
         {
             auto [innerBlocked, innerResult] = lookupTableProp(ty, propName, seen);
             blocked.insert(blocked.end(), innerBlocked.begin(), innerBlocked.end());
             if (innerResult)
-                options.push_back(*innerResult);
+                options.insert(*innerResult);
         }
 
         if (!blocked.empty())
@@ -1973,21 +1941,21 @@ std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTa
         if (options.empty())
             return {{}, std::nullopt};
         else if (options.size() == 1)
-            return {{}, options[0]};
+            return {{}, *begin(options)};
         else
-            return {{}, arena->addType(UnionType{std::move(options)})};
+            return {{}, arena->addType(UnionType{std::vector<TypeId>(begin(options), end(options))})};
     }
     else if (auto itv = get<IntersectionType>(subjectType))
     {
         std::vector<TypeId> blocked;
-        std::vector<TypeId> options;
+        std::set<TypeId> options;
 
         for (TypeId ty : itv)
         {
             auto [innerBlocked, innerResult] = lookupTableProp(ty, propName, seen);
             blocked.insert(blocked.end(), innerBlocked.begin(), innerBlocked.end());
             if (innerResult)
-                options.push_back(*innerResult);
+                options.insert(*innerResult);
         }
 
         if (!blocked.empty())
@@ -1996,12 +1964,59 @@ std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTa
         if (options.empty())
             return {{}, std::nullopt};
         else if (options.size() == 1)
-            return {{}, options[0]};
+            return {{}, *begin(options)};
         else
-            return {{}, arena->addType(IntersectionType{std::move(options)})};
+            return {{}, arena->addType(IntersectionType{std::vector<TypeId>(begin(options), end(options))})};
     }
 
     return {{}, std::nullopt};
+}
+
+static TypeId getErrorType(NotNull<BuiltinTypes> builtinTypes, TypeId)
+{
+    return builtinTypes->errorRecoveryType();
+}
+
+static TypePackId getErrorType(NotNull<BuiltinTypes> builtinTypes, TypePackId)
+{
+    return builtinTypes->errorRecoveryTypePack();
+}
+
+template <typename TID>
+bool ConstraintSolver::tryUnify(NotNull<const Constraint> constraint, TID subTy, TID superTy)
+{
+    Unifier u{normalizer, Mode::Strict, constraint->scope, Location{}, Covariant};
+    u.useScopes = true;
+
+    u.tryUnify(subTy, superTy);
+
+    if (!u.blockedTypes.empty() || !u.blockedTypePacks.empty())
+    {
+        for (TypeId bt : u.blockedTypes)
+            block(bt, constraint);
+        for (TypePackId btp : u.blockedTypePacks)
+            block(btp, constraint);
+        return false;
+    }
+
+    if (const auto& e = hasUnificationTooComplex(u.errors))
+        reportError(*e);
+
+    if (!u.errors.empty())
+    {
+        TID errorType = getErrorType(builtinTypes, TID{});
+        u.tryUnify(subTy, errorType);
+        u.tryUnify(superTy, errorType);
+    }
+
+    const auto [changedTypes, changedPacks] = u.log.getChanges();
+
+    u.log.commit();
+
+    unblock(changedTypes);
+    unblock(changedPacks);
+
+    return true;
 }
 
 void ConstraintSolver::block_(BlockedConstraintId target, NotNull<const Constraint> constraint)

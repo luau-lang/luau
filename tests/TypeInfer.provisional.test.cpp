@@ -176,8 +176,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "error_on_eq_metamethod_returning_a_type_othe
 // We need refine both operands as `never` in the `==` branch.
 TEST_CASE_FIXTURE(Fixture, "lvalue_equals_another_lvalue_with_no_overlap")
 {
-    ScopedFastFlag sff{"LuauIntersectionTestForEquality", true};
-
     CheckResult result = check(R"(
         local function f(a: string, b: boolean?)
             if a == b then
