@@ -89,6 +89,7 @@ Aside from performance, a correctness issue was fixed in multi-assignment expres
 ```lua
 arr[1], n = n, n - 1
 ```
+
 In this example, `n - 1` was assigned to `n` before `n` was assigned to `arr[1]`. This issue has now been fixed.
 
 ## Analysis improvements
