@@ -504,7 +504,7 @@ TEST_CASE("Types")
         Luau::InternalErrorReporter iceHandler;
         Luau::BuiltinTypes builtinTypes;
         Luau::GlobalTypes globals{Luau::NotNull{&builtinTypes}};
-        Luau::TypeChecker env(globals, &moduleResolver, Luau::NotNull{&builtinTypes}, &iceHandler);
+        Luau::TypeChecker env(globals.globalScope, &moduleResolver, Luau::NotNull{&builtinTypes}, &iceHandler);
 
         Luau::registerBuiltinGlobals(env, globals);
         Luau::freeze(globals.globalTypes);

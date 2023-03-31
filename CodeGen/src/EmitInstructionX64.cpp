@@ -2,6 +2,7 @@
 #include "EmitInstructionX64.h"
 
 #include "Luau/AssemblyBuilderX64.h"
+#include "Luau/IrRegAllocX64.h"
 
 #include "CustomExecUtils.h"
 #include "EmitCommonX64.h"
@@ -315,7 +316,7 @@ void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, i
     build.jmp(qword[rdx + rax * 2]);
 }
 
-void emitInstSetList(AssemblyBuilderX64& build, Label& next, int ra, int rb, int count, uint32_t index)
+void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, Label& next, int ra, int rb, int count, uint32_t index)
 {
     OperandX64 last = index + count - 1;
 
@@ -346,7 +347,7 @@ void emitInstSetList(AssemblyBuilderX64& build, Label& next, int ra, int rb, int
 
     Label skipResize;
 
-    RegisterX64 table = rax;
+    RegisterX64 table = regs.takeReg(rax);
 
     build.mov(table, luauRegValue(ra));
 
@@ -411,7 +412,7 @@ void emitInstSetList(AssemblyBuilderX64& build, Label& next, int ra, int rb, int
         build.setLabel(endLoop);
     }
 
-    callBarrierTableFast(build, table, next);
+    callBarrierTableFast(regs, build, table, {}, next);
 }
 
 void emitinstForGLoop(AssemblyBuilderX64& build, int ra, int aux, Label& loopRepeat, Label& loopExit)
@@ -483,10 +484,8 @@ void emitinstForGLoop(AssemblyBuilderX64& build, int ra, int aux, Label& loopRep
     build.jcc(ConditionX64::NotZero, loopRepeat);
 }
 
-void emitinstForGLoopFallback(AssemblyBuilderX64& build, int pcpos, int ra, int aux, Label& loopRepeat)
+void emitinstForGLoopFallback(AssemblyBuilderX64& build, int ra, int aux, Label& loopRepeat)
 {
-    emitSetSavedPc(build, pcpos + 1);
-
     build.mov(rArg1, rState);
     build.mov(dwordReg(rArg2), ra);
     build.mov(dwordReg(rArg3), aux);

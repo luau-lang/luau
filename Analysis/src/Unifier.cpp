@@ -21,11 +21,9 @@ LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauUninhabitedSubAnything2, false)
 LUAU_FASTFLAGVARIABLE(LuauMaintainScopesInUnifier, false)
 LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping, false)
-LUAU_FASTFLAGVARIABLE(LuauTinyUnifyNormalsFix, false)
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
-LUAU_FASTFLAG(LuauNegatedFunctionTypes)
 LUAU_FASTFLAG(LuauNegatedClassTypes)
 LUAU_FASTFLAG(LuauNegatedTableTypes)
 
@@ -615,8 +613,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     else if ((log.getMutable<PrimitiveType>(superTy) || log.getMutable<SingletonType>(superTy)) && log.getMutable<SingletonType>(subTy))
         tryUnifySingletons(subTy, superTy);
 
-    else if (auto ptv = get<PrimitiveType>(superTy);
-             FFlag::LuauNegatedFunctionTypes && ptv && ptv->type == PrimitiveType::Function && get<FunctionType>(subTy))
+    else if (auto ptv = get<PrimitiveType>(superTy); ptv && ptv->type == PrimitiveType::Function && get<FunctionType>(subTy))
     {
         // Ok.  Do nothing.  forall functions F, F <: function
     }
@@ -1275,17 +1272,7 @@ void Unifier::tryUnifyNormalizedTypes(
 
             Unifier innerState = makeChildUnifier();
 
-            if (FFlag::LuauTinyUnifyNormalsFix)
-                innerState.tryUnify(subTable, superTable);
-            else
-            {
-                if (get<MetatableType>(superTable))
-                    innerState.tryUnifyWithMetatable(subTable, superTable, /* reversed */ false);
-                else if (get<MetatableType>(subTable))
-                    innerState.tryUnifyWithMetatable(superTable, subTable, /* reversed */ true);
-                else
-                    innerState.tryUnifyTables(subTable, superTable);
-            }
+            innerState.tryUnify(subTable, superTable);
 
             if (innerState.errors.empty())
             {
@@ -1304,7 +1291,7 @@ void Unifier::tryUnifyNormalizedTypes(
     {
         if (superNorm.functions.isNever())
             return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
-        for (TypeId superFun : *superNorm.functions.parts)
+        for (TypeId superFun : superNorm.functions.parts)
         {
             Unifier innerState = makeChildUnifier();
             const FunctionType* superFtv = get<FunctionType>(superFun);
@@ -1343,7 +1330,7 @@ TypePackId Unifier::tryApplyOverloadedFunction(TypeId function, const Normalized
 
     std::optional<TypePackId> result;
     const FunctionType* firstFun = nullptr;
-    for (TypeId overload : *overloads.parts)
+    for (TypeId overload : overloads.parts)
     {
         if (const FunctionType* ftv = get<FunctionType>(overload))
         {

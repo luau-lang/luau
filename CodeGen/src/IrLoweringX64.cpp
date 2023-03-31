@@ -4,6 +4,7 @@
 #include "Luau/CodeGen.h"
 #include "Luau/DenseHash.h"
 #include "Luau/IrAnalysis.h"
+#include "Luau/IrCallWrapperX64.h"
 #include "Luau/IrDump.h"
 #include "Luau/IrUtils.h"
 
@@ -141,7 +142,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         inst.regX64 = regs.allocGprReg(SizeX64::qword);
 
         // Custom bit shift value can only be placed in cl
-        ScopedRegX64 shiftTmp{regs, regs.takeGprReg(rcx)};
+        ScopedRegX64 shiftTmp{regs, regs.takeReg(rcx)};
 
         ScopedRegX64 tmp{regs, SizeX64::qword};
 
@@ -325,82 +326,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     }
     case IrCmd::POW_NUM:
     {
-        inst.regX64 = regs.allocXmmRegOrReuse(index, {inst.a, inst.b});
-
-        ScopedRegX64 optLhsTmp{regs};
-        RegisterX64 lhs;
-
-        if (inst.a.kind == IrOpKind::Constant)
-        {
-            optLhsTmp.alloc(SizeX64::xmmword);
-
-            build.vmovsd(optLhsTmp.reg, memRegDoubleOp(inst.a));
-            lhs = optLhsTmp.reg;
-        }
-        else
-        {
-            lhs = regOp(inst.a);
-        }
-
-        if (inst.b.kind == IrOpKind::Inst)
-        {
-            // TODO: this doesn't happen with current local-only register allocation, but has to be handled in the future
-            LUAU_ASSERT(regOp(inst.b) != xmm0);
-
-            if (lhs != xmm0)
-                build.vmovsd(xmm0, lhs, lhs);
-
-            if (regOp(inst.b) != xmm1)
-                build.vmovsd(xmm1, regOp(inst.b), regOp(inst.b));
-
-            build.call(qword[rNativeContext + offsetof(NativeContext, libm_pow)]);
-
-            if (inst.regX64 != xmm0)
-                build.vmovsd(inst.regX64, xmm0, xmm0);
-        }
-        else if (inst.b.kind == IrOpKind::Constant)
-        {
-            double rhs = doubleOp(inst.b);
-
-            if (rhs == 2.0)
-            {
-                build.vmulsd(inst.regX64, lhs, lhs);
-            }
-            else if (rhs == 0.5)
-            {
-                build.vsqrtsd(inst.regX64, lhs, lhs);
-            }
-            else if (rhs == 3.0)
-            {
-                ScopedRegX64 tmp{regs, SizeX64::xmmword};
-
-                build.vmulsd(tmp.reg, lhs, lhs);
-                build.vmulsd(inst.regX64, lhs, tmp.reg);
-            }
-            else
-            {
-                if (lhs != xmm0)
-                    build.vmovsd(xmm0, xmm0, lhs);
-
-                build.vmovsd(xmm1, build.f64(rhs));
-                build.call(qword[rNativeContext + offsetof(NativeContext, libm_pow)]);
-
-                if (inst.regX64 != xmm0)
-                    build.vmovsd(inst.regX64, xmm0, xmm0);
-            }
-        }
-        else
-        {
-            if (lhs != xmm0)
-                build.vmovsd(xmm0, lhs, lhs);
-
-            build.vmovsd(xmm1, memRegDoubleOp(inst.b));
-            build.call(qword[rNativeContext + offsetof(NativeContext, libm_pow)]);
-
-            if (inst.regX64 != xmm0)
-                build.vmovsd(inst.regX64, xmm0, xmm0);
-        }
-
+        IrCallWrapperX64 callWrap(regs, build, index);
+        callWrap.addArgument(SizeX64::xmmword, memRegDoubleOp(inst.a), inst.a);
+        callWrap.addArgument(SizeX64::xmmword, memRegDoubleOp(inst.b), inst.b);
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, libm_pow)]);
+        inst.regX64 = regs.takeReg(xmm0);
         break;
     }
     case IrCmd::MIN_NUM:
@@ -451,6 +381,46 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         break;
     }
+    case IrCmd::FLOOR_NUM:
+        inst.regX64 = regs.allocXmmRegOrReuse(index, {inst.a});
+
+        build.vroundsd(inst.regX64, inst.regX64, memRegDoubleOp(inst.a), RoundingModeX64::RoundToNegativeInfinity);
+        break;
+    case IrCmd::CEIL_NUM:
+        inst.regX64 = regs.allocXmmRegOrReuse(index, {inst.a});
+
+        build.vroundsd(inst.regX64, inst.regX64, memRegDoubleOp(inst.a), RoundingModeX64::RoundToPositiveInfinity);
+        break;
+    case IrCmd::ROUND_NUM:
+    {
+        inst.regX64 = regs.allocXmmRegOrReuse(index, {inst.a});
+
+        ScopedRegX64 tmp1{regs, SizeX64::xmmword};
+        ScopedRegX64 tmp2{regs, SizeX64::xmmword};
+
+        if (inst.a.kind != IrOpKind::Inst || regOp(inst.a) != inst.regX64)
+            build.vmovsd(inst.regX64, memRegDoubleOp(inst.a));
+
+        build.vandpd(tmp1.reg, inst.regX64, build.f64x2(-0.0, -0.0));
+        build.vmovsd(tmp2.reg, build.i64(0x3fdfffffffffffff)); // 0.49999999999999994
+        build.vorpd(tmp1.reg, tmp1.reg, tmp2.reg);
+        build.vaddsd(inst.regX64, inst.regX64, tmp1.reg);
+        build.vroundsd(inst.regX64, inst.regX64, inst.regX64, RoundingModeX64::RoundToZero);
+        break;
+    }
+    case IrCmd::SQRT_NUM:
+        inst.regX64 = regs.allocXmmRegOrReuse(index, {inst.a});
+
+        build.vsqrtsd(inst.regX64, inst.regX64, memRegDoubleOp(inst.a));
+        break;
+    case IrCmd::ABS_NUM:
+        inst.regX64 = regs.allocXmmRegOrReuse(index, {inst.a});
+
+        if (inst.a.kind != IrOpKind::Inst || regOp(inst.a) != inst.regX64)
+            build.vmovsd(inst.regX64, memRegDoubleOp(inst.a));
+
+        build.vandpd(inst.regX64, inst.regX64, build.i64(~(1LL << 63)));
+        break;
     case IrCmd::NOT_ANY:
     {
         // TODO: if we have a single user which is a STORE_INT, we are missing the opportunity to write directly to target
@@ -539,7 +509,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         break;
     }
     case IrCmd::JUMP_CMP_ANY:
-        jumpOnAnyCmpFallback(build, vmRegOp(inst.a), vmRegOp(inst.b), conditionOp(inst.c), labelOp(inst.d));
+        jumpOnAnyCmpFallback(regs, build, vmRegOp(inst.a), vmRegOp(inst.b), conditionOp(inst.c), labelOp(inst.d));
         jumpOrFallthrough(blockOp(inst.e), next);
         break;
     case IrCmd::JUMP_SLOT_MATCH:
@@ -551,34 +521,34 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         break;
     }
     case IrCmd::TABLE_LEN:
-        inst.regX64 = regs.allocXmmReg();
+    {
+        IrCallWrapperX64 callWrap(regs, build, index);
+        callWrap.addArgument(SizeX64::qword, regOp(inst.a), inst.a);
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaH_getn)]);
 
-        build.mov(rArg1, regOp(inst.a));
-        build.call(qword[rNativeContext + offsetof(NativeContext, luaH_getn)]);
+        inst.regX64 = regs.allocXmmReg();
         build.vcvtsi2sd(inst.regX64, inst.regX64, eax);
         break;
+    }
     case IrCmd::NEW_TABLE:
-        inst.regX64 = regs.allocGprReg(SizeX64::qword);
-
-        build.mov(rArg1, rState);
-        build.mov(dwordReg(rArg2), uintOp(inst.a));
-        build.mov(dwordReg(rArg3), uintOp(inst.b));
-        build.call(qword[rNativeContext + offsetof(NativeContext, luaH_new)]);
-
-        if (inst.regX64 != rax)
-            build.mov(inst.regX64, rax);
+    {
+        IrCallWrapperX64 callWrap(regs, build, index);
+        callWrap.addArgument(SizeX64::qword, rState);
+        callWrap.addArgument(SizeX64::dword, int32_t(uintOp(inst.a)), inst.a);
+        callWrap.addArgument(SizeX64::dword, int32_t(uintOp(inst.b)), inst.b);
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaH_new)]);
+        inst.regX64 = regs.takeReg(rax);
         break;
+    }
     case IrCmd::DUP_TABLE:
-        inst.regX64 = regs.allocGprReg(SizeX64::qword);
-
-        // Re-ordered to avoid register conflict
-        build.mov(rArg2, regOp(inst.a));
-        build.mov(rArg1, rState);
-        build.call(qword[rNativeContext + offsetof(NativeContext, luaH_clone)]);
-
-        if (inst.regX64 != rax)
-            build.mov(inst.regX64, rax);
+    {
+        IrCallWrapperX64 callWrap(regs, build, index);
+        callWrap.addArgument(SizeX64::qword, rState);
+        callWrap.addArgument(SizeX64::qword, regOp(inst.a), inst.a);
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaH_clone)]);
+        inst.regX64 = regs.takeReg(rax);
         break;
+    }
     case IrCmd::TRY_NUM_TO_INDEX:
     {
         inst.regX64 = regs.allocGprReg(SizeX64::dword);
@@ -590,12 +560,26 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     }
     case IrCmd::TRY_CALL_FASTGETTM:
     {
-        inst.regX64 = regs.allocGprReg(SizeX64::qword);
+        ScopedRegX64 tmp{regs, SizeX64::qword};
 
-        callGetFastTmOrFallback(build, regOp(inst.a), TMS(intOp(inst.b)), labelOp(inst.c));
+        build.mov(tmp.reg, qword[regOp(inst.a) + offsetof(Table, metatable)]);
+        regs.freeLastUseReg(function.instOp(inst.a), index); // Release before the call if it's the last use
 
-        if (inst.regX64 != rax)
-            build.mov(inst.regX64, rax);
+        build.test(tmp.reg, tmp.reg);
+        build.jcc(ConditionX64::Zero, labelOp(inst.c)); // No metatable
+
+        build.test(byte[tmp.reg + offsetof(Table, tmcache)], 1 << intOp(inst.b));
+        build.jcc(ConditionX64::NotZero, labelOp(inst.c)); // No tag method
+
+        ScopedRegX64 tmp2{regs, SizeX64::qword};
+        build.mov(tmp2.reg, qword[rState + offsetof(lua_State, global)]);
+
+        IrCallWrapperX64 callWrap(regs, build, index);
+        callWrap.addArgument(SizeX64::qword, tmp);
+        callWrap.addArgument(SizeX64::qword, intOp(inst.b));
+        callWrap.addArgument(SizeX64::qword, qword[tmp2.release() + offsetof(global_State, tmname) + intOp(inst.b) * sizeof(TString*)]);
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaT_gettm)]);
+        inst.regX64 = regs.takeReg(rax);
         break;
     }
     case IrCmd::INT_TO_NUM:
@@ -701,7 +685,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         build.call(rax);
 
-        inst.regX64 = regs.takeGprReg(eax); // Result of a builtin call is returned in eax
+        inst.regX64 = regs.takeReg(eax); // Result of a builtin call is returned in eax
         break;
     }
     case IrCmd::CHECK_FASTCALL_RES:
@@ -714,23 +698,23 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     }
     case IrCmd::DO_ARITH:
         if (inst.c.kind == IrOpKind::VmReg)
-            callArithHelper(build, vmRegOp(inst.a), vmRegOp(inst.b), luauRegAddress(vmRegOp(inst.c)), TMS(intOp(inst.d)));
+            callArithHelper(regs, build, vmRegOp(inst.a), vmRegOp(inst.b), luauRegAddress(vmRegOp(inst.c)), TMS(intOp(inst.d)));
         else
-            callArithHelper(build, vmRegOp(inst.a), vmRegOp(inst.b), luauConstantAddress(vmConstOp(inst.c)), TMS(intOp(inst.d)));
+            callArithHelper(regs, build, vmRegOp(inst.a), vmRegOp(inst.b), luauConstantAddress(vmConstOp(inst.c)), TMS(intOp(inst.d)));
         break;
     case IrCmd::DO_LEN:
-        callLengthHelper(build, vmRegOp(inst.a), vmRegOp(inst.b));
+        callLengthHelper(regs, build, vmRegOp(inst.a), vmRegOp(inst.b));
         break;
     case IrCmd::GET_TABLE:
         if (inst.c.kind == IrOpKind::VmReg)
         {
-            callGetTable(build, vmRegOp(inst.b), luauRegAddress(vmRegOp(inst.c)), vmRegOp(inst.a));
+            callGetTable(regs, build, vmRegOp(inst.b), luauRegAddress(vmRegOp(inst.c)), vmRegOp(inst.a));
         }
         else if (inst.c.kind == IrOpKind::Constant)
         {
             TValue n;
             setnvalue(&n, uintOp(inst.c));
-            callGetTable(build, vmRegOp(inst.b), build.bytes(&n, sizeof(n)), vmRegOp(inst.a));
+            callGetTable(regs, build, vmRegOp(inst.b), build.bytes(&n, sizeof(n)), vmRegOp(inst.a));
         }
         else
         {
@@ -740,13 +724,13 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     case IrCmd::SET_TABLE:
         if (inst.c.kind == IrOpKind::VmReg)
         {
-            callSetTable(build, vmRegOp(inst.b), luauRegAddress(vmRegOp(inst.c)), vmRegOp(inst.a));
+            callSetTable(regs, build, vmRegOp(inst.b), luauRegAddress(vmRegOp(inst.c)), vmRegOp(inst.a));
         }
         else if (inst.c.kind == IrOpKind::Constant)
         {
             TValue n;
             setnvalue(&n, uintOp(inst.c));
-            callSetTable(build, vmRegOp(inst.b), build.bytes(&n, sizeof(n)), vmRegOp(inst.a));
+            callSetTable(regs, build, vmRegOp(inst.b), build.bytes(&n, sizeof(n)), vmRegOp(inst.a));
         }
         else
         {
@@ -757,13 +741,16 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         emitInstGetImportFallback(build, vmRegOp(inst.a), uintOp(inst.b));
         break;
     case IrCmd::CONCAT:
-        build.mov(rArg1, rState);
-        build.mov(dwordReg(rArg2), uintOp(inst.b));
-        build.mov(dwordReg(rArg3), vmRegOp(inst.a) + uintOp(inst.b) - 1);
-        build.call(qword[rNativeContext + offsetof(NativeContext, luaV_concat)]);
+    {
+        IrCallWrapperX64 callWrap(regs, build, index);
+        callWrap.addArgument(SizeX64::qword, rState);
+        callWrap.addArgument(SizeX64::dword, int32_t(uintOp(inst.b)));
+        callWrap.addArgument(SizeX64::dword, int32_t(vmRegOp(inst.a) + uintOp(inst.b) - 1));
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_concat)]);
 
         emitUpdateBase(build);
         break;
+    }
     case IrCmd::GET_UPVALUE:
     {
         ScopedRegX64 tmp1{regs, SizeX64::qword};
@@ -793,21 +780,26 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         Label next;
         ScopedRegX64 tmp1{regs, SizeX64::qword};
         ScopedRegX64 tmp2{regs, SizeX64::qword};
-        ScopedRegX64 tmp3{regs, SizeX64::xmmword};
 
         build.mov(tmp1.reg, sClosure);
         build.mov(tmp2.reg, qword[tmp1.reg + offsetof(Closure, l.uprefs) + sizeof(TValue) * vmUpvalueOp(inst.a) + offsetof(TValue, value.gc)]);
 
         build.mov(tmp1.reg, qword[tmp2.reg + offsetof(UpVal, v)]);
-        build.vmovups(tmp3.reg, luauReg(vmRegOp(inst.b)));
-        build.vmovups(xmmword[tmp1.reg], tmp3.reg);
 
-        callBarrierObject(build, tmp1.reg, tmp2.reg, vmRegOp(inst.b), next);
+        {
+            ScopedRegX64 tmp3{regs, SizeX64::xmmword};
+            build.vmovups(tmp3.reg, luauReg(vmRegOp(inst.b)));
+            build.vmovups(xmmword[tmp1.reg], tmp3.reg);
+        }
+
+        tmp1.free();
+
+        callBarrierObject(regs, build, tmp2.release(), {}, vmRegOp(inst.b), next);
         build.setLabel(next);
         break;
     }
     case IrCmd::PREPARE_FORN:
-        callPrepareForN(build, vmRegOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c));
+        callPrepareForN(regs, build, vmRegOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c));
         break;
     case IrCmd::CHECK_TAG:
         if (inst.a.kind == IrOpKind::Inst)
@@ -863,38 +855,43 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         jumpIfNodeHasNext(build, regOp(inst.a), labelOp(inst.b));
         break;
     case IrCmd::INTERRUPT:
+        regs.assertAllFree();
         emitInterrupt(build, uintOp(inst.a));
         break;
     case IrCmd::CHECK_GC:
     {
         Label skip;
-        callCheckGc(build, -1, false, skip);
+        callCheckGc(regs, build, skip);
         build.setLabel(skip);
         break;
     }
     case IrCmd::BARRIER_OBJ:
     {
         Label skip;
-        ScopedRegX64 tmp{regs, SizeX64::qword};
-
-        callBarrierObject(build, tmp.reg, regOp(inst.a), vmRegOp(inst.b), skip);
+        callBarrierObject(regs, build, regOp(inst.a), inst.a, vmRegOp(inst.b), skip);
         build.setLabel(skip);
         break;
     }
     case IrCmd::BARRIER_TABLE_BACK:
     {
         Label skip;
-
-        callBarrierTableFast(build, regOp(inst.a), skip);
+        callBarrierTableFast(regs, build, regOp(inst.a), inst.a, skip);
         build.setLabel(skip);
         break;
     }
     case IrCmd::BARRIER_TABLE_FORWARD:
     {
         Label skip;
-        ScopedRegX64 tmp{regs, SizeX64::qword};
 
-        callBarrierTable(build, tmp.reg, regOp(inst.a), vmRegOp(inst.b), skip);
+        ScopedRegX64 tmp{regs, SizeX64::qword};
+        checkObjectBarrierConditions(build, tmp.reg, regOp(inst.a), vmRegOp(inst.b), skip);
+
+        IrCallWrapperX64 callWrap(regs, build, index);
+        callWrap.addArgument(SizeX64::qword, rState);
+        callWrap.addArgument(SizeX64::qword, regOp(inst.a), inst.a);
+        callWrap.addArgument(SizeX64::qword, tmp);
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaC_barriertable)]);
+
         build.setLabel(skip);
         break;
     }
@@ -926,11 +923,12 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.cmp(tmp2.reg, qword[tmp1.reg + offsetof(UpVal, v)]);
         build.jcc(ConditionX64::Above, next);
 
-        if (rArg2 != tmp2.reg)
-            build.mov(rArg2, tmp2.reg);
+        tmp1.free();
 
-        build.mov(rArg1, rState);
-        build.call(qword[rNativeContext + offsetof(NativeContext, luaF_close)]);
+        IrCallWrapperX64 callWrap(regs, build, index);
+        callWrap.addArgument(SizeX64::qword, rState);
+        callWrap.addArgument(SizeX64::qword, tmp2);
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaF_close)]);
 
         build.setLabel(next);
         break;
@@ -940,42 +938,53 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         break;
 
         // Fallbacks to non-IR instruction implementations
-    case IrCmd::LOP_SETLIST:
+    case IrCmd::SETLIST:
     {
         Label next;
-        emitInstSetList(build, next, vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.d), uintOp(inst.e));
+        regs.assertAllFree();
+        emitInstSetList(regs, build, next, vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.d), uintOp(inst.e));
         build.setLabel(next);
         break;
     }
-    case IrCmd::LOP_CALL:
+    case IrCmd::CALL:
+        regs.assertAllFree();
         emitInstCall(build, helpers, vmRegOp(inst.a), intOp(inst.b), intOp(inst.c));
         break;
-    case IrCmd::LOP_RETURN:
+    case IrCmd::RETURN:
+        regs.assertAllFree();
         emitInstReturn(build, helpers, vmRegOp(inst.a), intOp(inst.b));
         break;
-    case IrCmd::LOP_FORGLOOP:
+    case IrCmd::FORGLOOP:
+        regs.assertAllFree();
         emitinstForGLoop(build, vmRegOp(inst.a), intOp(inst.b), labelOp(inst.c), labelOp(inst.d));
         break;
-    case IrCmd::LOP_FORGLOOP_FALLBACK:
-        emitinstForGLoopFallback(build, uintOp(inst.a), vmRegOp(inst.b), intOp(inst.c), labelOp(inst.d));
-        build.jmp(labelOp(inst.e));
+    case IrCmd::FORGLOOP_FALLBACK:
+        regs.assertAllFree();
+        emitinstForGLoopFallback(build, vmRegOp(inst.a), intOp(inst.b), labelOp(inst.c));
+        build.jmp(labelOp(inst.d));
         break;
-    case IrCmd::LOP_FORGPREP_XNEXT_FALLBACK:
+    case IrCmd::FORGPREP_XNEXT_FALLBACK:
+        regs.assertAllFree();
         emitInstForGPrepXnextFallback(build, uintOp(inst.a), vmRegOp(inst.b), labelOp(inst.c));
         break;
-    case IrCmd::LOP_AND:
+    case IrCmd::AND:
+        regs.assertAllFree();
         emitInstAnd(build, vmRegOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c));
         break;
-    case IrCmd::LOP_ANDK:
+    case IrCmd::ANDK:
+        regs.assertAllFree();
         emitInstAndK(build, vmRegOp(inst.a), vmRegOp(inst.b), vmConstOp(inst.c));
         break;
-    case IrCmd::LOP_OR:
+    case IrCmd::OR:
+        regs.assertAllFree();
         emitInstOr(build, vmRegOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c));
         break;
-    case IrCmd::LOP_ORK:
+    case IrCmd::ORK:
+        regs.assertAllFree();
         emitInstOrK(build, vmRegOp(inst.a), vmRegOp(inst.b), vmConstOp(inst.c));
         break;
-    case IrCmd::LOP_COVERAGE:
+    case IrCmd::COVERAGE:
+        regs.assertAllFree();
         emitInstCoverage(build, uintOp(inst.a));
         break;
 
@@ -984,12 +993,14 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmConst);
 
+        regs.assertAllFree();
         emitFallback(build, data, LOP_GETGLOBAL, uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_SETGLOBAL:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmConst);
 
+        regs.assertAllFree();
         emitFallback(build, data, LOP_SETGLOBAL, uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_GETTABLEKS:
@@ -997,6 +1008,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.d.kind == IrOpKind::VmConst);
 
+        regs.assertAllFree();
         emitFallback(build, data, LOP_GETTABLEKS, uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_SETTABLEKS:
@@ -1004,6 +1016,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.d.kind == IrOpKind::VmConst);
 
+        regs.assertAllFree();
         emitFallback(build, data, LOP_SETTABLEKS, uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_NAMECALL:
@@ -1011,32 +1024,38 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.d.kind == IrOpKind::VmConst);
 
+        regs.assertAllFree();
         emitFallback(build, data, LOP_NAMECALL, uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_PREPVARARGS:
         LUAU_ASSERT(inst.b.kind == IrOpKind::Constant);
 
+        regs.assertAllFree();
         emitFallback(build, data, LOP_PREPVARARGS, uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_GETVARARGS:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::Constant);
 
+        regs.assertAllFree();
         emitFallback(build, data, LOP_GETVARARGS, uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_NEWCLOSURE:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::Constant);
 
+        regs.assertAllFree();
         emitFallback(build, data, LOP_NEWCLOSURE, uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_DUPCLOSURE:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmConst);
 
+        regs.assertAllFree();
         emitFallback(build, data, LOP_DUPCLOSURE, uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_FORGPREP:
+        regs.assertAllFree();
         emitFallback(build, data, LOP_FORGPREP, uintOp(inst.a));
         break;
     default:

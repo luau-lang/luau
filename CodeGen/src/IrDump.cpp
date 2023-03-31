@@ -126,6 +126,16 @@ const char* getCmdName(IrCmd cmd)
         return "MAX_NUM";
     case IrCmd::UNM_NUM:
         return "UNM_NUM";
+    case IrCmd::FLOOR_NUM:
+        return "FLOOR_NUM";
+    case IrCmd::CEIL_NUM:
+        return "CEIL_NUM";
+    case IrCmd::ROUND_NUM:
+        return "ROUND_NUM";
+    case IrCmd::SQRT_NUM:
+        return "SQRT_NUM";
+    case IrCmd::ABS_NUM:
+        return "ABS_NUM";
     case IrCmd::NOT_ANY:
         return "NOT_ANY";
     case IrCmd::JUMP:
@@ -216,28 +226,28 @@ const char* getCmdName(IrCmd cmd)
         return "CLOSE_UPVALS";
     case IrCmd::CAPTURE:
         return "CAPTURE";
-    case IrCmd::LOP_SETLIST:
-        return "LOP_SETLIST";
-    case IrCmd::LOP_CALL:
-        return "LOP_CALL";
-    case IrCmd::LOP_RETURN:
-        return "LOP_RETURN";
-    case IrCmd::LOP_FORGLOOP:
-        return "LOP_FORGLOOP";
-    case IrCmd::LOP_FORGLOOP_FALLBACK:
-        return "LOP_FORGLOOP_FALLBACK";
-    case IrCmd::LOP_FORGPREP_XNEXT_FALLBACK:
-        return "LOP_FORGPREP_XNEXT_FALLBACK";
-    case IrCmd::LOP_AND:
-        return "LOP_AND";
-    case IrCmd::LOP_ANDK:
-        return "LOP_ANDK";
-    case IrCmd::LOP_OR:
-        return "LOP_OR";
-    case IrCmd::LOP_ORK:
-        return "LOP_ORK";
-    case IrCmd::LOP_COVERAGE:
-        return "LOP_COVERAGE";
+    case IrCmd::SETLIST:
+        return "SETLIST";
+    case IrCmd::CALL:
+        return "CALL";
+    case IrCmd::RETURN:
+        return "RETURN";
+    case IrCmd::FORGLOOP:
+        return "FORGLOOP";
+    case IrCmd::FORGLOOP_FALLBACK:
+        return "FORGLOOP_FALLBACK";
+    case IrCmd::FORGPREP_XNEXT_FALLBACK:
+        return "FORGPREP_XNEXT_FALLBACK";
+    case IrCmd::AND:
+        return "AND";
+    case IrCmd::ANDK:
+        return "ANDK";
+    case IrCmd::OR:
+        return "OR";
+    case IrCmd::ORK:
+        return "ORK";
+    case IrCmd::COVERAGE:
+        return "COVERAGE";
     case IrCmd::FALLBACK_GETGLOBAL:
         return "FALLBACK_GETGLOBAL";
     case IrCmd::FALLBACK_SETGLOBAL:

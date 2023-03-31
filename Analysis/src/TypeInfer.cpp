@@ -26,7 +26,6 @@
 #include <iterator>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicTypes, false)
-LUAU_FASTFLAGVARIABLE(LuauDontExtendUnsealedRValueTables, false)
 LUAU_FASTINTVARIABLE(LuauTypeInferRecursionLimit, 165)
 LUAU_FASTINTVARIABLE(LuauTypeInferIterationLimit, 20000)
 LUAU_FASTINTVARIABLE(LuauTypeInferTypePackLoopLimit, 5000)
@@ -38,7 +37,6 @@ LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
 LUAU_FASTFLAGVARIABLE(LuauTryhardAnd, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauIntersectionTestForEquality, false)
 LUAU_FASTFLAG(LuauNegatedClassTypes)
 LUAU_FASTFLAGVARIABLE(LuauAllowIndexClassParameters, false)
 LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
@@ -228,8 +226,8 @@ GlobalTypes::GlobalTypes(NotNull<BuiltinTypes> builtinTypes)
     globalScope->addBuiltinTypeBinding("never", TypeFun{{}, builtinTypes->neverType});
 }
 
-TypeChecker::TypeChecker(const GlobalTypes& globals, ModuleResolver* resolver, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter* iceHandler)
-    : globals(globals)
+TypeChecker::TypeChecker(const ScopePtr& globalScope, ModuleResolver* resolver, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter* iceHandler)
+    : globalScope(globalScope)
     , resolver(resolver)
     , builtinTypes(builtinTypes)
     , iceHandler(iceHandler)
@@ -280,7 +278,7 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
     unifierState.counters.iterationLimit = unifierIterationLimit ? *unifierIterationLimit : FInt::LuauTypeInferIterationLimit;
 
-    ScopePtr parentScope = environmentScope.value_or(globals.globalScope);
+    ScopePtr parentScope = environmentScope.value_or(globalScope);
     ScopePtr moduleScope = std::make_shared<Scope>(parentScope);
 
     if (module.cyclic)
@@ -1656,7 +1654,7 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
     }
     else
     {
-        if (globals.globalScope->builtinTypeNames.contains(name))
+        if (globalScope->builtinTypeNames.contains(name))
         {
             reportError(typealias.location, DuplicateTypeDefinition{name});
             duplicateTypeAliases.insert({typealias.exported, name});
@@ -2690,7 +2688,7 @@ TypeId TypeChecker::checkRelationalOperation(
         if (get<NeverType>(lhsType) || get<NeverType>(rhsType))
             return booleanType;
 
-        if (FFlag::LuauIntersectionTestForEquality && isEquality)
+        if (isEquality)
         {
             // Unless either type is free or any, an equality comparison is only
             // valid when the intersection of the two operands is non-empty.
@@ -3261,16 +3259,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
         {
             return it->second.type;
         }
-        else if (!FFlag::LuauDontExtendUnsealedRValueTables && (lhsTable->state == TableState::Unsealed || lhsTable->state == TableState::Free))
-        {
-            TypeId theType = freshType(scope);
-            Property& property = lhsTable->props[name];
-            property.type = theType;
-            property.location = expr.indexLocation;
-            return theType;
-        }
-        else if (FFlag::LuauDontExtendUnsealedRValueTables &&
-                 ((ctx == ValueContext::LValue && lhsTable->state == TableState::Unsealed) || lhsTable->state == TableState::Free))
+        else if ((ctx == ValueContext::LValue && lhsTable->state == TableState::Unsealed) || lhsTable->state == TableState::Free)
         {
             TypeId theType = freshType(scope);
             Property& property = lhsTable->props[name];
@@ -3391,16 +3380,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
         {
             return it->second.type;
         }
-        else if (!FFlag::LuauDontExtendUnsealedRValueTables && (exprTable->state == TableState::Unsealed || exprTable->state == TableState::Free))
-        {
-            TypeId resultType = freshType(scope);
-            Property& property = exprTable->props[value->value.data];
-            property.type = resultType;
-            property.location = expr.index->location;
-            return resultType;
-        }
-        else if (FFlag::LuauDontExtendUnsealedRValueTables &&
-                 ((ctx == ValueContext::LValue && exprTable->state == TableState::Unsealed) || exprTable->state == TableState::Free))
+        else if ((ctx == ValueContext::LValue && exprTable->state == TableState::Unsealed) || exprTable->state == TableState::Free)
         {
             TypeId resultType = freshType(scope);
             Property& property = exprTable->props[value->value.data];
@@ -3416,14 +3396,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
         unify(indexType, indexer.indexType, scope, expr.index->location);
         return indexer.indexResultType;
     }
-    else if (!FFlag::LuauDontExtendUnsealedRValueTables && (exprTable->state == TableState::Unsealed || exprTable->state == TableState::Free))
-    {
-        TypeId resultType = freshType(exprTable->level);
-        exprTable->indexer = TableIndexer{anyIfNonstrict(indexType), anyIfNonstrict(resultType)};
-        return resultType;
-    }
-    else if (FFlag::LuauDontExtendUnsealedRValueTables &&
-             ((ctx == ValueContext::LValue && exprTable->state == TableState::Unsealed) || exprTable->state == TableState::Free))
+    else if ((ctx == ValueContext::LValue && exprTable->state == TableState::Unsealed) || exprTable->state == TableState::Free)
     {
         TypeId indexerType = freshType(exprTable->level);
         unify(indexType, indexerType, scope, expr.location);
@@ -3439,13 +3412,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
          * has no indexer, we have no idea if it will work so we just return any
          * and hope for the best.
          */
-        if (FFlag::LuauDontExtendUnsealedRValueTables)
-            return anyType;
-        else
-        {
-            TypeId resultType = freshType(scope);
-            return resultType;
-        }
+        return anyType;
     }
 }
 
@@ -5997,7 +5964,7 @@ void TypeChecker::resolve(const TypeGuardPredicate& typeguardP, RefinementMap& r
     if (!typeguardP.isTypeof)
         return addRefinement(refis, typeguardP.lvalue, errorRecoveryType(scope));
 
-    auto typeFun = globals.globalScope->lookupType(typeguardP.kind);
+    auto typeFun = globalScope->lookupType(typeguardP.kind);
     if (!typeFun || !typeFun->typeParams.empty() || !typeFun->typePackParams.empty())
         return addRefinement(refis, typeguardP.lvalue, errorRecoveryType(scope));
 

@@ -860,8 +860,6 @@ TEST_CASE_FIXTURE(Fixture, "operator_eq_operands_are_not_subtypes_of_each_other_
 
 TEST_CASE_FIXTURE(Fixture, "operator_eq_completely_incompatible")
 {
-    ScopedFastFlag sff{"LuauIntersectionTestForEquality", true};
-
     CheckResult result = check(R"(
         local a: string | number = "hi"
         local b: {x: string}? = {x = "bye"}
@@ -970,8 +968,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "expected_types_through_binary_or")
 
 TEST_CASE_FIXTURE(ClassFixture, "unrelated_classes_cannot_be_compared")
 {
-    ScopedFastFlag sff{"LuauIntersectionTestForEquality", true};
-
     CheckResult result = check(R"(
         local a = BaseClass.New()
         local b = UnrelatedClass.New()
@@ -984,8 +980,6 @@ TEST_CASE_FIXTURE(ClassFixture, "unrelated_classes_cannot_be_compared")
 
 TEST_CASE_FIXTURE(Fixture, "unrelated_primitives_cannot_be_compared")
 {
-    ScopedFastFlag sff{"LuauIntersectionTestForEquality", true};
-
     CheckResult result = check(R"(
         local c = 5 == true
     )");

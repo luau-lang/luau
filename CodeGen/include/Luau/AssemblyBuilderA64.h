@@ -16,10 +16,15 @@ namespace CodeGen
 namespace A64
 {
 
+enum FeaturesA64
+{
+    Feature_JSCVT = 1 << 0,
+};
+
 class AssemblyBuilderA64
 {
 public:
-    explicit AssemblyBuilderA64(bool logText);
+    explicit AssemblyBuilderA64(bool logText, unsigned int features = 0);
     ~AssemblyBuilderA64();
 
     // Moves
@@ -42,6 +47,7 @@ public:
     // Note: some arithmetic instructions also have versions that update flags (ADDS etc) but we aren't using them atm
     void cmp(RegisterA64 src1, RegisterA64 src2);
     void cmp(RegisterA64 src1, uint16_t src2);
+    void csel(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond);
 
     // Bitwise
     // Note: shifted-register support and bitfield operations are omitted for simplicity
@@ -93,6 +99,36 @@ public:
     // Address of code (label)
     void adr(RegisterA64 dst, Label& label);
 
+    // Floating-point scalar moves
+    void fmov(RegisterA64 dst, RegisterA64 src);
+
+    // Floating-point scalar math
+    void fabs(RegisterA64 dst, RegisterA64 src);
+    void fadd(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
+    void fdiv(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
+    void fmul(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
+    void fneg(RegisterA64 dst, RegisterA64 src);
+    void fsqrt(RegisterA64 dst, RegisterA64 src);
+    void fsub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
+
+    // Floating-point rounding and conversions
+    void frinta(RegisterA64 dst, RegisterA64 src);
+    void frintm(RegisterA64 dst, RegisterA64 src);
+    void frintp(RegisterA64 dst, RegisterA64 src);
+    void fcvtzs(RegisterA64 dst, RegisterA64 src);
+    void fcvtzu(RegisterA64 dst, RegisterA64 src);
+    void scvtf(RegisterA64 dst, RegisterA64 src);
+    void ucvtf(RegisterA64 dst, RegisterA64 src);
+
+    // Floating-point conversion to integer using JS rules (wrap around 2^32) and set Z flag
+    // note: this is part of ARM8.3 (JSCVT feature); support of this instruction needs to be checked at runtime
+    void fjcvtzs(RegisterA64 dst, RegisterA64 src);
+
+    // Floating-point comparisons
+    void fcmp(RegisterA64 src1, RegisterA64 src2);
+    void fcmpz(RegisterA64 src);
+    void fcsel(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond);
+
     // Run final checks
     bool finalize();
 
@@ -121,6 +157,7 @@ public:
     std::string text;
 
     const bool logText = false;
+    const unsigned int features = 0;
 
     // Maximum immediate argument to functions like add/sub/cmp
     static constexpr size_t kMaxImmediate = (1 << 12) - 1;
@@ -134,13 +171,15 @@ private:
     void placeR1(const char* name, RegisterA64 dst, RegisterA64 src, uint32_t op);
     void placeI12(const char* name, RegisterA64 dst, RegisterA64 src1, int src2, uint8_t op);
     void placeI16(const char* name, RegisterA64 dst, int src, uint8_t op, int shift = 0);
-    void placeA(const char* name, RegisterA64 dst, AddressA64 src, uint8_t op, uint8_t size);
+    void placeA(const char* name, RegisterA64 dst, AddressA64 src, uint8_t op, uint8_t size, int sizelog);
     void placeBC(const char* name, Label& label, uint8_t op, uint8_t cond);
     void placeBCR(const char* name, Label& label, uint8_t op, RegisterA64 cond);
     void placeBR(const char* name, RegisterA64 src, uint32_t op);
     void placeADR(const char* name, RegisterA64 src, uint8_t op);
     void placeADR(const char* name, RegisterA64 src, uint8_t op, Label& label);
-    void placeP(const char* name, RegisterA64 dst1, RegisterA64 dst2, AddressA64 src, uint8_t op, uint8_t size);
+    void placeP(const char* name, RegisterA64 dst1, RegisterA64 dst2, AddressA64 src, uint8_t op, uint8_t opc, int sizelog);
+    void placeCS(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t op, uint8_t opc);
+    void placeFCMP(const char* name, RegisterA64 src1, RegisterA64 src2, uint8_t op, uint8_t opc);
 
     void place(uint32_t word);
 
@@ -164,6 +203,7 @@ private:
     LUAU_NOINLINE void log(const char* opcode, RegisterA64 src, Label label);
     LUAU_NOINLINE void log(const char* opcode, RegisterA64 src);
     LUAU_NOINLINE void log(const char* opcode, Label label);
+    LUAU_NOINLINE void log(const char* opcode, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond);
     LUAU_NOINLINE void log(Label label);
     LUAU_NOINLINE void log(RegisterA64 reg);
     LUAU_NOINLINE void log(AddressA64 addr);

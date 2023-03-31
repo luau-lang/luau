@@ -23,35 +23,50 @@ void emitInstReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers, int ra, i
     build.ldr(x3, mem(rNativeContext, offsetof(NativeContext, returnFallback)));
     build.blr(x3);
 
+    // reentry with x0=closure (NULL will trigger exit)
+    build.b(helpers.reentry);
+}
+
+void emitInstCall(AssemblyBuilderA64& build, ModuleHelpers& helpers, int ra, int nparams, int nresults)
+{
+    // argtop = (nparams == LUA_MULTRET) ? L->top : ra + 1 + nparams;
+    if (nparams == LUA_MULTRET)
+        build.ldr(x2, mem(rState, offsetof(lua_State, top)));
+    else
+        build.add(x2, rBase, uint16_t((ra + 1 + nparams) * sizeof(TValue)));
+
+    // callFallback(L, ra, argtop, nresults)
+    build.mov(x0, rState);
+    build.add(x1, rBase, uint16_t(ra * sizeof(TValue)));
+    build.mov(w3, nresults);
+    build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, callFallback)));
+    build.blr(x4);
+
+    // reentry with x0=closure (NULL will trigger exit)
+    build.b(helpers.reentry);
+}
+
+void emitInstGetImport(AssemblyBuilderA64& build, int ra, uint32_t aux)
+{
+    // luaV_getimport(L, cl->env, k, aux, /* propagatenil= */ false)
+    build.mov(x0, rState);
+    build.ldr(x1, mem(rClosure, offsetof(Closure, env)));
+    build.mov(x2, rConstants);
+    build.mov(w3, aux);
+    build.mov(w4, 0);
+    build.ldr(x5, mem(rNativeContext, offsetof(NativeContext, luaV_getimport)));
+    build.blr(x5);
+
     emitUpdateBase(build);
 
-    // If the fallback requested an exit, we need to do this right away
-    build.cbz(x0, helpers.exitNoContinueVm);
+    // setobj2s(L, ra, L->top - 1)
+    build.ldr(x0, mem(rState, offsetof(lua_State, top)));
+    build.sub(x0, x0, sizeof(TValue));
+    build.ldr(q0, x0);
+    build.str(q0, mem(rBase, ra * sizeof(TValue)));
 
-    // Need to update state of the current function before we jump away
-    build.ldr(x1, mem(rState, offsetof(lua_State, ci)));      // L->ci
-    build.ldr(x1, mem(x1, offsetof(CallInfo, func)));         // L->ci->func
-    build.ldr(rClosure, mem(x1, offsetof(TValue, value.gc))); // L->ci->func->value.gc aka cl
-
-    build.ldr(x1, mem(rClosure, offsetof(Closure, l.p))); // cl->l.p aka proto
-
-    build.ldr(rConstants, mem(x1, offsetof(Proto, k))); // proto->k
-    build.ldr(rCode, mem(x1, offsetof(Proto, code)));   // proto->code
-
-    // Get instruction index from instruction pointer
-    // To get instruction index from instruction pointer, we need to divide byte offset by 4
-    // But we will actually need to scale instruction index by 8 back to byte offset later so it cancels out
-    build.sub(x2, x0, rCode);
-    build.add(x2, x2, x2); // TODO: this would not be necessary if we supported shifted register offsets in loads
-
-    // We need to check if the new function can be executed natively
-    build.ldr(x1, mem(x1, offsetofProtoExecData));
-    build.cbz(x1, helpers.exitContinueVm);
-
-    // Get new instruction location and jump to it
-    build.ldr(x1, mem(x1, offsetof(NativeProto, instTargets)));
-    build.ldr(x1, mem(x1, x2));
-    build.br(x1);
+    // L->top--
+    build.str(x0, mem(rState, offsetof(lua_State, top)));
 }
 
 } // namespace A64

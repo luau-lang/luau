@@ -261,8 +261,8 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     {
         static FuzzFileResolver fileResolver;
         static FuzzConfigResolver configResolver;
-        static Luau::FrontendOptions options{true, true};
-        static Luau::Frontend frontend(&fileResolver, &configResolver, options);
+        static Luau::FrontendOptions defaultOptions{/*retainFullTypeGraphs*/ true, /*forAutocomplete*/ false, /*runLintChecks*/ kFuzzLinter};
+        static Luau::Frontend frontend(&fileResolver, &configResolver, defaultOptions);
 
         static int once = (setupFrontend(frontend), 0);
         (void)once;
@@ -285,16 +285,12 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
 
             try
             {
-                Luau::CheckResult result = frontend.check(name, std::nullopt);
-
-                // lint (note that we need access to types so we need to do this with typeck in scope)
-                if (kFuzzLinter && result.errors.empty())
-                    frontend.lint(name, std::nullopt);
+                frontend.check(name);
 
                 // Second pass in strict mode (forced by auto-complete)
-                Luau::FrontendOptions opts;
-                opts.forAutocomplete = true;
-                frontend.check(name, opts);
+                Luau::FrontendOptions options = defaultOptions;
+                options.forAutocomplete = true;
+                frontend.check(name, options);
             }
             catch (std::exception&)
             {

@@ -1014,4 +1014,34 @@ TEST_CASE_FIXTURE(Fixture, "another_thing_from_roact")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+/*
+ * It is sometimes possible for type alias resolution to produce a TypeId that
+ * belongs to a different module.
+ *
+ * We must not mutate any fields of the resulting type when this happens.  The
+ * memory has been frozen.
+ */
+TEST_CASE_FIXTURE(BuiltinsFixture, "alias_expands_to_bare_reference_to_imported_type")
+{
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        export type Object = {[string]: any}
+        return {}
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        local A = require(script.Parent.A)
+
+        type Object = A.Object
+        type ReadOnly<T> = T
+
+        local function f(): ReadOnly<Object>
+            return nil :: any
+        end
+    )";
+
+    CheckResult result = frontend.check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

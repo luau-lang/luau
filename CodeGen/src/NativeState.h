@@ -101,7 +101,9 @@ struct NativeContext
     void (*forgPrepXnextFallback)(lua_State* L, TValue* ra, int pc) = nullptr;
     Closure* (*callProlog)(lua_State* L, TValue* ra, StkId argtop, int nresults) = nullptr;
     void (*callEpilogC)(lua_State* L, int nresults, int n) = nullptr;
-    const Instruction* (*returnFallback)(lua_State* L, StkId ra, int n) = nullptr;
+
+    Closure* (*callFallback)(lua_State* L, StkId ra, StkId argtop, int nresults) = nullptr;
+    Closure* (*returnFallback)(lua_State* L, StkId ra, int n) = nullptr;
 
     // Opcode fallbacks, implemented in C
     NativeFallback fallback[LOP__COUNT] = {};
