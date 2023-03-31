@@ -3,7 +3,7 @@ layout: single
 title:  "Luau Recap: March 2023"
 ---
 
-How the time flies! The team has been busy since the last November Luau Recap working on some large updates that are coming in the future, but before those come, we have some improvements that you can already use!
+How the time flies! The team has been busy since the last November Luau Recap working on some large updates that are coming in the future, but before those arrive, we have some improvements that you can already use!
 
 [Cross-posted to the [Roblox Developer Forum](https://devforum.roblox.com/t/luau-recap-march-2023/).]
 
@@ -16,8 +16,10 @@ In the following example, while variable `a` is declared to have type `number?`,
 ```lua
 local function f(a: number?)
     if a ~= nil then
-        a *= 2
+        a *= 2 -- no type errors
     end
+    ...
+end
 ```
 
 One limitation we had previously is that after a conditional block, refinements were discarded.
@@ -30,11 +32,11 @@ We know correctly preserve such refinements and you should be able to remove `as
 local function f(x: string?)
     if not x then return end
 
-    -- x is 'string' here
+    -- x is a 'string' here
 end
 ```
 
-Throwing calls like error or assert(false) instead of 'return' are also recognized.
+Throwing calls like `error()` or `assert(false)` instead of a `return` statement are also recognized.
 
 ```lua
 local function f(x: string?)
@@ -44,15 +46,23 @@ local function f(x: string?)
 end
 ```
 
-Existing complex refinements like `type`/`typeof` and tagged union checks are expected to work, among others.
+Existing complex refinements like `type`/`typeof`, tagged union checks and other are expected to work as expected.
 
 ## Marking table.getn/foreach/foreachi as deprecated
 
 `table.getn`, `table.foreach` and `table.foreachi` were deprecated in Lua 5.1 that Luau is based on, and removed in Lua 5.2.
 
-`table.getn(x)` is equivalent to `rawlen(x)` when x is a table; when x is not a table, `table.getn` produces an error. It's difficult to imagine code where `table.getn(x)` is better than either `#x` (idiomatic) or `rawlen(x)` (fully compatible replacement). `table.getn` is slower than both alternatives and was marked as deprecated.
+`table.getn(x)` is equivalent to `rawlen(x)` when 'x' is a table; when 'x' is not a table, `table.getn` produces an error.
 
-`table.foreach` is equivalent to a `for .. pairs` loop; `table.foreachi` is equivalent to a `for .. ipairs` loop; both may also be replaced by generalized iteration. Both functions are significantly slower than equivalent for loop replacements, are more restrictive because the function can't yield. Because both functions bring no value over other library or language alternatives, they were marked deprecated as well.
+It's difficult to imagine code where `table.getn(x)` is better than either `#x` (idiomatic) or `rawlen(x)` (fully compatible replacement).
+
+`table.getn` is also slower than both alternatives and was marked as deprecated.
+
+`table.foreach` is equivalent to a `for .. pairs` loop; `table.foreachi` is equivalent to a `for .. ipairs` loop; both may also be replaced by generalized iteration.
+
+Both functions are significantly slower than equivalent for loop replacements, are more restrictive because the function can't yield.
+
+Because both functions bring no value over other library or language alternatives, they were marked deprecated as well.
 
 You may have noticed linter warnings about places where these functions are used. For compatibility, these functions are not going to be removed.
 
@@ -78,7 +88,7 @@ On the runtime side, we added multiple optimizations.
 
 We also have ideas on how improve the sorting performance in the future.
 
-`math.floor`, `math.ceil` and `math.round` now use specialized processor instructions. We have measured ~7-9% speedup in math code that heavily used those functions.
+`math.floor`, `math.ceil` and `math.round` now use specialized processor instructions. We have measured ~7-9% speedup in math benchmarks that heavily used those functions.
 
 A small improvement was made to builtin library function calls, getting a 1-2% improvement in code that contains a lot of fastcalls.
 
@@ -107,10 +117,12 @@ This is true in what is called Covariant use contexts, but doesn't hold in Invar
 
 ```lua
 local a: { x: Model }
-local b: { x: Instance } = a -- ... Type 'Model' could not be converted into 'Instance' in an invariant context
+local b: { x: Instance } = a -- Type 'Model' could not be converted into 'Instance' in an invariant context
 ```
 
-In this example, while `Model` is a sub-type of `Instance` and can be used where `Instance` is required, the same is not true for a nested table field because when using `b`, `b.x` can be assigned an `Instance` that is not a `Model` and modify original table `a` incorrectly.
+In this example, while `Model` is a sub-type of `Instance` and can be used where `Instance` is required.
+
+The same is not true for a table field because when using table `b`, `b.x` can be assigned an `Instance` that is not a `Model`. When `b` is an alias to `a`, this assignment is not compatible with `a`'s type annotation.
 
 ---
 
