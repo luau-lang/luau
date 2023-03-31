@@ -55,7 +55,7 @@ RegisterA64 IrRegAllocA64::allocReg(KindA64 kind)
     int index = setBit(set.free);
     set.free &= ~(1u << index);
 
-    return {kind, uint8_t(index)};
+    return RegisterA64{kind, uint8_t(index)};
 }
 
 RegisterA64 IrRegAllocA64::allocTemp(KindA64 kind)
@@ -73,7 +73,7 @@ RegisterA64 IrRegAllocA64::allocTemp(KindA64 kind)
     set.free &= ~(1u << index);
     set.temp |= 1u << index;
 
-    return {kind, uint8_t(index)};
+    return RegisterA64{kind, uint8_t(index)};
 }
 
 RegisterA64 IrRegAllocA64::allocReuse(KindA64 kind, uint32_t index, std::initializer_list<IrOp> oprefs)

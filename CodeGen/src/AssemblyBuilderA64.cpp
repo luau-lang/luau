@@ -496,7 +496,7 @@ void AssemblyBuilderA64::fcmpz(RegisterA64 src)
 {
     LUAU_ASSERT(src.kind == KindA64::d);
 
-    placeFCMP("fcmp", src, {src.kind, 0}, 0b11110'01'1, 0b01);
+    placeFCMP("fcmp", src, RegisterA64{src.kind, 0}, 0b11110'01'1, 0b01);
 }
 
 void AssemblyBuilderA64::fcsel(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond)
