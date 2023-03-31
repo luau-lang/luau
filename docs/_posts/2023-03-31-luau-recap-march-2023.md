@@ -26,7 +26,7 @@ One limitation we had previously is that after a conditional block, refinements 
 
 But there are cases where `if` is used to exit the function early, making the following code essentially act as a hidden `else` block.
 
-We know correctly preserve such refinements and you should be able to remove `assert` function calls that were only used to get rid of false positive errors about types being `nil`.
+We now correctly preserve such refinements and you should be able to remove `assert` function calls that were only used to get rid of false positive errors about types being `nil`.
 
 ```lua
 local function f(x: string?)
@@ -140,3 +140,4 @@ A very special thanks to all of our open source contributors:
 * [B. Gibbons](https://github.com/bmg817)
 * [Epix](https://github.com/EpixScripts)
 * [Harold Cindy](https://github.com/HaroldCindy)
+* [Qualadore](https://github.com/Qualadore)
