@@ -48,6 +48,40 @@ end
 
 Existing complex refinements like `type`/`typeof`, tagged union checks and other are expected to work as expected.
 
+Another thing you can also now do with improved type refinements is to enforce ML-style exhaustive analysis, a la Rust `match`.
+
+The trick to do this is simply to add a local whose type is `never` after the pattern matching, and assign the variables being pattern matched to it.
+
+```lua
+local function f(x: string | number)
+  if typeof(x) == "string" then
+    return tonumber(x) or -1
+  elseif typeof(x) == "number" then
+    return x
+  end
+
+  local static_assert_exhaustive: never = x -- no type error
+  error("inexhaustive!")
+end
+```
+
+This means that if you added a new valid type as an input to the function, you will get a type error if you did not also implement a branch for that type, e.g.
+
+```lua
+local function f(x: string | number | boolean)
+  if typeof(x) == "string" then
+    return tonumber(x) or -1
+  elseif typeof(x) == "number" then
+    return x
+  end
+
+  local static_assert_exhaustive: never = x -- Type 'boolean' could not be converted into 'never'.
+  error("inexhaustive!")
+end
+```
+
+And of course, adding a branch for `boolean` that also short-circuits and returns an output removes the type error.
+
 ## Marking table.getn/foreach/foreachi as deprecated
 
 `table.getn`, `table.foreach` and `table.foreachi` were deprecated in Lua 5.1 that Luau is based on, and removed in Lua 5.2.
