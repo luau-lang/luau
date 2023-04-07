@@ -14,7 +14,6 @@
 #include <stdexcept>
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAGVARIABLE(LuauFunctionReturnStringificationFixup, false)
 
 /*
  * Prefix generic typenames with gen-
@@ -369,7 +368,7 @@ struct TypeStringifier
             state.emit(">");
     }
 
-    void operator()(TypeId ty, const Unifiable::Free& ftv)
+    void operator()(TypeId ty, const FreeType& ftv)
     {
         state.result.invalid = true;
         if (FFlag::DebugLuauVerboseTypeNames)

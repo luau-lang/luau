@@ -477,10 +477,10 @@ TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 
     std::unique_ptr scope = std::make_unique<Scope>(builtinTypes->anyTypePack);
 
-    TypeId free1 = arena.addType(FreeTypePack{scope.get()});
+    TypeId free1 = arena.addType(FreeType{scope.get()});
     TypeId option1 = arena.addType(UnionType{{nilType, free1}});
 
-    TypeId free2 = arena.addType(FreeTypePack{scope.get()});
+    TypeId free2 = arena.addType(FreeType{scope.get()});
     TypeId option2 = arena.addType(UnionType{{nilType, free2}});
 
     InternalErrorReporter iceHandler;

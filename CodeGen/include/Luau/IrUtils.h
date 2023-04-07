@@ -175,6 +175,8 @@ inline bool isPseudo(IrCmd cmd)
     return cmd == IrCmd::NOP || cmd == IrCmd::SUBSTITUTE;
 }
 
+IrValueKind getCmdValueKind(IrCmd cmd);
+
 bool isGCO(uint8_t tag);
 
 // Manually add or remove use of an operand

@@ -301,7 +301,7 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
     if (opc.kind == IrOpKind::VmConst)
     {
         LUAU_ASSERT(build.function.proto);
-        TValue protok = build.function.proto->k[opc.index];
+        TValue protok = build.function.proto->k[vmConstOp(opc)];
 
         LUAU_ASSERT(protok.tt == LUA_TNUMBER);
 
@@ -1106,6 +1106,72 @@ void translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::JUMP, next);
 
     build.beginBlock(next);
+}
+
+void translateInstAndX(IrBuilder& build, const Instruction* pc, int pcpos, IrOp c)
+{
+    int ra = LUAU_INSN_A(*pc);
+    int rb = LUAU_INSN_B(*pc);
+
+    IrOp fallthrough = build.block(IrBlockKind::Internal);
+    IrOp next = build.blockAtInst(pcpos + 1);
+
+    IrOp target = (ra == rb) ? next : build.block(IrBlockKind::Internal);
+
+    build.inst(IrCmd::JUMP_IF_FALSY, build.vmReg(rb), target, fallthrough);
+    build.beginBlock(fallthrough);
+
+    IrOp load = build.inst(IrCmd::LOAD_TVALUE, c);
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), load);
+    build.inst(IrCmd::JUMP, next);
+
+    if (ra == rb)
+    {
+        build.beginBlock(next);
+    }
+    else
+    {
+        build.beginBlock(target);
+
+        IrOp load1 = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(rb));
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), load1);
+        build.inst(IrCmd::JUMP, next);
+
+        build.beginBlock(next);
+    }
+}
+
+void translateInstOrX(IrBuilder& build, const Instruction* pc, int pcpos, IrOp c)
+{
+    int ra = LUAU_INSN_A(*pc);
+    int rb = LUAU_INSN_B(*pc);
+
+    IrOp fallthrough = build.block(IrBlockKind::Internal);
+    IrOp next = build.blockAtInst(pcpos + 1);
+
+    IrOp target = (ra == rb) ? next : build.block(IrBlockKind::Internal);
+
+    build.inst(IrCmd::JUMP_IF_TRUTHY, build.vmReg(rb), target, fallthrough);
+    build.beginBlock(fallthrough);
+
+    IrOp load = build.inst(IrCmd::LOAD_TVALUE, c);
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), load);
+    build.inst(IrCmd::JUMP, next);
+
+    if (ra == rb)
+    {
+        build.beginBlock(next);
+    }
+    else
+    {
+        build.beginBlock(target);
+
+        IrOp load1 = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(rb));
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), load1);
+        build.inst(IrCmd::JUMP, next);
+
+        build.beginBlock(next);
+    }
 }
 
 } // namespace CodeGen

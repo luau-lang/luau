@@ -100,6 +100,8 @@ const char* getCmdName(IrCmd cmd)
         return "STORE_DOUBLE";
     case IrCmd::STORE_INT:
         return "STORE_INT";
+    case IrCmd::STORE_VECTOR:
+        return "STORE_VECTOR";
     case IrCmd::STORE_TVALUE:
         return "STORE_TVALUE";
     case IrCmd::STORE_NODE_VALUE_TV:
@@ -238,14 +240,6 @@ const char* getCmdName(IrCmd cmd)
         return "FORGLOOP_FALLBACK";
     case IrCmd::FORGPREP_XNEXT_FALLBACK:
         return "FORGPREP_XNEXT_FALLBACK";
-    case IrCmd::AND:
-        return "AND";
-    case IrCmd::ANDK:
-        return "ANDK";
-    case IrCmd::OR:
-        return "OR";
-    case IrCmd::ORK:
-        return "ORK";
     case IrCmd::COVERAGE:
         return "COVERAGE";
     case IrCmd::FALLBACK_GETGLOBAL:
@@ -345,13 +339,13 @@ void toString(IrToStringContext& ctx, IrOp op)
         append(ctx.result, "%s_%u", getBlockKindName(ctx.blocks[op.index].kind), op.index);
         break;
     case IrOpKind::VmReg:
-        append(ctx.result, "R%u", op.index);
+        append(ctx.result, "R%d", vmRegOp(op));
         break;
     case IrOpKind::VmConst:
-        append(ctx.result, "K%u", op.index);
+        append(ctx.result, "K%d", vmConstOp(op));
         break;
     case IrOpKind::VmUpvalue:
-        append(ctx.result, "U%u", op.index);
+        append(ctx.result, "U%d", vmUpvalueOp(op));
         break;
     }
 }

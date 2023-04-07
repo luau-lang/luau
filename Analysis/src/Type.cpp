@@ -430,6 +430,69 @@ bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
     return false;
 }
 
+FreeType::FreeType(TypeLevel level)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , scope(nullptr)
+{
+}
+
+FreeType::FreeType(Scope* scope)
+    : index(Unifiable::freshIndex())
+    , level{}
+    , scope(scope)
+{
+}
+
+FreeType::FreeType(Scope* scope, TypeLevel level)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , scope(scope)
+{
+}
+
+GenericType::GenericType()
+    : index(Unifiable::freshIndex())
+    , name("g" + std::to_string(index))
+{
+}
+
+GenericType::GenericType(TypeLevel level)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , name("g" + std::to_string(index))
+{
+}
+
+GenericType::GenericType(const Name& name)
+    : index(Unifiable::freshIndex())
+    , name(name)
+    , explicitName(true)
+{
+}
+
+GenericType::GenericType(Scope* scope)
+    : index(Unifiable::freshIndex())
+    , scope(scope)
+{
+}
+
+GenericType::GenericType(TypeLevel level, const Name& name)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , name(name)
+    , explicitName(true)
+{
+}
+
+GenericType::GenericType(Scope* scope, const Name& name)
+    : index(Unifiable::freshIndex())
+    , scope(scope)
+    , name(name)
+    , explicitName(true)
+{
+}
+
 BlockedType::BlockedType()
     : index(FFlag::LuauNormalizeBlockedTypes ? Unifiable::freshIndex() : ++DEPRECATED_nextIndex)
 {
@@ -971,7 +1034,7 @@ const TypeLevel* getLevel(TypeId ty)
 {
     ty = follow(ty);
 
-    if (auto ftv = get<Unifiable::Free>(ty))
+    if (auto ftv = get<FreeType>(ty))
         return &ftv->level;
     else if (auto ttv = get<TableType>(ty))
         return &ttv->level;
@@ -990,7 +1053,7 @@ std::optional<TypeLevel> getLevel(TypePackId tp)
 {
     tp = follow(tp);
 
-    if (auto ftv = get<Unifiable::Free>(tp))
+    if (auto ftv = get<FreeTypePack>(tp))
         return ftv->level;
     else
         return std::nullopt;

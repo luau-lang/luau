@@ -35,7 +35,21 @@ using SyntheticNames = std::unordered_map<const void*, char*>;
 namespace Luau
 {
 
-static const char* getName(Allocator* allocator, SyntheticNames* syntheticNames, const Unifiable::Generic& gen)
+static const char* getName(Allocator* allocator, SyntheticNames* syntheticNames, const GenericType& gen)
+{
+    size_t s = syntheticNames->size();
+    char*& n = (*syntheticNames)[&gen];
+    if (!n)
+    {
+        std::string str = gen.explicitName ? gen.name : generateName(s);
+        n = static_cast<char*>(allocator->allocate(str.size() + 1));
+        strcpy(n, str.c_str());
+    }
+
+    return n;
+}
+
+static const char* getName(Allocator* allocator, SyntheticNames* syntheticNames, const GenericTypePack& gen)
 {
     size_t s = syntheticNames->size();
     char*& n = (*syntheticNames)[&gen];
@@ -237,7 +251,7 @@ public:
         size_t numGenericPacks = 0;
         for (auto it = ftv.genericPacks.begin(); it != ftv.genericPacks.end(); ++it)
         {
-            if (auto gtv = get<GenericType>(*it))
+            if (auto gtv = get<GenericTypePack>(*it))
                 genericPacks.data[numGenericPacks++] = {AstName(gtv->name.c_str()), Location(), nullptr};
         }
 

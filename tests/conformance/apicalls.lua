@@ -22,4 +22,12 @@ function getpi()
   return pi
 end
 
+function largealloc()
+  table.create(1000000)
+end
+
+function oops()
+  return "oops"
+end
+
 return('OK')

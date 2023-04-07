@@ -74,7 +74,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_function_is_parenthesized_if_not_just
 TEST_CASE_FIXTURE(Fixture, "return_type_of_function_is_parenthesized_if_tail_is_free")
 {
     auto emptyArgumentPack = TypePackVar{TypePack{}};
-    auto free = Unifiable::Free(TypeLevel());
+    auto free = FreeTypePack(TypeLevel());
     auto freePack = TypePackVar{TypePackVariant{free}};
     auto returnPack = TypePackVar{TypePack{{builtinTypes->numberType}, &freePack}};
     auto returnsTwo = Type(FunctionType(frontend.globals.globalScope->level, &emptyArgumentPack, &returnPack));

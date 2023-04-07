@@ -61,6 +61,8 @@ void translateInstSetGlobal(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstConcat(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstCapture(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos);
+void translateInstAndX(IrBuilder& build, const Instruction* pc, int pcpos, IrOp c);
+void translateInstOrX(IrBuilder& build, const Instruction* pc, int pcpos, IrOp c);
 
 } // namespace CodeGen
 } // namespace Luau

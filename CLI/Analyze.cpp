@@ -14,7 +14,6 @@
 #endif
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
-LUAU_FASTFLAG(LuauLintInTypecheck)
 
 enum class ReportFormat
 {
@@ -81,12 +80,10 @@ static bool analyzeFile(Luau::Frontend& frontend, const char* name, ReportFormat
     for (auto& error : cr.errors)
         reportError(frontend, format, error);
 
-    Luau::LintResult lr = FFlag::LuauLintInTypecheck ? cr.lintResult : frontend.lint_DEPRECATED(name);
-
     std::string humanReadableName = frontend.fileResolver->getHumanReadableModuleName(name);
-    for (auto& error : lr.errors)
+    for (auto& error : cr.lintResult.errors)
         reportWarning(format, humanReadableName.c_str(), error);
-    for (auto& warning : lr.warnings)
+    for (auto& warning : cr.lintResult.warnings)
         reportWarning(format, humanReadableName.c_str(), warning);
 
     if (annotate)
@@ -101,7 +98,7 @@ static bool analyzeFile(Luau::Frontend& frontend, const char* name, ReportFormat
         printf("%s", annotated.c_str());
     }
 
-    return cr.errors.empty() && lr.errors.empty();
+    return cr.errors.empty() && cr.lintResult.errors.empty();
 }
 
 static void displayHelp(const char* argv0)
@@ -264,13 +261,13 @@ int main(int argc, char** argv)
 
     Luau::FrontendOptions frontendOptions;
     frontendOptions.retainFullTypeGraphs = annotate;
-    frontendOptions.runLintChecks = FFlag::LuauLintInTypecheck;
+    frontendOptions.runLintChecks = true;
 
     CliFileResolver fileResolver;
     CliConfigResolver configResolver(mode);
     Luau::Frontend frontend(&fileResolver, &configResolver, frontendOptions);
 
-    Luau::registerBuiltinGlobals(frontend.typeChecker, frontend.globals);
+    Luau::registerBuiltinGlobals(frontend, frontend.globals);
     Luau::freeze(frontend.globals.globalTypes);
 
 #ifdef CALLGRIND

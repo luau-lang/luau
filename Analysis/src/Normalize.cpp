@@ -20,6 +20,7 @@ LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAGVARIABLE(LuauNegatedClassTypes, false);
 LUAU_FASTFLAGVARIABLE(LuauNegatedTableTypes, false);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeBlockedTypes, false);
+LUAU_FASTFLAGVARIABLE(LuauNormalizeMetatableFixes, false);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
 LUAU_FASTFLAG(LuauTransitiveSubtyping)
@@ -2062,6 +2063,18 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     else if (isPrim(there, PrimitiveType::Table))
         return here;
 
+    if (FFlag::LuauNormalizeMetatableFixes)
+    {
+        if (get<NeverType>(here))
+            return there;
+        else if (get<NeverType>(there))
+            return here;
+        else if (get<AnyType>(here))
+            return there;
+        else if (get<AnyType>(there))
+            return here;
+    }
+
     TypeId htable = here;
     TypeId hmtable = nullptr;
     if (const MetatableType* hmtv = get<MetatableType>(here))
@@ -2078,9 +2091,23 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     }
 
     const TableType* httv = get<TableType>(htable);
-    LUAU_ASSERT(httv);
+    if (FFlag::LuauNormalizeMetatableFixes)
+    {
+        if (!httv)
+            return std::nullopt;
+    }
+    else
+        LUAU_ASSERT(httv);
+
     const TableType* tttv = get<TableType>(ttable);
-    LUAU_ASSERT(tttv);
+    if (FFlag::LuauNormalizeMetatableFixes)
+    {
+        if (!tttv)
+            return std::nullopt;
+    }
+    else
+        LUAU_ASSERT(tttv);
+
 
     if (httv->state == TableState::Free || tttv->state == TableState::Free)
         return std::nullopt;

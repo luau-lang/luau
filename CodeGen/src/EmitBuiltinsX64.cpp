@@ -11,8 +11,6 @@
 
 #include "lstate.h"
 
-// TODO: LBF_MATH_FREXP and LBF_MATH_MODF can work for 1 result case if second store is removed
-
 namespace Luau
 {
 namespace CodeGen
@@ -176,8 +174,11 @@ void emitBuiltinMathFrexp(IrRegAllocX64& regs, AssemblyBuilderX64& build, int np
 
     build.vmovsd(luauRegValue(ra), xmm0);
 
-    build.vcvtsi2sd(xmm0, xmm0, dword[sTemporarySlot + 0]);
-    build.vmovsd(luauRegValue(ra + 1), xmm0);
+    if (nresults > 1)
+    {
+        build.vcvtsi2sd(xmm0, xmm0, dword[sTemporarySlot + 0]);
+        build.vmovsd(luauRegValue(ra + 1), xmm0);
+    }
 }
 
 void emitBuiltinMathModf(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
@@ -190,7 +191,8 @@ void emitBuiltinMathModf(IrRegAllocX64& regs, AssemblyBuilderX64& build, int npa
     build.vmovsd(xmm1, qword[sTemporarySlot + 0]);
     build.vmovsd(luauRegValue(ra), xmm1);
 
-    build.vmovsd(luauRegValue(ra + 1), xmm0);
+    if (nresults > 1)
+        build.vmovsd(luauRegValue(ra + 1), xmm0);
 }
 
 void emitBuiltinMathSign(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
@@ -248,9 +250,9 @@ void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int r
     OperandX64 argsOp = 0;
 
     if (args.kind == IrOpKind::VmReg)
-        argsOp = luauRegAddress(args.index);
+        argsOp = luauRegAddress(vmRegOp(args));
     else if (args.kind == IrOpKind::VmConst)
-        argsOp = luauConstantAddress(args.index);
+        argsOp = luauConstantAddress(vmConstOp(args));
 
     switch (bfid)
     {

@@ -75,13 +75,44 @@ using TypeId = const Type*;
 using Name = std::string;
 
 // A free type var is one whose exact shape has yet to be fully determined.
-using FreeType = Unifiable::Free;
+struct FreeType
+{
+    explicit FreeType(TypeLevel level);
+    explicit FreeType(Scope* scope);
+    FreeType(Scope* scope, TypeLevel level);
 
-// When a free type var is unified with any other, it is then "bound"
-// to that type var, indicating that the two types are actually the same type.
+    int index;
+    TypeLevel level;
+    Scope* scope = nullptr;
+
+    // True if this free type variable is part of a mutually
+    // recursive type alias whose definitions haven't been
+    // resolved yet.
+    bool forwardedTypeAlias = false;
+};
+
+struct GenericType
+{
+    // By default, generics are global, with a synthetic name
+    GenericType();
+
+    explicit GenericType(TypeLevel level);
+    explicit GenericType(const Name& name);
+    explicit GenericType(Scope* scope);
+
+    GenericType(TypeLevel level, const Name& name);
+    GenericType(Scope* scope, const Name& name);
+
+    int index;
+    TypeLevel level;
+    Scope* scope = nullptr;
+    Name name;
+    bool explicitName = false;
+};
+
+// When an equality constraint is found, it is then "bound" to that type,
+// indicating that the two types are actually the same type.
 using BoundType = Unifiable::Bound<TypeId>;
-
-using GenericType = Unifiable::Generic;
 
 using Tags = std::vector<std::string>;
 
@@ -395,9 +426,11 @@ struct TableType
 // Represents a metatable attached to a table type. Somewhat analogous to a bound type.
 struct MetatableType
 {
-    // Always points to a TableType.
+    // Should always be a TableType.
     TypeId table;
-    // Always points to either a TableType or a MetatableType.
+    // Should almost always either be a TableType or another MetatableType,
+    // though it is possible for other types (like AnyType and ErrorType) to
+    // find their way here sometimes.
     TypeId metatable;
 
     std::optional<std::string> syntheticName;
@@ -536,8 +569,8 @@ struct NegationType
 
 using ErrorType = Unifiable::Error;
 
-using TypeVariant = Unifiable::Variant<TypeId, PrimitiveType, BlockedType, PendingExpansionType, SingletonType, FunctionType, TableType,
-    MetatableType, ClassType, AnyType, UnionType, IntersectionType, LazyType, UnknownType, NeverType, NegationType>;
+using TypeVariant = Unifiable::Variant<TypeId, FreeType, GenericType, PrimitiveType, BlockedType, PendingExpansionType, SingletonType, FunctionType,
+    TableType, MetatableType, ClassType, AnyType, UnionType, IntersectionType, LazyType, UnknownType, NeverType, NegationType>;
 
 struct Type final
 {

@@ -101,6 +101,30 @@ void emitReentry(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     build.br(x1);
 }
 
+void emitFallback(AssemblyBuilderA64& build, int op, int pcpos)
+{
+    // fallback(L, instruction, base, k)
+    build.mov(x0, rState);
+
+    // TODO: refactor into a common helper
+    if (pcpos * sizeof(Instruction) <= AssemblyBuilderA64::kMaxImmediate)
+    {
+        build.add(x1, rCode, uint16_t(pcpos * sizeof(Instruction)));
+    }
+    else
+    {
+        build.mov(x1, pcpos * sizeof(Instruction));
+        build.add(x1, rCode, x1);
+    }
+
+    build.mov(x2, rBase);
+    build.mov(x3, rConstants);
+    build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, fallback) + op * sizeof(NativeFallback) + offsetof(NativeFallback, fallback)));
+    build.blr(x4);
+
+    emitUpdateBase(build);
+}
+
 } // namespace A64
 } // namespace CodeGen
 } // namespace Luau

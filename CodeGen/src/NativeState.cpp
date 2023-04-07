@@ -45,6 +45,7 @@ void initFallbackTable(NativeState& data)
     CODEGEN_SET_FALLBACK(LOP_BREAK, 0);
 
     // Fallbacks that are called from partial implementation of an instruction
+    // TODO: these fallbacks should be replaced with special functions that exclude the (redundantly executed) fast path from the fallback
     CODEGEN_SET_FALLBACK(LOP_GETGLOBAL, 0);
     CODEGEN_SET_FALLBACK(LOP_SETGLOBAL, 0);
     CODEGEN_SET_FALLBACK(LOP_GETTABLEKS, 0);

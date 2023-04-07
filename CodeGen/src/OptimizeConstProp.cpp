@@ -96,20 +96,17 @@ struct ConstPropState
 
     void invalidateTag(IrOp regOp)
     {
-        LUAU_ASSERT(regOp.kind == IrOpKind::VmReg);
-        invalidate(regs[regOp.index], /* invalidateTag */ true, /* invalidateValue */ false);
+        invalidate(regs[vmRegOp(regOp)], /* invalidateTag */ true, /* invalidateValue */ false);
     }
 
     void invalidateValue(IrOp regOp)
     {
-        LUAU_ASSERT(regOp.kind == IrOpKind::VmReg);
-        invalidate(regs[regOp.index], /* invalidateTag */ false, /* invalidateValue */ true);
+        invalidate(regs[vmRegOp(regOp)], /* invalidateTag */ false, /* invalidateValue */ true);
     }
 
     void invalidate(IrOp regOp)
     {
-        LUAU_ASSERT(regOp.kind == IrOpKind::VmReg);
-        invalidate(regs[regOp.index], /* invalidateTag */ true, /* invalidateValue */ true);
+        invalidate(regs[vmRegOp(regOp)], /* invalidateTag */ true, /* invalidateValue */ true);
     }
 
     void invalidateRegistersFrom(int firstReg)
@@ -156,17 +153,16 @@ struct ConstPropState
 
     void createRegLink(uint32_t instIdx, IrOp regOp)
     {
-        LUAU_ASSERT(regOp.kind == IrOpKind::VmReg);
         LUAU_ASSERT(!instLink.contains(instIdx));
-        instLink[instIdx] = RegisterLink{uint8_t(regOp.index), regs[regOp.index].version};
+        instLink[instIdx] = RegisterLink{uint8_t(vmRegOp(regOp)), regs[vmRegOp(regOp)].version};
     }
 
     RegisterInfo* tryGetRegisterInfo(IrOp op)
     {
         if (op.kind == IrOpKind::VmReg)
         {
-            maxReg = int(op.index) > maxReg ? int(op.index) : maxReg;
-            return &regs[op.index];
+            maxReg = vmRegOp(op) > maxReg ? vmRegOp(op) : maxReg;
+            return &regs[vmRegOp(op)];
         }
 
         if (RegisterLink* link = tryGetRegLink(op))
@@ -368,6 +364,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             }
         }
         break;
+    case IrCmd::STORE_VECTOR:
+        state.invalidateValue(inst.a);
+        break;
     case IrCmd::STORE_TVALUE:
         if (inst.a.kind == IrOpKind::VmReg)
         {
@@ -503,15 +502,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             }
         }
         break;
-    case IrCmd::AND:
-    case IrCmd::ANDK:
-    case IrCmd::OR:
-    case IrCmd::ORK:
-        state.invalidate(inst.a);
-        break;
     case IrCmd::FASTCALL:
     case IrCmd::INVOKE_FASTCALL:
-        handleBuiltinEffects(state, LuauBuiltinFunction(function.uintOp(inst.a)), inst.b.index, function.intOp(inst.f));
+        handleBuiltinEffects(state, LuauBuiltinFunction(function.uintOp(inst.a)), vmRegOp(inst.b), function.intOp(inst.f));
         break;
 
         // These instructions don't have an effect on register/memory state we are tracking
@@ -590,7 +583,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         state.invalidateUserCall();
         break;
     case IrCmd::CONCAT:
-        state.invalidateRegisterRange(inst.a.index, function.uintOp(inst.b));
+        state.invalidateRegisterRange(vmRegOp(inst.a), function.uintOp(inst.b));
         state.invalidateUserCall(); // TODO: if only strings and numbers are concatenated, there will be no user calls
         break;
     case IrCmd::PREPARE_FORN:
@@ -605,14 +598,14 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         state.invalidateUserCall();
         break;
     case IrCmd::CALL:
-        state.invalidateRegistersFrom(inst.a.index);
+        state.invalidateRegistersFrom(vmRegOp(inst.a));
         state.invalidateUserCall();
         break;
     case IrCmd::FORGLOOP:
-        state.invalidateRegistersFrom(inst.a.index + 2); // Rn and Rn+1 are not modified
+        state.invalidateRegistersFrom(vmRegOp(inst.a) + 2); // Rn and Rn+1 are not modified
         break;
     case IrCmd::FORGLOOP_FALLBACK:
-        state.invalidateRegistersFrom(inst.a.index + 2); // Rn and Rn+1 are not modified
+        state.invalidateRegistersFrom(vmRegOp(inst.a) + 2); // Rn and Rn+1 are not modified
         state.invalidateUserCall();
         break;
     case IrCmd::FORGPREP_XNEXT_FALLBACK:
@@ -633,14 +626,14 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         state.invalidateUserCall();
         break;
     case IrCmd::FALLBACK_NAMECALL:
-        state.invalidate(IrOp{inst.b.kind, inst.b.index + 0u});
-        state.invalidate(IrOp{inst.b.kind, inst.b.index + 1u});
+        state.invalidate(IrOp{inst.b.kind, vmRegOp(inst.b) + 0u});
+        state.invalidate(IrOp{inst.b.kind, vmRegOp(inst.b) + 1u});
         state.invalidateUserCall();
         break;
     case IrCmd::FALLBACK_PREPVARARGS:
         break;
     case IrCmd::FALLBACK_GETVARARGS:
-        state.invalidateRegistersFrom(inst.b.index);
+        state.invalidateRegistersFrom(vmRegOp(inst.b));
         break;
     case IrCmd::FALLBACK_NEWCLOSURE:
         state.invalidate(inst.b);
@@ -649,9 +642,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         state.invalidate(inst.b);
         break;
     case IrCmd::FALLBACK_FORGPREP:
-        state.invalidate(IrOp{inst.b.kind, inst.b.index + 0u});
-        state.invalidate(IrOp{inst.b.kind, inst.b.index + 1u});
-        state.invalidate(IrOp{inst.b.kind, inst.b.index + 2u});
+        state.invalidate(IrOp{inst.b.kind, vmRegOp(inst.b) + 0u});
+        state.invalidate(IrOp{inst.b.kind, vmRegOp(inst.b) + 1u});
+        state.invalidate(IrOp{inst.b.kind, vmRegOp(inst.b) + 2u});
         break;
     }
 }
