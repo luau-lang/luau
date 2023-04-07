@@ -37,6 +37,7 @@ public:
     void movk(RegisterA64 dst, uint16_t src, int shift = 0);
 
     // Arithmetics
+    // TODO: support various kinds of shifts
     void add(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, int shift = 0);
     void add(RegisterA64 dst, RegisterA64 src1, uint16_t src2);
     void sub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, int shift = 0);
@@ -50,8 +51,10 @@ public:
     void csel(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond);
 
     // Bitwise
-    // Note: shifted-register support and bitfield operations are omitted for simplicity
     // TODO: support immediate arguments (they have odd encoding and forbid many values)
+    // TODO: support bic (andnot)
+    // TODO: support shifts
+    // TODO: support bitfield ops
     void and_(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
     void orr(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
     void eor(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
@@ -82,7 +85,7 @@ public:
     void stp(RegisterA64 src1, RegisterA64 src2, AddressA64 dst);
 
     // Control flow
-    // Note: tbz/tbnz are currently not supported because they have 15-bit offsets and we don't support branch thunks
+    // TODO: support tbz/tbnz; they have 15-bit offsets but they can be useful in constrained cases
     void b(Label& label);
     void b(ConditionA64 cond, Label& label);
     void cbz(RegisterA64 src, Label& label);

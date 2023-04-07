@@ -1273,7 +1273,7 @@ TEST_CASE_FIXTURE(Fixture, "use_all_parent_scopes_for_globals")
 {
     ScopePtr testScope = frontend.addEnvironment("Test");
     unfreeze(frontend.globals.globalTypes);
-    loadDefinitionFile(frontend.typeChecker, frontend.globals, testScope, R"(
+    frontend.loadDefinitionFile(frontend.globals, testScope, R"(
         declare Foo: number
     )",
         "@test", /* captureComments */ false);

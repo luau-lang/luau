@@ -74,7 +74,7 @@ static NativeProto* createNativeProto(Proto* proto, const IrBuilder& ir)
 }
 
 template<typename AssemblyBuilder, typename IrLowering>
-static void lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& function, int bytecodeid, AssemblyOptions options)
+static bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& function, int bytecodeid, AssemblyOptions options)
 {
     // While we will need a better block ordering in the future, right now we want to mostly preserve build order with fallbacks outlined
     std::vector<uint32_t> sortedBlocks;
@@ -193,6 +193,9 @@ static void lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
             IrBlock& next = i + 1 < sortedBlocks.size() ? function.blocks[sortedBlocks[i + 1]] : dummy;
 
             lowering.lowerInst(inst, index, next);
+
+            if (lowering.hasError())
+                return false;
         }
 
         if (options.includeIr)
@@ -213,6 +216,8 @@ static void lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
         if (irLocation != ~0u)
             asmLocation = bcLocations[irLocation];
     }
+
+    return true;
 }
 
 [[maybe_unused]] static bool lowerIr(
@@ -226,9 +231,7 @@ static void lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 
     X64::IrLoweringX64 lowering(build, helpers, data, ir.function);
 
-    lowerImpl(build, lowering, ir.function, proto->bytecodeid, options);
-
-    return true;
+    return lowerImpl(build, lowering, ir.function, proto->bytecodeid, options);
 }
 
 [[maybe_unused]] static bool lowerIr(
@@ -239,9 +242,7 @@ static void lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 
     A64::IrLoweringA64 lowering(build, helpers, data, proto, ir.function);
 
-    lowerImpl(build, lowering, ir.function, proto->bytecodeid, options);
-
-    return true;
+    return lowerImpl(build, lowering, ir.function, proto->bytecodeid, options);
 }
 
 template<typename AssemblyBuilder>

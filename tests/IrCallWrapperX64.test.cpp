@@ -12,7 +12,7 @@ class IrCallWrapperX64Fixture
 public:
     IrCallWrapperX64Fixture()
         : build(/* logText */ true, ABIX64::Windows)
-        , regs(function)
+        , regs(build, function)
         , callWrap(regs, build, ~0u)
     {
     }
@@ -46,8 +46,8 @@ TEST_SUITE_BEGIN("IrCallWrapperX64");
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "SimpleRegs")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rax)};
-    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rax, kInvalidInstIdx)};
+    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, tmp1);
     callWrap.addArgument(SizeX64::qword, tmp2); // Already in its place
     callWrap.call(qword[r12]);
@@ -60,7 +60,7 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "SimpleRegs")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "TrickyUse1")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, tmp1.reg); // Already in its place
     callWrap.addArgument(SizeX64::qword, tmp1.release());
     callWrap.call(qword[r12]);
@@ -73,7 +73,7 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "TrickyUse1")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "TrickyUse2")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, qword[tmp1.reg]);
     callWrap.addArgument(SizeX64::qword, tmp1.release());
     callWrap.call(qword[r12]);
@@ -87,8 +87,8 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "TrickyUse2")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "SimpleMemImm")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rax)};
-    ScopedRegX64 tmp2{regs, regs.takeReg(rsi)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rax, kInvalidInstIdx)};
+    ScopedRegX64 tmp2{regs, regs.takeReg(rsi, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::dword, 32);
     callWrap.addArgument(SizeX64::dword, -1);
     callWrap.addArgument(SizeX64::qword, qword[r14 + 32]);
@@ -106,7 +106,7 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "SimpleMemImm")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "SimpleStackArgs")
 {
-    ScopedRegX64 tmp{regs, regs.takeReg(rax)};
+    ScopedRegX64 tmp{regs, regs.takeReg(rax, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, tmp);
     callWrap.addArgument(SizeX64::qword, qword[r14 + 16]);
     callWrap.addArgument(SizeX64::qword, qword[r14 + 32]);
@@ -148,10 +148,10 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "FixedRegisters")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "EasyInterference")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rdi)};
-    ScopedRegX64 tmp2{regs, regs.takeReg(rsi)};
-    ScopedRegX64 tmp3{regs, regs.takeReg(rArg2)};
-    ScopedRegX64 tmp4{regs, regs.takeReg(rArg1)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rdi, kInvalidInstIdx)};
+    ScopedRegX64 tmp2{regs, regs.takeReg(rsi, kInvalidInstIdx)};
+    ScopedRegX64 tmp3{regs, regs.takeReg(rArg2, kInvalidInstIdx)};
+    ScopedRegX64 tmp4{regs, regs.takeReg(rArg1, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, tmp1);
     callWrap.addArgument(SizeX64::qword, tmp2);
     callWrap.addArgument(SizeX64::qword, tmp3);
@@ -169,8 +169,8 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "EasyInterference")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "FakeInterference")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1)};
-    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1, kInvalidInstIdx)};
+    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, qword[tmp1.release() + 8]);
     callWrap.addArgument(SizeX64::qword, qword[tmp2.release() + 8]);
     callWrap.call(qword[r12]);
@@ -184,10 +184,10 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "FakeInterference")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "HardInterferenceInt")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rArg4)};
-    ScopedRegX64 tmp2{regs, regs.takeReg(rArg3)};
-    ScopedRegX64 tmp3{regs, regs.takeReg(rArg2)};
-    ScopedRegX64 tmp4{regs, regs.takeReg(rArg1)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rArg4, kInvalidInstIdx)};
+    ScopedRegX64 tmp2{regs, regs.takeReg(rArg3, kInvalidInstIdx)};
+    ScopedRegX64 tmp3{regs, regs.takeReg(rArg2, kInvalidInstIdx)};
+    ScopedRegX64 tmp4{regs, regs.takeReg(rArg1, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, tmp1);
     callWrap.addArgument(SizeX64::qword, tmp2);
     callWrap.addArgument(SizeX64::qword, tmp3);
@@ -207,10 +207,10 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "HardInterferenceInt")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "HardInterferenceInt2")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rArg4d)};
-    ScopedRegX64 tmp2{regs, regs.takeReg(rArg3d)};
-    ScopedRegX64 tmp3{regs, regs.takeReg(rArg2d)};
-    ScopedRegX64 tmp4{regs, regs.takeReg(rArg1d)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rArg4d, kInvalidInstIdx)};
+    ScopedRegX64 tmp2{regs, regs.takeReg(rArg3d, kInvalidInstIdx)};
+    ScopedRegX64 tmp3{regs, regs.takeReg(rArg2d, kInvalidInstIdx)};
+    ScopedRegX64 tmp4{regs, regs.takeReg(rArg1d, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::dword, tmp1);
     callWrap.addArgument(SizeX64::dword, tmp2);
     callWrap.addArgument(SizeX64::dword, tmp3);
@@ -230,8 +230,8 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "HardInterferenceInt2")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "HardInterferenceFp")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(xmm1)};
-    ScopedRegX64 tmp2{regs, regs.takeReg(xmm0)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(xmm1, kInvalidInstIdx)};
+    ScopedRegX64 tmp2{regs, regs.takeReg(xmm0, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::xmmword, tmp1);
     callWrap.addArgument(SizeX64::xmmword, tmp2);
     callWrap.call(qword[r12]);
@@ -246,10 +246,10 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "HardInterferenceFp")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "HardInterferenceBoth")
 {
-    ScopedRegX64 int1{regs, regs.takeReg(rArg2)};
-    ScopedRegX64 int2{regs, regs.takeReg(rArg1)};
-    ScopedRegX64 fp1{regs, regs.takeReg(xmm3)};
-    ScopedRegX64 fp2{regs, regs.takeReg(xmm2)};
+    ScopedRegX64 int1{regs, regs.takeReg(rArg2, kInvalidInstIdx)};
+    ScopedRegX64 int2{regs, regs.takeReg(rArg1, kInvalidInstIdx)};
+    ScopedRegX64 fp1{regs, regs.takeReg(xmm3, kInvalidInstIdx)};
+    ScopedRegX64 fp2{regs, regs.takeReg(xmm2, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, int1);
     callWrap.addArgument(SizeX64::qword, int2);
     callWrap.addArgument(SizeX64::xmmword, fp1);
@@ -269,8 +269,8 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "HardInterferenceBoth")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "FakeMultiuseInterferenceMem")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1)};
-    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1, kInvalidInstIdx)};
+    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, qword[tmp1.reg + tmp2.reg + 8]);
     callWrap.addArgument(SizeX64::qword, qword[tmp2.reg + 16]);
     tmp1.release();
@@ -286,8 +286,8 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "FakeMultiuseInterferenceMem")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "HardMultiuseInterferenceMem1")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1)};
-    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1, kInvalidInstIdx)};
+    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, qword[tmp1.reg + tmp2.reg + 8]);
     callWrap.addArgument(SizeX64::qword, qword[tmp1.reg + 16]);
     tmp1.release();
@@ -304,8 +304,8 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "HardMultiuseInterferenceMem1")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "HardMultiuseInterferenceMem2")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1)};
-    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1, kInvalidInstIdx)};
+    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, qword[tmp1.reg + tmp2.reg + 8]);
     callWrap.addArgument(SizeX64::qword, qword[tmp1.reg + tmp2.reg + 16]);
     tmp1.release();
@@ -322,9 +322,9 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "HardMultiuseInterferenceMem2")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "HardMultiuseInterferenceMem3")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rArg3)};
-    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2)};
-    ScopedRegX64 tmp3{regs, regs.takeReg(rArg1)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rArg3, kInvalidInstIdx)};
+    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2, kInvalidInstIdx)};
+    ScopedRegX64 tmp3{regs, regs.takeReg(rArg1, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, qword[tmp1.reg + tmp2.reg + 8]);
     callWrap.addArgument(SizeX64::qword, qword[tmp2.reg + tmp3.reg + 16]);
     callWrap.addArgument(SizeX64::qword, qword[tmp3.reg + tmp1.reg + 16]);
@@ -345,7 +345,7 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "HardMultiuseInterferenceMem3")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "InterferenceWithCallArg1")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, qword[tmp1.reg + 8]);
     callWrap.call(qword[tmp1.release() + 16]);
 
@@ -358,8 +358,8 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "InterferenceWithCallArg1")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "InterferenceWithCallArg2")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1)};
-    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1, kInvalidInstIdx)};
+    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, tmp2);
     callWrap.call(qword[tmp1.release() + 16]);
 
@@ -372,7 +372,7 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "InterferenceWithCallArg2")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "InterferenceWithCallArg3")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, tmp1.reg);
     callWrap.call(qword[tmp1.release() + 16]);
 
@@ -385,7 +385,7 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "WithLastIrInstUse1")
 {
     IrInst irInst1;
     IrOp irOp1 = {IrOpKind::Inst, 0};
-    irInst1.regX64 = regs.takeReg(xmm0);
+    irInst1.regX64 = regs.takeReg(xmm0, irOp1.index);
     irInst1.lastUse = 1;
     function.instructions.push_back(irInst1);
     callWrap.instIdx = irInst1.lastUse;
@@ -404,7 +404,7 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "WithLastIrInstUse2")
 {
     IrInst irInst1;
     IrOp irOp1 = {IrOpKind::Inst, 0};
-    irInst1.regX64 = regs.takeReg(xmm0);
+    irInst1.regX64 = regs.takeReg(xmm0, irOp1.index);
     irInst1.lastUse = 1;
     function.instructions.push_back(irInst1);
     callWrap.instIdx = irInst1.lastUse;
@@ -424,7 +424,7 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "WithLastIrInstUse3")
 {
     IrInst irInst1;
     IrOp irOp1 = {IrOpKind::Inst, 0};
-    irInst1.regX64 = regs.takeReg(xmm0);
+    irInst1.regX64 = regs.takeReg(xmm0, irOp1.index);
     irInst1.lastUse = 1;
     function.instructions.push_back(irInst1);
     callWrap.instIdx = irInst1.lastUse;
@@ -443,12 +443,12 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "WithLastIrInstUse4")
 {
     IrInst irInst1;
     IrOp irOp1 = {IrOpKind::Inst, 0};
-    irInst1.regX64 = regs.takeReg(rax);
+    irInst1.regX64 = regs.takeReg(rax, irOp1.index);
     irInst1.lastUse = 1;
     function.instructions.push_back(irInst1);
     callWrap.instIdx = irInst1.lastUse;
 
-    ScopedRegX64 tmp{regs, regs.takeReg(rdx)};
+    ScopedRegX64 tmp{regs, regs.takeReg(rdx, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, r15);
     callWrap.addArgument(SizeX64::qword, irInst1.regX64, irOp1);
     callWrap.addArgument(SizeX64::qword, tmp);
@@ -464,8 +464,8 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "WithLastIrInstUse4")
 
 TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "ExtraCoverage")
 {
-    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1)};
-    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2)};
+    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1, kInvalidInstIdx)};
+    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2, kInvalidInstIdx)};
     callWrap.addArgument(SizeX64::qword, addr[r12 + 8]);
     callWrap.addArgument(SizeX64::qword, addr[r12 + 16]);
     callWrap.addArgument(SizeX64::xmmword, xmmword[r13]);
@@ -477,6 +477,44 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "ExtraCoverage")
  lea         rcx,none ptr [r12+8]
  mov         rbx,rdx
  lea         rdx,none ptr [r12+010h]
+ call        qword ptr [rax+rbx]
+)");
+}
+
+TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "AddressInStackArguments")
+{
+    callWrap.addArgument(SizeX64::dword, 1);
+    callWrap.addArgument(SizeX64::dword, 2);
+    callWrap.addArgument(SizeX64::dword, 3);
+    callWrap.addArgument(SizeX64::dword, 4);
+    callWrap.addArgument(SizeX64::qword, addr[r12 + 16]);
+    callWrap.call(qword[r14]);
+
+    checkMatch(R"(
+ lea         rax,none ptr [r12+010h]
+ mov         qword ptr [rsp+020h],rax
+ mov         ecx,1
+ mov         edx,2
+ mov         r8d,3
+ mov         r9d,4
+ call        qword ptr [r14]
+)");
+}
+
+TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "ImmediateConflictWithFunction")
+{
+    ScopedRegX64 tmp1{regs, regs.takeReg(rArg1, kInvalidInstIdx)};
+    ScopedRegX64 tmp2{regs, regs.takeReg(rArg2, kInvalidInstIdx)};
+
+    callWrap.addArgument(SizeX64::dword, 1);
+    callWrap.addArgument(SizeX64::dword, 2);
+    callWrap.call(qword[tmp1.release() + tmp2.release()]);
+
+    checkMatch(R"(
+ mov         rax,rcx
+ mov         ecx,1
+ mov         rbx,rdx
+ mov         edx,2
  call        qword ptr [rax+rbx]
 )");
 }

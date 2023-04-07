@@ -1020,7 +1020,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatAssign& assig
                 right = errorRecoveryType(scope);
             else if (auto vtp = get<VariadicTypePack>(tailPack))
                 right = vtp->ty;
-            else if (get<Unifiable::Free>(tailPack))
+            else if (get<FreeTypePack>(tailPack))
             {
                 *asMutable(tailPack) = TypePack{{left}};
                 growingPack = getMutable<TypePack>(tailPack);
@@ -1281,7 +1281,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
         callRetPack = checkExprPack(scope, *exprCall).type;
         callRetPack = follow(callRetPack);
 
-        if (get<Unifiable::Free>(callRetPack))
+        if (get<FreeTypePack>(callRetPack))
         {
             iterTy = freshType(scope);
             unify(callRetPack, addTypePack({{iterTy}, freshTypePack(scope)}), scope, forin.location);
@@ -1951,7 +1951,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         return WithPredicate{errorRecoveryType(scope)};
     else if (auto vtp = get<VariadicTypePack>(varargPack))
         return WithPredicate{vtp->ty};
-    else if (get<Unifiable::Generic>(varargPack))
+    else if (get<GenericTypePack>(varargPack))
     {
         // TODO: Better error?
         reportError(expr.location, GenericError{"Trying to get a type from a variadic type parameter"});
@@ -1970,7 +1970,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     {
         return {pack->head.empty() ? nilType : pack->head[0], std::move(result.predicates)};
     }
-    else if (const FreeTypePack* ftp = get<Unifiable::Free>(retPack))
+    else if (const FreeTypePack* ftp = get<FreeTypePack>(retPack))
     {
         TypeId head = freshType(scope->level);
         TypePackId pack = addTypePack(TypePackVar{TypePack{{head}, freshTypePack(scope->level)}});
@@ -1981,7 +1981,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         return {errorRecoveryType(scope), std::move(result.predicates)};
     else if (auto vtp = get<VariadicTypePack>(retPack))
         return {vtp->ty, std::move(result.predicates)};
-    else if (get<Unifiable::Generic>(retPack))
+    else if (get<GenericTypePack>(retPack))
     {
         if (FFlag::LuauReturnAnyInsteadOfICE)
             return {anyType, std::move(result.predicates)};
@@ -3838,7 +3838,7 @@ void TypeChecker::checkArgumentList(const ScopePtr& scope, const AstExpr& funNam
 
             if (argTail)
             {
-                if (state.log.getMutable<Unifiable::Free>(state.log.follow(*argTail)))
+                if (state.log.getMutable<FreeTypePack>(state.log.follow(*argTail)))
                 {
                     if (paramTail)
                         state.tryUnify(*paramTail, *argTail);
@@ -3853,7 +3853,7 @@ void TypeChecker::checkArgumentList(const ScopePtr& scope, const AstExpr& funNam
             else if (paramTail)
             {
                 // argTail is definitely empty
-                if (state.log.getMutable<Unifiable::Free>(state.log.follow(*paramTail)))
+                if (state.log.getMutable<FreeTypePack>(state.log.follow(*paramTail)))
                     state.log.replace(*paramTail, TypePackVar(TypePack{{}}));
             }
 
@@ -5570,7 +5570,7 @@ GenericTypeDefinitions TypeChecker::createGenericTypes(const ScopePtr& scope, st
         }
         else
         {
-            g = addType(Unifiable::Generic{level, n});
+            g = addType(GenericType{level, n});
         }
 
         generics.push_back({g, defaultValue});
@@ -5598,7 +5598,7 @@ GenericTypeDefinitions TypeChecker::createGenericTypes(const ScopePtr& scope, st
 
         TypePackId& cached = scope->parent->typeAliasTypePackParameters[n];
         if (!cached)
-            cached = addTypePack(TypePackVar{Unifiable::Generic{level, n}});
+            cached = addTypePack(TypePackVar{GenericTypePack{level, n}});
 
         genericPacks.push_back({cached, defaultValue});
         scope->privateTypePackBindings[n] = cached;

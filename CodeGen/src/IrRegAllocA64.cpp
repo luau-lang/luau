@@ -151,6 +151,15 @@ void IrRegAllocA64::assertAllFree() const
     LUAU_ASSERT(simd.free == simd.base);
 }
 
+void IrRegAllocA64::assertAllFreeExcept(RegisterA64 reg) const
+{
+    const Set& set = const_cast<IrRegAllocA64*>(this)->getSet(reg.kind);
+    const Set& other = &set == &gpr ? simd : gpr;
+
+    LUAU_ASSERT(set.free == (set.base & ~(1u << reg.index)));
+    LUAU_ASSERT(other.free == other.base);
+}
+
 IrRegAllocA64::Set& IrRegAllocA64::getSet(KindA64 kind)
 {
     switch (kind)

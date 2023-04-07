@@ -1489,7 +1489,7 @@ struct WeirdIter
 
     bool canGrow() const
     {
-        return nullptr != log.getMutable<Unifiable::Free>(packId);
+        return nullptr != log.getMutable<FreeTypePack>(packId);
     }
 
     void grow(TypePackId newTail)
@@ -1497,7 +1497,7 @@ struct WeirdIter
         LUAU_ASSERT(canGrow());
         LUAU_ASSERT(log.getMutable<TypePack>(newTail));
 
-        auto freePack = log.getMutable<Unifiable::Free>(packId);
+        auto freePack = log.getMutable<FreeTypePack>(packId);
 
         level = freePack->level;
         if (FFlag::LuauMaintainScopesInUnifier && freePack->scope != nullptr)
@@ -1591,7 +1591,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
     if (log.haveSeen(superTp, subTp))
         return;
 
-    if (log.getMutable<Unifiable::Free>(superTp))
+    if (log.getMutable<FreeTypePack>(superTp))
     {
         if (!occursCheck(superTp, subTp))
         {
@@ -1599,7 +1599,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
             log.replace(superTp, Unifiable::Bound<TypePackId>(widen(subTp)));
         }
     }
-    else if (log.getMutable<Unifiable::Free>(subTp))
+    else if (log.getMutable<FreeTypePack>(subTp))
     {
         if (!occursCheck(subTp, superTp))
         {
@@ -2567,9 +2567,9 @@ static void queueTypePack(std::vector<TypeId>& queue, DenseHashSet<TypePackId>& 
             break;
         seenTypePacks.insert(a);
 
-        if (state.log.getMutable<Unifiable::Free>(a))
+        if (state.log.getMutable<FreeTypePack>(a))
         {
-            state.log.replace(a, Unifiable::Bound{anyTypePack});
+            state.log.replace(a, BoundTypePack{anyTypePack});
         }
         else if (auto tp = state.log.getMutable<TypePack>(a))
         {
@@ -2617,7 +2617,7 @@ void Unifier::tryUnifyVariadics(TypePackId subTp, TypePackId superTp, bool rever
             {
                 tryUnify_(vtp->ty, superVariadic->ty);
             }
-            else if (get<Unifiable::Generic>(tail))
+            else if (get<GenericTypePack>(tail))
             {
                 reportError(location, GenericError{"Cannot unify variadic and generic packs"});
             }
@@ -2777,10 +2777,10 @@ bool Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId hays
 
     seen.insert(haystack);
 
-    if (log.getMutable<Unifiable::Error>(needle))
+    if (log.getMutable<ErrorType>(needle))
         return false;
 
-    if (!log.getMutable<Unifiable::Free>(needle))
+    if (!log.getMutable<FreeType>(needle))
         ice("Expected needle to be free");
 
     if (needle == haystack)
@@ -2824,10 +2824,10 @@ bool Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
 
     seen.insert(haystack);
 
-    if (log.getMutable<Unifiable::Error>(needle))
+    if (log.getMutable<ErrorTypePack>(needle))
         return false;
 
-    if (!log.getMutable<Unifiable::Free>(needle))
+    if (!log.getMutable<FreeTypePack>(needle))
         ice("Expected needle pack to be free");
 
     RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);

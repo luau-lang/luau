@@ -25,7 +25,7 @@ struct TypePackFixture
 
     TypePackId freshTypePack()
     {
-        typePacks.emplace_back(new TypePackVar{Unifiable::Free{TypeLevel{}}});
+        typePacks.emplace_back(new TypePackVar{FreeTypePack{TypeLevel{}}});
         return typePacks.back().get();
     }
 

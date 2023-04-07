@@ -44,10 +44,10 @@ struct TypeCloner
     template<typename T>
     void defaultClone(const T& t);
 
-    void operator()(const Unifiable::Free& t);
-    void operator()(const Unifiable::Generic& t);
-    void operator()(const Unifiable::Bound<TypeId>& t);
-    void operator()(const Unifiable::Error& t);
+    void operator()(const FreeType& t);
+    void operator()(const GenericType& t);
+    void operator()(const BoundType& t);
+    void operator()(const ErrorType& t);
     void operator()(const BlockedType& t);
     void operator()(const PendingExpansionType& t);
     void operator()(const PrimitiveType& t);
@@ -89,15 +89,15 @@ struct TypePackCloner
         seenTypePacks[typePackId] = cloned;
     }
 
-    void operator()(const Unifiable::Free& t)
+    void operator()(const FreeTypePack& t)
     {
         defaultClone(t);
     }
-    void operator()(const Unifiable::Generic& t)
+    void operator()(const GenericTypePack& t)
     {
         defaultClone(t);
     }
-    void operator()(const Unifiable::Error& t)
+    void operator()(const ErrorTypePack& t)
     {
         defaultClone(t);
     }
@@ -145,12 +145,12 @@ void TypeCloner::defaultClone(const T& t)
     seenTypes[typeId] = cloned;
 }
 
-void TypeCloner::operator()(const Unifiable::Free& t)
+void TypeCloner::operator()(const FreeType& t)
 {
     defaultClone(t);
 }
 
-void TypeCloner::operator()(const Unifiable::Generic& t)
+void TypeCloner::operator()(const GenericType& t)
 {
     defaultClone(t);
 }

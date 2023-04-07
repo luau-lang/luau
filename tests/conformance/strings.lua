@@ -219,6 +219,13 @@ do
   assert(eq(string.split("abc", "c"), {'ab', ''}))
 end
 
+-- validate that variadic string fast calls get correct number of arguments
+local function chr1(c)
+  return string.char(tonumber(c));
+end
+
+assert(chr1("0") == "\0")
+
 --[[
 local locales = { "ptb", "ISO-8859-1", "pt_BR" }
 local function trylocale (w)

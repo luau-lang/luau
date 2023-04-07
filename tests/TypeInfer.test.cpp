@@ -490,8 +490,13 @@ struct FindFreeTypes
         return !foundOne;
     }
 
-    template<typename ID>
-    bool operator()(ID, Unifiable::Free)
+    bool operator()(TypeId, FreeType)
+    {
+        foundOne = true;
+        return false;
+    }
+
+    bool operator()(TypePackId, FreeTypePack)
     {
         foundOne = true;
         return false;

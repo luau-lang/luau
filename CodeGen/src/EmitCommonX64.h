@@ -42,12 +42,14 @@ constexpr RegisterX64 rConstants = r12;     // TValue* k
 
 // Native code is as stackless as the interpreter, so we can place some data on the stack once and have it accessible at any point
 // See CodeGenX64.cpp for layout
-constexpr unsigned kStackSize = 32 + 16; // 4 home locations for registers, 16 bytes for additional function call arguments
-constexpr unsigned kLocalsSize = 24;     // 3 extra slots for our custom locals (also aligns the stack to 16 byte boundary)
+constexpr unsigned kStackSize = 32 + 16;               // 4 home locations for registers, 16 bytes for additional function call arguments
+constexpr unsigned kSpillSlots = 4;                    // locations for register allocator to spill data into
+constexpr unsigned kLocalsSize = 24 + 8 * kSpillSlots; // 3 extra slots for our custom locals (also aligns the stack to 16 byte boundary)
 
 constexpr OperandX64 sClosure = qword[rsp + kStackSize + 0]; // Closure* cl
 constexpr OperandX64 sCode = qword[rsp + kStackSize + 8];    // Instruction* code
 constexpr OperandX64 sTemporarySlot = addr[rsp + kStackSize + 16];
+constexpr OperandX64 sSpillArea = addr[rsp + kStackSize + 24];
 
 // TODO: These should be replaced with a portable call function that checks the ABI at runtime and reorders moves accordingly to avoid conflicts
 #if defined(_WIN32)
@@ -97,6 +99,11 @@ inline OperandX64 luauRegTag(int ri)
 inline OperandX64 luauRegValueInt(int ri)
 {
     return dword[rBase + ri * sizeof(TValue) + offsetof(TValue, value)];
+}
+
+inline OperandX64 luauRegValueVector(int ri, int index)
+{
+    return dword[rBase + ri * sizeof(TValue) + offsetof(TValue, value) + (sizeof(float) * index)];
 }
 
 inline OperandX64 luauConstant(int ki)
@@ -247,13 +254,12 @@ void callPrepareForN(IrRegAllocX64& regs, AssemblyBuilderX64& build, int limit, 
 void callGetTable(IrRegAllocX64& regs, AssemblyBuilderX64& build, int rb, OperandX64 c, int ra);
 void callSetTable(IrRegAllocX64& regs, AssemblyBuilderX64& build, int rb, OperandX64 c, int ra);
 void checkObjectBarrierConditions(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 object, int ra, Label& skip);
-void callBarrierObject(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 object, IrOp objectOp, int ra, Label& skip);
-void callBarrierTableFast(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 table, IrOp tableOp, Label& skip);
-void callCheckGc(IrRegAllocX64& regs, AssemblyBuilderX64& build, Label& skip);
+void callBarrierObject(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 object, IrOp objectOp, int ra);
+void callBarrierTableFast(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 table, IrOp tableOp);
+void callStepGc(IrRegAllocX64& regs, AssemblyBuilderX64& build);
 
 void emitExit(AssemblyBuilderX64& build, bool continueInVm);
 void emitUpdateBase(AssemblyBuilderX64& build);
-void emitSetSavedPc(AssemblyBuilderX64& build, int pcpos); // Note: only uses rax/rdx, the caller may use other registers
 void emitInterrupt(AssemblyBuilderX64& build, int pcpos);
 void emitFallback(AssemblyBuilderX64& build, NativeState& data, int op, int pcpos);
 
