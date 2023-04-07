@@ -62,11 +62,12 @@ enum class IrCmd : uint8_t
 
     // Get pointer (LuaNode) to table node element at the active cached slot index
     // A: pointer (Table)
+    // B: unsigned int (pcpos)
     GET_SLOT_NODE_ADDR,
 
     // Get pointer (LuaNode) to table node element at the main position of the specified key hash
     // A: pointer (Table)
-    // B: unsigned int
+    // B: unsigned int (hash)
     GET_HASH_NODE_ADDR,
 
     // Store a tag into TValue
@@ -88,6 +89,13 @@ enum class IrCmd : uint8_t
     // A: Rn
     // B: int
     STORE_INT,
+
+    // Store a vector into TValue
+    // A: Rn
+    // B: double (x)
+    // C: double (y)
+    // D: double (z)
+    STORE_VECTOR,
 
     // Store a TValue into memory
     // A: Rn or pointer (TValue)
@@ -438,15 +446,6 @@ enum class IrCmd : uint8_t
     // C: block (forgloop location)
     FORGPREP_XNEXT_FALLBACK,
 
-    // Perform `and` or `or` operation (selecting lhs or rhs based on whether the lhs is truthy) and put the result into target register
-    // A: Rn (target)
-    // B: Rn (lhs)
-    // C: Rn or Kn (rhs)
-    AND,
-    ANDK,
-    OR,
-    ORK,
-
     // Increment coverage data (saturating 24 bit add)
     // A: unsigned int (bytecode instruction index)
     COVERAGE,
@@ -622,6 +621,17 @@ struct IrOp
 
 static_assert(sizeof(IrOp) == 4);
 
+enum class IrValueKind : uint8_t
+{
+    Unknown, // Used by SUBSTITUTE, argument has to be checked to get type
+    None,
+    Tag,
+    Int,
+    Pointer,
+    Double,
+    Tvalue,
+};
+
 struct IrInst
 {
     IrCmd cmd;
@@ -641,7 +651,11 @@ struct IrInst
     X64::RegisterX64 regX64 = X64::noreg;
     A64::RegisterA64 regA64 = A64::noreg;
     bool reusedReg = false;
+    bool spilled = false;
 };
+
+// When IrInst operands are used, current instruction index is often required to track lifetime
+constexpr uint32_t kInvalidInstIdx = ~0u;
 
 enum class IrBlockKind : uint8_t
 {
@@ -820,6 +834,13 @@ struct IrFunction
         // Can only be called with blocks from our vector
         LUAU_ASSERT(&block >= blocks.data() && &block <= blocks.data() + blocks.size());
         return uint32_t(&block - blocks.data());
+    }
+
+    uint32_t getInstIndex(const IrInst& inst)
+    {
+        // Can only be called with instructions from our vector
+        LUAU_ASSERT(&inst >= instructions.data() && &inst <= instructions.data() + instructions.size());
+        return uint32_t(&inst - instructions.data());
     }
 };
 

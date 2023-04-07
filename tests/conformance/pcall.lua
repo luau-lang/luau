@@ -161,4 +161,11 @@ checkresults({ false, "ok" }, xpcall(recurse, function() return string.reverse("
 -- however, if xpcall handler itself runs out of extra stack space, we get "error in error handling"
 checkresults({ false, "error in error handling" }, xpcall(recurse, function() return recurse(calllimit) end, calllimit - 2))
 
+-- simulate OOM and make sure we can catch it with pcall or xpcall
+checkresults({ false, "not enough memory" }, pcall(function() table.create(1e6) end))
+checkresults({ false, "not enough memory" }, xpcall(function() table.create(1e6) end, function(e) return e end))
+checkresults({ false, "oops" }, xpcall(function() table.create(1e6) end, function(e) return "oops" end))
+checkresults({ false, "error in error handling" }, xpcall(function() error("oops") end, function(e) table.create(1e6) end))
+checkresults({ false, "not enough memory" }, xpcall(function() table.create(1e6) end, function(e) table.create(1e6) end))
+
 return 'OK'

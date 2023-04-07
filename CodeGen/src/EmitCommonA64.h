@@ -46,6 +46,7 @@ void emitUpdateBase(AssemblyBuilderA64& build);
 void emitExit(AssemblyBuilderA64& build, bool continueInVm);
 void emitInterrupt(AssemblyBuilderA64& build);
 void emitReentry(AssemblyBuilderA64& build, ModuleHelpers& helpers);
+void emitFallback(AssemblyBuilderA64& build, int op, int pcpos);
 
 } // namespace A64
 } // namespace CodeGen

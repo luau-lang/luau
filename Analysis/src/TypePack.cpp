@@ -9,6 +9,69 @@
 namespace Luau
 {
 
+FreeTypePack::FreeTypePack(TypeLevel level)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , scope(nullptr)
+{
+}
+
+FreeTypePack::FreeTypePack(Scope* scope)
+    : index(Unifiable::freshIndex())
+    , level{}
+    , scope(scope)
+{
+}
+
+FreeTypePack::FreeTypePack(Scope* scope, TypeLevel level)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , scope(scope)
+{
+}
+
+GenericTypePack::GenericTypePack()
+    : index(Unifiable::freshIndex())
+    , name("g" + std::to_string(index))
+{
+}
+
+GenericTypePack::GenericTypePack(TypeLevel level)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , name("g" + std::to_string(index))
+{
+}
+
+GenericTypePack::GenericTypePack(const Name& name)
+    : index(Unifiable::freshIndex())
+    , name(name)
+    , explicitName(true)
+{
+}
+
+GenericTypePack::GenericTypePack(Scope* scope)
+    : index(Unifiable::freshIndex())
+    , scope(scope)
+{
+}
+
+GenericTypePack::GenericTypePack(TypeLevel level, const Name& name)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , name(name)
+    , explicitName(true)
+{
+}
+
+GenericTypePack::GenericTypePack(Scope* scope, const Name& name)
+    : index(Unifiable::freshIndex())
+    , scope(scope)
+    , name(name)
+    , explicitName(true)
+{
+}
+
 BlockedTypePack::BlockedTypePack()
     : index(++nextIndex)
 {
@@ -160,8 +223,8 @@ bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs)
     TypePackId rhsTail = *rhsIter.tail();
 
     {
-        const Unifiable::Free* lf = get_if<Unifiable::Free>(&lhsTail->ty);
-        const Unifiable::Free* rf = get_if<Unifiable::Free>(&rhsTail->ty);
+        const FreeTypePack* lf = get_if<FreeTypePack>(&lhsTail->ty);
+        const FreeTypePack* rf = get_if<FreeTypePack>(&rhsTail->ty);
         if (lf && rf)
             return lf->index == rf->index;
     }
@@ -174,8 +237,8 @@ bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs)
     }
 
     {
-        const Unifiable::Generic* lg = get_if<Unifiable::Generic>(&lhsTail->ty);
-        const Unifiable::Generic* rg = get_if<Unifiable::Generic>(&rhsTail->ty);
+        const GenericTypePack* lg = get_if<GenericTypePack>(&lhsTail->ty);
+        const GenericTypePack* rg = get_if<GenericTypePack>(&rhsTail->ty);
         if (lg && rg)
             return lg->index == rg->index;
     }

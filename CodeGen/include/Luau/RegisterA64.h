@@ -37,6 +37,15 @@ struct RegisterA64
     }
 };
 
+constexpr RegisterA64 castReg(KindA64 kind, RegisterA64 reg)
+{
+    LUAU_ASSERT(kind != reg.kind);
+    LUAU_ASSERT(kind != KindA64::none && reg.kind != KindA64::none);
+    LUAU_ASSERT((kind == KindA64::w || kind == KindA64::x) == (reg.kind == KindA64::w || reg.kind == KindA64::x));
+
+    return RegisterA64{kind, reg.index};
+}
+
 constexpr RegisterA64 noreg{KindA64::none, 0};
 
 constexpr RegisterA64 w0{KindA64::w, 0};

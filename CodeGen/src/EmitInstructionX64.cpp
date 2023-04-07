@@ -316,7 +316,7 @@ void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, i
     build.jmp(qword[rdx + rax * 2]);
 }
 
-void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, Label& next, int ra, int rb, int count, uint32_t index)
+void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, int count, uint32_t index)
 {
     OperandX64 last = index + count - 1;
 
@@ -347,7 +347,7 @@ void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, Label& next
 
     Label skipResize;
 
-    RegisterX64 table = regs.takeReg(rax);
+    RegisterX64 table = regs.takeReg(rax, kInvalidInstIdx);
 
     build.mov(table, luauRegValue(ra));
 
@@ -412,7 +412,7 @@ void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, Label& next
         build.setLabel(endLoop);
     }
 
-    callBarrierTableFast(regs, build, table, {}, next);
+    callBarrierTableFast(regs, build, table, {});
 }
 
 void emitinstForGLoop(AssemblyBuilderX64& build, int ra, int aux, Label& loopRepeat, Label& loopExit)
@@ -502,82 +502,6 @@ void emitInstForGPrepXnextFallback(AssemblyBuilderX64& build, int pcpos, int ra,
     build.mov(dwordReg(rArg3), pcpos + 1);
     build.call(qword[rNativeContext + offsetof(NativeContext, forgPrepXnextFallback)]);
     build.jmp(target);
-}
-
-static void emitInstAndX(AssemblyBuilderX64& build, int ra, int rb, OperandX64 c)
-{
-    Label target, fallthrough;
-    jumpIfFalsy(build, rb, target, fallthrough);
-
-    build.setLabel(fallthrough);
-
-    build.vmovups(xmm0, c);
-    build.vmovups(luauReg(ra), xmm0);
-
-    if (ra == rb)
-    {
-        build.setLabel(target);
-    }
-    else
-    {
-        Label exit;
-        build.jmp(exit);
-
-        build.setLabel(target);
-
-        build.vmovups(xmm0, luauReg(rb));
-        build.vmovups(luauReg(ra), xmm0);
-
-        build.setLabel(exit);
-    }
-}
-
-void emitInstAnd(AssemblyBuilderX64& build, int ra, int rb, int rc)
-{
-    emitInstAndX(build, ra, rb, luauReg(rc));
-}
-
-void emitInstAndK(AssemblyBuilderX64& build, int ra, int rb, int kc)
-{
-    emitInstAndX(build, ra, rb, luauConstant(kc));
-}
-
-static void emitInstOrX(AssemblyBuilderX64& build, int ra, int rb, OperandX64 c)
-{
-    Label target, fallthrough;
-    jumpIfTruthy(build, rb, target, fallthrough);
-
-    build.setLabel(fallthrough);
-
-    build.vmovups(xmm0, c);
-    build.vmovups(luauReg(ra), xmm0);
-
-    if (ra == rb)
-    {
-        build.setLabel(target);
-    }
-    else
-    {
-        Label exit;
-        build.jmp(exit);
-
-        build.setLabel(target);
-
-        build.vmovups(xmm0, luauReg(rb));
-        build.vmovups(luauReg(ra), xmm0);
-
-        build.setLabel(exit);
-    }
-}
-
-void emitInstOr(AssemblyBuilderX64& build, int ra, int rb, int rc)
-{
-    emitInstOrX(build, ra, rb, luauReg(rc));
-}
-
-void emitInstOrK(AssemblyBuilderX64& build, int ra, int rb, int kc)
-{
-    emitInstOrX(build, ra, rb, luauConstant(kc));
 }
 
 void emitInstGetImportFallback(AssemblyBuilderX64& build, int ra, uint32_t aux)

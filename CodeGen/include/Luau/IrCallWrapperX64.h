@@ -17,10 +17,6 @@ namespace CodeGen
 namespace X64
 {
 
-// When IrInst operands are used, current instruction index is required to track lifetime
-// In all other calls it is ok to omit the argument
-constexpr uint32_t kInvalidInstIdx = ~0u;
-
 struct IrRegAllocX64;
 struct ScopedRegX64;
 
@@ -61,6 +57,7 @@ private:
     void renameRegister(RegisterX64& target, RegisterX64 reg, RegisterX64 replacement);
     void renameSourceRegisters(RegisterX64 reg, RegisterX64 replacement);
     RegisterX64 findConflictingTarget() const;
+    void renameConflictingRegister(RegisterX64 conflict);
 
     int getRegisterUses(RegisterX64 reg) const;
     void addRegisterUse(RegisterX64 reg);

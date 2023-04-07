@@ -874,7 +874,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_table_method")
     std::vector<TypeId> args = flatten(ftv->argTypes).first;
     TypeId argType = args.at(1);
 
-    CHECK_MESSAGE(get<Unifiable::Generic>(argType), "Should be generic: " << *barType);
+    CHECK_MESSAGE(get<GenericType>(argType), "Should be generic: " << *barType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "correctly_instantiate_polymorphic_member_functions")

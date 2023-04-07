@@ -16,9 +16,7 @@ struct TypeArena;
 
 void registerBuiltinTypes(GlobalTypes& globals);
 
-void registerBuiltinGlobals(TypeChecker& typeChecker, GlobalTypes& globals);
-void registerBuiltinGlobals(Frontend& frontend);
-
+void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeCheckForAutocomplete = false);
 TypeId makeUnion(TypeArena& arena, std::vector<TypeId>&& types);
 TypeId makeIntersection(TypeArena& arena, std::vector<TypeId>&& types);
 

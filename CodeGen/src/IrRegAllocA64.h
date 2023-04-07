@@ -30,6 +30,7 @@ struct IrRegAllocA64
     void freeTempRegs();
 
     void assertAllFree() const;
+    void assertAllFreeExcept(RegisterA64 reg) const;
 
     IrFunction& function;
 

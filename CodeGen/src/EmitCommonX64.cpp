@@ -196,33 +196,51 @@ void checkObjectBarrierConditions(AssemblyBuilderX64& build, RegisterX64 tmp, Re
     build.jcc(ConditionX64::Zero, skip);
 }
 
-void callBarrierObject(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 object, IrOp objectOp, int ra, Label& skip)
+void callBarrierObject(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 object, IrOp objectOp, int ra)
 {
+    Label skip;
+
     ScopedRegX64 tmp{regs, SizeX64::qword};
     checkObjectBarrierConditions(build, tmp.reg, object, ra, skip);
 
-    IrCallWrapperX64 callWrap(regs, build);
-    callWrap.addArgument(SizeX64::qword, rState);
-    callWrap.addArgument(SizeX64::qword, object, objectOp);
-    callWrap.addArgument(SizeX64::qword, tmp);
-    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaC_barrierf)]);
+    {
+        ScopedSpills spillGuard(regs);
+
+        IrCallWrapperX64 callWrap(regs, build);
+        callWrap.addArgument(SizeX64::qword, rState);
+        callWrap.addArgument(SizeX64::qword, object, objectOp);
+        callWrap.addArgument(SizeX64::qword, tmp);
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaC_barrierf)]);
+    }
+
+    build.setLabel(skip);
 }
 
-void callBarrierTableFast(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 table, IrOp tableOp, Label& skip)
+void callBarrierTableFast(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 table, IrOp tableOp)
 {
+    Label skip;
+
     // isblack(obj2gco(t))
     build.test(byte[table + offsetof(GCheader, marked)], bitmask(BLACKBIT));
     build.jcc(ConditionX64::Zero, skip);
 
-    IrCallWrapperX64 callWrap(regs, build);
-    callWrap.addArgument(SizeX64::qword, rState);
-    callWrap.addArgument(SizeX64::qword, table, tableOp);
-    callWrap.addArgument(SizeX64::qword, addr[table + offsetof(Table, gclist)]);
-    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaC_barrierback)]);
+    {
+        ScopedSpills spillGuard(regs);
+
+        IrCallWrapperX64 callWrap(regs, build);
+        callWrap.addArgument(SizeX64::qword, rState);
+        callWrap.addArgument(SizeX64::qword, table, tableOp);
+        callWrap.addArgument(SizeX64::qword, addr[table + offsetof(Table, gclist)]);
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaC_barrierback)]);
+    }
+
+    build.setLabel(skip);
 }
 
-void callCheckGc(IrRegAllocX64& regs, AssemblyBuilderX64& build, Label& skip)
+void callStepGc(IrRegAllocX64& regs, AssemblyBuilderX64& build)
 {
+    Label skip;
+
     {
         ScopedRegX64 tmp1{regs, SizeX64::qword};
         ScopedRegX64 tmp2{regs, SizeX64::qword};
@@ -233,11 +251,17 @@ void callCheckGc(IrRegAllocX64& regs, AssemblyBuilderX64& build, Label& skip)
         build.jcc(ConditionX64::Below, skip);
     }
 
-    IrCallWrapperX64 callWrap(regs, build);
-    callWrap.addArgument(SizeX64::qword, rState);
-    callWrap.addArgument(SizeX64::dword, 1);
-    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaC_step)]);
-    emitUpdateBase(build);
+    {
+        ScopedSpills spillGuard(regs);
+
+        IrCallWrapperX64 callWrap(regs, build);
+        callWrap.addArgument(SizeX64::qword, rState);
+        callWrap.addArgument(SizeX64::dword, 1);
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaC_step)]);
+        emitUpdateBase(build);
+    }
+
+    build.setLabel(skip);
 }
 
 void emitExit(AssemblyBuilderX64& build, bool continueInVm)
@@ -256,7 +280,7 @@ void emitUpdateBase(AssemblyBuilderX64& build)
 }
 
 // Note: only uses rax/rdx, the caller may use other registers
-void emitSetSavedPc(AssemblyBuilderX64& build, int pcpos)
+static void emitSetSavedPc(AssemblyBuilderX64& build, int pcpos)
 {
     build.mov(rdx, sCode);
     build.add(rdx, pcpos * sizeof(Instruction));
@@ -298,9 +322,6 @@ void emitInterrupt(AssemblyBuilderX64& build, int pcpos)
 
 void emitFallback(AssemblyBuilderX64& build, NativeState& data, int op, int pcpos)
 {
-    if (op == LOP_CAPTURE)
-        return;
-
     NativeFallback& opinfo = data.context.fallback[op];
     LUAU_ASSERT(opinfo.fallback);
 

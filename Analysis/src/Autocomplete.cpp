@@ -13,8 +13,6 @@
 #include <unordered_set>
 #include <utility>
 
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteSkipNormalization, false);
-
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
 
@@ -143,12 +141,9 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
     Normalizer normalizer{typeArena, builtinTypes, NotNull{&unifierState}};
     Unifier unifier(NotNull<Normalizer>{&normalizer}, Mode::Strict, scope, Location(), Variance::Covariant);
 
-    if (FFlag::LuauAutocompleteSkipNormalization)
-    {
-        // Cost of normalization can be too high for autocomplete response time requirements
-        unifier.normalize = false;
-        unifier.checkInhabited = false;
-    }
+    // Cost of normalization can be too high for autocomplete response time requirements
+    unifier.normalize = false;
+    unifier.checkInhabited = false;
 
     return unifier.canUnify(subTy, superTy).empty();
 }

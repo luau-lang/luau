@@ -61,7 +61,8 @@ BuiltinImplResult translateBuiltinNumberTo2Number(
     if (ra != arg)
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
 
-    build.inst(IrCmd::STORE_TAG, build.vmReg(ra + 1), build.constTag(LUA_TNUMBER));
+    if (nresults > 1)
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra + 1), build.constTag(LUA_TNUMBER));
 
     return {BuiltinImplType::UsesFallback, 2};
 }
@@ -190,10 +191,10 @@ BuiltinImplResult translateBuiltinMathClamp(IrBuilder& build, int nparams, int r
 
     build.loadAndCheckTag(build.vmReg(arg), LUA_TNUMBER, fallback);
     build.loadAndCheckTag(args, LUA_TNUMBER, fallback);
-    build.loadAndCheckTag(build.vmReg(args.index + 1), LUA_TNUMBER, fallback);
+    build.loadAndCheckTag(build.vmReg(vmRegOp(args) + 1), LUA_TNUMBER, fallback);
 
     IrOp min = build.inst(IrCmd::LOAD_DOUBLE, args);
-    IrOp max = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(args.index + 1));
+    IrOp max = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(vmRegOp(args) + 1));
 
     build.inst(IrCmd::JUMP_CMP_NUM, min, max, build.cond(IrCondition::NotLessEqual), fallback, block);
     build.beginBlock(block);
@@ -274,6 +275,27 @@ BuiltinImplResult translateBuiltinTypeof(IrBuilder& build, int nparams, int ra, 
     return {BuiltinImplType::UsesFallback, 1};
 }
 
+BuiltinImplResult translateBuiltinVector(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, IrOp fallback)
+{
+    if (nparams < 3 || nresults > 1)
+        return {BuiltinImplType::None, -1};
+
+    LUAU_ASSERT(LUA_VECTOR_SIZE == 3);
+
+    build.loadAndCheckTag(build.vmReg(arg), LUA_TNUMBER, fallback);
+    build.loadAndCheckTag(args, LUA_TNUMBER, fallback);
+    build.loadAndCheckTag(build.vmReg(vmRegOp(args) + 1), LUA_TNUMBER, fallback);
+
+    IrOp x = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(arg));
+    IrOp y = build.inst(IrCmd::LOAD_DOUBLE, args);
+    IrOp z = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(vmRegOp(args) + 1));
+
+    build.inst(IrCmd::STORE_VECTOR, build.vmReg(ra), x, y, z);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TVECTOR));
+
+    return {BuiltinImplType::UsesFallback, 1};
+}
+
 BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, IrOp args, int nparams, int nresults, IrOp fallback)
 {
     // Builtins are not allowed to handle variadic arguments
@@ -332,6 +354,8 @@ BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, 
         return translateBuiltinType(build, nparams, ra, arg, args, nresults, fallback);
     case LBF_TYPEOF:
         return translateBuiltinTypeof(build, nparams, ra, arg, args, nresults, fallback);
+    case LBF_VECTOR:
+        return translateBuiltinVector(build, nparams, ra, arg, args, nresults, fallback);
     default:
         return {BuiltinImplType::None, -1};
     }

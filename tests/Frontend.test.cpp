@@ -877,7 +877,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "environments")
     ScopePtr testScope = frontend.addEnvironment("test");
 
     unfreeze(frontend.globals.globalTypes);
-    loadDefinitionFile(frontend.typeChecker, frontend.globals, testScope, R"(
+    frontend.loadDefinitionFile(frontend.globals, testScope, R"(
         export type Foo = number | string
     )",
         "@test", /* captureComments */ false);

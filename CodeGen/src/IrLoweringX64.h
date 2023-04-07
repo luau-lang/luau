@@ -27,13 +27,17 @@ struct IrLoweringX64
 
     void lowerInst(IrInst& inst, uint32_t index, IrBlock& next);
 
+    bool hasError() const;
+
     bool isFallthroughBlock(IrBlock target, IrBlock next);
     void jumpOrFallthrough(IrBlock& target, IrBlock& next);
 
+    void storeDoubleAsFloat(OperandX64 dst, IrOp src);
+
     // Operand data lookup helpers
-    OperandX64 memRegDoubleOp(IrOp op) const;
-    OperandX64 memRegTagOp(IrOp op) const;
-    RegisterX64 regOp(IrOp op) const;
+    OperandX64 memRegDoubleOp(IrOp op);
+    OperandX64 memRegTagOp(IrOp op);
+    RegisterX64 regOp(IrOp op);
 
     IrConst constOp(IrOp op) const;
     uint8_t tagOp(IrOp op) const;

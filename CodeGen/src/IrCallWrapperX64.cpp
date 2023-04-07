@@ -58,14 +58,17 @@ void IrCallWrapperX64::call(const OperandX64& func)
     {
         CallArgument& arg = args[i];
 
-        // If source is the last use of IrInst, clear the register
-        // Source registers are recorded separately in CallArgument
         if (arg.sourceOp.kind != IrOpKind::None)
         {
             if (IrInst* inst = regs.function.asInstOp(arg.sourceOp))
             {
+                // Source registers are recorded separately from source operands in CallArgument
+                // If source is the last use of IrInst, clear the register from the operand
                 if (regs.isLastUseReg(*inst, instIdx))
                     inst->regX64 = noreg;
+                // If it's not the last use and register is volatile, register ownership is taken, which also spills the operand
+                else if (inst->regX64.size == SizeX64::xmmword || regs.shouldFreeGpr(inst->regX64))
+                    regs.takeReg(inst->regX64, kInvalidInstIdx);
             }
         }
 
@@ -83,7 +86,11 @@ void IrCallWrapperX64::call(const OperandX64& func)
 
                 freeSourceRegisters(arg);
 
-                build.mov(tmp.reg, arg.source);
+                if (arg.source.memSize == SizeX64::none)
+                    build.lea(tmp.reg, arg.source);
+                else
+                    build.mov(tmp.reg, arg.source);
+
                 build.mov(arg.target, tmp.reg);
             }
             else
@@ -102,7 +109,7 @@ void IrCallWrapperX64::call(const OperandX64& func)
 
             // If target is not used as source in other arguments, prevent register allocator from giving it out
             if (getRegisterUses(arg.target.base) == 0)
-                regs.takeReg(arg.target.base);
+                regs.takeReg(arg.target.base, kInvalidInstIdx);
             else // Otherwise, make sure we won't free it when last source use is completed
                 addRegisterUse(arg.target.base);
 
@@ -122,7 +129,7 @@ void IrCallWrapperX64::call(const OperandX64& func)
             freeSourceRegisters(*candidate);
 
             LUAU_ASSERT(getRegisterUses(candidate->target.base) == 0);
-            regs.takeReg(candidate->target.base);
+            regs.takeReg(candidate->target.base, kInvalidInstIdx);
 
             moveToTarget(*candidate);
 
@@ -131,15 +138,7 @@ void IrCallWrapperX64::call(const OperandX64& func)
         // If all registers cross-interfere (rcx <- rdx, rdx <- rcx), one has to be renamed
         else if (RegisterX64 conflict = findConflictingTarget(); conflict != noreg)
         {
-            // Get a fresh register
-            RegisterX64 freshReg = conflict.size == SizeX64::xmmword ? regs.allocXmmReg() : regs.allocGprReg(conflict.size);
-
-            if (conflict.size == SizeX64::xmmword)
-                build.vmovsd(freshReg, conflict, conflict);
-            else
-                build.mov(freshReg, conflict);
-
-            renameSourceRegisters(conflict, freshReg);
+            renameConflictingRegister(conflict);
         }
         else
         {
@@ -156,10 +155,18 @@ void IrCallWrapperX64::call(const OperandX64& func)
 
         if (arg.source.cat == CategoryX64::imm)
         {
+            // There could be a conflict with the function source register, make this argument a candidate to find it
+            arg.candidate = true;
+
+            if (RegisterX64 conflict = findConflictingTarget(); conflict != noreg)
+                renameConflictingRegister(conflict);
+
             if (arg.target.cat == CategoryX64::reg)
-                regs.takeReg(arg.target.base);
+                regs.takeReg(arg.target.base, kInvalidInstIdx);
 
             moveToTarget(arg);
+
+            arg.candidate = false;
         }
     }
 
@@ -175,6 +182,10 @@ void IrCallWrapperX64::call(const OperandX64& func)
         if (arg.target.cat == CategoryX64::reg)
             regs.freeReg(arg.target.base);
     }
+
+    regs.preserveAndFreeInstValues();
+
+    regs.assertAllFree();
 
     build.call(funcOp);
 }
@@ -360,6 +371,19 @@ RegisterX64 IrCallWrapperX64::findConflictingTarget() const
         return funcOp.index;
 
     return noreg;
+}
+
+void IrCallWrapperX64::renameConflictingRegister(RegisterX64 conflict)
+{
+    // Get a fresh register
+    RegisterX64 freshReg = conflict.size == SizeX64::xmmword ? regs.allocXmmReg(kInvalidInstIdx) : regs.allocGprReg(conflict.size, kInvalidInstIdx);
+
+    if (conflict.size == SizeX64::xmmword)
+        build.vmovsd(freshReg, conflict, conflict);
+    else
+        build.mov(freshReg, conflict);
+
+    renameSourceRegisters(conflict, freshReg);
 }
 
 int IrCallWrapperX64::getRegisterUses(RegisterX64 reg) const

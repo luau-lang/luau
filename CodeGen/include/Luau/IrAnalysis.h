@@ -19,6 +19,8 @@ void updateUseCounts(IrFunction& function);
 
 void updateLastUseLocations(IrFunction& function);
 
+uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t startInstIdx);
+
 // Returns how many values are coming into the block (live in) and how many are coming out of the block (live out)
 std::pair<uint32_t, uint32_t> getLiveInOutValueCount(IrFunction& function, IrBlock& block);
 uint32_t getLiveInValueCount(IrFunction& function, IrBlock& block);

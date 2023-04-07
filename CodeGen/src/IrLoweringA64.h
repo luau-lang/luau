@@ -30,6 +30,8 @@ struct IrLoweringA64
 
     void lowerInst(IrInst& inst, uint32_t index, IrBlock& next);
 
+    bool hasError() const;
+
     bool isFallthroughBlock(IrBlock target, IrBlock next);
     void jumpOrFallthrough(IrBlock& target, IrBlock& next);
 
