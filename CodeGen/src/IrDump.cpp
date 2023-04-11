@@ -100,6 +100,8 @@ const char* getCmdName(IrCmd cmd)
         return "STORE_DOUBLE";
     case IrCmd::STORE_INT:
         return "STORE_INT";
+    case IrCmd::STORE_VECTOR:
+        return "STORE_VECTOR";
     case IrCmd::STORE_TVALUE:
         return "STORE_TVALUE";
     case IrCmd::STORE_NODE_VALUE_TV:
@@ -126,6 +128,16 @@ const char* getCmdName(IrCmd cmd)
         return "MAX_NUM";
     case IrCmd::UNM_NUM:
         return "UNM_NUM";
+    case IrCmd::FLOOR_NUM:
+        return "FLOOR_NUM";
+    case IrCmd::CEIL_NUM:
+        return "CEIL_NUM";
+    case IrCmd::ROUND_NUM:
+        return "ROUND_NUM";
+    case IrCmd::SQRT_NUM:
+        return "SQRT_NUM";
+    case IrCmd::ABS_NUM:
+        return "ABS_NUM";
     case IrCmd::NOT_ANY:
         return "NOT_ANY";
     case IrCmd::JUMP:
@@ -216,28 +228,20 @@ const char* getCmdName(IrCmd cmd)
         return "CLOSE_UPVALS";
     case IrCmd::CAPTURE:
         return "CAPTURE";
-    case IrCmd::LOP_SETLIST:
-        return "LOP_SETLIST";
-    case IrCmd::LOP_CALL:
-        return "LOP_CALL";
-    case IrCmd::LOP_RETURN:
-        return "LOP_RETURN";
-    case IrCmd::LOP_FORGLOOP:
-        return "LOP_FORGLOOP";
-    case IrCmd::LOP_FORGLOOP_FALLBACK:
-        return "LOP_FORGLOOP_FALLBACK";
-    case IrCmd::LOP_FORGPREP_XNEXT_FALLBACK:
-        return "LOP_FORGPREP_XNEXT_FALLBACK";
-    case IrCmd::LOP_AND:
-        return "LOP_AND";
-    case IrCmd::LOP_ANDK:
-        return "LOP_ANDK";
-    case IrCmd::LOP_OR:
-        return "LOP_OR";
-    case IrCmd::LOP_ORK:
-        return "LOP_ORK";
-    case IrCmd::LOP_COVERAGE:
-        return "LOP_COVERAGE";
+    case IrCmd::SETLIST:
+        return "SETLIST";
+    case IrCmd::CALL:
+        return "CALL";
+    case IrCmd::RETURN:
+        return "RETURN";
+    case IrCmd::FORGLOOP:
+        return "FORGLOOP";
+    case IrCmd::FORGLOOP_FALLBACK:
+        return "FORGLOOP_FALLBACK";
+    case IrCmd::FORGPREP_XNEXT_FALLBACK:
+        return "FORGPREP_XNEXT_FALLBACK";
+    case IrCmd::COVERAGE:
+        return "COVERAGE";
     case IrCmd::FALLBACK_GETGLOBAL:
         return "FALLBACK_GETGLOBAL";
     case IrCmd::FALLBACK_SETGLOBAL:
@@ -335,13 +339,13 @@ void toString(IrToStringContext& ctx, IrOp op)
         append(ctx.result, "%s_%u", getBlockKindName(ctx.blocks[op.index].kind), op.index);
         break;
     case IrOpKind::VmReg:
-        append(ctx.result, "R%u", op.index);
+        append(ctx.result, "R%d", vmRegOp(op));
         break;
     case IrOpKind::VmConst:
-        append(ctx.result, "K%u", op.index);
+        append(ctx.result, "K%d", vmConstOp(op));
         break;
     case IrOpKind::VmUpvalue:
-        append(ctx.result, "U%u", op.index);
+        append(ctx.result, "U%d", vmUpvalueOp(op));
         break;
     }
 }
@@ -455,7 +459,7 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t ind
     }
 
     // Predecessor list
-    if (!ctx.cfg.predecessors.empty())
+    if (index < ctx.cfg.predecessorsOffsets.size())
     {
         BlockIteratorWrapper pred = predecessors(ctx.cfg, index);
 
@@ -469,7 +473,7 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t ind
     }
 
     // Successor list
-    if (!ctx.cfg.successors.empty())
+    if (index < ctx.cfg.successorsOffsets.size())
     {
         BlockIteratorWrapper succ = successors(ctx.cfg, index);
 
@@ -509,14 +513,14 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t ind
     }
 }
 
-std::string toString(IrFunction& function, bool includeUseInfo)
+std::string toString(const IrFunction& function, bool includeUseInfo)
 {
     std::string result;
     IrToStringContext ctx{result, function.blocks, function.constants, function.cfg};
 
     for (size_t i = 0; i < function.blocks.size(); i++)
     {
-        IrBlock& block = function.blocks[i];
+        const IrBlock& block = function.blocks[i];
 
         if (block.kind == IrBlockKind::Dead)
             continue;
@@ -532,7 +536,7 @@ std::string toString(IrFunction& function, bool includeUseInfo)
         // To allow dumping blocks that are still being constructed, we can't rely on terminator and need a bounds check
         for (uint32_t index = block.start; index <= block.finish && index < uint32_t(function.instructions.size()); index++)
         {
-            IrInst& inst = function.instructions[index];
+            const IrInst& inst = function.instructions[index];
 
             // Skip pseudo instructions unless they are still referenced
             if (isPseudo(inst.cmd) && inst.useCount == 0)
@@ -548,7 +552,7 @@ std::string toString(IrFunction& function, bool includeUseInfo)
     return result;
 }
 
-std::string dump(IrFunction& function)
+std::string dump(const IrFunction& function)
 {
     std::string result = toString(function, /* includeUseInfo */ true);
 
@@ -557,12 +561,12 @@ std::string dump(IrFunction& function)
     return result;
 }
 
-std::string toDot(IrFunction& function, bool includeInst)
+std::string toDot(const IrFunction& function, bool includeInst)
 {
     std::string result;
     IrToStringContext ctx{result, function.blocks, function.constants, function.cfg};
 
-    auto appendLabelRegset = [&ctx](std::vector<RegisterSet>& regSets, size_t blockIdx, const char* name) {
+    auto appendLabelRegset = [&ctx](const std::vector<RegisterSet>& regSets, size_t blockIdx, const char* name) {
         if (blockIdx < regSets.size())
         {
             const RegisterSet& rs = regSets[blockIdx];
@@ -581,7 +585,7 @@ std::string toDot(IrFunction& function, bool includeInst)
 
     for (size_t i = 0; i < function.blocks.size(); i++)
     {
-        IrBlock& block = function.blocks[i];
+        const IrBlock& block = function.blocks[i];
 
         append(ctx.result, "b%u [", unsigned(i));
 
@@ -599,7 +603,7 @@ std::string toDot(IrFunction& function, bool includeInst)
         {
             for (uint32_t instIdx = block.start; instIdx <= block.finish; instIdx++)
             {
-                IrInst& inst = function.instructions[instIdx];
+                const IrInst& inst = function.instructions[instIdx];
 
                 // Skip pseudo instructions unless they are still referenced
                 if (isPseudo(inst.cmd) && inst.useCount == 0)
@@ -618,14 +622,14 @@ std::string toDot(IrFunction& function, bool includeInst)
 
     for (size_t i = 0; i < function.blocks.size(); i++)
     {
-        IrBlock& block = function.blocks[i];
+        const IrBlock& block = function.blocks[i];
 
         if (block.start == ~0u)
             continue;
 
         for (uint32_t instIdx = block.start; instIdx != ~0u && instIdx <= block.finish; instIdx++)
         {
-            IrInst& inst = function.instructions[instIdx];
+            const IrInst& inst = function.instructions[instIdx];
 
             auto checkOp = [&](IrOp op) {
                 if (op.kind == IrOpKind::Block)
@@ -651,7 +655,7 @@ std::string toDot(IrFunction& function, bool includeInst)
     return result;
 }
 
-std::string dumpDot(IrFunction& function, bool includeInst)
+std::string dumpDot(const IrFunction& function, bool includeInst)
 {
     std::string result = toDot(function, includeInst);
 

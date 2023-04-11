@@ -2,14 +2,10 @@
 #include "EmitInstructionX64.h"
 
 #include "Luau/AssemblyBuilderX64.h"
+#include "Luau/IrRegAllocX64.h"
 
 #include "CustomExecUtils.h"
-#include "EmitBuiltinsX64.h"
 #include "EmitCommonX64.h"
-#include "NativeState.h"
-
-#include "lobject.h"
-#include "ltm.h"
 
 namespace Luau
 {
@@ -18,16 +14,8 @@ namespace CodeGen
 namespace X64
 {
 
-void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Instruction* pc, int pcpos)
+void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int nparams, int nresults)
 {
-    int ra = LUAU_INSN_A(*pc);
-    int nparams = LUAU_INSN_B(*pc) - 1;
-    int nresults = LUAU_INSN_C(*pc) - 1;
-
-    emitInterrupt(build, pcpos);
-
-    emitSetSavedPc(build, pcpos + 1);
-
     build.mov(rArg1, rState);
     build.lea(rArg2, luauRegAddress(ra));
 
@@ -171,13 +159,8 @@ void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Instr
     }
 }
 
-void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Instruction* pc, int pcpos)
+void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int actualResults)
 {
-    emitInterrupt(build, pcpos);
-
-    int ra = LUAU_INSN_A(*pc);
-    int b = LUAU_INSN_B(*pc) - 1;
-
     RegisterX64 ci = r8;
     RegisterX64 cip = r9;
     RegisterX64 res = rdi;
@@ -196,7 +179,7 @@ void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Ins
 
         RegisterX64 counter = ecx;
 
-        if (b == 0)
+        if (actualResults == 0)
         {
             // Our instruction doesn't have any results, so just fill results expected in parent with 'nil'
             build.test(nresults, nresults);                     // test here will set SF=1 for a negative number, ZF=1 for zero and OF=0
@@ -210,7 +193,7 @@ void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Ins
             build.dec(counter);
             build.jcc(ConditionX64::NotZero, repeatNilLoop);
         }
-        else if (b == 1)
+        else if (actualResults == 1)
         {
             // Try setting our 1 result
             build.test(nresults, nresults);
@@ -245,10 +228,10 @@ void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Ins
             build.lea(vali, luauRegAddress(ra));
 
             // Copy as much as possible for MULTRET calls, and only as much as needed otherwise
-            if (b == LUA_MULTRET)
+            if (actualResults == LUA_MULTRET)
                 build.mov(valend, qword[rState + offsetof(lua_State, top)]); // valend = L->top
             else
-                build.lea(valend, luauRegAddress(ra + b)); // valend = ra + b
+                build.lea(valend, luauRegAddress(ra + actualResults)); // valend = ra + actualResults
 
             build.mov(counter, nresults);
 
@@ -333,24 +316,19 @@ void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Ins
     build.jmp(qword[rdx + rax * 2]);
 }
 
-void emitInstSetList(AssemblyBuilderX64& build, const Instruction* pc, Label& next)
+void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, int count, uint32_t index)
 {
-    int ra = LUAU_INSN_A(*pc);
-    int rb = LUAU_INSN_B(*pc);
-    int c = LUAU_INSN_C(*pc) - 1;
-    uint32_t index = pc[1];
+    OperandX64 last = index + count - 1;
 
-    OperandX64 last = index + c - 1;
-
-    // Using non-volatile 'rbx' for dynamic 'c' value (for LUA_MULTRET) to skip later recomputation
-    // We also keep 'c' scaled by sizeof(TValue) here as it helps in the loop below
+    // Using non-volatile 'rbx' for dynamic 'count' value (for LUA_MULTRET) to skip later recomputation
+    // We also keep 'count' scaled by sizeof(TValue) here as it helps in the loop below
     RegisterX64 cscaled = rbx;
 
-    if (c == LUA_MULTRET)
+    if (count == LUA_MULTRET)
     {
         RegisterX64 tmp = rax;
 
-        // c = L->top - rb
+        // count = L->top - rb
         build.mov(cscaled, qword[rState + offsetof(lua_State, top)]);
         build.lea(tmp, luauRegAddress(rb));
         build.sub(cscaled, tmp); // Using byte difference
@@ -360,7 +338,7 @@ void emitInstSetList(AssemblyBuilderX64& build, const Instruction* pc, Label& ne
         build.mov(tmp, qword[tmp + offsetof(CallInfo, top)]);
         build.mov(qword[rState + offsetof(lua_State, top)], tmp);
 
-        // last = index + c - 1;
+        // last = index + count - 1;
         last = edx;
         build.mov(last, dwordReg(cscaled));
         build.shr(last, kTValueSizeLog2);
@@ -369,7 +347,7 @@ void emitInstSetList(AssemblyBuilderX64& build, const Instruction* pc, Label& ne
 
     Label skipResize;
 
-    RegisterX64 table = rax;
+    RegisterX64 table = regs.takeReg(rax, kInvalidInstIdx);
 
     build.mov(table, luauRegValue(ra));
 
@@ -394,9 +372,9 @@ void emitInstSetList(AssemblyBuilderX64& build, const Instruction* pc, Label& ne
 
     const int kUnrollSetListLimit = 4;
 
-    if (c != LUA_MULTRET && c <= kUnrollSetListLimit)
+    if (count != LUA_MULTRET && count <= kUnrollSetListLimit)
     {
-        for (int i = 0; i < c; ++i)
+        for (int i = 0; i < count; ++i)
         {
             // setobj2t(L, &array[index + i - 1], rb + i);
             build.vmovups(xmm0, luauRegValue(rb + i));
@@ -405,17 +383,17 @@ void emitInstSetList(AssemblyBuilderX64& build, const Instruction* pc, Label& ne
     }
     else
     {
-        LUAU_ASSERT(c != 0);
+        LUAU_ASSERT(count != 0);
 
         build.xor_(offset, offset);
         if (index != 1)
             build.add(arrayDst, (index - 1) * sizeof(TValue));
 
         Label repeatLoop, endLoop;
-        OperandX64 limit = c == LUA_MULTRET ? cscaled : OperandX64(c * sizeof(TValue));
+        OperandX64 limit = count == LUA_MULTRET ? cscaled : OperandX64(count * sizeof(TValue));
 
         // If c is static, we will always do at least one iteration
-        if (c == LUA_MULTRET)
+        if (count == LUA_MULTRET)
         {
             build.cmp(offset, limit);
             build.jcc(ConditionX64::NotBelow, endLoop);
@@ -434,7 +412,7 @@ void emitInstSetList(AssemblyBuilderX64& build, const Instruction* pc, Label& ne
         build.setLabel(endLoop);
     }
 
-    callBarrierTableFast(build, table, next);
+    callBarrierTableFast(regs, build, table, {});
 }
 
 void emitinstForGLoop(AssemblyBuilderX64& build, int ra, int aux, Label& loopRepeat, Label& loopExit)
@@ -506,10 +484,8 @@ void emitinstForGLoop(AssemblyBuilderX64& build, int ra, int aux, Label& loopRep
     build.jcc(ConditionX64::NotZero, loopRepeat);
 }
 
-void emitinstForGLoopFallback(AssemblyBuilderX64& build, int pcpos, int ra, int aux, Label& loopRepeat)
+void emitinstForGLoopFallback(AssemblyBuilderX64& build, int ra, int aux, Label& loopRepeat)
 {
-    emitSetSavedPc(build, pcpos + 1);
-
     build.mov(rArg1, rState);
     build.mov(dwordReg(rArg2), ra);
     build.mov(dwordReg(rArg3), aux);
@@ -526,82 +502,6 @@ void emitInstForGPrepXnextFallback(AssemblyBuilderX64& build, int pcpos, int ra,
     build.mov(dwordReg(rArg3), pcpos + 1);
     build.call(qword[rNativeContext + offsetof(NativeContext, forgPrepXnextFallback)]);
     build.jmp(target);
-}
-
-static void emitInstAndX(AssemblyBuilderX64& build, int ra, int rb, OperandX64 c)
-{
-    Label target, fallthrough;
-    jumpIfFalsy(build, rb, target, fallthrough);
-
-    build.setLabel(fallthrough);
-
-    build.vmovups(xmm0, c);
-    build.vmovups(luauReg(ra), xmm0);
-
-    if (ra == rb)
-    {
-        build.setLabel(target);
-    }
-    else
-    {
-        Label exit;
-        build.jmp(exit);
-
-        build.setLabel(target);
-
-        build.vmovups(xmm0, luauReg(rb));
-        build.vmovups(luauReg(ra), xmm0);
-
-        build.setLabel(exit);
-    }
-}
-
-void emitInstAnd(AssemblyBuilderX64& build, const Instruction* pc)
-{
-    emitInstAndX(build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), luauReg(LUAU_INSN_C(*pc)));
-}
-
-void emitInstAndK(AssemblyBuilderX64& build, const Instruction* pc)
-{
-    emitInstAndX(build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), luauConstant(LUAU_INSN_C(*pc)));
-}
-
-static void emitInstOrX(AssemblyBuilderX64& build, int ra, int rb, OperandX64 c)
-{
-    Label target, fallthrough;
-    jumpIfTruthy(build, rb, target, fallthrough);
-
-    build.setLabel(fallthrough);
-
-    build.vmovups(xmm0, c);
-    build.vmovups(luauReg(ra), xmm0);
-
-    if (ra == rb)
-    {
-        build.setLabel(target);
-    }
-    else
-    {
-        Label exit;
-        build.jmp(exit);
-
-        build.setLabel(target);
-
-        build.vmovups(xmm0, luauReg(rb));
-        build.vmovups(luauReg(ra), xmm0);
-
-        build.setLabel(exit);
-    }
-}
-
-void emitInstOr(AssemblyBuilderX64& build, const Instruction* pc)
-{
-    emitInstOrX(build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), luauReg(LUAU_INSN_C(*pc)));
-}
-
-void emitInstOrK(AssemblyBuilderX64& build, const Instruction* pc)
-{
-    emitInstOrX(build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), luauConstant(LUAU_INSN_C(*pc)));
 }
 
 void emitInstGetImportFallback(AssemblyBuilderX64& build, int ra, uint32_t aux)

@@ -94,7 +94,6 @@ struct Fixture
     TypeId requireTypeAlias(const std::string& name);
 
     ScopedFastFlag sff_DebugLuauFreezeArena;
-    ScopedFastFlag luauLintInTypecheck{"LuauLintInTypecheck", true};
 
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;

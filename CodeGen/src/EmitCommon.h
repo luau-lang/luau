@@ -20,9 +20,16 @@ constexpr unsigned kOffsetOfInstructionC = 3;
 // Leaf functions that are placed in every module to perform common instruction sequences
 struct ModuleHelpers
 {
+    // A64/X64
     Label exitContinueVm;
     Label exitNoContinueVm;
+
+    // X64
     Label continueCallInVm;
+
+    // A64
+    Label reentry;   // x0: closure
+    Label interrupt; // x0: pc offset, x1: return address, x2: interrupt
 };
 
 } // namespace CodeGen

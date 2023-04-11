@@ -3,8 +3,7 @@
 
 #include "Luau/AssemblyBuilderX64.h"
 #include "Luau/IrData.h"
-
-#include "IrRegAllocX64.h"
+#include "Luau/IrRegAllocX64.h"
 
 #include <vector>
 
@@ -24,20 +23,21 @@ namespace X64
 
 struct IrLoweringX64
 {
-    // Some of these arguments are only required while we re-use old direct bytecode to x64 lowering
-    IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, NativeState& data, Proto* proto, IrFunction& function);
-
-    void lower(AssemblyOptions options);
+    IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, NativeState& data, IrFunction& function);
 
     void lowerInst(IrInst& inst, uint32_t index, IrBlock& next);
+
+    bool hasError() const;
 
     bool isFallthroughBlock(IrBlock target, IrBlock next);
     void jumpOrFallthrough(IrBlock& target, IrBlock& next);
 
+    void storeDoubleAsFloat(OperandX64 dst, IrOp src);
+
     // Operand data lookup helpers
-    OperandX64 memRegDoubleOp(IrOp op) const;
-    OperandX64 memRegTagOp(IrOp op) const;
-    RegisterX64 regOp(IrOp op) const;
+    OperandX64 memRegDoubleOp(IrOp op);
+    OperandX64 memRegTagOp(IrOp op);
+    RegisterX64 regOp(IrOp op);
 
     IrConst constOp(IrOp op) const;
     uint8_t tagOp(IrOp op) const;
@@ -52,7 +52,6 @@ struct IrLoweringX64
     AssemblyBuilderX64& build;
     ModuleHelpers& helpers;
     NativeState& data;
-    Proto* proto = nullptr; // Temporarily required to provide 'Instruction* pc' to old emitInst* methods
 
     IrFunction& function;
 

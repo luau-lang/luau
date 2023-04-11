@@ -62,11 +62,12 @@ enum class IrCmd : uint8_t
 
     // Get pointer (LuaNode) to table node element at the active cached slot index
     // A: pointer (Table)
+    // B: unsigned int (pcpos)
     GET_SLOT_NODE_ADDR,
 
     // Get pointer (LuaNode) to table node element at the main position of the specified key hash
     // A: pointer (Table)
-    // B: unsigned int
+    // B: unsigned int (hash)
     GET_HASH_NODE_ADDR,
 
     // Store a tag into TValue
@@ -88,6 +89,13 @@ enum class IrCmd : uint8_t
     // A: Rn
     // B: int
     STORE_INT,
+
+    // Store a vector into TValue
+    // A: Rn
+    // B: double (x)
+    // C: double (y)
+    // D: double (z)
+    STORE_VECTOR,
 
     // Store a TValue into memory
     // A: Rn or pointer (TValue)
@@ -124,6 +132,26 @@ enum class IrCmd : uint8_t
     // Negate a double number
     // A: double
     UNM_NUM,
+
+    // Round number to negative infinity (math.floor)
+    // A: double
+    FLOOR_NUM,
+
+    // Round number to positive infinity (math.ceil)
+    // A: double
+    CEIL_NUM,
+
+    // Round number to nearest integer number, rounding half-way cases away from zero (math.round)
+    // A: double
+    ROUND_NUM,
+
+    // Get square root of the argument (math.sqrt)
+    // A: double
+    SQRT_NUM,
+
+    // Get absolute value of the argument (math.abs)
+    // A: double
+    ABS_NUM,
 
     // Compute Luau 'not' operation on destructured TValue
     // A: tag
@@ -252,6 +280,7 @@ enum class IrCmd : uint8_t
     // A: Rn (where to store the result)
     // B: Rn (lhs)
     // C: Rn or Kn (rhs)
+    // D: int (TMS enum with arithmetic type)
     DO_ARITH,
 
     // Get length of a TValue of any type
@@ -382,57 +411,44 @@ enum class IrCmd : uint8_t
     // C: Rn (source start)
     // D: int (count or -1 to assign values up to stack top)
     // E: unsigned int (table index to start from)
-    LOP_SETLIST,
+    SETLIST,
 
     // Call specified function
-    // A: unsigned int (bytecode instruction index)
-    // B: Rn (function, followed by arguments)
-    // C: int (argument count or -1 to use all arguments up to stack top)
-    // D: int (result count or -1 to preserve all results and adjust stack top)
-    // Note: return values are placed starting from Rn specified in 'B'
-    LOP_CALL,
+    // A: Rn (function, followed by arguments)
+    // B: int (argument count or -1 to use all arguments up to stack top)
+    // C: int (result count or -1 to preserve all results and adjust stack top)
+    // Note: return values are placed starting from Rn specified in 'A'
+    CALL,
 
     // Return specified values from the function
-    // A: unsigned int (bytecode instruction index)
-    // B: Rn (value start)
-    // C: int (result count or -1 to return all values up to stack top)
-    LOP_RETURN,
+    // A: Rn (value start)
+    // B: int (result count or -1 to return all values up to stack top)
+    RETURN,
 
     // Adjust loop variables for one iteration of a generic for loop, jump back to the loop header if loop needs to continue
     // A: Rn (loop variable start, updates Rn+2 and 'B' number of registers starting from Rn+3)
     // B: int (loop variable count, if more than 2, registers starting from Rn+5 are set to nil)
     // C: block (repeat)
     // D: block (exit)
-    LOP_FORGLOOP,
+    FORGLOOP,
 
     // Handle LOP_FORGLOOP fallback when variable being iterated is not a table
-    // A: unsigned int (bytecode instruction index)
-    // B: Rn (loop state start, updates Rn+2 and 'C' number of registers starting from Rn+3)
-    // C: int (loop variable count and a MSB set when it's an ipairs-like iteration loop)
-    // D: block (repeat)
-    // E: block (exit)
-    LOP_FORGLOOP_FALLBACK,
+    // A: Rn (loop state start, updates Rn+2 and 'B' number of registers starting from Rn+3)
+    // B: int (loop variable count and a MSB set when it's an ipairs-like iteration loop)
+    // C: block (repeat)
+    // D: block (exit)
+    FORGLOOP_FALLBACK,
 
     // Fallback for generic for loop preparation when iterating over builtin pairs/ipairs
     // It raises an error if 'B' register is not a function
     // A: unsigned int (bytecode instruction index)
     // B: Rn
     // C: block (forgloop location)
-    LOP_FORGPREP_XNEXT_FALLBACK,
-
-    // Perform `and` or `or` operation (selecting lhs or rhs based on whether the lhs is truthy) and put the result into target register
-    // A: unsigned int (bytecode instruction index)
-    // B: Rn (target)
-    // C: Rn (lhs)
-    // D: Rn or Kn (rhs)
-    LOP_AND,
-    LOP_ANDK,
-    LOP_OR,
-    LOP_ORK,
+    FORGPREP_XNEXT_FALLBACK,
 
     // Increment coverage data (saturating 24 bit add)
     // A: unsigned int (bytecode instruction index)
-    LOP_COVERAGE,
+    COVERAGE,
 
     // Operations that have a translation, but use a full instruction fallback
 
@@ -605,6 +621,17 @@ struct IrOp
 
 static_assert(sizeof(IrOp) == 4);
 
+enum class IrValueKind : uint8_t
+{
+    Unknown, // Used by SUBSTITUTE, argument has to be checked to get type
+    None,
+    Tag,
+    Int,
+    Pointer,
+    Double,
+    Tvalue,
+};
+
 struct IrInst
 {
     IrCmd cmd;
@@ -624,7 +651,11 @@ struct IrInst
     X64::RegisterX64 regX64 = X64::noreg;
     A64::RegisterA64 regA64 = A64::noreg;
     bool reusedReg = false;
+    bool spilled = false;
 };
+
+// When IrInst operands are used, current instruction index is often required to track lifetime
+constexpr uint32_t kInvalidInstIdx = ~0u;
 
 enum class IrBlockKind : uint8_t
 {
@@ -677,6 +708,14 @@ struct IrFunction
     {
         LUAU_ASSERT(op.kind == IrOpKind::Inst);
         return instructions[op.index];
+    }
+
+    IrInst* asInstOp(IrOp op)
+    {
+        if (op.kind == IrOpKind::Inst)
+            return &instructions[op.index];
+
+        return nullptr;
     }
 
     IrConst& constOp(IrOp op)
@@ -790,19 +829,44 @@ struct IrFunction
         return value.valueDouble;
     }
 
-    IrCondition conditionOp(IrOp op)
-    {
-        LUAU_ASSERT(op.kind == IrOpKind::Condition);
-        return IrCondition(op.index);
-    }
-
     uint32_t getBlockIndex(const IrBlock& block)
     {
         // Can only be called with blocks from our vector
         LUAU_ASSERT(&block >= blocks.data() && &block <= blocks.data() + blocks.size());
         return uint32_t(&block - blocks.data());
     }
+
+    uint32_t getInstIndex(const IrInst& inst)
+    {
+        // Can only be called with instructions from our vector
+        LUAU_ASSERT(&inst >= instructions.data() && &inst <= instructions.data() + instructions.size());
+        return uint32_t(&inst - instructions.data());
+    }
 };
+
+inline IrCondition conditionOp(IrOp op)
+{
+    LUAU_ASSERT(op.kind == IrOpKind::Condition);
+    return IrCondition(op.index);
+}
+
+inline int vmRegOp(IrOp op)
+{
+    LUAU_ASSERT(op.kind == IrOpKind::VmReg);
+    return op.index;
+}
+
+inline int vmConstOp(IrOp op)
+{
+    LUAU_ASSERT(op.kind == IrOpKind::VmConst);
+    return op.index;
+}
+
+inline int vmUpvalueOp(IrOp op)
+{
+    LUAU_ASSERT(op.kind == IrOpKind::VmUpvalue);
+    return op.index;
+}
 
 } // namespace CodeGen
 } // namespace Luau

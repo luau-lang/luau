@@ -331,7 +331,7 @@ TypeId TypeReducer::reduce(TypeId ty)
         if (edge->irreducible)
             return edge->type;
         else
-            ty = edge->type;
+            ty = follow(edge->type);
     }
     else if (cyclics->contains(ty))
         return ty;

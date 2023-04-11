@@ -176,8 +176,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "error_on_eq_metamethod_returning_a_type_othe
 // We need refine both operands as `never` in the `==` branch.
 TEST_CASE_FIXTURE(Fixture, "lvalue_equals_another_lvalue_with_no_overlap")
 {
-    ScopedFastFlag sff{"LuauIntersectionTestForEquality", true};
-
     CheckResult result = check(R"(
         local function f(a: string, b: boolean?)
             if a == b then
@@ -479,10 +477,10 @@ TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 
     std::unique_ptr scope = std::make_unique<Scope>(builtinTypes->anyTypePack);
 
-    TypeId free1 = arena.addType(FreeTypePack{scope.get()});
+    TypeId free1 = arena.addType(FreeType{scope.get()});
     TypeId option1 = arena.addType(UnionType{{nilType, free1}});
 
-    TypeId free2 = arena.addType(FreeTypePack{scope.get()});
+    TypeId free2 = arena.addType(FreeType{scope.get()});
     TypeId option2 = arena.addType(UnionType{{nilType, free2}});
 
     InternalErrorReporter iceHandler;

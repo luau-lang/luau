@@ -18,9 +18,9 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAGVARIABLE(LuauNegatedClassTypes, false);
-LUAU_FASTFLAGVARIABLE(LuauNegatedFunctionTypes, false);
 LUAU_FASTFLAGVARIABLE(LuauNegatedTableTypes, false);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeBlockedTypes, false);
+LUAU_FASTFLAGVARIABLE(LuauNormalizeMetatableFixes, false);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
 LUAU_FASTFLAG(LuauTransitiveSubtyping)
@@ -202,26 +202,21 @@ bool NormalizedClassType::isNever() const
     return classes.empty();
 }
 
-NormalizedFunctionType::NormalizedFunctionType()
-    : parts(FFlag::LuauNegatedFunctionTypes ? std::optional<TypeIds>{TypeIds{}} : std::nullopt)
-{
-}
-
 void NormalizedFunctionType::resetToTop()
 {
     isTop = true;
-    parts.emplace();
+    parts.clear();
 }
 
 void NormalizedFunctionType::resetToNever()
 {
     isTop = false;
-    parts.emplace();
+    parts.clear();
 }
 
 bool NormalizedFunctionType::isNever() const
 {
-    return !isTop && (!parts || parts->empty());
+    return !isTop && parts.empty();
 }
 
 NormalizedType::NormalizedType(NotNull<BuiltinTypes> builtinTypes)
@@ -438,13 +433,10 @@ static bool isNormalizedThread(TypeId ty)
 
 static bool areNormalizedFunctions(const NormalizedFunctionType& tys)
 {
-    if (tys.parts)
+    for (TypeId ty : tys.parts)
     {
-        for (TypeId ty : *tys.parts)
-        {
-            if (!get<FunctionType>(ty) && !get<ErrorType>(ty))
-                return false;
-        }
+        if (!get<FunctionType>(ty) && !get<ErrorType>(ty))
+            return false;
     }
     return true;
 }
@@ -533,7 +525,7 @@ static bool areNormalizedClasses(const NormalizedClassType& tys)
 
 static bool isPlainTyvar(TypeId ty)
 {
-  return (get<FreeType>(ty) || get<GenericType>(ty) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(ty)));
+    return (get<FreeType>(ty) || get<GenericType>(ty) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(ty)) || get<PendingExpansionType>(ty));
 }
 
 static bool isNormalizedTyvar(const NormalizedTyvars& tyvars)
@@ -1170,13 +1162,10 @@ std::optional<TypeId> Normalizer::unionOfFunctions(TypeId here, TypeId there)
 
 void Normalizer::unionFunctions(NormalizedFunctionType& heres, const NormalizedFunctionType& theres)
 {
-    if (FFlag::LuauNegatedFunctionTypes)
-    {
-        if (heres.isTop)
-            return;
-        if (theres.isTop)
-            heres.resetToTop();
-    }
+    if (heres.isTop)
+        return;
+    if (theres.isTop)
+        heres.resetToTop();
 
     if (theres.isNever())
         return;
@@ -1185,13 +1174,13 @@ void Normalizer::unionFunctions(NormalizedFunctionType& heres, const NormalizedF
 
     if (heres.isNever())
     {
-        tmps.insert(theres.parts->begin(), theres.parts->end());
+        tmps.insert(theres.parts.begin(), theres.parts.end());
         heres.parts = std::move(tmps);
         return;
     }
 
-    for (TypeId here : *heres.parts)
-        for (TypeId there : *theres.parts)
+    for (TypeId here : heres.parts)
+        for (TypeId there : theres.parts)
         {
             if (std::optional<TypeId> fun = unionOfFunctions(here, there))
                 tmps.insert(*fun);
@@ -1213,7 +1202,7 @@ void Normalizer::unionFunctionsWithFunction(NormalizedFunctionType& heres, TypeI
     }
 
     TypeIds tmps;
-    for (TypeId here : *heres.parts)
+    for (TypeId here : heres.parts)
     {
         if (std::optional<TypeId> fun = unionOfFunctions(here, there))
             tmps.insert(*fun);
@@ -1380,7 +1369,8 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
     }
     else if (FFlag::LuauTransitiveSubtyping && get<UnknownType>(here.tops))
         return true;
-    else if (get<GenericType>(there) || get<FreeType>(there) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there)))
+    else if (get<GenericType>(there) || get<FreeType>(there) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there)) ||
+             get<PendingExpansionType>(there))
     {
         if (tyvarIndex(there) <= ignoreSmallerTyvars)
             return true;
@@ -1419,7 +1409,6 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
             here.threads = there;
         else if (ptv->type == PrimitiveType::Function)
         {
-            LUAU_ASSERT(FFlag::LuauNegatedFunctionTypes);
             here.functions.resetToTop();
         }
         else if (ptv->type == PrimitiveType::Table && FFlag::LuauNegatedTableTypes)
@@ -1460,6 +1449,10 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
     }
     else if (!FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there))
         LUAU_ASSERT(!"Internal error: Trying to normalize a BlockedType");
+    else if (get<PendingExpansionType>(there))
+    {
+        // nothing
+    }
     else
         LUAU_ASSERT(!"Unreachable");
 
@@ -1548,15 +1541,12 @@ std::optional<NormalizedType> Normalizer::negateNormal(const NormalizedType& her
      * arbitrary function types.  Ordinary code can never form these kinds of
      * types, so we decline to negate them.
      */
-    if (FFlag::LuauNegatedFunctionTypes)
-    {
-        if (here.functions.isNever())
-            result.functions.resetToTop();
-        else if (here.functions.isTop)
-            result.functions.resetToNever();
-        else
-            return std::nullopt;
-    }
+    if (here.functions.isNever())
+        result.functions.resetToTop();
+    else if (here.functions.isTop)
+        result.functions.resetToNever();
+    else
+        return std::nullopt;
 
     /*
      * It is not possible to negate an arbitrary table type, because function
@@ -2073,6 +2063,18 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     else if (isPrim(there, PrimitiveType::Table))
         return here;
 
+    if (FFlag::LuauNormalizeMetatableFixes)
+    {
+        if (get<NeverType>(here))
+            return there;
+        else if (get<NeverType>(there))
+            return here;
+        else if (get<AnyType>(here))
+            return there;
+        else if (get<AnyType>(there))
+            return here;
+    }
+
     TypeId htable = here;
     TypeId hmtable = nullptr;
     if (const MetatableType* hmtv = get<MetatableType>(here))
@@ -2089,9 +2091,23 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     }
 
     const TableType* httv = get<TableType>(htable);
-    LUAU_ASSERT(httv);
+    if (FFlag::LuauNormalizeMetatableFixes)
+    {
+        if (!httv)
+            return std::nullopt;
+    }
+    else
+        LUAU_ASSERT(httv);
+
     const TableType* tttv = get<TableType>(ttable);
-    LUAU_ASSERT(tttv);
+    if (FFlag::LuauNormalizeMetatableFixes)
+    {
+        if (!tttv)
+            return std::nullopt;
+    }
+    else
+        LUAU_ASSERT(tttv);
+
 
     if (httv->state == TableState::Free || tttv->state == TableState::Free)
         return std::nullopt;
@@ -2385,15 +2401,15 @@ void Normalizer::intersectFunctionsWithFunction(NormalizedFunctionType& heres, T
 
     heres.isTop = false;
 
-    for (auto it = heres.parts->begin(); it != heres.parts->end();)
+    for (auto it = heres.parts.begin(); it != heres.parts.end();)
     {
         TypeId here = *it;
         if (get<ErrorType>(here))
             it++;
         else if (std::optional<TypeId> tmp = intersectionOfFunctions(here, there))
         {
-            heres.parts->erase(it);
-            heres.parts->insert(*tmp);
+            heres.parts.erase(it);
+            heres.parts.insert(*tmp);
             return;
         }
         else
@@ -2401,13 +2417,13 @@ void Normalizer::intersectFunctionsWithFunction(NormalizedFunctionType& heres, T
     }
 
     TypeIds tmps;
-    for (TypeId here : *heres.parts)
+    for (TypeId here : heres.parts)
     {
         if (std::optional<TypeId> tmp = unionSaturatedFunctions(here, there))
             tmps.insert(*tmp);
     }
-    heres.parts->insert(there);
-    heres.parts->insert(tmps.begin(), tmps.end());
+    heres.parts.insert(there);
+    heres.parts.insert(tmps.begin(), tmps.end());
 }
 
 void Normalizer::intersectFunctions(NormalizedFunctionType& heres, const NormalizedFunctionType& theres)
@@ -2421,7 +2437,7 @@ void Normalizer::intersectFunctions(NormalizedFunctionType& heres, const Normali
     }
     else
     {
-        for (TypeId there : *theres.parts)
+        for (TypeId there : theres.parts)
             intersectFunctionsWithFunction(heres, there);
     }
 }
@@ -2544,7 +2560,8 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there)
                 return false;
         return true;
     }
-    else if (get<GenericType>(there) || get<FreeType>(there) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there)))
+    else if (get<GenericType>(there) || get<FreeType>(there) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there)) ||
+             get<PendingExpansionType>(there))
     {
         NormalizedType thereNorm{builtinTypes};
         NormalizedType topNorm{builtinTypes};
@@ -2615,10 +2632,7 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there)
         else if (ptv->type == PrimitiveType::Thread)
             here.threads = threads;
         else if (ptv->type == PrimitiveType::Function)
-        {
-            LUAU_ASSERT(FFlag::LuauNegatedFunctionTypes);
             here.functions = std::move(functions);
-        }
         else if (ptv->type == PrimitiveType::Table)
         {
             LUAU_ASSERT(FFlag::LuauNegatedTableTypes);
@@ -2762,16 +2776,16 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
 
     if (!get<NeverType>(norm.errors))
         result.push_back(norm.errors);
-    if (FFlag::LuauNegatedFunctionTypes && norm.functions.isTop)
+    if (norm.functions.isTop)
         result.push_back(builtinTypes->functionType);
     else if (!norm.functions.isNever())
     {
-        if (norm.functions.parts->size() == 1)
-            result.push_back(*norm.functions.parts->begin());
+        if (norm.functions.parts.size() == 1)
+            result.push_back(*norm.functions.parts.begin());
         else
         {
             std::vector<TypeId> parts;
-            parts.insert(parts.end(), norm.functions.parts->begin(), norm.functions.parts->end());
+            parts.insert(parts.end(), norm.functions.parts.begin(), norm.functions.parts.end());
             result.push_back(arena->addType(IntersectionType{std::move(parts)}));
         }
     }
@@ -2856,7 +2870,8 @@ bool isConsistentSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, Not
     return ok;
 }
 
-bool isConsistentSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
+bool isConsistentSubtype(
+    TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;

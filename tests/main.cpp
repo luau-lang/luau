@@ -59,6 +59,25 @@ static bool debuggerPresent()
     int ret = sysctl(mib, sizeof(mib) / sizeof(*mib), &info, &size, nullptr, 0);
     // debugger is attached if the P_TRACED flag is set
     return ret == 0 && (info.kp_proc.p_flag & P_TRACED) != 0;
+#elif defined(__linux__)
+    FILE* st = fopen("/proc/self/status", "r");
+    if (!st)
+        return false; // assume no debugger is attached.
+
+    int tpid = 0;
+    char buf[256];
+
+    while (fgets(buf, sizeof(buf), st))
+    {
+        if (strncmp(buf, "TracerPid:\t", 11) == 0)
+        {
+            tpid = atoi(buf + 11);
+            break;
+        }
+    }
+
+    fclose(st);
+    return tpid != 0;
 #else
     return false; // assume no debugger is attached.
 #endif
@@ -67,7 +86,7 @@ static bool debuggerPresent()
 static int testAssertionHandler(const char* expr, const char* file, int line, const char* function)
 {
     if (debuggerPresent())
-        LUAU_DEBUGBREAK();
+        return 1; // LUAU_ASSERT will trigger LUAU_DEBUGBREAK for a more convenient debugging experience
 
     ADD_FAIL_AT(file, line, "Assertion failed: ", std::string(expr));
     return 1;

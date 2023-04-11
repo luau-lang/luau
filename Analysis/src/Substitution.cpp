@@ -9,13 +9,188 @@
 #include <stdexcept>
 
 LUAU_FASTFLAGVARIABLE(LuauSubstitutionFixMissingFields, false)
-LUAU_FASTFLAG(LuauClonePublicInterfaceLess)
+LUAU_FASTFLAG(LuauClonePublicInterfaceLess2)
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAGVARIABLE(LuauClassTypeVarsInSubstitution, false)
 LUAU_FASTFLAGVARIABLE(LuauSubstitutionReentrant, false)
 
 namespace Luau
 {
+
+static TypeId DEPRECATED_shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysClone)
+{
+    ty = log->follow(ty);
+
+    TypeId result = ty;
+
+    if (auto pty = log->pending(ty))
+        ty = &pty->pending;
+
+    if (const FunctionType* ftv = get<FunctionType>(ty))
+    {
+        FunctionType clone = FunctionType{ftv->level, ftv->scope, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
+        clone.generics = ftv->generics;
+        clone.genericPacks = ftv->genericPacks;
+        clone.magicFunction = ftv->magicFunction;
+        clone.dcrMagicFunction = ftv->dcrMagicFunction;
+        clone.dcrMagicRefinement = ftv->dcrMagicRefinement;
+        clone.tags = ftv->tags;
+        clone.argNames = ftv->argNames;
+        result = dest.addType(std::move(clone));
+    }
+    else if (const TableType* ttv = get<TableType>(ty))
+    {
+        LUAU_ASSERT(!ttv->boundTo);
+        TableType clone = TableType{ttv->props, ttv->indexer, ttv->level, ttv->scope, ttv->state};
+        clone.definitionModuleName = ttv->definitionModuleName;
+        clone.definitionLocation = ttv->definitionLocation;
+        clone.name = ttv->name;
+        clone.syntheticName = ttv->syntheticName;
+        clone.instantiatedTypeParams = ttv->instantiatedTypeParams;
+        clone.instantiatedTypePackParams = ttv->instantiatedTypePackParams;
+        clone.tags = ttv->tags;
+        result = dest.addType(std::move(clone));
+    }
+    else if (const MetatableType* mtv = get<MetatableType>(ty))
+    {
+        MetatableType clone = MetatableType{mtv->table, mtv->metatable};
+        clone.syntheticName = mtv->syntheticName;
+        result = dest.addType(std::move(clone));
+    }
+    else if (const UnionType* utv = get<UnionType>(ty))
+    {
+        UnionType clone;
+        clone.options = utv->options;
+        result = dest.addType(std::move(clone));
+    }
+    else if (const IntersectionType* itv = get<IntersectionType>(ty))
+    {
+        IntersectionType clone;
+        clone.parts = itv->parts;
+        result = dest.addType(std::move(clone));
+    }
+    else if (const PendingExpansionType* petv = get<PendingExpansionType>(ty))
+    {
+        PendingExpansionType clone{petv->prefix, petv->name, petv->typeArguments, petv->packArguments};
+        result = dest.addType(std::move(clone));
+    }
+    else if (const NegationType* ntv = get<NegationType>(ty))
+    {
+        result = dest.addType(NegationType{ntv->ty});
+    }
+    else
+        return result;
+
+    asMutable(result)->documentationSymbol = ty->documentationSymbol;
+    return result;
+}
+
+static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysClone)
+{
+    if (!FFlag::LuauClonePublicInterfaceLess2)
+        return DEPRECATED_shallowClone(ty, dest, log, alwaysClone);
+
+    auto go = [ty, &dest, alwaysClone](auto&& a) {
+        using T = std::decay_t<decltype(a)>;
+
+        if constexpr (std::is_same_v<T, FreeType>)
+            return ty;
+        else if constexpr (std::is_same_v<T, BoundType>)
+        {
+            // This should never happen, but visit() cannot see it.
+            LUAU_ASSERT(!"shallowClone didn't follow its argument!");
+            return dest.addType(BoundType{a.boundTo});
+        }
+        else if constexpr (std::is_same_v<T, GenericType>)
+            return dest.addType(a);
+        else if constexpr (std::is_same_v<T, BlockedType>)
+            return ty;
+        else if constexpr (std::is_same_v<T, PrimitiveType>)
+            return ty;
+        else if constexpr (std::is_same_v<T, PendingExpansionType>)
+            return ty;
+        else if constexpr (std::is_same_v<T, AnyType>)
+            return ty;
+        else if constexpr (std::is_same_v<T, ErrorType>)
+            return ty;
+        else if constexpr (std::is_same_v<T, UnknownType>)
+            return ty;
+        else if constexpr (std::is_same_v<T, NeverType>)
+            return ty;
+        else if constexpr (std::is_same_v<T, LazyType>)
+            return ty;
+        else if constexpr (std::is_same_v<T, SingletonType>)
+            return dest.addType(a);
+        else if constexpr (std::is_same_v<T, FunctionType>)
+        {
+            FunctionType clone = FunctionType{a.level, a.scope, a.argTypes, a.retTypes, a.definition, a.hasSelf};
+            clone.generics = a.generics;
+            clone.genericPacks = a.genericPacks;
+            clone.magicFunction = a.magicFunction;
+            clone.dcrMagicFunction = a.dcrMagicFunction;
+            clone.dcrMagicRefinement = a.dcrMagicRefinement;
+            clone.tags = a.tags;
+            clone.argNames = a.argNames;
+            return dest.addType(std::move(clone));
+        }
+        else if constexpr (std::is_same_v<T, TableType>)
+        {
+            LUAU_ASSERT(!a.boundTo);
+            TableType clone = TableType{a.props, a.indexer, a.level, a.scope, a.state};
+            clone.definitionModuleName = a.definitionModuleName;
+            clone.definitionLocation = a.definitionLocation;
+            clone.name = a.name;
+            clone.syntheticName = a.syntheticName;
+            clone.instantiatedTypeParams = a.instantiatedTypeParams;
+            clone.instantiatedTypePackParams = a.instantiatedTypePackParams;
+            clone.tags = a.tags;
+            return dest.addType(std::move(clone));
+        }
+        else if constexpr (std::is_same_v<T, MetatableType>)
+        {
+            MetatableType clone = MetatableType{a.table, a.metatable};
+            clone.syntheticName = a.syntheticName;
+            return dest.addType(std::move(clone));
+        }
+        else if constexpr (std::is_same_v<T, UnionType>)
+        {
+            UnionType clone;
+            clone.options = a.options;
+            return dest.addType(std::move(clone));
+        }
+        else if constexpr (std::is_same_v<T, IntersectionType>)
+        {
+            IntersectionType clone;
+            clone.parts = a.parts;
+            return dest.addType(std::move(clone));
+        }
+        else if constexpr (std::is_same_v<T, ClassType>)
+        {
+            if (alwaysClone)
+            {
+                ClassType clone{a.name, a.props, a.parent, a.metatable, a.tags, a.userData, a.definitionModuleName};
+                return dest.addType(std::move(clone));
+            }
+            else
+                return ty;
+        }
+        else if constexpr (std::is_same_v<T, NegationType>)
+            return dest.addType(NegationType{a.ty});
+        else
+            static_assert(always_false_v<T>, "Non-exhaustive shallowClone switch");
+    };
+
+    ty = log->follow(ty);
+
+    if (auto pty = log->pending(ty))
+        ty = &pty->pending;
+
+    TypeId resTy = visit(go, ty->ty);
+    if (resTy != ty)
+        asMutable(resTy)->documentationSymbol = ty->documentationSymbol;
+
+    return resTy;
+}
 
 void Tarjan::visitChildren(TypeId ty, int index)
 {
@@ -469,7 +644,7 @@ std::optional<TypePackId> Substitution::substitute(TypePackId tp)
 
 TypeId Substitution::clone(TypeId ty)
 {
-    return shallowClone(ty, *arena, log, /* alwaysClone */ FFlag::LuauClonePublicInterfaceLess);
+    return shallowClone(ty, *arena, log, /* alwaysClone */ FFlag::LuauClonePublicInterfaceLess2);
 }
 
 TypePackId Substitution::clone(TypePackId tp)
@@ -494,7 +669,7 @@ TypePackId Substitution::clone(TypePackId tp)
             clone.hidden = vtp->hidden;
         return addTypePack(std::move(clone));
     }
-    else if (FFlag::LuauClonePublicInterfaceLess)
+    else if (FFlag::LuauClonePublicInterfaceLess2)
     {
         return addTypePack(*tp);
     }

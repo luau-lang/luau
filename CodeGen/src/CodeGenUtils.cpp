@@ -126,5 +126,125 @@ void callEpilogC(lua_State* L, int nresults, int n)
     L->top = (nresults == LUA_MULTRET) ? res : cip->top;
 }
 
+// Extracted as-is from lvmexecute.cpp with the exception of control flow (reentry) and removed interrupts/savedpc
+Closure* callFallback(lua_State* L, StkId ra, StkId argtop, int nresults)
+{
+    // slow-path: not a function call
+    if (LUAU_UNLIKELY(!ttisfunction(ra)))
+    {
+        luaV_tryfuncTM(L, ra);
+        argtop++; // __call adds an extra self
+    }
+
+    Closure* ccl = clvalue(ra);
+
+    CallInfo* ci = incr_ci(L);
+    ci->func = ra;
+    ci->base = ra + 1;
+    ci->top = argtop + ccl->stacksize; // note: technically UB since we haven't reallocated the stack yet
+    ci->savedpc = NULL;
+    ci->flags = 0;
+    ci->nresults = nresults;
+
+    L->base = ci->base;
+    L->top = argtop;
+
+    // note: this reallocs stack, but we don't need to VM_PROTECT this
+    // this is because we're going to modify base/savedpc manually anyhow
+    // crucially, we can't use ra/argtop after this line
+    luaD_checkstack(L, ccl->stacksize);
+
+    LUAU_ASSERT(ci->top <= L->stack_last);
+
+    if (!ccl->isC)
+    {
+        Proto* p = ccl->l.p;
+
+        // fill unused parameters with nil
+        StkId argi = L->top;
+        StkId argend = L->base + p->numparams;
+        while (argi < argend)
+            setnilvalue(argi++); // complete missing arguments
+        L->top = p->is_vararg ? argi : ci->top;
+
+        // keep executing new function
+        ci->savedpc = p->code;
+        return ccl;
+    }
+    else
+    {
+        lua_CFunction func = ccl->c.f;
+        int n = func(L);
+
+        // yield
+        if (n < 0)
+            return NULL;
+
+        // ci is our callinfo, cip is our parent
+        CallInfo* ci = L->ci;
+        CallInfo* cip = ci - 1;
+
+        // copy return values into parent stack (but only up to nresults!), fill the rest with nil
+        // note: in MULTRET context nresults starts as -1 so i != 0 condition never activates intentionally
+        StkId res = ci->func;
+        StkId vali = L->top - n;
+        StkId valend = L->top;
+
+        int i;
+        for (i = nresults; i != 0 && vali < valend; i--)
+            setobj2s(L, res++, vali++);
+        while (i-- > 0)
+            setnilvalue(res++);
+
+        // pop the stack frame
+        L->ci = cip;
+        L->base = cip->base;
+        L->top = (nresults == LUA_MULTRET) ? res : cip->top;
+
+        // keep executing current function
+        LUAU_ASSERT(isLua(cip));
+        return clvalue(cip->func);
+    }
+}
+
+// Extracted as-is from lvmexecute.cpp with the exception of control flow (reentry) and removed interrupts
+Closure* returnFallback(lua_State* L, StkId ra, int n)
+{
+    // ci is our callinfo, cip is our parent
+    CallInfo* ci = L->ci;
+    CallInfo* cip = ci - 1;
+
+    StkId res = ci->func; // note: we assume CALL always puts func+args and expects results to start at func
+
+    StkId vali = ra;
+    StkId valend = (n == LUA_MULTRET) ? L->top : ra + n; // copy as much as possible for MULTRET calls, and only as much as needed otherwise
+
+    int nresults = ci->nresults;
+
+    // copy return values into parent stack (but only up to nresults!), fill the rest with nil
+    // note: in MULTRET context nresults starts as -1 so i != 0 condition never activates intentionally
+    int i;
+    for (i = nresults; i != 0 && vali < valend; i--)
+        setobj2s(L, res++, vali++);
+    while (i-- > 0)
+        setnilvalue(res++);
+
+    // pop the stack frame
+    L->ci = cip;
+    L->base = cip->base;
+    L->top = (nresults == LUA_MULTRET) ? res : cip->top;
+
+    // we're done!
+    if (LUAU_UNLIKELY(ci->flags & LUA_CALLINFO_RETURN))
+    {
+        L->top = res;
+        return NULL;
+    }
+
+    // keep executing new function
+    LUAU_ASSERT(isLua(cip));
+    return clvalue(cip->func);
+}
+
 } // namespace CodeGen
 } // namespace Luau

@@ -41,6 +41,7 @@ enum class ABIX64
 class AssemblyBuilderX64
 {
 public:
+    explicit AssemblyBuilderX64(bool logText, ABIX64 abi);
     explicit AssemblyBuilderX64(bool logText);
     ~AssemblyBuilderX64();
 
@@ -120,6 +121,7 @@ public:
 
     void vcvttsd2si(OperandX64 dst, OperandX64 src);
     void vcvtsi2sd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vcvtsd2ss(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
     void vroundsd(OperandX64 dst, OperandX64 src1, OperandX64 src2, RoundingModeX64 roundingMode); // inexact
 

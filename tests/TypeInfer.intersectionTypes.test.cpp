@@ -327,7 +327,12 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table 'X & Y'");
+    auto e = toString(result.errors[0]);
+    // In DCR, because of type normalization, we print a different error message
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("Cannot add property 'z' to table '{| x: number, y: number |}'", e);
+    else
+        CHECK_EQ("Cannot add property 'z' to table 'X & Y'", e);
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")

@@ -23,8 +23,6 @@
 #endif
 #endif
 
-LUAU_FASTFLAGVARIABLE(LuauBuiltinSSE41, false)
-
 // luauF functions implement FASTCALL instruction that performs a direct execution of some builtin functions from the VM
 // The rule of thumb is that FASTCALL functions can not call user code, yield, fail, or reallocate stack.
 // If types of the arguments mismatch, luauF_* needs to return -1 and the execution will fall back to the usual call path
@@ -105,9 +103,7 @@ static int luauF_atan(lua_State* L, StkId res, TValue* arg0, int nresults, StkId
     return -1;
 }
 
-// TODO: LUAU_NOINLINE can be removed with LuauBuiltinSSE41
 LUAU_FASTMATH_BEGIN
-LUAU_NOINLINE
 static int luauF_ceil(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
@@ -170,9 +166,7 @@ static int luauF_exp(lua_State* L, StkId res, TValue* arg0, int nresults, StkId 
     return -1;
 }
 
-// TODO: LUAU_NOINLINE can be removed with LuauBuiltinSSE41
 LUAU_FASTMATH_BEGIN
-LUAU_NOINLINE
 static int luauF_floor(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
@@ -949,9 +943,7 @@ static int luauF_sign(lua_State* L, StkId res, TValue* arg0, int nresults, StkId
     return -1;
 }
 
-// TODO: LUAU_NOINLINE can be removed with LuauBuiltinSSE41
 LUAU_FASTMATH_BEGIN
-LUAU_NOINLINE
 static int luauF_round(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
@@ -1271,9 +1263,6 @@ LUAU_TARGET_SSE41 inline double roundsd_sse41(double v)
 
 LUAU_TARGET_SSE41 static int luauF_floor_sse41(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (!FFlag::LuauBuiltinSSE41)
-        return luauF_floor(L, res, arg0, nresults, args, nparams);
-
     if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
     {
         double a1 = nvalue(arg0);
@@ -1286,9 +1275,6 @@ LUAU_TARGET_SSE41 static int luauF_floor_sse41(lua_State* L, StkId res, TValue* 
 
 LUAU_TARGET_SSE41 static int luauF_ceil_sse41(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (!FFlag::LuauBuiltinSSE41)
-        return luauF_ceil(L, res, arg0, nresults, args, nparams);
-
     if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
     {
         double a1 = nvalue(arg0);
@@ -1301,9 +1287,6 @@ LUAU_TARGET_SSE41 static int luauF_ceil_sse41(lua_State* L, StkId res, TValue* a
 
 LUAU_TARGET_SSE41 static int luauF_round_sse41(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (!FFlag::LuauBuiltinSSE41)
-        return luauF_round(L, res, arg0, nresults, args, nparams);
-
     if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
     {
         double a1 = nvalue(arg0);

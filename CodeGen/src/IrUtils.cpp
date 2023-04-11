@@ -14,6 +14,134 @@ namespace Luau
 namespace CodeGen
 {
 
+IrValueKind getCmdValueKind(IrCmd cmd)
+{
+    switch (cmd)
+    {
+    case IrCmd::NOP:
+        return IrValueKind::None;
+    case IrCmd::LOAD_TAG:
+        return IrValueKind::Tag;
+    case IrCmd::LOAD_POINTER:
+        return IrValueKind::Pointer;
+    case IrCmd::LOAD_DOUBLE:
+        return IrValueKind::Double;
+    case IrCmd::LOAD_INT:
+        return IrValueKind::Int;
+    case IrCmd::LOAD_TVALUE:
+    case IrCmd::LOAD_NODE_VALUE_TV:
+        return IrValueKind::Tvalue;
+    case IrCmd::LOAD_ENV:
+    case IrCmd::GET_ARR_ADDR:
+    case IrCmd::GET_SLOT_NODE_ADDR:
+    case IrCmd::GET_HASH_NODE_ADDR:
+        return IrValueKind::Pointer;
+    case IrCmd::STORE_TAG:
+    case IrCmd::STORE_POINTER:
+    case IrCmd::STORE_DOUBLE:
+    case IrCmd::STORE_INT:
+    case IrCmd::STORE_VECTOR:
+    case IrCmd::STORE_TVALUE:
+    case IrCmd::STORE_NODE_VALUE_TV:
+        return IrValueKind::None;
+    case IrCmd::ADD_INT:
+    case IrCmd::SUB_INT:
+        return IrValueKind::Int;
+    case IrCmd::ADD_NUM:
+    case IrCmd::SUB_NUM:
+    case IrCmd::MUL_NUM:
+    case IrCmd::DIV_NUM:
+    case IrCmd::MOD_NUM:
+    case IrCmd::POW_NUM:
+    case IrCmd::MIN_NUM:
+    case IrCmd::MAX_NUM:
+    case IrCmd::UNM_NUM:
+    case IrCmd::FLOOR_NUM:
+    case IrCmd::CEIL_NUM:
+    case IrCmd::ROUND_NUM:
+    case IrCmd::SQRT_NUM:
+    case IrCmd::ABS_NUM:
+        return IrValueKind::Double;
+    case IrCmd::NOT_ANY:
+        return IrValueKind::Int;
+    case IrCmd::JUMP:
+    case IrCmd::JUMP_IF_TRUTHY:
+    case IrCmd::JUMP_IF_FALSY:
+    case IrCmd::JUMP_EQ_TAG:
+    case IrCmd::JUMP_EQ_INT:
+    case IrCmd::JUMP_EQ_POINTER:
+    case IrCmd::JUMP_CMP_NUM:
+    case IrCmd::JUMP_CMP_ANY:
+    case IrCmd::JUMP_SLOT_MATCH:
+        return IrValueKind::None;
+    case IrCmd::TABLE_LEN:
+        return IrValueKind::Double;
+    case IrCmd::NEW_TABLE:
+    case IrCmd::DUP_TABLE:
+        return IrValueKind::Pointer;
+    case IrCmd::TRY_NUM_TO_INDEX:
+        return IrValueKind::Int;
+    case IrCmd::TRY_CALL_FASTGETTM:
+        return IrValueKind::Pointer;
+    case IrCmd::INT_TO_NUM:
+        return IrValueKind::Double;
+    case IrCmd::ADJUST_STACK_TO_REG:
+    case IrCmd::ADJUST_STACK_TO_TOP:
+        return IrValueKind::None;
+    case IrCmd::FASTCALL:
+        return IrValueKind::None;
+    case IrCmd::INVOKE_FASTCALL:
+        return IrValueKind::Int;
+    case IrCmd::CHECK_FASTCALL_RES:
+    case IrCmd::DO_ARITH:
+    case IrCmd::DO_LEN:
+    case IrCmd::GET_TABLE:
+    case IrCmd::SET_TABLE:
+    case IrCmd::GET_IMPORT:
+    case IrCmd::CONCAT:
+    case IrCmd::GET_UPVALUE:
+    case IrCmd::SET_UPVALUE:
+    case IrCmd::PREPARE_FORN:
+    case IrCmd::CHECK_TAG:
+    case IrCmd::CHECK_READONLY:
+    case IrCmd::CHECK_NO_METATABLE:
+    case IrCmd::CHECK_SAFE_ENV:
+    case IrCmd::CHECK_ARRAY_SIZE:
+    case IrCmd::CHECK_SLOT_MATCH:
+    case IrCmd::CHECK_NODE_NO_NEXT:
+    case IrCmd::INTERRUPT:
+    case IrCmd::CHECK_GC:
+    case IrCmd::BARRIER_OBJ:
+    case IrCmd::BARRIER_TABLE_BACK:
+    case IrCmd::BARRIER_TABLE_FORWARD:
+    case IrCmd::SET_SAVEDPC:
+    case IrCmd::CLOSE_UPVALS:
+    case IrCmd::CAPTURE:
+    case IrCmd::SETLIST:
+    case IrCmd::CALL:
+    case IrCmd::RETURN:
+    case IrCmd::FORGLOOP:
+    case IrCmd::FORGLOOP_FALLBACK:
+    case IrCmd::FORGPREP_XNEXT_FALLBACK:
+    case IrCmd::COVERAGE:
+    case IrCmd::FALLBACK_GETGLOBAL:
+    case IrCmd::FALLBACK_SETGLOBAL:
+    case IrCmd::FALLBACK_GETTABLEKS:
+    case IrCmd::FALLBACK_SETTABLEKS:
+    case IrCmd::FALLBACK_NAMECALL:
+    case IrCmd::FALLBACK_PREPVARARGS:
+    case IrCmd::FALLBACK_GETVARARGS:
+    case IrCmd::FALLBACK_NEWCLOSURE:
+    case IrCmd::FALLBACK_DUPCLOSURE:
+    case IrCmd::FALLBACK_FORGPREP:
+        return IrValueKind::None;
+    case IrCmd::SUBSTITUTE:
+        return IrValueKind::Unknown;
+    }
+
+    LUAU_UNREACHABLE();
+}
+
 static void removeInstUse(IrFunction& function, uint32_t instIdx)
 {
     IrInst& inst = function.instructions[instIdx];
@@ -320,6 +448,26 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
         if (inst.a.kind == IrOpKind::Constant)
             substitute(function, inst, build.constDouble(-function.doubleOp(inst.a)));
         break;
+    case IrCmd::FLOOR_NUM:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(floor(function.doubleOp(inst.a))));
+        break;
+    case IrCmd::CEIL_NUM:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(ceil(function.doubleOp(inst.a))));
+        break;
+    case IrCmd::ROUND_NUM:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(round(function.doubleOp(inst.a))));
+        break;
+    case IrCmd::SQRT_NUM:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(sqrt(function.doubleOp(inst.a))));
+        break;
+    case IrCmd::ABS_NUM:
+        if (inst.a.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(fabs(function.doubleOp(inst.a))));
+        break;
     case IrCmd::NOT_ANY:
         if (inst.a.kind == IrOpKind::Constant)
         {
@@ -354,7 +502,7 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
     case IrCmd::JUMP_CMP_NUM:
         if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
         {
-            if (compare(function.doubleOp(inst.a), function.doubleOp(inst.b), function.conditionOp(inst.c)))
+            if (compare(function.doubleOp(inst.a), function.doubleOp(inst.b), conditionOp(inst.c)))
                 replace(function, block, index, {IrCmd::JUMP, inst.d});
             else
                 replace(function, block, index, {IrCmd::JUMP, inst.e});

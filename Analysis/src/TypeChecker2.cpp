@@ -568,6 +568,10 @@ struct TypeChecker2
         {
             // nothing
         }
+        else if (isOptional(iteratorTy))
+        {
+            reportError(OptionalValueAccess{iteratorTy}, forInStatement->values.data[0]->location);
+        }
         else if (std::optional<TypeId> iterMmTy =
                      findMetatableEntry(builtinTypes, module->errors, iteratorTy, "__iter", forInStatement->values.data[0]->location))
         {
@@ -973,6 +977,12 @@ struct TypeChecker2
         else if (auto utv = get<UnionType>(functionType))
         {
             // Sometimes it's okay to call a union of functions, but only if all of the functions are the same.
+            // Another scenario we might run into it is if the union has a nil member. In this case, we want to throw an error
+            if (isOptional(functionType))
+            {
+                reportError(OptionalValueAccess{functionType}, call->location);
+                return;
+            }
             std::optional<TypeId> fst;
             for (TypeId ty : utv)
             {
@@ -1187,6 +1197,8 @@ struct TypeChecker2
             else
                 reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
         }
+        else if (get<UnionType>(exprType) && isOptional(exprType))
+            reportError(OptionalValueAccess{exprType}, indexExpr->location);
     }
 
     void visit(AstExprFunction* fn)
@@ -1297,9 +1309,13 @@ struct TypeChecker2
             DenseHashSet<TypeId> seen{nullptr};
             int recursionCount = 0;
 
+
             if (!hasLength(operandType, seen, &recursionCount))
             {
-                reportError(NotATable{operandType}, expr->location);
+                if (isOptional(operandType))
+                    reportError(OptionalValueAccess{operandType}, expr->location);
+                else
+                    reportError(NotATable{operandType}, expr->location);
             }
         }
         else if (expr->op == AstExprUnary::Op::Minus)
@@ -2059,12 +2075,12 @@ struct TypeChecker2
             fetch(builtinTypes->functionType);
         else if (!norm.functions.isNever())
         {
-            if (norm.functions.parts->size() == 1)
-                fetch(norm.functions.parts->front());
+            if (norm.functions.parts.size() == 1)
+                fetch(norm.functions.parts.front());
             else
             {
                 std::vector<TypeId> parts;
-                parts.insert(parts.end(), norm.functions.parts->begin(), norm.functions.parts->end());
+                parts.insert(parts.end(), norm.functions.parts.begin(), norm.functions.parts.end());
                 fetch(testArena.addType(IntersectionType{std::move(parts)}));
             }
         }

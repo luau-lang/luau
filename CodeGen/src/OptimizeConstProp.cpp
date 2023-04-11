@@ -42,6 +42,11 @@ struct RegisterLink
 // Data we know about the current VM state
 struct ConstPropState
 {
+    ConstPropState(const IrFunction& function)
+        : function(function)
+    {
+    }
+
     uint8_t tryGetTag(IrOp op)
     {
         if (RegisterInfo* info = tryGetRegisterInfo(op))
@@ -91,28 +96,40 @@ struct ConstPropState
 
     void invalidateTag(IrOp regOp)
     {
-        LUAU_ASSERT(regOp.kind == IrOpKind::VmReg);
-        invalidate(regs[regOp.index], /* invalidateTag */ true, /* invalidateValue */ false);
+        invalidate(regs[vmRegOp(regOp)], /* invalidateTag */ true, /* invalidateValue */ false);
     }
 
     void invalidateValue(IrOp regOp)
     {
-        LUAU_ASSERT(regOp.kind == IrOpKind::VmReg);
-        invalidate(regs[regOp.index], /* invalidateTag */ false, /* invalidateValue */ true);
+        invalidate(regs[vmRegOp(regOp)], /* invalidateTag */ false, /* invalidateValue */ true);
     }
 
     void invalidate(IrOp regOp)
     {
-        LUAU_ASSERT(regOp.kind == IrOpKind::VmReg);
-        invalidate(regs[regOp.index], /* invalidateTag */ true, /* invalidateValue */ true);
+        invalidate(regs[vmRegOp(regOp)], /* invalidateTag */ true, /* invalidateValue */ true);
     }
 
-    void invalidateRegistersFrom(uint32_t firstReg)
+    void invalidateRegistersFrom(int firstReg)
     {
-        for (int i = int(firstReg); i <= maxReg; ++i)
+        for (int i = firstReg; i <= maxReg; ++i)
             invalidate(regs[i], /* invalidateTag */ true, /* invalidateValue */ true);
 
         maxReg = int(firstReg) - 1;
+    }
+
+    void invalidateRegisterRange(int firstReg, int count)
+    {
+        for (int i = firstReg; i < firstReg + count && i <= maxReg; ++i)
+            invalidate(regs[i], /* invalidateTag */ true, /* invalidateValue */ true);
+    }
+
+    void invalidateCapturedRegisters()
+    {
+        for (int i = 0; i <= maxReg; ++i)
+        {
+            if (function.cfg.captured.regs.test(i))
+                invalidate(regs[i], /* invalidateTag */ true, /* invalidateValue */ true);
+        }
     }
 
     void invalidateHeap()
@@ -127,26 +144,25 @@ struct ConstPropState
         reg.knownNoMetatable = false;
     }
 
-    void invalidateAll()
+    void invalidateUserCall()
     {
-        // Invalidating registers also invalidates what we know about the heap (stored in RegisterInfo)
-        invalidateRegistersFrom(0u);
+        invalidateHeap();
+        invalidateCapturedRegisters();
         inSafeEnv = false;
     }
 
     void createRegLink(uint32_t instIdx, IrOp regOp)
     {
-        LUAU_ASSERT(regOp.kind == IrOpKind::VmReg);
         LUAU_ASSERT(!instLink.contains(instIdx));
-        instLink[instIdx] = RegisterLink{uint8_t(regOp.index), regs[regOp.index].version};
+        instLink[instIdx] = RegisterLink{uint8_t(vmRegOp(regOp)), regs[vmRegOp(regOp)].version};
     }
 
     RegisterInfo* tryGetRegisterInfo(IrOp op)
     {
         if (op.kind == IrOpKind::VmReg)
         {
-            maxReg = int(op.index) > maxReg ? int(op.index) : maxReg;
-            return &regs[op.index];
+            maxReg = vmRegOp(op) > maxReg ? vmRegOp(op) : maxReg;
+            return &regs[vmRegOp(op)];
         }
 
         if (RegisterLink* link = tryGetRegLink(op))
@@ -174,6 +190,8 @@ struct ConstPropState
 
         return nullptr;
     }
+
+    const IrFunction& function;
 
     RegisterInfo regs[256];
 
@@ -346,6 +364,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             }
         }
         break;
+    case IrCmd::STORE_VECTOR:
+        state.invalidateValue(inst.a);
+        break;
     case IrCmd::STORE_TVALUE:
         if (inst.a.kind == IrOpKind::VmReg)
         {
@@ -411,7 +432,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
 
         if (valueA && valueB)
         {
-            if (compare(*valueA, *valueB, function.conditionOp(inst.c)))
+            if (compare(*valueA, *valueB, conditionOp(inst.c)))
                 replace(function, block, index, {IrCmd::JUMP, inst.d});
             else
                 replace(function, block, index, {IrCmd::JUMP, inst.e});
@@ -481,15 +502,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             }
         }
         break;
-    case IrCmd::LOP_AND:
-    case IrCmd::LOP_ANDK:
-    case IrCmd::LOP_OR:
-    case IrCmd::LOP_ORK:
-        state.invalidate(inst.b);
-        break;
     case IrCmd::FASTCALL:
     case IrCmd::INVOKE_FASTCALL:
-        handleBuiltinEffects(state, LuauBuiltinFunction(function.uintOp(inst.a)), inst.b.index, function.intOp(inst.f));
+        handleBuiltinEffects(state, LuauBuiltinFunction(function.uintOp(inst.a)), vmRegOp(inst.b), function.intOp(inst.f));
         break;
 
         // These instructions don't have an effect on register/memory state we are tracking
@@ -511,6 +526,11 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::MIN_NUM:
     case IrCmd::MAX_NUM:
     case IrCmd::UNM_NUM:
+    case IrCmd::FLOOR_NUM:
+    case IrCmd::CEIL_NUM:
+    case IrCmd::ROUND_NUM:
+    case IrCmd::SQRT_NUM:
+    case IrCmd::ABS_NUM:
     case IrCmd::NOT_ANY:
     case IrCmd::JUMP:
     case IrCmd::JUMP_EQ_POINTER:
@@ -525,10 +545,10 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::CHECK_SLOT_MATCH:
     case IrCmd::CHECK_NODE_NO_NEXT:
     case IrCmd::BARRIER_TABLE_BACK:
-    case IrCmd::LOP_RETURN:
-    case IrCmd::LOP_COVERAGE:
+    case IrCmd::RETURN:
+    case IrCmd::COVERAGE:
     case IrCmd::SET_UPVALUE:
-    case IrCmd::LOP_SETLIST:  // We don't track table state that this can invalidate
+    case IrCmd::SETLIST:      // We don't track table state that this can invalidate
     case IrCmd::SET_SAVEDPC:  // TODO: we may be able to remove some updates to PC
     case IrCmd::CLOSE_UPVALS: // Doesn't change memory that we track
     case IrCmd::CAPTURE:
@@ -538,35 +558,93 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::CHECK_FASTCALL_RES:  // Changes stack top, but not the values
         break;
 
-        // We don't model the following instructions, so we just clear all the knowledge we have built up
-        // Many of these call user functions that can change memory and captured registers
-        // Some of these might yield with similar effects
     case IrCmd::JUMP_CMP_ANY:
+        state.invalidateUserCall(); // TODO: if arguments are strings, there will be no user calls
+        break;
     case IrCmd::DO_ARITH:
+        state.invalidate(inst.a);
+        state.invalidateUserCall();
+        break;
     case IrCmd::DO_LEN:
+        state.invalidate(inst.a);
+        state.invalidateUserCall(); // TODO: if argument is a string, there will be no user call
+
+        state.saveTag(inst.a, LUA_TNUMBER);
+        break;
     case IrCmd::GET_TABLE:
+        state.invalidate(inst.a);
+        state.invalidateUserCall();
+        break;
     case IrCmd::SET_TABLE:
+        state.invalidateUserCall();
+        break;
     case IrCmd::GET_IMPORT:
+        state.invalidate(inst.a);
+        state.invalidateUserCall();
+        break;
     case IrCmd::CONCAT:
+        state.invalidateRegisterRange(vmRegOp(inst.a), function.uintOp(inst.b));
+        state.invalidateUserCall(); // TODO: if only strings and numbers are concatenated, there will be no user calls
+        break;
     case IrCmd::PREPARE_FORN:
-    case IrCmd::INTERRUPT: // TODO: it will be important to keep tag/value state, but we have to track register capture
-    case IrCmd::LOP_CALL:
-    case IrCmd::LOP_FORGLOOP:
-    case IrCmd::LOP_FORGLOOP_FALLBACK:
-    case IrCmd::LOP_FORGPREP_XNEXT_FALLBACK:
+        state.invalidateValue(inst.a);
+        state.saveTag(inst.a, LUA_TNUMBER);
+        state.invalidateValue(inst.b);
+        state.saveTag(inst.b, LUA_TNUMBER);
+        state.invalidateValue(inst.c);
+        state.saveTag(inst.c, LUA_TNUMBER);
+        break;
+    case IrCmd::INTERRUPT:
+        state.invalidateUserCall();
+        break;
+    case IrCmd::CALL:
+        state.invalidateRegistersFrom(vmRegOp(inst.a));
+        state.invalidateUserCall();
+        break;
+    case IrCmd::FORGLOOP:
+        state.invalidateRegistersFrom(vmRegOp(inst.a) + 2); // Rn and Rn+1 are not modified
+        break;
+    case IrCmd::FORGLOOP_FALLBACK:
+        state.invalidateRegistersFrom(vmRegOp(inst.a) + 2); // Rn and Rn+1 are not modified
+        state.invalidateUserCall();
+        break;
+    case IrCmd::FORGPREP_XNEXT_FALLBACK:
+        // This fallback only conditionally throws an exception
+        break;
     case IrCmd::FALLBACK_GETGLOBAL:
+        state.invalidate(inst.b);
+        state.invalidateUserCall();
+        break;
     case IrCmd::FALLBACK_SETGLOBAL:
+        state.invalidateUserCall();
+        break;
     case IrCmd::FALLBACK_GETTABLEKS:
+        state.invalidate(inst.b);
+        state.invalidateUserCall();
+        break;
     case IrCmd::FALLBACK_SETTABLEKS:
+        state.invalidateUserCall();
+        break;
     case IrCmd::FALLBACK_NAMECALL:
+        state.invalidate(IrOp{inst.b.kind, vmRegOp(inst.b) + 0u});
+        state.invalidate(IrOp{inst.b.kind, vmRegOp(inst.b) + 1u});
+        state.invalidateUserCall();
+        break;
     case IrCmd::FALLBACK_PREPVARARGS:
+        break;
     case IrCmd::FALLBACK_GETVARARGS:
+        state.invalidateRegistersFrom(vmRegOp(inst.b));
+        break;
     case IrCmd::FALLBACK_NEWCLOSURE:
+        state.invalidate(inst.b);
+        break;
     case IrCmd::FALLBACK_DUPCLOSURE:
+        state.invalidate(inst.b);
+        break;
     case IrCmd::FALLBACK_FORGPREP:
-        // TODO: this is very conservative, some of there instructions can be tracked better
-        // TODO: non-captured register tags and values should not be cleared here
-        state.invalidateAll();
+        state.invalidate(IrOp{inst.b.kind, vmRegOp(inst.b) + 0u});
+        state.invalidate(IrOp{inst.b.kind, vmRegOp(inst.b) + 1u});
+        state.invalidate(IrOp{inst.b.kind, vmRegOp(inst.b) + 2u});
         break;
     }
 }
@@ -592,7 +670,7 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
 {
     IrFunction& function = build.function;
 
-    ConstPropState state;
+    ConstPropState state{function};
 
     while (block)
     {
@@ -698,7 +776,7 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
         return;
 
     // Initialize state with the knowledge of our current block
-    ConstPropState state;
+    ConstPropState state{function};
     constPropInBlock(build, startingBlock, state);
 
     // Veryfy that target hasn't changed

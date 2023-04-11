@@ -490,8 +490,13 @@ struct FindFreeTypes
         return !foundOne;
     }
 
-    template<typename ID>
-    bool operator()(ID, Unifiable::Free)
+    bool operator()(TypeId, FreeType)
+    {
+        foundOne = true;
+        return false;
+    }
+
+    bool operator()(TypePackId, FreeTypePack)
     {
         foundOne = true;
         return false;
@@ -1194,7 +1199,6 @@ TEST_CASE_FIXTURE(Fixture, "dcr_delays_expansion_of_function_containing_blocked_
 {
     ScopedFastFlag sff[] = {
         {"DebugLuauDeferredConstraintResolution", true},
-        {"LuauTinyUnifyNormalsFix", true},
         // If we run this with error-suppression, it triggers an assertion.
         // FATAL ERROR: Assertion failed: !"Internal error: Trying to normalize a BlockedType"
         {"LuauTransitiveSubtyping", false},

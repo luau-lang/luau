@@ -85,8 +85,8 @@ struct ACFixtureImpl : BaseType
     {
         GlobalTypes& globals = this->frontend.globalsForAutocomplete;
         unfreeze(globals.globalTypes);
-        LoadDefinitionFileResult result =
-            loadDefinitionFile(this->frontend.typeChecker, globals, globals.globalScope, source, "@test", /* captureComments */ false);
+        LoadDefinitionFileResult result = this->frontend.loadDefinitionFile(
+            globals, globals.globalScope, source, "@test", /* captureComments */ false, /* typeCheckForAutocomplete */ true);
         freeze(globals.globalTypes);
 
         REQUIRE_MESSAGE(result.success, "loadDefinition: unable to load definition file");
@@ -2995,8 +2995,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons")
 
 TEST_CASE_FIXTURE(ACFixture, "string_singleton_as_table_key")
 {
-    ScopedFastFlag sff{"LuauCompleteTableKeysBetter", true};
-
     check(R"(
         type Direction = "up" | "down"
 
@@ -3450,8 +3448,6 @@ TEST_CASE_FIXTURE(ACFixture, "string_contents_is_available_to_callback")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_response_perf1" * doctest::timeout(0.5))
 {
-    ScopedFastFlag luauAutocompleteSkipNormalization{"LuauAutocompleteSkipNormalization", true};
-
     // Build a function type with a large overload set
     const int parts = 100;
     std::string source;

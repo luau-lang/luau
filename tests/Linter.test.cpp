@@ -1273,7 +1273,7 @@ TEST_CASE_FIXTURE(Fixture, "use_all_parent_scopes_for_globals")
 {
     ScopePtr testScope = frontend.addEnvironment("Test");
     unfreeze(frontend.globals.globalTypes);
-    loadDefinitionFile(frontend.typeChecker, frontend.globals, testScope, R"(
+    frontend.loadDefinitionFile(frontend.globals, testScope, R"(
         declare Foo: number
     )",
         "@test", /* captureComments */ false);
@@ -1444,8 +1444,6 @@ TEST_CASE_FIXTURE(Fixture, "LintHygieneUAF")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiTyped")
 {
-    ScopedFastFlag sff("LuauImproveDeprecatedApiLint", true);
-
     unfreeze(frontend.globals.globalTypes);
     TypeId instanceType = frontend.globals.globalTypes.addType(ClassType{"Instance", {}, std::nullopt, std::nullopt, {}, {}, "Test"});
     persist(instanceType);
@@ -1496,8 +1494,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiUntyped")
 {
-    ScopedFastFlag sff("LuauImproveDeprecatedApiLint", true);
-
     if (TableType* ttv = getMutable<TableType>(getGlobalBinding(frontend.globals, "table")))
     {
         ttv->props["foreach"].deprecated = true;

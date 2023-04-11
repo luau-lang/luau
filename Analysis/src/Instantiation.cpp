@@ -127,7 +127,7 @@ TypeId ReplaceGenerics::clean(TypeId ty)
 TypePackId ReplaceGenerics::clean(TypePackId tp)
 {
     LUAU_ASSERT(isDirty(tp));
-    return addTypePack(TypePackVar(FreeTypePack{level}));
+    return addTypePack(TypePackVar(FreeTypePack{scope, level}));
 }
 
 } // namespace Luau

@@ -29,7 +29,7 @@ enum lua_Status
     LUA_OK = 0,
     LUA_YIELD,
     LUA_ERRRUN,
-    LUA_ERRSYNTAX,
+    LUA_ERRSYNTAX, // legacy error code, preserved for compatibility
     LUA_ERRMEM,
     LUA_ERRERR,
     LUA_BREAK, // yielded for a debug breakpoint

@@ -14,8 +14,6 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
-LUAU_FASTFLAGVARIABLE(LuauImproveDeprecatedApiLint, false)
-
 namespace Luau
 {
 
@@ -2102,9 +2100,6 @@ class LintDeprecatedApi : AstVisitor
 public:
     LUAU_NOINLINE static void process(LintContext& context)
     {
-        if (!FFlag::LuauImproveDeprecatedApiLint && !context.module)
-            return;
-
         LintDeprecatedApi pass{&context};
         context.root->visit(&pass);
     }
@@ -2122,8 +2117,7 @@ private:
         if (std::optional<TypeId> ty = context->getType(node->expr))
             check(node, follow(*ty));
         else if (AstExprGlobal* global = node->expr->as<AstExprGlobal>())
-            if (FFlag::LuauImproveDeprecatedApiLint)
-                check(node->location, global->name, node->index);
+            check(node->location, global->name, node->index);
 
         return true;
     }
@@ -2144,7 +2138,7 @@ private:
             if (prop != tty->props.end() && prop->second.deprecated)
             {
                 // strip synthetic typeof() for builtin tables
-                if (FFlag::LuauImproveDeprecatedApiLint && tty->name && tty->name->compare(0, 7, "typeof(") == 0 && tty->name->back() == ')')
+                if (tty->name && tty->name->compare(0, 7, "typeof(") == 0 && tty->name->back() == ')')
                     report(node->location, prop->second, tty->name->substr(7, tty->name->length() - 8).c_str(), node->index.value);
                 else
                     report(node->location, prop->second, tty->name ? tty->name->c_str() : nullptr, node->index.value);

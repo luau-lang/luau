@@ -32,9 +32,9 @@ static std::string bytecodeAsArray(const std::vector<uint32_t>& code)
 class AssemblyBuilderA64Fixture
 {
 public:
-    bool check(void (*f)(AssemblyBuilderA64& build), std::vector<uint32_t> code, std::vector<uint8_t> data = {})
+    bool check(void (*f)(AssemblyBuilderA64& build), std::vector<uint32_t> code, std::vector<uint8_t> data = {}, unsigned int features = 0)
     {
-        AssemblyBuilderA64 build(/* logText= */ false);
+        AssemblyBuilderA64 build(/* logText= */ false, features);
 
         f(build);
 
@@ -120,6 +120,10 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Loads")
     SINGLE_COMPARE(ldrsh(x0, x1), 0x79800020);
     SINGLE_COMPARE(ldrsh(w0, x1), 0x79C00020);
     SINGLE_COMPARE(ldrsw(x0, x1), 0xB9800020);
+
+    // paired loads
+    SINGLE_COMPARE(ldp(x0, x1, mem(x2, 8)), 0xA9408440);
+    SINGLE_COMPARE(ldp(w0, w1, mem(x2, -8)), 0x297F0440);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Stores")
@@ -135,15 +139,58 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Stores")
     SINGLE_COMPARE(str(w0, x1), 0xB9000020);
     SINGLE_COMPARE(strb(w0, x1), 0x39000020);
     SINGLE_COMPARE(strh(w0, x1), 0x79000020);
+
+    // paired stores
+    SINGLE_COMPARE(stp(x0, x1, mem(x2, 8)), 0xA9008440);
+    SINGLE_COMPARE(stp(w0, w1, mem(x2, -8)), 0x293F0440);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Moves")
 {
     SINGLE_COMPARE(mov(x0, x1), 0xAA0103E0);
     SINGLE_COMPARE(mov(w0, w1), 0x2A0103E0);
-    SINGLE_COMPARE(mov(x0, 42), 0xD2800540);
-    SINGLE_COMPARE(mov(w0, 42), 0x52800540);
+
+    SINGLE_COMPARE(movz(x0, 42), 0xD2800540);
+    SINGLE_COMPARE(movz(w0, 42), 0x52800540);
+    SINGLE_COMPARE(movn(x0, 42), 0x92800540);
+    SINGLE_COMPARE(movn(w0, 42), 0x12800540);
     SINGLE_COMPARE(movk(x0, 42, 16), 0xF2A00540);
+
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            build.mov(x0, 42);
+        },
+        {0xD2800540}));
+
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            build.mov(x0, 424242);
+        },
+        {0xD28F2640, 0xF2A000C0}));
+
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            build.mov(x0, -42);
+        },
+        {0x92800520}));
+
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            build.mov(x0, -424242);
+        },
+        {0x928F2620, 0xF2BFFF20}));
+
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            build.mov(x0, -65536);
+        },
+        {0x929FFFE0}));
+
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            build.mov(x0, -65537);
+        },
+        {0x92800000, 0xF2BFFFC0}));
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "ControlFlow")
@@ -222,6 +269,103 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Constants")
     // clang-format on
 }
 
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "AddressOfLabel")
+{
+    // clang-format off
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            Label label;
+            build.adr(x0, label);
+            build.add(x0, x0, x0);
+            build.setLabel(label);
+        },
+        {
+            0x10000040, 0x8b000000,
+        }));
+    // clang-format on
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPBasic")
+{
+    SINGLE_COMPARE(fmov(d0, d1), 0x1E604020);
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPMath")
+{
+    SINGLE_COMPARE(fabs(d1, d2), 0x1E60C041);
+    SINGLE_COMPARE(fadd(d1, d2, d3), 0x1E632841);
+    SINGLE_COMPARE(fdiv(d1, d2, d3), 0x1E631841);
+    SINGLE_COMPARE(fmul(d1, d2, d3), 0x1E630841);
+    SINGLE_COMPARE(fneg(d1, d2), 0x1E614041);
+    SINGLE_COMPARE(fsqrt(d1, d2), 0x1E61C041);
+    SINGLE_COMPARE(fsub(d1, d2, d3), 0x1E633841);
+
+    SINGLE_COMPARE(frinta(d1, d2), 0x1E664041);
+    SINGLE_COMPARE(frintm(d1, d2), 0x1E654041);
+    SINGLE_COMPARE(frintp(d1, d2), 0x1E64C041);
+
+    SINGLE_COMPARE(fcvtzs(w1, d2), 0x1E780041);
+    SINGLE_COMPARE(fcvtzs(x1, d2), 0x9E780041);
+    SINGLE_COMPARE(fcvtzu(w1, d2), 0x1E790041);
+    SINGLE_COMPARE(fcvtzu(x1, d2), 0x9E790041);
+
+    SINGLE_COMPARE(scvtf(d1, w2), 0x1E620041);
+    SINGLE_COMPARE(scvtf(d1, x2), 0x9E620041);
+    SINGLE_COMPARE(ucvtf(d1, w2), 0x1E630041);
+    SINGLE_COMPARE(ucvtf(d1, x2), 0x9E630041);
+
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            build.fjcvtzs(w1, d2);
+        },
+        {0x1E7E0041}, {}, A64::Feature_JSCVT));
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPLoadStore")
+{
+    // address forms
+    SINGLE_COMPARE(ldr(d0, x1), 0xFD400020);
+    SINGLE_COMPARE(ldr(d0, mem(x1, 8)), 0xFD400420);
+    SINGLE_COMPARE(ldr(d0, mem(x1, x7)), 0xFC676820);
+    SINGLE_COMPARE(ldr(d0, mem(x1, -7)), 0xFC5F9020);
+    SINGLE_COMPARE(str(d0, x1), 0xFD000020);
+    SINGLE_COMPARE(str(d0, mem(x1, 8)), 0xFD000420);
+    SINGLE_COMPARE(str(d0, mem(x1, x7)), 0xFC276820);
+    SINGLE_COMPARE(str(d0, mem(x1, -7)), 0xFC1F9020);
+
+    // load/store sizes
+    SINGLE_COMPARE(ldr(d0, x1), 0xFD400020);
+    SINGLE_COMPARE(ldr(q0, x1), 0x3DC00020);
+    SINGLE_COMPARE(str(d0, x1), 0xFD000020);
+    SINGLE_COMPARE(str(q0, x1), 0x3D800020);
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPCompare")
+{
+    SINGLE_COMPARE(fcmp(d0, d1), 0x1E612000);
+    SINGLE_COMPARE(fcmpz(d1), 0x1E602028);
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "AddressOffsetSize")
+{
+    SINGLE_COMPARE(ldr(w0, mem(x1, 16)), 0xB9401020);
+    SINGLE_COMPARE(ldr(x0, mem(x1, 16)), 0xF9400820);
+    SINGLE_COMPARE(ldr(d0, mem(x1, 16)), 0xFD400820);
+    SINGLE_COMPARE(ldr(q0, mem(x1, 16)), 0x3DC00420);
+
+    SINGLE_COMPARE(str(w0, mem(x1, 16)), 0xB9001020);
+    SINGLE_COMPARE(str(x0, mem(x1, 16)), 0xF9000820);
+    SINGLE_COMPARE(str(d0, mem(x1, 16)), 0xFD000820);
+    SINGLE_COMPARE(str(q0, mem(x1, 16)), 0x3D800420);
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "ConditionalSelect")
+{
+    SINGLE_COMPARE(csel(x0, x1, x2, ConditionA64::Equal), 0x9A820020);
+    SINGLE_COMPARE(csel(w0, w1, w2, ConditionA64::Equal), 0x1A820020);
+    SINGLE_COMPARE(fcsel(d0, d1, d2, ConditionA64::Equal), 0x1E620C20);
+}
+
 TEST_CASE("LogTest")
 {
     AssemblyBuilderA64 build(/* logText= */ true);
@@ -243,6 +387,17 @@ TEST_CASE("LogTest")
     build.b(ConditionA64::Plus, l);
     build.cbz(x7, l);
 
+    build.ldp(x0, x1, mem(x8, 8));
+    build.adr(x0, l);
+
+    build.fabs(d1, d2);
+    build.ldr(q1, x2);
+
+    build.csel(x0, x1, x2, ConditionA64::Equal);
+
+    build.fcmp(d0, d1);
+    build.fcmpz(d0);
+
     build.setLabel(l);
     build.ret();
 
@@ -263,6 +418,13 @@ TEST_CASE("LogTest")
  blr         x0
  b.pl        .L1
  cbz         x7,.L1
+ ldp         x0,x1,[x8,#8]
+ adr         x0,.L1
+ fabs        d1,d2
+ ldr         q1,[x2]
+ csel        x0,x1,x2,eq
+ fcmp        d0,d1
+ fcmp        d0,#0
 .L1:
  ret
 )";

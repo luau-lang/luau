@@ -341,10 +341,10 @@ struct GenericTypeVisitor
                 traverse(btv->boundTo);
         }
 
-        else if (auto ftv = get<Unifiable::Free>(tp))
+        else if (auto ftv = get<FreeTypePack>(tp))
             visit(tp, *ftv);
 
-        else if (auto gtv = get<Unifiable::Generic>(tp))
+        else if (auto gtv = get<GenericTypePack>(tp))
             visit(tp, *gtv);
 
         else if (auto etv = get<Unifiable::Error>(tp))

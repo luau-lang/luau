@@ -26,7 +26,6 @@ LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
-LUAU_FASTFLAGVARIABLE(LuauMatchReturnsOptionalString, false);
 
 namespace Luau
 {
@@ -431,8 +430,71 @@ bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
     return false;
 }
 
+FreeType::FreeType(TypeLevel level)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , scope(nullptr)
+{
+}
+
+FreeType::FreeType(Scope* scope)
+    : index(Unifiable::freshIndex())
+    , level{}
+    , scope(scope)
+{
+}
+
+FreeType::FreeType(Scope* scope, TypeLevel level)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , scope(scope)
+{
+}
+
+GenericType::GenericType()
+    : index(Unifiable::freshIndex())
+    , name("g" + std::to_string(index))
+{
+}
+
+GenericType::GenericType(TypeLevel level)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , name("g" + std::to_string(index))
+{
+}
+
+GenericType::GenericType(const Name& name)
+    : index(Unifiable::freshIndex())
+    , name(name)
+    , explicitName(true)
+{
+}
+
+GenericType::GenericType(Scope* scope)
+    : index(Unifiable::freshIndex())
+    , scope(scope)
+{
+}
+
+GenericType::GenericType(TypeLevel level, const Name& name)
+    : index(Unifiable::freshIndex())
+    , level(level)
+    , name(name)
+    , explicitName(true)
+{
+}
+
+GenericType::GenericType(Scope* scope, const Name& name)
+    : index(Unifiable::freshIndex())
+    , scope(scope)
+    , name(name)
+    , explicitName(true)
+{
+}
+
 BlockedType::BlockedType()
-  : index(FFlag::LuauNormalizeBlockedTypes ? Unifiable::freshIndex() : ++DEPRECATED_nextIndex)
+    : index(FFlag::LuauNormalizeBlockedTypes ? Unifiable::freshIndex() : ++DEPRECATED_nextIndex)
 {
 }
 
@@ -972,7 +1034,7 @@ const TypeLevel* getLevel(TypeId ty)
 {
     ty = follow(ty);
 
-    if (auto ftv = get<Unifiable::Free>(ty))
+    if (auto ftv = get<FreeType>(ty))
         return &ftv->level;
     else if (auto ttv = get<TableType>(ty))
         return &ttv->level;
@@ -991,7 +1053,7 @@ std::optional<TypeLevel> getLevel(TypePackId tp)
 {
     tp = follow(tp);
 
-    if (auto ftv = get<Unifiable::Free>(tp))
+    if (auto ftv = get<FreeTypePack>(tp))
         return ftv->level;
     else
         return std::nullopt;
@@ -1219,12 +1281,12 @@ static std::vector<TypeId> parsePatternString(NotNull<BuiltinTypes> builtinTypes
             if (i + 1 < size && data[i + 1] == ')')
             {
                 i++;
-                result.push_back(FFlag::LuauMatchReturnsOptionalString ? builtinTypes->optionalNumberType : builtinTypes->numberType);
+                result.push_back(builtinTypes->optionalNumberType);
                 continue;
             }
 
             ++depth;
-            result.push_back(FFlag::LuauMatchReturnsOptionalString ? builtinTypes->optionalStringType : builtinTypes->stringType);
+            result.push_back(builtinTypes->optionalStringType);
         }
         else if (data[i] == ')')
         {
@@ -1242,7 +1304,7 @@ static std::vector<TypeId> parsePatternString(NotNull<BuiltinTypes> builtinTypes
         return std::vector<TypeId>();
 
     if (result.empty())
-        result.push_back(FFlag::LuauMatchReturnsOptionalString ? builtinTypes->optionalStringType : builtinTypes->stringType);
+        result.push_back(builtinTypes->optionalStringType);
 
     return result;
 }

@@ -14,7 +14,6 @@
 #include <stdexcept>
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAGVARIABLE(LuauFunctionReturnStringificationFixup, false)
 
 /*
  * Prefix generic typenames with gen-
@@ -82,6 +81,11 @@ struct FindCyclicTypes final : TypeVisitor
     }
 
     bool visit(TypeId ty, const ClassType&) override
+    {
+        return false;
+    }
+
+    bool visit(TypeId, const PendingExpansionType&) override
     {
         return false;
     }
@@ -364,7 +368,7 @@ struct TypeStringifier
             state.emit(">");
     }
 
-    void operator()(TypeId ty, const Unifiable::Free& ftv)
+    void operator()(TypeId ty, const FreeType& ftv)
     {
         state.result.invalid = true;
         if (FFlag::DebugLuauVerboseTypeNames)
@@ -1518,7 +1522,7 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         }
         else if constexpr (std::is_same_v<T, FunctionCallConstraint>)
         {
-            return "call " + tos(c.fn) + " with { result = " + tos(c.result) + " }";
+            return "call " + tos(c.fn) + "( " + tos(c.argsPack) + " )" + " with { result = " + tos(c.result) + " }";
         }
         else if constexpr (std::is_same_v<T, PrimitiveTypeConstraint>)
         {

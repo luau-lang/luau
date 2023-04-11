@@ -13,9 +13,6 @@
 #include <unordered_set>
 #include <utility>
 
-LUAU_FASTFLAGVARIABLE(LuauCompleteTableKeysBetter, false);
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteSkipNormalization, false);
-
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
 
@@ -144,12 +141,9 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
     Normalizer normalizer{typeArena, builtinTypes, NotNull{&unifierState}};
     Unifier unifier(NotNull<Normalizer>{&normalizer}, Mode::Strict, scope, Location(), Variance::Covariant);
 
-    if (FFlag::LuauAutocompleteSkipNormalization)
-    {
-        // Cost of normalization can be too high for autocomplete response time requirements
-        unifier.normalize = false;
-        unifier.checkInhabited = false;
-    }
+    // Cost of normalization can be too high for autocomplete response time requirements
+    unifier.normalize = false;
+    unifier.checkInhabited = false;
 
     return unifier.canUnify(subTy, superTy).empty();
 }
@@ -981,25 +975,14 @@ T* extractStat(const std::vector<AstNode*>& ancestry)
     AstNode* grandParent = ancestry.size() >= 3 ? ancestry.rbegin()[2] : nullptr;
     AstNode* greatGrandParent = ancestry.size() >= 4 ? ancestry.rbegin()[3] : nullptr;
 
-    if (FFlag::LuauCompleteTableKeysBetter)
-    {
-        if (!grandParent)
-            return nullptr;
+    if (!grandParent)
+        return nullptr;
 
-        if (T* t = parent->as<T>(); t && grandParent->is<AstStatBlock>())
-            return t;
+    if (T* t = parent->as<T>(); t && grandParent->is<AstStatBlock>())
+        return t;
 
-        if (!greatGrandParent)
-            return nullptr;
-    }
-    else
-    {
-        if (T* t = parent->as<T>(); t && parent->is<AstStatBlock>())
-            return t;
-
-        if (!grandParent || !greatGrandParent)
-            return nullptr;
-    }
+    if (!greatGrandParent)
+        return nullptr;
 
     if (T* t = greatGrandParent->as<T>(); t && grandParent->is<AstStatBlock>() && parent->is<AstStatError>() && isIdentifier(node))
         return t;
@@ -1533,23 +1516,20 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
                 {
                     auto result = autocompleteProps(*module, typeArena, builtinTypes, *it, PropIndexType::Key, ancestry);
 
-                    if (FFlag::LuauCompleteTableKeysBetter)
-                    {
-                        if (auto nodeIt = module->astExpectedTypes.find(node->asExpr()))
-                            autocompleteStringSingleton(*nodeIt, !node->is<AstExprConstantString>(), result);
+                    if (auto nodeIt = module->astExpectedTypes.find(node->asExpr()))
+                        autocompleteStringSingleton(*nodeIt, !node->is<AstExprConstantString>(), result);
 
-                        if (!key)
+                    if (!key)
+                    {
+                        // If there is "no key," it may be that the user
+                        // intends for the current token to be the key, but
+                        // has yet to type the `=` sign.
+                        //
+                        // If the key type is a union of singleton strings,
+                        // suggest those too.
+                        if (auto ttv = get<TableType>(follow(*it)); ttv && ttv->indexer)
                         {
-                            // If there is "no key," it may be that the user
-                            // intends for the current token to be the key, but
-                            // has yet to type the `=` sign.
-                            //
-                            // If the key type is a union of singleton strings,
-                            // suggest those too.
-                            if (auto ttv = get<TableType>(follow(*it)); ttv && ttv->indexer)
-                            {
-                                autocompleteStringSingleton(ttv->indexer->indexType, false, result);
-                            }
+                            autocompleteStringSingleton(ttv->indexer->indexType, false, result);
                         }
                     }
 

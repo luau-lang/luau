@@ -15,8 +15,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAGVARIABLE(LuauDeprecateTableGetnForeach, false)
-
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
  * Some of them require richer generics than we have.  For instance, we do not yet have a way to talk
@@ -214,7 +212,7 @@ void registerBuiltinTypes(GlobalTypes& globals)
     globals.globalScope->addBuiltinTypeBinding("never", TypeFun{{}, globals.builtinTypes->neverType});
 }
 
-void registerBuiltinGlobals(TypeChecker& typeChecker, GlobalTypes& globals)
+void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeCheckForAutocomplete)
 {
     LUAU_ASSERT(!globals.globalTypes.types.isFrozen());
     LUAU_ASSERT(!globals.globalTypes.typePacks.isFrozen());
@@ -222,8 +220,8 @@ void registerBuiltinGlobals(TypeChecker& typeChecker, GlobalTypes& globals)
     TypeArena& arena = globals.globalTypes;
     NotNull<BuiltinTypes> builtinTypes = globals.builtinTypes;
 
-    LoadDefinitionFileResult loadResult =
-        Luau::loadDefinitionFile(typeChecker, globals, globals.globalScope, getBuiltinDefinitionSource(), "@luau", /* captureComments */ false);
+    LoadDefinitionFileResult loadResult = frontend.loadDefinitionFile(
+        globals, globals.globalScope, getBuiltinDefinitionSource(), "@luau", /* captureComments */ false, typeCheckForAutocomplete);
     LUAU_ASSERT(loadResult.success);
 
     TypeId genericK = arena.addType(GenericType{"K"});
@@ -298,118 +296,13 @@ void registerBuiltinGlobals(TypeChecker& typeChecker, GlobalTypes& globals)
         ttv->props["freeze"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.freeze");
         ttv->props["clone"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.clone");
 
-        if (FFlag::LuauDeprecateTableGetnForeach)
-        {
-            ttv->props["getn"].deprecated = true;
-            ttv->props["getn"].deprecatedSuggestion = "#";
-            ttv->props["foreach"].deprecated = true;
-            ttv->props["foreachi"].deprecated = true;
-        }
+        ttv->props["getn"].deprecated = true;
+        ttv->props["getn"].deprecatedSuggestion = "#";
+        ttv->props["foreach"].deprecated = true;
+        ttv->props["foreachi"].deprecated = true;
 
         attachMagicFunction(ttv->props["pack"].type, magicFunctionPack);
         attachDcrMagicFunction(ttv->props["pack"].type, dcrMagicFunctionPack);
-    }
-
-    attachMagicFunction(getGlobalBinding(globals, "require"), magicFunctionRequire);
-    attachDcrMagicFunction(getGlobalBinding(globals, "require"), dcrMagicFunctionRequire);
-}
-
-void registerBuiltinGlobals(Frontend& frontend)
-{
-    GlobalTypes& globals = frontend.globals;
-
-    LUAU_ASSERT(!globals.globalTypes.types.isFrozen());
-    LUAU_ASSERT(!globals.globalTypes.typePacks.isFrozen());
-
-    registerBuiltinTypes(globals);
-
-    TypeArena& arena = globals.globalTypes;
-    NotNull<BuiltinTypes> builtinTypes = globals.builtinTypes;
-
-    LoadDefinitionFileResult loadResult = frontend.loadDefinitionFile(getBuiltinDefinitionSource(), "@luau", /* captureComments */ false);
-    LUAU_ASSERT(loadResult.success);
-
-    TypeId genericK = arena.addType(GenericType{"K"});
-    TypeId genericV = arena.addType(GenericType{"V"});
-    TypeId mapOfKtoV = arena.addType(TableType{{}, TableIndexer(genericK, genericV), globals.globalScope->level, TableState::Generic});
-
-    std::optional<TypeId> stringMetatableTy = getMetatable(builtinTypes->stringType, builtinTypes);
-    LUAU_ASSERT(stringMetatableTy);
-    const TableType* stringMetatableTable = get<TableType>(follow(*stringMetatableTy));
-    LUAU_ASSERT(stringMetatableTable);
-
-    auto it = stringMetatableTable->props.find("__index");
-    LUAU_ASSERT(it != stringMetatableTable->props.end());
-
-    addGlobalBinding(globals, "string", it->second.type, "@luau");
-
-    // next<K, V>(t: Table<K, V>, i: K?) -> (K?, V)
-    TypePackId nextArgsTypePack = arena.addTypePack(TypePack{{mapOfKtoV, makeOption(builtinTypes, arena, genericK)}});
-    TypePackId nextRetsTypePack = arena.addTypePack(TypePack{{makeOption(builtinTypes, arena, genericK), genericV}});
-    addGlobalBinding(globals, "next", arena.addType(FunctionType{{genericK, genericV}, {}, nextArgsTypePack, nextRetsTypePack}), "@luau");
-
-    TypePackId pairsArgsTypePack = arena.addTypePack({mapOfKtoV});
-
-    TypeId pairsNext = arena.addType(FunctionType{nextArgsTypePack, nextRetsTypePack});
-    TypePackId pairsReturnTypePack = arena.addTypePack(TypePack{{pairsNext, mapOfKtoV, builtinTypes->nilType}});
-
-    // pairs<K, V>(t: Table<K, V>) -> ((Table<K, V>, K?) -> (K?, V), Table<K, V>, nil)
-    addGlobalBinding(globals, "pairs", arena.addType(FunctionType{{genericK, genericV}, {}, pairsArgsTypePack, pairsReturnTypePack}), "@luau");
-
-    TypeId genericMT = arena.addType(GenericType{"MT"});
-
-    TableType tab{TableState::Generic, globals.globalScope->level};
-    TypeId tabTy = arena.addType(tab);
-
-    TypeId tableMetaMT = arena.addType(MetatableType{tabTy, genericMT});
-
-    addGlobalBinding(globals, "getmetatable", makeFunction(arena, std::nullopt, {genericMT}, {}, {tableMetaMT}, {genericMT}), "@luau");
-
-    // clang-format off
-    // setmetatable<T: {}, MT>(T, MT) -> { @metatable MT, T }
-    addGlobalBinding(globals, "setmetatable",
-        arena.addType(
-            FunctionType{
-                {genericMT},
-                {},
-                arena.addTypePack(TypePack{{tabTy, genericMT}}),
-                arena.addTypePack(TypePack{{tableMetaMT}})
-            }
-        ), "@luau"
-    );
-    // clang-format on
-
-    for (const auto& pair : globals.globalScope->bindings)
-    {
-        persist(pair.second.typeId);
-
-        if (TableType* ttv = getMutable<TableType>(pair.second.typeId))
-        {
-            if (!ttv->name)
-                ttv->name = "typeof(" + toString(pair.first) + ")";
-        }
-    }
-
-    attachMagicFunction(getGlobalBinding(globals, "assert"), magicFunctionAssert);
-    attachMagicFunction(getGlobalBinding(globals, "setmetatable"), magicFunctionSetMetaTable);
-    attachMagicFunction(getGlobalBinding(globals, "select"), magicFunctionSelect);
-    attachDcrMagicFunction(getGlobalBinding(globals, "select"), dcrMagicFunctionSelect);
-
-    if (TableType* ttv = getMutable<TableType>(getGlobalBinding(globals, "table")))
-    {
-        // tabTy is a generic table type which we can't express via declaration syntax yet
-        ttv->props["freeze"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.freeze");
-        ttv->props["clone"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.clone");
-
-        if (FFlag::LuauDeprecateTableGetnForeach)
-        {
-            ttv->props["getn"].deprecated = true;
-            ttv->props["getn"].deprecatedSuggestion = "#";
-            ttv->props["foreach"].deprecated = true;
-            ttv->props["foreachi"].deprecated = true;
-        }
-
-        attachMagicFunction(ttv->props["pack"].type, magicFunctionPack);
     }
 
     attachMagicFunction(getGlobalBinding(globals, "require"), magicFunctionRequire);
