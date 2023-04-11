@@ -1352,9 +1352,14 @@ TEST_CASE("UserdataApi")
     lua_State* L = globalState.get();
 
     // setup dtor for tag 42 (created later)
-    lua_setuserdatadtor(L, 42, [](lua_State* l, void* data) {
+    auto dtor = [](lua_State* l, void* data) {
         dtorhits += *(int*)data;
-    });
+    };
+    bool dtorIsNull = lua_getuserdatadtor(L, 42) == nullptr;
+    CHECK(dtorIsNull);
+    lua_setuserdatadtor(L, 42, dtor);
+    bool dtorIsSet = lua_getuserdatadtor(L, 42) == dtor;
+    CHECK(dtorIsSet);
 
     // light user data
     int lud;

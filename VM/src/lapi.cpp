@@ -1378,10 +1378,16 @@ void lua_setuserdatatag(lua_State* L, int idx, int tag)
     uvalue(o)->tag = uint8_t(tag);
 }
 
-void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(lua_State*, void*))
+void lua_setuserdatadtor(lua_State* L, int tag, lua_Destructor dtor)
 {
     api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
     L->global->udatagc[tag] = dtor;
+}
+
+lua_Destructor lua_getuserdatadtor(lua_State* L, int tag)
+{
+    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
+    return L->global->udatagc[tag];
 }
 
 void lua_clonefunction(lua_State* L, int idx)
