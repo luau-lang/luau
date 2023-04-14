@@ -97,12 +97,12 @@ lua_State* createGlobalState()
     return L;
 }
 
-int registerTypes(Luau::TypeChecker& typeChecker, Luau::GlobalTypes& globals)
+int registerTypes(Luau::Frontend& frontend, Luau::GlobalTypes& globals, bool forAutocomplete)
 {
     using namespace Luau;
     using std::nullopt;
 
-    Luau::registerBuiltinGlobals(typeChecker, globals);
+    Luau::registerBuiltinGlobals(frontend, globals, forAutocomplete);
 
     TypeArena& arena = globals.globalTypes;
     BuiltinTypes& builtinTypes = *globals.builtinTypes;
@@ -147,10 +147,10 @@ int registerTypes(Luau::TypeChecker& typeChecker, Luau::GlobalTypes& globals)
 
 static void setupFrontend(Luau::Frontend& frontend)
 {
-    registerTypes(frontend.typeChecker, frontend.globals);
+    registerTypes(frontend, frontend.globals, false);
     Luau::freeze(frontend.globals.globalTypes);
 
-    registerTypes(frontend.typeCheckerForAutocomplete, frontend.globalsForAutocomplete);
+    registerTypes(frontend, frontend.globalsForAutocomplete, true);
     Luau::freeze(frontend.globalsForAutocomplete.globalTypes);
 
     frontend.iceHandler.onInternalError = [](const char* error) {

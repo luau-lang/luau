@@ -67,6 +67,9 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "BaseBinaryInstructionForms")
     SINGLE_COMPARE(add(rax, 0x7f), 0x48, 0x83, 0xc0, 0x7f);
     SINGLE_COMPARE(add(rax, 0x80), 0x48, 0x81, 0xc0, 0x80, 0x00, 0x00, 0x00);
     SINGLE_COMPARE(add(r10, 0x7fffffff), 0x49, 0x81, 0xc2, 0xff, 0xff, 0xff, 0x7f);
+    SINGLE_COMPARE(add(al, 3), 0x80, 0xc0, 0x03);
+    SINGLE_COMPARE(add(sil, 3), 0x48, 0x80, 0xc6, 0x03);
+    SINGLE_COMPARE(add(r11b, 3), 0x49, 0x80, 0xc3, 0x03);
 
     // reg, [reg]
     SINGLE_COMPARE(add(rax, qword[rax]), 0x48, 0x03, 0x00);
@@ -191,6 +194,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfMov")
     SINGLE_COMPARE(mov64(rcx, 0x1234567812345678ll), 0x48, 0xb9, 0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12);
     SINGLE_COMPARE(mov(ecx, 2), 0xb9, 0x02, 0x00, 0x00, 0x00);
     SINGLE_COMPARE(mov(cl, 2), 0xb1, 0x02);
+    SINGLE_COMPARE(mov(sil, 2), 0x48, 0xb6, 0x02);
+    SINGLE_COMPARE(mov(r9b, 2), 0x49, 0xb1, 0x02);
     SINGLE_COMPARE(mov(rcx, qword[rdi]), 0x48, 0x8b, 0x0f);
     SINGLE_COMPARE(mov(dword[rax], 0xabcd), 0xc7, 0x00, 0xcd, 0xab, 0x00, 0x00);
     SINGLE_COMPARE(mov(r13, 1), 0x49, 0xbd, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
@@ -201,6 +206,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfMov")
     SINGLE_COMPARE(mov(qword[rdx], r9), 0x4c, 0x89, 0x0a);
     SINGLE_COMPARE(mov(byte[rsi], 0x3), 0xc6, 0x06, 0x03);
     SINGLE_COMPARE(mov(byte[rsi], al), 0x88, 0x06);
+    SINGLE_COMPARE(mov(byte[rsi], dil), 0x48, 0x88, 0x3e);
+    SINGLE_COMPARE(mov(byte[rsi], r10b), 0x4c, 0x88, 0x16);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfMovExtended")
@@ -229,6 +236,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfShift")
 {
     SINGLE_COMPARE(shl(al, 1), 0xd0, 0xe0);
     SINGLE_COMPARE(shl(al, cl), 0xd2, 0xe0);
+    SINGLE_COMPARE(shl(sil, cl), 0x48, 0xd2, 0xe6);
+    SINGLE_COMPARE(shl(r10b, cl), 0x49, 0xd2, 0xe2);
     SINGLE_COMPARE(shr(al, 4), 0xc0, 0xe8, 0x04);
     SINGLE_COMPARE(shr(eax, 1), 0xd1, 0xe8);
     SINGLE_COMPARE(sal(eax, cl), 0xd3, 0xe0);
@@ -247,6 +256,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfLea")
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfSetcc")
 {
     SINGLE_COMPARE(setcc(ConditionX64::NotEqual, bl), 0x0f, 0x95, 0xc3);
+    SINGLE_COMPARE(setcc(ConditionX64::NotEqual, dil), 0x48, 0x0f, 0x95, 0xc7);
     SINGLE_COMPARE(setcc(ConditionX64::BelowEqual, byte[rcx]), 0x0f, 0x96, 0x01);
 }
 

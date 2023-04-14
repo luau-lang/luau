@@ -284,7 +284,7 @@ void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst repl
     block.useCount--;
 }
 
-void substitute(IrFunction& function, IrInst& inst, IrOp replacement)
+void substitute(IrFunction& function, IrInst& inst, IrOp replacement, IrOp location)
 {
     LUAU_ASSERT(!isBlockTerminator(inst.cmd));
 
@@ -298,7 +298,7 @@ void substitute(IrFunction& function, IrInst& inst, IrOp replacement)
     removeUse(function, inst.f);
 
     inst.a = replacement;
-    inst.b = {};
+    inst.b = location;
     inst.c = {};
     inst.d = {};
     inst.e = {};

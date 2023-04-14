@@ -89,9 +89,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/CodeGenA64.cpp
     CodeGen/src/CodeGenX64.cpp
     CodeGen/src/EmitBuiltinsX64.cpp
-    CodeGen/src/EmitCommonA64.cpp
     CodeGen/src/EmitCommonX64.cpp
-    CodeGen/src/EmitInstructionA64.cpp
     CodeGen/src/EmitInstructionX64.cpp
     CodeGen/src/Fallbacks.cpp
     CodeGen/src/IrAnalysis.cpp
@@ -111,6 +109,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/UnwindBuilderDwarf2.cpp
     CodeGen/src/UnwindBuilderWin.cpp
 
+    CodeGen/src/BitUtils.h
     CodeGen/src/ByteUtils.h
     CodeGen/src/CustomExecUtils.h
     CodeGen/src/CodeGenUtils.h
@@ -120,7 +119,6 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/EmitCommon.h
     CodeGen/src/EmitCommonA64.h
     CodeGen/src/EmitCommonX64.h
-    CodeGen/src/EmitInstructionA64.h
     CodeGen/src/EmitInstructionX64.h
     CodeGen/src/Fallbacks.h
     CodeGen/src/FallbacksProlog.h

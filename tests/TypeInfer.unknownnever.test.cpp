@@ -301,11 +301,6 @@ TEST_CASE_FIXTURE(Fixture, "length_of_never")
 
 TEST_CASE_FIXTURE(Fixture, "dont_unify_operands_if_one_of_the_operand_is_never_in_any_ordering_operators")
 {
-    ScopedFastFlag sff[]{
-        {"LuauTryhardAnd", true},
-        {"LuauReducingAndOr", true},
-    };
-
     CheckResult result = check(R"(
         local function ord(x: nil, y)
             return x ~= nil and x > y

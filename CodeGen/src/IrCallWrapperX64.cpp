@@ -13,6 +13,10 @@ namespace CodeGen
 namespace X64
 {
 
+static const std::array<OperandX64, 6> kWindowsGprOrder = {rcx, rdx, r8, r9, addr[rsp + 32], addr[rsp + 40]};
+static const std::array<OperandX64, 6> kSystemvGprOrder = {rdi, rsi, rdx, rcx, r8, r9};
+static const std::array<OperandX64, 4> kXmmOrder = {xmm0, xmm1, xmm2, xmm3}; // Common order for first 4 fp arguments on Windows/SystemV
+
 static bool sameUnderlyingRegister(RegisterX64 a, RegisterX64 b)
 {
     SizeX64 underlyingSizeA = a.size == SizeX64::xmmword ? SizeX64::xmmword : SizeX64::qword;
@@ -37,20 +41,34 @@ void IrCallWrapperX64::addArgument(SizeX64 targetSize, OperandX64 source, IrOp s
     LUAU_ASSERT(instIdx != kInvalidInstIdx || sourceOp.kind == IrOpKind::None);
 
     LUAU_ASSERT(argCount < kMaxCallArguments);
-    args[argCount++] = {targetSize, source, sourceOp};
+    CallArgument& arg = args[argCount++];
+    arg = {targetSize, source, sourceOp};
+
+    arg.target = getNextArgumentTarget(targetSize);
+
+    if (build.abi == ABIX64::Windows)
+    {
+        // On Windows, gpr/xmm register positions move in sync
+        gprPos++;
+        xmmPos++;
+    }
+    else
+    {
+        if (targetSize == SizeX64::xmmword)
+            xmmPos++;
+        else
+            gprPos++;
+    }
 }
 
 void IrCallWrapperX64::addArgument(SizeX64 targetSize, ScopedRegX64& scopedReg)
 {
-    LUAU_ASSERT(argCount < kMaxCallArguments);
-    args[argCount++] = {targetSize, scopedReg.release(), {}};
+    addArgument(targetSize, scopedReg.release(), {});
 }
 
 void IrCallWrapperX64::call(const OperandX64& func)
 {
     funcOp = func;
-
-    assignTargetRegisters();
 
     countRegisterUses();
 
@@ -190,44 +208,33 @@ void IrCallWrapperX64::call(const OperandX64& func)
     build.call(funcOp);
 }
 
-void IrCallWrapperX64::assignTargetRegisters()
+RegisterX64 IrCallWrapperX64::suggestNextArgumentRegister(SizeX64 size) const
 {
-    static const std::array<OperandX64, 6> kWindowsGprOrder = {rcx, rdx, r8, r9, addr[rsp + 32], addr[rsp + 40]};
-    static const std::array<OperandX64, 6> kSystemvGprOrder = {rdi, rsi, rdx, rcx, r8, r9};
+    OperandX64 target = getNextArgumentTarget(size);
+
+    return target.cat == CategoryX64::reg ? regs.takeReg(target.base, kInvalidInstIdx) : regs.allocReg(size, kInvalidInstIdx);
+}
+
+OperandX64 IrCallWrapperX64::getNextArgumentTarget(SizeX64 size) const
+{
+    if (size == SizeX64::xmmword)
+    {
+        LUAU_ASSERT(size_t(xmmPos) < kXmmOrder.size());
+        return kXmmOrder[xmmPos];
+    }
 
     const std::array<OperandX64, 6>& gprOrder = build.abi == ABIX64::Windows ? kWindowsGprOrder : kSystemvGprOrder;
-    static const std::array<OperandX64, 4> kXmmOrder = {xmm0, xmm1, xmm2, xmm3}; // Common order for first 4 fp arguments on Windows/SystemV
 
-    int gprPos = 0;
-    int xmmPos = 0;
+    LUAU_ASSERT(size_t(gprPos) < gprOrder.size());
+    OperandX64 target = gprOrder[gprPos];
 
-    for (int i = 0; i < argCount; i++)
-    {
-        CallArgument& arg = args[i];
+    // Keep requested argument size
+    if (target.cat == CategoryX64::reg)
+        target.base.size = size;
+    else if (target.cat == CategoryX64::mem)
+        target.memSize = size;
 
-        if (arg.targetSize == SizeX64::xmmword)
-        {
-            LUAU_ASSERT(size_t(xmmPos) < kXmmOrder.size());
-            arg.target = kXmmOrder[xmmPos++];
-
-            if (build.abi == ABIX64::Windows)
-                gprPos++; // On Windows, gpr/xmm register positions move in sync
-        }
-        else
-        {
-            LUAU_ASSERT(size_t(gprPos) < gprOrder.size());
-            arg.target = gprOrder[gprPos++];
-
-            if (build.abi == ABIX64::Windows)
-                xmmPos++; // On Windows, gpr/xmm register positions move in sync
-
-            // Keep requested argument size
-            if (arg.target.cat == CategoryX64::reg)
-                arg.target.base.size = arg.targetSize;
-            else if (arg.target.cat == CategoryX64::mem)
-                arg.target.memSize = arg.targetSize;
-        }
-    }
+    return target;
 }
 
 void IrCallWrapperX64::countRegisterUses()
@@ -376,7 +383,7 @@ RegisterX64 IrCallWrapperX64::findConflictingTarget() const
 void IrCallWrapperX64::renameConflictingRegister(RegisterX64 conflict)
 {
     // Get a fresh register
-    RegisterX64 freshReg = conflict.size == SizeX64::xmmword ? regs.allocXmmReg(kInvalidInstIdx) : regs.allocGprReg(conflict.size, kInvalidInstIdx);
+    RegisterX64 freshReg = regs.allocReg(conflict.size, kInvalidInstIdx);
 
     if (conflict.size == SizeX64::xmmword)
         build.vmovsd(freshReg, conflict, conflict);

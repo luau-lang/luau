@@ -776,4 +776,20 @@ TEST_CASE_FIXTURE(Fixture, "generic_function_with_optional_arg")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "lookup_prop_of_intersection_containing_unions")
+{
+    CheckResult result = check(R"(
+        local function mergeOptions<T>(options: T & ({} | {}))
+            return options.variables
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    const UnknownProperty* unknownProp = get<UnknownProperty>(result.errors[0]);
+    REQUIRE(unknownProp);
+
+    CHECK("variables" == unknownProp->key);
+}
+
 TEST_SUITE_END();

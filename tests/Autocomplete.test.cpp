@@ -3473,4 +3473,34 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_response_perf1" * doctest::timeout(0.
     CHECK(ac.entryMap.count("Instance"));
 }
 
+TEST_CASE_FIXTURE(ACFixture, "strict_mode_force")
+{
+    check(R"(
+--!nonstrict
+local a: {x: number} = {x=1}
+local b = a
+local c = b.@1
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK_EQ(1, ac.entryMap.size());
+    CHECK(ac.entryMap.count("x"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "suggest_exported_types")
+{
+    ScopedFastFlag luauCopyExportedTypes{"LuauCopyExportedTypes", true};
+
+    check(R"(
+export type Type = {a: number}
+local a: T@1
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("Type"));
+    CHECK_EQ(ac.context, AutocompleteContext::Type);
+}
+
 TEST_SUITE_END();

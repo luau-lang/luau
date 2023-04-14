@@ -29,7 +29,7 @@ struct AddressA64
     // For example, ldr x0, [reg+imm] is limited to 8 KB offsets assuming imm is divisible by 8, but loading into w0 reduces the range to 4 KB
     static constexpr size_t kMaxOffset = 1023;
 
-    AddressA64(RegisterA64 base, int off = 0)
+    constexpr AddressA64(RegisterA64 base, int off = 0)
         : kind(AddressKindA64::imm)
         , base(base)
         , offset(xzr)
@@ -38,7 +38,7 @@ struct AddressA64
         LUAU_ASSERT(base.kind == KindA64::x || base == sp);
     }
 
-    AddressA64(RegisterA64 base, RegisterA64 offset)
+    constexpr AddressA64(RegisterA64 base, RegisterA64 offset)
         : kind(AddressKindA64::reg)
         , base(base)
         , offset(offset)

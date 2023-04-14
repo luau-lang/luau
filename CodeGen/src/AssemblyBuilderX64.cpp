@@ -31,7 +31,8 @@ static_assert(sizeof(setccTextForCondition) / sizeof(setccTextForCondition[0]) =
 #define OP_PLUS_REG(op, reg) ((op) + (reg & 0x7))
 #define OP_PLUS_CC(op, cc) ((op) + uint8_t(cc))
 
-#define REX_W(value) (value ? 0x8 : 0x0)
+#define REX_W_BIT(value) (value ? 0x8 : 0x0)
+#define REX_W(reg) REX_W_BIT((reg).size == SizeX64::qword || ((reg).size == SizeX64::byte && (reg).index >= 4))
 #define REX_R(reg) (((reg).index & 0x8) >> 1)
 #define REX_X(reg) (((reg).index & 0x8) >> 2)
 #define REX_B(reg) (((reg).index & 0x8) >> 3)
@@ -1116,7 +1117,7 @@ void AssemblyBuilderX64::placeAvx(
 
 void AssemblyBuilderX64::placeRex(RegisterX64 op)
 {
-    uint8_t code = REX_W(op.size == SizeX64::qword) | REX_B(op);
+    uint8_t code = REX_W(op) | REX_B(op);
 
     if (code != 0)
         place(code | 0x40);
@@ -1127,9 +1128,9 @@ void AssemblyBuilderX64::placeRex(OperandX64 op)
     uint8_t code = 0;
 
     if (op.cat == CategoryX64::reg)
-        code = REX_W(op.base.size == SizeX64::qword) | REX_B(op.base);
+        code = REX_W(op.base) | REX_B(op.base);
     else if (op.cat == CategoryX64::mem)
-        code = REX_W(op.memSize == SizeX64::qword) | REX_X(op.index) | REX_B(op.base);
+        code = REX_W_BIT(op.memSize == SizeX64::qword) | REX_X(op.index) | REX_B(op.base);
     else
         LUAU_ASSERT(!"No encoding for left operand of this category");
 
@@ -1154,7 +1155,7 @@ void AssemblyBuilderX64::placeRexNoW(OperandX64 op)
 
 void AssemblyBuilderX64::placeRex(RegisterX64 lhs, OperandX64 rhs)
 {
-    uint8_t code = REX_W(lhs.size == SizeX64::qword);
+    uint8_t code = REX_W(lhs);
 
     if (rhs.cat == CategoryX64::imm)
         code |= REX_B(lhs);

@@ -35,14 +35,13 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
-LUAU_FASTFLAGVARIABLE(LuauTryhardAnd, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauNegatedClassTypes)
 LUAU_FASTFLAGVARIABLE(LuauAllowIndexClassParameters, false)
 LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
+LUAU_FASTFLAG(LuauOccursIsntAlwaysFailure)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckTypeguards, false)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
-LUAU_FASTFLAGVARIABLE(LuauReducingAndOr, false)
 
 namespace Luau
 {
@@ -1623,9 +1622,28 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& ty
 
     TypeId& bindingType = bindingsMap[name].type;
 
-    if (unify(ty, bindingType, aliasScope, typealias.location))
-        bindingType = ty;
+    if (!FFlag::LuauOccursIsntAlwaysFailure)
+    {
+        if (unify(ty, bindingType, aliasScope, typealias.location))
+            bindingType = ty;
+        return ControlFlow::None;
+    }
 
+    unify(ty, bindingType, aliasScope, typealias.location);
+
+    // It is possible for this unification to succeed but for
+    // `bindingType` still to be free For example, in
+    // `type T = T|T`, we generate a fresh free type `X`, and then
+    // unify `X` with `X|X`, which succeeds without binding `X` to
+    // anything, since `X <: X|X`
+    if (bindingType->ty.get_if<FreeType>())
+    {
+        ty = errorRecoveryType(aliasScope);
+        unify(ty, bindingType, aliasScope, typealias.location);
+        reportError(TypeError{typealias.location, OccursCheckFailed{}});
+    }
+
+    bindingType = ty;
     return ControlFlow::None;
 }
 
@@ -2848,7 +2866,7 @@ TypeId TypeChecker::checkRelationalOperation(
         {
             return lhsType;
         }
-        else if (FFlag::LuauTryhardAnd)
+        else
         {
             // If lhs is free, we can't tell which 'falsy' components it has, if any
             if (get<FreeType>(lhsType))
@@ -2860,14 +2878,11 @@ TypeId TypeChecker::checkRelationalOperation(
             {
                 LUAU_ASSERT(oty);
 
-                if (FFlag::LuauReducingAndOr)
-                {
-                    // Perform a limited form of type reduction for booleans
-                    if (isPrim(*oty, PrimitiveType::Boolean) && get<BooleanSingleton>(get<SingletonType>(follow(rhsType))))
-                        return booleanType;
-                    if (isPrim(rhsType, PrimitiveType::Boolean) && get<BooleanSingleton>(get<SingletonType>(follow(*oty))))
-                        return booleanType;
-                }
+                // Perform a limited form of type reduction for booleans
+                if (isPrim(*oty, PrimitiveType::Boolean) && get<BooleanSingleton>(get<SingletonType>(follow(rhsType))))
+                    return booleanType;
+                if (isPrim(rhsType, PrimitiveType::Boolean) && get<BooleanSingleton>(get<SingletonType>(follow(*oty))))
+                    return booleanType;
 
                 return unionOfTypes(*oty, rhsType, scope, expr.location, false);
             }
@@ -2876,16 +2891,12 @@ TypeId TypeChecker::checkRelationalOperation(
                 return rhsType;
             }
         }
-        else
-        {
-            return unionOfTypes(rhsType, booleanType, scope, expr.location, false);
-        }
     case AstExprBinary::Or:
         if (lhsIsAny)
         {
             return lhsType;
         }
-        else if (FFlag::LuauTryhardAnd)
+        else
         {
             auto [oty, notNever] = pickTypesFromSense(lhsType, true, neverType); // Filter out truthy types
 
@@ -2893,14 +2904,11 @@ TypeId TypeChecker::checkRelationalOperation(
             {
                 LUAU_ASSERT(oty);
 
-                if (FFlag::LuauReducingAndOr)
-                {
-                    // Perform a limited form of type reduction for booleans
-                    if (isPrim(*oty, PrimitiveType::Boolean) && get<BooleanSingleton>(get<SingletonType>(follow(rhsType))))
-                        return booleanType;
-                    if (isPrim(rhsType, PrimitiveType::Boolean) && get<BooleanSingleton>(get<SingletonType>(follow(*oty))))
-                        return booleanType;
-                }
+                // Perform a limited form of type reduction for booleans
+                if (isPrim(*oty, PrimitiveType::Boolean) && get<BooleanSingleton>(get<SingletonType>(follow(rhsType))))
+                    return booleanType;
+                if (isPrim(rhsType, PrimitiveType::Boolean) && get<BooleanSingleton>(get<SingletonType>(follow(*oty))))
+                    return booleanType;
 
                 return unionOfTypes(*oty, rhsType, scope, expr.location);
             }
@@ -2908,10 +2916,6 @@ TypeId TypeChecker::checkRelationalOperation(
             {
                 return rhsType;
             }
-        }
-        else
-        {
-            return unionOfTypes(lhsType, rhsType, scope, expr.location);
         }
     default:
         LUAU_ASSERT(0);

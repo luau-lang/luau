@@ -715,4 +715,11 @@ do
   end
 end
 
+-- check that fast path for table lookup can't be tricked into assuming a light user data with string pointer is a string
+assert((function ()
+  local t = {}
+  t[makelud("hi")] = "no"
+  return t.hi
+end)() == nil)
+
 return"OK"

@@ -86,6 +86,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Binary")
     SINGLE_COMPARE(add(x0, x1, x2, 7), 0x8B021C20);
     SINGLE_COMPARE(sub(x0, x1, x2), 0xCB020020);
     SINGLE_COMPARE(and_(x0, x1, x2), 0x8A020020);
+    SINGLE_COMPARE(bic(x0, x1, x2), 0x8A220020);
     SINGLE_COMPARE(orr(x0, x1, x2), 0xAA020020);
     SINGLE_COMPARE(eor(x0, x1, x2), 0xCA020020);
     SINGLE_COMPARE(lsl(x0, x1, x2), 0x9AC22020);
@@ -94,12 +95,31 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Binary")
     SINGLE_COMPARE(asr(x0, x1, x2), 0x9AC22820);
     SINGLE_COMPARE(ror(x0, x1, x2), 0x9AC22C20);
     SINGLE_COMPARE(cmp(x0, x1), 0xEB01001F);
+    SINGLE_COMPARE(tst(x0, x1), 0xEA01001F);
 
     // reg, imm
     SINGLE_COMPARE(add(x3, x7, 78), 0x910138E3);
     SINGLE_COMPARE(add(w3, w7, 78), 0x110138E3);
     SINGLE_COMPARE(sub(w3, w7, 78), 0x510138E3);
     SINGLE_COMPARE(cmp(w0, 42), 0x7100A81F);
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "BinaryImm")
+{
+    // instructions
+    SINGLE_COMPARE(and_(w1, w2, 1), 0x12000041);
+    SINGLE_COMPARE(orr(w1, w2, 1), 0x32000041);
+    SINGLE_COMPARE(eor(w1, w2, 1), 0x52000041);
+    SINGLE_COMPARE(tst(w1, 1), 0x7200003f);
+
+    // various mask forms
+    SINGLE_COMPARE(and_(w0, w0, 1), 0x12000000);
+    SINGLE_COMPARE(and_(w0, w0, 3), 0x12000400);
+    SINGLE_COMPARE(and_(w0, w0, 7), 0x12000800);
+    SINGLE_COMPARE(and_(w0, w0, 2147483647), 0x12007800);
+    SINGLE_COMPARE(and_(w0, w0, 6), 0x121F0400);
+    SINGLE_COMPARE(and_(w0, w0, 12), 0x121E0400);
+    SINGLE_COMPARE(and_(w0, w0, 2147483648), 0x12010000);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Loads")
@@ -359,11 +379,13 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "AddressOffsetSize")
     SINGLE_COMPARE(str(q0, mem(x1, 16)), 0x3D800420);
 }
 
-TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "ConditionalSelect")
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Conditionals")
 {
     SINGLE_COMPARE(csel(x0, x1, x2, ConditionA64::Equal), 0x9A820020);
     SINGLE_COMPARE(csel(w0, w1, w2, ConditionA64::Equal), 0x1A820020);
     SINGLE_COMPARE(fcsel(d0, d1, d2, ConditionA64::Equal), 0x1E620C20);
+
+    SINGLE_COMPARE(cset(x1, ConditionA64::Less), 0x9A9FA7E1);
 }
 
 TEST_CASE("LogTest")
@@ -394,6 +416,7 @@ TEST_CASE("LogTest")
     build.ldr(q1, x2);
 
     build.csel(x0, x1, x2, ConditionA64::Equal);
+    build.cset(x0, ConditionA64::Equal);
 
     build.fcmp(d0, d1);
     build.fcmpz(d0);
@@ -423,6 +446,7 @@ TEST_CASE("LogTest")
  fabs        d1,d2
  ldr         q1,[x2]
  csel        x0,x1,x2,eq
+ cset        x0,eq
  fcmp        d0,d1
  fcmp        d0,#0
 .L1:

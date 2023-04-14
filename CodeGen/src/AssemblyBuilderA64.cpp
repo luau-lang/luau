@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/AssemblyBuilderA64.h"
 
+#include "BitUtils.h"
 #include "ByteUtils.h"
 
 #include <stdarg.h>
@@ -126,6 +127,15 @@ void AssemblyBuilderA64::csel(RegisterA64 dst, RegisterA64 src1, RegisterA64 src
     placeCS("csel", dst, src1, src2, cond, 0b11010'10'0, 0b00);
 }
 
+void AssemblyBuilderA64::cset(RegisterA64 dst, ConditionA64 cond)
+{
+    LUAU_ASSERT(dst.kind == KindA64::x || dst.kind == KindA64::w);
+
+    RegisterA64 src = dst.kind == KindA64::x ? xzr : wzr;
+
+    placeCS("cset", dst, src, src, cond, 0b11010'10'0, 0b01, /* invert= */ 1);
+}
+
 void AssemblyBuilderA64::and_(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
 {
     placeSR3("and", dst, src1, src2, 0b00'01010);
@@ -141,9 +151,43 @@ void AssemblyBuilderA64::eor(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2
     placeSR3("eor", dst, src1, src2, 0b10'01010);
 }
 
+void AssemblyBuilderA64::bic(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+{
+    placeSR3("bic", dst, src1, src2, 0b00'01010, /* shift= */ 0, /* N= */ 1);
+}
+
+void AssemblyBuilderA64::tst(RegisterA64 src1, RegisterA64 src2)
+{
+    RegisterA64 dst = src1.kind == KindA64::x ? xzr : wzr;
+
+    placeSR3("tst", dst, src1, src2, 0b11'01010);
+}
+
 void AssemblyBuilderA64::mvn(RegisterA64 dst, RegisterA64 src)
 {
     placeSR2("mvn", dst, src, 0b01'01010, 0b1);
+}
+
+void AssemblyBuilderA64::and_(RegisterA64 dst, RegisterA64 src1, uint32_t src2)
+{
+    placeBM("and", dst, src1, src2, 0b00'100100);
+}
+
+void AssemblyBuilderA64::orr(RegisterA64 dst, RegisterA64 src1, uint32_t src2)
+{
+    placeBM("orr", dst, src1, src2, 0b01'100100);
+}
+
+void AssemblyBuilderA64::eor(RegisterA64 dst, RegisterA64 src1, uint32_t src2)
+{
+    placeBM("eor", dst, src1, src2, 0b10'100100);
+}
+
+void AssemblyBuilderA64::tst(RegisterA64 src1, uint32_t src2)
+{
+    RegisterA64 dst = src1.kind == KindA64::x ? xzr : wzr;
+
+    placeBM("tst", dst, src1, src2, 0b11'100100);
 }
 
 void AssemblyBuilderA64::lsl(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
@@ -583,7 +627,7 @@ void AssemblyBuilderA64::place0(const char* name, uint32_t op)
     commit();
 }
 
-void AssemblyBuilderA64::placeSR3(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t op, int shift)
+void AssemblyBuilderA64::placeSR3(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t op, int shift, int N)
 {
     if (logText)
         log(name, dst, src1, src2, shift);
@@ -594,7 +638,7 @@ void AssemblyBuilderA64::placeSR3(const char* name, RegisterA64 dst, RegisterA64
 
     uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
 
-    place(dst.index | (src1.index << 5) | (shift << 10) | (src2.index << 16) | (op << 24) | sf);
+    place(dst.index | (src1.index << 5) | (shift << 10) | (src2.index << 16) | (N << 21) | (op << 24) | sf);
     commit();
 }
 
@@ -764,7 +808,8 @@ void AssemblyBuilderA64::placeP(const char* name, RegisterA64 src1, RegisterA64 
     commit();
 }
 
-void AssemblyBuilderA64::placeCS(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t op, uint8_t opc)
+void AssemblyBuilderA64::placeCS(
+    const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond, uint8_t op, uint8_t opc, int invert)
 {
     if (logText)
         log(name, dst, src1, src2, cond);
@@ -773,7 +818,7 @@ void AssemblyBuilderA64::placeCS(const char* name, RegisterA64 dst, RegisterA64 
 
     uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
 
-    place(dst.index | (src1.index << 5) | (opc << 10) | (codeForCondition[int(cond)] << 12) | (src2.index << 16) | (op << 21) | sf);
+    place(dst.index | (src1.index << 5) | (opc << 10) | ((codeForCondition[int(cond)] ^ invert) << 12) | (src2.index << 16) | (op << 21) | sf);
     commit();
 }
 
@@ -790,6 +835,29 @@ void AssemblyBuilderA64::placeFCMP(const char* name, RegisterA64 src1, RegisterA
     LUAU_ASSERT(src1.kind == src2.kind);
 
     place((opc << 3) | (src1.index << 5) | (0b1000 << 10) | (src2.index << 16) | (op << 21));
+    commit();
+}
+
+void AssemblyBuilderA64::placeBM(const char* name, RegisterA64 dst, RegisterA64 src1, uint32_t src2, uint8_t op)
+{
+    if (logText)
+        log(name, dst, src1, src2);
+
+    LUAU_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x);
+    LUAU_ASSERT(dst.kind == src1.kind);
+
+    uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
+
+    int lz = countlz(src2);
+    int rz = countrz(src2);
+
+    LUAU_ASSERT(lz + rz > 0 && lz + rz < 32);                 // must have at least one 0 and at least one 1
+    LUAU_ASSERT((src2 >> rz) == (1u << (32 - lz - rz)) - 1u); // sequence of 1s must be contiguous
+
+    int imms = 31 - lz - rz;   // count of 1s minus 1
+    int immr = (32 - rz) & 31; // right rotate amount
+
+    place(dst.index | (src1.index << 5) | (imms << 10) | (immr << 16) | (op << 23) | sf);
     commit();
 }
 
@@ -965,10 +1033,13 @@ void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst, RegisterA64 sr
 {
     logAppend(" %-12s", opcode);
     log(dst);
-    text.append(",");
-    log(src1);
-    text.append(",");
-    log(src2);
+    if ((src1 != wzr && src1 != xzr) || (src2 != wzr && src2 != xzr))
+    {
+        text.append(",");
+        log(src1);
+        text.append(",");
+        log(src2);
+    }
     text.append(",");
     text.append(textForCondition[int(cond)] + 2); // skip b.
     text.append("\n");

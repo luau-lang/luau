@@ -416,6 +416,44 @@ const Instruction* execute_LOP_NAMECALL(lua_State* L, const Instruction* pc, Stk
     return pc;
 }
 
+const Instruction* execute_LOP_SETLIST(lua_State* L, const Instruction* pc, StkId base, TValue* k)
+{
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
+    Instruction insn = *pc++;
+    StkId ra = VM_REG(LUAU_INSN_A(insn));
+    StkId rb = &base[LUAU_INSN_B(insn)]; // note: this can point to L->top if c == LUA_MULTRET making VM_REG unsafe to use
+    int c = LUAU_INSN_C(insn) - 1;
+    uint32_t index = *pc++;
+
+    if (c == LUA_MULTRET)
+    {
+        c = int(L->top - rb);
+        L->top = L->ci->top;
+    }
+
+    Table* h = hvalue(ra);
+
+    // TODO: we really don't need this anymore
+    if (!ttistable(ra))
+        return NULL; // temporary workaround to weaken a rather powerful exploitation primitive in case of a MITM attack on bytecode
+
+    int last = index + c - 1;
+    if (last > h->sizearray)
+    {
+        VM_PROTECT_PC(); // luaH_resizearray may fail due to OOM
+
+        luaH_resizearray(L, h, last);
+    }
+
+    TValue* array = h->array;
+
+    for (int i = 0; i < c; ++i)
+        setobj2t(L, &array[index + i - 1], rb + i);
+
+    luaC_barrierfast(L, h);
+    return pc;
+}
+
 const Instruction* execute_LOP_FORGPREP(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
     [[maybe_unused]] Closure* cl = clvalue(L->ci->func);

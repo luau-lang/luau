@@ -1,9 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "IrRegAllocA64.h"
 
-#ifdef _MSC_VER
-#include <intrin.h>
-#endif
+#include "BitUtils.h"
 
 namespace Luau
 {
@@ -11,19 +9,6 @@ namespace CodeGen
 {
 namespace A64
 {
-
-inline int setBit(uint32_t n)
-{
-    LUAU_ASSERT(n);
-
-#ifdef _MSC_VER
-    unsigned long rl;
-    _BitScanReverse(&rl, n);
-    return int(rl);
-#else
-    return 31 - __builtin_clz(n);
-#endif
-}
 
 IrRegAllocA64::IrRegAllocA64(IrFunction& function, std::initializer_list<std::pair<RegisterA64, RegisterA64>> regs)
     : function(function)
@@ -52,7 +37,7 @@ RegisterA64 IrRegAllocA64::allocReg(KindA64 kind)
         return noreg;
     }
 
-    int index = setBit(set.free);
+    int index = 31 - countlz(set.free);
     set.free &= ~(1u << index);
 
     return RegisterA64{kind, uint8_t(index)};
@@ -68,7 +53,7 @@ RegisterA64 IrRegAllocA64::allocTemp(KindA64 kind)
         return noreg;
     }
 
-    int index = setBit(set.free);
+    int index = 31 - countlz(set.free);
 
     set.free &= ~(1u << index);
     set.temp |= 1u << index;
