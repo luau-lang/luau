@@ -34,6 +34,8 @@ namespace X64
 
 struct IrRegAllocX64;
 
+constexpr uint32_t kFunctionAlignment = 32;
+
 // Data that is very common to access is placed in non-volatile registers
 constexpr RegisterX64 rState = r15;         // lua_State* L
 constexpr RegisterX64 rBase = r14;          // StkId base
@@ -134,7 +136,7 @@ inline OperandX64 luauNodeKeyValue(RegisterX64 node)
 // Note: tag has dirty upper bits
 inline OperandX64 luauNodeKeyTag(RegisterX64 node)
 {
-    return dword[node + offsetof(LuaNode, key) + kOffsetOfLuaNodeTag];
+    return dword[node + offsetof(LuaNode, key) + kOffsetOfTKeyTag];
 }
 
 inline OperandX64 luauNodeValue(RegisterX64 node)
@@ -162,12 +164,6 @@ inline void jumpIfTagIsNot(AssemblyBuilderX64& build, int ri, lua_Type tag, Labe
     build.jcc(ConditionX64::NotEqual, label);
 }
 
-inline void jumpIfTagIsNot(AssemblyBuilderX64& build, RegisterX64 reg, lua_Type tag, Label& label)
-{
-    build.cmp(dword[reg + offsetof(TValue, tt)], tag);
-    build.jcc(ConditionX64::NotEqual, label);
-}
-
 // Note: fallthrough label should be placed after this condition
 inline void jumpIfFalsy(AssemblyBuilderX64& build, int ri, Label& target, Label& fallthrough)
 {
@@ -188,26 +184,6 @@ inline void jumpIfTruthy(AssemblyBuilderX64& build, int ri, Label& target, Label
     build.jcc(ConditionX64::NotEqual, target); // true if boolean value is 'true'
 }
 
-inline void jumpIfMetatablePresent(AssemblyBuilderX64& build, RegisterX64 table, Label& target)
-{
-    build.cmp(qword[table + offsetof(Table, metatable)], 0);
-    build.jcc(ConditionX64::NotEqual, target);
-}
-
-inline void jumpIfUnsafeEnv(AssemblyBuilderX64& build, RegisterX64 tmp, Label& label)
-{
-    build.mov(tmp, sClosure);
-    build.mov(tmp, qword[tmp + offsetof(Closure, env)]);
-    build.test(byte[tmp + offsetof(Table, safeenv)], 1);
-    build.jcc(ConditionX64::Zero, label); // Not a safe environment
-}
-
-inline void jumpIfTableIsReadOnly(AssemblyBuilderX64& build, RegisterX64 table, Label& label)
-{
-    build.cmp(byte[table + offsetof(Table, readonly)], 0);
-    build.jcc(ConditionX64::NotEqual, label);
-}
-
 inline void jumpIfNodeKeyTagIsNot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 node, lua_Type tag, Label& label)
 {
     tmp.size = SizeX64::dword;
@@ -222,13 +198,6 @@ inline void jumpIfNodeValueTagIs(AssemblyBuilderX64& build, RegisterX64 node, lu
 {
     build.cmp(dword[node + offsetof(LuaNode, val) + offsetof(TValue, tt)], tag);
     build.jcc(ConditionX64::Equal, label);
-}
-
-inline void jumpIfNodeHasNext(AssemblyBuilderX64& build, RegisterX64 node, Label& label)
-{
-    build.mov(ecx, dword[node + offsetof(LuaNode, key) + kOffsetOfLuaNodeNext]);
-    build.shr(ecx, kNextBitOffset);
-    build.jcc(ConditionX64::NotZero, label);
 }
 
 inline void jumpIfNodeKeyNotInExpectedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 node, OperandX64 expectedKey, Label& label)
@@ -260,8 +229,8 @@ void callStepGc(IrRegAllocX64& regs, AssemblyBuilderX64& build);
 
 void emitExit(AssemblyBuilderX64& build, bool continueInVm);
 void emitUpdateBase(AssemblyBuilderX64& build);
-void emitInterrupt(AssemblyBuilderX64& build, int pcpos);
-void emitFallback(AssemblyBuilderX64& build, NativeState& data, int op, int pcpos);
+void emitInterrupt(IrRegAllocX64& regs, AssemblyBuilderX64& build, int pcpos);
+void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, NativeState& data, int op, int pcpos);
 
 void emitContinueCallInVm(AssemblyBuilderX64& build);
 

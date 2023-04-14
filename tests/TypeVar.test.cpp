@@ -273,12 +273,14 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 
     TypeId root = &ttvTweenResult;
 
-    frontend.typeChecker.currentModule = std::make_shared<Module>();
-    frontend.typeChecker.currentModule->scopes.emplace_back(Location{}, std::make_shared<Scope>(builtinTypes->anyTypePack));
+    ModulePtr currentModule = std::make_shared<Module>();
+    Anyification anyification(&currentModule->internalTypes, frontend.globals.globalScope, builtinTypes, &frontend.iceHandler, builtinTypes->anyType,
+        builtinTypes->anyTypePack);
+    std::optional<TypeId> any = anyification.substitute(root);
 
-    TypeId result = frontend.typeChecker.anyify(frontend.globals.globalScope, root, Location{});
-
-    CHECK_EQ("{| f: t1 |} where t1 = () -> {| f: () -> {| f: ({| f: t1 |}) -> (), signal: {| f: (any) -> () |} |} |}", toString(result));
+    REQUIRE(!anyification.normalizationTooComplex);
+    REQUIRE(any.has_value());
+    CHECK_EQ("{| f: t1 |} where t1 = () -> {| f: () -> {| f: ({| f: t1 |}) -> (), signal: {| f: (any) -> () |} |} |}", toString(*any));
 }
 
 TEST_CASE("tagging_tables")

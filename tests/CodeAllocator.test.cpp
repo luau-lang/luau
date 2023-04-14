@@ -135,7 +135,8 @@ TEST_CASE("WindowsUnwindCodesX64")
 
     UnwindBuilderWin unwind;
 
-    unwind.start();
+    unwind.startInfo();
+    unwind.startFunction();
     unwind.spill(16, rdx);
     unwind.spill(8, rcx);
     unwind.save(rdi);
@@ -148,14 +149,15 @@ TEST_CASE("WindowsUnwindCodesX64")
     unwind.save(r15);
     unwind.allocStack(72);
     unwind.setupFrameReg(rbp, 48);
-    unwind.finish();
+    unwind.finishFunction(0x11223344, 0x55443322);
+    unwind.finishInfo();
 
     std::vector<char> data;
     data.resize(unwind.getSize());
-    unwind.finalize(data.data(), nullptr, 0);
+    unwind.finalize(data.data(), 0, nullptr, 0);
 
-    std::vector<uint8_t> expected{0x01, 0x23, 0x0a, 0x35, 0x23, 0x33, 0x1e, 0x82, 0x1a, 0xf0, 0x18, 0xe0, 0x16, 0xd0, 0x14, 0xc0, 0x12, 0x50, 0x10,
-        0x30, 0x0e, 0x60, 0x0c, 0x70};
+    std::vector<uint8_t> expected{0x44, 0x33, 0x22, 0x11, 0x22, 0x33, 0x44, 0x55, 0x0c, 0x00, 0x00, 0x00, 0x01, 0x23, 0x0a, 0x35, 0x23, 0x33, 0x1e,
+        0x82, 0x1a, 0xf0, 0x18, 0xe0, 0x16, 0xd0, 0x14, 0xc0, 0x12, 0x50, 0x10, 0x30, 0x0e, 0x60, 0x0c, 0x70};
 
     REQUIRE(data.size() == expected.size());
     CHECK(memcmp(data.data(), expected.data(), expected.size()) == 0);
@@ -168,7 +170,8 @@ TEST_CASE("Dwarf2UnwindCodesX64")
 
     UnwindBuilderDwarf2 unwind;
 
-    unwind.start();
+    unwind.startInfo();
+    unwind.startFunction();
     unwind.save(rdi);
     unwind.save(rsi);
     unwind.save(rbx);
@@ -179,11 +182,12 @@ TEST_CASE("Dwarf2UnwindCodesX64")
     unwind.save(r15);
     unwind.allocStack(72);
     unwind.setupFrameReg(rbp, 48);
-    unwind.finish();
+    unwind.finishFunction(0, 0);
+    unwind.finishInfo();
 
     std::vector<char> data;
     data.resize(unwind.getSize());
-    unwind.finalize(data.data(), nullptr, 0);
+    unwind.finalize(data.data(), 0, nullptr, 0);
 
     std::vector<uint8_t> expected{0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x78, 0x10, 0x0c, 0x07, 0x08, 0x05, 0x10, 0x01,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x4c, 0x00, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -211,6 +215,8 @@ constexpr X64::RegisterX64 rArg3 = X64::rdx;
 
 constexpr X64::RegisterX64 rNonVol1 = X64::r12;
 constexpr X64::RegisterX64 rNonVol2 = X64::rbx;
+constexpr X64::RegisterX64 rNonVol3 = X64::r13;
+constexpr X64::RegisterX64 rNonVol4 = X64::r14;
 
 TEST_CASE("GeneratedCodeExecutionX64")
 {
@@ -260,7 +266,10 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64")
     std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderDwarf2>();
 #endif
 
-    unwind->start();
+    unwind->startInfo();
+
+    Label functionBegin = build.setLabel();
+    unwind->startFunction();
 
     // Prologue
     build.push(rNonVol1);
@@ -279,8 +288,6 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64")
     build.lea(rbp, addr[rsp + stackSize]);
     unwind->setupFrameReg(rbp, stackSize);
 
-    unwind->finish();
-
     // Body
     build.mov(rNonVol1, rArg1);
     build.mov(rNonVol2, rArg2);
@@ -296,7 +303,11 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64")
     build.pop(rNonVol1);
     build.ret();
 
+    unwind->finishFunction(build.getLabelOffset(functionBegin), ~0u);
+
     build.finalize();
+
+    unwind->finishInfo();
 
     size_t blockSize = 1024 * 1024;
     size_t maxTotalSize = 1024 * 1024;
@@ -326,6 +337,152 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64")
     }
 }
 
+TEST_CASE("GeneratedCodeExecutionMultipleFunctionsWithThrowX64")
+{
+    using namespace X64;
+
+    AssemblyBuilderX64 build(/* logText= */ false);
+
+#if defined(_WIN32)
+    std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderWin>();
+#else
+    std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderDwarf2>();
+#endif
+
+    unwind->startInfo();
+
+    Label start1;
+    Label start2;
+
+    // First function
+    {
+        build.setLabel(start1);
+        unwind->startFunction();
+
+        // Prologue
+        build.push(rNonVol1);
+        unwind->save(rNonVol1);
+        build.push(rNonVol2);
+        unwind->save(rNonVol2);
+        build.push(rbp);
+        unwind->save(rbp);
+
+        int stackSize = 32;
+        int localsSize = 16;
+
+        build.sub(rsp, stackSize + localsSize);
+        unwind->allocStack(stackSize + localsSize);
+
+        build.lea(rbp, addr[rsp + stackSize]);
+        unwind->setupFrameReg(rbp, stackSize);
+
+        // Body
+        build.mov(rNonVol1, rArg1);
+        build.mov(rNonVol2, rArg2);
+
+        build.add(rNonVol1, 15);
+        build.mov(rArg1, rNonVol1);
+        build.call(rNonVol2);
+
+        // Epilogue
+        build.lea(rsp, addr[rbp + localsSize]);
+        build.pop(rbp);
+        build.pop(rNonVol2);
+        build.pop(rNonVol1);
+        build.ret();
+
+        Label end1 = build.setLabel();
+        unwind->finishFunction(build.getLabelOffset(start1), build.getLabelOffset(end1));
+    }
+
+    // Second function with different layout
+    {
+        build.setLabel(start2);
+        unwind->startFunction();
+
+        // Prologue
+        build.push(rNonVol1);
+        unwind->save(rNonVol1);
+        build.push(rNonVol2);
+        unwind->save(rNonVol2);
+        build.push(rNonVol3);
+        unwind->save(rNonVol3);
+        build.push(rNonVol4);
+        unwind->save(rNonVol4);
+        build.push(rbp);
+        unwind->save(rbp);
+
+        int stackSize = 32;
+        int localsSize = 32;
+
+        build.sub(rsp, stackSize + localsSize);
+        unwind->allocStack(stackSize + localsSize);
+
+        build.lea(rbp, addr[rsp + stackSize]);
+        unwind->setupFrameReg(rbp, stackSize);
+
+        // Body
+        build.mov(rNonVol3, rArg1);
+        build.mov(rNonVol4, rArg2);
+
+        build.add(rNonVol3, 15);
+        build.mov(rArg1, rNonVol3);
+        build.call(rNonVol4);
+
+        // Epilogue
+        build.lea(rsp, addr[rbp + localsSize]);
+        build.pop(rbp);
+        build.pop(rNonVol4);
+        build.pop(rNonVol3);
+        build.pop(rNonVol2);
+        build.pop(rNonVol1);
+        build.ret();
+
+        unwind->finishFunction(build.getLabelOffset(start2), ~0u);
+    }
+
+    build.finalize();
+
+    unwind->finishInfo();
+
+    size_t blockSize = 1024 * 1024;
+    size_t maxTotalSize = 1024 * 1024;
+    CodeAllocator allocator(blockSize, maxTotalSize);
+
+    allocator.context = unwind.get();
+    allocator.createBlockUnwindInfo = createBlockUnwindInfo;
+    allocator.destroyBlockUnwindInfo = destroyBlockUnwindInfo;
+
+    uint8_t* nativeData;
+    size_t sizeNativeData;
+    uint8_t* nativeEntry;
+    REQUIRE(allocator.allocate(build.data.data(), build.data.size(), build.code.data(), build.code.size(), nativeData, sizeNativeData, nativeEntry));
+    REQUIRE(nativeEntry);
+
+    using FunctionType = int64_t(int64_t, void (*)(int64_t));
+    FunctionType* f1 = (FunctionType*)(nativeEntry + start1.location);
+    FunctionType* f2 = (FunctionType*)(nativeEntry + start2.location);
+
+    // To simplify debugging, CHECK_THROWS_WITH_AS is not used here
+    try
+    {
+        f1(10, throwing);
+    }
+    catch (const std::runtime_error& error)
+    {
+        CHECK(strcmp(error.what(), "testing") == 0);
+    }
+
+    try
+    {
+        f2(10, throwing);
+    }
+    catch (const std::runtime_error& error)
+    {
+        CHECK(strcmp(error.what(), "testing") == 0);
+    }
+}
+
 TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
 {
     using namespace X64;
@@ -338,7 +495,10 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
     std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderDwarf2>();
 #endif
 
-    unwind->start();
+    unwind->startInfo();
+
+    Label functionBegin = build.setLabel();
+    unwind->startFunction();
 
     // Prologue (some of these registers don't have to be saved, but we want to have a big prologue)
     build.push(r10);
@@ -365,8 +525,6 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
     build.lea(rbp, addr[rsp + stackSize]);
     unwind->setupFrameReg(rbp, stackSize);
 
-    unwind->finish();
-
     size_t prologueSize = build.setLabel().location;
 
     // Body
@@ -387,7 +545,11 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
     build.pop(r10);
     build.ret();
 
+    unwind->finishFunction(build.getLabelOffset(functionBegin), ~0u);
+
     build.finalize();
+
+    unwind->finishInfo();
 
     size_t blockSize = 4096; // Force allocate to create a new block each time
     size_t maxTotalSize = 1024 * 1024;

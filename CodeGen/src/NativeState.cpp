@@ -16,7 +16,7 @@
 #include <math.h>
 #include <string.h>
 
-#define CODEGEN_SET_FALLBACK(op, flags) data.context.fallback[op] = {execute_##op, flags}
+#define CODEGEN_SET_FALLBACK(op) data.context.fallback[op] = {execute_##op}
 
 namespace Luau
 {
@@ -36,20 +36,21 @@ NativeState::~NativeState() = default;
 void initFallbackTable(NativeState& data)
 {
     // When fallback is completely removed, remove it from includeInsts list in lvmexecute_split.py
-    CODEGEN_SET_FALLBACK(LOP_NEWCLOSURE, 0);
-    CODEGEN_SET_FALLBACK(LOP_NAMECALL, 0);
-    CODEGEN_SET_FALLBACK(LOP_FORGPREP, kFallbackUpdatePc);
-    CODEGEN_SET_FALLBACK(LOP_GETVARARGS, 0);
-    CODEGEN_SET_FALLBACK(LOP_DUPCLOSURE, 0);
-    CODEGEN_SET_FALLBACK(LOP_PREPVARARGS, 0);
-    CODEGEN_SET_FALLBACK(LOP_BREAK, 0);
+    CODEGEN_SET_FALLBACK(LOP_NEWCLOSURE);
+    CODEGEN_SET_FALLBACK(LOP_NAMECALL);
+    CODEGEN_SET_FALLBACK(LOP_FORGPREP);
+    CODEGEN_SET_FALLBACK(LOP_GETVARARGS);
+    CODEGEN_SET_FALLBACK(LOP_DUPCLOSURE);
+    CODEGEN_SET_FALLBACK(LOP_PREPVARARGS);
+    CODEGEN_SET_FALLBACK(LOP_BREAK);
+    CODEGEN_SET_FALLBACK(LOP_SETLIST);
 
     // Fallbacks that are called from partial implementation of an instruction
     // TODO: these fallbacks should be replaced with special functions that exclude the (redundantly executed) fast path from the fallback
-    CODEGEN_SET_FALLBACK(LOP_GETGLOBAL, 0);
-    CODEGEN_SET_FALLBACK(LOP_SETGLOBAL, 0);
-    CODEGEN_SET_FALLBACK(LOP_GETTABLEKS, 0);
-    CODEGEN_SET_FALLBACK(LOP_SETTABLEKS, 0);
+    CODEGEN_SET_FALLBACK(LOP_GETGLOBAL);
+    CODEGEN_SET_FALLBACK(LOP_SETGLOBAL);
+    CODEGEN_SET_FALLBACK(LOP_GETTABLEKS);
+    CODEGEN_SET_FALLBACK(LOP_SETTABLEKS);
 }
 
 void initHelperFunctions(NativeState& data)
@@ -105,6 +106,7 @@ void initHelperFunctions(NativeState& data)
     data.context.libm_tan = tan;
     data.context.libm_tanh = tanh;
 
+    data.context.forgLoopTableIter = forgLoopTableIter;
     data.context.forgLoopNodeIter = forgLoopNodeIter;
     data.context.forgLoopNonTableFallback = forgLoopNonTableFallback;
     data.context.forgPrepXnextFallback = forgPrepXnextFallback;

@@ -211,33 +211,48 @@ struct FindFullAncestry final : public AstVisitor
 
 std::vector<AstNode*> findAncestryAtPositionForAutocomplete(const SourceModule& source, Position pos)
 {
-    AutocompleteNodeFinder finder{pos, source.root};
-    source.root->visit(&finder);
+    return findAncestryAtPositionForAutocomplete(source.root, pos);
+}
+
+std::vector<AstNode*> findAncestryAtPositionForAutocomplete(AstStatBlock* root, Position pos)
+{
+    AutocompleteNodeFinder finder{pos, root};
+    root->visit(&finder);
     return finder.ancestry;
 }
 
 std::vector<AstNode*> findAstAncestryOfPosition(const SourceModule& source, Position pos, bool includeTypes)
 {
-    const Position end = source.root->location.end;
+    return findAstAncestryOfPosition(source.root, pos, includeTypes);
+}
+
+std::vector<AstNode*> findAstAncestryOfPosition(AstStatBlock* root, Position pos, bool includeTypes)
+{
+    const Position end = root->location.end;
     if (pos > end)
         pos = end;
 
     FindFullAncestry finder(pos, end, includeTypes);
-    source.root->visit(&finder);
+    root->visit(&finder);
     return finder.nodes;
 }
 
 AstNode* findNodeAtPosition(const SourceModule& source, Position pos)
 {
-    const Position end = source.root->location.end;
-    if (pos < source.root->location.begin)
-        return source.root;
+    return findNodeAtPosition(source.root, pos);
+}
+
+AstNode* findNodeAtPosition(AstStatBlock* root, Position pos)
+{
+    const Position end = root->location.end;
+    if (pos < root->location.begin)
+        return root;
 
     if (pos > end)
         pos = end;
 
     FindNode findNode{pos, end};
-    findNode.visit(source.root);
+    findNode.visit(root);
     return findNode.best;
 }
 

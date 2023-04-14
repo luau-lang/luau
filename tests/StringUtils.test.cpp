@@ -106,4 +106,22 @@ TEST_CASE("AreWeUsingDistanceWithAdjacentTranspositionsAndNotOptimalStringAlignm
     CHECK_EQ(distance, 2);
 }
 
+TEST_CASE("EditDistanceSupportsUnicode")
+{
+    // ASCII character
+    CHECK_EQ(Luau::editDistance("A block", "X block"), 1);
+
+    // UTF-8 2 byte character
+    CHECK_EQ(Luau::editDistance("A block", "À block"), 2);
+
+    // UTF-8 3 byte character
+    CHECK_EQ(Luau::editDistance("A block", "⪻ block"), 3);
+
+    // UTF-8 4 byte character
+    CHECK_EQ(Luau::editDistance("A block", "𒋄 block"), 4);
+
+    // UTF-8 extreme characters
+    CHECK_EQ(Luau::editDistance("A block", "R̴̨̢̟̚ŏ̶̳̳͚́ͅb̶̡̻̞̐̿ͅl̸̼͝ợ̷̜͓̒̏͜͝ẍ̴̝̦̟̰́̒́̌ block"), 85);
+}
+
 TEST_SUITE_END();

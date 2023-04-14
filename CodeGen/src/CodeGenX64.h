@@ -14,7 +14,7 @@ namespace X64
 
 class AssemblyBuilderX64;
 
-bool initEntryFunction(NativeState& data);
+bool initHeaderFunctions(NativeState& data);
 void assembleHelpers(AssemblyBuilderX64& build, ModuleHelpers& helpers);
 
 } // namespace X64

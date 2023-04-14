@@ -137,9 +137,9 @@ private:
 
 public:
     // Returns true if the type "needle" already occurs within "haystack" and reports an "infinite type error"
-    bool occursCheck(TypeId needle, TypeId haystack);
+    bool occursCheck(TypeId needle, TypeId haystack, bool reversed);
     bool occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack);
-    bool occursCheck(TypePackId needle, TypePackId haystack);
+    bool occursCheck(TypePackId needle, TypePackId haystack, bool reversed);
     bool occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack);
 
     Unifier makeChildUnifier();

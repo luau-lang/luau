@@ -165,7 +165,15 @@ struct Frontend
         bool captureComments, bool typeCheckForAutocomplete = false);
 
 private:
-    ModulePtr check(const SourceModule& sourceModule, Mode mode, std::vector<RequireCycle> requireCycles, bool forAutocomplete = false, bool recordJsonLog = false);
+    struct TypeCheckLimits
+    {
+        std::optional<double> finishTime;
+        std::optional<int> instantiationChildLimit;
+        std::optional<int> unifierIterationLimit;
+    };
+
+    ModulePtr check(const SourceModule& sourceModule, Mode mode, std::vector<RequireCycle> requireCycles, std::optional<ScopePtr> environmentScope,
+        bool forAutocomplete, bool recordJsonLog, TypeCheckLimits typeCheckLimits);
 
     std::pair<SourceNode*, SourceModule*> getSourceNode(const ModuleName& name);
     SourceModule parse(const ModuleName& name, std::string_view src, const ParseOptions& parseOptions);
@@ -185,15 +193,21 @@ public:
     const NotNull<BuiltinTypes> builtinTypes;
 
     FileResolver* fileResolver;
+
     FrontendModuleResolver moduleResolver;
     FrontendModuleResolver moduleResolverForAutocomplete;
+
     GlobalTypes globals;
     GlobalTypes globalsForAutocomplete;
-    TypeChecker typeChecker;
-    TypeChecker typeCheckerForAutocomplete;
+
+    // TODO: remove with FFlagLuauOnDemandTypecheckers
+    TypeChecker typeChecker_DEPRECATED;
+    TypeChecker typeCheckerForAutocomplete_DEPRECATED;
+
     ConfigResolver* configResolver;
     FrontendOptions options;
     InternalErrorReporter iceHandler;
+    std::function<void(const ModuleName& name, const ScopePtr& scope, bool forAutocomplete)> prepareModuleScope;
 
     std::unordered_map<ModuleName, SourceNode> sourceNodes;
     std::unordered_map<ModuleName, SourceModule> sourceModules;

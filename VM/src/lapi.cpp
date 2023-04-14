@@ -538,6 +538,8 @@ const void* lua_topointer(lua_State* L, int idx)
     StkId o = index2addr(L, idx);
     switch (ttype(o))
     {
+    case LUA_TSTRING:
+        return tsvalue(o);
     case LUA_TTABLE:
         return hvalue(o);
     case LUA_TFUNCTION:

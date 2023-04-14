@@ -54,31 +54,6 @@ namespace CodeGen
 
 void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, size_t& beginOffset)
 {
-#if defined(_WIN32) && defined(_M_X64)
-    UnwindBuilder* unwind = (UnwindBuilder*)context;
-
-    // All unwinding related data is placed together at the start of the block
-    size_t unwindSize = sizeof(RUNTIME_FUNCTION) + unwind->getSize();
-    unwindSize = (unwindSize + (kCodeAlignment - 1)) & ~(kCodeAlignment - 1); // Match code allocator alignment
-    LUAU_ASSERT(blockSize >= unwindSize);
-
-    RUNTIME_FUNCTION* runtimeFunc = (RUNTIME_FUNCTION*)block;
-    runtimeFunc->BeginAddress = DWORD(unwindSize);                    // Code will start after the unwind info
-    runtimeFunc->EndAddress = DWORD(blockSize);                       // Whole block is a part of a 'single function'
-    runtimeFunc->UnwindInfoAddress = DWORD(sizeof(RUNTIME_FUNCTION)); // Unwind info is placed at the start of the block
-
-    char* unwindData = (char*)block + runtimeFunc->UnwindInfoAddress;
-    unwind->finalize(unwindData, block + unwindSize, blockSize - unwindSize);
-
-    if (!RtlAddFunctionTable(runtimeFunc, 1, uintptr_t(block)))
-    {
-        LUAU_ASSERT(!"failed to allocate function table");
-        return nullptr;
-    }
-
-    beginOffset = unwindSize + unwind->getBeginOffset();
-    return block;
-#elif !defined(_WIN32)
     UnwindBuilder* unwind = (UnwindBuilder*)context;
 
     // All unwinding related data is placed together at the start of the block
@@ -87,36 +62,33 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
     LUAU_ASSERT(blockSize >= unwindSize);
 
     char* unwindData = (char*)block;
-    unwind->finalize(unwindData, block, blockSize);
+    unwind->finalize(unwindData, unwindSize, block, blockSize);
 
-#if defined(__APPLE__)
+#if defined(_WIN32) && defined(_M_X64)
+    if (!RtlAddFunctionTable((RUNTIME_FUNCTION*)block, uint32_t(unwind->getFunctionCount()), uintptr_t(block)))
+    {
+        LUAU_ASSERT(!"failed to allocate function table");
+        return nullptr;
+    }
+#elif defined(__APPLE__)
     visitFdeEntries(unwindData, __register_frame);
-#else
+#elif !defined(_WIN32)
     __register_frame(unwindData);
 #endif
 
     beginOffset = unwindSize + unwind->getBeginOffset();
     return block;
-#endif
-
-    return nullptr;
 }
 
 void destroyBlockUnwindInfo(void* context, void* unwindData)
 {
 #if defined(_WIN32) && defined(_M_X64)
-    RUNTIME_FUNCTION* runtimeFunc = (RUNTIME_FUNCTION*)unwindData;
-
-    if (!RtlDeleteFunctionTable(runtimeFunc))
+    if (!RtlDeleteFunctionTable((RUNTIME_FUNCTION*)unwindData))
         LUAU_ASSERT(!"failed to deallocate function table");
-#elif !defined(_WIN32)
-
-#if defined(__APPLE__)
+#elif defined(__APPLE__)
     visitFdeEntries((char*)unwindData, __deregister_frame);
-#else
+#elif !defined(_WIN32)
     __deregister_frame(unwindData);
-#endif
-
 #endif
 }
 

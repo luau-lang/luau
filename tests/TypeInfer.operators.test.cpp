@@ -53,10 +53,6 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_superfluous_union")
 
 TEST_CASE_FIXTURE(Fixture, "and_does_not_always_add_boolean")
 {
-    ScopedFastFlag sff[]{
-        {"LuauTryhardAnd", true},
-    };
-
     CheckResult result = check(R"(
         local s = "a" and 10
         local x:boolean|number = s
@@ -737,6 +733,8 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
 
 TEST_CASE_FIXTURE(Fixture, "cli_38355_recursive_union")
 {
+    ScopedFastFlag sff{"LuauOccursIsntAlwaysFailure", true};
+
     CheckResult result = check(R"(
         --!strict
         local _
@@ -744,7 +742,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_38355_recursive_union")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Type contains a self-recursive construct that cannot be resolved", toString(result.errors[0]));
+    CHECK_EQ("Unknown type used in + operation; consider adding a type annotation to '_'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "UnknownGlobalCompoundAssign")
@@ -1048,10 +1046,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "mm_comparisons_must_return_a_boolean")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "reworked_and")
 {
-    ScopedFastFlag sff[]{
-        {"LuauTryhardAnd", true},
-    };
-
     CheckResult result = check(R"(
 local a: number? = 5
 local b: boolean = (a or 1) > 10
@@ -1077,10 +1071,6 @@ local w = c and 1
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "reworked_or")
 {
-    ScopedFastFlag sff[]{
-        {"LuauTryhardAnd", true},
-    };
-
     CheckResult result = check(R"(
 local a: number | false = 5
 local b: number? = 6
@@ -1115,11 +1105,6 @@ local f1 = f or 'f'
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "reducing_and")
 {
-    ScopedFastFlag sff[]{
-        {"LuauTryhardAnd", true},
-        {"LuauReducingAndOr", true},
-    };
-
     CheckResult result = check(R"(
 type Foo = { name: string?, flag: boolean? }
 local arr: {Foo} = {}
@@ -1131,6 +1116,63 @@ local function foo(arg: {name: string}?)
         name = name or "",
         flag = name ~= nil and name ~= "",
     })
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_is_array_simplified")
+{
+    CheckResult result = check(R"(
+     --!strict
+     return function(value: any) : boolean
+        if typeof(value) ~= "number" then
+           return false
+        end
+        if value % 1 ~= 0 or value < 1 then
+           return false
+        end
+        return true
+     end 
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_is_array")
+{
+    CheckResult result = check(R"(
+--!strict
+return function(value: any): boolean
+    if typeof(value) ~= "table" then
+        return false
+    end
+    if next(value) == nil then
+        -- an empty table is an empty array
+        return true
+    end
+
+    local length = #value
+
+    if length == 0 then
+        return false
+    end
+
+    local count = 0
+    local sum = 0
+    for key in pairs(value) do
+        if typeof(key) ~= "number" then
+            return false
+        end
+        if key % 1 ~= 0 or key < 1 then
+            return false
+        end
+        count += 1
+        sum += key
+    end
+
+    return sum == (count * (count + 1) / 2)
 end
     )");
 

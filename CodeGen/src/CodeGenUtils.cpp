@@ -13,12 +13,58 @@ namespace Luau
 namespace CodeGen
 {
 
+bool forgLoopTableIter(lua_State* L, Table* h, int index, TValue* ra)
+{
+    int sizearray = h->sizearray;
+
+    // first we advance index through the array portion
+    while (unsigned(index) < unsigned(sizearray))
+    {
+        TValue* e = &h->array[index];
+
+        if (!ttisnil(e))
+        {
+            setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(index + 1)));
+            setnvalue(ra + 3, double(index + 1));
+            setobj2s(L, ra + 4, e);
+
+            return true;
+        }
+
+        index++;
+    }
+
+    int sizenode = 1 << h->lsizenode;
+
+    // then we advance index through the hash portion
+    while (unsigned(index - h->sizearray) < unsigned(sizenode))
+    {
+        LuaNode* n = &h->node[index - sizearray];
+
+        if (!ttisnil(gval(n)))
+        {
+            setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(index + 1)));
+            getnodekey(L, ra + 3, n);
+            setobj(L, ra + 4, gval(n));
+
+            return true;
+        }
+
+        index++;
+    }
+
+    return false;
+}
+
 bool forgLoopNodeIter(lua_State* L, Table* h, int index, TValue* ra)
 {
+    int sizearray = h->sizearray;
+    int sizenode = 1 << h->lsizenode;
+
     // then we advance index through the hash portion
-    while (unsigned(index - h->sizearray) < unsigned(1 << h->lsizenode))
+    while (unsigned(index - sizearray) < unsigned(sizenode))
     {
-        LuaNode* n = &h->node[index - h->sizearray];
+        LuaNode* n = &h->node[index - sizearray];
 
         if (!ttisnil(gval(n)))
         {

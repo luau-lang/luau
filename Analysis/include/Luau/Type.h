@@ -738,6 +738,7 @@ const T* get(TypeId tv)
     return get_if<T>(&tv->ty);
 }
 
+
 template<typename T>
 T* getMutable(TypeId tv)
 {
@@ -897,6 +898,19 @@ bool hasTag(TypeId ty, const std::string& tagName);
 bool hasTag(const Property& prop, const std::string& tagName);
 bool hasTag(const Tags& tags, const std::string& tagName); // Do not use in new work.
 
+template<typename T>
+bool hasTypeInIntersection(TypeId ty)
+{
+    TypeId tf = follow(ty);
+    if (get<T>(tf))
+        return true;
+    for (auto t : flattenIntersection(tf))
+        if (get<T>(follow(t)))
+            return true;
+    return false;
+}
+
+bool hasPrimitiveTypeInIntersection(TypeId ty, PrimitiveType::Type primTy);
 /*
  * Use this to change the kind of a particular type.
  *

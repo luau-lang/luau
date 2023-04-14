@@ -1195,6 +1195,21 @@ local b = typeof(foo) ~= 'nil'
     CHECK(toString(result.errors[1]) == "Unknown global 'foo'");
 }
 
+TEST_CASE_FIXTURE(Fixture, "occurs_isnt_always_failure")
+{
+    ScopedFastFlag sff{"LuauOccursIsntAlwaysFailure", true};
+
+    CheckResult result = check(R"(
+function f(x, c)                   -- x : X
+    local y = if c then x else nil -- y : X?
+    local z = if c then x else nil -- z : X?
+    y = z
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "dcr_delays_expansion_of_function_containing_blocked_parameter_type")
 {
     ScopedFastFlag sff[] = {

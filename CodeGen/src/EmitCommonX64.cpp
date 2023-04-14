@@ -279,32 +279,37 @@ void emitUpdateBase(AssemblyBuilderX64& build)
     build.mov(rBase, qword[rState + offsetof(lua_State, base)]);
 }
 
-// Note: only uses rax/rdx, the caller may use other registers
-static void emitSetSavedPc(AssemblyBuilderX64& build, int pcpos)
+static void emitSetSavedPc(IrRegAllocX64& regs, AssemblyBuilderX64& build, int pcpos)
 {
-    build.mov(rdx, sCode);
-    build.add(rdx, pcpos * sizeof(Instruction));
-    build.mov(rax, qword[rState + offsetof(lua_State, ci)]);
-    build.mov(qword[rax + offsetof(CallInfo, savedpc)], rdx);
+    ScopedRegX64 tmp1{regs, SizeX64::qword};
+    ScopedRegX64 tmp2{regs, SizeX64::qword};
+
+    build.mov(tmp1.reg, sCode);
+    build.add(tmp1.reg, pcpos * sizeof(Instruction));
+    build.mov(tmp2.reg, qword[rState + offsetof(lua_State, ci)]);
+    build.mov(qword[tmp2.reg + offsetof(CallInfo, savedpc)], tmp1.reg);
 }
 
-void emitInterrupt(AssemblyBuilderX64& build, int pcpos)
+void emitInterrupt(IrRegAllocX64& regs, AssemblyBuilderX64& build, int pcpos)
 {
     Label skip;
 
+    ScopedRegX64 tmp{regs, SizeX64::qword};
+
     // Skip if there is no interrupt set
-    build.mov(r8, qword[rState + offsetof(lua_State, global)]);
-    build.mov(r8, qword[r8 + offsetof(global_State, cb.interrupt)]);
-    build.test(r8, r8);
+    build.mov(tmp.reg, qword[rState + offsetof(lua_State, global)]);
+    build.mov(tmp.reg, qword[tmp.reg + offsetof(global_State, cb.interrupt)]);
+    build.test(tmp.reg, tmp.reg);
     build.jcc(ConditionX64::Zero, skip);
 
-    emitSetSavedPc(build, pcpos + 1); // uses rax/rdx
+    emitSetSavedPc(regs, build, pcpos + 1);
 
     // Call interrupt
     // TODO: This code should move to the end of the function, or even be outlined so that it can be shared by multiple interruptible instructions
-    build.mov(rArg1, rState);
-    build.mov(dwordReg(rArg2), -1); // function accepts 'int' here and using qword reg would've forced 8 byte constant here
-    build.call(r8);
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::qword, rState);
+    callWrap.addArgument(SizeX64::dword, -1);
+    callWrap.call(tmp.release());
 
     emitUpdateBase(build); // interrupt may have reallocated stack
 
@@ -320,41 +325,23 @@ void emitInterrupt(AssemblyBuilderX64& build, int pcpos)
     build.setLabel(skip);
 }
 
-void emitFallback(AssemblyBuilderX64& build, NativeState& data, int op, int pcpos)
+void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, NativeState& data, int op, int pcpos)
 {
-    NativeFallback& opinfo = data.context.fallback[op];
-    LUAU_ASSERT(opinfo.fallback);
-
-    if (build.logText)
-        build.logAppend("; fallback\n");
+    LUAU_ASSERT(data.context.fallback[op]);
 
     // fallback(L, instruction, base, k)
-    build.mov(rArg1, rState);
-    build.mov(rArg2, sCode);
-    build.add(rArg2, pcpos * sizeof(Instruction));
-    build.mov(rArg3, rBase);
-    build.mov(rArg4, rConstants);
-    build.call(qword[rNativeContext + offsetof(NativeContext, fallback) + op * sizeof(NativeFallback) + offsetof(NativeFallback, fallback)]);
+    IrCallWrapperX64 callWrap(regs, build);
+    callWrap.addArgument(SizeX64::qword, rState);
+
+    RegisterX64 reg = callWrap.suggestNextArgumentRegister(SizeX64::qword);
+    build.mov(reg, sCode);
+    callWrap.addArgument(SizeX64::qword, addr[reg + pcpos * sizeof(Instruction)]);
+
+    callWrap.addArgument(SizeX64::qword, rBase);
+    callWrap.addArgument(SizeX64::qword, rConstants);
+    callWrap.call(qword[rNativeContext + offsetof(NativeContext, fallback) + op * sizeof(FallbackFn)]);
 
     emitUpdateBase(build);
-
-    // Some instructions may jump to a different instruction or a completely different function
-    if (opinfo.flags & kFallbackUpdatePc)
-    {
-        build.mov(rcx, sClosure);
-        build.mov(rcx, qword[rcx + offsetof(Closure, l.p)]);
-
-        // Get instruction index from returned instruction pointer
-        // To get instruction index from instruction pointer, we need to divide byte offset by 4
-        // But we will actually need to scale instruction index by 8 back to byte offset later so it cancels out
-        build.sub(rax, sCode);
-
-        build.mov(rdx, qword[rcx + offsetofProtoExecData]);
-
-        // Get new instruction location and jump to it
-        build.mov(rcx, qword[rdx + offsetof(NativeProto, instTargets)]);
-        build.jmp(qword[rax * 2 + rcx]);
-    }
 }
 
 void emitContinueCallInVm(AssemblyBuilderX64& build)
