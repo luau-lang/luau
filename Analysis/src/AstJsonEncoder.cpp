@@ -776,7 +776,10 @@ struct AstJsonEncoder : public AstVisitor
         writeNode(node, "AstTypeReference", [&]() {
             if (node->prefix)
                 PROP(prefix);
+            if (node->prefixLocation)
+                write("prefixLocation", *node->prefixLocation);
             PROP(name);
+            PROP(nameLocation);
             PROP(parameters);
         });
     }

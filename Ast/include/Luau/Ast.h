@@ -848,10 +848,10 @@ public:
 
     bool hasParameterList;
     std::optional<AstName> prefix;
-    AstName name;
-    AstArray<AstTypeOrPack> parameters;
     std::optional<Location> prefixLocation;
+    AstName name;
     Location nameLocation;
+    AstArray<AstTypeOrPack> parameters;
 };
 
 struct AstTableProp
