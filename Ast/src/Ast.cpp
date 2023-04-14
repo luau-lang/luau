@@ -758,10 +758,10 @@ AstTypeReference::AstTypeReference(const Location& location, std::optional<AstNa
     : AstType(ClassIndex(), location)
     , hasParameterList(hasParameterList)
     , prefix(prefix)
-    , name(name)
-    , parameters(parameters)
     , prefixLocation(prefixLocation)
+    , name(name)
     , nameLocation(nameLocation)
+    , parameters(parameters)
 {
 }
 
