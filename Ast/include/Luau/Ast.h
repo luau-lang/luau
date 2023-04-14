@@ -841,8 +841,8 @@ class AstTypeReference : public AstType
 public:
     LUAU_RTTI(AstTypeReference)
 
-    AstTypeReference(const Location& location, std::optional<AstName> prefix, AstName name, bool hasParameterList = false,
-        const AstArray<AstTypeOrPack>& parameters = {});
+    AstTypeReference(const Location& location, std::optional<AstName> prefix, AstName name, std::optional<Location> prefixLocation,
+        const Location& nameLocation, bool hasParameterList = false, const AstArray<AstTypeOrPack>& parameters = {});
 
     void visit(AstVisitor* visitor) override;
 
@@ -850,6 +850,8 @@ public:
     std::optional<AstName> prefix;
     AstName name;
     AstArray<AstTypeOrPack> parameters;
+    std::optional<Location> prefixLocation;
+    Location nameLocation;
 };
 
 struct AstTableProp
