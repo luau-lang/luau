@@ -285,8 +285,16 @@ TEST_CASE("Tables")
         lua_pushcfunction(
             L,
             [](lua_State* L) {
-                unsigned v = luaL_checkunsigned(L, 1);
-                lua_pushlightuserdata(L, reinterpret_cast<void*>(uintptr_t(v)));
+                if (lua_type(L, 1) == LUA_TNUMBER)
+                {
+                    unsigned v = luaL_checkunsigned(L, 1);
+                    lua_pushlightuserdata(L, reinterpret_cast<void*>(uintptr_t(v)));
+                }
+                else
+                {
+                    const void* p = lua_topointer(L, 1);
+                    lua_pushlightuserdata(L, const_cast<void*>(p));
+                }
                 return 1;
             },
             "makelud");
@@ -402,21 +410,24 @@ TEST_CASE("PCall")
 {
     ScopedFastFlag sff("LuauBetterOOMHandling", true);
 
-    runConformance("pcall.lua", [](lua_State* L) {
-        lua_pushcfunction(L, cxxthrow, "cxxthrow");
-        lua_setglobal(L, "cxxthrow");
+    runConformance(
+        "pcall.lua",
+        [](lua_State* L) {
+            lua_pushcfunction(L, cxxthrow, "cxxthrow");
+            lua_setglobal(L, "cxxthrow");
 
-        lua_pushcfunction(
-            L,
-            [](lua_State* L) -> int {
-                lua_State* co = lua_tothread(L, 1);
-                lua_xmove(L, co, 1);
-                lua_resumeerror(co, L);
-                return 0;
-            },
-            "resumeerror");
-        lua_setglobal(L, "resumeerror");
-    }, nullptr, lua_newstate(limitedRealloc, nullptr));
+            lua_pushcfunction(
+                L,
+                [](lua_State* L) -> int {
+                    lua_State* co = lua_tothread(L, 1);
+                    lua_xmove(L, co, 1);
+                    lua_resumeerror(co, L);
+                    return 0;
+                },
+                "resumeerror");
+            lua_setglobal(L, "resumeerror");
+        },
+        nullptr, lua_newstate(limitedRealloc, nullptr));
 }
 
 TEST_CASE("Pack")

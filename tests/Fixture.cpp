@@ -21,6 +21,7 @@
 static const char* mainModuleName = "MainModule";
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauOnDemandTypecheckers);
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
@@ -180,9 +181,16 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
 
                 Luau::lint(sourceModule->root, *sourceModule->names, frontend.globals.globalScope, module.get(), sourceModule->hotcomments, {});
             }
+            else if (!FFlag::LuauOnDemandTypecheckers)
+            {
+                ModulePtr module = frontend.typeChecker_DEPRECATED.check(*sourceModule, sourceModule->mode.value_or(Luau::Mode::Nonstrict));
+
+                Luau::lint(sourceModule->root, *sourceModule->names, frontend.globals.globalScope, module.get(), sourceModule->hotcomments, {});
+            }
             else
             {
-                ModulePtr module = frontend.typeChecker.check(*sourceModule, sourceModule->mode.value_or(Luau::Mode::Nonstrict));
+                TypeChecker typeChecker(frontend.globals.globalScope, &moduleResolver, builtinTypes, &frontend.iceHandler);
+                ModulePtr module = typeChecker.check(*sourceModule, sourceModule->mode.value_or(Luau::Mode::Nonstrict), std::nullopt);
 
                 Luau::lint(sourceModule->root, *sourceModule->names, frontend.globals.globalScope, module.get(), sourceModule->hotcomments, {});
             }

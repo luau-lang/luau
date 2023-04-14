@@ -51,6 +51,7 @@ struct SourceModule
 };
 
 bool isWithinComment(const SourceModule& sourceModule, Position pos);
+bool isWithinComment(const ParseResult& result, Position pos);
 
 struct RequireCycle
 {

@@ -155,7 +155,7 @@ enum class IrCmd : uint8_t
 
     // Compute Luau 'not' operation on destructured TValue
     // A: tag
-    // B: double
+    // B: int (value)
     NOT_ANY, // TODO: boolean specialization will be useful
 
     // Unconditional jump
@@ -233,7 +233,7 @@ enum class IrCmd : uint8_t
 
     // Try to get pointer to tag method TValue inside the table's metatable or jump if there is no such value or metatable
     // A: table
-    // B: int
+    // B: int (TMS enum)
     // C: block
     TRY_CALL_FASTGETTM,
 
@@ -256,8 +256,8 @@ enum class IrCmd : uint8_t
     // B: Rn (result start)
     // C: Rn (argument start)
     // D: Rn or Kn or a boolean that's false (optional second argument)
-    // E: int (argument count or -1 to use all arguments up to stack top)
-    // F: int (result count or -1 to preserve all results and adjust stack top)
+    // E: int (argument count)
+    // F: int (result count)
     FASTCALL,
 
     // Call the fastcall builtin function
@@ -517,8 +517,10 @@ enum class IrCmd : uint8_t
     FALLBACK_FORGPREP,
 
     // Instruction that passes value through, it is produced by constant folding and users substitute it with the value
+    // When operand location is set, updates the tracked location of the value in memory
     SUBSTITUTE,
     // A: operand of any type
+    // B: Rn/Kn/none (location of operand in memory; optional)
 };
 
 enum class IrConstKind : uint8_t
@@ -694,6 +696,9 @@ struct IrFunction
 
     std::vector<BytecodeMapping> bcMapping;
 
+    // For each instruction, an operand that can be used to recompute the calue
+    std::vector<IrOp> valueRestoreOps;
+
     Proto* proto = nullptr;
 
     CfgInfo cfg;
@@ -829,18 +834,39 @@ struct IrFunction
         return value.valueDouble;
     }
 
-    uint32_t getBlockIndex(const IrBlock& block)
+    uint32_t getBlockIndex(const IrBlock& block) const
     {
         // Can only be called with blocks from our vector
         LUAU_ASSERT(&block >= blocks.data() && &block <= blocks.data() + blocks.size());
         return uint32_t(&block - blocks.data());
     }
 
-    uint32_t getInstIndex(const IrInst& inst)
+    uint32_t getInstIndex(const IrInst& inst) const
     {
         // Can only be called with instructions from our vector
         LUAU_ASSERT(&inst >= instructions.data() && &inst <= instructions.data() + instructions.size());
         return uint32_t(&inst - instructions.data());
+    }
+
+    void recordRestoreOp(uint32_t instIdx, IrOp location)
+    {
+        if (instIdx >= valueRestoreOps.size())
+            valueRestoreOps.resize(instIdx + 1);
+
+        valueRestoreOps[instIdx] = location;
+    }
+
+    IrOp findRestoreOp(uint32_t instIdx) const
+    {
+        if (instIdx >= valueRestoreOps.size())
+            return {};
+
+        return valueRestoreOps[instIdx];
+    }
+
+    IrOp findRestoreOp(const IrInst& inst) const
+    {
+        return findRestoreOp(getInstIndex(inst));
     }
 };
 

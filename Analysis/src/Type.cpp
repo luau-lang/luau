@@ -337,7 +337,16 @@ bool isSubset(const UnionType& super, const UnionType& sub)
 
     return true;
 }
+bool hasPrimitiveTypeInIntersection(TypeId ty, PrimitiveType::Type primTy)
+{
+    TypeId tf = follow(ty);
+    if (isPrim(tf, primTy))
+        return true;
 
+    for (auto t : flattenIntersection(tf))
+        return isPrim(follow(t), primTy);
+    return false;
+}
 // When typechecking an assignment `x = e`, we typecheck `x:T` and `e:U`,
 // then instantiate U if `isGeneric(U)` is true, and `maybeGeneric(T)` is false.
 bool isGeneric(TypeId ty)

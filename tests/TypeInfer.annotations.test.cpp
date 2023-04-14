@@ -435,6 +435,10 @@ TEST_CASE_FIXTURE(Fixture, "typeof_expr")
 
 TEST_CASE_FIXTURE(Fixture, "corecursive_types_error_on_tight_loop")
 {
+    ScopedFastFlag flags[] = {
+        {"LuauOccursIsntAlwaysFailure", true},
+    };
+
     CheckResult result = check(R"(
         type A = B
         type B = A
@@ -443,10 +447,10 @@ TEST_CASE_FIXTURE(Fixture, "corecursive_types_error_on_tight_loop")
         local bb:B
     )");
 
-    TypeId fType = requireType("aa");
-    const AnyType* ftv = get<AnyType>(follow(fType));
-    REQUIRE(ftv != nullptr);
-    REQUIRE(!result.errors.empty());
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    OccursCheckFailed* ocf = get<OccursCheckFailed>(result.errors[0]);
+    REQUIRE(ocf);
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_always_resolve_to_a_real_type")
@@ -762,6 +766,7 @@ TEST_CASE_FIXTURE(Fixture, "occurs_check_on_cyclic_union_type")
 {
     CheckResult result = check(R"(
         type T = T | T
+        local x : T
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);

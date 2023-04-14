@@ -347,5 +347,15 @@ assert(select('#', math.ceil(1.6)) == 1)
 assert(select('#', math.sqrt(9)) == 1)
 assert(select('#', math.deg(9)) == 1)
 assert(select('#', math.rad(9)) == 1)
+assert(select('#', math.sin(1.5)) == 1)
+assert(select('#', math.atan2(1.5, 0.5)) == 1)
+assert(select('#', math.modf(1.5)) == 2)
+assert(select('#', math.frexp(1.5)) == 2)
+
+-- test that fastcalls that return variadic results return them correctly in variadic position
+assert(select(1, math.modf(1.5)) == 1)
+assert(select(2, math.modf(1.5)) == 0.5)
+assert(select(1, math.frexp(1.5)) == 0.75)
+assert(select(2, math.frexp(1.5)) == 1)
 
 return('OK')

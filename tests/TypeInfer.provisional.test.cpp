@@ -320,23 +320,6 @@ TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
     LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
 }
 
-TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_variadic_pack")
-{
-    ScopedFastFlag sff[] = {
-        // I'm not sure why this is broken without DCR, but it seems to be fixed
-        // when DCR is enabled.
-        {"DebugLuauDeferredConstraintResolution", false},
-    };
-
-    CheckResult result = check(R"(
-        --!strict
-        local function f(...) return ... end
-        local g = function(...) return f(...) end
-    )");
-
-    LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
-}
-
 // Belongs in TypeInfer.builtins.test.cpp.
 TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_returns_at_least_two_value_but_function_returns_nothing")
 {
@@ -817,6 +800,25 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_with_a_singleton_argument")
         // We'd really like for this to be {string}
         CHECK_EQ("{string | string}", toString(requireType("t")));
     }
+}
+
+// We really should be warning on this.  We have no guarantee that T has any properties.
+TEST_CASE_FIXTURE(Fixture, "lookup_prop_of_intersection_containing_unions_of_tables_that_have_the_prop")
+{
+    CheckResult result = check(R"(
+        local function mergeOptions<T>(options: T & ({variable: string} | {variable: number}))
+            return options.variable
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    // const UnknownProperty* unknownProp = get<UnknownProperty>(result.errors[0]);
+    // REQUIRE(unknownProp);
+
+    // CHECK("variable" == unknownProp->key);
 }
 
 TEST_SUITE_END();

@@ -7,6 +7,7 @@
 
 #include "lobject.h"
 #include "ltm.h"
+#include "lstate.h"
 
 // AArch64 ABI reminder:
 // Arguments: x0-x7, v0-v7
@@ -38,15 +39,19 @@ constexpr RegisterA64 rBase = x24;      // StkId base
 
 // Native code is as stackless as the interpreter, so we can place some data on the stack once and have it accessible at any point
 // See CodeGenA64.cpp for layout
-constexpr unsigned kStackSize = 64; // 8 stashed registers
+constexpr unsigned kStashSlots = 8; // stashed non-volatile registers
+constexpr unsigned kSpillSlots = 0; // slots for spilling temporary registers (unused)
+constexpr unsigned kTempSlots = 2;  // 16 bytes of temporary space, such luxury!
 
-void emitUpdateBase(AssemblyBuilderA64& build);
+constexpr unsigned kStackSize = (kStashSlots + kSpillSlots + kTempSlots) * 8;
 
-// TODO: Move these to CodeGenA64 so that they can't be accidentally called during lowering
-void emitExit(AssemblyBuilderA64& build, bool continueInVm);
-void emitInterrupt(AssemblyBuilderA64& build);
-void emitReentry(AssemblyBuilderA64& build, ModuleHelpers& helpers);
-void emitFallback(AssemblyBuilderA64& build, int op, int pcpos);
+constexpr AddressA64 sSpillArea = mem(sp, kStashSlots * 8);
+constexpr AddressA64 sTemporary = mem(sp, (kStashSlots + kSpillSlots) * 8);
+
+inline void emitUpdateBase(AssemblyBuilderA64& build)
+{
+    build.ldr(rBase, mem(rState, offsetof(lua_State, base)));
+}
 
 } // namespace A64
 } // namespace CodeGen

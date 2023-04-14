@@ -132,7 +132,7 @@ size_t UnwindBuilderDwarf2::getBeginOffset() const
     return beginOffset;
 }
 
-void UnwindBuilderDwarf2::start()
+void UnwindBuilderDwarf2::startInfo()
 {
     uint8_t* cieLength = pos;
     pos = writeu32(pos, 0); // Length (to be filled later)
@@ -149,13 +149,23 @@ void UnwindBuilderDwarf2::start()
     // Optional CIE augmentation section (not present)
 
     // Call frame instructions (common for all FDEs, of which we have 1)
-    stackOffset = 8; // Return address was pushed by calling the function
-
-    pos = defineCfaExpression(pos, DW_REG_RSP, stackOffset); // Define CFA to be the rsp + 8
+    pos = defineCfaExpression(pos, DW_REG_RSP, 8);           // Define CFA to be the rsp + 8
     pos = defineSavedRegisterLocation(pos, DW_REG_RA, 8);    // Define return address register (RA) to be located at CFA - 8
 
     pos = alignPosition(cieLength, pos);
     writeu32(cieLength, unsigned(pos - cieLength - 4)); // Length field itself is excluded from length
+}
+
+void UnwindBuilderDwarf2::startFunction()
+{
+    // End offset is filled in later and everything gets adjusted at the end
+    UnwindFunctionDwarf2 func;
+    func.beginOffset = 0;
+    func.endOffset = 0;
+    func.fdeEntryStartPos = uint32_t(pos - rawData);
+    unwindFunctions.push_back(func);
+
+    stackOffset = 8; // Return address was pushed by calling the function
 
     fdeEntryStart = pos;                          // Will be written at the end
     pos = writeu32(pos, 0);                       // Length (to be filled later)
@@ -198,14 +208,20 @@ void UnwindBuilderDwarf2::setupFrameReg(X64::RegisterX64 reg, int espOffset)
     // Cfa is based on rsp, so no additonal commands are required
 }
 
-void UnwindBuilderDwarf2::finish()
+void UnwindBuilderDwarf2::finishFunction(uint32_t beginOffset, uint32_t endOffset)
 {
+    unwindFunctions.back().beginOffset = beginOffset;
+    unwindFunctions.back().endOffset = endOffset;
+
     LUAU_ASSERT(stackOffset % 16 == 0 && "stack has to be aligned to 16 bytes after prologue");
     LUAU_ASSERT(fdeEntryStart != nullptr);
 
     pos = alignPosition(fdeEntryStart, pos);
     writeu32(fdeEntryStart, unsigned(pos - fdeEntryStart - 4)); // Length field itself is excluded from length
+}
 
+void UnwindBuilderDwarf2::finishInfo()
+{
     // Terminate section
     pos = writeu32(pos, 0);
 
@@ -217,15 +233,26 @@ size_t UnwindBuilderDwarf2::getSize() const
     return size_t(pos - rawData);
 }
 
-void UnwindBuilderDwarf2::finalize(char* target, void* funcAddress, size_t funcSize) const
+size_t UnwindBuilderDwarf2::getFunctionCount() const
+{
+    return unwindFunctions.size();
+}
+
+void UnwindBuilderDwarf2::finalize(char* target, size_t offset, void* funcAddress, size_t funcSize) const
 {
     memcpy(target, rawData, getSize());
 
-    LUAU_ASSERT(fdeEntryStart != nullptr);
-    unsigned fdeEntryStartPos = unsigned(fdeEntryStart - rawData);
+    for (const UnwindFunctionDwarf2& func : unwindFunctions)
+    {
+        uint8_t* fdeEntryStart = (uint8_t*)target + func.fdeEntryStartPos;
 
-    writeu64((uint8_t*)target + fdeEntryStartPos + kFdeInitialLocationOffset, uintptr_t(funcAddress));
-    writeu64((uint8_t*)target + fdeEntryStartPos + kFdeAddressRangeOffset, funcSize);
+        writeu64(fdeEntryStart + kFdeInitialLocationOffset, uintptr_t(funcAddress) + offset + func.beginOffset);
+
+        if (func.endOffset == kFullBlockFuncton)
+            writeu64(fdeEntryStart + kFdeAddressRangeOffset, funcSize - offset);
+        else
+            writeu64(fdeEntryStart + kFdeAddressRangeOffset, func.endOffset - func.beginOffset);
+    }
 }
 
 } // namespace CodeGen

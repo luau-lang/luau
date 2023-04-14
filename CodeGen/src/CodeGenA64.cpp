@@ -17,14 +17,107 @@ namespace CodeGen
 namespace A64
 {
 
-bool initEntryFunction(NativeState& data)
+struct EntryLocations
 {
-    AssemblyBuilderA64 build(/* logText= */ false);
-    UnwindBuilder& unwind = *data.unwindBuilder.get();
+    Label start;
+    Label prologueEnd;
+    Label epilogueStart;
+};
+
+static void emitExit(AssemblyBuilderA64& build, bool continueInVm)
+{
+    build.mov(x0, continueInVm);
+    build.ldr(x1, mem(rNativeContext, offsetof(NativeContext, gateExit)));
+    build.br(x1);
+}
+
+static void emitInterrupt(AssemblyBuilderA64& build)
+{
+    // x0 = pc offset
+    // x1 = return address in native code
+    // x2 = interrupt
+
+    // Stash return address in rBase; we need to reload rBase anyway
+    build.mov(rBase, x1);
+
+    // Update savedpc; required in case interrupt errors
+    build.add(x0, rCode, x0);
+    build.ldr(x1, mem(rState, offsetof(lua_State, ci)));
+    build.str(x0, mem(x1, offsetof(CallInfo, savedpc)));
+
+    // Call interrupt
+    build.mov(x0, rState);
+    build.mov(w1, -1);
+    build.blr(x2);
+
+    // Check if we need to exit
+    Label skip;
+    build.ldrb(w0, mem(rState, offsetof(lua_State, status)));
+    build.cbz(w0, skip);
+
+    // L->ci->savedpc--
+    // note: recomputing this avoids having to stash x0
+    build.ldr(x1, mem(rState, offsetof(lua_State, ci)));
+    build.ldr(x0, mem(x1, offsetof(CallInfo, savedpc)));
+    build.sub(x0, x0, sizeof(Instruction));
+    build.str(x0, mem(x1, offsetof(CallInfo, savedpc)));
+
+    emitExit(build, /* continueInVm */ false);
+
+    build.setLabel(skip);
+
+    // Return back to caller; rBase has stashed return address
+    build.mov(x0, rBase);
+
+    emitUpdateBase(build); // interrupt may have reallocated stack
+
+    build.br(x0);
+}
+
+static void emitReentry(AssemblyBuilderA64& build, ModuleHelpers& helpers)
+{
+    // x0 = closure object to reentry (equal to clvalue(L->ci->func))
+
+    // If the fallback requested an exit, we need to do this right away
+    build.cbz(x0, helpers.exitNoContinueVm);
+
+    emitUpdateBase(build);
+
+    // Need to update state of the current function before we jump away
+    build.ldr(x1, mem(x0, offsetof(Closure, l.p))); // cl->l.p aka proto
+
+    build.mov(rClosure, x0);
+    build.ldr(rConstants, mem(x1, offsetof(Proto, k))); // proto->k
+    build.ldr(rCode, mem(x1, offsetof(Proto, code)));   // proto->code
+
+    // Get instruction index from instruction pointer
+    // To get instruction index from instruction pointer, we need to divide byte offset by 4
+    // But we will actually need to scale instruction index by 8 back to byte offset later so it cancels out
+    build.ldr(x2, mem(rState, offsetof(lua_State, ci))); // L->ci
+    build.ldr(x2, mem(x2, offsetof(CallInfo, savedpc))); // L->ci->savedpc
+    build.sub(x2, x2, rCode);
+    build.add(x2, x2, x2); // TODO: this would not be necessary if we supported shifted register offsets in loads
+
+    // We need to check if the new function can be executed natively
+    // TODO: This can be done earlier in the function flow, to reduce the JIT->VM transition penalty
+    build.ldr(x1, mem(x1, offsetofProtoExecData));
+    build.cbz(x1, helpers.exitContinueVm);
+
+    // Get new instruction location and jump to it
+    build.ldr(x1, mem(x1, offsetof(NativeProto, instTargets)));
+    build.ldr(x1, mem(x1, x2));
+    build.br(x1);
+}
+
+static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilder& unwind)
+{
+    EntryLocations locations;
 
     // Arguments: x0 = lua_State*, x1 = Proto*, x2 = native code pointer to jump to, x3 = NativeContext*
 
-    unwind.start();
+    locations.start = build.setLabel();
+    unwind.startFunction();
+
     unwind.allocStack(8); // TODO: this is just a hack to make UnwindBuilder assertions cooperate
 
     // prologue
@@ -38,9 +131,7 @@ bool initEntryFunction(NativeState& data)
 
     build.mov(x29, sp); // this is only necessary if we maintain frame pointers, which we do in the JIT for now
 
-    unwind.finish();
-
-    size_t prologueSize = build.setLabel().location;
+    locations.prologueEnd = build.setLabel();
 
     // Setup native execution environment
     build.mov(rState, x0);
@@ -58,7 +149,7 @@ bool initEntryFunction(NativeState& data)
     build.br(x2);
 
     // Even though we jumped away, we will return here in the end
-    Label returnOff = build.setLabel();
+    locations.epilogueStart = build.setLabel();
 
     // Cleanup and exit
     build.ldp(x23, x24, mem(sp, 48));
@@ -69,12 +160,30 @@ bool initEntryFunction(NativeState& data)
 
     build.ret();
 
+    // Our entry function is special, it spans the whole remaining code area
+    unwind.finishFunction(build.getLabelOffset(locations.start), kFullBlockFuncton);
+
+    return locations;
+}
+
+bool initHeaderFunctions(NativeState& data)
+{
+    AssemblyBuilderA64 build(/* logText= */ false);
+    UnwindBuilder& unwind = *data.unwindBuilder.get();
+
+    unwind.startInfo();
+
+    EntryLocations entryLocations = buildEntryFunction(build, unwind);
+
     build.finalize();
+
+    unwind.finishInfo();
 
     LUAU_ASSERT(build.data.empty());
 
+    uint8_t* codeStart = nullptr;
     if (!data.codeAllocator.allocate(build.data.data(), int(build.data.size()), reinterpret_cast<const uint8_t*>(build.code.data()),
-            int(build.code.size() * sizeof(build.code[0])), data.gateData, data.gateDataSize, data.context.gateEntry))
+            int(build.code.size() * sizeof(build.code[0])), data.gateData, data.gateDataSize, codeStart))
     {
         LUAU_ASSERT(!"failed to create entry function");
         return false;
@@ -82,9 +191,10 @@ bool initEntryFunction(NativeState& data)
 
     // Set the offset at the begining so that functions in new blocks will not overlay the locations
     // specified by the unwind information of the entry function
-    unwind.setBeginOffset(prologueSize);
+    unwind.setBeginOffset(build.getLabelOffset(entryLocations.prologueEnd));
 
-    data.context.gateExit = data.context.gateEntry + build.getLabelOffset(returnOff);
+    data.context.gateEntry = codeStart + build.getLabelOffset(entryLocations.start);
+    data.context.gateExit = codeStart + build.getLabelOffset(entryLocations.epilogueStart);
 
     return true;
 }

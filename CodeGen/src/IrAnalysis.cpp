@@ -354,6 +354,8 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
         case IrCmd::RETURN:
             useRange(vmRegOp(inst.a), function.intOp(inst.b));
             break;
+
+            // TODO: FASTCALL is more restrictive than INVOKE_FASTCALL; we should either determine the exact semantics, or rework it
         case IrCmd::FASTCALL:
         case IrCmd::INVOKE_FASTCALL:
             if (int count = function.intOp(inst.e); count != -1)

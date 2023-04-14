@@ -595,6 +595,11 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
      * make any sense to stop and wait for someone else to do it.
      */
 
+    // If any is present, the expression must evaluate to any as well.
+    bool leftAny = get<AnyType>(leftType) || get<ErrorType>(leftType);
+    bool rightAny = get<AnyType>(rightType) || get<ErrorType>(rightType);
+    bool anyPresent = leftAny || rightAny;
+
     if (isBlocked(leftType) && leftType != resultType)
         return block(c.leftType, constraint);
 
@@ -604,12 +609,12 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     if (!force)
     {
         // Logical expressions may proceed if the LHS is free.
-        if (get<FreeType>(leftType) && !isLogical)
+        if (hasTypeInIntersection<FreeType>(leftType) && !isLogical)
             return block(leftType, constraint);
     }
 
     // Logical expressions may proceed if the LHS is free.
-    if (isBlocked(leftType) || (get<FreeType>(leftType) && !isLogical))
+    if (isBlocked(leftType) || (hasTypeInIntersection<FreeType>(leftType) && !isLogical))
     {
         asMutable(resultType)->ty.emplace<BoundType>(errorRecoveryType());
         unblock(resultType);
@@ -696,11 +701,6 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
         // If there's no metamethod available, fall back to primitive behavior.
     }
 
-    // If any is present, the expression must evaluate to any as well.
-    bool leftAny = get<AnyType>(leftType) || get<ErrorType>(leftType);
-    bool rightAny = get<AnyType>(rightType) || get<ErrorType>(rightType);
-    bool anyPresent = leftAny || rightAny;
-
     switch (c.op)
     {
     // For arithmetic operators, if the LHS is a number, the RHS must be a
@@ -711,6 +711,8 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     case AstExprBinary::Op::Div:
     case AstExprBinary::Op::Pow:
     case AstExprBinary::Op::Mod:
+        if (hasTypeInIntersection<FreeType>(leftType) && force)
+            asMutable(leftType)->ty.emplace<BoundType>(anyPresent ? builtinTypes->anyType : builtinTypes->numberType);
         if (isNumber(leftType))
         {
             unify(leftType, rightType, constraint->scope);
@@ -723,6 +725,8 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     // For concatenation, if the LHS is a string, the RHS must be a string as
     // well. The result will also be a string.
     case AstExprBinary::Op::Concat:
+        if (hasTypeInIntersection<FreeType>(leftType) && force)
+            asMutable(leftType)->ty.emplace<BoundType>(anyPresent ? builtinTypes->anyType : builtinTypes->stringType);
         if (isString(leftType))
         {
             unify(leftType, rightType, constraint->scope);

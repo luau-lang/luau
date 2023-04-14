@@ -41,12 +41,14 @@ public:
 
     void call(const OperandX64& func);
 
+    RegisterX64 suggestNextArgumentRegister(SizeX64 size) const;
+
     IrRegAllocX64& regs;
     AssemblyBuilderX64& build;
     uint32_t instIdx = ~0u;
 
 private:
-    void assignTargetRegisters();
+    OperandX64 getNextArgumentTarget(SizeX64 size) const;
     void countRegisterUses();
     CallArgument* findNonInterferingArgument();
     bool interferesWithOperand(const OperandX64& op, RegisterX64 reg) const;
@@ -66,6 +68,9 @@ private:
     static const int kMaxCallArguments = 6;
     std::array<CallArgument, kMaxCallArguments> args;
     int argCount = 0;
+
+    int gprPos = 0;
+    int xmmPos = 0;
 
     OperandX64 funcOp;
 

@@ -26,7 +26,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size)
     static Luau::NullFileResolver fileResolver;
     static Luau::NullConfigResolver configResolver;
     static Luau::Frontend frontend{&fileResolver, &configResolver};
-    static int once = (Luau::registerBuiltinGlobals(frontend), 1);
+    static int once = (Luau::registerBuiltinGlobals(frontend, frontend.globals, false), 1);
     (void)once;
     static int once2 = (Luau::freeze(frontend.globals.globalTypes), 1);
     (void)once2;

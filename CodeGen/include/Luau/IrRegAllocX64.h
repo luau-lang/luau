@@ -20,7 +20,9 @@ constexpr uint8_t kNoStackSlot = 0xff;
 struct IrSpillX64
 {
     uint32_t instIdx = 0;
-    bool useDoubleSlot = 0;
+    IrValueKind valueKind = IrValueKind::Unknown;
+
+    unsigned spillId = 0;
 
     // Spill location can be a stack location or be empty
     // When it's empty, it means that instruction value can be rematerialized
@@ -33,12 +35,8 @@ struct IrRegAllocX64
 {
     IrRegAllocX64(AssemblyBuilderX64& build, IrFunction& function);
 
-    RegisterX64 allocGprReg(SizeX64 preferredSize, uint32_t instIdx);
-    RegisterX64 allocXmmReg(uint32_t instIdx);
-
-    RegisterX64 allocGprRegOrReuse(SizeX64 preferredSize, uint32_t instIdx, std::initializer_list<IrOp> oprefs);
-    RegisterX64 allocXmmRegOrReuse(uint32_t instIdx, std::initializer_list<IrOp> oprefs);
-
+    RegisterX64 allocReg(SizeX64 size, uint32_t instIdx);
+    RegisterX64 allocRegOrReuse(SizeX64 size, uint32_t instIdx, std::initializer_list<IrOp> oprefs);
     RegisterX64 takeReg(RegisterX64 reg, uint32_t instIdx);
 
     void freeReg(RegisterX64 reg);
@@ -48,6 +46,12 @@ struct IrRegAllocX64
     bool isLastUseReg(const IrInst& target, uint32_t instIdx) const;
 
     bool shouldFreeGpr(RegisterX64 reg) const;
+
+    unsigned findSpillStackSlot(IrValueKind valueKind);
+
+    IrOp getRestoreOp(const IrInst& inst) const;
+    bool hasRestoreOp(const IrInst& inst) const;
+    OperandX64 getRestoreAddress(const IrInst& inst, IrOp restoreOp);
 
     // Register used by instruction is about to be freed, have to find a way to restore value later
     void preserve(IrInst& inst);
@@ -74,6 +78,7 @@ struct IrRegAllocX64
 
     std::bitset<256> usedSpillSlots;
     unsigned maxUsedSlot = 0;
+    unsigned nextSpillId = 1;
     std::vector<IrSpillX64> spills;
 };
 
@@ -107,10 +112,8 @@ struct ScopedSpills
     ScopedSpills(const ScopedSpills&) = delete;
     ScopedSpills& operator=(const ScopedSpills&) = delete;
 
-    bool wasSpilledBefore(const IrSpillX64& spill) const;
-
     IrRegAllocX64& owner;
-    std::vector<IrSpillX64> snapshot;
+    unsigned startSpillId = 0;
 };
 
 } // namespace X64

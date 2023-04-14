@@ -41,12 +41,21 @@ namespace CodeGen
 namespace X64
 {
 
-bool initEntryFunction(NativeState& data)
+struct EntryLocations
 {
-    AssemblyBuilderX64 build(/* logText= */ false);
-    UnwindBuilder& unwind = *data.unwindBuilder.get();
+    Label start;
+    Label prologueEnd;
+    Label epilogueStart;
+};
 
-    unwind.start();
+static EntryLocations buildEntryFunction(AssemblyBuilderX64& build, UnwindBuilder& unwind)
+{
+    EntryLocations locations;
+
+    build.align(kFunctionAlignment, X64::AlignmentDataX64::Ud2);
+
+    locations.start = build.setLabel();
+    unwind.startFunction();
 
     // Save common non-volatile registers
     build.push(rbp);
@@ -84,9 +93,7 @@ bool initEntryFunction(NativeState& data)
     build.sub(rsp, kStackSize + kLocalsSize);
     unwind.allocStack(kStackSize + kLocalsSize);
 
-    unwind.finish();
-
-    size_t prologueSize = build.setLabel().location;
+    locations.prologueEnd = build.setLabel();
 
     // Setup native execution environment
     build.mov(rState, rArg1);
@@ -104,7 +111,7 @@ bool initEntryFunction(NativeState& data)
     build.jmp(rArg3);
 
     // Even though we jumped away, we will return here in the end
-    Label returnOff = build.setLabel();
+    locations.epilogueStart = build.setLabel();
 
     // Cleanup and exit
     build.add(rsp, kStackSize + kLocalsSize);
@@ -123,12 +130,30 @@ bool initEntryFunction(NativeState& data)
     build.pop(rbp);
     build.ret();
 
+    // Our entry function is special, it spans the whole remaining code area
+    unwind.finishFunction(build.getLabelOffset(locations.start), kFullBlockFuncton);
+
+    return locations;
+}
+
+bool initHeaderFunctions(NativeState& data)
+{
+    AssemblyBuilderX64 build(/* logText= */ false);
+    UnwindBuilder& unwind = *data.unwindBuilder.get();
+
+    unwind.startInfo();
+
+    EntryLocations entryLocations = buildEntryFunction(build, unwind);
+
     build.finalize();
+
+    unwind.finishInfo();
 
     LUAU_ASSERT(build.data.empty());
 
-    if (!data.codeAllocator.allocate(build.data.data(), int(build.data.size()), build.code.data(), int(build.code.size()), data.gateData,
-            data.gateDataSize, data.context.gateEntry))
+    uint8_t* codeStart = nullptr;
+    if (!data.codeAllocator.allocate(
+            build.data.data(), int(build.data.size()), build.code.data(), int(build.code.size()), data.gateData, data.gateDataSize, codeStart))
     {
         LUAU_ASSERT(!"failed to create entry function");
         return false;
@@ -136,9 +161,10 @@ bool initEntryFunction(NativeState& data)
 
     // Set the offset at the begining so that functions in new blocks will not overlay the locations
     // specified by the unwind information of the entry function
-    unwind.setBeginOffset(prologueSize);
+    unwind.setBeginOffset(build.getLabelOffset(entryLocations.prologueEnd));
 
-    data.context.gateExit = data.context.gateEntry + returnOff.location;
+    data.context.gateEntry = codeStart + build.getLabelOffset(entryLocations.start);
+    data.context.gateExit = codeStart + build.getLabelOffset(entryLocations.epilogueStart);
 
     return true;
 }
