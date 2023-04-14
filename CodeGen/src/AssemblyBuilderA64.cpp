@@ -851,8 +851,8 @@ void AssemblyBuilderA64::placeBM(const char* name, RegisterA64 dst, RegisterA64 
     int lz = countlz(src2);
     int rz = countrz(src2);
 
-    LUAU_ASSERT(lz + rz > 0 && lz + rz < 32);               // must have at least one 0 and at least one 1
-    LUAU_ASSERT((src2 >> rz) == (1 << (32 - lz - rz)) - 1); // sequence of 1s must be contiguous
+    LUAU_ASSERT(lz + rz > 0 && lz + rz < 32);                 // must have at least one 0 and at least one 1
+    LUAU_ASSERT((src2 >> rz) == (1u << (32 - lz - rz)) - 1u); // sequence of 1s must be contiguous
 
     int imms = 31 - lz - rz;   // count of 1s minus 1
     int immr = (32 - rz) & 31; // right rotate amount
