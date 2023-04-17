@@ -1343,7 +1343,7 @@ AstType* Parser::parseTableType()
             AstType* type = parseType();
 
             // array-like table type: {T} desugars into {[number]: T}
-            AstType* index = allocator.alloc<AstTypeReference>(type->location, std::nullopt, nameNumber);
+            AstType* index = allocator.alloc<AstTypeReference>(type->location, std::nullopt, nameNumber, std::nullopt, type->location);
             indexer = allocator.alloc<AstTableIndexer>(AstTableIndexer{index, type, type->location});
 
             break;
@@ -1449,7 +1449,7 @@ AstType* Parser::parseFunctionTypeTail(const Lexeme& begin, AstArray<AstGenericT
     {
         report(Location(begin.location, lexer.previousLocation()), "Expected '->' after '()' when parsing function type; did you mean 'nil'?");
 
-        return allocator.alloc<AstTypeReference>(begin.location, std::nullopt, nameNil);
+        return allocator.alloc<AstTypeReference>(begin.location, std::nullopt, nameNil, std::nullopt, begin.location);
     }
     else
     {
@@ -1493,7 +1493,7 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
         {
             Location loc = lexer.current().location;
             nextLexeme();
-            parts.push_back(allocator.alloc<AstTypeReference>(loc, std::nullopt, nameNil));
+            parts.push_back(allocator.alloc<AstTypeReference>(loc, std::nullopt, nameNil, std::nullopt, loc));
             isUnion = true;
         }
         else if (c == '&')
@@ -1577,7 +1577,7 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack)
     if (lexer.current().type == Lexeme::ReservedNil)
     {
         nextLexeme();
-        return {allocator.alloc<AstTypeReference>(start, std::nullopt, nameNil), {}};
+        return {allocator.alloc<AstTypeReference>(start, std::nullopt, nameNil, std::nullopt, start), {}};
     }
     else if (lexer.current().type == Lexeme::ReservedTrue)
     {
@@ -1613,6 +1613,7 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack)
     else if (lexer.current().type == Lexeme::Name)
     {
         std::optional<AstName> prefix;
+        std::optional<Location> prefixLocation;
         Name name = parseName("type name");
 
         if (lexer.current().type == '.')
@@ -1621,6 +1622,7 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack)
             nextLexeme();
 
             prefix = name.name;
+            prefixLocation = name.location;
             name = parseIndexName("field name", pointPosition);
         }
         else if (lexer.current().type == Lexeme::Dot3)
@@ -1653,7 +1655,8 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack)
 
         Location end = lexer.previousLocation();
 
-        return {allocator.alloc<AstTypeReference>(Location(start, end), prefix, name.name, hasParameters, parameters), {}};
+        return {
+            allocator.alloc<AstTypeReference>(Location(start, end), prefix, name.name, prefixLocation, name.location, hasParameters, parameters), {}};
     }
     else if (lexer.current().type == '{')
     {
