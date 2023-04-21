@@ -84,8 +84,11 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Binary")
     SINGLE_COMPARE(add(x0, x1, x2), 0x8B020020);
     SINGLE_COMPARE(add(w0, w1, w2), 0x0B020020);
     SINGLE_COMPARE(add(x0, x1, x2, 7), 0x8B021C20);
+    SINGLE_COMPARE(add(x0, x1, x2, -7), 0x8B421C20);
     SINGLE_COMPARE(sub(x0, x1, x2), 0xCB020020);
     SINGLE_COMPARE(and_(x0, x1, x2), 0x8A020020);
+    SINGLE_COMPARE(and_(x0, x1, x2, 7), 0x8A021C20);
+    SINGLE_COMPARE(and_(x0, x1, x2, -7), 0x8A421C20);
     SINGLE_COMPARE(bic(x0, x1, x2), 0x8A220020);
     SINGLE_COMPARE(orr(x0, x1, x2), 0xAA020020);
     SINGLE_COMPARE(eor(x0, x1, x2), 0xCA020020);
@@ -120,6 +123,16 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "BinaryImm")
     SINGLE_COMPARE(and_(w0, w0, 6), 0x121F0400);
     SINGLE_COMPARE(and_(w0, w0, 12), 0x121E0400);
     SINGLE_COMPARE(and_(w0, w0, 2147483648), 0x12010000);
+
+    // shifts
+    SINGLE_COMPARE(lsl(w1, w2, 1), 0x531F7841);
+    SINGLE_COMPARE(lsl(x1, x2, 1), 0xD37FF841);
+    SINGLE_COMPARE(lsr(w1, w2, 1), 0x53017C41);
+    SINGLE_COMPARE(lsr(x1, x2, 1), 0xD341FC41);
+    SINGLE_COMPARE(asr(w1, w2, 1), 0x13017C41);
+    SINGLE_COMPARE(asr(x1, x2, 1), 0x9341FC41);
+    SINGLE_COMPARE(ror(w1, w2, 1), 0x13820441);
+    SINGLE_COMPARE(ror(x1, x2, 1), 0x93C20441);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Loads")
@@ -141,6 +154,14 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Loads")
     SINGLE_COMPARE(ldrsh(w0, x1), 0x79C00020);
     SINGLE_COMPARE(ldrsw(x0, x1), 0xB9800020);
 
+    // load sizes x offset scaling
+    SINGLE_COMPARE(ldr(x0, mem(x1, 8)), 0xF9400420);
+    SINGLE_COMPARE(ldr(w0, mem(x1, 8)), 0xB9400820);
+    SINGLE_COMPARE(ldrb(w0, mem(x1, 8)), 0x39402020);
+    SINGLE_COMPARE(ldrh(w0, mem(x1, 8)), 0x79401020);
+    SINGLE_COMPARE(ldrsb(w0, mem(x1, 8)), 0x39C02020);
+    SINGLE_COMPARE(ldrsh(w0, mem(x1, 8)), 0x79C01020);
+
     // paired loads
     SINGLE_COMPARE(ldp(x0, x1, mem(x2, 8)), 0xA9408440);
     SINGLE_COMPARE(ldp(w0, w1, mem(x2, -8)), 0x297F0440);
@@ -159,6 +180,12 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Stores")
     SINGLE_COMPARE(str(w0, x1), 0xB9000020);
     SINGLE_COMPARE(strb(w0, x1), 0x39000020);
     SINGLE_COMPARE(strh(w0, x1), 0x79000020);
+
+    // store sizes x offset scaling
+    SINGLE_COMPARE(str(x0, mem(x1, 8)), 0xF9000420);
+    SINGLE_COMPARE(str(w0, mem(x1, 8)), 0xB9000820);
+    SINGLE_COMPARE(strb(w0, mem(x1, 8)), 0x39002020);
+    SINGLE_COMPARE(strh(w0, mem(x1, 8)), 0x79001020);
 
     // paired stores
     SINGLE_COMPARE(stp(x0, x1, mem(x2, 8)), 0xA9008440);
@@ -241,10 +268,13 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "ControlFlow")
             build.b(ConditionA64::Equal, skip);
             build.cbz(x0, skip);
             build.cbnz(x0, skip);
+            build.tbz(x0, 5, skip);
+            build.tbnz(x0, 5, skip);
             build.setLabel(skip);
             build.b(skip);
+            build.bl(skip);
         },
-        {0x54000060, 0xB4000040, 0xB5000020, 0x5400000E}));
+        {0x540000A0, 0xB4000080, 0xB5000060, 0x36280040, 0x37280020, 0x14000000, 0x97ffffff}));
 
     // Basic control flow
     SINGLE_COMPARE(br(x0), 0xD61F0000);
@@ -358,12 +388,28 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPLoadStore")
     SINGLE_COMPARE(ldr(q0, x1), 0x3DC00020);
     SINGLE_COMPARE(str(d0, x1), 0xFD000020);
     SINGLE_COMPARE(str(q0, x1), 0x3D800020);
+
+    // load/store sizes x offset scaling
+    SINGLE_COMPARE(ldr(q0, mem(x1, 16)), 0x3DC00420);
+    SINGLE_COMPARE(ldr(d0, mem(x1, 16)), 0xFD400820);
+    SINGLE_COMPARE(str(q0, mem(x1, 16)), 0x3D800420);
+    SINGLE_COMPARE(str(d0, mem(x1, 16)), 0xFD000820);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPCompare")
 {
     SINGLE_COMPARE(fcmp(d0, d1), 0x1E612000);
     SINGLE_COMPARE(fcmpz(d1), 0x1E602028);
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPImm")
+{
+    SINGLE_COMPARE(fmov(d0, 0), 0x2F00E400);
+    SINGLE_COMPARE(fmov(d0, 0.125), 0x1E681000);
+    SINGLE_COMPARE(fmov(d0, -0.125), 0x1E781000);
+
+    CHECK(!AssemblyBuilderA64::isFmovSupported(-0.0));
+    CHECK(!AssemblyBuilderA64::isFmovSupported(0.12389));
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "AddressOffsetSize")
@@ -395,6 +441,7 @@ TEST_CASE("LogTest")
     build.add(sp, sp, 4);
     build.add(w0, w1, w2);
     build.add(x0, x1, x2, 2);
+    build.add(x0, x1, x2, -2);
     build.add(w7, w8, 5);
     build.add(x7, x8, 5);
     build.ldr(x7, x8);
@@ -421,6 +468,9 @@ TEST_CASE("LogTest")
     build.fcmp(d0, d1);
     build.fcmpz(d0);
 
+    build.fmov(d0, 0.25);
+    build.tbz(x0, 5, l);
+
     build.setLabel(l);
     build.ret();
 
@@ -430,6 +480,7 @@ TEST_CASE("LogTest")
  add         sp,sp,#4
  add         w0,w1,w2
  add         x0,x1,x2 LSL #2
+ add         x0,x1,x2 LSR #2
  add         w7,w8,#5
  add         x7,x8,#5
  ldr         x7,[x8]
@@ -449,6 +500,8 @@ TEST_CASE("LogTest")
  cset        x0,eq
  fcmp        d0,d1
  fcmp        d0,#0
+ fmov        d0,#0.25
+ tbz         x0,#5,.L1
 .L1:
  ret
 )";

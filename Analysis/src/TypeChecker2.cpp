@@ -88,21 +88,22 @@ struct TypeChecker2
 {
     NotNull<BuiltinTypes> builtinTypes;
     DcrLogger* logger;
-    InternalErrorReporter ice; // FIXME accept a pointer from Frontend
+    NotNull<InternalErrorReporter> ice;
     const SourceModule* sourceModule;
     Module* module;
     TypeArena testArena;
 
     std::vector<NotNull<Scope>> stack;
 
-    UnifierSharedState sharedState{&ice};
-    Normalizer normalizer{&testArena, builtinTypes, NotNull{&sharedState}};
+    Normalizer normalizer;
 
-    TypeChecker2(NotNull<BuiltinTypes> builtinTypes, DcrLogger* logger, const SourceModule* sourceModule, Module* module)
+    TypeChecker2(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, DcrLogger* logger, const SourceModule* sourceModule, Module* module)
         : builtinTypes(builtinTypes)
         , logger(logger)
+        , ice(unifierState->iceHandler)
         , sourceModule(sourceModule)
         , module(module)
+        , normalizer{&testArena, builtinTypes, unifierState}
     {
     }
 
@@ -996,7 +997,7 @@ struct TypeChecker2
             }
 
             if (!fst)
-                ice.ice("UnionType had no elements, so fst is nullopt?");
+                ice->ice("UnionType had no elements, so fst is nullopt?");
 
             if (std::optional<TypeId> instantiatedFunctionType = instantiation.substitute(*fst))
             {
@@ -1018,7 +1019,7 @@ struct TypeChecker2
         {
             AstExprIndexName* indexExpr = call->func->as<AstExprIndexName>();
             if (!indexExpr)
-                ice.ice("method call expression has no 'self'");
+                ice->ice("method call expression has no 'self'");
 
             args.head.push_back(lookupType(indexExpr->expr));
             argLocs.push_back(indexExpr->expr->location);
@@ -1646,7 +1647,7 @@ struct TypeChecker2
         else if (finite(pack) && size(pack) == 0)
             return builtinTypes->nilType; // `(f())` where `f()` returns no values is coerced into `nil`
         else
-            ice.ice("flattenPack got a weird pack!");
+            ice->ice("flattenPack got a weird pack!");
     }
 
     void visitGenerics(AstArray<AstGenericType> generics, AstArray<AstGenericTypePack> genericPacks)
@@ -2012,7 +2013,7 @@ struct TypeChecker2
 
     void reportError(TypeErrorData data, const Location& location)
     {
-        module->errors.emplace_back(location, sourceModule->name, std::move(data));
+        module->errors.emplace_back(location, module->name, std::move(data));
 
         if (logger)
             logger->captureTypeCheckError(module->errors.back());
@@ -2160,9 +2161,9 @@ struct TypeChecker2
     }
 };
 
-void check(NotNull<BuiltinTypes> builtinTypes, DcrLogger* logger, const SourceModule& sourceModule, Module* module)
+void check(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, DcrLogger* logger, const SourceModule& sourceModule, Module* module)
 {
-    TypeChecker2 typeChecker{builtinTypes, logger, &sourceModule, module};
+    TypeChecker2 typeChecker{builtinTypes, unifierState, logger, &sourceModule, module};
     typeChecker.reduceTypes();
     typeChecker.visit(sourceModule.root);
 

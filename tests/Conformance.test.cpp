@@ -1643,6 +1643,11 @@ TEST_CASE("SafeEnv")
     runConformance("safeenv.lua");
 }
 
+TEST_CASE("Native")
+{
+    runConformance("native.lua");
+}
+
 TEST_CASE("HugeFunction")
 {
     std::string source;

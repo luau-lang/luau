@@ -10,7 +10,7 @@
 #include <deque>
 
 LUAU_FASTINTVARIABLE(LuauTypeReductionCartesianProductLimit, 100'000)
-LUAU_FASTINTVARIABLE(LuauTypeReductionRecursionLimit, 400)
+LUAU_FASTINTVARIABLE(LuauTypeReductionRecursionLimit, 300)
 LUAU_FASTFLAGVARIABLE(DebugLuauDontReduceTypes, false)
 
 namespace Luau

@@ -10,6 +10,7 @@
 #include "Luau/Unifiable.h"
 #include "Luau/Variant.h"
 
+#include <atomic>
 #include <deque>
 #include <map>
 #include <memory>
@@ -550,7 +551,50 @@ struct IntersectionType
 
 struct LazyType
 {
-    std::function<TypeId()> thunk;
+    LazyType() = default;
+    LazyType(std::function<TypeId()> thunk_DEPRECATED, std::function<TypeId(LazyType&)> unwrap)
+        : thunk_DEPRECATED(thunk_DEPRECATED)
+        , unwrap(unwrap)
+    {
+    }
+
+    // std::atomic is sad and requires a manual copy
+    LazyType(const LazyType& rhs)
+        : thunk_DEPRECATED(rhs.thunk_DEPRECATED)
+        , unwrap(rhs.unwrap)
+        , unwrapped(rhs.unwrapped.load())
+    {
+    }
+
+    LazyType(LazyType&& rhs) noexcept
+        : thunk_DEPRECATED(std::move(rhs.thunk_DEPRECATED))
+        , unwrap(std::move(rhs.unwrap))
+        , unwrapped(rhs.unwrapped.load())
+    {
+    }
+
+    LazyType& operator=(const LazyType& rhs)
+    {
+        thunk_DEPRECATED = rhs.thunk_DEPRECATED;
+        unwrap = rhs.unwrap;
+        unwrapped = rhs.unwrapped.load();
+
+        return *this;
+    }
+
+    LazyType& operator=(LazyType&& rhs) noexcept
+    {
+        thunk_DEPRECATED = std::move(rhs.thunk_DEPRECATED);
+        unwrap = std::move(rhs.unwrap);
+        unwrapped = rhs.unwrapped.load();
+
+        return *this;
+    }
+
+    std::function<TypeId()> thunk_DEPRECATED;
+
+    std::function<TypeId(LazyType&)> unwrap;
+    std::atomic<TypeId> unwrapped = nullptr;
 };
 
 struct UnknownType
@@ -798,7 +842,7 @@ struct TypeIterator
     TypeIterator<T> operator++(int)
     {
         TypeIterator<T> copy = *this;
-        ++copy;
+        ++*this;
         return copy;
     }
 

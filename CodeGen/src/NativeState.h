@@ -96,7 +96,7 @@ struct NativeContext
     void (*callEpilogC)(lua_State* L, int nresults, int n) = nullptr;
 
     Closure* (*callFallback)(lua_State* L, StkId ra, StkId argtop, int nresults) = nullptr;
-    Closure* (*returnFallback)(lua_State* L, StkId ra, int n) = nullptr;
+    Closure* (*returnFallback)(lua_State* L, StkId ra, StkId valend) = nullptr;
 
     // Opcode fallbacks, implemented in C
     FallbackFn fallback[LOP__COUNT] = {};

@@ -22,6 +22,27 @@ static_assert(sizeof(textForCondition) / sizeof(textForCondition[0]) == size_t(C
 
 const unsigned kMaxAlign = 32;
 
+static int getFmovImm(double value)
+{
+    uint64_t u;
+    static_assert(sizeof(u) == sizeof(value), "expected double to be 64-bit");
+    memcpy(&u, &value, sizeof(value));
+
+    // positive 0 is encodable via movi
+    if (u == 0)
+        return 256;
+
+    // early out: fmov can only encode doubles with 48 least significant zeros
+    if ((u & ((1ull << 48) - 1)) != 0)
+        return -1;
+
+    // f64 expansion is abcdfegh => aBbbbbbb bbcdefgh 00000000 00000000 00000000 00000000 00000000 00000000
+    int imm = (int(u >> 56) & 0x80) | (int(u >> 48) & 0x7f);
+    int dec = ((imm & 0x80) << 8) | ((imm & 0x40) ? 0b00111111'11000000 : 0b01000000'00000000) | (imm & 0x3f);
+
+    return dec == int(u >> 48) ? imm : -1;
+}
+
 AssemblyBuilderA64::AssemblyBuilderA64(bool logText, unsigned int features)
     : logText(logText)
     , features(features)
@@ -136,31 +157,31 @@ void AssemblyBuilderA64::cset(RegisterA64 dst, ConditionA64 cond)
     placeCS("cset", dst, src, src, cond, 0b11010'10'0, 0b01, /* invert= */ 1);
 }
 
-void AssemblyBuilderA64::and_(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+void AssemblyBuilderA64::and_(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, int shift)
 {
-    placeSR3("and", dst, src1, src2, 0b00'01010);
+    placeSR3("and", dst, src1, src2, 0b00'01010, shift);
 }
 
-void AssemblyBuilderA64::orr(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+void AssemblyBuilderA64::orr(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, int shift)
 {
-    placeSR3("orr", dst, src1, src2, 0b01'01010);
+    placeSR3("orr", dst, src1, src2, 0b01'01010, shift);
 }
 
-void AssemblyBuilderA64::eor(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+void AssemblyBuilderA64::eor(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, int shift)
 {
-    placeSR3("eor", dst, src1, src2, 0b10'01010);
+    placeSR3("eor", dst, src1, src2, 0b10'01010, shift);
 }
 
-void AssemblyBuilderA64::bic(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
+void AssemblyBuilderA64::bic(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, int shift)
 {
-    placeSR3("bic", dst, src1, src2, 0b00'01010, /* shift= */ 0, /* N= */ 1);
+    placeSR3("bic", dst, src1, src2, 0b00'01010, shift, /* N= */ 1);
 }
 
-void AssemblyBuilderA64::tst(RegisterA64 src1, RegisterA64 src2)
+void AssemblyBuilderA64::tst(RegisterA64 src1, RegisterA64 src2, int shift)
 {
     RegisterA64 dst = src1.kind == KindA64::x ? xzr : wzr;
 
-    placeSR3("tst", dst, src1, src2, 0b11'01010);
+    placeSR3("tst", dst, src1, src2, 0b11'01010, shift);
 }
 
 void AssemblyBuilderA64::mvn(RegisterA64 dst, RegisterA64 src)
@@ -226,6 +247,39 @@ void AssemblyBuilderA64::rbit(RegisterA64 dst, RegisterA64 src)
     placeR1("rbit", dst, src, 0b10'11010110'00000'0000'00);
 }
 
+void AssemblyBuilderA64::lsl(RegisterA64 dst, RegisterA64 src1, uint8_t src2)
+{
+    int size = dst.kind == KindA64::x ? 64 : 32;
+    LUAU_ASSERT(src2 < size);
+
+    placeBFM("lsl", dst, src1, src2, 0b10'100110, (-src2) & (size - 1), size - 1 - src2);
+}
+
+void AssemblyBuilderA64::lsr(RegisterA64 dst, RegisterA64 src1, uint8_t src2)
+{
+    int size = dst.kind == KindA64::x ? 64 : 32;
+    LUAU_ASSERT(src2 < size);
+
+    placeBFM("lsr", dst, src1, src2, 0b10'100110, src2, size - 1);
+}
+
+void AssemblyBuilderA64::asr(RegisterA64 dst, RegisterA64 src1, uint8_t src2)
+{
+    int size = dst.kind == KindA64::x ? 64 : 32;
+    LUAU_ASSERT(src2 < size);
+
+    placeBFM("asr", dst, src1, src2, 0b00'100110, src2, size - 1);
+}
+
+void AssemblyBuilderA64::ror(RegisterA64 dst, RegisterA64 src1, uint8_t src2)
+{
+    int size = dst.kind == KindA64::x ? 64 : 32;
+    LUAU_ASSERT(src2 < size);
+
+    // note: this is encoding src1 via immr which is a hack but the bit layout matches and a special archetype feels excessive
+    placeBFM("ror", dst, src1, src2, 0b00'100111, src1.index, src2);
+}
+
 void AssemblyBuilderA64::ldr(RegisterA64 dst, AddressA64 src)
 {
     LUAU_ASSERT(dst.kind == KindA64::x || dst.kind == KindA64::w || dst.kind == KindA64::d || dst.kind == KindA64::q);
@@ -233,16 +287,16 @@ void AssemblyBuilderA64::ldr(RegisterA64 dst, AddressA64 src)
     switch (dst.kind)
     {
     case KindA64::w:
-        placeA("ldr", dst, src, 0b11100001, 0b10, 2);
+        placeA("ldr", dst, src, 0b11100001, 0b10, /* sizelog= */ 2);
         break;
     case KindA64::x:
-        placeA("ldr", dst, src, 0b11100001, 0b11, 3);
+        placeA("ldr", dst, src, 0b11100001, 0b11, /* sizelog= */ 3);
         break;
     case KindA64::d:
-        placeA("ldr", dst, src, 0b11110001, 0b11, 3);
+        placeA("ldr", dst, src, 0b11110001, 0b11, /* sizelog= */ 3);
         break;
     case KindA64::q:
-        placeA("ldr", dst, src, 0b11110011, 0b00, 4);
+        placeA("ldr", dst, src, 0b11110011, 0b00, /* sizelog= */ 4);
         break;
     case KindA64::none:
         LUAU_ASSERT(!"Unexpected register kind");
@@ -253,35 +307,35 @@ void AssemblyBuilderA64::ldrb(RegisterA64 dst, AddressA64 src)
 {
     LUAU_ASSERT(dst.kind == KindA64::w);
 
-    placeA("ldrb", dst, src, 0b11100001, 0b00, 2);
+    placeA("ldrb", dst, src, 0b11100001, 0b00, /* sizelog= */ 0);
 }
 
 void AssemblyBuilderA64::ldrh(RegisterA64 dst, AddressA64 src)
 {
     LUAU_ASSERT(dst.kind == KindA64::w);
 
-    placeA("ldrh", dst, src, 0b11100001, 0b01, 2);
+    placeA("ldrh", dst, src, 0b11100001, 0b01, /* sizelog= */ 1);
 }
 
 void AssemblyBuilderA64::ldrsb(RegisterA64 dst, AddressA64 src)
 {
     LUAU_ASSERT(dst.kind == KindA64::x || dst.kind == KindA64::w);
 
-    placeA("ldrsb", dst, src, 0b11100010 | uint8_t(dst.kind == KindA64::w), 0b00, 0);
+    placeA("ldrsb", dst, src, 0b11100010 | uint8_t(dst.kind == KindA64::w), 0b00, /* sizelog= */ 0);
 }
 
 void AssemblyBuilderA64::ldrsh(RegisterA64 dst, AddressA64 src)
 {
     LUAU_ASSERT(dst.kind == KindA64::x || dst.kind == KindA64::w);
 
-    placeA("ldrsh", dst, src, 0b11100010 | uint8_t(dst.kind == KindA64::w), 0b01, 1);
+    placeA("ldrsh", dst, src, 0b11100010 | uint8_t(dst.kind == KindA64::w), 0b01, /* sizelog= */ 1);
 }
 
 void AssemblyBuilderA64::ldrsw(RegisterA64 dst, AddressA64 src)
 {
     LUAU_ASSERT(dst.kind == KindA64::x);
 
-    placeA("ldrsw", dst, src, 0b11100010, 0b10, 2);
+    placeA("ldrsw", dst, src, 0b11100010, 0b10, /* sizelog= */ 2);
 }
 
 void AssemblyBuilderA64::ldp(RegisterA64 dst1, RegisterA64 dst2, AddressA64 src)
@@ -289,7 +343,7 @@ void AssemblyBuilderA64::ldp(RegisterA64 dst1, RegisterA64 dst2, AddressA64 src)
     LUAU_ASSERT(dst1.kind == KindA64::x || dst1.kind == KindA64::w);
     LUAU_ASSERT(dst1.kind == dst2.kind);
 
-    placeP("ldp", dst1, dst2, src, 0b101'0'010'1, uint8_t(dst1.kind == KindA64::x) << 1, dst1.kind == KindA64::x ? 3 : 2);
+    placeP("ldp", dst1, dst2, src, 0b101'0'010'1, uint8_t(dst1.kind == KindA64::x) << 1, /* sizelog= */ dst1.kind == KindA64::x ? 3 : 2);
 }
 
 void AssemblyBuilderA64::str(RegisterA64 src, AddressA64 dst)
@@ -299,16 +353,16 @@ void AssemblyBuilderA64::str(RegisterA64 src, AddressA64 dst)
     switch (src.kind)
     {
     case KindA64::w:
-        placeA("str", src, dst, 0b11100000, 0b10, 2);
+        placeA("str", src, dst, 0b11100000, 0b10, /* sizelog= */ 2);
         break;
     case KindA64::x:
-        placeA("str", src, dst, 0b11100000, 0b11, 3);
+        placeA("str", src, dst, 0b11100000, 0b11, /* sizelog= */ 3);
         break;
     case KindA64::d:
-        placeA("str", src, dst, 0b11110000, 0b11, 3);
+        placeA("str", src, dst, 0b11110000, 0b11, /* sizelog= */ 3);
         break;
     case KindA64::q:
-        placeA("str", src, dst, 0b11110010, 0b00, 4);
+        placeA("str", src, dst, 0b11110010, 0b00, /* sizelog= */ 4);
         break;
     case KindA64::none:
         LUAU_ASSERT(!"Unexpected register kind");
@@ -319,14 +373,14 @@ void AssemblyBuilderA64::strb(RegisterA64 src, AddressA64 dst)
 {
     LUAU_ASSERT(src.kind == KindA64::w);
 
-    placeA("strb", src, dst, 0b11100000, 0b00, 2);
+    placeA("strb", src, dst, 0b11100000, 0b00, /* sizelog= */ 0);
 }
 
 void AssemblyBuilderA64::strh(RegisterA64 src, AddressA64 dst)
 {
     LUAU_ASSERT(src.kind == KindA64::w);
 
-    placeA("strh", src, dst, 0b11100000, 0b01, 2);
+    placeA("strh", src, dst, 0b11100000, 0b01, /* sizelog= */ 1);
 }
 
 void AssemblyBuilderA64::stp(RegisterA64 src1, RegisterA64 src2, AddressA64 dst)
@@ -334,28 +388,17 @@ void AssemblyBuilderA64::stp(RegisterA64 src1, RegisterA64 src2, AddressA64 dst)
     LUAU_ASSERT(src1.kind == KindA64::x || src1.kind == KindA64::w);
     LUAU_ASSERT(src1.kind == src2.kind);
 
-    placeP("stp", src1, src2, dst, 0b101'0'010'0, uint8_t(src1.kind == KindA64::x) << 1, src1.kind == KindA64::x ? 3 : 2);
+    placeP("stp", src1, src2, dst, 0b101'0'010'0, uint8_t(src1.kind == KindA64::x) << 1, /* sizelog= */ src1.kind == KindA64::x ? 3 : 2);
 }
 
 void AssemblyBuilderA64::b(Label& label)
 {
-    // Note: we aren't using 'b' form since it has a 26-bit immediate which requires custom fixup logic
-    placeBC("b", label, 0b0101010'0, codeForCondition[int(ConditionA64::Always)]);
+    placeB("b", label, 0b0'00101);
 }
 
-void AssemblyBuilderA64::b(ConditionA64 cond, Label& label)
+void AssemblyBuilderA64::bl(Label& label)
 {
-    placeBC(textForCondition[int(cond)], label, 0b0101010'0, codeForCondition[int(cond)]);
-}
-
-void AssemblyBuilderA64::cbz(RegisterA64 src, Label& label)
-{
-    placeBCR("cbz", label, 0b011010'0, src);
-}
-
-void AssemblyBuilderA64::cbnz(RegisterA64 src, Label& label)
-{
-    placeBCR("cbnz", label, 0b011010'1, src);
+    placeB("bl", label, 0b1'00101);
 }
 
 void AssemblyBuilderA64::br(RegisterA64 src)
@@ -373,6 +416,31 @@ void AssemblyBuilderA64::ret()
     place0("ret", 0b1101011'0'0'10'11111'0000'0'0'11110'00000);
 }
 
+void AssemblyBuilderA64::b(ConditionA64 cond, Label& label)
+{
+    placeBC(textForCondition[int(cond)], label, 0b0101010'0, codeForCondition[int(cond)]);
+}
+
+void AssemblyBuilderA64::cbz(RegisterA64 src, Label& label)
+{
+    placeBCR("cbz", label, 0b011010'0, src);
+}
+
+void AssemblyBuilderA64::cbnz(RegisterA64 src, Label& label)
+{
+    placeBCR("cbnz", label, 0b011010'1, src);
+}
+
+void AssemblyBuilderA64::tbz(RegisterA64 src, uint8_t bit, Label& label)
+{
+    placeBTR("tbz", label, 0b011011'0, src, bit);
+}
+
+void AssemblyBuilderA64::tbnz(RegisterA64 src, uint8_t bit, Label& label)
+{
+    placeBTR("tbnz", label, 0b011011'1, src, bit);
+}
+
 void AssemblyBuilderA64::adr(RegisterA64 dst, const void* ptr, size_t size)
 {
     size_t pos = allocateData(size, 4);
@@ -381,7 +449,7 @@ void AssemblyBuilderA64::adr(RegisterA64 dst, const void* ptr, size_t size)
     memcpy(&data[pos], ptr, size);
     placeADR("adr", dst, 0b10000);
 
-    patchImm19(location, -int(location) - int((data.size() - pos) / 4));
+    patchOffset(location, -int(location) - int((data.size() - pos) / 4), Patch::Imm19);
 }
 
 void AssemblyBuilderA64::adr(RegisterA64 dst, uint64_t value)
@@ -392,7 +460,7 @@ void AssemblyBuilderA64::adr(RegisterA64 dst, uint64_t value)
     writeu64(&data[pos], value);
     placeADR("adr", dst, 0b10000);
 
-    patchImm19(location, -int(location) - int((data.size() - pos) / 4));
+    patchOffset(location, -int(location) - int((data.size() - pos) / 4), Patch::Imm19);
 }
 
 void AssemblyBuilderA64::adr(RegisterA64 dst, double value)
@@ -403,7 +471,7 @@ void AssemblyBuilderA64::adr(RegisterA64 dst, double value)
     writef64(&data[pos], value);
     placeADR("adr", dst, 0b10000);
 
-    patchImm19(location, -int(location) - int((data.size() - pos) / 4));
+    patchOffset(location, -int(location) - int((data.size() - pos) / 4), Patch::Imm19);
 }
 
 void AssemblyBuilderA64::adr(RegisterA64 dst, Label& label)
@@ -416,6 +484,20 @@ void AssemblyBuilderA64::fmov(RegisterA64 dst, RegisterA64 src)
     LUAU_ASSERT(dst.kind == KindA64::d && src.kind == KindA64::d);
 
     placeR1("fmov", dst, src, 0b000'11110'01'1'0000'00'10000);
+}
+
+void AssemblyBuilderA64::fmov(RegisterA64 dst, double src)
+{
+    LUAU_ASSERT(dst.kind == KindA64::d);
+
+    int imm = getFmovImm(src);
+    LUAU_ASSERT(imm >= 0 && imm <= 256);
+
+    // fmov can't encode 0, but movi can; movi is otherwise not useful for 64-bit fp immediates because it encodes repeating patterns
+    if (imm == 256)
+        placeFMOV("movi", dst, src, 0b001'0111100000'000'1110'01'00000);
+    else
+        placeFMOV("fmov", dst, src, 0b000'11110'01'1'00000000'100'00000 | (imm << 8));
 }
 
 void AssemblyBuilderA64::fabs(RegisterA64 dst, RegisterA64 src)
@@ -555,13 +637,14 @@ bool AssemblyBuilderA64::finalize()
     code.resize(codePos - code.data());
 
     // Resolve jump targets
-    for (Label fixup : pendingLabels)
+    for (Patch fixup : pendingLabels)
     {
         // If this assertion fires, a label was used in jmp without calling setLabel
-        LUAU_ASSERT(labelLocations[fixup.id - 1] != ~0u);
-        int value = int(labelLocations[fixup.id - 1]) - int(fixup.location);
+        uint32_t label = fixup.label;
+        LUAU_ASSERT(labelLocations[label - 1] != ~0u);
+        int value = int(labelLocations[label - 1]) - int(fixup.location);
 
-        patchImm19(fixup.location, value);
+        patchOffset(fixup.location, value, fixup.kind);
     }
 
     size_t dataSize = data.size() - dataPos;
@@ -618,6 +701,20 @@ uint32_t AssemblyBuilderA64::getCodeSize() const
     return uint32_t(codePos - code.data());
 }
 
+bool AssemblyBuilderA64::isMaskSupported(uint32_t mask)
+{
+    int lz = countlz(mask);
+    int rz = countrz(mask);
+
+    return lz + rz > 0 && lz + rz < 32 &&              // must have at least one 0 and at least one 1
+           (mask >> rz) == (1u << (32 - lz - rz)) - 1; // sequence of 1s must be contiguous
+}
+
+bool AssemblyBuilderA64::isFmovSupported(double value)
+{
+    return getFmovImm(value) >= 0;
+}
+
 void AssemblyBuilderA64::place0(const char* name, uint32_t op)
 {
     if (logText)
@@ -634,11 +731,12 @@ void AssemblyBuilderA64::placeSR3(const char* name, RegisterA64 dst, RegisterA64
 
     LUAU_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x);
     LUAU_ASSERT(dst.kind == src1.kind && dst.kind == src2.kind);
-    LUAU_ASSERT(shift >= 0 && shift < 64); // right shift requires changing some encoding bits
+    LUAU_ASSERT(shift >= -63 && shift <= 63);
 
     uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
 
-    place(dst.index | (src1.index << 5) | (shift << 10) | (src2.index << 16) | (N << 21) | (op << 24) | sf);
+    place(dst.index | (src1.index << 5) | ((shift < 0 ? -shift : shift) << 10) | (src2.index << 16) | (N << 21) | (int(shift < 0) << 22) |
+          (op << 24) | sf);
     commit();
 }
 
@@ -734,12 +832,23 @@ void AssemblyBuilderA64::placeA(const char* name, RegisterA64 dst, AddressA64 sr
     commit();
 }
 
+void AssemblyBuilderA64::placeB(const char* name, Label& label, uint8_t op)
+{
+    place(op << 26);
+    commit();
+
+    patchLabel(label, Patch::Imm26);
+
+    if (logText)
+        log(name, label);
+}
+
 void AssemblyBuilderA64::placeBC(const char* name, Label& label, uint8_t op, uint8_t cond)
 {
     place(cond | (op << 24));
     commit();
 
-    patchLabel(label);
+    patchLabel(label, Patch::Imm19);
 
     if (logText)
         log(name, label);
@@ -754,7 +863,7 @@ void AssemblyBuilderA64::placeBCR(const char* name, Label& label, uint8_t op, Re
     place(cond.index | (op << 24) | sf);
     commit();
 
-    patchLabel(label);
+    patchLabel(label, Patch::Imm19);
 
     if (logText)
         log(name, cond, label);
@@ -769,6 +878,20 @@ void AssemblyBuilderA64::placeBR(const char* name, RegisterA64 src, uint32_t op)
 
     place((src.index << 5) | (op << 10));
     commit();
+}
+
+void AssemblyBuilderA64::placeBTR(const char* name, Label& label, uint8_t op, RegisterA64 cond, uint8_t bit)
+{
+    LUAU_ASSERT(cond.kind == KindA64::x || cond.kind == KindA64::w);
+    LUAU_ASSERT(bit < (cond.kind == KindA64::x ? 64 : 32));
+
+    place(cond.index | ((bit & 0x1f) << 19) | (op << 24) | ((bit >> 5) << 31));
+    commit();
+
+    patchLabel(label, Patch::Imm14);
+
+    if (logText)
+        log(name, cond, label, bit);
 }
 
 void AssemblyBuilderA64::placeADR(const char* name, RegisterA64 dst, uint8_t op)
@@ -789,7 +912,7 @@ void AssemblyBuilderA64::placeADR(const char* name, RegisterA64 dst, uint8_t op,
     place(dst.index | (op << 24));
     commit();
 
-    patchLabel(label);
+    patchLabel(label, Patch::Imm19);
 
     if (logText)
         log(name, dst, label);
@@ -838,7 +961,37 @@ void AssemblyBuilderA64::placeFCMP(const char* name, RegisterA64 src1, RegisterA
     commit();
 }
 
+void AssemblyBuilderA64::placeFMOV(const char* name, RegisterA64 dst, double src, uint32_t op)
+{
+    if (logText)
+        log(name, dst, src);
+
+    place(dst.index | (op << 5));
+    commit();
+}
+
 void AssemblyBuilderA64::placeBM(const char* name, RegisterA64 dst, RegisterA64 src1, uint32_t src2, uint8_t op)
+{
+    if (logText)
+        log(name, dst, src1, src2);
+
+    LUAU_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x);
+    LUAU_ASSERT(dst.kind == src1.kind);
+    LUAU_ASSERT(isMaskSupported(src2));
+
+    uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
+
+    int lz = countlz(src2);
+    int rz = countrz(src2);
+
+    int imms = 31 - lz - rz;   // count of 1s minus 1
+    int immr = (32 - rz) & 31; // right rotate amount
+
+    place(dst.index | (src1.index << 5) | (imms << 10) | (immr << 16) | (op << 23) | sf);
+    commit();
+}
+
+void AssemblyBuilderA64::placeBFM(const char* name, RegisterA64 dst, RegisterA64 src1, uint8_t src2, uint8_t op, int immr, int imms)
 {
     if (logText)
         log(name, dst, src1, src2);
@@ -847,17 +1000,9 @@ void AssemblyBuilderA64::placeBM(const char* name, RegisterA64 dst, RegisterA64 
     LUAU_ASSERT(dst.kind == src1.kind);
 
     uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
+    uint32_t n = (dst.kind == KindA64::x) ? 1 << 22 : 0;
 
-    int lz = countlz(src2);
-    int rz = countrz(src2);
-
-    LUAU_ASSERT(lz + rz > 0 && lz + rz < 32);                 // must have at least one 0 and at least one 1
-    LUAU_ASSERT((src2 >> rz) == (1u << (32 - lz - rz)) - 1u); // sequence of 1s must be contiguous
-
-    int imms = 31 - lz - rz;   // count of 1s minus 1
-    int immr = (32 - rz) & 31; // right rotate amount
-
-    place(dst.index | (src1.index << 5) | (imms << 10) | (immr << 16) | (op << 23) | sf);
+    place(dst.index | (src1.index << 5) | (imms << 10) | (immr << 16) | n | (op << 23) | sf);
     commit();
 }
 
@@ -867,7 +1012,7 @@ void AssemblyBuilderA64::place(uint32_t word)
     *codePos++ = word;
 }
 
-void AssemblyBuilderA64::patchLabel(Label& label)
+void AssemblyBuilderA64::patchLabel(Label& label, Patch::Kind kind)
 {
     uint32_t location = getCodeSize() - 1;
 
@@ -879,22 +1024,25 @@ void AssemblyBuilderA64::patchLabel(Label& label)
             labelLocations.push_back(~0u);
         }
 
-        pendingLabels.push_back({label.id, location});
+        pendingLabels.push_back({kind, label.id, location});
     }
     else
     {
         int value = int(label.location) - int(location);
 
-        patchImm19(location, value);
+        patchOffset(location, value, kind);
     }
 }
 
-void AssemblyBuilderA64::patchImm19(uint32_t location, int value)
+void AssemblyBuilderA64::patchOffset(uint32_t location, int value, Patch::Kind kind)
 {
-    // imm19 encoding word offset, at bit offset 5
-    // note that 18 bits of word offsets = 20 bits of byte offsets = +-1MB
-    if (value > -(1 << 18) && value < (1 << 18))
-        code[location] |= (value & ((1 << 19) - 1)) << 5;
+    int offset = (kind == Patch::Imm26) ? 0 : 5;
+    int range = (kind == Patch::Imm19) ? (1 << 19) : (kind == Patch::Imm26) ? (1 << 26) : (1 << 14);
+
+    LUAU_ASSERT((code[location] & ((range - 1) << offset)) == 0);
+
+    if (value > -(range >> 1) && value < (range >> 1))
+        code[location] |= (value & (range - 1)) << offset;
     else
         overflowed = true;
 }
@@ -952,6 +1100,8 @@ void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst, RegisterA64 sr
     log(src2);
     if (shift > 0)
         logAppend(" LSL #%d", shift);
+    else if (shift < 0)
+        logAppend(" LSR #%d", -shift);
     text.append("\n");
 }
 
@@ -1009,11 +1159,22 @@ void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst, int src, int s
     text.append("\n");
 }
 
-void AssemblyBuilderA64::log(const char* opcode, RegisterA64 src, Label label)
+void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst, double src)
+{
+    logAppend(" %-12s", opcode);
+    log(dst);
+    text.append(",");
+    logAppend("#%.17g", src);
+    text.append("\n");
+}
+
+void AssemblyBuilderA64::log(const char* opcode, RegisterA64 src, Label label, int imm)
 {
     logAppend(" %-12s", opcode);
     log(src);
     text.append(",");
+    if (imm >= 0)
+        logAppend("#%d,", imm);
     logAppend(".L%d\n", label.id);
 }
 

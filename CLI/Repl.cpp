@@ -8,6 +8,7 @@
 #include "Luau/Compiler.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Parser.h"
+#include "Luau/TimeTrace.h"
 
 #include "Coverage.h"
 #include "FileUtils.h"
@@ -997,15 +998,18 @@ int replMain(int argc, char** argv)
 
         CompileStats stats = {};
         int failed = 0;
+        double startTime = Luau::TimeTrace::getClock();
 
         for (const std::string& path : files)
             failed += !compileFile(path.c_str(), compileFormat, stats);
 
+        double duration = Luau::TimeTrace::getClock() - startTime;
+
         if (compileFormat == CompileFormat::Null)
-            printf("Compiled %d KLOC into %d KB bytecode\n", int(stats.lines / 1000), int(stats.bytecode / 1024));
+            printf("Compiled %d KLOC into %d KB bytecode in %.2fs\n", int(stats.lines / 1000), int(stats.bytecode / 1024), duration);
         else if (compileFormat == CompileFormat::CodegenNull)
-            printf("Compiled %d KLOC into %d KB bytecode => %d KB native code\n", int(stats.lines / 1000), int(stats.bytecode / 1024),
-                int(stats.codegen / 1024));
+            printf("Compiled %d KLOC into %d KB bytecode => %d KB native code (%.2fx) in %.2fs\n", int(stats.lines / 1000), int(stats.bytecode / 1024),
+                int(stats.codegen / 1024), stats.bytecode == 0 ? 0.0 : double(stats.codegen) / double(stats.bytecode), duration);
 
         return failed ? 1 : 0;
     }

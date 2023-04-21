@@ -95,6 +95,8 @@ inline bool isBlockTerminator(IrCmd cmd)
     case IrCmd::JUMP_IF_FALSY:
     case IrCmd::JUMP_EQ_TAG:
     case IrCmd::JUMP_EQ_INT:
+    case IrCmd::JUMP_LT_INT:
+    case IrCmd::JUMP_GE_UINT:
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_CMP_NUM:
     case IrCmd::JUMP_CMP_ANY:
@@ -149,8 +151,23 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::TRY_NUM_TO_INDEX:
     case IrCmd::TRY_CALL_FASTGETTM:
     case IrCmd::INT_TO_NUM:
+    case IrCmd::UINT_TO_NUM:
+    case IrCmd::NUM_TO_INT:
+    case IrCmd::NUM_TO_UINT:
     case IrCmd::SUBSTITUTE:
     case IrCmd::INVOKE_FASTCALL:
+    case IrCmd::BITAND_UINT:
+    case IrCmd::BITXOR_UINT:
+    case IrCmd::BITOR_UINT:
+    case IrCmd::BITNOT_UINT:
+    case IrCmd::BITLSHIFT_UINT:
+    case IrCmd::BITRSHIFT_UINT:
+    case IrCmd::BITARSHIFT_UINT:
+    case IrCmd::BITLROTATE_UINT:
+    case IrCmd::BITRROTATE_UINT:
+    case IrCmd::BITCOUNTLZ_UINT:
+    case IrCmd::BITCOUNTRZ_UINT:
+    case IrCmd::INVOKE_LIBM:
         return true;
     default:
         break;
@@ -200,7 +217,7 @@ void replace(IrFunction& function, IrOp& original, IrOp replacement);
 void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst replacement);
 
 // Replace instruction with a different value (using IrCmd::SUBSTITUTE)
-void substitute(IrFunction& function, IrInst& inst, IrOp replacement, IrOp location = {});
+void substitute(IrFunction& function, IrInst& inst, IrOp replacement);
 
 // Replace instruction arguments that point to substitutions with target values
 void applySubstitutions(IrFunction& function, IrOp& op);
@@ -213,6 +230,8 @@ bool compare(double a, double b, IrCondition cond);
 // For most instructions, successful folding results in a IrCmd::SUBSTITUTE
 // But it can also be successful on conditional control-flow, replacing it with an unconditional IrCmd::JUMP
 void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint32_t instIdx);
+
+uint32_t getNativeContextOffset(LuauBuiltinFunction bfid);
 
 } // namespace CodeGen
 } // namespace Luau

@@ -3,6 +3,8 @@
 
 #include "Luau/IrBuilder.h"
 
+#include "NativeState.h"
+
 #include "lua.h"
 #include "lnumutils.h"
 
@@ -69,6 +71,8 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::JUMP_IF_FALSY:
     case IrCmd::JUMP_EQ_TAG:
     case IrCmd::JUMP_EQ_INT:
+    case IrCmd::JUMP_LT_INT:
+    case IrCmd::JUMP_GE_UINT:
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_CMP_NUM:
     case IrCmd::JUMP_CMP_ANY:
@@ -84,7 +88,11 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::TRY_CALL_FASTGETTM:
         return IrValueKind::Pointer;
     case IrCmd::INT_TO_NUM:
+    case IrCmd::UINT_TO_NUM:
         return IrValueKind::Double;
+    case IrCmd::NUM_TO_INT:
+    case IrCmd::NUM_TO_UINT:
+        return IrValueKind::Int;
     case IrCmd::ADJUST_STACK_TO_REG:
     case IrCmd::ADJUST_STACK_TO_TOP:
         return IrValueKind::None;
@@ -137,6 +145,20 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::None;
     case IrCmd::SUBSTITUTE:
         return IrValueKind::Unknown;
+    case IrCmd::BITAND_UINT:
+    case IrCmd::BITXOR_UINT:
+    case IrCmd::BITOR_UINT:
+    case IrCmd::BITNOT_UINT:
+    case IrCmd::BITLSHIFT_UINT:
+    case IrCmd::BITRSHIFT_UINT:
+    case IrCmd::BITARSHIFT_UINT:
+    case IrCmd::BITLROTATE_UINT:
+    case IrCmd::BITRROTATE_UINT:
+    case IrCmd::BITCOUNTLZ_UINT:
+    case IrCmd::BITCOUNTRZ_UINT:
+        return IrValueKind::Int;
+    case IrCmd::INVOKE_LIBM:
+        return IrValueKind::Double;
     }
 
     LUAU_UNREACHABLE();
@@ -284,7 +306,7 @@ void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst repl
     block.useCount--;
 }
 
-void substitute(IrFunction& function, IrInst& inst, IrOp replacement, IrOp location)
+void substitute(IrFunction& function, IrInst& inst, IrOp replacement)
 {
     LUAU_ASSERT(!isBlockTerminator(inst.cmd));
 
@@ -298,7 +320,7 @@ void substitute(IrFunction& function, IrInst& inst, IrOp replacement, IrOp locat
     removeUse(function, inst.f);
 
     inst.a = replacement;
-    inst.b = location;
+    inst.b = {};
     inst.c = {};
     inst.d = {};
     inst.e = {};
@@ -499,6 +521,24 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                 replace(function, block, index, {IrCmd::JUMP, inst.d});
         }
         break;
+    case IrCmd::JUMP_LT_INT:
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        {
+            if (function.intOp(inst.a) < function.intOp(inst.b))
+                replace(function, block, index, {IrCmd::JUMP, inst.c});
+            else
+                replace(function, block, index, {IrCmd::JUMP, inst.d});
+        }
+        break;
+    case IrCmd::JUMP_GE_UINT:
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+        {
+            if (function.uintOp(inst.a) >= function.uintOp(inst.b))
+                replace(function, block, index, {IrCmd::JUMP, inst.c});
+            else
+                replace(function, block, index, {IrCmd::JUMP, inst.d});
+        }
+        break;
     case IrCmd::JUMP_CMP_NUM:
         if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
         {
@@ -545,6 +585,43 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
     default:
         break;
     }
+}
+
+uint32_t getNativeContextOffset(LuauBuiltinFunction bfid)
+{
+    switch (bfid)
+    {
+    case LBF_MATH_ACOS:
+        return offsetof(NativeContext, libm_acos);
+    case LBF_MATH_ASIN:
+        return offsetof(NativeContext, libm_asin);
+    case LBF_MATH_ATAN2:
+        return offsetof(NativeContext, libm_atan2);
+    case LBF_MATH_ATAN:
+        return offsetof(NativeContext, libm_atan);
+    case LBF_MATH_COSH:
+        return offsetof(NativeContext, libm_cosh);
+    case LBF_MATH_COS:
+        return offsetof(NativeContext, libm_cos);
+    case LBF_MATH_EXP:
+        return offsetof(NativeContext, libm_exp);
+    case LBF_MATH_LOG10:
+        return offsetof(NativeContext, libm_log10);
+    case LBF_MATH_SINH:
+        return offsetof(NativeContext, libm_sinh);
+    case LBF_MATH_SIN:
+        return offsetof(NativeContext, libm_sin);
+    case LBF_MATH_TANH:
+        return offsetof(NativeContext, libm_tanh);
+    case LBF_MATH_TAN:
+        return offsetof(NativeContext, libm_tan);
+    case LBF_MATH_FMOD:
+        return offsetof(NativeContext, libm_fmod);
+    default:
+        LUAU_ASSERT(!"Unsupported bfid");
+    }
+
+    return 0;
 }
 
 } // namespace CodeGen

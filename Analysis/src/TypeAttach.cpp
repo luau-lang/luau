@@ -344,6 +344,9 @@ public:
     }
     AstType* operator()(const LazyType& ltv)
     {
+        if (TypeId unwrapped = ltv.unwrapped.load())
+            return Luau::visit(*this, unwrapped->ty);
+
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("<Lazy?>"), std::nullopt, Location());
     }
     AstType* operator()(const UnknownType& ttv)

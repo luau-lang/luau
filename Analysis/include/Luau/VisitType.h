@@ -9,6 +9,7 @@
 #include "Luau/Type.h"
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
+LUAU_FASTFLAG(LuauBoundLazyTypes)
 
 namespace Luau
 {
@@ -291,9 +292,14 @@ struct GenericTypeVisitor
                     traverse(partTy);
             }
         }
-        else if (get<LazyType>(ty))
+        else if (auto ltv = get<LazyType>(ty))
         {
-            // Visiting into LazyType may necessarily cause infinite expansion, so we don't do that on purpose.
+            if (FFlag::LuauBoundLazyTypes)
+            {
+                if (TypeId unwrapped = ltv->unwrapped)
+                    traverse(unwrapped);
+            }
+            // Visiting into LazyType that hasn't been unwrapped may necessarily cause infinite expansion, so we don't do that on purpose.
             // Asserting also makes no sense, because the type _will_ happen here, most likely as a property of some ClassType
             // that doesn't need to be expanded.
         }

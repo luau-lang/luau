@@ -511,6 +511,12 @@ void translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
     build.inst(IrCmd::CHECK_SAFE_ENV, fallback);
 
+    if (bfid == LBF_BIT32_EXTRACTK)
+    {
+        TValue protok = build.function.proto->k[pc[1]];
+        args = build.constDouble(protok.value.n);
+    }
+
     BuiltinImplResult br = translateBuiltin(build, LuauBuiltinFunction(bfid), ra, arg, args, nparams, nresults, fallback);
 
     if (br.type == BuiltinImplType::UsesFallback)

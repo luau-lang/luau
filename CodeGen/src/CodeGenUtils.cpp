@@ -254,16 +254,14 @@ Closure* callFallback(lua_State* L, StkId ra, StkId argtop, int nresults)
 }
 
 // Extracted as-is from lvmexecute.cpp with the exception of control flow (reentry) and removed interrupts
-Closure* returnFallback(lua_State* L, StkId ra, int n)
+Closure* returnFallback(lua_State* L, StkId ra, StkId valend)
 {
     // ci is our callinfo, cip is our parent
     CallInfo* ci = L->ci;
     CallInfo* cip = ci - 1;
 
     StkId res = ci->func; // note: we assume CALL always puts func+args and expects results to start at func
-
     StkId vali = ra;
-    StkId valend = (n == LUA_MULTRET) ? L->top : ra + n; // copy as much as possible for MULTRET calls, and only as much as needed otherwise
 
     int nresults = ci->nresults;
 

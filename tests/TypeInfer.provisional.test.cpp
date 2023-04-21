@@ -260,10 +260,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated
 // FIXME: Move this test to another source file when removing FFlag::LuauLowerBoundsCalculation
 TEST_CASE_FIXTURE(Fixture, "do_not_ice_when_trying_to_pick_first_of_generic_type_pack")
 {
-    ScopedFastFlag sff[]{
-        {"LuauReturnAnyInsteadOfICE", true},
-    };
-
     // In-place quantification causes these types to have the wrong types but only because of nasty interaction with prototyping.
     // The type of f is initially () -> free1...
     // Then the prototype iterator advances, and checks the function expression assigned to g, which has the type () -> free2...
@@ -528,7 +524,7 @@ return wrapStrictTable(Constants, "Constants")
 
     frontend.check("game/B");
 
-    ModulePtr m = frontend.moduleResolver.modules["game/B"];
+    ModulePtr m = frontend.moduleResolver.getModule("game/B");
     REQUIRE(m);
 
     std::optional<TypeId> result = first(m->returnType);
@@ -570,7 +566,7 @@ return wrapStrictTable(Constants, "Constants")
 
     frontend.check("game/B");
 
-    ModulePtr m = frontend.moduleResolver.modules["game/B"];
+    ModulePtr m = frontend.moduleResolver.getModule("game/B");
     REQUIRE(m);
 
     std::optional<TypeId> result = first(m->returnType);

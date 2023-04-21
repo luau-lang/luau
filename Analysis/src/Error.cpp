@@ -11,6 +11,7 @@
 #include <type_traits>
 
 LUAU_FASTFLAGVARIABLE(LuauTypeMismatchInvarianceInError, false)
+LUAU_FASTFLAGVARIABLE(LuauRequirePathTrueModuleName, false)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount, std::optional<size_t> maximumCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
@@ -349,7 +350,10 @@ struct ErrorConverter
             else
                 s += " -> ";
 
-            s += name;
+            if (FFlag::LuauRequirePathTrueModuleName && fileResolver != nullptr)
+                s += fileResolver->getHumanReadableModuleName(name);
+            else
+                s += name;
         }
 
         return s;
