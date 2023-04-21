@@ -606,7 +606,7 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionRequire(
     if (!checkRequirePath(typechecker, expr.args.data[0]))
         return std::nullopt;
 
-    if (auto moduleInfo = typechecker.resolver->resolveModuleInfo(typechecker.currentModuleName, expr))
+    if (auto moduleInfo = typechecker.resolver->resolveModuleInfo(typechecker.currentModule->name, expr))
         return WithPredicate<TypePackId>{arena.addTypePack({typechecker.checkRequire(scope, *moduleInfo, expr.location)})};
 
     return std::nullopt;

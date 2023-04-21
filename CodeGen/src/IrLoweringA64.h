@@ -27,6 +27,7 @@ struct IrLoweringA64
     IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, NativeState& data, Proto* proto, IrFunction& function);
 
     void lowerInst(IrInst& inst, uint32_t index, IrBlock& next);
+    void finishBlock();
 
     bool hasError() const;
 
@@ -34,13 +35,16 @@ struct IrLoweringA64
     void jumpOrFallthrough(IrBlock& target, IrBlock& next);
 
     // Operand data build helpers
+    // May emit data/address synthesis instructions
     RegisterA64 tempDouble(IrOp op);
     RegisterA64 tempInt(IrOp op);
+    RegisterA64 tempUint(IrOp op);
     AddressA64 tempAddr(IrOp op, int offset);
 
-    // Operand data lookup helpers
-    RegisterA64 regOp(IrOp op) const;
+    // May emit restore instructions
+    RegisterA64 regOp(IrOp op);
 
+    // Operand data lookup helpers
     IrConst constOp(IrOp op) const;
     uint8_t tagOp(IrOp op) const;
     bool boolOp(IrOp op) const;

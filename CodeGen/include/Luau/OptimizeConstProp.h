@@ -11,6 +11,7 @@ namespace CodeGen
 struct IrBuilder;
 
 void constPropInBlockChains(IrBuilder& build);
+void createLinearBlocks(IrBuilder& build);
 
 } // namespace CodeGen
 } // namespace Luau

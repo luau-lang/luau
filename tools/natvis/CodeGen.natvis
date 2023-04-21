@@ -54,4 +54,13 @@
     </Expand>
   </Type>
 
+  <Type Name="Luau::CodeGen::IrOp">
+    <DisplayString Condition="kind == IrOpKind::None">none</DisplayString>
+    <DisplayString Condition="kind == IrOpKind::VmReg &amp;&amp; (index >> 8) != 0">R{index&amp;0xff}-v{index >> 8}</DisplayString>
+    <DisplayString Condition="kind == IrOpKind::VmReg">R{index&amp;0xff}</DisplayString>
+    <DisplayString Condition="kind == IrOpKind::VmConst">K{index}</DisplayString>
+    <DisplayString Condition="kind == IrOpKind::VmUpvalue">UP{index}</DisplayString>
+    <DisplayString Condition="kind == IrOpKind::Inst">%{index}</DisplayString>
+  </Type>
+
 </AutoVisualizer>

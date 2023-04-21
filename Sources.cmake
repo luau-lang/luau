@@ -103,6 +103,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/IrTranslateBuiltins.cpp
     CodeGen/src/IrTranslation.cpp
     CodeGen/src/IrUtils.cpp
+    CodeGen/src/IrValueLocationTracking.cpp
     CodeGen/src/NativeState.cpp
     CodeGen/src/OptimizeConstProp.cpp
     CodeGen/src/OptimizeFinalX64.cpp
@@ -127,6 +128,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/IrRegAllocA64.h
     CodeGen/src/IrTranslateBuiltins.h
     CodeGen/src/IrTranslation.h
+    CodeGen/src/IrValueLocationTracking.h
     CodeGen/src/NativeState.h
 )
 
@@ -362,6 +364,7 @@ if(TARGET Luau.UnitTest)
         tests/Frontend.test.cpp
         tests/IrBuilder.test.cpp
         tests/IrCallWrapperX64.test.cpp
+        tests/IrRegAllocX64.test.cpp
         tests/JsonEmitter.test.cpp
         tests/Lexer.test.cpp
         tests/Linter.test.cpp

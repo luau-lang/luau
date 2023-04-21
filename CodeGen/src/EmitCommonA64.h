@@ -39,9 +39,9 @@ constexpr RegisterA64 rBase = x24;      // StkId base
 
 // Native code is as stackless as the interpreter, so we can place some data on the stack once and have it accessible at any point
 // See CodeGenA64.cpp for layout
-constexpr unsigned kStashSlots = 8; // stashed non-volatile registers
-constexpr unsigned kSpillSlots = 0; // slots for spilling temporary registers (unused)
-constexpr unsigned kTempSlots = 2;  // 16 bytes of temporary space, such luxury!
+constexpr unsigned kStashSlots = 8;  // stashed non-volatile registers
+constexpr unsigned kSpillSlots = 22; // slots for spilling temporary registers
+constexpr unsigned kTempSlots = 2;   // 16 bytes of temporary space, such luxury!
 
 constexpr unsigned kStackSize = (kStashSlots + kSpillSlots + kTempSlots) * 8;
 

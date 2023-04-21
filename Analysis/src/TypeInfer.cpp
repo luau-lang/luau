@@ -33,7 +33,6 @@ LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 300)
 LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
-LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauNegatedClassTypes)
@@ -42,6 +41,7 @@ LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
 LUAU_FASTFLAG(LuauOccursIsntAlwaysFailure)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckTypeguards, false)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
+LUAU_FASTFLAG(LuauRequirePathTrueModuleName)
 
 namespace Luau
 {
@@ -264,8 +264,11 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
 {
     LUAU_TIMETRACE_SCOPE("TypeChecker::check", "TypeChecker");
     LUAU_TIMETRACE_ARGUMENT("module", module.name.c_str());
+    LUAU_TIMETRACE_ARGUMENT("name", module.humanReadableName.c_str());
 
     currentModule.reset(new Module);
+    currentModule->name = module.name;
+    currentModule->humanReadableName = module.humanReadableName;
     currentModule->reduction = std::make_unique<TypeReduction>(NotNull{&currentModule->internalTypes}, builtinTypes, NotNull{iceHandler});
     currentModule->type = module.type;
     currentModule->allocator = module.allocator;
@@ -290,10 +293,8 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     currentModule->scopes.push_back(std::make_pair(module.root->location, moduleScope));
     currentModule->mode = mode;
 
-    currentModuleName = module.name;
-
     if (prepareModuleScope)
-        prepareModuleScope(module.name, currentModule->getModuleScope());
+        prepareModuleScope(currentModule->name, currentModule->getModuleScope());
 
     try
     {
@@ -1179,7 +1180,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatLocal& local)
             {
                 AstExpr* require = *maybeRequire;
 
-                if (auto moduleInfo = resolver->resolveModuleInfo(currentModuleName, *require))
+                if (auto moduleInfo = resolver->resolveModuleInfo(currentModule->name, *require))
                 {
                     const Name name{local.vars.data[i]->name.value};
 
@@ -1728,7 +1729,7 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatDeclareClass& de
 
     Name className(declaredClass.name.value);
 
-    TypeId classTy = addType(ClassType(className, {}, superTy, std::nullopt, {}, {}, currentModuleName));
+    TypeId classTy = addType(ClassType(className, {}, superTy, std::nullopt, {}, {}, currentModule->name));
     ClassType* ctv = getMutable<ClassType>(classTy);
     TypeId metaTy = addType(TableType{TableState::Sealed, scope->level});
 
@@ -2000,12 +2001,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     else if (auto vtp = get<VariadicTypePack>(retPack))
         return {vtp->ty, std::move(result.predicates)};
     else if (get<GenericTypePack>(retPack))
-    {
-        if (FFlag::LuauReturnAnyInsteadOfICE)
-            return {anyType, std::move(result.predicates)};
-        else
-            ice("Unexpected abstract type pack!", expr.location);
-    }
+        return {anyType, std::move(result.predicates)};
     else
         ice("Unknown TypePack type!", expr.location);
 }
@@ -2336,7 +2332,7 @@ TypeId TypeChecker::checkExprTable(
 
     TableState state = TableState::Unsealed;
     TableType table = TableType{std::move(props), indexer, scope->level, state};
-    table.definitionModuleName = currentModuleName;
+    table.definitionModuleName = currentModule->name;
     table.definitionLocation = expr.location;
     return addType(table);
 }
@@ -3663,7 +3659,7 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(const ScopePtr& 
     TypePackId argPack = addTypePack(TypePackVar(TypePack{argTypes, funScope->varargPack}));
 
     FunctionDefinition defn;
-    defn.definitionModuleName = currentModuleName;
+    defn.definitionModuleName = currentModule->name;
     defn.definitionLocation = expr.location;
     defn.varargLocation = expr.vararg ? std::make_optional(expr.varargLocation) : std::nullopt;
     defn.originalNameLocation = originalName.value_or(Location(expr.location.begin, 0));
@@ -4606,11 +4602,9 @@ TypeId TypeChecker::checkRequire(const ScopePtr& scope, const ModuleInfo& module
     }
 
     // Types of requires that transitively refer to current module have to be replaced with 'any'
-    std::string humanReadableName = resolver->getHumanReadableModuleName(moduleInfo.name);
-
     for (const auto& [location, path] : requireCycles)
     {
-        if (!path.empty() && path.front() == humanReadableName)
+        if (!path.empty() && path.front() == (FFlag::LuauRequirePathTrueModuleName ? moduleInfo.name : resolver->getHumanReadableModuleName(moduleInfo.name)))
             return anyType;
     }
 
@@ -4621,14 +4615,14 @@ TypeId TypeChecker::checkRequire(const ScopePtr& scope, const ModuleInfo& module
         // either the file does not exist or there's a cycle. If there's a cycle
         // we will already have reported the error.
         if (!resolver->moduleExists(moduleInfo.name) && !moduleInfo.optional)
-            reportError(TypeError{location, UnknownRequire{humanReadableName}});
+            reportError(TypeError{location, UnknownRequire{resolver->getHumanReadableModuleName(moduleInfo.name)}});
 
         return errorRecoveryType(scope);
     }
 
     if (module->type != SourceCode::Module)
     {
-        reportError(location, IllegalRequire{humanReadableName, "Module is not a ModuleScript.  It cannot be required."});
+        reportError(location, IllegalRequire{module->humanReadableName, "Module is not a ModuleScript.  It cannot be required."});
         return errorRecoveryType(scope);
     }
 
@@ -4640,7 +4634,7 @@ TypeId TypeChecker::checkRequire(const ScopePtr& scope, const ModuleInfo& module
     std::optional<TypeId> moduleType = first(modulePack);
     if (!moduleType)
     {
-        reportError(location, IllegalRequire{humanReadableName, "Module does not return exactly 1 value.  It cannot be required."});
+        reportError(location, IllegalRequire{module->humanReadableName, "Module does not return exactly 1 value.  It cannot be required."});
         return errorRecoveryType(scope);
     }
 
@@ -4855,7 +4849,7 @@ void TypeChecker::reportError(const TypeError& error)
     if (currentModule->mode == Mode::NoCheck)
         return;
     currentModule->errors.push_back(error);
-    currentModule->errors.back().moduleName = currentModuleName;
+    currentModule->errors.back().moduleName = currentModule->name;
 }
 
 void TypeChecker::reportError(const Location& location, TypeErrorData errorData)
@@ -5329,7 +5323,7 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
             tableIndexer = TableIndexer(resolveType(scope, *indexer->indexType), resolveType(scope, *indexer->resultType));
 
         TableType ttv{props, tableIndexer, scope->level, TableState::Sealed};
-        ttv.definitionModuleName = currentModuleName;
+        ttv.definitionModuleName = currentModule->name;
         ttv.definitionLocation = annotation.location;
         return addType(std::move(ttv));
     }
@@ -5531,7 +5525,7 @@ TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf,
     {
         ttv->instantiatedTypeParams = typeParams;
         ttv->instantiatedTypePackParams = typePackParams;
-        ttv->definitionModuleName = currentModuleName;
+        ttv->definitionModuleName = currentModule->name;
         ttv->definitionLocation = location;
     }
 

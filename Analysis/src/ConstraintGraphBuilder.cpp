@@ -133,11 +133,10 @@ void forEachConstraint(const Checkpoint& start, const Checkpoint& end, const Con
 
 } // namespace
 
-ConstraintGraphBuilder::ConstraintGraphBuilder(const ModuleName& moduleName, ModulePtr module, TypeArena* arena,
-    NotNull<ModuleResolver> moduleResolver, NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope,
-    DcrLogger* logger, NotNull<DataFlowGraph> dfg)
-    : moduleName(moduleName)
-    , module(module)
+ConstraintGraphBuilder::ConstraintGraphBuilder(ModulePtr module, TypeArena* arena, NotNull<ModuleResolver> moduleResolver,
+    NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope, DcrLogger* logger,
+    NotNull<DataFlowGraph> dfg)
+    : module(module)
     , builtinTypes(builtinTypes)
     , arena(arena)
     , rootScope(nullptr)
@@ -599,7 +598,7 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* l
             {
                 AstExpr* require = *maybeRequire;
 
-                if (auto moduleInfo = moduleResolver->resolveModuleInfo(moduleName, *require))
+                if (auto moduleInfo = moduleResolver->resolveModuleInfo(module->name, *require))
                 {
                     const Name name{local->vars.data[i]->name.value};
 
@@ -1043,7 +1042,7 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareC
 
     Name className(declaredClass->name.value);
 
-    TypeId classTy = arena->addType(ClassType(className, {}, superTy, std::nullopt, {}, {}, moduleName));
+    TypeId classTy = arena->addType(ClassType(className, {}, superTy, std::nullopt, {}, {}, module->name));
     ClassType* ctv = getMutable<ClassType>(classTy);
 
     TypeId metaTy = arena->addType(TableType{TableState::Sealed, scope->level, scope.get()});
@@ -2609,7 +2608,7 @@ Inference ConstraintGraphBuilder::flattenPack(const ScopePtr& scope, Location lo
 
 void ConstraintGraphBuilder::reportError(Location location, TypeErrorData err)
 {
-    errors.push_back(TypeError{location, moduleName, std::move(err)});
+    errors.push_back(TypeError{location, module->name, std::move(err)});
 
     if (logger)
         logger->captureGenerationError(errors.back());
@@ -2617,7 +2616,7 @@ void ConstraintGraphBuilder::reportError(Location location, TypeErrorData err)
 
 void ConstraintGraphBuilder::reportCodeTooComplex(Location location)
 {
-    errors.push_back(TypeError{location, moduleName, CodeTooComplex{}});
+    errors.push_back(TypeError{location, module->name, CodeTooComplex{}});
 
     if (logger)
         logger->captureGenerationError(errors.back());

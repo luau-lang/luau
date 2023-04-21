@@ -425,6 +425,34 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         }
         break;
     }
+    case IrCmd::JUMP_LT_INT:
+    {
+        std::optional<int> valueA = function.asIntOp(inst.a.kind == IrOpKind::Constant ? inst.a : state.tryGetValue(inst.a));
+        std::optional<int> valueB = function.asIntOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b));
+
+        if (valueA && valueB)
+        {
+            if (*valueA < *valueB)
+                replace(function, block, index, {IrCmd::JUMP, inst.c});
+            else
+                replace(function, block, index, {IrCmd::JUMP, inst.d});
+        }
+        break;
+    }
+    case IrCmd::JUMP_GE_UINT:
+    {
+        std::optional<unsigned> valueA = function.asUintOp(inst.a.kind == IrOpKind::Constant ? inst.a : state.tryGetValue(inst.a));
+        std::optional<unsigned> valueB = function.asUintOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b));
+
+        if (valueA && valueB)
+        {
+            if (*valueA >= *valueB)
+                replace(function, block, index, {IrCmd::JUMP, inst.c});
+            else
+                replace(function, block, index, {IrCmd::JUMP, inst.d});
+        }
+        break;
+    }
     case IrCmd::JUMP_CMP_NUM:
     {
         std::optional<double> valueA = function.asDoubleOp(inst.a.kind == IrOpKind::Constant ? inst.a : state.tryGetValue(inst.a));
@@ -543,6 +571,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::TRY_NUM_TO_INDEX:
     case IrCmd::TRY_CALL_FASTGETTM:
     case IrCmd::INT_TO_NUM:
+    case IrCmd::UINT_TO_NUM:
+    case IrCmd::NUM_TO_INT:
+    case IrCmd::NUM_TO_UINT:
     case IrCmd::CHECK_ARRAY_SIZE:
     case IrCmd::CHECK_SLOT_MATCH:
     case IrCmd::CHECK_NODE_NO_NEXT:
@@ -558,6 +589,18 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::ADJUST_STACK_TO_REG: // Changes stack top, but not the values
     case IrCmd::ADJUST_STACK_TO_TOP: // Changes stack top, but not the values
     case IrCmd::CHECK_FASTCALL_RES:  // Changes stack top, but not the values
+    case IrCmd::BITAND_UINT:
+    case IrCmd::BITXOR_UINT:
+    case IrCmd::BITOR_UINT:
+    case IrCmd::BITNOT_UINT:
+    case IrCmd::BITLSHIFT_UINT:
+    case IrCmd::BITRSHIFT_UINT:
+    case IrCmd::BITARSHIFT_UINT:
+    case IrCmd::BITRROTATE_UINT:
+    case IrCmd::BITLROTATE_UINT:
+    case IrCmd::BITCOUNTLZ_UINT:
+    case IrCmd::BITCOUNTRZ_UINT:
+    case IrCmd::INVOKE_LIBM:
         break;
 
     case IrCmd::JUMP_CMP_ANY:
@@ -808,7 +851,6 @@ void constPropInBlockChains(IrBuilder& build)
 
     std::vector<uint8_t> visited(function.blocks.size(), false);
 
-    // First pass: go over existing blocks once and propagate constants
     for (IrBlock& block : function.blocks)
     {
         if (block.kind == IrBlockKind::Fallback || block.kind == IrBlockKind::Dead)
@@ -819,13 +861,18 @@ void constPropInBlockChains(IrBuilder& build)
 
         constPropInBlockChain(build, visited, &block);
     }
+}
 
-    // Second pass: go through internal block chains and outline them into a single new block
+void createLinearBlocks(IrBuilder& build)
+{
+    // Go through internal block chains and outline them into a single new block.
     // Outlining will be able to linearize the execution, even if there was a jump to a block with multiple users,
     // new 'block' will only be reachable from a single one and all gathered information can be preserved.
-    std::fill(visited.begin(), visited.end(), false);
+    IrFunction& function = build.function;
 
-    // This next loop can create new 'linear' blocks, so index-based loop has to be used (and it intentionally won't reach those new blocks)
+    std::vector<uint8_t> visited(function.blocks.size(), false);
+
+    // This loop can create new 'linear' blocks, so index-based loop has to be used (and it intentionally won't reach those new blocks)
     size_t originalBlockCount = function.blocks.size();
     for (size_t i = 0; i < originalBlockCount; i++)
     {

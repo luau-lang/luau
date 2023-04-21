@@ -186,6 +186,19 @@ enum class IrCmd : uint8_t
     // D: block (if false)
     JUMP_EQ_INT,
 
+    // Jump if A < B
+    // A, B: int
+    // C: block (if true)
+    // D: block (if false)
+    JUMP_LT_INT,
+
+    // Jump if A >= B
+    // A, B: uint
+    // C: condition
+    // D: block (if true)
+    // E: block (if false)
+    JUMP_GE_UINT,
+
     // Jump if pointers are equal
     // A, B: pointer (*)
     // C: block (if true)
@@ -240,6 +253,15 @@ enum class IrCmd : uint8_t
     // Convert integer into a double number
     // A: int
     INT_TO_NUM,
+    UINT_TO_NUM,
+
+    // Converts a double number to an integer. 'A' may be any representable integer in a double.
+    // A: double
+    NUM_TO_INT,
+
+    // Converts a double number to an unsigned integer. For out-of-range values of 'A', the result is arch-specific.
+    // A: double
+    NUM_TO_UINT,
 
     // Adjust stack top (L->top) to point at 'B' TValues *after* the specified register
     // This is used to return muliple values
@@ -517,10 +539,38 @@ enum class IrCmd : uint8_t
     FALLBACK_FORGPREP,
 
     // Instruction that passes value through, it is produced by constant folding and users substitute it with the value
-    // When operand location is set, updates the tracked location of the value in memory
     SUBSTITUTE,
     // A: operand of any type
-    // B: Rn/Kn/none (location of operand in memory; optional)
+
+    // Performs bitwise and/xor/or on two unsigned integers
+    // A, B: uint
+    BITAND_UINT,
+    BITXOR_UINT,
+    BITOR_UINT,
+
+    // Performs bitwise not on an unsigned integer
+    // A: uint
+    BITNOT_UINT,
+
+    // Performs bitwise shift/rotate on an unsigned integer
+    // A: uint (source)
+    // B: int (shift amount)
+    BITLSHIFT_UINT,
+    BITRSHIFT_UINT,
+    BITARSHIFT_UINT,
+    BITLROTATE_UINT,
+    BITRROTATE_UINT,
+
+    // Returns the number of consecutive zero bits in A starting from the left-most (most significant) bit.
+    // A: uint
+    BITCOUNTLZ_UINT,
+    BITCOUNTRZ_UINT,
+
+    // Calls native libm function with 1 or 2 arguments
+    // A: builtin function ID
+    // B: double
+    // C: double (optional, 2nd argument)
+    INVOKE_LIBM,
 };
 
 enum class IrConstKind : uint8_t
@@ -654,6 +704,7 @@ struct IrInst
     A64::RegisterA64 regA64 = A64::noreg;
     bool reusedReg = false;
     bool spilled = false;
+    bool needsReload = false;
 };
 
 // When IrInst operands are used, current instruction index is often required to track lifetime
@@ -696,8 +747,9 @@ struct IrFunction
 
     std::vector<BytecodeMapping> bcMapping;
 
-    // For each instruction, an operand that can be used to recompute the calue
+    // For each instruction, an operand that can be used to recompute the value
     std::vector<IrOp> valueRestoreOps;
+    uint32_t validRestoreOpBlockIdx = 0;
 
     Proto* proto = nullptr;
 
@@ -859,6 +911,12 @@ struct IrFunction
     IrOp findRestoreOp(uint32_t instIdx) const
     {
         if (instIdx >= valueRestoreOps.size())
+            return {};
+
+        const IrBlock& block = blocks[validRestoreOpBlockIdx];
+
+        // Values can only reference restore operands in the current block
+        if (instIdx < block.start || instIdx > block.finish)
             return {};
 
         return valueRestoreOps[instIdx];

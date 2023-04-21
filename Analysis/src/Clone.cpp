@@ -325,7 +325,14 @@ void TypeCloner::operator()(const IntersectionType& t)
 
 void TypeCloner::operator()(const LazyType& t)
 {
-    defaultClone(t);
+    if (TypeId unwrapped = t.unwrapped.load())
+    {
+        seenTypes[typeId] = clone(unwrapped, dest, cloneState);
+    }
+    else
+    {
+        defaultClone(t);
+    }
 }
 
 void TypeCloner::operator()(const UnknownType& t)

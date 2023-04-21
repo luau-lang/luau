@@ -69,7 +69,7 @@ RegisterX64 IrRegAllocX64::allocRegOrReuse(SizeX64 size, uint32_t instIdx, std::
 
         IrInst& source = function.instructions[op.index];
 
-        if (source.lastUse == instIdx && !source.reusedReg && !source.spilled)
+        if (source.lastUse == instIdx && !source.reusedReg && !source.spilled && !source.needsReload)
         {
             // Not comparing size directly because we only need matching register set
             if ((size == SizeX64::xmmword) != (source.regX64.size == SizeX64::xmmword))
@@ -141,6 +141,8 @@ void IrRegAllocX64::freeLastUseReg(IrInst& target, uint32_t instIdx)
 {
     if (isLastUseReg(target, instIdx))
     {
+        LUAU_ASSERT(!target.spilled && !target.needsReload);
+
         // Register might have already been freed if it had multiple uses inside a single instruction
         if (target.regX64 == noreg)
             return;
@@ -208,14 +210,17 @@ void IrRegAllocX64::preserve(IrInst& inst)
         }
 
         spill.stackSlot = uint8_t(i);
+        inst.spilled = true;
+    }
+    else
+    {
+        inst.needsReload = true;
     }
 
     spills.push_back(spill);
 
     freeReg(inst.regX64);
-
     inst.regX64 = noreg;
-    inst.spilled = true;
 }
 
 void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
@@ -224,12 +229,13 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
 
     for (size_t i = 0; i < spills.size(); i++)
     {
-        const IrSpillX64& spill = spills[i];
-
-        if (spill.instIdx == instIdx)
+        if (spills[i].instIdx == instIdx)
         {
-            RegisterX64 reg = intoOriginalLocation ? takeReg(spill.originalLoc, instIdx) : allocReg(spill.originalLoc.size, instIdx);
+            RegisterX64 reg = intoOriginalLocation ? takeReg(spills[i].originalLoc, instIdx) : allocReg(spills[i].originalLoc.size, instIdx);
             OperandX64 restoreLocation = noreg;
+
+            // Previous call might have relocated the spill vector, so this reference can't be taken earlier
+            const IrSpillX64& spill = spills[i];
 
             if (spill.stackSlot != kNoStackSlot)
             {
@@ -255,6 +261,7 @@ void IrRegAllocX64::restore(IrInst& inst, bool intoOriginalLocation)
 
             inst.regX64 = reg;
             inst.spilled = false;
+            inst.needsReload = false;
 
             spills[i] = spills.back();
             spills.pop_back();
@@ -317,28 +324,8 @@ unsigned IrRegAllocX64::findSpillStackSlot(IrValueKind valueKind)
 
 IrOp IrRegAllocX64::getRestoreOp(const IrInst& inst) const
 {
-    switch (inst.cmd)
-    {
-    case IrCmd::LOAD_TAG:
-    case IrCmd::LOAD_POINTER:
-    case IrCmd::LOAD_DOUBLE:
-    case IrCmd::LOAD_INT:
-    case IrCmd::LOAD_TVALUE:
-    {
-        IrOp location = inst.a;
-
-        // Might have an alternative location
-        if (IrOp alternative = function.findRestoreOp(inst); alternative.kind != IrOpKind::None)
-            location = alternative;
-
-        if (location.kind == IrOpKind::VmReg || location.kind == IrOpKind::VmConst)
-            return location;
-
-        break;
-    }
-    default:
-        break;
-    }
+    if (IrOp location = function.findRestoreOp(inst); location.kind == IrOpKind::VmReg || location.kind == IrOpKind::VmConst)
+        return location;
 
     return IrOp();
 }
@@ -350,22 +337,26 @@ bool IrRegAllocX64::hasRestoreOp(const IrInst& inst) const
 
 OperandX64 IrRegAllocX64::getRestoreAddress(const IrInst& inst, IrOp restoreOp)
 {
-    switch (inst.cmd)
+    switch (getCmdValueKind(inst.cmd))
     {
-    case IrCmd::LOAD_TAG:
+    case IrValueKind::Unknown:
+    case IrValueKind::None:
+        LUAU_ASSERT(!"Invalid operand restore value kind");
+        break;
+    case IrValueKind::Tag:
         return restoreOp.kind == IrOpKind::VmReg ? luauRegTag(vmRegOp(restoreOp)) : luauConstantTag(vmConstOp(restoreOp));
-    case IrCmd::LOAD_POINTER:
-    case IrCmd::LOAD_DOUBLE:
-        return restoreOp.kind == IrOpKind::VmReg ? luauRegValue(vmRegOp(restoreOp)) : luauConstantValue(vmConstOp(restoreOp));
-    case IrCmd::LOAD_INT:
+    case IrValueKind::Int:
         LUAU_ASSERT(restoreOp.kind == IrOpKind::VmReg);
         return luauRegValueInt(vmRegOp(restoreOp));
-    case IrCmd::LOAD_TVALUE:
+    case IrValueKind::Pointer:
+        return restoreOp.kind == IrOpKind::VmReg ? luauRegValue(vmRegOp(restoreOp)) : luauConstantValue(vmConstOp(restoreOp));
+    case IrValueKind::Double:
+        return restoreOp.kind == IrOpKind::VmReg ? luauRegValue(vmRegOp(restoreOp)) : luauConstantValue(vmConstOp(restoreOp));
+    case IrValueKind::Tvalue:
         return restoreOp.kind == IrOpKind::VmReg ? luauReg(vmRegOp(restoreOp)) : luauConstant(vmConstOp(restoreOp));
-    default:
-        break;
     }
 
+    LUAU_ASSERT(!"Failed to find restore operand location");
     return noreg;
 }
 

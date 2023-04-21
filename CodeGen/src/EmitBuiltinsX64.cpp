@@ -18,90 +18,6 @@ namespace CodeGen
 namespace X64
 {
 
-static void emitBuiltinMathSingleArgFunc(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int arg, int32_t offset)
-{
-    IrCallWrapperX64 callWrap(regs, build);
-    callWrap.addArgument(SizeX64::xmmword, luauRegValue(arg));
-    callWrap.call(qword[rNativeContext + offset]);
-
-    build.vmovsd(luauRegValue(ra), xmm0);
-}
-
-void emitBuiltinMathExp(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    emitBuiltinMathSingleArgFunc(regs, build, ra, arg, offsetof(NativeContext, libm_exp));
-}
-
-void emitBuiltinMathFmod(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    IrCallWrapperX64 callWrap(regs, build);
-    callWrap.addArgument(SizeX64::xmmword, luauRegValue(arg));
-    callWrap.addArgument(SizeX64::xmmword, qword[args + offsetof(TValue, value)]);
-    callWrap.call(qword[rNativeContext + offsetof(NativeContext, libm_fmod)]);
-
-    build.vmovsd(luauRegValue(ra), xmm0);
-}
-
-void emitBuiltinMathAsin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    emitBuiltinMathSingleArgFunc(regs, build, ra, arg, offsetof(NativeContext, libm_asin));
-}
-
-void emitBuiltinMathSin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    emitBuiltinMathSingleArgFunc(regs, build, ra, arg, offsetof(NativeContext, libm_sin));
-}
-
-void emitBuiltinMathSinh(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    emitBuiltinMathSingleArgFunc(regs, build, ra, arg, offsetof(NativeContext, libm_sinh));
-}
-
-void emitBuiltinMathAcos(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    emitBuiltinMathSingleArgFunc(regs, build, ra, arg, offsetof(NativeContext, libm_acos));
-}
-
-void emitBuiltinMathCos(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    emitBuiltinMathSingleArgFunc(regs, build, ra, arg, offsetof(NativeContext, libm_cos));
-}
-
-void emitBuiltinMathCosh(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    emitBuiltinMathSingleArgFunc(regs, build, ra, arg, offsetof(NativeContext, libm_cosh));
-}
-
-void emitBuiltinMathAtan(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    emitBuiltinMathSingleArgFunc(regs, build, ra, arg, offsetof(NativeContext, libm_atan));
-}
-
-void emitBuiltinMathTan(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    emitBuiltinMathSingleArgFunc(regs, build, ra, arg, offsetof(NativeContext, libm_tan));
-}
-
-void emitBuiltinMathTanh(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    emitBuiltinMathSingleArgFunc(regs, build, ra, arg, offsetof(NativeContext, libm_tanh));
-}
-
-void emitBuiltinMathAtan2(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    IrCallWrapperX64 callWrap(regs, build);
-    callWrap.addArgument(SizeX64::xmmword, luauRegValue(arg));
-    callWrap.addArgument(SizeX64::xmmword, qword[args + offsetof(TValue, value)]);
-    callWrap.call(qword[rNativeContext + offsetof(NativeContext, libm_atan2)]);
-
-    build.vmovsd(luauRegValue(ra), xmm0);
-}
-
-void emitBuiltinMathLog10(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    emitBuiltinMathSingleArgFunc(regs, build, ra, arg, offsetof(NativeContext, libm_log10));
-}
-
 void emitBuiltinMathLog(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
 {
     regs.assertAllFree();
@@ -220,45 +136,6 @@ void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int r
 
     switch (bfid)
     {
-    case LBF_MATH_EXP:
-        LUAU_ASSERT(nparams == 1 && nresults == 1);
-        return emitBuiltinMathExp(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_FMOD:
-        LUAU_ASSERT(nparams == 2 && nresults == 1);
-        return emitBuiltinMathFmod(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_ASIN:
-        LUAU_ASSERT(nparams == 1 && nresults == 1);
-        return emitBuiltinMathAsin(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_SIN:
-        LUAU_ASSERT(nparams == 1 && nresults == 1);
-        return emitBuiltinMathSin(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_SINH:
-        LUAU_ASSERT(nparams == 1 && nresults == 1);
-        return emitBuiltinMathSinh(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_ACOS:
-        LUAU_ASSERT(nparams == 1 && nresults == 1);
-        return emitBuiltinMathAcos(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_COS:
-        LUAU_ASSERT(nparams == 1 && nresults == 1);
-        return emitBuiltinMathCos(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_COSH:
-        LUAU_ASSERT(nparams == 1 && nresults == 1);
-        return emitBuiltinMathCosh(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_ATAN:
-        LUAU_ASSERT(nparams == 1 && nresults == 1);
-        return emitBuiltinMathAtan(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_TAN:
-        LUAU_ASSERT(nparams == 1 && nresults == 1);
-        return emitBuiltinMathTan(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_TANH:
-        LUAU_ASSERT(nparams == 1 && nresults == 1);
-        return emitBuiltinMathTanh(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_ATAN2:
-        LUAU_ASSERT(nparams == 2 && nresults == 1);
-        return emitBuiltinMathAtan2(regs, build, nparams, ra, arg, argsOp, nresults);
-    case LBF_MATH_LOG10:
-        LUAU_ASSERT(nparams == 1 && nresults == 1);
-        return emitBuiltinMathLog10(regs, build, nparams, ra, arg, argsOp, nresults);
     case LBF_MATH_LOG:
         LUAU_ASSERT((nparams == 1 || nparams == 2) && nresults == 1);
         return emitBuiltinMathLog(regs, build, nparams, ra, arg, argsOp, nresults);

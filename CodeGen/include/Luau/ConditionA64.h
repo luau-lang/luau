@@ -16,9 +16,9 @@ enum class ConditionA64
     // NE: integer (not equal), floating-point (not equal or unordered)
     NotEqual,
 
-    // CS: integer (carry set), floating-point (greater than, equal or unordered)
+    // CS: integer (carry set), unsigned integer (greater than, equal), floating-point (greater than, equal or unordered)
     CarrySet,
-    // CC: integer (carry clear), floating-point (less than)
+    // CC: integer (carry clear), unsigned integer (less than), floating-point (less than)
     CarryClear,
 
     // MI: integer (negative), floating-point (less than)

@@ -257,7 +257,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
     }
     else if (const ClassType* ctv = get<ClassType>(ty); FFlag::LuauClassTypeVarsInSubstitution && ctv)
     {
-        for (auto [name, prop] : ctv->props)
+        for (const auto& [name, prop] : ctv->props)
             visitChild(prop.type);
 
         if (ctv->parent)

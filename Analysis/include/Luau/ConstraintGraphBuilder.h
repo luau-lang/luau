@@ -60,7 +60,6 @@ struct ConstraintGraphBuilder
     // define the scope hierarchy.
     std::vector<std::pair<Location, ScopePtr>> scopes;
 
-    ModuleName moduleName;
     ModulePtr module;
     NotNull<BuiltinTypes> builtinTypes;
     const NotNull<TypeArena> arena;
@@ -94,9 +93,8 @@ struct ConstraintGraphBuilder
     ScopePtr globalScope;
     DcrLogger* logger;
 
-    ConstraintGraphBuilder(const ModuleName& moduleName, ModulePtr module, TypeArena* arena, NotNull<ModuleResolver> moduleResolver,
-        NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope, DcrLogger* logger,
-        NotNull<DataFlowGraph> dfg);
+    ConstraintGraphBuilder(ModulePtr module, TypeArena* arena, NotNull<ModuleResolver> moduleResolver, NotNull<BuiltinTypes> builtinTypes,
+        NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope, DcrLogger* logger, NotNull<DataFlowGraph> dfg);
 
     /**
      * Fabricates a new free type belonging to a given scope.

@@ -244,6 +244,10 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfShift")
     SINGLE_COMPARE(sal(eax, 4), 0xc1, 0xe0, 0x04);
     SINGLE_COMPARE(sar(rax, 4), 0x48, 0xc1, 0xf8, 0x04);
     SINGLE_COMPARE(sar(r11, 1), 0x49, 0xd1, 0xfb);
+    SINGLE_COMPARE(rol(eax, 1), 0xd1, 0xc0);
+    SINGLE_COMPARE(rol(eax, cl), 0xd3, 0xc0);
+    SINGLE_COMPARE(ror(eax, 1), 0xd1, 0xc8);
+    SINGLE_COMPARE(ror(eax, cl), 0xd3, 0xc8);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfLea")
@@ -533,6 +537,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXTernaryInstructionForms")
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "MiscInstructions")
 {
     SINGLE_COMPARE(int3(), 0xcc);
+    SINGLE_COMPARE(bsr(eax, edx), 0x0f, 0xbd, 0xc2);
+    SINGLE_COMPARE(bsf(eax, edx), 0x0f, 0xbc, 0xc2);
 }
 
 TEST_CASE("LogTest")

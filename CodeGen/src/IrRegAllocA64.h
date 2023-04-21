@@ -6,6 +6,7 @@
 
 #include <initializer_list>
 #include <utility>
+#include <vector>
 
 namespace Luau
 {
@@ -14,13 +15,17 @@ namespace CodeGen
 namespace A64
 {
 
+class AssemblyBuilderA64;
+
 struct IrRegAllocA64
 {
     IrRegAllocA64(IrFunction& function, std::initializer_list<std::pair<RegisterA64, RegisterA64>> regs);
 
-    RegisterA64 allocReg(KindA64 kind);
+    RegisterA64 allocReg(KindA64 kind, uint32_t index);
     RegisterA64 allocTemp(KindA64 kind);
     RegisterA64 allocReuse(KindA64 kind, uint32_t index, std::initializer_list<IrOp> oprefs);
+
+    RegisterA64 takeReg(RegisterA64 reg, uint32_t index);
 
     void freeReg(RegisterA64 reg);
 
@@ -29,10 +34,16 @@ struct IrRegAllocA64
 
     void freeTempRegs();
 
-    void assertAllFree() const;
-    void assertAllFreeExcept(RegisterA64 reg) const;
+    // Spills all live registers that outlive current instruction; all allocated registers are assumed to be undefined
+    size_t spill(AssemblyBuilderA64& build, uint32_t index, std::initializer_list<RegisterA64> live = {});
 
-    IrFunction& function;
+    // Restores registers starting from the offset returned by spill(); all spills will be restored to the original registers
+    void restore(AssemblyBuilderA64& build, size_t start);
+
+    // Restores register for a single instruction; may not assign the previously used register!
+    void restoreReg(AssemblyBuilderA64& build, IrInst& inst);
+
+    void assertNoSpills() const;
 
     struct Set
     {
@@ -44,11 +55,28 @@ struct IrRegAllocA64
 
         // which subset of initial set is allocated as temporary
         uint32_t temp = 0;
+
+        // which instruction is defining which register (for spilling); only valid if not free and not temp
+        uint32_t defs[32];
     };
 
-    Set gpr, simd;
+    struct Spill
+    {
+        uint32_t inst;
+
+        RegisterA64 origin;
+        uint8_t slot;
+    };
 
     Set& getSet(KindA64 kind);
+
+    IrFunction& function;
+    Set gpr, simd;
+
+    std::vector<Spill> spills;
+
+    // which 8-byte slots are free
+    uint32_t freeSpillSlots = 0;
 };
 
 } // namespace A64
