@@ -753,12 +753,14 @@ void AstStatError::visit(AstVisitor* visitor)
     }
 }
 
-AstTypeReference::AstTypeReference(
-    const Location& location, std::optional<AstName> prefix, AstName name, bool hasParameterList, const AstArray<AstTypeOrPack>& parameters)
+AstTypeReference::AstTypeReference(const Location& location, std::optional<AstName> prefix, AstName name, std::optional<Location> prefixLocation,
+    const Location& nameLocation, bool hasParameterList, const AstArray<AstTypeOrPack>& parameters)
     : AstType(ClassIndex(), location)
     , hasParameterList(hasParameterList)
     , prefix(prefix)
+    , prefixLocation(prefixLocation)
     , name(name)
+    , nameLocation(nameLocation)
     , parameters(parameters)
 {
 }
