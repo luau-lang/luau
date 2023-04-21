@@ -12,6 +12,6 @@ namespace Luau
 struct DcrLogger;
 struct BuiltinTypes;
 
-void check(NotNull<BuiltinTypes> builtinTypes, DcrLogger* logger, const SourceModule& sourceModule, Module* module);
+void check(NotNull<BuiltinTypes> builtinTypes, NotNull<struct UnifierSharedState> sharedState, DcrLogger* logger, const SourceModule& sourceModule, Module* module);
 
 } // namespace Luau

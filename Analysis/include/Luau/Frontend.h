@@ -8,6 +8,8 @@
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Variant.h"
+
+#include <mutex>
 #include <string>
 #include <vector>
 #include <optional>
@@ -67,6 +69,7 @@ struct SourceNode
     }
 
     ModuleName name;
+    std::string humanReadableName;
     std::unordered_set<ModuleName> requireSet;
     std::vector<std::pair<ModuleName, Location>> requireLocations;
     bool dirtySourceModule = true;
@@ -114,7 +117,13 @@ struct FrontendModuleResolver : ModuleResolver
     std::optional<ModuleInfo> resolveModuleInfo(const ModuleName& currentModuleName, const AstExpr& pathExpr) override;
     std::string getHumanReadableModuleName(const ModuleName& moduleName) const override;
 
+    void setModule(const ModuleName& moduleName, ModulePtr module);
+    void clearModules();
+
+private:
     Frontend* frontend;
+
+    mutable std::mutex moduleMutex;
     std::unordered_map<ModuleName, ModulePtr> modules;
 };
 

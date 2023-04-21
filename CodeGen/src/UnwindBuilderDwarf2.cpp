@@ -149,8 +149,8 @@ void UnwindBuilderDwarf2::startInfo()
     // Optional CIE augmentation section (not present)
 
     // Call frame instructions (common for all FDEs, of which we have 1)
-    pos = defineCfaExpression(pos, DW_REG_RSP, 8);           // Define CFA to be the rsp + 8
-    pos = defineSavedRegisterLocation(pos, DW_REG_RA, 8);    // Define return address register (RA) to be located at CFA - 8
+    pos = defineCfaExpression(pos, DW_REG_RSP, 8);        // Define CFA to be the rsp + 8
+    pos = defineSavedRegisterLocation(pos, DW_REG_RA, 8); // Define return address register (RA) to be located at CFA - 8
 
     pos = alignPosition(cieLength, pos);
     writeu32(cieLength, unsigned(pos - cieLength - 4)); // Length field itself is excluded from length

@@ -50,6 +50,7 @@
 #endif
 
 LUAU_FASTFLAGVARIABLE(DebugCodegenNoOpt, false)
+LUAU_FASTFLAGVARIABLE(DebugCodegenOptSize, false)
 
 namespace Luau
 {
@@ -154,6 +155,9 @@ static bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
             toStringDetailed(ctx, block, blockIndex, /* includeUseInfo */ true);
         }
 
+        // Values can only reference restore operands in the current block
+        function.validRestoreOpBlockIdx = blockIndex;
+
         build.setLabel(block.label);
 
         for (uint32_t index = block.start; index <= block.finish; index++)
@@ -175,10 +179,6 @@ static bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
             }
 
             IrInst& inst = function.instructions[index];
-
-            // Substitutions might have meta information about operand restore location from memory
-            if (inst.cmd == IrCmd::SUBSTITUTE && inst.b.kind != IrOpKind::None)
-                function.recordRestoreOp(inst.a.index, inst.b);
 
             // Skip pseudo instructions, but make sure they are not used at this stage
             // This also prevents them from getting into text output when that's enabled
@@ -212,6 +212,8 @@ static bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
                 return false;
             }
         }
+
+        lowering.finishBlock();
 
         if (options.includeIr)
             build.logAppend("#\n");
@@ -292,6 +294,9 @@ static NativeProto* assembleFunction(AssemblyBuilder& build, NativeState& data, 
     if (!FFlag::DebugCodegenNoOpt)
     {
         constPropInBlockChains(ir);
+
+        if (!FFlag::DebugCodegenOptSize)
+            createLinearBlocks(ir);
     }
 
     if (!lowerIr(build, ir, data, helpers, proto, options))

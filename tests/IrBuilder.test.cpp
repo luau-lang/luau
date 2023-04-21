@@ -1326,6 +1326,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SimplePathExtraction")
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
+    createLinearBlocks(build);
 
     CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
 bb_0:
@@ -1401,6 +1402,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NoPathExtractionForBlocksWithLiveOutValues"
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
+    createLinearBlocks(build);
 
     CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
 bb_0:
@@ -1452,6 +1454,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "InfiniteLoopInPathAnalysis")
 
     updateUseCounts(build.function);
     constPropInBlockChains(build);
+    createLinearBlocks(build);
 
     CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
 bb_0:

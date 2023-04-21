@@ -372,7 +372,6 @@ public:
 
     ModuleResolver* resolver;
     ModulePtr currentModule;
-    ModuleName currentModuleName;
 
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope;
     NotNull<BuiltinTypes> builtinTypes;

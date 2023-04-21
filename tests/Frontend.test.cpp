@@ -152,7 +152,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "automatically_check_dependent_scripts")
 
     frontend.check("game/Gui/Modules/B");
 
-    ModulePtr bModule = frontend.moduleResolver.modules["game/Gui/Modules/B"];
+    ModulePtr bModule = frontend.moduleResolver.getModule("game/Gui/Modules/B");
     REQUIRE(bModule != nullptr);
     CHECK(bModule->errors.empty());
     Luau::dumpErrors(bModule);
@@ -240,13 +240,13 @@ TEST_CASE_FIXTURE(FrontendFixture, "nocheck_modules_are_typed")
     CheckResult result = frontend.check("game/Gui/Modules/C");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    ModulePtr aModule = frontend.moduleResolver.modules["game/Gui/Modules/A"];
+    ModulePtr aModule = frontend.moduleResolver.getModule("game/Gui/Modules/A");
     REQUIRE(bool(aModule));
 
     std::optional<TypeId> aExports = first(aModule->returnType);
     REQUIRE(bool(aExports));
 
-    ModulePtr bModule = frontend.moduleResolver.modules["game/Gui/Modules/B"];
+    ModulePtr bModule = frontend.moduleResolver.getModule("game/Gui/Modules/B");
     REQUIRE(bool(bModule));
 
     std::optional<TypeId> bExports = first(bModule->returnType);
@@ -297,7 +297,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "nocheck_cycle_used_by_checked")
     CheckResult result = frontend.check("game/Gui/Modules/C");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    ModulePtr cModule = frontend.moduleResolver.modules["game/Gui/Modules/C"];
+    ModulePtr cModule = frontend.moduleResolver.getModule("game/Gui/Modules/C");
     REQUIRE(bool(cModule));
 
     std::optional<TypeId> cExports = first(cModule->returnType);
@@ -486,7 +486,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "dont_recheck_script_that_hasnt_been_marked_d
 
     frontend.check("game/Gui/Modules/B");
 
-    ModulePtr bModule = frontend.moduleResolver.modules["game/Gui/Modules/B"];
+    ModulePtr bModule = frontend.moduleResolver.getModule("game/Gui/Modules/B");
     CHECK(bModule->errors.empty());
     Luau::dumpErrors(bModule);
 }
@@ -507,7 +507,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "recheck_if_dependent_script_is_dirty")
 
     frontend.check("game/Gui/Modules/B");
 
-    ModulePtr bModule = frontend.moduleResolver.modules["game/Gui/Modules/B"];
+    ModulePtr bModule = frontend.moduleResolver.getModule("game/Gui/Modules/B");
     CHECK(bModule->errors.empty());
     Luau::dumpErrors(bModule);
 

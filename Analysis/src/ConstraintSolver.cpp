@@ -18,6 +18,7 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
+LUAU_FASTFLAG(LuauRequirePathTrueModuleName)
 
 namespace Luau
 {
@@ -1989,7 +1990,7 @@ static TypePackId getErrorType(NotNull<BuiltinTypes> builtinTypes, TypePackId)
 template <typename TID>
 bool ConstraintSolver::tryUnify(NotNull<const Constraint> constraint, TID subTy, TID superTy)
 {
-    Unifier u{normalizer, Mode::Strict, constraint->scope, Location{}, Covariant};
+    Unifier u{normalizer, Mode::Strict, constraint->scope, constraint->location, Covariant};
     u.useScopes = true;
 
     u.tryUnify(subTy, superTy);
@@ -2257,11 +2258,9 @@ TypeId ConstraintSolver::resolveModule(const ModuleInfo& info, const Location& l
         return errorRecoveryType();
     }
 
-    std::string humanReadableName = moduleResolver->getHumanReadableModuleName(info.name);
-
     for (const auto& [location, path] : requireCycles)
     {
-        if (!path.empty() && path.front() == humanReadableName)
+        if (!path.empty() && path.front() == (FFlag::LuauRequirePathTrueModuleName ? info.name : moduleResolver->getHumanReadableModuleName(info.name)))
             return builtinTypes->anyType;
     }
 
@@ -2269,14 +2268,14 @@ TypeId ConstraintSolver::resolveModule(const ModuleInfo& info, const Location& l
     if (!module)
     {
         if (!moduleResolver->moduleExists(info.name) && !info.optional)
-            reportError(UnknownRequire{humanReadableName}, location);
+            reportError(UnknownRequire{moduleResolver->getHumanReadableModuleName(info.name)}, location);
 
         return errorRecoveryType();
     }
 
     if (module->type != SourceCode::Type::Module)
     {
-        reportError(IllegalRequire{humanReadableName, "Module is not a ModuleScript. It cannot be required."}, location);
+        reportError(IllegalRequire{module->humanReadableName, "Module is not a ModuleScript. It cannot be required."}, location);
         return errorRecoveryType();
     }
 
@@ -2287,7 +2286,7 @@ TypeId ConstraintSolver::resolveModule(const ModuleInfo& info, const Location& l
     std::optional<TypeId> moduleType = first(modulePack);
     if (!moduleType)
     {
-        reportError(IllegalRequire{humanReadableName, "Module does not return exactly 1 value. It cannot be required."}, location);
+        reportError(IllegalRequire{module->humanReadableName, "Module does not return exactly 1 value. It cannot be required."}, location);
         return errorRecoveryType();
     }
 

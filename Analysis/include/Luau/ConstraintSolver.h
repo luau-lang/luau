@@ -49,7 +49,7 @@ struct HashInstantiationSignature
 
 struct ConstraintSolver
 {
-    TypeArena* arena;
+    NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtinTypes;
     InternalErrorReporter iceReporter;
     NotNull<Normalizer> normalizer;

@@ -5,6 +5,8 @@
 #include "Luau/IrData.h"
 #include "Luau/IrRegAllocX64.h"
 
+#include "IrValueLocationTracking.h"
+
 #include <vector>
 
 struct Proto;
@@ -26,6 +28,7 @@ struct IrLoweringX64
     IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, NativeState& data, IrFunction& function);
 
     void lowerInst(IrInst& inst, uint32_t index, IrBlock& next);
+    void finishBlock();
 
     bool hasError() const;
 
@@ -36,6 +39,7 @@ struct IrLoweringX64
 
     // Operand data lookup helpers
     OperandX64 memRegDoubleOp(IrOp op);
+    OperandX64 memRegUintOp(IrOp op);
     OperandX64 memRegTagOp(IrOp op);
     RegisterX64 regOp(IrOp op);
 
@@ -56,6 +60,8 @@ struct IrLoweringX64
     IrFunction& function;
 
     IrRegAllocX64 regs;
+
+    IrValueLocationTracking valueTracker;
 };
 
 } // namespace X64

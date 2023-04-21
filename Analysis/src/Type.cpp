@@ -26,6 +26,7 @@ LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
+LUAU_FASTFLAGVARIABLE(LuauBoundLazyTypes, false)
 
 namespace Luau
 {
@@ -56,18 +57,51 @@ TypeId follow(TypeId t)
 TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
 {
     auto advance = [&mapper](TypeId ty) -> std::optional<TypeId> {
-        if (auto btv = get<Unifiable::Bound<TypeId>>(mapper(ty)))
-            return btv->boundTo;
-        else if (auto ttv = get<TableType>(mapper(ty)))
-            return ttv->boundTo;
-        else
+        if (FFlag::LuauBoundLazyTypes)
+        {
+            TypeId mapped = mapper(ty);
+
+            if (auto btv = get<Unifiable::Bound<TypeId>>(mapped))
+                return btv->boundTo;
+
+            if (auto ttv = get<TableType>(mapped))
+                return ttv->boundTo;
+
+            if (auto ltv = getMutable<LazyType>(mapped))
+            {
+                TypeId unwrapped = ltv->unwrapped.load();
+
+                if (unwrapped)
+                    return unwrapped;
+
+                unwrapped = ltv->unwrap(*ltv);
+
+                if (!unwrapped)
+                    throw InternalCompilerError("Lazy Type didn't fill in unwrapped type field");
+
+                if (get<LazyType>(unwrapped))
+                    throw InternalCompilerError("Lazy Type cannot resolve to another Lazy Type");
+
+                return unwrapped;
+            }
+
             return std::nullopt;
+        }
+        else
+        {
+            if (auto btv = get<Unifiable::Bound<TypeId>>(mapper(ty)))
+                return btv->boundTo;
+            else if (auto ttv = get<TableType>(mapper(ty)))
+                return ttv->boundTo;
+            else
+                return std::nullopt;
+        }
     };
 
     auto force = [&mapper](TypeId ty) {
         if (auto ltv = get_if<LazyType>(&mapper(ty)->ty))
         {
-            TypeId res = ltv->thunk();
+            TypeId res = ltv->thunk_DEPRECATED();
             if (get<LazyType>(res))
                 throw InternalCompilerError("Lazy Type cannot resolve to another Lazy Type");
 
@@ -75,7 +109,8 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
         }
     };
 
-    force(t);
+    if (!FFlag::LuauBoundLazyTypes)
+        force(t);
 
     TypeId cycleTester = t; // Null once we've determined that there is no cycle
     if (auto a = advance(cycleTester))
@@ -85,7 +120,9 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
 
     while (true)
     {
-        force(t);
+        if (!FFlag::LuauBoundLazyTypes)
+            force(t);
+
         auto a1 = advance(t);
         if (a1)
             t = *a1;

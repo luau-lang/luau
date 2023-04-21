@@ -468,8 +468,7 @@ void IrBuilder::clone(const IrBlock& source, bool removeCurrentTerminator)
         IrInst clone = function.instructions[index];
 
         // Skip pseudo instructions to make clone more compact, but validate that they have no users
-        // But if substitution tracks a location, that tracking has to be preserved
-        if (isPseudo(clone.cmd) && !(clone.cmd == IrCmd::SUBSTITUTE && clone.b.kind != IrOpKind::None))
+        if (isPseudo(clone.cmd))
         {
             LUAU_ASSERT(clone.useCount == 0);
             continue;

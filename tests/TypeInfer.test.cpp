@@ -268,10 +268,7 @@ TEST_CASE_FIXTURE(Fixture, "should_be_able_to_infer_this_without_stack_overflowi
     )");
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-    {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK(get<NormalizationTooComplex>(result.errors[0]));
-    }
     else
         LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1056,7 +1053,11 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    validateErrors(result.errors);
+    REQUIRE_MESSAGE(!result.errors.empty(), getErrors(result));
+
+    CHECK(1 == result.errors.size());
+    CHECK(Location{{3, 12}, {3, 46}} == result.errors[0].location);
     CHECK_EQ("Internal error: Code is too complex to typecheck! Consider adding type annotations around this area", toString(result.errors[0]));
 }
 

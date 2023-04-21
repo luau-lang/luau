@@ -369,7 +369,11 @@ type B = A
     auto mod = frontend.moduleResolver.getModule("Module/A");
     auto it = mod->exportedTypeBindings.find("A");
     REQUIRE(it != mod->exportedTypeBindings.end());
-    CHECK(toString(it->second.type) == "*error-type*");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(toString(it->second.type) == "any");
+    else
+        CHECK(toString(it->second.type) == "*error-type*");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_reexports")
