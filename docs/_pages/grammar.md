@@ -33,19 +33,19 @@ parlist = bindinglist [',' '...'] | '...'
 explist = {exp ','} exp
 namelist = NAME {',' NAME}
 
-binding = NAME [':' TypeAnnotation]
+binding = NAME [':' Type]
 bindinglist = binding [',' bindinglist] (* equivalent of Lua 5.1 'namelist', except with optional type annotations *)
 
-var = NAME | prefixexp '[' exp ']' | prefixexp '.' Name
+var = NAME | prefixexp '[' exp ']' | prefixexp '.' NAME
 varlist = var {',' var}
 prefixexp = var | functioncall | '(' exp ')'
 functioncall = prefixexp funcargs | prefixexp ':' NAME funcargs
 
-exp = (asexp | unop exp) { binop exp }
+exp = asexp { binop exp } | unop exp { binop exp }
 ifelseexp = 'if' exp 'then' exp {'elseif' exp 'then' exp} 'else' exp
 asexp = simpleexp ['::' Type]
 stringinterp = INTERP_BEGIN exp { INTERP_MID exp } INTERP_END
-simpleexp = NUMBER | STRING | 'nil' | 'true' | 'false' | '...' | tableconstructor | 'function' body | prefixexp | ifelseexp | stringinterp
+simpleexp = NUMBER | STRING | 'nil' | 'true' | 'false' | '...' | tableconstructor | 'function' funcbody | prefixexp | ifelseexp | stringinterp
 funcargs =  '(' [explist] ')' | tableconstructor | STRING
 
 tableconstructor = '{' [fieldlist] '}'
@@ -85,5 +85,5 @@ TableProp = NAME ':' Type
 TablePropOrIndexer = TableProp | TableIndexer
 PropList = TablePropOrIndexer {fieldsep TablePropOrIndexer} [fieldsep]
 TableType = '{' PropList '}'
-FunctionType = ['<' GenericTypeList '>'] '(' [TypeList] ')' '->' ReturnType
+FunctionType = ['<' GenericTypeParameterList '>'] '(' [TypeList] ')' '->' ReturnType
 ```
