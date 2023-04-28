@@ -282,7 +282,7 @@ void AssemblyBuilderA64::ror(RegisterA64 dst, RegisterA64 src1, uint8_t src2)
 
 void AssemblyBuilderA64::ldr(RegisterA64 dst, AddressA64 src)
 {
-    LUAU_ASSERT(dst.kind == KindA64::x || dst.kind == KindA64::w || dst.kind == KindA64::d || dst.kind == KindA64::q);
+    LUAU_ASSERT(dst.kind == KindA64::x || dst.kind == KindA64::w || dst.kind == KindA64::s || dst.kind == KindA64::d || dst.kind == KindA64::q);
 
     switch (dst.kind)
     {
@@ -291,6 +291,9 @@ void AssemblyBuilderA64::ldr(RegisterA64 dst, AddressA64 src)
         break;
     case KindA64::x:
         placeA("ldr", dst, src, 0b11100001, 0b11, /* sizelog= */ 3);
+        break;
+    case KindA64::s:
+        placeA("ldr", dst, src, 0b11110001, 0b10, /* sizelog= */ 2);
         break;
     case KindA64::d:
         placeA("ldr", dst, src, 0b11110001, 0b11, /* sizelog= */ 3);
@@ -348,7 +351,7 @@ void AssemblyBuilderA64::ldp(RegisterA64 dst1, RegisterA64 dst2, AddressA64 src)
 
 void AssemblyBuilderA64::str(RegisterA64 src, AddressA64 dst)
 {
-    LUAU_ASSERT(src.kind == KindA64::x || src.kind == KindA64::w || src.kind == KindA64::d || src.kind == KindA64::q);
+    LUAU_ASSERT(src.kind == KindA64::x || src.kind == KindA64::w || src.kind == KindA64::s || src.kind == KindA64::d || src.kind == KindA64::q);
 
     switch (src.kind)
     {
@@ -357,6 +360,9 @@ void AssemblyBuilderA64::str(RegisterA64 src, AddressA64 dst)
         break;
     case KindA64::x:
         placeA("str", src, dst, 0b11100000, 0b11, /* sizelog= */ 3);
+        break;
+    case KindA64::s:
+        placeA("str", src, dst, 0b11110000, 0b10, /* sizelog= */ 2);
         break;
     case KindA64::d:
         placeA("str", src, dst, 0b11110000, 0b11, /* sizelog= */ 3);
@@ -568,6 +574,16 @@ void AssemblyBuilderA64::frintp(RegisterA64 dst, RegisterA64 src)
     LUAU_ASSERT(dst.kind == KindA64::d && src.kind == KindA64::d);
 
     placeR1("frintp", dst, src, 0b000'11110'01'1'001'001'10000);
+}
+
+void AssemblyBuilderA64::fcvt(RegisterA64 dst, RegisterA64 src)
+{
+    if (dst.kind == KindA64::s && src.kind == KindA64::d)
+        placeR1("fcvt", dst, src, 0b11110'01'1'0001'00'10000);
+    else if (dst.kind == KindA64::d && src.kind == KindA64::s)
+        placeR1("fcvt", dst, src, 0b11110'00'1'0001'01'10000);
+    else
+        LUAU_ASSERT(!"Unexpected register kind");
 }
 
 void AssemblyBuilderA64::fcvtzs(RegisterA64 dst, RegisterA64 src)
@@ -1227,6 +1243,10 @@ void AssemblyBuilderA64::log(RegisterA64 reg)
             text.append("xzr");
         else
             logAppend("x%d", reg.index);
+        break;
+
+    case KindA64::s:
+        logAppend("s%d", reg.index);
         break;
 
     case KindA64::d:

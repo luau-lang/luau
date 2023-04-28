@@ -18,24 +18,10 @@ namespace CodeGen
 namespace X64
 {
 
-void emitBuiltinMathLog(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
-{
-    regs.assertAllFree();
-    build.vmovsd(xmm0, luauRegValue(arg));
-
-    // TODO: IR builtin lowering assumes that the only valid 2-argument call is log2; ideally, we use a less hacky way to indicate that
-    if (nparams == 2)
-        build.call(qword[rNativeContext + offsetof(NativeContext, libm_log2)]);
-    else
-        build.call(qword[rNativeContext + offsetof(NativeContext, libm_log)]);
-
-    build.vmovsd(luauRegValue(ra), xmm0);
-}
-
-void emitBuiltinMathLdexp(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
+static void emitBuiltinMathLdexp(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int arg, OperandX64 arg2)
 {
     ScopedRegX64 tmp{regs, SizeX64::qword};
-    build.vcvttsd2si(tmp.reg, qword[args + offsetof(TValue, value)]);
+    build.vcvttsd2si(tmp.reg, arg2);
 
     IrCallWrapperX64 callWrap(regs, build);
     callWrap.addArgument(SizeX64::xmmword, luauRegValue(arg));
@@ -45,7 +31,7 @@ void emitBuiltinMathLdexp(IrRegAllocX64& regs, AssemblyBuilderX64& build, int np
     build.vmovsd(luauRegValue(ra), xmm0);
 }
 
-void emitBuiltinMathFrexp(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
+static void emitBuiltinMathFrexp(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int arg, int nresults)
 {
     IrCallWrapperX64 callWrap(regs, build);
     callWrap.addArgument(SizeX64::xmmword, luauRegValue(arg));
@@ -61,7 +47,7 @@ void emitBuiltinMathFrexp(IrRegAllocX64& regs, AssemblyBuilderX64& build, int np
     }
 }
 
-void emitBuiltinMathModf(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
+static void emitBuiltinMathModf(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int arg, int nresults)
 {
     IrCallWrapperX64 callWrap(regs, build);
     callWrap.addArgument(SizeX64::xmmword, luauRegValue(arg));
@@ -75,7 +61,7 @@ void emitBuiltinMathModf(IrRegAllocX64& regs, AssemblyBuilderX64& build, int npa
         build.vmovsd(luauRegValue(ra + 1), xmm0);
 }
 
-void emitBuiltinMathSign(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
+static void emitBuiltinMathSign(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int arg)
 {
     ScopedRegX64 tmp0{regs, SizeX64::xmmword};
     ScopedRegX64 tmp1{regs, SizeX64::xmmword};
@@ -102,7 +88,7 @@ void emitBuiltinMathSign(IrRegAllocX64& regs, AssemblyBuilderX64& build, int npa
     build.vmovsd(luauRegValue(ra), tmp0.reg);
 }
 
-void emitBuiltinType(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
+static void emitBuiltinType(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int arg)
 {
     ScopedRegX64 tmp0{regs, SizeX64::qword};
     ScopedRegX64 tag{regs, SizeX64::dword};
@@ -115,7 +101,7 @@ void emitBuiltinType(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams
     build.mov(luauRegValue(ra), tmp0.reg);
 }
 
-void emitBuiltinTypeof(IrRegAllocX64& regs, AssemblyBuilderX64& build, int nparams, int ra, int arg, OperandX64 args, int nresults)
+static void emitBuiltinTypeof(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int arg)
 {
     IrCallWrapperX64 callWrap(regs, build);
     callWrap.addArgument(SizeX64::qword, rState);
@@ -125,38 +111,28 @@ void emitBuiltinTypeof(IrRegAllocX64& regs, AssemblyBuilderX64& build, int npara
     build.mov(luauRegValue(ra), rax);
 }
 
-void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int ra, int arg, IrOp args, int nparams, int nresults)
+void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int ra, int arg, OperandX64 arg2, int nparams, int nresults)
 {
-    OperandX64 argsOp = 0;
-
-    if (args.kind == IrOpKind::VmReg)
-        argsOp = luauRegAddress(vmRegOp(args));
-    else if (args.kind == IrOpKind::VmConst)
-        argsOp = luauConstantAddress(vmConstOp(args));
-
     switch (bfid)
     {
-    case LBF_MATH_LOG:
-        LUAU_ASSERT((nparams == 1 || nparams == 2) && nresults == 1);
-        return emitBuiltinMathLog(regs, build, nparams, ra, arg, argsOp, nresults);
     case LBF_MATH_LDEXP:
         LUAU_ASSERT(nparams == 2 && nresults == 1);
-        return emitBuiltinMathLdexp(regs, build, nparams, ra, arg, argsOp, nresults);
+        return emitBuiltinMathLdexp(regs, build, ra, arg, arg2);
     case LBF_MATH_FREXP:
         LUAU_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
-        return emitBuiltinMathFrexp(regs, build, nparams, ra, arg, argsOp, nresults);
+        return emitBuiltinMathFrexp(regs, build, ra, arg, nresults);
     case LBF_MATH_MODF:
         LUAU_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
-        return emitBuiltinMathModf(regs, build, nparams, ra, arg, argsOp, nresults);
+        return emitBuiltinMathModf(regs, build, ra, arg, nresults);
     case LBF_MATH_SIGN:
         LUAU_ASSERT(nparams == 1 && nresults == 1);
-        return emitBuiltinMathSign(regs, build, nparams, ra, arg, argsOp, nresults);
+        return emitBuiltinMathSign(regs, build, ra, arg);
     case LBF_TYPE:
         LUAU_ASSERT(nparams == 1 && nresults == 1);
-        return emitBuiltinType(regs, build, nparams, ra, arg, argsOp, nresults);
+        return emitBuiltinType(regs, build, ra, arg);
     case LBF_TYPEOF:
         LUAU_ASSERT(nparams == 1 && nresults == 1);
-        return emitBuiltinTypeof(regs, build, nparams, ra, arg, argsOp, nresults);
+        return emitBuiltinTypeof(regs, build, ra, arg);
     default:
         LUAU_ASSERT(!"Missing x64 lowering");
         break;

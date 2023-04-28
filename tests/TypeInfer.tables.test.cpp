@@ -31,15 +31,15 @@ TEST_CASE_FIXTURE(Fixture, "basic")
 
     std::optional<Property> fooProp = get(tType->props, "foo");
     REQUIRE(bool(fooProp));
-    CHECK_EQ(PrimitiveType::String, getPrimitiveType(fooProp->type));
+    CHECK_EQ(PrimitiveType::String, getPrimitiveType(fooProp->type()));
 
     std::optional<Property> bazProp = get(tType->props, "baz");
     REQUIRE(bool(bazProp));
-    CHECK_EQ(PrimitiveType::Number, getPrimitiveType(bazProp->type));
+    CHECK_EQ(PrimitiveType::Number, getPrimitiveType(bazProp->type()));
 
     std::optional<Property> quuxProp = get(tType->props, "quux");
     REQUIRE(bool(quuxProp));
-    CHECK_EQ(PrimitiveType::NilType, getPrimitiveType(quuxProp->type));
+    CHECK_EQ(PrimitiveType::NilType, getPrimitiveType(quuxProp->type()));
 }
 
 TEST_CASE_FIXTURE(Fixture, "augment_table")
@@ -65,7 +65,7 @@ TEST_CASE_FIXTURE(Fixture, "augment_nested_table")
     REQUIRE(tType != nullptr);
 
     REQUIRE(tType->props.find("p") != tType->props.end());
-    const TableType* pType = get<TableType>(tType->props["p"].type);
+    const TableType* pType = get<TableType>(tType->props["p"].type());
     REQUIRE(pType != nullptr);
 
     CHECK("{ p: { foo: string } }" == toString(requireType("t"), {true}));
@@ -159,7 +159,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_member_function")
     std::optional<Property> fooProp = get(tableType->props, "foo");
     REQUIRE(bool(fooProp));
 
-    const FunctionType* methodType = get<FunctionType>(follow(fooProp->type));
+    const FunctionType* methodType = get<FunctionType>(follow(fooProp->type()));
     REQUIRE(methodType != nullptr);
 }
 
@@ -173,7 +173,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_member_function_2")
 
     std::optional<Property> uProp = get(tableType->props, "U");
     REQUIRE(bool(uProp));
-    TypeId uType = uProp->type;
+    TypeId uType = uProp->type();
 
     const TableType* uTable = get<TableType>(uType);
     REQUIRE(uTable != nullptr);
@@ -181,7 +181,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_member_function_2")
     std::optional<Property> fooProp = get(uTable->props, "foo");
     REQUIRE(bool(fooProp));
 
-    const FunctionType* methodType = get<FunctionType>(follow(fooProp->type));
+    const FunctionType* methodType = get<FunctionType>(follow(fooProp->type()));
     REQUIRE(methodType != nullptr);
 
     std::vector<TypeId> methodArgs = flatten(methodType->argTypes).first;
@@ -935,7 +935,7 @@ TEST_CASE_FIXTURE(Fixture, "assigning_to_an_unsealed_table_with_string_literal_s
     REQUIRE(tableType->indexer == std::nullopt);
     REQUIRE(0 != tableType->props.count("a"));
 
-    TypeId propertyA = tableType->props["a"].type;
+    TypeId propertyA = tableType->props["a"].type();
     REQUIRE(propertyA != nullptr);
     CHECK_EQ(*builtinTypes->stringType, *propertyA);
 }
@@ -1925,8 +1925,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "quantifying_a_bound_var_works")
     REQUIRE(ttv);
     REQUIRE(ttv->props.count("new"));
     Property& prop = ttv->props["new"];
-    REQUIRE(prop.type);
-    const FunctionType* ftv = get<FunctionType>(follow(prop.type));
+    REQUIRE(prop.type());
+    const FunctionType* ftv = get<FunctionType>(follow(prop.type()));
     REQUIRE(ftv);
     const TypePack* res = get<TypePack>(follow(ftv->retTypes));
     REQUIRE(res);
@@ -2647,7 +2647,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_quantify_table_that_belongs_to_outer_sc
     REQUIRE(counterType);
 
     REQUIRE(counterType->props.count("new"));
-    const FunctionType* newType = get<FunctionType>(follow(counterType->props["new"].type));
+    const FunctionType* newType = get<FunctionType>(follow(counterType->props["new"].type()));
     REQUIRE(newType);
 
     std::optional<TypeId> newRetType = *first(newType->retTypes);

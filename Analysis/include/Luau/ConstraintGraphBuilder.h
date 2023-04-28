@@ -11,6 +11,7 @@
 #include "Luau/Refinement.h"
 #include "Luau/Symbol.h"
 #include "Luau/Type.h"
+#include "Luau/TypeUtils.h"
 #include "Luau/Variant.h"
 
 #include <memory>
@@ -91,10 +92,14 @@ struct ConstraintGraphBuilder
     const NotNull<InternalErrorReporter> ice;
 
     ScopePtr globalScope;
+
+    std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope;
+
     DcrLogger* logger;
 
     ConstraintGraphBuilder(ModulePtr module, TypeArena* arena, NotNull<ModuleResolver> moduleResolver, NotNull<BuiltinTypes> builtinTypes,
-        NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope, DcrLogger* logger, NotNull<DataFlowGraph> dfg);
+        NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope, std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
+        DcrLogger* logger, NotNull<DataFlowGraph> dfg);
 
     /**
      * Fabricates a new free type belonging to a given scope.
@@ -174,11 +179,12 @@ struct ConstraintGraphBuilder
      *      surrounding context.  Used to implement bidirectional type checking.
      * @return the type of the expression.
      */
-    Inference check(const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType = {}, bool forceSingleton = false);
+    Inference check(const ScopePtr& scope, AstExpr* expr, ValueContext context = ValueContext::RValue, std::optional<TypeId> expectedType = {},
+        bool forceSingleton = false);
 
     Inference check(const ScopePtr& scope, AstExprConstantString* string, std::optional<TypeId> expectedType, bool forceSingleton);
     Inference check(const ScopePtr& scope, AstExprConstantBool* bool_, std::optional<TypeId> expectedType, bool forceSingleton);
-    Inference check(const ScopePtr& scope, AstExprLocal* local);
+    Inference check(const ScopePtr& scope, AstExprLocal* local, ValueContext context);
     Inference check(const ScopePtr& scope, AstExprGlobal* global);
     Inference check(const ScopePtr& scope, AstExprIndexName* indexName);
     Inference check(const ScopePtr& scope, AstExprIndexExpr* indexExpr);

@@ -11,6 +11,7 @@
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 #include "Luau/TypePack.h"
+#include "Luau/TypeUtils.h"
 #include "Luau/Unifier.h"
 #include "Luau/UnifierSharedState.h"
 
@@ -56,12 +57,6 @@ public:
         : InternalCompilerError("Typeinfer failed to complete in allotted time", moduleName)
     {
     }
-};
-
-enum class ValueContext
-{
-    LValue,
-    RValue
 };
 
 struct GlobalTypes

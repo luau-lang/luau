@@ -2,6 +2,7 @@
 
 #include "Fixture.h"
 
+#include "Luau/ToString.h"
 #include "doctest.h"
 #include "Luau/Common.h"
 #include "ScopedFlags.h"
@@ -47,4 +48,32 @@ TEST_CASE_FIXTURE(NegationFixture, "string_is_not_a_subtype_of_negated_string")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "cofinite_strings_can_be_compared_for_equality")
+{
+    CheckResult result = check(R"(
+        function f(e)
+            if e == 'strictEqual' then
+                e = 'strictEqualObject'
+            end
+            if e == 'deepStrictEqual' or e == 'strictEqual' then
+            elseif e == 'notDeepStrictEqual' or e == 'notStrictEqual' then
+            end
+            return e
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("(string) -> string" == toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(NegationFixture, "compare_cofinite_strings")
+{
+    CheckResult result = check(R"(
+local u : Not<"a">
+local v : "b"
+if u == v then
+end
+)");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
 TEST_SUITE_END();

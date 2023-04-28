@@ -1749,4 +1749,36 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_annotations_arent_relevant_when_doing_d
         CHECK_EQ("nil", toString(requireTypeAtPosition({9, 28})));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_call_with_colon_after_refining_not_to_be_nil")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        --!strict
+        export type Observer<T> = {
+            complete: ((self: Observer<T>) -> ())?,
+        }
+
+        local function _f(handler: Observer<any>)
+            assert(handler.complete ~= nil)
+            handler:complete() -- incorrectly gives Value of type '((Observer<any>) -> ())?' could be nil
+            handler.complete(handler) -- works fine, both forms should avoid the error
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "refinements_should_not_affect_assignment")
+{
+    CheckResult result = check(R"(
+        local a: unknown = true
+        if a == true then
+            a = 'not even remotely similar to a boolean'
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <stdint.h>
+#include <string.h>
 
 struct Proto;
 
@@ -17,6 +18,12 @@ namespace Luau
 {
 namespace CodeGen
 {
+
+// IR extensions to LuauBuiltinFunction enum (these only exist inside IR, and start from 256 to avoid collisions)
+enum
+{
+    LBF_IR_MATH_LOG2 = 256,
+};
 
 // IR instruction command.
 // In the command description, following abbreviations are used:
@@ -112,7 +119,7 @@ enum class IrCmd : uint8_t
     ADD_INT,
     SUB_INT,
 
-    // Add/Sub/Mul/Div/Mod/Pow two double numbers
+    // Add/Sub/Mul/Div/Mod two double numbers
     // A, B: double
     // In final x64 lowering, B can also be Rn or Kn
     ADD_NUM,
@@ -120,7 +127,6 @@ enum class IrCmd : uint8_t
     MUL_NUM,
     DIV_NUM,
     MOD_NUM,
-    POW_NUM,
 
     // Get the minimum/maximum of two numbers
     // If one of the values is NaN, 'B' is returned as the result
@@ -192,8 +198,8 @@ enum class IrCmd : uint8_t
     // D: block (if false)
     JUMP_LT_INT,
 
-    // Jump if A >= B
-    // A, B: uint
+    // Jump if unsigned(A) >= unsigned(B)
+    // A, B: int
     // C: condition
     // D: block (if true)
     // E: block (if false)
@@ -543,17 +549,17 @@ enum class IrCmd : uint8_t
     // A: operand of any type
 
     // Performs bitwise and/xor/or on two unsigned integers
-    // A, B: uint
+    // A, B: int
     BITAND_UINT,
     BITXOR_UINT,
     BITOR_UINT,
 
     // Performs bitwise not on an unsigned integer
-    // A: uint
+    // A: int
     BITNOT_UINT,
 
     // Performs bitwise shift/rotate on an unsigned integer
-    // A: uint (source)
+    // A: int (source)
     // B: int (shift amount)
     BITLSHIFT_UINT,
     BITRSHIFT_UINT,
@@ -562,7 +568,7 @@ enum class IrCmd : uint8_t
     BITRROTATE_UINT,
 
     // Returns the number of consecutive zero bits in A starting from the left-most (most significant) bit.
-    // A: uint
+    // A: int
     BITCOUNTLZ_UINT,
     BITCOUNTRZ_UINT,
 
@@ -620,6 +626,8 @@ enum class IrCondition : uint8_t
 enum class IrOpKind : uint32_t
 {
     None,
+
+    Undef,
 
     // To reference a constant value
     Constant,
@@ -709,6 +717,63 @@ struct IrInst
 
 // When IrInst operands are used, current instruction index is often required to track lifetime
 constexpr uint32_t kInvalidInstIdx = ~0u;
+
+struct IrInstHash
+{
+    static const uint32_t m = 0x5bd1e995;
+    static const int r = 24;
+
+    static uint32_t mix(uint32_t h, uint32_t k)
+    {
+        // MurmurHash2 step
+        k *= m;
+        k ^= k >> r;
+        k *= m;
+
+        h *= m;
+        h ^= k;
+
+        return h;
+    }
+
+    static uint32_t mix(uint32_t h, IrOp op)
+    {
+        static_assert(sizeof(op) == sizeof(uint32_t));
+        uint32_t k;
+        memcpy(&k, &op, sizeof(op));
+
+        return mix(h, k);
+    }
+
+    size_t operator()(const IrInst& key) const
+    {
+        // MurmurHash2 unrolled
+        uint32_t h = 25;
+
+        h = mix(h, uint32_t(key.cmd));
+        h = mix(h, key.a);
+        h = mix(h, key.b);
+        h = mix(h, key.c);
+        h = mix(h, key.d);
+        h = mix(h, key.e);
+        h = mix(h, key.f);
+
+        // MurmurHash2 tail
+        h ^= h >> 13;
+        h *= m;
+        h ^= h >> 15;
+
+        return h;
+    }
+};
+
+struct IrInstEq
+{
+    bool operator()(const IrInst& a, const IrInst& b) const
+    {
+        return a.cmd == b.cmd && a.a == b.a && a.b == b.b && a.c == b.c && a.d == b.d && a.e == b.e && a.f == b.f;
+    }
+};
 
 enum class IrBlockKind : uint8_t
 {

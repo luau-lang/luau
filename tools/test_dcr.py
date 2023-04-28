@@ -108,10 +108,10 @@ def main():
         help="Write a new faillist.txt after running tests.",
     )
     parser.add_argument(
-        "--lti",
-        dest="lti",
+        "--rwp",
+        dest="rwp",
         action="store_true",
-        help="Run the tests with local type inference enabled.",
+        help="Run the tests with read-write properties enabled.",
     )
 
     parser.add_argument("--randomize", action="store_true", help="Pick a random seed")
@@ -126,17 +126,17 @@ def main():
 
     args = parser.parse_args()
 
-    if args.write and args.lti:
+    if args.write and args.rwp:
         print_stderr(
-            "Cannot run test_dcr.py with --write *and* --lti. You don't want to commit local type inference faillist.txt yet."
+            "Cannot run test_dcr.py with --write *and* --rwp. You don't want to commit local type inference faillist.txt yet."
         )
         sys.exit(1)
 
     failList = loadFailList()
 
     flags = ["true", "DebugLuauDeferredConstraintResolution"]
-    if args.lti:
-        flags.append("DebugLuauLocalTypeInference")
+    if args.rwp:
+        flags.append("DebugLuauReadWriteProperties")
 
     commandLine = [args.path, "--reporters=xml", "--fflags=" + ",".join(flags)]
 

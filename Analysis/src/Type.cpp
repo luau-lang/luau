@@ -26,7 +26,8 @@ LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
-LUAU_FASTFLAGVARIABLE(LuauBoundLazyTypes, false)
+LUAU_FASTFLAG(DebugLuauReadWriteProperties)
+LUAU_FASTFLAGVARIABLE(LuauBoundLazyTypes2, false)
 
 namespace Luau
 {
@@ -57,7 +58,7 @@ TypeId follow(TypeId t)
 TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
 {
     auto advance = [&mapper](TypeId ty) -> std::optional<TypeId> {
-        if (FFlag::LuauBoundLazyTypes)
+        if (FFlag::LuauBoundLazyTypes2)
         {
             TypeId mapped = mapper(ty);
 
@@ -74,7 +75,8 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
                 if (unwrapped)
                     return unwrapped;
 
-                unwrapped = ltv->unwrap(*ltv);
+                ltv->unwrap(*ltv);
+                unwrapped = ltv->unwrapped.load();
 
                 if (!unwrapped)
                     throw InternalCompilerError("Lazy Type didn't fill in unwrapped type field");
@@ -109,7 +111,7 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
         }
     };
 
-    if (!FFlag::LuauBoundLazyTypes)
+    if (!FFlag::LuauBoundLazyTypes2)
         force(t);
 
     TypeId cycleTester = t; // Null once we've determined that there is no cycle
@@ -120,7 +122,7 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
 
     while (true)
     {
-        if (!FFlag::LuauBoundLazyTypes)
+        if (!FFlag::LuauBoundLazyTypes2)
             force(t);
 
         auto a1 = advance(t);
@@ -622,6 +624,92 @@ FunctionType::FunctionType(TypeLevel level, Scope* scope, std::vector<TypeId> ge
 {
 }
 
+Property::Property() {}
+
+Property::Property(TypeId readTy, bool deprecated, const std::string& deprecatedSuggestion, std::optional<Location> location, const Tags& tags,
+    const std::optional<std::string>& documentationSymbol)
+    : deprecated(deprecated)
+    , deprecatedSuggestion(deprecatedSuggestion)
+    , location(location)
+    , tags(tags)
+    , documentationSymbol(documentationSymbol)
+    , readTy(readTy)
+    , writeTy(readTy)
+{
+    LUAU_ASSERT(!FFlag::DebugLuauReadWriteProperties);
+}
+
+Property Property::readonly(TypeId ty)
+{
+    LUAU_ASSERT(FFlag::DebugLuauReadWriteProperties);
+
+    Property p;
+    p.readTy = ty;
+    return p;
+}
+
+Property Property::writeonly(TypeId ty)
+{
+    LUAU_ASSERT(FFlag::DebugLuauReadWriteProperties);
+
+    Property p;
+    p.writeTy = ty;
+    return p;
+}
+
+Property Property::rw(TypeId ty)
+{
+    return Property::rw(ty, ty);
+}
+
+Property Property::rw(TypeId read, TypeId write)
+{
+    LUAU_ASSERT(FFlag::DebugLuauReadWriteProperties);
+
+    Property p;
+    p.readTy = read;
+    p.writeTy = write;
+    return p;
+}
+
+std::optional<Property> Property::create(std::optional<TypeId> read, std::optional<TypeId> write)
+{
+    if (read && !write)
+        return Property::readonly(*read);
+    else if (!read && write)
+        return Property::writeonly(*write);
+    else if (read && write)
+        return Property::rw(*read, *write);
+    else
+        return std::nullopt;
+}
+
+TypeId Property::type() const
+{
+    LUAU_ASSERT(!FFlag::DebugLuauReadWriteProperties);
+    LUAU_ASSERT(readTy);
+    return *readTy;
+}
+
+void Property::setType(TypeId ty)
+{
+    readTy = ty;
+}
+
+std::optional<TypeId> Property::readType() const
+{
+    LUAU_ASSERT(FFlag::DebugLuauReadWriteProperties);
+    LUAU_ASSERT(!(bool(readTy) && bool(writeTy)));
+    return readTy;
+}
+
+std::optional<TypeId> Property::writeType() const
+{
+    LUAU_ASSERT(FFlag::DebugLuauReadWriteProperties);
+    LUAU_ASSERT(!(bool(readTy) && bool(writeTy)));
+    return writeTy;
+}
+
 TableType::TableType(TableState state, TypeLevel level, Scope* scope)
     : state(state)
     , level(level)
@@ -709,7 +797,7 @@ bool areEqual(SeenSet& seen, const TableType& lhs, const TableType& rhs)
         if (l->first != r->first)
             return false;
 
-        if (!areEqual(seen, *l->second.type, *r->second.type))
+        if (!areEqual(seen, *l->second.type(), *r->second.type()))
             return false;
         ++l;
         ++r;
@@ -1011,7 +1099,7 @@ void persist(TypeId ty)
             LUAU_ASSERT(ttv->state != TableState::Free && ttv->state != TableState::Unsealed);
 
             for (const auto& [_name, prop] : ttv->props)
-                queue.push_back(prop.type);
+                queue.push_back(prop.type());
 
             if (ttv->indexer)
             {
@@ -1022,7 +1110,7 @@ void persist(TypeId ty)
         else if (auto ctv = get<ClassType>(t))
         {
             for (const auto& [_name, prop] : ctv->props)
-                queue.push_back(prop.type);
+                queue.push_back(prop.type());
         }
         else if (auto utv = get<UnionType>(t))
         {

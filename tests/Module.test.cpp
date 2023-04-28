@@ -137,7 +137,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
 
     CHECK_EQ(std::optional<std::string>{"Cyclic"}, ttv->syntheticName);
 
-    TypeId methodType = ttv->props["get"].type;
+    TypeId methodType = ttv->props["get"].type();
     REQUIRE(methodType != nullptr);
 
     const FunctionType* ftv = get<FunctionType>(methodType);
@@ -161,7 +161,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table_2")
 
     TypeId methodTy = src.addType(FunctionType{src.addTypePack({}), src.addTypePack({tableTy})});
 
-    tt->props["get"].type = methodTy;
+    tt->props["get"].setType(methodTy);
 
     TypeArena dest;
 
@@ -170,7 +170,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table_2")
     TableType* ctt = getMutable<TableType>(cloneTy);
     REQUIRE(ctt);
 
-    TypeId clonedMethodType = ctt->props["get"].type;
+    TypeId clonedMethodType = ctt->props["get"].type();
     REQUIRE(clonedMethodType);
 
     const FunctionType* cmf = get<FunctionType>(clonedMethodType);
@@ -199,7 +199,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")
     TableType* exportsTable = getMutable<TableType>(*exports);
     REQUIRE(exportsTable != nullptr);
 
-    TypeId signType = exportsTable->props["sign"].type;
+    TypeId signType = exportsTable->props["sign"].type();
     REQUIRE(signType != nullptr);
 
     CHECK(!isInArena(signType, module->interfaceTypes));
@@ -340,8 +340,8 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
     {
         TableType* ttv = getMutable<TableType>(nested);
 
-        ttv->props["a"].type = src.addType(TableType{});
-        nested = ttv->props["a"].type;
+        ttv->props["a"].setType(src.addType(TableType{}));
+        nested = ttv->props["a"].type();
     }
 
     TypeArena dest;
@@ -411,7 +411,7 @@ return {}
     TypeId typeB = modBiter->second.type;
     TableType* tableB = getMutable<TableType>(typeB);
     REQUIRE(tableB);
-    CHECK(typeA == tableB->props["q"].type);
+    CHECK(typeA == tableB->props["q"].type());
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_types_of_reexported_values")
@@ -447,7 +447,7 @@ return exports
     REQUIRE(typeB);
     TableType* tableA = getMutable<TableType>(*typeA);
     TableType* tableB = getMutable<TableType>(*typeB);
-    CHECK(tableA->props["a"].type == tableB->props["b"].type);
+    CHECK(tableA->props["a"].type() == tableB->props["b"].type());
 }
 
 TEST_SUITE_END();

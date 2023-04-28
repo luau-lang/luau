@@ -831,7 +831,7 @@ void AssemblyBuilderX64::vblendvpd(RegisterX64 dst, RegisterX64 src1, OperandX64
     placeAvx("vblendvpd", dst, src1, mask, src3.index << 4, 0x4b, false, AVX_0F3A, AVX_66);
 }
 
-void AssemblyBuilderX64::finalize()
+bool AssemblyBuilderX64::finalize()
 {
     code.resize(codePos - code.data());
 
@@ -853,6 +853,8 @@ void AssemblyBuilderX64::finalize()
     data.resize(dataSize);
 
     finalized = true;
+
+    return true;
 }
 
 Label AssemblyBuilderX64::setLabel()

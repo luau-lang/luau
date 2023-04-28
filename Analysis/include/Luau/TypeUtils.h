@@ -15,6 +15,12 @@ namespace Luau
 struct TxnLog;
 struct TypeArena;
 
+enum class ValueContext
+{
+    LValue,
+    RValue
+};
+
 using ScopePtr = std::shared_ptr<struct Scope>;
 
 std::optional<TypeId> findMetatableEntry(

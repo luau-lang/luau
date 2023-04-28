@@ -65,7 +65,7 @@ struct IrRegAllocA64
         uint32_t inst;
 
         RegisterA64 origin;
-        uint8_t slot;
+        int8_t slot;
     };
 
     Set& getSet(KindA64 kind);

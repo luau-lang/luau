@@ -5,6 +5,7 @@
 #include "Luau/IrData.h"
 
 #include "IrRegAllocA64.h"
+#include "IrValueLocationTracking.h"
 
 #include <vector>
 
@@ -63,6 +64,8 @@ struct IrLoweringA64
     IrFunction& function;
 
     IrRegAllocA64 regs;
+
+    IrValueLocationTracking valueTracker;
 
     bool error = false;
 };

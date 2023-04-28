@@ -351,7 +351,7 @@ static std::optional<std::pair<Luau::Name, const SingletonType*>> getTableMatchT
     {
         for (auto&& [name, prop] : ttv->props)
         {
-            if (auto sing = get<SingletonType>(follow(prop.type)))
+            if (auto sing = get<SingletonType>(follow(prop.type())))
                 return {{name, sing}};
         }
     }
@@ -2003,7 +2003,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         {
             auto subIter = subTable->props.find(propName);
 
-            if (subIter == subTable->props.end() && subTable->state == TableState::Unsealed && !isOptional(superProp.type))
+            if (subIter == subTable->props.end() && subTable->state == TableState::Unsealed && !isOptional(superProp.type()))
                 missingProperties.push_back(propName);
         }
 
@@ -2044,7 +2044,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
             variance = Invariant;
 
             Unifier innerState = makeChildUnifier();
-            innerState.tryUnify_(r->second.type, prop.type);
+            innerState.tryUnify_(r->second.type(), prop.type());
 
             checkChildUnifierTypeMismatch(innerState.errors, name, superTy, subTy);
 
@@ -2060,7 +2060,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
             variance = Invariant;
 
             Unifier innerState = makeChildUnifier();
-            innerState.tryUnify_(subTable->indexer->indexResultType, prop.type);
+            innerState.tryUnify_(subTable->indexer->indexResultType, prop.type());
 
             checkChildUnifierTypeMismatch(innerState.errors, name, superTy, subTy);
 
@@ -2068,7 +2068,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
                 log.concat(std::move(innerState.log));
             failure |= innerState.failure;
         }
-        else if (subTable->state == TableState::Unsealed && isOptional(prop.type))
+        else if (subTable->state == TableState::Unsealed && isOptional(prop.type()))
         // This is sound because unsealed table types are precise, so `{ p : T } <: { p : T, q : U? }`
         // since if `t : { p : T }` then we are guaranteed that `t.q` is `nil`.
         // TODO: if the supertype is written to, the subtype may no longer be precise (alias analysis?)
@@ -2123,7 +2123,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
             variance = Invariant;
 
             Unifier innerState = makeChildUnifier();
-            innerState.tryUnify_(superTable->indexer->indexResultType, prop.type);
+            innerState.tryUnify_(superTable->indexer->indexResultType, prop.type());
 
             checkChildUnifierTypeMismatch(innerState.errors, name, superTy, subTy);
 
@@ -2137,7 +2137,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
             // TODO: file a JIRA
             // TODO: hopefully readonly/writeonly properties will fix this.
             Property clone = prop;
-            clone.type = deeplyOptional(clone.type);
+            clone.setType(deeplyOptional(clone.type()));
 
             PendingType* pendingSuper = log.queue(superTy);
             TableType* pendingSuperTtv = getMutable<TableType>(pendingSuper);
@@ -2297,7 +2297,7 @@ void Unifier::tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed)
 
         if (auto it = mttv->props.find("__index"); it != mttv->props.end())
         {
-            TypeId ty = it->second.type;
+            TypeId ty = it->second.type();
             Unifier child = makeChildUnifier();
             child.tryUnify_(ty, superTy);
 
@@ -2349,7 +2349,7 @@ TypeId Unifier::deeplyOptional(TypeId ty, std::unordered_map<TypeId, TypeId> see
         result = types->addType(*ttv);
         TableType* resultTtv = getMutable<TableType>(result);
         for (auto& [name, prop] : resultTtv->props)
-            prop.type = deeplyOptional(prop.type, seen);
+            prop.setType(deeplyOptional(prop.type(), seen));
         return types->addType(UnionType{{builtinTypes->nilType, result}});
     }
     else
@@ -2394,7 +2394,7 @@ void Unifier::tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed)
                 {
                     if (std::optional<TypeId> mtPropTy = findTablePropertyRespectingMeta(superTy, propName))
                     {
-                        innerState.tryUnify(prop.type, *mtPropTy);
+                        innerState.tryUnify(prop.type(), *mtPropTy);
                     }
                     else
                     {
@@ -2505,7 +2505,7 @@ void Unifier::tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed)
             else
             {
                 Unifier innerState = makeChildUnifier();
-                innerState.tryUnify_(classProp->type, prop.type);
+                innerState.tryUnify_(classProp->type(), prop.type());
 
                 checkChildUnifierTypeMismatch(innerState.errors, propName, reversed ? subTy : superTy, reversed ? superTy : subTy);
 
@@ -2674,7 +2674,7 @@ static void tryUnifyWithAny(std::vector<TypeId>& queue, Unifier& state, DenseHas
         else if (auto table = state.log.getMutable<TableType>(ty))
         {
             for (const auto& [_name, prop] : table->props)
-                queue.push_back(prop.type);
+                queue.push_back(prop.type());
 
             if (table->indexer)
             {

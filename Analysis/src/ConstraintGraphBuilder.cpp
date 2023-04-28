@@ -134,8 +134,8 @@ void forEachConstraint(const Checkpoint& start, const Checkpoint& end, const Con
 } // namespace
 
 ConstraintGraphBuilder::ConstraintGraphBuilder(ModulePtr module, TypeArena* arena, NotNull<ModuleResolver> moduleResolver,
-    NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope, DcrLogger* logger,
-    NotNull<DataFlowGraph> dfg)
+    NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope,
+    std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope, DcrLogger* logger, NotNull<DataFlowGraph> dfg)
     : module(module)
     , builtinTypes(builtinTypes)
     , arena(arena)
@@ -144,6 +144,7 @@ ConstraintGraphBuilder::ConstraintGraphBuilder(ModulePtr module, TypeArena* aren
     , moduleResolver(moduleResolver)
     , ice(ice)
     , globalScope(globalScope)
+    , prepareModuleScope(std::move(prepareModuleScope))
     , logger(logger)
 {
     LUAU_ASSERT(module);
@@ -510,7 +511,7 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* l
             if (hasAnnotation)
                 expectedType = varTypes.at(i);
 
-            TypeId exprType = check(scope, value, expectedType).ty;
+            TypeId exprType = check(scope, value, ValueContext::RValue, expectedType).ty;
             if (i < varTypes.size())
             {
                 if (varTypes[i])
@@ -898,7 +899,7 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatCompound
 
 ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatIf* ifStatement)
 {
-    RefinementId refinement = check(scope, ifStatement->condition, std::nullopt).refinement;
+    RefinementId refinement = check(scope, ifStatement->condition, ValueContext::RValue, std::nullopt).refinement;
 
     ScopePtr thenScope = childScope(ifStatement->thenbody, scope);
     applyRefinements(thenScope, ifStatement->condition->location, refinement);
@@ -1081,7 +1082,7 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareC
         }
         else
         {
-            TypeId currentTy = assignToMetatable ? metatable->props[propName].type : ctv->props[propName].type;
+            TypeId currentTy = assignToMetatable ? metatable->props[propName].type() : ctv->props[propName].type();
 
             // We special-case this logic to keep the intersection flat; otherwise we
             // would create a ton of nested intersection types.
@@ -1182,7 +1183,7 @@ InferencePack ConstraintGraphBuilder::checkPack(
             std::optional<TypeId> expectedType;
             if (i < expectedTypes.size())
                 expectedType = expectedTypes[i];
-            head.push_back(check(scope, expr, expectedType).ty);
+            head.push_back(check(scope, expr, ValueContext::RValue, expectedType).ty);
         }
         else
         {
@@ -1225,7 +1226,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* 
         std::optional<TypeId> expectedType;
         if (!expectedTypes.empty())
             expectedType = expectedTypes[0];
-        TypeId t = check(scope, expr, expectedType).ty;
+        TypeId t = check(scope, expr, ValueContext::RValue, expectedType).ty;
         result = InferencePack{arena->addTypePack({t})};
     }
 
@@ -1332,7 +1333,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
         }
         else if (i < exprArgs.size() - 1 || !(arg->is<AstExprCall>() || arg->is<AstExprVarargs>()))
         {
-            auto [ty, refinement] = check(scope, arg, expectedType);
+            auto [ty, refinement] = check(scope, arg, ValueContext::RValue, expectedType);
             args.push_back(ty);
             argumentRefinements.push_back(refinement);
         }
@@ -1434,7 +1435,8 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
     }
 }
 
-Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType, bool forceSingleton)
+Inference ConstraintGraphBuilder::check(
+    const ScopePtr& scope, AstExpr* expr, ValueContext context, std::optional<TypeId> expectedType, bool forceSingleton)
 {
     RecursionCounter counter{&recursionCount};
 
@@ -1447,7 +1449,7 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr, st
     Inference result;
 
     if (auto group = expr->as<AstExprGroup>())
-        result = check(scope, group->expr, expectedType, forceSingleton);
+        result = check(scope, group->expr, ValueContext::RValue, expectedType, forceSingleton);
     else if (auto stringExpr = expr->as<AstExprConstantString>())
         result = check(scope, stringExpr, expectedType, forceSingleton);
     else if (expr->is<AstExprConstantNumber>())
@@ -1457,7 +1459,7 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr, st
     else if (expr->is<AstExprConstantNil>())
         result = Inference{builtinTypes->nilType};
     else if (auto local = expr->as<AstExprLocal>())
-        result = check(scope, local);
+        result = check(scope, local, context);
     else if (auto global = expr->as<AstExprGlobal>())
         result = check(scope, global);
     else if (expr->is<AstExprVarargs>())
@@ -1566,11 +1568,11 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprConstantBo
     return Inference{builtinTypes->booleanType};
 }
 
-Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprLocal* local)
+Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprLocal* local, ValueContext context)
 {
     BreadcrumbId bc = dfg->getBreadcrumb(local);
 
-    if (auto ty = scope->lookup(bc->def))
+    if (auto ty = scope->lookup(bc->def); ty && context == ValueContext::RValue)
         return Inference{*ty, refinementArena.proposition(bc, builtinTypes->truthyType)};
     else if (auto ty = scope->lookup(local->local))
         return Inference{*ty, refinementArena.proposition(bc, builtinTypes->truthyType)};
@@ -1676,18 +1678,18 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIfElse* if
 
     ScopePtr thenScope = childScope(ifElse->trueExpr, scope);
     applyRefinements(thenScope, ifElse->trueExpr->location, refinement);
-    TypeId thenType = check(thenScope, ifElse->trueExpr, expectedType).ty;
+    TypeId thenType = check(thenScope, ifElse->trueExpr, ValueContext::RValue, expectedType).ty;
 
     ScopePtr elseScope = childScope(ifElse->falseExpr, scope);
     applyRefinements(elseScope, ifElse->falseExpr->location, refinementArena.negation(refinement));
-    TypeId elseType = check(elseScope, ifElse->falseExpr, expectedType).ty;
+    TypeId elseType = check(elseScope, ifElse->falseExpr, ValueContext::RValue, expectedType).ty;
 
     return Inference{expectedType ? *expectedType : arena->addType(UnionType{{thenType, elseType}})};
 }
 
 Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert)
 {
-    check(scope, typeAssert->expr, std::nullopt);
+    check(scope, typeAssert->expr, ValueContext::RValue, std::nullopt);
     return Inference{resolveType(scope, typeAssert->annotation, /* inTypeArguments */ false)};
 }
 
@@ -1704,21 +1706,31 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGraphBuilder::checkBinary(
 {
     if (binary->op == AstExprBinary::And)
     {
-        auto [leftType, leftRefinement] = check(scope, binary->left, expectedType);
+        std::optional<TypeId> relaxedExpectedLhs;
+
+        if (expectedType)
+            relaxedExpectedLhs = arena->addType(UnionType{{builtinTypes->falsyType, *expectedType}});
+
+        auto [leftType, leftRefinement] = check(scope, binary->left, ValueContext::RValue, relaxedExpectedLhs);
 
         ScopePtr rightScope = childScope(binary->right, scope);
         applyRefinements(rightScope, binary->right->location, leftRefinement);
-        auto [rightType, rightRefinement] = check(rightScope, binary->right, expectedType);
+        auto [rightType, rightRefinement] = check(rightScope, binary->right, ValueContext::RValue, expectedType);
 
         return {leftType, rightType, refinementArena.conjunction(leftRefinement, rightRefinement)};
     }
     else if (binary->op == AstExprBinary::Or)
     {
-        auto [leftType, leftRefinement] = check(scope, binary->left, expectedType);
+        std::optional<TypeId> relaxedExpectedLhs;
+
+        if (expectedType)
+            relaxedExpectedLhs = arena->addType(UnionType{{builtinTypes->falsyType, *expectedType}});
+
+        auto [leftType, leftRefinement] = check(scope, binary->left, ValueContext::RValue, relaxedExpectedLhs);
 
         ScopePtr rightScope = childScope(binary->right, scope);
         applyRefinements(rightScope, binary->right->location, refinementArena.negation(leftRefinement));
-        auto [rightType, rightRefinement] = check(rightScope, binary->right, expectedType);
+        auto [rightType, rightRefinement] = check(rightScope, binary->right, ValueContext::RValue, expectedType);
 
         return {leftType, rightType, refinementArena.disjunction(leftRefinement, rightRefinement)};
     }
@@ -1774,8 +1786,8 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGraphBuilder::checkBinary(
     }
     else if (binary->op == AstExprBinary::CompareEq || binary->op == AstExprBinary::CompareNe)
     {
-        TypeId leftType = check(scope, binary->left, expectedType, true).ty;
-        TypeId rightType = check(scope, binary->right, expectedType, true).ty;
+        TypeId leftType = check(scope, binary->left, ValueContext::RValue, expectedType, true).ty;
+        TypeId rightType = check(scope, binary->right, ValueContext::RValue, expectedType, true).ty;
 
         RefinementId leftRefinement = nullptr;
         if (auto bc = dfg->getBreadcrumb(binary->left))
@@ -1795,8 +1807,8 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGraphBuilder::checkBinary(
     }
     else
     {
-        TypeId leftType = check(scope, binary->left, expectedType).ty;
-        TypeId rightType = check(scope, binary->right, expectedType).ty;
+        TypeId leftType = check(scope, binary->left, ValueContext::RValue).ty;
+        TypeId rightType = check(scope, binary->right, ValueContext::RValue).ty;
         return {leftType, rightType, nullptr};
     }
 }
@@ -1859,7 +1871,7 @@ TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
         return propType;
     }
     else if (!isIndexNameEquivalent(expr))
-        return check(scope, expr).ty;
+        return check(scope, expr, ValueContext::LValue).ty;
 
     Symbol sym;
     std::vector<std::string> segments;
@@ -1894,11 +1906,11 @@ TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
             }
             else
             {
-                return check(scope, expr).ty;
+                return check(scope, expr, ValueContext::LValue).ty;
             }
         }
         else
-            return check(scope, expr).ty;
+            return check(scope, expr, ValueContext::LValue).ty;
     }
 
     LUAU_ASSERT(!segments.empty());
@@ -1908,7 +1920,7 @@ TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
 
     auto lookupResult = scope->lookupEx(sym);
     if (!lookupResult)
-        return check(scope, expr).ty;
+        return check(scope, expr, ValueContext::LValue).ty;
     const auto [subjectBinding, symbolScope] = std::move(*lookupResult);
     TypeId subjectType = subjectBinding->typeId;
 
@@ -2029,7 +2041,7 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTable* exp
             checkExpectedIndexResultType = pinnedIndexResultType;
         }
 
-        TypeId itemTy = check(scope, item.value, checkExpectedIndexResultType).ty;
+        TypeId itemTy = check(scope, item.value, ValueContext::RValue, checkExpectedIndexResultType).ty;
 
         if (isIndexedResultType && !pinnedIndexResultType)
             pinnedIndexResultType = itemTy;
@@ -2039,7 +2051,7 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTable* exp
             // Even though we don't need to use the type of the item's key if
             // it's a string constant, we still want to check it to populate
             // astTypes.
-            TypeId keyTy = check(scope, item.key, annotatedKeyType).ty;
+            TypeId keyTy = check(scope, item.key, ValueContext::RValue, annotatedKeyType).ty;
 
             if (AstExprConstantString* key = item.key->as<AstExprConstantString>())
             {
@@ -2645,6 +2657,9 @@ struct GlobalPrepopulator : AstVisitor
 void ConstraintGraphBuilder::prepopulateGlobalScope(const ScopePtr& globalScope, AstStatBlock* program)
 {
     GlobalPrepopulator gp{NotNull{globalScope.get()}, arena};
+
+    if (prepareModuleScope)
+        prepareModuleScope(module->name, globalScope);
 
     program->visit(&gp);
 }

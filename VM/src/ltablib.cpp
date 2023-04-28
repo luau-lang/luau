@@ -10,8 +10,6 @@
 #include "ldebug.h"
 #include "lvm.h"
 
-LUAU_FASTFLAGVARIABLE(LuauIntrosort, false)
-
 static int foreachi(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
@@ -389,7 +387,7 @@ static void sort_rec(lua_State* L, Table* t, int l, int u, int limit, SortPredic
     while (l < u)
     {
         // if the limit has been reached, quick sort is going over the permitted nlogn complexity, so we fall back to heap sort
-        if (FFlag::LuauIntrosort && limit == 0)
+        if (limit == 0)
             return sort_heap(L, t, l, u, pred);
 
         // sort elements a[l], a[(l+u)/2] and a[u]
@@ -435,43 +433,20 @@ static void sort_rec(lua_State* L, Table* t, int l, int u, int limit, SortPredic
         // swap pivot a[p] with a[i], which is the new midpoint
         sort_swap(L, t, p, i);
 
-        if (FFlag::LuauIntrosort)
-        {
-            // adjust limit to allow 1.5 log2N recursive steps
-            limit = (limit >> 1) + (limit >> 2);
+        // adjust limit to allow 1.5 log2N recursive steps
+        limit = (limit >> 1) + (limit >> 2);
 
-            // a[l..i-1] <= a[i] == P <= a[i+1..u]
-            // sort smaller half recursively; the larger half is sorted in the next loop iteration
-            if (i - l < u - i)
-            {
-                sort_rec(L, t, l, i - 1, limit, pred);
-                l = i + 1;
-            }
-            else
-            {
-                sort_rec(L, t, i + 1, u, limit, pred);
-                u = i - 1;
-            }
+        // a[l..i-1] <= a[i] == P <= a[i+1..u]
+        // sort smaller half recursively; the larger half is sorted in the next loop iteration
+        if (i - l < u - i)
+        {
+            sort_rec(L, t, l, i - 1, limit, pred);
+            l = i + 1;
         }
         else
         {
-            // a[l..i-1] <= a[i] == P <= a[i+1..u]
-            // adjust so that smaller half is in [j..i] and larger one in [l..u]
-            if (i - l < u - i)
-            {
-                j = l;
-                i = i - 1;
-                l = i + 2;
-            }
-            else
-            {
-                j = i + 1;
-                i = u;
-                u = j - 2;
-            }
-
-            // sort smaller half recursively; the larger half is sorted in the next loop iteration
-            sort_rec(L, t, j, i, limit, pred);
+            sort_rec(L, t, i + 1, u, limit, pred);
+            u = i - 1;
         }
     }
 }

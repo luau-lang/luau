@@ -36,6 +36,8 @@ struct IrBuilder
     // Source block that is cloned cannot use values coming in from a predecessor
     void clone(const IrBlock& source, bool removeCurrentTerminator);
 
+    IrOp undef();
+
     IrOp constBool(bool value);
     IrOp constInt(int value);
     IrOp constUint(unsigned value);

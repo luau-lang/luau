@@ -8,6 +8,7 @@
 
 LUAU_FASTFLAG(DebugLuauCopyBeforeNormalizing)
 LUAU_FASTFLAG(LuauClonePublicInterfaceLess2)
+LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
 
@@ -16,6 +17,40 @@ namespace Luau
 
 namespace
 {
+
+Property clone(const Property& prop, TypeArena& dest, CloneState& cloneState)
+{
+    if (FFlag::DebugLuauReadWriteProperties)
+    {
+        std::optional<TypeId> cloneReadTy;
+        if (auto ty = prop.readType())
+            cloneReadTy = clone(*ty, dest, cloneState);
+
+        std::optional<TypeId> cloneWriteTy;
+        if (auto ty = prop.writeType())
+            cloneWriteTy = clone(*ty, dest, cloneState);
+
+        std::optional<Property> cloned = Property::create(cloneReadTy, cloneWriteTy);
+        LUAU_ASSERT(cloned);
+        cloned->deprecated = prop.deprecated;
+        cloned->deprecatedSuggestion = prop.deprecatedSuggestion;
+        cloned->location = prop.location;
+        cloned->tags = prop.tags;
+        cloned->documentationSymbol = prop.documentationSymbol;
+        return *cloned;
+    }
+    else
+    {
+        return Property{
+            clone(prop.type(), dest, cloneState),
+            prop.deprecated,
+            prop.deprecatedSuggestion,
+            prop.location,
+            prop.tags,
+            prop.documentationSymbol,
+        };
+    }
+}
 
 struct TypePackCloner;
 
@@ -251,7 +286,7 @@ void TypeCloner::operator()(const TableType& t)
         ttv->boundTo = clone(*t.boundTo, dest, cloneState);
 
     for (const auto& [name, prop] : t.props)
-        ttv->props[name] = {clone(prop.type, dest, cloneState), prop.deprecated, {}, prop.location, prop.tags};
+        ttv->props[name] = clone(prop, dest, cloneState);
 
     if (t.indexer)
         ttv->indexer = TableIndexer{clone(t.indexer->indexType, dest, cloneState), clone(t.indexer->indexResultType, dest, cloneState)};
@@ -285,7 +320,7 @@ void TypeCloner::operator()(const ClassType& t)
     seenTypes[typeId] = result;
 
     for (const auto& [name, prop] : t.props)
-        ctv->props[name] = {clone(prop.type, dest, cloneState), prop.deprecated, {}, prop.location, prop.tags};
+        ctv->props[name] = clone(prop, dest, cloneState);
 
     if (t.parent)
         ctv->parent = clone(*t.parent, dest, cloneState);
