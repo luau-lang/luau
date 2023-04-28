@@ -120,8 +120,6 @@ const char* getCmdName(IrCmd cmd)
         return "DIV_NUM";
     case IrCmd::MOD_NUM:
         return "MOD_NUM";
-    case IrCmd::POW_NUM:
-        return "POW_NUM";
     case IrCmd::MIN_NUM:
         return "MIN_NUM";
     case IrCmd::MAX_NUM:
@@ -359,6 +357,9 @@ void toString(IrToStringContext& ctx, IrOp op)
     {
     case IrOpKind::None:
         break;
+    case IrOpKind::Undef:
+        append(ctx.result, "undef");
+        break;
     case IrOpKind::Constant:
         toString(ctx.result, ctx.constants[op.index]);
         break;
@@ -398,7 +399,10 @@ void toString(std::string& result, IrConst constant)
         append(result, "%uu", constant.valueUint);
         break;
     case IrConstKind::Double:
-        append(result, "%.17g", constant.valueDouble);
+        if (constant.valueDouble != constant.valueDouble)
+            append(result, "nan");
+        else
+            append(result, "%.17g", constant.valueDouble);
         break;
     case IrConstKind::Tag:
         result.append(getTagName(constant.valueTag));

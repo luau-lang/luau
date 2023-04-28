@@ -2,9 +2,14 @@
 #include "IrRegAllocA64.h"
 
 #include "Luau/AssemblyBuilderA64.h"
+#include "Luau/IrUtils.h"
 
 #include "BitUtils.h"
 #include "EmitCommonA64.h"
+
+#include <string.h>
+
+LUAU_FASTFLAGVARIABLE(DebugLuauCodegenChaosA64, false)
 
 namespace Luau
 {
@@ -39,6 +44,68 @@ static void freeSpill(uint32_t& free, KindA64 kind, uint8_t slot)
     free |= mask;
 }
 
+static int getReloadOffset(IrCmd cmd)
+{
+    switch (getCmdValueKind(cmd))
+    {
+    case IrValueKind::Unknown:
+    case IrValueKind::None:
+        LUAU_ASSERT(!"Invalid operand restore value kind");
+        break;
+    case IrValueKind::Tag:
+        return offsetof(TValue, tt);
+    case IrValueKind::Int:
+        return offsetof(TValue, value);
+    case IrValueKind::Pointer:
+        return offsetof(TValue, value.gc);
+    case IrValueKind::Double:
+        return offsetof(TValue, value.n);
+    case IrValueKind::Tvalue:
+        return 0;
+    }
+
+    LUAU_ASSERT(!"Invalid operand restore value kind");
+    LUAU_UNREACHABLE();
+}
+
+static AddressA64 getReloadAddress(const IrFunction& function, const IrInst& inst)
+{
+    IrOp location = function.findRestoreOp(inst);
+
+    if (location.kind == IrOpKind::VmReg)
+        return mem(rBase, vmRegOp(location) * sizeof(TValue) + getReloadOffset(inst.cmd));
+
+    // loads are 4/8/16 bytes; we conservatively limit the offset to fit assuming a 4b index
+    if (location.kind == IrOpKind::VmConst && vmConstOp(location) * sizeof(TValue) <= AddressA64::kMaxOffset * 4)
+        return mem(rConstants, vmConstOp(location) * sizeof(TValue) + getReloadOffset(inst.cmd));
+
+    return AddressA64(xzr); // dummy
+}
+
+static void restoreInst(AssemblyBuilderA64& build, uint32_t& freeSpillSlots, IrFunction& function, const IrRegAllocA64::Spill& s, RegisterA64 reg)
+{
+    IrInst& inst = function.instructions[s.inst];
+    LUAU_ASSERT(inst.regA64 == noreg);
+
+    if (s.slot >= 0)
+    {
+        build.ldr(reg, mem(sp, sSpillArea.data + s.slot * 8));
+
+        freeSpill(freeSpillSlots, reg.kind, s.slot);
+    }
+    else
+    {
+        LUAU_ASSERT(!inst.spilled && inst.needsReload);
+        AddressA64 addr = getReloadAddress(function, function.instructions[s.inst]);
+        LUAU_ASSERT(addr.base != xzr);
+        build.ldr(reg, addr);
+    }
+
+    inst.spilled = false;
+    inst.needsReload = false;
+    inst.regA64 = reg;
+}
+
 IrRegAllocA64::IrRegAllocA64(IrFunction& function, std::initializer_list<std::pair<RegisterA64, RegisterA64>> regs)
     : function(function)
 {
@@ -68,11 +135,16 @@ RegisterA64 IrRegAllocA64::allocReg(KindA64 kind, uint32_t index)
 
     if (set.free == 0)
     {
+        // TODO: remember the error and fail lowering
         LUAU_ASSERT(!"Out of registers to allocate");
         return noreg;
     }
 
     int reg = 31 - countlz(set.free);
+
+    if (FFlag::DebugLuauCodegenChaosA64)
+        reg = countrz(set.free); // allocate from low end; this causes extra conflicts for calls
+
     set.free &= ~(1u << reg);
     set.defs[reg] = index;
 
@@ -85,11 +157,15 @@ RegisterA64 IrRegAllocA64::allocTemp(KindA64 kind)
 
     if (set.free == 0)
     {
+        // TODO: remember the error and fail lowering
         LUAU_ASSERT(!"Out of registers to allocate");
         return noreg;
     }
 
     int reg = 31 - countlz(set.free);
+
+    if (FFlag::DebugLuauCodegenChaosA64)
+        reg = countrz(set.free); // allocate from low end; this causes extra conflicts for calls
 
     set.free &= ~(1u << reg);
     set.temp |= 1u << reg;
@@ -107,8 +183,9 @@ RegisterA64 IrRegAllocA64::allocReuse(KindA64 kind, uint32_t index, std::initial
 
         IrInst& source = function.instructions[op.index];
 
-        if (source.lastUse == index && !source.reusedReg && !source.spilled && source.regA64 != noreg)
+        if (source.lastUse == index && !source.reusedReg && source.regA64 != noreg)
         {
+            LUAU_ASSERT(!source.spilled && !source.needsReload);
             LUAU_ASSERT(source.regA64.kind == kind);
 
             Set& set = getSet(kind);
@@ -152,7 +229,7 @@ void IrRegAllocA64::freeLastUseReg(IrInst& target, uint32_t index)
 {
     if (target.lastUse == index && !target.reusedReg)
     {
-        LUAU_ASSERT(!target.spilled);
+        LUAU_ASSERT(!target.spilled && !target.needsReload);
 
         // Register might have already been freed if it had multiple uses inside a single instruction
         if (target.regA64 == noreg)
@@ -195,13 +272,19 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
 
     size_t start = spills.size();
 
-    for (RegisterA64 reg : live)
-    {
-        Set& set = getSet(reg.kind);
+    uint32_t poisongpr = 0;
+    uint32_t poisonsimd = 0;
 
-        // make sure registers that we expect to survive past spill barrier are not allocated
-        // TODO: we need to handle this condition somehow in the future; if this fails, this likely means the caller has an aliasing hazard
-        LUAU_ASSERT(set.free & (1u << reg.index));
+    if (FFlag::DebugLuauCodegenChaosA64)
+    {
+        poisongpr = gpr.base & ~gpr.free;
+        poisonsimd = simd.base & ~simd.free;
+
+        for (RegisterA64 reg : live)
+        {
+            Set& set = getSet(reg.kind);
+            (&set == &simd ? poisonsimd : poisongpr) &= ~(1u << reg.index);
+        }
     }
 
     for (KindA64 kind : sets)
@@ -229,25 +312,37 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
 
             IrInst& def = function.instructions[inst];
             LUAU_ASSERT(def.regA64.index == reg);
-            LUAU_ASSERT(!def.spilled);
             LUAU_ASSERT(!def.reusedReg);
+            LUAU_ASSERT(!def.spilled);
+            LUAU_ASSERT(!def.needsReload);
 
             if (def.lastUse == index)
             {
                 // instead of spilling the register to never reload it, we assume the register is not needed anymore
-                def.regA64 = noreg;
+            }
+            else if (getReloadAddress(function, def).base != xzr)
+            {
+                // instead of spilling the register to stack, we can reload it from VM stack/constants
+                // we still need to record the spill for restore(start) to work
+                Spill s = {inst, def.regA64, -1};
+                spills.push_back(s);
+
+                def.needsReload = true;
             }
             else
             {
                 int slot = allocSpill(freeSpillSlots, def.regA64.kind);
                 LUAU_ASSERT(slot >= 0); // TODO: remember the error and fail lowering
 
-                Spill s = {inst, def.regA64, uint8_t(slot)};
+                build.str(def.regA64, mem(sp, sSpillArea.data + slot * 8));
+
+                Spill s = {inst, def.regA64, int8_t(slot)};
                 spills.push_back(s);
 
                 def.spilled = true;
-                def.regA64 = noreg;
             }
+
+            def.regA64 = noreg;
 
             regs &= ~(1u << reg);
             set.free |= 1u << reg;
@@ -257,11 +352,15 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
         LUAU_ASSERT(set.free == set.base);
     }
 
-    if (start < spills.size())
+    if (FFlag::DebugLuauCodegenChaosA64)
     {
-        // TODO: use stp for consecutive slots
-        for (size_t i = start; i < spills.size(); ++i)
-            build.str(spills[i].origin, mem(sp, sSpillArea.data + spills[i].slot * 8));
+        for (int reg = 0; reg < 32; ++reg)
+        {
+            if (poisongpr & (1u << reg))
+                build.mov(RegisterA64{KindA64::x, uint8_t(reg)}, 0xdead);
+            if (poisonsimd & (1u << reg))
+                build.fmov(RegisterA64{KindA64::d, uint8_t(reg)}, -0.125);
+        }
     }
 
     return start;
@@ -273,22 +372,12 @@ void IrRegAllocA64::restore(AssemblyBuilderA64& build, size_t start)
 
     if (start < spills.size())
     {
-        // TODO: use ldp for consecutive slots
-        for (size_t i = start; i < spills.size(); ++i)
-            build.ldr(spills[i].origin, mem(sp, sSpillArea.data + spills[i].slot * 8));
-
         for (size_t i = start; i < spills.size(); ++i)
         {
             Spill s = spills[i]; // copy in case takeReg reallocates spills
+            RegisterA64 reg = takeReg(s.origin, s.inst);
 
-            IrInst& def = function.instructions[s.inst];
-            LUAU_ASSERT(def.spilled);
-            LUAU_ASSERT(def.regA64 == noreg);
-
-            def.spilled = false;
-            def.regA64 = takeReg(s.origin, s.inst);
-
-            freeSpill(freeSpillSlots, s.origin.kind, s.slot);
+            restoreInst(build, freeSpillSlots, function, s, reg);
         }
 
         spills.resize(start);
@@ -299,9 +388,6 @@ void IrRegAllocA64::restoreReg(AssemblyBuilderA64& build, IrInst& inst)
 {
     uint32_t index = function.getInstIndex(inst);
 
-    LUAU_ASSERT(inst.spilled);
-    LUAU_ASSERT(inst.regA64 == noreg);
-
     for (size_t i = 0; i < spills.size(); ++i)
     {
         if (spills[i].inst == index)
@@ -309,12 +395,7 @@ void IrRegAllocA64::restoreReg(AssemblyBuilderA64& build, IrInst& inst)
             Spill s = spills[i]; // copy in case allocReg reallocates spills
             RegisterA64 reg = allocReg(s.origin.kind, index);
 
-            build.ldr(reg, mem(sp, sSpillArea.data + s.slot * 8));
-
-            inst.spilled = false;
-            inst.regA64 = reg;
-
-            freeSpill(freeSpillSlots, reg.kind, s.slot);
+            restoreInst(build, freeSpillSlots, function, s, reg);
 
             spills[i] = spills.back();
             spills.pop_back();
@@ -338,6 +419,7 @@ IrRegAllocA64::Set& IrRegAllocA64::getSet(KindA64 kind)
     case KindA64::w:
         return gpr;
 
+    case KindA64::s:
     case KindA64::d:
     case KindA64::q:
         return simd;

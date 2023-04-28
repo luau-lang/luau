@@ -79,6 +79,8 @@ public:
     void setDebugLine(int line);
     void pushDebugLocal(StringRef name, uint8_t reg, uint32_t startpc, uint32_t endpc);
     void pushDebugUpval(StringRef name);
+
+    size_t getInstructionCount() const;
     uint32_t getDebugPC() const;
 
     void addDebugRemark(const char* format, ...) LUAU_PRINTF_ATTR(2, 3);

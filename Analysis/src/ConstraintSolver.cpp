@@ -472,16 +472,20 @@ bool ConstraintSolver::tryDispatch(const PackSubtypeConstraint& c, NotNull<const
 
 bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
+    TypeId generalizedType = follow(c.generalizedType);
+
     if (isBlocked(c.sourceType))
         return block(c.sourceType, constraint);
+    else if (get<PendingExpansionType>(generalizedType))
+        return block(generalizedType, constraint);
 
     std::optional<TypeId> generalized = quantify(arena, c.sourceType, constraint->scope);
     if (generalized)
     {
-        if (isBlocked(c.generalizedType))
-            asMutable(c.generalizedType)->ty.emplace<BoundType>(*generalized);
+        if (get<BlockedType>(generalizedType))
+            asMutable(generalizedType)->ty.emplace<BoundType>(*generalized);
         else
-            unify(c.generalizedType, *generalized, constraint->scope);
+            unify(generalizedType, *generalized, constraint->scope);
     }
     else
     {
@@ -505,10 +509,8 @@ bool ConstraintSolver::tryDispatch(const InstantiationConstraint& c, NotNull<con
     std::optional<TypeId> instantiated = inst.substitute(c.superType);
     LUAU_ASSERT(instantiated); // TODO FIXME HANDLE THIS
 
-    if (isBlocked(c.subType))
-        asMutable(c.subType)->ty.emplace<BoundType>(*instantiated);
-    else
-        unify(c.subType, *instantiated, constraint->scope);
+    LUAU_ASSERT(get<BlockedType>(c.subType));
+    asMutable(c.subType)->ty.emplace<BoundType>(*instantiated);
 
     unblock(c.subType);
 
@@ -585,6 +587,8 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     TypeId leftType = follow(c.leftType);
     TypeId rightType = follow(c.rightType);
     TypeId resultType = follow(c.resultType);
+
+    LUAU_ASSERT(get<BlockedType>(resultType));
 
     bool isLogical = c.op == AstExprBinary::Op::And || c.op == AstExprBinary::Op::Or;
 
@@ -979,6 +983,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     }
 
     auto bindResult = [this, &c](TypeId result) {
+        LUAU_ASSERT(get<PendingExpansionType>(c.target));
         asMutable(c.target)->ty.emplace<BoundType>(result);
         unblock(c.target);
     };
@@ -1280,6 +1285,8 @@ bool ConstraintSolver::tryDispatch(const PrimitiveTypeConstraint& c, NotNull<con
     if (isBlocked(expectedType) || get<PendingExpansionType>(expectedType))
         return block(expectedType, constraint);
 
+    LUAU_ASSERT(get<BlockedType>(c.resultType));
+
     TypeId bindTo = maybeSingleton(expectedType) ? c.singletonType : c.multitonType;
     asMutable(c.resultType)->ty.emplace<BoundType>(bindTo);
     unblock(c.resultType);
@@ -1290,6 +1297,8 @@ bool ConstraintSolver::tryDispatch(const PrimitiveTypeConstraint& c, NotNull<con
 bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint)
 {
     TypeId subjectType = follow(c.subjectType);
+
+    LUAU_ASSERT(get<BlockedType>(c.resultType));
 
     if (isBlocked(subjectType) || get<PendingExpansionType>(subjectType))
         return block(subjectType, constraint);
@@ -1351,7 +1360,7 @@ static void updateTheTableType(
             if (it == tbl->props.end())
                 return;
 
-            t = follow(it->second.type);
+            t = follow(it->second.type());
         }
 
         // The last path segment should not be a property of the table at all.
@@ -1388,7 +1397,7 @@ static void updateTheTableType(
     if (!tt)
         return;
 
-    tt->props[lastSegment].type = replaceTy;
+    tt->props[lastSegment].setType(replaceTy);
 }
 
 bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Constraint> constraint, bool force)
@@ -1853,7 +1862,7 @@ std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTa
     else if (auto ttv = getMutable<TableType>(subjectType))
     {
         if (auto prop = ttv->props.find(propName); prop != ttv->props.end())
-            return {{}, prop->second.type};
+            return {{}, prop->second.type()};
         else if (ttv->indexer && maybeString(ttv->indexer->indexType))
             return {{}, ttv->indexer->indexResultType};
         else if (ttv->state == TableState::Free)
@@ -1881,7 +1890,7 @@ std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTa
 
             // TODO: __index can be an overloaded function.
 
-            TypeId indexType = follow(indexProp->second.type);
+            TypeId indexType = follow(indexProp->second.type());
 
             if (auto ft = get<FunctionType>(indexType))
             {
@@ -1902,7 +1911,7 @@ std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTa
     else if (auto ct = get<ClassType>(subjectType))
     {
         if (auto p = lookupClassProp(ct, propName))
-            return {{}, p->type};
+            return {{}, p->type()};
     }
     else if (auto pt = get<PrimitiveType>(subjectType); pt && pt->metatable)
     {
@@ -1913,7 +1922,7 @@ std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTa
         if (indexProp == metatable->props.end())
             return {{}, std::nullopt};
 
-        return lookupTableProp(indexProp->second.type, propName, seen);
+        return lookupTableProp(indexProp->second.type(), propName, seen);
     }
     else if (auto ft = get<FreeType>(subjectType))
     {

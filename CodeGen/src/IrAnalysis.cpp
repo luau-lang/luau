@@ -529,7 +529,8 @@ static void computeCfgLiveInOutRegSets(IrFunction& function)
         RegisterSet& outRs = info.out[blockIdx];
 
         // Current block has to provide all registers in successor blocks
-        for (uint32_t succIdx : successors(info, blockIdx))
+        BlockIteratorWrapper successorsIt = successors(info, blockIdx);
+        for (uint32_t succIdx : successorsIt)
         {
             IrBlock& succ = function.blocks[succIdx];
 
@@ -538,7 +539,11 @@ static void computeCfgLiveInOutRegSets(IrFunction& function)
             // This is because fallback blocks define an alternative implementation of the same operations
             // This can cause the current block to define more registers that actually were available at fallback entry
             if (curr.kind != IrBlockKind::Fallback && succ.kind == IrBlockKind::Fallback)
+            {
+                // If this is the only successor, this skip will not be valid
+                LUAU_ASSERT(successorsIt.size() != 1);
                 continue;
+            }
 
             const RegisterSet& succRs = info.in[succIdx];
 

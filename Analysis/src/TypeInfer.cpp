@@ -1786,7 +1786,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass&
         }
         else
         {
-            TypeId currentTy = assignTo[propName].type;
+            TypeId currentTy = assignTo[propName].type();
 
             // We special-case this logic to keep the intersection flat; otherwise we
             // would create a ton of nested intersection types.
@@ -2076,7 +2076,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
     if (TableType* tableType = getMutableTableType(type))
     {
         if (auto it = tableType->props.find(name); it != tableType->props.end())
-            return it->second.type;
+            return it->second.type();
         else if (auto indexer = tableType->indexer)
         {
             // TODO: Property lookup should work with string singletons or unions thereof as the indexer key type.
@@ -2104,7 +2104,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
     {
         const Property* prop = lookupClassProp(cls, name);
         if (prop)
-            return prop->type;
+            return prop->type();
     }
     else if (const UnionType* utv = get<UnionType>(type))
     {
@@ -2294,9 +2294,9 @@ TypeId TypeChecker::checkExprTable(
                     if (it != expectedTable->props.end())
                     {
                         Property expectedProp = it->second;
-                        ErrorVec errors = tryUnify(exprType, expectedProp.type, scope, k->location);
+                        ErrorVec errors = tryUnify(exprType, expectedProp.type(), scope, k->location);
                         if (errors.empty())
-                            exprType = expectedProp.type;
+                            exprType = expectedProp.type();
                     }
                     else if (expectedTable->indexer && maybeString(expectedTable->indexer->indexType))
                     {
@@ -2390,7 +2390,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
                 if (expectedTable)
                 {
                     if (auto prop = expectedTable->props.find(key->value.data); prop != expectedTable->props.end())
-                        expectedResultType = prop->second.type;
+                        expectedResultType = prop->second.type();
                     else if (expectedIndexType && maybeString(*expectedIndexType))
                         expectedResultType = expectedIndexResultType;
                 }
@@ -2402,7 +2402,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
                         if (const TableType* ttv = get<TableType>(follow(expectedOption)))
                         {
                             if (auto prop = ttv->props.find(key->value.data); prop != ttv->props.end())
-                                expectedResultTypes.push_back(prop->second.type);
+                                expectedResultTypes.push_back(prop->second.type());
                             else if (ttv->indexer && maybeString(ttv->indexer->indexType))
                                 expectedResultTypes.push_back(ttv->indexer->indexResultType);
                         }
@@ -3257,13 +3257,13 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
         const auto& it = lhsTable->props.find(name);
         if (it != lhsTable->props.end())
         {
-            return it->second.type;
+            return it->second.type();
         }
         else if ((ctx == ValueContext::LValue && lhsTable->state == TableState::Unsealed) || lhsTable->state == TableState::Free)
         {
             TypeId theType = freshType(scope);
             Property& property = lhsTable->props[name];
-            property.type = theType;
+            property.setType(theType);
             property.location = expr.indexLocation;
             return theType;
         }
@@ -3303,7 +3303,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
             return errorRecoveryType(scope);
         }
 
-        return prop->type;
+        return prop->type();
     }
     else if (get<IntersectionType>(lhs))
     {
@@ -3351,7 +3351,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
                 reportError(TypeError{expr.location, UnknownProperty{exprType, value->value.data}});
                 return errorRecoveryType(scope);
             }
-            return prop->type;
+            return prop->type();
         }
     }
     else if (FFlag::LuauAllowIndexClassParameters)
@@ -3378,13 +3378,13 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
         const auto& it = exprTable->props.find(value->value.data);
         if (it != exprTable->props.end())
         {
-            return it->second.type;
+            return it->second.type();
         }
         else if ((ctx == ValueContext::LValue && exprTable->state == TableState::Unsealed) || exprTable->state == TableState::Free)
         {
             TypeId resultType = freshType(scope);
             Property& property = exprTable->props[value->value.data];
-            property.type = resultType;
+            property.setType(resultType);
             property.location = expr.index->location;
             return resultType;
         }
@@ -3467,13 +3467,12 @@ TypeId TypeChecker::checkFunctionName(const ScopePtr& scope, AstExpr& funName, T
         Name name = indexName->index.value;
 
         if (ttv->props.count(name))
-            return ttv->props[name].type;
+            return ttv->props[name].type();
 
         Property& property = ttv->props[name];
-
-        property.type = freshTy();
+        property.setType(freshTy());
         property.location = indexName->indexLocation;
-        return property.type;
+        return property.type();
     }
     else if (funName.is<AstExprError>())
         return errorRecoveryType(scope);

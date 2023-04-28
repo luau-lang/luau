@@ -135,7 +135,6 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::MUL_NUM:
     case IrCmd::DIV_NUM:
     case IrCmd::MOD_NUM:
-    case IrCmd::POW_NUM:
     case IrCmd::MIN_NUM:
     case IrCmd::MAX_NUM:
     case IrCmd::UNM_NUM:
@@ -231,7 +230,7 @@ bool compare(double a, double b, IrCondition cond);
 // But it can also be successful on conditional control-flow, replacing it with an unconditional IrCmd::JUMP
 void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint32_t instIdx);
 
-uint32_t getNativeContextOffset(LuauBuiltinFunction bfid);
+uint32_t getNativeContextOffset(int bfid);
 
 } // namespace CodeGen
 } // namespace Luau

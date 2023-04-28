@@ -303,7 +303,7 @@ bool Normalizer::isInhabited(TypeId ty, std::unordered_set<TypeId> seen)
     {
         for (const auto& [_, prop] : ttv->props)
         {
-            if (!isInhabited(prop.type, seen))
+            if (!isInhabited(prop.type(), seen))
                 return false;
         }
         return true;
@@ -314,6 +314,20 @@ bool Normalizer::isInhabited(TypeId ty, std::unordered_set<TypeId> seen)
 
     const NormalizedType* norm = normalize(ty);
     return isInhabited(norm, seen);
+}
+
+bool Normalizer::isIntersectionInhabited(TypeId left, TypeId right)
+{
+    left = follow(left);
+    right = follow(right);
+    std::unordered_set<TypeId> seen = {};
+    seen.insert(left);
+    seen.insert(right);
+
+    NormalizedType norm{builtinTypes};
+    if (!normalizeIntersections({left, right}, norm))
+        return false;
+    return isInhabited(&norm, seen);
 }
 
 static int tyvarIndex(TypeId ty)
@@ -591,6 +605,23 @@ const NormalizedType* Normalizer::normalize(TypeId ty)
     const NormalizedType* result = uniq.get();
     cachedNormals[ty] = std::move(uniq);
     return result;
+}
+
+bool Normalizer::normalizeIntersections(const std::vector<TypeId>& intersections, NormalizedType& outType)
+{
+    if (!arena)
+        sharedState->iceHandler->ice("Normalizing types outside a module");
+    NormalizedType norm{builtinTypes};
+    norm.tops = builtinTypes->anyType;
+    // Now we need to intersect the two types
+    for (auto ty : intersections)
+        if (!intersectNormalWithTy(norm, ty))
+            return false;
+
+    if (!unionNormals(outType, norm))
+        return false;
+
+    return true;
 }
 
 void Normalizer::clearNormal(NormalizedType& norm)
@@ -2134,9 +2165,9 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         {
             const auto& [_name, tprop] = *tfound;
             // TODO: variance issues here, which can't be fixed until we have read/write property types
-            prop.type = intersectionType(hprop.type, tprop.type);
-            hereSubThere &= (prop.type == hprop.type);
-            thereSubHere &= (prop.type == tprop.type);
+            prop.setType(intersectionType(hprop.type(), tprop.type()));
+            hereSubThere &= (prop.type() == hprop.type());
+            thereSubHere &= (prop.type() == tprop.type());
         }
         // TODO: string indexers
         result.props[name] = prop;

@@ -348,10 +348,13 @@ public:
     bool intersectTyvarsWithTy(NormalizedTyvars& here, TypeId there);
     bool intersectNormals(NormalizedType& here, const NormalizedType& there, int ignoreSmallerTyvars = -1);
     bool intersectNormalWithTy(NormalizedType& here, TypeId there);
+    bool normalizeIntersections(const std::vector<TypeId>& intersections, NormalizedType& outType);
 
     // Check for inhabitance
     bool isInhabited(TypeId ty, std::unordered_set<TypeId> seen = {});
     bool isInhabited(const NormalizedType* norm, std::unordered_set<TypeId> seen = {});
+    // Check for intersections being inhabited
+    bool isIntersectionInhabited(TypeId left, TypeId right);
 
     // -------- Convert back from a normalized type to a type
     TypeId typeFromNormal(const NormalizedType& norm);

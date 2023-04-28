@@ -514,14 +514,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
     REQUIRE(tMeta2);
     REQUIRE(tMeta2->props.count("__index"));
 
-    const MetatableType* tMeta3 = get<MetatableType>(tMeta2->props["__index"].type);
+    const MetatableType* tMeta3 = get<MetatableType>(tMeta2->props["__index"].type());
     REQUIRE(tMeta3);
 
     TableType* tMeta4 = getMutable<TableType>(tMeta3->metatable);
     REQUIRE(tMeta4);
     REQUIRE(tMeta4->props.count("__index"));
 
-    TableType* tMeta5 = getMutable<TableType>(tMeta4->props["__index"].type);
+    TableType* tMeta5 = getMutable<TableType>(tMeta4->props["__index"].type());
     REQUIRE(tMeta5);
     REQUIRE(tMeta5->props.count("one") > 0);
 
@@ -529,9 +529,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
     REQUIRE(tMeta6);
     REQUIRE(tMeta6->props.count("two") > 0);
 
-    ToStringResult oneResult = toStringDetailed(tMeta5->props["one"].type, opts);
+    ToStringResult oneResult = toStringDetailed(tMeta5->props["one"].type(), opts);
 
-    std::string twoResult = toString(tMeta6->props["two"].type, opts);
+    std::string twoResult = toString(tMeta6->props["two"].type(), opts);
 
     CHECK_EQ("<a>(a) -> number", oneResult.name);
     CHECK_EQ("<b>(b) -> number", twoResult);
@@ -786,7 +786,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_include_self_param")
 
     TypeId parentTy = requireType("foo");
     auto ttv = get<TableType>(follow(parentTy));
-    auto ftv = get<FunctionType>(follow(ttv->props.at("method").type));
+    auto ftv = get<FunctionType>(follow(ttv->props.at("method").type()));
 
     CHECK_EQ("foo:method<a>(self: a, arg: string): ()", toStringNamedFunction("foo:method", *ftv));
 }
@@ -809,7 +809,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_self_param")
     TypeId parentTy = requireType("foo");
     auto ttv = get<TableType>(follow(parentTy));
     REQUIRE_MESSAGE(ttv, "Expected a table but got " << toString(parentTy, opts));
-    TypeId methodTy = follow(ttv->props.at("method").type);
+    TypeId methodTy = follow(ttv->props.at("method").type());
     auto ftv = get<FunctionType>(methodTy);
     REQUIRE_MESSAGE(ftv, "Expected a function but got " << toString(methodTy, opts));
 

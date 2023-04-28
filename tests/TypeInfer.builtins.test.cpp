@@ -1031,7 +1031,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_persistent_typelevel_change")
     REQUIRE(mathTy);
     TableType* ttv = getMutable<TableType>(mathTy);
     REQUIRE(ttv);
-    const FunctionType* ftv = get<FunctionType>(ttv->props["frexp"].type);
+    const FunctionType* ftv = get<FunctionType>(ttv->props["frexp"].type());
     REQUIRE(ftv);
     auto original = ftv->level;
 

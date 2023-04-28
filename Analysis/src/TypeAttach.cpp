@@ -180,7 +180,7 @@ public:
             char* name = allocateString(*allocator, propName);
 
             props.data[idx].name = AstName(name);
-            props.data[idx].type = Luau::visit(*this, prop.type->ty);
+            props.data[idx].type = Luau::visit(*this, prop.type()->ty);
             props.data[idx].location = Location();
             idx++;
         }
@@ -221,7 +221,7 @@ public:
             char* name = allocateString(*allocator, propName);
 
             props.data[idx].name = AstName{name};
-            props.data[idx].type = Luau::visit(*this, prop.type->ty);
+            props.data[idx].type = Luau::visit(*this, prop.type()->ty);
             props.data[idx].location = Location();
             idx++;
         }

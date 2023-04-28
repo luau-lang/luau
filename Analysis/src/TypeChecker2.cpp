@@ -171,6 +171,22 @@ struct TypeChecker2
         return follow(*tp);
     }
 
+    TypeId lookupExpectedType(AstExpr* expr)
+    {
+        if (TypeId* ty = module->astExpectedTypes.find(expr))
+            return follow(*ty);
+
+        return builtinTypes->anyType;
+    }
+
+    TypePackId lookupExpectedPack(AstExpr* expr, TypeArena& arena)
+    {
+        if (TypeId* ty = module->astExpectedTypes.find(expr))
+            return arena.addTypePack(TypePack{{follow(*ty)}, std::nullopt});
+
+        return builtinTypes->anyTypePack;
+    }
+
     TypePackId reconstructPack(AstArray<AstExpr*> exprs, TypeArena& arena)
     {
         if (exprs.size == 0)
@@ -207,12 +223,6 @@ struct TypeChecker2
 
         return bestScope;
     }
-
-    enum ValueContext
-    {
-        LValue,
-        RValue
-    };
 
     void visit(AstStat* stat)
     {
@@ -272,7 +282,7 @@ struct TypeChecker2
 
     void visit(AstStatIf* ifStatement)
     {
-        visit(ifStatement->condition, RValue);
+        visit(ifStatement->condition, ValueContext::RValue);
         visit(ifStatement->thenbody);
         if (ifStatement->elsebody)
             visit(ifStatement->elsebody);
@@ -280,14 +290,14 @@ struct TypeChecker2
 
     void visit(AstStatWhile* whileStatement)
     {
-        visit(whileStatement->condition, RValue);
+        visit(whileStatement->condition, ValueContext::RValue);
         visit(whileStatement->body);
     }
 
     void visit(AstStatRepeat* repeatStatement)
     {
         visit(repeatStatement->body);
-        visit(repeatStatement->condition, RValue);
+        visit(repeatStatement->condition, ValueContext::RValue);
     }
 
     void visit(AstStatBreak*) {}
@@ -314,12 +324,12 @@ struct TypeChecker2
         }
 
         for (AstExpr* expr : ret->list)
-            visit(expr, RValue);
+            visit(expr, ValueContext::RValue);
     }
 
     void visit(AstStatExpr* expr)
     {
-        visit(expr->expr, RValue);
+        visit(expr->expr, ValueContext::RValue);
     }
 
     void visit(AstStatLocal* local)
@@ -331,7 +341,7 @@ struct TypeChecker2
             const bool isPack = value && (value->is<AstExprCall>() || value->is<AstExprVarargs>());
 
             if (value)
-                visit(value, RValue);
+                visit(value, ValueContext::RValue);
 
             if (i != local->values.size - 1 || !isPack)
             {
@@ -412,7 +422,7 @@ struct TypeChecker2
             if (!expr)
                 return;
 
-            visit(expr, RValue);
+            visit(expr, ValueContext::RValue);
             reportErrors(tryUnify(scope, expr->location, lookupType(expr), builtinTypes->numberType));
         };
 
@@ -432,7 +442,7 @@ struct TypeChecker2
         }
 
         for (AstExpr* expr : forInStatement->values)
-            visit(expr, RValue);
+            visit(expr, ValueContext::RValue);
 
         visit(forInStatement->body);
 
@@ -643,11 +653,11 @@ struct TypeChecker2
         for (size_t i = 0; i < count; ++i)
         {
             AstExpr* lhs = assign->vars.data[i];
-            visit(lhs, LValue);
+            visit(lhs, ValueContext::LValue);
             TypeId lhsType = lookupType(lhs);
 
             AstExpr* rhs = assign->values.data[i];
-            visit(rhs, RValue);
+            visit(rhs, ValueContext::RValue);
             TypeId rhsType = lookupType(rhs);
 
             if (get<NeverType>(lhsType))
@@ -671,7 +681,7 @@ struct TypeChecker2
 
     void visit(AstStatFunction* stat)
     {
-        visit(stat->name, LValue);
+        visit(stat->name, ValueContext::LValue);
         visit(stat->func);
     }
 
@@ -724,7 +734,7 @@ struct TypeChecker2
     void visit(AstStatError* stat)
     {
         for (AstExpr* expr : stat->expressions)
-            visit(expr, RValue);
+            visit(expr, ValueContext::RValue);
 
         for (AstStat* s : stat->statements)
             visit(s);
@@ -926,7 +936,7 @@ struct TypeChecker2
         TypeArena* arena = &testArena;
         Instantiation instantiation{TxnLog::empty(), arena, TypeLevel{}, stack.back()};
 
-        TypePackId expectedRetType = lookupPack(call);
+        TypePackId expectedRetType = lookupExpectedPack(call, *arena);
         TypeId functionType = lookupType(call->func);
         TypeId testFunctionType = functionType;
         TypePack args;
@@ -1105,10 +1115,10 @@ struct TypeChecker2
 
     void visit(AstExprCall* call)
     {
-        visit(call->func, RValue);
+        visit(call->func, ValueContext::RValue);
 
         for (AstExpr* arg : call->args)
-            visit(arg, RValue);
+            visit(arg, ValueContext::RValue);
 
         visitCall(call);
     }
@@ -1158,7 +1168,7 @@ struct TypeChecker2
 
     void visitExprName(AstExpr* expr, Location location, const std::string& propName, ValueContext context)
     {
-        visit(expr, RValue);
+        visit(expr, ValueContext::RValue);
 
         TypeId leftType = stripFromNilAndReport(lookupType(expr), location);
         checkIndexTypeFromType(leftType, propName, location, context);
@@ -1179,8 +1189,8 @@ struct TypeChecker2
         }
 
         // TODO!
-        visit(indexExpr->expr, LValue);
-        visit(indexExpr->index, RValue);
+        visit(indexExpr->expr, ValueContext::LValue);
+        visit(indexExpr->index, ValueContext::RValue);
 
         NotNull<Scope> scope = stack.back();
 
@@ -1242,14 +1252,14 @@ struct TypeChecker2
         for (const AstExprTable::Item& item : expr->items)
         {
             if (item.key)
-                visit(item.key, LValue);
-            visit(item.value, RValue);
+                visit(item.key, ValueContext::LValue);
+            visit(item.value, ValueContext::RValue);
         }
     }
 
     void visit(AstExprUnary* expr)
     {
-        visit(expr->expr, RValue);
+        visit(expr->expr, ValueContext::RValue);
 
         NotNull<Scope> scope = stack.back();
         TypeId operandType = lookupType(expr->expr);
@@ -1330,8 +1340,8 @@ struct TypeChecker2
 
     TypeId visit(AstExprBinary* expr, AstNode* overrideKey = nullptr)
     {
-        visit(expr->left, LValue);
-        visit(expr->right, LValue);
+        visit(expr->left, ValueContext::LValue);
+        visit(expr->right, ValueContext::LValue);
 
         NotNull<Scope> scope = stack.back();
 
@@ -1363,11 +1373,14 @@ struct TypeChecker2
             return leftType;
         }
 
+        bool typesHaveIntersection = normalizer.isIntersectionInhabited(leftType, rightType);
         if (auto it = kBinaryOpMetamethods.find(expr->op); it != kBinaryOpMetamethods.end())
         {
             std::optional<TypeId> leftMt = getMetatable(leftType, builtinTypes);
             std::optional<TypeId> rightMt = getMetatable(rightType, builtinTypes);
             bool matches = leftMt == rightMt;
+
+
             if (isEquality && !matches)
             {
                 auto testUnion = [&matches, builtinTypes = this->builtinTypes](const UnionType* utv, std::optional<TypeId> otherMt) {
@@ -1389,6 +1402,13 @@ struct TypeChecker2
                 if (const UnionType* utv = get<UnionType>(rightType); utv && leftMt && !matches)
                 {
                     testUnion(utv, leftMt);
+                }
+
+                // If either left or right has no metatable (or both), we need to consider if
+                // there are values in common that could possibly inhabit the type (and thus equality could be considered)
+                if (!leftMt.has_value() || !rightMt.has_value())
+                {
+                    matches = matches || typesHaveIntersection;
                 }
             }
 
@@ -1584,7 +1604,7 @@ struct TypeChecker2
 
     void visit(AstExprTypeAssertion* expr)
     {
-        visit(expr->expr, RValue);
+        visit(expr->expr, ValueContext::RValue);
         visit(expr->annotation);
 
         TypeId annotationType = lookupAnnotation(expr->annotation);
@@ -1603,22 +1623,22 @@ struct TypeChecker2
     void visit(AstExprIfElse* expr)
     {
         // TODO!
-        visit(expr->condition, RValue);
-        visit(expr->trueExpr, RValue);
-        visit(expr->falseExpr, RValue);
+        visit(expr->condition, ValueContext::RValue);
+        visit(expr->trueExpr, ValueContext::RValue);
+        visit(expr->falseExpr, ValueContext::RValue);
     }
 
     void visit(AstExprInterpString* interpString)
     {
         for (AstExpr* expr : interpString->expressions)
-            visit(expr, RValue);
+            visit(expr, ValueContext::RValue);
     }
 
     void visit(AstExprError* expr)
     {
         // TODO!
         for (AstExpr* e : expr->expressions)
-            visit(e, RValue);
+            visit(e, ValueContext::RValue);
     }
 
     /** Extract a TypeId for the first type of the provided pack.
@@ -1858,7 +1878,7 @@ struct TypeChecker2
 
     void visit(AstTypeTypeof* ty)
     {
-        visit(ty->expr, RValue);
+        visit(ty->expr, ValueContext::RValue);
     }
 
     void visit(AstTypeUnion* ty)
@@ -2109,7 +2129,7 @@ struct TypeChecker2
             // because classes come into being with full knowledge of their
             // shape. We instead want to report the unknown property error of
             // the `else` branch.
-            else if (context == LValue && !get<ClassType>(tableTy))
+            else if (context == ValueContext::LValue && !get<ClassType>(tableTy))
                 reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
             else
                 reportError(UnknownProperty{tableTy, prop}, location);

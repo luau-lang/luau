@@ -219,7 +219,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
     {
         LUAU_ASSERT(!ttv->boundTo);
         for (const auto& [name, prop] : ttv->props)
-            visitChild(prop.type);
+            visitChild(prop.type());
         if (ttv->indexer)
         {
             visitChild(ttv->indexer->indexType);
@@ -258,7 +258,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
     else if (const ClassType* ctv = get<ClassType>(ty); FFlag::LuauClassTypeVarsInSubstitution && ctv)
     {
         for (const auto& [name, prop] : ctv->props)
-            visitChild(prop.type);
+            visitChild(prop.type());
 
         if (ctv->parent)
             visitChild(*ctv->parent);
@@ -750,7 +750,7 @@ void Substitution::replaceChildren(TypeId ty)
     {
         LUAU_ASSERT(!ttv->boundTo);
         for (auto& [name, prop] : ttv->props)
-            prop.type = replace(prop.type);
+            prop.setType(replace(prop.type()));
         if (ttv->indexer)
         {
             ttv->indexer->indexType = replace(ttv->indexer->indexType);
@@ -789,7 +789,7 @@ void Substitution::replaceChildren(TypeId ty)
     else if (ClassType* ctv = getMutable<ClassType>(ty); FFlag::LuauClassTypeVarsInSubstitution && ctv)
     {
         for (auto& [name, prop] : ctv->props)
-            prop.type = replace(prop.type);
+            prop.setType(replace(prop.type()));
 
         if (ctv->parent)
             ctv->parent = replace(*ctv->parent);

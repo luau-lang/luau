@@ -154,7 +154,7 @@ public:
 
 
     // Run final checks
-    void finalize();
+    bool finalize();
 
     // Places a label at current location and returns it
     Label setLabel();

@@ -237,17 +237,38 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.vmovups(luauNodeValue(regOp(inst.a)), regOp(inst.b));
         break;
     case IrCmd::ADD_INT:
+    {
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
 
-        if (inst.b.kind == IrOpKind::Inst)
-            build.lea(inst.regX64, addr[regOp(inst.a) + regOp(inst.b)]);
-        else if (inst.regX64 == regOp(inst.a) && intOp(inst.b) == 1)
-            build.inc(inst.regX64);
-        else if (inst.regX64 == regOp(inst.a))
-            build.add(inst.regX64, intOp(inst.b));
+        if (inst.a.kind == IrOpKind::Constant)
+        {
+            build.lea(inst.regX64, addr[regOp(inst.b) + intOp(inst.a)]);
+        }
+        else if (inst.a.kind == IrOpKind::Inst)
+        {
+            if (inst.regX64 == regOp(inst.a))
+            {
+                if (inst.b.kind == IrOpKind::Inst)
+                    build.add(inst.regX64, regOp(inst.b));
+                else if (intOp(inst.b) == 1)
+                    build.inc(inst.regX64);
+                else
+                    build.add(inst.regX64, intOp(inst.b));
+            }
+            else
+            {
+                if (inst.b.kind == IrOpKind::Inst)
+                    build.lea(inst.regX64, addr[regOp(inst.a) + regOp(inst.b)]);
+                else
+                    build.lea(inst.regX64, addr[regOp(inst.a) + intOp(inst.b)]);
+            }
+        }
         else
-            build.lea(inst.regX64, addr[regOp(inst.a) + intOp(inst.b)]);
+        {
+            LUAU_ASSERT(!"Unsupported instruction form");
+        }
         break;
+    }
     case IrCmd::SUB_INT:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
 
@@ -357,15 +378,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
             build.vmulsd(tmp1.reg, tmp2.reg, tmp1.reg);
             build.vsubsd(inst.regX64, lhs, tmp1.reg);
         }
-        break;
-    }
-    case IrCmd::POW_NUM:
-    {
-        IrCallWrapperX64 callWrap(regs, build, index);
-        callWrap.addArgument(SizeX64::xmmword, memRegDoubleOp(inst.a), inst.a);
-        callWrap.addArgument(SizeX64::xmmword, memRegDoubleOp(inst.b), inst.b);
-        callWrap.call(qword[rNativeContext + offsetof(NativeContext, libm_pow)]);
-        inst.regX64 = regs.takeReg(xmm0, index);
         break;
     }
     case IrCmd::MIN_NUM:
@@ -537,7 +549,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         jumpOrFallthrough(blockOp(inst.d), next);
         break;
     case IrCmd::JUMP_GE_UINT:
-        build.cmp(regOp(inst.a), uintOp(inst.b));
+        build.cmp(regOp(inst.a), unsigned(intOp(inst.b)));
 
         build.jcc(ConditionX64::AboveEqual, labelOp(inst.c));
         jumpOrFallthrough(blockOp(inst.d), next);
@@ -690,8 +702,12 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     }
 
     case IrCmd::FASTCALL:
-        emitBuiltin(regs, build, uintOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c), inst.d, intOp(inst.e), intOp(inst.f));
+    {
+        OperandX64 arg2 = inst.d.kind != IrOpKind::Undef ? memRegDoubleOp(inst.d) : OperandX64{0};
+
+        emitBuiltin(regs, build, uintOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c), arg2, intOp(inst.e), intOp(inst.f));
         break;
+    }
     case IrCmd::INVOKE_FASTCALL:
     {
         unsigned bfid = uintOp(inst.a);
@@ -703,7 +719,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         else if (inst.d.kind == IrOpKind::VmConst)
             args = luauConstantAddress(vmConstOp(inst.d));
         else
-            LUAU_ASSERT(boolOp(inst.d) == false);
+            LUAU_ASSERT(inst.d.kind == IrOpKind::Undef);
 
         int ra = vmRegOp(inst.b);
         int arg = vmRegOp(inst.c);
@@ -1141,32 +1157,32 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     case IrCmd::BITAND_UINT:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
 
-        if (inst.regX64 != regOp(inst.a))
-            build.mov(inst.regX64, regOp(inst.a));
+        if (inst.a.kind != IrOpKind::Inst || inst.regX64 != regOp(inst.a))
+            build.mov(inst.regX64, memRegUintOp(inst.a));
 
         build.and_(inst.regX64, memRegUintOp(inst.b));
         break;
     case IrCmd::BITXOR_UINT:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
 
-        if (inst.regX64 != regOp(inst.a))
-            build.mov(inst.regX64, regOp(inst.a));
+        if (inst.a.kind != IrOpKind::Inst || inst.regX64 != regOp(inst.a))
+            build.mov(inst.regX64, memRegUintOp(inst.a));
 
         build.xor_(inst.regX64, memRegUintOp(inst.b));
         break;
     case IrCmd::BITOR_UINT:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
 
-        if (inst.regX64 != regOp(inst.a))
-            build.mov(inst.regX64, regOp(inst.a));
+        if (inst.a.kind != IrOpKind::Inst || inst.regX64 != regOp(inst.a))
+            build.mov(inst.regX64, memRegUintOp(inst.a));
 
         build.or_(inst.regX64, memRegUintOp(inst.b));
         break;
     case IrCmd::BITNOT_UINT:
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
 
-        if (inst.regX64 != regOp(inst.a))
-            build.mov(inst.regX64, regOp(inst.a));
+        if (inst.a.kind != IrOpKind::Inst || inst.regX64 != regOp(inst.a))
+            build.mov(inst.regX64, memRegUintOp(inst.a));
 
         build.not_(inst.regX64);
         break;
@@ -1179,10 +1195,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         build.mov(shiftTmp.reg, memRegUintOp(inst.b));
 
-        if (inst.a.kind == IrOpKind::Constant)
-            build.mov(inst.regX64, uintOp(inst.a));
-        else if (inst.regX64 != regOp(inst.a))
-            build.mov(inst.regX64, regOp(inst.a));
+        if (inst.a.kind != IrOpKind::Inst || inst.regX64 != regOp(inst.a))
+            build.mov(inst.regX64, memRegUintOp(inst.a));
 
         build.shl(inst.regX64, byteReg(shiftTmp.reg));
         break;
@@ -1196,10 +1210,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         build.mov(shiftTmp.reg, memRegUintOp(inst.b));
 
-        if (inst.a.kind == IrOpKind::Constant)
-            build.mov(inst.regX64, uintOp(inst.a));
-        else if (inst.regX64 != regOp(inst.a))
-            build.mov(inst.regX64, regOp(inst.a));
+        if (inst.a.kind != IrOpKind::Inst || inst.regX64 != regOp(inst.a))
+            build.mov(inst.regX64, memRegUintOp(inst.a));
 
         build.shr(inst.regX64, byteReg(shiftTmp.reg));
         break;
@@ -1213,10 +1225,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         build.mov(shiftTmp.reg, memRegUintOp(inst.b));
 
-        if (inst.a.kind == IrOpKind::Constant)
-            build.mov(inst.regX64, uintOp(inst.a));
-        else if (inst.regX64 != regOp(inst.a))
-            build.mov(inst.regX64, regOp(inst.a));
+        if (inst.a.kind != IrOpKind::Inst || inst.regX64 != regOp(inst.a))
+            build.mov(inst.regX64, memRegUintOp(inst.a));
 
         build.sar(inst.regX64, byteReg(shiftTmp.reg));
         break;
@@ -1230,10 +1240,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         build.mov(shiftTmp.reg, memRegUintOp(inst.b));
 
-        if (inst.a.kind == IrOpKind::Constant)
-            build.mov(inst.regX64, uintOp(inst.a));
-        else if (inst.regX64 != regOp(inst.a))
-            build.mov(inst.regX64, regOp(inst.a));
+        if (inst.a.kind != IrOpKind::Inst || inst.regX64 != regOp(inst.a))
+            build.mov(inst.regX64, memRegUintOp(inst.a));
 
         build.rol(inst.regX64, byteReg(shiftTmp.reg));
         break;
@@ -1247,10 +1255,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         build.mov(shiftTmp.reg, memRegUintOp(inst.b));
 
-        if (inst.a.kind == IrOpKind::Constant)
-            build.mov(inst.regX64, uintOp(inst.a));
-        else if (inst.regX64 != regOp(inst.a))
-            build.mov(inst.regX64, regOp(inst.a));
+        if (inst.a.kind != IrOpKind::Inst || inst.regX64 != regOp(inst.a))
+            build.mov(inst.regX64, memRegUintOp(inst.a));
 
         build.ror(inst.regX64, byteReg(shiftTmp.reg));
         break;
@@ -1294,15 +1300,13 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     }
     case IrCmd::INVOKE_LIBM:
     {
-        LuauBuiltinFunction bfid = LuauBuiltinFunction(uintOp(inst.a));
-
         IrCallWrapperX64 callWrap(regs, build, index);
         callWrap.addArgument(SizeX64::xmmword, memRegDoubleOp(inst.b), inst.b);
 
         if (inst.c.kind != IrOpKind::None)
             callWrap.addArgument(SizeX64::xmmword, memRegDoubleOp(inst.c), inst.c);
 
-        callWrap.call(qword[rNativeContext + getNativeContextOffset(bfid)]);
+        callWrap.call(qword[rNativeContext + getNativeContextOffset(uintOp(inst.a))]);
         inst.regX64 = regs.takeReg(xmm0, index);
         break;
     }
@@ -1370,7 +1374,7 @@ OperandX64 IrLoweringX64::memRegUintOp(IrOp op)
     case IrOpKind::Inst:
         return regOp(op);
     case IrOpKind::Constant:
-        return OperandX64(uintOp(op));
+        return OperandX64(unsigned(intOp(op)));
     default:
         LUAU_ASSERT(!"Unsupported operand kind");
     }

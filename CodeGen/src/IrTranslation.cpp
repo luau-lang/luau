@@ -342,7 +342,7 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
             result = build.inst(IrCmd::MOD_NUM, vb, vc);
             break;
         case TM_POW:
-            result = build.inst(IrCmd::POW_NUM, vb, vc);
+            result = build.inst(IrCmd::INVOKE_LIBM, build.constUint(LBF_MATH_POW), vb, vc);
             break;
         default:
             LUAU_ASSERT(!"unsupported binary op");
@@ -498,8 +498,6 @@ void translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
     int bfid = LUAU_INSN_A(*pc);
     int skip = LUAU_INSN_C(*pc);
 
-    IrOp fallback = build.block(IrBlockKind::Fallback);
-
     Instruction call = pc[skip + 1];
     LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
     int ra = LUAU_INSN_A(call);
@@ -509,15 +507,21 @@ void translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
     int arg = customParams ? LUAU_INSN_B(*pc) : ra + 1;
     IrOp args = customParams ? customArgs : build.vmReg(ra + 2);
 
-    build.inst(IrCmd::CHECK_SAFE_ENV, fallback);
+    IrOp builtinArgs = args;
 
-    if (bfid == LBF_BIT32_EXTRACTK)
+    if (customArgs.kind == IrOpKind::VmConst)
     {
-        TValue protok = build.function.proto->k[pc[1]];
-        args = build.constDouble(protok.value.n);
+        TValue protok = build.function.proto->k[customArgs.index];
+
+        if (protok.tt == LUA_TNUMBER)
+            builtinArgs = build.constDouble(protok.value.n);
     }
 
-    BuiltinImplResult br = translateBuiltin(build, LuauBuiltinFunction(bfid), ra, arg, args, nparams, nresults, fallback);
+    IrOp fallback = build.block(IrBlockKind::Fallback);
+
+    build.inst(IrCmd::CHECK_SAFE_ENV, fallback);
+
+    BuiltinImplResult br = translateBuiltin(build, LuauBuiltinFunction(bfid), ra, arg, builtinArgs, nparams, nresults, fallback);
 
     if (br.type == BuiltinImplType::UsesFallback)
     {

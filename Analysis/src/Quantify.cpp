@@ -116,7 +116,7 @@ void quantify(TypeId ty, TypeLevel level)
 
             for (const auto& [_, prop] : ttv->props)
             {
-                auto ftv = getMutable<FunctionType>(follow(prop.type));
+                auto ftv = getMutable<FunctionType>(follow(prop.type()));
                 if (!ftv || !ftv->hasSelf)
                     continue;
 

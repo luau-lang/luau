@@ -308,12 +308,15 @@ void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, i
     build.mov(rax, qword[cip + offsetof(CallInfo, savedpc)]);
 
     // To get instruction index from instruction pointer, we need to divide byte offset by 4
-    // But we will actually need to scale instruction index by 8 back to byte offset later so it cancels out
-    build.sub(rax, rdx);
+    // But we will actually need to scale instruction index by 4 back to byte offset later so it cancels out
+    // Note that we're computing negative offset here (code-savedpc) so that we can add it to NativeProto address, as we use reverse indexing
+    build.sub(rdx, rax);
 
     // Get new instruction location and jump to it
-    build.mov(rdx, qword[execdata + offsetof(NativeProto, instTargets)]);
-    build.jmp(qword[rdx + rax * 2]);
+    LUAU_ASSERT(offsetof(NativeProto, instOffsets) == 0);
+    build.mov(edx, dword[execdata + rdx]);
+    build.add(rdx, qword[execdata + offsetof(NativeProto, instBase)]);
+    build.jmp(rdx);
 }
 
 void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, int count, uint32_t index)

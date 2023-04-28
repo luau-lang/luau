@@ -25,6 +25,8 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
+LUAU_FASTFLAGVARIABLE(LuauCompileLimitInsns, false)
+
 namespace Luau
 {
 
@@ -33,6 +35,7 @@ using namespace Luau::Compile;
 static const uint32_t kMaxRegisterCount = 255;
 static const uint32_t kMaxUpvalueCount = 200;
 static const uint32_t kMaxLocalCount = 200;
+static const uint32_t kMaxInstructionCount = 1'000'000'000;
 
 static const uint8_t kInvalidReg = 255;
 
@@ -246,6 +249,9 @@ struct Compiler
         bytecode.expandJumps();
 
         popLocals(0);
+
+        if (FFlag::LuauCompileLimitInsns && bytecode.getInstructionCount() > kMaxInstructionCount)
+            CompileError::raise(func->location, "Exceeded function instruction limit; split the function into parts to compile");
 
         bytecode.endFunction(uint8_t(stackSize), uint8_t(upvals.size()));
 

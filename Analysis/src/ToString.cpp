@@ -660,7 +660,7 @@ struct TypeStringifier
                 state.emit("\"]");
             }
             state.emit(": ");
-            stringify(prop.type);
+            stringify(prop.type());
             comma = true;
             ++index;
         }
