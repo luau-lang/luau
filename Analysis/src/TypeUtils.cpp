@@ -34,7 +34,7 @@ std::optional<TypeId> findMetatableEntry(
 
     auto it = mtt->props.find(entry);
     if (it != mtt->props.end())
-        return it->second.type;
+        return it->second.type();
     else
         return std::nullopt;
 }
@@ -49,7 +49,7 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
     {
         const auto& it = tableType->props.find(name);
         if (it != tableType->props.end())
-            return it->second.type;
+            return it->second.type();
     }
 
     std::optional<TypeId> mtIndex = findMetatableEntry(builtinTypes, errors, ty, "__index", location);
@@ -67,7 +67,7 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
         {
             const auto& fit = itt->props.find(name);
             if (fit != itt->props.end())
-                return fit->second.type;
+                return fit->second.type();
         }
         else if (const auto& itf = get<FunctionType>(index))
         {

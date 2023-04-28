@@ -117,7 +117,6 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::MUL_NUM:
     case IrCmd::DIV_NUM:
     case IrCmd::MOD_NUM:
-    case IrCmd::POW_NUM:
     case IrCmd::MIN_NUM:
     case IrCmd::MAX_NUM:
     case IrCmd::JUMP_EQ_TAG:

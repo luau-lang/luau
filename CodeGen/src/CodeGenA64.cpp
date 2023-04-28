@@ -35,10 +35,16 @@ static void emitInterrupt(AssemblyBuilderA64& build)
 {
     // x0 = pc offset
     // x1 = return address in native code
-    // x2 = interrupt
+
+    Label skip;
 
     // Stash return address in rBase; we need to reload rBase anyway
     build.mov(rBase, x1);
+
+    // Load interrupt handler; it may be nullptr in case the update raced with the check before we got here
+    build.ldr(x2, mem(rState, offsetof(lua_State, global)));
+    build.ldr(x2, mem(x2, offsetof(global_State, cb.interrupt)));
+    build.cbz(x2, skip);
 
     // Update savedpc; required in case interrupt errors
     build.add(x0, rCode, x0);
@@ -51,7 +57,6 @@ static void emitInterrupt(AssemblyBuilderA64& build)
     build.blr(x2);
 
     // Check if we need to exit
-    Label skip;
     build.ldrb(w0, mem(rState, offsetof(lua_State, status)));
     build.cbz(w0, skip);
 
@@ -92,11 +97,11 @@ static void emitReentry(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 
     // Get instruction index from instruction pointer
     // To get instruction index from instruction pointer, we need to divide byte offset by 4
-    // But we will actually need to scale instruction index by 8 back to byte offset later so it cancels out
+    // But we will actually need to scale instruction index by 4 back to byte offset later so it cancels out
+    // Note that we're computing negative offset here (code-savedpc) so that we can add it to NativeProto address, as we use reverse indexing
     build.ldr(x2, mem(rState, offsetof(lua_State, ci))); // L->ci
     build.ldr(x2, mem(x2, offsetof(CallInfo, savedpc))); // L->ci->savedpc
-    build.sub(x2, x2, rCode);
-    build.add(x2, x2, x2); // TODO: this would not be necessary if we supported shifted register offsets in loads
+    build.sub(x2, rCode, x2);
 
     // We need to check if the new function can be executed natively
     // TODO: This can be done earlier in the function flow, to reduce the JIT->VM transition penalty
@@ -104,8 +109,10 @@ static void emitReentry(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     build.cbz(x1, helpers.exitContinueVm);
 
     // Get new instruction location and jump to it
-    build.ldr(x1, mem(x1, offsetof(NativeProto, instTargets)));
-    build.ldr(x1, mem(x1, x2));
+    LUAU_ASSERT(offsetof(NativeProto, instOffsets) == 0);
+    build.ldr(w2, mem(x1, x2));
+    build.ldr(x1, mem(x1, offsetof(NativeProto, instBase)));
+    build.add(x1, x1, x2);
     build.br(x1);
 }
 

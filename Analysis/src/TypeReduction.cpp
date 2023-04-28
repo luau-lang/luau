@@ -70,7 +70,7 @@ TypeId TypeReductionMemoization::memoize(TypeId ty, TypeId reducedTy)
     else if (auto tt = get<TableType>(reducedTy))
     {
         for (auto& [k, p] : tt->props)
-            irreducible &= isIrreducible(p.type);
+            irreducible &= isIrreducible(p.type());
 
         if (tt->indexer)
         {
@@ -539,7 +539,7 @@ std::optional<TypeId> TypeReducer::intersectionType(TypeId left, TypeId right)
             // even if we have the corresponding property in the other one.
             if (auto other = t2->props.find(name); other != t2->props.end())
             {
-                TypeId propTy = apply<IntersectionType>(&TypeReducer::intersectionType, prop.type, other->second.type);
+                TypeId propTy = apply<IntersectionType>(&TypeReducer::intersectionType, prop.type(), other->second.type());
                 if (get<NeverType>(propTy))
                     return builtinTypes->neverType; // { p : string } & { p : number } ~ { p : string & number } ~ { p : never } ~ never
                 else
@@ -554,7 +554,7 @@ std::optional<TypeId> TypeReducer::intersectionType(TypeId left, TypeId right)
             // TODO: And vice versa, t2 properties against t1 indexer if it exists,
             // even if we have the corresponding property in the other one.
             if (!t1->props.count(name))
-                table->props[name] = {reduce(prop.type)}; // {} & { p : string & string } ~ { p : string }
+                table->props[name] = {reduce(prop.type())}; // {} & { p : string & string } ~ { p : string }
         }
 
         if (t1->indexer && t2->indexer)
@@ -966,11 +966,11 @@ TypeId TypeReducer::tableType(TypeId ty)
 
         for (auto& [name, prop] : copied->props)
         {
-            TypeId propTy = reduce(prop.type);
+            TypeId propTy = reduce(prop.type());
             if (get<NeverType>(propTy))
                 return builtinTypes->neverType;
             else
-                prop.type = propTy;
+                prop.setType(propTy);
         }
 
         if (copied->indexer)

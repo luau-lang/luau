@@ -111,7 +111,7 @@ TEST_CASE_FIXTURE(Fixture, "generalize_table_property")
     const TableType* tt = get<TableType>(follow(t));
     REQUIRE(tt);
 
-    TypeId fooTy = tt->props.at("foo").type;
+    TypeId fooTy = tt->props.at("foo").type();
     CHECK("<a>(a) -> a" == toString(fooTy));
 }
 
@@ -156,7 +156,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
     REQUIRE(ttv);
 
     REQUIRE(ttv->props.count("f"));
-    TypeId k = ttv->props["f"].type;
+    TypeId k = ttv->props["f"].type();
     REQUIRE(k);
 }
 

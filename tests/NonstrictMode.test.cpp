@@ -170,7 +170,7 @@ TEST_CASE_FIXTURE(Fixture, "table_props_are_any")
     REQUIRE(ttv != nullptr);
 
     REQUIRE(ttv->props.count("foo"));
-    TypeId fooProp = ttv->props["foo"].type;
+    TypeId fooProp = ttv->props["foo"].type();
     REQUIRE(fooProp != nullptr);
 
     CHECK_EQ(*fooProp, *builtinTypes->anyType);
@@ -192,9 +192,9 @@ TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
     TableType* ttv = getMutable<TableType>(requireType("T"));
     REQUIRE_MESSAGE(ttv, "Should be a table: " << toString(requireType("T")));
 
-    CHECK_EQ(*builtinTypes->anyType, *ttv->props["one"].type);
-    CHECK_EQ(*builtinTypes->anyType, *ttv->props["two"].type);
-    CHECK_MESSAGE(get<FunctionType>(follow(ttv->props["three"].type)), "Should be a function: " << *ttv->props["three"].type);
+    CHECK_EQ(*builtinTypes->anyType, *ttv->props["one"].type());
+    CHECK_EQ(*builtinTypes->anyType, *ttv->props["two"].type());
+    CHECK_MESSAGE(get<FunctionType>(follow(ttv->props["three"].type())), "Should be a function: " << *ttv->props["three"].type());
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_variables_are_any")

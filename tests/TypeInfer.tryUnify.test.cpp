@@ -101,7 +101,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
         TableType{{{"foo", {arena.freshType(globalScope->level)}}}, std::nullopt, globalScope->level, TableState::Unsealed},
     }};
 
-    CHECK_NE(*getMutable<TableType>(&tableOne)->props["foo"].type, *getMutable<TableType>(&tableTwo)->props["foo"].type);
+    CHECK_NE(*getMutable<TableType>(&tableOne)->props["foo"].type(), *getMutable<TableType>(&tableTwo)->props["foo"].type());
 
     state.tryUnify(&tableTwo, &tableOne);
 
@@ -110,7 +110,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
 
     state.log.commit();
 
-    CHECK_EQ(*getMutable<TableType>(&tableOne)->props["foo"].type, *getMutable<TableType>(&tableTwo)->props["foo"].type);
+    CHECK_EQ(*getMutable<TableType>(&tableOne)->props["foo"].type(), *getMutable<TableType>(&tableTwo)->props["foo"].type());
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
@@ -129,14 +129,14 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
             TableState::Unsealed},
     }};
 
-    CHECK_NE(*getMutable<TableType>(&tableOne)->props["foo"].type, *getMutable<TableType>(&tableTwo)->props["foo"].type);
+    CHECK_NE(*getMutable<TableType>(&tableOne)->props["foo"].type(), *getMutable<TableType>(&tableTwo)->props["foo"].type());
 
     state.tryUnify(&tableTwo, &tableOne);
 
     CHECK(state.failure);
     CHECK_EQ(1, state.errors.size());
 
-    CHECK_NE(*getMutable<TableType>(&tableOne)->props["foo"].type, *getMutable<TableType>(&tableTwo)->props["foo"].type);
+    CHECK_NE(*getMutable<TableType>(&tableOne)->props["foo"].type(), *getMutable<TableType>(&tableTwo)->props["foo"].type());
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_intersection_sub_never")

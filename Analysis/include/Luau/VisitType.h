@@ -9,7 +9,7 @@
 #include "Luau/Type.h"
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
-LUAU_FASTFLAG(LuauBoundLazyTypes)
+LUAU_FASTFLAG(LuauBoundLazyTypes2)
 
 namespace Luau
 {
@@ -242,7 +242,7 @@ struct GenericTypeVisitor
                 else
                 {
                     for (auto& [_name, prop] : ttv->props)
-                        traverse(prop.type);
+                        traverse(prop.type());
 
                     if (ttv->indexer)
                     {
@@ -265,7 +265,7 @@ struct GenericTypeVisitor
             if (visit(ty, *ctv))
             {
                 for (const auto& [name, prop] : ctv->props)
-                    traverse(prop.type);
+                    traverse(prop.type());
 
                 if (ctv->parent)
                     traverse(*ctv->parent);
@@ -294,7 +294,7 @@ struct GenericTypeVisitor
         }
         else if (auto ltv = get<LazyType>(ty))
         {
-            if (FFlag::LuauBoundLazyTypes)
+            if (FFlag::LuauBoundLazyTypes2)
             {
                 if (TypeId unwrapped = ltv->unwrapped)
                     traverse(unwrapped);

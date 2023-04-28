@@ -408,8 +408,6 @@ static int cxxthrow(lua_State* L)
 
 TEST_CASE("PCall")
 {
-    ScopedFastFlag sff("LuauBetterOOMHandling", true);
-
     runConformance(
         "pcall.lua",
         [](lua_State* L) {
@@ -504,7 +502,7 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
         for (const auto& [name, prop] : t->props)
         {
-            populateRTTI(L, prop.type);
+            populateRTTI(L, prop.type());
             lua_setfield(L, -2, name.c_str());
         }
     }
@@ -1011,8 +1009,6 @@ TEST_CASE("ApiCalls")
         CHECK(lua_tonumber(L, -1) == 4);
         lua_pop(L, 1);
     }
-
-    ScopedFastFlag sff("LuauBetterOOMHandling", true);
 
     // lua_pcall on OOM
     {

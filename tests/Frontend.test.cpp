@@ -1129,4 +1129,21 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_type_alias")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "module_scope_check")
+{
+    frontend.prepareModuleScope = [this](const ModuleName& name, const ScopePtr& scope, bool forAutocomplete) {
+        scope->bindings[Luau::AstName{"x"}] = Luau::Binding{frontend.globals.builtinTypes->numberType};
+    };
+
+    fileResolver.source["game/A"] = R"(
+        local a = x
+    )";
+
+    CheckResult result = frontend.check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto ty = requireType("game/A", "a");
+    CHECK_EQ(toString(ty), "number");
+}
+
 TEST_SUITE_END();

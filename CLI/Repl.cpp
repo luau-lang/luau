@@ -703,16 +703,34 @@ struct CompileStats
     size_t lines;
     size_t bytecode;
     size_t codegen;
+
+    double readTime;
+    double miscTime;
+    double parseTime;
+    double compileTime;
+    double codegenTime;
 };
+
+static double recordDeltaTime(double& timer)
+{
+    double now = Luau::TimeTrace::getClock();
+    double delta = now - timer;
+    timer = now;
+    return delta;
+}
 
 static bool compileFile(const char* name, CompileFormat format, CompileStats& stats)
 {
+    double currts = Luau::TimeTrace::getClock();
+
     std::optional<std::string> source = readFile(name);
     if (!source)
     {
         fprintf(stderr, "Error opening %s\n", name);
         return false;
     }
+
+    stats.readTime += recordDeltaTime(currts);
 
     // NOTE: Normally, you should use Luau::compile or luau_compile (see lua_require as an example)
     // This function is much more complicated because it supports many output human-readable formats through internal interfaces
@@ -753,6 +771,8 @@ static bool compileFile(const char* name, CompileFormat format, CompileStats& st
             bcb.setDumpSource(*source);
         }
 
+        stats.miscTime += recordDeltaTime(currts);
+
         Luau::Allocator allocator;
         Luau::AstNameTable names(allocator);
         Luau::ParseResult result = Luau::Parser::parse(source->c_str(), source->size(), names, allocator);
@@ -761,9 +781,11 @@ static bool compileFile(const char* name, CompileFormat format, CompileStats& st
             throw Luau::ParseErrors(result.errors);
 
         stats.lines += result.lines;
+        stats.parseTime += recordDeltaTime(currts);
 
         Luau::compileOrThrow(bcb, result, names, copts());
         stats.bytecode += bcb.getBytecode().size();
+        stats.compileTime += recordDeltaTime(currts);
 
         switch (format)
         {
@@ -784,6 +806,7 @@ static bool compileFile(const char* name, CompileFormat format, CompileStats& st
             break;
         case CompileFormat::CodegenNull:
             stats.codegen += getCodegenAssembly(name, bcb.getBytecode(), options).size();
+            stats.codegenTime += recordDeltaTime(currts);
             break;
         case CompileFormat::Null:
             break;
@@ -998,18 +1021,18 @@ int replMain(int argc, char** argv)
 
         CompileStats stats = {};
         int failed = 0;
-        double startTime = Luau::TimeTrace::getClock();
 
         for (const std::string& path : files)
             failed += !compileFile(path.c_str(), compileFormat, stats);
 
-        double duration = Luau::TimeTrace::getClock() - startTime;
-
         if (compileFormat == CompileFormat::Null)
-            printf("Compiled %d KLOC into %d KB bytecode in %.2fs\n", int(stats.lines / 1000), int(stats.bytecode / 1024), duration);
+            printf("Compiled %d KLOC into %d KB bytecode (read %.2fs, parse %.2fs, compile %.2fs)\n", int(stats.lines / 1000),
+                int(stats.bytecode / 1024), stats.readTime, stats.parseTime, stats.compileTime);
         else if (compileFormat == CompileFormat::CodegenNull)
-            printf("Compiled %d KLOC into %d KB bytecode => %d KB native code (%.2fx) in %.2fs\n", int(stats.lines / 1000), int(stats.bytecode / 1024),
-                int(stats.codegen / 1024), stats.bytecode == 0 ? 0.0 : double(stats.codegen) / double(stats.bytecode), duration);
+            printf("Compiled %d KLOC into %d KB bytecode => %d KB native code (%.2fx) (read %.2fs, parse %.2fs, compile %.2fs, codegen %.2fs)\n",
+                int(stats.lines / 1000), int(stats.bytecode / 1024), int(stats.codegen / 1024),
+                stats.bytecode == 0 ? 0.0 : double(stats.codegen) / double(stats.bytecode), stats.readTime, stats.parseTime, stats.compileTime,
+                stats.codegenTime);
 
         return failed ? 1 : 0;
     }

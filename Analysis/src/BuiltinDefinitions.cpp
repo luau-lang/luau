@@ -52,6 +52,7 @@ TypeId makeIntersection(TypeArena& arena, std::vector<TypeId>&& types)
 
 TypeId makeOption(NotNull<BuiltinTypes> builtinTypes, TypeArena& arena, TypeId t)
 {
+    LUAU_ASSERT(t);
     return makeUnion(arena, {builtinTypes->nilType, t});
 }
 
@@ -236,7 +237,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     auto it = stringMetatableTable->props.find("__index");
     LUAU_ASSERT(it != stringMetatableTable->props.end());
 
-    addGlobalBinding(globals, "string", it->second.type, "@luau");
+    addGlobalBinding(globals, "string", it->second.type(), "@luau");
 
     // next<K, V>(t: Table<K, V>, i: K?) -> (K?, V)
     TypePackId nextArgsTypePack = arena.addTypePack(TypePack{{mapOfKtoV, makeOption(builtinTypes, arena, genericK)}});
@@ -301,8 +302,8 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         ttv->props["foreach"].deprecated = true;
         ttv->props["foreachi"].deprecated = true;
 
-        attachMagicFunction(ttv->props["pack"].type, magicFunctionPack);
-        attachDcrMagicFunction(ttv->props["pack"].type, dcrMagicFunctionPack);
+        attachMagicFunction(ttv->props["pack"].type(), magicFunctionPack);
+        attachDcrMagicFunction(ttv->props["pack"].type(), dcrMagicFunctionPack);
     }
 
     attachMagicFunction(getGlobalBinding(globals, "require"), magicFunctionRequire);

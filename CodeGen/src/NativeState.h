@@ -27,9 +27,12 @@ using FallbackFn = const Instruction* (*)(lua_State* L, const Instruction* pc, S
 
 struct NativeProto
 {
-    uintptr_t entryTarget = 0;
-    uintptr_t* instTargets = nullptr; // TODO: NativeProto should be variable-size with all target embedded
+    // This array is stored before NativeProto in reverse order, so to get offset of instruction i you need to index instOffsets[-i]
+    // This awkward layout is helpful for maximally efficient address computation on X64/A64
+    uint32_t instOffsets[1];
 
+    uintptr_t instBase = 0;
+    uintptr_t entryTarget = 0; // = instOffsets[0] + instBase
     Proto* proto = nullptr;
 };
 
