@@ -88,6 +88,6 @@ TableIndexer = '[' Type ']' ':' Type
 TableProp = NAME ':' Type
 TablePropOrIndexer = TableProp | TableIndexer
 PropList = TablePropOrIndexer {fieldsep TablePropOrIndexer} [fieldsep]
-TableType = '{' PropList '}'
+TableType = '{' [PropList] '}'
 FunctionType = ['<' GenericTypeList '>'] '(' [TypeList] ')' '->' ReturnType
 ```
