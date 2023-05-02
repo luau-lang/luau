@@ -76,7 +76,7 @@ GenericTypePackParameter = NAME '...'
 GenericTypeList = NAME [',' GenericTypeList] | GenericTypePackParameter {',' GenericTypePackParameter}
 
 GenericTypePackParameterWithDefault = NAME '...' ['=' (TypePack | VariadicTypePack | GenericTypePack)]
-GenericTypeListWithDefaults = NAME ['=' Type] [',' GenericTypeListWithDefaults] | GenericTypePackParameter {',' GenericTypePackParameter}
+GenericTypeListWithDefaults = NAME ['=' Type] [',' GenericTypeListWithDefaults] | GenericTypePackParameterWithDefault {',' GenericTypePackParameterWithDefault}
 
 TypeList = Type [',' TypeList] | '...' Type
 TypeParams = (Type | TypePack | VariadicTypePack | GenericTypePack) [',' TypeParams]
