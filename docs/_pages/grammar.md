@@ -68,9 +68,10 @@ SimpleType =
 SingletonType = STRING | 'true' | 'false'
 
 Type =
-    SimpleType ['?'] |
+    Type ['?'] |
     Type ['|' Type] |
-    Type ['&' Type]
+    Type ['&' Type] |
+    '(' Type ')'
 
 GenericTypePackParameter = NAME '...'
 GenericTypeList = NAME [',' GenericTypeList] | GenericTypePackParameter {',' GenericTypePackParameter}
