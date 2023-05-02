@@ -63,15 +63,14 @@ SimpleType =
     NAME ['.' NAME] [ '<' [TypeParams] '>' ] |
     'typeof' '(' exp ')' |
     TableType |
-    FunctionType
+    FunctionType |
+    '(' SimpleType ')'
 
 SingletonType = STRING | 'true' | 'false'
 
-Type =
-    Type ['?'] |
-    Type ['|' Type] |
-    Type ['&' Type] |
-    '(' Type ')'
+UnionSuffix = {'?'} ['|' SimpleType]
+IntersectionSuffix = ['&' SimpleType]
+Type = SimpleType {UnionSuffix | IntersectionSuffix}
 
 GenericTypePackParameter = NAME '...'
 GenericTypeList = NAME [',' GenericTypeList] | GenericTypePackParameter {',' GenericTypePackParameter}
