@@ -68,15 +68,19 @@ SimpleType =
 
 SingletonType = STRING | 'true' | 'false'
 
-UnionSuffix = {'?'} ['|' SimpleType]
-IntersectionSuffix = ['&' SimpleType]
-Type = SimpleType {UnionSuffix} | SimpleType {IntersectionSuffix}
+UnionSuffix = {'?'} {'|' SimpleType {'?'}}
+IntersectionSuffix = {'&' SimpleType}
+Type = SimpleType (UnionSuffix | IntersectionSuffix)
 
 GenericTypePackParameter = NAME '...'
 GenericTypeList = NAME [',' GenericTypeList] | GenericTypePackParameter {',' GenericTypePackParameter}
 
-GenericTypePackParameterWithDefault = NAME '...' ['=' (TypePack | VariadicTypePack | GenericTypePack)]
-GenericTypeListWithDefaults = NAME ['=' Type] [',' GenericTypeListWithDefaults] | GenericTypePackParameterWithDefault {',' GenericTypePackParameterWithDefault}
+GenericTypePackParameterWithDefault = NAME '...' '=' (TypePack | VariadicTypePack | GenericTypePack)
+GenericTypeListWithDefaults =
+    GenericTypeList |
+    NAME {',' NAME} {',' NAME '=' Type} {',' GenericTypePackParameterWithDefault} |
+    NAME '=' Type {',' GenericTypePackParameterWithDefault} |
+    GenericTypePackParameterWithDefault {',' GenericTypePackParameterWithDefault}
 
 TypeList = Type [',' TypeList] | '...' Type
 TypeParams = (Type | TypePack | VariadicTypePack | GenericTypePack) [',' TypeParams]
