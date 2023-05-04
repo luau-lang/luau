@@ -22,12 +22,12 @@ stat = varlist '=' explist |
     'function' funcname funcbody |
     'local' 'function' NAME funcbody |
     'local' bindinglist ['=' explist] |
-    ['export'] 'type' NAME ['<' GenericTypeParameterList '>'] '=' Type
+    ['export'] 'type' NAME ['<' GenericTypeListWithDefaults '>'] '=' Type
 
 laststat = 'return' [explist] | 'break' | 'continue'
 
 funcname = NAME {'.' NAME} [':' NAME]
-funcbody = ['<' GenericTypeParameterList '>'] '(' [parlist] ')' [':' ReturnType] block 'end'
+funcbody = ['<' GenericTypeList '>'] '(' [parlist] ')' [':' ReturnType] block 'end'
 parlist = bindinglist [',' '...'] | '...'
 
 explist = {exp ','} exp
@@ -63,17 +63,25 @@ SimpleType =
     NAME ['.' NAME] [ '<' [TypeParams] '>' ] |
     'typeof' '(' exp ')' |
     TableType |
-    FunctionType
+    FunctionType |
+    '(' Type ')'
 
 SingletonType = STRING | 'true' | 'false'
 
-Type =
-    SimpleType ['?'] |
-    Type ['|' Type] |
-    Type ['&' Type]
+UnionSuffix = {'?'} {'|' SimpleType {'?'}}
+IntersectionSuffix = {'&' SimpleType}
+Type = SimpleType (UnionSuffix | IntersectionSuffix)
 
-GenericTypePackParameter = NAME '...' ['=' (TypePack | VariadicTypePack | GenericTypePack)]
-GenericTypeParameterList = NAME ['=' Type] [',' GenericTypeParameterList] | GenericTypePackParameter {',' GenericTypePackParameter}
+GenericTypePackParameter = NAME '...'
+GenericTypeList = NAME [',' GenericTypeList] | GenericTypePackParameter {',' GenericTypePackParameter}
+
+GenericTypePackParameterWithDefault = NAME '...' '=' (TypePack | VariadicTypePack | GenericTypePack)
+GenericTypeListWithDefaults =
+    GenericTypeList {',' GenericTypePackParameterWithDefault} |
+    NAME {',' NAME} {',' NAME '=' Type} {',' GenericTypePackParameterWithDefault} |
+    NAME '=' Type {',' GenericTypePackParameterWithDefault} |
+    GenericTypePackParameterWithDefault {',' GenericTypePackParameterWithDefault}
+
 TypeList = Type [',' TypeList] | '...' Type
 TypeParams = (Type | TypePack | VariadicTypePack | GenericTypePack) [',' TypeParams]
 TypePack = '(' [TypeList] ')'
@@ -84,6 +92,6 @@ TableIndexer = '[' Type ']' ':' Type
 TableProp = NAME ':' Type
 TablePropOrIndexer = TableProp | TableIndexer
 PropList = TablePropOrIndexer {fieldsep TablePropOrIndexer} [fieldsep]
-TableType = '{' PropList '}'
-FunctionType = ['<' GenericTypeParameterList '>'] '(' [TypeList] ')' '->' ReturnType
+TableType = '{' [PropList] '}'
+FunctionType = ['<' GenericTypeList '>'] '(' [TypeList] ')' '->' ReturnType
 ```
