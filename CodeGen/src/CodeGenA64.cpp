@@ -123,9 +123,6 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     // Arguments: x0 = lua_State*, x1 = Proto*, x2 = native code pointer to jump to, x3 = NativeContext*
 
     locations.start = build.setLabel();
-    unwind.startFunction();
-
-    unwind.allocStack(8); // TODO: this is just a hack to make UnwindBuilder assertions cooperate
 
     // prologue
     build.sub(sp, sp, kStackSize);
@@ -139,6 +136,8 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     build.mov(x29, sp); // this is only necessary if we maintain frame pointers, which we do in the JIT for now
 
     locations.prologueEnd = build.setLabel();
+
+    uint32_t prologueSize = build.getLabelOffset(locations.prologueEnd) - build.getLabelOffset(locations.start);
 
     // Setup native execution environment
     build.mov(rState, x0);
@@ -168,6 +167,8 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     build.ret();
 
     // Our entry function is special, it spans the whole remaining code area
+    unwind.startFunction();
+    unwind.prologueA64(prologueSize, kStackSize, {x29, x30, x19, x20, x21, x22, x23, x24});
     unwind.finishFunction(build.getLabelOffset(locations.start), kFullBlockFuncton);
 
     return locations;
@@ -178,7 +179,7 @@ bool initHeaderFunctions(NativeState& data)
     AssemblyBuilderA64 build(/* logText= */ false);
     UnwindBuilder& unwind = *data.unwindBuilder.get();
 
-    unwind.startInfo();
+    unwind.startInfo(UnwindBuilder::A64);
 
     EntryLocations entryLocations = buildEntryFunction(build, unwind);
 

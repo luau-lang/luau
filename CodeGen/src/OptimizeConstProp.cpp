@@ -290,6 +290,20 @@ struct ConstPropState
         valueMap[versionedVmRegLoad(loadCmd, storeInst.a)] = storeInst.b.index;
     }
 
+    void clear()
+    {
+        for (int i = 0; i <= maxReg; ++i)
+            regs[i] = RegisterInfo();
+
+        maxReg = 0;
+
+        inSafeEnv = false;
+        checkedGc = false;
+
+        instLink.clear();
+        valueMap.clear();
+    }
+
     IrFunction& function;
 
     bool useValueNumbering = false;
@@ -854,12 +868,11 @@ static void constPropInBlock(IrBuilder& build, IrBlock& block, ConstPropState& s
     state.valueMap.clear();
 }
 
-static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visited, IrBlock* block, bool useValueNumbering)
+static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visited, IrBlock* block, ConstPropState& state)
 {
     IrFunction& function = build.function;
 
-    ConstPropState state{function};
-    state.useValueNumbering = useValueNumbering;
+    state.clear();
 
     while (block)
     {
@@ -936,7 +949,7 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
     return path;
 }
 
-static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited, IrBlock& startingBlock, bool useValueNumbering)
+static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited, IrBlock& startingBlock, ConstPropState& state)
 {
     IrFunction& function = build.function;
 
@@ -965,8 +978,9 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
         return;
 
     // Initialize state with the knowledge of our current block
-    ConstPropState state{function};
-    state.useValueNumbering = useValueNumbering;
+    state.clear();
+
+    // TODO: using values from the first block can cause 'live out' of the linear block predecessor to not have all required registers
     constPropInBlock(build, startingBlock, state);
 
     // Veryfy that target hasn't changed
@@ -981,9 +995,42 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
 
     replace(function, termInst.a, newBlock);
 
-    // Clone the collected path int our fresh block
+    // Clone the collected path into our fresh block
     for (uint32_t pathBlockIdx : path)
         build.clone(function.blocks[pathBlockIdx], /* removeCurrentTerminator */ true);
+
+    // If all live in/out data is defined aside from the new block, generate it
+    // Note that liveness information is not strictly correct after optimization passes and may need to be recomputed before next passes
+    // The information generated here is consistent with current state that could be outdated, but still useful in IR inspection
+    if (function.cfg.in.size() == newBlock.index)
+    {
+        LUAU_ASSERT(function.cfg.in.size() == function.cfg.out.size());
+        LUAU_ASSERT(function.cfg.in.size() == function.cfg.def.size());
+
+        // Live in is the same as the input of the original first block
+        function.cfg.in.push_back(function.cfg.in[path.front()]);
+
+        // Live out is the same as the result of the original last block
+        function.cfg.out.push_back(function.cfg.out[path.back()]);
+
+        // Defs are tricky, registers are joined together, but variadic sequences can be consumed inside the block
+        function.cfg.def.push_back({});
+        RegisterSet& def = function.cfg.def.back();
+
+        for (uint32_t pathBlockIdx : path)
+        {
+            const RegisterSet& pathDef = function.cfg.def[pathBlockIdx];
+
+            def.regs |= pathDef.regs;
+
+            // Taking only the last defined variadic sequence if it's not consumed before before the end
+            if (pathDef.varargSeq && function.cfg.out.back().varargSeq)
+            {
+                def.varargSeq = true;
+                def.varargStart = pathDef.varargStart;
+            }
+        }
+    }
 
     // Optimize our linear block
     IrBlock& linearBlock = function.blockOp(newBlock);
@@ -993,6 +1040,9 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
 void constPropInBlockChains(IrBuilder& build, bool useValueNumbering)
 {
     IrFunction& function = build.function;
+
+    ConstPropState state{function};
+    state.useValueNumbering = useValueNumbering;
 
     std::vector<uint8_t> visited(function.blocks.size(), false);
 
@@ -1004,7 +1054,7 @@ void constPropInBlockChains(IrBuilder& build, bool useValueNumbering)
         if (visited[function.getBlockIndex(block)])
             continue;
 
-        constPropInBlockChain(build, visited, &block, useValueNumbering);
+        constPropInBlockChain(build, visited, &block, state);
     }
 }
 
@@ -1014,6 +1064,9 @@ void createLinearBlocks(IrBuilder& build, bool useValueNumbering)
     // Outlining will be able to linearize the execution, even if there was a jump to a block with multiple users,
     // new 'block' will only be reachable from a single one and all gathered information can be preserved.
     IrFunction& function = build.function;
+
+    ConstPropState state{function};
+    state.useValueNumbering = useValueNumbering;
 
     std::vector<uint8_t> visited(function.blocks.size(), false);
 
@@ -1029,7 +1082,7 @@ void createLinearBlocks(IrBuilder& build, bool useValueNumbering)
         if (visited[function.getBlockIndex(block)])
             continue;
 
-        tryCreateLinearBlock(build, visited, block, useValueNumbering);
+        tryCreateLinearBlock(build, visited, block, state);
     }
 }
 

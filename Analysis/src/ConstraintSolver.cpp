@@ -1172,6 +1172,9 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     else if (auto it = get<IntersectionType>(fn))
         fn = collapse(it).value_or(fn);
 
+    if (c.callSite)
+        (*c.astOriginalCallTypes)[c.callSite] = fn;
+
     // We don't support magic __call metamethods.
     if (std::optional<TypeId> callMm = findMetatableEntry(builtinTypes, errors, fn, "__call", constraint->location))
     {
@@ -1219,9 +1222,21 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
     TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, constraint->scope.get(), argsPack, c.result});
 
-    std::vector<TypeId> overloads = flattenIntersection(fn);
+    const NormalizedType* normFn = normalizer->normalize(fn);
+    if (!normFn)
+    {
+        reportError(UnificationTooComplex{}, constraint->location);
+        return true;
+    }
+
+    // TODO: It would be nice to not need to convert the normalized type back to
+    // an intersection and flatten it.
+    TypeId normFnTy = normalizer->typeFromNormal(*normFn);
+    std::vector<TypeId> overloads = flattenIntersection(normFnTy);
 
     Instantiation inst(TxnLog::empty(), arena, TypeLevel{}, constraint->scope);
+
+    std::vector<TypeId> arityMatchingOverloads;
 
     for (TypeId overload : overloads)
     {
@@ -1247,8 +1262,17 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         if (const auto& e = hasUnificationTooComplex(u.errors))
             reportError(*e);
 
+        if (const auto& e = hasCountMismatch(u.errors);
+            (!e || get<CountMismatch>(*e)->context != CountMismatch::Context::Arg) && get<FunctionType>(*instantiated))
+        {
+            arityMatchingOverloads.push_back(*instantiated);
+        }
+
         if (u.errors.empty())
         {
+            if (c.callSite)
+                (*c.astOverloadResolvedTypes)[c.callSite] = *instantiated;
+
             // We found a matching overload.
             const auto [changedTypes, changedPacks] = u.log.getChanges();
             u.log.commit();
@@ -1260,14 +1284,21 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         }
     }
 
+    if (arityMatchingOverloads.size() == 1 && c.callSite)
+    {
+        // In the name of better error messages in the type checker, we provide
+        // it with an instantiated function signature that matched arity, but
+        // not the requisite subtyping requirements. This makes errors better in
+        // cases where only one overload fit from an arity perspective.
+        (*c.astOverloadResolvedTypes)[c.callSite] = arityMatchingOverloads.at(0);
+    }
+
     // We found no matching overloads.
     Unifier u{normalizer, Mode::Strict, constraint->scope, Location{}, Covariant};
     u.useScopes = true;
 
     u.tryUnify(inferredTy, builtinTypes->anyType);
     u.tryUnify(fn, builtinTypes->anyType);
-
-    LUAU_ASSERT(u.errors.empty()); // unifying with any should never fail
 
     const auto [changedTypes, changedPacks] = u.log.getChanges();
     u.log.commit();
@@ -2166,13 +2197,24 @@ void ConstraintSolver::unblock(NotNull<const Constraint> progressed)
 
 void ConstraintSolver::unblock(TypeId progressed)
 {
-    if (logger)
-        logger->popBlock(progressed);
+    DenseHashSet<TypeId> seen{nullptr};
 
-    unblock_(progressed);
+    while (true)
+    {
+        if (seen.find(progressed))
+            iceReporter.ice("ConstraintSolver::unblock encountered a self-bound type!");
+        seen.insert(progressed);
 
-    if (auto bt = get<BoundType>(progressed))
-        unblock(bt->boundTo);
+        if (logger)
+            logger->popBlock(progressed);
+
+        unblock_(progressed);
+
+        if (auto bt = get<BoundType>(progressed))
+            progressed = bt->boundTo;
+        else
+            break;
+    }
 }
 
 void ConstraintSolver::unblock(TypePackId progressed)

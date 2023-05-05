@@ -28,6 +28,7 @@ struct FileResolver;
 struct ModuleResolver;
 struct ParseResult;
 struct HotComment;
+struct BuildQueueItem;
 
 struct LoadDefinitionFileResult
 {
@@ -171,7 +172,18 @@ struct Frontend
     LoadDefinitionFileResult loadDefinitionFile(GlobalTypes& globals, ScopePtr targetScope, std::string_view source, const std::string& packageName,
         bool captureComments, bool typeCheckForAutocomplete = false);
 
+    // Batch module checking. Queue modules and check them together, retrieve results with 'getCheckResult'
+    // If provided, 'executeTask' function is allowed to call the 'task' function on any thread and return without waiting for 'task' to complete
+    void queueModuleCheck(const std::vector<ModuleName>& names);
+    void queueModuleCheck(const ModuleName& name);
+    std::vector<ModuleName> checkQueuedModules(std::optional<FrontendOptions> optionOverride = {},
+        std::function<void(std::function<void()> task)> executeTask = {}, std::function<void(size_t done, size_t total)> progress = {});
+
+    std::optional<CheckResult> getCheckResult(const ModuleName& name, bool accumulateNested, bool forAutocomplete = false);
+
 private:
+    CheckResult check_DEPRECATED(const ModuleName& name, std::optional<FrontendOptions> optionOverride = {});
+
     struct TypeCheckLimits
     {
         std::optional<double> finishTime;
@@ -185,7 +197,14 @@ private:
     std::pair<SourceNode*, SourceModule*> getSourceNode(const ModuleName& name);
     SourceModule parse(const ModuleName& name, std::string_view src, const ParseOptions& parseOptions);
 
-    bool parseGraph(std::vector<ModuleName>& buildQueue, const ModuleName& root, bool forAutocomplete);
+    bool parseGraph(
+        std::vector<ModuleName>& buildQueue, const ModuleName& root, bool forAutocomplete, std::function<bool(const ModuleName&)> canSkip = {});
+
+    void addBuildQueueItems(std::vector<BuildQueueItem>& items, std::vector<ModuleName>& buildQueue, bool cycleDetected,
+        std::unordered_set<Luau::ModuleName>& seen, const FrontendOptions& frontendOptions);
+    void checkBuildQueueItem(BuildQueueItem& item);
+    void checkBuildQueueItems(std::vector<BuildQueueItem>& items);
+    void recordItemResult(const BuildQueueItem& item);
 
     static LintResult classifyLints(const std::vector<LintWarning>& warnings, const Config& config);
 
@@ -212,11 +231,13 @@ public:
     InternalErrorReporter iceHandler;
     std::function<void(const ModuleName& name, const ScopePtr& scope, bool forAutocomplete)> prepareModuleScope;
 
-    std::unordered_map<ModuleName, SourceNode> sourceNodes;
-    std::unordered_map<ModuleName, SourceModule> sourceModules;
+    std::unordered_map<ModuleName, std::shared_ptr<SourceNode>> sourceNodes;
+    std::unordered_map<ModuleName, std::shared_ptr<SourceModule>> sourceModules;
     std::unordered_map<ModuleName, RequireTraceResult> requireTrace;
 
     Stats stats = {};
+
+    std::vector<ModuleName> moduleQueue;
 };
 
 ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle>& requireCycles, NotNull<BuiltinTypes> builtinTypes,

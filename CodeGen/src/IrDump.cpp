@@ -62,6 +62,7 @@ static const char* getTagName(uint8_t tag)
     case LUA_TTHREAD:
         return "tthread";
     default:
+        LUAU_ASSERT(!"Unknown type tag");
         LUAU_UNREACHABLE();
     }
 }
@@ -410,27 +411,6 @@ void toString(std::string& result, IrConst constant)
     }
 }
 
-void toStringDetailed(IrToStringContext& ctx, const IrInst& inst, uint32_t index, bool includeUseInfo)
-{
-    size_t start = ctx.result.size();
-
-    toString(ctx, inst, index);
-
-    if (includeUseInfo)
-    {
-        padToDetailColumn(ctx.result, start);
-
-        if (inst.useCount == 0 && hasSideEffects(inst.cmd))
-            append(ctx.result, "; %%%u, has side-effects\n", index);
-        else
-            append(ctx.result, "; useCount: %d, lastUse: %%%u\n", inst.useCount, inst.lastUse);
-    }
-    else
-    {
-        ctx.result.append("\n");
-    }
-}
-
 static void appendBlockSet(IrToStringContext& ctx, BlockIteratorWrapper blocks)
 {
     bool comma = false;
@@ -467,6 +447,86 @@ static void appendRegisterSet(IrToStringContext& ctx, const RegisterSet& rs, con
             ctx.result.append(separator);
 
         append(ctx.result, "R%d...", rs.varargStart);
+    }
+}
+
+static RegisterSet getJumpTargetExtraLiveIn(IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, const IrInst& inst)
+{
+    RegisterSet extraRs;
+
+    if (blockIdx >= ctx.cfg.in.size())
+        return extraRs;
+
+    const RegisterSet& defRs = ctx.cfg.in[blockIdx];
+
+    // Find first block argument, for guard instructions (isNonTerminatingJump), that's the first and only one
+    LUAU_ASSERT(isNonTerminatingJump(inst.cmd));
+    IrOp op = inst.a;
+
+    if (inst.b.kind == IrOpKind::Block)
+        op = inst.b;
+    else if (inst.c.kind == IrOpKind::Block)
+        op = inst.c;
+    else if (inst.d.kind == IrOpKind::Block)
+        op = inst.d;
+    else if (inst.e.kind == IrOpKind::Block)
+        op = inst.e;
+    else if (inst.f.kind == IrOpKind::Block)
+        op = inst.f;
+
+    if (op.kind == IrOpKind::Block && op.index < ctx.cfg.in.size())
+    {
+        const RegisterSet& inRs = ctx.cfg.in[op.index];
+
+        extraRs.regs = inRs.regs & ~defRs.regs;
+
+        if (inRs.varargSeq)
+            requireVariadicSequence(extraRs, defRs, inRs.varargStart);
+    }
+
+    return extraRs;
+}
+
+void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, const IrInst& inst, uint32_t instIdx, bool includeUseInfo)
+{
+    size_t start = ctx.result.size();
+
+    toString(ctx, inst, instIdx);
+
+    if (includeUseInfo)
+    {
+        padToDetailColumn(ctx.result, start);
+
+        if (inst.useCount == 0 && hasSideEffects(inst.cmd))
+        {
+            if (isNonTerminatingJump(inst.cmd))
+            {
+                RegisterSet extraRs = getJumpTargetExtraLiveIn(ctx, block, blockIdx, inst);
+
+                if (extraRs.regs.any() || extraRs.varargSeq)
+                {
+                    append(ctx.result, "; %%%u, extra in: ", instIdx);
+                    appendRegisterSet(ctx, extraRs, ", ");
+                    ctx.result.append("\n");
+                }
+                else
+                {
+                    append(ctx.result, "; %%%u\n", instIdx);
+                }
+            }
+            else
+            {
+                append(ctx.result, "; %%%u\n", instIdx);
+            }
+        }
+        else
+        {
+            append(ctx.result, "; useCount: %d, lastUse: %%%u\n", inst.useCount, inst.lastUse);
+        }
+    }
+    else
+    {
+        ctx.result.append("\n");
     }
 }
 
@@ -581,7 +641,7 @@ std::string toString(const IrFunction& function, bool includeUseInfo)
                 continue;
 
             append(ctx.result, " ");
-            toStringDetailed(ctx, inst, index, includeUseInfo);
+            toStringDetailed(ctx, block, uint32_t(i), inst, index, includeUseInfo);
         }
 
         append(ctx.result, "\n");

@@ -31,7 +31,10 @@ size_t UnwindBuilderWin::getBeginOffset() const
     return beginOffset;
 }
 
-void UnwindBuilderWin::startInfo() {}
+void UnwindBuilderWin::startInfo(Arch arch)
+{
+    LUAU_ASSERT(arch == X64);
+}
 
 void UnwindBuilderWin::startFunction()
 {
@@ -50,45 +53,6 @@ void UnwindBuilderWin::startFunction()
     // rax has register index 0, which in Windows unwind info means that frame register is not used
     frameReg = X64::rax;
     frameRegOffset = 0;
-
-    // Return address was pushed by calling the function
-    stackOffset = 8;
-}
-
-void UnwindBuilderWin::spill(int espOffset, X64::RegisterX64 reg)
-{
-    prologSize += 5; // REX.W mov [rsp + imm8], reg
-}
-
-void UnwindBuilderWin::save(X64::RegisterX64 reg)
-{
-    prologSize += 2; // REX.W push reg
-    stackOffset += 8;
-    unwindCodes.push_back({prologSize, UWOP_PUSH_NONVOL, reg.index});
-}
-
-void UnwindBuilderWin::allocStack(int size)
-{
-    LUAU_ASSERT(size >= 8 && size <= 128 && size % 8 == 0);
-
-    prologSize += 4; // REX.W sub rsp, imm8
-    stackOffset += size;
-    unwindCodes.push_back({prologSize, UWOP_ALLOC_SMALL, uint8_t((size - 8) / 8)});
-}
-
-void UnwindBuilderWin::setupFrameReg(X64::RegisterX64 reg, int espOffset)
-{
-    LUAU_ASSERT(espOffset < 256 && espOffset % 16 == 0);
-
-    frameReg = reg;
-    frameRegOffset = uint8_t(espOffset / 16);
-
-    if (espOffset != 0)
-        prologSize += 5; // REX.W lea rbp, [rsp + imm8]
-    else
-        prologSize += 3; // REX.W mov rbp, rsp
-
-    unwindCodes.push_back({prologSize, UWOP_SET_FPREG, frameRegOffset});
 }
 
 void UnwindBuilderWin::finishFunction(uint32_t beginOffset, uint32_t endOffset)
@@ -98,8 +62,6 @@ void UnwindBuilderWin::finishFunction(uint32_t beginOffset, uint32_t endOffset)
 
     // Windows unwind code count is stored in uint8_t, so we can't have more
     LUAU_ASSERT(unwindCodes.size() < 256);
-
-    LUAU_ASSERT(stackOffset % 16 == 0 && "stack has to be aligned to 16 bytes after prologue");
 
     UnwindInfoWin info;
     info.version = 1;
@@ -141,6 +103,54 @@ void UnwindBuilderWin::finishFunction(uint32_t beginOffset, uint32_t endOffset)
 }
 
 void UnwindBuilderWin::finishInfo() {}
+
+void UnwindBuilderWin::prologueA64(uint32_t prologueSize, uint32_t stackSize, std::initializer_list<A64::RegisterA64> regs)
+{
+    LUAU_ASSERT(!"Not implemented");
+}
+
+void UnwindBuilderWin::prologueX64(uint32_t prologueSize, uint32_t stackSize, bool setupFrame, std::initializer_list<X64::RegisterX64> regs)
+{
+    LUAU_ASSERT(stackSize > 0 && stackSize <= 128 && stackSize % 8 == 0);
+    LUAU_ASSERT(prologueSize < 256);
+
+    unsigned int stackOffset = 8; // Return address was pushed by calling the function
+    unsigned int prologueOffset = 0;
+
+    if (setupFrame)
+    {
+        // push rbp
+        stackOffset += 8;
+        prologueOffset += 2;
+        unwindCodes.push_back({uint8_t(prologueOffset), UWOP_PUSH_NONVOL, X64::rbp.index});
+
+        // mov rbp, rsp
+        prologueOffset += 3;
+        frameReg = X64::rbp;
+        frameRegOffset = 0;
+        unwindCodes.push_back({uint8_t(prologueOffset), UWOP_SET_FPREG, frameRegOffset});
+    }
+
+    // push reg
+    for (X64::RegisterX64 reg : regs)
+    {
+        LUAU_ASSERT(reg.size == X64::SizeX64::qword);
+
+        stackOffset += 8;
+        prologueOffset += 2;
+        unwindCodes.push_back({uint8_t(prologueOffset), UWOP_PUSH_NONVOL, reg.index});
+    }
+
+    // sub rsp, stackSize
+    stackOffset += stackSize;
+    prologueOffset += 4;
+    unwindCodes.push_back({uint8_t(prologueOffset), UWOP_ALLOC_SMALL, uint8_t((stackSize - 8) / 8)});
+
+    LUAU_ASSERT(stackOffset % 16 == 0);
+    LUAU_ASSERT(prologueOffset == prologueSize);
+
+    this->prologSize = prologueSize;
+}
 
 size_t UnwindBuilderWin::getSize() const
 {

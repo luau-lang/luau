@@ -169,7 +169,7 @@ using SeenSet = std::set<std::pair<const void*, const void*>>;
 bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs);
 
 TypePackId follow(TypePackId tp);
-TypePackId follow(TypePackId tp, std::function<TypePackId(TypePackId)> mapper);
+TypePackId follow(TypePackId t, const void* context, TypePackId (*mapper)(const void*, TypePackId));
 
 size_t size(TypePackId tp, TxnLog* log = nullptr);
 bool finite(TypePackId tp, TxnLog* log = nullptr);

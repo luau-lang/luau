@@ -58,42 +58,43 @@ static EntryLocations buildEntryFunction(AssemblyBuilderX64& build, UnwindBuilde
     unwind.startFunction();
 
     // Save common non-volatile registers
-    build.push(rbp);
-    unwind.save(rbp);
-
     if (build.abi == ABIX64::SystemV)
     {
+        // We need to use a standard rbp-based frame setup for debuggers to work with JIT code
+        build.push(rbp);
         build.mov(rbp, rsp);
-        unwind.setupFrameReg(rbp, 0);
     }
 
     build.push(rbx);
-    unwind.save(rbx);
     build.push(r12);
-    unwind.save(r12);
     build.push(r13);
-    unwind.save(r13);
     build.push(r14);
-    unwind.save(r14);
     build.push(r15);
-    unwind.save(r15);
 
     if (build.abi == ABIX64::Windows)
     {
         // Save non-volatile registers that are specific to Windows x64 ABI
         build.push(rdi);
-        unwind.save(rdi);
         build.push(rsi);
-        unwind.save(rsi);
+
+        // On Windows, rbp is available as a general-purpose non-volatile register; we currently don't use it, but we need to push an even number
+        // of registers for stack alignment...
+        build.push(rbp);
 
         // TODO: once we start using non-volatile SIMD registers on Windows, we will save those here
     }
 
     // Allocate stack space (reg home area + local data)
     build.sub(rsp, kStackSize + kLocalsSize);
-    unwind.allocStack(kStackSize + kLocalsSize);
 
     locations.prologueEnd = build.setLabel();
+
+    uint32_t prologueSize = build.getLabelOffset(locations.prologueEnd) - build.getLabelOffset(locations.start);
+
+    if (build.abi == ABIX64::SystemV)
+        unwind.prologueX64(prologueSize, kStackSize + kLocalsSize, /* setupFrame= */ true, {rbx, r12, r13, r14, r15});
+    else if (build.abi == ABIX64::Windows)
+        unwind.prologueX64(prologueSize, kStackSize + kLocalsSize, /* setupFrame= */ false, {rbx, r12, r13, r14, r15, rdi, rsi, rbp});
 
     // Setup native execution environment
     build.mov(rState, rArg1);
@@ -118,6 +119,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderX64& build, UnwindBuilde
 
     if (build.abi == ABIX64::Windows)
     {
+        build.pop(rbp);
         build.pop(rsi);
         build.pop(rdi);
     }
@@ -127,7 +129,10 @@ static EntryLocations buildEntryFunction(AssemblyBuilderX64& build, UnwindBuilde
     build.pop(r13);
     build.pop(r12);
     build.pop(rbx);
-    build.pop(rbp);
+
+    if (build.abi == ABIX64::SystemV)
+        build.pop(rbp);
+
     build.ret();
 
     // Our entry function is special, it spans the whole remaining code area
@@ -141,7 +146,7 @@ bool initHeaderFunctions(NativeState& data)
     AssemblyBuilderX64 build(/* logText= */ false);
     UnwindBuilder& unwind = *data.unwindBuilder.get();
 
-    unwind.startInfo();
+    unwind.startInfo(UnwindBuilder::X64);
 
     EntryLocations entryLocations = buildEntryFunction(build, unwind);
 

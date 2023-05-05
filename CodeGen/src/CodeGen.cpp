@@ -134,7 +134,6 @@ static bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
     for (size_t i = 0; i < sortedBlocks.size(); ++i)
     {
         uint32_t blockIndex = sortedBlocks[i];
-
         IrBlock& block = function.blocks[blockIndex];
 
         if (block.kind == IrBlockKind::Dead)
@@ -191,10 +190,13 @@ static bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
                 continue;
             }
 
+            // Either instruction result value is not referenced or the use count is not zero
+            LUAU_ASSERT(inst.lastUse == 0 || inst.useCount != 0);
+
             if (options.includeIr)
             {
                 build.logAppend("# ");
-                toStringDetailed(ctx, inst, index, /* includeUseInfo */ true);
+                toStringDetailed(ctx, block, blockIndex, inst, index, /* includeUseInfo */ true);
             }
 
             IrBlock& next = i + 1 < sortedBlocks.size() ? function.blocks[sortedBlocks[i + 1]] : dummy;
@@ -409,9 +411,11 @@ bool isSupported()
     if (sizeof(LuaNode) != 32)
         return false;
 
-    // TODO: A64 codegen does not generate correct unwind info at the moment so it requires longjmp instead of C++ exceptions
+#ifdef _WIN32
+    // Unwind info is not supported for Windows-on-ARM yet
     if (!LUA_USE_LONGJMP)
         return false;
+#endif
 
     return true;
 #else
