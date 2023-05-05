@@ -18,19 +18,6 @@ namespace CodeGen
 namespace X64
 {
 
-static void emitBuiltinMathLdexp(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int arg, OperandX64 arg2)
-{
-    ScopedRegX64 tmp{regs, SizeX64::qword};
-    build.vcvttsd2si(tmp.reg, arg2);
-
-    IrCallWrapperX64 callWrap(regs, build);
-    callWrap.addArgument(SizeX64::xmmword, luauRegValue(arg));
-    callWrap.addArgument(SizeX64::qword, tmp);
-    callWrap.call(qword[rNativeContext + offsetof(NativeContext, libm_ldexp)]);
-
-    build.vmovsd(luauRegValue(ra), xmm0);
-}
-
 static void emitBuiltinMathFrexp(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int arg, int nresults)
 {
     IrCallWrapperX64 callWrap(regs, build);
@@ -115,9 +102,6 @@ void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int r
 {
     switch (bfid)
     {
-    case LBF_MATH_LDEXP:
-        LUAU_ASSERT(nparams == 2 && nresults == 1);
-        return emitBuiltinMathLdexp(regs, build, ra, arg, arg2);
     case LBF_MATH_FREXP:
         LUAU_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
         return emitBuiltinMathFrexp(regs, build, ra, arg, nresults);

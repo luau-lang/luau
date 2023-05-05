@@ -14,8 +14,6 @@
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 
-LUAU_FASTFLAGVARIABLE(LuauParserErrorsOnMissingDefaultTypePackArgument, false)
-
 #define ERROR_INVALID_INTERP_DOUBLE_BRACE "Double braces are not permitted within interpolated strings. Did you mean '\\{'?"
 
 namespace Luau
@@ -327,22 +325,19 @@ AstStat* Parser::parseStat()
     // we know this isn't a call or an assignment; therefore it must be a context-sensitive keyword such as `type` or `continue`
     AstName ident = getIdentifier(expr);
 
-    if (options.allowTypeAnnotations)
-    {
-        if (ident == "type")
-            return parseTypeAlias(expr->location, /* exported= */ false);
+    if (ident == "type")
+        return parseTypeAlias(expr->location, /* exported= */ false);
 
-        if (ident == "export" && lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "type")
-        {
-            nextLexeme();
-            return parseTypeAlias(expr->location, /* exported= */ true);
-        }
+    if (ident == "export" && lexer.current().type == Lexeme::Name && AstName(lexer.current().name) == "type")
+    {
+        nextLexeme();
+        return parseTypeAlias(expr->location, /* exported= */ true);
     }
 
-    if (options.supportContinueStatement && ident == "continue")
+    if (ident == "continue")
         return parseContinue(expr->location);
 
-    if (options.allowTypeAnnotations && options.allowDeclarationSyntax)
+    if (options.allowDeclarationSyntax)
     {
         if (ident == "declare")
             return parseDeclaration(expr->location);
@@ -1123,7 +1118,7 @@ std::tuple<bool, Location, AstTypePack*> Parser::parseBindingList(TempVector<Bin
 
 AstType* Parser::parseOptionalType()
 {
-    if (options.allowTypeAnnotations && lexer.current().type == ':')
+    if (lexer.current().type == ':')
     {
         nextLexeme();
         return parseType();
@@ -1175,7 +1170,7 @@ AstTypePack* Parser::parseTypeList(TempVector<AstType*>& result, TempVector<std:
 
 std::optional<AstTypeList> Parser::parseOptionalReturnType()
 {
-    if (options.allowTypeAnnotations && (lexer.current().type == ':' || lexer.current().type == Lexeme::SkinnyArrow))
+    if (lexer.current().type == ':' || lexer.current().type == Lexeme::SkinnyArrow)
     {
         if (lexer.current().type == Lexeme::SkinnyArrow)
             report(lexer.current().location, "Function return type annotations are written after ':' instead of '->'");
@@ -2056,7 +2051,7 @@ AstExpr* Parser::parseAssertionExpr()
     Location start = lexer.current().location;
     AstExpr* expr = parseSimpleExpr();
 
-    if (options.allowTypeAnnotations && lexer.current().type == Lexeme::DoubleColon)
+    if (lexer.current().type == Lexeme::DoubleColon)
     {
         nextLexeme();
         AstType* annotation = parseType();
@@ -2449,24 +2444,13 @@ std::pair<AstArray<AstGenericType>, AstArray<AstGenericTypePack>> Parser::parseG
                     seenDefault = true;
                     nextLexeme();
 
-                    Lexeme packBegin = lexer.current();
-
                     if (shouldParseTypePack(lexer))
                     {
                         AstTypePack* typePack = parseTypePack();
 
                         namePacks.push_back({name, nameLocation, typePack});
                     }
-                    else if (!FFlag::LuauParserErrorsOnMissingDefaultTypePackArgument && lexer.current().type == '(')
-                    {
-                        auto [type, typePack] = parseTypeOrPack();
-
-                        if (type)
-                            report(Location(packBegin.location.begin, lexer.previousLocation().end), "Expected type pack after '=', got type");
-
-                        namePacks.push_back({name, nameLocation, typePack});
-                    }
-                    else if (FFlag::LuauParserErrorsOnMissingDefaultTypePackArgument)
+                    else
                     {
                         auto [type, typePack] = parseTypeOrPack();
 

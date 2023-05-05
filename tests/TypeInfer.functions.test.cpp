@@ -169,14 +169,27 @@ TEST_CASE_FIXTURE(Fixture, "list_only_alternative_overloads_that_match_argument_
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE(tm);
-    CHECK_EQ(builtinTypes->numberType, tm->wantedType);
-    CHECK_EQ(builtinTypes->stringType, tm->givenType);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        GenericError* g = get<GenericError>(result.errors[0]);
+        REQUIRE(g);
+        CHECK(g->message == "None of the overloads for function that accept 1 arguments are compatible.");
+    }
+    else
+    {
+        TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+        REQUIRE(tm);
+        CHECK_EQ(builtinTypes->numberType, tm->wantedType);
+        CHECK_EQ(builtinTypes->stringType, tm->givenType);
+    }
 
     ExtraInformation* ei = get<ExtraInformation>(result.errors[1]);
     REQUIRE(ei);
-    CHECK_EQ("Other overloads are also not viable: (number) -> string", ei->message);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("Available overloads: (number) -> number; and (number) -> string" == ei->message);
+    else
+        CHECK_EQ("Other overloads are also not viable: (number) -> string", ei->message);
 }
 
 TEST_CASE_FIXTURE(Fixture, "list_all_overloads_if_no_overload_takes_given_argument_count")

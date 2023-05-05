@@ -21,6 +21,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
+#include <exception>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 
@@ -34,9 +37,35 @@ LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAG(LuauRequirePathTrueModuleName)
 LUAU_FASTFLAGVARIABLE(DebugLuauReadWriteProperties, false)
+LUAU_FASTFLAGVARIABLE(LuauSplitFrontendProcessing, false)
 
 namespace Luau
 {
+
+struct BuildQueueItem
+{
+    ModuleName name;
+    ModuleName humanReadableName;
+
+    // Parameters
+    std::shared_ptr<SourceNode> sourceNode;
+    std::shared_ptr<SourceModule> sourceModule;
+    Config config;
+    ScopePtr environmentScope;
+    std::vector<RequireCycle> requireCycles;
+    FrontendOptions options;
+    bool recordJsonLog = false;
+
+    // Queue state
+    std::vector<size_t> reverseDeps;
+    int dirtyDependencies = 0;
+    bool processing = false;
+
+    // Result
+    std::exception_ptr exception;
+    ModulePtr module;
+    Frontend::Stats stats;
+};
 
 std::optional<Mode> parseMode(const std::vector<HotComment>& hotcomments)
 {
@@ -220,7 +249,7 @@ namespace
 {
 
 static ErrorVec accumulateErrors(
-    const std::unordered_map<ModuleName, SourceNode>& sourceNodes, ModuleResolver& moduleResolver, const ModuleName& name)
+    const std::unordered_map<ModuleName, std::shared_ptr<SourceNode>>& sourceNodes, ModuleResolver& moduleResolver, const ModuleName& name)
 {
     std::unordered_set<ModuleName> seen;
     std::vector<ModuleName> queue{name};
@@ -240,7 +269,7 @@ static ErrorVec accumulateErrors(
         if (it == sourceNodes.end())
             continue;
 
-        const SourceNode& sourceNode = it->second;
+        const SourceNode& sourceNode = *it->second;
         queue.insert(queue.end(), sourceNode.requireSet.begin(), sourceNode.requireSet.end());
 
         // FIXME: If a module has a syntax error, we won't be able to re-report it here.
@@ -285,8 +314,8 @@ static void filterLintOptions(LintOptions& lintOptions, const std::vector<HotCom
 // For each such path, record the full path and the location of the require in the starting module.
 // Note that this is O(V^2) for a fully connected graph and produces O(V) paths of length O(V)
 // However, when the graph is acyclic, this is O(V), as well as when only the first cycle is needed (stopAtFirst=true)
-std::vector<RequireCycle> getRequireCycles(
-    const FileResolver* resolver, const std::unordered_map<ModuleName, SourceNode>& sourceNodes, const SourceNode* start, bool stopAtFirst = false)
+std::vector<RequireCycle> getRequireCycles(const FileResolver* resolver,
+    const std::unordered_map<ModuleName, std::shared_ptr<SourceNode>>& sourceNodes, const SourceNode* start, bool stopAtFirst = false)
 {
     std::vector<RequireCycle> result;
 
@@ -302,7 +331,7 @@ std::vector<RequireCycle> getRequireCycles(
         if (dit == sourceNodes.end())
             continue;
 
-        stack.push_back(&dit->second);
+        stack.push_back(dit->second.get());
 
         while (!stack.empty())
         {
@@ -343,7 +372,7 @@ std::vector<RequireCycle> getRequireCycles(
 
                     auto rit = sourceNodes.find(reqName);
                     if (rit != sourceNodes.end())
-                        stack.push_back(&rit->second);
+                        stack.push_back(rit->second.get());
                 }
             }
         }
@@ -390,6 +419,52 @@ Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, c
 
 CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOptions> optionOverride)
 {
+    if (!FFlag::LuauSplitFrontendProcessing)
+        return check_DEPRECATED(name, optionOverride);
+
+    LUAU_TIMETRACE_SCOPE("Frontend::check", "Frontend");
+    LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
+
+    FrontendOptions frontendOptions = optionOverride.value_or(options);
+
+    if (std::optional<CheckResult> result = getCheckResult(name, true, frontendOptions.forAutocomplete))
+        return std::move(*result);
+
+    std::vector<ModuleName> buildQueue;
+    bool cycleDetected = parseGraph(buildQueue, name, frontendOptions.forAutocomplete);
+
+    std::unordered_set<Luau::ModuleName> seen;
+    std::vector<BuildQueueItem> buildQueueItems;
+    addBuildQueueItems(buildQueueItems, buildQueue, cycleDetected, seen, frontendOptions);
+    LUAU_ASSERT(!buildQueueItems.empty());
+
+    if (FFlag::DebugLuauLogSolverToJson)
+    {
+        LUAU_ASSERT(buildQueueItems.back().name == name);
+        buildQueueItems.back().recordJsonLog = true;
+    }
+
+    checkBuildQueueItems(buildQueueItems);
+
+    // Collect results only for checked modules, 'getCheckResult' produces a different result
+    CheckResult checkResult;
+
+    for (const BuildQueueItem& item : buildQueueItems)
+    {
+        if (item.module->timeout)
+            checkResult.timeoutHits.push_back(item.name);
+
+        checkResult.errors.insert(checkResult.errors.end(), item.module->errors.begin(), item.module->errors.end());
+
+        if (item.name == name)
+            checkResult.lintResult = item.module->lintResult;
+    }
+
+    return checkResult;
+}
+
+CheckResult Frontend::check_DEPRECATED(const ModuleName& name, std::optional<FrontendOptions> optionOverride)
+{
     LUAU_TIMETRACE_SCOPE("Frontend::check", "Frontend");
     LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
 
@@ -399,7 +474,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
     FrontendModuleResolver& resolver = frontendOptions.forAutocomplete ? moduleResolverForAutocomplete : moduleResolver;
 
     auto it = sourceNodes.find(name);
-    if (it != sourceNodes.end() && !it->second.hasDirtyModule(frontendOptions.forAutocomplete))
+    if (it != sourceNodes.end() && !it->second->hasDirtyModule(frontendOptions.forAutocomplete))
     {
         // No recheck required.
         ModulePtr module = resolver.getModule(name);
@@ -421,13 +496,13 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
     for (const ModuleName& moduleName : buildQueue)
     {
         LUAU_ASSERT(sourceNodes.count(moduleName));
-        SourceNode& sourceNode = sourceNodes[moduleName];
+        SourceNode& sourceNode = *sourceNodes[moduleName];
 
         if (!sourceNode.hasDirtyModule(frontendOptions.forAutocomplete))
             continue;
 
         LUAU_ASSERT(sourceModules.count(moduleName));
-        SourceModule& sourceModule = sourceModules[moduleName];
+        SourceModule& sourceModule = *sourceModules[moduleName];
 
         const Config& config = configResolver->getConfig(moduleName);
 
@@ -583,7 +658,241 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
     return checkResult;
 }
 
-bool Frontend::parseGraph(std::vector<ModuleName>& buildQueue, const ModuleName& root, bool forAutocomplete)
+void Frontend::queueModuleCheck(const std::vector<ModuleName>& names)
+{
+    moduleQueue.insert(moduleQueue.end(), names.begin(), names.end());
+}
+
+void Frontend::queueModuleCheck(const ModuleName& name)
+{
+    moduleQueue.push_back(name);
+}
+
+std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptions> optionOverride,
+    std::function<void(std::function<void()> task)> executeTask, std::function<void(size_t done, size_t total)> progress)
+{
+    FrontendOptions frontendOptions = optionOverride.value_or(options);
+
+    // By taking data into locals, we make sure queue is cleared at the end, even if an ICE or a different exception is thrown
+    std::vector<ModuleName> currModuleQueue;
+    std::swap(currModuleQueue, moduleQueue);
+
+    std::unordered_set<Luau::ModuleName> seen;
+    std::vector<BuildQueueItem> buildQueueItems;
+
+    for (const ModuleName& name : currModuleQueue)
+    {
+        if (seen.count(name))
+            continue;
+
+        if (!isDirty(name, frontendOptions.forAutocomplete))
+        {
+            seen.insert(name);
+            continue;
+        }
+
+        std::vector<ModuleName> queue;
+        bool cycleDetected = parseGraph(queue, name, frontendOptions.forAutocomplete, [&seen](const ModuleName& name) {
+            return seen.count(name);
+        });
+
+        addBuildQueueItems(buildQueueItems, queue, cycleDetected, seen, frontendOptions);
+    }
+
+    if (buildQueueItems.empty())
+        return {};
+
+    // We need a mapping from modules to build queue slots
+    std::unordered_map<ModuleName, size_t> moduleNameToQueue;
+
+    for (size_t i = 0; i < buildQueueItems.size(); i++)
+    {
+        BuildQueueItem& item = buildQueueItems[i];
+        moduleNameToQueue[item.name] = i;
+    }
+
+    // Default task execution is single-threaded and immediate
+    if (!executeTask)
+    {
+        executeTask = [](std::function<void()> task) {
+            task();
+        };
+    }
+
+    std::mutex mtx;
+    std::condition_variable cv;
+    std::vector<size_t> readyQueueItems;
+
+    size_t processing = 0;
+    size_t remaining = buildQueueItems.size();
+
+    auto itemTask = [&](size_t i) {
+        BuildQueueItem& item = buildQueueItems[i];
+
+        try
+        {
+            checkBuildQueueItem(item);
+        }
+        catch (...)
+        {
+            item.exception = std::current_exception();
+        }
+
+        {
+            std::unique_lock guard(mtx);
+            readyQueueItems.push_back(i);
+        }
+
+        cv.notify_one();
+    };
+
+    auto sendItemTask = [&](size_t i) {
+        BuildQueueItem& item = buildQueueItems[i];
+
+        item.processing = true;
+        processing++;
+
+        executeTask([&itemTask, i]() {
+            itemTask(i);
+        });
+    };
+
+    auto sendCycleItemTask = [&] {
+        for (size_t i = 0; i < buildQueueItems.size(); i++)
+        {
+            BuildQueueItem& item = buildQueueItems[i];
+
+            if (!item.processing)
+            {
+                sendItemTask(i);
+                break;
+            }
+        }
+    };
+
+    // In a first pass, check modules that have no dependencies and record info of those modules that wait
+    for (size_t i = 0; i < buildQueueItems.size(); i++)
+    {
+        BuildQueueItem& item = buildQueueItems[i];
+
+        for (const ModuleName& dep : item.sourceNode->requireSet)
+        {
+            if (auto it = sourceNodes.find(dep); it != sourceNodes.end())
+            {
+                if (it->second->hasDirtyModule(frontendOptions.forAutocomplete))
+                {
+                    item.dirtyDependencies++;
+
+                    buildQueueItems[moduleNameToQueue[dep]].reverseDeps.push_back(i);
+                }
+            }
+        }
+
+        if (item.dirtyDependencies == 0)
+            sendItemTask(i);
+    }
+
+    // Not a single item was found, a cycle in the graph was hit
+    if (processing == 0)
+        sendCycleItemTask();
+
+    std::vector<size_t> nextItems;
+
+    while (remaining != 0)
+    {
+        {
+            std::unique_lock guard(mtx);
+
+            // If nothing is ready yet, wait
+            if (readyQueueItems.empty())
+            {
+                cv.wait(guard, [&readyQueueItems] {
+                    return !readyQueueItems.empty();
+                });
+            }
+
+            // Handle checked items
+            for (size_t i : readyQueueItems)
+            {
+                const BuildQueueItem& item = buildQueueItems[i];
+                recordItemResult(item);
+
+                // Notify items that were waiting for this dependency
+                for (size_t reverseDep : item.reverseDeps)
+                {
+                    BuildQueueItem& reverseDepItem = buildQueueItems[reverseDep];
+
+                    LUAU_ASSERT(reverseDepItem.dirtyDependencies != 0);
+                    reverseDepItem.dirtyDependencies--;
+
+                    // In case of a module cycle earlier, check if unlocked an item that was already processed
+                    if (!reverseDepItem.processing && reverseDepItem.dirtyDependencies == 0)
+                        nextItems.push_back(reverseDep);
+                }
+            }
+
+            LUAU_ASSERT(processing >= readyQueueItems.size());
+            processing -= readyQueueItems.size();
+
+            LUAU_ASSERT(remaining >= readyQueueItems.size());
+            remaining -= readyQueueItems.size();
+            readyQueueItems.clear();
+        }
+
+        if (progress)
+            progress(buildQueueItems.size() - remaining, buildQueueItems.size());
+
+        // Items cannot be submitted while holding the lock
+        for (size_t i : nextItems)
+            sendItemTask(i);
+        nextItems.clear();
+
+        // If we aren't done, but don't have anything processing, we hit a cycle
+        if (remaining != 0 && processing == 0)
+            sendCycleItemTask();
+    }
+
+    std::vector<ModuleName> checkedModules;
+    checkedModules.reserve(buildQueueItems.size());
+
+    for (size_t i = 0; i < buildQueueItems.size(); i++)
+        checkedModules.push_back(std::move(buildQueueItems[i].name));
+
+    return checkedModules;
+}
+
+std::optional<CheckResult> Frontend::getCheckResult(const ModuleName& name, bool accumulateNested, bool forAutocomplete)
+{
+    auto it = sourceNodes.find(name);
+
+    if (it == sourceNodes.end() || it->second->hasDirtyModule(forAutocomplete))
+        return std::nullopt;
+
+    auto& resolver = forAutocomplete ? moduleResolverForAutocomplete : moduleResolver;
+
+    ModulePtr module = resolver.getModule(name);
+
+    if (module == nullptr)
+        throw InternalCompilerError("Frontend does not have module: " + name, name);
+
+    CheckResult checkResult;
+
+    if (module->timeout)
+        checkResult.timeoutHits.push_back(name);
+
+    if (accumulateNested)
+        checkResult.errors = accumulateErrors(sourceNodes, resolver, name);
+    else
+        checkResult.errors.insert(checkResult.errors.end(), module->errors.begin(), module->errors.end());
+
+    // Get lint result only for top checked module
+    checkResult.lintResult = module->lintResult;
+
+    return checkResult;
+}
+
+bool Frontend::parseGraph(
+    std::vector<ModuleName>& buildQueue, const ModuleName& root, bool forAutocomplete, std::function<bool(const ModuleName&)> canSkip)
 {
     LUAU_TIMETRACE_SCOPE("Frontend::parseGraph", "Frontend");
     LUAU_TIMETRACE_ARGUMENT("root", root.c_str());
@@ -654,14 +963,18 @@ bool Frontend::parseGraph(std::vector<ModuleName>& buildQueue, const ModuleName&
                     // this relies on the fact that markDirty marks reverse-dependencies dirty as well
                     // thus if a node is not dirty, all its transitive deps aren't dirty, which means that they won't ever need
                     // to be built, *and* can't form a cycle with any nodes we did process.
-                    if (!it->second.hasDirtyModule(forAutocomplete))
+                    if (!it->second->hasDirtyModule(forAutocomplete))
+                        continue;
+
+                    // This module might already be in the outside build queue
+                    if (canSkip && canSkip(dep))
                         continue;
 
                     // note: this check is technically redundant *except* that getSourceNode has somewhat broken memoization
                     // calling getSourceNode twice in succession will reparse the file, since getSourceNode leaves dirty flag set
-                    if (seen.contains(&it->second))
+                    if (seen.contains(it->second.get()))
                     {
-                        stack.push_back(&it->second);
+                        stack.push_back(it->second.get());
                         continue;
                     }
                 }
@@ -679,6 +992,210 @@ bool Frontend::parseGraph(std::vector<ModuleName>& buildQueue, const ModuleName&
     }
 
     return cyclic;
+}
+
+void Frontend::addBuildQueueItems(std::vector<BuildQueueItem>& items, std::vector<ModuleName>& buildQueue, bool cycleDetected,
+    std::unordered_set<Luau::ModuleName>& seen, const FrontendOptions& frontendOptions)
+{
+    LUAU_ASSERT(FFlag::LuauSplitFrontendProcessing);
+
+    for (const ModuleName& moduleName : buildQueue)
+    {
+        if (seen.count(moduleName))
+            continue;
+        seen.insert(moduleName);
+
+        LUAU_ASSERT(sourceNodes.count(moduleName));
+        std::shared_ptr<SourceNode>& sourceNode = sourceNodes[moduleName];
+
+        if (!sourceNode->hasDirtyModule(frontendOptions.forAutocomplete))
+            continue;
+
+        LUAU_ASSERT(sourceModules.count(moduleName));
+        std::shared_ptr<SourceModule>& sourceModule = sourceModules[moduleName];
+
+        BuildQueueItem data{moduleName, fileResolver->getHumanReadableModuleName(moduleName), sourceNode, sourceModule};
+
+        data.config = configResolver->getConfig(moduleName);
+        data.environmentScope = getModuleEnvironment(*sourceModule, data.config, frontendOptions.forAutocomplete);
+
+        Mode mode = sourceModule->mode.value_or(data.config.mode);
+
+        // in NoCheck mode we only need to compute the value of .cyclic for typeck
+        // in the future we could replace toposort with an algorithm that can flag cyclic nodes by itself
+        // however, for now getRequireCycles isn't expensive in practice on the cases we care about, and long term
+        // all correct programs must be acyclic so this code triggers rarely
+        if (cycleDetected)
+            data.requireCycles = getRequireCycles(fileResolver, sourceNodes, sourceNode.get(), mode == Mode::NoCheck);
+
+        data.options = frontendOptions;
+
+        // This is used by the type checker to replace the resulting type of cyclic modules with any
+        sourceModule->cyclic = !data.requireCycles.empty();
+
+        items.push_back(std::move(data));
+    }
+}
+
+void Frontend::checkBuildQueueItem(BuildQueueItem& item)
+{
+    LUAU_ASSERT(FFlag::LuauSplitFrontendProcessing);
+
+    SourceNode& sourceNode = *item.sourceNode;
+    const SourceModule& sourceModule = *item.sourceModule;
+    const Config& config = item.config;
+    Mode mode = sourceModule.mode.value_or(config.mode);
+    ScopePtr environmentScope = item.environmentScope;
+    double timestamp = getTimestamp();
+    const std::vector<RequireCycle>& requireCycles = item.requireCycles;
+
+    if (item.options.forAutocomplete)
+    {
+        double autocompleteTimeLimit = FInt::LuauAutocompleteCheckTimeoutMs / 1000.0;
+
+        // The autocomplete typecheck is always in strict mode with DM awareness
+        // to provide better type information for IDE features
+        TypeCheckLimits typeCheckLimits;
+
+        if (autocompleteTimeLimit != 0.0)
+            typeCheckLimits.finishTime = TimeTrace::getClock() + autocompleteTimeLimit;
+        else
+            typeCheckLimits.finishTime = std::nullopt;
+
+        // TODO: This is a dirty ad hoc solution for autocomplete timeouts
+        // We are trying to dynamically adjust our existing limits to lower total typechecking time under the limit
+        // so that we'll have type information for the whole file at lower quality instead of a full abort in the middle
+        if (FInt::LuauTarjanChildLimit > 0)
+            typeCheckLimits.instantiationChildLimit = std::max(1, int(FInt::LuauTarjanChildLimit * sourceNode.autocompleteLimitsMult));
+        else
+            typeCheckLimits.instantiationChildLimit = std::nullopt;
+
+        if (FInt::LuauTypeInferIterationLimit > 0)
+            typeCheckLimits.unifierIterationLimit = std::max(1, int(FInt::LuauTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
+        else
+            typeCheckLimits.unifierIterationLimit = std::nullopt;
+
+        ModulePtr moduleForAutocomplete = check(sourceModule, Mode::Strict, requireCycles, environmentScope, /*forAutocomplete*/ true,
+            /*recordJsonLog*/ false, typeCheckLimits);
+
+        double duration = getTimestamp() - timestamp;
+
+        if (moduleForAutocomplete->timeout)
+            sourceNode.autocompleteLimitsMult = sourceNode.autocompleteLimitsMult / 2.0;
+        else if (duration < autocompleteTimeLimit / 2.0)
+            sourceNode.autocompleteLimitsMult = std::min(sourceNode.autocompleteLimitsMult * 2.0, 1.0);
+
+        item.stats.timeCheck += duration;
+        item.stats.filesStrict += 1;
+
+        item.module = moduleForAutocomplete;
+        return;
+    }
+
+    ModulePtr module = check(sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, {});
+
+    item.stats.timeCheck += getTimestamp() - timestamp;
+    item.stats.filesStrict += mode == Mode::Strict;
+    item.stats.filesNonstrict += mode == Mode::Nonstrict;
+
+    if (module == nullptr)
+        throw InternalCompilerError("Frontend::check produced a nullptr module for " + item.name, item.name);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution && mode == Mode::NoCheck)
+        module->errors.clear();
+
+    if (item.options.runLintChecks)
+    {
+        LUAU_TIMETRACE_SCOPE("lint", "Frontend");
+
+        LintOptions lintOptions = item.options.enabledLintWarnings.value_or(config.enabledLint);
+        filterLintOptions(lintOptions, sourceModule.hotcomments, mode);
+
+        double timestamp = getTimestamp();
+
+        std::vector<LintWarning> warnings =
+            Luau::lint(sourceModule.root, *sourceModule.names, environmentScope, module.get(), sourceModule.hotcomments, lintOptions);
+
+        item.stats.timeLint += getTimestamp() - timestamp;
+
+        module->lintResult = classifyLints(warnings, config);
+    }
+
+    if (!item.options.retainFullTypeGraphs)
+    {
+        // copyErrors needs to allocate into interfaceTypes as it copies
+        // types out of internalTypes, so we unfreeze it here.
+        unfreeze(module->interfaceTypes);
+        copyErrors(module->errors, module->interfaceTypes);
+        freeze(module->interfaceTypes);
+
+        module->internalTypes.clear();
+
+        module->astTypes.clear();
+        module->astTypePacks.clear();
+        module->astExpectedTypes.clear();
+        module->astOriginalCallTypes.clear();
+        module->astOverloadResolvedTypes.clear();
+        module->astResolvedTypes.clear();
+        module->astOriginalResolvedTypes.clear();
+        module->astResolvedTypePacks.clear();
+        module->astScopes.clear();
+
+        module->scopes.clear();
+    }
+
+    if (mode != Mode::NoCheck)
+    {
+        for (const RequireCycle& cyc : requireCycles)
+        {
+            TypeError te{cyc.location, item.name, ModuleHasCyclicDependency{cyc.path}};
+
+            module->errors.push_back(te);
+        }
+    }
+
+    ErrorVec parseErrors;
+
+    for (const ParseError& pe : sourceModule.parseErrors)
+        parseErrors.push_back(TypeError{pe.getLocation(), item.name, SyntaxError{pe.what()}});
+
+    module->errors.insert(module->errors.begin(), parseErrors.begin(), parseErrors.end());
+
+    item.module = module;
+}
+
+void Frontend::checkBuildQueueItems(std::vector<BuildQueueItem>& items)
+{
+    LUAU_ASSERT(FFlag::LuauSplitFrontendProcessing);
+
+    for (BuildQueueItem& item : items)
+    {
+        checkBuildQueueItem(item);
+        recordItemResult(item);
+    }
+}
+
+void Frontend::recordItemResult(const BuildQueueItem& item)
+{
+    if (item.exception)
+        std::rethrow_exception(item.exception);
+
+    if (item.options.forAutocomplete)
+    {
+        moduleResolverForAutocomplete.setModule(item.name, item.module);
+        item.sourceNode->dirtyModuleForAutocomplete = false;
+    }
+    else
+    {
+        moduleResolver.setModule(item.name, item.module);
+        item.sourceNode->dirtyModule = false;
+    }
+
+    stats.timeCheck += item.stats.timeCheck;
+    stats.timeLint += item.stats.timeLint;
+
+    stats.filesStrict += item.stats.filesStrict;
+    stats.filesNonstrict += item.stats.filesNonstrict;
 }
 
 ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config& config, bool forAutocomplete) const
@@ -711,7 +1228,7 @@ ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config
 bool Frontend::isDirty(const ModuleName& name, bool forAutocomplete) const
 {
     auto it = sourceNodes.find(name);
-    return it == sourceNodes.end() || it->second.hasDirtyModule(forAutocomplete);
+    return it == sourceNodes.end() || it->second->hasDirtyModule(forAutocomplete);
 }
 
 /*
@@ -728,7 +1245,7 @@ void Frontend::markDirty(const ModuleName& name, std::vector<ModuleName>* marked
     std::unordered_map<ModuleName, std::vector<ModuleName>> reverseDeps;
     for (const auto& module : sourceNodes)
     {
-        for (const auto& dep : module.second.requireSet)
+        for (const auto& dep : module.second->requireSet)
             reverseDeps[dep].push_back(module.first);
     }
 
@@ -740,7 +1257,7 @@ void Frontend::markDirty(const ModuleName& name, std::vector<ModuleName>* marked
         queue.pop_back();
 
         LUAU_ASSERT(sourceNodes.count(next) > 0);
-        SourceNode& sourceNode = sourceNodes[next];
+        SourceNode& sourceNode = *sourceNodes[next];
 
         if (markedDirty)
             markedDirty->push_back(next);
@@ -766,7 +1283,7 @@ SourceModule* Frontend::getSourceModule(const ModuleName& moduleName)
 {
     auto it = sourceModules.find(moduleName);
     if (it != sourceModules.end())
-        return &it->second;
+        return it->second.get();
     else
         return nullptr;
 }
@@ -901,21 +1418,21 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vect
 // Read AST into sourceModules if necessary.  Trace require()s.  Report parse errors.
 std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(const ModuleName& name)
 {
-    LUAU_TIMETRACE_SCOPE("Frontend::getSourceNode", "Frontend");
-    LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
-
     auto it = sourceNodes.find(name);
-    if (it != sourceNodes.end() && !it->second.hasDirtySourceModule())
+    if (it != sourceNodes.end() && !it->second->hasDirtySourceModule())
     {
         auto moduleIt = sourceModules.find(name);
         if (moduleIt != sourceModules.end())
-            return {&it->second, &moduleIt->second};
+            return {it->second.get(), moduleIt->second.get()};
         else
         {
             LUAU_ASSERT(!"Everything in sourceNodes should also be in sourceModules");
-            return {&it->second, nullptr};
+            return {it->second.get(), nullptr};
         }
     }
+
+    LUAU_TIMETRACE_SCOPE("Frontend::getSourceNode", "Frontend");
+    LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
 
     double timestamp = getTimestamp();
 
@@ -939,30 +1456,37 @@ std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(const ModuleName& 
     RequireTraceResult& require = requireTrace[name];
     require = traceRequires(fileResolver, result.root, name);
 
-    SourceNode& sourceNode = sourceNodes[name];
-    SourceModule& sourceModule = sourceModules[name];
+    std::shared_ptr<SourceNode>& sourceNode = sourceNodes[name];
 
-    sourceModule = std::move(result);
-    sourceModule.environmentName = environmentName;
+    if (!sourceNode)
+        sourceNode = std::make_shared<SourceNode>();
 
-    sourceNode.name = sourceModule.name;
-    sourceNode.humanReadableName = sourceModule.humanReadableName;
-    sourceNode.requireSet.clear();
-    sourceNode.requireLocations.clear();
-    sourceNode.dirtySourceModule = false;
+    std::shared_ptr<SourceModule>& sourceModule = sourceModules[name];
+
+    if (!sourceModule)
+        sourceModule = std::make_shared<SourceModule>();
+
+    *sourceModule = std::move(result);
+    sourceModule->environmentName = environmentName;
+
+    sourceNode->name = sourceModule->name;
+    sourceNode->humanReadableName = sourceModule->humanReadableName;
+    sourceNode->requireSet.clear();
+    sourceNode->requireLocations.clear();
+    sourceNode->dirtySourceModule = false;
 
     if (it == sourceNodes.end())
     {
-        sourceNode.dirtyModule = true;
-        sourceNode.dirtyModuleForAutocomplete = true;
+        sourceNode->dirtyModule = true;
+        sourceNode->dirtyModuleForAutocomplete = true;
     }
 
     for (const auto& [moduleName, location] : require.requireList)
-        sourceNode.requireSet.insert(moduleName);
+        sourceNode->requireSet.insert(moduleName);
 
-    sourceNode.requireLocations = require.requireList;
+    sourceNode->requireLocations = require.requireList;
 
-    return {&sourceNode, &sourceModule};
+    return {sourceNode.get(), sourceModule.get()};
 }
 
 /** Try to parse a source file into a SourceModule.

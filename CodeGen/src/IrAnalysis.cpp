@@ -162,7 +162,7 @@ uint32_t getLiveOutValueCount(IrFunction& function, IrBlock& block)
     return getLiveInOutValueCount(function, block).second;
 }
 
-static void requireVariadicSequence(RegisterSet& sourceRs, const RegisterSet& defRs, uint8_t varargStart)
+void requireVariadicSequence(RegisterSet& sourceRs, const RegisterSet& defRs, uint8_t varargStart)
 {
     if (!defRs.varargSeq)
     {

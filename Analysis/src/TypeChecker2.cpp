@@ -22,8 +22,6 @@
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 LUAU_FASTFLAG(DebugLuauDontReduceTypes)
 
-LUAU_FASTFLAG(LuauNegatedClassTypes)
-
 namespace Luau
 {
 
@@ -519,18 +517,39 @@ struct TypeChecker2
             auto [minCount, maxCount] = getParameterExtents(TxnLog::empty(), iterFtv->argTypes, /*includeHiddenVariadics*/ true);
 
             if (minCount > 2)
-                reportError(CountMismatch{2, std::nullopt, minCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+            {
+                if (isMm)
+                    reportError(GenericError{"__iter metamethod must return (next[, table[, state]])"}, getLocation(forInStatement->values));
+                else
+                    reportError(GenericError{"for..in loops must be passed (next[, table[, state]])"}, getLocation(forInStatement->values));
+            }
             if (maxCount && *maxCount < 2)
-                reportError(CountMismatch{2, std::nullopt, *maxCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+            {
+                if (isMm)
+                    reportError(GenericError{"__iter metamethod must return (next[, table[, state]])"}, getLocation(forInStatement->values));
+                else
+                    reportError(GenericError{"for..in loops must be passed (next[, table[, state]])"}, getLocation(forInStatement->values));
+            }
 
             TypePack flattenedArgTypes = extendTypePack(arena, builtinTypes, iterFtv->argTypes, 2);
             size_t firstIterationArgCount = iterTys.empty() ? 0 : iterTys.size() - 1;
             size_t actualArgCount = expectedVariableTypes.head.size();
-
             if (firstIterationArgCount < minCount)
-                reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+            {
+                if (isMm)
+                    reportError(GenericError{"__iter metamethod must return (next[, table[, state]])"}, getLocation(forInStatement->values));
+                else
+                    reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+            }
+
             else if (actualArgCount < minCount)
-                reportError(CountMismatch{2, std::nullopt, actualArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+            {
+                if (isMm)
+                    reportError(GenericError{"__iter metamethod must return (next[, table[, state]])"}, getLocation(forInStatement->values));
+                else
+                    reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+            }
+
 
             if (iterTys.size() >= 2 && flattenedArgTypes.head.size() > 0)
             {
@@ -841,125 +860,31 @@ struct TypeChecker2
         // TODO!
     }
 
-    ErrorVec visitOverload(AstExprCall* call, NotNull<const FunctionType> overloadFunctionType, const std::vector<Location>& argLocs,
-        TypePackId expectedArgTypes, TypePackId expectedRetType)
-    {
-        ErrorVec overloadErrors =
-            tryUnify(stack.back(), call->location, overloadFunctionType->retTypes, expectedRetType, CountMismatch::FunctionResult);
-
-        size_t argIndex = 0;
-        auto inferredArgIt = begin(overloadFunctionType->argTypes);
-        auto expectedArgIt = begin(expectedArgTypes);
-        while (inferredArgIt != end(overloadFunctionType->argTypes) && expectedArgIt != end(expectedArgTypes))
-        {
-            Location argLoc = (argIndex >= argLocs.size()) ? argLocs.back() : argLocs[argIndex];
-            ErrorVec argErrors = tryUnify(stack.back(), argLoc, *expectedArgIt, *inferredArgIt);
-            for (TypeError e : argErrors)
-                overloadErrors.emplace_back(e);
-
-            ++argIndex;
-            ++inferredArgIt;
-            ++expectedArgIt;
-        }
-
-        // piggyback on the unifier for arity checking, but we can't do this for checking the actual arguments since the locations would be bad
-        ErrorVec argumentErrors = tryUnify(stack.back(), call->location, expectedArgTypes, overloadFunctionType->argTypes);
-        for (TypeError e : argumentErrors)
-            if (get<CountMismatch>(e) != nullptr)
-                overloadErrors.emplace_back(std::move(e));
-
-        return overloadErrors;
-    }
-
-    void reportOverloadResolutionErrors(AstExprCall* call, std::vector<TypeId> overloads, TypePackId expectedArgTypes,
-        const std::vector<TypeId>& overloadsThatMatchArgCount, std::vector<std::pair<ErrorVec, TypeId>> overloadsErrors)
-    {
-        if (overloads.size() == 1)
-        {
-            reportErrors(std::get<0>(overloadsErrors.front()));
-            return;
-        }
-
-        std::vector<TypeId> overloadTypes = overloadsThatMatchArgCount;
-        if (overloadsThatMatchArgCount.size() == 0)
-        {
-            reportError(GenericError{"No overload for function accepts " + std::to_string(size(expectedArgTypes)) + " arguments."}, call->location);
-            // If no overloads match argument count, just list all overloads.
-            overloadTypes = overloads;
-        }
-        else
-        {
-            // Report errors of the first argument-count-matching, but failing overload
-            TypeId overload = overloadsThatMatchArgCount[0];
-
-            // Remove the overload we are reporting errors about from the list of alternatives
-            overloadTypes.erase(std::remove(overloadTypes.begin(), overloadTypes.end(), overload), overloadTypes.end());
-
-            const FunctionType* ftv = get<FunctionType>(overload);
-            LUAU_ASSERT(ftv); // overload must be a function type here
-
-            auto error = std::find_if(overloadsErrors.begin(), overloadsErrors.end(), [overload](const std::pair<ErrorVec, TypeId>& e) {
-                return overload == e.second;
-            });
-
-            LUAU_ASSERT(error != overloadsErrors.end());
-            reportErrors(std::get<0>(*error));
-
-            // If only one overload matched, we don't need this error because we provided the previous errors.
-            if (overloadsThatMatchArgCount.size() == 1)
-                return;
-        }
-
-        std::string s;
-        for (size_t i = 0; i < overloadTypes.size(); ++i)
-        {
-            TypeId overload = follow(overloadTypes[i]);
-
-            if (i > 0)
-                s += "; ";
-
-            if (i > 0 && i == overloadTypes.size() - 1)
-                s += "and ";
-
-            s += toString(overload);
-        }
-
-        if (overloadsThatMatchArgCount.size() == 0)
-            reportError(ExtraInformation{"Available overloads: " + s}, call->func->location);
-        else
-            reportError(ExtraInformation{"Other overloads are also not viable: " + s}, call->func->location);
-    }
-
     // Note: this is intentionally separated from `visit(AstExprCall*)` for stack allocation purposes.
     void visitCall(AstExprCall* call)
     {
-        TypeArena* arena = &testArena;
-        Instantiation instantiation{TxnLog::empty(), arena, TypeLevel{}, stack.back()};
-
-        TypePackId expectedRetType = lookupExpectedPack(call, *arena);
-        TypeId functionType = lookupType(call->func);
-        TypeId testFunctionType = functionType;
+        TypePackId expectedRetType = lookupExpectedPack(call, testArena);
         TypePack args;
         std::vector<Location> argLocs;
         argLocs.reserve(call->args.size + 1);
 
-        if (get<AnyType>(functionType) || get<ErrorType>(functionType) || get<NeverType>(functionType))
+        TypeId* maybeOriginalCallTy = module->astOriginalCallTypes.find(call);
+        TypeId* maybeSelectedOverload = module->astOverloadResolvedTypes.find(call);
+
+        if (!maybeOriginalCallTy)
             return;
-        else if (std::optional<TypeId> callMm = findMetatableEntry(builtinTypes, module->errors, functionType, "__call", call->func->location))
+
+        TypeId originalCallTy = follow(*maybeOriginalCallTy);
+        std::vector<TypeId> overloads = flattenIntersection(originalCallTy);
+
+        if (get<AnyType>(originalCallTy) || get<ErrorType>(originalCallTy) || get<NeverType>(originalCallTy))
+            return;
+        else if (std::optional<TypeId> callMm = findMetatableEntry(builtinTypes, module->errors, originalCallTy, "__call", call->func->location))
         {
             if (get<FunctionType>(follow(*callMm)))
             {
-                if (std::optional<TypeId> instantiatedCallMm = instantiation.substitute(*callMm))
-                {
-                    args.head.push_back(functionType);
-                    argLocs.push_back(call->func->location);
-                    testFunctionType = follow(*instantiatedCallMm);
-                }
-                else
-                {
-                    reportError(UnificationTooComplex{}, call->func->location);
-                    return;
-                }
+                args.head.push_back(originalCallTy);
+                argLocs.push_back(call->func->location);
             }
             else
             {
@@ -969,29 +894,16 @@ struct TypeChecker2
                 return;
             }
         }
-        else if (get<FunctionType>(functionType))
+        else if (get<FunctionType>(originalCallTy) || get<IntersectionType>(originalCallTy))
         {
-            if (std::optional<TypeId> instantiatedFunctionType = instantiation.substitute(functionType))
-            {
-                testFunctionType = *instantiatedFunctionType;
-            }
-            else
-            {
-                reportError(UnificationTooComplex{}, call->func->location);
-                return;
-            }
         }
-        else if (auto itv = get<IntersectionType>(functionType))
-        {
-            // We do nothing here because we'll flatten the intersection later, but we don't want to report it as a non-function.
-        }
-        else if (auto utv = get<UnionType>(functionType))
+        else if (auto utv = get<UnionType>(originalCallTy))
         {
             // Sometimes it's okay to call a union of functions, but only if all of the functions are the same.
             // Another scenario we might run into it is if the union has a nil member. In this case, we want to throw an error
-            if (isOptional(functionType))
+            if (isOptional(originalCallTy))
             {
-                reportError(OptionalValueAccess{functionType}, call->location);
+                reportError(OptionalValueAccess{originalCallTy}, call->location);
                 return;
             }
             std::optional<TypeId> fst;
@@ -1001,7 +913,7 @@ struct TypeChecker2
                     fst = follow(ty);
                 else if (fst != follow(ty))
                 {
-                    reportError(CannotCallNonFunction{functionType}, call->func->location);
+                    reportError(CannotCallNonFunction{originalCallTy}, call->func->location);
                     return;
                 }
             }
@@ -1009,19 +921,16 @@ struct TypeChecker2
             if (!fst)
                 ice->ice("UnionType had no elements, so fst is nullopt?");
 
-            if (std::optional<TypeId> instantiatedFunctionType = instantiation.substitute(*fst))
+            originalCallTy = follow(*fst);
+            if (!get<FunctionType>(originalCallTy))
             {
-                testFunctionType = *instantiatedFunctionType;
-            }
-            else
-            {
-                reportError(UnificationTooComplex{}, call->func->location);
+                reportError(CannotCallNonFunction{originalCallTy}, call->func->location);
                 return;
             }
         }
         else
         {
-            reportError(CannotCallNonFunction{functionType}, call->func->location);
+            reportError(CannotCallNonFunction{originalCallTy}, call->func->location);
             return;
         }
 
@@ -1054,63 +963,134 @@ struct TypeChecker2
                 args.head.push_back(builtinTypes->anyType);
         }
 
-        TypePackId expectedArgTypes = arena->addTypePack(args);
+        TypePackId expectedArgTypes = testArena.addTypePack(args);
 
-        std::vector<TypeId> overloads = flattenIntersection(testFunctionType);
-        std::vector<std::pair<ErrorVec, TypeId>> overloadsErrors;
-        overloadsErrors.reserve(overloads.size());
-
-        std::vector<TypeId> overloadsThatMatchArgCount;
-
-        for (TypeId overload : overloads)
+        if (maybeSelectedOverload)
         {
-            overload = follow(overload);
+            // This overload might not work still: the constraint solver will
+            // pass the type checker an instantiated function type that matches
+            // in arity, but not in subtyping, in order to allow the type
+            // checker to report better error messages.
 
-            const FunctionType* overloadFn = get<FunctionType>(overload);
-            if (!overloadFn)
+            TypeId selectedOverload = follow(*maybeSelectedOverload);
+            const FunctionType* ftv;
+
+            if (get<AnyType>(selectedOverload) || get<ErrorType>(selectedOverload) || get<NeverType>(selectedOverload))
             {
-                reportError(CannotCallNonFunction{overload}, call->func->location);
                 return;
+            }
+            else if (const FunctionType* overloadFtv = get<FunctionType>(selectedOverload))
+            {
+                ftv = overloadFtv;
             }
             else
             {
-                // We may have to instantiate the overload in order for it to typecheck.
-                if (std::optional<TypeId> instantiatedFunctionType = instantiation.substitute(overload))
-                {
-                    overloadFn = get<FunctionType>(*instantiatedFunctionType);
-                }
-                else
-                {
-                    overloadsErrors.emplace_back(std::vector{TypeError{call->func->location, UnificationTooComplex{}}}, overload);
-                    return;
-                }
-            }
-
-            ErrorVec overloadErrors = visitOverload(call, NotNull{overloadFn}, argLocs, expectedArgTypes, expectedRetType);
-            if (overloadErrors.empty())
+                reportError(CannotCallNonFunction{selectedOverload}, call->func->location);
                 return;
+            }
 
-            bool argMismatch = false;
-            for (auto error : overloadErrors)
+            LUAU_ASSERT(ftv);
+            reportErrors(tryUnify(stack.back(), call->location, ftv->retTypes, expectedRetType, CountMismatch::Context::Return));
+
+            auto it = begin(expectedArgTypes);
+            size_t i = 0;
+            std::vector<TypeId> slice;
+            for (TypeId arg : ftv->argTypes)
             {
-                CountMismatch* cm = get<CountMismatch>(error);
-                if (!cm)
-                    continue;
-
-                if (cm->context == CountMismatch::Arg)
+                if (it == end(expectedArgTypes))
                 {
-                    argMismatch = true;
-                    break;
+                    slice.push_back(arg);
+                    continue;
+                }
+
+                TypeId expectedArg = *it;
+
+                Location argLoc = argLocs.at(i >= argLocs.size() ? argLocs.size() - 1 : i);
+
+                reportErrors(tryUnify(stack.back(), argLoc, expectedArg, arg));
+
+                ++it;
+                ++i;
+            }
+
+            if (slice.size() > 0 && it == end(expectedArgTypes))
+            {
+                if (auto tail = it.tail())
+                {
+                    TypePackId remainingArgs = testArena.addTypePack(TypePack{std::move(slice), std::nullopt});
+                    reportErrors(tryUnify(stack.back(), argLocs.back(), *tail, remainingArgs));
                 }
             }
 
-            if (!argMismatch)
-                overloadsThatMatchArgCount.push_back(overload);
-
-            overloadsErrors.emplace_back(std::move(overloadErrors), overload);
+            // We do not need to do an arity test because this overload was
+            // selected based on its arity already matching.
         }
+        else
+        {
+            // No overload worked, even when instantiated. We need to filter the
+            // set of overloads to those that match the arity of the incoming
+            // argument set, and then report only those as not matching.
 
-        reportOverloadResolutionErrors(call, overloads, expectedArgTypes, overloadsThatMatchArgCount, overloadsErrors);
+            std::vector<TypeId> arityMatchingOverloads;
+            ErrorVec empty;
+            for (TypeId overload : overloads)
+            {
+                overload = follow(overload);
+                if (const FunctionType* ftv = get<FunctionType>(overload))
+                {
+                    if (size(ftv->argTypes) == size(expectedArgTypes))
+                    {
+                        arityMatchingOverloads.push_back(overload);
+                    }
+                }
+                else if (const std::optional<TypeId> callMm = findMetatableEntry(builtinTypes, empty, overload, "__call", call->location))
+                {
+                    if (const FunctionType* ftv = get<FunctionType>(follow(*callMm)))
+                    {
+                        if (size(ftv->argTypes) == size(expectedArgTypes))
+                        {
+                            arityMatchingOverloads.push_back(overload);
+                        }
+                    }
+                    else
+                    {
+                        reportError(CannotCallNonFunction{}, call->location);
+                    }
+                }
+            }
+
+            if (arityMatchingOverloads.size() == 0)
+            {
+                reportError(
+                    GenericError{"No overload for function accepts " + std::to_string(size(expectedArgTypes)) + " arguments."}, call->location);
+            }
+            else
+            {
+                // We have handled the case of a singular arity-matching
+                // overload above, in the case where an overload was selected.
+                // LUAU_ASSERT(arityMatchingOverloads.size() > 1);
+                reportError(GenericError{"None of the overloads for function that accept " + std::to_string(size(expectedArgTypes)) +
+                                         " arguments are compatible."},
+                    call->location);
+            }
+
+            std::string s;
+            std::vector<TypeId>& stringifyOverloads = arityMatchingOverloads.size() == 0 ? overloads : arityMatchingOverloads;
+            for (size_t i = 0; i < stringifyOverloads.size(); ++i)
+            {
+                TypeId overload = follow(stringifyOverloads[i]);
+
+                if (i > 0)
+                    s += "; ";
+
+                if (i > 0 && i == stringifyOverloads.size() - 1)
+                    s += "and ";
+
+                s += toString(overload);
+            }
+
+            reportError(ExtraInformation{"Available overloads: " + s}, call->func->location);
+        }
     }
 
     void visit(AstExprCall* call)
@@ -2077,17 +2057,9 @@ struct TypeChecker2
         fetch(norm->tops);
         fetch(norm->booleans);
 
-        if (FFlag::LuauNegatedClassTypes)
+        for (const auto& [ty, _negations] : norm->classes.classes)
         {
-            for (const auto& [ty, _negations] : norm->classes.classes)
-            {
-                fetch(ty);
-            }
-        }
-        else
-        {
-            for (TypeId ty : norm->DEPRECATED_classes)
-                fetch(ty);
+            fetch(ty);
         }
         fetch(norm->errors);
         fetch(norm->nils);

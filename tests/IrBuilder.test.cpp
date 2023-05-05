@@ -532,6 +532,30 @@ bb_0:
 )");
 }
 
+TEST_CASE_FIXTURE(IrBuilderFixture, "ReplacementPreservesUses")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp unk = build.inst(IrCmd::LOAD_INT, build.vmReg(0));
+    build.inst(IrCmd::STORE_INT, build.vmReg(8), build.inst(IrCmd::BITXOR_UINT, unk, build.constInt(~0u)));
+
+    build.inst(IrCmd::RETURN, build.constUint(0));
+
+    updateUseCounts(build.function);
+    constantFold();
+
+    CHECK("\n" + toString(build.function, /* includeUseInfo */ true) == R"(
+bb_0:                                                       ; useCount: 0
+   %0 = LOAD_INT R0                                          ; useCount: 1, lastUse: %0
+   %1 = BITNOT_UINT %0                                       ; useCount: 1, lastUse: %0
+   STORE_INT R8, %1                                          ; %2
+   RETURN 0u                                                 ; %3
+
+)");
+}
+
 TEST_CASE_FIXTURE(IrBuilderFixture, "NumericNan")
 {
     IrOp block = build.block(IrBlockKind::Internal);
