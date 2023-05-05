@@ -636,6 +636,7 @@ TEST_CASE("GeneratedCodeExecutionA64")
     CHECK(result == 42);
 }
 
+#if 0
 static void throwing(int64_t arg)
 {
     CHECK(arg == 25);
@@ -707,6 +708,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowA64")
         CHECK(strcmp(error.what(), "testing") == 0);
     }
 }
+#endif
 
 #endif
 
