@@ -470,8 +470,6 @@ TEST_SUITE_END();
 
 struct NormalizeFixture : Fixture
 {
-    ScopedFastFlag sff2{"LuauNegatedClassTypes", true};
-
     TypeArena arena;
     InternalErrorReporter iceHandler;
     UnifierSharedState unifierState{&iceHandler};
@@ -632,11 +630,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union_function_and_top_function")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negated_function_is_anything_except_a_function")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauNegatedTableTypes", true},
-        {"LuauNegatedClassTypes", true},
-    };
-
     CHECK("(boolean | class | number | string | table | thread)?" == toString(normal(R"(
         Not<fun>
     )")));
@@ -649,11 +642,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "specific_functions_cannot_be_negated")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "bare_negated_boolean")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauNegatedTableTypes", true},
-        {"LuauNegatedClassTypes", true},
-    };
-
     // TODO: We don't yet have a way to say number | string | thread | nil | Class | Table | Function
     CHECK("(class | function | number | string | table | thread)?" == toString(normal(R"(
         Not<boolean>
@@ -723,8 +711,6 @@ export type t0 = (((any)&({_:l0.t0,n0:t0,_G:any,}))&({_:any,}))&(((any)&({_:l0.t
 
 TEST_CASE_FIXTURE(NormalizeFixture, "unions_of_classes")
 {
-    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
-
     createSomeClasses(&frontend);
     CHECK("Parent | Unrelated" == toString(normal("Parent | Unrelated")));
     CHECK("Parent" == toString(normal("Parent | Child")));
@@ -733,8 +719,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "unions_of_classes")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "intersections_of_classes")
 {
-    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
-
     createSomeClasses(&frontend);
     CHECK("Child" == toString(normal("Parent & Child")));
     CHECK("never" == toString(normal("Child & Unrelated")));
@@ -742,8 +726,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersections_of_classes")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "narrow_union_of_classes_with_intersection")
 {
-    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
-
     createSomeClasses(&frontend);
     CHECK("Child" == toString(normal("(Child | Unrelated) & Child")));
 }
@@ -764,11 +746,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "crazy_metatable")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_classes")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauNegatedTableTypes", true},
-        {"LuauNegatedClassTypes", true},
-    };
-
     createSomeClasses(&frontend);
     CHECK("(Parent & ~Child) | Unrelated" == toString(normal("(Parent & Not<Child>) | Unrelated")));
     CHECK("((class & ~Child) | boolean | function | number | string | table | thread)?" == toString(normal("Not<Child>")));
@@ -781,24 +758,18 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_classes")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "classes_and_unknown")
 {
-    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
-
     createSomeClasses(&frontend);
     CHECK("Parent" == toString(normal("Parent & unknown")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "classes_and_never")
 {
-    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
-
     createSomeClasses(&frontend);
     CHECK("never" == toString(normal("Parent & never")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "top_table_type")
 {
-    ScopedFastFlag sff{"LuauNegatedTableTypes", true};
-
     CHECK("table" == toString(normal("{} | tbl")));
     CHECK("{|  |}" == toString(normal("{} & tbl")));
     CHECK("never" == toString(normal("number & tbl")));
@@ -806,8 +777,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "top_table_type")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_tables")
 {
-    ScopedFastFlag sff{"LuauNegatedTableTypes", true};
-
     CHECK(nullptr == toNormalizedType("Not<{}>"));
     CHECK("(boolean | class | function | number | string | thread)?" == toString(normal("Not<tbl>")));
     CHECK("table" == toString(normal("Not<Not<tbl>>")));

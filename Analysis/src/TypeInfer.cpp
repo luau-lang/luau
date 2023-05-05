@@ -35,7 +35,6 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauNegatedClassTypes)
 LUAU_FASTFLAGVARIABLE(LuauAllowIndexClassParameters, false)
 LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
 LUAU_FASTFLAG(LuauOccursIsntAlwaysFailure)
@@ -1701,7 +1700,7 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
 
 void TypeChecker::prototype(const ScopePtr& scope, const AstStatDeclareClass& declaredClass)
 {
-    std::optional<TypeId> superTy = FFlag::LuauNegatedClassTypes ? std::make_optional(builtinTypes->classType) : std::nullopt;
+    std::optional<TypeId> superTy = std::make_optional(builtinTypes->classType);
     if (declaredClass.superName)
     {
         Name superName = Name(declaredClass.superName->value);
@@ -5968,17 +5967,13 @@ void TypeChecker::resolve(const TypeGuardPredicate& typeguardP, RefinementMap& r
     TypeId type = follow(typeFun->type);
 
     // You cannot refine to the top class type.
-    if (FFlag::LuauNegatedClassTypes)
+    if (type == builtinTypes->classType)
     {
-        if (type == builtinTypes->classType)
-        {
-            return addRefinement(refis, typeguardP.lvalue, errorRecoveryType(scope));
-        }
+        return addRefinement(refis, typeguardP.lvalue, errorRecoveryType(scope));
     }
 
     // We're only interested in the root class of any classes.
-    if (auto ctv = get<ClassType>(type);
-        !ctv || (FFlag::LuauNegatedClassTypes ? (ctv->parent != builtinTypes->classType) : (ctv->parent != std::nullopt)))
+    if (auto ctv = get<ClassType>(type); !ctv || ctv->parent != builtinTypes->classType)
         return addRefinement(refis, typeguardP.lvalue, errorRecoveryType(scope));
 
     // This probably hints at breaking out type filtering functions from the predicate solver so that typeof is not tightly coupled with IsA.

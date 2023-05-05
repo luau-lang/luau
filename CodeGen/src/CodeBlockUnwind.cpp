@@ -22,12 +22,25 @@
 extern "C" void __register_frame(const void*);
 extern "C" void __deregister_frame(const void*);
 
+extern "C" void __unw_add_dynamic_fde() __attribute__((weak));
+
 #endif
 
-#if defined(__APPLE__)
-// On Mac, each FDE inside eh_frame section has to be handled separately
+namespace Luau
+{
+namespace CodeGen
+{
+
+#if !defined(_WIN32)
 static void visitFdeEntries(char* pos, void (*cb)(const void*))
 {
+    // When using glibc++ unwinder, we need to call __register_frame/__deregister_frame on the entire .eh_frame data
+    // When using libc++ unwinder (libunwind), each FDE has to be handled separately
+    // libc++ unwinder is the macOS unwinder, but on Linux the unwinder depends on the library the executable is linked with
+    // __unw_add_dynamic_fde is specific to libc++ unwinder, as such we determine the library based on its existence
+    if (__unw_add_dynamic_fde == nullptr)
+        return cb(pos);
+
     for (;;)
     {
         unsigned partLength;
@@ -47,11 +60,6 @@ static void visitFdeEntries(char* pos, void (*cb)(const void*))
 }
 #endif
 
-namespace Luau
-{
-namespace CodeGen
-{
-
 void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, size_t& beginOffset)
 {
     UnwindBuilder* unwind = (UnwindBuilder*)context;
@@ -70,10 +78,8 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
         LUAU_ASSERT(!"failed to allocate function table");
         return nullptr;
     }
-#elif defined(__APPLE__)
-    visitFdeEntries(unwindData, __register_frame);
 #elif !defined(_WIN32)
-    __register_frame(unwindData);
+    visitFdeEntries(unwindData, __register_frame);
 #endif
 
     beginOffset = unwindSize + unwind->getBeginOffset();
@@ -85,10 +91,8 @@ void destroyBlockUnwindInfo(void* context, void* unwindData)
 #if defined(_WIN32) && defined(_M_X64)
     if (!RtlDeleteFunctionTable((RUNTIME_FUNCTION*)unwindData))
         LUAU_ASSERT(!"failed to deallocate function table");
-#elif defined(__APPLE__)
-    visitFdeEntries((char*)unwindData, __deregister_frame);
 #elif !defined(_WIN32)
-    __deregister_frame(unwindData);
+    visitFdeEntries((char*)unwindData, __deregister_frame);
 #endif
 }
 

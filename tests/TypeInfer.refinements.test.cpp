@@ -8,7 +8,6 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAG(LuauNegatedClassTypes)
 
 using namespace Luau;
 
@@ -64,7 +63,7 @@ struct RefinementClassFixture : BuiltinsFixture
         TypeArena& arena = frontend.globals.globalTypes;
         NotNull<Scope> scope{frontend.globals.globalScope.get()};
 
-        std::optional<TypeId> rootSuper = FFlag::LuauNegatedClassTypes ? std::make_optional(builtinTypes->classType) : std::nullopt;
+        std::optional<TypeId> rootSuper = std::make_optional(builtinTypes->classType);
 
         unfreeze(arena);
         TypeId vec3 = arena.addType(ClassType{"Vector3", {}, rootSuper, std::nullopt, {}, nullptr, "Test"});

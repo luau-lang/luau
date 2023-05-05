@@ -299,6 +299,9 @@ void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst repl
     removeUse(function, inst.e);
     removeUse(function, inst.f);
 
+    // Inherit existing use count (last use is skipped as it will be defined later)
+    replacement.useCount = inst.useCount;
+
     inst = replacement;
 
     // Removing the earlier extra reference, this might leave the block without users without marking it as dead
@@ -775,6 +778,8 @@ uint32_t getNativeContextOffset(int bfid)
         return offsetof(NativeContext, libm_pow);
     case LBF_IR_MATH_LOG2:
         return offsetof(NativeContext, libm_log2);
+    case LBF_MATH_LDEXP:
+        return offsetof(NativeContext, libm_ldexp);
     default:
         LUAU_ASSERT(!"Unsupported bfid");
     }

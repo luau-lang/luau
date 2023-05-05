@@ -52,6 +52,43 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
     CHECK_EQ(expected, decorateWithTypes(code));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "luau-polyfill.Array.filter")
+{
+    // This test exercises the fact that we should reduce sealed/unsealed/free tables
+    // res is a unsealed table with type {((T & ~nil)?) & any}
+    // Because we do not reduce it fully, we cannot unify it with `Array<T> = { [number] : T}
+    // TLDR; reduction needs to reduce the indexer on res so it unifies with Array<T>
+    CheckResult result = check(R"(
+--!strict
+-- Implements Javascript's `Array.prototype.filter` as defined below
+-- https://developer.cmozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/filter
+type Array<T> = { [number]: T }
+type callbackFn<T> = (element: T, index: number, array: Array<T>) -> boolean
+type callbackFnWithThisArg<T, U> = (thisArg: U, element: T, index: number, array: Array<T>) -> boolean
+type Object = { [string]: any }
+return function<T, U>(t: Array<T>, callback: callbackFn<T> | callbackFnWithThisArg<T, U>, thisArg: U?): Array<T>
+
+	local len = #t
+	local res = {}
+	if thisArg == nil then
+		for i = 1, len do
+			local kValue = t[i]
+			if kValue ~= nil then
+				if (callback :: callbackFn<T>)(kValue, i, t) then
+					res[i] = kValue
+				end
+			end
+		end
+	else
+	end
+
+	return res
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "xpcall_returns_what_f_returns")
 {
     const std::string code = R"(

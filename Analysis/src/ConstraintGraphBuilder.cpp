@@ -18,7 +18,6 @@
 
 LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
-LUAU_FASTFLAG(LuauNegatedClassTypes);
 
 namespace Luau
 {
@@ -1016,7 +1015,7 @@ static bool isMetamethod(const Name& name)
 
 ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareClass* declaredClass)
 {
-    std::optional<TypeId> superTy = FFlag::LuauNegatedClassTypes ? std::make_optional(builtinTypes->classType) : std::nullopt;
+    std::optional<TypeId> superTy = std::make_optional(builtinTypes->classType);
     if (declaredClass->superName)
     {
         Name superName = Name(declaredClass->superName->value);
@@ -1420,6 +1419,8 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
                 rets,
                 call,
                 std::move(discriminantTypes),
+                &module->astOriginalCallTypes,
+                &module->astOverloadResolvedTypes,
             });
 
         // We force constraints produced by checking function arguments to wait
@@ -1772,7 +1773,7 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGraphBuilder::checkBinary(
             TypeId ty = follow(typeFun->type);
 
             // We're only interested in the root class of any classes.
-            if (auto ctv = get<ClassType>(ty); !ctv || (FFlag::LuauNegatedClassTypes ? (ctv->parent == builtinTypes->classType) : !ctv->parent))
+            if (auto ctv = get<ClassType>(ty); !ctv || ctv->parent == builtinTypes->classType)
                 discriminantTy = ty;
         }
 
@@ -1786,8 +1787,10 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGraphBuilder::checkBinary(
     }
     else if (binary->op == AstExprBinary::CompareEq || binary->op == AstExprBinary::CompareNe)
     {
-        TypeId leftType = check(scope, binary->left, ValueContext::RValue, expectedType, true).ty;
-        TypeId rightType = check(scope, binary->right, ValueContext::RValue, expectedType, true).ty;
+        // We are checking a binary expression of the form a op b
+        // Just because a op b is epxected to return a bool, doesn't mean a, b are expected to be bools too
+        TypeId leftType = check(scope, binary->left, ValueContext::RValue, {}, true).ty;
+        TypeId rightType = check(scope, binary->right, ValueContext::RValue, {}, true).ty;
 
         RefinementId leftRefinement = nullptr;
         if (auto bc = dfg->getBreadcrumb(binary->left))

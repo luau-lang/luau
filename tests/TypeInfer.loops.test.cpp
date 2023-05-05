@@ -2,6 +2,7 @@
 
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/Frontend.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Type.h"
@@ -29,6 +30,53 @@ TEST_CASE_FIXTURE(Fixture, "for_loop")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(*builtinTypes->numberType, *requireType("q"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_no_table_passed")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    CheckResult result = check(R"(
+
+type Iterable = typeof(setmetatable(
+    {},
+    {}::{
+        __iter: (self: Iterable) -> (any, number) -> (number, string)
+    }
+))
+
+local t: Iterable
+
+for a, b in t do end
+)");
+
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    GenericError* ge = get<GenericError>(result.errors[0]);
+    REQUIRE(ge);
+    CHECK_EQ("__iter metamethod must return (next[, table[, state]])", ge->message);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    CheckResult result = check(R"(
+
+type Iterable = typeof(setmetatable(
+    {},
+    {}::{
+        __iter: (self: Iterable) -> () -> (number, string)
+    }
+))
+
+local t: Iterable
+
+for a, b in t do end
+)");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    GenericError* ge = get<GenericError>(result.errors[0]);
+    REQUIRE(ge);
+    CHECK_EQ("__iter metamethod must return (next[, table[, state]])", ge->message);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")

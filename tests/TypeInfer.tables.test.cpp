@@ -3625,4 +3625,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "top_table_type_is_isomorphic_to_empty_sealed
     )");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "luau-polyfill.Array.includes")
+{
+
+    CheckResult result = check(R"(
+type Array<T> = { [number]: T }
+
+function indexOf<T>(array: Array<T>, searchElement: any, fromIndex: number?): number
+	return -1
+end
+
+return function<T>(array: Array<T>, searchElement: any, fromIndex: number?): boolean
+	return -1 ~= indexOf(array, searchElement, fromIndex)
+end
+
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

@@ -107,6 +107,11 @@ struct FunctionCallConstraint
     TypePackId result;
     class AstExprCall* callSite;
     std::vector<std::optional<TypeId>> discriminantTypes;
+
+    // When we dispatch this constraint, we update the key at this map to record
+    // the overload that we selected.
+    DenseHashMap<const AstNode*, TypeId>* astOriginalCallTypes;
+    DenseHashMap<const AstNode*, TypeId>* astOverloadResolvedTypes;
 };
 
 // result ~ prim ExpectedType SomeSingletonType MultitonType

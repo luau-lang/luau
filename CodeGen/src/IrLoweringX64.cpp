@@ -1304,7 +1304,15 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         callWrap.addArgument(SizeX64::xmmword, memRegDoubleOp(inst.b), inst.b);
 
         if (inst.c.kind != IrOpKind::None)
-            callWrap.addArgument(SizeX64::xmmword, memRegDoubleOp(inst.c), inst.c);
+        {
+            bool isInt = (inst.c.kind == IrOpKind::Constant) ? constOp(inst.c).kind == IrConstKind::Int
+                                                             : getCmdValueKind(function.instOp(inst.c).cmd) == IrValueKind::Int;
+
+            if (isInt)
+                callWrap.addArgument(SizeX64::dword, memRegUintOp(inst.c), inst.c);
+            else
+                callWrap.addArgument(SizeX64::xmmword, memRegDoubleOp(inst.c), inst.c);
+        }
 
         callWrap.call(qword[rNativeContext + getNativeContextOffset(uintOp(inst.a))]);
         inst.regX64 = regs.takeReg(xmm0, index);

@@ -26,8 +26,6 @@ LUAU_FASTFLAGVARIABLE(LuauOccursIsntAlwaysFailure, false)
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
-LUAU_FASTFLAG(LuauNegatedClassTypes)
-LUAU_FASTFLAG(LuauNegatedTableTypes)
 
 namespace Luau
 {
@@ -344,6 +342,19 @@ std::optional<TypeError> hasUnificationTooComplex(const ErrorVec& errors)
         return *it;
 }
 
+std::optional<TypeError> hasCountMismatch(const ErrorVec& errors)
+{
+    auto isCountMismatch = [](const TypeError& te) {
+        return nullptr != get<CountMismatch>(te);
+    };
+
+    auto it = std::find_if(errors.begin(), errors.end(), isCountMismatch);
+    if (it == errors.end())
+        return std::nullopt;
+    else
+        return *it;
+}
+
 // Used for tagged union matching heuristic, returns first singleton type field
 static std::optional<std::pair<Luau::Name, const SingletonType*>> getTableMatchTag(TypeId type)
 {
@@ -620,7 +631,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         // Ok.  Do nothing.  forall functions F, F <: function
     }
 
-    else if (FFlag::LuauNegatedTableTypes && isPrim(superTy, PrimitiveType::Table) && (get<TableType>(subTy) || get<MetatableType>(subTy)))
+    else if (isPrim(superTy, PrimitiveType::Table) && (get<TableType>(subTy) || get<MetatableType>(subTy)))
     {
         // Ok, do nothing: forall tables T, T <: table
     }
@@ -1183,81 +1194,59 @@ void Unifier::tryUnifyNormalizedTypes(
         if (!get<PrimitiveType>(superNorm.errors))
             return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
 
-    if (FFlag::LuauNegatedClassTypes)
+    for (const auto& [subClass, _] : subNorm.classes.classes)
     {
-        for (const auto& [subClass, _] : subNorm.classes.classes)
+        bool found = false;
+        const ClassType* subCtv = get<ClassType>(subClass);
+        LUAU_ASSERT(subCtv);
+
+        for (const auto& [superClass, superNegations] : superNorm.classes.classes)
         {
-            bool found = false;
-            const ClassType* subCtv = get<ClassType>(subClass);
-            LUAU_ASSERT(subCtv);
+            const ClassType* superCtv = get<ClassType>(superClass);
+            LUAU_ASSERT(superCtv);
 
-            for (const auto& [superClass, superNegations] : superNorm.classes.classes)
+            if (isSubclass(subCtv, superCtv))
             {
-                const ClassType* superCtv = get<ClassType>(superClass);
-                LUAU_ASSERT(superCtv);
+                found = true;
 
-                if (isSubclass(subCtv, superCtv))
+                for (TypeId negation : superNegations)
                 {
-                    found = true;
+                    const ClassType* negationCtv = get<ClassType>(negation);
+                    LUAU_ASSERT(negationCtv);
 
-                    for (TypeId negation : superNegations)
+                    if (isSubclass(subCtv, negationCtv))
                     {
-                        const ClassType* negationCtv = get<ClassType>(negation);
-                        LUAU_ASSERT(negationCtv);
-
-                        if (isSubclass(subCtv, negationCtv))
-                        {
-                            found = false;
-                            break;
-                        }
-                    }
-
-                    if (found)
-                        break;
-                }
-            }
-
-            if (FFlag::DebugLuauDeferredConstraintResolution)
-            {
-                for (TypeId superTable : superNorm.tables)
-                {
-                    Unifier innerState = makeChildUnifier();
-                    innerState.tryUnify(subClass, superTable);
-
-                    if (innerState.errors.empty())
-                    {
-                        found = true;
-                        log.concat(std::move(innerState.log));
+                        found = false;
                         break;
                     }
-                    else if (auto e = hasUnificationTooComplex(innerState.errors))
-                        return reportError(*e);
                 }
-            }
 
-            if (!found)
-            {
-                return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
+                if (found)
+                    break;
             }
         }
-    }
-    else
-    {
-        for (TypeId subClass : subNorm.DEPRECATED_classes)
+
+        if (FFlag::DebugLuauDeferredConstraintResolution)
         {
-            bool found = false;
-            const ClassType* subCtv = get<ClassType>(subClass);
-            for (TypeId superClass : superNorm.DEPRECATED_classes)
+            for (TypeId superTable : superNorm.tables)
             {
-                const ClassType* superCtv = get<ClassType>(superClass);
-                if (isSubclass(subCtv, superCtv))
+                Unifier innerState = makeChildUnifier();
+                innerState.tryUnify(subClass, superTable);
+
+                if (innerState.errors.empty())
                 {
                     found = true;
+                    log.concat(std::move(innerState.log));
                     break;
                 }
+                else if (auto e = hasUnificationTooComplex(innerState.errors))
+                    return reportError(*e);
             }
-            if (!found)
-                return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
+        }
+
+        if (!found)
+        {
+            return reportError(location, TypeMismatch{superTy, subTy, reason, error, mismatchContext()});
         }
     }
 
@@ -1266,7 +1255,7 @@ void Unifier::tryUnifyNormalizedTypes(
         bool found = false;
         for (TypeId superTable : superNorm.tables)
         {
-            if (FFlag::LuauNegatedTableTypes && isPrim(superTable, PrimitiveType::Table))
+            if (isPrim(superTable, PrimitiveType::Table))
             {
                 found = true;
                 break;
