@@ -880,7 +880,8 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vect
     }
     else
     {
-        TypeChecker typeChecker(globals.globalScope, forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver, builtinTypes, &iceHandler);
+        TypeChecker typeChecker(forAutocomplete ? globalsForAutocomplete.globalScope : globals.globalScope,
+            forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver, builtinTypes, &iceHandler);
 
         if (prepareModuleScope)
         {
