@@ -38,6 +38,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAG(LuauRequirePathTrueModuleName)
 LUAU_FASTFLAGVARIABLE(DebugLuauReadWriteProperties, false)
 LUAU_FASTFLAGVARIABLE(LuauSplitFrontendProcessing, false)
+LUAU_FASTFLAGVARIABLE(LuauTypeCheckerUseCorrectScope, false)
 
 namespace Luau
 {
@@ -1397,7 +1398,8 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vect
     }
     else
     {
-        TypeChecker typeChecker(forAutocomplete ? globalsForAutocomplete.globalScope : globals.globalScope,
+        TypeChecker typeChecker(FFlag::LuauTypeCheckerUseCorrectScope ? (forAutocomplete ? globalsForAutocomplete.globalScope : globals.globalScope)
+                                                                      : globals.globalScope,
             forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver, builtinTypes, &iceHandler);
 
         if (prepareModuleScope)
