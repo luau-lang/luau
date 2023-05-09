@@ -1148,6 +1148,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "module_scope_check")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "use_correct_global_scope")
 {
+    ScopedFastFlag sff("LuauTypeCheckerUseCorrectScope", true);
+
     GlobalTypes& globals = frontend.globalsForAutocomplete;
     unfreeze(globals.globalTypes);
     LoadDefinitionFileResult definitionsResult = frontend.loadDefinitionFile(globals, globals.globalScope, R"(
