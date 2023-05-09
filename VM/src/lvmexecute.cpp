@@ -913,7 +913,9 @@ reentry:
                 // slow-path: not a function call
                 if (LUAU_UNLIKELY(!ttisfunction(ra)))
                 {
-                    VM_PROTECT(luaV_tryfuncTM(L, ra));
+                    VM_PROTECT_PC(); // luaV_tryfuncTM may fail
+
+                    luaV_tryfuncTM(L, ra);
                     argtop++; // __call adds an extra self
                 }
 

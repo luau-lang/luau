@@ -35,6 +35,8 @@ struct RegisterSet
     uint8_t varargStart = 0;
 };
 
+void requireVariadicSequence(RegisterSet& sourceRs, const RegisterSet& defRs, uint8_t varargStart);
+
 struct CfgInfo
 {
     std::vector<uint32_t> predecessors;
@@ -43,10 +45,22 @@ struct CfgInfo
     std::vector<uint32_t> successors;
     std::vector<uint32_t> successorsOffsets;
 
+    // VM registers that are live when the block is entered
+    // Additionally, an active variadic sequence can exist at the entry of the block
     std::vector<RegisterSet> in;
+
+    // VM registers that are defined inside the block
+    // It can also contain a variadic sequence definition if that hasn't been consumed inside the block
+    // Note that this means that checking 'def' set might not be enough to say that register has not been written to
     std::vector<RegisterSet> def;
+
+    // VM registers that are coming out from the block
+    // These might be registers that are defined inside the block or have been defined at the entry of the block
+    // Additionally, an active variadic sequence can exist at the exit of the block
     std::vector<RegisterSet> out;
 
+    // VM registers captured by nested closures
+    // This set can never have an active variadic sequence
     RegisterSet captured;
 };
 

@@ -14,8 +14,6 @@ enum class Mode
 
 struct ParseOptions
 {
-    bool allowTypeAnnotations = true;
-    bool supportContinueStatement = true;
     bool allowDeclarationSyntax = false;
     bool captureComments = false;
 };

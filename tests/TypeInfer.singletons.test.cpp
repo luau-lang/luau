@@ -131,8 +131,16 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons_mismatch")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[0]));
-    CHECK_EQ("Other overloads are also not viable: (false, number) -> ()", toString(result.errors[1]));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("None of the overloads for function that accept 2 arguments are compatible.", toString(result.errors[0]));
+        CHECK_EQ("Available overloads: (true, string) -> (); and (false, number) -> ()", toString(result.errors[1]));
+    }
+    else
+    {
+        CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[0]));
+        CHECK_EQ("Other overloads are also not viable: (false, number) -> ()", toString(result.errors[1]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "enums_using_singletons")

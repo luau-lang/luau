@@ -48,19 +48,39 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionFind(
     TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate);
 static bool dcrMagicFunctionFind(MagicFunctionCallContext context);
 
+// LUAU_NOINLINE prevents unwrapLazy from being inlined into advance below; advance is important to keep inlineable
+static LUAU_NOINLINE TypeId unwrapLazy(LazyType* ltv)
+{
+    TypeId unwrapped = ltv->unwrapped.load();
+
+    if (unwrapped)
+        return unwrapped;
+
+    ltv->unwrap(*ltv);
+    unwrapped = ltv->unwrapped.load();
+
+    if (!unwrapped)
+        throw InternalCompilerError("Lazy Type didn't fill in unwrapped type field");
+
+    if (get<LazyType>(unwrapped))
+        throw InternalCompilerError("Lazy Type cannot resolve to another Lazy Type");
+
+    return unwrapped;
+}
+
 TypeId follow(TypeId t)
 {
-    return follow(t, [](TypeId t) {
+    return follow(t, nullptr, [](const void*, TypeId t) -> TypeId {
         return t;
     });
 }
 
-TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
+TypeId follow(TypeId t, const void* context, TypeId (*mapper)(const void*, TypeId))
 {
-    auto advance = [&mapper](TypeId ty) -> std::optional<TypeId> {
+    auto advance = [context, mapper](TypeId ty) -> std::optional<TypeId> {
         if (FFlag::LuauBoundLazyTypes2)
         {
-            TypeId mapped = mapper(ty);
+            TypeId mapped = mapper(context, ty);
 
             if (auto btv = get<Unifiable::Bound<TypeId>>(mapped))
                 return btv->boundTo;
@@ -69,39 +89,25 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
                 return ttv->boundTo;
 
             if (auto ltv = getMutable<LazyType>(mapped))
-            {
-                TypeId unwrapped = ltv->unwrapped.load();
-
-                if (unwrapped)
-                    return unwrapped;
-
-                ltv->unwrap(*ltv);
-                unwrapped = ltv->unwrapped.load();
-
-                if (!unwrapped)
-                    throw InternalCompilerError("Lazy Type didn't fill in unwrapped type field");
-
-                if (get<LazyType>(unwrapped))
-                    throw InternalCompilerError("Lazy Type cannot resolve to another Lazy Type");
-
-                return unwrapped;
-            }
+                return unwrapLazy(ltv);
 
             return std::nullopt;
         }
         else
         {
-            if (auto btv = get<Unifiable::Bound<TypeId>>(mapper(ty)))
+            if (auto btv = get<Unifiable::Bound<TypeId>>(mapper(context, ty)))
                 return btv->boundTo;
-            else if (auto ttv = get<TableType>(mapper(ty)))
+            else if (auto ttv = get<TableType>(mapper(context, ty)))
                 return ttv->boundTo;
             else
                 return std::nullopt;
         }
     };
 
-    auto force = [&mapper](TypeId ty) {
-        if (auto ltv = get_if<LazyType>(&mapper(ty)->ty))
+    auto force = [context, mapper](TypeId ty) {
+        TypeId mapped = mapper(context, ty);
+
+        if (auto ltv = get_if<LazyType>(&mapped->ty))
         {
             TypeId res = ltv->thunk_DEPRECATED();
             if (get<LazyType>(res))
@@ -119,6 +125,12 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
         cycleTester = *a;
     else
         return t;
+
+    if (FFlag::LuauBoundLazyTypes2)
+    {
+        if (!advance(cycleTester)) // Short circuit traversal for the rather common case when advance(advance(t)) == null
+            return cycleTester;
+    }
 
     while (true)
     {

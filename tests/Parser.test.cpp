@@ -112,14 +112,6 @@ TEST_CASE_FIXTURE(Fixture, "can_haz_annotations")
     REQUIRE(block != nullptr);
 }
 
-TEST_CASE_FIXTURE(Fixture, "local_cannot_have_annotation_with_extensions_disabled")
-{
-    Luau::ParseOptions options;
-    options.allowTypeAnnotations = false;
-
-    CHECK_THROWS_AS(parse("local foo: string = \"Hello Types!\"", options), std::exception);
-}
-
 TEST_CASE_FIXTURE(Fixture, "local_with_annotation")
 {
     AstStatBlock* block = parse(R"(
@@ -148,14 +140,6 @@ TEST_CASE_FIXTURE(Fixture, "type_names_can_contain_dots")
     )");
 
     REQUIRE(block != nullptr);
-}
-
-TEST_CASE_FIXTURE(Fixture, "functions_cannot_have_return_annotations_if_extensions_are_disabled")
-{
-    Luau::ParseOptions options;
-    options.allowTypeAnnotations = false;
-
-    CHECK_THROWS_AS(parse("function foo(): number return 55 end", options), std::exception);
 }
 
 TEST_CASE_FIXTURE(Fixture, "functions_can_have_return_annotations")
@@ -393,14 +377,6 @@ TEST_CASE_FIXTURE(Fixture, "return_type_is_an_intersection_type_if_led_with_one_
     REQUIRE(returnAnnotation != nullptr);
     CHECK(returnAnnotation->types.data[0]->as<AstTypeReference>());
     CHECK(returnAnnotation->types.data[1]->as<AstTypeFunction>());
-}
-
-TEST_CASE_FIXTURE(Fixture, "illegal_type_alias_if_extensions_are_disabled")
-{
-    Luau::ParseOptions options;
-    options.allowTypeAnnotations = false;
-
-    CHECK_THROWS_AS(parse("type A = number", options), std::exception);
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_to_a_typeof")
@@ -2837,8 +2813,6 @@ TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_no_comma_after_last_t
 
 TEST_CASE_FIXTURE(Fixture, "missing_default_type_pack_argument_after_variadic_type_parameter")
 {
-    ScopedFastFlag sff{"LuauParserErrorsOnMissingDefaultTypePackArgument", true};
-
     ParseResult result = tryParse(R"(
         type Foo<T... = > = nil
     )");

@@ -382,8 +382,9 @@ std::optional<TypeLevel> TxnLog::getLevel(TypeId ty) const
 
 TypeId TxnLog::follow(TypeId ty) const
 {
-    return Luau::follow(ty, [this](TypeId ty) {
-        PendingType* state = this->pending(ty);
+    return Luau::follow(ty, this, [](const void* ctx, TypeId ty) -> TypeId {
+        const TxnLog* self = static_cast<const TxnLog*>(ctx);
+        PendingType* state = self->pending(ty);
 
         if (state == nullptr)
             return ty;
@@ -397,8 +398,9 @@ TypeId TxnLog::follow(TypeId ty) const
 
 TypePackId TxnLog::follow(TypePackId tp) const
 {
-    return Luau::follow(tp, [this](TypePackId tp) {
-        PendingTypePack* state = this->pending(tp);
+    return Luau::follow(tp, this, [](const void* ctx, TypePackId tp) -> TypePackId {
+        const TxnLog* self = static_cast<const TxnLog*>(ctx);
+        PendingTypePack* state = self->pending(tp);
 
         if (state == nullptr)
             return tp;

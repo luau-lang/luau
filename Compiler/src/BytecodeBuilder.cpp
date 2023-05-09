@@ -1701,8 +1701,6 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
             formatAppend(result, "'%s'", func.dumpname.c_str());
         break;
     }
-    default:
-        LUAU_UNREACHABLE();
     }
 }
 

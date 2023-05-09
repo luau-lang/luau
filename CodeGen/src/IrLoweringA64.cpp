@@ -122,42 +122,6 @@ static bool emitBuiltin(
 {
     switch (bfid)
     {
-    case LBF_MATH_LDEXP:
-        LUAU_ASSERT(nparams == 2 && nresults == 1);
-
-        if (args.kind == IrOpKind::VmReg)
-        {
-            build.ldr(d1, mem(rBase, args.index * sizeof(TValue) + offsetof(TValue, value.n)));
-            build.fcvtzs(w0, d1);
-        }
-        else if (args.kind == IrOpKind::VmConst)
-        {
-            size_t constantOffset = args.index * sizeof(TValue) + offsetof(TValue, value.n);
-
-            // Note: cumulative offset is guaranteed to be divisible by 8 (since we're loading a double); we can use that to expand the useful range
-            // that doesn't require temporaries
-            if (constantOffset / 8 <= AddressA64::kMaxOffset)
-            {
-                build.ldr(d1, mem(rConstants, int(constantOffset)));
-            }
-            else
-            {
-                emitAddOffset(build, x0, rConstants, constantOffset);
-                build.ldr(d1, x0);
-            }
-
-            build.fcvtzs(w0, d1);
-        }
-        else if (args.kind == IrOpKind::Constant)
-            build.mov(w0, int(function.doubleOp(args)));
-        else if (args.kind != IrOpKind::Undef)
-            LUAU_ASSERT(!"Unsupported instruction form");
-
-        build.ldr(d0, mem(rBase, arg * sizeof(TValue) + offsetof(TValue, value.n)));
-        build.ldr(x1, mem(rNativeContext, offsetof(NativeContext, libm_ldexp)));
-        build.blr(x1);
-        build.str(d0, mem(rBase, res * sizeof(TValue) + offsetof(TValue, value.n)));
-        return true;
     case LBF_MATH_FREXP:
         LUAU_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
         emitInvokeLibm1P(build, offsetof(NativeContext, libm_frexp), arg);
@@ -1610,12 +1574,20 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     {
         if (inst.c.kind != IrOpKind::None)
         {
+            bool isInt = (inst.c.kind == IrOpKind::Constant) ? constOp(inst.c).kind == IrConstKind::Int
+                                                             : getCmdValueKind(function.instOp(inst.c).cmd) == IrValueKind::Int;
+
             RegisterA64 temp1 = tempDouble(inst.b);
-            RegisterA64 temp2 = tempDouble(inst.c);
-            RegisterA64 temp3 = regs.allocTemp(KindA64::d); // note: spill() frees all registers so we need to avoid alloc after spill
+            RegisterA64 temp2 = isInt ? tempInt(inst.c) : tempDouble(inst.c);
+            RegisterA64 temp3 = isInt ? noreg : regs.allocTemp(KindA64::d); // note: spill() frees all registers so we need to avoid alloc after spill
             regs.spill(build, index, {temp1, temp2});
 
-            if (d0 != temp2)
+            if (isInt)
+            {
+                build.fmov(d0, temp1);
+                build.mov(w0, temp2);
+            }
+            else if (d0 != temp2)
             {
                 build.fmov(d0, temp1);
                 build.fmov(d1, temp2);
@@ -1634,8 +1606,8 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
             build.fmov(d0, temp1);
         }
 
-        build.ldr(x0, mem(rNativeContext, getNativeContextOffset(uintOp(inst.a))));
-        build.blr(x0);
+        build.ldr(x1, mem(rNativeContext, getNativeContextOffset(uintOp(inst.a))));
+        build.blr(x1);
         inst.regA64 = regs.takeReg(d0, index);
         break;
     }

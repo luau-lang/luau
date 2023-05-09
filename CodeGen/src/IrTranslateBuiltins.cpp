@@ -71,23 +71,6 @@ static BuiltinImplResult translateBuiltinNumberToNumberLibm(
     return {BuiltinImplType::UsesFallback, 1};
 }
 
-// (number, number, ...) -> number
-static BuiltinImplResult translateBuiltin2NumberToNumber(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, IrOp fallback)
-{
-    if (nparams < 2 || nresults > 1)
-        return {BuiltinImplType::None, -1};
-
-    builtinCheckDouble(build, build.vmReg(arg), fallback);
-    builtinCheckDouble(build, args, fallback);
-    build.inst(IrCmd::FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), args, build.constInt(2), build.constInt(1));
-
-    if (ra != arg)
-        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
-
-    return {BuiltinImplType::UsesFallback, 1};
-}
-
 static BuiltinImplResult translateBuiltin2NumberToNumberLibm(
     IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, IrOp fallback)
 {
@@ -101,6 +84,30 @@ static BuiltinImplResult translateBuiltin2NumberToNumberLibm(
     IrOp vb = builtinLoadDouble(build, args);
 
     IrOp res = build.inst(IrCmd::INVOKE_LIBM, build.constUint(bfid), va, vb);
+
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), res);
+
+    if (ra != arg)
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+
+    return {BuiltinImplType::UsesFallback, 1};
+}
+
+static BuiltinImplResult translateBuiltinMathLdexp(
+    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, IrOp fallback)
+{
+    if (nparams < 2 || nresults > 1)
+        return {BuiltinImplType::None, -1};
+
+    builtinCheckDouble(build, build.vmReg(arg), fallback);
+    builtinCheckDouble(build, args, fallback);
+
+    IrOp va = builtinLoadDouble(build, build.vmReg(arg));
+    IrOp vb = builtinLoadDouble(build, args);
+
+    IrOp vbi = build.inst(IrCmd::NUM_TO_INT, vb);
+
+    IrOp res = build.inst(IrCmd::INVOKE_LIBM, build.constUint(bfid), va, vbi);
 
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), res);
 
@@ -778,7 +785,7 @@ BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, 
     case LBF_MATH_ATAN2:
         return translateBuiltin2NumberToNumberLibm(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, fallback);
     case LBF_MATH_LDEXP:
-        return translateBuiltin2NumberToNumber(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, fallback);
+        return translateBuiltinMathLdexp(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, fallback);
     case LBF_MATH_FREXP:
     case LBF_MATH_MODF:
         return translateBuiltinNumberTo2Number(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, fallback);

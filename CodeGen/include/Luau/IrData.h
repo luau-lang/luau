@@ -575,7 +575,7 @@ enum class IrCmd : uint8_t
     // Calls native libm function with 1 or 2 arguments
     // A: builtin function ID
     // B: double
-    // C: double (optional, 2nd argument)
+    // C: double/int (optional, 2nd argument)
     INVOKE_LIBM,
 };
 

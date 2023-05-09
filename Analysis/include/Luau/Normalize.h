@@ -226,10 +226,6 @@ struct NormalizedType
 
     NormalizedClassType classes;
 
-    // The class part of the type.
-    // Each element of this set is a class, and none of the classes are subclasses of each other.
-    TypeIds DEPRECATED_classes;
-
     // The error part of the type.
     // This type is either never or the error type.
     TypeId errors;
@@ -333,8 +329,6 @@ public:
     // ------- Normalizing intersections
     TypeId intersectionOfTops(TypeId here, TypeId there);
     TypeId intersectionOfBools(TypeId here, TypeId there);
-    void DEPRECATED_intersectClasses(TypeIds& heres, const TypeIds& theres);
-    void DEPRECATED_intersectClassesWithClass(TypeIds& heres, TypeId there);
     void intersectClasses(NormalizedClassType& heres, const NormalizedClassType& theres);
     void intersectClassesWithClass(NormalizedClassType& heres, TypeId there);
     void intersectStrings(NormalizedStringType& here, const NormalizedStringType& there);

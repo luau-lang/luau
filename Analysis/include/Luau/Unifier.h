@@ -163,5 +163,6 @@ private:
 
 void promoteTypeLevels(TxnLog& log, const TypeArena* arena, TypeLevel minLevel, Scope* outerScope, bool useScope, TypePackId tp);
 std::optional<TypeError> hasUnificationTooComplex(const ErrorVec& errors);
+std::optional<TypeError> hasCountMismatch(const ErrorVec& errors);
 
 } // namespace Luau

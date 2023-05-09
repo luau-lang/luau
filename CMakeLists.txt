@@ -192,6 +192,7 @@ if(LUAU_BUILD_CLI)
         find_library(LIBPTHREAD pthread)
         if (LIBPTHREAD)
             target_link_libraries(Luau.Repl.CLI PRIVATE pthread)
+            target_link_libraries(Luau.Analyze.CLI PRIVATE pthread)
         endif()
     endif()
 

@@ -114,6 +114,28 @@ inline bool isBlockTerminator(IrCmd cmd)
     return false;
 }
 
+inline bool isNonTerminatingJump(IrCmd cmd)
+{
+    switch (cmd)
+    {
+    case IrCmd::TRY_NUM_TO_INDEX:
+    case IrCmd::TRY_CALL_FASTGETTM:
+    case IrCmd::CHECK_FASTCALL_RES:
+    case IrCmd::CHECK_TAG:
+    case IrCmd::CHECK_READONLY:
+    case IrCmd::CHECK_NO_METATABLE:
+    case IrCmd::CHECK_SAFE_ENV:
+    case IrCmd::CHECK_ARRAY_SIZE:
+    case IrCmd::CHECK_SLOT_MATCH:
+    case IrCmd::CHECK_NODE_NO_NEXT:
+        return true;
+    default:
+        break;
+    }
+
+    return false;
+}
+
 inline bool hasResult(IrCmd cmd)
 {
     switch (cmd)

@@ -694,7 +694,7 @@ bool areEqual(SeenSet& seen, const Type& lhs, const Type& rhs);
 
 // Follow BoundTypes until we get to something real
 TypeId follow(TypeId t);
-TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper);
+TypeId follow(TypeId t, const void* context, TypeId (*mapper)(const void*, TypeId));
 
 std::vector<TypeId> flattenIntersection(TypeId ty);
 
