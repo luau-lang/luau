@@ -1146,4 +1146,37 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "module_scope_check")
     CHECK_EQ(toString(ty), "number");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "use_correct_global_scope")
+{
+    GlobalTypes& globals = frontend.globalsForAutocomplete;
+    unfreeze(globals.globalTypes);
+    LoadDefinitionFileResult definitionsResult = frontend.loadDefinitionFile(globals, globals.globalScope, R"(
+            declare class Instance
+            end
+        )",
+        "@test", /* captureComments */ false);
+    freeze(globals.globalTypes);
+    if (definitionsResult.module)
+        dumpErrors(definitionsResult.module);
+    REQUIRE_MESSAGE(definitionsResult.success, "loadDefinition: unable to load definition file");
+
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        local a: unknown = nil
+        if typeof(a) == "Instance" then
+            local b = a
+        end
+    )";
+
+    CheckResult result = frontend.check("game/A", FrontendOptions{false, true});
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto module = frontend.moduleResolverForAutocomplete.getModule("game/A");
+    REQUIRE(module);
+
+    auto ty = Luau::findTypeAtPosition(*module, *frontend.getSourceModule("game/A"), Luau::Position{4, 22});
+    REQUIRE(ty);
+    CHECK_EQ(toString(*ty), "Instance");
+}
+
 TEST_SUITE_END();
