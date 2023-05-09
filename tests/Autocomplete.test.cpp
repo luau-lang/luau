@@ -3505,6 +3505,8 @@ local a: T@1
 
 TEST_CASE_FIXTURE(ACFixture, "frontend_use_correct_global_scope")
 {
+    ScopedFastFlag sff("LuauTypeCheckerUseCorrectScope", true);
+
     loadDefinition(R"(
         declare class Instance
             Name: string
