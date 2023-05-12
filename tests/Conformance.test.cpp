@@ -561,6 +561,8 @@ TEST_CASE("Debug")
 
 TEST_CASE("Debugger")
 {
+    ScopedFastFlag luauFixBreakpointLineSearch{"LuauFixBreakpointLineSearch", true};
+
     static int breakhits = 0;
     static lua_State* interruptedthread = nullptr;
     static bool singlestep = false;
@@ -703,6 +705,15 @@ TEST_CASE("Debugger")
                 CHECK(lua_tointeger(L, -1) == 9);
                 lua_pop(L, 1);
             }
+            else if (breakhits == 13)
+            {
+                // validate assignment via lua_getlocal
+                const char* l = lua_getlocal(L, 0, 1);
+                REQUIRE(l);
+                CHECK(strcmp(l, "a") == 0);
+                CHECK(lua_isnil(L, -1));
+                lua_pop(L, 1);
+            }
 
             if (interruptedthread)
             {
@@ -712,7 +723,7 @@ TEST_CASE("Debugger")
         },
         nullptr, &copts, /* skipCodegen */ true); // Native code doesn't support debugging yet
 
-    CHECK(breakhits == 12); // 2 hits per breakpoint
+    CHECK(breakhits == 14); // 2 hits per breakpoint
 
     if (singlestep)
         CHECK(stephits > 100); // note; this will depend on number of instructions which can vary, so we just make sure the callback gets hit often

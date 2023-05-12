@@ -1134,7 +1134,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_is_array_simplified")
            return false
         end
         return true
-     end 
+     end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -1178,5 +1178,31 @@ end
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "luau-polyfill.Array.startswith")
+{
+    // This test also exercises whether the binary operator == passes the correct expected type
+    // to it's l,r operands
+    CheckResult result = check(R"(
+--!strict
+local function startsWith(value: string, substring: string, position: number?): boolean
+	-- Luau FIXME: we have to use a tmp variable, as Luau doesn't understand the logic below narrow position to `number`
+	local position_
+	if position == nil or position < 1 then
+		position_ = 1
+	else
+		position_ = position
+	end
+
+	return value:find(substring, position_, true) == position_
+end
+
+return startsWith
+
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 
 TEST_SUITE_END();

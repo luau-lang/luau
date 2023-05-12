@@ -41,6 +41,7 @@ LUAU_FASTFLAG(LuauOccursIsntAlwaysFailure)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckTypeguards, false)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
 LUAU_FASTFLAG(LuauRequirePathTrueModuleName)
+LUAU_FASTFLAGVARIABLE(LuauTypecheckClassTypeIndexers, false)
 
 namespace Luau
 {
@@ -2104,6 +2105,23 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
         const Property* prop = lookupClassProp(cls, name);
         if (prop)
             return prop->type();
+
+        if (FFlag::LuauTypecheckClassTypeIndexers)
+        {
+            if (auto indexer = cls->indexer)
+            {
+                // TODO: Property lookup should work with string singletons or unions thereof as the indexer key type.
+                ErrorVec errors = tryUnify(stringType, indexer->indexType, scope, location);
+
+                if (errors.empty())
+                    return indexer->indexResultType;
+
+                if (addErrors)
+                    reportError(location, UnknownProperty{type, name});
+
+                return std::nullopt;
+            }
+        }
     }
     else if (const UnionType* utv = get<UnionType>(type))
     {
@@ -3295,14 +3313,38 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
     }
     else if (const ClassType* lhsClass = get<ClassType>(lhs))
     {
-        const Property* prop = lookupClassProp(lhsClass, name);
-        if (!prop)
+        if (FFlag::LuauTypecheckClassTypeIndexers)
         {
+            if (const Property* prop = lookupClassProp(lhsClass, name))
+            {
+                return prop->type();
+            }
+
+            if (auto indexer = lhsClass->indexer)
+            {
+                Unifier state = mkUnifier(scope, expr.location);
+                state.tryUnify(stringType, indexer->indexType);
+                if (state.errors.empty())
+                {
+                    state.log.commit();
+                    return indexer->indexResultType;
+                }
+            }
+
             reportError(TypeError{expr.location, UnknownProperty{lhs, name}});
             return errorRecoveryType(scope);
         }
+        else
+        {
+            const Property* prop = lookupClassProp(lhsClass, name);
+            if (!prop)
+            {
+                reportError(TypeError{expr.location, UnknownProperty{lhs, name}});
+                return errorRecoveryType(scope);
+            }
 
-        return prop->type();
+            return prop->type();
+        }
     }
     else if (get<IntersectionType>(lhs))
     {
@@ -3344,23 +3386,57 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
     {
         if (const ClassType* exprClass = get<ClassType>(exprType))
         {
-            const Property* prop = lookupClassProp(exprClass, value->value.data);
-            if (!prop)
+            if (FFlag::LuauTypecheckClassTypeIndexers)
             {
+                if (const Property* prop = lookupClassProp(exprClass, value->value.data))
+                {
+                    return prop->type();
+                }
+
+                if (auto indexer = exprClass->indexer)
+                {
+                    unify(stringType, indexer->indexType, scope, expr.index->location);
+                    return indexer->indexResultType;
+                }
+
                 reportError(TypeError{expr.location, UnknownProperty{exprType, value->value.data}});
                 return errorRecoveryType(scope);
             }
-            return prop->type();
+            else
+            {
+                const Property* prop = lookupClassProp(exprClass, value->value.data);
+                if (!prop)
+                {
+                    reportError(TypeError{expr.location, UnknownProperty{exprType, value->value.data}});
+                    return errorRecoveryType(scope);
+                }
+                return prop->type();
+            }
         }
     }
-    else if (FFlag::LuauAllowIndexClassParameters)
+    else
     {
-        if (const ClassType* exprClass = get<ClassType>(exprType))
+        if (FFlag::LuauTypecheckClassTypeIndexers)
         {
-            if (isNonstrictMode())
-                return unknownType;
-            reportError(TypeError{expr.location, DynamicPropertyLookupOnClassesUnsafe{exprType}});
-            return errorRecoveryType(scope);
+            if (const ClassType* exprClass = get<ClassType>(exprType))
+            {
+                if (auto indexer = exprClass->indexer)
+                {
+                    unify(indexType, indexer->indexType, scope, expr.index->location);
+                    return indexer->indexResultType;
+                }
+            }
+        }
+
+        if (FFlag::LuauAllowIndexClassParameters)
+        {
+            if (const ClassType* exprClass = get<ClassType>(exprType))
+            {
+                if (isNonstrictMode())
+                    return unknownType;
+                reportError(TypeError{expr.location, DynamicPropertyLookupOnClassesUnsafe{exprType}});
+                return errorRecoveryType(scope);
+            }
         }
     }
 

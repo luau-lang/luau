@@ -1,12 +1,15 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TxnLog.h"
 
+#include "Luau/Scope.h"
 #include "Luau/ToString.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypePack.h"
 
 #include <algorithm>
 #include <stdexcept>
+
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 namespace Luau
 {
@@ -71,7 +74,11 @@ const TxnLog* TxnLog::empty()
 void TxnLog::concat(TxnLog rhs)
 {
     for (auto& [ty, rep] : rhs.typeVarChanges)
+    {
+        if (rep->dead)
+            continue;
         typeVarChanges[ty] = std::move(rep);
+    }
 
     for (auto& [tp, rep] : rhs.typePackChanges)
         typePackChanges[tp] = std::move(rep);
@@ -81,7 +88,10 @@ void TxnLog::concatAsIntersections(TxnLog rhs, NotNull<TypeArena> arena)
 {
     for (auto& [ty, rightRep] : rhs.typeVarChanges)
     {
-        if (auto leftRep = typeVarChanges.find(ty))
+        if (rightRep->dead)
+            continue;
+
+        if (auto leftRep = typeVarChanges.find(ty); leftRep && !(*leftRep)->dead)
         {
             TypeId leftTy = arena->addType((*leftRep)->pending);
             TypeId rightTy = arena->addType(rightRep->pending);
@@ -97,16 +107,94 @@ void TxnLog::concatAsIntersections(TxnLog rhs, NotNull<TypeArena> arena)
 
 void TxnLog::concatAsUnion(TxnLog rhs, NotNull<TypeArena> arena)
 {
-    for (auto& [ty, rightRep] : rhs.typeVarChanges)
+    if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        if (auto leftRep = typeVarChanges.find(ty))
+        /*
+         * Check for cycles.
+         *
+         * We must not combine a log entry that binds 'a to 'b with a log that
+         * binds 'b to 'a.
+         *
+         * Of the two, identify the one with the 'bigger' scope and eliminate the
+         * entry that rebinds it.
+         */
+        for (const auto& [rightTy, rightRep] : rhs.typeVarChanges)
         {
-            TypeId leftTy = arena->addType((*leftRep)->pending);
-            TypeId rightTy = arena->addType(rightRep->pending);
-            typeVarChanges[ty]->pending.ty = UnionType{{leftTy, rightTy}};
+            if (rightRep->dead)
+                continue;
+
+            // We explicitly use get_if here because we do not wish to do anything
+            // if the uncommitted type is already bound to something else.
+            const FreeType* rf = get_if<FreeType>(&rightTy->ty);
+            if (!rf)
+                continue;
+
+            const BoundType* rb = Luau::get<BoundType>(&rightRep->pending);
+            if (!rb)
+                continue;
+
+            const TypeId leftTy = rb->boundTo;
+            const FreeType* lf = get_if<FreeType>(&leftTy->ty);
+            if (!lf)
+                continue;
+
+            auto leftRep = typeVarChanges.find(leftTy);
+            if (!leftRep)
+                continue;
+
+            if ((*leftRep)->dead)
+                continue;
+
+            const BoundType* lb = Luau::get<BoundType>(&(*leftRep)->pending);
+            if (!lb)
+                continue;
+
+            if (lb->boundTo == rightTy)
+            {
+                // leftTy has been bound to rightTy, but rightTy has also been bound
+                // to leftTy. We find the one that belongs to the more deeply nested
+                // scope and remove it from the log.
+                const bool discardLeft = useScopes ? subsumes(lf->scope, rf->scope) : lf->level.subsumes(rf->level);
+
+                if (discardLeft)
+                    (*leftRep)->dead = true;
+                else
+                    rightRep->dead = true;
+            }
         }
-        else
-            typeVarChanges[ty] = std::move(rightRep);
+
+        for (auto& [ty, rightRep] : rhs.typeVarChanges)
+        {
+            if (rightRep->dead)
+                continue;
+
+            if (auto leftRep = typeVarChanges.find(ty); leftRep && !(*leftRep)->dead)
+            {
+                TypeId leftTy = arena->addType((*leftRep)->pending);
+                TypeId rightTy = arena->addType(rightRep->pending);
+
+                if (follow(leftTy) == follow(rightTy))
+                    typeVarChanges[ty] = std::move(rightRep);
+                else
+                    typeVarChanges[ty]->pending.ty = UnionType{{leftTy, rightTy}};
+            }
+            else
+                typeVarChanges[ty] = std::move(rightRep);
+        }
+    }
+    else
+    {
+        for (auto& [ty, rightRep] : rhs.typeVarChanges)
+        {
+            if (auto leftRep = typeVarChanges.find(ty))
+            {
+                TypeId leftTy = arena->addType((*leftRep)->pending);
+                TypeId rightTy = arena->addType(rightRep->pending);
+                typeVarChanges[ty]->pending.ty = UnionType{{leftTy, rightTy}};
+            }
+            else
+                typeVarChanges[ty] = std::move(rightRep);
+        }
     }
 
     for (auto& [tp, rep] : rhs.typePackChanges)
@@ -116,7 +204,10 @@ void TxnLog::concatAsUnion(TxnLog rhs, NotNull<TypeArena> arena)
 void TxnLog::commit()
 {
     for (auto& [ty, rep] : typeVarChanges)
-        asMutable(ty)->reassign(rep.get()->pending);
+    {
+        if (!rep->dead)
+            asMutable(ty)->reassign(rep.get()->pending);
+    }
 
     for (auto& [tp, rep] : typePackChanges)
         asMutable(tp)->reassign(rep.get()->pending);
@@ -135,7 +226,10 @@ TxnLog TxnLog::inverse()
     TxnLog inversed(sharedSeen);
 
     for (auto& [ty, _rep] : typeVarChanges)
-        inversed.typeVarChanges[ty] = std::make_unique<PendingType>(*ty);
+    {
+        if (!_rep->dead)
+            inversed.typeVarChanges[ty] = std::make_unique<PendingType>(*ty);
+    }
 
     for (auto& [tp, _rep] : typePackChanges)
         inversed.typePackChanges[tp] = std::make_unique<PendingTypePack>(*tp);
@@ -204,7 +298,7 @@ PendingType* TxnLog::queue(TypeId ty)
     // Explicitly don't look in ancestors. If we have discovered something new
     // about this type, we don't want to mutate the parent's state.
     auto& pending = typeVarChanges[ty];
-    if (!pending)
+    if (!pending || (*pending).dead)
     {
         pending = std::make_unique<PendingType>(*ty);
         pending->pending.owningArena = nullptr;
@@ -237,7 +331,7 @@ PendingType* TxnLog::pending(TypeId ty) const
 
     for (const TxnLog* current = this; current; current = current->parent)
     {
-        if (auto it = current->typeVarChanges.find(ty))
+        if (auto it = current->typeVarChanges.find(ty); it && !(*it)->dead)
             return it->get();
     }
 

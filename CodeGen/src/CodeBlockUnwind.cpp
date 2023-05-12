@@ -16,7 +16,7 @@
 #endif
 #include <Windows.h>
 
-#elif !defined(_WIN32)
+#elif defined(__linux__) || defined(__APPLE__)
 
 // Defined in unwind.h which may not be easily discoverable on various platforms
 extern "C" void __register_frame(const void*);
@@ -26,12 +26,16 @@ extern "C" void __unw_add_dynamic_fde() __attribute__((weak));
 
 #endif
 
+#if defined(__APPLE__) && defined(__aarch64__)
+#include <sys/sysctl.h>
+#endif
+
 namespace Luau
 {
 namespace CodeGen
 {
 
-#if !defined(_WIN32)
+#if defined(__linux__) || defined(__APPLE__)
 static void visitFdeEntries(char* pos, void (*cb)(const void*))
 {
     // When using glibc++ unwinder, we need to call __register_frame/__deregister_frame on the entire .eh_frame data
@@ -78,7 +82,7 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
         LUAU_ASSERT(!"failed to allocate function table");
         return nullptr;
     }
-#elif !defined(_WIN32)
+#elif defined(__linux__) || defined(__APPLE__)
     visitFdeEntries(unwindData, __register_frame);
 #endif
 
@@ -91,8 +95,24 @@ void destroyBlockUnwindInfo(void* context, void* unwindData)
 #if defined(_WIN32) && defined(_M_X64)
     if (!RtlDeleteFunctionTable((RUNTIME_FUNCTION*)unwindData))
         LUAU_ASSERT(!"failed to deallocate function table");
-#elif !defined(_WIN32)
+#elif defined(__linux__) || defined(__APPLE__)
     visitFdeEntries((char*)unwindData, __deregister_frame);
+#endif
+}
+
+bool isUnwindSupported()
+{
+#if defined(_WIN32) && defined(_M_X64)
+    return true;
+#elif defined(__APPLE__) && defined(__aarch64__)
+    char ver[256];
+    size_t verLength = sizeof(ver);
+    // libunwind on macOS 12 and earlier (which maps to osrelease 21) assumes JIT frames use pointer authentication without a way to override that
+    return sysctlbyname("kern.osrelease", ver, &verLength, NULL, 0) == 0 && atoi(ver) >= 22;
+#elif defined(__linux__) || defined(__APPLE__)
+    return true;
+#else
+    return false;
 #endif
 }
 

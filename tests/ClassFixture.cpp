@@ -105,6 +105,19 @@ ClassFixture::ClassFixture()
     };
     globals.globalScope->exportedTypeBindings["CallableClass"] = TypeFun{{}, callableClassType};
 
+    auto addIndexableClass = [&arena, &globals](const char* className, TypeId keyType, TypeId returnType) {
+        ScopedFastFlag LuauTypecheckClassTypeIndexers("LuauTypecheckClassTypeIndexers", true);
+        TypeId indexableClassMetaType = arena.addType(TableType{});
+        TypeId indexableClassType =
+            arena.addType(ClassType{className, {}, nullopt, indexableClassMetaType, {}, {}, "Test", TableIndexer{keyType, returnType}});
+        globals.globalScope->exportedTypeBindings[className] = TypeFun{{}, indexableClassType};
+    };
+
+    // IndexableClass has a table indexer with a key type of 'number | string' and a return type of 'number'
+    addIndexableClass("IndexableClass", arena.addType(Luau::UnionType{{builtinTypes->stringType, numberType}}), numberType);
+    // IndexableNumericKeyClass has a table indexer with a key type of 'number' and a return type of 'number'
+    addIndexableClass("IndexableNumericKeyClass", numberType, numberType);
+
     for (const auto& [name, tf] : globals.globalScope->exportedTypeBindings)
         persist(tf.type);
 

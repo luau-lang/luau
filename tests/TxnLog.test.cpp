@@ -1,0 +1,113 @@
+// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+
+#include "doctest.h"
+
+#include "Luau/Scope.h"
+#include "Luau/ToString.h"
+#include "Luau/TxnLog.h"
+#include "Luau/Type.h"
+#include "Luau/TypeArena.h"
+
+#include "ScopedFlags.h"
+
+using namespace Luau;
+
+struct TxnLogFixture
+{
+    TxnLog log{/*useScopes*/ true};
+    TxnLog log2{/*useScopes*/ true};
+    TypeArena arena;
+    BuiltinTypes builtinTypes;
+
+    ScopePtr globalScope = std::make_shared<Scope>(builtinTypes.anyTypePack);
+    ScopePtr childScope = std::make_shared<Scope>(globalScope);
+
+    TypeId a = arena.freshType(globalScope.get());
+    TypeId b = arena.freshType(globalScope.get());
+    TypeId c = arena.freshType(childScope.get());
+};
+
+TEST_SUITE_BEGIN("TxnLog");
+
+TEST_CASE_FIXTURE(TxnLogFixture, "colliding_union_incoming_type_has_greater_scope")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    log.replace(c, BoundType{a});
+    log2.replace(a, BoundType{c});
+
+    CHECK(nullptr != log.pending(c));
+
+    log.concatAsUnion(std::move(log2), NotNull{&arena});
+
+    // 'a has greater scope than 'c, so we expect the incoming binding of 'a to
+    // be discarded.
+
+    CHECK(nullptr == log.pending(a));
+
+    const PendingType* pt = log.pending(c);
+    REQUIRE(pt != nullptr);
+
+    CHECK(!pt->dead);
+    const BoundType* bt = get_if<BoundType>(&pt->pending.ty);
+
+    CHECK(a == bt->boundTo);
+
+    log.commit();
+
+    REQUIRE(get<FreeType>(a));
+
+    const BoundType* bound = get<BoundType>(c);
+    REQUIRE(bound);
+    CHECK(a == bound->boundTo);
+}
+
+TEST_CASE_FIXTURE(TxnLogFixture, "colliding_union_incoming_type_has_lesser_scope")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    log.replace(a, BoundType{c});
+    log2.replace(c, BoundType{a});
+
+    CHECK(nullptr != log.pending(a));
+
+    log.concatAsUnion(std::move(log2), NotNull{&arena});
+
+    // 'a has greater scope than 'c, so we expect the binding of 'a to be
+    // discarded, and for that of 'c to be brought in.
+
+    CHECK(nullptr == log.pending(a));
+
+    const PendingType* pt = log.pending(c);
+    REQUIRE(pt != nullptr);
+
+    CHECK(!pt->dead);
+    const BoundType* bt = get_if<BoundType>(&pt->pending.ty);
+
+    CHECK(a == bt->boundTo);
+
+    log.commit();
+
+    REQUIRE(get<FreeType>(a));
+
+    const BoundType* bound = get<BoundType>(c);
+    REQUIRE(bound);
+    CHECK(a == bound->boundTo);
+}
+
+TEST_CASE_FIXTURE(TxnLogFixture, "colliding_coincident_logs_do_not_create_degenerate_unions")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    log.replace(a, BoundType{b});
+    log2.replace(a, BoundType{b});
+
+    log.concatAsUnion(std::move(log2), NotNull{&arena});
+
+    log.commit();
+
+    CHECK("a" == toString(a));
+    CHECK("a" == toString(b));
+}
+
+TEST_SUITE_END();

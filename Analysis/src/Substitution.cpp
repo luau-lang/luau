@@ -78,6 +78,11 @@ static TypeId DEPRECATED_shallowClone(TypeId ty, TypeArena& dest, const TxnLog* 
     {
         result = dest.addType(NegationType{ntv->ty});
     }
+    else if (const TypeFamilyInstanceType* tfit = get<TypeFamilyInstanceType>(ty))
+    {
+        TypeFamilyInstanceType clone{tfit->family, tfit->typeArguments, tfit->packArguments};
+        result = dest.addType(std::move(clone));
+    }
     else
         return result;
 
@@ -168,14 +173,27 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
         {
             if (alwaysClone)
             {
-                ClassType clone{a.name, a.props, a.parent, a.metatable, a.tags, a.userData, a.definitionModuleName};
-                return dest.addType(std::move(clone));
+                if (FFlag::LuauTypecheckClassTypeIndexers)
+                {
+                    ClassType clone{a.name, a.props, a.parent, a.metatable, a.tags, a.userData, a.definitionModuleName, a.indexer};
+                    return dest.addType(std::move(clone));
+                }
+                else
+                {
+                    ClassType clone{a.name, a.props, a.parent, a.metatable, a.tags, a.userData, a.definitionModuleName};
+                    return dest.addType(std::move(clone));
+                }
             }
             else
                 return ty;
         }
         else if constexpr (std::is_same_v<T, NegationType>)
             return dest.addType(NegationType{a.ty});
+        else if constexpr (std::is_same_v<T, TypeFamilyInstanceType>)
+        {
+            TypeFamilyInstanceType clone{a.family, a.typeArguments, a.packArguments};
+            return dest.addType(std::move(clone));
+        }
         else
             static_assert(always_false_v<T>, "Non-exhaustive shallowClone switch");
     };
@@ -255,6 +273,14 @@ void Tarjan::visitChildren(TypeId ty, int index)
         for (TypePackId a : petv->packArguments)
             visitChild(a);
     }
+    else if (const TypeFamilyInstanceType* tfit = get<TypeFamilyInstanceType>(ty))
+    {
+        for (TypeId a : tfit->typeArguments)
+            visitChild(a);
+
+        for (TypePackId a : tfit->packArguments)
+            visitChild(a);
+    }
     else if (const ClassType* ctv = get<ClassType>(ty); FFlag::LuauClassTypeVarsInSubstitution && ctv)
     {
         for (const auto& [name, prop] : ctv->props)
@@ -265,6 +291,15 @@ void Tarjan::visitChildren(TypeId ty, int index)
 
         if (ctv->metatable)
             visitChild(*ctv->metatable);
+
+        if (FFlag::LuauTypecheckClassTypeIndexers)
+        {
+            if (ctv->indexer)
+            {
+                visitChild(ctv->indexer->indexType);
+                visitChild(ctv->indexer->indexResultType);
+            }
+        }
     }
     else if (const NegationType* ntv = get<NegationType>(ty))
     {
@@ -669,6 +704,14 @@ TypePackId Substitution::clone(TypePackId tp)
             clone.hidden = vtp->hidden;
         return addTypePack(std::move(clone));
     }
+    else if (const TypeFamilyInstanceTypePack* tfitp = get<TypeFamilyInstanceTypePack>(tp))
+    {
+        TypeFamilyInstanceTypePack clone{
+            tfitp->family, std::vector<TypeId>(tfitp->typeArguments.size()), std::vector<TypePackId>(tfitp->packArguments.size())};
+        clone.typeArguments.assign(tfitp->typeArguments.begin(), tfitp->typeArguments.end());
+        clone.packArguments.assign(tfitp->packArguments.begin(), tfitp->packArguments.end());
+        return addTypePack(std::move(clone));
+    }
     else if (FFlag::LuauClonePublicInterfaceLess2)
     {
         return addTypePack(*tp);
@@ -786,6 +829,14 @@ void Substitution::replaceChildren(TypeId ty)
         for (TypePackId& a : petv->packArguments)
             a = replace(a);
     }
+    else if (TypeFamilyInstanceType* tfit = getMutable<TypeFamilyInstanceType>(ty))
+    {
+        for (TypeId& a : tfit->typeArguments)
+            a = replace(a);
+
+        for (TypePackId& a : tfit->packArguments)
+            a = replace(a);
+    }
     else if (ClassType* ctv = getMutable<ClassType>(ty); FFlag::LuauClassTypeVarsInSubstitution && ctv)
     {
         for (auto& [name, prop] : ctv->props)
@@ -796,6 +847,15 @@ void Substitution::replaceChildren(TypeId ty)
 
         if (ctv->metatable)
             ctv->metatable = replace(*ctv->metatable);
+
+        if (FFlag::LuauTypecheckClassTypeIndexers)
+        {
+            if (ctv->indexer)
+            {
+                ctv->indexer->indexType = replace(ctv->indexer->indexType);
+                ctv->indexer->indexResultType = replace(ctv->indexer->indexResultType);
+            }
+        }
     }
     else if (NegationType* ntv = getMutable<NegationType>(ty))
     {
@@ -823,6 +883,14 @@ void Substitution::replaceChildren(TypePackId tp)
     else if (VariadicTypePack* vtp = getMutable<VariadicTypePack>(tp))
     {
         vtp->ty = replace(vtp->ty);
+    }
+    else if (TypeFamilyInstanceTypePack* tfitp = getMutable<TypeFamilyInstanceTypePack>(tp))
+    {
+        for (TypeId& t : tfitp->typeArguments)
+            t = replace(t);
+
+        for (TypePackId& t : tfitp->packArguments)
+            t = replace(t);
     }
 }
 

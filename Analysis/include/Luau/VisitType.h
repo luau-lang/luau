@@ -159,6 +159,10 @@ struct GenericTypeVisitor
     {
         return visit(ty);
     }
+    virtual bool visit(TypeId ty, const TypeFamilyInstanceType& tfit)
+    {
+        return visit(ty);
+    }
 
     virtual bool visit(TypePackId tp)
     {
@@ -189,6 +193,10 @@ struct GenericTypeVisitor
         return visit(tp);
     }
     virtual bool visit(TypePackId tp, const BlockedTypePack& btp)
+    {
+        return visit(tp);
+    }
+    virtual bool visit(TypePackId tp, const TypeFamilyInstanceTypePack& tfitp)
     {
         return visit(tp);
     }
@@ -272,6 +280,15 @@ struct GenericTypeVisitor
 
                 if (ctv->metatable)
                     traverse(*ctv->metatable);
+
+                if (FFlag::LuauTypecheckClassTypeIndexers)
+                {
+                    if (ctv->indexer)
+                    {
+                        traverse(ctv->indexer->indexType);
+                        traverse(ctv->indexer->indexResultType);
+                    }
+                }
             }
         }
         else if (auto atv = get<AnyType>(ty))
@@ -327,6 +344,17 @@ struct GenericTypeVisitor
             if (visit(ty, *ntv))
                 traverse(ntv->ty);
         }
+        else if (auto tfit = get<TypeFamilyInstanceType>(ty))
+        {
+            if (visit(ty, *tfit))
+            {
+                for (TypeId p : tfit->typeArguments)
+                    traverse(p);
+
+                for (TypePackId p : tfit->packArguments)
+                    traverse(p);
+            }
+        }
         else
             LUAU_ASSERT(!"GenericTypeVisitor::traverse(TypeId) is not exhaustive!");
 
@@ -376,6 +404,17 @@ struct GenericTypeVisitor
         }
         else if (auto btp = get<BlockedTypePack>(tp))
             visit(tp, *btp);
+        else if (auto tfitp = get<TypeFamilyInstanceTypePack>(tp))
+        {
+            if (visit(tp, *tfitp))
+            {
+                for (TypeId t : tfitp->typeArguments)
+                    traverse(t);
+
+                for (TypePackId t : tfitp->packArguments)
+                    traverse(t);
+            }
+        }
 
         else
             LUAU_ASSERT(!"GenericTypeVisitor::traverse(TypePackId) is not exhaustive!");

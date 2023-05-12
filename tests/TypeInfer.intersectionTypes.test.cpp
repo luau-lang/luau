@@ -550,6 +550,8 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
 {
+    ScopedFastFlag sff{"LuauUnifyTwoOptions", true};
+
     CheckResult result = check(R"(
         local x : { p : number?, q : any } & { p : unknown, q : string? }
         local y : { p : number?, q : string? } = x -- OK
@@ -563,27 +565,19 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
         CHECK_EQ(toString(result.errors[0]),
             "Type '{| p: number?, q: string? |}' could not be converted into '{| p: string?, q: number? |}'\n"
             "caused by:\n"
-            "  Property 'p' is not compatible. Type 'number?' could not be converted into 'string?'\n"
-            "caused by:\n"
-            "  Not all union options are compatible. Type 'number' could not be converted into 'string?'\n"
-            "caused by:\n"
-            "  None of the union options are compatible. For example: Type 'number' could not be converted into 'string' in an invariant context");
+            "  Property 'p' is not compatible. Type 'number' could not be converted into 'string' in an invariant context");
 
         CHECK_EQ(toString(result.errors[1]),
             "Type '{| p: number?, q: string? |}' could not be converted into '{| p: string?, q: number? |}'\n"
             "caused by:\n"
-            "  Property 'q' is not compatible. Type 'string?' could not be converted into 'number?'\n"
-            "caused by:\n"
-            "  Not all union options are compatible. Type 'string' could not be converted into 'number?'\n"
-            "caused by:\n"
-            "  None of the union options are compatible. For example: Type 'string' could not be converted into 'number' in an invariant context");
+            "  Property 'q' is not compatible. Type 'string' could not be converted into 'number' in an invariant context");
     }
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         CHECK_EQ(toString(result.errors[0]),
-            "Type '{| p: number?, q: any |} & {| p: unknown, q: string? |}' could not be converted into '{| p: string?, "
-            "q: number? |}'; none of the intersection parts are compatible");
+            "Type '{| p: number?, q: any |} & {| p: unknown, q: string? |}' could not be converted into "
+            "'{| p: string?, q: number? |}'; none of the intersection parts are compatible");
     }
 }
 

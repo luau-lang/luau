@@ -198,9 +198,26 @@ struct UnpackConstraint
     TypePackId sourcePack;
 };
 
-using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, UnaryConstraint,
-    BinaryConstraint, IterableConstraint, NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, PrimitiveTypeConstraint,
-    HasPropConstraint, SetPropConstraint, SetIndexerConstraint, SingletonOrTopTypeConstraint, UnpackConstraint>;
+// ty ~ reduce ty
+//
+// Try to reduce ty, if it is a TypeFamilyInstanceType. Otherwise, do nothing.
+struct ReduceConstraint
+{
+    TypeId ty;
+};
+
+// tp ~ reduce tp
+//
+// Analogous to ReduceConstraint, but for type packs.
+struct ReducePackConstraint
+{
+    TypePackId tp;
+};
+
+using ConstraintV =
+    Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, UnaryConstraint, BinaryConstraint,
+        IterableConstraint, NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, PrimitiveTypeConstraint, HasPropConstraint,
+        SetPropConstraint, SetIndexerConstraint, SingletonOrTopTypeConstraint, UnpackConstraint, ReduceConstraint, ReducePackConstraint>;
 
 struct Constraint
 {

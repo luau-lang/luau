@@ -16,6 +16,7 @@
 #include "Luau/Type.h"
 #include "Luau/Unifier.h"
 #include "Luau/VisitType.h"
+#include "Luau/TypeFamily.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
 LUAU_FASTFLAG(LuauRequirePathTrueModuleName)
@@ -225,6 +226,32 @@ void dump(ConstraintSolver* cs, ToStringOptions& opts)
         printf("\t%d\t%s\n", blockCount, toString(*c, opts).c_str());
     }
 }
+
+struct InstantiationQueuer : TypeOnceVisitor
+{
+    ConstraintSolver* solver;
+    NotNull<Scope> scope;
+    Location location;
+
+    explicit InstantiationQueuer(NotNull<Scope> scope, const Location& location, ConstraintSolver* solver)
+        : solver(solver)
+        , scope(scope)
+        , location(location)
+    {
+    }
+
+    bool visit(TypeId ty, const PendingExpansionType& petv) override
+    {
+        solver->pushConstraint(scope, location, TypeAliasExpansionConstraint{ty});
+        return false;
+    }
+
+    bool visit(TypeId ty, const TypeFamilyInstanceType& tfit) override
+    {
+        solver->pushConstraint(scope, location, ReduceConstraint{ty});
+        return true;
+    }
+};
 
 ConstraintSolver::ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, std::vector<NotNull<Constraint>> constraints,
     ModuleName moduleName, NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger)
@@ -441,6 +468,10 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*sottc, constraint);
     else if (auto uc = get<UnpackConstraint>(*constraint))
         success = tryDispatch(*uc, constraint);
+    else if (auto rc = get<ReduceConstraint>(*constraint))
+        success = tryDispatch(*rc, constraint, force);
+    else if (auto rpc = get<ReducePackConstraint>(*constraint))
+        success = tryDispatch(*rpc, constraint, force);
     else
         LUAU_ASSERT(false);
 
@@ -479,13 +510,19 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
     else if (get<PendingExpansionType>(generalizedType))
         return block(generalizedType, constraint);
 
-    std::optional<TypeId> generalized = quantify(arena, c.sourceType, constraint->scope);
+    std::optional<QuantifierResult> generalized = quantify(arena, c.sourceType, constraint->scope);
     if (generalized)
     {
         if (get<BlockedType>(generalizedType))
-            asMutable(generalizedType)->ty.emplace<BoundType>(*generalized);
+            asMutable(generalizedType)->ty.emplace<BoundType>(generalized->result);
         else
-            unify(generalizedType, *generalized, constraint->scope);
+            unify(generalizedType, generalized->result, constraint->scope);
+
+        for (auto [free, gen] : generalized->insertedGenerics.pairings)
+            unify(free, gen, constraint->scope);
+
+        for (auto [free, gen] : generalized->insertedGenericPacks.pairings)
+            unify(free, gen, constraint->scope);
     }
     else
     {
@@ -504,6 +541,9 @@ bool ConstraintSolver::tryDispatch(const InstantiationConstraint& c, NotNull<con
     if (isBlocked(c.superType))
         return block(c.superType, constraint);
 
+    if (!recursiveBlock(c.superType, constraint))
+        return false;
+
     Instantiation inst(TxnLog::empty(), arena, TypeLevel{}, constraint->scope);
 
     std::optional<TypeId> instantiated = inst.substitute(c.superType);
@@ -511,6 +551,9 @@ bool ConstraintSolver::tryDispatch(const InstantiationConstraint& c, NotNull<con
 
     LUAU_ASSERT(get<BlockedType>(c.subType));
     asMutable(c.subType)->ty.emplace<BoundType>(*instantiated);
+
+    InstantiationQueuer queuer{constraint->scope, constraint->location, this};
+    queuer.traverse(c.subType);
 
     unblock(c.subType);
 
@@ -953,26 +996,6 @@ struct InfiniteTypeFinder : TypeOnceVisitor
     }
 };
 
-struct InstantiationQueuer : TypeOnceVisitor
-{
-    ConstraintSolver* solver;
-    NotNull<Scope> scope;
-    Location location;
-
-    explicit InstantiationQueuer(NotNull<Scope> scope, const Location& location, ConstraintSolver* solver)
-        : solver(solver)
-        , scope(scope)
-        , location(location)
-    {
-    }
-
-    bool visit(TypeId ty, const PendingExpansionType& petv) override
-    {
-        solver->pushConstraint(scope, location, TypeAliasExpansionConstraint{ty});
-        return false;
-    }
-};
-
 bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNull<const Constraint> constraint)
 {
     const PendingExpansionType* petv = get<PendingExpansionType>(follow(c.target));
@@ -1246,7 +1269,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         LUAU_ASSERT(instantiated); // TODO FIXME HANDLE THIS
 
         Unifier u{normalizer, Mode::Strict, constraint->scope, Location{}, Covariant};
-        u.useScopes = true;
+        u.enableScopeTests();
 
         u.tryUnify(*instantiated, inferredTy, /* isFunctionCall */ true);
 
@@ -1278,8 +1301,12 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
             u.log.commit();
             unblock(changedTypes);
             unblock(changedPacks);
-
             unblock(c.result);
+
+            InstantiationQueuer queuer{constraint->scope, constraint->location, this};
+            queuer.traverse(fn);
+            queuer.traverse(inferredTy);
+
             return true;
         }
     }
@@ -1295,7 +1322,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
     // We found no matching overloads.
     Unifier u{normalizer, Mode::Strict, constraint->scope, Location{}, Covariant};
-    u.useScopes = true;
+    u.enableScopeTests();
 
     u.tryUnify(inferredTy, builtinTypes->anyType);
     u.tryUnify(fn, builtinTypes->anyType);
@@ -1305,8 +1332,12 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
     unblock(changedTypes);
     unblock(changedPacks);
-
     unblock(c.result);
+
+    InstantiationQueuer queuer{constraint->scope, constraint->location, this};
+    queuer.traverse(fn);
+    queuer.traverse(inferredTy);
+
     return true;
 }
 
@@ -1567,8 +1598,11 @@ bool ConstraintSolver::tryDispatch(const SetIndexerConstraint& c, NotNull<const 
         }
         else if (tt->state == TableState::Free || tt->state == TableState::Unsealed)
         {
+            TypeId promotedIndexTy = arena->freshType(tt->scope);
+            unify(c.indexType, promotedIndexTy, constraint->scope);
+
             auto mtt = getMutable<TableType>(subjectType);
-            mtt->indexer = TableIndexer{c.indexType, c.propType};
+            mtt->indexer = TableIndexer{promotedIndexTy, c.propType};
             asMutable(c.propType)->ty.emplace<FreeType>(tt->scope);
             asMutable(c.resultType)->ty.emplace<BoundType>(subjectType);
             unblock(c.propType);
@@ -1664,6 +1698,52 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
     }
 
     return true;
+}
+
+bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Constraint> constraint, bool force)
+{
+    TypeId ty = follow(c.ty);
+    FamilyGraphReductionResult result = reduceFamilies(ty, constraint->location, NotNull{arena}, builtinTypes, nullptr, force);
+
+    for (TypeId r : result.reducedTypes)
+        unblock(r);
+
+    for (TypePackId r : result.reducedPacks)
+        unblock(r);
+
+    if (force)
+        return true;
+
+    for (TypeId b : result.blockedTypes)
+        block(b, constraint);
+
+    for (TypePackId b : result.blockedPacks)
+        block(b, constraint);
+
+    return result.blockedTypes.empty() && result.blockedPacks.empty();
+}
+
+bool ConstraintSolver::tryDispatch(const ReducePackConstraint& c, NotNull<const Constraint> constraint, bool force)
+{
+    TypePackId tp = follow(c.tp);
+    FamilyGraphReductionResult result = reduceFamilies(tp, constraint->location, NotNull{arena}, builtinTypes, nullptr, force);
+
+    for (TypeId r : result.reducedTypes)
+        unblock(r);
+
+    for (TypePackId r : result.reducedPacks)
+        unblock(r);
+
+    if (force)
+        return true;
+
+    for (TypeId b : result.blockedTypes)
+        block(b, constraint);
+
+    for (TypePackId b : result.blockedPacks)
+        block(b, constraint);
+
+    return result.blockedTypes.empty() && result.blockedPacks.empty();
 }
 
 bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force)
@@ -2031,7 +2111,7 @@ template <typename TID>
 bool ConstraintSolver::tryUnify(NotNull<const Constraint> constraint, TID subTy, TID superTy)
 {
     Unifier u{normalizer, Mode::Strict, constraint->scope, constraint->location, Covariant};
-    u.useScopes = true;
+    u.enableScopeTests();
 
     u.tryUnify(subTy, superTy);
 
@@ -2195,10 +2275,11 @@ void ConstraintSolver::unblock(NotNull<const Constraint> progressed)
     return unblock_(progressed.get());
 }
 
-void ConstraintSolver::unblock(TypeId progressed)
+void ConstraintSolver::unblock(TypeId ty)
 {
     DenseHashSet<TypeId> seen{nullptr};
 
+    TypeId progressed = ty;
     while (true)
     {
         if (seen.find(progressed))
@@ -2256,7 +2337,7 @@ bool ConstraintSolver::isBlocked(NotNull<const Constraint> constraint)
 void ConstraintSolver::unify(TypeId subType, TypeId superType, NotNull<Scope> scope)
 {
     Unifier u{normalizer, Mode::Strict, scope, Location{}, Covariant};
-    u.useScopes = true;
+    u.enableScopeTests();
 
     u.tryUnify(subType, superType);
 
@@ -2279,7 +2360,7 @@ void ConstraintSolver::unify(TypePackId subPack, TypePackId superPack, NotNull<S
 {
     UnifierSharedState sharedState{&iceReporter};
     Unifier u{normalizer, Mode::Strict, scope, Location{}, Covariant};
-    u.useScopes = true;
+    u.enableScopeTests();
 
     u.tryUnify(subPack, superPack);
 
@@ -2374,7 +2455,7 @@ TypeId ConstraintSolver::unionOfTypes(TypeId a, TypeId b, NotNull<Scope> scope, 
     if (unifyFreeTypes && (get<FreeType>(a) || get<FreeType>(b)))
     {
         Unifier u{normalizer, Mode::Strict, scope, Location{}, Covariant};
-        u.useScopes = true;
+        u.enableScopeTests();
         u.tryUnify(b, a);
 
         if (u.errors.empty())

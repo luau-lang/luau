@@ -267,7 +267,7 @@ void callStepGc(IrRegAllocX64& regs, AssemblyBuilderX64& build)
 void emitExit(AssemblyBuilderX64& build, bool continueInVm)
 {
     if (continueInVm)
-        build.mov(al, 1);
+        build.mov(eax, 1);
     else
         build.xor_(eax, eax);
 
