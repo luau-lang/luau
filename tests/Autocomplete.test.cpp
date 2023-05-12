@@ -3503,4 +3503,26 @@ local a: T@1
     CHECK_EQ(ac.context, AutocompleteContext::Type);
 }
 
+TEST_CASE_FIXTURE(ACFixture, "frontend_use_correct_global_scope")
+{
+    ScopedFastFlag sff("LuauTypeCheckerUseCorrectScope", true);
+
+    loadDefinition(R"(
+        declare class Instance
+            Name: string
+        end
+    )");
+
+    CheckResult result = check(R"(
+        local a: unknown = nil
+        if typeof(a) == "Instance" then
+            local b = a.@1
+        end
+    )");
+    auto ac = autocomplete('1');
+
+    CHECK_EQ(1, ac.entryMap.size());
+    CHECK(ac.entryMap.count("Name"));
+}
+
 TEST_SUITE_END();
