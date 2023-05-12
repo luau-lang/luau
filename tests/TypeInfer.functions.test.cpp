@@ -1952,4 +1952,40 @@ TEST_CASE_FIXTURE(Fixture, "instantiated_type_packs_must_have_a_non_null_scope")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "inner_frees_become_generic_in_dcr")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        function f(x)
+            local z = x
+            return x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    std::optional<TypeId> ty = findTypeAtPosition(Position{3, 19});
+    REQUIRE(ty);
+    CHECK(get<GenericType>(*ty));
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_exprs_are_generalized_at_signature_scope_not_enclosing")
+{
+    CheckResult result = check(R"(
+        local foo
+        local bar
+
+        -- foo being a function expression is deliberate: the bug we're testing
+        -- only existed for function expressions, not for function statements.
+        foo = function(a)
+            return bar
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    // note that b is not in the generic list; it is free, the unconstrained type of `bar`.
+    CHECK(toString(requireType("foo")) == "<a>(a) -> b");
+}
+
 TEST_SUITE_END();

@@ -1483,7 +1483,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     {
         inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a});
         RegisterA64 temp = tempUint(inst.a);
-        build.mvn(inst.regA64, temp);
+        build.mvn_(inst.regA64, temp);
         break;
     }
     case IrCmd::BITLSHIFT_UINT:
@@ -1660,8 +1660,28 @@ RegisterA64 IrLoweringA64::tempDouble(IrOp op)
         {
             RegisterA64 temp1 = regs.allocTemp(KindA64::x);
             RegisterA64 temp2 = regs.allocTemp(KindA64::d);
-            build.adr(temp1, val);
-            build.ldr(temp2, temp1);
+
+            uint64_t vali;
+            static_assert(sizeof(vali) == sizeof(val), "Expecting double to be 64-bit");
+            memcpy(&vali, &val, sizeof(val));
+
+            if ((vali << 16) == 0)
+            {
+                build.movz(temp1, uint16_t(vali >> 48), 48);
+                build.fmov(temp2, temp1);
+            }
+            else if ((vali << 32) == 0)
+            {
+                build.movz(temp1, uint16_t(vali >> 48), 48);
+                build.movk(temp1, uint16_t(vali >> 32), 32);
+                build.fmov(temp2, temp1);
+            }
+            else
+            {
+                build.adr(temp1, val);
+                build.ldr(temp2, temp1);
+            }
+
             return temp2;
         }
     }

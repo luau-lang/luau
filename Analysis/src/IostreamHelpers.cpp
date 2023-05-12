@@ -192,6 +192,10 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "TypePackMismatch { wanted = '" + toString(err.wantedTp) + "', given = '" + toString(err.givenTp) + "' }";
     else if constexpr (std::is_same_v<T, DynamicPropertyLookupOnClassesUnsafe>)
         stream << "DynamicPropertyLookupOnClassesUnsafe { " << toString(err.ty) << " }";
+    else if constexpr (std::is_same_v<T, UninhabitedTypeFamily>)
+        stream << "UninhabitedTypeFamily { " << toString(err.ty) << " }";
+    else if constexpr (std::is_same_v<T, UninhabitedTypePackFamily>)
+        stream << "UninhabitedTypePackFamily { " << toString(err.tp) << " }";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

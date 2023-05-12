@@ -184,7 +184,7 @@ void AssemblyBuilderA64::tst(RegisterA64 src1, RegisterA64 src2, int shift)
     placeSR3("tst", dst, src1, src2, 0b11'01010, shift);
 }
 
-void AssemblyBuilderA64::mvn(RegisterA64 dst, RegisterA64 src)
+void AssemblyBuilderA64::mvn_(RegisterA64 dst, RegisterA64 src)
 {
     placeSR2("mvn", dst, src, 0b01'01010, 0b1);
 }
@@ -287,19 +287,19 @@ void AssemblyBuilderA64::ldr(RegisterA64 dst, AddressA64 src)
     switch (dst.kind)
     {
     case KindA64::w:
-        placeA("ldr", dst, src, 0b11100001, 0b10, /* sizelog= */ 2);
+        placeA("ldr", dst, src, 0b10'11100001, /* sizelog= */ 2);
         break;
     case KindA64::x:
-        placeA("ldr", dst, src, 0b11100001, 0b11, /* sizelog= */ 3);
+        placeA("ldr", dst, src, 0b11'11100001, /* sizelog= */ 3);
         break;
     case KindA64::s:
-        placeA("ldr", dst, src, 0b11110001, 0b10, /* sizelog= */ 2);
+        placeA("ldr", dst, src, 0b10'11110001, /* sizelog= */ 2);
         break;
     case KindA64::d:
-        placeA("ldr", dst, src, 0b11110001, 0b11, /* sizelog= */ 3);
+        placeA("ldr", dst, src, 0b11'11110001, /* sizelog= */ 3);
         break;
     case KindA64::q:
-        placeA("ldr", dst, src, 0b11110011, 0b00, /* sizelog= */ 4);
+        placeA("ldr", dst, src, 0b00'11110011, /* sizelog= */ 4);
         break;
     case KindA64::none:
         LUAU_ASSERT(!"Unexpected register kind");
@@ -310,35 +310,35 @@ void AssemblyBuilderA64::ldrb(RegisterA64 dst, AddressA64 src)
 {
     LUAU_ASSERT(dst.kind == KindA64::w);
 
-    placeA("ldrb", dst, src, 0b11100001, 0b00, /* sizelog= */ 0);
+    placeA("ldrb", dst, src, 0b00'11100001, /* sizelog= */ 0);
 }
 
 void AssemblyBuilderA64::ldrh(RegisterA64 dst, AddressA64 src)
 {
     LUAU_ASSERT(dst.kind == KindA64::w);
 
-    placeA("ldrh", dst, src, 0b11100001, 0b01, /* sizelog= */ 1);
+    placeA("ldrh", dst, src, 0b01'11100001, /* sizelog= */ 1);
 }
 
 void AssemblyBuilderA64::ldrsb(RegisterA64 dst, AddressA64 src)
 {
     LUAU_ASSERT(dst.kind == KindA64::x || dst.kind == KindA64::w);
 
-    placeA("ldrsb", dst, src, 0b11100010 | uint8_t(dst.kind == KindA64::w), 0b00, /* sizelog= */ 0);
+    placeA("ldrsb", dst, src, 0b00'11100010 | uint8_t(dst.kind == KindA64::w), /* sizelog= */ 0);
 }
 
 void AssemblyBuilderA64::ldrsh(RegisterA64 dst, AddressA64 src)
 {
     LUAU_ASSERT(dst.kind == KindA64::x || dst.kind == KindA64::w);
 
-    placeA("ldrsh", dst, src, 0b11100010 | uint8_t(dst.kind == KindA64::w), 0b01, /* sizelog= */ 1);
+    placeA("ldrsh", dst, src, 0b01'11100010 | uint8_t(dst.kind == KindA64::w), /* sizelog= */ 1);
 }
 
 void AssemblyBuilderA64::ldrsw(RegisterA64 dst, AddressA64 src)
 {
     LUAU_ASSERT(dst.kind == KindA64::x);
 
-    placeA("ldrsw", dst, src, 0b11100010, 0b10, /* sizelog= */ 2);
+    placeA("ldrsw", dst, src, 0b10'11100010, /* sizelog= */ 2);
 }
 
 void AssemblyBuilderA64::ldp(RegisterA64 dst1, RegisterA64 dst2, AddressA64 src)
@@ -356,19 +356,19 @@ void AssemblyBuilderA64::str(RegisterA64 src, AddressA64 dst)
     switch (src.kind)
     {
     case KindA64::w:
-        placeA("str", src, dst, 0b11100000, 0b10, /* sizelog= */ 2);
+        placeA("str", src, dst, 0b10'11100000, /* sizelog= */ 2);
         break;
     case KindA64::x:
-        placeA("str", src, dst, 0b11100000, 0b11, /* sizelog= */ 3);
+        placeA("str", src, dst, 0b11'11100000, /* sizelog= */ 3);
         break;
     case KindA64::s:
-        placeA("str", src, dst, 0b11110000, 0b10, /* sizelog= */ 2);
+        placeA("str", src, dst, 0b10'11110000, /* sizelog= */ 2);
         break;
     case KindA64::d:
-        placeA("str", src, dst, 0b11110000, 0b11, /* sizelog= */ 3);
+        placeA("str", src, dst, 0b11'11110000, /* sizelog= */ 3);
         break;
     case KindA64::q:
-        placeA("str", src, dst, 0b11110010, 0b00, /* sizelog= */ 4);
+        placeA("str", src, dst, 0b00'11110010, /* sizelog= */ 4);
         break;
     case KindA64::none:
         LUAU_ASSERT(!"Unexpected register kind");
@@ -379,14 +379,14 @@ void AssemblyBuilderA64::strb(RegisterA64 src, AddressA64 dst)
 {
     LUAU_ASSERT(src.kind == KindA64::w);
 
-    placeA("strb", src, dst, 0b11100000, 0b00, /* sizelog= */ 0);
+    placeA("strb", src, dst, 0b00'11100000, /* sizelog= */ 0);
 }
 
 void AssemblyBuilderA64::strh(RegisterA64 src, AddressA64 dst)
 {
     LUAU_ASSERT(src.kind == KindA64::w);
 
-    placeA("strh", src, dst, 0b11100000, 0b01, /* sizelog= */ 1);
+    placeA("strh", src, dst, 0b01'11100000, /* sizelog= */ 1);
 }
 
 void AssemblyBuilderA64::stp(RegisterA64 src1, RegisterA64 src2, AddressA64 dst)
@@ -487,9 +487,12 @@ void AssemblyBuilderA64::adr(RegisterA64 dst, Label& label)
 
 void AssemblyBuilderA64::fmov(RegisterA64 dst, RegisterA64 src)
 {
-    LUAU_ASSERT(dst.kind == KindA64::d && src.kind == KindA64::d);
+    LUAU_ASSERT(dst.kind == KindA64::d && (src.kind == KindA64::d || src.kind == KindA64::x));
 
-    placeR1("fmov", dst, src, 0b000'11110'01'1'0000'00'10000);
+    if (src.kind == KindA64::d)
+        placeR1("fmov", dst, src, 0b000'11110'01'1'0000'00'10000);
+    else
+        placeR1("fmov", dst, src, 0b000'11110'01'1'00'111'000000);
 }
 
 void AssemblyBuilderA64::fmov(RegisterA64 dst, double src)
@@ -825,7 +828,7 @@ void AssemblyBuilderA64::placeI16(const char* name, RegisterA64 dst, int src, ui
     commit();
 }
 
-void AssemblyBuilderA64::placeA(const char* name, RegisterA64 dst, AddressA64 src, uint8_t op, uint8_t size, int sizelog)
+void AssemblyBuilderA64::placeA(const char* name, RegisterA64 dst, AddressA64 src, uint16_t opsize, int sizelog)
 {
     if (logText)
         log(name, dst, src);
@@ -833,15 +836,15 @@ void AssemblyBuilderA64::placeA(const char* name, RegisterA64 dst, AddressA64 sr
     switch (src.kind)
     {
     case AddressKindA64::imm:
-        if (src.data >= 0 && (src.data >> sizelog) < 1024 && (src.data & ((1 << sizelog) - 1)) == 0)
-            place(dst.index | (src.base.index << 5) | ((src.data >> sizelog) << 10) | (op << 22) | (1 << 24) | (size << 30));
+        if (unsigned(src.data >> sizelog) < 1024 && (src.data & ((1 << sizelog) - 1)) == 0)
+            place(dst.index | (src.base.index << 5) | ((src.data >> sizelog) << 10) | (opsize << 22) | (1 << 24));
         else if (src.data >= -256 && src.data <= 255)
-            place(dst.index | (src.base.index << 5) | ((src.data & ((1 << 9) - 1)) << 12) | (op << 22) | (size << 30));
+            place(dst.index | (src.base.index << 5) | ((src.data & ((1 << 9) - 1)) << 12) | (opsize << 22));
         else
             LUAU_ASSERT(!"Unable to encode large immediate offset");
         break;
     case AddressKindA64::reg:
-        place(dst.index | (src.base.index << 5) | (0b10 << 10) | (0b011 << 13) | (src.offset.index << 16) | (1 << 21) | (op << 22) | (size << 30));
+        place(dst.index | (src.base.index << 5) | (0b011'0'10 << 10) | (src.offset.index << 16) | (1 << 21) | (opsize << 22));
         break;
     }
 

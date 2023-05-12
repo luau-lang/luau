@@ -484,6 +484,16 @@ struct ErrorConverter
     {
         return "Attempting a dynamic property access on type '" + Luau::toString(e.ty) + "' is unsafe and may cause exceptions at runtime";
     }
+
+    std::string operator()(const UninhabitedTypeFamily& e) const
+    {
+        return "Type family instance " + Luau::toString(e.ty) + " is uninhabited";
+    }
+
+    std::string operator()(const UninhabitedTypePackFamily& e) const
+    {
+        return "Type pack family instance " + Luau::toString(e.tp) + " is uninhabited";
+    }
 };
 
 struct InvalidNameChecker
@@ -786,6 +796,16 @@ bool DynamicPropertyLookupOnClassesUnsafe::operator==(const DynamicPropertyLooku
     return ty == rhs.ty;
 }
 
+bool UninhabitedTypeFamily::operator==(const UninhabitedTypeFamily& rhs) const
+{
+    return ty == rhs.ty;
+}
+
+bool UninhabitedTypePackFamily::operator==(const UninhabitedTypePackFamily& rhs) const
+{
+    return tp == rhs.tp;
+}
+
 std::string toString(const TypeError& error)
 {
     return toString(error, TypeErrorToStringOptions{});
@@ -944,6 +964,10 @@ void copyError(T& e, TypeArena& destArena, CloneState cloneState)
     }
     else if constexpr (std::is_same_v<T, DynamicPropertyLookupOnClassesUnsafe>)
         e.ty = clone(e.ty);
+    else if constexpr (std::is_same_v<T, UninhabitedTypeFamily>)
+        e.ty = clone(e.ty);
+    else if constexpr (std::is_same_v<T, UninhabitedTypePackFamily>)
+        e.tp = clone(e.tp);
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

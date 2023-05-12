@@ -52,6 +52,12 @@ Property clone(const Property& prop, TypeArena& dest, CloneState& cloneState)
     }
 }
 
+static TableIndexer clone(const TableIndexer& indexer, TypeArena& dest, CloneState& cloneState)
+{
+    LUAU_ASSERT(FFlag::LuauTypecheckClassTypeIndexers);
+    return TableIndexer{clone(indexer.indexType, dest, cloneState), clone(indexer.indexResultType, dest, cloneState)};
+}
+
 struct TypePackCloner;
 
 /*
@@ -98,6 +104,7 @@ struct TypeCloner
     void operator()(const UnknownType& t);
     void operator()(const NeverType& t);
     void operator()(const NegationType& t);
+    void operator()(const TypeFamilyInstanceType& t);
 };
 
 struct TypePackCloner
@@ -170,6 +177,22 @@ struct TypePackCloner
 
         if (t.tail)
             destTp->tail = clone(*t.tail, dest, cloneState);
+    }
+
+    void operator()(const TypeFamilyInstanceTypePack& t)
+    {
+        TypePackId cloned = dest.addTypePack(TypeFamilyInstanceTypePack{t.family, {}, {}});
+        TypeFamilyInstanceTypePack* destTp = getMutable<TypeFamilyInstanceTypePack>(cloned);
+        LUAU_ASSERT(destTp);
+        seenTypePacks[typePackId] = cloned;
+
+        destTp->typeArguments.reserve(t.typeArguments.size());
+        for (TypeId ty : t.typeArguments)
+            destTp->typeArguments.push_back(clone(ty, dest, cloneState));
+
+        destTp->packArguments.reserve(t.packArguments.size());
+        for (TypePackId tp : t.packArguments)
+            destTp->packArguments.push_back(clone(tp, dest, cloneState));
     }
 };
 
@@ -288,8 +311,16 @@ void TypeCloner::operator()(const TableType& t)
     for (const auto& [name, prop] : t.props)
         ttv->props[name] = clone(prop, dest, cloneState);
 
-    if (t.indexer)
-        ttv->indexer = TableIndexer{clone(t.indexer->indexType, dest, cloneState), clone(t.indexer->indexResultType, dest, cloneState)};
+    if (FFlag::LuauTypecheckClassTypeIndexers)
+    {
+        if (t.indexer)
+            ttv->indexer = clone(*t.indexer, dest, cloneState);
+    }
+    else
+    {
+        if (t.indexer)
+            ttv->indexer = TableIndexer{clone(t.indexer->indexType, dest, cloneState), clone(t.indexer->indexResultType, dest, cloneState)};
+    }
 
     for (TypeId& arg : ttv->instantiatedTypeParams)
         arg = clone(arg, dest, cloneState);
@@ -327,6 +358,12 @@ void TypeCloner::operator()(const ClassType& t)
 
     if (t.metatable)
         ctv->metatable = clone(*t.metatable, dest, cloneState);
+
+    if (FFlag::LuauTypecheckClassTypeIndexers)
+    {
+        if (t.indexer)
+            ctv->indexer = clone(*t.indexer, dest, cloneState);
+    }
 }
 
 void TypeCloner::operator()(const AnyType& t)
@@ -387,6 +424,28 @@ void TypeCloner::operator()(const NegationType& t)
 
     TypeId ty = clone(t.ty, dest, cloneState);
     asMutable(result)->ty = NegationType{ty};
+}
+
+void TypeCloner::operator()(const TypeFamilyInstanceType& t)
+{
+    TypeId result = dest.addType(TypeFamilyInstanceType{
+        t.family,
+        {},
+        {},
+    });
+
+    seenTypes[typeId] = result;
+
+    TypeFamilyInstanceType* tfit = getMutable<TypeFamilyInstanceType>(result);
+    LUAU_ASSERT(tfit != nullptr);
+
+    tfit->typeArguments.reserve(t.typeArguments.size());
+    for (TypeId p : t.typeArguments)
+        tfit->typeArguments.push_back(clone(p, dest, cloneState));
+
+    tfit->packArguments.reserve(t.packArguments.size());
+    for (TypePackId p : t.packArguments)
+        tfit->packArguments.push_back(clone(p, dest, cloneState));
 }
 
 } // anonymous namespace

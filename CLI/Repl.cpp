@@ -27,6 +27,10 @@
 #include <windows.h>
 #endif
 
+#ifdef __linux__
+#include <unistd.h>
+#endif
+
 #ifdef CALLGRIND
 #include <valgrind/callgrind.h>
 #endif
@@ -865,6 +869,7 @@ int replMain(int argc, char** argv)
     int profile = 0;
     bool coverage = false;
     bool interactive = false;
+    bool codegenPerf = false;
 
     // Set the mode if the user has explicitly specified one.
     int argStart = 1;
@@ -962,6 +967,11 @@ int replMain(int argc, char** argv)
         {
             codegen = true;
         }
+        else if (strcmp(argv[i], "--codegen-perf") == 0)
+        {
+            codegen = true;
+            codegenPerf = true;
+        }
         else if (strcmp(argv[i], "--coverage") == 0)
         {
             coverage = true;
@@ -997,6 +1007,24 @@ int replMain(int argc, char** argv)
         return 1;
     }
 #endif
+
+    if (codegenPerf)
+    {
+#if __linux__
+        char path[128];
+        snprintf(path, sizeof(path), "/tmp/perf-%d.map", getpid());
+
+        // note, there's no need to close the log explicitly as it will be closed when the process exits
+        FILE* codegenPerfLog = fopen(path, "w");
+
+        Luau::CodeGen::setPerfLog(codegenPerfLog, [](void* context, uintptr_t addr, unsigned size, const char* symbol) {
+            fprintf(static_cast<FILE*>(context), "%016lx %08x %s\n", long(addr), size, symbol);
+        });
+#else
+        fprintf(stderr, "--codegen-perf option is only supported on Linux\n");
+        return 1;
+#endif
+    }
 
     const std::vector<std::string> files = getSourceFiles(argc, argv);
     if (mode == CliMode::Unknown)

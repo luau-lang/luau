@@ -69,4 +69,17 @@ end
 
 breakpointSetFromMetamethod()
 
+-- break inside function with non-monotonic line info
+local function cond(a)
+	if a then
+		print('a')
+	else
+		print('not a')
+	end
+end
+
+breakpoint(77)
+
+pcall(cond, nil) -- prevent inlining
+
 return 'OK'

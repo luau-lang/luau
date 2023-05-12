@@ -792,4 +792,82 @@ TEST_CASE_FIXTURE(Fixture, "lookup_prop_of_intersection_containing_unions")
     CHECK("variables" == unknownProp->key);
 }
 
+TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauTransitiveSubtyping", true},
+        {"LuauUnifyTwoOptions", true}
+    };
+
+    TypeArena arena;
+    TypeId nilType = builtinTypes->nilType;
+
+    std::unique_ptr scope = std::make_unique<Scope>(builtinTypes->anyTypePack);
+
+    TypeId free1 = arena.addType(FreeType{scope.get()});
+    TypeId option1 = arena.addType(UnionType{{nilType, free1}});
+
+    TypeId free2 = arena.addType(FreeType{scope.get()});
+    TypeId option2 = arena.addType(UnionType{{nilType, free2}});
+
+    InternalErrorReporter iceHandler;
+    UnifierSharedState sharedState{&iceHandler};
+    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
+    Unifier u{NotNull{&normalizer}, Mode::Strict, NotNull{scope.get()}, Location{}, Variance::Covariant};
+
+    u.tryUnify(option1, option2);
+
+    CHECK(!u.failure);
+
+    u.log.commit();
+
+    ToStringOptions opts;
+    CHECK("a?" == toString(option1, opts));
+    CHECK("a?" == toString(option2, opts));
+}
+
+TEST_CASE_FIXTURE(Fixture, "unify_more_complex_unions_that_include_nil")
+{
+    CheckResult result = check(R"(
+        type Record = {prop: (string | boolean)?}
+
+        function concatPagination(prop: (string | boolean | nil)?): Record
+            return {prop = prop}
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "optional_class_instances_are_invariant")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauUnifyTwoOptions", true},
+        {"LuauTypeMismatchInvarianceInError", true}
+    };
+
+    createSomeClasses(&frontend);
+
+    CheckResult result = check(R"(
+        function foo(ref: {current: Parent?})
+        end
+
+        function bar(ref: {current: Child?})
+            foo(ref)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    // The last line of this error is the most important part.  We need to
+    // communicate that this is an invariant context.
+    std::string expectedError =
+        "Type '{| current: Child? |}' could not be converted into '{| current: Parent? |}'\n"
+        "caused by:\n"
+        "  Property 'current' is not compatible. Type 'Child' could not be converted into 'Parent' in an invariant context"
+    ;
+
+    CHECK(expectedError == toString(result.errors[0]));
+}
+
 TEST_SUITE_END();

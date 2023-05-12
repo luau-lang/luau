@@ -121,6 +121,8 @@ struct ConstraintSolver
     bool tryDispatch(const SetIndexerConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const SingletonOrTopTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const UnpackConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const ReduceConstraint& c, NotNull<const Constraint> constraint, bool force);
+    bool tryDispatch(const ReducePackConstraint& c, NotNull<const Constraint> constraint, bool force);
 
     // for a, ... in some_table do
     // also handles __iter metamethod

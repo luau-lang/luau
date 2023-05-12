@@ -728,6 +728,7 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocalFun
     });
 
     addConstraint(scope, std::move(c));
+    module->astTypes[function->func] = functionType;
 
     return ControlFlow::None;
 }
@@ -1475,7 +1476,7 @@ Inference ConstraintGraphBuilder::check(
         Checkpoint endCheckpoint = checkpoint(this);
 
         TypeId generalizedTy = arena->addType(BlockedType{});
-        NotNull<Constraint> gc = addConstraint(scope, expr->location, GeneralizationConstraint{generalizedTy, sig.signature});
+        NotNull<Constraint> gc = addConstraint(sig.signatureScope, expr->location, GeneralizationConstraint{generalizedTy, sig.signature});
 
         forEachConstraint(startCheckpoint, endCheckpoint, this, [gc](const ConstraintPtr& constraint) {
             gc->dependencies.emplace_back(constraint.get());

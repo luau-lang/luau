@@ -481,4 +481,150 @@ TEST_CASE_FIXTURE(ClassFixture, "callable_classes")
     CHECK_EQ("number", toString(requireType("y")));
 }
 
+TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
+{
+    // Test reading from an index
+    ScopedFastFlag LuauTypecheckClassTypeIndexers("LuauTypecheckClassTypeIndexers", true);
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            local y = x.stringKey
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            local y = x["stringKey"]
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            local str : string
+            local y = x[str]            -- Index with a non-const string
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            local y = x[7]              -- Index with a numeric key
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+
+    // Test writing to an index
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            x.stringKey = 42
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            x["stringKey"] = 42
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            local str : string
+            x[str] = 42                 -- Index with a non-const string
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            x[1] = 42                   -- Index with a numeric key
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+
+    // Try to index the class using an invalid type for the key (key type is 'number | string'.)
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            local y = x[true]
+        )");
+        CHECK_EQ(
+            toString(result.errors[0]), "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible");
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            x[true] = 42
+        )");
+        CHECK_EQ(
+            toString(result.errors[0]), "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible");
+    }
+
+    // Test type checking for the return type of the indexer (i.e. a number)
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            x.key = "string value"
+        )");
+        CHECK_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'number'");
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            local str : string = x.key
+        )");
+        CHECK_EQ(toString(result.errors[0]), "Type 'number' could not be converted into 'string'");
+    }
+
+    // Check that we string key are rejected if the indexer's key type is not compatible with string
+    {
+        CheckResult result = check(R"(
+            local x : IndexableNumericKeyClass
+            x.key = 1
+        )");
+        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in class 'IndexableNumericKeyClass'");
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableNumericKeyClass
+            x["key"] = 1
+        )");
+        CHECK_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'number'");
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableNumericKeyClass
+            local str : string
+            x[str] = 1                  -- Index with a non-const string
+        )");
+        CHECK_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'number'");
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableNumericKeyClass
+            local y = x.key
+        )");
+        CHECK_EQ(toString(result.errors[0]), "Key 'key' not found in class 'IndexableNumericKeyClass'");
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableNumericKeyClass
+            local y = x["key"]
+        )");
+        CHECK_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'number'");
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableNumericKeyClass
+            local str : string
+            local y = x[str]            -- Index with a non-const string
+        )");
+        CHECK_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'number'");
+    }
+}
+
 TEST_SUITE_END();

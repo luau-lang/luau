@@ -482,41 +482,6 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
     CHECK("<a>(a, number) -> ()" == toString(requireType("prime_iter")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
-{
-    ScopedFastFlag sff[] = {
-        {"LuauTransitiveSubtyping", true},
-    };
-
-    TypeArena arena;
-    TypeId nilType = builtinTypes->nilType;
-
-    std::unique_ptr scope = std::make_unique<Scope>(builtinTypes->anyTypePack);
-
-    TypeId free1 = arena.addType(FreeType{scope.get()});
-    TypeId option1 = arena.addType(UnionType{{nilType, free1}});
-
-    TypeId free2 = arena.addType(FreeType{scope.get()});
-    TypeId option2 = arena.addType(UnionType{{nilType, free2}});
-
-    InternalErrorReporter iceHandler;
-    UnifierSharedState sharedState{&iceHandler};
-    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    Unifier u{NotNull{&normalizer}, Mode::Strict, NotNull{scope.get()}, Location{}, Variance::Covariant};
-
-    u.tryUnify(option1, option2);
-
-    CHECK(!u.failure);
-
-    u.log.commit();
-
-    ToStringOptions opts;
-    CHECK("a?" == toString(option1, opts));
-
-    // CHECK("a?" == toString(option2, opts)); // This should hold, but does not.
-    CHECK("b?" == toString(option2, opts)); // This should not hold.
-}
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators")
 {
     ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", false};

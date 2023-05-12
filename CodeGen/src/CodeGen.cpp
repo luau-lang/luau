@@ -58,6 +58,9 @@ namespace Luau
 namespace CodeGen
 {
 
+static void* gPerfLogContext = nullptr;
+static PerfLogFn gPerfLogFn = nullptr;
+
 static NativeProto* createNativeProto(Proto* proto, const IrBuilder& ir)
 {
     int sizecode = proto->sizecode;
@@ -85,6 +88,20 @@ static void destroyNativeProto(NativeProto* nativeProto)
     void* memory = reinterpret_cast<char*>(nativeProto) - sizecodeAlloc * sizeof(uint32_t);
 
     ::operator delete(memory);
+}
+
+static void logPerfFunction(Proto* p, uintptr_t addr, unsigned size)
+{
+    LUAU_ASSERT(p->source);
+
+    const char* source = getstr(p->source);
+    source = (source[0] == '=' || source[0] == '@') ? source + 1 : "[string]";
+
+    char name[256];
+    snprintf(name, sizeof(name), "<luau> %s:%d %s", source, p->linedefined, p->debugname ? getstr(p->debugname) : "");
+
+    if (gPerfLogFn)
+        gPerfLogFn(gPerfLogContext, addr, size, name);
 }
 
 template<typename AssemblyBuilder, typename IrLowering>
@@ -329,24 +346,17 @@ static void onDestroyFunction(lua_State* L, Proto* proto)
 
 static int onEnter(lua_State* L, Proto* proto)
 {
-    if (L->singlestep)
-        return 1;
-
     NativeState* data = getNativeState(L);
-
-    if (!L->ci->savedpc)
-        L->ci->savedpc = proto->code;
-
-    // We will jump into native code through a gateway
-    bool (*gate)(lua_State*, Proto*, uintptr_t, NativeContext*) = (bool (*)(lua_State*, Proto*, uintptr_t, NativeContext*))data->context.gateEntry;
-
     NativeProto* nativeProto = getProtoExecData(proto);
 
+    LUAU_ASSERT(nativeProto);
+    LUAU_ASSERT(L->ci->savedpc);
+
     // instOffsets uses negative indexing for optimal codegen for RETURN opcode
-    uintptr_t target = nativeProto->instBase + nativeProto->instOffsets[-(L->ci->savedpc - proto->code)];
+    uintptr_t target = nativeProto->instBase + nativeProto->instOffsets[proto->code - L->ci->savedpc];
 
     // Returns 1 to finish the function in the VM
-    return gate(L, proto, target, &data->context);
+    return GateFn(data->context.gateEntry)(L, proto, target, &data->context);
 }
 
 static void onSetBreakpoint(lua_State* L, Proto* proto, int instruction)
@@ -375,9 +385,9 @@ static unsigned int getCpuFeaturesA64()
 
 bool isSupported()
 {
-#if !LUA_CUSTOM_EXECUTION
-    return false;
-#elif defined(__x86_64__) || defined(_M_X64)
+    if (!LUA_CUSTOM_EXECUTION)
+        return false;
+
     if (LUA_EXTRA_SIZE != 1)
         return false;
 
@@ -387,6 +397,16 @@ bool isSupported()
     if (sizeof(LuaNode) != 32)
         return false;
 
+    // Windows CRT uses stack unwinding in longjmp so we have to use unwind data; on other platforms, it's only necessary for C++ EH.
+#if defined(_WIN32)
+    if (!isUnwindSupported())
+        return false;
+#else
+    if (!LUA_USE_LONGJMP && !isUnwindSupported())
+        return false;
+#endif
+
+#if defined(__x86_64__) || defined(_M_X64)
     int cpuinfo[4] = {};
 #ifdef _MSC_VER
     __cpuid(cpuinfo, 1);
@@ -402,21 +422,6 @@ bool isSupported()
 
     return true;
 #elif defined(__aarch64__)
-    if (LUA_EXTRA_SIZE != 1)
-        return false;
-
-    if (sizeof(TValue) != 16)
-        return false;
-
-    if (sizeof(LuaNode) != 32)
-        return false;
-
-#ifdef _WIN32
-    // Unwind info is not supported for Windows-on-ARM yet
-    if (!LUA_USE_LONGJMP)
-        return false;
-#endif
-
     return true;
 #else
     return false;
@@ -455,6 +460,9 @@ void create(lua_State* L)
         return;
     }
 #endif
+
+    if (gPerfLogFn)
+        gPerfLogFn(gPerfLogContext, uintptr_t(data.context.gateEntry), 4096, "<luau gate>");
 
     lua_ExecutionCallbacks* ecb = getExecutionCallbacks(L);
 
@@ -540,6 +548,20 @@ void compile(lua_State* L, int idx)
         return;
     }
 
+    if (gPerfLogFn && results.size() > 0)
+    {
+        gPerfLogFn(gPerfLogContext, uintptr_t(codeStart), results[0]->instOffsets[0], "<luau helpers>");
+
+        for (size_t i = 0; i < results.size(); ++i)
+        {
+            uint32_t begin = results[i]->instOffsets[0];
+            uint32_t end = i + 1 < results.size() ? results[i + 1]->instOffsets[0] : uint32_t(build.code.size() * sizeof(build.code[0]));
+            LUAU_ASSERT(begin < end);
+
+            logPerfFunction(results[i]->proto, uintptr_t(codeStart) + begin, end - begin);
+        }
+    }
+
     // Record instruction base address; at runtime, instOffsets[] will be used as offsets from instBase
     for (NativeProto* result : results)
     {
@@ -589,6 +611,12 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
                std::string(build.data.begin(), build.data.end());
     else
         return build.text;
+}
+
+void setPerfLog(void* context, PerfLogFn logFn)
+{
+    gPerfLogContext = context;
+    gPerfLogFn = logFn;
 }
 
 } // namespace CodeGen

@@ -23,6 +23,7 @@
 
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
 LUAU_FASTINT(LuauTypeMaximumStringifierLength)
+LUAU_FASTFLAG(LuauTypecheckClassTypeIndexers)
 
 namespace Luau
 {
@@ -30,6 +31,8 @@ namespace Luau
 struct TypeArena;
 struct Scope;
 using ScopePtr = std::shared_ptr<Scope>;
+
+struct TypeFamily;
 
 /**
  * There are three kinds of type variables:
@@ -489,6 +492,7 @@ struct ClassType
     Tags tags;
     std::shared_ptr<ClassUserData> userData;
     ModuleName definitionModuleName;
+    std::optional<TableIndexer> indexer;
 
     ClassType(Name name, Props props, std::optional<TypeId> parent, std::optional<TypeId> metatable, Tags tags,
         std::shared_ptr<ClassUserData> userData, ModuleName definitionModuleName)
@@ -501,6 +505,35 @@ struct ClassType
         , definitionModuleName(definitionModuleName)
     {
     }
+
+    ClassType(Name name, Props props, std::optional<TypeId> parent, std::optional<TypeId> metatable, Tags tags,
+        std::shared_ptr<ClassUserData> userData, ModuleName definitionModuleName, std::optional<TableIndexer> indexer)
+        : name(name)
+        , props(props)
+        , parent(parent)
+        , metatable(metatable)
+        , tags(tags)
+        , userData(userData)
+        , definitionModuleName(definitionModuleName)
+        , indexer(indexer)
+    {
+        LUAU_ASSERT(FFlag::LuauTypecheckClassTypeIndexers);
+    }
+};
+
+/**
+ * An instance of a type family that has not yet been reduced to a more concrete
+ * type. The constraint solver receives a constraint to reduce each
+ * TypeFamilyInstanceType to a concrete type. A design detail is important to
+ * note here: the parameters for this instantiation of the type family are
+ * contained within this type, so that they can be substituted.
+ */
+struct TypeFamilyInstanceType
+{
+    NotNull<TypeFamily> family;
+
+    std::vector<TypeId> typeArguments;
+    std::vector<TypePackId> packArguments;
 };
 
 struct TypeFun
@@ -640,8 +673,9 @@ struct NegationType
 
 using ErrorType = Unifiable::Error;
 
-using TypeVariant = Unifiable::Variant<TypeId, FreeType, GenericType, PrimitiveType, BlockedType, PendingExpansionType, SingletonType, FunctionType,
-    TableType, MetatableType, ClassType, AnyType, UnionType, IntersectionType, LazyType, UnknownType, NeverType, NegationType>;
+using TypeVariant =
+    Unifiable::Variant<TypeId, FreeType, GenericType, PrimitiveType, BlockedType, PendingExpansionType, SingletonType, FunctionType, TableType,
+        MetatableType, ClassType, AnyType, UnionType, IntersectionType, LazyType, UnknownType, NeverType, NegationType, TypeFamilyInstanceType>;
 
 struct Type final
 {
