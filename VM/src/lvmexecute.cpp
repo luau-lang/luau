@@ -210,7 +210,7 @@ static void luau_execute(lua_State* L)
 #if LUA_CUSTOM_EXECUTION
     Proto* p = clvalue(L->ci->func)->l.p;
 
-    if (p->execdata)
+    if (p->execdata && !SingleStep)
     {
         if (L->global->ecb.enter(L, p) == 0)
             return;
@@ -952,9 +952,9 @@ reentry:
                     L->top = p->is_vararg ? argi : ci->top;
 
 #if LUA_CUSTOM_EXECUTION
-                    if (p->execdata)
+                    if (LUAU_UNLIKELY(p->execdata && !SingleStep))
                     {
-                        LUAU_ASSERT(L->global->ecb.enter);
+                        ci->savedpc = p->code;
 
                         if (L->global->ecb.enter(L, p) == 1)
                             goto reentry;
@@ -1050,10 +1050,8 @@ reentry:
                 Proto* nextproto = nextcl->l.p;
 
 #if LUA_CUSTOM_EXECUTION
-                if (nextproto->execdata)
+                if (LUAU_UNLIKELY(nextproto->execdata && !SingleStep))
                 {
-                    LUAU_ASSERT(L->global->ecb.enter);
-
                     if (L->global->ecb.enter(L, nextproto) == 1)
                         goto reentry;
                     else

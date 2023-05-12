@@ -16,6 +16,7 @@
 #include "Luau/TypeReduction.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier.h"
+#include "Luau/TypeFamily.h"
 
 #include <algorithm>
 
@@ -113,6 +114,13 @@ struct TypeChecker2
             return std::nullopt;
     }
 
+    TypeId checkForFamilyInhabitance(TypeId instance, Location location)
+    {
+        TxnLog fake{};
+        reportErrors(reduceFamilies(instance, location, NotNull{&testArena}, builtinTypes, &fake, true).errors);
+        return instance;
+    }
+
     TypePackId lookupPack(AstExpr* expr)
     {
         // If a type isn't in the type graph, it probably means that a recursion limit was exceeded.
@@ -132,11 +140,11 @@ struct TypeChecker2
         // allows us not to think about this very much in the actual typechecking logic.
         TypeId* ty = module->astTypes.find(expr);
         if (ty)
-            return follow(*ty);
+            return checkForFamilyInhabitance(follow(*ty), expr->location);
 
         TypePackId* tp = module->astTypePacks.find(expr);
         if (tp)
-            return flattenPack(*tp);
+            return checkForFamilyInhabitance(flattenPack(*tp), expr->location);
 
         return builtinTypes->anyType;
     }
@@ -159,7 +167,7 @@ struct TypeChecker2
 
         TypeId* ty = module->astResolvedTypes.find(annotation);
         LUAU_ASSERT(ty);
-        return follow(*ty);
+        return checkForFamilyInhabitance(follow(*ty), annotation->location);
     }
 
     TypePackId lookupPackAnnotation(AstTypePack* annotation)
@@ -311,6 +319,7 @@ struct TypeChecker2
         TypePackId actualRetType = reconstructPack(ret->list, *arena);
 
         Unifier u{NotNull{&normalizer}, Mode::Strict, stack.back(), ret->location, Covariant};
+        u.hideousFixMeGenericsAreActuallyFree = true;
 
         u.tryUnify(actualRetType, expectedRetType);
         const bool ok = u.errors.empty() && u.log.empty();
@@ -989,8 +998,11 @@ struct TypeChecker2
                 return;
             }
 
+            TxnLog fake{};
+
             LUAU_ASSERT(ftv);
-            reportErrors(tryUnify(stack.back(), call->location, ftv->retTypes, expectedRetType, CountMismatch::Context::Return));
+            reportErrors(tryUnify(stack.back(), call->location, ftv->retTypes, expectedRetType, CountMismatch::Context::Return, /* genericsOkay */ true));
+            reportErrors(reduceFamilies(ftv->retTypes, call->location, NotNull{&testArena}, builtinTypes, &fake, true).errors);
 
             auto it = begin(expectedArgTypes);
             size_t i = 0;
@@ -1007,7 +1019,8 @@ struct TypeChecker2
 
                 Location argLoc = argLocs.at(i >= argLocs.size() ? argLocs.size() - 1 : i);
 
-                reportErrors(tryUnify(stack.back(), argLoc, expectedArg, arg));
+                reportErrors(tryUnify(stack.back(), argLoc, expectedArg, arg, CountMismatch::Context::Arg, /* genericsOkay */ true));
+                reportErrors(reduceFamilies(arg, argLoc, NotNull{&testArena}, builtinTypes, &fake, true).errors);
 
                 ++it;
                 ++i;
@@ -1018,7 +1031,8 @@ struct TypeChecker2
                 if (auto tail = it.tail())
                 {
                     TypePackId remainingArgs = testArena.addTypePack(TypePack{std::move(slice), std::nullopt});
-                    reportErrors(tryUnify(stack.back(), argLocs.back(), *tail, remainingArgs));
+                    reportErrors(tryUnify(stack.back(), argLocs.back(), *tail, remainingArgs, CountMismatch::Context::Arg, /* genericsOkay */ true));
+                    reportErrors(reduceFamilies(remainingArgs, argLocs.back(), NotNull{&testArena}, builtinTypes, &fake, true).errors);
                 }
             }
 
@@ -1344,7 +1358,7 @@ struct TypeChecker2
         else if (get<AnyType>(rightType) || get<ErrorType>(rightType))
             return rightType;
 
-        if ((get<BlockedType>(leftType) || get<FreeType>(leftType)) && !isEquality && !isLogical)
+        if ((get<BlockedType>(leftType) || get<FreeType>(leftType) || get<GenericType>(leftType)) && !isEquality && !isLogical)
         {
             auto name = getIdentifierOfBaseVar(expr->left);
             reportError(CannotInferBinaryOperation{expr->op, name,
@@ -1591,10 +1605,10 @@ struct TypeChecker2
         TypeId computedType = lookupType(expr->expr);
 
         // Note: As an optimization, we try 'number <: number | string' first, as that is the more likely case.
-        if (isSubtype(annotationType, computedType, stack.back()))
+        if (isSubtype(annotationType, computedType, stack.back(), true))
             return;
 
-        if (isSubtype(computedType, annotationType, stack.back()))
+        if (isSubtype(computedType, annotationType, stack.back(), true))
             return;
 
         reportError(TypesAreUnrelated{computedType, annotationType}, expr->location);
@@ -1679,6 +1693,10 @@ struct TypeChecker2
 
     void visit(AstType* ty)
     {
+        TypeId* resolvedTy = module->astResolvedTypes.find(ty);
+        if (resolvedTy)
+            checkForFamilyInhabitance(follow(*resolvedTy), ty->location);
+
         if (auto t = ty->as<AstTypeReference>())
             return visit(t);
         else if (auto t = ty->as<AstTypeTable>())
@@ -1989,11 +2007,12 @@ struct TypeChecker2
     }
 
     template<typename TID>
-    bool isSubtype(TID subTy, TID superTy, NotNull<Scope> scope)
+    bool isSubtype(TID subTy, TID superTy, NotNull<Scope> scope, bool genericsOkay = false)
     {
         TypeArena arena;
         Unifier u{NotNull{&normalizer}, Mode::Strict, scope, Location{}, Covariant};
-        u.useScopes = true;
+        u.hideousFixMeGenericsAreActuallyFree = genericsOkay;
+        u.enableScopeTests();
 
         u.tryUnify(subTy, superTy);
         const bool ok = u.errors.empty() && u.log.empty();
@@ -2001,11 +2020,13 @@ struct TypeChecker2
     }
 
     template<typename TID>
-    ErrorVec tryUnify(NotNull<Scope> scope, const Location& location, TID subTy, TID superTy, CountMismatch::Context context = CountMismatch::Arg)
+    ErrorVec tryUnify(NotNull<Scope> scope, const Location& location, TID subTy, TID superTy, CountMismatch::Context context = CountMismatch::Arg,
+        bool genericsOkay = false)
     {
         Unifier u{NotNull{&normalizer}, Mode::Strict, scope, location, Covariant};
         u.ctx = context;
-        u.useScopes = true;
+        u.hideousFixMeGenericsAreActuallyFree = genericsOkay;
+        u.enableScopeTests();
         u.tryUnify(subTy, superTy);
 
         return std::move(u.errors);

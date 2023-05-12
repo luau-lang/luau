@@ -645,6 +645,10 @@ static void throwing(int64_t arg)
 
 TEST_CASE("GeneratedCodeExecutionWithThrowA64")
 {
+    // macOS 12 doesn't support JIT frames without pointer authentication
+    if (!isUnwindSupported())
+        return;
+
     using namespace A64;
 
     AssemblyBuilderA64 build(/* logText= */ false);

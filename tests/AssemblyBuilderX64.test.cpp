@@ -684,15 +684,30 @@ TEST_CASE("ConstantStorage")
 
     build.finalize();
 
-    LUAU_ASSERT(build.data.size() == 12004);
+    CHECK(build.data.size() == 12004);
 
     for (int i = 0; i <= 3000; i++)
     {
-        LUAU_ASSERT(build.data[i * 4 + 0] == 0x00);
-        LUAU_ASSERT(build.data[i * 4 + 1] == 0x00);
-        LUAU_ASSERT(build.data[i * 4 + 2] == 0x80);
-        LUAU_ASSERT(build.data[i * 4 + 3] == 0x3f);
+        CHECK(build.data[i * 4 + 0] == 0x00);
+        CHECK(build.data[i * 4 + 1] == 0x00);
+        CHECK(build.data[i * 4 + 2] == 0x80);
+        CHECK(build.data[i * 4 + 3] == 0x3f);
     }
+}
+
+TEST_CASE("ConstantCaching")
+{
+    AssemblyBuilderX64 build(/* logText= */ false);
+
+    OperandX64 two = build.f64(2);
+
+    // Force data relocation
+    for (int i = 0; i < 4096; i++)
+        build.f64(i);
+
+    CHECK(build.f64(2).imm == two.imm);
+
+    build.finalize();
 }
 
 TEST_SUITE_END();

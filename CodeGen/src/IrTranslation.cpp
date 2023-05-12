@@ -65,21 +65,42 @@ void translateInstLoadN(IrBuilder& build, const Instruction* pc)
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
 }
 
+static void translateInstLoadConstant(IrBuilder& build, int ra, int k)
+{
+    TValue protok = build.function.proto->k[k];
+
+    // Compiler only generates LOADK for source-level constants, so dynamic imports are not affected
+    if (protok.tt == LUA_TNIL)
+    {
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNIL));
+    }
+    else if (protok.tt == LUA_TBOOLEAN)
+    {
+        build.inst(IrCmd::STORE_INT, build.vmReg(ra), build.constInt(protok.value.b));
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
+    }
+    else if (protok.tt == LUA_TNUMBER)
+    {
+        build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), build.constDouble(protok.value.n));
+        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+    }
+    else
+    {
+        // Remaining tag here right now is LUA_TSTRING, while it can be transformed to LOAD_POINTER/STORE_POINTER/STORE_TAG, it's not profitable right
+        // now
+        IrOp load = build.inst(IrCmd::LOAD_TVALUE, build.vmConst(k));
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), load);
+    }
+}
+
 void translateInstLoadK(IrBuilder& build, const Instruction* pc)
 {
-    int ra = LUAU_INSN_A(*pc);
-
-    IrOp load = build.inst(IrCmd::LOAD_TVALUE, build.vmConst(LUAU_INSN_D(*pc)));
-    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), load);
+    translateInstLoadConstant(build, LUAU_INSN_A(*pc), LUAU_INSN_D(*pc));
 }
 
 void translateInstLoadKX(IrBuilder& build, const Instruction* pc)
 {
-    int ra = LUAU_INSN_A(*pc);
-    uint32_t aux = pc[1];
-
-    IrOp load = build.inst(IrCmd::LOAD_TVALUE, build.vmConst(aux));
-    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), load);
+    translateInstLoadConstant(build, LUAU_INSN_A(*pc), pc[1]);
 }
 
 void translateInstMove(IrBuilder& build, const Instruction* pc)

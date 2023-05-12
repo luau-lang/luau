@@ -1233,4 +1233,69 @@ TEST_CASE_FIXTURE(Fixture, "dcr_delays_expansion_of_function_containing_blocked_
     )");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_function_that_invokes_itself_with_a_refinement_of_its_parameter")
+{
+    CheckResult result = check(R"(
+        local TRUE: true = true
+
+        local function matches(value, t: true)
+            if value then
+                return true
+            end
+        end
+
+        local function readValue(breakpoint)
+            if matches(breakpoint, TRUE) then
+                readValue(breakpoint)
+            end
+        end
+    )");
+
+    CHECK("<a>(a) -> ()" == toString(requireType("readValue")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_function_that_invokes_itself_with_a_refinement_of_its_parameter_2")
+{
+    CheckResult result = check(R"(
+        local function readValue(breakpoint)
+            if type(breakpoint) == 'number' then
+                readValue(breakpoint)
+            end
+        end
+    )");
+
+    CHECK("(number) -> ()" == toString(requireType("readValue")));
+}
+
+/*
+ * We got into a case where, as we unified two nearly identical unions with one
+ * another, where we had a concatenated TxnLog that created a cycle between two
+ * free types.
+ *
+ * This code used to crash the type checker.  See CLI-71190
+ */
+TEST_CASE_FIXTURE(BuiltinsFixture, "convoluted_case_where_two_TypeVars_were_bound_to_each_other")
+{
+    check(R"(
+        type React_Ref<ElementType> = { current: ElementType } | ((ElementType) -> ())
+
+        type React_AbstractComponent<Config, Instance> = {
+            render: ((ref: React_Ref<Instance>) -> nil)
+        }
+
+        local createElement : <P, T>(React_AbstractComponent<P, T>) -> ()
+
+        function ScrollView:render()
+            local one = table.unpack(
+                if true then a else b
+            )
+
+            createElement(one)
+            createElement(one)
+        end
+    )");
+
+    // If this code does not crash, we are in good shape.
+}
+
 TEST_SUITE_END();

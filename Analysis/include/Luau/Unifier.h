@@ -64,8 +64,10 @@ struct Unifier
     Variance variance = Covariant;
     bool normalize = true;      // Normalize unions and intersections if necessary
     bool checkInhabited = true; // Normalize types to check if they are inhabited
-    bool useScopes = false;     // If true, we use the scope hierarchy rather than TypeLevels
     CountMismatch::Context ctx = CountMismatch::Arg;
+
+    // If true, generics act as free types when unifying.
+    bool hideousFixMeGenericsAreActuallyFree = false;
 
     UnifierSharedState& sharedState;
 
@@ -77,6 +79,10 @@ struct Unifier
 
     Unifier(
         NotNull<Normalizer> normalizer, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance, TxnLog* parentLog = nullptr);
+
+    // Configure the Unifier to test for scope subsumption via embedded Scope
+    // pointers rather than TypeLevels.
+    void enableScopeTests();
 
     // Test whether the two type vars unify.  Never commits the result.
     ErrorVec canUnify(TypeId subTy, TypeId superTy);
@@ -159,6 +165,9 @@ private:
 
     // Available after regular type pack unification errors
     std::optional<int> firstPackErrorPos;
+
+    // If true, we use the scope hierarchy rather than TypeLevels
+    bool useScopes = false;
 };
 
 void promoteTypeLevels(TxnLog& log, const TypeArena* arena, TypeLevel minLevel, Scope* outerScope, bool useScope, TypePackId tp);

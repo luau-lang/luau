@@ -75,6 +75,7 @@ static ABIX64 getCurrentX64ABI()
 AssemblyBuilderX64::AssemblyBuilderX64(bool logText, ABIX64 abi)
     : logText(logText)
     , abi(abi)
+    , constCache64(~0ull)
 {
     data.resize(4096);
     dataPos = data.size(); // data is filled backwards
@@ -885,9 +886,22 @@ void AssemblyBuilderX64::setLabel(Label& label)
 
 OperandX64 AssemblyBuilderX64::i64(int64_t value)
 {
+    uint64_t as64BitKey = value;
+
+    if (as64BitKey != ~0ull)
+    {
+        if (int32_t* prev = constCache64.find(as64BitKey))
+            return OperandX64(SizeX64::qword, noreg, 1, rip, *prev);
+    }
+
     size_t pos = allocateData(8, 8);
     writeu64(&data[pos], value);
-    return OperandX64(SizeX64::qword, noreg, 1, rip, int32_t(pos - data.size()));
+    int32_t offset = int32_t(pos - data.size());
+
+    if (as64BitKey != ~0ull)
+        constCache64[as64BitKey] = offset;
+
+    return OperandX64(SizeX64::qword, noreg, 1, rip, offset);
 }
 
 OperandX64 AssemblyBuilderX64::f32(float value)
@@ -899,9 +913,24 @@ OperandX64 AssemblyBuilderX64::f32(float value)
 
 OperandX64 AssemblyBuilderX64::f64(double value)
 {
+    uint64_t as64BitKey;
+    static_assert(sizeof(as64BitKey) == sizeof(value), "Expecting double to be 64-bit");
+    memcpy(&as64BitKey, &value, sizeof(value));
+
+    if (as64BitKey != ~0ull)
+    {
+        if (int32_t* prev = constCache64.find(as64BitKey))
+            return OperandX64(SizeX64::qword, noreg, 1, rip, *prev);
+    }
+
     size_t pos = allocateData(8, 8);
     writef64(&data[pos], value);
-    return OperandX64(SizeX64::qword, noreg, 1, rip, int32_t(pos - data.size()));
+    int32_t offset = int32_t(pos - data.size());
+
+    if (as64BitKey != ~0ull)
+        constCache64[as64BitKey] = offset;
+
+    return OperandX64(SizeX64::qword, noreg, 1, rip, offset);
 }
 
 OperandX64 AssemblyBuilderX64::f32x4(float x, float y, float z, float w)

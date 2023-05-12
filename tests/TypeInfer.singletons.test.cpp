@@ -390,6 +390,8 @@ TEST_CASE_FIXTURE(Fixture, "widen_the_supertype_if_it_is_free_and_subtype_has_si
 
 TEST_CASE_FIXTURE(Fixture, "return_type_of_f_is_not_widened")
 {
+    ScopedFastFlag sff{"LuauUnifyTwoOptions", true};
+
     CheckResult result = check(R"(
         local function foo(f, x): "hello"? -- anyone there?
             return if x == "hi"
@@ -401,7 +403,9 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_f_is_not_widened")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(R"("hi")", toString(requireTypeAtPosition({3, 23})));
-    CHECK_EQ(R"(<a, b, c...>((string) -> (a, c...), b) -> "hello"?)", toString(requireType("foo")));
+    CHECK_EQ(R"(<a, b...>((string) -> ("hello", b...), a) -> "hello"?)", toString(requireType("foo")));
+
+    // This is more accurate but we're not there yet:
     // CHECK_EQ(R"(<a, b...>((string) -> ("hello"?, b...), a) -> "hello"?)", toString(requireType("foo")));
 }
 

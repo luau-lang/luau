@@ -70,7 +70,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Unary")
 {
     SINGLE_COMPARE(neg(x0, x1), 0xCB0103E0);
     SINGLE_COMPARE(neg(w0, w1), 0x4B0103E0);
-    SINGLE_COMPARE(mvn(x0, x1), 0xAA2103E0);
+    SINGLE_COMPARE(mvn_(x0, x1), 0xAA2103E0);
 
     SINGLE_COMPARE(clz(x0, x1), 0xDAC01020);
     SINGLE_COMPARE(clz(w0, w1), 0x5AC01020);
@@ -338,6 +338,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "AddressOfLabel")
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPBasic")
 {
     SINGLE_COMPARE(fmov(d0, d1), 0x1E604020);
+    SINGLE_COMPARE(fmov(d0, x1), 0x9E670020);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPMath")

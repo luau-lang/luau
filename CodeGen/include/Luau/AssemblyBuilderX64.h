@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Common.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Label.h"
 #include "Luau/ConditionX64.h"
 #include "Luau/OperandX64.h"
@@ -249,6 +250,8 @@ private:
     uint32_t nextLabel = 1;
     std::vector<Label> pendingLabels;
     std::vector<uint32_t> labelLocations;
+
+    DenseHashMap<uint64_t, int32_t> constCache64;
 
     bool finalized = false;
 

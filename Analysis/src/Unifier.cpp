@@ -12,6 +12,7 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Type.h"
 #include "Luau/VisitType.h"
+#include "Luau/TypeFamily.h"
 
 #include <algorithm>
 
@@ -20,6 +21,7 @@ LUAU_FASTFLAG(LuauErrorRecoveryType)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauUninhabitedSubAnything2, false)
 LUAU_FASTFLAGVARIABLE(LuauVariadicAnyCanBeGeneric, false)
+LUAU_FASTFLAGVARIABLE(LuauUnifyTwoOptions, false)
 LUAU_FASTFLAGVARIABLE(LuauMaintainScopesInUnifier, false)
 LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauOccursIsntAlwaysFailure, false)
@@ -439,6 +441,30 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     if (superTy == subTy)
         return;
 
+    if (log.get<TypeFamilyInstanceType>(superTy))
+    {
+        // We do not report errors from reducing here. This is because we will
+        // "double-report" errors in some cases, like when trying to unify
+        // identical type family instantiations like Add<false, false> with
+        // Add<false, false>.
+        reduceFamilies(superTy, location, NotNull(types), builtinTypes, &log);
+        superTy = log.follow(superTy);
+    }
+
+    if (log.get<TypeFamilyInstanceType>(subTy))
+    {
+        reduceFamilies(subTy, location, NotNull(types), builtinTypes, &log);
+        subTy = log.follow(subTy);
+    }
+
+    // If we can't reduce the families down and we still have type family types
+    // here, we are stuck. Nothing meaningful can be done here. We don't wish to
+    // report an error, either.
+    if (log.get<TypeFamilyInstanceType>(superTy) || log.get<TypeFamilyInstanceType>(subTy))
+    {
+        return;
+    }
+
     auto superFree = log.getMutable<FreeType>(superTy);
     auto subFree = log.getMutable<FreeType>(subTy);
 
@@ -507,6 +533,49 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         }
 
         return;
+    }
+
+    if (hideousFixMeGenericsAreActuallyFree)
+    {
+        auto superGeneric = log.getMutable<GenericType>(superTy);
+        auto subGeneric = log.getMutable<GenericType>(subTy);
+
+        if (superGeneric && subGeneric && subsumes(useScopes, superGeneric, subGeneric))
+        {
+            if (!occursCheck(subTy, superTy, /* reversed = */ false))
+                log.replace(subTy, BoundType(superTy));
+
+            return;
+        }
+        else if (superGeneric && subGeneric)
+        {
+            if (!occursCheck(superTy, subTy, /* reversed = */ true))
+                log.replace(superTy, BoundType(subTy));
+
+            return;
+        }
+        else if (superGeneric)
+        {
+            if (!occursCheck(superTy, subTy, /* reversed = */ true))
+            {
+                Widen widen{types, builtinTypes};
+                log.replace(superTy, BoundType(widen(subTy)));
+            }
+
+            return;
+        }
+        else if (subGeneric)
+        {
+            // Normally, if the subtype is free, it should not be bound to any, unknown, or error types.
+            // But for bug compatibility, we'll only apply this rule to unknown. Doing this will silence cascading type errors.
+            if (log.get<UnknownType>(superTy))
+                return;
+
+            if (!occursCheck(subTy, superTy, /* reversed = */ false))
+                log.replace(subTy, BoundType(superTy));
+
+            return;
+        }
     }
 
     if (log.get<AnyType>(superTy))
@@ -687,8 +756,93 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     log.popSeen(superTy, subTy);
 }
 
+/*
+ * If the passed type is an option, strip nil out.
+ *
+ * There is an important subtlety to be observed here:
+ *
+ * We want to do a peephole fix to unify the subtype relation A? <: B? where we
+ * instead peel off the options and relate A <: B instead, but only works if we
+ * are certain that neither A nor B are themselves optional.
+ *
+ * For instance, if we want to test that (boolean?)? <: boolean?, we must peel
+ * off both layers of optionality from the subTy.
+ *
+ * We must also handle unions that have more than two choices.
+ *
+ * eg (string | nil)? <: boolean?
+ */
+static std::optional<TypeId> unwrapOption(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, const TxnLog& log, TypeId ty, DenseHashSet<TypeId>& seen)
+{
+    if (seen.find(ty))
+        return std::nullopt;
+    seen.insert(ty);
+
+    const UnionType* ut = get<UnionType>(follow(ty));
+    if (!ut)
+        return std::nullopt;
+
+    if (2 == ut->options.size())
+    {
+        if (isNil(follow(ut->options[0])))
+        {
+            std::optional<TypeId> doubleUnwrapped = unwrapOption(builtinTypes, arena, log, ut->options[1], seen);
+            return doubleUnwrapped.value_or(ut->options[1]);
+        }
+        if (isNil(follow(ut->options[1])))
+        {
+            std::optional<TypeId> doubleUnwrapped = unwrapOption(builtinTypes, arena, log, ut->options[0], seen);
+            return doubleUnwrapped.value_or(ut->options[0]);
+        }
+    }
+
+    std::set<TypeId> newOptions;
+    bool found = false;
+    for (TypeId t : ut)
+    {
+        t = log.follow(t);
+        if (isNil(t))
+        {
+            found = true;
+            continue;
+        }
+        else
+            newOptions.insert(t);
+    }
+
+    if (!found)
+        return std::nullopt;
+    else if (newOptions.empty())
+        return builtinTypes->neverType;
+    else if (1 == newOptions.size())
+        return *begin(newOptions);
+    else
+        return arena->addType(UnionType{std::vector<TypeId>(begin(newOptions), end(newOptions))});
+}
+
+static std::optional<TypeId> unwrapOption(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, const TxnLog& log, TypeId ty)
+{
+    DenseHashSet<TypeId> seen{nullptr};
+
+    return unwrapOption(builtinTypes, arena, log, ty, seen);
+}
+
+
 void Unifier::tryUnifyUnionWithType(TypeId subTy, const UnionType* subUnion, TypeId superTy)
 {
+    // Peephole fix: A? <: B? if A <: B
+    //
+    // This works around issues that can arise if A or B is free.  We do not
+    // want either of those types to be bound to nil.
+    if (FFlag::LuauUnifyTwoOptions)
+    {
+        if (auto subOption = unwrapOption(builtinTypes, NotNull{types}, log, subTy))
+        {
+            if (auto superOption = unwrapOption(builtinTypes, NotNull{types}, log, superTy))
+                return tryUnify_(*subOption, *superOption);
+        }
+    }
+
     // A | B <: T if and only if A <: T and B <: T
     bool failed = false;
     bool errorsSuppressed = true;
@@ -1205,6 +1359,25 @@ void Unifier::tryUnifyNormalizedTypes(
             const ClassType* superCtv = get<ClassType>(superClass);
             LUAU_ASSERT(superCtv);
 
+            if (FFlag::LuauUnifyTwoOptions)
+            {
+                if (variance == Invariant)
+                {
+                    if (subCtv == superCtv)
+                    {
+                        found = true;
+
+                        /*
+                         * The only way we could care about superNegations is if
+                         * one of them was equal to superCtv.  However,
+                         * normalization ensures that this is impossible.
+                         */
+                    }
+                    else
+                        continue;
+                }
+            }
+
             if (isSubclass(subCtv, superCtv))
             {
                 found = true;
@@ -1518,6 +1691,12 @@ struct WeirdIter
     }
 };
 
+void Unifier::enableScopeTests()
+{
+    useScopes = true;
+    log.useScopes = true;
+}
+
 ErrorVec Unifier::canUnify(TypeId subTy, TypeId superTy)
 {
     Unifier s = makeChildUnifier();
@@ -1591,6 +1770,21 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
         }
     }
     else if (log.getMutable<FreeTypePack>(subTp))
+    {
+        if (!occursCheck(subTp, superTp, /* reversed = */ false))
+        {
+            log.replace(subTp, Unifiable::Bound<TypePackId>(superTp));
+        }
+    }
+    else if (hideousFixMeGenericsAreActuallyFree && log.getMutable<GenericTypePack>(superTp))
+    {
+        if (!occursCheck(superTp, subTp, /* reversed = */ true))
+        {
+            Widen widen{types, builtinTypes};
+            log.replace(superTp, Unifiable::Bound<TypePackId>(widen(subTp)));
+        }
+    }
+    else if (hideousFixMeGenericsAreActuallyFree && log.getMutable<GenericTypePack>(subTp))
     {
         if (!occursCheck(subTp, superTp, /* reversed = */ false))
         {
@@ -2611,7 +2805,10 @@ void Unifier::tryUnifyVariadics(TypePackId subTp, TypePackId superTp, bool rever
             }
             else if (get<GenericTypePack>(tail))
             {
-                reportError(location, GenericError{"Cannot unify variadic and generic packs"});
+                if (!hideousFixMeGenericsAreActuallyFree)
+                    reportError(location, GenericError{"Cannot unify variadic and generic packs"});
+                else
+                    log.replace(tail, BoundTypePack{superTp});
             }
             else if (get<Unifiable::Error>(tail))
             {
@@ -2732,7 +2929,7 @@ std::optional<TypeId> Unifier::findTablePropertyRespectingMeta(TypeId lhsType, N
 TxnLog Unifier::combineLogsIntoIntersection(std::vector<TxnLog> logs)
 {
     LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
-    TxnLog result;
+    TxnLog result(useScopes);
     for (TxnLog& log : logs)
         result.concatAsIntersections(std::move(log), NotNull{types});
     return result;
@@ -2741,7 +2938,7 @@ TxnLog Unifier::combineLogsIntoIntersection(std::vector<TxnLog> logs)
 TxnLog Unifier::combineLogsIntoUnion(std::vector<TxnLog> logs)
 {
     LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
-    TxnLog result;
+    TxnLog result(useScopes);
     for (TxnLog& log : logs)
         result.concatAsUnion(std::move(log), NotNull{types});
     return result;
@@ -2807,7 +3004,7 @@ bool Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId hays
     if (log.getMutable<ErrorType>(needle))
         return false;
 
-    if (!log.getMutable<FreeType>(needle))
+    if (!log.getMutable<FreeType>(needle) && !(hideousFixMeGenericsAreActuallyFree && log.is<GenericType>(needle)))
         ice("Expected needle to be free");
 
     if (needle == haystack)
@@ -2821,7 +3018,7 @@ bool Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId hays
         return true;
     }
 
-    if (log.getMutable<FreeType>(haystack))
+    if (log.getMutable<FreeType>(haystack) || (hideousFixMeGenericsAreActuallyFree && log.is<GenericType>(haystack)))
         return false;
     else if (auto a = log.getMutable<UnionType>(haystack))
     {
@@ -2865,7 +3062,7 @@ bool Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
     if (log.getMutable<ErrorTypePack>(needle))
         return false;
 
-    if (!log.getMutable<FreeTypePack>(needle))
+    if (!log.getMutable<FreeTypePack>(needle) && !(hideousFixMeGenericsAreActuallyFree && log.is<GenericTypePack>(needle)))
         ice("Expected needle pack to be free");
 
     RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
@@ -2900,7 +3097,10 @@ Unifier Unifier::makeChildUnifier()
     Unifier u = Unifier{normalizer, mode, scope, location, variance, &log};
     u.normalize = normalize;
     u.checkInhabited = checkInhabited;
-    u.useScopes = useScopes;
+
+    if (useScopes)
+        u.enableScopeTests();
+
     return u;
 }
 

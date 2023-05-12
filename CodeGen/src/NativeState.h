@@ -108,6 +108,8 @@ struct NativeContext
     luau_FastFunction luauF_table[256] = {};
 };
 
+using GateFn = int (*)(lua_State*, Proto*, uintptr_t, NativeContext*);
+
 struct NativeState
 {
     NativeState();

@@ -56,7 +56,7 @@ public:
     void eor(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, int shift = 0);
     void bic(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, int shift = 0);
     void tst(RegisterA64 src1, RegisterA64 src2, int shift = 0);
-    void mvn(RegisterA64 dst, RegisterA64 src);
+    void mvn_(RegisterA64 dst, RegisterA64 src);
 
     // Bitwise with immediate
     // Note: immediate must have a single contiguous sequence of 1 bits set of length 1..31
@@ -199,7 +199,7 @@ private:
     void placeR1(const char* name, RegisterA64 dst, RegisterA64 src, uint32_t op);
     void placeI12(const char* name, RegisterA64 dst, RegisterA64 src1, int src2, uint8_t op);
     void placeI16(const char* name, RegisterA64 dst, int src, uint8_t op, int shift = 0);
-    void placeA(const char* name, RegisterA64 dst, AddressA64 src, uint8_t op, uint8_t size, int sizelog);
+    void placeA(const char* name, RegisterA64 dst, AddressA64 src, uint16_t opsize, int sizelog);
     void placeB(const char* name, Label& label, uint8_t op);
     void placeBC(const char* name, Label& label, uint8_t op, uint8_t cond);
     void placeBCR(const char* name, Label& label, uint8_t op, RegisterA64 cond);

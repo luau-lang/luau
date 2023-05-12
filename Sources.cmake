@@ -180,6 +180,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/TypeAttach.h
     Analysis/include/Luau/TypeChecker2.h
     Analysis/include/Luau/TypedAllocator.h
+    Analysis/include/Luau/TypeFamily.h
     Analysis/include/Luau/TypeInfer.h
     Analysis/include/Luau/TypePack.h
     Analysis/include/Luau/TypeReduction.h
@@ -230,6 +231,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/TypeAttach.cpp
     Analysis/src/TypeChecker2.cpp
     Analysis/src/TypedAllocator.cpp
+    Analysis/src/TypeFamily.cpp
     Analysis/src/TypeInfer.cpp
     Analysis/src/TypePack.cpp
     Analysis/src/TypeReduction.cpp
@@ -382,6 +384,8 @@ if(TARGET Luau.UnitTest)
         tests/TopoSort.test.cpp
         tests/ToString.test.cpp
         tests/Transpiler.test.cpp
+        tests/TxnLog.test.cpp
+        tests/TypeFamily.test.cpp
         tests/TypeInfer.aliases.test.cpp
         tests/TypeInfer.annotations.test.cpp
         tests/TypeInfer.anyerror.test.cpp
