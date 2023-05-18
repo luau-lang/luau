@@ -79,6 +79,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/UnwindBuilder.h
     CodeGen/include/Luau/UnwindBuilderDwarf2.h
     CodeGen/include/Luau/UnwindBuilderWin.h
+    CodeGen/include/luacodegen.h
 
     CodeGen/src/AssemblyBuilderA64.cpp
     CodeGen/src/AssemblyBuilderX64.cpp
@@ -104,6 +105,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/IrTranslation.cpp
     CodeGen/src/IrUtils.cpp
     CodeGen/src/IrValueLocationTracking.cpp
+    CodeGen/src/lcodegen.cpp
     CodeGen/src/NativeState.cpp
     CodeGen/src/OptimizeConstProp.cpp
     CodeGen/src/OptimizeFinalX64.cpp
