@@ -350,6 +350,35 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
     CHECK_THROWS_AS(clone(table, dest, cloneState), RecursionLimitException);
 }
 
+// Unions should never be cyclic, but we should clone them correctly even if
+// they are.
+TEST_CASE_FIXTURE(Fixture, "clone_cyclic_union")
+{
+    ScopedFastFlag sff{"LuauCloneCyclicUnions", true};
+
+    TypeArena src;
+
+    TypeId u = src.addType(UnionType{{builtinTypes->numberType, builtinTypes->stringType}});
+    UnionType* uu = getMutable<UnionType>(u);
+    REQUIRE(uu);
+
+    uu->options.push_back(u);
+
+    TypeArena dest;
+    CloneState cloneState;
+
+    TypeId cloned = clone(u, dest, cloneState);
+    REQUIRE(cloned);
+
+    const UnionType* clonedUnion = get<UnionType>(cloned);
+    REQUIRE(clonedUnion);
+    REQUIRE(3 == clonedUnion->options.size());
+
+    CHECK(builtinTypes->numberType == clonedUnion->options[0]);
+    CHECK(builtinTypes->stringType == clonedUnion->options[1]);
+    CHECK(cloned == clonedUnion->options[2]);
+}
+
 TEST_CASE_FIXTURE(Fixture, "any_persistance_does_not_leak")
 {
     ScopedFastFlag flags[] = {

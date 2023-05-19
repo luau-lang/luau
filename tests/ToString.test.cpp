@@ -291,9 +291,9 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
     {
         o.maxTypeLength = 30;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) | (a & ~false & ~nil)... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~false & ~nil)... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~false & ~nil)... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
     }
     else
     {
@@ -321,9 +321,9 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
     {
         o.maxTypeLength = 30;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) | (a & ~false & ~nil)... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~false & ~nil)... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~false & ~nil)... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
     }
     else
     {
@@ -507,25 +507,25 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
     CHECK_EQ("{ @metatable { __index: { @metatable {| __index: base |}, child } }, inst }", r.name);
     CHECK(0 == opts.nameMap.types.size());
 
-    const MetatableType* tMeta = get<MetatableType>(tType);
+    const MetatableType* tMeta = get<MetatableType>(follow(tType));
     REQUIRE(tMeta);
 
-    TableType* tMeta2 = getMutable<TableType>(tMeta->metatable);
+    TableType* tMeta2 = getMutable<TableType>(follow(tMeta->metatable));
     REQUIRE(tMeta2);
     REQUIRE(tMeta2->props.count("__index"));
 
-    const MetatableType* tMeta3 = get<MetatableType>(tMeta2->props["__index"].type());
+    const MetatableType* tMeta3 = get<MetatableType>(follow(tMeta2->props["__index"].type()));
     REQUIRE(tMeta3);
 
-    TableType* tMeta4 = getMutable<TableType>(tMeta3->metatable);
+    TableType* tMeta4 = getMutable<TableType>(follow(tMeta3->metatable));
     REQUIRE(tMeta4);
     REQUIRE(tMeta4->props.count("__index"));
 
-    TableType* tMeta5 = getMutable<TableType>(tMeta4->props["__index"].type());
+    TableType* tMeta5 = getMutable<TableType>(follow(tMeta4->props["__index"].type()));
     REQUIRE(tMeta5);
     REQUIRE(tMeta5->props.count("one") > 0);
 
-    TableType* tMeta6 = getMutable<TableType>(tMeta3->table);
+    TableType* tMeta6 = getMutable<TableType>(follow(tMeta3->table));
     REQUIRE(tMeta6);
     REQUIRE(tMeta6->props.count("two") > 0);
 

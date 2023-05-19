@@ -136,7 +136,7 @@ void quantify(TypeId ty, TypeLevel level)
             ftv->genericPacks.insert(ftv->genericPacks.end(), q.genericPacks.begin(), q.genericPacks.end());
 
             if (ftv->generics.empty() && ftv->genericPacks.empty() && !q.seenMutableType && !q.seenGenericType)
-                ftv->hasNoGenerics = true;
+                ftv->hasNoFreeOrGenericTypes = true;
         }
     }
     else
@@ -276,7 +276,7 @@ std::optional<QuantifierResult> quantify(TypeArena* arena, TypeId ty, Scope* sco
     for (auto k : quantifier.insertedGenericPacks.keys)
         ftv->genericPacks.push_back(quantifier.insertedGenericPacks.pairings[k]);
 
-    ftv->hasNoGenerics = ftv->generics.empty() && ftv->genericPacks.empty() && !quantifier.seenGenericType && !quantifier.seenMutableType;
+    ftv->hasNoFreeOrGenericTypes = ftv->generics.empty() && ftv->genericPacks.empty() && !quantifier.seenGenericType && !quantifier.seenMutableType;
 
     return std::optional<QuantifierResult>({*result, std::move(quantifier.insertedGenerics), std::move(quantifier.insertedGenericPacks)});
 }

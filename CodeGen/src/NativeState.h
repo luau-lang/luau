@@ -23,19 +23,6 @@ namespace CodeGen
 
 class UnwindBuilder;
 
-using FallbackFn = const Instruction* (*)(lua_State* L, const Instruction* pc, StkId base, TValue* k);
-
-struct NativeProto
-{
-    // This array is stored before NativeProto in reverse order, so to get offset of instruction i you need to index instOffsets[-i]
-    // This awkward layout is helpful for maximally efficient address computation on X64/A64
-    uint32_t instOffsets[1];
-
-    uintptr_t instBase = 0;
-    uintptr_t entryTarget = 0; // = instOffsets[0] + instBase
-    Proto* proto = nullptr;
-};
-
 struct NativeContext
 {
     // Gateway (C => native transition) entry & exit, compiled at runtime
@@ -102,7 +89,17 @@ struct NativeContext
     Closure* (*returnFallback)(lua_State* L, StkId ra, StkId valend) = nullptr;
 
     // Opcode fallbacks, implemented in C
-    FallbackFn fallback[LOP__COUNT] = {};
+    const Instruction* (*executeGETGLOBAL)(lua_State* L, const Instruction* pc, StkId base, TValue* k) = nullptr;
+    const Instruction* (*executeSETGLOBAL)(lua_State* L, const Instruction* pc, StkId base, TValue* k) = nullptr;
+    const Instruction* (*executeGETTABLEKS)(lua_State* L, const Instruction* pc, StkId base, TValue* k) = nullptr;
+    const Instruction* (*executeSETTABLEKS)(lua_State* L, const Instruction* pc, StkId base, TValue* k) = nullptr;
+    const Instruction* (*executeNEWCLOSURE)(lua_State* L, const Instruction* pc, StkId base, TValue* k) = nullptr;
+    const Instruction* (*executeNAMECALL)(lua_State* L, const Instruction* pc, StkId base, TValue* k) = nullptr;
+    const Instruction* (*executeSETLIST)(lua_State* L, const Instruction* pc, StkId base, TValue* k) = nullptr;
+    const Instruction* (*executeFORGPREP)(lua_State* L, const Instruction* pc, StkId base, TValue* k) = nullptr;
+    const Instruction* (*executeGETVARARGS)(lua_State* L, const Instruction* pc, StkId base, TValue* k) = nullptr;
+    const Instruction* (*executeDUPCLOSURE)(lua_State* L, const Instruction* pc, StkId base, TValue* k) = nullptr;
+    const Instruction* (*executePREPVARARGS)(lua_State* L, const Instruction* pc, StkId base, TValue* k) = nullptr;
 
     // Fast call methods, implemented in C
     luau_FastFunction luauF_table[256] = {};
@@ -124,8 +121,7 @@ struct NativeState
     NativeContext context;
 };
 
-void initFallbackTable(NativeState& data);
-void initHelperFunctions(NativeState& data);
+void initFunctions(NativeState& data);
 
 } // namespace CodeGen
 } // namespace Luau

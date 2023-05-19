@@ -99,10 +99,7 @@ inline std::string toString(const Constraint& c, ToStringOptions&& opts)
     return toString(c, opts);
 }
 
-inline std::string toString(const Constraint& c)
-{
-    return toString(c, ToStringOptions{});
-}
+std::string toString(const Constraint& c);
 
 std::string toString(const Type& tv, ToStringOptions& opts);
 std::string toString(const TypePackVar& tp, ToStringOptions& opts);

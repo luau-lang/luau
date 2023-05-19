@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauClonePublicInterfaceLess2)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
+LUAU_FASTFLAGVARIABLE(LuauCloneCyclicUnions, false)
 
 namespace Luau
 {
@@ -282,7 +283,7 @@ void TypeCloner::operator()(const FunctionType& t)
     ftv->argTypes = clone(t.argTypes, dest, cloneState);
     ftv->argNames = t.argNames;
     ftv->retTypes = clone(t.retTypes, dest, cloneState);
-    ftv->hasNoGenerics = t.hasNoGenerics;
+    ftv->hasNoFreeOrGenericTypes = t.hasNoFreeOrGenericTypes;
 }
 
 void TypeCloner::operator()(const TableType& t)
@@ -373,14 +374,30 @@ void TypeCloner::operator()(const AnyType& t)
 
 void TypeCloner::operator()(const UnionType& t)
 {
-    std::vector<TypeId> options;
-    options.reserve(t.options.size());
+    if (FFlag::LuauCloneCyclicUnions)
+    {
+        TypeId result = dest.addType(FreeType{nullptr});
+        seenTypes[typeId] = result;
 
-    for (TypeId ty : t.options)
-        options.push_back(clone(ty, dest, cloneState));
+        std::vector<TypeId> options;
+        options.reserve(t.options.size());
 
-    TypeId result = dest.addType(UnionType{std::move(options)});
-    seenTypes[typeId] = result;
+        for (TypeId ty : t.options)
+            options.push_back(clone(ty, dest, cloneState));
+
+        asMutable(result)->ty.emplace<UnionType>(std::move(options));
+    }
+    else
+    {
+        std::vector<TypeId> options;
+        options.reserve(t.options.size());
+
+        for (TypeId ty : t.options)
+            options.push_back(clone(ty, dest, cloneState));
+
+        TypeId result = dest.addType(UnionType{std::move(options)});
+        seenTypes[typeId] = result;
+    }
 }
 
 void TypeCloner::operator()(const IntersectionType& t)

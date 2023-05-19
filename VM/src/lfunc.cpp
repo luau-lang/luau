@@ -32,9 +32,8 @@ Proto* luaF_newproto(lua_State* L)
     f->debugname = NULL;
     f->debuginsn = NULL;
 
-#if LUA_CUSTOM_EXECUTION
     f->execdata = NULL;
-#endif
+    f->exectarget = 0;
 
     return f;
 }

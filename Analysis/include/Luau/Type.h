@@ -349,7 +349,9 @@ struct FunctionType
     DcrMagicFunction dcrMagicFunction = nullptr;
     DcrMagicRefinement dcrMagicRefinement = nullptr;
     bool hasSelf;
-    bool hasNoGenerics = false;
+    // `hasNoFreeOrGenericTypes` should be true if and only if the type does not have any free or generic types present inside it.
+    // this flag is used as an optimization to exit early from procedures that manipulate free or generic types.
+    bool hasNoFreeOrGenericTypes = false;
 };
 
 enum class TableState
@@ -530,7 +532,7 @@ struct ClassType
  */
 struct TypeFamilyInstanceType
 {
-    NotNull<TypeFamily> family;
+    NotNull<const TypeFamily> family;
 
     std::vector<TypeId> typeArguments;
     std::vector<TypePackId> packArguments;

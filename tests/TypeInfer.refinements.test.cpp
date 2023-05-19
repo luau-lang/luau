@@ -1020,16 +1020,8 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_tag")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-    {
-        CHECK_EQ(R"({| catfood: string, name: string, tag: "Cat" |})", toString(requireTypeAtPosition({7, 33})));
-        CHECK_EQ(R"({| dogfood: string, name: string, tag: "Dog" |})", toString(requireTypeAtPosition({9, 33})));
-    }
-    else
-    {
-        CHECK_EQ("Cat", toString(requireTypeAtPosition({7, 33})));
-        CHECK_EQ("Dog", toString(requireTypeAtPosition({9, 33})));
-    }
+    CHECK_EQ("Cat", toString(requireTypeAtPosition({7, 33})));
+    CHECK_EQ("Dog", toString(requireTypeAtPosition({9, 33})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_tag_with_implicit_else")
@@ -1050,16 +1042,8 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_tag_with_implicit_else")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-    {
-        CHECK_EQ(R"({| catfood: string, name: string, tag: "Cat" |})", toString(requireTypeAtPosition({7, 33})));
-        CHECK_EQ(R"({| dogfood: string, name: string, tag: "Dog" |})", toString(requireTypeAtPosition({9, 33})));
-    }
-    else
-    {
-        CHECK_EQ("Cat", toString(requireTypeAtPosition({7, 33})));
-        CHECK_EQ("Dog", toString(requireTypeAtPosition({9, 33})));
-    }
+    CHECK_EQ("Cat", toString(requireTypeAtPosition({7, 33})));
+    CHECK_EQ("Dog", toString(requireTypeAtPosition({9, 33})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "and_or_peephole_refinement")
@@ -1403,7 +1387,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknowns")
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         CHECK_EQ("string", toString(requireTypeAtPosition({3, 28})));
-        CHECK_EQ("~string", toString(requireTypeAtPosition({5, 28})));
+        CHECK_EQ("unknown & ~string", toString(requireTypeAtPosition({5, 28})));
     }
     else
     {
@@ -1508,14 +1492,7 @@ local _ = _ ~= _ or _ or _
 end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-    {
-        // Without a realistic motivating case, it's hard to tell if it's important for this to work without errors.
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK(get<NormalizationTooComplex>(result.errors[0]));
-    }
-    else
-        LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_take_the_length")
@@ -1615,7 +1592,7 @@ TEST_CASE_FIXTURE(Fixture, "refine_a_property_of_some_global")
 
     LUAU_REQUIRE_ERROR_COUNT(3, result);
 
-    CHECK_EQ("~false & ~nil", toString(requireTypeAtPosition({4, 30})));
+    CHECK_EQ("~(false?)", toString(requireTypeAtPosition({4, 30})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dataflow_analysis_can_tell_refinements_when_its_appropriate_to_refine_into_nil_or_never")

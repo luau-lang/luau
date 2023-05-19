@@ -9,7 +9,7 @@
 struct lua_State;
 
 // returns 1 if Luau code generator is supported, 0 otherwise
-LUACODEGEN_API int luau_codegen_supported();
+LUACODEGEN_API int luau_codegen_supported(void);
 
 // create an instance of Luau code generator. you must check that this feature is supported using luau_codegen_supported().
 LUACODEGEN_API void luau_codegen_create(lua_State* L);

@@ -280,6 +280,42 @@ void AssemblyBuilderA64::ror(RegisterA64 dst, RegisterA64 src1, uint8_t src2)
     placeBFM("ror", dst, src1, src2, 0b00'100111, src1.index, src2);
 }
 
+void AssemblyBuilderA64::ubfiz(RegisterA64 dst, RegisterA64 src, uint8_t f, uint8_t w)
+{
+    int size = dst.kind == KindA64::x ? 64 : 32;
+    LUAU_ASSERT(w > 0 && f + w <= size);
+
+    // f * 100 + w is only used for disassembly printout; in the future we might replace it with two separate fields for readability
+    placeBFM("ubfiz", dst, src, f * 100 + w, 0b10'100110, (-f) & (size - 1), w - 1);
+}
+
+void AssemblyBuilderA64::ubfx(RegisterA64 dst, RegisterA64 src, uint8_t f, uint8_t w)
+{
+    int size = dst.kind == KindA64::x ? 64 : 32;
+    LUAU_ASSERT(w > 0 && f + w <= size);
+
+    // f * 100 + w is only used for disassembly printout; in the future we might replace it with two separate fields for readability
+    placeBFM("ubfx", dst, src, f * 100 + w, 0b10'100110, f, f + w - 1);
+}
+
+void AssemblyBuilderA64::sbfiz(RegisterA64 dst, RegisterA64 src, uint8_t f, uint8_t w)
+{
+    int size = dst.kind == KindA64::x ? 64 : 32;
+    LUAU_ASSERT(w > 0 && f + w <= size);
+
+    // f * 100 + w is only used for disassembly printout; in the future we might replace it with two separate fields for readability
+    placeBFM("sbfiz", dst, src, f * 100 + w, 0b00'100110, (-f) & (size - 1), w - 1);
+}
+
+void AssemblyBuilderA64::sbfx(RegisterA64 dst, RegisterA64 src, uint8_t f, uint8_t w)
+{
+    int size = dst.kind == KindA64::x ? 64 : 32;
+    LUAU_ASSERT(w > 0 && f + w <= size);
+
+    // f * 100 + w is only used for disassembly printout; in the future we might replace it with two separate fields for readability
+    placeBFM("sbfx", dst, src, f * 100 + w, 0b00'100110, f, f + w - 1);
+}
+
 void AssemblyBuilderA64::ldr(RegisterA64 dst, AddressA64 src)
 {
     LUAU_ASSERT(dst.kind == KindA64::x || dst.kind == KindA64::w || dst.kind == KindA64::s || dst.kind == KindA64::d || dst.kind == KindA64::q);
@@ -1010,7 +1046,7 @@ void AssemblyBuilderA64::placeBM(const char* name, RegisterA64 dst, RegisterA64 
     commit();
 }
 
-void AssemblyBuilderA64::placeBFM(const char* name, RegisterA64 dst, RegisterA64 src1, uint8_t src2, uint8_t op, int immr, int imms)
+void AssemblyBuilderA64::placeBFM(const char* name, RegisterA64 dst, RegisterA64 src1, int src2, uint8_t op, int immr, int imms)
 {
     if (logText)
         log(name, dst, src1, src2);

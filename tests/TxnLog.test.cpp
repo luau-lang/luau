@@ -25,6 +25,8 @@ struct TxnLogFixture
     TypeId a = arena.freshType(globalScope.get());
     TypeId b = arena.freshType(globalScope.get());
     TypeId c = arena.freshType(childScope.get());
+
+    TypeId g = arena.addType(GenericType{"G"});
 };
 
 TEST_SUITE_BEGIN("TxnLog");
@@ -108,6 +110,15 @@ TEST_CASE_FIXTURE(TxnLogFixture, "colliding_coincident_logs_do_not_create_degene
 
     CHECK("a" == toString(a));
     CHECK("a" == toString(b));
+}
+
+TEST_CASE_FIXTURE(TxnLogFixture, "replacing_persistent_types_is_allowed_but_makes_the_log_radioactive")
+{
+    persist(g);
+
+    log.replace(g, BoundType{a});
+
+    CHECK(log.radioactive);
 }
 
 TEST_SUITE_END();

@@ -18,7 +18,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeBlockedTypes, false);
-LUAU_FASTFLAGVARIABLE(LuauNormalizeMetatableFixes, false);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
 LUAU_FASTFLAG(LuauTransitiveSubtyping)
@@ -226,6 +225,16 @@ NormalizedType::NormalizedType(NotNull<BuiltinTypes> builtinTypes)
     , strings{NormalizedStringType::never}
     , threads(builtinTypes->neverType)
 {
+}
+
+bool NormalizedType::isFunction() const
+{
+    return !get<NeverType>(tops) || !functions.parts.empty();
+}
+
+bool NormalizedType::isNumber() const
+{
+    return !get<NeverType>(tops) || !get<NeverType>(numbers);
 }
 
 static bool isShallowInhabited(const NormalizedType& norm)
@@ -516,7 +525,8 @@ static bool areNormalizedClasses(const NormalizedClassType& tys)
 
 static bool isPlainTyvar(TypeId ty)
 {
-    return (get<FreeType>(ty) || get<GenericType>(ty) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(ty)) || get<PendingExpansionType>(ty));
+    return (get<FreeType>(ty) || get<GenericType>(ty) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(ty)) ||
+            get<PendingExpansionType>(ty) || get<TypeFamilyInstanceType>(ty));
 }
 
 static bool isNormalizedTyvar(const NormalizedTyvars& tyvars)
@@ -1366,7 +1376,7 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
     else if (FFlag::LuauTransitiveSubtyping && get<UnknownType>(here.tops))
         return true;
     else if (get<GenericType>(there) || get<FreeType>(there) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there)) ||
-             get<PendingExpansionType>(there))
+             get<PendingExpansionType>(there) || get<TypeFamilyInstanceType>(there))
     {
         if (tyvarIndex(there) <= ignoreSmallerTyvars)
             return true;
@@ -1436,7 +1446,7 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
     }
     else if (!FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there))
         LUAU_ASSERT(!"Internal error: Trying to normalize a BlockedType");
-    else if (get<PendingExpansionType>(there))
+    else if (get<PendingExpansionType>(there) || get<TypeFamilyInstanceType>(there))
     {
         // nothing
     }
@@ -1981,17 +1991,14 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     else if (isPrim(there, PrimitiveType::Table))
         return here;
 
-    if (FFlag::LuauNormalizeMetatableFixes)
-    {
-        if (get<NeverType>(here))
-            return there;
-        else if (get<NeverType>(there))
-            return here;
-        else if (get<AnyType>(here))
-            return there;
-        else if (get<AnyType>(there))
-            return here;
-    }
+    if (get<NeverType>(here))
+        return there;
+    else if (get<NeverType>(there))
+        return here;
+    else if (get<AnyType>(here))
+        return there;
+    else if (get<AnyType>(there))
+        return here;
 
     TypeId htable = here;
     TypeId hmtable = nullptr;
@@ -2009,22 +2016,12 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     }
 
     const TableType* httv = get<TableType>(htable);
-    if (FFlag::LuauNormalizeMetatableFixes)
-    {
-        if (!httv)
-            return std::nullopt;
-    }
-    else
-        LUAU_ASSERT(httv);
+    if (!httv)
+        return std::nullopt;
 
     const TableType* tttv = get<TableType>(ttable);
-    if (FFlag::LuauNormalizeMetatableFixes)
-    {
-        if (!tttv)
-            return std::nullopt;
-    }
-    else
-        LUAU_ASSERT(tttv);
+    if (!tttv)
+        return std::nullopt;
 
 
     if (httv->state == TableState::Free || tttv->state == TableState::Free)
@@ -2471,7 +2468,7 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there)
         return true;
     }
     else if (get<GenericType>(there) || get<FreeType>(there) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there)) ||
-             get<PendingExpansionType>(there))
+             get<PendingExpansionType>(there) || get<TypeFamilyInstanceType>(there))
     {
         NormalizedType thereNorm{builtinTypes};
         NormalizedType topNorm{builtinTypes};

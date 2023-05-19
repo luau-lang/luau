@@ -352,10 +352,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tagged_unions")
     CHECK_EQ("\"err\"", toString(requireTypeAtPosition({13, 31})));
     CHECK_EQ("E", toString(requireTypeAtPosition({14, 31})));
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("{| error: E, tag: \"err\" |}", toString(requireTypeAtPosition({16, 19})));
-    else
-        CHECK_EQ("Err<E>", toString(requireTypeAtPosition({16, 19})));
+    CHECK_EQ("Err<E>", toString(requireTypeAtPosition({16, 19})));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_assert_x")

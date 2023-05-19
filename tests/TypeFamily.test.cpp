@@ -20,7 +20,7 @@ struct FamilyFixture : Fixture
         swapFamily = TypeFamily{/* name */ "Swap",
             /* reducer */
             [](std::vector<TypeId> tys, std::vector<TypePackId> tps, NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins,
-                NotNull<const TxnLog> log) -> TypeFamilyReductionResult<TypeId> {
+                NotNull<const TxnLog> log, NotNull<Scope> scope, NotNull<Normalizer> normalizer) -> TypeFamilyReductionResult<TypeId> {
                 LUAU_ASSERT(tys.size() == 1);
                 TypeId param = log->follow(tys.at(0));
 
@@ -77,18 +77,6 @@ TEST_CASE_FIXTURE(FamilyFixture, "basic_type_family")
     CHECK("string" == toString(requireType("y")));
     CHECK("Type family instance Swap<boolean> is uninhabited" == toString(result.errors[0]));
 };
-
-TEST_CASE_FIXTURE(FamilyFixture, "type_reduction_reduces_families")
-{
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
-        return;
-
-    CheckResult result = check(R"(
-        local x: Swap<string> & nil
-    )");
-
-    CHECK("never" == toString(requireType("x")));
-}
 
 TEST_CASE_FIXTURE(FamilyFixture, "family_as_fn_ret")
 {
@@ -200,6 +188,29 @@ TEST_CASE_FIXTURE(FamilyFixture, "function_internal_families")
     CHECK(toString(requireType("b")) == "() -> number");
     CHECK(toString(requireType("c")) == "() -> Swap<boolean>");
     CHECK(toString(result.errors[0]) == "Type family instance Swap<boolean> is uninhabited");
+}
+
+TEST_CASE_FIXTURE(Fixture, "add_family_at_work")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local function add(a, b)
+            return a + b
+        end
+
+        local a = add(1, 2)
+        local b = add(1, "foo")
+        local c = add("foo", 1)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(toString(requireType("a")) == "number");
+    CHECK(toString(requireType("b")) == "Add<number, string>");
+    CHECK(toString(requireType("c")) == "Add<string, number>");
+    CHECK(toString(result.errors[0]) == "Type family instance Add<number, string> is uninhabited");
+    CHECK(toString(result.errors[1]) == "Type family instance Add<string, number> is uninhabited");
 }
 
 TEST_SUITE_END();

@@ -714,10 +714,23 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::DUP_TABLE:
     case IrCmd::TRY_NUM_TO_INDEX:
     case IrCmd::TRY_CALL_FASTGETTM:
+        break;
     case IrCmd::INT_TO_NUM:
     case IrCmd::UINT_TO_NUM:
+        state.substituteOrRecord(inst, index);
+        break;
     case IrCmd::NUM_TO_INT:
+        if (IrInst* src = function.asInstOp(inst.a); src && src->cmd == IrCmd::INT_TO_NUM)
+            substitute(function, inst, src->a);
+        else
+            state.substituteOrRecord(inst, index);
+        break;
     case IrCmd::NUM_TO_UINT:
+        if (IrInst* src = function.asInstOp(inst.a); src && src->cmd == IrCmd::UINT_TO_NUM)
+            substitute(function, inst, src->a);
+        else
+            state.substituteOrRecord(inst, index);
+        break;
     case IrCmd::CHECK_ARRAY_SIZE:
     case IrCmd::CHECK_SLOT_MATCH:
     case IrCmd::CHECK_NODE_NO_NEXT:

@@ -21,6 +21,7 @@ using TypePackId = const TypePackVar*;
 struct TypeArena;
 struct BuiltinTypes;
 struct TxnLog;
+class Normalizer;
 
 /// Represents a reduction result, which may have successfully reduced the type,
 /// may have concretely failed to reduce the type, or may simply be stuck
@@ -52,8 +53,8 @@ struct TypeFamily
     std::string name;
 
     /// The reducer function for the type family.
-    std::function<TypeFamilyReductionResult<TypeId>(
-        std::vector<TypeId>, std::vector<TypePackId>, NotNull<TypeArena>, NotNull<BuiltinTypes>, NotNull<const TxnLog> log)>
+    std::function<TypeFamilyReductionResult<TypeId>(std::vector<TypeId>, std::vector<TypePackId>, NotNull<TypeArena>, NotNull<BuiltinTypes>,
+        NotNull<TxnLog>, NotNull<Scope>, NotNull<Normalizer>)>
         reducer;
 };
 
@@ -66,8 +67,8 @@ struct TypePackFamily
     std::string name;
 
     /// The reducer function for the type pack family.
-    std::function<TypeFamilyReductionResult<TypePackId>(
-        std::vector<TypeId>, std::vector<TypePackId>, NotNull<TypeArena>, NotNull<BuiltinTypes>, NotNull<const TxnLog> log)>
+    std::function<TypeFamilyReductionResult<TypePackId>(std::vector<TypeId>, std::vector<TypePackId>, NotNull<TypeArena>, NotNull<BuiltinTypes>,
+        NotNull<TxnLog>, NotNull<Scope>, NotNull<Normalizer>)>
         reducer;
 };
 
@@ -93,8 +94,8 @@ struct FamilyGraphReductionResult
  * against the TxnLog, otherwise substitutions will directly mutate the type
  * graph. Do not provide the empty TxnLog, as a result.
  */
-FamilyGraphReductionResult reduceFamilies(
-    TypeId entrypoint, Location location, NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, TxnLog* log = nullptr, bool force = false);
+FamilyGraphReductionResult reduceFamilies(TypeId entrypoint, Location location, NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins,
+    NotNull<Scope> scope, NotNull<Normalizer> normalizer, TxnLog* log = nullptr, bool force = false);
 
 /**
  * Attempt to reduce all instances of any type or type pack family in the type
@@ -109,7 +110,16 @@ FamilyGraphReductionResult reduceFamilies(
  * against the TxnLog, otherwise substitutions will directly mutate the type
  * graph. Do not provide the empty TxnLog, as a result.
  */
-FamilyGraphReductionResult reduceFamilies(
-    TypePackId entrypoint, Location location, NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, TxnLog* log = nullptr, bool force = false);
+FamilyGraphReductionResult reduceFamilies(TypePackId entrypoint, Location location, NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins,
+    NotNull<Scope> scope, NotNull<Normalizer> normalizer, TxnLog* log = nullptr, bool force = false);
+
+struct BuiltinTypeFamilies
+{
+    BuiltinTypeFamilies();
+
+    TypeFamily addFamily;
+};
+
+const BuiltinTypeFamilies kBuiltinTypeFamilies{};
 
 } // namespace Luau

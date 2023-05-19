@@ -4,6 +4,7 @@
 #include "Luau/AssemblyBuilderA64.h"
 #include "Luau/UnwindBuilder.h"
 
+#include "BitUtils.h"
 #include "CustomExecUtils.h"
 #include "NativeState.h"
 #include "EmitCommonA64.h"
@@ -91,6 +92,13 @@ static void emitReentry(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     // Need to update state of the current function before we jump away
     build.ldr(x1, mem(x0, offsetof(Closure, l.p))); // cl->l.p aka proto
 
+    build.ldr(x2, mem(rState, offsetof(lua_State, ci))); // L->ci
+
+    // We need to check if the new frame can be executed natively
+    // TOOD: .flags and .savedpc load below can be fused with ldp
+    build.ldr(w3, mem(x2, offsetof(CallInfo, flags)));
+    build.tbz(x3, countrz(LUA_CALLINFO_CUSTOM), helpers.exitContinueVm);
+
     build.mov(rClosure, x0);
     build.ldr(rConstants, mem(x1, offsetof(Proto, k))); // proto->k
     build.ldr(rCode, mem(x1, offsetof(Proto, code)));   // proto->code
@@ -98,22 +106,15 @@ static void emitReentry(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     // Get instruction index from instruction pointer
     // To get instruction index from instruction pointer, we need to divide byte offset by 4
     // But we will actually need to scale instruction index by 4 back to byte offset later so it cancels out
-    // Note that we're computing negative offset here (code-savedpc) so that we can add it to NativeProto address, as we use reverse indexing
-    build.ldr(x2, mem(rState, offsetof(lua_State, ci))); // L->ci
     build.ldr(x2, mem(x2, offsetof(CallInfo, savedpc))); // L->ci->savedpc
-    build.sub(x2, rCode, x2);
-
-    // We need to check if the new function can be executed natively
-    // TODO: This can be done earlier in the function flow, to reduce the JIT->VM transition penalty
-    build.ldr(x1, mem(x1, offsetofProtoExecData));
-    build.cbz(x1, helpers.exitContinueVm);
+    build.sub(x2, x2, rCode);
 
     // Get new instruction location and jump to it
-    LUAU_ASSERT(offsetof(NativeProto, instOffsets) == 0);
-    build.ldr(w2, mem(x1, x2));
-    build.ldr(x1, mem(x1, offsetof(NativeProto, instBase)));
-    build.add(x1, x1, x2);
-    build.br(x1);
+    LUAU_ASSERT(offsetof(Proto, exectarget) == offsetof(Proto, execdata) + 8);
+    build.ldp(x3, x4, mem(x1, offsetof(Proto, execdata)));
+    build.ldr(w2, mem(x3, x2));
+    build.add(x4, x4, x2);
+    build.br(x4);
 }
 
 static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilder& unwind)

@@ -135,6 +135,19 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "BinaryImm")
     SINGLE_COMPARE(ror(x1, x2, 1), 0x93C20441);
 }
 
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Bitfield")
+{
+    SINGLE_COMPARE(ubfiz(x1, x2, 37, 5), 0xD35B1041);
+    SINGLE_COMPARE(ubfx(x1, x2, 37, 5), 0xD365A441);
+    SINGLE_COMPARE(sbfiz(x1, x2, 37, 5), 0x935B1041);
+    SINGLE_COMPARE(sbfx(x1, x2, 37, 5), 0x9365A441);
+
+    SINGLE_COMPARE(ubfiz(w1, w2, 17, 5), 0x530F1041);
+    SINGLE_COMPARE(ubfx(w1, w2, 17, 5), 0x53115441);
+    SINGLE_COMPARE(sbfiz(w1, w2, 17, 5), 0x130F1041);
+    SINGLE_COMPARE(sbfx(w1, w2, 17, 5), 0x13115441);
+}
+
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Loads")
 {
     // address forms
@@ -481,6 +494,8 @@ TEST_CASE("LogTest")
 
     build.fcvt(s1, d2);
 
+    build.ubfx(x1, x2, 37, 5);
+
     build.setLabel(l);
     build.ret();
 
@@ -513,6 +528,7 @@ TEST_CASE("LogTest")
  fmov        d0,#0.25
  tbz         x0,#5,.L1
  fcvt        s1,d2
+ ubfx        x1,x2,#3705
 .L1:
  ret
 )";

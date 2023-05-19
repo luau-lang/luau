@@ -96,14 +96,14 @@ static void emitAddOffset(AssemblyBuilderA64& build, RegisterA64 dst, RegisterA6
     }
 }
 
-static void emitFallback(AssemblyBuilderA64& build, int op, int pcpos)
+static void emitFallback(AssemblyBuilderA64& build, int offset, int pcpos)
 {
     // fallback(L, instruction, base, k)
     build.mov(x0, rState);
     emitAddOffset(build, x1, rCode, pcpos * sizeof(Instruction));
     build.mov(x2, rBase);
     build.mov(x3, rConstants);
-    build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, fallback) + op * sizeof(FallbackFn)));
+    build.ldr(x4, mem(rNativeContext, offset));
     build.blr(x4);
 
     emitUpdateBase(build);
@@ -658,30 +658,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         jumpOrFallthrough(blockOp(inst.e), next);
         break;
     }
-    case IrCmd::JUMP_SLOT_MATCH:
-    {
-        // TODO: share code with CHECK_SLOT_MATCH
-        RegisterA64 temp1 = regs.allocTemp(KindA64::x);
-        RegisterA64 temp1w = castReg(KindA64::w, temp1);
-        RegisterA64 temp2 = regs.allocTemp(KindA64::x);
-
-        build.ldr(temp1w, mem(regOp(inst.a), offsetof(LuaNode, key) + kOffsetOfTKeyTag));
-        build.and_(temp1w, temp1w, kLuaNodeTagMask);
-        build.cmp(temp1w, LUA_TSTRING);
-        build.b(ConditionA64::NotEqual, labelOp(inst.d));
-
-        AddressA64 addr = tempAddr(inst.b, offsetof(TValue, value));
-        build.ldr(temp1, mem(regOp(inst.a), offsetof(LuaNode, key.value)));
-        build.ldr(temp2, addr);
-        build.cmp(temp1, temp2);
-        build.b(ConditionA64::NotEqual, labelOp(inst.d));
-
-        build.ldr(temp1w, mem(regOp(inst.a), offsetof(LuaNode, val.tt)));
-        LUAU_ASSERT(LUA_TNIL == 0);
-        build.cbz(temp1w, labelOp(inst.d));
-        jumpOrFallthrough(blockOp(inst.c), next);
-        break;
-    }
+    // IrCmd::JUMP_SLOT_MATCH implemented below
     case IrCmd::TABLE_LEN:
     {
         RegisterA64 reg = regOp(inst.a); // note: we need to call regOp before spill so that we don't do redundant reloads
@@ -1078,34 +1055,40 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.b(ConditionA64::UnsignedLessEqual, labelOp(inst.c));
         break;
     }
+    case IrCmd::JUMP_SLOT_MATCH:
     case IrCmd::CHECK_SLOT_MATCH:
     {
+        Label& mismatch = inst.cmd == IrCmd::JUMP_SLOT_MATCH ? labelOp(inst.d) : labelOp(inst.c);
+
         RegisterA64 temp1 = regs.allocTemp(KindA64::x);
         RegisterA64 temp1w = castReg(KindA64::w, temp1);
         RegisterA64 temp2 = regs.allocTemp(KindA64::x);
 
-        build.ldr(temp1w, mem(regOp(inst.a), offsetof(LuaNode, key) + kOffsetOfTKeyTag));
-        build.and_(temp1w, temp1w, kLuaNodeTagMask);
-        build.cmp(temp1w, LUA_TSTRING);
-        build.b(ConditionA64::NotEqual, labelOp(inst.c));
+        LUAU_ASSERT(offsetof(LuaNode, key.value) == offsetof(LuaNode, key) && kOffsetOfTKeyTagNext >= 8 && kOffsetOfTKeyTagNext < 16);
+        build.ldp(temp1, temp2, mem(regOp(inst.a), offsetof(LuaNode, key))); // load key.value into temp1 and key.tt (alongside other bits) into temp2
+        build.ubfx(temp2, temp2, (kOffsetOfTKeyTagNext - 8) * 8, kTKeyTagBits); // .tt is right before .next, and 8 bytes are skipped by ldp
+        build.cmp(temp2, LUA_TSTRING);
+        build.b(ConditionA64::NotEqual, mismatch);
 
         AddressA64 addr = tempAddr(inst.b, offsetof(TValue, value));
-        build.ldr(temp1, mem(regOp(inst.a), offsetof(LuaNode, key.value)));
         build.ldr(temp2, addr);
         build.cmp(temp1, temp2);
-        build.b(ConditionA64::NotEqual, labelOp(inst.c));
+        build.b(ConditionA64::NotEqual, mismatch);
 
         build.ldr(temp1w, mem(regOp(inst.a), offsetof(LuaNode, val.tt)));
         LUAU_ASSERT(LUA_TNIL == 0);
-        build.cbz(temp1w, labelOp(inst.c));
+        build.cbz(temp1w, mismatch);
+
+        if (inst.cmd == IrCmd::JUMP_SLOT_MATCH)
+            jumpOrFallthrough(blockOp(inst.c), next);
         break;
     }
     case IrCmd::CHECK_NODE_NO_NEXT:
     {
         RegisterA64 temp = regs.allocTemp(KindA64::w);
 
-        build.ldr(temp, mem(regOp(inst.a), offsetof(LuaNode, key) + kOffsetOfTKeyNext));
-        build.lsr(temp, temp, kNextBitOffset);
+        build.ldr(temp, mem(regOp(inst.a), offsetof(LuaNode, key) + kOffsetOfTKeyTagNext));
+        build.lsr(temp, temp, kTKeyTagBits);
         build.cbnz(temp, labelOp(inst.b));
         break;
     }
@@ -1139,6 +1122,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         Label skip;
         build.ldr(temp1, mem(rState, offsetof(lua_State, global)));
+        // TODO: totalbytes and GCthreshold loads can be fused with ldp
         build.ldr(temp2, mem(temp1, offsetof(global_State, totalbytes)));
         build.ldr(temp1, mem(temp1, offsetof(global_State, GCthreshold)));
         build.cmp(temp1, temp2);
@@ -1265,7 +1249,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         break;
     case IrCmd::SETLIST:
         regs.spill(build, index);
-        emitFallback(build, LOP_SETLIST, uintOp(inst.a));
+        emitFallback(build, offsetof(NativeContext, executeSETLIST), uintOp(inst.a));
         break;
     case IrCmd::CALL:
         regs.spill(build, index);
@@ -1368,14 +1352,14 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmConst);
 
         regs.spill(build, index);
-        emitFallback(build, LOP_GETGLOBAL, uintOp(inst.a));
+        emitFallback(build, offsetof(NativeContext, executeGETGLOBAL), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_SETGLOBAL:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmConst);
 
         regs.spill(build, index);
-        emitFallback(build, LOP_SETGLOBAL, uintOp(inst.a));
+        emitFallback(build, offsetof(NativeContext, executeSETGLOBAL), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_GETTABLEKS:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
@@ -1383,7 +1367,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         LUAU_ASSERT(inst.d.kind == IrOpKind::VmConst);
 
         regs.spill(build, index);
-        emitFallback(build, LOP_GETTABLEKS, uintOp(inst.a));
+        emitFallback(build, offsetof(NativeContext, executeGETTABLEKS), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_SETTABLEKS:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
@@ -1391,7 +1375,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         LUAU_ASSERT(inst.d.kind == IrOpKind::VmConst);
 
         regs.spill(build, index);
-        emitFallback(build, LOP_SETTABLEKS, uintOp(inst.a));
+        emitFallback(build, offsetof(NativeContext, executeSETTABLEKS), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_NAMECALL:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
@@ -1399,38 +1383,38 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         LUAU_ASSERT(inst.d.kind == IrOpKind::VmConst);
 
         regs.spill(build, index);
-        emitFallback(build, LOP_NAMECALL, uintOp(inst.a));
+        emitFallback(build, offsetof(NativeContext, executeNAMECALL), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_PREPVARARGS:
         LUAU_ASSERT(inst.b.kind == IrOpKind::Constant);
 
         regs.spill(build, index);
-        emitFallback(build, LOP_PREPVARARGS, uintOp(inst.a));
+        emitFallback(build, offsetof(NativeContext, executePREPVARARGS), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_GETVARARGS:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::Constant);
 
         regs.spill(build, index);
-        emitFallback(build, LOP_GETVARARGS, uintOp(inst.a));
+        emitFallback(build, offsetof(NativeContext, executeGETVARARGS), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_NEWCLOSURE:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::Constant);
 
         regs.spill(build, index);
-        emitFallback(build, LOP_NEWCLOSURE, uintOp(inst.a));
+        emitFallback(build, offsetof(NativeContext, executeNEWCLOSURE), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_DUPCLOSURE:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmConst);
 
         regs.spill(build, index);
-        emitFallback(build, LOP_DUPCLOSURE, uintOp(inst.a));
+        emitFallback(build, offsetof(NativeContext, executeDUPCLOSURE), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_FORGPREP:
         regs.spill(build, index);
-        emitFallback(build, LOP_FORGPREP, uintOp(inst.a));
+        emitFallback(build, offsetof(NativeContext, executeFORGPREP), uintOp(inst.a));
         jumpOrFallthrough(blockOp(inst.c), next);
         break;
 

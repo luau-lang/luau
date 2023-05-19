@@ -1059,11 +1059,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unification_of_unions_in_a_self_referential_
 
     const MetatableType* amtv = get<MetatableType>(requireType("a"));
     REQUIRE(amtv);
-    CHECK_EQ(amtv->metatable, requireType("amt"));
+    CHECK_EQ(follow(amtv->metatable), follow(requireType("amt")));
 
     const MetatableType* bmtv = get<MetatableType>(requireType("b"));
     REQUIRE(bmtv);
-    CHECK_EQ(bmtv->metatable, requireType("bmt"));
+    CHECK_EQ(follow(bmtv->metatable), follow(requireType("bmt")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "oop_polymorphic")
