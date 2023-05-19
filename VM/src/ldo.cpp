@@ -17,6 +17,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauUniformTopHandling, false)
+
 /*
 ** {======================================================
 ** Error-recovery functions
@@ -229,12 +231,14 @@ void luaD_checkCstack(lua_State* L)
 ** When returns, all the results are on the stack, starting at the original
 ** function position.
 */
-void luaD_call(lua_State* L, StkId func, int nResults)
+void luaD_call(lua_State* L, StkId func, int nresults)
 {
     if (++L->nCcalls >= LUAI_MAXCCALLS)
         luaD_checkCstack(L);
 
-    if (luau_precall(L, func, nResults) == PCRLUA)
+    ptrdiff_t old_func = savestack(L, func);
+
+    if (luau_precall(L, func, nresults) == PCRLUA)
     {                                        // is a Lua function?
         L->ci->flags |= LUA_CALLINFO_RETURN; // luau_execute will stop after returning from the stack frame
 
@@ -247,6 +251,9 @@ void luaD_call(lua_State* L, StkId func, int nResults)
         if (!oldactive)
             L->isactive = false;
     }
+
+    if (FFlag::LuauUniformTopHandling && nresults != LUA_MULTRET)
+        L->top = restorestack(L, old_func) + nresults;
 
     L->nCcalls--;
     luaC_checkGC(L);

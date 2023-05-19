@@ -676,9 +676,19 @@ TEST_CASE_FIXTURE(Fixture, "strict_binary_op_where_lhs_unknown")
     src += "end";
 
     CheckResult result = check(src);
-    LUAU_REQUIRE_ERROR_COUNT(ops.size(), result);
 
-    CHECK_EQ("Unknown type used in + operation; consider adding a type annotation to 'a'", toString(result.errors[0]));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // TODO: This will eventually entirely go away, but for now the Add
+        // family will ensure there's one less error.
+        LUAU_REQUIRE_ERROR_COUNT(ops.size() - 1, result);
+        CHECK_EQ("Unknown type used in - operation; consider adding a type annotation to 'a'", toString(result.errors[0]));
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(ops.size(), result);
+        CHECK_EQ("Unknown type used in + operation; consider adding a type annotation to 'a'", toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "and_binexps_dont_unify")
@@ -889,8 +899,16 @@ TEST_CASE_FIXTURE(Fixture, "infer_any_in_all_modes_when_lhs_is_unknown")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Unknown type used in + operation; consider adding a type annotation to 'x'");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> Add<a, b>");
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ(toString(result.errors[0]), "Unknown type used in + operation; consider adding a type annotation to 'x'");
+    }
 
     result = check(Mode::Nonstrict, R"(
         local function f(x, y)
@@ -983,31 +1001,6 @@ TEST_CASE_FIXTURE(Fixture, "unrelated_primitives_cannot_be_compared")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "mm_ops_must_return_a_value")
-{
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
-        return;
-
-    CheckResult result = check(R"(
-        local mm = {
-            __add = function(self, other)
-                return
-            end,
-        }
-
-        local x = setmetatable({}, mm)
-        local y = x + 123
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-
-    CHECK(requireType("y") == builtinTypes->errorRecoveryType());
-
-    const GenericError* ge = get<GenericError>(result.errors[1]);
-    REQUIRE(ge);
-    CHECK(ge->message == "Metamethod '__add' must return a value");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "mm_comparisons_must_return_a_boolean")
@@ -1179,6 +1172,38 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "luau-polyfill.String.slice")
+{
+
+    CheckResult result = check(R"(
+--!strict
+local function slice(str: string, startIndexStr: string | number, lastIndexStr: (string | number)?): string
+	local strLen, invalidBytePosition = utf8.len(str)
+	assert(strLen ~= nil, ("string `%s` has an invalid byte at position %s"):format(str, tostring(invalidBytePosition)))
+    local startIndex = tonumber(startIndexStr)
+
+
+	-- if no last index length set, go to str length + 1
+	local lastIndex = strLen + 1
+
+	assert(typeof(lastIndex) == "number", "lastIndexStr should convert to number")
+
+	if lastIndex > strLen then
+		lastIndex = strLen + 1
+	end
+
+	local startIndexByte = utf8.offset(str, startIndex)
+
+	return string.sub(str, startIndexByte, startIndexByte)
+end
+
+return slice
+
+
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau-polyfill.Array.startswith")
 {
     // This test also exercises whether the binary operator == passes the correct expected type
@@ -1204,5 +1229,24 @@ return startsWith
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "add_type_family_works")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local function add(x, y)
+            return x + y
+        end
+
+        local a = add(1, 2)
+        local b = add("foo", "bar")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(requireType("a")) == "number");
+    CHECK(toString(requireType("b")) == "Add<string, string>");
+    CHECK(toString(result.errors[0]) == "Type family instance Add<string, string> is uninhabited");
+}
 
 TEST_SUITE_END();

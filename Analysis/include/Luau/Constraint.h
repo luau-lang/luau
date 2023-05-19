@@ -144,6 +144,24 @@ struct HasPropConstraint
     TypeId resultType;
     TypeId subjectType;
     std::string prop;
+
+    // HACK: We presently need types like true|false or string|"hello" when
+    // deciding whether a particular literal expression should have a singleton
+    // type.  This boolean is set to true when extracting the property type of a
+    // value that may be a union of tables.
+    //
+    // For example, in the following code fragment, we want the lookup of the
+    // success property to yield true|false when extracting an expectedType in
+    // this expression:
+    //
+    // type Result<T, E> = {success:true, result: T} | {success:false, error: E}
+    //
+    // local r: Result<number, string> = {success=true, result=9}
+    //
+    // If we naively simplify the expectedType to boolean, we will erroneously
+    // compute the type boolean for the success property of the table literal.
+    // This causes type checking to fail.
+    bool suppressSimplification = false;
 };
 
 // result ~ setProp subjectType ["prop", "prop2", ...] propType
@@ -198,6 +216,24 @@ struct UnpackConstraint
     TypePackId sourcePack;
 };
 
+// resultType ~ refine type mode discriminant
+//
+// Compute type & discriminant (or type | discriminant) as soon as possible (but
+// no sooner), simplify, and bind resultType to that type.
+struct RefineConstraint
+{
+    enum
+    {
+        Intersection,
+        Union
+    } mode;
+
+    TypeId resultType;
+
+    TypeId type;
+    TypeId discriminant;
+};
+
 // ty ~ reduce ty
 //
 // Try to reduce ty, if it is a TypeFamilyInstanceType. Otherwise, do nothing.
@@ -214,10 +250,10 @@ struct ReducePackConstraint
     TypePackId tp;
 };
 
-using ConstraintV =
-    Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, UnaryConstraint, BinaryConstraint,
-        IterableConstraint, NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, PrimitiveTypeConstraint, HasPropConstraint,
-        SetPropConstraint, SetIndexerConstraint, SingletonOrTopTypeConstraint, UnpackConstraint, ReduceConstraint, ReducePackConstraint>;
+using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, UnaryConstraint,
+    BinaryConstraint, IterableConstraint, NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, PrimitiveTypeConstraint,
+    HasPropConstraint, SetPropConstraint, SetIndexerConstraint, SingletonOrTopTypeConstraint, UnpackConstraint, RefineConstraint, ReduceConstraint,
+    ReducePackConstraint>;
 
 struct Constraint
 {

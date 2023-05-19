@@ -34,6 +34,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 
 #if defined(__x86_64__) || defined(_M_X64)
 #ifdef _MSC_VER
@@ -61,33 +62,34 @@ namespace CodeGen
 static void* gPerfLogContext = nullptr;
 static PerfLogFn gPerfLogFn = nullptr;
 
-static NativeProto* createNativeProto(Proto* proto, const IrBuilder& ir)
+struct NativeProto
+{
+    Proto* p;
+    void* execdata;
+    uintptr_t exectarget;
+};
+
+static NativeProto createNativeProto(Proto* proto, const IrBuilder& ir)
 {
     int sizecode = proto->sizecode;
-    int sizecodeAlloc = (sizecode + 1) & ~1; // align uint32_t array to 8 bytes so that NativeProto is aligned to 8 bytes
 
-    void* memory = ::operator new(sizeof(NativeProto) + sizecodeAlloc * sizeof(uint32_t));
-    NativeProto* result = new (static_cast<char*>(memory) + sizecodeAlloc * sizeof(uint32_t)) NativeProto;
-    result->proto = proto;
-
-    uint32_t* instOffsets = result->instOffsets;
+    uint32_t* instOffsets = new uint32_t[sizecode];
+    uint32_t instTarget = ir.function.bcMapping[0].asmLocation;
 
     for (int i = 0; i < sizecode; i++)
     {
-        // instOffsets uses negative indexing for optimal codegen for RETURN opcode
-        instOffsets[-i] = ir.function.bcMapping[i].asmLocation;
+        LUAU_ASSERT(ir.function.bcMapping[i].asmLocation >= instTarget);
+
+        instOffsets[i] = ir.function.bcMapping[i].asmLocation - instTarget;
     }
 
-    return result;
+    // entry target will be relocated when assembly is finalized
+    return {proto, instOffsets, instTarget};
 }
 
-static void destroyNativeProto(NativeProto* nativeProto)
+static void destroyExecData(void* execdata)
 {
-    int sizecode = nativeProto->proto->sizecode;
-    int sizecodeAlloc = (sizecode + 1) & ~1; // align uint32_t array to 8 bytes so that NativeProto is aligned to 8 bytes
-    void* memory = reinterpret_cast<char*>(nativeProto) - sizecodeAlloc * sizeof(uint32_t);
-
-    ::operator delete(memory);
+    delete[] static_cast<uint32_t*>(execdata);
 }
 
 static void logPerfFunction(Proto* p, uintptr_t addr, unsigned size)
@@ -271,7 +273,7 @@ static bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 }
 
 template<typename AssemblyBuilder>
-static NativeProto* assembleFunction(AssemblyBuilder& build, NativeState& data, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
+static std::optional<NativeProto> assembleFunction(AssemblyBuilder& build, NativeState& data, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
 {
     if (options.includeAssembly || options.includeIr)
     {
@@ -321,7 +323,7 @@ static NativeProto* assembleFunction(AssemblyBuilder& build, NativeState& data, 
         if (build.logText)
             build.logAppend("; skipping (can't lower)\n\n");
 
-        return nullptr;
+        return std::nullopt;
     }
 
     if (build.logText)
@@ -337,23 +339,19 @@ static void onCloseState(lua_State* L)
 
 static void onDestroyFunction(lua_State* L, Proto* proto)
 {
-    NativeProto* nativeProto = getProtoExecData(proto);
-    LUAU_ASSERT(nativeProto->proto == proto);
-
-    setProtoExecData(proto, nullptr);
-    destroyNativeProto(nativeProto);
+    destroyExecData(proto->execdata);
+    proto->execdata = nullptr;
+    proto->exectarget = 0;
 }
 
 static int onEnter(lua_State* L, Proto* proto)
 {
     NativeState* data = getNativeState(L);
-    NativeProto* nativeProto = getProtoExecData(proto);
 
-    LUAU_ASSERT(nativeProto);
-    LUAU_ASSERT(L->ci->savedpc);
+    LUAU_ASSERT(proto->execdata);
+    LUAU_ASSERT(L->ci->savedpc >= proto->code && L->ci->savedpc < proto->code + proto->sizecode);
 
-    // instOffsets uses negative indexing for optimal codegen for RETURN opcode
-    uintptr_t target = nativeProto->instBase + nativeProto->instOffsets[proto->code - L->ci->savedpc];
+    uintptr_t target = proto->exectarget + static_cast<uint32_t*>(proto->execdata)[L->ci->savedpc - proto->code];
 
     // Returns 1 to finish the function in the VM
     return GateFn(data->context.gateEntry)(L, proto, target, &data->context);
@@ -361,7 +359,7 @@ static int onEnter(lua_State* L, Proto* proto)
 
 static void onSetBreakpoint(lua_State* L, Proto* proto, int instruction)
 {
-    if (!getProtoExecData(proto))
+    if (!proto->execdata)
         return;
 
     LUAU_ASSERT(!"native breakpoints are not implemented");
@@ -444,8 +442,7 @@ void create(lua_State* L)
     data.codeAllocator.createBlockUnwindInfo = createBlockUnwindInfo;
     data.codeAllocator.destroyBlockUnwindInfo = destroyBlockUnwindInfo;
 
-    initFallbackTable(data);
-    initHelperFunctions(data);
+    initFunctions(data);
 
 #if defined(__x86_64__) || defined(_M_X64)
     if (!X64::initHeaderFunctions(data))
@@ -514,20 +511,20 @@ void compile(lua_State* L, int idx)
     X64::assembleHelpers(build, helpers);
 #endif
 
-    std::vector<NativeProto*> results;
+    std::vector<NativeProto> results;
     results.reserve(protos.size());
 
     // Skip protos that have been compiled during previous invocations of CodeGen::compile
     for (Proto* p : protos)
-        if (p && getProtoExecData(p) == nullptr)
-            if (NativeProto* np = assembleFunction(build, *data, helpers, p, {}))
-                results.push_back(np);
+        if (p && p->execdata == nullptr)
+            if (std::optional<NativeProto> np = assembleFunction(build, *data, helpers, p, {}))
+                results.push_back(*np);
 
     // Very large modules might result in overflowing a jump offset; in this case we currently abandon the entire module
     if (!build.finalize())
     {
-        for (NativeProto* result : results)
-            destroyNativeProto(result);
+        for (NativeProto result : results)
+            destroyExecData(result.execdata);
 
         return;
     }
@@ -542,36 +539,32 @@ void compile(lua_State* L, int idx)
     if (!data->codeAllocator.allocate(build.data.data(), int(build.data.size()), reinterpret_cast<const uint8_t*>(build.code.data()),
             int(build.code.size() * sizeof(build.code[0])), nativeData, sizeNativeData, codeStart))
     {
-        for (NativeProto* result : results)
-            destroyNativeProto(result);
+        for (NativeProto result : results)
+            destroyExecData(result.execdata);
 
         return;
     }
 
     if (gPerfLogFn && results.size() > 0)
     {
-        gPerfLogFn(gPerfLogContext, uintptr_t(codeStart), results[0]->instOffsets[0], "<luau helpers>");
+        gPerfLogFn(gPerfLogContext, uintptr_t(codeStart), uint32_t(results[0].exectarget), "<luau helpers>");
 
         for (size_t i = 0; i < results.size(); ++i)
         {
-            uint32_t begin = results[i]->instOffsets[0];
-            uint32_t end = i + 1 < results.size() ? results[i + 1]->instOffsets[0] : uint32_t(build.code.size() * sizeof(build.code[0]));
+            uint32_t begin = uint32_t(results[i].exectarget);
+            uint32_t end = i + 1 < results.size() ? uint32_t(results[i + 1].exectarget) : uint32_t(build.code.size() * sizeof(build.code[0]));
             LUAU_ASSERT(begin < end);
 
-            logPerfFunction(results[i]->proto, uintptr_t(codeStart) + begin, end - begin);
+            logPerfFunction(results[i].p, uintptr_t(codeStart) + begin, end - begin);
         }
     }
 
-    // Record instruction base address; at runtime, instOffsets[] will be used as offsets from instBase
-    for (NativeProto* result : results)
+    for (NativeProto result : results)
     {
-        result->instBase = uintptr_t(codeStart);
-        result->entryTarget = uintptr_t(codeStart) + result->instOffsets[0];
+        // the memory is now managed by VM and will be freed via onDestroyFunction
+        result.p->execdata = result.execdata;
+        result.p->exectarget = uintptr_t(codeStart) + result.exectarget;
     }
-
-    // Link native proto objects to Proto; the memory is now managed by VM and will be freed via onDestroyFunction
-    for (NativeProto* result : results)
-        setProtoExecData(result->proto, result);
 }
 
 std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
@@ -586,7 +579,7 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
 #endif
 
     NativeState data;
-    initFallbackTable(data);
+    initFunctions(data);
 
     std::vector<Proto*> protos;
     gatherFunctions(protos, clvalue(func)->l.p);
@@ -600,8 +593,8 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
 
     for (Proto* p : protos)
         if (p)
-            if (NativeProto* np = assembleFunction(build, data, helpers, p, options))
-                destroyNativeProto(np);
+            if (std::optional<NativeProto> np = assembleFunction(build, data, helpers, p, options))
+                destroyExecData(np->execdata);
 
     if (!build.finalize())
         return std::string();

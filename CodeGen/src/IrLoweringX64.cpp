@@ -938,8 +938,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     {
         ScopedRegX64 tmp{regs, SizeX64::dword};
 
-        build.mov(tmp.reg, dword[regOp(inst.a) + offsetof(LuaNode, key) + kOffsetOfTKeyNext]);
-        build.shr(tmp.reg, kNextBitOffset);
+        build.mov(tmp.reg, dword[regOp(inst.a) + offsetof(LuaNode, key) + kOffsetOfTKeyTagNext]);
+        build.shr(tmp.reg, kTKeyTagBits);
         build.jcc(ConditionX64::NotZero, labelOp(inst.b));
         break;
     }
@@ -1098,60 +1098,60 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmConst);
 
-        emitFallback(regs, build, data, LOP_GETGLOBAL, uintOp(inst.a));
+        emitFallback(regs, build, offsetof(NativeContext, executeGETGLOBAL), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_SETGLOBAL:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmConst);
 
-        emitFallback(regs, build, data, LOP_SETGLOBAL, uintOp(inst.a));
+        emitFallback(regs, build, offsetof(NativeContext, executeSETGLOBAL), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_GETTABLEKS:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.d.kind == IrOpKind::VmConst);
 
-        emitFallback(regs, build, data, LOP_GETTABLEKS, uintOp(inst.a));
+        emitFallback(regs, build, offsetof(NativeContext, executeGETTABLEKS), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_SETTABLEKS:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.d.kind == IrOpKind::VmConst);
 
-        emitFallback(regs, build, data, LOP_SETTABLEKS, uintOp(inst.a));
+        emitFallback(regs, build, offsetof(NativeContext, executeSETTABLEKS), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_NAMECALL:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.d.kind == IrOpKind::VmConst);
 
-        emitFallback(regs, build, data, LOP_NAMECALL, uintOp(inst.a));
+        emitFallback(regs, build, offsetof(NativeContext, executeNAMECALL), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_PREPVARARGS:
         LUAU_ASSERT(inst.b.kind == IrOpKind::Constant);
 
-        emitFallback(regs, build, data, LOP_PREPVARARGS, uintOp(inst.a));
+        emitFallback(regs, build, offsetof(NativeContext, executePREPVARARGS), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_GETVARARGS:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::Constant);
 
-        emitFallback(regs, build, data, LOP_GETVARARGS, uintOp(inst.a));
+        emitFallback(regs, build, offsetof(NativeContext, executeGETVARARGS), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_NEWCLOSURE:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::Constant);
 
-        emitFallback(regs, build, data, LOP_NEWCLOSURE, uintOp(inst.a));
+        emitFallback(regs, build, offsetof(NativeContext, executeNEWCLOSURE), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_DUPCLOSURE:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmConst);
 
-        emitFallback(regs, build, data, LOP_DUPCLOSURE, uintOp(inst.a));
+        emitFallback(regs, build, offsetof(NativeContext, executeDUPCLOSURE), uintOp(inst.a));
         break;
     case IrCmd::FALLBACK_FORGPREP:
-        emitFallback(regs, build, data, LOP_FORGPREP, uintOp(inst.a));
+        emitFallback(regs, build, offsetof(NativeContext, executeFORGPREP), uintOp(inst.a));
         jumpOrFallthrough(blockOp(inst.c), next);
         break;
     case IrCmd::BITAND_UINT:

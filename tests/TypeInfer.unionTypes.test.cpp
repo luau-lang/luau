@@ -354,10 +354,7 @@ a.x = 2
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     auto s = toString(result.errors[0]);
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("Value of type '{| x: number, y: number |}?' could be nil", s);
-    else
-        CHECK_EQ("Value of type '({| x: number |} & {| y: number |})?' could be nil", s);
+    CHECK_EQ("Value of type '({| x: number |} & {| y: number |})?' could be nil", s);
 }
 
 TEST_CASE_FIXTURE(Fixture, "optional_length_error")
@@ -868,6 +865,52 @@ TEST_CASE_FIXTURE(Fixture, "optional_class_instances_are_invariant")
     ;
 
     CHECK(expectedError == toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "luau-polyfill.Map.entries")
+{
+
+    fileResolver.source["Module/Map"] = R"(
+--!strict
+
+type Object = { [any]: any }
+type Array<T> = { [number]: T }
+type Table<T, V> = { [T]: V }
+type Tuple<T, V> = Array<T | V>
+
+local Map = {}
+
+export type Map<K, V> = {
+	size: number,
+	-- method definitions
+	set: (self: Map<K, V>, K, V) -> Map<K, V>,
+	get: (self: Map<K, V>, K) -> V | nil,
+	clear: (self: Map<K, V>) -> (),
+	delete: (self: Map<K, V>, K) -> boolean,
+	has: (self: Map<K, V>, K) -> boolean,
+	keys: (self: Map<K, V>) -> Array<K>,
+	values: (self: Map<K, V>) -> Array<V>,
+	entries: (self: Map<K, V>) -> Array<Tuple<K, V>>,
+	ipairs: (self: Map<K, V>) -> any,
+	[K]: V,
+	_map: { [K]: V },
+	_array: { [number]: K },
+}
+
+function Map:entries()
+	return {}
+end
+
+local function coerceToTable(mapLike: Map<any, any> | Table<any, any>): Array<Tuple<any, any>>
+    local e = mapLike:entries();
+    return e
+end
+
+    )";
+
+    CheckResult result = frontend.check("Module/Map");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

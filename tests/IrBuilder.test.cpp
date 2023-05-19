@@ -1521,6 +1521,36 @@ bb_3:
 )");
 }
 
+TEST_CASE_FIXTURE(IrBuilderFixture, "IntNumIntPeepholes")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp i1 = build.inst(IrCmd::LOAD_INT, build.vmReg(0));
+    IrOp u1 = build.inst(IrCmd::LOAD_INT, build.vmReg(1));
+    IrOp ni1 = build.inst(IrCmd::INT_TO_NUM, i1);
+    IrOp nu1 = build.inst(IrCmd::UINT_TO_NUM, u1);
+    IrOp i2 = build.inst(IrCmd::NUM_TO_INT, ni1);
+    IrOp u2 = build.inst(IrCmd::NUM_TO_UINT, nu1);
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), i2);
+    build.inst(IrCmd::STORE_INT, build.vmReg(1), u2);
+    build.inst(IrCmd::RETURN, build.constUint(2));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build, true);
+
+    CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
+bb_0:
+   %0 = LOAD_INT R0
+   %1 = LOAD_INT R1
+   STORE_INT R0, %0
+   STORE_INT R1, %1
+   RETURN 2u
+
+)");
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("LinearExecutionFlowExtraction");

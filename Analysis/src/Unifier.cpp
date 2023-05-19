@@ -447,13 +447,13 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         // "double-report" errors in some cases, like when trying to unify
         // identical type family instantiations like Add<false, false> with
         // Add<false, false>.
-        reduceFamilies(superTy, location, NotNull(types), builtinTypes, &log);
+        reduceFamilies(superTy, location, NotNull(types), builtinTypes, scope, normalizer, &log);
         superTy = log.follow(superTy);
     }
 
     if (log.get<TypeFamilyInstanceType>(subTy))
     {
-        reduceFamilies(subTy, location, NotNull(types), builtinTypes, &log);
+        reduceFamilies(subTy, location, NotNull(types), builtinTypes, scope, normalizer, &log);
         subTy = log.follow(subTy);
     }
 

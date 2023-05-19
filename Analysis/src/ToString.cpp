@@ -1639,6 +1639,11 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         }
         else if constexpr (std::is_same_v<T, UnpackConstraint>)
             return tos(c.resultPack) + " ~ unpack " + tos(c.sourcePack);
+        else if constexpr (std::is_same_v<T, RefineConstraint>)
+        {
+            const char* op = c.mode == RefineConstraint::Union ? "union" : "intersect";
+            return tos(c.resultType) + " ~ refine " + tos(c.type) + " " + op + " " + tos(c.discriminant);
+        }
         else if constexpr (std::is_same_v<T, ReduceConstraint>)
             return "reduce " + tos(c.ty);
         else if constexpr (std::is_same_v<T, ReducePackConstraint>)
@@ -1650,6 +1655,11 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
     };
 
     return visit(go, constraint.c);
+}
+
+std::string toString(const Constraint& constraint)
+{
+    return toString(constraint, ToStringOptions{});
 }
 
 std::string dump(const Constraint& c)

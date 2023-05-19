@@ -532,7 +532,7 @@ return wrapStrictTable(Constants, "Constants")
     std::optional<TypeId> result = first(m->returnType);
     REQUIRE(result);
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("(any?) & ~table", toString(*result));
+        CHECK_EQ("(any & ~table)?", toString(*result));
     else
         CHECK_MESSAGE(get<AnyType>(*result), *result);
 }
@@ -817,6 +817,63 @@ TEST_CASE_FIXTURE(Fixture, "lookup_prop_of_intersection_containing_unions_of_tab
     // REQUIRE(unknownProp);
 
     // CHECK("variable" == unknownProp->key);
+}
+
+TEST_CASE_FIXTURE(Fixture, "expected_type_should_be_a_helpful_deduction_guide_for_function_calls")
+{
+    ScopedFastFlag sffs[]{
+        {"LuauUnifyTwoOptions", true},
+        {"LuauTypeMismatchInvarianceInError", true},
+    };
+
+    CheckResult result = check(R"(
+        type Ref<T> = { val: T }
+
+        local function useRef<T>(x: T): Ref<T?>
+            return { val = x }
+        end
+
+        local x: Ref<number?> = useRef(nil)
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // This is actually wrong! Sort of. It's doing the wrong thing, it's actually asking whether
+        //  `{| val: number? |} <: {| val: nil |}`
+        // instead of the correct way, which is
+        //  `{| val: nil |} <: {| val: number? |}`
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'Ref<nil>' could not be converted into 'Ref<number?>'
+caused by:
+  Property 'val' is not compatible. Type 'nil' could not be converted into 'number' in an invariant context)");
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "floating_generics_should_not_be_allowed")
+{
+    CheckResult result = check(R"(
+        local assign : <T, U, V, W>(target: T, source0: U?, source1: V?, source2: W?, ...any) -> T & U & V & W = (nil :: any)
+
+        -- We have a big problem here: The generics U, V, and W are not bound to anything!
+        -- Things get strange because of this.
+        local benchmark = assign({})
+        local options = benchmark.options
+        do
+            local resolve2: any = nil
+            options.fn({
+                resolve = function(...)
+                    resolve2(...)
+                end,
+            })
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

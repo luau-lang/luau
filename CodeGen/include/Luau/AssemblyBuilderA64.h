@@ -80,6 +80,12 @@ public:
     void asr(RegisterA64 dst, RegisterA64 src1, uint8_t src2);
     void ror(RegisterA64 dst, RegisterA64 src1, uint8_t src2);
 
+    // Bitfields
+    void ubfiz(RegisterA64 dst, RegisterA64 src, uint8_t f, uint8_t w);
+    void ubfx(RegisterA64 dst, RegisterA64 src, uint8_t f, uint8_t w);
+    void sbfiz(RegisterA64 dst, RegisterA64 src, uint8_t f, uint8_t w);
+    void sbfx(RegisterA64 dst, RegisterA64 src, uint8_t f, uint8_t w);
+
     // Load
     // Note: paired loads are currently omitted for simplicity
     void ldr(RegisterA64 dst, AddressA64 src);
@@ -212,7 +218,7 @@ private:
     void placeFCMP(const char* name, RegisterA64 src1, RegisterA64 src2, uint8_t op, uint8_t opc);
     void placeFMOV(const char* name, RegisterA64 dst, double src, uint32_t op);
     void placeBM(const char* name, RegisterA64 dst, RegisterA64 src1, uint32_t src2, uint8_t op);
-    void placeBFM(const char* name, RegisterA64 dst, RegisterA64 src1, uint8_t src2, uint8_t op, int immr, int imms);
+    void placeBFM(const char* name, RegisterA64 dst, RegisterA64 src1, int src2, uint8_t op, int immr, int imms);
 
     void place(uint32_t word);
 

@@ -136,7 +136,7 @@ inline OperandX64 luauNodeKeyValue(RegisterX64 node)
 // Note: tag has dirty upper bits
 inline OperandX64 luauNodeKeyTag(RegisterX64 node)
 {
-    return dword[node + offsetof(LuaNode, key) + kOffsetOfTKeyTag];
+    return dword[node + offsetof(LuaNode, key) + kOffsetOfTKeyTagNext];
 }
 
 inline OperandX64 luauNodeValue(RegisterX64 node)
@@ -189,7 +189,7 @@ inline void jumpIfNodeKeyTagIsNot(AssemblyBuilderX64& build, RegisterX64 tmp, Re
     tmp.size = SizeX64::dword;
 
     build.mov(tmp, luauNodeKeyTag(node));
-    build.and_(tmp, kLuaNodeTagMask);
+    build.and_(tmp, kTKeyTagMask);
     build.cmp(tmp, tag);
     build.jcc(ConditionX64::NotEqual, label);
 }
@@ -230,7 +230,7 @@ void callStepGc(IrRegAllocX64& regs, AssemblyBuilderX64& build);
 void emitExit(AssemblyBuilderX64& build, bool continueInVm);
 void emitUpdateBase(AssemblyBuilderX64& build);
 void emitInterrupt(IrRegAllocX64& regs, AssemblyBuilderX64& build, int pcpos);
-void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, NativeState& data, int op, int pcpos);
+void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, int offset, int pcpos);
 
 void emitContinueCallInVm(AssemblyBuilderX64& build);
 

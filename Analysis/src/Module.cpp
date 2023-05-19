@@ -10,7 +10,6 @@
 #include "Luau/Type.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
-#include "Luau/TypeReduction.h"
 #include "Luau/VisitType.h"
 
 #include <algorithm>
@@ -20,7 +19,6 @@ LUAU_FASTFLAGVARIABLE(LuauClonePublicInterfaceLess2, false);
 LUAU_FASTFLAG(LuauSubstitutionReentrant);
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution);
 LUAU_FASTFLAG(LuauSubstitutionFixMissingFields);
-LUAU_FASTFLAGVARIABLE(LuauCopyExportedTypes, false);
 
 namespace Luau
 {
@@ -238,10 +236,7 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
 
     // Copy external stuff over to Module itself
     this->returnType = moduleScope->returnType;
-    if (FFlag::DebugLuauDeferredConstraintResolution || FFlag::LuauCopyExportedTypes)
-        this->exportedTypeBindings = moduleScope->exportedTypeBindings;
-    else
-        this->exportedTypeBindings = std::move(moduleScope->exportedTypeBindings);
+    this->exportedTypeBindings = moduleScope->exportedTypeBindings;
 }
 
 bool Module::hasModuleScope() const

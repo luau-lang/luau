@@ -325,10 +325,8 @@ void emitInterrupt(IrRegAllocX64& regs, AssemblyBuilderX64& build, int pcpos)
     build.setLabel(skip);
 }
 
-void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, NativeState& data, int op, int pcpos)
+void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, int offset, int pcpos)
 {
-    LUAU_ASSERT(data.context.fallback[op]);
-
     // fallback(L, instruction, base, k)
     IrCallWrapperX64 callWrap(regs, build);
     callWrap.addArgument(SizeX64::qword, rState);
@@ -339,7 +337,7 @@ void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, NativeState& d
 
     callWrap.addArgument(SizeX64::qword, rBase);
     callWrap.addArgument(SizeX64::qword, rConstants);
-    callWrap.call(qword[rNativeContext + offsetof(NativeContext, fallback) + op * sizeof(FallbackFn)]);
+    callWrap.call(qword[rNativeContext + offset]);
 
     emitUpdateBase(build);
 }

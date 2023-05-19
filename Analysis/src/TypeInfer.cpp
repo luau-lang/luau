@@ -18,7 +18,6 @@
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypePack.h"
-#include "Luau/TypeReduction.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/VisitType.h"
 
@@ -269,7 +268,6 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     currentModule.reset(new Module);
     currentModule->name = module.name;
     currentModule->humanReadableName = module.humanReadableName;
-    currentModule->reduction = std::make_unique<TypeReduction>(NotNull{&currentModule->internalTypes}, builtinTypes, NotNull{iceHandler});
     currentModule->type = module.type;
     currentModule->allocator = module.allocator;
     currentModule->names = module.names;
@@ -4842,7 +4840,7 @@ TypeId TypeChecker::instantiate(const ScopePtr& scope, TypeId ty, Location locat
     ty = follow(ty);
 
     const FunctionType* ftv = get<FunctionType>(ty);
-    if (ftv && ftv->hasNoGenerics)
+    if (ftv && ftv->hasNoFreeOrGenericTypes)
         return ty;
 
     Instantiation instantiation{log, &currentModule->internalTypes, scope->level, /*scope*/ nullptr};

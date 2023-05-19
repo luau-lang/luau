@@ -267,7 +267,17 @@ struct NormalizedType
 
     NormalizedType(NormalizedType&&) = default;
     NormalizedType& operator=(NormalizedType&&) = default;
+
+    // IsType functions
+
+    /// Returns true if the type is a subtype of function.  This includes any and unknown.
+    bool isFunction() const;
+
+    /// Returns true if the type is a subtype of number.  This includes any and unknown.
+    bool isNumber() const;
 };
+
+
 
 class Normalizer
 {
