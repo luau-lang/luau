@@ -494,7 +494,7 @@ struct NormalizeFixture : Fixture
             REQUIRE(node);
             AstStatTypeAlias* alias = node->as<AstStatTypeAlias>();
             REQUIRE(alias);
-            TypeId* originalTy = getMainModule()->astOriginalResolvedTypes.find(alias->type);
+            TypeId* originalTy = getMainModule()->astResolvedTypes.find(alias->type);
             REQUIRE(originalTy);
             return normalizer.normalize(*originalTy);
         }
@@ -732,15 +732,11 @@ TEST_CASE_FIXTURE(NormalizeFixture, "narrow_union_of_classes_with_intersection")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_metatables_where_the_metatable_is_top_or_bottom")
 {
-    ScopedFastFlag sff{"LuauNormalizeMetatableFixes", true};
-
     CHECK("{ @metatable *error-type*, {|  |} }" == toString(normal("Mt<{}, any> & Mt<{}, err>")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "crazy_metatable")
 {
-    ScopedFastFlag sff{"LuauNormalizeMetatableFixes", true};
-
     CHECK("never" == toString(normal("Mt<{}, number> & Mt<{}, string>")));
 }
 

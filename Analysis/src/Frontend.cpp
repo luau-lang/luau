@@ -16,7 +16,6 @@
 #include "Luau/TimeTrace.h"
 #include "Luau/TypeChecker2.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeReduction.h"
 #include "Luau/Variant.h"
 
 #include <algorithm>
@@ -622,7 +621,6 @@ CheckResult Frontend::check_DEPRECATED(const ModuleName& name, std::optional<Fro
             module->astOriginalCallTypes.clear();
             module->astOverloadResolvedTypes.clear();
             module->astResolvedTypes.clear();
-            module->astOriginalResolvedTypes.clear();
             module->astResolvedTypePacks.clear();
             module->astScopes.clear();
 
@@ -1138,7 +1136,6 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         module->astOriginalCallTypes.clear();
         module->astOverloadResolvedTypes.clear();
         module->astResolvedTypes.clear();
-        module->astOriginalResolvedTypes.clear();
         module->astResolvedTypePacks.clear();
         module->astScopes.clear();
 
@@ -1311,7 +1308,6 @@ ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle
     ModulePtr result = std::make_shared<Module>();
     result->name = sourceModule.name;
     result->humanReadableName = sourceModule.humanReadableName;
-    result->reduction = std::make_unique<TypeReduction>(NotNull{&result->internalTypes}, builtinTypes, iceHandler);
 
     std::unique_ptr<DcrLogger> logger;
     if (recordJsonLog)
@@ -1365,11 +1361,17 @@ ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle
 
     Luau::check(builtinTypes, NotNull{&unifierState}, logger.get(), sourceModule, result.get());
 
-    // Ideally we freeze the arenas before the call into Luau::check, but TypeReduction
-    // needs to allocate new types while Luau::check is in progress, so here we are.
+    // It would be nice if we could freeze the arenas before doing type
+    // checking, but we'll have to do some work to get there.
     //
-    // It does mean that mutations to the type graph can happen after the constraints
-    // have been solved, which will cause hard-to-debug problems. We should revisit this.
+    // TypeChecker2 sometimes needs to allocate TypePacks via extendTypePack()
+    // in order to do its thing.  We can rework that code to instead allocate
+    // into a temporary arena as long as we can prove that the allocated types
+    // and packs can never find their way into an error.
+    //
+    // Notably, we would first need to get to a place where TypeChecker2 is
+    // never in the position of dealing with a FreeType.  They should all be
+    // bound to something by the time constraints are solved.
     freeze(result->internalTypes);
     freeze(result->interfaceTypes);
 

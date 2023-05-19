@@ -308,6 +308,12 @@ public:
     // used.  Else we use the embedded Scope*.
     bool useScopes = false;
 
+    // It is sometimes the case under DCR that we speculatively rebind
+    // GenericTypes to other types as though they were free.  We mark logs that
+    // contain these kinds of substitutions as radioactive so that we know that
+    // we must never commit one.
+    bool radioactive = false;
+
     // Used to avoid infinite recursion when types are cyclic.
     // Shared with all the descendent TxnLogs.
     std::vector<std::pair<TypeOrPackId, TypeOrPackId>>* sharedSeen;

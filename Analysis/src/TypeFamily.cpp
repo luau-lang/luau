@@ -7,6 +7,10 @@
 #include "Luau/TxnLog.h"
 #include "Luau/Substitution.h"
 #include "Luau/ToString.h"
+#include "Luau/TypeUtils.h"
+#include "Luau/Unifier.h"
+#include "Luau/Instantiation.h"
+#include "Luau/Normalize.h"
 
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyGraphReductionMaximumSteps, 1'000'000);
 
@@ -28,6 +32,11 @@ struct InstanceCollector : TypeOnceVisitor
         // first.
         tys.push_front(ty);
         return true;
+    }
+
+    bool visit(TypeId ty, const ClassType&) override
+    {
+        return false;
     }
 
     bool visit(TypePackId tp, const TypeFamilyInstanceTypePack&) override
@@ -52,20 +61,24 @@ struct FamilyReducer
     Location location;
     NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtins;
-    TxnLog* log = nullptr;
-    NotNull<const TxnLog> reducerLog;
+    TxnLog* parentLog = nullptr;
+    TxnLog log;
     bool force = false;
+    NotNull<Scope> scope;
+    NotNull<Normalizer> normalizer;
 
     FamilyReducer(std::deque<TypeId> queuedTys, std::deque<TypePackId> queuedTps, Location location, NotNull<TypeArena> arena,
-        NotNull<BuiltinTypes> builtins, TxnLog* log = nullptr, bool force = false)
+        NotNull<BuiltinTypes> builtins, NotNull<Scope> scope, NotNull<Normalizer> normalizer, TxnLog* parentLog = nullptr, bool force = false)
         : queuedTys(std::move(queuedTys))
         , queuedTps(std::move(queuedTps))
         , location(location)
         , arena(arena)
         , builtins(builtins)
-        , log(log)
-        , reducerLog(NotNull{log ? log : TxnLog::empty()})
+        , parentLog(parentLog)
+        , log(parentLog)
         , force(force)
+        , scope(scope)
+        , normalizer(normalizer)
     {
     }
 
@@ -78,16 +91,16 @@ struct FamilyReducer
 
     SkipTestResult testForSkippability(TypeId ty)
     {
-        ty = reducerLog->follow(ty);
+        ty = log.follow(ty);
 
-        if (reducerLog->is<TypeFamilyInstanceType>(ty))
+        if (log.is<TypeFamilyInstanceType>(ty))
         {
             if (!irreducible.contains(ty))
                 return SkipTestResult::Defer;
             else
                 return SkipTestResult::Irreducible;
         }
-        else if (reducerLog->is<GenericType>(ty))
+        else if (log.is<GenericType>(ty))
         {
             return SkipTestResult::Irreducible;
         }
@@ -97,16 +110,16 @@ struct FamilyReducer
 
     SkipTestResult testForSkippability(TypePackId ty)
     {
-        ty = reducerLog->follow(ty);
+        ty = log.follow(ty);
 
-        if (reducerLog->is<TypeFamilyInstanceTypePack>(ty))
+        if (log.is<TypeFamilyInstanceTypePack>(ty))
         {
             if (!irreducible.contains(ty))
                 return SkipTestResult::Defer;
             else
                 return SkipTestResult::Irreducible;
         }
-        else if (reducerLog->is<GenericTypePack>(ty))
+        else if (log.is<GenericTypePack>(ty))
         {
             return SkipTestResult::Irreducible;
         }
@@ -117,8 +130,8 @@ struct FamilyReducer
     template<typename T>
     void replace(T subject, T replacement)
     {
-        if (log)
-            log->replace(subject, Unifiable::Bound{replacement});
+        if (parentLog)
+            parentLog->replace(subject, Unifiable::Bound{replacement});
         else
             asMutable(subject)->ty.template emplace<Unifiable::Bound<T>>(replacement);
 
@@ -208,37 +221,38 @@ struct FamilyReducer
 
     void stepType()
     {
-        TypeId subject = reducerLog->follow(queuedTys.front());
+        TypeId subject = log.follow(queuedTys.front());
         queuedTys.pop_front();
 
         if (irreducible.contains(subject))
             return;
 
-        if (const TypeFamilyInstanceType* tfit = reducerLog->get<TypeFamilyInstanceType>(subject))
+        if (const TypeFamilyInstanceType* tfit = log.get<TypeFamilyInstanceType>(subject))
         {
             if (!testParameters(subject, tfit))
                 return;
 
-            TypeFamilyReductionResult<TypeId> result = tfit->family->reducer(tfit->typeArguments, tfit->packArguments, arena, builtins, reducerLog);
+            TypeFamilyReductionResult<TypeId> result =
+                tfit->family->reducer(tfit->typeArguments, tfit->packArguments, arena, builtins, NotNull{&log}, scope, normalizer);
             handleFamilyReduction(subject, result);
         }
     }
 
     void stepPack()
     {
-        TypePackId subject = reducerLog->follow(queuedTps.front());
+        TypePackId subject = log.follow(queuedTps.front());
         queuedTps.pop_front();
 
         if (irreducible.contains(subject))
             return;
 
-        if (const TypeFamilyInstanceTypePack* tfit = reducerLog->get<TypeFamilyInstanceTypePack>(subject))
+        if (const TypeFamilyInstanceTypePack* tfit = log.get<TypeFamilyInstanceTypePack>(subject))
         {
             if (!testParameters(subject, tfit))
                 return;
 
             TypeFamilyReductionResult<TypePackId> result =
-                tfit->family->reducer(tfit->typeArguments, tfit->packArguments, arena, builtins, reducerLog);
+                tfit->family->reducer(tfit->typeArguments, tfit->packArguments, arena, builtins, NotNull{&log}, scope, normalizer);
             handleFamilyReduction(subject, result);
         }
     }
@@ -253,9 +267,9 @@ struct FamilyReducer
 };
 
 static FamilyGraphReductionResult reduceFamiliesInternal(std::deque<TypeId> queuedTys, std::deque<TypePackId> queuedTps, Location location,
-    NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, TxnLog* log, bool force)
+    NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, NotNull<Scope> scope, NotNull<Normalizer> normalizer, TxnLog* log, bool force)
 {
-    FamilyReducer reducer{std::move(queuedTys), std::move(queuedTps), location, arena, builtins, log, force};
+    FamilyReducer reducer{std::move(queuedTys), std::move(queuedTps), location, arena, builtins, scope, normalizer, log, force};
     int iterationCount = 0;
 
     while (!reducer.done())
@@ -273,8 +287,8 @@ static FamilyGraphReductionResult reduceFamiliesInternal(std::deque<TypeId> queu
     return std::move(reducer.result);
 }
 
-FamilyGraphReductionResult reduceFamilies(
-    TypeId entrypoint, Location location, NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, TxnLog* log, bool force)
+FamilyGraphReductionResult reduceFamilies(TypeId entrypoint, Location location, NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins,
+    NotNull<Scope> scope, NotNull<Normalizer> normalizer, TxnLog* log, bool force)
 {
     InstanceCollector collector;
 
@@ -287,11 +301,11 @@ FamilyGraphReductionResult reduceFamilies(
         return FamilyGraphReductionResult{};
     }
 
-    return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), location, arena, builtins, log, force);
+    return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), location, arena, builtins, scope, normalizer, log, force);
 }
 
-FamilyGraphReductionResult reduceFamilies(
-    TypePackId entrypoint, Location location, NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, TxnLog* log, bool force)
+FamilyGraphReductionResult reduceFamilies(TypePackId entrypoint, Location location, NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins,
+    NotNull<Scope> scope, NotNull<Normalizer> normalizer, TxnLog* log, bool force)
 {
     InstanceCollector collector;
 
@@ -304,7 +318,113 @@ FamilyGraphReductionResult reduceFamilies(
         return FamilyGraphReductionResult{};
     }
 
-    return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), location, arena, builtins, log, force);
+    return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), location, arena, builtins, scope, normalizer, log, force);
+}
+
+bool isPending(TypeId ty, NotNull<TxnLog> log)
+{
+    return log->is<FreeType>(ty) || log->is<BlockedType>(ty) || log->is<PendingExpansionType>(ty) || log->is<TypeFamilyInstanceType>(ty);
+}
+
+TypeFamilyReductionResult<TypeId> addFamilyFn(std::vector<TypeId> typeParams, std::vector<TypePackId> packParams, NotNull<TypeArena> arena,
+    NotNull<BuiltinTypes> builtins, NotNull<TxnLog> log, NotNull<Scope> scope, NotNull<Normalizer> normalizer)
+{
+    if (typeParams.size() != 2 || !packParams.empty())
+    {
+        // TODO: ICE?
+        LUAU_ASSERT(false);
+        return {std::nullopt, true, {}, {}};
+    }
+
+    TypeId lhsTy = log->follow(typeParams.at(0));
+    TypeId rhsTy = log->follow(typeParams.at(1));
+
+    if (isNumber(lhsTy) && isNumber(rhsTy))
+    {
+        return {builtins->numberType, false, {}, {}};
+    }
+    else if (log->is<AnyType>(lhsTy) || log->is<AnyType>(rhsTy))
+    {
+        return {builtins->anyType, false, {}, {}};
+    }
+    else if (log->is<ErrorType>(lhsTy) || log->is<ErrorType>(rhsTy))
+    {
+        return {builtins->errorRecoveryType(), false, {}, {}};
+    }
+    else if (log->is<NeverType>(lhsTy) || log->is<NeverType>(rhsTy))
+    {
+        return {builtins->neverType, false, {}, {}};
+    }
+    else if (isPending(lhsTy, log))
+    {
+        return {std::nullopt, false, {lhsTy}, {}};
+    }
+    else if (isPending(rhsTy, log))
+    {
+        return {std::nullopt, false, {rhsTy}, {}};
+    }
+
+    // findMetatableEntry demands the ability to emit errors, so we must give it
+    // the necessary state to do that, even if we intend to just eat the errors.
+    ErrorVec dummy;
+
+    std::optional<TypeId> addMm = findMetatableEntry(builtins, dummy, lhsTy, "__add", Location{});
+    bool reversed = false;
+    if (!addMm)
+    {
+        addMm = findMetatableEntry(builtins, dummy, rhsTy, "__add", Location{});
+        reversed = true;
+    }
+
+    if (!addMm)
+        return {std::nullopt, true, {}, {}};
+
+    if (isPending(log->follow(*addMm), log))
+        return {std::nullopt, false, {log->follow(*addMm)}, {}};
+
+    const FunctionType* mmFtv = log->get<FunctionType>(log->follow(*addMm));
+    if (!mmFtv)
+        return {std::nullopt, true, {}, {}};
+
+    Instantiation instantiation{log.get(), arena.get(), TypeLevel{}, scope.get()};
+    if (std::optional<TypeId> instantiatedAddMm = instantiation.substitute(log->follow(*addMm)))
+    {
+        if (const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedAddMm))
+        {
+            std::vector<TypeId> inferredArgs;
+            if (!reversed)
+                inferredArgs = {lhsTy, rhsTy};
+            else
+                inferredArgs = {rhsTy, lhsTy};
+
+            TypePackId inferredArgPack = arena->addTypePack(std::move(inferredArgs));
+            Unifier u{normalizer, Mode::Strict, scope, Location{}, Variance::Covariant, log.get()};
+            u.tryUnify(inferredArgPack, instantiatedMmFtv->argTypes);
+
+            if (std::optional<TypeId> ret = first(instantiatedMmFtv->retTypes); ret && u.errors.empty())
+            {
+                return {u.log.follow(*ret), false, {}, {}};
+            }
+            else
+            {
+                return {std::nullopt, true, {}, {}};
+            }
+        }
+        else
+        {
+            return {builtins->errorRecoveryType(), false, {}, {}};
+        }
+    }
+    else
+    {
+        // TODO: Not the nicest logic here.
+        return {std::nullopt, true, {}, {}};
+    }
+}
+
+BuiltinTypeFamilies::BuiltinTypeFamilies()
+    : addFamily{"Add", addFamilyFn}
+{
 }
 
 } // namespace Luau

@@ -2,7 +2,6 @@
 #include "Luau/Scope.h"
 #include "Luau/Type.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeReduction.h"
 #include "Luau/VisitType.h"
 
 #include "Fixture.h"

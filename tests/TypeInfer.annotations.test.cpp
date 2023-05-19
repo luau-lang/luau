@@ -736,6 +736,18 @@ TEST_CASE_FIXTURE(Fixture, "luau_print_is_not_special_without_the_flag")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "luau_print_incomplete")
+{
+    ScopedFastFlag sffs{"DebugLuauMagicTypes", true};
+
+    CheckResult result = check(R"(
+        local a: _luau_print
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("_luau_print requires one generic parameter", toString(result.errors[0]));
+}
+
 TEST_CASE_FIXTURE(Fixture, "instantiate_type_fun_should_not_trip_rbxassert")
 {
     CheckResult result = check(R"(

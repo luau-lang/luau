@@ -73,8 +73,6 @@ void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int
         build.mov(rax, qword[ci + offsetof(CallInfo, top)]);
         build.mov(qword[rState + offsetof(lua_State, top)], rax);
 
-        build.mov(rax, qword[proto + offsetofProtoExecData]); // We'll need this value later
-
         // But if it is vararg, update it to 'argi'
         Label skipVararg;
 
@@ -84,9 +82,13 @@ void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int
         build.mov(qword[rState + offsetof(lua_State, top)], argi);
         build.setLabel(skipVararg);
 
-        // Check native function data
+        // Get native function entry
+        build.mov(rax, qword[proto + offsetof(Proto, exectarget)]);
         build.test(rax, rax);
         build.jcc(ConditionX64::Zero, helpers.continueCallInVm);
+
+        // Mark call frame as custom
+        build.mov(dword[ci + offsetof(CallInfo, flags)], LUA_CALLINFO_CUSTOM);
 
         // Switch current constants
         build.mov(rConstants, qword[proto + offsetof(Proto, k)]);
@@ -95,7 +97,7 @@ void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int
         build.mov(rdx, qword[proto + offsetof(Proto, code)]);
         build.mov(sCode, rdx);
 
-        build.jmp(qword[rax + offsetof(NativeProto, entryTarget)]);
+        build.jmp(rax);
     }
 
     build.setLabel(cFuncCall);
@@ -294,8 +296,9 @@ void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, i
 
     build.mov(proto, qword[rax + offsetof(Closure, l.p)]);
 
-    build.mov(execdata, qword[proto + offsetofProtoExecData]);
-    build.test(execdata, execdata);
+    build.mov(execdata, qword[proto + offsetof(Proto, execdata)]);
+
+    build.test(byte[cip + offsetof(CallInfo, flags)], LUA_CALLINFO_CUSTOM);
     build.jcc(ConditionX64::Zero, helpers.exitContinueVm); // Continue in interpreter if function has no native data
 
     // Change constants
@@ -309,13 +312,11 @@ void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, i
 
     // To get instruction index from instruction pointer, we need to divide byte offset by 4
     // But we will actually need to scale instruction index by 4 back to byte offset later so it cancels out
-    // Note that we're computing negative offset here (code-savedpc) so that we can add it to NativeProto address, as we use reverse indexing
-    build.sub(rdx, rax);
+    build.sub(rax, rdx);
 
     // Get new instruction location and jump to it
-    LUAU_ASSERT(offsetof(NativeProto, instOffsets) == 0);
-    build.mov(edx, dword[execdata + rdx]);
-    build.add(rdx, qword[execdata + offsetof(NativeProto, instBase)]);
+    build.mov(edx, dword[execdata + rax]);
+    build.add(rdx, qword[proto + offsetof(Proto, exectarget)]);
     build.jmp(rdx);
 }
 

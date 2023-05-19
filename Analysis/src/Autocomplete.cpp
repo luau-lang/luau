@@ -7,7 +7,6 @@
 #include "Luau/ToString.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
-#include "Luau/TypeReduction.h"
 
 #include <algorithm>
 #include <unordered_set>

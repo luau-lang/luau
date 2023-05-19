@@ -92,7 +92,6 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/EmitBuiltinsX64.cpp
     CodeGen/src/EmitCommonX64.cpp
     CodeGen/src/EmitInstructionX64.cpp
-    CodeGen/src/Fallbacks.cpp
     CodeGen/src/IrAnalysis.cpp
     CodeGen/src/IrBuilder.cpp
     CodeGen/src/IrCallWrapperX64.cpp
@@ -123,8 +122,6 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/EmitCommonA64.h
     CodeGen/src/EmitCommonX64.h
     CodeGen/src/EmitInstructionX64.h
-    CodeGen/src/Fallbacks.h
-    CodeGen/src/FallbacksProlog.h
     CodeGen/src/IrLoweringA64.h
     CodeGen/src/IrLoweringX64.h
     CodeGen/src/IrRegAllocA64.h
@@ -171,6 +168,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/RecursionCounter.h
     Analysis/include/Luau/RequireTracer.h
     Analysis/include/Luau/Scope.h
+    Analysis/include/Luau/Simplify.h
     Analysis/include/Luau/Substitution.h
     Analysis/include/Luau/Symbol.h
     Analysis/include/Luau/ToDot.h
@@ -185,7 +183,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/TypeFamily.h
     Analysis/include/Luau/TypeInfer.h
     Analysis/include/Luau/TypePack.h
-    Analysis/include/Luau/TypeReduction.h
     Analysis/include/Luau/TypeUtils.h
     Analysis/include/Luau/Type.h
     Analysis/include/Luau/Unifiable.h
@@ -222,6 +219,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Quantify.cpp
     Analysis/src/RequireTracer.cpp
     Analysis/src/Scope.cpp
+    Analysis/src/Simplify.cpp
     Analysis/src/Substitution.cpp
     Analysis/src/Symbol.cpp
     Analysis/src/ToDot.cpp
@@ -236,7 +234,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/TypeFamily.cpp
     Analysis/src/TypeInfer.cpp
     Analysis/src/TypePack.cpp
-    Analysis/src/TypeReduction.cpp
     Analysis/src/TypeUtils.cpp
     Analysis/src/Type.cpp
     Analysis/src/Unifiable.cpp
@@ -380,6 +377,7 @@ if(TARGET Luau.UnitTest)
         tests/Parser.test.cpp
         tests/RequireTracer.test.cpp
         tests/RuntimeLimits.test.cpp
+        tests/Simplify.test.cpp
         tests/StringUtils.test.cpp
         tests/Symbol.test.cpp
         tests/ToDot.test.cpp
@@ -414,7 +412,6 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.unionTypes.test.cpp
         tests/TypeInfer.unknownnever.test.cpp
         tests/TypePack.test.cpp
-        tests/TypeReduction.test.cpp
         tests/TypeVar.test.cpp
         tests/Variant.test.cpp
         tests/VisitType.test.cpp

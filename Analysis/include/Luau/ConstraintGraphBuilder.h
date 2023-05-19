@@ -188,6 +188,7 @@ struct ConstraintGraphBuilder
     Inference check(const ScopePtr& scope, AstExprGlobal* global);
     Inference check(const ScopePtr& scope, AstExprIndexName* indexName);
     Inference check(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
+    Inference check(const ScopePtr& scope, AstExprFunction* func, std::optional<TypeId> expectedType);
     Inference check(const ScopePtr& scope, AstExprUnary* unary);
     Inference check(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
     Inference check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType);
@@ -213,7 +214,8 @@ struct ConstraintGraphBuilder
         ScopePtr bodyScope;
     };
 
-    FunctionSignature checkFunctionSignature(const ScopePtr& parent, AstExprFunction* fn, std::optional<TypeId> expectedType = {});
+    FunctionSignature checkFunctionSignature(
+        const ScopePtr& parent, AstExprFunction* fn, std::optional<TypeId> expectedType = {}, std::optional<Location> originalName = {});
 
     /**
      * Checks the body of a function expression.

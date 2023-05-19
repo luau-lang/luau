@@ -5,7 +5,6 @@
 
 #include "CodeGenUtils.h"
 #include "CustomExecUtils.h"
-#include "Fallbacks.h"
 
 #include "lbuiltins.h"
 #include "lgc.h"
@@ -15,8 +14,6 @@
 
 #include <math.h>
 #include <string.h>
-
-#define CODEGEN_SET_FALLBACK(op) data.context.fallback[op] = {execute_##op}
 
 namespace Luau
 {
@@ -33,27 +30,7 @@ NativeState::NativeState()
 
 NativeState::~NativeState() = default;
 
-void initFallbackTable(NativeState& data)
-{
-    // When fallback is completely removed, remove it from includeInsts list in lvmexecute_split.py
-    CODEGEN_SET_FALLBACK(LOP_NEWCLOSURE);
-    CODEGEN_SET_FALLBACK(LOP_NAMECALL);
-    CODEGEN_SET_FALLBACK(LOP_FORGPREP);
-    CODEGEN_SET_FALLBACK(LOP_GETVARARGS);
-    CODEGEN_SET_FALLBACK(LOP_DUPCLOSURE);
-    CODEGEN_SET_FALLBACK(LOP_PREPVARARGS);
-    CODEGEN_SET_FALLBACK(LOP_BREAK);
-    CODEGEN_SET_FALLBACK(LOP_SETLIST);
-
-    // Fallbacks that are called from partial implementation of an instruction
-    // TODO: these fallbacks should be replaced with special functions that exclude the (redundantly executed) fast path from the fallback
-    CODEGEN_SET_FALLBACK(LOP_GETGLOBAL);
-    CODEGEN_SET_FALLBACK(LOP_SETGLOBAL);
-    CODEGEN_SET_FALLBACK(LOP_GETTABLEKS);
-    CODEGEN_SET_FALLBACK(LOP_SETTABLEKS);
-}
-
-void initHelperFunctions(NativeState& data)
+void initFunctions(NativeState& data)
 {
     static_assert(sizeof(data.context.luauF_table) == sizeof(luauF_table), "fastcall tables are not of the same length");
     memcpy(data.context.luauF_table, luauF_table, sizeof(luauF_table));
@@ -115,6 +92,19 @@ void initHelperFunctions(NativeState& data)
 
     data.context.callFallback = callFallback;
     data.context.returnFallback = returnFallback;
+
+    data.context.executeGETGLOBAL = executeGETGLOBAL;
+    data.context.executeSETGLOBAL = executeSETGLOBAL;
+    data.context.executeGETTABLEKS = executeGETTABLEKS;
+    data.context.executeSETTABLEKS = executeSETTABLEKS;
+
+    data.context.executeNEWCLOSURE = executeNEWCLOSURE;
+    data.context.executeNAMECALL = executeNAMECALL;
+    data.context.executeFORGPREP = executeFORGPREP;
+    data.context.executeGETVARARGS = executeGETVARARGS;
+    data.context.executeDUPCLOSURE = executeDUPCLOSURE;
+    data.context.executePREPVARARGS = executePREPVARARGS;
+    data.context.executeSETLIST = executeSETLIST;
 }
 
 } // namespace CodeGen

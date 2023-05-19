@@ -1060,4 +1060,14 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "type_param_overflow")
+{
+    CheckResult result = check(R"(
+        type Two<T,U> = { a: T, b: U }
+        local x: Two<number, string, number> = { a = 1, b = 'c' }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
 TEST_SUITE_END();

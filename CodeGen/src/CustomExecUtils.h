@@ -46,21 +46,6 @@ inline void destroyNativeState(lua_State* L)
     delete state;
 }
 
-inline NativeProto* getProtoExecData(Proto* proto)
-{
-    return (NativeProto*)proto->execdata;
-}
-
-inline void setProtoExecData(Proto* proto, NativeProto* nativeProto)
-{
-    if (nativeProto)
-        LUAU_ASSERT(proto->execdata == nullptr);
-
-    proto->execdata = nativeProto;
-}
-
-#define offsetofProtoExecData offsetof(Proto, execdata)
-
 #else
 
 inline lua_ExecutionCallbacks* getExecutionCallbacks(lua_State* L)
@@ -81,15 +66,6 @@ inline NativeState* createNativeState(lua_State* L)
 }
 
 inline void destroyNativeState(lua_State* L) {}
-
-inline NativeProto* getProtoExecData(Proto* proto)
-{
-    return nullptr;
-}
-
-inline void setProtoExecData(Proto* proto, NativeProto* nativeProto) {}
-
-#define offsetofProtoExecData 0
 
 #endif
 

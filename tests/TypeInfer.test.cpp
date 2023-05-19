@@ -267,10 +267,7 @@ TEST_CASE_FIXTURE(Fixture, "should_be_able_to_infer_this_without_stack_overflowi
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-    else
-        LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "exponential_blowup_from_copying_types")

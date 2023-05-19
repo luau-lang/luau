@@ -82,6 +82,8 @@ void TxnLog::concat(TxnLog rhs)
 
     for (auto& [tp, rep] : rhs.typePackChanges)
         typePackChanges[tp] = std::move(rep);
+
+    radioactive |= rhs.radioactive;
 }
 
 void TxnLog::concatAsIntersections(TxnLog rhs, NotNull<TypeArena> arena)
@@ -103,6 +105,8 @@ void TxnLog::concatAsIntersections(TxnLog rhs, NotNull<TypeArena> arena)
 
     for (auto& [tp, rep] : rhs.typePackChanges)
         typePackChanges[tp] = std::move(rep);
+
+    radioactive |= rhs.radioactive;
 }
 
 void TxnLog::concatAsUnion(TxnLog rhs, NotNull<TypeArena> arena)
@@ -199,10 +203,14 @@ void TxnLog::concatAsUnion(TxnLog rhs, NotNull<TypeArena> arena)
 
     for (auto& [tp, rep] : rhs.typePackChanges)
         typePackChanges[tp] = std::move(rep);
+
+    radioactive |= rhs.radioactive;
 }
 
 void TxnLog::commit()
 {
+    LUAU_ASSERT(!radioactive);
+
     for (auto& [ty, rep] : typeVarChanges)
     {
         if (!rep->dead)
@@ -233,6 +241,8 @@ TxnLog TxnLog::inverse()
 
     for (auto& [tp, _rep] : typePackChanges)
         inversed.typePackChanges[tp] = std::make_unique<PendingTypePack>(*tp);
+
+    inversed.radioactive = radioactive;
 
     return inversed;
 }
@@ -293,7 +303,8 @@ void TxnLog::popSeen(TypeOrPackId lhs, TypeOrPackId rhs)
 
 PendingType* TxnLog::queue(TypeId ty)
 {
-    LUAU_ASSERT(!ty->persistent);
+    if (ty->persistent)
+        radioactive = true;
 
     // Explicitly don't look in ancestors. If we have discovered something new
     // about this type, we don't want to mutate the parent's state.
@@ -309,7 +320,8 @@ PendingType* TxnLog::queue(TypeId ty)
 
 PendingTypePack* TxnLog::queue(TypePackId tp)
 {
-    LUAU_ASSERT(!tp->persistent);
+    if (tp->persistent)
+        radioactive = true;
 
     // Explicitly don't look in ancestors. If we have discovered something new
     // about this type, we don't want to mutate the parent's state.

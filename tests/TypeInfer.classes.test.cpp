@@ -552,6 +552,8 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
             local x : IndexableClass
             local y = x[true]
         )");
+
+
         CHECK_EQ(
             toString(result.errors[0]), "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible");
     }
@@ -560,6 +562,7 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
             local x : IndexableClass
             x[true] = 42
         )");
+
         CHECK_EQ(
             toString(result.errors[0]), "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible");
     }
@@ -593,7 +596,10 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
             local x : IndexableNumericKeyClass
             x["key"] = 1
         )");
-        CHECK_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'number'");
+        if (FFlag::DebugLuauDeferredConstraintResolution)
+            CHECK_EQ(toString(result.errors[0]), "Key 'key' not found in class 'IndexableNumericKeyClass'");
+        else
+            CHECK_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'number'");
     }
     {
         CheckResult result = check(R"(
@@ -615,7 +621,10 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
             local x : IndexableNumericKeyClass
             local y = x["key"]
         )");
-        CHECK_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'number'");
+        if (FFlag::DebugLuauDeferredConstraintResolution)
+            CHECK_EQ(toString(result.errors[0]), "Key 'key' not found in class 'IndexableNumericKeyClass'");
+        else
+            CHECK_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'number'");
     }
     {
         CheckResult result = check(R"(

@@ -358,6 +358,22 @@ TEST_CASE_FIXTURE(Fixture, "another_recursive_local_function")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+// We had a bug where we'd look up the type of a recursive call using the DFG,
+// not the bindings tables.  As a result, we would erroneously use the
+// generalized type of foo() in this recursive fragment.  This creates a
+// constraint cycle that doesn't always work itself out.
+//
+// The fix is for the DFG node within the scope of foo() to retain the
+// ungeneralized type of foo.
+TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_calls_must_refer_to_the_ungeneralized_type")
+{
+    CheckResult result = check(R"(
+        function foo()
+            string.format('%s: %s', "51", foo())
+        end
+    )");
+}
+
 TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_rets")
 {
     CheckResult result = check(R"(
@@ -1029,7 +1045,7 @@ TEST_CASE_FIXTURE(Fixture, "no_lossy_function_type")
     LUAU_REQUIRE_NO_ERRORS(result);
     TypeId type = requireTypeAtPosition(Position(6, 14));
     CHECK_EQ("(tbl, number, number) -> number", toString(type));
-    auto ftv = get<FunctionType>(type);
+    auto ftv = get<FunctionType>(follow(type));
     REQUIRE(ftv);
     CHECK(ftv->hasSelf);
 }
@@ -1967,7 +1983,7 @@ TEST_CASE_FIXTURE(Fixture, "inner_frees_become_generic_in_dcr")
     LUAU_REQUIRE_NO_ERRORS(result);
     std::optional<TypeId> ty = findTypeAtPosition(Position{3, 19});
     REQUIRE(ty);
-    CHECK(get<GenericType>(*ty));
+    CHECK(get<GenericType>(follow(*ty)));
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_exprs_are_generalized_at_signature_scope_not_enclosing")
