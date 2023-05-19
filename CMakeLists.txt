@@ -143,6 +143,9 @@ endif()
 
 if(LUAU_NATIVE)
     target_compile_definitions(Luau.VM PUBLIC LUA_CUSTOM_EXECUTION=1)
+    if(LUAU_EXTERN_C)
+        target_compile_definitions(Luau.CodeGen PUBLIC LUACODEGEN_API=extern\"C\")
+    endif()
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND MSVC_VERSION GREATER_EQUAL 1924)
