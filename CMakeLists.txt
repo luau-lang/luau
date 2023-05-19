@@ -137,14 +137,14 @@ if(LUAU_EXTERN_C)
     # enable extern "C" for VM (lua.h, lualib.h) and Compiler (luacode.h) to make Luau friendlier to use from non-C++ languages
     # note that we enable LUA_USE_LONGJMP=1 as well; otherwise functions like luaL_error will throw C++ exceptions, which can't be done from extern "C" functions
     target_compile_definitions(Luau.VM PUBLIC LUA_USE_LONGJMP=1)
-    target_compile_definitions(Luau.VM PUBLIC LUA_API=extern\"C\")
-    target_compile_definitions(Luau.Compiler PUBLIC LUACODE_API=extern\"C\")
+    target_compile_definitions(Luau.VM PRIVATE LUA_API=extern\"C\")
+    target_compile_definitions(Luau.Compiler PRIVATE LUACODE_API=extern\"C\")
 endif()
 
 if(LUAU_NATIVE)
     target_compile_definitions(Luau.VM PUBLIC LUA_CUSTOM_EXECUTION=1)
     if(LUAU_EXTERN_C)
-        target_compile_definitions(Luau.CodeGen PUBLIC LUACODEGEN_API=extern\"C\")
+        target_compile_definitions(Luau.CodeGen PRIVATE LUACODEGEN_API=extern\"C\")
     endif()
 endif()
 
