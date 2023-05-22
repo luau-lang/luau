@@ -11,6 +11,9 @@
 #define PI (3.14159265358979323846)
 #define RADIANS_PER_DEGREE (PI / 180.0)
 
+#undef TAU
+#define TAU (6.28318530718)
+
 #define PCG32_INC 105
 
 static uint32_t pcg32_random(uint64_t* state)
