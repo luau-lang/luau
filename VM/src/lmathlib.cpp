@@ -445,5 +445,7 @@ int luaopen_math(lua_State* L)
     lua_setfield(L, -2, "pi");
     lua_pushnumber(L, HUGE_VAL);
     lua_setfield(L, -2, "huge");
+    lua_pushnumber(L, TAU);
+    lua_setfield(L, -2, "tau");
     return 1;
 }
