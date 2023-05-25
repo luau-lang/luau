@@ -301,6 +301,9 @@ FamilyGraphReductionResult reduceFamilies(TypeId entrypoint, Location location, 
         return FamilyGraphReductionResult{};
     }
 
+    if (collector.tys.empty() && collector.tps.empty())
+        return {};
+
     return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), location, arena, builtins, scope, normalizer, log, force);
 }
 
@@ -317,6 +320,9 @@ FamilyGraphReductionResult reduceFamilies(TypePackId entrypoint, Location locati
     {
         return FamilyGraphReductionResult{};
     }
+
+    if (collector.tys.empty() && collector.tps.empty())
+        return {};
 
     return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), location, arena, builtins, scope, normalizer, log, force);
 }
@@ -338,8 +344,10 @@ TypeFamilyReductionResult<TypeId> addFamilyFn(std::vector<TypeId> typeParams, st
 
     TypeId lhsTy = log->follow(typeParams.at(0));
     TypeId rhsTy = log->follow(typeParams.at(1));
+    const NormalizedType* normLhsTy = normalizer->normalize(lhsTy);
+    const NormalizedType* normRhsTy = normalizer->normalize(rhsTy);
 
-    if (isNumber(lhsTy) && isNumber(rhsTy))
+    if (normLhsTy && normRhsTy && normLhsTy->isNumber() && normRhsTy->isNumber())
     {
         return {builtins->numberType, false, {}, {}};
     }
@@ -398,7 +406,7 @@ TypeFamilyReductionResult<TypeId> addFamilyFn(std::vector<TypeId> typeParams, st
                 inferredArgs = {rhsTy, lhsTy};
 
             TypePackId inferredArgPack = arena->addTypePack(std::move(inferredArgs));
-            Unifier u{normalizer, Mode::Strict, scope, Location{}, Variance::Covariant, log.get()};
+            Unifier u{normalizer, scope, Location{}, Variance::Covariant, log.get()};
             u.tryUnify(inferredArgPack, instantiatedMmFtv->argTypes);
 
             if (std::optional<TypeId> ret = first(instantiatedMmFtv->retTypes); ret && u.errors.empty())

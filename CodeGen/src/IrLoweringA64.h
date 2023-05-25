@@ -48,7 +48,6 @@ struct IrLoweringA64
     // Operand data lookup helpers
     IrConst constOp(IrOp op) const;
     uint8_t tagOp(IrOp op) const;
-    bool boolOp(IrOp op) const;
     int intOp(IrOp op) const;
     unsigned uintOp(IrOp op) const;
     double doubleOp(IrOp op) const;

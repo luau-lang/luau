@@ -4,7 +4,6 @@
 #include "Luau/IrAnalysis.h"
 #include "Luau/IrUtils.h"
 
-#include "CustomExecUtils.h"
 #include "IrTranslation.h"
 
 #include "lapi.h"
@@ -19,7 +18,7 @@ namespace CodeGen
 constexpr unsigned kNoAssociatedBlockIndex = ~0u;
 
 IrBuilder::IrBuilder()
-    : constantMap({IrConstKind::Bool, ~0ull})
+    : constantMap({IrConstKind::Tag, ~0ull})
 {
 }
 
@@ -410,8 +409,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         break;
     }
     default:
-        LUAU_ASSERT(!"unknown instruction");
-        break;
+        LUAU_ASSERT(!"Unknown instruction");
     }
 }
 
@@ -449,7 +447,7 @@ void IrBuilder::clone(const IrBlock& source, bool removeCurrentTerminator)
             if (const uint32_t* newIndex = instRedir.find(op.index))
                 op.index = *newIndex;
             else
-                LUAU_ASSERT(!"values can only be used if they are defined in the same block");
+                LUAU_ASSERT(!"Values can only be used if they are defined in the same block");
         }
     };
 
@@ -499,14 +497,6 @@ void IrBuilder::clone(const IrBlock& source, bool removeCurrentTerminator)
 IrOp IrBuilder::undef()
 {
     return {IrOpKind::Undef, 0};
-}
-
-IrOp IrBuilder::constBool(bool value)
-{
-    IrConst constant;
-    constant.kind = IrConstKind::Bool;
-    constant.valueBool = value;
-    return constAny(constant, uint64_t(value));
 }
 
 IrOp IrBuilder::constInt(int value)

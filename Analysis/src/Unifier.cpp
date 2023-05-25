@@ -396,11 +396,10 @@ TypeMismatch::Context Unifier::mismatchContext()
     }
 }
 
-Unifier::Unifier(NotNull<Normalizer> normalizer, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance, TxnLog* parentLog)
+Unifier::Unifier(NotNull<Normalizer> normalizer, NotNull<Scope> scope, const Location& location, Variance variance, TxnLog* parentLog)
     : types(normalizer->arena)
     , builtinTypes(normalizer->builtinTypes)
     , normalizer(normalizer)
-    , mode(mode)
     , scope(scope)
     , log(parentLog)
     , location(location)
@@ -421,6 +420,12 @@ static bool isBlocked(const TxnLog& log, TypeId ty)
 {
     ty = log.follow(ty);
     return get<BlockedType>(ty) || get<PendingExpansionType>(ty);
+}
+
+static bool isBlocked(const TxnLog& log, TypePackId tp)
+{
+    tp = log.follow(tp);
+    return get<BlockedTypePack>(tp);
 }
 
 void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool isIntersection)
@@ -1761,6 +1766,19 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
     if (log.haveSeen(superTp, subTp))
         return;
 
+    if (isBlocked(log, subTp) && isBlocked(log, superTp))
+    {
+        blockedTypePacks.push_back(subTp);
+        blockedTypePacks.push_back(superTp);
+    }
+    else if (isBlocked(log, subTp))
+    {
+        blockedTypePacks.push_back(subTp);
+    }
+    else if (isBlocked(log, superTp))
+    {
+        blockedTypePacks.push_back(superTp);
+    }
     if (log.getMutable<FreeTypePack>(superTp))
     {
         if (!occursCheck(superTp, subTp, /* reversed = */ true))
@@ -2795,7 +2813,12 @@ void Unifier::tryUnifyVariadics(TypePackId subTp, TypePackId superTp, bool rever
         if (std::optional<TypePackId> maybeTail = subIter.tail())
         {
             TypePackId tail = follow(*maybeTail);
-            if (get<FreeTypePack>(tail))
+
+            if (isBlocked(log, tail))
+            {
+                blockedTypePacks.push_back(tail);
+            }
+            else if (get<FreeTypePack>(tail))
             {
                 log.replace(tail, BoundTypePack(superTp));
             }
@@ -3094,7 +3117,7 @@ bool Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
 
 Unifier Unifier::makeChildUnifier()
 {
-    Unifier u = Unifier{normalizer, mode, scope, location, variance, &log};
+    Unifier u = Unifier{normalizer, scope, location, variance, &log};
     u.normalize = normalize;
     u.checkInhabited = checkInhabited;
 
@@ -3123,12 +3146,6 @@ void Unifier::reportError(TypeError err)
 {
     errors.push_back(std::move(err));
     failure = true;
-}
-
-
-bool Unifier::isNonstrictMode() const
-{
-    return (mode == Mode::Nonstrict) || (mode == Mode::NoCheck);
 }
 
 void Unifier::checkChildUnifierTypeMismatch(const ErrorVec& innerErrors, TypeId wantedType, TypeId givenType)

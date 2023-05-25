@@ -4,7 +4,6 @@
 #include "Luau/UnwindBuilder.h"
 
 #include "CodeGenUtils.h"
-#include "CustomExecUtils.h"
 
 #include "lbuiltins.h"
 #include "lgc.h"

@@ -1,8 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "CodeGenUtils.h"
 
-#include "CustomExecUtils.h"
-
 #include "lvm.h"
 
 #include "lbuiltins.h"
@@ -268,7 +266,7 @@ Closure* callFallback(lua_State* L, StkId ra, StkId argtop, int nresults)
         ci->savedpc = p->code;
 
         if (LUAU_LIKELY(p->execdata != NULL))
-            ci->flags = LUA_CALLINFO_CUSTOM;
+            ci->flags = LUA_CALLINFO_NATIVE;
 
         return ccl;
     }

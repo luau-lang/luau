@@ -356,7 +356,11 @@ void applySubstitutions(IrFunction& function, IrOp& op)
             src.useCount--;
 
             if (src.useCount == 0)
+            {
+                src.cmd = IrCmd::NOP;
                 removeUse(function, src.a);
+                src.a = {};
+            }
         }
     }
 }
@@ -396,7 +400,7 @@ bool compare(double a, double b, IrCondition cond)
     case IrCondition::NotGreaterEqual:
         return !(a >= b);
     default:
-        LUAU_ASSERT(!"unsupported conidtion");
+        LUAU_ASSERT(!"Unsupported condition");
     }
 
     return false;

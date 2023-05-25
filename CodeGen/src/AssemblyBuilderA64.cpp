@@ -687,6 +687,11 @@ void AssemblyBuilderA64::fcsel(RegisterA64 dst, RegisterA64 src1, RegisterA64 sr
     placeCS("fcsel", dst, src1, src2, cond, 0b11110'01'1, 0b11);
 }
 
+void AssemblyBuilderA64::udf()
+{
+    place0("udf", 0);
+}
+
 bool AssemblyBuilderA64::finalize()
 {
     code.resize(codePos - code.data());

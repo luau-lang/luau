@@ -1922,6 +1922,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_assert_when_the_tarjan_limit_is_exceede
         {"LuauClonePublicInterfaceLess2", true},
         {"LuauSubstitutionReentrant", true},
         {"LuauSubstitutionFixMissingFields", true},
+        {"LuauCloneSkipNonInternalVisit", true},
     };
 
     CheckResult result = check(R"(
@@ -1930,13 +1931,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_assert_when_the_tarjan_limit_is_exceede
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_MESSAGE(get<CodeTooComplex>(result.errors[0]), "Expected CodeTooComplex but got: " << toString(result.errors[0]));
     CHECK(Location({1, 17}, {1, 18}) == result.errors[0].location);
-
-    CHECK_MESSAGE(get<UnificationTooComplex>(result.errors[1]), "Expected UnificationTooComplex but got: " << toString(result.errors[1]));
-    CHECK(Location({0, 0}, {4, 4}) == result.errors[1].location);
 }
 
 /* We had a bug under DCR where instantiated type packs had a nullptr scope.

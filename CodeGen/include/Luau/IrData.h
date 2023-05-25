@@ -283,7 +283,7 @@ enum class IrCmd : uint8_t
     // A: builtin
     // B: Rn (result start)
     // C: Rn (argument start)
-    // D: Rn or Kn or a boolean that's false (optional second argument)
+    // D: Rn or Kn or undef (optional second argument)
     // E: int (argument count)
     // F: int (result count)
     FASTCALL,
@@ -292,7 +292,7 @@ enum class IrCmd : uint8_t
     // A: builtin
     // B: Rn (result start)
     // C: Rn (argument start)
-    // D: Rn or Kn or a boolean that's false (optional second argument)
+    // D: Rn or Kn or undef (optional second argument)
     // E: int (argument count or -1 to use all arguments up to stack top)
     // F: int (result count or -1 to preserve all results and adjust stack top)
     INVOKE_FASTCALL,
@@ -360,39 +360,46 @@ enum class IrCmd : uint8_t
 
     // Guard against tag mismatch
     // A, B: tag
-    // C: block
+    // C: block/undef
     // In final x64 lowering, A can also be Rn
+    // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_TAG,
 
     // Guard against readonly table
     // A: pointer (Table)
-    // B: block
+    // B: block/undef
+    // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_READONLY,
 
     // Guard against table having a metatable
     // A: pointer (Table)
-    // B: block
+    // B: block/undef
+    // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_NO_METATABLE,
 
     // Guard against executing in unsafe environment
-    // A: block
+    // A: block/undef
+    // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_SAFE_ENV,
 
     // Guard against index overflowing the table array size
     // A: pointer (Table)
     // B: int (index)
-    // C: block
+    // C: block/undef
+    // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_ARRAY_SIZE,
 
     // Guard against cached table node slot not matching the actual table node slot for a key
     // A: pointer (LuaNode)
     // B: Kn
-    // C: block
+    // C: block/undef
+    // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_SLOT_MATCH,
 
     // Guard against table node with a linked next node to ensure that our lookup hits the main position of the key
     // A: pointer (LuaNode)
-    // B: block
+    // B: block/undef
+    // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_NODE_NO_NEXT,
 
     // Special operations
@@ -428,7 +435,7 @@ enum class IrCmd : uint8_t
 
     // While capture is a no-op right now, it might be useful to track register/upvalue lifetimes
     // A: Rn or UPn
-    // B: boolean (true for reference capture, false for value capture)
+    // B: unsigned int (1 for reference capture, 0 for value capture)
     CAPTURE,
 
     // Operations that don't have an IR representation yet
@@ -581,7 +588,6 @@ enum class IrCmd : uint8_t
 
 enum class IrConstKind : uint8_t
 {
-    Bool,
     Int,
     Uint,
     Double,
@@ -865,27 +871,6 @@ struct IrFunction
             return std::nullopt;
 
         return value.valueTag;
-    }
-
-    bool boolOp(IrOp op)
-    {
-        IrConst& value = constOp(op);
-
-        LUAU_ASSERT(value.kind == IrConstKind::Bool);
-        return value.valueBool;
-    }
-
-    std::optional<bool> asBoolOp(IrOp op)
-    {
-        if (op.kind != IrOpKind::Constant)
-            return std::nullopt;
-
-        IrConst& value = constOp(op);
-
-        if (value.kind != IrConstKind::Bool)
-            return std::nullopt;
-
-        return value.valueBool;
     }
 
     int intOp(IrOp op)

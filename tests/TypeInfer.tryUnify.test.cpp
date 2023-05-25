@@ -20,7 +20,7 @@ struct TryUnifyFixture : Fixture
     InternalErrorReporter iceHandler;
     UnifierSharedState unifierState{&iceHandler};
     Normalizer normalizer{&arena, builtinTypes, NotNull{&unifierState}};
-    Unifier state{NotNull{&normalizer}, Mode::Strict, NotNull{globalScope.get()}, Location{}, Variance::Covariant};
+    Unifier state{NotNull{&normalizer}, NotNull{globalScope.get()}, Location{}, Variance::Covariant};
 };
 
 TEST_SUITE_BEGIN("TryUnifyTests");

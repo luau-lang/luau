@@ -5796,7 +5796,9 @@ RETURN R3 1
 
 TEST_CASE("InlineRecurseArguments")
 {
-    // we can't inline a function if it's used to compute its own arguments
+    ScopedFastFlag sff("LuauCompileInlineDefer", true);
+
+    // the example looks silly but we preserve it verbatim as it was found by fuzzer for a previous version of the compiler
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a, b)
 end
@@ -5805,15 +5807,82 @@ foo(foo(foo,foo(foo,foo))[foo])
                         1, 2),
         R"(
 DUPCLOSURE R0 K0 ['foo']
-MOVE R2 R0
-MOVE R3 R0
-MOVE R4 R0
-MOVE R5 R0
-MOVE R6 R0
-CALL R4 2 -1
-CALL R2 -1 1
+LOADNIL R3
+LOADNIL R2
 GETTABLE R1 R2 R0
 RETURN R0 0
+)");
+
+    // verify that invocations of the inlined function in any position for computing the arguments to itself compile
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a, b)
+    return a + b
+end
+
+local x, y, z = ...
+
+return foo(foo(x, y), foo(z, 1))
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0 ['foo']
+GETVARARGS R1 3
+ADD R5 R1 R2
+ADDK R6 R3 K1 [1]
+ADD R4 R5 R6
+RETURN R4 1
+)");
+
+    // verify that invocations of the inlined function in any position for computing the arguments to itself compile, including constants and locals
+    // note that foo(k1, k2) doesn't get constant folded, so there's still actual math emitted for some of the calls below
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a, b)
+    return a + b
+end
+
+local x, y, z = ...
+
+return
+    foo(foo(1, 2), 3),
+    foo(1, foo(2, 3)),
+    foo(x, foo(2, 3)),
+    foo(x, foo(y, 3)),
+    foo(x, foo(y, z)),
+    foo(x+0, foo(y, z)),
+    foo(x+0, foo(y+0, z)),
+    foo(x+0, foo(y, z+0)),
+    foo(1, foo(x, y))
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0 ['foo']
+GETVARARGS R1 3
+LOADN R5 3
+ADDK R4 R5 K1 [3]
+LOADN R6 5
+LOADN R7 1
+ADD R5 R7 R6
+LOADN R7 5
+ADD R6 R1 R7
+ADDK R8 R2 K1 [3]
+ADD R7 R1 R8
+ADD R9 R2 R3
+ADD R8 R1 R9
+ADDK R10 R1 K2 [0]
+ADD R11 R2 R3
+ADD R9 R10 R11
+ADDK R11 R1 K2 [0]
+ADDK R13 R2 K2 [0]
+ADD R12 R13 R3
+ADD R10 R11 R12
+ADDK R12 R1 K2 [0]
+ADDK R14 R3 K2 [0]
+ADD R13 R2 R14
+ADD R11 R12 R13
+ADD R13 R1 R2
+LOADN R14 1
+ADD R12 R14 R13
+RETURN R4 9
 )");
 }
 

@@ -113,7 +113,6 @@ target_sources(Luau.CodeGen PRIVATE
 
     CodeGen/src/BitUtils.h
     CodeGen/src/ByteUtils.h
-    CodeGen/src/CustomExecUtils.h
     CodeGen/src/CodeGenUtils.h
     CodeGen/src/CodeGenA64.h
     CodeGen/src/CodeGenX64.h
@@ -404,6 +403,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.primitives.test.cpp
         tests/TypeInfer.provisional.test.cpp
         tests/TypeInfer.refinements.test.cpp
+        tests/TypeInfer.rwprops.test.cpp
         tests/TypeInfer.singletons.test.cpp
         tests/TypeInfer.tables.test.cpp
         tests/TypeInfer.test.cpp

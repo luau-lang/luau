@@ -157,6 +157,8 @@ public:
     void fcmpz(RegisterA64 src);
     void fcsel(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, ConditionA64 cond);
 
+    void udf();
+
     // Run final checks
     bool finalize();
 

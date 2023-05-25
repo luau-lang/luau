@@ -324,4 +324,16 @@ TEST_CASE_FIXTURE(Fixture, "math_operators_and_never")
     CHECK_EQ("<a>(nil, a) -> boolean", toString(requireType("mul")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "compare_never")
+{
+    CheckResult result = check(R"(
+        local function cmp(x: nil, y: number)
+            return x ~= nil and x > y and x < y -- infers boolean | never, which is normalized into boolean
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("(nil, number) -> boolean", toString(requireType("cmp")));
+}
+
 TEST_SUITE_END();
