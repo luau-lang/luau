@@ -300,8 +300,9 @@ enum LuauOpcode
     // A: target register (see FORGLOOP for register layout)
     LOP_FORGPREP_NEXT,
 
-    // removed in v3
-    LOP_DEP_FORGLOOP_NEXT,
+    // NATIVECALL: start executing new function in native code
+    // this is a pseudo-instruction that is never emitted by bytecode compiler, but can be constructed at runtime to accelerate native code dispatch
+    LOP_NATIVECALL,
 
     // GETVARARGS: copy variables into the target register from vararg storage for current function
     // A: target register

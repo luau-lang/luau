@@ -99,6 +99,7 @@ public:
     void call(OperandX64 op);
 
     void int3();
+    void ud2();
 
     void bsr(RegisterX64 dst, OperandX64 src);
     void bsf(RegisterX64 dst, OperandX64 src);

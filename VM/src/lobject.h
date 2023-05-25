@@ -275,6 +275,7 @@ typedef struct Proto
     TString* debugname;
     uint8_t* debuginsn; // a copy of code[] array with just opcodes
 
+    const Instruction* codeentry;
     void* execdata;
     uintptr_t exectarget;
 

@@ -55,4 +55,13 @@ std::vector<TypeId> reduceUnion(const std::vector<TypeId>& types);
  */
 TypeId stripNil(NotNull<BuiltinTypes> builtinTypes, TypeArena& arena, TypeId ty);
 
+template<typename T, typename Ty>
+const T* get(std::optional<Ty> ty)
+{
+    if (ty)
+        return get<T>(*ty);
+    else
+        return nullptr;
+}
+
 } // namespace Luau

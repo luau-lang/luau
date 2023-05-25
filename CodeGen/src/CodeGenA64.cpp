@@ -5,7 +5,6 @@
 #include "Luau/UnwindBuilder.h"
 
 #include "BitUtils.h"
-#include "CustomExecUtils.h"
 #include "NativeState.h"
 #include "EmitCommonA64.h"
 
@@ -95,13 +94,14 @@ static void emitReentry(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     build.ldr(x2, mem(rState, offsetof(lua_State, ci))); // L->ci
 
     // We need to check if the new frame can be executed natively
-    // TOOD: .flags and .savedpc load below can be fused with ldp
+    // TODO: .flags and .savedpc load below can be fused with ldp
     build.ldr(w3, mem(x2, offsetof(CallInfo, flags)));
-    build.tbz(x3, countrz(LUA_CALLINFO_CUSTOM), helpers.exitContinueVm);
+    build.tbz(x3, countrz(LUA_CALLINFO_NATIVE), helpers.exitContinueVm);
 
     build.mov(rClosure, x0);
-    build.ldr(rConstants, mem(x1, offsetof(Proto, k))); // proto->k
-    build.ldr(rCode, mem(x1, offsetof(Proto, code)));   // proto->code
+
+    LUAU_ASSERT(offsetof(Proto, code) == offsetof(Proto, k) + 8);
+    build.ldp(rConstants, rCode, mem(x1, offsetof(Proto, k))); // proto->k, proto->code
 
     // Get instruction index from instruction pointer
     // To get instruction index from instruction pointer, we need to divide byte offset by 4
@@ -145,8 +145,9 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     build.mov(rNativeContext, x3);
 
     build.ldr(rBase, mem(x0, offsetof(lua_State, base))); // L->base
-    build.ldr(rConstants, mem(x1, offsetof(Proto, k)));   // proto->k
-    build.ldr(rCode, mem(x1, offsetof(Proto, code)));     // proto->code
+
+    LUAU_ASSERT(offsetof(Proto, code) == offsetof(Proto, k) + 8);
+    build.ldp(rConstants, rCode, mem(x1, offsetof(Proto, k))); // proto->k, proto->code
 
     build.ldr(x9, mem(x0, offsetof(lua_State, ci)));          // L->ci
     build.ldr(x9, mem(x9, offsetof(CallInfo, func)));         // L->ci->func
@@ -194,7 +195,7 @@ bool initHeaderFunctions(NativeState& data)
     if (!data.codeAllocator.allocate(build.data.data(), int(build.data.size()), reinterpret_cast<const uint8_t*>(build.code.data()),
             int(build.code.size() * sizeof(build.code[0])), data.gateData, data.gateDataSize, codeStart))
     {
-        LUAU_ASSERT(!"failed to create entry function");
+        LUAU_ASSERT(!"Failed to create entry function");
         return false;
     }
 

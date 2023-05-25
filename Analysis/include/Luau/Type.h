@@ -388,7 +388,13 @@ struct Property
     static Property writeonly(TypeId ty);
     static Property rw(TypeId ty);                 // Shared read-write type.
     static Property rw(TypeId read, TypeId write); // Separate read-write type.
-    static std::optional<Property> create(std::optional<TypeId> read, std::optional<TypeId> write);
+
+    // Invariant: at least one of the two optionals are not nullopt!
+    // If the read type is not nullopt, but the write type is, then the property is readonly.
+    // If the read type is nullopt, but the write type is not, then the property is writeonly.
+    // If the read and write types are not nullopt, then the property is read and write.
+    // Otherwise, an assertion where read and write types are both nullopt will be tripped.
+    static Property create(std::optional<TypeId> read, std::optional<TypeId> write);
 
     bool deprecated = false;
     std::string deprecatedSuggestion;
@@ -413,6 +419,8 @@ struct Property
     // TODO: Kill this in favor of exposing `readTy`/`writeTy` directly? If we do, we'll lose the asserts which will be useful while debugging.
     std::optional<TypeId> readType() const;
     std::optional<TypeId> writeType() const;
+
+    bool isShared() const;
 
 private:
     std::optional<TypeId> readTy;
@@ -614,30 +622,26 @@ struct IntersectionType
 struct LazyType
 {
     LazyType() = default;
-    LazyType(std::function<TypeId()> thunk_DEPRECATED, std::function<void(LazyType&)> unwrap)
-        : thunk_DEPRECATED(thunk_DEPRECATED)
-        , unwrap(unwrap)
+    LazyType(std::function<void(LazyType&)> unwrap)
+        : unwrap(unwrap)
     {
     }
 
     // std::atomic is sad and requires a manual copy
     LazyType(const LazyType& rhs)
-        : thunk_DEPRECATED(rhs.thunk_DEPRECATED)
-        , unwrap(rhs.unwrap)
+        : unwrap(rhs.unwrap)
         , unwrapped(rhs.unwrapped.load())
     {
     }
 
     LazyType(LazyType&& rhs) noexcept
-        : thunk_DEPRECATED(std::move(rhs.thunk_DEPRECATED))
-        , unwrap(std::move(rhs.unwrap))
+        : unwrap(std::move(rhs.unwrap))
         , unwrapped(rhs.unwrapped.load())
     {
     }
 
     LazyType& operator=(const LazyType& rhs)
     {
-        thunk_DEPRECATED = rhs.thunk_DEPRECATED;
         unwrap = rhs.unwrap;
         unwrapped = rhs.unwrapped.load();
 
@@ -646,14 +650,11 @@ struct LazyType
 
     LazyType& operator=(LazyType&& rhs) noexcept
     {
-        thunk_DEPRECATED = std::move(rhs.thunk_DEPRECATED);
         unwrap = std::move(rhs.unwrap);
         unwrapped = rhs.unwrapped.load();
 
         return *this;
     }
-
-    std::function<TypeId()> thunk_DEPRECATED;
 
     std::function<void(LazyType&)> unwrap;
     std::atomic<TypeId> unwrapped = nullptr;

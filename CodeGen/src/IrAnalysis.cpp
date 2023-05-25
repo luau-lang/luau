@@ -113,7 +113,7 @@ uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t s
     }
 
     // There must be a next use since there is the last use location
-    LUAU_ASSERT(!"failed to find next use");
+    LUAU_ASSERT(!"Failed to find next use");
     return targetInst.lastUse;
 }
 
@@ -338,7 +338,7 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
         case IrCmd::CAPTURE:
             maybeUse(inst.a);
 
-            if (function.boolOp(inst.b))
+            if (function.uintOp(inst.b) == 1)
                 capturedRegs.set(vmRegOp(inst.a), true);
             break;
         case IrCmd::SETLIST:

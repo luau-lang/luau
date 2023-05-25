@@ -80,6 +80,8 @@ public:
     static const int tnil = 0;
     static const int tboolean = 1;
     static const int tnumber = 3;
+    static const int tstring = 5;
+    static const int ttable = 6;
 };
 
 TEST_SUITE_BEGIN("Optimization");
@@ -1286,8 +1288,8 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "IntEqRemoval")
     IrOp falseBlock = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
-    IrOp value = build.inst(IrCmd::LOAD_INT, build.vmReg(1));
     build.inst(IrCmd::STORE_INT, build.vmReg(1), build.constInt(5));
+    IrOp value = build.inst(IrCmd::LOAD_INT, build.vmReg(1));
     build.inst(IrCmd::JUMP_EQ_INT, value, build.constInt(5), trueBlock, falseBlock);
 
     build.beginBlock(trueBlock);
@@ -1317,8 +1319,8 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NumCmpRemoval")
     IrOp falseBlock = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
-    IrOp value = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1));
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), build.constDouble(4.0));
+    IrOp value = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1));
     build.inst(IrCmd::JUMP_CMP_NUM, value, build.constDouble(8.0), build.cond(IrCondition::Greater), trueBlock, falseBlock);
 
     build.beginBlock(trueBlock);
@@ -1547,6 +1549,50 @@ bb_0:
    STORE_INT R0, %0
    STORE_INT R1, %1
    RETURN 2u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "InvalidateReglinkVersion")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.block(IrBlockKind::Fallback);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(2), build.constTag(tstring));
+    IrOp tv2 = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(2));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(1), tv2);
+    IrOp ft = build.inst(IrCmd::NEW_TABLE);
+    build.inst(IrCmd::STORE_POINTER, build.vmReg(2), ft);
+    build.inst(IrCmd::STORE_TAG, build.vmReg(2), build.constTag(ttable));
+    IrOp tv1 = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(1));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(0), tv1);
+    IrOp tag = build.inst(IrCmd::LOAD_TAG, build.vmReg(0));
+    build.inst(IrCmd::CHECK_TAG, tag, build.constTag(ttable), fallback);
+    build.inst(IrCmd::RETURN, build.constUint(0));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::RETURN, build.constUint(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build, true);
+
+    CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
+bb_0:
+   STORE_TAG R2, tstring
+   %1 = LOAD_TVALUE R2
+   STORE_TVALUE R1, %1
+   %3 = NEW_TABLE
+   STORE_POINTER R2, %3
+   STORE_TAG R2, ttable
+   STORE_TVALUE R0, %1
+   %8 = LOAD_TAG R0
+   CHECK_TAG %8, ttable, bb_fallback_1
+   RETURN 0u
+
+bb_fallback_1:
+   RETURN 1u
 
 )");
 }
@@ -2257,7 +2303,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NoPropagationOfCapturedRegs")
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
-    build.inst(IrCmd::CAPTURE, build.vmReg(0), build.constBool(true));
+    build.inst(IrCmd::CAPTURE, build.vmReg(0), build.constUint(1));
     IrOp op1 = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
     IrOp op2 = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
     IrOp sum = build.inst(IrCmd::ADD_NUM, op1, op2);
@@ -2273,7 +2319,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "NoPropagationOfCapturedRegs")
 
 bb_0:
 ; in regs: R0
-   CAPTURE R0, true
+   CAPTURE R0, 1u
    %1 = LOAD_DOUBLE R0
    %2 = LOAD_DOUBLE R0
    %3 = ADD_NUM %1, %2

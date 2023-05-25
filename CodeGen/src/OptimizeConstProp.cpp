@@ -12,6 +12,7 @@
 #include <vector>
 
 LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
+LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
 
 namespace Luau
 {
@@ -55,6 +56,12 @@ struct ConstPropState
             return info->tag;
 
         return 0xff;
+    }
+
+    void updateTag(IrOp op, uint8_t tag)
+    {
+        if (RegisterInfo* info = tryGetRegisterInfo(op))
+            info->tag = tag;
     }
 
     void saveTag(IrOp op, uint8_t tag)
@@ -202,7 +209,7 @@ struct ConstPropState
         if (RegisterLink* link = instLink.find(instOp.index))
         {
             // Check that the target register hasn't changed the value
-            if (link->version > regs[link->reg].version)
+            if (link->version < regs[link->reg].version)
                 return nullptr;
 
             return link;
@@ -619,13 +626,20 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         if (uint8_t tag = state.tryGetTag(inst.a); tag != 0xff)
         {
             if (tag == b)
-                kill(function, inst);
+            {
+                if (FFlag::DebugLuauAbortingChecks)
+                    replace(function, inst.c, build.undef());
+                else
+                    kill(function, inst);
+            }
             else
+            {
                 replace(function, block, index, {IrCmd::JUMP, inst.c}); // Shows a conflict in assumptions on this path
+            }
         }
         else
         {
-            state.saveTag(inst.a, b); // We can assume the tag value going forward
+            state.updateTag(inst.a, b); // We can assume the tag value going forward
         }
         break;
     }
@@ -633,25 +647,46 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         if (RegisterInfo* info = state.tryGetRegisterInfo(inst.a))
         {
             if (info->knownNotReadonly)
-                kill(function, inst);
+            {
+                if (FFlag::DebugLuauAbortingChecks)
+                    replace(function, inst.b, build.undef());
+                else
+                    kill(function, inst);
+            }
             else
+            {
                 info->knownNotReadonly = true;
+            }
         }
         break;
     case IrCmd::CHECK_NO_METATABLE:
         if (RegisterInfo* info = state.tryGetRegisterInfo(inst.a))
         {
             if (info->knownNoMetatable)
-                kill(function, inst);
+            {
+                if (FFlag::DebugLuauAbortingChecks)
+                    replace(function, inst.b, build.undef());
+                else
+                    kill(function, inst);
+            }
             else
+            {
                 info->knownNoMetatable = true;
+            }
         }
         break;
     case IrCmd::CHECK_SAFE_ENV:
         if (state.inSafeEnv)
-            kill(function, inst);
+        {
+            if (FFlag::DebugLuauAbortingChecks)
+                replace(function, inst.a, build.undef());
+            else
+                kill(function, inst);
+        }
         else
+        {
             state.inSafeEnv = true;
+        }
         break;
     case IrCmd::CHECK_GC:
         // It is enough to perform a GC check once in a block

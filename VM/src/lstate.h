@@ -69,7 +69,7 @@ typedef struct CallInfo
 
 #define LUA_CALLINFO_RETURN (1 << 0) // should the interpreter return after returning from this callinfo? first frame must have this set
 #define LUA_CALLINFO_HANDLE (1 << 1) // should the error thrown during execution get handled by continuation from this callinfo? func must be C
-#define LUA_CALLINFO_CUSTOM (1 << 2) // should this function be executed using custom execution callback
+#define LUA_CALLINFO_NATIVE (1 << 2) // should this function be executed using execution callback for native code
 
 #define curr_func(L) (clvalue(L->ci->func))
 #define ci_func(ci) (clvalue((ci)->func))
@@ -211,9 +211,7 @@ typedef struct global_State
 
     lua_Callbacks cb;
 
-#if LUA_CUSTOM_EXECUTION
     lua_ExecutionCallbacks ecb;
-#endif
 
     void (*udatagc[LUA_UTAG_LIMIT])(lua_State*, void*); // for each userdata tag, a gc callback to be called immediately before freeing memory
 

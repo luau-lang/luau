@@ -194,7 +194,7 @@ void IrRegAllocX64::preserve(IrInst& inst)
         else if (spill.valueKind == IrValueKind::Tag || spill.valueKind == IrValueKind::Int)
             build.mov(dword[sSpillArea + i * 8], inst.regX64);
         else
-            LUAU_ASSERT(!"unsupported value kind");
+            LUAU_ASSERT(!"Unsupported value kind");
 
         usedSpillSlots.set(i);
 
@@ -318,7 +318,7 @@ unsigned IrRegAllocX64::findSpillStackSlot(IrValueKind valueKind)
         return i;
     }
 
-    LUAU_ASSERT(!"nowhere to spill");
+    LUAU_ASSERT(!"Nowhere to spill");
     return ~0u;
 }
 

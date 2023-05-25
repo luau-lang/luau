@@ -390,9 +390,6 @@ void toString(std::string& result, IrConst constant)
 {
     switch (constant.kind)
     {
-    case IrConstKind::Bool:
-        append(result, constant.valueBool ? "true" : "false");
-        break;
     case IrConstKind::Int:
         append(result, "%di", constant.valueInt);
         break;

@@ -13,9 +13,11 @@
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
+#include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier.h"
 #include "Luau/TypeFamily.h"
+#include "Luau/VisitType.h"
 
 #include <algorithm>
 
@@ -81,6 +83,146 @@ static std::optional<std::string> getIdentifierOfBaseVar(AstExpr* node)
     return std::nullopt;
 }
 
+template<typename T>
+bool areEquivalent(const T& a, const T& b)
+{
+    if (a.family != b.family)
+        return false;
+
+    if (a.typeArguments.size() != b.typeArguments.size() || a.packArguments.size() != b.packArguments.size())
+        return false;
+
+    for (size_t i = 0; i < a.typeArguments.size(); ++i)
+    {
+        if (follow(a.typeArguments[i]) != follow(b.typeArguments[i]))
+            return false;
+    }
+
+    for (size_t i = 0; i < a.packArguments.size(); ++i)
+    {
+        if (follow(a.packArguments[i]) != follow(b.packArguments[i]))
+            return false;
+    }
+
+    return true;
+}
+
+struct FamilyFinder : TypeOnceVisitor
+{
+    DenseHashSet<TypeId> mentionedFamilies{nullptr};
+    DenseHashSet<TypePackId> mentionedFamilyPacks{nullptr};
+
+    bool visit(TypeId ty, const TypeFamilyInstanceType&) override
+    {
+        mentionedFamilies.insert(ty);
+        return true;
+    }
+
+    bool visit(TypePackId tp, const TypeFamilyInstanceTypePack&) override
+    {
+        mentionedFamilyPacks.insert(tp);
+        return true;
+    }
+};
+
+struct InternalFamilyFinder : TypeOnceVisitor
+{
+    DenseHashSet<TypeId> internalFamilies{nullptr};
+    DenseHashSet<TypePackId> internalPackFamilies{nullptr};
+    DenseHashSet<TypeId> mentionedFamilies{nullptr};
+    DenseHashSet<TypePackId> mentionedFamilyPacks{nullptr};
+
+    InternalFamilyFinder(std::vector<TypeId>& declStack)
+    {
+        FamilyFinder f;
+        for (TypeId fn : declStack)
+            f.traverse(fn);
+
+        mentionedFamilies = std::move(f.mentionedFamilies);
+        mentionedFamilyPacks = std::move(f.mentionedFamilyPacks);
+    }
+
+    bool visit(TypeId ty, const TypeFamilyInstanceType& tfit) override
+    {
+        bool hasGeneric = false;
+
+        for (TypeId p : tfit.typeArguments)
+        {
+            if (get<GenericType>(follow(p)))
+            {
+                hasGeneric = true;
+                break;
+            }
+        }
+
+        for (TypePackId p : tfit.packArguments)
+        {
+            if (get<GenericTypePack>(follow(p)))
+            {
+                hasGeneric = true;
+                break;
+            }
+        }
+
+        if (hasGeneric)
+        {
+            for (TypeId mentioned : mentionedFamilies)
+            {
+                const TypeFamilyInstanceType* mentionedTfit = get<TypeFamilyInstanceType>(mentioned);
+                LUAU_ASSERT(mentionedTfit);
+                if (areEquivalent(tfit, *mentionedTfit))
+                {
+                    return true;
+                }
+            }
+
+            internalFamilies.insert(ty);
+        }
+
+        return true;
+    }
+
+    bool visit(TypePackId tp, const TypeFamilyInstanceTypePack& tfitp) override
+    {
+        bool hasGeneric = false;
+
+        for (TypeId p : tfitp.typeArguments)
+        {
+            if (get<GenericType>(follow(p)))
+            {
+                hasGeneric = true;
+                break;
+            }
+        }
+
+        for (TypePackId p : tfitp.packArguments)
+        {
+            if (get<GenericTypePack>(follow(p)))
+            {
+                hasGeneric = true;
+                break;
+            }
+        }
+
+        if (hasGeneric)
+        {
+            for (TypePackId mentioned : mentionedFamilyPacks)
+            {
+                const TypeFamilyInstanceTypePack* mentionedTfitp = get<TypeFamilyInstanceTypePack>(mentioned);
+                LUAU_ASSERT(mentionedTfitp);
+                if (areEquivalent(tfitp, *mentionedTfitp))
+                {
+                    return true;
+                }
+            }
+
+            internalPackFamilies.insert(tp);
+        }
+
+        return true;
+    }
+};
+
 struct TypeChecker2
 {
     NotNull<BuiltinTypes> builtinTypes;
@@ -91,16 +233,20 @@ struct TypeChecker2
     TypeArena testArena;
 
     std::vector<NotNull<Scope>> stack;
+    std::vector<TypeId> functionDeclStack;
+
+    DenseHashSet<TypeId> noTypeFamilyErrors{nullptr};
 
     Normalizer normalizer;
 
-    TypeChecker2(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, DcrLogger* logger, const SourceModule* sourceModule, Module* module)
+    TypeChecker2(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, DcrLogger* logger, const SourceModule* sourceModule,
+        Module* module)
         : builtinTypes(builtinTypes)
         , logger(logger)
         , ice(unifierState->iceHandler)
         , sourceModule(sourceModule)
         , module(module)
-        , normalizer{&testArena, builtinTypes, unifierState}
+        , normalizer{&testArena, builtinTypes, unifierState, /* cacheInhabitance */ true}
     {
     }
 
@@ -112,10 +258,31 @@ struct TypeChecker2
             return std::nullopt;
     }
 
+    void checkForInternalFamily(TypeId ty, Location location)
+    {
+        InternalFamilyFinder finder(functionDeclStack);
+        finder.traverse(ty);
+
+        for (TypeId internal : finder.internalFamilies)
+            reportError(WhereClauseNeeded{internal}, location);
+
+        for (TypePackId internal : finder.internalPackFamilies)
+            reportError(PackWhereClauseNeeded{internal}, location);
+    }
+
     TypeId checkForFamilyInhabitance(TypeId instance, Location location)
     {
+        if (noTypeFamilyErrors.find(instance))
+            return instance;
+
         TxnLog fake{};
-        reportErrors(reduceFamilies(instance, location, NotNull{&testArena}, builtinTypes, stack.back(), NotNull{&normalizer}, &fake, true).errors);
+        ErrorVec errors =
+            reduceFamilies(instance, location, NotNull{&testArena}, builtinTypes, stack.back(), NotNull{&normalizer}, &fake, true).errors;
+
+        if (errors.empty())
+            noTypeFamilyErrors.insert(instance);
+
+        reportErrors(std::move(errors));
         return instance;
     }
 
@@ -316,7 +483,7 @@ struct TypeChecker2
         TypeArena* arena = &testArena;
         TypePackId actualRetType = reconstructPack(ret->list, *arena);
 
-        Unifier u{NotNull{&normalizer}, Mode::Strict, stack.back(), ret->location, Covariant};
+        Unifier u{NotNull{&normalizer}, stack.back(), ret->location, Covariant};
         u.hideousFixMeGenericsAreActuallyFree = true;
 
         u.tryUnify(actualRetType, expectedRetType);
@@ -466,12 +633,47 @@ struct TypeChecker2
             variableTypes.emplace_back(*ty);
         }
 
-        // ugh.  There's nothing in the AST to hang a whole type pack on for the
-        // set of iteratees, so we have to piece it back together by hand.
+        AstExpr* firstValue = forInStatement->values.data[0];
+
+        // we need to build up a typepack for the iterators/values portion of the for-in statement.
         std::vector<TypeId> valueTypes;
-        for (size_t i = 0; i < forInStatement->values.size - 1; ++i)
+        std::optional<TypePackId> iteratorTail;
+
+        // since the first value may be the only iterator (e.g. if it is a call), we want to
+        // look to see if it has a resulting typepack as our iterators.
+        TypePackId* retPack = module->astTypePacks.find(firstValue);
+        if (retPack)
+        {
+            auto [head, tail] = flatten(*retPack);
+            valueTypes = head;
+            iteratorTail = tail;
+        }
+        else
+        {
+            valueTypes.emplace_back(lookupType(firstValue));
+        }
+
+        // if the initial and expected types from the iterator unified during constraint solving,
+        // we'll have a resolved type to use here, but we'll only use it if either the iterator is
+        // directly present in the for-in statement or if we have an iterator state constraining us
+        TypeId* resolvedTy = module->astOverloadResolvedTypes.find(firstValue);
+        if (resolvedTy && (!retPack || valueTypes.size() > 1))
+            valueTypes[0] = *resolvedTy;
+
+        for (size_t i = 1; i < forInStatement->values.size - 1; ++i)
+        {
             valueTypes.emplace_back(lookupType(forInStatement->values.data[i]));
-        TypePackId iteratorTail = lookupPack(forInStatement->values.data[forInStatement->values.size - 1]);
+        }
+
+        // if we had more than one value, the tail from the first value is no longer appropriate to use.
+        if (forInStatement->values.size > 1)
+        {
+            auto [head, tail] = flatten(lookupPack(forInStatement->values.data[forInStatement->values.size - 1]));
+            valueTypes.insert(valueTypes.end(), head.begin(), head.end());
+            iteratorTail = tail;
+        }
+
+        // and now we can put everything together to get the actual typepack of the iterators.
         TypePackId iteratorPack = arena.addTypePack(valueTypes, iteratorTail);
 
         // ... and then expand it out to 3 values (if possible)
@@ -518,25 +720,15 @@ struct TypeChecker2
             // This depends on the types in iterateePack and therefore
             // iteratorTypes.
 
+            // If the iteratee is an error type, then we can't really say anything else about iteration over it.
+            // After all, it _could've_ been a table.
+            if (get<ErrorType>(follow(flattenPack(iterFtv->argTypes))))
+                return;
+
             // If iteratorTypes is too short to be a valid call to nextFn, we have to report a count mismatch error.
             // If 2 is too short to be a valid call to nextFn, we have to report a count mismatch error.
             // If 2 is too long to be a valid call to nextFn, we have to report a count mismatch error.
             auto [minCount, maxCount] = getParameterExtents(TxnLog::empty(), iterFtv->argTypes, /*includeHiddenVariadics*/ true);
-
-            if (minCount > 2)
-            {
-                if (isMm)
-                    reportError(GenericError{"__iter metamethod must return (next[, table[, state]])"}, getLocation(forInStatement->values));
-                else
-                    reportError(GenericError{"for..in loops must be passed (next[, table[, state]])"}, getLocation(forInStatement->values));
-            }
-            if (maxCount && *maxCount < 2)
-            {
-                if (isMm)
-                    reportError(GenericError{"__iter metamethod must return (next[, table[, state]])"}, getLocation(forInStatement->values));
-                else
-                    reportError(GenericError{"for..in loops must be passed (next[, table[, state]])"}, getLocation(forInStatement->values));
-            }
 
             TypePack flattenedArgTypes = extendTypePack(arena, builtinTypes, iterFtv->argTypes, 2);
             size_t firstIterationArgCount = iterTys.empty() ? 0 : iterTys.size() - 1;
@@ -546,7 +738,7 @@ struct TypeChecker2
                 if (isMm)
                     reportError(GenericError{"__iter metamethod must return (next[, table[, state]])"}, getLocation(forInStatement->values));
                 else
-                    reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+                    reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->values.data[0]->location);
             }
 
             else if (actualArgCount < minCount)
@@ -554,7 +746,7 @@ struct TypeChecker2
                 if (isMm)
                     reportError(GenericError{"__iter metamethod must return (next[, table[, state]])"}, getLocation(forInStatement->values));
                 else
-                    reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+                    reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->values.data[0]->location);
             }
 
 
@@ -1211,6 +1403,7 @@ struct TypeChecker2
         visitGenerics(fn->generics, fn->genericPacks);
 
         TypeId inferredFnTy = lookupType(fn);
+        functionDeclStack.push_back(inferredFnTy);
 
         const NormalizedType* normalizedFnTy = normalizer.normalize(inferredFnTy);
         if (!normalizedFnTy)
@@ -1260,6 +1453,8 @@ struct TypeChecker2
         }
 
         visit(fn->body);
+
+        functionDeclStack.pop_back();
     }
 
     void visit(AstExprTable* expr)
@@ -1370,7 +1565,10 @@ struct TypeChecker2
         TypeId expectedResult = lookupType(expr);
 
         if (get<TypeFamilyInstanceType>(expectedResult))
+        {
+            checkForInternalFamily(expectedResult, expr->location);
             return expectedResult;
+        }
 
         if (expr->op == AstExprBinary::Op::Or)
         {
@@ -1379,9 +1577,9 @@ struct TypeChecker2
 
         bool isStringOperation = isString(leftType) && isString(rightType);
 
-        if (get<AnyType>(leftType) || get<ErrorType>(leftType))
+        if (get<AnyType>(leftType) || get<ErrorType>(leftType) || get<NeverType>(leftType))
             return leftType;
-        else if (get<AnyType>(rightType) || get<ErrorType>(rightType))
+        else if (get<AnyType>(rightType) || get<ErrorType>(rightType) || get<NeverType>(rightType))
             return rightType;
 
         if ((get<BlockedType>(leftType) || get<FreeType>(leftType) || get<GenericType>(leftType)) && !isEquality && !isLogical)
@@ -1982,7 +2180,7 @@ struct TypeChecker2
     bool isSubtype(TID subTy, TID superTy, NotNull<Scope> scope, bool genericsOkay = false)
     {
         TypeArena arena;
-        Unifier u{NotNull{&normalizer}, Mode::Strict, scope, Location{}, Covariant};
+        Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
         u.hideousFixMeGenericsAreActuallyFree = genericsOkay;
         u.enableScopeTests();
 
@@ -1995,7 +2193,7 @@ struct TypeChecker2
     ErrorVec tryUnify(NotNull<Scope> scope, const Location& location, TID subTy, TID superTy, CountMismatch::Context context = CountMismatch::Arg,
         bool genericsOkay = false)
     {
-        Unifier u{NotNull{&normalizer}, Mode::Strict, scope, location, Covariant};
+        Unifier u{NotNull{&normalizer}, scope, location, Covariant};
         u.ctx = context;
         u.hideousFixMeGenericsAreActuallyFree = genericsOkay;
         u.enableScopeTests();

@@ -119,7 +119,6 @@ void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int r
         return emitBuiltinTypeof(regs, build, ra, arg);
     default:
         LUAU_ASSERT(!"Missing x64 lowering");
-        break;
     }
 }
 

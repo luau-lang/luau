@@ -18,7 +18,6 @@
 #include "Luau/AssemblyBuilderA64.h"
 #include "Luau/AssemblyBuilderX64.h"
 
-#include "CustomExecUtils.h"
 #include "NativeState.h"
 
 #include "CodeGenA64.h"
@@ -58,6 +57,8 @@ namespace Luau
 {
 namespace CodeGen
 {
+
+static const Instruction kCodeEntryInsn = LOP_NATIVECALL;
 
 static void* gPerfLogContext = nullptr;
 static PerfLogFn gPerfLogFn = nullptr;
@@ -332,9 +333,15 @@ static std::optional<NativeProto> assembleFunction(AssemblyBuilder& build, Nativ
     return createNativeProto(proto, ir);
 }
 
+static NativeState* getNativeState(lua_State* L)
+{
+    return static_cast<NativeState*>(L->global->ecb.context);
+}
+
 static void onCloseState(lua_State* L)
 {
-    destroyNativeState(L);
+    delete getNativeState(L);
+    L->global->ecb = lua_ExecutionCallbacks();
 }
 
 static void onDestroyFunction(lua_State* L, Proto* proto)
@@ -342,6 +349,7 @@ static void onDestroyFunction(lua_State* L, Proto* proto)
     destroyExecData(proto->execdata);
     proto->execdata = nullptr;
     proto->exectarget = 0;
+    proto->codeentry = proto->code;
 }
 
 static int onEnter(lua_State* L, Proto* proto)
@@ -362,7 +370,7 @@ static void onSetBreakpoint(lua_State* L, Proto* proto, int instruction)
     if (!proto->execdata)
         return;
 
-    LUAU_ASSERT(!"native breakpoints are not implemented");
+    LUAU_ASSERT(!"Native breakpoints are not implemented");
 }
 
 #if defined(__aarch64__)
@@ -430,39 +438,34 @@ void create(lua_State* L)
 {
     LUAU_ASSERT(isSupported());
 
-    NativeState& data = *createNativeState(L);
+    std::unique_ptr<NativeState> data = std::make_unique<NativeState>();
 
 #if defined(_WIN32)
-    data.unwindBuilder = std::make_unique<UnwindBuilderWin>();
+    data->unwindBuilder = std::make_unique<UnwindBuilderWin>();
 #else
-    data.unwindBuilder = std::make_unique<UnwindBuilderDwarf2>();
+    data->unwindBuilder = std::make_unique<UnwindBuilderDwarf2>();
 #endif
 
-    data.codeAllocator.context = data.unwindBuilder.get();
-    data.codeAllocator.createBlockUnwindInfo = createBlockUnwindInfo;
-    data.codeAllocator.destroyBlockUnwindInfo = destroyBlockUnwindInfo;
+    data->codeAllocator.context = data->unwindBuilder.get();
+    data->codeAllocator.createBlockUnwindInfo = createBlockUnwindInfo;
+    data->codeAllocator.destroyBlockUnwindInfo = destroyBlockUnwindInfo;
 
-    initFunctions(data);
+    initFunctions(*data);
 
 #if defined(__x86_64__) || defined(_M_X64)
-    if (!X64::initHeaderFunctions(data))
-    {
-        destroyNativeState(L);
+    if (!X64::initHeaderFunctions(*data))
         return;
-    }
 #elif defined(__aarch64__)
-    if (!A64::initHeaderFunctions(data))
-    {
-        destroyNativeState(L);
+    if (!A64::initHeaderFunctions(*data))
         return;
-    }
 #endif
 
     if (gPerfLogFn)
-        gPerfLogFn(gPerfLogContext, uintptr_t(data.context.gateEntry), 4096, "<luau gate>");
+        gPerfLogFn(gPerfLogContext, uintptr_t(data->context.gateEntry), 4096, "<luau gate>");
 
-    lua_ExecutionCallbacks* ecb = getExecutionCallbacks(L);
+    lua_ExecutionCallbacks* ecb = &L->global->ecb;
 
+    ecb->context = data.release();
     ecb->close = onCloseState;
     ecb->destroy = onDestroyFunction;
     ecb->enter = onEnter;
@@ -490,7 +493,8 @@ void compile(lua_State* L, int idx)
     const TValue* func = luaA_toobject(L, idx);
 
     // If initialization has failed, do not compile any functions
-    if (!getNativeState(L))
+    NativeState* data = getNativeState(L);
+    if (!data)
         return;
 
 #if defined(__aarch64__)
@@ -498,8 +502,6 @@ void compile(lua_State* L, int idx)
 #else
     X64::AssemblyBuilderX64 build(/* logText= */ false);
 #endif
-
-    NativeState* data = getNativeState(L);
 
     std::vector<Proto*> protos;
     gatherFunctions(protos, clvalue(func)->l.p);
@@ -564,6 +566,7 @@ void compile(lua_State* L, int idx)
         // the memory is now managed by VM and will be freed via onDestroyFunction
         result.p->execdata = result.execdata;
         result.p->exectarget = uintptr_t(codeStart) + result.exectarget;
+        result.p->codeentry = &kCodeEntryInsn;
     }
 }
 

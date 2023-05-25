@@ -34,6 +34,7 @@ struct IrLoweringX64
 
     bool isFallthroughBlock(IrBlock target, IrBlock next);
     void jumpOrFallthrough(IrBlock& target, IrBlock& next);
+    void jumpOrAbortOnUndef(ConditionX64 cond, ConditionX64 condInverse, IrOp targetOrUndef);
 
     void storeDoubleAsFloat(OperandX64 dst, IrOp src);
 
@@ -45,7 +46,6 @@ struct IrLoweringX64
 
     IrConst constOp(IrOp op) const;
     uint8_t tagOp(IrOp op) const;
-    bool boolOp(IrOp op) const;
     int intOp(IrOp op) const;
     unsigned uintOp(IrOp op) const;
     double doubleOp(IrOp op) const;

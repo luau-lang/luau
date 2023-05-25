@@ -27,7 +27,6 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
-LUAU_FASTFLAGVARIABLE(LuauBoundLazyTypes2, false)
 
 namespace Luau
 {
@@ -78,47 +77,19 @@ TypeId follow(TypeId t)
 TypeId follow(TypeId t, const void* context, TypeId (*mapper)(const void*, TypeId))
 {
     auto advance = [context, mapper](TypeId ty) -> std::optional<TypeId> {
-        if (FFlag::LuauBoundLazyTypes2)
-        {
-            TypeId mapped = mapper(context, ty);
-
-            if (auto btv = get<Unifiable::Bound<TypeId>>(mapped))
-                return btv->boundTo;
-
-            if (auto ttv = get<TableType>(mapped))
-                return ttv->boundTo;
-
-            if (auto ltv = getMutable<LazyType>(mapped))
-                return unwrapLazy(ltv);
-
-            return std::nullopt;
-        }
-        else
-        {
-            if (auto btv = get<Unifiable::Bound<TypeId>>(mapper(context, ty)))
-                return btv->boundTo;
-            else if (auto ttv = get<TableType>(mapper(context, ty)))
-                return ttv->boundTo;
-            else
-                return std::nullopt;
-        }
-    };
-
-    auto force = [context, mapper](TypeId ty) {
         TypeId mapped = mapper(context, ty);
 
-        if (auto ltv = get_if<LazyType>(&mapped->ty))
-        {
-            TypeId res = ltv->thunk_DEPRECATED();
-            if (get<LazyType>(res))
-                throw InternalCompilerError("Lazy Type cannot resolve to another Lazy Type");
+        if (auto btv = get<Unifiable::Bound<TypeId>>(mapped))
+            return btv->boundTo;
 
-            *asMutable(ty) = BoundType(res);
-        }
+        if (auto ttv = get<TableType>(mapped))
+            return ttv->boundTo;
+
+        if (auto ltv = getMutable<LazyType>(mapped))
+            return unwrapLazy(ltv);
+
+        return std::nullopt;
     };
-
-    if (!FFlag::LuauBoundLazyTypes2)
-        force(t);
 
     TypeId cycleTester = t; // Null once we've determined that there is no cycle
     if (auto a = advance(cycleTester))
@@ -126,17 +97,11 @@ TypeId follow(TypeId t, const void* context, TypeId (*mapper)(const void*, TypeI
     else
         return t;
 
-    if (FFlag::LuauBoundLazyTypes2)
-    {
-        if (!advance(cycleTester)) // Short circuit traversal for the rather common case when advance(advance(t)) == null
-            return cycleTester;
-    }
+    if (!advance(cycleTester)) // Short circuit traversal for the rather common case when advance(advance(t)) == null
+        return cycleTester;
 
     while (true)
     {
-        if (!FFlag::LuauBoundLazyTypes2)
-            force(t);
-
         auto a1 = advance(t);
         if (a1)
             t = *a1;
@@ -684,16 +649,17 @@ Property Property::rw(TypeId read, TypeId write)
     return p;
 }
 
-std::optional<Property> Property::create(std::optional<TypeId> read, std::optional<TypeId> write)
+Property Property::create(std::optional<TypeId> read, std::optional<TypeId> write)
 {
     if (read && !write)
         return Property::readonly(*read);
     else if (!read && write)
         return Property::writeonly(*write);
-    else if (read && write)
-        return Property::rw(*read, *write);
     else
-        return std::nullopt;
+    {
+        LUAU_ASSERT(read && write);
+        return Property::rw(*read, *write);
+    }
 }
 
 TypeId Property::type() const
@@ -705,6 +671,7 @@ TypeId Property::type() const
 
 void Property::setType(TypeId ty)
 {
+    LUAU_ASSERT(!FFlag::DebugLuauReadWriteProperties);
     readTy = ty;
 }
 
@@ -720,6 +687,11 @@ std::optional<TypeId> Property::writeType() const
     LUAU_ASSERT(FFlag::DebugLuauReadWriteProperties);
     LUAU_ASSERT(!(bool(readTy) && bool(writeTy)));
     return writeTy;
+}
+
+bool Property::isShared() const
+{
+    return readTy && writeTy && readTy == writeTy;
 }
 
 TableType::TableType(TableState state, TypeLevel level, Scope* scope)

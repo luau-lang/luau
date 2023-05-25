@@ -6,7 +6,6 @@
 #include "Luau/IrData.h"
 #include "Luau/IrRegAllocX64.h"
 
-#include "CustomExecUtils.h"
 #include "NativeState.h"
 
 #include "lgc.h"

@@ -472,6 +472,15 @@ void AssemblyBuilderX64::int3()
     commit();
 }
 
+void AssemblyBuilderX64::ud2()
+{
+    if (logText)
+        log("ud2");
+
+    place(0x0f);
+    place(0x0b);
+}
+
 void AssemblyBuilderX64::bsr(RegisterX64 dst, OperandX64 src)
 {
     if (logText)

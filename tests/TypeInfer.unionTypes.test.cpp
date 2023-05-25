@@ -810,7 +810,7 @@ TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
     InternalErrorReporter iceHandler;
     UnifierSharedState sharedState{&iceHandler};
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    Unifier u{NotNull{&normalizer}, Mode::Strict, NotNull{scope.get()}, Location{}, Variance::Covariant};
+    Unifier u{NotNull{&normalizer}, NotNull{scope.get()}, Location{}, Variance::Covariant};
 
     u.tryUnify(option1, option2);
 

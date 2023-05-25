@@ -5,10 +5,10 @@
 #include "Luau/IrBuilder.h"
 #include "Luau/IrUtils.h"
 
-#include "CustomExecUtils.h"
 #include "IrTranslateBuiltins.h"
 
 #include "lobject.h"
+#include "lstate.h"
 #include "ltm.h"
 
 namespace Luau
@@ -366,7 +366,7 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
             result = build.inst(IrCmd::INVOKE_LIBM, build.constUint(LBF_MATH_POW), vb, vc);
             break;
         default:
-            LUAU_ASSERT(!"unsupported binary op");
+            LUAU_ASSERT(!"Unsupported binary op");
         }
     }
 
@@ -1068,13 +1068,13 @@ void translateInstCapture(IrBuilder& build, const Instruction* pc, int pcpos)
     switch (type)
     {
     case LCT_VAL:
-        build.inst(IrCmd::CAPTURE, build.vmReg(index), build.constBool(false));
+        build.inst(IrCmd::CAPTURE, build.vmReg(index), build.constUint(0));
         break;
     case LCT_REF:
-        build.inst(IrCmd::CAPTURE, build.vmReg(index), build.constBool(true));
+        build.inst(IrCmd::CAPTURE, build.vmReg(index), build.constUint(1));
         break;
     case LCT_UPVAL:
-        build.inst(IrCmd::CAPTURE, build.vmUpvalue(index), build.constBool(false));
+        build.inst(IrCmd::CAPTURE, build.vmUpvalue(index), build.constUint(0));
         break;
     default:
         LUAU_ASSERT(!"Unknown upvalue capture type");

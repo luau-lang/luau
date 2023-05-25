@@ -51,13 +51,13 @@ static void makePagesExecutable(uint8_t* mem, size_t size)
 
     DWORD oldProtect;
     if (VirtualProtect(mem, size, PAGE_EXECUTE_READ, &oldProtect) == 0)
-        LUAU_ASSERT(!"failed to change page protection");
+        LUAU_ASSERT(!"Failed to change page protection");
 }
 
 static void flushInstructionCache(uint8_t* mem, size_t size)
 {
     if (FlushInstructionCache(GetCurrentProcess(), mem, size) == 0)
-        LUAU_ASSERT(!"failed to flush instruction cache");
+        LUAU_ASSERT(!"Failed to flush instruction cache");
 }
 #else
 static uint8_t* allocatePages(size_t size)
@@ -68,7 +68,7 @@ static uint8_t* allocatePages(size_t size)
 static void freePages(uint8_t* mem, size_t size)
 {
     if (munmap(mem, alignToPageSize(size)) != 0)
-        LUAU_ASSERT(!"failed to deallocate block memory");
+        LUAU_ASSERT(!"Failed to deallocate block memory");
 }
 
 static void makePagesExecutable(uint8_t* mem, size_t size)
@@ -77,7 +77,7 @@ static void makePagesExecutable(uint8_t* mem, size_t size)
     LUAU_ASSERT(size == alignToPageSize(size));
 
     if (mprotect(mem, size, PROT_READ | PROT_EXEC) != 0)
-        LUAU_ASSERT(!"failed to change page protection");
+        LUAU_ASSERT(!"Failed to change page protection");
 }
 
 static void flushInstructionCache(uint8_t* mem, size_t size)

@@ -335,6 +335,44 @@ struct TypeStringifier
             tv->ty);
     }
 
+    void stringify(const std::string& name, const Property& prop)
+    {
+        if (isIdentifier(name))
+            state.emit(name);
+        else
+        {
+            state.emit("[\"");
+            state.emit(escape(name));
+            state.emit("\"]");
+        }
+        state.emit(": ");
+
+        if (FFlag::DebugLuauReadWriteProperties)
+        {
+            // We special case the stringification if the property's read and write types are shared.
+            if (prop.isShared())
+                return stringify(*prop.readType());
+
+            // Otherwise emit them separately.
+            if (auto ty = prop.readType())
+            {
+                state.emit("read ");
+                stringify(*ty);
+            }
+
+            if (prop.readType() && prop.writeType())
+                state.emit(" + ");
+
+            if (auto ty = prop.writeType())
+            {
+                state.emit("write ");
+                stringify(*ty);
+            }
+        }
+        else
+            stringify(prop.type());
+    }
+
     void stringify(TypePackId tp);
     void stringify(TypePackId tpid, const std::vector<std::optional<FunctionArgument>>& names);
 
@@ -672,16 +710,8 @@ struct TypeStringifier
                 break;
             }
 
-            if (isIdentifier(name))
-                state.emit(name);
-            else
-            {
-                state.emit("[\"");
-                state.emit(escape(name));
-                state.emit("\"]");
-            }
-            state.emit(": ");
-            stringify(prop.type());
+            stringify(name, prop);
+
             comma = true;
             ++index;
         }
