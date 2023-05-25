@@ -81,6 +81,9 @@ struct IterableConstraint
 {
     TypePackId iterator;
     TypePackId variables;
+
+    const AstNode* nextAstFragment;
+    DenseHashMap<const AstNode*, TypeId>* astOverloadResolvedTypes;
 };
 
 // name(namedType) = name

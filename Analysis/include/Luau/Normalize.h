@@ -285,14 +285,19 @@ class Normalizer
     std::unordered_map<const TypeIds*, TypeId> cachedIntersections;
     std::unordered_map<const TypeIds*, TypeId> cachedUnions;
     std::unordered_map<const TypeIds*, std::unique_ptr<TypeIds>> cachedTypeIds;
+
+    DenseHashMap<TypeId, bool> cachedIsInhabited{nullptr};
+    DenseHashMap<std::pair<TypeId, TypeId>, bool, TypeIdPairHash> cachedIsInhabitedIntersection{{nullptr, nullptr}};
+
     bool withinResourceLimits();
 
 public:
     TypeArena* arena;
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<UnifierSharedState> sharedState;
+    bool cacheInhabitance = false;
 
-    Normalizer(TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> sharedState);
+    Normalizer(TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> sharedState, bool cacheInhabitance = false);
     Normalizer(const Normalizer&) = delete;
     Normalizer(Normalizer&&) = delete;
     Normalizer() = delete;
@@ -355,8 +360,10 @@ public:
     bool normalizeIntersections(const std::vector<TypeId>& intersections, NormalizedType& outType);
 
     // Check for inhabitance
-    bool isInhabited(TypeId ty, std::unordered_set<TypeId> seen = {});
+    bool isInhabited(TypeId ty);
+    bool isInhabited(TypeId ty, std::unordered_set<TypeId> seen);
     bool isInhabited(const NormalizedType* norm, std::unordered_set<TypeId> seen = {});
+
     // Check for intersections being inhabited
     bool isIntersectionInhabited(TypeId left, TypeId right);
 

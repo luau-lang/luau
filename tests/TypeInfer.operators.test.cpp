@@ -679,10 +679,9 @@ TEST_CASE_FIXTURE(Fixture, "strict_binary_op_where_lhs_unknown")
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        // TODO: This will eventually entirely go away, but for now the Add
-        // family will ensure there's one less error.
-        LUAU_REQUIRE_ERROR_COUNT(ops.size() - 1, result);
-        CHECK_EQ("Unknown type used in - operation; consider adding a type annotation to 'a'", toString(result.errors[0]));
+        LUAU_REQUIRE_ERROR_COUNT(ops.size(), result);
+        CHECK_EQ("Type family instance Add<a, b> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time", toString(result.errors[0]));
+        CHECK_EQ("Unknown type used in - operation; consider adding a type annotation to 'a'", toString(result.errors[1]));
     }
     else
     {

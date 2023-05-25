@@ -54,7 +54,6 @@ struct Unifier
     TypeArena* const types;
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<Normalizer> normalizer;
-    Mode mode;
 
     NotNull<Scope> scope; // const Scope maybe
     TxnLog log;
@@ -78,7 +77,7 @@ struct Unifier
     std::vector<TypePackId> blockedTypePacks;
 
     Unifier(
-        NotNull<Normalizer> normalizer, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance, TxnLog* parentLog = nullptr);
+        NotNull<Normalizer> normalizer, NotNull<Scope> scope, const Location& location, Variance variance, TxnLog* parentLog = nullptr);
 
     // Configure the Unifier to test for scope subsumption via embedded Scope
     // pointers rather than TypeLevels.
@@ -154,7 +153,6 @@ public:
     LUAU_NOINLINE void reportError(Location location, TypeErrorData data);
 
 private:
-    bool isNonstrictMode() const;
     TypeMismatch::Context mismatchContext();
 
     void checkChildUnifierTypeMismatch(const ErrorVec& innerErrors, TypeId wantedType, TypeId givenType);

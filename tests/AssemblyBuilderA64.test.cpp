@@ -455,6 +455,11 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Conditionals")
     SINGLE_COMPARE(cset(x1, ConditionA64::Less), 0x9A9FA7E1);
 }
 
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Undefined")
+{
+    SINGLE_COMPARE(udf(), 0x00000000);
+}
+
 TEST_CASE("LogTest")
 {
     AssemblyBuilderA64 build(/* logText= */ true);

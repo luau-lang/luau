@@ -38,7 +38,6 @@ struct IrBuilder
 
     IrOp undef();
 
-    IrOp constBool(bool value);
     IrOp constInt(int value);
     IrOp constUint(unsigned value);
     IrOp constDouble(double value);

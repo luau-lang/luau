@@ -96,6 +96,15 @@ static void emitAddOffset(AssemblyBuilderA64& build, RegisterA64 dst, RegisterA6
     }
 }
 
+static void emitAbort(AssemblyBuilderA64& build, Label& abort)
+{
+    Label skip;
+    build.b(skip);
+    build.setLabel(abort);
+    build.udf();
+    build.setLabel(skip);
+}
+
 static void emitFallback(AssemblyBuilderA64& build, int offset, int pcpos)
 {
     // fallback(L, instruction, base, k)
@@ -256,7 +265,11 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         }
         else if (inst.b.kind == IrOpKind::Constant)
         {
-            if (intOp(inst.b) * sizeof(TValue) <= AssemblyBuilderA64::kMaxImmediate)
+            if (intOp(inst.b) == 0)
+            {
+                // no offset required
+            }
+            else if (intOp(inst.b) * sizeof(TValue) <= AssemblyBuilderA64::kMaxImmediate)
             {
                 build.add(inst.regA64, inst.regA64, uint16_t(intOp(inst.b) * sizeof(TValue)));
             }
@@ -562,7 +575,14 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         break;
     }
     case IrCmd::JUMP_EQ_TAG:
-        if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Constant)
+    {
+        RegisterA64 zr = noreg;
+
+        if (inst.a.kind == IrOpKind::Constant && tagOp(inst.a) == 0)
+            zr = regOp(inst.b);
+        else if (inst.b.kind == IrOpKind::Constant && tagOp(inst.b) == 0)
+            zr = regOp(inst.a);
+        else if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Constant)
             build.cmp(regOp(inst.a), tagOp(inst.b));
         else if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Inst)
             build.cmp(regOp(inst.a), regOp(inst.b));
@@ -573,19 +593,33 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         if (isFallthroughBlock(blockOp(inst.d), next))
         {
-            build.b(ConditionA64::Equal, labelOp(inst.c));
+            if (zr != noreg)
+                build.cbz(zr, labelOp(inst.c));
+            else
+                build.b(ConditionA64::Equal, labelOp(inst.c));
             jumpOrFallthrough(blockOp(inst.d), next);
         }
         else
         {
-            build.b(ConditionA64::NotEqual, labelOp(inst.d));
+            if (zr != noreg)
+                build.cbnz(zr, labelOp(inst.d));
+            else
+                build.b(ConditionA64::NotEqual, labelOp(inst.d));
             jumpOrFallthrough(blockOp(inst.c), next);
         }
         break;
+    }
     case IrCmd::JUMP_EQ_INT:
-        LUAU_ASSERT(unsigned(intOp(inst.b)) <= AssemblyBuilderA64::kMaxImmediate);
-        build.cmp(regOp(inst.a), uint16_t(intOp(inst.b)));
-        build.b(ConditionA64::Equal, labelOp(inst.c));
+        if (intOp(inst.b) == 0)
+        {
+            build.cbz(regOp(inst.a), labelOp(inst.c));
+        }
+        else
+        {
+            LUAU_ASSERT(unsigned(intOp(inst.b)) <= AssemblyBuilderA64::kMaxImmediate);
+            build.cmp(regOp(inst.a), uint16_t(intOp(inst.b)));
+            build.b(ConditionA64::Equal, labelOp(inst.c));
+        }
         jumpOrFallthrough(blockOp(inst.d), next);
         break;
     case IrCmd::JUMP_LT_INT:
@@ -871,7 +905,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
             build.add(x2, rBase, uint16_t(vmRegOp(inst.c) * sizeof(TValue)));
         else if (inst.c.kind == IrOpKind::Constant)
         {
-            TValue n;
+            TValue n = {};
             setnvalue(&n, uintOp(inst.c));
             build.adr(x2, &n, sizeof(n));
         }
@@ -893,7 +927,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
             build.add(x2, rBase, uint16_t(vmRegOp(inst.c) * sizeof(TValue)));
         else if (inst.c.kind == IrOpKind::Constant)
         {
-            TValue n;
+            TValue n = {};
             setnvalue(&n, uintOp(inst.c));
             build.adr(x2, &n, sizeof(n));
         }
@@ -908,25 +942,17 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         break;
     case IrCmd::GET_IMPORT:
         regs.spill(build, index);
-        // luaV_getimport(L, cl->env, k, aux, /* propagatenil= */ false)
+        // luaV_getimport(L, cl->env, k, ra, aux, /* propagatenil= */ false)
         build.mov(x0, rState);
         build.ldr(x1, mem(rClosure, offsetof(Closure, env)));
         build.mov(x2, rConstants);
-        build.mov(w3, uintOp(inst.b));
-        build.mov(w4, 0);
-        build.ldr(x5, mem(rNativeContext, offsetof(NativeContext, luaV_getimport)));
-        build.blr(x5);
+        build.add(x3, rBase, uint16_t(vmRegOp(inst.a) * sizeof(TValue)));
+        build.mov(w4, uintOp(inst.b));
+        build.mov(w5, 0);
+        build.ldr(x6, mem(rNativeContext, offsetof(NativeContext, luaV_getimport)));
+        build.blr(x6);
 
         emitUpdateBase(build);
-
-        // setobj2s(L, ra, L->top - 1)
-        build.ldr(x0, mem(rState, offsetof(lua_State, top)));
-        build.sub(x0, x0, sizeof(TValue));
-        build.ldr(q0, x0);
-        build.str(q0, mem(rBase, vmRegOp(inst.a) * sizeof(TValue)));
-
-        // L->top--
-        build.str(x0, mem(rState, offsetof(lua_State, top)));
         break;
     case IrCmd::CONCAT:
         regs.spill(build, index);
@@ -1003,62 +1029,99 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         // note: no emitUpdateBase necessary because prepareFORN does not reallocate stack
         break;
     case IrCmd::CHECK_TAG:
-        build.cmp(regOp(inst.a), tagOp(inst.b));
-        build.b(ConditionA64::NotEqual, labelOp(inst.c));
+    {
+        Label abort; // used when guard aborts execution
+        Label& fail = inst.c.kind == IrOpKind::Undef ? abort : labelOp(inst.c);
+        if (tagOp(inst.b) == 0)
+        {
+            build.cbnz(regOp(inst.a), fail);
+        }
+        else
+        {
+            build.cmp(regOp(inst.a), tagOp(inst.b));
+            build.b(ConditionA64::NotEqual, fail);
+        }
+        if (abort.id)
+            emitAbort(build, abort);
         break;
+    }
     case IrCmd::CHECK_READONLY:
     {
+        Label abort; // used when guard aborts execution
         RegisterA64 temp = regs.allocTemp(KindA64::w);
         build.ldrb(temp, mem(regOp(inst.a), offsetof(Table, readonly)));
-        build.cbnz(temp, labelOp(inst.b));
+        build.cbnz(temp, inst.b.kind == IrOpKind::Undef ? abort : labelOp(inst.b));
+        if (abort.id)
+            emitAbort(build, abort);
         break;
     }
     case IrCmd::CHECK_NO_METATABLE:
     {
+        Label abort; // used when guard aborts execution
         RegisterA64 temp = regs.allocTemp(KindA64::x);
         build.ldr(temp, mem(regOp(inst.a), offsetof(Table, metatable)));
-        build.cbnz(temp, labelOp(inst.b));
+        build.cbnz(temp, inst.b.kind == IrOpKind::Undef ? abort : labelOp(inst.b));
+        if (abort.id)
+            emitAbort(build, abort);
         break;
     }
     case IrCmd::CHECK_SAFE_ENV:
     {
+        Label abort; // used when guard aborts execution
         RegisterA64 temp = regs.allocTemp(KindA64::x);
         RegisterA64 tempw = castReg(KindA64::w, temp);
         build.ldr(temp, mem(rClosure, offsetof(Closure, env)));
         build.ldrb(tempw, mem(temp, offsetof(Table, safeenv)));
-        build.cbz(tempw, labelOp(inst.a));
+        build.cbz(tempw, inst.a.kind == IrOpKind::Undef ? abort : labelOp(inst.a));
+        if (abort.id)
+            emitAbort(build, abort);
         break;
     }
     case IrCmd::CHECK_ARRAY_SIZE:
     {
+        Label abort; // used when guard aborts execution
+        Label& fail = inst.c.kind == IrOpKind::Undef ? abort : labelOp(inst.c);
+
         RegisterA64 temp = regs.allocTemp(KindA64::w);
         build.ldr(temp, mem(regOp(inst.a), offsetof(Table, sizearray)));
 
         if (inst.b.kind == IrOpKind::Inst)
+        {
             build.cmp(temp, regOp(inst.b));
+            build.b(ConditionA64::UnsignedLessEqual, fail);
+        }
         else if (inst.b.kind == IrOpKind::Constant)
         {
-            if (size_t(intOp(inst.b)) <= AssemblyBuilderA64::kMaxImmediate)
+            if (intOp(inst.b) == 0)
+            {
+                build.cbz(temp, fail);
+            }
+            else if (size_t(intOp(inst.b)) <= AssemblyBuilderA64::kMaxImmediate)
             {
                 build.cmp(temp, uint16_t(intOp(inst.b)));
+                build.b(ConditionA64::UnsignedLessEqual, fail);
             }
             else
             {
                 RegisterA64 temp2 = regs.allocTemp(KindA64::w);
                 build.mov(temp2, intOp(inst.b));
                 build.cmp(temp, temp2);
+                build.b(ConditionA64::UnsignedLessEqual, fail);
             }
         }
         else
             LUAU_ASSERT(!"Unsupported instruction form");
 
-        build.b(ConditionA64::UnsignedLessEqual, labelOp(inst.c));
+        if (abort.id)
+            emitAbort(build, abort);
         break;
     }
     case IrCmd::JUMP_SLOT_MATCH:
     case IrCmd::CHECK_SLOT_MATCH:
     {
-        Label& mismatch = inst.cmd == IrCmd::JUMP_SLOT_MATCH ? labelOp(inst.d) : labelOp(inst.c);
+        Label abort; // used when guard aborts execution
+        const IrOp& mismatchOp = inst.cmd == IrCmd::JUMP_SLOT_MATCH ? inst.d : inst.c;
+        Label& mismatch = mismatchOp.kind == IrOpKind::Undef ? abort : labelOp(mismatchOp);
 
         RegisterA64 temp1 = regs.allocTemp(KindA64::x);
         RegisterA64 temp1w = castReg(KindA64::w, temp1);
@@ -1081,15 +1144,21 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         if (inst.cmd == IrCmd::JUMP_SLOT_MATCH)
             jumpOrFallthrough(blockOp(inst.c), next);
+        else if (abort.id)
+            emitAbort(build, abort);
         break;
     }
     case IrCmd::CHECK_NODE_NO_NEXT:
     {
+        Label abort; // used when guard aborts execution
         RegisterA64 temp = regs.allocTemp(KindA64::w);
 
         build.ldr(temp, mem(regOp(inst.a), offsetof(LuaNode, key) + kOffsetOfTKeyTagNext));
         build.lsr(temp, temp, kTKeyTagBits);
-        build.cbnz(temp, labelOp(inst.b));
+        build.cbnz(temp, inst.b.kind == IrOpKind::Undef ? abort : labelOp(inst.b));
+
+        if (abort.id)
+            emitAbort(build, abort);
         break;
     }
     case IrCmd::INTERRUPT:
@@ -1760,11 +1829,6 @@ IrConst IrLoweringA64::constOp(IrOp op) const
 uint8_t IrLoweringA64::tagOp(IrOp op) const
 {
     return function.tagOp(op);
-}
-
-bool IrLoweringA64::boolOp(IrOp op) const
-{
-    return function.boolOp(op);
 }
 
 int IrLoweringA64::intOp(IrOp op) const

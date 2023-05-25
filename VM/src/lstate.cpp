@@ -219,9 +219,7 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
 
     g->cb = lua_Callbacks();
 
-#if LUA_CUSTOM_EXECUTION
     g->ecb = lua_ExecutionCallbacks();
-#endif
 
     g->gcstats = GCStats();
 

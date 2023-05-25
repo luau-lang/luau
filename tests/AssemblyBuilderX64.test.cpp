@@ -537,6 +537,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXTernaryInstructionForms")
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "MiscInstructions")
 {
     SINGLE_COMPARE(int3(), 0xcc);
+    SINGLE_COMPARE(ud2(), 0x0f, 0x0b);
     SINGLE_COMPARE(bsr(eax, edx), 0x0f, 0xbd, 0xc2);
     SINGLE_COMPARE(bsf(eax, edx), 0x0f, 0xbc, 0xc2);
 }

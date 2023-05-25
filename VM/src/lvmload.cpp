@@ -13,6 +13,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauGetImportDirect, false)
+
 // TODO: RAII deallocation doesn't work for longjmp builds if a memory error happens
 template<typename T>
 struct TempBuffer
@@ -40,8 +42,45 @@ struct TempBuffer
     }
 };
 
-void luaV_getimport(lua_State* L, Table* env, TValue* k, uint32_t id, bool propagatenil)
+void luaV_getimport(lua_State* L, Table* env, TValue* k, StkId res, uint32_t id, bool propagatenil)
 {
+    int count = id >> 30;
+    LUAU_ASSERT(count > 0);
+
+    int id0 = int(id >> 20) & 1023;
+    int id1 = int(id >> 10) & 1023;
+    int id2 = int(id) & 1023;
+
+    // after the first call to luaV_gettable, res may be invalid, and env may (sometimes) be garbage collected
+    // we take care to not use env again and to restore res before every consecutive use
+    ptrdiff_t resp = savestack(L, res);
+
+    // global lookup for id0
+    TValue g;
+    sethvalue(L, &g, env);
+    luaV_gettable(L, &g, &k[id0], res);
+
+    // table lookup for id1
+    if (count < 2)
+        return;
+
+    res = restorestack(L, resp);
+    if (!propagatenil || !ttisnil(res))
+        luaV_gettable(L, res, &k[id1], res);
+
+    // table lookup for id2
+    if (count < 3)
+        return;
+
+    res = restorestack(L, resp);
+    if (!propagatenil || !ttisnil(res))
+        luaV_gettable(L, res, &k[id2], res);
+}
+
+void luaV_getimport_dep(lua_State* L, Table* env, TValue* k, uint32_t id, bool propagatenil)
+{
+    LUAU_ASSERT(!FFlag::LuauGetImportDirect);
+
     int count = id >> 30;
     int id0 = count > 0 ? int(id >> 20) & 1023 : -1;
     int id1 = count > 1 ? int(id >> 10) & 1023 : -1;
@@ -114,7 +153,17 @@ static void resolveImportSafe(lua_State* L, Table* env, TValue* k, uint32_t id)
             // note: we call getimport with nil propagation which means that accesses to table chains like A.B.C will resolve in nil
             // this is technically not necessary but it reduces the number of exceptions when loading scripts that rely on getfenv/setfenv for global
             // injection
-            luaV_getimport(L, L->gt, self->k, self->id, /* propagatenil= */ true);
+            if (FFlag::LuauGetImportDirect)
+            {
+                // allocate a stack slot so that we can do table lookups
+                luaD_checkstack(L, 1);
+                setnilvalue(L->top);
+                L->top++;
+
+                luaV_getimport(L, L->gt, self->k, L->top - 1, self->id, /* propagatenil= */ true);
+            }
+            else
+                luaV_getimport_dep(L, L->gt, self->k, self->id, /* propagatenil= */ true);
         }
     };
 
@@ -203,6 +252,8 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
         p->code = luaM_newarray(L, p->sizecode, Instruction, p->memcat);
         for (int j = 0; j < p->sizecode; ++j)
             p->code[j] = read<uint32_t>(data, size, offset);
+
+        p->codeentry = p->code;
 
         p->sizek = readVarInt(data, size, offset);
         p->k = luaM_newarray(L, p->sizek, TValue, p->memcat);

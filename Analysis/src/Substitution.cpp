@@ -13,6 +13,8 @@ LUAU_FASTFLAG(LuauClonePublicInterfaceLess2)
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAGVARIABLE(LuauClassTypeVarsInSubstitution, false)
 LUAU_FASTFLAGVARIABLE(LuauSubstitutionReentrant, false)
+LUAU_FASTFLAG(DebugLuauReadWriteProperties)
+LUAU_FASTFLAG(LuauCloneSkipNonInternalVisit)
 
 namespace Luau
 {
@@ -214,7 +216,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
 {
     LUAU_ASSERT(ty == log->follow(ty));
 
-    if (ignoreChildren(ty))
+    if (FFlag::LuauCloneSkipNonInternalVisit ? ignoreChildrenVisit(ty) : ignoreChildren(ty))
         return;
 
     if (auto pty = log->pending(ty))
@@ -237,7 +239,16 @@ void Tarjan::visitChildren(TypeId ty, int index)
     {
         LUAU_ASSERT(!ttv->boundTo);
         for (const auto& [name, prop] : ttv->props)
-            visitChild(prop.type());
+        {
+            if (FFlag::DebugLuauReadWriteProperties)
+            {
+                visitChild(prop.readType());
+                visitChild(prop.writeType());
+            }
+            else
+                visitChild(prop.type());
+        }
+
         if (ttv->indexer)
         {
             visitChild(ttv->indexer->indexType);
@@ -311,7 +322,7 @@ void Tarjan::visitChildren(TypePackId tp, int index)
 {
     LUAU_ASSERT(tp == log->follow(tp));
 
-    if (ignoreChildren(tp))
+    if (FFlag::LuauCloneSkipNonInternalVisit ? ignoreChildrenVisit(tp) : ignoreChildren(tp))
         return;
 
     if (auto ptp = log->pending(tp))
@@ -793,7 +804,13 @@ void Substitution::replaceChildren(TypeId ty)
     {
         LUAU_ASSERT(!ttv->boundTo);
         for (auto& [name, prop] : ttv->props)
-            prop.setType(replace(prop.type()));
+        {
+            if (FFlag::DebugLuauReadWriteProperties)
+                prop = Property::create(replace(prop.readType()), replace(prop.writeType()));
+            else
+                prop.setType(replace(prop.type()));
+        }
+
         if (ttv->indexer)
         {
             ttv->indexer->indexType = replace(ttv->indexer->indexType);

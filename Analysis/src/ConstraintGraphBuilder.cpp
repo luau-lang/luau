@@ -755,8 +755,8 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatForIn* f
     // It is always ok to provide too few variables, so we give this pack a free tail.
     TypePackId variablePack = arena->addTypePack(std::move(variableTypes), arena->addTypePack(FreeTypePack{loopScope.get()}));
 
-    addConstraint(loopScope, getLocation(forIn->values), IterableConstraint{iterator, variablePack});
-
+    addConstraint(
+        loopScope, getLocation(forIn->values), IterableConstraint{iterator, variablePack, forIn->values.data[0], &module->astOverloadResolvedTypes});
     visit(loopScope, forIn->body);
 
     return ControlFlow::None;

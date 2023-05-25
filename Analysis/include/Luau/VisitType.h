@@ -10,6 +10,7 @@
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
 LUAU_FASTFLAG(LuauBoundLazyTypes2)
+LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
 namespace Luau
 {
@@ -250,7 +251,18 @@ struct GenericTypeVisitor
                 else
                 {
                     for (auto& [_name, prop] : ttv->props)
-                        traverse(prop.type());
+                    {
+                        if (FFlag::DebugLuauReadWriteProperties)
+                        {
+                            if (auto ty = prop.readType())
+                                traverse(*ty);
+
+                            if (auto ty = prop.writeType())
+                                traverse(*ty);
+                        }
+                        else
+                            traverse(prop.type());
+                    }
 
                     if (ttv->indexer)
                     {
@@ -273,7 +285,18 @@ struct GenericTypeVisitor
             if (visit(ty, *ctv))
             {
                 for (const auto& [name, prop] : ctv->props)
-                    traverse(prop.type());
+                {
+                    if (FFlag::DebugLuauReadWriteProperties)
+                    {
+                        if (auto ty = prop.readType())
+                            traverse(*ty);
+
+                        if (auto ty = prop.writeType())
+                            traverse(*ty);
+                    }
+                    else
+                        traverse(prop.type());
+                }
 
                 if (ctv->parent)
                     traverse(*ctv->parent);
@@ -311,11 +334,9 @@ struct GenericTypeVisitor
         }
         else if (auto ltv = get<LazyType>(ty))
         {
-            if (FFlag::LuauBoundLazyTypes2)
-            {
-                if (TypeId unwrapped = ltv->unwrapped)
-                    traverse(unwrapped);
-            }
+            if (TypeId unwrapped = ltv->unwrapped)
+                traverse(unwrapped);
+
             // Visiting into LazyType that hasn't been unwrapped may necessarily cause infinite expansion, so we don't do that on purpose.
             // Asserting also makes no sense, because the type _will_ happen here, most likely as a property of some ClassType
             // that doesn't need to be expanded.

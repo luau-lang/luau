@@ -14,4 +14,27 @@ assert((function(x, y)
   return c, b, t, t1, t2
 end)(5, 10) == 50)
 
+local function fuzzfail1(...)
+  repeat
+    _ = nil
+  until not {}
+  for _ in ... do
+    for l0=_,_ do
+    end
+    return
+  end
+end
+
+local function fuzzFail2()
+  local _
+  do
+    repeat
+      _ = typeof(_),{_=_,}
+      _ = _(_._)
+    until _
+  end
+end
+
+assert(pcall(fuzzFail2) == false)
+
 return('OK')

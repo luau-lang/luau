@@ -80,7 +80,7 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
 #if defined(_WIN32) && defined(_M_X64)
     if (!RtlAddFunctionTable((RUNTIME_FUNCTION*)block, uint32_t(unwind->getFunctionCount()), uintptr_t(block)))
     {
-        LUAU_ASSERT(!"failed to allocate function table");
+        LUAU_ASSERT(!"Failed to allocate function table");
         return nullptr;
     }
 #elif defined(__linux__) || defined(__APPLE__)
@@ -95,7 +95,7 @@ void destroyBlockUnwindInfo(void* context, void* unwindData)
 {
 #if defined(_WIN32) && defined(_M_X64)
     if (!RtlDeleteFunctionTable((RUNTIME_FUNCTION*)unwindData))
-        LUAU_ASSERT(!"failed to deallocate function table");
+        LUAU_ASSERT(!"Failed to deallocate function table");
 #elif defined(__linux__) || defined(__APPLE__)
     visitFdeEntries((char*)unwindData, __deregister_frame);
 #endif

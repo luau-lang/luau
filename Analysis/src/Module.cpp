@@ -19,6 +19,7 @@ LUAU_FASTFLAGVARIABLE(LuauClonePublicInterfaceLess2, false);
 LUAU_FASTFLAG(LuauSubstitutionReentrant);
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution);
 LUAU_FASTFLAG(LuauSubstitutionFixMissingFields);
+LUAU_FASTFLAGVARIABLE(LuauCloneSkipNonInternalVisit, false);
 
 namespace Luau
 {
@@ -96,6 +97,22 @@ struct ClonePublicInterface : Substitution
     bool isDirty(TypePackId tp) override
     {
         return tp->owningArena == &module->internalTypes;
+    }
+
+    bool ignoreChildrenVisit(TypeId ty) override
+    {
+        if (FFlag::LuauCloneSkipNonInternalVisit && ty->owningArena != &module->internalTypes)
+            return true;
+
+        return false;
+    }
+
+    bool ignoreChildrenVisit(TypePackId tp) override
+    {
+        if (FFlag::LuauCloneSkipNonInternalVisit && tp->owningArena != &module->internalTypes)
+            return true;
+
+        return false;
     }
 
     TypeId clean(TypeId ty) override

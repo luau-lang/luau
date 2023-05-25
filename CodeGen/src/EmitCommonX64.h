@@ -184,33 +184,6 @@ inline void jumpIfTruthy(AssemblyBuilderX64& build, int ri, Label& target, Label
     build.jcc(ConditionX64::NotEqual, target); // true if boolean value is 'true'
 }
 
-inline void jumpIfNodeKeyTagIsNot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 node, lua_Type tag, Label& label)
-{
-    tmp.size = SizeX64::dword;
-
-    build.mov(tmp, luauNodeKeyTag(node));
-    build.and_(tmp, kTKeyTagMask);
-    build.cmp(tmp, tag);
-    build.jcc(ConditionX64::NotEqual, label);
-}
-
-inline void jumpIfNodeValueTagIs(AssemblyBuilderX64& build, RegisterX64 node, lua_Type tag, Label& label)
-{
-    build.cmp(dword[node + offsetof(LuaNode, val) + offsetof(TValue, tt)], tag);
-    build.jcc(ConditionX64::Equal, label);
-}
-
-inline void jumpIfNodeKeyNotInExpectedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 node, OperandX64 expectedKey, Label& label)
-{
-    jumpIfNodeKeyTagIsNot(build, tmp, node, LUA_TSTRING, label);
-
-    build.mov(tmp, expectedKey);
-    build.cmp(tmp, luauNodeKeyValue(node));
-    build.jcc(ConditionX64::NotEqual, label);
-
-    jumpIfNodeValueTagIs(build, node, LUA_TNIL, label);
-}
-
 void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs, OperandX64 rhs, IrCondition cond, Label& label);
 void jumpOnAnyCmpFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, IrCondition cond, Label& label);
 

@@ -213,4 +213,36 @@ TEST_CASE_FIXTURE(Fixture, "add_family_at_work")
     CHECK(toString(result.errors[1]) == "Type family instance Add<string, number> is uninhabited");
 }
 
+TEST_CASE_FIXTURE(Fixture, "internal_families_raise_errors")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local function innerSum(a, b)
+            local _ = a + b
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Type family instance Add<a, b> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_families_inhabited_with_normalization")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        local useGridConfig : any
+        local columns = useGridConfig("columns", {}) or 1
+        local gutter = useGridConfig('gutter', {}) or 0
+        local margin = useGridConfig('margin', {}) or 0
+        return function(frameAbsoluteWidth: number)
+            local cellAbsoluteWidth = (frameAbsoluteWidth - 2 * margin + gutter) / columns - gutter
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

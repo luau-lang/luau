@@ -252,8 +252,7 @@ BuiltinInfo getBuiltinInfo(int bfid)
         return {-1, -1};
 
     case LBF_ASSERT:
-        return {-1, -1};
-        ; // assert() returns all values when first value is truthy
+        return {-1, -1}; // assert() returns all values when first value is truthy
 
     case LBF_MATH_ABS:
     case LBF_MATH_ACOS:

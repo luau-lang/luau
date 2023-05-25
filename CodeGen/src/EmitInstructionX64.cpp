@@ -4,8 +4,10 @@
 #include "Luau/AssemblyBuilderX64.h"
 #include "Luau/IrRegAllocX64.h"
 
-#include "CustomExecUtils.h"
 #include "EmitCommonX64.h"
+#include "NativeState.h"
+
+#include "lstate.h"
 
 namespace Luau
 {
@@ -87,8 +89,8 @@ void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int
         build.test(rax, rax);
         build.jcc(ConditionX64::Zero, helpers.continueCallInVm);
 
-        // Mark call frame as custom
-        build.mov(dword[ci + offsetof(CallInfo, flags)], LUA_CALLINFO_CUSTOM);
+        // Mark call frame as native
+        build.mov(dword[ci + offsetof(CallInfo, flags)], LUA_CALLINFO_NATIVE);
 
         // Switch current constants
         build.mov(rConstants, qword[proto + offsetof(Proto, k)]);
@@ -298,7 +300,7 @@ void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, i
 
     build.mov(execdata, qword[proto + offsetof(Proto, execdata)]);
 
-    build.test(byte[cip + offsetof(CallInfo, flags)], LUA_CALLINFO_CUSTOM);
+    build.test(byte[cip + offsetof(CallInfo, flags)], LUA_CALLINFO_NATIVE);
     build.jcc(ConditionX64::Zero, helpers.exitContinueVm); // Continue in interpreter if function has no native data
 
     // Change constants

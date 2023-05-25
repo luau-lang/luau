@@ -201,7 +201,7 @@ struct ConstraintSolver
      * @param subType the sub-type to unify.
      * @param superType the super-type to unify.
      */
-    void unify(TypeId subType, TypeId superType, NotNull<Scope> scope);
+    ErrorVec unify(TypeId subType, TypeId superType, NotNull<Scope> scope);
 
     /**
      * Creates a new Unifier and performs a single unification operation. Commits
@@ -209,7 +209,7 @@ struct ConstraintSolver
      * @param subPack the sub-type pack to unify.
      * @param superPack the super-type pack to unify.
      */
-    void unify(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope);
+    ErrorVec unify(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope);
 
     /** Pushes a new solver constraint to the solver.
      * @param cv the body of the constraint.

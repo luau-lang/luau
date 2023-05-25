@@ -182,8 +182,6 @@ struct Frontend
     std::optional<CheckResult> getCheckResult(const ModuleName& name, bool accumulateNested, bool forAutocomplete = false);
 
 private:
-    CheckResult check_DEPRECATED(const ModuleName& name, std::optional<FrontendOptions> optionOverride = {});
-
     struct TypeCheckLimits
     {
         std::optional<double> finishTime;

@@ -21,6 +21,7 @@ LUAU_FASTFLAGVARIABLE(LuauNormalizeBlockedTypes, false);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
 LUAU_FASTFLAG(LuauTransitiveSubtyping)
+LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
 namespace Luau
 {
@@ -277,6 +278,22 @@ bool Normalizer::isInhabited(const NormalizedType* norm, std::unordered_set<Type
     return false;
 }
 
+bool Normalizer::isInhabited(TypeId ty)
+{
+    if (cacheInhabitance)
+    {
+        if (bool* result = cachedIsInhabited.find(ty))
+            return *result;
+    }
+
+    bool result = isInhabited(ty, {});
+
+    if (cacheInhabitance)
+        cachedIsInhabited[ty] = result;
+
+    return result;
+}
+
 bool Normalizer::isInhabited(TypeId ty, std::unordered_set<TypeId> seen)
 {
     // TODO: use log.follow(ty), CLI-64291
@@ -297,8 +314,18 @@ bool Normalizer::isInhabited(TypeId ty, std::unordered_set<TypeId> seen)
     {
         for (const auto& [_, prop] : ttv->props)
         {
-            if (!isInhabited(prop.type(), seen))
-                return false;
+            if (FFlag::DebugLuauReadWriteProperties)
+            {
+                // A table enclosing a read property whose type is uninhabitable is also itself uninhabitable,
+                // but not its write property. That just means the write property doesn't exist, and so is readonly.
+                if (auto ty = prop.readType(); ty && !isInhabited(*ty, seen))
+                    return false;
+            }
+            else
+            {
+                if (!isInhabited(prop.type(), seen))
+                    return false;
+            }
         }
         return true;
     }
@@ -314,14 +341,32 @@ bool Normalizer::isIntersectionInhabited(TypeId left, TypeId right)
 {
     left = follow(left);
     right = follow(right);
+
+    if (cacheInhabitance)
+    {
+        if (bool* result = cachedIsInhabitedIntersection.find({left, right}))
+            return *result;
+    }
+
     std::unordered_set<TypeId> seen = {};
     seen.insert(left);
     seen.insert(right);
 
     NormalizedType norm{builtinTypes};
     if (!normalizeIntersections({left, right}, norm))
+    {
+        if (cacheInhabitance)
+            cachedIsInhabitedIntersection[{left, right}] = false;
+
         return false;
-    return isInhabited(&norm, seen);
+    }
+
+    bool result = isInhabited(&norm, seen);
+
+    if (cacheInhabitance)
+        cachedIsInhabitedIntersection[{left, right}] = result;
+
+    return result;
 }
 
 static int tyvarIndex(TypeId ty)
@@ -568,10 +613,11 @@ static void assertInvariant(const NormalizedType& norm)
 #endif
 }
 
-Normalizer::Normalizer(TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> sharedState)
+Normalizer::Normalizer(TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> sharedState, bool cacheInhabitance)
     : arena(arena)
     , builtinTypes(builtinTypes)
     , sharedState(sharedState)
+    , cacheInhabitance(cacheInhabitance)
 {
 }
 
@@ -1315,7 +1361,8 @@ bool Normalizer::withinResourceLimits()
     // If cache is too large, clear it
     if (FInt::LuauNormalizeCacheLimit > 0)
     {
-        size_t cacheUsage = cachedNormals.size() + cachedIntersections.size() + cachedUnions.size() + cachedTypeIds.size();
+        size_t cacheUsage = cachedNormals.size() + cachedIntersections.size() + cachedUnions.size() + cachedTypeIds.size() +
+                            cachedIsInhabited.size() + cachedIsInhabitedIntersection.size();
         if (cacheUsage > size_t(FInt::LuauNormalizeCacheLimit))
         {
             clearCaches();
@@ -2726,7 +2773,7 @@ bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<Built
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    Unifier u{NotNull{&normalizer}, Mode::Strict, scope, Location{}, Covariant};
+    Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
 
     u.tryUnify(subTy, superTy);
     return !u.failure;
@@ -2739,7 +2786,7 @@ bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, N
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    Unifier u{NotNull{&normalizer}, Mode::Strict, scope, Location{}, Covariant};
+    Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
 
     u.tryUnify(subPack, superPack);
     return !u.failure;
@@ -2750,7 +2797,7 @@ bool isConsistentSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, Not
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    Unifier u{NotNull{&normalizer}, Mode::Strict, scope, Location{}, Covariant};
+    Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
 
     u.tryUnify(subTy, superTy);
     const bool ok = u.errors.empty() && u.log.empty();
@@ -2763,7 +2810,7 @@ bool isConsistentSubtype(
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    Unifier u{NotNull{&normalizer}, Mode::Strict, scope, Location{}, Covariant};
+    Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
 
     u.tryUnify(subPack, superPack);
     const bool ok = u.errors.empty() && u.log.empty();

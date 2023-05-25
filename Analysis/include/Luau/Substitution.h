@@ -113,6 +113,13 @@ struct Tarjan
     void visitChild(TypeId ty);
     void visitChild(TypePackId ty);
 
+    template<typename Ty>
+    void visitChild(std::optional<Ty> ty)
+    {
+        if (ty)
+            visitChild(*ty);
+    }
+
     // Visit the root vertex.
     TarjanResult visitRoot(TypeId ty);
     TarjanResult visitRoot(TypePackId ty);
@@ -127,9 +134,21 @@ struct Tarjan
     {
         return false;
     }
+
     virtual bool ignoreChildren(TypePackId ty)
     {
         return false;
+    }
+
+    // Some subclasses might ignore children visit, but not other actions like replacing the children
+    virtual bool ignoreChildrenVisit(TypeId ty)
+    {
+        return ignoreChildren(ty);
+    }
+
+    virtual bool ignoreChildrenVisit(TypePackId ty)
+    {
+        return ignoreChildren(ty);
     }
 };
 
@@ -186,8 +205,10 @@ public:
 
     TypeId replace(TypeId ty);
     TypePackId replace(TypePackId tp);
+
     void replaceChildren(TypeId ty);
     void replaceChildren(TypePackId tp);
+
     TypeId clone(TypeId ty);
     TypePackId clone(TypePackId tp);
 
@@ -210,6 +231,16 @@ public:
     TypePackId addTypePack(const T& tp)
     {
         return arena->addTypePack(TypePackVar{tp});
+    }
+
+private:
+    template<typename Ty>
+    std::optional<Ty> replace(std::optional<Ty> ty)
+    {
+        if (ty)
+            return replace(*ty);
+        else
+            return std::nullopt;
     }
 };
 
