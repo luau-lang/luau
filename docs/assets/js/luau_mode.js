@@ -108,15 +108,20 @@
   
     function string(quote) {
         return function(stream, state) {
-            var escaped = false, ch;
+            var escaped = false, ignoreWhitespace = false, ch;
             while ((ch = stream.next()) != null) {
                 if (ch == quote && !escaped) {
                     break;
                 }
+                if (ch == "z" && escaped) {
+                    ignoreWhitespace = true;
+                    stream.eatSpace();
+                    ignoreWhitespace = stream.eol();
+                }
                 escaped = !escaped && ch == "\\";
             }
 
-            if (!escaped) {
+            if (!ignoreWhitespace) {
                 state.cur = normal;
             }
             return "string";
