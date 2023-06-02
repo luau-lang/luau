@@ -639,6 +639,9 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
             callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaT_gettm)]);
         }
 
+        build.test(rax, rax);
+        build.jcc(ConditionX64::Zero, labelOp(inst.c)); // No tag method
+
         inst.regX64 = regs.takeReg(rax, index);
         break;
     }

@@ -482,6 +482,41 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
     CHECK("<a>(a, number) -> ()" == toString(requireType("prime_iter")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
+    TypeArena arena;
+    TypeId nilType = builtinTypes->nilType;
+
+    std::unique_ptr scope = std::make_unique<Scope>(builtinTypes->anyTypePack);
+
+    TypeId free1 = arena.addType(FreeType{scope.get()});
+    TypeId option1 = arena.addType(UnionType{{nilType, free1}});
+
+    TypeId free2 = arena.addType(FreeType{scope.get()});
+    TypeId option2 = arena.addType(UnionType{{nilType, free2}});
+
+    InternalErrorReporter iceHandler;
+    UnifierSharedState sharedState{&iceHandler};
+    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
+    Unifier u{NotNull{&normalizer}, NotNull{scope.get()}, Location{}, Variance::Covariant};
+
+    u.tryUnify(option1, option2);
+
+    CHECK(!u.failure);
+
+    u.log.commit();
+
+    ToStringOptions opts;
+    CHECK("a?" == toString(option1, opts));
+
+    // CHECK("a?" == toString(option2, opts)); // This should hold, but does not.
+    CHECK("b?" == toString(option2, opts)); // This should not hold.
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators")
 {
     ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", false};
@@ -822,7 +857,6 @@ TEST_CASE_FIXTURE(Fixture, "lookup_prop_of_intersection_containing_unions_of_tab
 TEST_CASE_FIXTURE(Fixture, "expected_type_should_be_a_helpful_deduction_guide_for_function_calls")
 {
     ScopedFastFlag sffs[]{
-        {"LuauUnifyTwoOptions", true},
         {"LuauTypeMismatchInvarianceInError", true},
     };
 
@@ -836,22 +870,11 @@ TEST_CASE_FIXTURE(Fixture, "expected_type_should_be_a_helpful_deduction_guide_fo
         local x: Ref<number?> = useRef(nil)
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-    {
-        // This is actually wrong! Sort of. It's doing the wrong thing, it's actually asking whether
-        //  `{| val: number? |} <: {| val: nil |}`
-        // instead of the correct way, which is
-        //  `{| val: nil |} <: {| val: number? |}`
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'Ref<nil>' could not be converted into 'Ref<number?>'
-caused by:
-  Property 'val' is not compatible. Type 'nil' could not be converted into 'number' in an invariant context)");
-    }
+    // This is actually wrong! Sort of. It's doing the wrong thing, it's actually asking whether
+    //  `{| val: number? |} <: {| val: nil |}`
+    // instead of the correct way, which is
+    //  `{| val: nil |} <: {| val: number? |}`
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "floating_generics_should_not_be_allowed")
@@ -872,6 +895,118 @@ TEST_CASE_FIXTURE(Fixture, "floating_generics_should_not_be_allowed")
             })
         end
     )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
+    TypeArena arena;
+    TypeId nilType = builtinTypes->nilType;
+
+    std::unique_ptr scope = std::make_unique<Scope>(builtinTypes->anyTypePack);
+
+    TypeId free1 = arena.addType(FreeType{scope.get()});
+    TypeId option1 = arena.addType(UnionType{{nilType, free1}});
+
+    TypeId free2 = arena.addType(FreeType{scope.get()});
+    TypeId option2 = arena.addType(UnionType{{nilType, free2}});
+
+    InternalErrorReporter iceHandler;
+    UnifierSharedState sharedState{&iceHandler};
+    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
+    Unifier u{NotNull{&normalizer}, NotNull{scope.get()}, Location{}, Variance::Covariant};
+
+    u.tryUnify(option1, option2);
+
+    CHECK(!u.failure);
+
+    u.log.commit();
+
+    ToStringOptions opts;
+    CHECK("a?" == toString(option1, opts));
+    CHECK("b?" == toString(option2, opts)); // should be `a?`.
+}
+
+TEST_CASE_FIXTURE(Fixture, "unify_more_complex_unions_that_include_nil")
+{
+    CheckResult result = check(R"(
+        type Record = {prop: (string | boolean)?}
+
+        function concatPagination(prop: (string | boolean | nil)?): Record
+            return {prop = prop}
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "optional_class_instances_are_invariant")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauTypeMismatchInvarianceInError", true}
+    };
+
+    createSomeClasses(&frontend);
+
+    CheckResult result = check(R"(
+        function foo(ref: {current: Parent?})
+        end
+
+        function bar(ref: {current: Child?})
+            foo(ref)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "luau-polyfill.Map.entries")
+{
+
+    fileResolver.source["Module/Map"] = R"(
+--!strict
+
+type Object = { [any]: any }
+type Array<T> = { [number]: T }
+type Table<T, V> = { [T]: V }
+type Tuple<T, V> = Array<T | V>
+
+local Map = {}
+
+export type Map<K, V> = {
+	size: number,
+	-- method definitions
+	set: (self: Map<K, V>, K, V) -> Map<K, V>,
+	get: (self: Map<K, V>, K) -> V | nil,
+	clear: (self: Map<K, V>) -> (),
+	delete: (self: Map<K, V>, K) -> boolean,
+	has: (self: Map<K, V>, K) -> boolean,
+	keys: (self: Map<K, V>) -> Array<K>,
+	values: (self: Map<K, V>) -> Array<V>,
+	entries: (self: Map<K, V>) -> Array<Tuple<K, V>>,
+	ipairs: (self: Map<K, V>) -> any,
+	[K]: V,
+	_map: { [K]: V },
+	_array: { [number]: K },
+}
+
+function Map:entries()
+	return {}
+end
+
+local function coerceToTable(mapLike: Map<any, any> | Table<any, any>): Array<Tuple<any, any>>
+    local e = mapLike:entries();
+    return e
+end
+
+    )";
+
+    CheckResult result = frontend.check("Module/Map");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }

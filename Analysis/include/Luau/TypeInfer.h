@@ -30,7 +30,14 @@ struct ModuleResolver;
 
 using Name = std::string;
 using ScopePtr = std::shared_ptr<Scope>;
-using OverloadErrorEntry = std::tuple<std::vector<TypeError>, std::vector<TypeId>, const FunctionType*>;
+
+struct OverloadErrorEntry
+{
+    TxnLog log;
+    ErrorVec errors;
+    std::vector<TypeId> arguments;
+    const FunctionType* fnTy;
+};
 
 bool doesCallError(const AstExprCall* call);
 bool hasBreak(AstStat* node);
@@ -166,7 +173,7 @@ struct TypeChecker
         const std::vector<OverloadErrorEntry>& errors);
     void reportOverloadResolutionError(const ScopePtr& scope, const AstExprCall& expr, TypePackId retPack, TypePackId argPack,
         const std::vector<Location>& argLocations, const std::vector<TypeId>& overloads, const std::vector<TypeId>& overloadsThatMatchArgCount,
-        const std::vector<OverloadErrorEntry>& errors);
+        std::vector<OverloadErrorEntry>& errors);
 
     WithPredicate<TypePackId> checkExprList(const ScopePtr& scope, const Location& location, const AstArray<AstExpr*>& exprs,
         bool substituteFreeForNil = false, const std::vector<bool>& lhsAnnotations = {},

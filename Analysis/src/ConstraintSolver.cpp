@@ -1300,6 +1300,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     Instantiation inst(TxnLog::empty(), arena, TypeLevel{}, constraint->scope);
 
     std::vector<TypeId> arityMatchingOverloads;
+    std::optional<TxnLog> bestOverloadLog;
 
     for (TypeId overload : overloads)
     {
@@ -1330,29 +1331,24 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         if (const auto& e = hasUnificationTooComplex(u.errors))
             reportError(*e);
 
-        if (const auto& e = hasCountMismatch(u.errors);
-            (!e || get<CountMismatch>(*e)->context != CountMismatch::Context::Arg) && get<FunctionType>(*instantiated))
-        {
+        const auto& e = hasCountMismatch(u.errors);
+        bool areArgumentsCompatible = (!e || get<CountMismatch>(*e)->context != CountMismatch::Context::Arg) && get<FunctionType>(*instantiated);
+        if (areArgumentsCompatible)
             arityMatchingOverloads.push_back(*instantiated);
-        }
 
         if (u.errors.empty())
         {
             if (c.callSite)
                 (*c.astOverloadResolvedTypes)[c.callSite] = *instantiated;
 
-            // We found a matching overload.
-            const auto [changedTypes, changedPacks] = u.log.getChanges();
-            u.log.commit();
-            unblock(changedTypes);
-            unblock(changedPacks);
-            unblock(c.result);
-
-            InstantiationQueuer queuer{constraint->scope, constraint->location, this};
-            queuer.traverse(fn);
-            queuer.traverse(inferredTy);
-
-            return true;
+            // This overload has no errors, so override the bestOverloadLog and use this one.
+            bestOverloadLog = std::move(u.log);
+            break;
+        }
+        else if (areArgumentsCompatible && !bestOverloadLog)
+        {
+            // This overload is erroneous. Replace its inferences with `any` iff there isn't already a TxnLog.
+            bestOverloadLog = std::move(u.log);
         }
     }
 
@@ -1365,15 +1361,20 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         (*c.astOverloadResolvedTypes)[c.callSite] = arityMatchingOverloads.at(0);
     }
 
-    // We found no matching overloads.
-    Unifier u{normalizer, constraint->scope, Location{}, Covariant};
-    u.enableScopeTests();
+    // We didn't find any overload that were a viable candidate, so replace the inferences with `any`.
+    if (!bestOverloadLog)
+    {
+        Unifier u{normalizer, constraint->scope, Location{}, Covariant};
+        u.enableScopeTests();
 
-    u.tryUnify(inferredTy, builtinTypes->anyType);
-    u.tryUnify(fn, builtinTypes->anyType);
+        u.tryUnify(inferredTy, builtinTypes->anyType);
+        u.tryUnify(fn, builtinTypes->anyType);
 
-    const auto [changedTypes, changedPacks] = u.log.getChanges();
-    u.log.commit();
+        bestOverloadLog = std::move(u.log);
+    }
+
+    const auto [changedTypes, changedPacks] = bestOverloadLog->getChanges();
+    bestOverloadLog->commit();
 
     unblock(changedTypes);
     unblock(changedPacks);

@@ -21,13 +21,13 @@ LUAU_FASTFLAG(LuauErrorRecoveryType)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauUninhabitedSubAnything2, false)
 LUAU_FASTFLAGVARIABLE(LuauVariadicAnyCanBeGeneric, false)
-LUAU_FASTFLAGVARIABLE(LuauUnifyTwoOptions, false)
 LUAU_FASTFLAGVARIABLE(LuauMaintainScopesInUnifier, false)
 LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauOccursIsntAlwaysFailure, false)
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
+LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls)
 
 namespace Luau
 {
@@ -761,93 +761,8 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     log.popSeen(superTy, subTy);
 }
 
-/*
- * If the passed type is an option, strip nil out.
- *
- * There is an important subtlety to be observed here:
- *
- * We want to do a peephole fix to unify the subtype relation A? <: B? where we
- * instead peel off the options and relate A <: B instead, but only works if we
- * are certain that neither A nor B are themselves optional.
- *
- * For instance, if we want to test that (boolean?)? <: boolean?, we must peel
- * off both layers of optionality from the subTy.
- *
- * We must also handle unions that have more than two choices.
- *
- * eg (string | nil)? <: boolean?
- */
-static std::optional<TypeId> unwrapOption(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, const TxnLog& log, TypeId ty, DenseHashSet<TypeId>& seen)
-{
-    if (seen.find(ty))
-        return std::nullopt;
-    seen.insert(ty);
-
-    const UnionType* ut = get<UnionType>(follow(ty));
-    if (!ut)
-        return std::nullopt;
-
-    if (2 == ut->options.size())
-    {
-        if (isNil(follow(ut->options[0])))
-        {
-            std::optional<TypeId> doubleUnwrapped = unwrapOption(builtinTypes, arena, log, ut->options[1], seen);
-            return doubleUnwrapped.value_or(ut->options[1]);
-        }
-        if (isNil(follow(ut->options[1])))
-        {
-            std::optional<TypeId> doubleUnwrapped = unwrapOption(builtinTypes, arena, log, ut->options[0], seen);
-            return doubleUnwrapped.value_or(ut->options[0]);
-        }
-    }
-
-    std::set<TypeId> newOptions;
-    bool found = false;
-    for (TypeId t : ut)
-    {
-        t = log.follow(t);
-        if (isNil(t))
-        {
-            found = true;
-            continue;
-        }
-        else
-            newOptions.insert(t);
-    }
-
-    if (!found)
-        return std::nullopt;
-    else if (newOptions.empty())
-        return builtinTypes->neverType;
-    else if (1 == newOptions.size())
-        return *begin(newOptions);
-    else
-        return arena->addType(UnionType{std::vector<TypeId>(begin(newOptions), end(newOptions))});
-}
-
-static std::optional<TypeId> unwrapOption(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, const TxnLog& log, TypeId ty)
-{
-    DenseHashSet<TypeId> seen{nullptr};
-
-    return unwrapOption(builtinTypes, arena, log, ty, seen);
-}
-
-
 void Unifier::tryUnifyUnionWithType(TypeId subTy, const UnionType* subUnion, TypeId superTy)
 {
-    // Peephole fix: A? <: B? if A <: B
-    //
-    // This works around issues that can arise if A or B is free.  We do not
-    // want either of those types to be bound to nil.
-    if (FFlag::LuauUnifyTwoOptions)
-    {
-        if (auto subOption = unwrapOption(builtinTypes, NotNull{types}, log, subTy))
-        {
-            if (auto superOption = unwrapOption(builtinTypes, NotNull{types}, log, superTy))
-                return tryUnify_(*subOption, *superOption);
-        }
-    }
-
     // A | B <: T if and only if A <: T and B <: T
     bool failed = false;
     bool errorsSuppressed = true;
@@ -880,7 +795,7 @@ void Unifier::tryUnifyUnionWithType(TypeId subTy, const UnionType* subUnion, Typ
         }
     }
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    if (FFlag::LuauAlwaysCommitInferencesOfFunctionCalls)
         log.concatAsUnion(combineLogsIntoUnion(std::move(logs)), NotNull{types});
     else
     {
@@ -1363,25 +1278,6 @@ void Unifier::tryUnifyNormalizedTypes(
         {
             const ClassType* superCtv = get<ClassType>(superClass);
             LUAU_ASSERT(superCtv);
-
-            if (FFlag::LuauUnifyTwoOptions)
-            {
-                if (variance == Invariant)
-                {
-                    if (subCtv == superCtv)
-                    {
-                        found = true;
-
-                        /*
-                         * The only way we could care about superNegations is if
-                         * one of them was equal to superCtv.  However,
-                         * normalization ensures that this is impossible.
-                         */
-                    }
-                    else
-                        continue;
-                }
-            }
 
             if (isSubclass(subCtv, superCtv))
             {
@@ -2960,7 +2856,6 @@ TxnLog Unifier::combineLogsIntoIntersection(std::vector<TxnLog> logs)
 
 TxnLog Unifier::combineLogsIntoUnion(std::vector<TxnLog> logs)
 {
-    LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
     TxnLog result(useScopes);
     for (TxnLog& log : logs)
         result.concatAsUnion(std::move(log), NotNull{types});
