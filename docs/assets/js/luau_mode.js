@@ -114,7 +114,6 @@
                     break;
                 }
                 if (ch == "z" && escaped) {
-                    ignoreWhitespace = true;
                     stream.eatSpace();
                     ignoreWhitespace = stream.eol();
                 }
