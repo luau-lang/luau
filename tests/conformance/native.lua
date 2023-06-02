@@ -25,7 +25,7 @@ local function fuzzfail1(...)
   end
 end
 
-local function fuzzFail2()
+local function fuzzfail2()
   local _
   do
     repeat
@@ -35,6 +35,30 @@ local function fuzzFail2()
   end
 end
 
-assert(pcall(fuzzFail2) == false)
+assert(pcall(fuzzfail2) == false)
+
+local function fuzzfail3()
+  function _(...)
+    _({_,_,true,},{...,},_,not _)
+  end
+  _()
+end
+
+assert(pcall(fuzzfail3) == false)
+
+local function fuzzfail4()
+  local _ = setmetatable({},setmetatable({_=_,},_))
+  return _(_:_())
+end
+
+assert(pcall(fuzzfail4) == false)
+
+local function fuzzfail5()
+  local _ = bit32.band
+  _(_(_,0),_)
+  _(_,_)
+end
+
+assert(pcall(fuzzfail5) == false)
 
 return('OK')

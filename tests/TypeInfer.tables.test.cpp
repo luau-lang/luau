@@ -1518,6 +1518,8 @@ TEST_CASE_FIXTURE(Fixture, "right_table_missing_key2")
 
 TEST_CASE_FIXTURE(Fixture, "casting_unsealed_tables_with_props_into_table_with_indexer")
 {
+    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+
     CheckResult result = check(R"(
         type StringToStringMap = { [string]: string }
         local rt: StringToStringMap = { ["foo"] = 1 }
@@ -1563,6 +1565,8 @@ TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer2")
 
 TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer3")
 {
+    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+
     CheckResult result = check(R"(
         local function foo(a: {[string]: number, a: string}) end
         foo({ a = 1 })
@@ -1574,7 +1578,7 @@ TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer3")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("{| [string]: number, a: string |}", toString(tm->wantedType, o));
-    CHECK_EQ("{ a: number }", toString(tm->givenType, o));
+    CHECK_EQ("{ [string]: number, a: number }", toString(tm->givenType, o));
 }
 
 TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer4")
@@ -2383,6 +2387,8 @@ TEST_CASE_FIXTURE(Fixture, "confusing_indexing")
 
 TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a_table")
 {
+    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+
     CheckResult result = check(R"(
         local a: {x: number, y: number, [any]: any} | {y: number}
 
@@ -2396,11 +2402,16 @@ TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    REQUIRE_EQ("{| [any]: any, x: number, y: number |} | {| y: number |}", toString(requireType("b")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        REQUIRE_EQ("{| [any]: any, x: number, y: number |} | {| y: number |}", toString(requireType("b")));
+    else
+        REQUIRE_EQ("{- y: number -}", toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a_table_2")
 {
+    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+
     CheckResult result = check(R"(
         local a: {y: number} | {x: number, y: number, [any]: any}
 
@@ -2414,7 +2425,10 @@ TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    REQUIRE_EQ("{| [any]: any, x: number, y: number |} | {| y: number |}", toString(requireType("b")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        REQUIRE_EQ("{| [any]: any, x: number, y: number |} | {| y: number |}", toString(requireType("b")));
+    else
+        REQUIRE_EQ("{- y: number -}", toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "unifying_tables_shouldnt_uaf1")
@@ -3292,6 +3306,8 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shap
 
 TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_shape_type")
 {
+    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+
     CheckResult result = check(R"(
         local function f(s)
             return s:absolutely_no_scalar_has_this_method()
@@ -3308,10 +3324,12 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_
 caused by:
   The former's metatable does not satisfy the requirements. Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')",
         toString(result.errors[0]));
+
     CHECK_EQ(R"(Type '"bar"' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
 caused by:
   The former's metatable does not satisfy the requirements. Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')",
         toString(result.errors[1]));
+
     CHECK_EQ(R"(Type '"bar" | "baz"' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
 caused by:
   Not all union options are compatible. Type '"bar"' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'

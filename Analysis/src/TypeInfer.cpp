@@ -40,6 +40,7 @@ LUAU_FASTFLAG(LuauOccursIsntAlwaysFailure)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckTypeguards, false)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckClassTypeIndexers, false)
+LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 
 namespace Luau
 {
@@ -4387,7 +4388,12 @@ std::unique_ptr<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(const 
         else
             overloadsThatDont.push_back(fn);
 
-        errors.emplace_back(std::move(state.errors), args->head, ftv);
+        errors.push_back(OverloadErrorEntry{
+            std::move(state.log),
+            std::move(state.errors),
+            args->head,
+            ftv,
+        });
     }
     else
     {
@@ -4407,7 +4413,7 @@ bool TypeChecker::handleSelfCallMismatch(const ScopePtr& scope, const AstExprCal
 {
     // No overloads succeeded: Scan for one that would have worked had the user
     // used a.b() rather than a:b() or vice versa.
-    for (const auto& [_, argVec, ftv] : errors)
+    for (const auto& e : errors)
     {
         // Did you write foo:bar() when you should have written foo.bar()?
         if (expr.self)
@@ -4418,7 +4424,7 @@ bool TypeChecker::handleSelfCallMismatch(const ScopePtr& scope, const AstExprCal
             TypePackId editedArgPack = addTypePack(TypePack{editedParamList});
 
             Unifier editedState = mkUnifier(scope, expr.location);
-            checkArgumentList(scope, *expr.func, editedState, editedArgPack, ftv->argTypes, editedArgLocations);
+            checkArgumentList(scope, *expr.func, editedState, editedArgPack, e.fnTy->argTypes, editedArgLocations);
 
             if (editedState.errors.empty())
             {
@@ -4433,7 +4439,7 @@ bool TypeChecker::handleSelfCallMismatch(const ScopePtr& scope, const AstExprCal
                 return true;
             }
         }
-        else if (ftv->hasSelf)
+        else if (e.fnTy->hasSelf)
         {
             // Did you write foo.bar() when you should have written foo:bar()?
             if (AstExprIndexName* indexName = expr.func->as<AstExprIndexName>())
@@ -4449,7 +4455,7 @@ bool TypeChecker::handleSelfCallMismatch(const ScopePtr& scope, const AstExprCal
 
                 Unifier editedState = mkUnifier(scope, expr.location);
 
-                checkArgumentList(scope, *expr.func, editedState, editedArgPack, ftv->argTypes, editedArgLocations);
+                checkArgumentList(scope, *expr.func, editedState, editedArgPack, e.fnTy->argTypes, editedArgLocations);
 
                 if (editedState.errors.empty())
                 {
@@ -4472,11 +4478,14 @@ bool TypeChecker::handleSelfCallMismatch(const ScopePtr& scope, const AstExprCal
 
 void TypeChecker::reportOverloadResolutionError(const ScopePtr& scope, const AstExprCall& expr, TypePackId retPack, TypePackId argPack,
     const std::vector<Location>& argLocations, const std::vector<TypeId>& overloads, const std::vector<TypeId>& overloadsThatMatchArgCount,
-    const std::vector<OverloadErrorEntry>& errors)
+    std::vector<OverloadErrorEntry>& errors)
 {
     if (overloads.size() == 1)
     {
-        reportErrors(std::get<0>(errors.front()));
+        if (FFlag::LuauAlwaysCommitInferencesOfFunctionCalls)
+            errors.front().log.commit();
+
+        reportErrors(errors.front().errors);
         return;
     }
 
@@ -4498,11 +4507,15 @@ void TypeChecker::reportOverloadResolutionError(const ScopePtr& scope, const Ast
         const FunctionType* ftv = get<FunctionType>(overload);
 
         auto error = std::find_if(errors.begin(), errors.end(), [ftv](const OverloadErrorEntry& e) {
-            return ftv == std::get<2>(e);
+            return ftv == e.fnTy;
         });
 
         LUAU_ASSERT(error != errors.end());
-        reportErrors(std::get<0>(*error));
+
+        if (FFlag::LuauAlwaysCommitInferencesOfFunctionCalls)
+            error->log.commit();
+
+        reportErrors(error->errors);
 
         // If only one overload matched, we don't need this error because we provided the previous errors.
         if (overloadsThatMatchArgCount.size() == 1)

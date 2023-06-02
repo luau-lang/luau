@@ -146,8 +146,15 @@ struct ConstPropState
 
     void invalidateRegisterRange(int firstReg, int count)
     {
-        for (int i = firstReg; i < firstReg + count && i <= maxReg; ++i)
-            invalidate(regs[i], /* invalidateTag */ true, /* invalidateValue */ true);
+        if (count == -1)
+        {
+            invalidateRegistersFrom(firstReg);
+        }
+        else
+        {
+            for (int i = firstReg; i < firstReg + count && i <= maxReg; ++i)
+                invalidate(regs[i], /* invalidateTag */ true, /* invalidateValue */ true);
+        }
     }
 
     void invalidateCapturedRegisters()
@@ -236,9 +243,18 @@ struct ConstPropState
             return;
 
         if (uint32_t* prevIdx = valueMap.find(inst))
-            substitute(function, inst, IrOp{IrOpKind::Inst, *prevIdx});
-        else
-            valueMap[inst] = instIdx;
+        {
+            const IrInst& prev = function.instructions[*prevIdx];
+
+            // Previous load might have been removed as unused
+            if (prev.useCount != 0)
+            {
+                substitute(function, inst, IrOp{IrOpKind::Inst, *prevIdx});
+                return;
+            }
+        }
+
+        valueMap[inst] = instIdx;
     }
 
     // Vm register load can be replaced by a previous load of the same version of the register
@@ -260,23 +276,28 @@ struct ConstPropState
         // Check if there is a value that already has this version of the register
         if (uint32_t* prevIdx = valueMap.find(versionedLoad))
         {
-            // Previous value might not be linked to a register yet
-            // For example, it could be a NEW_TABLE stored into a register and we might need to track guards made with this value
-            if (!instLink.contains(*prevIdx))
-                createRegLink(*prevIdx, loadInst.a);
+            const IrInst& prev = function.instructions[*prevIdx];
 
-            // Substitute load instructon with the previous value
-            substitute(function, loadInst, IrOp{IrOpKind::Inst, *prevIdx});
+            // Previous load might have been removed as unused
+            if (prev.useCount != 0)
+            {
+                // Previous value might not be linked to a register yet
+                // For example, it could be a NEW_TABLE stored into a register and we might need to track guards made with this value
+                if (!instLink.contains(*prevIdx))
+                    createRegLink(*prevIdx, loadInst.a);
+
+                // Substitute load instructon with the previous value
+                substitute(function, loadInst, IrOp{IrOpKind::Inst, *prevIdx});
+                return;
+            }
         }
-        else
-        {
-            uint32_t instIdx = function.getInstIndex(loadInst);
 
-            // Record load of this register version for future substitution
-            valueMap[versionedLoad] = instIdx;
+        uint32_t instIdx = function.getInstIndex(loadInst);
 
-            createRegLink(instIdx, loadInst.a);
-        }
+        // Record load of this register version for future substitution
+        valueMap[versionedLoad] = instIdx;
+
+        createRegLink(instIdx, loadInst.a);
     }
 
     // VM register loads can use the value that was stored in the same Vm register earlier
@@ -456,9 +477,16 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 }
 
                 if (state.tryGetTag(source) == value)
-                    kill(function, inst);
+                {
+                    if (FFlag::DebugLuauAbortingChecks)
+                        replace(function, block, index, {IrCmd::CHECK_TAG, inst.a, inst.b, build.undef()});
+                    else
+                        kill(function, inst);
+                }
                 else
+                {
                     state.saveTag(source, value);
+                }
             }
             else
             {
