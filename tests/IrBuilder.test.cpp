@@ -1811,6 +1811,30 @@ bb_0:
 )");
 }
 
+TEST_CASE_FIXTURE(IrBuilderFixture, "VaridicRegisterRangeInvalidation")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(2), build.constTag(tnumber));
+    build.inst(IrCmd::FALLBACK_GETVARARGS, build.constUint(0), build.vmReg(1), build.constInt(-1));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(2), build.constTag(tnumber));
+    build.inst(IrCmd::RETURN, build.constUint(0));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build, true);
+
+    CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
+bb_0:
+   STORE_TAG R2, tnumber
+   FALLBACK_GETVARARGS 0u, R1, -1i
+   STORE_TAG R2, tnumber
+   RETURN 0u
+
+)");
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("Analysis");
@@ -2324,6 +2348,62 @@ bb_0:
    %2 = LOAD_DOUBLE R0
    %3 = ADD_NUM %1, %2
    STORE_DOUBLE R1, %3
+   RETURN R1, 1i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "NoDeadLoadReuse")
+{
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    IrOp op1 = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
+    IrOp op1i = build.inst(IrCmd::NUM_TO_INT, op1);
+    IrOp res = build.inst(IrCmd::BITAND_UINT, op1i, build.constInt(0));
+    IrOp resd = build.inst(IrCmd::INT_TO_NUM, res);
+    IrOp op2 = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
+    IrOp sum = build.inst(IrCmd::ADD_NUM, resd, op2);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), sum);
+    build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build, true);
+
+    CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
+bb_0:
+   %4 = LOAD_DOUBLE R0
+   %5 = ADD_NUM 0, %4
+   STORE_DOUBLE R1, %5
+   RETURN R1, 1i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "NoDeadValueReuse")
+{
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    IrOp op1 = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
+    IrOp op1i = build.inst(IrCmd::NUM_TO_INT, op1);
+    IrOp res = build.inst(IrCmd::BITAND_UINT, op1i, build.constInt(0));
+    IrOp op2i = build.inst(IrCmd::NUM_TO_INT, op1);
+    IrOp sum = build.inst(IrCmd::ADD_INT, res, op2i);
+    IrOp resd = build.inst(IrCmd::INT_TO_NUM, sum);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), resd);
+    build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build, true);
+
+    CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
+bb_0:
+   %0 = LOAD_DOUBLE R0
+   %3 = NUM_TO_INT %0
+   %4 = ADD_INT 0i, %3
+   %5 = INT_TO_NUM %4
+   STORE_DOUBLE R1, %5
    RETURN R1, 1i
 
 )");

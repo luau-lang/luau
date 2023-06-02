@@ -367,6 +367,8 @@ b.X = 2 -- real Vector2.X is also read-only
 
 TEST_CASE_FIXTURE(ClassFixture, "detailed_class_unification_error")
 {
+    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+
     CheckResult result = check(R"(
 local function foo(v)
     return v.X :: number + string.len(v.Y)
@@ -378,10 +380,10 @@ b(a)
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(R"(Type 'Vector2' could not be converted into '{- X: a, Y: string -}'
+
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'Vector2' could not be converted into '{- X: number, Y: string -}'
 caused by:
-  Property 'Y' is not compatible. Type 'number' could not be converted into 'string')",
-        toString(result.errors[0]));
+  Property 'Y' is not compatible. Type 'number' could not be converted into 'string')");
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "class_type_mismatch_with_name_conflict")

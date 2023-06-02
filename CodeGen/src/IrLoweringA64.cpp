@@ -766,6 +766,9 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.ldr(x2, mem(x2, offsetof(global_State, tmname) + intOp(inst.b) * sizeof(TString*)));
         build.ldr(x3, mem(rNativeContext, offsetof(NativeContext, luaT_gettm)));
         build.blr(x3);
+
+        build.cbz(x0, labelOp(inst.c)); // no tag method
+
         inst.regA64 = regs.takeReg(x0, index);
         break;
     }

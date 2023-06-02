@@ -189,6 +189,8 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_table_sub_anything")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "members_of_failed_typepack_unification_are_unified_with_errorType")
 {
+    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+
     CheckResult result = check(R"(
         function f(arg: number) end
         local a
@@ -198,12 +200,14 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "members_of_failed_typepack_unification_are_u
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ("a", toString(requireType("a")));
+    CHECK_EQ("number", toString(requireType("a")));
     CHECK_EQ("*error-type*", toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "result_of_failed_typepack_unification_is_constrained")
 {
+    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+
     CheckResult result = check(R"(
         function f(arg: number) return arg end
         local a
@@ -213,7 +217,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "result_of_failed_typepack_unification_is_con
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ("a", toString(requireType("a")));
+    CHECK_EQ("number", toString(requireType("a")));
     CHECK_EQ("*error-type*", toString(requireType("b")));
     CHECK_EQ("number", toString(requireType("c")));
 }
@@ -442,7 +446,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "unifying_two_unions_under_dcr_does_not_creat
 
     const TypeId innerType = arena.freshType(nestedScope.get());
 
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sffs[]{
+        {"DebugLuauDeferredConstraintResolution", true},
+        {"LuauAlwaysCommitInferencesOfFunctionCalls", true},
+    };
 
     state.enableScopeTests();
 

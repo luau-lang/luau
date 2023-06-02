@@ -522,17 +522,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-    {
-        // Under DCR, this currently functions as a failed overload resolution, and so we can't say
-        // anything about the result type of the unary minus.
-        CHECK_EQ("any", toString(requireType("a")));
-    }
-    else
-    {
-
-        CHECK_EQ("string", toString(requireType("a")));
-    }
+    CHECK_EQ("string", toString(requireType("a")));
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE_EQ(*tm->wantedType, *builtinTypes->booleanType);

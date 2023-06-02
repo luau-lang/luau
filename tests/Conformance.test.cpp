@@ -561,8 +561,6 @@ TEST_CASE("Debug")
 
 TEST_CASE("Debugger")
 {
-    ScopedFastFlag luauFixBreakpointLineSearch{"LuauFixBreakpointLineSearch", true};
-
     static int breakhits = 0;
     static lua_State* interruptedthread = nullptr;
     static bool singlestep = false;

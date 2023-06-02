@@ -2002,4 +2002,75 @@ TEST_CASE_FIXTURE(Fixture, "function_exprs_are_generalized_at_signature_scope_no
     CHECK(toString(requireType("foo")) == "<a>(a) -> b");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_but_their_arguments_are_incompatible")
+{
+    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+
+    CheckResult result = check(R"(
+        local function foo<a>(x: a, y: a?)
+            return x
+        end
+        local vec2 = { x = 5, y = 7 }
+        local ret: number = foo(vec2, { x = 5 })
+    )");
+
+    // In the old solver, this produces a very strange result:
+    //
+    //   Here, we instantiate `<a>(x: a, y: a?) -> a` with a fresh type `'a` for `a`.
+    //   In argument #1, we unify `vec2` with `'a`.
+    //     This is ok, so we record an equality constraint `'a` with `vec2`.
+    //   In argument #2, we unify `{ x: number }` with `'a?`.
+    //     This fails because `'a` has equality constraint with `vec2`,
+    //     so `{ x: number } <: vec2?`, which is false.
+    //
+    // If the unifications were to be committed, then it'd result in the following type error:
+    //
+    //   Type '{ x: number }' could not be converted into 'vec2?'
+    //   caused by:
+    //     [...] Table type '{ x: number }' not compatible with type 'vec2' because the former is missing field 'y'
+    //
+    // However, whenever we check the argument list, if there's an error, we don't commit the unifications, so it actually looks like this:
+    //
+    //   Type '{ x: number }' could not be converted into 'a?'
+    //   caused by:
+    //     [...] Table type '{ x: number }' not compatible with type 'vec2' because the former is missing field 'y'
+    //
+    // Then finally, that generic is left floating free, and since the function returns that generic,
+    // that free type is then later bound to `number`, which succeeds and mutates the type graph.
+    // This again changes the type error where `a` becomes bound to `number`.
+    //
+    //   Type '{ x: number }' could not be converted into 'number?'
+    //   caused by:
+    //     [...] Table type '{ x: number }' not compatible with type 'vec2' because the former is missing field 'y'
+    //
+    // Uh oh, that type error is extremely confusing for people who doesn't know how that went down.
+    // Really, what should happen is we roll each argument incompatibility into a union type, but that needs local type inference.
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    CHECK_EQ(toString(result.errors[0]), R"(Type '{ x: number }' could not be converted into 'vec2?'
+caused by:
+  None of the union options are compatible. For example: Table type '{ x: number }' not compatible with type 'vec2' because the former is missing field 'y')");
+
+    CHECK_EQ(toString(result.errors[1]), "Type 'vec2' could not be converted into 'number'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_but_their_arguments_are_incompatible_2")
+{
+    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+
+    CheckResult result = check(R"(
+        local function f<a>(x: a, y: a): a
+            return if math.random() > 0.5 then x else y
+        end
+
+        local z: boolean = f(5, "five")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    CHECK_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'number'");
+    CHECK_EQ(toString(result.errors[1]), "Type 'number' could not be converted into 'boolean'");
+}
+
 TEST_SUITE_END();

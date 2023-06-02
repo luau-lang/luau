@@ -111,94 +111,77 @@ void TxnLog::concatAsIntersections(TxnLog rhs, NotNull<TypeArena> arena)
 
 void TxnLog::concatAsUnion(TxnLog rhs, NotNull<TypeArena> arena)
 {
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    /*
+     * Check for cycles.
+     *
+     * We must not combine a log entry that binds 'a to 'b with a log that
+     * binds 'b to 'a.
+     *
+     * Of the two, identify the one with the 'bigger' scope and eliminate the
+     * entry that rebinds it.
+     */
+    for (const auto& [rightTy, rightRep] : rhs.typeVarChanges)
     {
-        /*
-         * Check for cycles.
-         *
-         * We must not combine a log entry that binds 'a to 'b with a log that
-         * binds 'b to 'a.
-         *
-         * Of the two, identify the one with the 'bigger' scope and eliminate the
-         * entry that rebinds it.
-         */
-        for (const auto& [rightTy, rightRep] : rhs.typeVarChanges)
+        if (rightRep->dead)
+            continue;
+
+        // We explicitly use get_if here because we do not wish to do anything
+        // if the uncommitted type is already bound to something else.
+        const FreeType* rf = get_if<FreeType>(&rightTy->ty);
+        if (!rf)
+            continue;
+
+        const BoundType* rb = Luau::get<BoundType>(&rightRep->pending);
+        if (!rb)
+            continue;
+
+        const TypeId leftTy = rb->boundTo;
+        const FreeType* lf = get_if<FreeType>(&leftTy->ty);
+        if (!lf)
+            continue;
+
+        auto leftRep = typeVarChanges.find(leftTy);
+        if (!leftRep)
+            continue;
+
+        if ((*leftRep)->dead)
+            continue;
+
+        const BoundType* lb = Luau::get<BoundType>(&(*leftRep)->pending);
+        if (!lb)
+            continue;
+
+        if (lb->boundTo == rightTy)
         {
-            if (rightRep->dead)
-                continue;
+            // leftTy has been bound to rightTy, but rightTy has also been bound
+            // to leftTy. We find the one that belongs to the more deeply nested
+            // scope and remove it from the log.
+            const bool discardLeft = useScopes ? subsumes(lf->scope, rf->scope) : lf->level.subsumes(rf->level);
 
-            // We explicitly use get_if here because we do not wish to do anything
-            // if the uncommitted type is already bound to something else.
-            const FreeType* rf = get_if<FreeType>(&rightTy->ty);
-            if (!rf)
-                continue;
-
-            const BoundType* rb = Luau::get<BoundType>(&rightRep->pending);
-            if (!rb)
-                continue;
-
-            const TypeId leftTy = rb->boundTo;
-            const FreeType* lf = get_if<FreeType>(&leftTy->ty);
-            if (!lf)
-                continue;
-
-            auto leftRep = typeVarChanges.find(leftTy);
-            if (!leftRep)
-                continue;
-
-            if ((*leftRep)->dead)
-                continue;
-
-            const BoundType* lb = Luau::get<BoundType>(&(*leftRep)->pending);
-            if (!lb)
-                continue;
-
-            if (lb->boundTo == rightTy)
-            {
-                // leftTy has been bound to rightTy, but rightTy has also been bound
-                // to leftTy. We find the one that belongs to the more deeply nested
-                // scope and remove it from the log.
-                const bool discardLeft = useScopes ? subsumes(lf->scope, rf->scope) : lf->level.subsumes(rf->level);
-
-                if (discardLeft)
-                    (*leftRep)->dead = true;
-                else
-                    rightRep->dead = true;
-            }
-        }
-
-        for (auto& [ty, rightRep] : rhs.typeVarChanges)
-        {
-            if (rightRep->dead)
-                continue;
-
-            if (auto leftRep = typeVarChanges.find(ty); leftRep && !(*leftRep)->dead)
-            {
-                TypeId leftTy = arena->addType((*leftRep)->pending);
-                TypeId rightTy = arena->addType(rightRep->pending);
-
-                if (follow(leftTy) == follow(rightTy))
-                    typeVarChanges[ty] = std::move(rightRep);
-                else
-                    typeVarChanges[ty]->pending.ty = UnionType{{leftTy, rightTy}};
-            }
+            if (discardLeft)
+                (*leftRep)->dead = true;
             else
-                typeVarChanges[ty] = std::move(rightRep);
+                rightRep->dead = true;
         }
     }
-    else
+
+    for (auto& [ty, rightRep] : rhs.typeVarChanges)
     {
-        for (auto& [ty, rightRep] : rhs.typeVarChanges)
+        if (rightRep->dead)
+            continue;
+
+        if (auto leftRep = typeVarChanges.find(ty); leftRep && !(*leftRep)->dead)
         {
-            if (auto leftRep = typeVarChanges.find(ty))
-            {
-                TypeId leftTy = arena->addType((*leftRep)->pending);
-                TypeId rightTy = arena->addType(rightRep->pending);
-                typeVarChanges[ty]->pending.ty = UnionType{{leftTy, rightTy}};
-            }
-            else
+            TypeId leftTy = arena->addType((*leftRep)->pending);
+            TypeId rightTy = arena->addType(rightRep->pending);
+
+            if (follow(leftTy) == follow(rightTy))
                 typeVarChanges[ty] = std::move(rightRep);
+            else
+                typeVarChanges[ty]->pending.ty = UnionType{{leftTy, rightTy}};
         }
+        else
+            typeVarChanges[ty] = std::move(rightRep);
     }
 
     for (auto& [tp, rep] : rhs.typePackChanges)

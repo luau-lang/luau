@@ -14,8 +14,6 @@ inline bool isFlagExperimental(const char* flag)
         "LuauInstantiateInSubtyping",  // requires some fixes to lua-apps code
         "LuauTypecheckTypeguards",     // requires some fixes to lua-apps code (CLI-67030)
         "LuauTinyControlFlowAnalysis", // waiting for updates to packages depended by internal builtin plugins
-        "LuauUnifyTwoOptions",         // requires some fixes to lua-apps code
-
         // makes sure we always have at least one entry
         nullptr,
     };
