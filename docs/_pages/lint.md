@@ -331,7 +331,7 @@ Luau uses comments that start from `!` to control certain aspects of analysis, f
 
 Luau parses hexadecimal and binary literals as 64-bit integers before converting them to Luau numbers. As a result, numbers that exceed 2^64 are silently truncated to 2^64, which can result in unexpected program behavior. This warning flags literals that are truncated:
 
-```
+```lua
 -- Hexadecimal number literal exceeded available precision and has been truncated to 2^64
 local x = 0x1111111111111111111111111111111111111
 ```
@@ -340,7 +340,7 @@ local x = 0x1111111111111111111111111111111111111
 
 Because of operator precedence rules, not X == Y parses as (not X) == Y; however, often the intent was to invert the result of the comparison. This warning flags erroneous conditions like that, as well as flagging cases where two comparisons happen in a row without any parentheses:
 
-```
+```lua
 -- not X == Y is equivalent to (not X) == Y; consider using X ~= Y, or wrap one of the expressions in parentheses to silence
 if not x == 5 then
 end
