@@ -29,7 +29,9 @@ Unlike Lua and LuaJIT, Luau uses a multi-pass compiler with a frontend that pars
 
 > Note: Compilation throughput isn't the main focus in Luau, but our compiler is reasonably fast; with all currently implemented optimizations enabled, it compiles 950K lines of Luau code in 1 second on a single core of a desktop Ryzen 5900X CPU, producing bytecode and debug information.
 
-While bytecode optimizations are limited due to the flexibility of Luau code (e.g. `a * 1` may not be equivalent to `a` if `*` is overloaded through metatables), even in absence of type information Luau compiler can perform some optimizations such as "deep" constant folding across functions and local variables, perform upvalue optimizations for upvalues that aren't mutated, do analysis of builtin function usage, and some peephole optimizations on the resulting bytecode. The compiler can also be instructed to use more aggressive optimizations by enabling optimization level 2 (`-O2` in CLI tools), some of which are documented further on this page.
+While bytecode optimizations are limited due to the flexibility of Luau code (e.g. `a * 1` may not be equivalent to `a` if `*` is overloaded through metatables), even in absence of type information Luau compiler can perform some optimizations such as "deep" constant folding across functions and local variables, perform upvalue optimizations for upvalues that aren't mutated, do analysis of builtin function usage, optimize the instruction sequences for multiple variable assignments, and some peephole optimizations on the resulting bytecode. The compiler can also be instructed to use more aggressive optimizations by enabling optimization level 2 (`-O2` in CLI tools), some of which are documented further on this page.
+
+Most bytecode optimizations are performed on individual statements or functions, however the compiler also does a limited amount of interprocedural optimizations; notably, calls to local functions can be optimized with the knowledge of the argument count or number of return values involved. Interprocedural optimizations are limited to a single module due to the compilation model.
 
 Luau compiler currently doesn't use type information to do further optimizations, however early experiments suggest that we can extract further wins. Because we control the entire stack (unlike e.g. TypeScript where the type information is discarded completely before reaching the VM), we have more flexibility there and can make some tradeoffs during codegen even if the type system isn't completely sound. For example, it might be reasonable to assume that in presence of known types, we can infer absence of side effects for arithmetic operations and builtins - if the runtime types mismatch due to intentional violation of the type safety through global injection, the code will still be safely sandboxed; this may unlock optimizations such as common subexpression elimination and allocation hoisting without a JIT. This is speculative pending further research.
 
@@ -86,11 +88,17 @@ For this mechanism to work, function call must be "obvious" to the compiler - it
 
 The mechanism works by directly invoking a highly specialized and optimized implementation of a builtin function from the interpreter core loop without setting up a stack frame and omitting other work; additionally, some fastcall specializations are partial in that they don't support all types of arguments, for example all `math` library builtins are only specialized for numeric arguments, so calling `math.abs` with a string argument will fall back to the slower implementation that will do string->number coercion.
 
-As a result, builtin calls are very fast in Luau - they are still slightly slower than core instructions such as arithmetic operations, but only slightly so. The set of fastcall builtins is slowly expanding over time and as of this writing contains `assert`, `type`, `typeof`, `rawget`/`rawset`/`rawequal`, all functions from `math` and `bit32`, and some functions from `string` and `table` library.
+As a result, builtin calls are very fast in Luau - they are still slightly slower than core instructions such as arithmetic operations, but only slightly so. The set of fastcall builtins is slowly expanding over time and as of this writing contains `assert`, `type`, `typeof`, `rawget`/`rawset`/`rawequal`, `getmetatable`/`setmetatable`, all functions from `math` and `bit32`, and some functions from `string` and `table` library.
 
-> Note: The partial specialization mechanism is cute in that for `assert`, it only specializes on truthy conditions; hopefully performance of `assert(false)` isn't crucial for most code!
+Some builtin functions have partial specializations that reduce the cost of the common case further. Notably:
 
-In addition to runtime optimizations for builtin calls, many builtin calls can also be constant-folded by the bytecode compiler when using aggressive optimizations (level 2); this currently applies to most builtin calls with constant arguments and a single return value.
+- `assert` is specialized for cases when the assertion return value is not used and the condition is truthy; this helps reduce the runtime cost of assertions to the extent possible
+- `bit32.extract` is optimized further when field and width selectors are constant
+- `select` is optimized when the second argument is `...`; in particular, `select(x, ...)` is O(1) when using the builtin dispatch mechanism even though it's normally O(N) in variadic argument count.
+
+Some functions from `math` library like `math.floor` can additionally take advantage of advanced SIMD instruction sets like SSE4.1 when available.
+
+In addition to runtime optimizations for builtin calls, many builtin calls can also be constant-folded by the bytecode compiler when using aggressive optimizations (level 2); this currently applies to most builtin calls with constant arguments and a single return value. For builtin calls that can not be constant folded, compiler assumes knowledge of argument/return count (level 2) to produce more efficient bytecode instructions.
 
 ## Optimized table iteration
 
@@ -146,6 +154,8 @@ Lua implements upvalues as garbage collected objects that can point directly at 
 
 Note that "immutable" in this case only refers to the variable itself - if the variable isn't assigned to it can be captured by value, even if it's a table that has its contents change.
 
+When upvalues are mutable, they do require an extra allocated object; we carefully optimize the memory consumption and access cost for mutable upvalues to reduce the associated overhead.
+
 ## Closure caching
 
 With optimized upvalue storage, creating new closures (function objects) is more efficient but still requires allocating a new object every time. This can be problematic for cases when functions are passed to algorithms like `table.sort` or functions like `pcall`, as it results in excessive allocation traffic which then leads to more work for garbage collector.
@@ -165,6 +175,8 @@ In addition to a fast allocator, all frequently used structures in Luau have bee
 While the best performing code in Luau spends most of the time in the interpreter, performance of the standard library functions is critical to some applications. In addition to specializing many small and simple functions using the builtin call mechanism, we spend extra care on optimizing all library functions and providing additional functions beyond the Lua standard library that help achieve good performance with idiomatic code.
 
 For example, functions like `insert`, `remove` and `move` from the `table` library have been tuned for performance on array-like tables, achieving 3x and more performance compared to un-tuned versions, and Luau provides functions like `table.create` and `table.find` to achieve further speedup when applicable. We also use a carefully tuned dynamic string buffer implementation for internal `string` library to reduce garbage created during string manipulation.
+
+In addition to the array-like specializations mentioned above, our implementation of `table.sort` is using `introsort` algorithm which results in guaranteed worst case `NlogN` complexity regardless of the input.
 
 ## Improved garbage collector pacing
 
