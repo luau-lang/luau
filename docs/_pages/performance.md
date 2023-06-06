@@ -96,7 +96,7 @@ Some builtin functions have partial specializations that reduce the cost of the 
 
 Some functions from `math` library like `math.floor` can additionally take advantage of advanced SIMD instruction sets like SSE4.1 when available.
 
-In addition to runtime optimizations for builtin calls, many builtin calls can also be constant-folded by the bytecode compiler when using aggressive optimizations (level 2); this currently applies to most builtin calls with constant arguments and a single return value.
+In addition to runtime optimizations for builtin calls, many builtin calls can also be constant-folded by the bytecode compiler when using aggressive optimizations (level 2); this currently applies to most builtin calls with constant arguments and a single return value. For builtin calls that can not be constant folded, compiler assumes knowledge of argument/return count (level 2) to produce more efficient bytecode instructions.
 
 ## Optimized table iteration
 
