@@ -41,6 +41,7 @@ LUAU_FASTFLAGVARIABLE(LuauTypecheckTypeguards, false)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckClassTypeIndexers, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
+LUAU_FASTFLAG(LuauParseDeclareClassIndexer)
 
 namespace Luau
 {
@@ -1757,7 +1758,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass&
     if (!ctv->metatable)
         ice("No metatable for declared class");
 
-    if (const auto& indexer = declaredClass.indexer)
+    if (const auto& indexer = declaredClass.indexer; FFlag::LuauParseDeclareClassIndexer && indexer)
         ctv->indexer = TableIndexer(resolveType(scope, *indexer->indexType), resolveType(scope, *indexer->resultType));
 
     TableType* metatable = getMutable<TableType>(*ctv->metatable);

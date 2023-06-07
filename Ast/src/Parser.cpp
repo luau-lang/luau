@@ -13,6 +13,7 @@
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
+LUAU_FASTFLAGVARIABLE(LuauParseDeclareClassIndexer, false)
 
 #define ERROR_INVALID_INTERP_DOUBLE_BRACE "Double braces are not permitted within interpolated strings. Did you mean '\\{'?"
 
@@ -886,7 +887,8 @@ AstStat* Parser::parseDeclaration(const Location& start)
             {
                 props.push_back(parseDeclaredClassMethod());
             }
-            else if (lexer.current().type == '[' && (lexer.lookahead().type == Lexeme::RawString || lexer.lookahead().type == Lexeme::QuotedString))
+            else if (lexer.current().type == '[' && (!FFlag::LuauParseDeclareClassIndexer || lexer.lookahead().type == Lexeme::RawString ||
+                                                        lexer.lookahead().type == Lexeme::QuotedString))
             {
                 const Lexeme begin = lexer.current();
                 nextLexeme(); // [
@@ -905,7 +907,7 @@ AstStat* Parser::parseDeclaration(const Location& start)
                 else
                     report(begin.location, "String literal contains malformed escape sequence");
             }
-            else if (lexer.current().type == '[')
+            else if (lexer.current().type == '[' && FFlag::LuauParseDeclareClassIndexer)
             {
                 if (indexer)
                 {

@@ -13,6 +13,8 @@
 
 #include <string>
 
+LUAU_FASTFLAG(LuauParseDeclareClassIndexer);
+
 static char* allocateString(Luau::Allocator& allocator, std::string_view contents)
 {
     char* result = (char*)allocator.allocate(contents.size() + 1);
@@ -228,7 +230,7 @@ public:
         }
 
         AstTableIndexer* indexer = nullptr;
-        if (ctv.indexer)
+        if (FFlag::LuauParseDeclareClassIndexer && ctv.indexer)
         {
             RecursionCounter counter(&count);
 

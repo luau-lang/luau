@@ -1886,6 +1886,8 @@ TEST_CASE_FIXTURE(Fixture, "class_method_properties")
 
 TEST_CASE_FIXTURE(Fixture, "class_indexer")
 {
+    ScopedFastFlag LuauParseDeclareClassIndexer("LuauParseDeclareClassIndexer", true);
+
     AstStatBlock* stat = parseEx(R"(
         declare class Foo
             prop: boolean

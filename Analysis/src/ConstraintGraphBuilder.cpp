@@ -21,6 +21,7 @@
 
 LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
+LUAU_FASTFLAG(LuauParseDeclareClassIndexer);
 
 namespace Luau
 {
@@ -1151,7 +1152,7 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareC
 
     scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
 
-    if (declaredClass->indexer)
+    if (FFlag::LuauParseDeclareClassIndexer && declaredClass->indexer)
     {
         // TODO: Recursion limit.
         ctv->indexer = TableIndexer{
