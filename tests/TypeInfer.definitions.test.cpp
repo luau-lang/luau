@@ -394,6 +394,35 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_string_props")
     CHECK_EQ(toString(requireType("y")), "string");
 }
 
+
+TEST_CASE_FIXTURE(Fixture, "class_definition_indexer")
+{
+    ScopedFastFlag LuauTypecheckClassTypeIndexers("LuauTypecheckClassTypeIndexers", true);
+
+    loadDefinition(R"(
+        declare class Foo
+            [number]: string
+        end
+    )");
+
+    CheckResult result = check(R"(
+        local x: Foo
+        local y = x[1]
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    const ClassType* ctv = get<ClassType>(requireType("x"));
+    REQUIRE(ctv != nullptr);
+
+    REQUIRE(bool(ctv->indexer));
+
+    CHECK_EQ(*ctv->indexer->indexType, *builtinTypes->numberType);
+    CHECK_EQ(*ctv->indexer->indexResultType, *builtinTypes->stringType);
+
+    CHECK_EQ(toString(requireType("y")), "string");
+}
+
 TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
 {
     unfreeze(frontend.globals.globalTypes);

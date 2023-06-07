@@ -1151,6 +1151,15 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareC
 
     scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
 
+    if (declaredClass->indexer)
+    {
+        // TODO: Recursion limit.
+        ctv->indexer = TableIndexer{
+            resolveType(scope, declaredClass->indexer->indexType, /* inTypeArguments */ false),
+            resolveType(scope, declaredClass->indexer->resultType, /* inTypeArguments */ false),
+        };
+    }
+
     for (const AstDeclaredClassProp& prop : declaredClass->props)
     {
         Name propName(prop.name.value);

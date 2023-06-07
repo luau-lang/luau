@@ -54,7 +54,8 @@ TEST_SUITE_BEGIN("AllocatorTests");
 TEST_CASE("allocator_can_be_moved")
 {
     Counter* c = nullptr;
-    auto inner = [&]() {
+    auto inner = [&]()
+    {
         Luau::Allocator allocator;
         c = allocator.alloc<Counter>();
         Luau::Allocator moved{std::move(allocator)};
@@ -921,7 +922,8 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_mid")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
 {
-    auto columnOfEndBraceError = [this](const char* code) {
+    auto columnOfEndBraceError = [this](const char* code)
+    {
         try
         {
             parse(code);
@@ -1882,6 +1884,42 @@ TEST_CASE_FIXTURE(Fixture, "class_method_properties")
     CHECK_EQ(2, klass2->props.size);
 }
 
+TEST_CASE_FIXTURE(Fixture, "class_indexer")
+{
+    AstStatBlock* stat = parseEx(R"(
+        declare class Foo
+            prop: boolean
+            [string]: number
+        end
+    )")
+                             .root;
+
+    REQUIRE_EQ(stat->body.size, 1);
+
+    AstStatDeclareClass* declaredClass = stat->body.data[0]->as<AstStatDeclareClass>();
+    REQUIRE(declaredClass);
+    REQUIRE(declaredClass->indexer);
+    REQUIRE(declaredClass->indexer->indexType->is<AstTypeReference>());
+    CHECK(declaredClass->indexer->indexType->as<AstTypeReference>()->name == "string");
+    REQUIRE(declaredClass->indexer->resultType->is<AstTypeReference>());
+    CHECK(declaredClass->indexer->resultType->as<AstTypeReference>()->name == "number");
+
+    const ParseResult p1 = matchParseError(R"(
+        declare class Foo
+            [string]: number
+            -- can only have one indexer
+            [number]: number
+        end
+        )",
+        "Cannot have more than one class indexer");
+
+    REQUIRE_EQ(1, p1.root->body.size);
+
+    AstStatDeclareClass* klass = p1.root->body.data[0]->as<AstStatDeclareClass>();
+    REQUIRE(klass != nullptr);
+    CHECK(declaredClass->indexer);
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_variadics")
 {
     //clang-format off
@@ -2347,7 +2385,8 @@ public:
 
 TEST_CASE_FIXTURE(Fixture, "recovery_of_parenthesized_expressions")
 {
-    auto checkAstEquivalence = [this](const char* codeWithErrors, const char* code) {
+    auto checkAstEquivalence = [this](const char* codeWithErrors, const char* code)
+    {
         try
         {
             parse(codeWithErrors);
@@ -2367,7 +2406,8 @@ TEST_CASE_FIXTURE(Fixture, "recovery_of_parenthesized_expressions")
         CHECK_EQ(counterWithErrors.count, counter.count);
     };
 
-    auto checkRecovery = [this, checkAstEquivalence](const char* codeWithErrors, const char* code, unsigned expectedErrorCount) {
+    auto checkRecovery = [this, checkAstEquivalence](const char* codeWithErrors, const char* code, unsigned expectedErrorCount)
+    {
         try
         {
             parse(codeWithErrors);

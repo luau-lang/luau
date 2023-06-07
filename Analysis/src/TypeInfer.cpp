@@ -1757,6 +1757,9 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass&
     if (!ctv->metatable)
         ice("No metatable for declared class");
 
+    if (const auto& indexer = declaredClass.indexer)
+        ctv->indexer = TableIndexer(resolveType(scope, *indexer->indexType), resolveType(scope, *indexer->resultType));
+
     TableType* metatable = getMutable<TableType>(*ctv->metatable);
     for (const AstDeclaredClassProp& prop : declaredClass.props)
     {

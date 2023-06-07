@@ -227,7 +227,17 @@ public:
             idx++;
         }
 
-        return allocator->alloc<AstTypeTable>(Location(), props);
+        AstTableIndexer* indexer = nullptr;
+        if (ctv.indexer)
+        {
+            RecursionCounter counter(&count);
+
+            indexer = allocator->alloc<AstTableIndexer>();
+            indexer->indexType = Luau::visit(*this, ctv.indexer->indexType->ty);
+            indexer->resultType = Luau::visit(*this, ctv.indexer->indexResultType->ty);
+        }
+
+        return allocator->alloc<AstTypeTable>(Location(), props, indexer);
     }
 
     AstType* operator()(const FunctionType& ftv)
