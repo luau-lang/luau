@@ -1919,7 +1919,7 @@ TEST_CASE_FIXTURE(Fixture, "class_indexer")
 
     AstStatDeclareClass* klass = p1.root->body.data[0]->as<AstStatDeclareClass>();
     REQUIRE(klass != nullptr);
-    CHECK(declaredClass->indexer);
+    CHECK(klass->indexer);
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_variadics")
