@@ -90,7 +90,6 @@ void initFunctions(NativeState& data)
     data.context.callEpilogC = callEpilogC;
 
     data.context.callFallback = callFallback;
-    data.context.returnFallback = returnFallback;
 
     data.context.executeGETGLOBAL = executeGETGLOBAL;
     data.context.executeSETGLOBAL = executeSETGLOBAL;

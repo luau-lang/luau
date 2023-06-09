@@ -207,6 +207,8 @@ void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, int offset, in
 
 void emitContinueCallInVm(AssemblyBuilderX64& build);
 
+void emitReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers);
+
 } // namespace X64
 } // namespace CodeGen
 } // namespace Luau

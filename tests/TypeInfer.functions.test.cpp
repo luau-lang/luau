@@ -14,7 +14,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauInstantiateInSubtyping);
+LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -2071,6 +2071,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_bu
 
     CHECK_EQ(toString(result.errors[0]), "Type 'string' could not be converted into 'number'");
     CHECK_EQ(toString(result.errors[1]), "Type 'number' could not be converted into 'boolean'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "attempt_to_call_an_intersection_of_tables")
+{
+    CheckResult result = check(R"(
+        local function f(t: { x: number } & { y: string })
+            t()
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(result.errors[0]), "Cannot call non-function {| x: number |} & {| y: string |}");
+    else
+        CHECK_EQ(toString(result.errors[0]), "Cannot call non-function {| x: number |}");
 }
 
 TEST_SUITE_END();

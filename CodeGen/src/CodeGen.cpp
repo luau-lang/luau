@@ -268,7 +268,7 @@ static bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 [[maybe_unused]] static bool lowerIr(
     A64::AssemblyBuilderA64& build, IrBuilder& ir, NativeState& data, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
 {
-    A64::IrLoweringA64 lowering(build, helpers, data, proto, ir.function);
+    A64::IrLoweringA64 lowering(build, helpers, data, ir.function);
 
     return lowerImpl(build, lowering, ir.function, proto->bytecodeid, options);
 }

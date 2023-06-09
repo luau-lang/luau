@@ -74,6 +74,35 @@ public:
         CHECK(target.f == inst.f);
     }
 
+    void defineCfgTree(const std::vector<std::vector<uint32_t>>& successorSets)
+    {
+        for (const std::vector<uint32_t>& successorSet : successorSets)
+        {
+            build.beginBlock(build.block(IrBlockKind::Internal));
+
+            build.function.cfg.successorsOffsets.push_back(uint32_t(build.function.cfg.successors.size()));
+            build.function.cfg.successors.insert(build.function.cfg.successors.end(), successorSet.begin(), successorSet.end());
+        }
+
+        // Brute-force the predecessor list
+        for (int i = 0; i < int(build.function.blocks.size()); i++)
+        {
+            build.function.cfg.predecessorsOffsets.push_back(uint32_t(build.function.cfg.predecessors.size()));
+
+            for (int k = 0; k < int(build.function.blocks.size()); k++)
+            {
+                for (uint32_t succIdx : successors(build.function.cfg, k))
+                {
+                    if (succIdx == uint32_t(i))
+                        build.function.cfg.predecessors.push_back(k);
+                }
+            }
+        }
+
+        computeCfgImmediateDominators(build.function);
+        computeCfgDominanceTreeChildren(build.function);
+    }
+
     IrBuilder build;
 
     // Luau.VM headers are not accessible
@@ -2162,6 +2191,30 @@ bb_0:
    RETURN R0, 1i
 
 )");
+}
+
+// 'A Simple, Fast Dominance Algorithm' [Keith D. Cooper, et al]. Figure 2.
+TEST_CASE_FIXTURE(IrBuilderFixture, "DominanceVerification1")
+{
+    defineCfgTree({{1, 2}, {3}, {4}, {4}, {3}});
+
+    CHECK(build.function.cfg.idoms == std::vector<uint32_t>{{~0u, 0, 0, 0, 0}});
+}
+
+// 'A Linear Time Algorithm for Placing Phi-Nodes' [Vugranam C.Sreedhar]. Figure 1.
+TEST_CASE_FIXTURE(IrBuilderFixture, "DominanceVerification2")
+{
+    defineCfgTree({{1, 16}, {2, 3, 4}, {4, 7}, {9}, {5}, {6}, {2, 8}, {8}, {7, 15}, {10, 11}, {12}, {12}, {13}, {3, 14, 15}, {12}, {16}, {}});
+
+    CHECK(build.function.cfg.idoms == std::vector<uint32_t>{~0u, 0, 1, 1, 1, 4, 5, 1, 1, 3, 9, 9, 9, 12, 13, 1, 0});
+}
+
+// 'A Linear Time Algorithm for Placing Phi-Nodes' [Vugranam C.Sreedhar]. Figure 4.
+TEST_CASE_FIXTURE(IrBuilderFixture, "DominanceVerification3")
+{
+    defineCfgTree({{1, 2}, {3}, {3, 4}, {5}, {5, 6}, {7}, {7}, {}});
+
+    CHECK(build.function.cfg.idoms == std::vector<uint32_t>{~0u, 0, 0, 0, 2, 0, 4, 0});
 }
 
 TEST_SUITE_END();

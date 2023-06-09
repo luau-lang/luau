@@ -823,6 +823,7 @@ struct IrFunction
     uint32_t validRestoreOpBlockIdx = 0;
 
     Proto* proto = nullptr;
+    bool variadic = false;
 
     CfgInfo cfg;
 

@@ -14,13 +14,10 @@ namespace A64
 
 enum class AddressKindA64 : uint8_t
 {
-    imm, // reg + imm
-    reg, // reg + reg
-
-    // TODO:
-    // reg + reg << shift
-    // reg + sext(reg) << shift
-    // reg + uext(reg) << shift
+    reg,  // reg + reg
+    imm,  // reg + imm
+    pre,  // reg + imm, reg += imm
+    post, // reg, reg += imm
 };
 
 struct AddressA64
@@ -29,13 +26,14 @@ struct AddressA64
     // For example, ldr x0, [reg+imm] is limited to 8 KB offsets assuming imm is divisible by 8, but loading into w0 reduces the range to 4 KB
     static constexpr size_t kMaxOffset = 1023;
 
-    constexpr AddressA64(RegisterA64 base, int off = 0)
-        : kind(AddressKindA64::imm)
+    constexpr AddressA64(RegisterA64 base, int off = 0, AddressKindA64 kind = AddressKindA64::imm)
+        : kind(kind)
         , base(base)
         , offset(xzr)
         , data(off)
     {
         LUAU_ASSERT(base.kind == KindA64::x || base == sp);
+        LUAU_ASSERT(kind != AddressKindA64::reg);
     }
 
     constexpr AddressA64(RegisterA64 base, RegisterA64 offset)

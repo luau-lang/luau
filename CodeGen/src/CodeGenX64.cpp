@@ -189,6 +189,11 @@ void assembleHelpers(X64::AssemblyBuilderX64& build, ModuleHelpers& helpers)
         build.logAppend("; continueCallInVm\n");
     helpers.continueCallInVm = build.setLabel();
     emitContinueCallInVm(build);
+
+    if (build.logText)
+        build.logAppend("; return\n");
+    helpers.return_ = build.setLabel();
+    emitReturn(build, helpers);
 }
 
 } // namespace X64

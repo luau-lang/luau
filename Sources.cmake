@@ -141,7 +141,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/BuiltinDefinitions.h
     Analysis/include/Luau/Clone.h
     Analysis/include/Luau/Config.h
-    Analysis/include/Luau/Refinement.h
     Analysis/include/Luau/Constraint.h
     Analysis/include/Luau/ConstraintGraphBuilder.h
     Analysis/include/Luau/ConstraintSolver.h
@@ -153,6 +152,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Error.h
     Analysis/include/Luau/FileResolver.h
     Analysis/include/Luau/Frontend.h
+    Analysis/include/Luau/InsertionOrderedMap.h
     Analysis/include/Luau/Instantiation.h
     Analysis/include/Luau/IostreamHelpers.h
     Analysis/include/Luau/JsonEmitter.h
@@ -165,6 +165,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Predicate.h
     Analysis/include/Luau/Quantify.h
     Analysis/include/Luau/RecursionCounter.h
+    Analysis/include/Luau/Refinement.h
     Analysis/include/Luau/RequireTracer.h
     Analysis/include/Luau/Scope.h
     Analysis/include/Luau/Simplify.h
@@ -175,6 +176,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/ToString.h
     Analysis/include/Luau/Transpiler.h
     Analysis/include/Luau/TxnLog.h
+    Analysis/include/Luau/Type.h
     Analysis/include/Luau/TypeArena.h
     Analysis/include/Luau/TypeAttach.h
     Analysis/include/Luau/TypeChecker2.h
@@ -183,7 +185,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/TypeInfer.h
     Analysis/include/Luau/TypePack.h
     Analysis/include/Luau/TypeUtils.h
-    Analysis/include/Luau/Type.h
     Analysis/include/Luau/Unifiable.h
     Analysis/include/Luau/Unifier.h
     Analysis/include/Luau/UnifierSharedState.h
@@ -198,7 +199,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/BuiltinDefinitions.cpp
     Analysis/src/Clone.cpp
     Analysis/src/Config.cpp
-    Analysis/src/Refinement.cpp
     Analysis/src/Constraint.cpp
     Analysis/src/ConstraintGraphBuilder.cpp
     Analysis/src/ConstraintSolver.cpp
@@ -216,6 +216,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Module.cpp
     Analysis/src/Normalize.cpp
     Analysis/src/Quantify.cpp
+    Analysis/src/Refinement.cpp
     Analysis/src/RequireTracer.cpp
     Analysis/src/Scope.cpp
     Analysis/src/Simplify.cpp
@@ -226,6 +227,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/ToString.cpp
     Analysis/src/Transpiler.cpp
     Analysis/src/TxnLog.cpp
+    Analysis/src/Type.cpp
     Analysis/src/TypeArena.cpp
     Analysis/src/TypeAttach.cpp
     Analysis/src/TypeChecker2.cpp
@@ -234,7 +236,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/TypeInfer.cpp
     Analysis/src/TypePack.cpp
     Analysis/src/TypeUtils.cpp
-    Analysis/src/Type.cpp
     Analysis/src/Unifiable.cpp
     Analysis/src/Unifier.cpp
 )
@@ -326,6 +327,7 @@ if(TARGET Luau.Analyze.CLI)
 endif()
 
 if(TARGET Luau.Ast.CLI)
+    # Luau.Ast.CLI Sources
     target_sources(Luau.Ast.CLI PRIVATE
         CLI/Ast.cpp
         CLI/FileUtils.h
@@ -415,6 +417,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeVar.test.cpp
         tests/Variant.test.cpp
         tests/VisitType.test.cpp
+        tests/InsertionOrderedMap.test.cpp
         tests/main.cpp)
 endif()
 
@@ -449,9 +452,20 @@ if(TARGET Luau.Web)
 endif()
 
 if(TARGET Luau.Reduce.CLI)
+    # Luau.Reduce.CLI Sources
     target_sources(Luau.Reduce.CLI PRIVATE
         CLI/Reduce.cpp
         CLI/FileUtils.cpp
         CLI/FileUtils.h
     )
+endif()
+
+if(TARGET Luau.Compile.CLI)
+    # Luau.Compile.CLI Sources
+    target_sources(Luau.Compile.CLI PRIVATE
+        CLI/FileUtils.h
+        CLI/FileUtils.cpp
+        CLI/Flags.h
+        CLI/Flags.cpp
+        CLI/Compile.cpp)
 endif()

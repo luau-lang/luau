@@ -24,6 +24,7 @@ struct ModuleHelpers
     // A64/X64
     Label exitContinueVm;
     Label exitNoContinueVm;
+    Label return_;
 
     // X64
     Label continueCallInVm;

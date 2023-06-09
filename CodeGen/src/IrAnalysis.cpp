@@ -661,9 +661,212 @@ static void computeCfgBlockEdges(IrFunction& function)
     }
 }
 
+// Assign tree depth and pre- and post- DFS visit order of the tree/graph nodes
+// Optionally, collect required node order into a vector
+template<auto childIt>
+void computeBlockOrdering(
+    IrFunction& function, std::vector<BlockOrdering>& ordering, std::vector<uint32_t>* preOrder, std::vector<uint32_t>* postOrder)
+{
+    CfgInfo& info = function.cfg;
+
+    LUAU_ASSERT(info.idoms.size() == function.blocks.size());
+
+    ordering.clear();
+    ordering.resize(function.blocks.size());
+
+    // Get depth-first post-order using manual stack instead of recursion
+    struct StackItem
+    {
+        uint32_t blockIdx;
+        uint32_t itPos;
+    };
+    std::vector<StackItem> stack;
+
+    if (preOrder)
+        preOrder->reserve(function.blocks.size());
+    if (postOrder)
+        postOrder->reserve(function.blocks.size());
+
+    uint32_t nextPreOrder = 0;
+    uint32_t nextPostOrder = 0;
+
+    stack.push_back({0, 0});
+    ordering[0].visited = true;
+    ordering[0].preOrder = nextPreOrder++;
+
+    while (!stack.empty())
+    {
+        StackItem& item = stack.back();
+        BlockIteratorWrapper children = childIt(info, item.blockIdx);
+
+        if (item.itPos < children.size())
+        {
+            uint32_t childIdx = children[item.itPos++];
+
+            BlockOrdering& childOrdering = ordering[childIdx];
+
+            if (!childOrdering.visited)
+            {
+                childOrdering.visited = true;
+                childOrdering.depth = uint32_t(stack.size());
+                childOrdering.preOrder = nextPreOrder++;
+
+                if (preOrder)
+                    preOrder->push_back(item.blockIdx);
+
+                stack.push_back({childIdx, 0});
+            }
+        }
+        else
+        {
+            ordering[item.blockIdx].postOrder = nextPostOrder++;
+
+            if (postOrder)
+                postOrder->push_back(item.blockIdx);
+
+            stack.pop_back();
+        }
+    }
+}
+
+// Dominance tree construction based on 'A Simple, Fast Dominance Algorithm' [Keith D. Cooper, et al]
+// This solution has quadratic complexity in the worst case.
+// It is possible to switch to SEMI-NCA algorithm (also quadratic) mentioned in 'Linear-Time Algorithms for Dominators and Related Problems' [Loukas
+// Georgiadis]
+
+// Find block that is common between blocks 'a' and 'b' on the path towards the entry
+static uint32_t findCommonDominator(const std::vector<uint32_t>& idoms, const std::vector<BlockOrdering>& data, uint32_t a, uint32_t b)
+{
+    while (a != b)
+    {
+        while (data[a].postOrder < data[b].postOrder)
+        {
+            a = idoms[a];
+            LUAU_ASSERT(a != ~0u);
+        }
+
+        while (data[b].postOrder < data[a].postOrder)
+        {
+            b = idoms[b];
+            LUAU_ASSERT(b != ~0u);
+        }
+    }
+
+    return a;
+}
+
+void computeCfgImmediateDominators(IrFunction& function)
+{
+    CfgInfo& info = function.cfg;
+
+    // Clear existing data
+    info.idoms.clear();
+    info.idoms.resize(function.blocks.size(), ~0u);
+
+    std::vector<BlockOrdering> ordering;
+    std::vector<uint32_t> blocksInPostOrder;
+    computeBlockOrdering<successors>(function, ordering, /* preOrder */ nullptr, &blocksInPostOrder);
+
+    // Entry node is temporarily marked to be an idom of itself to make algorithm work
+    info.idoms[0] = 0;
+
+    // Iteratively compute immediate dominators
+    bool updated = true;
+
+    while (updated)
+    {
+        updated = false;
+
+        // Go over blocks in reverse post-order of CFG
+        // '- 2' skips the root node which is last in post-order traversal
+        for (int i = int(blocksInPostOrder.size() - 2); i >= 0; i--)
+        {
+            uint32_t blockIdx = blocksInPostOrder[i];
+            uint32_t newIdom = ~0u;
+
+            for (uint32_t predIdx : predecessors(info, blockIdx))
+            {
+                if (uint32_t predIdom = info.idoms[predIdx]; predIdom != ~0u)
+                {
+                    if (newIdom == ~0u)
+                        newIdom = predIdx;
+                    else
+                        newIdom = findCommonDominator(info.idoms, ordering, newIdom, predIdx);
+                }
+            }
+
+            if (newIdom != info.idoms[blockIdx])
+            {
+                info.idoms[blockIdx] = newIdom;
+
+                // Run until a fixed point is reached
+                updated = true;
+            }
+        }
+    }
+
+    // Entry node doesn't have an immediate dominator
+    info.idoms[0] = ~0u;
+}
+
+void computeCfgDominanceTreeChildren(IrFunction& function)
+{
+    CfgInfo& info = function.cfg;
+
+    // Clear existing data
+    info.domChildren.clear();
+
+    info.domChildrenOffsets.clear();
+    info.domChildrenOffsets.resize(function.blocks.size());
+
+    // First we need to know children count of each node in the dominance tree
+    // We use offset array for to hold this data, counts will be readjusted to offsets later
+    for (size_t blockIdx = 0; blockIdx < function.blocks.size(); blockIdx++)
+    {
+        uint32_t domParent = info.idoms[blockIdx];
+
+        if (domParent != ~0u)
+            info.domChildrenOffsets[domParent]++;
+    }
+
+    // Convert counds to offsets using prefix sum
+    uint32_t total = 0;
+
+    for (size_t blockIdx = 0; blockIdx < function.blocks.size(); blockIdx++)
+    {
+        uint32_t& offset = info.domChildrenOffsets[blockIdx];
+        uint32_t count = offset;
+        offset = total;
+        total += count;
+    }
+
+    info.domChildren.resize(total);
+
+    for (size_t blockIdx = 0; blockIdx < function.blocks.size(); blockIdx++)
+    {
+        // We use a trick here, where we use the starting offset of the dominance children list as the position where to write next child
+        // The values will be adjusted back in a separate loop later
+        uint32_t domParent = info.idoms[blockIdx];
+
+        if (domParent != ~0u)
+            info.domChildren[info.domChildrenOffsets[domParent]++] = uint32_t(blockIdx);
+    }
+
+    // Offsets into the dominance children list were used as iterators in the previous loop
+    // That process basically moved the values in the array 1 step towards the start
+    // Here we move them one step towards the end and restore 0 for first offset
+    for (int blockIdx = int(function.blocks.size() - 1); blockIdx > 0; blockIdx--)
+        info.domChildrenOffsets[blockIdx] = info.domChildrenOffsets[blockIdx - 1];
+    info.domChildrenOffsets[0] = 0;
+
+    computeBlockOrdering<domChildren>(function, info.domOrdering, /* preOrder */ nullptr, /* postOrder */ nullptr);
+}
+
 void computeCfgInfo(IrFunction& function)
 {
     computeCfgBlockEdges(function);
+    computeCfgImmediateDominators(function);
+    computeCfgDominanceTreeChildren(function);
     computeCfgLiveInOutRegSets(function);
 }
 
@@ -685,6 +888,16 @@ BlockIteratorWrapper successors(const CfgInfo& cfg, uint32_t blockIdx)
     uint32_t end = blockIdx + 1 < cfg.successorsOffsets.size() ? cfg.successorsOffsets[blockIdx + 1] : uint32_t(cfg.successors.size());
 
     return BlockIteratorWrapper{cfg.successors.data() + start, cfg.successors.data() + end};
+}
+
+BlockIteratorWrapper domChildren(const CfgInfo& cfg, uint32_t blockIdx)
+{
+    LUAU_ASSERT(blockIdx < cfg.domChildrenOffsets.size());
+
+    uint32_t start = cfg.domChildrenOffsets[blockIdx];
+    uint32_t end = blockIdx + 1 < cfg.domChildrenOffsets.size() ? cfg.domChildrenOffsets[blockIdx + 1] : uint32_t(cfg.domChildren.size());
+
+    return BlockIteratorWrapper{cfg.domChildren.data() + start, cfg.domChildren.data() + end};
 }
 
 } // namespace CodeGen

@@ -117,6 +117,81 @@ static void emitReentry(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     build.br(x4);
 }
 
+void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
+{
+    // x1 = res
+    // w2 = number of written values
+
+    // x0 = ci
+    build.ldr(x0, mem(rState, offsetof(lua_State, ci)));
+    // w3 = ci->nresults
+    build.ldr(w3, mem(x0, offsetof(CallInfo, nresults)));
+
+    Label skipResultCopy;
+
+    // Fill the rest of the expected results (nresults - written) with 'nil'
+    build.cmp(w2, w3);
+    build.b(ConditionA64::GreaterEqual, skipResultCopy);
+
+    // TODO: cmp above could compute this and flags using subs
+    build.sub(w2, w3, w2); // counter = nresults - written
+    build.mov(w4, LUA_TNIL);
+
+    Label repeatNilLoop = build.setLabel();
+    build.str(w4, mem(x1, offsetof(TValue, tt)));
+    build.add(x1, x1, sizeof(TValue));
+    build.sub(w2, w2, 1);
+    build.cbnz(w2, repeatNilLoop);
+
+    build.setLabel(skipResultCopy);
+
+    // x2 = cip = ci - 1
+    build.sub(x2, x0, sizeof(CallInfo));
+
+    // res = cip->top when nresults >= 0
+    Label skipFixedRetTop;
+    build.tbnz(w3, 31, skipFixedRetTop);
+    build.ldr(x1, mem(x2, offsetof(CallInfo, top))); // res = cip->top
+    build.setLabel(skipFixedRetTop);
+
+    // Update VM state (ci, base, top)
+    build.str(x2, mem(rState, offsetof(lua_State, ci)));      // L->ci = cip
+    build.ldr(rBase, mem(x2, offsetof(CallInfo, base)));      // sync base = L->base while we have a chance
+    build.str(rBase, mem(rState, offsetof(lua_State, base))); // L->base = cip->base
+
+    build.str(x1, mem(rState, offsetof(lua_State, top))); // L->top = res
+
+    // Unlikely, but this might be the last return from VM
+    build.ldr(w4, mem(x0, offsetof(CallInfo, flags)));
+    build.tbnz(w4, countrz(LUA_CALLINFO_RETURN), helpers.exitNoContinueVm);
+
+    // Continue in interpreter if function has no native data
+    build.ldr(w4, mem(x2, offsetof(CallInfo, flags)));
+    build.tbz(w4, countrz(LUA_CALLINFO_NATIVE), helpers.exitContinueVm);
+
+    // Need to update state of the current function before we jump away
+    build.ldr(rClosure, mem(x2, offsetof(CallInfo, func)));
+    build.ldr(rClosure, mem(rClosure, offsetof(TValue, value.gc)));
+
+    build.ldr(x1, mem(rClosure, offsetof(Closure, l.p))); // cl->l.p aka proto
+
+    LUAU_ASSERT(offsetof(Proto, code) == offsetof(Proto, k) + 8);
+    build.ldp(rConstants, rCode, mem(x1, offsetof(Proto, k))); // proto->k, proto->code
+
+    // Get instruction index from instruction pointer
+    // To get instruction index from instruction pointer, we need to divide byte offset by 4
+    // But we will actually need to scale instruction index by 4 back to byte offset later so it cancels out
+    build.ldr(x2, mem(x2, offsetof(CallInfo, savedpc))); // cip->savedpc
+    build.sub(x2, x2, rCode);
+
+    // Get new instruction location and jump to it
+    LUAU_ASSERT(offsetof(Proto, exectarget) == offsetof(Proto, execdata) + 8);
+    build.ldp(x3, x4, mem(x1, offsetof(Proto, execdata)));
+    build.ldr(w2, mem(x3, x2));
+    build.add(x4, x4, x2);
+    build.br(x4);
+}
+
 static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilder& unwind)
 {
     EntryLocations locations;
@@ -230,6 +305,11 @@ void assembleHelpers(AssemblyBuilderA64& build, ModuleHelpers& helpers)
         build.logAppend("; interrupt\n");
     helpers.interrupt = build.setLabel();
     emitInterrupt(build);
+
+    if (build.logText)
+        build.logAppend("; return\n");
+    helpers.return_ = build.setLabel();
+    emitReturn(build, helpers);
 }
 
 } // namespace A64
