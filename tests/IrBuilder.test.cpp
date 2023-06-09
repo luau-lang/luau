@@ -93,7 +93,7 @@ public:
             {
                 for (uint32_t succIdx : successors(build.function.cfg, k))
                 {
-                    if (succIdx == i)
+                    if (succIdx == uint32_t(i))
                         build.function.cfg.predecessors.push_back(k);
                 }
             }
