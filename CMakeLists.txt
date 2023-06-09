@@ -36,12 +36,14 @@ if(LUAU_BUILD_CLI)
     add_executable(Luau.Analyze.CLI)
     add_executable(Luau.Ast.CLI)
     add_executable(Luau.Reduce.CLI)
+    add_executable(Luau.Compile.CLI)
 
     # This also adds target `name` on Linux/macOS and `name.exe` on Windows
     set_target_properties(Luau.Repl.CLI PROPERTIES OUTPUT_NAME luau)
     set_target_properties(Luau.Analyze.CLI PROPERTIES OUTPUT_NAME luau-analyze)
     set_target_properties(Luau.Ast.CLI PROPERTIES OUTPUT_NAME luau-ast)
     set_target_properties(Luau.Reduce.CLI PROPERTIES OUTPUT_NAME luau-reduce)
+    set_target_properties(Luau.Compile.CLI PROPERTIES OUTPUT_NAME luau-compile)
 endif()
 
 if(LUAU_BUILD_TESTS)
@@ -186,6 +188,7 @@ if(LUAU_BUILD_CLI)
     target_compile_options(Luau.Reduce.CLI PRIVATE ${LUAU_OPTIONS})
     target_compile_options(Luau.Analyze.CLI PRIVATE ${LUAU_OPTIONS})
     target_compile_options(Luau.Ast.CLI PRIVATE ${LUAU_OPTIONS})
+    target_compile_options(Luau.Compile.CLI PRIVATE ${LUAU_OPTIONS})
 
     target_include_directories(Luau.Repl.CLI PRIVATE extern extern/isocline/include)
 
@@ -206,6 +209,8 @@ if(LUAU_BUILD_CLI)
     target_compile_features(Luau.Reduce.CLI PRIVATE cxx_std_17)
     target_include_directories(Luau.Reduce.CLI PUBLIC Reduce/include)
     target_link_libraries(Luau.Reduce.CLI PRIVATE Luau.Common Luau.Ast Luau.Analysis)
+
+    target_link_libraries(Luau.Compile.CLI PRIVATE Luau.Compiler Luau.VM Luau.CodeGen)
 endif()
 
 if(LUAU_BUILD_TESTS)

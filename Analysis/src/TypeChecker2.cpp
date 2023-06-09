@@ -1067,9 +1067,7 @@ struct TypeChecker2
         std::vector<Location> argLocs;
         argLocs.reserve(call->args.size + 1);
 
-        TypeId* maybeOriginalCallTy = module->astOriginalCallTypes.find(call);
-        TypeId* maybeSelectedOverload = module->astOverloadResolvedTypes.find(call);
-
+        auto maybeOriginalCallTy = module->astOriginalCallTypes.find(call);
         if (!maybeOriginalCallTy)
             return;
 
@@ -1093,8 +1091,19 @@ struct TypeChecker2
                 return;
             }
         }
-        else if (get<FunctionType>(originalCallTy) || get<IntersectionType>(originalCallTy))
+        else if (get<FunctionType>(originalCallTy))
         {
+            // ok.
+        }
+        else if (get<IntersectionType>(originalCallTy))
+        {
+            auto norm = normalizer.normalize(originalCallTy);
+            if (!norm)
+                return reportError(CodeTooComplex{}, call->location);
+
+            // NormalizedType::hasFunction returns true if its' tops component is `unknown`, but for soundness we want the reverse.
+            if (get<UnknownType>(norm->tops) || !norm->hasFunctions())
+                return reportError(CannotCallNonFunction{originalCallTy}, call->func->location);
         }
         else if (auto utv = get<UnionType>(originalCallTy))
         {
@@ -1164,7 +1173,7 @@ struct TypeChecker2
 
         TypePackId expectedArgTypes = testArena.addTypePack(args);
 
-        if (maybeSelectedOverload)
+        if (auto maybeSelectedOverload = module->astOverloadResolvedTypes.find(call))
         {
             // This overload might not work still: the constraint solver will
             // pass the type checker an instantiated function type that matches
@@ -1414,7 +1423,7 @@ struct TypeChecker2
         {
             // Nothing
         }
-        else if (!normalizedFnTy->isFunction())
+        else if (!normalizedFnTy->hasFunctions())
         {
             ice->ice("Internal error: Lambda has non-function type " + toString(inferredFnTy), fn->location);
         }
@@ -1793,12 +1802,14 @@ struct TypeChecker2
         case AstExprBinary::Op::CompareGt:
         case AstExprBinary::Op::CompareLe:
         case AstExprBinary::Op::CompareLt:
-            if (isNumber(leftType))
+        {
+            const NormalizedType* leftTyNorm = normalizer.normalize(leftType);
+            if (leftTyNorm && leftTyNorm->isExactlyNumber())
             {
                 reportErrors(tryUnify(scope, expr->right->location, rightType, builtinTypes->numberType));
                 return builtinTypes->numberType;
             }
-            else if (isString(leftType))
+            else if (leftTyNorm && leftTyNorm->isSubtypeOfString())
             {
                 reportErrors(tryUnify(scope, expr->right->location, rightType, builtinTypes->stringType));
                 return builtinTypes->stringType;
@@ -1810,6 +1821,8 @@ struct TypeChecker2
                     expr->location);
                 return builtinTypes->errorRecoveryType();
             }
+        }
+
         case AstExprBinary::Op::And:
         case AstExprBinary::Op::Or:
         case AstExprBinary::Op::CompareEq:

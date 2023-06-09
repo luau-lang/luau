@@ -16,7 +16,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauUniformTopHandling)
 LUAU_FASTFLAG(LuauGetImportDirect)
 
 // Disable c99-designator to avoid the warning in CGOTO dispatch table
@@ -1043,8 +1042,6 @@ reentry:
                 // we're done!
                 if (LUAU_UNLIKELY(ci->flags & LUA_CALLINFO_RETURN))
                 {
-                    if (!FFlag::LuauUniformTopHandling)
-                        L->top = res;
                     goto exit;
                 }
 

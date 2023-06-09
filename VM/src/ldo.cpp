@@ -17,8 +17,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauUniformTopHandling, false)
-
 /*
 ** {======================================================
 ** Error-recovery functions
@@ -252,7 +250,7 @@ void luaD_call(lua_State* L, StkId func, int nresults)
             L->isactive = false;
     }
 
-    if (FFlag::LuauUniformTopHandling && nresults != LUA_MULTRET)
+    if (nresults != LUA_MULTRET)
         L->top = restorestack(L, old_func) + nresults;
 
     L->nCcalls--;

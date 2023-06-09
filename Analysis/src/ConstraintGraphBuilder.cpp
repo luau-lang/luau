@@ -16,6 +16,7 @@
 #include "Luau/TypeFamily.h"
 #include "Luau/Simplify.h"
 #include "Luau/VisitType.h"
+#include "Luau/InsertionOrderedMap.h"
 
 #include <algorithm>
 
@@ -196,7 +197,7 @@ struct RefinementPartition
     bool shouldAppendNilType = false;
 };
 
-using RefinementContext = std::unordered_map<DefId, RefinementPartition>;
+using RefinementContext = InsertionOrderedMap<DefId, RefinementPartition>;
 
 static void unionRefinements(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, const RefinementContext& lhs, const RefinementContext& rhs,
     RefinementContext& dest, std::vector<ConstraintV>* constraints)
@@ -229,8 +230,9 @@ static void unionRefinements(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeAre
         TypeId rightDiscriminantTy =
             rhsIt->second.discriminantTypes.size() == 1 ? rhsIt->second.discriminantTypes[0] : intersect(rhsIt->second.discriminantTypes);
 
-        dest[def].discriminantTypes.push_back(simplifyUnion(builtinTypes, arena, leftDiscriminantTy, rightDiscriminantTy).result);
-        dest[def].shouldAppendNilType |= partition.shouldAppendNilType || rhsIt->second.shouldAppendNilType;
+        dest.insert(def, {});
+        dest.get(def)->discriminantTypes.push_back(simplifyUnion(builtinTypes, arena, leftDiscriminantTy, rightDiscriminantTy).result);
+        dest.get(def)->shouldAppendNilType |= partition.shouldAppendNilType || rhsIt->second.shouldAppendNilType;
     }
 }
 
@@ -285,11 +287,12 @@ static void computeRefinement(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeAr
         }
 
         RefinementContext uncommittedRefis;
-        uncommittedRefis[proposition->breadcrumb->def].discriminantTypes.push_back(discriminantTy);
+        uncommittedRefis.insert(proposition->breadcrumb->def, {});
+        uncommittedRefis.get(proposition->breadcrumb->def)->discriminantTypes.push_back(discriminantTy);
 
         // When the top-level expression is `t[x]`, we want to refine it into `nil`, not `never`.
         if ((sense || !eq) && getMetadata<SubscriptMetadata>(proposition->breadcrumb))
-            uncommittedRefis[proposition->breadcrumb->def].shouldAppendNilType = true;
+            uncommittedRefis.get(proposition->breadcrumb->def)->shouldAppendNilType = true;
 
         for (NullableBreadcrumbId current = proposition->breadcrumb; current && current->previous; current = current->previous)
         {
@@ -302,17 +305,20 @@ static void computeRefinement(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeAr
             {
                 TableType::Props props{{field->prop, Property{discriminantTy}}};
                 discriminantTy = arena->addType(TableType{std::move(props), std::nullopt, TypeLevel{}, scope.get(), TableState::Sealed});
-                uncommittedRefis[current->previous->def].discriminantTypes.push_back(discriminantTy);
+                uncommittedRefis.insert(current->previous->def, {});
+                uncommittedRefis.get(current->previous->def)->discriminantTypes.push_back(discriminantTy);
             }
         }
 
         // And now it's time to commit it.
         for (auto& [def, partition] : uncommittedRefis)
         {
-            for (TypeId discriminantTy : partition.discriminantTypes)
-                (*refis)[def].discriminantTypes.push_back(discriminantTy);
+            (*refis).insert(def, {});
 
-            (*refis)[def].shouldAppendNilType |= partition.shouldAppendNilType;
+            for (TypeId discriminantTy : partition.discriminantTypes)
+                (*refis).get(def)->discriminantTypes.push_back(discriminantTy);
+
+            (*refis).get(def)->shouldAppendNilType |= partition.shouldAppendNilType;
         }
     }
 }

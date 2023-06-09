@@ -108,6 +108,14 @@ size_t TypeIds::getHash() const
     return hash;
 }
 
+bool TypeIds::isNever() const
+{
+    return std::all_of(begin(), end(), [&](TypeId i) {
+        // If each typeid is never, then I guess typeid's is also never?
+        return get<NeverType>(i) != nullptr;
+    });
+}
+
 bool TypeIds::operator==(const TypeIds& there) const
 {
     return hash == there.hash && types == there.types;
@@ -228,14 +236,72 @@ NormalizedType::NormalizedType(NotNull<BuiltinTypes> builtinTypes)
 {
 }
 
-bool NormalizedType::isFunction() const
+bool NormalizedType::isExactlyNumber() const
 {
-    return !get<NeverType>(tops) || !functions.parts.empty();
+    return hasNumbers() && !hasTops() && !hasBooleans() && !hasClasses() && !hasErrors() && !hasNils() && !hasStrings() && !hasThreads() &&
+           !hasTables() && !hasFunctions() && !hasTyvars();
 }
 
-bool NormalizedType::isNumber() const
+bool NormalizedType::isSubtypeOfString() const
 {
-    return !get<NeverType>(tops) || !get<NeverType>(numbers);
+    return hasStrings() && !hasTops() && !hasBooleans() && !hasClasses() && !hasErrors() && !hasNils() && !hasNumbers() && !hasThreads() &&
+           !hasTables() && !hasFunctions() && !hasTyvars();
+}
+
+bool NormalizedType::hasTops() const
+{
+    return !get<NeverType>(tops);
+}
+
+
+bool NormalizedType::hasBooleans() const
+{
+    return !get<NeverType>(booleans);
+}
+
+bool NormalizedType::hasClasses() const
+{
+    return !classes.isNever();
+}
+
+bool NormalizedType::hasErrors() const
+{
+    return !get<NeverType>(errors);
+}
+
+bool NormalizedType::hasNils() const
+{
+    return !get<NeverType>(nils);
+}
+
+bool NormalizedType::hasNumbers() const
+{
+    return !get<NeverType>(numbers);
+}
+
+bool NormalizedType::hasStrings() const
+{
+    return !strings.isNever();
+}
+
+bool NormalizedType::hasThreads() const
+{
+    return !get<NeverType>(threads);
+}
+
+bool NormalizedType::hasTables() const
+{
+    return !tables.isNever();
+}
+
+bool NormalizedType::hasFunctions() const
+{
+    return !functions.isNever();
+}
+
+bool NormalizedType::hasTyvars() const
+{
+    return !tyvars.empty();
 }
 
 static bool isShallowInhabited(const NormalizedType& norm)
