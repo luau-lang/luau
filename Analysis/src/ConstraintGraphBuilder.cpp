@@ -1154,11 +1154,19 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareC
 
     if (FFlag::LuauParseDeclareClassIndexer && declaredClass->indexer)
     {
-        // TODO: Recursion limit.
-        ctv->indexer = TableIndexer{
-            resolveType(scope, declaredClass->indexer->indexType, /* inTypeArguments */ false),
-            resolveType(scope, declaredClass->indexer->resultType, /* inTypeArguments */ false),
-        };
+        RecursionCounter counter{&recursionCount};
+
+        if (recursionCount >= FInt::LuauCheckRecursionLimit)
+        {
+            reportCodeTooComplex(declaredClass->indexer->location);
+        }
+        else
+        {
+            ctv->indexer = TableIndexer{
+                resolveType(scope, declaredClass->indexer->indexType, /* inTypeArguments */ false),
+                resolveType(scope, declaredClass->indexer->resultType, /* inTypeArguments */ false),
+            };
+        }
     }
 
     for (const AstDeclaredClassProp& prop : declaredClass->props)
