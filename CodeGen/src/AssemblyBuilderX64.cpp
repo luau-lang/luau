@@ -1415,7 +1415,7 @@ void AssemblyBuilderX64::commit()
 {
     LUAU_ASSERT(codePos <= codeEnd);
 
-    if (unsigned(codeEnd - codePos) < kMaxInstructionLength)
+    if (codeEnd - codePos < kMaxInstructionLength)
         extend();
 }
 

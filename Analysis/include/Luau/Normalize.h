@@ -64,6 +64,7 @@ public:
 
     bool operator==(const TypeIds& there) const;
     size_t getHash() const;
+    bool isNever() const;
 };
 
 } // namespace Luau
@@ -269,12 +270,24 @@ struct NormalizedType
     NormalizedType& operator=(NormalizedType&&) = default;
 
     // IsType functions
+    /// Returns true if the type is exactly a number. Behaves like Type::isNumber()
+    bool isExactlyNumber() const;
 
-    /// Returns true if the type is a subtype of function.  This includes any and unknown.
-    bool isFunction() const;
+    /// Returns true if the type is a subtype of string(it could be a singleton). Behaves like Type::isString()
+    bool isSubtypeOfString() const;
 
-    /// Returns true if the type is a subtype of number.  This includes any and unknown.
-    bool isNumber() const;
+    // Helpers that improve readability of the above (they just say if the component is present)
+    bool hasTops() const;
+    bool hasBooleans() const;
+    bool hasClasses() const;
+    bool hasErrors() const;
+    bool hasNils() const;
+    bool hasNumbers() const;
+    bool hasStrings() const;
+    bool hasThreads() const;
+    bool hasTables() const;
+    bool hasFunctions() const;
+    bool hasTyvars() const;
 };
 
 

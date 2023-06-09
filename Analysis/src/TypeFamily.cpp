@@ -346,7 +346,6 @@ TypeFamilyReductionResult<TypeId> addFamilyFn(std::vector<TypeId> typeParams, st
     TypeId rhsTy = log->follow(typeParams.at(1));
     const NormalizedType* normLhsTy = normalizer->normalize(lhsTy);
     const NormalizedType* normRhsTy = normalizer->normalize(rhsTy);
-
     if (!normLhsTy || !normRhsTy)
     {
         return {std::nullopt, false, {}, {}};
@@ -355,7 +354,7 @@ TypeFamilyReductionResult<TypeId> addFamilyFn(std::vector<TypeId> typeParams, st
     {
         return {builtins->anyType, false, {}, {}};
     }
-    else if (normLhsTy->isNumber() && normRhsTy->isNumber())
+    else if ((normLhsTy->hasNumbers() || normLhsTy->hasTops()) && (normRhsTy->hasNumbers() || normRhsTy->hasTops()))
     {
         return {builtins->numberType, false, {}, {}};
     }

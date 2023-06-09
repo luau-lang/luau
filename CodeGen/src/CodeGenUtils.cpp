@@ -17,8 +17,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauUniformTopHandling)
-
 // All external function calls that can cause stack realloc or Lua calls have to be wrapped in VM_PROTECT
 // This makes sure that we save the pc (in case the Lua call needs to generate a backtrace) before the call,
 // and restores the stack pointer after in case stack gets reallocated
@@ -304,44 +302,6 @@ Closure* callFallback(lua_State* L, StkId ra, StkId argtop, int nresults)
         LUAU_ASSERT(isLua(cip));
         return clvalue(cip->func);
     }
-}
-
-// Extracted as-is from lvmexecute.cpp with the exception of control flow (reentry) and removed interrupts
-Closure* returnFallback(lua_State* L, StkId ra, StkId valend)
-{
-    // ci is our callinfo, cip is our parent
-    CallInfo* ci = L->ci;
-    CallInfo* cip = ci - 1;
-
-    StkId res = ci->func; // note: we assume CALL always puts func+args and expects results to start at func
-    StkId vali = ra;
-
-    int nresults = ci->nresults;
-
-    // copy return values into parent stack (but only up to nresults!), fill the rest with nil
-    // note: in MULTRET context nresults starts as -1 so i != 0 condition never activates intentionally
-    int i;
-    for (i = nresults; i != 0 && vali < valend; i--)
-        setobj2s(L, res++, vali++);
-    while (i-- > 0)
-        setnilvalue(res++);
-
-    // pop the stack frame
-    L->ci = cip;
-    L->base = cip->base;
-    L->top = (nresults == LUA_MULTRET) ? res : cip->top;
-
-    // we're done!
-    if (LUAU_UNLIKELY(ci->flags & LUA_CALLINFO_RETURN))
-    {
-        if (!FFlag::LuauUniformTopHandling)
-            L->top = res;
-        return NULL;
-    }
-
-    // keep executing new function
-    LUAU_ASSERT(isLua(cip));
-    return clvalue(cip->func);
 }
 
 const Instruction* executeGETGLOBAL(lua_State* L, const Instruction* pc, StkId base, TValue* k)

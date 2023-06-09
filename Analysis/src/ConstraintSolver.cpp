@@ -785,7 +785,8 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
         const NormalizedType* normLeftTy = normalizer->normalize(leftType);
         if (hasTypeInIntersection<FreeType>(leftType) && force)
             asMutable(leftType)->ty.emplace<BoundType>(anyPresent ? builtinTypes->anyType : builtinTypes->numberType);
-        if (normLeftTy && normLeftTy->isNumber())
+        // We want to check if the left type has tops because `any` is a valid type for the lhs
+        if (normLeftTy && (normLeftTy->isExactlyNumber() || get<AnyType>(normLeftTy->tops)))
         {
             unify(leftType, rightType, constraint->scope);
             asMutable(resultType)->ty.emplace<BoundType>(anyPresent ? builtinTypes->anyType : leftType);
@@ -805,9 +806,11 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     // For concatenation, if the LHS is a string, the RHS must be a string as
     // well. The result will also be a string.
     case AstExprBinary::Op::Concat:
+    {
         if (hasTypeInIntersection<FreeType>(leftType) && force)
             asMutable(leftType)->ty.emplace<BoundType>(anyPresent ? builtinTypes->anyType : builtinTypes->stringType);
-        if (isString(leftType))
+        const NormalizedType* leftNormTy = normalizer->normalize(leftType);
+        if (leftNormTy && leftNormTy->isSubtypeOfString())
         {
             unify(leftType, rightType, constraint->scope);
             asMutable(resultType)->ty.emplace<BoundType>(anyPresent ? builtinTypes->anyType : leftType);
@@ -823,14 +826,33 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
         }
 
         break;
+    }
     // Inexact comparisons require that the types be both numbers or both
     // strings, and evaluate to a boolean.
     case AstExprBinary::Op::CompareGe:
     case AstExprBinary::Op::CompareGt:
     case AstExprBinary::Op::CompareLe:
     case AstExprBinary::Op::CompareLt:
-        if ((isNumber(leftType) && isNumber(rightType)) || (isString(leftType) && isString(rightType)) || get<NeverType>(leftType) ||
-            get<NeverType>(rightType))
+    {
+        const NormalizedType* lt = normalizer->normalize(leftType);
+        const NormalizedType* rt = normalizer->normalize(rightType);
+        // If the lhs is any, comparisons should be valid.
+        if (lt && rt && (lt->isExactlyNumber() || get<AnyType>(lt->tops)) && rt->isExactlyNumber())
+        {
+            asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
+            unblock(resultType);
+            return true;
+        }
+
+        if (lt && rt && (lt->isSubtypeOfString() || get<AnyType>(lt->tops)) && rt->isSubtypeOfString())
+        {
+            asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
+            unblock(resultType);
+            return true;
+        }
+
+
+        if (get<NeverType>(leftType) || get<NeverType>(rightType))
         {
             asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
             unblock(resultType);
@@ -838,6 +860,8 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
         }
 
         break;
+    }
+
     // == and ~= always evaluate to a boolean, and impose no other constraints
     // on their parameters.
     case AstExprBinary::Op::CompareEq:
@@ -1776,7 +1800,7 @@ struct FindRefineConstraintBlockers : TypeOnceVisitor
     }
 };
 
-}
+} // namespace
 
 static bool isNegatedAny(TypeId ty)
 {
@@ -2319,7 +2343,7 @@ static TypePackId getErrorType(NotNull<BuiltinTypes> builtinTypes, TypePackId)
     return builtinTypes->errorRecoveryTypePack();
 }
 
-template <typename TID>
+template<typename TID>
 bool ConstraintSolver::tryUnify(NotNull<const Constraint> constraint, TID subTy, TID superTy)
 {
     Unifier u{normalizer, constraint->scope, constraint->location, Covariant};

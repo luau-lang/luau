@@ -876,6 +876,9 @@ void AssemblyBuilderA64::placeA(const char* name, RegisterA64 dst, AddressA64 sr
 
     switch (src.kind)
     {
+    case AddressKindA64::reg:
+        place(dst.index | (src.base.index << 5) | (0b011'0'10 << 10) | (src.offset.index << 16) | (1 << 21) | (opsize << 22));
+        break;
     case AddressKindA64::imm:
         if (unsigned(src.data >> sizelog) < 1024 && (src.data & ((1 << sizelog) - 1)) == 0)
             place(dst.index | (src.base.index << 5) | ((src.data >> sizelog) << 10) | (opsize << 22) | (1 << 24));
@@ -884,8 +887,13 @@ void AssemblyBuilderA64::placeA(const char* name, RegisterA64 dst, AddressA64 sr
         else
             LUAU_ASSERT(!"Unable to encode large immediate offset");
         break;
-    case AddressKindA64::reg:
-        place(dst.index | (src.base.index << 5) | (0b011'0'10 << 10) | (src.offset.index << 16) | (1 << 21) | (opsize << 22));
+    case AddressKindA64::pre:
+        LUAU_ASSERT(src.data >= -256 && src.data <= 255);
+        place(dst.index | (src.base.index << 5) | (0b11 << 10) | ((src.data & ((1 << 9) - 1)) << 12) | (opsize << 22));
+        break;
+    case AddressKindA64::post:
+        LUAU_ASSERT(src.data >= -256 && src.data <= 255);
+        place(dst.index | (src.base.index << 5) | (0b01 << 10) | ((src.data & ((1 << 9) - 1)) << 12) | (opsize << 22));
         break;
     }
 
@@ -1312,23 +1320,37 @@ void AssemblyBuilderA64::log(RegisterA64 reg)
 
 void AssemblyBuilderA64::log(AddressA64 addr)
 {
-    text.append("[");
     switch (addr.kind)
     {
-    case AddressKindA64::imm:
-        log(addr.base);
-        if (addr.data != 0)
-            logAppend(",#%d", addr.data);
-        break;
     case AddressKindA64::reg:
+        text.append("[");
         log(addr.base);
         text.append(",");
         log(addr.offset);
+        text.append("]");
+        break;
+    case AddressKindA64::imm:
+        text.append("[");
+        log(addr.base);
         if (addr.data != 0)
-            logAppend(" LSL #%d", addr.data);
+            logAppend(",#%d", addr.data);
+        text.append("]");
+        break;
+    case AddressKindA64::pre:
+        text.append("[");
+        log(addr.base);
+        if (addr.data != 0)
+            logAppend(",#%d", addr.data);
+        text.append("]!");
+        break;
+    case AddressKindA64::post:
+        text.append("[");
+        log(addr.base);
+        text.append("]!");
+        if (addr.data != 0)
+            logAppend(",#%d", addr.data);
         break;
     }
-    text.append("]");
 }
 
 } // namespace A64

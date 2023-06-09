@@ -166,160 +166,61 @@ void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int
 void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int actualResults)
 {
     RegisterX64 ci = r8;
-    RegisterX64 cip = r9;
     RegisterX64 res = rdi;
-    RegisterX64 nresults = esi;
+    RegisterX64 written = ecx;
 
     build.mov(ci, qword[rState + offsetof(lua_State, ci)]);
-    build.lea(cip, addr[ci - sizeof(CallInfo)]);
-
-    // res = ci->func; note: we assume CALL always puts func+args and expects results to start at func
     build.mov(res, qword[ci + offsetof(CallInfo, func)]);
-    // nresults = ci->nresults
-    build.mov(nresults, dword[ci + offsetof(CallInfo, nresults)]);
 
+    if (actualResults == 0)
     {
-        Label skipResultCopy;
-
-        RegisterX64 counter = ecx;
-
-        if (actualResults == 0)
-        {
-            // Our instruction doesn't have any results, so just fill results expected in parent with 'nil'
-            build.test(nresults, nresults);                     // test here will set SF=1 for a negative number, ZF=1 for zero and OF=0
-            build.jcc(ConditionX64::LessEqual, skipResultCopy); // jle jumps if SF != OF or ZF == 1
-
-            build.mov(counter, nresults);
-
-            Label repeatNilLoop = build.setLabel();
-            build.mov(dword[res + offsetof(TValue, tt)], LUA_TNIL);
-            build.add(res, sizeof(TValue));
-            build.dec(counter);
-            build.jcc(ConditionX64::NotZero, repeatNilLoop);
-        }
-        else if (actualResults == 1)
-        {
-            // Try setting our 1 result
-            build.test(nresults, nresults);
-            build.jcc(ConditionX64::Zero, skipResultCopy);
-
-            build.lea(counter, addr[nresults - 1]);
-
-            build.vmovups(xmm0, luauReg(ra));
-            build.vmovups(xmmword[res], xmm0);
-            build.add(res, sizeof(TValue));
-
-            // Fill the rest of the expected results with 'nil'
-            build.test(counter, counter);                       // test here will set SF=1 for a negative number, ZF=1 for zero and OF=0
-            build.jcc(ConditionX64::LessEqual, skipResultCopy); // jle jumps if SF != OF or ZF == 1
-
-            Label repeatNilLoop = build.setLabel();
-            build.mov(dword[res + offsetof(TValue, tt)], LUA_TNIL);
-            build.add(res, sizeof(TValue));
-            build.dec(counter);
-            build.jcc(ConditionX64::NotZero, repeatNilLoop);
-        }
-        else
-        {
-            RegisterX64 vali = rax;
-            RegisterX64 valend = rdx;
-
-            // Copy return values into parent stack (but only up to nresults!)
-            build.test(nresults, nresults);
-            build.jcc(ConditionX64::Zero, skipResultCopy);
-
-            // vali = ra
-            build.lea(vali, luauRegAddress(ra));
-
-            // Copy as much as possible for MULTRET calls, and only as much as needed otherwise
-            if (actualResults == LUA_MULTRET)
-                build.mov(valend, qword[rState + offsetof(lua_State, top)]); // valend = L->top
-            else
-                build.lea(valend, luauRegAddress(ra + actualResults)); // valend = ra + actualResults
-
-            build.mov(counter, nresults);
-
-            Label repeatValueLoop, exitValueLoop;
-
-            build.setLabel(repeatValueLoop);
-            build.cmp(vali, valend);
-            build.jcc(ConditionX64::NotBelow, exitValueLoop);
-
-            build.vmovups(xmm0, xmmword[vali]);
-            build.vmovups(xmmword[res], xmm0);
-            build.add(vali, sizeof(TValue));
-            build.add(res, sizeof(TValue));
-            build.dec(counter);
-            build.jcc(ConditionX64::NotZero, repeatValueLoop);
-
-            build.setLabel(exitValueLoop);
-
-            // Fill the rest of the expected results with 'nil'
-            build.test(counter, counter);                       // test here will set SF=1 for a negative number, ZF=1 for zero and OF=0
-            build.jcc(ConditionX64::LessEqual, skipResultCopy); // jle jumps if SF != OF or ZF == 1
-
-            Label repeatNilLoop = build.setLabel();
-            build.mov(dword[res + offsetof(TValue, tt)], LUA_TNIL);
-            build.add(res, sizeof(TValue));
-            build.dec(counter);
-            build.jcc(ConditionX64::NotZero, repeatNilLoop);
-        }
-
-        build.setLabel(skipResultCopy);
+        build.xor_(written, written);
+        build.jmp(helpers.return_);
     }
+    else if (actualResults >= 1 && actualResults <= 3)
+    {
+        for (int r = 0; r < actualResults; ++r)
+        {
+            build.vmovups(xmm0, luauReg(ra + r));
+            build.vmovups(xmmword[res + r * sizeof(TValue)], xmm0);
+        }
+        build.add(res, actualResults * sizeof(TValue));
+        build.mov(written, actualResults);
+        build.jmp(helpers.return_);
+    }
+    else
+    {
+        RegisterX64 vali = rax;
+        RegisterX64 valend = rdx;
 
-    build.mov(qword[rState + offsetof(lua_State, ci)], cip);     // L->ci = cip
-    build.mov(rBase, qword[cip + offsetof(CallInfo, base)]);     // sync base = L->base while we have a chance
-    build.mov(qword[rState + offsetof(lua_State, base)], rBase); // L->base = cip->base
+        // vali = ra
+        build.lea(vali, luauRegAddress(ra));
 
-    // Start with result for LUA_MULTRET/exit value
-    build.mov(qword[rState + offsetof(lua_State, top)], res); // L->top = res
+        // Copy as much as possible for MULTRET calls, and only as much as needed otherwise
+        if (actualResults == LUA_MULTRET)
+            build.mov(valend, qword[rState + offsetof(lua_State, top)]); // valend = L->top
+        else
+            build.lea(valend, luauRegAddress(ra + actualResults)); // valend = ra + actualResults
 
-    // Unlikely, but this might be the last return from VM
-    build.test(byte[ci + offsetof(CallInfo, flags)], LUA_CALLINFO_RETURN);
-    build.jcc(ConditionX64::NotZero, helpers.exitNoContinueVm);
+        build.xor_(written, written);
 
-    Label skipFixedRetTop;
-    build.test(nresults, nresults);                 // test here will set SF=1 for a negative number and it always sets OF to 0
-    build.jcc(ConditionX64::Less, skipFixedRetTop); // jl jumps if SF != OF
-    build.mov(rax, qword[cip + offsetof(CallInfo, top)]);
-    build.mov(qword[rState + offsetof(lua_State, top)], rax); // L->top = cip->top
-    build.setLabel(skipFixedRetTop);
+        Label repeatValueLoop, exitValueLoop;
 
-    // Returning back to the previous function is a bit tricky
-    // Registers alive: r9 (cip)
-    RegisterX64 proto = rcx;
-    RegisterX64 execdata = rbx;
+        build.cmp(vali, valend);
+        build.jcc(ConditionX64::NotBelow, exitValueLoop);
 
-    // Change closure
-    build.mov(rax, qword[cip + offsetof(CallInfo, func)]);
-    build.mov(rax, qword[rax + offsetof(TValue, value.gc)]);
-    build.mov(sClosure, rax);
+        build.setLabel(repeatValueLoop);
+        build.vmovups(xmm0, xmmword[vali]);
+        build.vmovups(xmmword[res], xmm0);
+        build.add(vali, sizeof(TValue));
+        build.add(res, sizeof(TValue));
+        build.inc(written);
+        build.cmp(vali, valend);
+        build.jcc(ConditionX64::Below, repeatValueLoop);
 
-    build.mov(proto, qword[rax + offsetof(Closure, l.p)]);
-
-    build.mov(execdata, qword[proto + offsetof(Proto, execdata)]);
-
-    build.test(byte[cip + offsetof(CallInfo, flags)], LUA_CALLINFO_NATIVE);
-    build.jcc(ConditionX64::Zero, helpers.exitContinueVm); // Continue in interpreter if function has no native data
-
-    // Change constants
-    build.mov(rConstants, qword[proto + offsetof(Proto, k)]);
-
-    // Change code
-    build.mov(rdx, qword[proto + offsetof(Proto, code)]);
-    build.mov(sCode, rdx);
-
-    build.mov(rax, qword[cip + offsetof(CallInfo, savedpc)]);
-
-    // To get instruction index from instruction pointer, we need to divide byte offset by 4
-    // But we will actually need to scale instruction index by 4 back to byte offset later so it cancels out
-    build.sub(rax, rdx);
-
-    // Get new instruction location and jump to it
-    build.mov(edx, dword[execdata + rax]);
-    build.add(rdx, qword[proto + offsetof(Proto, exectarget)]);
-    build.jmp(rdx);
+        build.setLabel(exitValueLoop);
+        build.jmp(helpers.return_);
+    }
 }
 
 void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, int count, uint32_t index)

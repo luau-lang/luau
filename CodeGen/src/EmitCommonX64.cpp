@@ -352,6 +352,89 @@ void emitContinueCallInVm(AssemblyBuilderX64& build)
     emitExit(build, /* continueInVm */ true);
 }
 
+void emitReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers)
+{
+    // input: ci in r8, res in rdi, number of written values in ecx
+    RegisterX64 ci = r8;
+    RegisterX64 res = rdi;
+    RegisterX64 written = ecx;
+
+    RegisterX64 cip = r9;
+    RegisterX64 nresults = esi;
+
+    build.lea(cip, addr[ci - sizeof(CallInfo)]);
+
+    // nresults = ci->nresults
+    build.mov(nresults, dword[ci + offsetof(CallInfo, nresults)]);
+
+    Label skipResultCopy;
+
+    // Fill the rest of the expected results (nresults - written) with 'nil'
+    RegisterX64 counter = written;
+    build.sub(counter, nresults); // counter = -(nresults - written)
+    build.jcc(ConditionX64::GreaterEqual, skipResultCopy);
+
+    Label repeatNilLoop = build.setLabel();
+    build.mov(dword[res + offsetof(TValue, tt)], LUA_TNIL);
+    build.add(res, sizeof(TValue));
+    build.inc(counter);
+    build.jcc(ConditionX64::NotZero, repeatNilLoop);
+
+    build.setLabel(skipResultCopy);
+
+    build.mov(qword[rState + offsetof(lua_State, ci)], cip);     // L->ci = cip
+    build.mov(rBase, qword[cip + offsetof(CallInfo, base)]);     // sync base = L->base while we have a chance
+    build.mov(qword[rState + offsetof(lua_State, base)], rBase); // L->base = cip->base
+
+    Label skipFixedRetTop;
+    build.test(nresults, nresults);                       // test here will set SF=1 for a negative number and it always sets OF to 0
+    build.jcc(ConditionX64::Less, skipFixedRetTop);       // jl jumps if SF != OF
+    build.mov(res, qword[cip + offsetof(CallInfo, top)]); // res = cip->top
+    build.setLabel(skipFixedRetTop);
+
+    build.mov(qword[rState + offsetof(lua_State, top)], res); // L->top = res
+
+    // Unlikely, but this might be the last return from VM
+    build.test(byte[ci + offsetof(CallInfo, flags)], LUA_CALLINFO_RETURN);
+    build.jcc(ConditionX64::NotZero, helpers.exitNoContinueVm);
+
+    // Returning back to the previous function is a bit tricky
+    // Registers alive: r9 (cip)
+    RegisterX64 proto = rcx;
+    RegisterX64 execdata = rbx;
+
+    // Change closure
+    build.mov(rax, qword[cip + offsetof(CallInfo, func)]);
+    build.mov(rax, qword[rax + offsetof(TValue, value.gc)]);
+    build.mov(sClosure, rax);
+
+    build.mov(proto, qword[rax + offsetof(Closure, l.p)]);
+
+    build.mov(execdata, qword[proto + offsetof(Proto, execdata)]);
+
+    build.test(byte[cip + offsetof(CallInfo, flags)], LUA_CALLINFO_NATIVE);
+    build.jcc(ConditionX64::Zero, helpers.exitContinueVm); // Continue in interpreter if function has no native data
+
+    // Change constants
+    build.mov(rConstants, qword[proto + offsetof(Proto, k)]);
+
+    // Change code
+    build.mov(rdx, qword[proto + offsetof(Proto, code)]);
+    build.mov(sCode, rdx);
+
+    build.mov(rax, qword[cip + offsetof(CallInfo, savedpc)]);
+
+    // To get instruction index from instruction pointer, we need to divide byte offset by 4
+    // But we will actually need to scale instruction index by 4 back to byte offset later so it cancels out
+    build.sub(rax, rdx);
+
+    // Get new instruction location and jump to it
+    build.mov(edx, dword[execdata + rax]);
+    build.add(rdx, qword[proto + offsetof(Proto, exectarget)]);
+    build.jmp(rdx);
+}
+
+
 } // namespace X64
 } // namespace CodeGen
 } // namespace Luau

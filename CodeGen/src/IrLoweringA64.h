@@ -9,8 +9,6 @@
 
 #include <vector>
 
-struct Proto;
-
 namespace Luau
 {
 namespace CodeGen
@@ -25,7 +23,7 @@ namespace A64
 
 struct IrLoweringA64
 {
-    IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, NativeState& data, Proto* proto, IrFunction& function);
+    IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, NativeState& data, IrFunction& function);
 
     void lowerInst(IrInst& inst, uint32_t index, IrBlock& next);
     void finishBlock();
@@ -58,7 +56,6 @@ struct IrLoweringA64
     AssemblyBuilderA64& build;
     ModuleHelpers& helpers;
     NativeState& data;
-    Proto* proto = nullptr; // Temporarily required to provide 'Instruction* pc' to old emitInst* methods
 
     IrFunction& function;
 

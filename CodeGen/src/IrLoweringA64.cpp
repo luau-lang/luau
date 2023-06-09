@@ -185,11 +185,10 @@ static bool emitBuiltin(
     }
 }
 
-IrLoweringA64::IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, NativeState& data, Proto* proto, IrFunction& function)
+IrLoweringA64::IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, NativeState& data, IrFunction& function)
     : build(build)
     , helpers(helpers)
     , data(data)
-    , proto(proto)
     , function(function)
     , regs(function, {{x0, x15}, {x16, x17}, {q0, q7}, {q16, q31}})
     , valueTracker(function)
@@ -1343,19 +1342,71 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         break;
     case IrCmd::RETURN:
         regs.spill(build, index);
-        // valend = (n == LUA_MULTRET) ? L->top : ra + n
-        if (intOp(inst.b) == LUA_MULTRET)
-            build.ldr(x2, mem(rState, offsetof(lua_State, top)));
-        else
-            build.add(x2, rBase, uint16_t((vmRegOp(inst.a) + intOp(inst.b)) * sizeof(TValue)));
-        // returnFallback(L, ra, valend)
-        build.mov(x0, rState);
-        build.add(x1, rBase, uint16_t(vmRegOp(inst.a) * sizeof(TValue)));
-        build.ldr(x3, mem(rNativeContext, offsetof(NativeContext, returnFallback)));
-        build.blr(x3);
 
-        // reentry with x0=closure (NULL will trigger exit)
-        build.b(helpers.reentry);
+        if (function.variadic)
+        {
+            build.ldr(x1, mem(rState, offsetof(lua_State, ci)));
+            build.ldr(x1, mem(x1, offsetof(CallInfo, func)));
+        }
+        else if (intOp(inst.b) != 1)
+            build.sub(x1, rBase, sizeof(TValue)); // invariant: ci->func + 1 == ci->base for non-variadic frames
+
+        if (intOp(inst.b) == 0)
+        {
+            build.mov(w2, 0);
+            build.b(helpers.return_);
+        }
+        else if (intOp(inst.b) == 1 && !function.variadic)
+        {
+            // fast path: minimizes x1 adjustments
+            // note that we skipped x1 computation for this specific case above
+            build.ldr(q0, mem(rBase, vmRegOp(inst.a) * sizeof(TValue)));
+            build.str(q0, mem(rBase, -int(sizeof(TValue))));
+            build.mov(x1, rBase);
+            build.mov(w2, 1);
+            build.b(helpers.return_);
+        }
+        else if (intOp(inst.b) >= 1 && intOp(inst.b) <= 3)
+        {
+            for (int r = 0; r < intOp(inst.b); ++r)
+            {
+                build.ldr(q0, mem(rBase, (vmRegOp(inst.a) + r) * sizeof(TValue)));
+                build.str(q0, mem(x1, sizeof(TValue), AddressKindA64::post));
+            }
+            build.mov(w2, intOp(inst.b));
+            build.b(helpers.return_);
+        }
+        else
+        {
+            build.mov(w2, 0);
+
+            // vali = ra
+            build.add(x3, rBase, uint16_t(vmRegOp(inst.a) * sizeof(TValue)));
+
+            // valend = (n == LUA_MULTRET) ? L->top : ra + n
+            if (intOp(inst.b) == LUA_MULTRET)
+                build.ldr(x4, mem(rState, offsetof(lua_State, top)));
+            else
+                build.add(x4, rBase, uint16_t((vmRegOp(inst.a) + intOp(inst.b)) * sizeof(TValue)));
+
+            Label repeatValueLoop, exitValueLoop;
+
+            if (intOp(inst.b) == LUA_MULTRET)
+            {
+                build.cmp(x3, x4);
+                build.b(ConditionA64::CarrySet, exitValueLoop); // CarrySet == UnsignedGreaterEqual
+            }
+
+            build.setLabel(repeatValueLoop);
+            build.ldr(q0, mem(x3, sizeof(TValue), AddressKindA64::post));
+            build.str(q0, mem(x1, sizeof(TValue), AddressKindA64::post));
+            build.add(w2, w2, 1);
+            build.cmp(x3, x4);
+            build.b(ConditionA64::CarryClear, repeatValueLoop); // CarryClear == UnsignedLess
+
+            build.setLabel(exitValueLoop);
+            build.b(helpers.return_);
+        }
         break;
     case IrCmd::FORGLOOP:
         // register layout: ra + 1 = table, ra + 2 = internal index, ra + 3 .. ra + aux = iteration variables
