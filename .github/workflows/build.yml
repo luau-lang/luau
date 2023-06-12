@@ -42,9 +42,10 @@ jobs:
         ./luau-tests -ts=Conformance --codegen -O2 --fflags=true
     - name: make cli
       run: |
-         make -j2 config=sanitize werror=1 luau luau-analyze # match config with tests to improve build time
+         make -j2 config=sanitize werror=1 luau luau-analyze luau-compile # match config with tests to improve build time
          ./luau tests/conformance/assert.lua
          ./luau-analyze tests/conformance/assert.lua
+         ./luau-compile tests/conformance/assert.lua
 
   windows:
     runs-on: windows-latest
@@ -76,9 +77,10 @@ jobs:
     - name: cmake cli
       shell: bash # necessary for fail-fast
       run: |
-        cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI --config Debug # match config with tests to improve build time
+        cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI Luau.Compile.CLI --config Debug # match config with tests to improve build time
         Debug/luau tests/conformance/assert.lua
         Debug/luau-analyze tests/conformance/assert.lua
+        Debug/luau-compile tests/conformance/assert.lua
 
   coverage:
     runs-on: ubuntu-20.04
