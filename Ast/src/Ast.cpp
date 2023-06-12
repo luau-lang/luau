@@ -714,12 +714,13 @@ void AstStatDeclareFunction::visit(AstVisitor* visitor)
     }
 }
 
-AstStatDeclareClass::AstStatDeclareClass(
-    const Location& location, const AstName& name, std::optional<AstName> superName, const AstArray<AstDeclaredClassProp>& props)
+AstStatDeclareClass::AstStatDeclareClass(const Location& location, const AstName& name, std::optional<AstName> superName,
+    const AstArray<AstDeclaredClassProp>& props, AstTableIndexer* indexer)
     : AstStat(ClassIndex(), location)
     , name(name)
     , superName(superName)
     , props(props)
+    , indexer(indexer)
 {
 }
 
