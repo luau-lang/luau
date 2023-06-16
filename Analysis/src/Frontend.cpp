@@ -35,6 +35,7 @@ LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauReadWriteProperties, false)
+LUAU_FASTFLAGVARIABLE(LuauFixBuildQueueExceptionUnwrap, false)
 
 namespace Luau
 {
@@ -596,6 +597,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
         sendCycleItemTask();
 
     std::vector<size_t> nextItems;
+    std::optional<size_t> itemWithException;
 
     while (remaining != 0)
     {
@@ -603,17 +605,25 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
             std::unique_lock guard(mtx);
 
             // If nothing is ready yet, wait
-            if (readyQueueItems.empty())
-            {
-                cv.wait(guard, [&readyQueueItems] {
-                    return !readyQueueItems.empty();
-                });
-            }
+            cv.wait(guard, [&readyQueueItems] {
+                return !readyQueueItems.empty();
+            });
 
             // Handle checked items
             for (size_t i : readyQueueItems)
             {
                 const BuildQueueItem& item = buildQueueItems[i];
+
+                if (FFlag::LuauFixBuildQueueExceptionUnwrap)
+                {
+                    // If exception was thrown, stop adding new items and wait for processing items to complete
+                    if (item.exception)
+                        itemWithException = i;
+
+                    if (itemWithException)
+                        break;
+                }
+
                 recordItemResult(item);
 
                 // Notify items that were waiting for this dependency
@@ -648,7 +658,16 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
 
         // If we aren't done, but don't have anything processing, we hit a cycle
         if (remaining != 0 && processing == 0)
+        {
+            // We might have stopped because of a pending exception
+            if (FFlag::LuauFixBuildQueueExceptionUnwrap && itemWithException)
+            {
+                recordItemResult(buildQueueItems[*itemWithException]);
+                break;
+            }
+
             sendCycleItemTask();
+        }
     }
 
     std::vector<ModuleName> checkedModules;
@@ -1104,6 +1123,8 @@ ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle
     result->name = sourceModule.name;
     result->humanReadableName = sourceModule.humanReadableName;
 
+    iceHandler->moduleName = sourceModule.name;
+
     std::unique_ptr<DcrLogger> logger;
     if (recordJsonLog)
     {
@@ -1189,9 +1210,19 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vect
                 prepareModuleScope(name, scope, forAutocomplete);
         };
 
-        return Luau::check(sourceModule, requireCycles, builtinTypes, NotNull{&iceHandler},
-            NotNull{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver}, NotNull{fileResolver},
-            environmentScope ? *environmentScope : globals.globalScope, prepareModuleScopeWrap, options, recordJsonLog);
+        try
+        {
+            return Luau::check(sourceModule, requireCycles, builtinTypes, NotNull{&iceHandler},
+                NotNull{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver}, NotNull{fileResolver},
+                environmentScope ? *environmentScope : globals.globalScope, prepareModuleScopeWrap, options, recordJsonLog);
+        }
+        catch (const InternalCompilerError& err)
+        {
+            InternalCompilerError augmented = err.location.has_value()
+                ? InternalCompilerError{err.message, sourceModule.humanReadableName, *err.location}
+                : InternalCompilerError{err.message, sourceModule.humanReadableName};
+            throw augmented;
+        }
     }
     else
     {

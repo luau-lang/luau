@@ -13,8 +13,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauGetImportDirect, false)
-
 // TODO: RAII deallocation doesn't work for longjmp builds if a memory error happens
 template<typename T>
 struct TempBuffer
@@ -77,34 +75,6 @@ void luaV_getimport(lua_State* L, Table* env, TValue* k, StkId res, uint32_t id,
         luaV_gettable(L, res, &k[id2], res);
 }
 
-void luaV_getimport_dep(lua_State* L, Table* env, TValue* k, uint32_t id, bool propagatenil)
-{
-    LUAU_ASSERT(!FFlag::LuauGetImportDirect);
-
-    int count = id >> 30;
-    int id0 = count > 0 ? int(id >> 20) & 1023 : -1;
-    int id1 = count > 1 ? int(id >> 10) & 1023 : -1;
-    int id2 = count > 2 ? int(id) & 1023 : -1;
-
-    // allocate a stack slot so that we can do table lookups
-    luaD_checkstack(L, 1);
-    setnilvalue(L->top);
-    L->top++;
-
-    // global lookup into L->top-1
-    TValue g;
-    sethvalue(L, &g, env);
-    luaV_gettable(L, &g, &k[id0], L->top - 1);
-
-    // table lookup for id1
-    if (id1 >= 0 && (!propagatenil || !ttisnil(L->top - 1)))
-        luaV_gettable(L, L->top - 1, &k[id1], L->top - 1);
-
-    // table lookup for id2
-    if (id2 >= 0 && (!propagatenil || !ttisnil(L->top - 1)))
-        luaV_gettable(L, L->top - 1, &k[id2], L->top - 1);
-}
-
 template<typename T>
 static T read(const char* data, size_t size, size_t& offset)
 {
@@ -153,17 +123,12 @@ static void resolveImportSafe(lua_State* L, Table* env, TValue* k, uint32_t id)
             // note: we call getimport with nil propagation which means that accesses to table chains like A.B.C will resolve in nil
             // this is technically not necessary but it reduces the number of exceptions when loading scripts that rely on getfenv/setfenv for global
             // injection
-            if (FFlag::LuauGetImportDirect)
-            {
-                // allocate a stack slot so that we can do table lookups
-                luaD_checkstack(L, 1);
-                setnilvalue(L->top);
-                L->top++;
+            // allocate a stack slot so that we can do table lookups
+            luaD_checkstack(L, 1);
+            setnilvalue(L->top);
+            L->top++;
 
-                luaV_getimport(L, L->gt, self->k, L->top - 1, self->id, /* propagatenil= */ true);
-            }
-            else
-                luaV_getimport_dep(L, L->gt, self->k, self->id, /* propagatenil= */ true);
+            luaV_getimport(L, L->gt, self->k, L->top - 1, self->id, /* propagatenil= */ true);
         }
     };
 
@@ -194,6 +159,8 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
 
     uint8_t version = read<uint8_t>(data, size, offset);
 
+
+
     // 0 means the rest of the bytecode is the error message
     if (version == 0)
     {
@@ -221,6 +188,13 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
 
     TString* source = luaS_new(L, chunkname);
 
+
+    if (version >= 4)
+    {
+        uint8_t typesversion = read<uint8_t>(data, size, offset);
+        LUAU_ASSERT(typesversion == 1);
+    }
+
     // string table
     unsigned int stringCount = readVarInt(data, size, offset);
     TempBuffer<TString*> strings(L, stringCount);
@@ -247,6 +221,25 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
         p->numparams = read<uint8_t>(data, size, offset);
         p->nups = read<uint8_t>(data, size, offset);
         p->is_vararg = read<uint8_t>(data, size, offset);
+
+        if (version >= 4)
+        {
+            uint8_t cgflags = read<uint8_t>(data, size, offset);
+            LUAU_ASSERT(cgflags == 0);
+
+            uint32_t typesize = readVarInt(data, size, offset);
+
+            if (typesize)
+            {
+                uint8_t* types = (uint8_t*)data + offset;
+
+                LUAU_ASSERT(typesize == unsigned(2 + p->numparams));
+                LUAU_ASSERT(types[0] == LBC_TYPE_FUNCTION);
+                LUAU_ASSERT(types[1] == p->numparams);
+
+                offset += typesize;
+            }
+        }
 
         p->sizecode = readVarInt(data, size, offset);
         p->code = luaM_newarray(L, p->sizecode, Instruction, p->memcat);

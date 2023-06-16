@@ -125,7 +125,7 @@ static bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
             return (a.kind == IrBlockKind::Fallback) < (b.kind == IrBlockKind::Fallback);
 
         // Try to order by instruction order
-        return a.start < b.start;
+        return a.sortkey < b.sortkey;
     });
 
     // For each IR instruction that begins a bytecode instruction, which bytecode instruction is it?
@@ -234,6 +234,8 @@ static bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
                     build.setLabel(abandoned.label);
                 }
 
+                lowering.finishFunction();
+
                 return false;
             }
         }
@@ -244,7 +246,15 @@ static bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
             build.logAppend("#\n");
     }
 
-    if (outputEnabled && !options.includeOutlinedCode && seenFallback)
+    if (!seenFallback)
+    {
+        textSize = build.text.length();
+        codeSize = build.getCodeSize();
+    }
+
+    lowering.finishFunction();
+
+    if (outputEnabled && !options.includeOutlinedCode && textSize < build.text.size())
     {
         build.text.resize(textSize);
 
@@ -593,6 +603,12 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
 #else
     X64::assembleHelpers(build, helpers);
 #endif
+
+    if (!options.includeOutlinedCode && options.includeAssembly)
+    {
+        build.text.clear();
+        build.logAppend("; skipping %u bytes of outlined helpers\n", unsigned(build.getCodeSize() * sizeof(build.code[0])));
+    }
 
     for (Proto* p : protos)
         if (p)

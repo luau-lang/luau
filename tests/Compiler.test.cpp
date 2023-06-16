@@ -49,6 +49,15 @@ static std::string compileFunction0Coverage(const char* source, int level)
     return bcb.dumpFunction(0);
 }
 
+static std::string compileFunction0TypeTable(const char* source)
+{
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::compileOrThrow(bcb, source);
+
+    return bcb.dumpTypeInfo();
+}
+
 TEST_SUITE_BEGIN("Compiler");
 
 TEST_CASE("CompileToBytecode")
@@ -5796,8 +5805,6 @@ RETURN R3 1
 
 TEST_CASE("InlineRecurseArguments")
 {
-    ScopedFastFlag sff("LuauCompileInlineDefer", true);
-
     // the example looks silly but we preserve it verbatim as it was found by fuzzer for a previous version of the compiler
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a, b)
@@ -7068,6 +7075,58 @@ MOVE R5 R2
 GETIMPORT R3 1 [type]
 CALL R3 2 1
 L1: RETURN R3 1
+)");
+}
+
+TEST_CASE("EncodedTypeTable")
+{
+    ScopedFastFlag sffs[] = {
+        {"BytecodeVersion4", true},
+        {"CompileFunctionType", true},
+    };
+
+    CHECK_EQ("\n" + compileFunction0TypeTable(R"(
+function myfunc(test: string, num: number)
+    print(test)
+end
+
+function myfunc2(test: number?)
+end
+
+function myfunc3(test: string, n: number)
+end
+
+function myfunc4(test: string | number, n: number)
+end
+
+-- Promoted to function(any, any) since general unions are not supported.
+-- Functions with all `any` parameters will have omitted type info.
+function myfunc5(test: string | number, n: number | boolean)
+end
+
+myfunc('test')
+)"),
+        R"(
+0: function(string, number)
+1: function(number?)
+2: function(string, number)
+3: function(any, number)
+)");
+
+    CHECK_EQ("\n" + compileFunction0TypeTable(R"(
+local Str = {
+    a = 1
+}
+
+-- Implicit `self` parameter is automatically assumed to be table type.
+function Str:test(n: number)
+    print(self.a, n)
+end
+
+Str:test(234)
+)"),
+        R"(
+0: function({ }, number)
 )");
 }
 

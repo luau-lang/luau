@@ -539,8 +539,8 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
         asMutable(c.generalizedType)->ty.emplace<BoundType>(builtinTypes->errorRecoveryType());
     }
 
-    unblock(c.generalizedType);
-    unblock(c.sourceType);
+    unblock(c.generalizedType, constraint->location);
+    unblock(c.sourceType, constraint->location);
 
     return true;
 }
@@ -564,7 +564,7 @@ bool ConstraintSolver::tryDispatch(const InstantiationConstraint& c, NotNull<con
         reportError(UnificationTooComplex{}, constraint->location);
 
         asMutable(c.subType)->ty.emplace<BoundType>(errorRecoveryType());
-        unblock(c.subType);
+        unblock(c.subType, constraint->location);
 
         return true;
     }
@@ -574,7 +574,7 @@ bool ConstraintSolver::tryDispatch(const InstantiationConstraint& c, NotNull<con
     InstantiationQueuer queuer{constraint->scope, constraint->location, this};
     queuer.traverse(c.subType);
 
-    unblock(c.subType);
+    unblock(c.subType, constraint->location);
 
     return true;
 }
@@ -597,7 +597,7 @@ bool ConstraintSolver::tryDispatch(const UnaryConstraint& c, NotNull<const Const
     {
         asMutable(c.resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
 
-        unblock(c.resultType);
+        unblock(c.resultType, constraint->location);
         return true;
     }
     case AstExprUnary::Len:
@@ -605,7 +605,7 @@ bool ConstraintSolver::tryDispatch(const UnaryConstraint& c, NotNull<const Const
         // __len must return a number.
         asMutable(c.resultType)->ty.emplace<BoundType>(builtinTypes->numberType);
 
-        unblock(c.resultType);
+        unblock(c.resultType, constraint->location);
         return true;
     }
     case AstExprUnary::Minus:
@@ -635,7 +635,7 @@ bool ConstraintSolver::tryDispatch(const UnaryConstraint& c, NotNull<const Const
             asMutable(c.resultType)->ty.emplace<BoundType>(builtinTypes->errorRecoveryType());
         }
 
-        unblock(c.resultType);
+        unblock(c.resultType, constraint->location);
         return true;
     }
     }
@@ -684,7 +684,7 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     if (isBlocked(leftType) || (hasTypeInIntersection<FreeType>(leftType) && !isLogical))
     {
         asMutable(resultType)->ty.emplace<BoundType>(errorRecoveryType());
-        unblock(resultType);
+        unblock(resultType, constraint->location);
         return true;
     }
 
@@ -697,7 +697,7 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
         {
             // TODO: Boolean singleton false? The result is _always_ boolean false.
             asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
-            unblock(resultType);
+            unblock(resultType, constraint->location);
             return true;
         }
 
@@ -760,7 +760,7 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
                 }
 
                 asMutable(resultType)->ty.emplace<BoundType>(mmResult);
-                unblock(resultType);
+                unblock(resultType, constraint->location);
 
                 (*c.astOriginalCallTypes)[c.astFragment] = *mm;
                 (*c.astOverloadResolvedTypes)[c.astFragment] = *instantiatedMm;
@@ -790,14 +790,14 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
         {
             unify(leftType, rightType, constraint->scope);
             asMutable(resultType)->ty.emplace<BoundType>(anyPresent ? builtinTypes->anyType : leftType);
-            unblock(resultType);
+            unblock(resultType, constraint->location);
             return true;
         }
         else if (get<NeverType>(leftType) || get<NeverType>(rightType))
         {
             unify(leftType, rightType, constraint->scope);
             asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->neverType);
-            unblock(resultType);
+            unblock(resultType, constraint->location);
             return true;
         }
 
@@ -814,14 +814,14 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
         {
             unify(leftType, rightType, constraint->scope);
             asMutable(resultType)->ty.emplace<BoundType>(anyPresent ? builtinTypes->anyType : leftType);
-            unblock(resultType);
+            unblock(resultType, constraint->location);
             return true;
         }
         else if (get<NeverType>(leftType) || get<NeverType>(rightType))
         {
             unify(leftType, rightType, constraint->scope);
             asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->neverType);
-            unblock(resultType);
+            unblock(resultType, constraint->location);
             return true;
         }
 
@@ -840,14 +840,14 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
         if (lt && rt && (lt->isExactlyNumber() || get<AnyType>(lt->tops)) && rt->isExactlyNumber())
         {
             asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
-            unblock(resultType);
+            unblock(resultType, constraint->location);
             return true;
         }
 
         if (lt && rt && (lt->isSubtypeOfString() || get<AnyType>(lt->tops)) && rt->isSubtypeOfString())
         {
             asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
-            unblock(resultType);
+            unblock(resultType, constraint->location);
             return true;
         }
 
@@ -855,7 +855,7 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
         if (get<NeverType>(leftType) || get<NeverType>(rightType))
         {
             asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
-            unblock(resultType);
+            unblock(resultType, constraint->location);
             return true;
         }
 
@@ -867,7 +867,7 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     case AstExprBinary::Op::CompareEq:
     case AstExprBinary::Op::CompareNe:
         asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
-        unblock(resultType);
+        unblock(resultType, constraint->location);
         return true;
     // And evalutes to a boolean if the LHS is falsey, and the RHS type if LHS is
     // truthy.
@@ -876,7 +876,7 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
         TypeId leftFilteredTy = simplifyIntersection(builtinTypes, arena, leftType, builtinTypes->falsyType).result;
 
         asMutable(resultType)->ty.emplace<BoundType>(simplifyUnion(builtinTypes, arena, rightType, leftFilteredTy).result);
-        unblock(resultType);
+        unblock(resultType, constraint->location);
         return true;
     }
     // Or evaluates to the LHS type if the LHS is truthy, and the RHS type if
@@ -886,7 +886,7 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
         TypeId leftFilteredTy = simplifyIntersection(builtinTypes, arena, leftType, builtinTypes->truthyType).result;
 
         asMutable(resultType)->ty.emplace<BoundType>(simplifyUnion(builtinTypes, arena, rightType, leftFilteredTy).result);
-        unblock(resultType);
+        unblock(resultType, constraint->location);
         return true;
     }
     default:
@@ -898,7 +898,7 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     unify(leftType, errorRecoveryType(), constraint->scope);
     unify(rightType, errorRecoveryType(), constraint->scope);
     asMutable(resultType)->ty.emplace<BoundType>(errorRecoveryType());
-    unblock(resultType);
+    unblock(resultType, constraint->location);
 
     return true;
 }
@@ -1065,14 +1065,14 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     const PendingExpansionType* petv = get<PendingExpansionType>(follow(c.target));
     if (!petv)
     {
-        unblock(c.target);
+        unblock(c.target, constraint->location);
         return true;
     }
 
-    auto bindResult = [this, &c](TypeId result) {
+    auto bindResult = [this, &c, constraint](TypeId result) {
         LUAU_ASSERT(get<PendingExpansionType>(c.target));
         asMutable(c.target)->ty.emplace<BoundType>(result);
-        unblock(c.target);
+        unblock(c.target, constraint->location);
     };
 
     std::optional<TypeFun> tf = (petv->prefix) ? constraint->scope->lookupImportedType(petv->prefix->value, petv->name.value)
@@ -1400,9 +1400,9 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     const auto [changedTypes, changedPacks] = bestOverloadLog->getChanges();
     bestOverloadLog->commit();
 
-    unblock(changedTypes);
-    unblock(changedPacks);
-    unblock(c.result);
+    unblock(changedTypes, constraint->location);
+    unblock(changedPacks, constraint->location);
+    unblock(c.result, constraint->location);
 
     InstantiationQueuer queuer{constraint->scope, constraint->location, this};
     queuer.traverse(fn);
@@ -1421,7 +1421,7 @@ bool ConstraintSolver::tryDispatch(const PrimitiveTypeConstraint& c, NotNull<con
 
     TypeId bindTo = maybeSingleton(expectedType) ? c.singletonType : c.multitonType;
     asMutable(c.resultType)->ty.emplace<BoundType>(bindTo);
-    unblock(c.resultType);
+    unblock(c.resultType, constraint->location);
 
     return true;
 }
@@ -1440,7 +1440,7 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
         TableType& ttv = asMutable(subjectType)->ty.emplace<TableType>(TableState::Free, TypeLevel{}, constraint->scope);
         ttv.props[c.prop] = Property{c.resultType};
         asMutable(c.resultType)->ty.emplace<FreeType>(constraint->scope);
-        unblock(c.resultType);
+        unblock(c.resultType, constraint->location);
         return true;
     }
 
@@ -1454,7 +1454,7 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
     }
 
     asMutable(c.resultType)->ty.emplace<BoundType>(result.value_or(builtinTypes->anyType));
-    unblock(c.resultType);
+    unblock(c.resultType, constraint->location);
     return true;
 }
 
@@ -1568,7 +1568,7 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
         if (!isBlocked(c.propType))
             unify(c.propType, *existingPropType, constraint->scope);
         bind(c.resultType, c.subjectType);
-        unblock(c.resultType);
+        unblock(c.resultType, constraint->location);
         return true;
     }
 
@@ -1593,8 +1593,8 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
         bind(subjectType, ty);
         if (follow(c.resultType) != follow(ty))
             bind(c.resultType, ty);
-        unblock(subjectType);
-        unblock(c.resultType);
+        unblock(subjectType, constraint->location);
+        unblock(c.resultType, constraint->location);
         return true;
     }
     else if (auto ttv = getMutable<TableType>(subjectType))
@@ -1605,7 +1605,7 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
 
             ttv->props[c.path[0]] = Property{c.propType};
             bind(c.resultType, c.subjectType);
-            unblock(c.resultType);
+            unblock(c.resultType, constraint->location);
             return true;
         }
         else if (ttv->state == TableState::Unsealed)
@@ -1614,14 +1614,14 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
 
             updateTheTableType(builtinTypes, NotNull{arena}, subjectType, c.path, c.propType);
             bind(c.resultType, c.subjectType);
-            unblock(subjectType);
-            unblock(c.resultType);
+            unblock(subjectType, constraint->location);
+            unblock(c.resultType, constraint->location);
             return true;
         }
         else
         {
             bind(c.resultType, subjectType);
-            unblock(c.resultType);
+            unblock(c.resultType, constraint->location);
             return true;
         }
     }
@@ -1630,7 +1630,7 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
         // Other kinds of types don't change shape when properties are assigned
         // to them. (if they allow properties at all!)
         bind(c.resultType, subjectType);
-        unblock(c.resultType);
+        unblock(c.resultType, constraint->location);
         return true;
     }
 }
@@ -1649,8 +1649,8 @@ bool ConstraintSolver::tryDispatch(const SetIndexerConstraint& c, NotNull<const 
 
         asMutable(c.resultType)->ty.emplace<BoundType>(subjectType);
         asMutable(c.propType)->ty.emplace<FreeType>(scope);
-        unblock(c.propType);
-        unblock(c.resultType);
+        unblock(c.propType, constraint->location);
+        unblock(c.resultType, constraint->location);
 
         return true;
     }
@@ -1662,8 +1662,8 @@ bool ConstraintSolver::tryDispatch(const SetIndexerConstraint& c, NotNull<const 
             unify(c.indexType, tt->indexer->indexType, constraint->scope);
             asMutable(c.propType)->ty.emplace<BoundType>(tt->indexer->indexResultType);
             asMutable(c.resultType)->ty.emplace<BoundType>(subjectType);
-            unblock(c.propType);
-            unblock(c.resultType);
+            unblock(c.propType, constraint->location);
+            unblock(c.resultType, constraint->location);
             return true;
         }
         else if (tt->state == TableState::Free || tt->state == TableState::Unsealed)
@@ -1675,8 +1675,8 @@ bool ConstraintSolver::tryDispatch(const SetIndexerConstraint& c, NotNull<const 
             mtt->indexer = TableIndexer{promotedIndexTy, c.propType};
             asMutable(c.propType)->ty.emplace<FreeType>(tt->scope);
             asMutable(c.resultType)->ty.emplace<BoundType>(subjectType);
-            unblock(c.propType);
-            unblock(c.resultType);
+            unblock(c.propType, constraint->location);
+            unblock(c.resultType, constraint->location);
             return true;
         }
         // Do not augment sealed or generic tables that lack indexers
@@ -1684,8 +1684,8 @@ bool ConstraintSolver::tryDispatch(const SetIndexerConstraint& c, NotNull<const 
 
     asMutable(c.propType)->ty.emplace<BoundType>(builtinTypes->errorRecoveryType());
     asMutable(c.resultType)->ty.emplace<BoundType>(builtinTypes->errorRecoveryType());
-    unblock(c.propType);
-    unblock(c.resultType);
+    unblock(c.propType, constraint->location);
+    unblock(c.resultType, constraint->location);
     return true;
 }
 
@@ -1704,7 +1704,7 @@ bool ConstraintSolver::tryDispatch(const SingletonOrTopTypeConstraint& c, NotNul
     else
         *asMutable(c.resultType) = BoundType{builtinTypes->anyType};
 
-    unblock(c.resultType);
+    unblock(c.resultType, constraint->location);
 
     return true;
 }
@@ -1720,7 +1720,7 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
     if (isBlocked(resultPack))
     {
         asMutable(resultPack)->ty.emplace<BoundTypePack>(sourcePack);
-        unblock(resultPack);
+        unblock(resultPack, constraint->location);
         return true;
     }
 
@@ -1745,7 +1745,7 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
             }
             else
                 asMutable(*destIter)->ty.emplace<BoundType>(srcTy);
-            unblock(*destIter);
+            unblock(*destIter, constraint->location);
         }
         else
             unify(*destIter, srcTy, constraint->scope);
@@ -1763,7 +1763,7 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
         if (isBlocked(*destIter))
         {
             asMutable(*destIter)->ty.emplace<BoundType>(builtinTypes->errorRecoveryType());
-            unblock(*destIter);
+            unblock(*destIter, constraint->location);
         }
 
         ++destIter;
@@ -1852,7 +1852,7 @@ bool ConstraintSolver::tryDispatch(const RefineConstraint& c, NotNull<const Cons
     if (c.mode == RefineConstraint::Intersection && isNegatedAny(c.discriminant))
     {
         asMutable(c.resultType)->ty.emplace<BoundType>(c.type);
-        unblock(c.resultType);
+        unblock(c.resultType, constraint->location);
         return true;
     }
 
@@ -1880,7 +1880,7 @@ bool ConstraintSolver::tryDispatch(const RefineConstraint& c, NotNull<const Cons
         else
             asMutable(c.resultType)->ty.emplace<BoundType>(c.discriminant);
 
-        unblock(c.resultType);
+        unblock(c.resultType, constraint->location);
         return true;
     }
 
@@ -1892,7 +1892,7 @@ bool ConstraintSolver::tryDispatch(const RefineConstraint& c, NotNull<const Cons
 
     asMutable(c.resultType)->ty.emplace<BoundType>(result);
 
-    unblock(c.resultType);
+    unblock(c.resultType, constraint->location);
 
     return true;
 }
@@ -1904,10 +1904,10 @@ bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Cons
         reduceFamilies(ty, constraint->location, NotNull{arena}, builtinTypes, constraint->scope, normalizer, nullptr, force);
 
     for (TypeId r : result.reducedTypes)
-        unblock(r);
+        unblock(r, constraint->location);
 
     for (TypePackId r : result.reducedPacks)
-        unblock(r);
+        unblock(r, constraint->location);
 
     if (force)
         return true;
@@ -1928,10 +1928,10 @@ bool ConstraintSolver::tryDispatch(const ReducePackConstraint& c, NotNull<const 
         reduceFamilies(tp, constraint->location, NotNull{arena}, builtinTypes, constraint->scope, normalizer, nullptr, force);
 
     for (TypeId r : result.reducedTypes)
-        unblock(r);
+        unblock(r, constraint->location);
 
     for (TypePackId r : result.reducedPacks)
-        unblock(r);
+        unblock(r, constraint->location);
 
     if (force)
         return true;
@@ -2374,8 +2374,8 @@ bool ConstraintSolver::tryUnify(NotNull<const Constraint> constraint, TID subTy,
 
     u.log.commit();
 
-    unblock(changedTypes);
-    unblock(changedPacks);
+    unblock(changedTypes, constraint->location);
+    unblock(changedPacks, constraint->location);
 
     return true;
 }
@@ -2509,7 +2509,7 @@ void ConstraintSolver::unblock(NotNull<const Constraint> progressed)
     return unblock_(progressed.get());
 }
 
-void ConstraintSolver::unblock(TypeId ty)
+void ConstraintSolver::unblock(TypeId ty, Location location)
 {
     DenseHashSet<TypeId> seen{nullptr};
 
@@ -2517,7 +2517,7 @@ void ConstraintSolver::unblock(TypeId ty)
     while (true)
     {
         if (seen.find(progressed))
-            iceReporter.ice("ConstraintSolver::unblock encountered a self-bound type!");
+            iceReporter.ice("ConstraintSolver::unblock encountered a self-bound type!", location);
         seen.insert(progressed);
 
         if (logger)
@@ -2532,7 +2532,7 @@ void ConstraintSolver::unblock(TypeId ty)
     }
 }
 
-void ConstraintSolver::unblock(TypePackId progressed)
+void ConstraintSolver::unblock(TypePackId progressed, Location)
 {
     if (logger)
         logger->popBlock(progressed);
@@ -2540,16 +2540,16 @@ void ConstraintSolver::unblock(TypePackId progressed)
     return unblock_(progressed);
 }
 
-void ConstraintSolver::unblock(const std::vector<TypeId>& types)
+void ConstraintSolver::unblock(const std::vector<TypeId>& types, Location location)
 {
     for (TypeId t : types)
-        unblock(t);
+        unblock(t, location);
 }
 
-void ConstraintSolver::unblock(const std::vector<TypePackId>& packs)
+void ConstraintSolver::unblock(const std::vector<TypePackId>& packs, Location location)
 {
     for (TypePackId t : packs)
-        unblock(t);
+        unblock(t, location);
 }
 
 bool ConstraintSolver::isBlocked(TypeId ty)
@@ -2586,8 +2586,8 @@ ErrorVec ConstraintSolver::unify(TypeId subType, TypeId superType, NotNull<Scope
 
     u.log.commit();
 
-    unblock(changedTypes);
-    unblock(changedPacks);
+    unblock(changedTypes, Location{});
+    unblock(changedPacks, Location{});
 
     return std::move(u.errors);
 }
@@ -2604,8 +2604,8 @@ ErrorVec ConstraintSolver::unify(TypePackId subPack, TypePackId superPack, NotNu
 
     u.log.commit();
 
-    unblock(changedTypes);
-    unblock(changedPacks);
+    unblock(changedTypes, Location{});
+    unblock(changedPacks, Location{});
 
     return std::move(u.errors);
 }
