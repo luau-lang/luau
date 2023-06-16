@@ -288,27 +288,27 @@ void assembleHelpers(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 {
     if (build.logText)
         build.logAppend("; exitContinueVm\n");
-    helpers.exitContinueVm = build.setLabel();
+    build.setLabel(helpers.exitContinueVm);
     emitExit(build, /* continueInVm */ true);
 
     if (build.logText)
         build.logAppend("; exitNoContinueVm\n");
-    helpers.exitNoContinueVm = build.setLabel();
+    build.setLabel(helpers.exitNoContinueVm);
     emitExit(build, /* continueInVm */ false);
 
     if (build.logText)
         build.logAppend("; reentry\n");
-    helpers.reentry = build.setLabel();
+    build.setLabel(helpers.reentry);
     emitReentry(build, helpers);
 
     if (build.logText)
         build.logAppend("; interrupt\n");
-    helpers.interrupt = build.setLabel();
+    build.setLabel(helpers.interrupt);
     emitInterrupt(build);
 
     if (build.logText)
         build.logAppend("; return\n");
-    helpers.return_ = build.setLabel();
+    build.setLabel(helpers.return_);
     emitReturn(build, helpers);
 }
 

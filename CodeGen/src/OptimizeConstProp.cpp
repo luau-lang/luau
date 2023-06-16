@@ -1059,15 +1059,20 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
     // TODO: using values from the first block can cause 'live out' of the linear block predecessor to not have all required registers
     constPropInBlock(build, startingBlock, state);
 
-    // Veryfy that target hasn't changed
+    // Verify that target hasn't changed
     LUAU_ASSERT(function.instructions[startingBlock.finish].a.index == targetBlockIdx);
+
+    // Note: using startingBlock after this line is unsafe as the reference may be reallocated by build.block() below
+    uint32_t startingInsn = startingBlock.start;
 
     // Create new linearized block into which we are going to redirect starting block jump
     IrOp newBlock = build.block(IrBlockKind::Linearized);
     visited.push_back(false);
 
-    // TODO: placement of linear blocks in final lowering is sub-optimal, it should follow our predecessor
     build.beginBlock(newBlock);
+
+    // By default, blocks are ordered according to start instruction; we alter sort order to make sure linearized block is placed right after the starting block
+    function.blocks[newBlock.index].sortkey = startingInsn + 1;
 
     replace(function, termInst.a, newBlock);
 

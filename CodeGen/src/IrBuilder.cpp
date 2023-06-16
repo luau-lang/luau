@@ -429,6 +429,7 @@ void IrBuilder::beginBlock(IrOp block)
     LUAU_ASSERT(target.start == ~0u || target.start == uint32_t(function.instructions.size()));
 
     target.start = uint32_t(function.instructions.size());
+    target.sortkey = target.start;
 
     inTerminatedBlock = false;
 }

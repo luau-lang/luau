@@ -278,39 +278,34 @@ void emitUpdateBase(AssemblyBuilderX64& build)
     build.mov(rBase, qword[rState + offsetof(lua_State, base)]);
 }
 
-static void emitSetSavedPc(IrRegAllocX64& regs, AssemblyBuilderX64& build, int pcpos)
+void emitInterrupt(AssemblyBuilderX64& build)
 {
-    ScopedRegX64 tmp1{regs, SizeX64::qword};
-    ScopedRegX64 tmp2{regs, SizeX64::qword};
+    // rax = pcpos + 1
+    // rbx = return address in native code
 
-    build.mov(tmp1.reg, sCode);
-    build.add(tmp1.reg, pcpos * sizeof(Instruction));
-    build.mov(tmp2.reg, qword[rState + offsetof(lua_State, ci)]);
-    build.mov(qword[tmp2.reg + offsetof(CallInfo, savedpc)], tmp1.reg);
-}
+    // note: rbx is non-volatile so it will be saved across interrupt call automatically
 
-void emitInterrupt(IrRegAllocX64& regs, AssemblyBuilderX64& build, int pcpos)
-{
+    RegisterX64 rArg1 = (build.abi == ABIX64::Windows) ? rcx : rdi;
+    RegisterX64 rArg2 = (build.abi == ABIX64::Windows) ? rdx : rsi;
+
     Label skip;
 
-    ScopedRegX64 tmp{regs, SizeX64::qword};
+    // Update L->ci->savedpc; required in case interrupt errors
+    build.mov(rcx, sCode);
+    build.lea(rcx, addr[rcx + rax * sizeof(Instruction)]);
+    build.mov(rax, qword[rState + offsetof(lua_State, ci)]);
+    build.mov(qword[rax + offsetof(CallInfo, savedpc)], rcx);
 
-    // Skip if there is no interrupt set
-    build.mov(tmp.reg, qword[rState + offsetof(lua_State, global)]);
-    build.mov(tmp.reg, qword[tmp.reg + offsetof(global_State, cb.interrupt)]);
-    build.test(tmp.reg, tmp.reg);
+    // Load interrupt handler; it may be nullptr in case the update raced with the check before we got here
+    build.mov(rax, qword[rState + offsetof(lua_State, global)]);
+    build.mov(rax, qword[rax + offsetof(global_State, cb.interrupt)]);
+    build.test(rax, rax);
     build.jcc(ConditionX64::Zero, skip);
 
-    emitSetSavedPc(regs, build, pcpos + 1);
-
     // Call interrupt
-    // TODO: This code should move to the end of the function, or even be outlined so that it can be shared by multiple interruptible instructions
-    IrCallWrapperX64 callWrap(regs, build);
-    callWrap.addArgument(SizeX64::qword, rState);
-    callWrap.addArgument(SizeX64::dword, -1);
-    callWrap.call(tmp.release());
-
-    emitUpdateBase(build); // interrupt may have reallocated stack
+    build.mov(rArg1, rState);
+    build.mov(dwordReg(rArg2), -1);
+    build.call(rax);
 
     // Check if we need to exit
     build.mov(al, byte[rState + offsetof(lua_State, status)]);
@@ -322,6 +317,10 @@ void emitInterrupt(IrRegAllocX64& regs, AssemblyBuilderX64& build, int pcpos)
     emitExit(build, /* continueInVm */ false);
 
     build.setLabel(skip);
+
+    emitUpdateBase(build); // interrupt may have reallocated stack
+
+    build.jmp(rbx);
 }
 
 void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, int offset, int pcpos)
@@ -354,14 +353,15 @@ void emitContinueCallInVm(AssemblyBuilderX64& build)
 
 void emitReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers)
 {
-    // input: ci in r8, res in rdi, number of written values in ecx
-    RegisterX64 ci = r8;
+    // input: res in rdi, number of written values in ecx
     RegisterX64 res = rdi;
     RegisterX64 written = ecx;
 
+    RegisterX64 ci = r8;
     RegisterX64 cip = r9;
     RegisterX64 nresults = esi;
 
+    build.mov(ci, qword[rState + offsetof(lua_State, ci)]);
     build.lea(cip, addr[ci - sizeof(CallInfo)]);
 
     // nresults = ci->nresults

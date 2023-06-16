@@ -53,31 +53,6 @@ constexpr OperandX64 sCode = qword[rsp + kStackSize + 8];    // Instruction* cod
 constexpr OperandX64 sTemporarySlot = addr[rsp + kStackSize + 16];
 constexpr OperandX64 sSpillArea = addr[rsp + kStackSize + 24];
 
-// TODO: These should be replaced with a portable call function that checks the ABI at runtime and reorders moves accordingly to avoid conflicts
-#if defined(_WIN32)
-
-constexpr RegisterX64 rArg1 = rcx;
-constexpr RegisterX64 rArg2 = rdx;
-constexpr RegisterX64 rArg3 = r8;
-constexpr RegisterX64 rArg4 = r9;
-constexpr RegisterX64 rArg5 = noreg;
-constexpr RegisterX64 rArg6 = noreg;
-constexpr OperandX64 sArg5 = qword[rsp + 32];
-constexpr OperandX64 sArg6 = qword[rsp + 40];
-
-#else
-
-constexpr RegisterX64 rArg1 = rdi;
-constexpr RegisterX64 rArg2 = rsi;
-constexpr RegisterX64 rArg3 = rdx;
-constexpr RegisterX64 rArg4 = rcx;
-constexpr RegisterX64 rArg5 = r8;
-constexpr RegisterX64 rArg6 = r9;
-constexpr OperandX64 sArg5 = noreg;
-constexpr OperandX64 sArg6 = noreg;
-
-#endif
-
 inline OperandX64 luauReg(int ri)
 {
     return xmmword[rBase + ri * sizeof(TValue)];
@@ -202,7 +177,7 @@ void callStepGc(IrRegAllocX64& regs, AssemblyBuilderX64& build);
 
 void emitExit(AssemblyBuilderX64& build, bool continueInVm);
 void emitUpdateBase(AssemblyBuilderX64& build);
-void emitInterrupt(IrRegAllocX64& regs, AssemblyBuilderX64& build, int pcpos);
+void emitInterrupt(AssemblyBuilderX64& build);
 void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, int offset, int pcpos);
 
 void emitContinueCallInVm(AssemblyBuilderX64& build);

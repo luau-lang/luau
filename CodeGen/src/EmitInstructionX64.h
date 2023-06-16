@@ -18,7 +18,7 @@ class AssemblyBuilderX64;
 struct IrRegAllocX64;
 
 void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int nparams, int nresults);
-void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int actualResults);
+void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int actualResults, bool functionVariadic);
 void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, int count, uint32_t index);
 void emitInstForGLoop(AssemblyBuilderX64& build, int ra, int aux, Label& loopRepeat);
 

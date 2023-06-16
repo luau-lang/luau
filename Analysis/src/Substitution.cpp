@@ -111,11 +111,14 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
         else if constexpr (std::is_same_v<T, GenericType>)
             return dest.addType(a);
         else if constexpr (std::is_same_v<T, BlockedType>)
-            return ty;
+            return dest.addType(a);
         else if constexpr (std::is_same_v<T, PrimitiveType>)
             return ty;
         else if constexpr (std::is_same_v<T, PendingExpansionType>)
-            return ty;
+        {
+            PendingExpansionType clone = PendingExpansionType{a.prefix, a.name, a.typeArguments, a.packArguments};
+            return dest.addType(std::move(clone));
+        }
         else if constexpr (std::is_same_v<T, AnyType>)
             return ty;
         else if constexpr (std::is_same_v<T, ErrorType>)

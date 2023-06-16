@@ -341,7 +341,7 @@ TEST_CASE_FIXTURE(SimplifyFixture, "tables")
     CHECK(t2 == intersect(t2, t1));
 
     TypeId t3 = mkTable({});
-
+    // {tag : string} intersect {{}}
     CHECK(t1 == intersect(t1, t3));
     CHECK(t1 == intersect(t3, t1));
 }

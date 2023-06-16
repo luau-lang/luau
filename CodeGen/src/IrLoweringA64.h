@@ -27,6 +27,7 @@ struct IrLoweringA64
 
     void lowerInst(IrInst& inst, uint32_t index, IrBlock& next);
     void finishBlock();
+    void finishFunction();
 
     bool hasError() const;
 
@@ -53,6 +54,13 @@ struct IrLoweringA64
     IrBlock& blockOp(IrOp op) const;
     Label& labelOp(IrOp op) const;
 
+    struct InterruptHandler
+    {
+        Label self;
+        unsigned int pcpos;
+        Label next;
+    };
+
     AssemblyBuilderA64& build;
     ModuleHelpers& helpers;
     NativeState& data;
@@ -62,6 +70,8 @@ struct IrLoweringA64
     IrRegAllocA64 regs;
 
     IrValueLocationTracking valueTracker;
+
+    std::vector<InterruptHandler> interruptHandlers;
 
     bool error = false;
 };

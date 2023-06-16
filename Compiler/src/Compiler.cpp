@@ -10,6 +10,7 @@
 #include "ConstantFolding.h"
 #include "CostModel.h"
 #include "TableShape.h"
+#include "Types.h"
 #include "ValueTracking.h"
 
 #include <algorithm>
@@ -25,7 +26,8 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileInlineDefer, false)
+LUAU_FASTFLAGVARIABLE(CompileFunctionType, false)
+LUAU_FASTFLAG(BytecodeVersion4)
 
 namespace Luau
 {
@@ -201,6 +203,13 @@ struct Compiler
         uint32_t fid = bytecode.beginFunction(uint8_t(self + func->args.size), func->vararg);
 
         setDebugLine(func);
+
+        if (FFlag::BytecodeVersion4 && FFlag::CompileFunctionType)
+        {
+            std::string funcType = getFunctionType(func);
+            if (!funcType.empty())
+                bytecode.setFunctionTypeInfo(std::move(funcType));
+        }
 
         if (func->vararg)
             bytecode.emitABC(LOP_PREPVARARGS, uint8_t(self + func->args.size), 0, 0);
@@ -560,15 +569,7 @@ struct Compiler
         size_t oldLocals = localStack.size();
 
         std::vector<InlineArg> args;
-        if (FFlag::LuauCompileInlineDefer)
-        {
-            args.reserve(func->args.size);
-        }
-        else
-        {
-            // note that we push the frame early; this is needed to block recursive inline attempts
-            inlineFrames.push_back({func, oldLocals, target, targetCount});
-        }
+        args.reserve(func->args.size);
 
         // evaluate all arguments; note that we don't emit code for constant arguments (relying on constant folding)
         // note that compiler state (variable registers/values) does not change here - we defer that to a separate loop below to handle nested calls
@@ -590,16 +591,8 @@ struct Compiler
                 else
                     LUAU_ASSERT(!"Unexpected expression type");
 
-                if (FFlag::LuauCompileInlineDefer)
-                {
-                    for (size_t j = i; j < func->args.size; ++j)
-                        args.push_back({func->args.data[j], uint8_t(reg + (j - i))});
-                }
-                else
-                {
-                    for (size_t j = i; j < func->args.size; ++j)
-                        pushLocal(func->args.data[j], uint8_t(reg + (j - i)));
-                }
+                for (size_t j = i; j < func->args.size; ++j)
+                    args.push_back({func->args.data[j], uint8_t(reg + (j - i))});
 
                 // all remaining function arguments have been allocated and assigned to
                 break;
@@ -614,26 +607,17 @@ struct Compiler
                 else
                     bytecode.emitABC(LOP_LOADNIL, reg, 0, 0);
 
-                if (FFlag::LuauCompileInlineDefer)
-                    args.push_back({var, reg});
-                else
-                    pushLocal(var, reg);
+                args.push_back({var, reg});
             }
             else if (arg == nullptr)
             {
                 // since the argument is not mutated, we can simply fold the value into the expressions that need it
-                if (FFlag::LuauCompileInlineDefer)
-                    args.push_back({var, kInvalidReg, {Constant::Type_Nil}});
-                else
-                    locstants[var] = {Constant::Type_Nil};
+                args.push_back({var, kInvalidReg, {Constant::Type_Nil}});
             }
             else if (const Constant* cv = constants.find(arg); cv && cv->type != Constant::Type_Unknown)
             {
                 // since the argument is not mutated, we can simply fold the value into the expressions that need it
-                if (FFlag::LuauCompileInlineDefer)
-                    args.push_back({var, kInvalidReg, *cv});
-                else
-                    locstants[var] = *cv;
+                args.push_back({var, kInvalidReg, *cv});
             }
             else
             {
@@ -643,20 +627,14 @@ struct Compiler
                 // if the argument is a local that isn't mutated, we will simply reuse the existing register
                 if (int reg = le ? getExprLocalReg(le) : -1; reg >= 0 && (!lv || !lv->written))
                 {
-                    if (FFlag::LuauCompileInlineDefer)
-                        args.push_back({var, uint8_t(reg)});
-                    else
-                        pushLocal(var, uint8_t(reg));
+                    args.push_back({var, uint8_t(reg)});
                 }
                 else
                 {
                     uint8_t temp = allocReg(arg, 1);
                     compileExprTemp(arg, temp);
 
-                    if (FFlag::LuauCompileInlineDefer)
-                        args.push_back({var, temp});
-                    else
-                        pushLocal(var, temp);
+                    args.push_back({var, temp});
                 }
             }
         }
@@ -668,19 +646,16 @@ struct Compiler
             compileExprAuto(expr->args.data[i], rsi);
         }
 
-        if (FFlag::LuauCompileInlineDefer)
-        {
-            // apply all evaluated arguments to the compiler state
-            // note: locals use current startpc for debug info, although some of them have been computed earlier; this is similar to compileStatLocal
-            for (InlineArg& arg : args)
-                if (arg.value.type == Constant::Type_Unknown)
-                    pushLocal(arg.local, arg.reg);
-                else
-                    locstants[arg.local] = arg.value;
+        // apply all evaluated arguments to the compiler state
+        // note: locals use current startpc for debug info, although some of them have been computed earlier; this is similar to compileStatLocal
+        for (InlineArg& arg : args)
+            if (arg.value.type == Constant::Type_Unknown)
+                pushLocal(arg.local, arg.reg);
+            else
+                locstants[arg.local] = arg.value;
 
-            // the inline frame will be used to compile return statements as well as to reject recursive inlining attempts
-            inlineFrames.push_back({func, oldLocals, target, targetCount});
-        }
+        // the inline frame will be used to compile return statements as well as to reject recursive inlining attempts
+        inlineFrames.push_back({func, oldLocals, target, targetCount});
 
         // fold constant values updated above into expressions in the function body
         foldConstants(constants, variables, locstants, builtinsFold, func->body);

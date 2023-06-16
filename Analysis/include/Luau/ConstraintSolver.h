@@ -174,10 +174,10 @@ struct ConstraintSolver
     bool blockOnPendingTypes(TypePackId target, NotNull<const Constraint> constraint);
 
     void unblock(NotNull<const Constraint> progressed);
-    void unblock(TypeId progressed);
-    void unblock(TypePackId progressed);
-    void unblock(const std::vector<TypeId>& types);
-    void unblock(const std::vector<TypePackId>& packs);
+    void unblock(TypeId progressed, Location location);
+    void unblock(TypePackId progressed, Location location);
+    void unblock(const std::vector<TypeId>& types, Location location);
+    void unblock(const std::vector<TypePackId>& packs, Location location);
 
     /**
      * @returns true if the TypeId is in a blocked state.

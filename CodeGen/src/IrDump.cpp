@@ -656,28 +656,23 @@ std::string dump(const IrFunction& function)
     return result;
 }
 
-std::string toDot(const IrFunction& function, bool includeInst)
+static void appendLabelRegset(IrToStringContext& ctx, const std::vector<RegisterSet>& regSets, size_t blockIdx, const char* name)
 {
-    std::string result;
-    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg};
+    if (blockIdx < regSets.size())
+    {
+        const RegisterSet& rs = regSets[blockIdx];
 
-    auto appendLabelRegset = [&ctx](const std::vector<RegisterSet>& regSets, size_t blockIdx, const char* name) {
-        if (blockIdx < regSets.size())
+        if (rs.regs.any() || rs.varargSeq)
         {
-            const RegisterSet& rs = regSets[blockIdx];
-
-            if (rs.regs.any() || rs.varargSeq)
-            {
-                append(ctx.result, "|{%s|", name);
-                appendRegisterSet(ctx, rs, "|");
-                append(ctx.result, "}");
-            }
+            append(ctx.result, "|{%s|", name);
+            appendRegisterSet(ctx, rs, "|");
+            append(ctx.result, "}");
         }
-    };
+    }
+}
 
-    append(ctx.result, "digraph CFG {\n");
-    append(ctx.result, "node[shape=record]\n");
-
+static void appendBlocks(IrToStringContext& ctx, const IrFunction& function, bool includeInst, bool includeIn, bool includeOut, bool includeDef)
+{
     for (size_t i = 0; i < function.blocks.size(); i++)
     {
         const IrBlock& block = function.blocks[i];
@@ -692,7 +687,8 @@ std::string toDot(const IrFunction& function, bool includeInst)
         append(ctx.result, "label=\"{");
         toString(ctx, block, uint32_t(i));
 
-        appendLabelRegset(ctx.cfg.in, i, "in");
+        if (includeIn)
+            appendLabelRegset(ctx, ctx.cfg.in, i, "in");
 
         if (includeInst && block.start != ~0u)
         {
@@ -709,11 +705,25 @@ std::string toDot(const IrFunction& function, bool includeInst)
             }
         }
 
-        appendLabelRegset(ctx.cfg.def, i, "def");
-        appendLabelRegset(ctx.cfg.out, i, "out");
+        if (includeDef)
+            appendLabelRegset(ctx, ctx.cfg.def, i, "def");
+
+        if (includeOut)
+            appendLabelRegset(ctx, ctx.cfg.out, i, "out");
 
         append(ctx.result, "}\"];\n");
     }
+}
+
+std::string toDot(const IrFunction& function, bool includeInst)
+{
+    std::string result;
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg};
+
+    append(ctx.result, "digraph CFG {\n");
+    append(ctx.result, "node[shape=record]\n");
+
+    appendBlocks(ctx, function, includeInst, /* includeIn */ true, /* includeOut */ true, /* includeDef */ true);
 
     for (size_t i = 0; i < function.blocks.size(); i++)
     {
@@ -742,6 +752,107 @@ std::string toDot(const IrFunction& function, bool includeInst)
             checkOp(inst.d);
             checkOp(inst.e);
             checkOp(inst.f);
+        }
+    }
+
+    append(ctx.result, "}\n");
+
+    return result;
+}
+
+std::string toDotCfg(const IrFunction& function)
+{
+    std::string result;
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg};
+
+    append(ctx.result, "digraph CFG {\n");
+    append(ctx.result, "node[shape=record]\n");
+
+    appendBlocks(ctx, function, /* includeInst */ false, /* includeIn */ false, /* includeOut */ false, /* includeDef */ true);
+
+    for (size_t i = 0; i < function.blocks.size() && i < ctx.cfg.successorsOffsets.size(); i++)
+    {
+        BlockIteratorWrapper succ = successors(ctx.cfg, unsigned(i));
+
+        for (uint32_t target : succ)
+            append(ctx.result, "b%u -> b%u;\n", unsigned(i), target);
+    }
+
+    append(ctx.result, "}\n");
+
+    return result;
+}
+
+std::string toDotDjGraph(const IrFunction& function)
+{
+    std::string result;
+    IrToStringContext ctx{result, function.blocks, function.constants, function.cfg};
+
+    append(ctx.result, "digraph CFG {\n");
+
+    for (size_t i = 0; i < ctx.blocks.size(); i++)
+    {
+        const IrBlock& block = ctx.blocks[i];
+
+        append(ctx.result, "b%u [", unsigned(i));
+
+        if (block.kind == IrBlockKind::Fallback)
+            append(ctx.result, "style=filled;fillcolor=salmon;");
+        else if (block.kind == IrBlockKind::Bytecode)
+            append(ctx.result, "style=filled;fillcolor=palegreen;");
+
+        append(ctx.result, "label=\"");
+        toString(ctx, block, uint32_t(i));
+        append(ctx.result, "\"];\n");
+    }
+
+    // Layer by depth in tree
+    uint32_t depth = 0;
+    bool found = true;
+
+    while (found)
+    {
+        found = false;
+
+        append(ctx.result, "{rank = same;");
+        for (size_t i = 0; i < ctx.cfg.domOrdering.size(); i++)
+        {
+            if (ctx.cfg.domOrdering[i].depth == depth)
+            {
+                append(ctx.result, "b%u;", unsigned(i));
+                found = true;
+            }
+        }
+        append(ctx.result, "}\n");
+
+        depth++;
+    }
+
+    for (size_t i = 0; i < ctx.cfg.domChildrenOffsets.size(); i++)
+    {
+        BlockIteratorWrapper dom = domChildren(ctx.cfg, unsigned(i));
+
+        for (uint32_t target : dom)
+            append(ctx.result, "b%u -> b%u;\n", unsigned(i), target);
+
+        // Join edges are all successor edges that do not strongly dominate
+        BlockIteratorWrapper succ = successors(ctx.cfg, unsigned(i));
+
+        for (uint32_t successor : succ)
+        {
+            bool found = false;
+
+            for (uint32_t target : dom)
+            {
+                if (target == successor)
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+                append(ctx.result, "b%u -> b%u [style=dotted];\n", unsigned(i), successor);
         }
     }
 

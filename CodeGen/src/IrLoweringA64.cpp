@@ -1165,25 +1165,17 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     }
     case IrCmd::INTERRUPT:
     {
-        RegisterA64 temp = regs.allocTemp(KindA64::x);
+        regs.spill(build, index);
 
-        Label skip, next;
-        build.ldr(temp, mem(rState, offsetof(lua_State, global)));
-        build.ldr(temp, mem(temp, offsetof(global_State, cb.interrupt)));
-        build.cbz(temp, skip);
+        Label self;
 
-        size_t spills = regs.spill(build, index);
+        build.ldr(x0, mem(rState, offsetof(lua_State, global)));
+        build.ldr(x0, mem(x0, offsetof(global_State, cb.interrupt)));
+        build.cbnz(x0, self);
 
-        // Jump to outlined interrupt handler, it will give back control to x1
-        build.mov(x0, (uintOp(inst.a) + 1) * sizeof(Instruction));
-        build.adr(x1, next);
-        build.b(helpers.interrupt);
+        Label next = build.setLabel();
 
-        build.setLabel(next);
-
-        regs.restore(build, spills); // need to restore before skip so that registers are in a consistent state
-
-        build.setLabel(skip);
+        interruptHandlers.push_back({self, uintOp(inst.a), next});
         break;
     }
     case IrCmd::CHECK_GC:
@@ -1731,6 +1723,20 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 void IrLoweringA64::finishBlock()
 {
     regs.assertNoSpills();
+}
+
+void IrLoweringA64::finishFunction()
+{
+    if (build.logText)
+        build.logAppend("; interrupt handlers\n");
+
+    for (InterruptHandler& handler : interruptHandlers)
+    {
+        build.setLabel(handler.self);
+        build.mov(x0, (handler.pcpos + 1) * sizeof(Instruction));
+        build.adr(x1, handler.next);
+        build.b(helpers.interrupt);
+    }
 }
 
 bool IrLoweringA64::hasError() const
