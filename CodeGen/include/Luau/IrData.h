@@ -801,6 +801,8 @@ struct IrBlock
     uint32_t start = ~0u;
     uint32_t finish = ~0u;
 
+    uint32_t sortkey = ~0u;
+
     Label label;
 };
 

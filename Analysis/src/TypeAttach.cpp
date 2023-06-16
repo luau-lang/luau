@@ -13,6 +13,8 @@
 
 #include <string>
 
+LUAU_FASTFLAG(LuauParseDeclareClassIndexer);
+
 static char* allocateString(Luau::Allocator& allocator, std::string_view contents)
 {
     char* result = (char*)allocator.allocate(contents.size() + 1);
@@ -227,7 +229,17 @@ public:
             idx++;
         }
 
-        return allocator->alloc<AstTypeTable>(Location(), props);
+        AstTableIndexer* indexer = nullptr;
+        if (FFlag::LuauParseDeclareClassIndexer && ctv.indexer)
+        {
+            RecursionCounter counter(&count);
+
+            indexer = allocator->alloc<AstTableIndexer>();
+            indexer->indexType = Luau::visit(*this, ctv.indexer->indexType->ty);
+            indexer->resultType = Luau::visit(*this, ctv.indexer->indexResultType->ty);
+        }
+
+        return allocator->alloc<AstTypeTable>(Location(), props, indexer);
     }
 
     AstType* operator()(const FunctionType& ftv)

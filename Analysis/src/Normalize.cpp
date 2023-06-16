@@ -2117,15 +2117,15 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     TypeId hmtable = nullptr;
     if (const MetatableType* hmtv = get<MetatableType>(here))
     {
-        htable = hmtv->table;
-        hmtable = hmtv->metatable;
+        htable = follow(hmtv->table);
+        hmtable = follow(hmtv->metatable);
     }
     TypeId ttable = there;
     TypeId tmtable = nullptr;
     if (const MetatableType* tmtv = get<MetatableType>(there))
     {
-        ttable = tmtv->table;
-        tmtable = tmtv->metatable;
+        ttable = follow(tmtv->table);
+        tmtable = follow(tmtv->metatable);
     }
 
     const TableType* httv = get<TableType>(htable);

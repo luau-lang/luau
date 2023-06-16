@@ -38,6 +38,8 @@ std::string toString(const IrFunction& function, bool includeUseInfo);
 std::string dump(const IrFunction& function);
 
 std::string toDot(const IrFunction& function, bool includeInst);
+std::string toDotCfg(const IrFunction& function);
+std::string toDotDjGraph(const IrFunction& function);
 
 std::string dumpDot(const IrFunction& function, bool includeInst);
 

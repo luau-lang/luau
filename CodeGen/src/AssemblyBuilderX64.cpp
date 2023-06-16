@@ -463,6 +463,20 @@ void AssemblyBuilderX64::call(OperandX64 op)
     commit();
 }
 
+void AssemblyBuilderX64::lea(RegisterX64 lhs, Label& label)
+{
+    LUAU_ASSERT(lhs.size == SizeX64::qword);
+
+    placeBinaryRegAndRegMem(lhs, OperandX64(SizeX64::qword, noreg, 1, rip, 0), 0x8d, 0x8d);
+
+    codePos -= 4;
+    placeLabel(label);
+    commit();
+
+    if (logText)
+        log("lea", lhs, label);
+}
+
 void AssemblyBuilderX64::int3()
 {
     if (logText)
@@ -1415,7 +1429,7 @@ void AssemblyBuilderX64::commit()
 {
     LUAU_ASSERT(codePos <= codeEnd);
 
-    if (codeEnd - codePos < kMaxInstructionLength)
+    if (unsigned(codeEnd - codePos) < kMaxInstructionLength)
         extend();
 }
 
@@ -1499,6 +1513,14 @@ void AssemblyBuilderX64::log(Label label)
 void AssemblyBuilderX64::log(const char* opcode, Label label)
 {
     logAppend(" %-12s.L%d\n", opcode, label.id);
+}
+
+void AssemblyBuilderX64::log(const char* opcode, RegisterX64 reg, Label label)
+{
+    logAppend(" %-12s", opcode);
+    log(reg);
+    text.append(",");
+    logAppend(".L%d\n", label.id);
 }
 
 void AssemblyBuilderX64::log(OperandX64 op)

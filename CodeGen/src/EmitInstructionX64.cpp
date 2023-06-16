@@ -18,6 +18,12 @@ namespace X64
 
 void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int nparams, int nresults)
 {
+    // TODO: This should use IrCallWrapperX64
+    RegisterX64 rArg1 = (build.abi == ABIX64::Windows) ? rcx : rdi;
+    RegisterX64 rArg2 = (build.abi == ABIX64::Windows) ? rdx : rsi;
+    RegisterX64 rArg3 = (build.abi == ABIX64::Windows) ? r8 : rdx;
+    RegisterX64 rArg4 = (build.abi == ABIX64::Windows) ? r9 : rcx;
+
     build.mov(rArg1, rState);
     build.lea(rArg2, luauRegAddress(ra));
 
@@ -163,18 +169,32 @@ void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int
     }
 }
 
-void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int actualResults)
+void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int actualResults, bool functionVariadic)
 {
-    RegisterX64 ci = r8;
     RegisterX64 res = rdi;
     RegisterX64 written = ecx;
 
-    build.mov(ci, qword[rState + offsetof(lua_State, ci)]);
-    build.mov(res, qword[ci + offsetof(CallInfo, func)]);
+    if (functionVariadic)
+    {
+        build.mov(res, qword[rState + offsetof(lua_State, ci)]);
+        build.mov(res, qword[res + offsetof(CallInfo, func)]);
+    }
+    else if (actualResults != 1)
+        build.lea(res, addr[rBase - sizeof(TValue)]); // invariant: ci->func + 1 == ci->base for non-variadic frames
 
     if (actualResults == 0)
     {
         build.xor_(written, written);
+        build.jmp(helpers.return_);
+    }
+    else if (actualResults == 1 && !functionVariadic)
+    {
+        // fast path: minimizes res adjustments
+        // note that we skipped res computation for this specific case above
+        build.vmovups(xmm0, luauReg(ra));
+        build.vmovups(xmmword[rBase - sizeof(TValue)], xmm0);
+        build.mov(res, rBase);
+        build.mov(written, 1);
         build.jmp(helpers.return_);
     }
     else if (actualResults >= 1 && actualResults <= 3)
@@ -206,8 +226,11 @@ void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, i
 
         Label repeatValueLoop, exitValueLoop;
 
-        build.cmp(vali, valend);
-        build.jcc(ConditionX64::NotBelow, exitValueLoop);
+        if (actualResults == LUA_MULTRET)
+        {
+            build.cmp(vali, valend);
+            build.jcc(ConditionX64::NotBelow, exitValueLoop);
+        }
 
         build.setLabel(repeatValueLoop);
         build.vmovups(xmm0, xmmword[vali]);
@@ -225,6 +248,11 @@ void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, i
 
 void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, int count, uint32_t index)
 {
+    // TODO: This should use IrCallWrapperX64
+    RegisterX64 rArg1 = (build.abi == ABIX64::Windows) ? rcx : rdi;
+    RegisterX64 rArg2 = (build.abi == ABIX64::Windows) ? rdx : rsi;
+    RegisterX64 rArg3 = (build.abi == ABIX64::Windows) ? r8 : rdx;
+
     OperandX64 last = index + count - 1;
 
     // Using non-volatile 'rbx' for dynamic 'count' value (for LUA_MULTRET) to skip later recomputation
@@ -326,6 +354,12 @@ void emitInstForGLoop(AssemblyBuilderX64& build, int ra, int aux, Label& loopRep
 {
     // ipairs-style traversal is handled in IR
     LUAU_ASSERT(aux >= 0);
+
+    // TODO: This should use IrCallWrapperX64
+    RegisterX64 rArg1 = (build.abi == ABIX64::Windows) ? rcx : rdi;
+    RegisterX64 rArg2 = (build.abi == ABIX64::Windows) ? rdx : rsi;
+    RegisterX64 rArg3 = (build.abi == ABIX64::Windows) ? r8 : rdx;
+    RegisterX64 rArg4 = (build.abi == ABIX64::Windows) ? r9 : rcx;
 
     // This is a fast-path for builtin table iteration, tag check for 'ra' has to be performed before emitting this instruction
 

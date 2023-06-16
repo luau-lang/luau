@@ -25,13 +25,13 @@ struct ModuleHelpers
     Label exitContinueVm;
     Label exitNoContinueVm;
     Label return_;
+    Label interrupt;
 
     // X64
     Label continueCallInVm;
 
     // A64
     Label reentry;   // x0: closure
-    Label interrupt; // x0: pc offset, x1: return address, x2: interrupt
 };
 
 } // namespace CodeGen

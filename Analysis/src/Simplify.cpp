@@ -6,6 +6,7 @@
 #include "Luau/ToString.h"
 #include "Luau/TypeArena.h"
 #include "Luau/Normalize.h" // TypeIds
+#include <algorithm>
 
 LUAU_FASTINT(LuauTypeReductionRecursionLimit)
 
@@ -236,6 +237,17 @@ Relation relateTables(TypeId left, TypeId right)
     NotNull<const TableType> leftTable{get<TableType>(left)};
     NotNull<const TableType> rightTable{get<TableType>(right)};
     LUAU_ASSERT(1 == rightTable->props.size());
+    // Disjoint props have nothing in common
+    // t1 with props p1's cannot appear in t2 and t2 with props p2's cannot appear in t1
+    bool foundPropFromLeftInRight = std::any_of(begin(leftTable->props), end(leftTable->props), [&](auto prop) {
+        return rightTable->props.find(prop.first) != end(rightTable->props);
+    });
+    bool foundPropFromRightInLeft = std::any_of(begin(rightTable->props), end(rightTable->props), [&](auto prop) {
+        return leftTable->props.find(prop.first) != end(leftTable->props);
+    });
+
+    if (!(foundPropFromLeftInRight || foundPropFromRightInLeft) && leftTable->props.size() >= 1 && rightTable->props.size() >= 1)
+        return Relation::Disjoint;
 
     const auto [propName, rightProp] = *begin(rightTable->props);
 

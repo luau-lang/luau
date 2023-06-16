@@ -98,6 +98,8 @@ public:
     void call(Label& label);
     void call(OperandX64 op);
 
+    void lea(RegisterX64 lhs, Label& label);
+
     void int3();
     void ud2();
 
@@ -243,6 +245,7 @@ private:
     LUAU_NOINLINE void log(const char* opcode, OperandX64 op1, OperandX64 op2, OperandX64 op3, OperandX64 op4);
     LUAU_NOINLINE void log(Label label);
     LUAU_NOINLINE void log(const char* opcode, Label label);
+    LUAU_NOINLINE void log(const char* opcode, RegisterX64 reg, Label label);
     void log(OperandX64 op);
 
     const char* getSizeName(SizeX64 size) const;

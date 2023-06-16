@@ -43,6 +43,7 @@ target_sources(Luau.Compiler PRIVATE
     Compiler/src/ConstantFolding.cpp
     Compiler/src/CostModel.cpp
     Compiler/src/TableShape.cpp
+    Compiler/src/Types.cpp
     Compiler/src/ValueTracking.cpp
     Compiler/src/lcode.cpp
     Compiler/src/Builtins.h
@@ -50,6 +51,7 @@ target_sources(Luau.Compiler PRIVATE
     Compiler/src/ConstantFolding.h
     Compiler/src/CostModel.h
     Compiler/src/TableShape.h
+    Compiler/src/Types.h
     Compiler/src/ValueTracking.h
 )
 

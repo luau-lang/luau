@@ -56,8 +56,10 @@ static void makePagesExecutable(uint8_t* mem, size_t size)
 
 static void flushInstructionCache(uint8_t* mem, size_t size)
 {
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
     if (FlushInstructionCache(GetCurrentProcess(), mem, size) == 0)
         LUAU_ASSERT(!"Failed to flush instruction cache");
+#endif
 }
 #else
 static uint8_t* allocatePages(size_t size)

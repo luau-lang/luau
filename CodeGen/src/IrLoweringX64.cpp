@@ -958,8 +958,27 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         break;
     }
     case IrCmd::INTERRUPT:
-        emitInterrupt(regs, build, uintOp(inst.a));
+    {
+        unsigned pcpos = uintOp(inst.a);
+
+        // We unconditionally spill values here because that allows us to ignore register state when we synthesize interrupt handler
+        // This can be changed in the future if we can somehow record interrupt handler code separately
+        // Since interrupts are loop edges or call/ret, we don't have a significant opportunity for register reuse here anyway
+        regs.preserveAndFreeInstValues();
+
+        ScopedRegX64 tmp{regs, SizeX64::qword};
+
+        Label self;
+
+        build.mov(tmp.reg, qword[rState + offsetof(lua_State, global)]);
+        build.cmp(qword[tmp.reg + offsetof(global_State, cb.interrupt)], 0);
+        build.jcc(ConditionX64::NotEqual, self);
+
+        Label next = build.setLabel();
+
+        interruptHandlers.push_back({self, pcpos, next});
         break;
+    }
     case IrCmd::CHECK_GC:
         callStepGc(regs, build);
         break;
@@ -991,7 +1010,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     }
     case IrCmd::SET_SAVEDPC:
     {
-        // This is like emitSetSavedPc, but using register allocation instead of relying on rax/rdx
         ScopedRegX64 tmp1{regs, SizeX64::qword};
         ScopedRegX64 tmp2{regs, SizeX64::qword};
 
@@ -1048,7 +1066,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     case IrCmd::RETURN:
         regs.assertAllFree();
         regs.assertNoSpills();
-        emitInstReturn(build, helpers, vmRegOp(inst.a), intOp(inst.b));
+        emitInstReturn(build, helpers, vmRegOp(inst.a), intOp(inst.b), function.variadic);
         break;
     case IrCmd::FORGLOOP:
         regs.assertAllFree();
@@ -1348,6 +1366,20 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 void IrLoweringX64::finishBlock()
 {
     regs.assertNoSpills();
+}
+
+void IrLoweringX64::finishFunction()
+{
+    if (build.logText)
+        build.logAppend("; interrupt handlers\n");
+
+    for (InterruptHandler& handler : interruptHandlers)
+    {
+        build.setLabel(handler.self);
+        build.mov(rax, handler.pcpos + 1);
+        build.lea(rbx, handler.next);
+        build.jmp(helpers.interrupt);
+    }
 }
 
 bool IrLoweringX64::hasError() const
