@@ -13,6 +13,7 @@
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
+LUAU_FASTFLAGVARIABLE(LuauParseDeclareClassIndexer, false)
 
 #define ERROR_INVALID_INTERP_DOUBLE_BRACE "Double braces are not permitted within interpolated strings. Did you mean '\\{'?"
 
@@ -877,6 +878,7 @@ AstStat* Parser::parseDeclaration(const Location& start)
         }
 
         TempVector<AstDeclaredClassProp> props(scratchDeclaredClassProps);
+        AstTableIndexer* indexer = nullptr;
 
         while (lexer.current().type != Lexeme::ReservedEnd)
         {
@@ -885,7 +887,8 @@ AstStat* Parser::parseDeclaration(const Location& start)
             {
                 props.push_back(parseDeclaredClassMethod());
             }
-            else if (lexer.current().type == '[')
+            else if (lexer.current().type == '[' && (!FFlag::LuauParseDeclareClassIndexer || lexer.lookahead().type == Lexeme::RawString ||
+                                                        lexer.lookahead().type == Lexeme::QuotedString))
             {
                 const Lexeme begin = lexer.current();
                 nextLexeme(); // [
@@ -904,6 +907,22 @@ AstStat* Parser::parseDeclaration(const Location& start)
                 else
                     report(begin.location, "String literal contains malformed escape sequence");
             }
+            else if (lexer.current().type == '[' && FFlag::LuauParseDeclareClassIndexer)
+            {
+                if (indexer)
+                {
+                    // maybe we don't need to parse the entire badIndexer...
+                    // however, we either have { or [ to lint, not the entire table type or the bad indexer.
+                    AstTableIndexer* badIndexer = parseTableIndexer();
+
+                    // we lose all additional indexer expressions from the AST after error recovery here
+                    report(badIndexer->location, "Cannot have more than one class indexer");
+                }
+                else
+                {
+                    indexer = parseTableIndexer();
+                }
+            }
             else
             {
                 Name propName = parseName("property name");
@@ -916,7 +935,7 @@ AstStat* Parser::parseDeclaration(const Location& start)
         Location classEnd = lexer.current().location;
         nextLexeme(); // skip past `end`
 
-        return allocator.alloc<AstStatDeclareClass>(Location(classStart, classEnd), className.name, superName, copy(props));
+        return allocator.alloc<AstStatDeclareClass>(Location(classStart, classEnd), className.name, superName, copy(props), indexer);
     }
     else if (std::optional<Name> globalName = parseNameOpt("global variable name"))
     {
