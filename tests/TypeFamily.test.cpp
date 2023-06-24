@@ -140,8 +140,8 @@ TEST_CASE_FIXTURE(FamilyFixture, "unsolvable_family")
         local b = impossible(true)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
-    for (size_t i = 0; i < 4; ++i)
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    for (size_t i = 0; i < 2; ++i)
     {
         CHECK(toString(result.errors[i]) == "Type family instance Swap<a> is uninhabited");
     }

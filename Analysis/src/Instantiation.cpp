@@ -4,8 +4,6 @@
 #include "Luau/TxnLog.h"
 #include "Luau/TypeArena.h"
 
-LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
-
 namespace Luau
 {
 
@@ -33,7 +31,7 @@ bool Instantiation::ignoreChildren(TypeId ty)
 {
     if (log->getMutable<FunctionType>(ty))
         return true;
-    else if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassType>(ty))
+    else if (get<ClassType>(ty))
         return true;
     else
         return false;
@@ -84,7 +82,7 @@ bool ReplaceGenerics::ignoreChildren(TypeId ty)
         // whenever we quantify, so the vectors overlap if and only if they are equal.
         return (!generics.empty() || !genericPacks.empty()) && (ftv->generics == generics) && (ftv->genericPacks == genericPacks);
     }
-    else if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassType>(ty))
+    else if (get<ClassType>(ty))
         return true;
     else
     {

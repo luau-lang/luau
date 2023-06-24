@@ -10,7 +10,6 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError)
 
 using namespace Luau;
 
@@ -725,24 +724,12 @@ y.a.c = y
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    if (FFlag::LuauTypeMismatchInvarianceInError)
-    {
-        CHECK_EQ(toString(result.errors[0]),
-            R"(Type 'y' could not be converted into 'T<string>'
+    CHECK_EQ(toString(result.errors[0]),
+        R"(Type 'y' could not be converted into 'T<string>'
 caused by:
   Property 'a' is not compatible. Type '{ c: T<string>?, d: number }' could not be converted into 'U<string>'
 caused by:
   Property 'd' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
-    }
-    else
-    {
-        CHECK_EQ(toString(result.errors[0]),
-            R"(Type 'y' could not be converted into 'T<string>'
-caused by:
-  Property 'a' is not compatible. Type '{ c: T<string>?, d: number }' could not be converted into 'U<string>'
-caused by:
-  Property 'd' is not compatible. Type 'number' could not be converted into 'string')");
-    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification1")

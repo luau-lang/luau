@@ -19,8 +19,6 @@
 #include <unordered_map>
 #include <unordered_set>
 
-LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
-
 namespace Luau
 {
 

@@ -1453,7 +1453,7 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
         return false;
     }
 
-    asMutable(c.resultType)->ty.emplace<BoundType>(result.value_or(builtinTypes->anyType));
+    bindBlockedType(c.resultType, result.value_or(builtinTypes->anyType), c.subjectType, constraint->location);
     unblock(c.resultType, constraint->location);
     return true;
 }
@@ -1559,8 +1559,8 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
         existingPropType = result;
     }
 
-    auto bind = [](TypeId a, TypeId b) {
-        asMutable(a)->ty.emplace<BoundType>(b);
+    auto bind = [&](TypeId a, TypeId b) {
+        bindBlockedType(a, b, c.subjectType, constraint->location);
     };
 
     if (existingPropType)
@@ -2143,7 +2143,9 @@ bool ConstraintSolver::tryDispatchIterableFunction(
 
     // if there are no errors from unifying the two, we can pass forward the expected type as our selected resolution.
     if (errors.empty())
-        (*c.astOverloadResolvedTypes)[c.nextAstFragment] = expectedNextTy;
+    {
+        (*c.astForInNextTypes)[c.nextAstFragment] = expectedNextTy;
+    }
 
     auto it = begin(nextRetPack);
     std::vector<TypeId> modifiedNextRetHead;
@@ -2378,6 +2380,31 @@ bool ConstraintSolver::tryUnify(NotNull<const Constraint> constraint, TID subTy,
     unblock(changedPacks, constraint->location);
 
     return true;
+}
+
+void ConstraintSolver::bindBlockedType(TypeId blockedTy, TypeId resultTy, TypeId rootTy, Location location)
+{
+    resultTy = follow(resultTy);
+
+    LUAU_ASSERT(get<BlockedType>(blockedTy));
+
+    if (blockedTy == resultTy)
+    {
+        rootTy = follow(rootTy);
+        Scope* freeScope = nullptr;
+        if (auto ft = get<FreeType>(rootTy))
+            freeScope = ft->scope;
+        else if (auto tt = get<TableType>(rootTy); tt && tt->state == TableState::Free)
+            freeScope = tt->scope;
+        else
+            iceReporter.ice("bindBlockedType couldn't find an appropriate scope for a fresh type!", location);
+
+        LUAU_ASSERT(freeScope);
+
+        asMutable(blockedTy)->ty.emplace<BoundType>(arena->freshType(freeScope));
+    }
+    else
+        asMutable(blockedTy)->ty.emplace<BoundType>(resultTy);
 }
 
 void ConstraintSolver::block_(BlockedConstraintId target, NotNull<const Constraint> constraint)

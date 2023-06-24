@@ -81,13 +81,29 @@ struct Module
     DenseHashMap<const AstExpr*, TypePackId> astTypePacks{nullptr};
     DenseHashMap<const AstExpr*, TypeId> astExpectedTypes{nullptr};
 
+    // For AST nodes that are function calls, this map provides the
+    // unspecialized type of the function that was called. If a function call
+    // resolves to a __call metamethod application, this map will point at that
+    // metamethod.
+    //
+    // This is useful for type checking and Signature Help.
     DenseHashMap<const AstNode*, TypeId> astOriginalCallTypes{nullptr};
+
+    // The specialization of a function that was selected.  If the function is
+    // generic, those generic type parameters will be replaced with the actual
+    // types that were passed.  If the function is an overload, this map will
+    // point at the specific overloads that were selected.
     DenseHashMap<const AstNode*, TypeId> astOverloadResolvedTypes{nullptr};
+
+    // Only used with for...in loops.  The computed type of the next() function
+    // is kept here for type checking.
+    DenseHashMap<const AstNode*, TypeId> astForInNextTypes{nullptr};
 
     DenseHashMap<const AstType*, TypeId> astResolvedTypes{nullptr};
     DenseHashMap<const AstTypePack*, TypePackId> astResolvedTypePacks{nullptr};
 
-    // Map AST nodes to the scope they create.  Cannot be NotNull<Scope> because we need a sentinel value for the map.
+    // Map AST nodes to the scope they create.  Cannot be NotNull<Scope> because
+    // we need a sentinel value for the map.
     DenseHashMap<const AstNode*, Scope*> astScopes{nullptr};
 
     std::unordered_map<Name, TypeId> declaredGlobals;
@@ -103,8 +119,9 @@ struct Module
     bool hasModuleScope() const;
     ScopePtr getModuleScope() const;
 
-    // Once a module has been typechecked, we clone its public interface into a separate arena.
-    // This helps us to force Type ownership into a DAG rather than a DCG.
+    // Once a module has been typechecked, we clone its public interface into a
+    // separate arena. This helps us to force Type ownership into a DAG rather
+    // than a DCG.
     void clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice);
 };
 

@@ -35,7 +35,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauAllowIndexClassParameters, false)
-LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
 LUAU_FASTFLAG(LuauOccursIsntAlwaysFailure)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckTypeguards, false)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
@@ -841,7 +840,7 @@ struct Demoter : Substitution
 
     bool ignoreChildren(TypeId ty) override
     {
-        if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassType>(ty))
+        if (get<ClassType>(ty))
             return true;
 
         return false;
@@ -2648,10 +2647,7 @@ static std::optional<bool> areEqComparable(NotNull<TypeArena> arena, NotNull<Nor
     if (!n)
         return std::nullopt;
 
-    if (FFlag::LuauUninhabitedSubAnything2)
-        return normalizer->isInhabited(n);
-    else
-        return isInhabited_DEPRECATED(*n);
+    return normalizer->isInhabited(n);
 }
 
 TypeId TypeChecker::checkRelationalOperation(

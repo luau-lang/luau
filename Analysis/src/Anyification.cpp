@@ -6,8 +6,6 @@
 #include "Luau/Normalize.h"
 #include "Luau/TxnLog.h"
 
-LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
-
 namespace Luau
 {
 
@@ -78,7 +76,7 @@ TypePackId Anyification::clean(TypePackId tp)
 
 bool Anyification::ignoreChildren(TypeId ty)
 {
-    if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassType>(ty))
+    if (get<ClassType>(ty))
         return true;
 
     return ty->persistent;

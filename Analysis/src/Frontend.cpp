@@ -950,6 +950,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         module->astExpectedTypes.clear();
         module->astOriginalCallTypes.clear();
         module->astOverloadResolvedTypes.clear();
+        module->astForInNextTypes.clear();
         module->astResolvedTypes.clear();
         module->astResolvedTypePacks.clear();
         module->astScopes.clear();

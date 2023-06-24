@@ -17,7 +17,6 @@ namespace CodeGen
 {
 
 struct ModuleHelpers;
-struct NativeState;
 struct AssemblyOptions;
 
 namespace X64
@@ -25,7 +24,7 @@ namespace X64
 
 struct IrLoweringX64
 {
-    IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, NativeState& data, IrFunction& function);
+    IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, IrFunction& function);
 
     void lowerInst(IrInst& inst, uint32_t index, IrBlock& next);
     void finishBlock();
@@ -63,7 +62,6 @@ struct IrLoweringX64
 
     AssemblyBuilderX64& build;
     ModuleHelpers& helpers;
-    NativeState& data;
 
     IrFunction& function;
 

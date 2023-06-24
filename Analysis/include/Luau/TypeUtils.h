@@ -64,4 +64,13 @@ const T* get(std::optional<Ty> ty)
         return nullptr;
 }
 
+template<typename Ty>
+std::optional<Ty> follow(std::optional<Ty> ty)
+{
+    if (ty)
+        return follow(*ty);
+    else
+        return std::nullopt;
+}
+
 } // namespace Luau

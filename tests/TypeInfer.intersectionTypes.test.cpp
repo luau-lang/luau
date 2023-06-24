@@ -539,10 +539,6 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_never_properties")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauUninhabitedSubAnything2", true},
-    };
-
     CheckResult result = check(R"(
         local x : { p : number?, q : never } & { p : never, q : string? } -- OK
         local y : { p : never, q : never } = x -- OK

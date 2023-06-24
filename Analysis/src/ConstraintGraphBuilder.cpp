@@ -751,7 +751,12 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatForIn* f
     variableTypes.reserve(forIn->vars.size);
     for (AstLocal* var : forIn->vars)
     {
-        TypeId ty = freshType(loopScope);
+        TypeId ty = nullptr;
+        if (var->annotation)
+            ty = resolveType(loopScope, var->annotation, /*inTypeArguments*/ false);
+        else
+            ty = freshType(loopScope);
+
         loopScope->bindings[var] = Binding{ty, var->location};
         variableTypes.push_back(ty);
 
@@ -763,7 +768,7 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatForIn* f
     TypePackId variablePack = arena->addTypePack(std::move(variableTypes), arena->addTypePack(FreeTypePack{loopScope.get()}));
 
     addConstraint(
-        loopScope, getLocation(forIn->values), IterableConstraint{iterator, variablePack, forIn->values.data[0], &module->astOverloadResolvedTypes});
+        loopScope, getLocation(forIn->values), IterableConstraint{iterator, variablePack, forIn->values.data[0], &module->astForInNextTypes});
     visit(loopScope, forIn->body);
 
     return ControlFlow::None;

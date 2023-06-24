@@ -31,7 +31,7 @@ static uint64_t modelFunction(const char* source)
     AstStatFunction* func = result.root->body.data[0]->as<AstStatFunction>();
     REQUIRE(func);
 
-    return Luau::Compile::modelCost(func->func->body, func->func->args.data, func->func->args.size, {nullptr});
+    return Luau::Compile::modelCost(func->func->body, func->func->args.data, func->func->args.size, DenseHashMap<AstExprCall*, int>{nullptr});
 }
 
 TEST_CASE("Expression")

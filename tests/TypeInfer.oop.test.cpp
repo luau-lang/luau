@@ -26,17 +26,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_not_defi
         someTable.Function1() -- Argument count mismatch
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-        CHECK(toString(result.errors[0]) == "No overload for function accepts 0 arguments.");
-        CHECK(toString(result.errors[1]) == "Available overloads: <a>(a) -> ()");
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        REQUIRE(get<CountMismatch>(result.errors[0]));
-    }
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<CountMismatch>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_it_wont_help_2")
@@ -50,17 +41,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_it_wont_
         someTable.Function2() -- Argument count mismatch
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-        CHECK(toString(result.errors[0]) == "No overload for function accepts 0 arguments.");
-        CHECK(toString(result.errors[1]) == "Available overloads: <a, b>(a, b) -> ()");
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        REQUIRE(get<CountMismatch>(result.errors[0]));
-    }
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<CountMismatch>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_another_overload_works")

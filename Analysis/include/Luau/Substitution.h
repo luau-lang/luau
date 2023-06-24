@@ -69,6 +69,19 @@ struct TarjanWorklistVertex
     int lastEdge;
 };
 
+struct TarjanNode
+{
+    TypeId ty;
+    TypePackId tp;
+
+    bool onStack;
+    bool dirty;
+
+    // Tarjan calculates the lowlink for each vertex,
+    // which is the lowest ancestor index reachable from the vertex.
+    int lowlink;
+};
+
 // Tarjan's algorithm for finding the SCCs in a cyclic structure.
 // https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
 struct Tarjan
@@ -76,17 +89,12 @@ struct Tarjan
     // Vertices (types and type packs) are indexed, using pre-order traversal.
     DenseHashMap<TypeId, int> typeToIndex{nullptr};
     DenseHashMap<TypePackId, int> packToIndex{nullptr};
-    std::vector<TypeId> indexToType;
-    std::vector<TypePackId> indexToPack;
+
+    std::vector<TarjanNode> nodes;
 
     // Tarjan keeps a stack of vertices where we're still in the process
     // of finding their SCC.
     std::vector<int> stack;
-    std::vector<bool> onStack;
-
-    // Tarjan calculates the lowlink for each vertex,
-    // which is the lowest ancestor index reachable from the vertex.
-    std::vector<int> lowlink;
 
     int childCount = 0;
     int childLimit = 0;
@@ -98,6 +106,7 @@ struct Tarjan
     std::vector<TypeId> edgesTy;
     std::vector<TypePackId> edgesTp;
     std::vector<TarjanWorklistVertex> worklist;
+
     // This is hot code, so we optimize recursion to a stack.
     TarjanResult loop();
 
@@ -124,10 +133,22 @@ struct Tarjan
     TarjanResult visitRoot(TypeId ty);
     TarjanResult visitRoot(TypePackId ty);
 
-    // Each subclass gets called back once for each edge,
-    // and once for each SCC.
-    virtual void visitEdge(int index, int parentIndex) {}
-    virtual void visitSCC(int index) {}
+    void clearTarjan();
+
+    // Get/set the dirty bit for an index (grows the vector if needed)
+    bool getDirty(int index);
+    void setDirty(int index, bool d);
+
+    // Find all the dirty vertices reachable from `t`.
+    TarjanResult findDirty(TypeId t);
+    TarjanResult findDirty(TypePackId t);
+
+    // We find dirty vertices using Tarjan
+    void visitEdge(int index, int parentIndex);
+    void visitSCC(int index);
+
+    TarjanResult loop_DEPRECATED();
+    void visitSCC_DEPRECATED(int index);
 
     // Each subclass can decide to ignore some nodes.
     virtual bool ignoreChildren(TypeId ty)
@@ -150,27 +171,6 @@ struct Tarjan
     {
         return ignoreChildren(ty);
     }
-};
-
-// We use Tarjan to calculate dirty bits. We set `dirty[i]` true
-// if the vertex with index `i` can reach a dirty vertex.
-struct FindDirty : Tarjan
-{
-    std::vector<bool> dirty;
-
-    void clearTarjan();
-
-    // Get/set the dirty bit for an index (grows the vector if needed)
-    bool getDirty(int index);
-    void setDirty(int index, bool d);
-
-    // Find all the dirty vertices reachable from `t`.
-    TarjanResult findDirty(TypeId t);
-    TarjanResult findDirty(TypePackId t);
-
-    // We find dirty vertices using Tarjan
-    void visitEdge(int index, int parentIndex) override;
-    void visitSCC(int index) override;
 
     // Subclasses should say which vertices are dirty,
     // and what to do with dirty vertices.
@@ -178,11 +178,18 @@ struct FindDirty : Tarjan
     virtual bool isDirty(TypePackId tp) = 0;
     virtual void foundDirty(TypeId ty) = 0;
     virtual void foundDirty(TypePackId tp) = 0;
+
+    // TODO: remove with FFlagLuauTarjanSingleArr
+    std::vector<TypeId> indexToType;
+    std::vector<TypePackId> indexToPack;
+    std::vector<bool> onStack;
+    std::vector<int> lowlink;
+    std::vector<bool> dirty;
 };
 
 // And finally substitution, which finds all the reachable dirty vertices
 // and replaces them with clean ones.
-struct Substitution : FindDirty
+struct Substitution : Tarjan
 {
 protected:
     Substitution(const TxnLog* log_, TypeArena* arena)

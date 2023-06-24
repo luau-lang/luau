@@ -1005,9 +1005,9 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "SkipUselessBarriers")
 
     build.inst(IrCmd::STORE_TAG, build.vmReg(0), build.constTag(tnumber));
     IrOp table = build.inst(IrCmd::LOAD_POINTER, build.vmReg(1));
-    build.inst(IrCmd::BARRIER_TABLE_FORWARD, table, build.vmReg(0));
+    build.inst(IrCmd::BARRIER_TABLE_FORWARD, table, build.vmReg(0), build.undef());
     IrOp something = build.inst(IrCmd::LOAD_POINTER, build.vmReg(2));
-    build.inst(IrCmd::BARRIER_OBJ, something, build.vmReg(0));
+    build.inst(IrCmd::BARRIER_OBJ, something, build.vmReg(0), build.undef());
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
