@@ -159,6 +159,9 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::Int;
     case IrCmd::INVOKE_LIBM:
         return IrValueKind::Double;
+    case IrCmd::GET_TYPE:
+    case IrCmd::GET_TYPEOF:
+        return IrValueKind::Pointer;
     }
 
     LUAU_UNREACHABLE();

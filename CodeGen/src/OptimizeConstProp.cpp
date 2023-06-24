@@ -732,6 +732,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 // If the written object is not collectable, barrier is not required
                 if (!isGCO(tag))
                     kill(function, inst);
+                else
+                    replace(function, inst.c, build.constTag(tag));
             }
         }
         break;
@@ -820,6 +822,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::BITCOUNTLZ_UINT:
     case IrCmd::BITCOUNTRZ_UINT:
     case IrCmd::INVOKE_LIBM:
+    case IrCmd::GET_TYPE:
+    case IrCmd::GET_TYPEOF:
         break;
 
     case IrCmd::JUMP_CMP_ANY:

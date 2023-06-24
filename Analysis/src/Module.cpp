@@ -16,9 +16,6 @@
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAGVARIABLE(LuauClonePublicInterfaceLess2, false);
-LUAU_FASTFLAG(LuauSubstitutionReentrant);
-LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution);
-LUAU_FASTFLAG(LuauSubstitutionFixMissingFields);
 LUAU_FASTFLAGVARIABLE(LuauCloneSkipNonInternalVisit, false);
 
 namespace Luau
@@ -134,8 +131,6 @@ struct ClonePublicInterface : Substitution
 
     TypeId cloneType(TypeId ty)
     {
-        LUAU_ASSERT(FFlag::LuauSubstitutionReentrant && FFlag::LuauSubstitutionFixMissingFields);
-
         std::optional<TypeId> result = substitute(ty);
         if (result)
         {
@@ -150,8 +145,6 @@ struct ClonePublicInterface : Substitution
 
     TypePackId cloneTypePack(TypePackId tp)
     {
-        LUAU_ASSERT(FFlag::LuauSubstitutionReentrant && FFlag::LuauSubstitutionFixMissingFields);
-
         std::optional<TypePackId> result = substitute(tp);
         if (result)
         {
@@ -166,8 +159,6 @@ struct ClonePublicInterface : Substitution
 
     TypeFun cloneTypeFun(const TypeFun& tf)
     {
-        LUAU_ASSERT(FFlag::LuauSubstitutionReentrant && FFlag::LuauSubstitutionFixMissingFields);
-
         std::vector<GenericTypeDefinition> typeParams;
         std::vector<GenericTypePackDefinition> typePackParams;
 

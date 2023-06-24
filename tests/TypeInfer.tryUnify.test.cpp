@@ -161,10 +161,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_intersection_sub_anything")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_table_sub_never")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauUninhabitedSubAnything2", true},
-    };
-
     CheckResult result = check(R"(
         function f(arg : { prop : string & number }) : never
           return arg
@@ -175,10 +171,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_table_sub_never")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_table_sub_anything")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauUninhabitedSubAnything2", true},
-    };
-
     CheckResult result = check(R"(
         function f(arg : { prop : string & number }) : boolean
           return arg

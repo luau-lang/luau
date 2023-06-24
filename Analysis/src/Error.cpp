@@ -10,7 +10,6 @@
 #include <stdexcept>
 #include <type_traits>
 
-LUAU_FASTFLAGVARIABLE(LuauTypeMismatchInvarianceInError, false)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount, std::optional<size_t> maximumCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
@@ -106,7 +105,7 @@ struct ErrorConverter
         {
             result += "; " + tm.reason;
         }
-        else if (FFlag::LuauTypeMismatchInvarianceInError && tm.context == TypeMismatch::InvariantContext)
+        else if (tm.context == TypeMismatch::InvariantContext)
         {
             result += " in an invariant context";
         }

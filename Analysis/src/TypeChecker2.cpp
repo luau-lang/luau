@@ -7,6 +7,7 @@
 #include "Luau/Common.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/Error.h"
+#include "Luau/InsertionOrderedMap.h"
 #include "Luau/Instantiation.h"
 #include "Luau/Metamethods.h"
 #include "Luau/Normalize.h"
@@ -656,7 +657,7 @@ struct TypeChecker2
         // if the initial and expected types from the iterator unified during constraint solving,
         // we'll have a resolved type to use here, but we'll only use it if either the iterator is
         // directly present in the for-in statement or if we have an iterator state constraining us
-        TypeId* resolvedTy = module->astOverloadResolvedTypes.find(firstValue);
+        TypeId* resolvedTy = module->astForInNextTypes.find(firstValue);
         if (resolvedTy && (!retPack || valueTypes.size() > 1))
             valueTypes[0] = *resolvedTy;
 
@@ -1062,83 +1063,21 @@ struct TypeChecker2
     // Note: this is intentionally separated from `visit(AstExprCall*)` for stack allocation purposes.
     void visitCall(AstExprCall* call)
     {
-        TypePackId expectedRetType = lookupExpectedPack(call, testArena);
         TypePack args;
         std::vector<Location> argLocs;
         argLocs.reserve(call->args.size + 1);
 
-        auto maybeOriginalCallTy = module->astOriginalCallTypes.find(call);
-        if (!maybeOriginalCallTy)
+        TypeId* originalCallTy = module->astOriginalCallTypes.find(call);
+        TypeId* selectedOverloadTy = module->astOverloadResolvedTypes.find(call);
+        if (!originalCallTy && !selectedOverloadTy)
             return;
 
-        TypeId originalCallTy = follow(*maybeOriginalCallTy);
-        std::vector<TypeId> overloads = flattenIntersection(originalCallTy);
-
-        if (get<AnyType>(originalCallTy) || get<ErrorType>(originalCallTy) || get<NeverType>(originalCallTy))
+        TypeId fnTy = follow(selectedOverloadTy ? *selectedOverloadTy : *originalCallTy);
+        if (get<AnyType>(fnTy) || get<ErrorType>(fnTy) || get<NeverType>(fnTy))
             return;
-        else if (std::optional<TypeId> callMm = findMetatableEntry(builtinTypes, module->errors, originalCallTy, "__call", call->func->location))
+        else if (isOptional(fnTy))
         {
-            if (get<FunctionType>(follow(*callMm)))
-            {
-                args.head.push_back(originalCallTy);
-                argLocs.push_back(call->func->location);
-            }
-            else
-            {
-                // TODO: This doesn't flag the __call metamethod as the problem
-                // very clearly.
-                reportError(CannotCallNonFunction{*callMm}, call->func->location);
-                return;
-            }
-        }
-        else if (get<FunctionType>(originalCallTy))
-        {
-            // ok.
-        }
-        else if (get<IntersectionType>(originalCallTy))
-        {
-            auto norm = normalizer.normalize(originalCallTy);
-            if (!norm)
-                return reportError(CodeTooComplex{}, call->location);
-
-            // NormalizedType::hasFunction returns true if its' tops component is `unknown`, but for soundness we want the reverse.
-            if (get<UnknownType>(norm->tops) || !norm->hasFunctions())
-                return reportError(CannotCallNonFunction{originalCallTy}, call->func->location);
-        }
-        else if (auto utv = get<UnionType>(originalCallTy))
-        {
-            // Sometimes it's okay to call a union of functions, but only if all of the functions are the same.
-            // Another scenario we might run into it is if the union has a nil member. In this case, we want to throw an error
-            if (isOptional(originalCallTy))
-            {
-                reportError(OptionalValueAccess{originalCallTy}, call->location);
-                return;
-            }
-            std::optional<TypeId> fst;
-            for (TypeId ty : utv)
-            {
-                if (!fst)
-                    fst = follow(ty);
-                else if (fst != follow(ty))
-                {
-                    reportError(CannotCallNonFunction{originalCallTy}, call->func->location);
-                    return;
-                }
-            }
-
-            if (!fst)
-                ice->ice("UnionType had no elements, so fst is nullopt?");
-
-            originalCallTy = follow(*fst);
-            if (!get<FunctionType>(originalCallTy))
-            {
-                reportError(CannotCallNonFunction{originalCallTy}, call->func->location);
-                return;
-            }
-        }
-        else
-        {
-            reportError(CannotCallNonFunction{originalCallTy}, call->func->location);
+            reportError(OptionalValueAccess{fnTy}, call->func->location);
             return;
         }
 
@@ -1161,9 +1100,12 @@ struct TypeChecker2
                 args.head.push_back(*argTy);
             else if (i == call->args.size - 1)
             {
-                TypePackId* argTail = module->astTypePacks.find(arg);
-                if (argTail)
-                    args.tail = *argTail;
+                if (auto argTail = module->astTypePacks.find(arg))
+                {
+                    auto [head, tail] = flatten(*argTail);
+                    args.head.insert(args.head.end(), head.begin(), head.end());
+                    args.tail = tail;
+                }
                 else
                     args.tail = builtinTypes->anyTypePack;
             }
@@ -1171,141 +1113,317 @@ struct TypeChecker2
                 args.head.push_back(builtinTypes->anyType);
         }
 
-        TypePackId expectedArgTypes = testArena.addTypePack(args);
+        FunctionCallResolver resolver{
+            builtinTypes,
+            NotNull{&testArena},
+            NotNull{&normalizer},
+            NotNull{stack.back()},
+            ice,
+            call->location,
+        };
 
-        if (auto maybeSelectedOverload = module->astOverloadResolvedTypes.find(call))
+        resolver.resolve(fnTy, &args, call->func->location, &argLocs);
+
+        if (!resolver.ok.empty())
+            return; // We found a call that works, so this is ok.
+        else if (auto norm = normalizer.normalize(fnTy); !norm || !normalizer.isInhabited(norm))
         {
-            // This overload might not work still: the constraint solver will
-            // pass the type checker an instantiated function type that matches
-            // in arity, but not in subtyping, in order to allow the type
-            // checker to report better error messages.
-
-            TypeId selectedOverload = follow(*maybeSelectedOverload);
-            const FunctionType* ftv;
-
-            if (get<AnyType>(selectedOverload) || get<ErrorType>(selectedOverload) || get<NeverType>(selectedOverload))
-            {
-                return;
-            }
-            else if (const FunctionType* overloadFtv = get<FunctionType>(selectedOverload))
-            {
-                ftv = overloadFtv;
-            }
+            if (!norm)
+                reportError(NormalizationTooComplex{}, call->func->location);
+            else
+                return; // Ok. Calling an uninhabited type is no-op.
+        }
+        else if (!resolver.nonviableOverloads.empty())
+        {
+            if (resolver.nonviableOverloads.size() == 1)
+                reportErrors(resolver.nonviableOverloads.front().second);
             else
             {
-                reportError(CannotCallNonFunction{selectedOverload}, call->func->location);
-                return;
-            }
-
-            TxnLog fake{};
-
-            LUAU_ASSERT(ftv);
-            reportErrors(tryUnify(stack.back(), call->location, ftv->retTypes, expectedRetType, CountMismatch::Context::Return, /* genericsOkay */ true));
-            reportErrors(
-                reduceFamilies(ftv->retTypes, call->location, NotNull{&testArena}, builtinTypes, stack.back(), NotNull{&normalizer}, &fake, true)
-                    .errors);
-
-            auto it = begin(expectedArgTypes);
-            size_t i = 0;
-            std::vector<TypeId> slice;
-            for (TypeId arg : ftv->argTypes)
-            {
-                if (it == end(expectedArgTypes))
-                {
-                    slice.push_back(arg);
-                    continue;
-                }
-
-                TypeId expectedArg = *it;
-
-                Location argLoc = argLocs.at(i >= argLocs.size() ? argLocs.size() - 1 : i);
-
-                reportErrors(tryUnify(stack.back(), argLoc, expectedArg, arg, CountMismatch::Context::Arg, /* genericsOkay */ true));
-                reportErrors(reduceFamilies(arg, argLoc, NotNull{&testArena}, builtinTypes, stack.back(), NotNull{&normalizer}, &fake, true).errors);
-
-                ++it;
-                ++i;
-            }
-
-            if (slice.size() > 0 && it == end(expectedArgTypes))
-            {
-                if (auto tail = it.tail())
-                {
-                    TypePackId remainingArgs = testArena.addTypePack(TypePack{std::move(slice), std::nullopt});
-                    reportErrors(tryUnify(stack.back(), argLocs.back(), *tail, remainingArgs, CountMismatch::Context::Arg, /* genericsOkay */ true));
-                    reportErrors(reduceFamilies(
-                        remainingArgs, argLocs.back(), NotNull{&testArena}, builtinTypes, stack.back(), NotNull{&normalizer}, &fake, true)
-                                     .errors);
-                }
+                std::string s = "None of the overloads for function that accept ";
+                s += std::to_string(args.head.size());
+                s += " arguments are compatible.";
+                reportError(GenericError{std::move(s)}, call->location);
             }
         }
-        else
+        else if (!resolver.arityMismatches.empty())
         {
-            // No overload worked, even when instantiated. We need to filter the
-            // set of overloads to those that match the arity of the incoming
-            // argument set, and then report only those as not matching.
-
-            std::vector<TypeId> arityMatchingOverloads;
-            ErrorVec empty;
-            for (TypeId overload : overloads)
+            if (resolver.arityMismatches.size() == 1)
+                reportErrors(resolver.arityMismatches.front().second);
+            else
             {
-                overload = follow(overload);
-                if (const FunctionType* ftv = get<FunctionType>(overload))
-                {
-                    if (size(ftv->argTypes) == size(expectedArgTypes))
-                    {
-                        arityMatchingOverloads.push_back(overload);
-                    }
-                }
-                else if (const std::optional<TypeId> callMm = findMetatableEntry(builtinTypes, empty, overload, "__call", call->location))
-                {
-                    if (const FunctionType* ftv = get<FunctionType>(follow(*callMm)))
-                    {
-                        if (size(ftv->argTypes) == size(expectedArgTypes))
-                        {
-                            arityMatchingOverloads.push_back(overload);
-                        }
-                    }
-                    else
-                    {
-                        reportError(CannotCallNonFunction{}, call->location);
-                    }
-                }
+                std::string s = "No overload for function accepts ";
+                s += std::to_string(args.head.size());
+                s += " arguments.";
+                reportError(GenericError{std::move(s)}, call->location);
             }
+        }
+        else if (!resolver.nonFunctions.empty())
+            reportError(CannotCallNonFunction{fnTy}, call->func->location);
+        else
+            LUAU_ASSERT(!"Generating the best possible error from this function call resolution was inexhaustive?");
 
-            if (arityMatchingOverloads.size() == 0)
+        if (resolver.arityMismatches.size() > 1 || resolver.nonviableOverloads.size() > 1)
+        {
+            std::string s = "Available overloads: ";
+
+            std::vector<TypeId> overloads;
+            if (resolver.nonviableOverloads.empty())
             {
-                reportError(
-                    GenericError{"No overload for function accepts " + std::to_string(size(expectedArgTypes)) + " arguments."}, call->location);
+                for (const auto& [ty, p] : resolver.resolution)
+                {
+                    if (p.first == FunctionCallResolver::TypeIsNotAFunction)
+                        continue;
+
+                    overloads.push_back(ty);
+                }
             }
             else
             {
-                // We have handled the case of a singular arity-matching
-                // overload above, in the case where an overload was selected.
-                // LUAU_ASSERT(arityMatchingOverloads.size() > 1);
-                reportError(GenericError{"None of the overloads for function that accept " + std::to_string(size(expectedArgTypes)) +
-                                         " arguments are compatible."},
-                    call->location);
+                for (const auto& [ty, _] : resolver.nonviableOverloads)
+                    overloads.push_back(ty);
             }
 
-            std::string s;
-            std::vector<TypeId>& stringifyOverloads = arityMatchingOverloads.size() == 0 ? overloads : arityMatchingOverloads;
-            for (size_t i = 0; i < stringifyOverloads.size(); ++i)
+            for (size_t i = 0; i < overloads.size(); ++i)
             {
-                TypeId overload = follow(stringifyOverloads[i]);
-
                 if (i > 0)
-                    s += "; ";
+                    s += (i == overloads.size() - 1) ? "; and " : "; ";
 
-                if (i > 0 && i == stringifyOverloads.size() - 1)
-                    s += "and ";
-
-                s += toString(overload);
+                s += toString(overloads[i]);
             }
 
-            reportError(ExtraInformation{"Available overloads: " + s}, call->func->location);
+            reportError(ExtraInformation{std::move(s)}, call->func->location);
         }
     }
+
+    struct FunctionCallResolver
+    {
+        enum Analysis
+        {
+            Ok,
+            TypeIsNotAFunction,
+            ArityMismatch,
+            OverloadIsNonviable, // Arguments were incompatible with the overload's parameters, but were otherwise compatible by arity.
+        };
+
+        NotNull<BuiltinTypes> builtinTypes;
+        NotNull<TypeArena> arena;
+        NotNull<Normalizer> normalizer;
+        NotNull<Scope> scope;
+        NotNull<InternalErrorReporter> ice;
+        Location callLoc;
+
+        std::vector<TypeId> ok;
+        std::vector<TypeId> nonFunctions;
+        std::vector<std::pair<TypeId, ErrorVec>> arityMismatches;
+        std::vector<std::pair<TypeId, ErrorVec>> nonviableOverloads;
+        InsertionOrderedMap<TypeId, std::pair<Analysis, size_t>> resolution;
+
+    private:
+        template<typename Ty>
+        std::optional<ErrorVec> tryUnify(const Location& location, Ty subTy, Ty superTy)
+        {
+            Unifier u{normalizer, scope, location, Covariant};
+            u.ctx = CountMismatch::Arg;
+            u.hideousFixMeGenericsAreActuallyFree = true;
+            u.enableScopeTests();
+            u.tryUnify(subTy, superTy);
+
+            if (u.errors.empty())
+                return std::nullopt;
+
+            return std::move(u.errors);
+        }
+
+        std::pair<Analysis, ErrorVec> checkOverload(TypeId fnTy, const TypePack* args, Location fnLoc, const std::vector<Location>* argLocs, bool callMetamethodOk = true)
+        {
+            fnTy = follow(fnTy);
+
+            ErrorVec discard;
+            if (get<AnyType>(fnTy) || get<ErrorType>(fnTy) || get<NeverType>(fnTy))
+                return {Ok, {}};
+            else if (auto fn = get<FunctionType>(fnTy))
+                return checkOverload_(fnTy, fn, args, fnLoc, argLocs); // Intentionally split to reduce the stack pressure of this function.
+            else if (auto callMm = findMetatableEntry(builtinTypes, discard, fnTy, "__call", callLoc); callMm && callMetamethodOk)
+            {
+                // Calling a metamethod forwards the `fnTy` as self.
+                TypePack withSelf = *args;
+                withSelf.head.insert(withSelf.head.begin(), fnTy);
+
+                std::vector<Location> withSelfLocs = *argLocs;
+                withSelfLocs.insert(withSelfLocs.begin(), fnLoc);
+
+                return checkOverload(*callMm, &withSelf, fnLoc, &withSelfLocs, /*callMetamethodOk=*/ false);
+            }
+            else
+                return {TypeIsNotAFunction, {}}; // Intentionally empty. We can just fabricate the type error later on.
+        }
+
+        LUAU_NOINLINE
+        std::pair<Analysis, ErrorVec> checkOverload_(TypeId fnTy, const FunctionType* fn, const TypePack* args, Location fnLoc, const std::vector<Location>* argLocs)
+        {
+            TxnLog fake;
+            FamilyGraphReductionResult result = reduceFamilies(fnTy, callLoc, arena, builtinTypes, scope, normalizer, &fake, /*force=*/ true);
+            if (!result.errors.empty())
+                return {OverloadIsNonviable, result.errors};
+
+            ErrorVec argumentErrors;
+
+            // Reminder: Functions have parameters. You provide arguments.
+            auto paramIter = begin(fn->argTypes);
+            size_t argOffset = 0;
+
+            while (paramIter != end(fn->argTypes))
+            {
+                if (argOffset >= args->head.size())
+                    break;
+
+                TypeId paramTy = *paramIter;
+                TypeId argTy = args->head[argOffset];
+                Location argLoc = argLocs->at(argOffset >= argLocs->size() ? argLocs->size() - 1 : argOffset);
+
+                if (auto errors = tryUnify(argLoc, argTy, paramTy))
+                {
+                    // Since we're stopping right here, we need to decide if this is a nonviable overload or if there is an arity mismatch.
+                    // If it's a nonviable overload, then we need to keep going to get all type errors.
+                    auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
+                    if (args->head.size() < minParams)
+                        return {ArityMismatch, *errors};
+                    else
+                        argumentErrors.insert(argumentErrors.end(), errors->begin(), errors->end());
+                }
+
+                ++paramIter;
+                ++argOffset;
+            }
+
+            while (argOffset < args->head.size())
+            {
+                // If we can iterate over the head of arguments, then we have exhausted the head of the parameters.
+                LUAU_ASSERT(paramIter == end(fn->argTypes));
+
+                Location argLoc = argLocs->at(argOffset >= argLocs->size() ? argLocs->size() - 1 : argOffset);
+
+                if (!paramIter.tail())
+                {
+                    auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
+                    TypeError error{argLoc, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, false}};
+                    return {ArityMismatch, {error}};
+                }
+                else if (auto vtp = get<VariadicTypePack>(follow(paramIter.tail())))
+                {
+                    if (auto errors = tryUnify(argLoc, args->head[argOffset], vtp->ty))
+                        argumentErrors.insert(argumentErrors.end(), errors->begin(), errors->end());
+                }
+
+                ++argOffset;
+            }
+
+            while (paramIter != end(fn->argTypes))
+            {
+                // If we can iterate over parameters, then we have exhausted the head of the arguments.
+                LUAU_ASSERT(argOffset == args->head.size());
+
+                // It may have a tail, however, so check that.
+                if (auto vtp = get<VariadicTypePack>(follow(args->tail)))
+                {
+                    Location argLoc = argLocs->at(argLocs->size() - 1);
+
+                    if (auto errors = tryUnify(argLoc, vtp->ty, *paramIter))
+                        argumentErrors.insert(argumentErrors.end(), errors->begin(), errors->end());
+                }
+                else if (!isOptional(*paramIter))
+                {
+                    Location argLoc = argLocs->empty() ? fnLoc : argLocs->at(argLocs->size() - 1);
+
+                    // It is ok to have excess parameters as long as they are all optional.
+                    auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
+                    TypeError error{argLoc, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, false}};
+                    return {ArityMismatch, {error}};
+                }
+
+                ++paramIter;
+            }
+
+            // We hit the end of the heads for both parameters and arguments, so check their tails.
+            LUAU_ASSERT(paramIter == end(fn->argTypes));
+            LUAU_ASSERT(argOffset == args->head.size());
+
+            if (paramIter.tail() && args->tail)
+            {
+                Location argLoc = argLocs->at(argLocs->size() - 1);
+
+                if (auto errors = tryUnify(argLoc, *args->tail, *paramIter.tail()))
+                    argumentErrors.insert(argumentErrors.end(), errors->begin(), errors->end());
+            }
+
+            return {argumentErrors.empty() ? Ok : OverloadIsNonviable, argumentErrors};
+        }
+
+        size_t indexof(Analysis analysis)
+        {
+            switch (analysis)
+            {
+            case Ok:
+                return ok.size();
+            case TypeIsNotAFunction:
+                return nonFunctions.size();
+            case ArityMismatch:
+                return arityMismatches.size();
+            case OverloadIsNonviable:
+                return nonviableOverloads.size();
+            }
+
+            ice->ice("Inexhaustive switch in FunctionCallResolver::indexof");
+        }
+
+        void add(Analysis analysis, TypeId ty, ErrorVec&& errors)
+        {
+            resolution.insert(ty, {analysis, indexof(analysis)});
+
+            switch (analysis)
+            {
+            case Ok:
+                LUAU_ASSERT(errors.empty());
+                ok.push_back(ty);
+                break;
+            case TypeIsNotAFunction:
+                LUAU_ASSERT(errors.empty());
+                nonFunctions.push_back(ty);
+                break;
+            case ArityMismatch:
+                LUAU_ASSERT(!errors.empty());
+                arityMismatches.emplace_back(ty, std::move(errors));
+                break;
+            case OverloadIsNonviable:
+                LUAU_ASSERT(!errors.empty());
+                nonviableOverloads.emplace_back(ty, std::move(errors));
+                break;
+            }
+        }
+
+    public:
+        void resolve(TypeId fnTy, const TypePack* args, Location selfLoc, const std::vector<Location>* argLocs)
+        {
+            fnTy = follow(fnTy);
+
+            auto it = get<IntersectionType>(fnTy);
+            if (!it)
+            {
+                auto [analysis, errors] = checkOverload(fnTy, args, selfLoc, argLocs);
+                add(analysis, fnTy, std::move(errors));
+                return;
+            }
+
+            for (TypeId ty : it)
+            {
+                if (resolution.find(ty) != resolution.end())
+                    continue;
+
+                auto [analysis, errors] = checkOverload(ty, args, selfLoc, argLocs);
+                add(analysis, ty, std::move(errors));
+            }
+        }
+    };
 
     void visit(AstExprCall* call)
     {
@@ -1584,7 +1702,11 @@ struct TypeChecker2
             leftType = stripNil(builtinTypes, testArena, leftType);
         }
 
-        bool isStringOperation = isString(leftType) && isString(rightType);
+        const NormalizedType* normLeft = normalizer.normalize(leftType);
+        const NormalizedType* normRight = normalizer.normalize(rightType);
+
+        bool isStringOperation =
+            (normLeft ? normLeft->isSubtypeOfString() : isString(leftType)) && (normRight ? normRight->isSubtypeOfString() : isString(rightType));
 
         if (get<AnyType>(leftType) || get<ErrorType>(leftType) || get<NeverType>(leftType))
             return leftType;
@@ -1630,14 +1752,15 @@ struct TypeChecker2
                 {
                     testUnion(utv, leftMt);
                 }
-
-                // If either left or right has no metatable (or both), we need to consider if
-                // there are values in common that could possibly inhabit the type (and thus equality could be considered)
-                if (!leftMt.has_value() || !rightMt.has_value())
-                {
-                    matches = matches || typesHaveIntersection;
-                }
             }
+
+            // If we're working with things that are not tables, the metatable comparisons above are a little excessive
+            // It's ok for one type to have a meta table and the other to not. In that case, we should fall back on
+            // checking if the intersection of the types is inhabited.
+            // TODO: Maybe add more checks here (e.g. for functions, classes, etc)
+            if (!(get<TableType>(leftType) || get<TableType>(rightType)))
+                if (!leftMt.has_value() || !rightMt.has_value())
+                    matches = matches || typesHaveIntersection;
 
             if (!matches && isComparison)
             {
@@ -1663,15 +1786,15 @@ struct TypeChecker2
                 if (overrideKey != nullptr)
                     key = overrideKey;
 
-                TypeId instantiatedMm = module->astOverloadResolvedTypes[key];
-                if (!instantiatedMm)
+                TypeId* selectedOverloadTy = module->astOverloadResolvedTypes.find(key);
+                if (!selectedOverloadTy)
                 {
                     // reportError(CodeTooComplex{}, expr->location);
                     // was handled by a type family
                     return expectedResult;
                 }
 
-                else if (const FunctionType* ftv = get<FunctionType>(follow(instantiatedMm)))
+                else if (const FunctionType* ftv = get<FunctionType>(follow(*selectedOverloadTy)))
                 {
                     TypePackId expectedArgs;
                     // For >= and > we invoke __lt and __le respectively with
@@ -1803,13 +1926,12 @@ struct TypeChecker2
         case AstExprBinary::Op::CompareLe:
         case AstExprBinary::Op::CompareLt:
         {
-            const NormalizedType* leftTyNorm = normalizer.normalize(leftType);
-            if (leftTyNorm && leftTyNorm->isExactlyNumber())
+            if (normLeft && normLeft->isExactlyNumber())
             {
                 reportErrors(tryUnify(scope, expr->right->location, rightType, builtinTypes->numberType));
                 return builtinTypes->numberType;
             }
-            else if (leftTyNorm && leftTyNorm->isSubtypeOfString())
+            else if (normLeft && normLeft->isSubtypeOfString())
             {
                 reportErrors(tryUnify(scope, expr->right->location, rightType, builtinTypes->stringType));
                 return builtinTypes->stringType;

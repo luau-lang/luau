@@ -108,6 +108,7 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::FALLBACK_SETTABLEKS:
     case IrCmd::FALLBACK_PREPVARARGS:
     case IrCmd::ADJUST_STACK_TO_TOP:
+    case IrCmd::GET_TYPEOF:
         break;
 
         // These instrucitons read VmReg only after optimizeMemoryOperandsX64

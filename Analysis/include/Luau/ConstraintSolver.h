@@ -246,6 +246,17 @@ private:
     bool tryUnify(NotNull<const Constraint> constraint, TID subTy, TID superTy);
 
     /**
+     * Bind a BlockedType to another type while taking care not to bind it to
+     * itself in the case that resultTy == blockedTy.  This can happen if we
+     * have a tautological constraint.  When it does, we must instead bind
+     * blockedTy to a fresh type belonging to an appropriate scope.
+     *
+     * To determine which scope is appropriate, we also accept rootTy, which is
+     * to be the type that contains blockedTy.
+     */
+    void bindBlockedType(TypeId blockedTy, TypeId resultTy, TypeId rootTy, Location location);
+
+    /**
      * Marks a constraint as being blocked on a type or type pack. The constraint
      * solver will not attempt to dispatch blocked constraints until their
      * dependencies have made progress.

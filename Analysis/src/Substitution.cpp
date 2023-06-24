@@ -8,13 +8,11 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAGVARIABLE(LuauSubstitutionFixMissingFields, false)
 LUAU_FASTFLAG(LuauClonePublicInterfaceLess2)
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
-LUAU_FASTFLAGVARIABLE(LuauClassTypeVarsInSubstitution, false)
-LUAU_FASTFLAGVARIABLE(LuauSubstitutionReentrant, false)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 LUAU_FASTFLAG(LuauCloneSkipNonInternalVisit)
+LUAU_FASTFLAGVARIABLE(LuauTarjanSingleArr, false)
 
 namespace Luau
 {
@@ -113,20 +111,35 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
         else if constexpr (std::is_same_v<T, BlockedType>)
             return dest.addType(a);
         else if constexpr (std::is_same_v<T, PrimitiveType>)
+        {
+            LUAU_ASSERT(ty->persistent);
             return ty;
+        }
         else if constexpr (std::is_same_v<T, PendingExpansionType>)
         {
             PendingExpansionType clone = PendingExpansionType{a.prefix, a.name, a.typeArguments, a.packArguments};
             return dest.addType(std::move(clone));
         }
         else if constexpr (std::is_same_v<T, AnyType>)
+        {
+            LUAU_ASSERT(ty->persistent);
             return ty;
+        }
         else if constexpr (std::is_same_v<T, ErrorType>)
+        {
+            LUAU_ASSERT(ty->persistent);
             return ty;
+        }
         else if constexpr (std::is_same_v<T, UnknownType>)
+        {
+            LUAU_ASSERT(ty->persistent);
             return ty;
+        }
         else if constexpr (std::is_same_v<T, NeverType>)
+        {
+            LUAU_ASSERT(ty->persistent);
             return ty;
+        }
         else if constexpr (std::is_same_v<T, LazyType>)
             return ty;
         else if constexpr (std::is_same_v<T, SingletonType>)
@@ -227,13 +240,10 @@ void Tarjan::visitChildren(TypeId ty, int index)
 
     if (const FunctionType* ftv = get<FunctionType>(ty))
     {
-        if (FFlag::LuauSubstitutionFixMissingFields)
-        {
-            for (TypeId generic : ftv->generics)
-                visitChild(generic);
-            for (TypePackId genericPack : ftv->genericPacks)
-                visitChild(genericPack);
-        }
+        for (TypeId generic : ftv->generics)
+            visitChild(generic);
+        for (TypePackId genericPack : ftv->genericPacks)
+            visitChild(genericPack);
 
         visitChild(ftv->argTypes);
         visitChild(ftv->retTypes);
@@ -295,7 +305,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
         for (TypePackId a : tfit->packArguments)
             visitChild(a);
     }
-    else if (const ClassType* ctv = get<ClassType>(ty); FFlag::LuauClassTypeVarsInSubstitution && ctv)
+    else if (const ClassType* ctv = get<ClassType>(ty))
     {
         for (const auto& [name, prop] : ctv->props)
             visitChild(prop.type());
@@ -348,36 +358,67 @@ std::pair<int, bool> Tarjan::indexify(TypeId ty)
 {
     ty = log->follow(ty);
 
-    bool fresh = !typeToIndex.contains(ty);
-    int& index = typeToIndex[ty];
-
-    if (fresh)
+    if (FFlag::LuauTarjanSingleArr)
     {
-        index = int(indexToType.size());
-        indexToType.push_back(ty);
-        indexToPack.push_back(nullptr);
-        onStack.push_back(false);
-        lowlink.push_back(index);
+        auto [index, fresh] = typeToIndex.try_insert(ty, false);
+
+        if (fresh)
+        {
+            index = int(nodes.size());
+            nodes.push_back({ty, nullptr, false, false, index});
+        }
+
+        return {index, fresh};
     }
-    return {index, fresh};
+    else
+    {
+        bool fresh = !typeToIndex.contains(ty);
+        int& index = typeToIndex[ty];
+
+        if (fresh)
+        {
+            index = int(indexToType.size());
+            indexToType.push_back(ty);
+            indexToPack.push_back(nullptr);
+            onStack.push_back(false);
+            lowlink.push_back(index);
+        }
+        return {index, fresh};
+    }
 }
 
 std::pair<int, bool> Tarjan::indexify(TypePackId tp)
 {
     tp = log->follow(tp);
 
-    bool fresh = !packToIndex.contains(tp);
-    int& index = packToIndex[tp];
-
-    if (fresh)
+    if (FFlag::LuauTarjanSingleArr)
     {
-        index = int(indexToPack.size());
-        indexToType.push_back(nullptr);
-        indexToPack.push_back(tp);
-        onStack.push_back(false);
-        lowlink.push_back(index);
+        auto [index, fresh] = packToIndex.try_insert(tp, false);
+
+        if (fresh)
+        {
+            index = int(nodes.size());
+            nodes.push_back({nullptr, tp, false, false, index});
+        }
+
+        return {index, fresh};
     }
-    return {index, fresh};
+    else
+    {
+
+        bool fresh = !packToIndex.contains(tp);
+        int& index = packToIndex[tp];
+
+        if (fresh)
+        {
+            index = int(indexToPack.size());
+            indexToType.push_back(nullptr);
+            indexToPack.push_back(tp);
+            onStack.push_back(false);
+            lowlink.push_back(index);
+        }
+        return {index, fresh};
+    }
 }
 
 void Tarjan::visitChild(TypeId ty)
@@ -397,6 +438,246 @@ void Tarjan::visitChild(TypePackId tp)
 }
 
 TarjanResult Tarjan::loop()
+{
+    if (!FFlag::LuauTarjanSingleArr)
+        return loop_DEPRECATED();
+
+    // Normally Tarjan is presented recursively, but this is a hot loop, so worth optimizing
+    while (!worklist.empty())
+    {
+        auto [index, currEdge, lastEdge] = worklist.back();
+
+        // First visit
+        if (currEdge == -1)
+        {
+            ++childCount;
+            if (childLimit > 0 && childLimit <= childCount)
+                return TarjanResult::TooManyChildren;
+
+            stack.push_back(index);
+
+            nodes[index].onStack = true;
+
+            currEdge = int(edgesTy.size());
+
+            // Fill in edge list of this vertex
+            if (TypeId ty = nodes[index].ty)
+                visitChildren(ty, index);
+            else if (TypePackId tp = nodes[index].tp)
+                visitChildren(tp, index);
+
+            lastEdge = int(edgesTy.size());
+        }
+
+        // Visit children
+        bool foundFresh = false;
+
+        for (; currEdge < lastEdge; currEdge++)
+        {
+            int childIndex = -1;
+            bool fresh = false;
+
+            if (auto ty = edgesTy[currEdge])
+                std::tie(childIndex, fresh) = indexify(ty);
+            else if (auto tp = edgesTp[currEdge])
+                std::tie(childIndex, fresh) = indexify(tp);
+            else
+                LUAU_ASSERT(false);
+
+            if (fresh)
+            {
+                // Original recursion point, update the parent continuation point and start the new element
+                worklist.back() = {index, currEdge + 1, lastEdge};
+                worklist.push_back({childIndex, -1, -1});
+
+                // We need to continue the top-level loop from the start with the new worklist element
+                foundFresh = true;
+                break;
+            }
+            else if (nodes[childIndex].onStack)
+            {
+                nodes[index].lowlink = std::min(nodes[index].lowlink, childIndex);
+            }
+
+            visitEdge(childIndex, index);
+        }
+
+        if (foundFresh)
+            continue;
+
+        if (nodes[index].lowlink == index)
+        {
+            visitSCC(index);
+            while (!stack.empty())
+            {
+                int popped = stack.back();
+                stack.pop_back();
+                nodes[popped].onStack = false;
+                if (popped == index)
+                    break;
+            }
+        }
+
+        worklist.pop_back();
+
+        // Original return from recursion into a child
+        if (!worklist.empty())
+        {
+            auto [parentIndex, _, parentEndEdge] = worklist.back();
+
+            // No need to keep child edges around
+            edgesTy.resize(parentEndEdge);
+            edgesTp.resize(parentEndEdge);
+
+            nodes[parentIndex].lowlink = std::min(nodes[parentIndex].lowlink, nodes[index].lowlink);
+            visitEdge(index, parentIndex);
+        }
+    }
+
+    return TarjanResult::Ok;
+}
+
+TarjanResult Tarjan::visitRoot(TypeId ty)
+{
+    childCount = 0;
+    if (childLimit == 0)
+        childLimit = FInt::LuauTarjanChildLimit;
+
+    ty = log->follow(ty);
+
+    auto [index, fresh] = indexify(ty);
+    worklist.push_back({index, -1, -1});
+    return loop();
+}
+
+TarjanResult Tarjan::visitRoot(TypePackId tp)
+{
+    childCount = 0;
+    if (childLimit == 0)
+        childLimit = FInt::LuauTarjanChildLimit;
+
+    tp = log->follow(tp);
+
+    auto [index, fresh] = indexify(tp);
+    worklist.push_back({index, -1, -1});
+    return loop();
+}
+
+void Tarjan::clearTarjan()
+{
+    if (FFlag::LuauTarjanSingleArr)
+    {
+        typeToIndex.clear();
+        packToIndex.clear();
+        nodes.clear();
+
+        stack.clear();
+    }
+    else
+    {
+        dirty.clear();
+
+        typeToIndex.clear();
+        packToIndex.clear();
+        indexToType.clear();
+        indexToPack.clear();
+
+        stack.clear();
+        onStack.clear();
+        lowlink.clear();
+    }
+
+    edgesTy.clear();
+    edgesTp.clear();
+    worklist.clear();
+}
+
+bool Tarjan::getDirty(int index)
+{
+    if (FFlag::LuauTarjanSingleArr)
+    {
+        LUAU_ASSERT(size_t(index) < nodes.size());
+        return nodes[index].dirty;
+    }
+    else
+    {
+        if (dirty.size() <= size_t(index))
+            dirty.resize(index + 1, false);
+        return dirty[index];
+    }
+}
+
+void Tarjan::setDirty(int index, bool d)
+{
+    if (FFlag::LuauTarjanSingleArr)
+    {
+        LUAU_ASSERT(size_t(index) < nodes.size());
+        nodes[index].dirty = d;
+    }
+    else
+    {
+        if (dirty.size() <= size_t(index))
+            dirty.resize(index + 1, false);
+        dirty[index] = d;
+    }
+}
+
+void Tarjan::visitEdge(int index, int parentIndex)
+{
+    if (getDirty(index))
+        setDirty(parentIndex, true);
+}
+
+void Tarjan::visitSCC(int index)
+{
+    if (!FFlag::LuauTarjanSingleArr)
+        return visitSCC_DEPRECATED(index);
+
+    bool d = getDirty(index);
+
+    for (auto it = stack.rbegin(); !d && it != stack.rend(); it++)
+    {
+        TarjanNode& node = nodes[*it];
+
+        if (TypeId ty = node.ty)
+            d = isDirty(ty);
+        else if (TypePackId tp = node.tp)
+            d = isDirty(tp);
+
+        if (*it == index)
+            break;
+    }
+
+    if (!d)
+        return;
+
+    for (auto it = stack.rbegin(); it != stack.rend(); it++)
+    {
+        setDirty(*it, true);
+
+        TarjanNode& node = nodes[*it];
+
+        if (TypeId ty = node.ty)
+            foundDirty(ty);
+        else if (TypePackId tp = node.tp)
+            foundDirty(tp);
+
+        if (*it == index)
+            return;
+    }
+}
+
+TarjanResult Tarjan::findDirty(TypeId ty)
+{
+    return visitRoot(ty);
+}
+
+TarjanResult Tarjan::findDirty(TypePackId tp)
+{
+    return visitRoot(tp);
+}
+
+TarjanResult Tarjan::loop_DEPRECATED()
 {
     // Normally Tarjan is presented recursively, but this is a hot loop, so worth optimizing
     while (!worklist.empty())
@@ -492,71 +773,8 @@ TarjanResult Tarjan::loop()
     return TarjanResult::Ok;
 }
 
-TarjanResult Tarjan::visitRoot(TypeId ty)
-{
-    childCount = 0;
-    if (childLimit == 0)
-        childLimit = FInt::LuauTarjanChildLimit;
 
-    ty = log->follow(ty);
-
-    auto [index, fresh] = indexify(ty);
-    worklist.push_back({index, -1, -1});
-    return loop();
-}
-
-TarjanResult Tarjan::visitRoot(TypePackId tp)
-{
-    childCount = 0;
-    if (childLimit == 0)
-        childLimit = FInt::LuauTarjanChildLimit;
-
-    tp = log->follow(tp);
-
-    auto [index, fresh] = indexify(tp);
-    worklist.push_back({index, -1, -1});
-    return loop();
-}
-
-void FindDirty::clearTarjan()
-{
-    dirty.clear();
-
-    typeToIndex.clear();
-    packToIndex.clear();
-    indexToType.clear();
-    indexToPack.clear();
-
-    stack.clear();
-    onStack.clear();
-    lowlink.clear();
-
-    edgesTy.clear();
-    edgesTp.clear();
-    worklist.clear();
-}
-
-bool FindDirty::getDirty(int index)
-{
-    if (dirty.size() <= size_t(index))
-        dirty.resize(index + 1, false);
-    return dirty[index];
-}
-
-void FindDirty::setDirty(int index, bool d)
-{
-    if (dirty.size() <= size_t(index))
-        dirty.resize(index + 1, false);
-    dirty[index] = d;
-}
-
-void FindDirty::visitEdge(int index, int parentIndex)
-{
-    if (getDirty(index))
-        setDirty(parentIndex, true);
-}
-
-void FindDirty::visitSCC(int index)
+void Tarjan::visitSCC_DEPRECATED(int index)
 {
     bool d = getDirty(index);
 
@@ -585,23 +803,12 @@ void FindDirty::visitSCC(int index)
     }
 }
 
-TarjanResult FindDirty::findDirty(TypeId ty)
-{
-    return visitRoot(ty);
-}
-
-TarjanResult FindDirty::findDirty(TypePackId tp)
-{
-    return visitRoot(tp);
-}
-
 std::optional<TypeId> Substitution::substitute(TypeId ty)
 {
     ty = log->follow(ty);
 
     // clear algorithm state for reentrancy
-    if (FFlag::LuauSubstitutionReentrant)
-        clearTarjan();
+    clearTarjan();
 
     auto result = findDirty(ty);
     if (result != TarjanResult::Ok)
@@ -609,34 +816,18 @@ std::optional<TypeId> Substitution::substitute(TypeId ty)
 
     for (auto [oldTy, newTy] : newTypes)
     {
-        if (FFlag::LuauSubstitutionReentrant)
+        if (!ignoreChildren(oldTy) && !replacedTypes.contains(newTy))
         {
-            if (!ignoreChildren(oldTy) && !replacedTypes.contains(newTy))
-            {
-                replaceChildren(newTy);
-                replacedTypes.insert(newTy);
-            }
-        }
-        else
-        {
-            if (!ignoreChildren(oldTy))
-                replaceChildren(newTy);
+            replaceChildren(newTy);
+            replacedTypes.insert(newTy);
         }
     }
     for (auto [oldTp, newTp] : newPacks)
     {
-        if (FFlag::LuauSubstitutionReentrant)
+        if (!ignoreChildren(oldTp) && !replacedTypePacks.contains(newTp))
         {
-            if (!ignoreChildren(oldTp) && !replacedTypePacks.contains(newTp))
-            {
-                replaceChildren(newTp);
-                replacedTypePacks.insert(newTp);
-            }
-        }
-        else
-        {
-            if (!ignoreChildren(oldTp))
-                replaceChildren(newTp);
+            replaceChildren(newTp);
+            replacedTypePacks.insert(newTp);
         }
     }
     TypeId newTy = replace(ty);
@@ -648,8 +839,7 @@ std::optional<TypePackId> Substitution::substitute(TypePackId tp)
     tp = log->follow(tp);
 
     // clear algorithm state for reentrancy
-    if (FFlag::LuauSubstitutionReentrant)
-        clearTarjan();
+    clearTarjan();
 
     auto result = findDirty(tp);
     if (result != TarjanResult::Ok)
@@ -657,34 +847,18 @@ std::optional<TypePackId> Substitution::substitute(TypePackId tp)
 
     for (auto [oldTy, newTy] : newTypes)
     {
-        if (FFlag::LuauSubstitutionReentrant)
+        if (!ignoreChildren(oldTy) && !replacedTypes.contains(newTy))
         {
-            if (!ignoreChildren(oldTy) && !replacedTypes.contains(newTy))
-            {
-                replaceChildren(newTy);
-                replacedTypes.insert(newTy);
-            }
-        }
-        else
-        {
-            if (!ignoreChildren(oldTy))
-                replaceChildren(newTy);
+            replaceChildren(newTy);
+            replacedTypes.insert(newTy);
         }
     }
     for (auto [oldTp, newTp] : newPacks)
     {
-        if (FFlag::LuauSubstitutionReentrant)
+        if (!ignoreChildren(oldTp) && !replacedTypePacks.contains(newTp))
         {
-            if (!ignoreChildren(oldTp) && !replacedTypePacks.contains(newTp))
-            {
-                replaceChildren(newTp);
-                replacedTypePacks.insert(newTp);
-            }
-        }
-        else
-        {
-            if (!ignoreChildren(oldTp))
-                replaceChildren(newTp);
+            replaceChildren(newTp);
+            replacedTypePacks.insert(newTp);
         }
     }
     TypePackId newTp = replace(tp);
@@ -714,8 +888,7 @@ TypePackId Substitution::clone(TypePackId tp)
     {
         VariadicTypePack clone;
         clone.ty = vtp->ty;
-        if (FFlag::LuauSubstitutionFixMissingFields)
-            clone.hidden = vtp->hidden;
+        clone.hidden = vtp->hidden;
         return addTypePack(std::move(clone));
     }
     else if (const TypeFamilyInstanceTypePack* tfitp = get<TypeFamilyInstanceTypePack>(tp))
@@ -738,7 +911,7 @@ void Substitution::foundDirty(TypeId ty)
 {
     ty = log->follow(ty);
 
-    if (FFlag::LuauSubstitutionReentrant && newTypes.contains(ty))
+    if (newTypes.contains(ty))
         return;
 
     if (isDirty(ty))
@@ -751,7 +924,7 @@ void Substitution::foundDirty(TypePackId tp)
 {
     tp = log->follow(tp);
 
-    if (FFlag::LuauSubstitutionReentrant && newPacks.contains(tp))
+    if (newPacks.contains(tp))
         return;
 
     if (isDirty(tp))
@@ -792,13 +965,10 @@ void Substitution::replaceChildren(TypeId ty)
 
     if (FunctionType* ftv = getMutable<FunctionType>(ty))
     {
-        if (FFlag::LuauSubstitutionFixMissingFields)
-        {
-            for (TypeId& generic : ftv->generics)
-                generic = replace(generic);
-            for (TypePackId& genericPack : ftv->genericPacks)
-                genericPack = replace(genericPack);
-        }
+        for (TypeId& generic : ftv->generics)
+            generic = replace(generic);
+        for (TypePackId& genericPack : ftv->genericPacks)
+            genericPack = replace(genericPack);
 
         ftv->argTypes = replace(ftv->argTypes);
         ftv->retTypes = replace(ftv->retTypes);
@@ -857,7 +1027,7 @@ void Substitution::replaceChildren(TypeId ty)
         for (TypePackId& a : tfit->packArguments)
             a = replace(a);
     }
-    else if (ClassType* ctv = getMutable<ClassType>(ty); FFlag::LuauClassTypeVarsInSubstitution && ctv)
+    else if (ClassType* ctv = getMutable<ClassType>(ty))
     {
         for (auto& [name, prop] : ctv->props)
             prop.setType(replace(prop.type()));

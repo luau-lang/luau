@@ -1291,4 +1291,45 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "convoluted_case_where_two_TypeVars_were_boun
     // If this code does not crash, we are in good shape.
 }
 
+/*
+ * Under DCR we had an issue where constraint resolution resulted in the
+ * following:
+ *
+ * *blocked-55* ~ hasProp {- name: *blocked-55* -}, "name"
+ *
+ * This is a perfectly reasonable constraint, but one that doesn't actually
+ * constrain anything.  When we encounter a constraint like this, we need to
+ * replace the result type by a free type that is scoped to the enclosing table.
+ *
+ * Conceptually, it's simplest to think of this constraint as one that is
+ * tautological.  It does not actually contribute any new information.
+ */
+TEST_CASE_FIXTURE(Fixture, "handle_self_referential_HasProp_constraints")
+{
+    CheckResult result = check(R"(
+        local function calculateTopBarHeight(props)
+        end
+        local function isTopPage(props)
+            local topMostOpaquePage
+            if props.avatarRoute then
+                topMostOpaquePage = props.avatarRoute.opaque.name
+            else
+                topMostOpaquePage = props.opaquePage
+            end
+        end
+
+        function TopBarContainer:updateTopBarHeight(prevProps, prevState)
+            calculateTopBarHeight(self.props)
+            isTopPage(self.props)
+            local topMostOpaquePage
+            if self.props.avatarRoute then
+                topMostOpaquePage = self.props.avatarRoute.opaque.name
+                --                  ^--------------------------------^
+            else
+                topMostOpaquePage = self.props.opaquePage
+            end
+        end
+    )");
+}
+
 TEST_SUITE_END();

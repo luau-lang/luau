@@ -9,8 +9,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError)
-
 TEST_SUITE_BEGIN("ProvisionalTests");
 
 // These tests check for behavior that differs from the final behavior we'd
@@ -793,20 +791,10 @@ TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_ty
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauTypeMismatchInvarianceInError)
-    {
-        CHECK_EQ(R"(Type '{| x: number? |}' could not be converted into '{| x: number |}'
+    CHECK_EQ(R"(Type '{| x: number? |}' could not be converted into '{| x: number |}'
 caused by:
   Property 'x' is not compatible. Type 'number?' could not be converted into 'number' in an invariant context)",
-            toString(result.errors[0]));
-    }
-    else
-    {
-        CHECK_EQ(R"(Type '{| x: number? |}' could not be converted into '{| x: number |}'
-caused by:
-  Property 'x' is not compatible. Type 'number?' could not be converted into 'number')",
-            toString(result.errors[0]));
-    }
+        toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_with_a_singleton_argument")
@@ -856,10 +844,6 @@ TEST_CASE_FIXTURE(Fixture, "lookup_prop_of_intersection_containing_unions_of_tab
 
 TEST_CASE_FIXTURE(Fixture, "expected_type_should_be_a_helpful_deduction_guide_for_function_calls")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauTypeMismatchInvarianceInError", true},
-    };
-
     CheckResult result = check(R"(
         type Ref<T> = { val: T }
 
@@ -947,10 +931,6 @@ TEST_CASE_FIXTURE(Fixture, "unify_more_complex_unions_that_include_nil")
 
 TEST_CASE_FIXTURE(Fixture, "optional_class_instances_are_invariant")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauTypeMismatchInvarianceInError", true}
-    };
-
     createSomeClasses(&frontend);
 
     CheckResult result = check(R"(

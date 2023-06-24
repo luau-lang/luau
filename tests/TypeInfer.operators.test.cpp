@@ -1238,4 +1238,21 @@ TEST_CASE_FIXTURE(Fixture, "add_type_family_works")
     CHECK(toString(result.errors[0]) == "Type family instance Add<string, string> is uninhabited");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "normalize_strings_comparison")
+{
+    CheckResult result = check(R"(
+local function sortKeysForPrinting(a: any, b)
+	local typeofA = type(a)
+	local typeofB = type(b)
+	-- strings and numbers are sorted numerically/alphabetically
+	if typeofA == typeofB and (typeofA == "number" or typeofA == "string") then
+		return a < b
+	end
+	-- sort the rest by type name
+	return typeofA < typeofB
+end
+)");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

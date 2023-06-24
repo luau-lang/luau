@@ -17,7 +17,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -2077,14 +2076,9 @@ local b: B = a
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    if (FFlag::LuauTypeMismatchInvarianceInError)
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
 caused by:
   Property 'y' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
-    else
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
-caused by:
-  Property 'y' is not compatible. Type 'number' could not be converted into 'string')");
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_prop_nested")
@@ -2101,18 +2095,11 @@ local b: B = a
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    if (FFlag::LuauTypeMismatchInvarianceInError)
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
 caused by:
   Property 'b' is not compatible. Type 'AS' could not be converted into 'BS'
 caused by:
   Property 'y' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
-    else
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
-caused by:
-  Property 'b' is not compatible. Type 'AS' could not be converted into 'BS'
-caused by:
-  Property 'y' is not compatible. Type 'number' could not be converted into 'string')");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "error_detailed_metatable_prop")
@@ -2128,18 +2115,11 @@ local c2: typeof(a2) = b2
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    if (FFlag::LuauTypeMismatchInvarianceInError)
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'b1' could not be converted into 'a1'
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'b1' could not be converted into 'a1'
 caused by:
   Type '{ x: number, y: string }' could not be converted into '{ x: number, y: number }'
 caused by:
   Property 'y' is not compatible. Type 'string' could not be converted into 'number' in an invariant context)");
-    else
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'b1' could not be converted into 'a1'
-caused by:
-  Type '{ x: number, y: string }' could not be converted into '{ x: number, y: number }'
-caused by:
-  Property 'y' is not compatible. Type 'string' could not be converted into 'number')");
 
     if (FFlag::LuauInstantiateInSubtyping)
     {
@@ -2170,14 +2150,9 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_key")
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    if (FFlag::LuauTypeMismatchInvarianceInError)
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
 caused by:
   Property '[indexer key]' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
-    else
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
-caused by:
-  Property '[indexer key]' is not compatible. Type 'number' could not be converted into 'string')");
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_value")
@@ -2191,14 +2166,9 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_value")
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    if (FFlag::LuauTypeMismatchInvarianceInError)
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
 caused by:
   Property '[indexer value]' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
-    else
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
-caused by:
-  Property '[indexer value]' is not compatible. Type 'number' could not be converted into 'string')");
 }
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table")
@@ -2871,10 +2841,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_call_metamethod_must_be_callable")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(result.errors[0] == TypeError{
-                                  Location{{5, 20}, {5, 21}},
-                                  CannotCallNonFunction{builtinTypes->numberType},
-                              });
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK("Cannot call non-function { @metatable { __call: number }, {  } }" == toString(result.errors[0]));
+    }
+    else
+    {
+        TypeError e{
+            Location{{5, 20}, {5, 21}},
+            CannotCallNonFunction{builtinTypes->numberType},
+        };
+
+        CHECK(result.errors[0] == e);
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_call_metamethod_generic")

@@ -12,8 +12,6 @@
 using namespace Luau;
 using std::nullopt;
 
-LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError);
-
 TEST_SUITE_BEGIN("TypeInferClasses");
 
 TEST_CASE_FIXTURE(ClassFixture, "call_method_of_a_class")
@@ -462,14 +460,9 @@ local b: B = a
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    if (FFlag::LuauTypeMismatchInvarianceInError)
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
 caused by:
   Property 'x' is not compatible. Type 'ChildClass' could not be converted into 'BaseClass' in an invariant context)");
-    else
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
-caused by:
-  Property 'x' is not compatible. Type 'ChildClass' could not be converted into 'BaseClass')");
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "callable_classes")

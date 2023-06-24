@@ -344,8 +344,10 @@ static BuiltinImplResult translateBuiltinType(IrBuilder& build, int nparams, int
     if (nparams < 1 || nresults > 1)
         return {BuiltinImplType::None, -1};
 
-    build.inst(IrCmd::FASTCALL, build.constUint(LBF_TYPE), build.vmReg(ra), build.vmReg(arg), args, build.constInt(1), build.constInt(1));
+    IrOp tag = build.inst(IrCmd::LOAD_TAG, build.vmReg(arg));
+    IrOp name = build.inst(IrCmd::GET_TYPE, tag);
 
+    build.inst(IrCmd::STORE_POINTER, build.vmReg(ra), name);
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TSTRING));
 
     return {BuiltinImplType::UsesFallback, 1};
@@ -356,8 +358,9 @@ static BuiltinImplResult translateBuiltinTypeof(IrBuilder& build, int nparams, i
     if (nparams < 1 || nresults > 1)
         return {BuiltinImplType::None, -1};
 
-    build.inst(IrCmd::FASTCALL, build.constUint(LBF_TYPEOF), build.vmReg(ra), build.vmReg(arg), args, build.constInt(1), build.constInt(1));
+    IrOp name = build.inst(IrCmd::GET_TYPEOF, build.vmReg(arg));
 
+    build.inst(IrCmd::STORE_POINTER, build.vmReg(ra), name);
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TSTRING));
 
     return {BuiltinImplType::UsesFallback, 1};
