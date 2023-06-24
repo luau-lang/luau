@@ -23,6 +23,17 @@ using AnnotatorFn = void (*)(void* context, std::string& result, int fid, int in
 
 struct AssemblyOptions
 {
+    enum Target
+    {
+        Host,
+        A64,
+        A64_NoFeatures,
+        X64_Windows,
+        X64_SystemV,
+    };
+
+    Target target = Host;
+
     bool outputBinary = false;
 
     bool includeAssembly = false;

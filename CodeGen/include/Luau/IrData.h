@@ -414,6 +414,7 @@ enum class IrCmd : uint8_t
     // Handle GC write barrier (forward)
     // A: pointer (GCObject)
     // B: Rn (TValue that was written to the object)
+    // C: tag/undef (tag of the value that was written)
     BARRIER_OBJ,
 
     // Handle GC write barrier (backwards) for a write into a table
@@ -423,6 +424,7 @@ enum class IrCmd : uint8_t
     // Handle GC write barrier (forward) for a write into a table
     // A: pointer (Table)
     // B: Rn (TValue that was written to the object)
+    // C: tag/undef (tag of the value that was written)
     BARRIER_TABLE_FORWARD,
 
     // Update savedpc value
@@ -584,6 +586,14 @@ enum class IrCmd : uint8_t
     // B: double
     // C: double/int (optional, 2nd argument)
     INVOKE_LIBM,
+
+    // Returns the string name of a type based on tag, alternative for type(x)
+    // A: tag
+    GET_TYPE,
+
+    // Returns the string name of a type either from a __type metatable field or just based on the tag, alternative for typeof(x)
+    // A: Rn
+    GET_TYPEOF,
 };
 
 enum class IrConstKind : uint8_t

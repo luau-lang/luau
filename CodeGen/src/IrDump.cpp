@@ -297,6 +297,10 @@ const char* getCmdName(IrCmd cmd)
         return "BITCOUNTRZ_UINT";
     case IrCmd::INVOKE_LIBM:
         return "INVOKE_LIBM";
+    case IrCmd::GET_TYPE:
+        return "GET_TYPE";
+    case IrCmd::GET_TYPEOF:
+        return "GET_TYPEOF";
     }
 
     LUAU_UNREACHABLE();

@@ -19,7 +19,6 @@ LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeBlockedTypes, false);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
 LUAU_FASTFLAG(LuauTransitiveSubtyping)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
@@ -310,12 +309,6 @@ static bool isShallowInhabited(const NormalizedType& norm)
     return !get<NeverType>(norm.tops) || !get<NeverType>(norm.booleans) || !norm.classes.isNever() || !get<NeverType>(norm.errors) ||
            !get<NeverType>(norm.nils) || !get<NeverType>(norm.numbers) || !norm.strings.isNever() || !get<NeverType>(norm.threads) ||
            !norm.functions.isNever() || !norm.tables.empty() || !norm.tyvars.empty();
-}
-
-bool isInhabited_DEPRECATED(const NormalizedType& norm)
-{
-    LUAU_ASSERT(!FFlag::LuauUninhabitedSubAnything2);
-    return isShallowInhabited(norm);
 }
 
 bool Normalizer::isInhabited(const NormalizedType* norm, std::unordered_set<TypeId> seen)

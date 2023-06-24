@@ -207,8 +207,6 @@ struct NormalizedFunctionType
 struct NormalizedType;
 using NormalizedTyvars = std::unordered_map<TypeId, std::unique_ptr<NormalizedType>>;
 
-bool isInhabited_DEPRECATED(const NormalizedType& norm);
-
 // A normalized type is either any, unknown, or one of the form P | T | F | G where
 // * P is a union of primitive types (including singletons, classes and the error type)
 // * T is a union of table types

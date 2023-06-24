@@ -88,6 +88,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/CodeAllocator.cpp
     CodeGen/src/CodeBlockUnwind.cpp
     CodeGen/src/CodeGen.cpp
+    CodeGen/src/CodeGenAssembly.cpp
     CodeGen/src/CodeGenUtils.cpp
     CodeGen/src/CodeGenA64.cpp
     CodeGen/src/CodeGenX64.cpp
@@ -115,6 +116,7 @@ target_sources(Luau.CodeGen PRIVATE
 
     CodeGen/src/BitUtils.h
     CodeGen/src/ByteUtils.h
+    CodeGen/src/CodeGenLower.h
     CodeGen/src/CodeGenUtils.h
     CodeGen/src/CodeGenA64.h
     CodeGen/src/CodeGenX64.h

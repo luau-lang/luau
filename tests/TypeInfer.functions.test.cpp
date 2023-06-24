@@ -1312,10 +1312,6 @@ f(function(x) return x * 2 end)
 
 TEST_CASE_FIXTURE(Fixture, "variadic_any_is_compatible_with_a_generic_TypePack")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauVariadicAnyCanBeGeneric", true}
-    };
-
     CheckResult result = check(R"(
         --!strict
         local function f(...) return ... end
@@ -1328,8 +1324,6 @@ TEST_CASE_FIXTURE(Fixture, "variadic_any_is_compatible_with_a_generic_TypePack")
 // https://github.com/Roblox/luau/issues/767
 TEST_CASE_FIXTURE(BuiltinsFixture, "variadic_any_is_compatible_with_a_generic_TypePack_2")
 {
-    ScopedFastFlag sff{"LuauVariadicAnyCanBeGeneric", true};
-
     CheckResult result = check(R"(
         local function somethingThatsAny(...: any)
             print(...)
@@ -1920,8 +1914,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_assert_when_the_tarjan_limit_is_exceede
     ScopedFastFlag sff[] = {
         {"DebugLuauDeferredConstraintResolution", true},
         {"LuauClonePublicInterfaceLess2", true},
-        {"LuauSubstitutionReentrant", true},
-        {"LuauSubstitutionFixMissingFields", true},
         {"LuauCloneSkipNonInternalVisit", true},
     };
 
@@ -2087,6 +2079,21 @@ TEST_CASE_FIXTURE(Fixture, "attempt_to_call_an_intersection_of_tables")
         CHECK_EQ(toString(result.errors[0]), "Cannot call non-function {| x: number |} & {| y: string |}");
     else
         CHECK_EQ(toString(result.errors[0]), "Cannot call non-function {| x: number |}");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_with_call_metamethod")
+{
+    CheckResult result = check(R"(
+        type Callable = typeof(setmetatable({}, {
+            __call = function(self, ...) return ... end
+        }))
+
+        local function f(t: Callable & { x: number })
+            t()
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

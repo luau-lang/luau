@@ -825,7 +825,7 @@ void translateInstSetTableN(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
     build.inst(IrCmd::STORE_TVALUE, arrEl, tva);
 
-    build.inst(IrCmd::BARRIER_TABLE_FORWARD, vb, build.vmReg(ra));
+    build.inst(IrCmd::BARRIER_TABLE_FORWARD, vb, build.vmReg(ra), build.undef());
 
     IrOp next = build.blockAtInst(pcpos + 1);
     FallbackStreamScope scope(build, fallback, next);
@@ -902,7 +902,7 @@ void translateInstSetTable(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
     build.inst(IrCmd::STORE_TVALUE, arrEl, tva);
 
-    build.inst(IrCmd::BARRIER_TABLE_FORWARD, vb, build.vmReg(ra));
+    build.inst(IrCmd::BARRIER_TABLE_FORWARD, vb, build.vmReg(ra), build.undef());
 
     IrOp next = build.blockAtInst(pcpos + 1);
     FallbackStreamScope scope(build, fallback, next);
@@ -989,7 +989,7 @@ void translateInstSetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
     build.inst(IrCmd::STORE_NODE_VALUE_TV, addrSlotEl, tva);
 
-    build.inst(IrCmd::BARRIER_TABLE_FORWARD, vb, build.vmReg(ra));
+    build.inst(IrCmd::BARRIER_TABLE_FORWARD, vb, build.vmReg(ra), build.undef());
 
     IrOp next = build.blockAtInst(pcpos + 2);
     FallbackStreamScope scope(build, fallback, next);
@@ -1036,7 +1036,7 @@ void translateInstSetGlobal(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
     build.inst(IrCmd::STORE_NODE_VALUE_TV, addrSlotEl, tva);
 
-    build.inst(IrCmd::BARRIER_TABLE_FORWARD, env, build.vmReg(ra));
+    build.inst(IrCmd::BARRIER_TABLE_FORWARD, env, build.vmReg(ra), build.undef());
 
     IrOp next = build.blockAtInst(pcpos + 2);
     FallbackStreamScope scope(build, fallback, next);

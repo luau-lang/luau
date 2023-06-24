@@ -22,10 +22,9 @@ namespace CodeGen
 namespace X64
 {
 
-IrLoweringX64::IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, NativeState& data, IrFunction& function)
+IrLoweringX64::IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, IrFunction& function)
     : build(build)
     , helpers(helpers)
-    , data(data)
     , function(function)
     , regs(build, function)
     , valueTracker(function)
@@ -872,7 +871,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         tmp1.free();
 
-        callBarrierObject(regs, build, tmp2.release(), {}, vmRegOp(inst.b));
+        callBarrierObject(regs, build, tmp2.release(), {}, vmRegOp(inst.b), /* ratag */ -1);
         break;
     }
     case IrCmd::PREPARE_FORN:
@@ -983,7 +982,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         callStepGc(regs, build);
         break;
     case IrCmd::BARRIER_OBJ:
-        callBarrierObject(regs, build, regOp(inst.a), inst.a, vmRegOp(inst.b));
+        callBarrierObject(regs, build, regOp(inst.a), inst.a, vmRegOp(inst.b), inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c));
         break;
     case IrCmd::BARRIER_TABLE_BACK:
         callBarrierTableFast(regs, build, regOp(inst.a), inst.a);
@@ -993,7 +992,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         Label skip;
 
         ScopedRegX64 tmp{regs, SizeX64::qword};
-        checkObjectBarrierConditions(build, tmp.reg, regOp(inst.a), vmRegOp(inst.b), skip);
+        checkObjectBarrierConditions(build, tmp.reg, regOp(inst.a), vmRegOp(inst.b), inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
 
         {
             ScopedSpills spillGuard(regs);
@@ -1350,6 +1349,30 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         inst.regX64 = regs.takeReg(xmm0, index);
         break;
     }
+    case IrCmd::GET_TYPE:
+    {
+        inst.regX64 = regs.allocReg(SizeX64::qword, index);
+
+        build.mov(inst.regX64, qword[rState + offsetof(lua_State, global)]);
+
+        if (inst.a.kind == IrOpKind::Inst)
+            build.mov(inst.regX64, qword[inst.regX64 + qwordReg(regOp(inst.a)) * sizeof(TString*) + offsetof(global_State, ttname)]);
+        else if (inst.a.kind == IrOpKind::Constant)
+            build.mov(inst.regX64, qword[inst.regX64 + tagOp(inst.a) * sizeof(TString*) + offsetof(global_State, ttname)]);
+        else
+            LUAU_ASSERT(!"Unsupported instruction form");
+        break;
+    }
+    case IrCmd::GET_TYPEOF:
+    {
+        IrCallWrapperX64 callWrap(regs, build);
+        callWrap.addArgument(SizeX64::qword, rState);
+        callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(inst.a)));
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaT_objtypenamestr)]);
+
+        inst.regX64 = regs.takeReg(rax, index);
+        break;
+    }
 
     // Pseudo instructions
     case IrCmd::NOP:
@@ -1376,7 +1399,7 @@ void IrLoweringX64::finishFunction()
     for (InterruptHandler& handler : interruptHandlers)
     {
         build.setLabel(handler.self);
-        build.mov(rax, handler.pcpos + 1);
+        build.mov(eax, handler.pcpos + 1);
         build.lea(rbx, handler.next);
         build.jmp(helpers.interrupt);
     }

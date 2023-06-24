@@ -444,6 +444,9 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
         case IrCmd::ADJUST_STACK_TO_TOP:
             // While this can be considered to be a vararg consumer, it is already handled in fastcall instructions
             break;
+        case IrCmd::GET_TYPEOF:
+            use(inst.a);
+            break;
 
         default:
             // All instructions which reference registers have to be handled explicitly

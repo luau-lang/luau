@@ -19,12 +19,10 @@
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
-LUAU_FASTFLAGVARIABLE(LuauUninhabitedSubAnything2, false)
 LUAU_FASTFLAGVARIABLE(LuauVariadicAnyCanBeGeneric, false)
 LUAU_FASTFLAGVARIABLE(LuauMaintainScopesInUnifier, false)
 LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauOccursIsntAlwaysFailure, false)
-LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
 LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls)
@@ -315,7 +313,7 @@ TypePackId Widen::clean(TypePackId)
 
 bool Widen::ignoreChildren(TypeId ty)
 {
-    if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassType>(ty))
+    if (get<ClassType>(ty))
         return true;
 
     return !log->is<UnionType>(ty);
@@ -748,10 +746,9 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     else if (log.get<NegationType>(superTy) || log.get<NegationType>(subTy))
         tryUnifyNegations(subTy, superTy);
 
-    else if (FFlag::LuauUninhabitedSubAnything2 && checkInhabited && !normalizer->isInhabited(subTy))
+    else if (checkInhabited && !normalizer->isInhabited(subTy))
     {
     }
-
     else
         reportError(location, TypeMismatch{superTy, subTy, mismatchContext()});
 
@@ -2365,7 +2362,7 @@ void Unifier::tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed)
     TypeId osubTy = subTy;
     TypeId osuperTy = superTy;
 
-    if (FFlag::LuauUninhabitedSubAnything2 && checkInhabited && !normalizer->isInhabited(subTy))
+    if (checkInhabited && !normalizer->isInhabited(subTy))
         return;
 
     if (reversed)
@@ -2739,7 +2736,7 @@ void Unifier::tryUnifyVariadics(TypePackId subTp, TypePackId superTp, bool rever
             }
         }
     }
-    else if (FFlag::LuauVariadicAnyCanBeGeneric && get<AnyType>(variadicTy) && log.get<GenericTypePack>(subTp))
+    else if (get<AnyType>(variadicTy) && log.get<GenericTypePack>(subTp))
     {
         // Nothing to do.  This is ok.
     }
@@ -2893,7 +2890,7 @@ bool Unifier::occursCheck(TypeId needle, TypeId haystack, bool reversed)
         if (innerState.failure)
         {
             reportError(location, OccursCheckFailed{});
-            log.replace(needle, *builtinTypes->errorRecoveryType());
+            log.replace(needle, BoundType{builtinTypes->errorRecoveryType()});
         }
     }
 

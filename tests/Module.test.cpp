@@ -409,9 +409,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_reexports")
 {
     ScopedFastFlag flags[] = {
         {"LuauClonePublicInterfaceLess2", true},
-        {"LuauSubstitutionReentrant", true},
-        {"LuauClassTypeVarsInSubstitution", true},
-        {"LuauSubstitutionFixMissingFields", true},
     };
 
     fileResolver.source["Module/A"] = R"(
@@ -447,9 +444,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_types_of_reexported_values")
 {
     ScopedFastFlag flags[] = {
         {"LuauClonePublicInterfaceLess2", true},
-        {"LuauSubstitutionReentrant", true},
-        {"LuauClassTypeVarsInSubstitution", true},
-        {"LuauSubstitutionFixMissingFields", true},
     };
 
     fileResolver.source["Module/A"] = R"(

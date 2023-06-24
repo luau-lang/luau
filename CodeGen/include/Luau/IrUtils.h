@@ -189,6 +189,8 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::BITCOUNTLZ_UINT:
     case IrCmd::BITCOUNTRZ_UINT:
     case IrCmd::INVOKE_LIBM:
+    case IrCmd::GET_TYPE:
+    case IrCmd::GET_TYPEOF:
         return true;
     default:
         break;

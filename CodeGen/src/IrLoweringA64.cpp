@@ -60,14 +60,18 @@ inline ConditionA64 getConditionFP(IrCondition cond)
     }
 }
 
-static void checkObjectBarrierConditions(AssemblyBuilderA64& build, RegisterA64 object, RegisterA64 temp, int ra, Label& skip)
+static void checkObjectBarrierConditions(AssemblyBuilderA64& build, RegisterA64 object, RegisterA64 temp, int ra, int ratag, Label& skip)
 {
     RegisterA64 tempw = castReg(KindA64::w, temp);
 
-    // iscollectable(ra)
-    build.ldr(tempw, mem(rBase, ra * sizeof(TValue) + offsetof(TValue, tt)));
-    build.cmp(tempw, LUA_TSTRING);
-    build.b(ConditionA64::Less, skip);
+    // Barrier should've been optimized away if we know that it's not collectable, checking for correctness
+    if (ratag == -1 || !isGCO(ratag))
+    {
+        // iscollectable(ra)
+        build.ldr(tempw, mem(rBase, ra * sizeof(TValue) + offsetof(TValue, tt)));
+        build.cmp(tempw, LUA_TSTRING);
+        build.b(ConditionA64::Less, skip);
+    }
 
     // isblack(obj2gco(o))
     build.ldrb(tempw, mem(object, offsetof(GCheader, marked)));
@@ -162,33 +166,15 @@ static bool emitBuiltin(
         build.str(d0, mem(rBase, res * sizeof(TValue) + offsetof(TValue, value.n)));
         return true;
 
-    case LBF_TYPE:
-        build.ldr(w0, mem(rBase, arg * sizeof(TValue) + offsetof(TValue, tt)));
-        build.ldr(x1, mem(rState, offsetof(lua_State, global)));
-        LUAU_ASSERT(sizeof(TString*) == 8);
-        build.add(x1, x1, zextReg(w0), 3);
-        build.ldr(x0, mem(x1, offsetof(global_State, ttname)));
-        build.str(x0, mem(rBase, res * sizeof(TValue) + offsetof(TValue, value.gc)));
-        return true;
-
-    case LBF_TYPEOF:
-        build.mov(x0, rState);
-        build.add(x1, rBase, uint16_t(arg * sizeof(TValue)));
-        build.ldr(x2, mem(rNativeContext, offsetof(NativeContext, luaT_objtypenamestr)));
-        build.blr(x2);
-        build.str(x0, mem(rBase, res * sizeof(TValue) + offsetof(TValue, value.gc)));
-        return true;
-
     default:
         LUAU_ASSERT(!"Missing A64 lowering");
         return false;
     }
 }
 
-IrLoweringA64::IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, NativeState& data, IrFunction& function)
+IrLoweringA64::IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, IrFunction& function)
     : build(build)
     , helpers(helpers)
-    , data(data)
     , function(function)
     , regs(function, {{x0, x15}, {x16, x17}, {q0, q7}, {q16, q31}})
     , valueTracker(function)
@@ -1004,7 +990,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.str(temp3, temp2);
 
         Label skip;
-        checkObjectBarrierConditions(build, temp1, temp2, vmRegOp(inst.b), skip);
+        checkObjectBarrierConditions(build, temp1, temp2, vmRegOp(inst.b), /* ratag */ -1, skip);
 
         size_t spills = regs.spill(build, index, {temp1});
 
@@ -1210,7 +1196,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         RegisterA64 temp = regs.allocTemp(KindA64::x);
 
         Label skip;
-        checkObjectBarrierConditions(build, regOp(inst.a), temp, vmRegOp(inst.b), skip);
+        checkObjectBarrierConditions(build, regOp(inst.a), temp, vmRegOp(inst.b), inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
 
         RegisterA64 reg = regOp(inst.a); // note: we need to call regOp before spill so that we don't do redundant reloads
         size_t spills = regs.spill(build, index, {reg});
@@ -1254,7 +1240,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         RegisterA64 temp = regs.allocTemp(KindA64::x);
 
         Label skip;
-        checkObjectBarrierConditions(build, regOp(inst.a), temp, vmRegOp(inst.b), skip);
+        checkObjectBarrierConditions(build, regOp(inst.a), temp, vmRegOp(inst.b), inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
 
         RegisterA64 reg = regOp(inst.a); // note: we need to call regOp before spill so that we don't do redundant reloads
         size_t spills = regs.spill(build, index, {reg});
@@ -1708,6 +1694,34 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.ldr(x1, mem(rNativeContext, getNativeContextOffset(uintOp(inst.a))));
         build.blr(x1);
         inst.regA64 = regs.takeReg(d0, index);
+        break;
+    }
+    case IrCmd::GET_TYPE:
+    {
+        inst.regA64 = regs.allocReg(KindA64::x, index);
+
+        build.ldr(inst.regA64, mem(rState, offsetof(lua_State, global)));
+        LUAU_ASSERT(sizeof(TString*) == 8);
+
+        if (inst.a.kind == IrOpKind::Inst)
+            build.add(inst.regA64, inst.regA64, zextReg(regOp(inst.a)), 3);
+        else if (inst.a.kind == IrOpKind::Constant)
+            build.add(inst.regA64, inst.regA64, uint16_t(tagOp(inst.a)) * 8);
+        else
+            LUAU_ASSERT(!"Unsupported instruction form");
+
+        build.ldr(inst.regA64, mem(inst.regA64, offsetof(global_State, ttname)));
+        break;
+    }
+    case IrCmd::GET_TYPEOF:
+    {
+        regs.spill(build, index);
+        build.mov(x0, rState);
+        build.add(x1, rBase, uint16_t(vmRegOp(inst.a) * sizeof(TValue)));
+        build.ldr(x2, mem(rNativeContext, offsetof(NativeContext, luaT_objtypenamestr)));
+        build.blr(x2);
+
+        inst.regA64 = regs.takeReg(x0, index);
         break;
     }
 

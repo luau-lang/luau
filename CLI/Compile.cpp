@@ -129,7 +129,7 @@ static double recordDeltaTime(double& timer)
     return delta;
 }
 
-static bool compileFile(const char* name, CompileFormat format, CompileStats& stats)
+static bool compileFile(const char* name, CompileFormat format, Luau::CodeGen::AssemblyOptions::Target assemblyTarget, CompileStats& stats)
 {
     double currts = Luau::TimeTrace::getClock();
 
@@ -150,6 +150,7 @@ static bool compileFile(const char* name, CompileFormat format, CompileStats& st
         Luau::BytecodeBuilder bcb;
 
         Luau::CodeGen::AssemblyOptions options;
+        options.target = assemblyTarget;
         options.outputBinary = format == CompileFormat::CodegenNull;
 
         if (!options.outputBinary)
@@ -248,6 +249,7 @@ static void displayHelp(const char* argv0)
     printf("  -h, --help: Display this usage message.\n");
     printf("  -O<n>: compile with optimization level n (default 1, n should be between 0 and 2).\n");
     printf("  -g<n>: compile with debug level n (default 1, n should be between 0 and 2).\n");
+    printf("  --target=<target>: compile code for specific architecture (a64, x64, a64_nf, x64_ms).\n");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
 }
 
@@ -264,6 +266,7 @@ int main(int argc, char** argv)
     setLuauFlagsDefault();
 
     CompileFormat compileFormat = CompileFormat::Text;
+    Luau::CodeGen::AssemblyOptions::Target assemblyTarget = Luau::CodeGen::AssemblyOptions::Host;
 
     for (int i = 1; i < argc; i++)
     {
@@ -291,6 +294,24 @@ int main(int argc, char** argv)
                 return 1;
             }
             globalOptions.debugLevel = level;
+        }
+        else if (strncmp(argv[i], "--target=", 9) == 0)
+        {
+            const char* value = argv[i] + 9;
+
+            if (strcmp(value, "a64") == 0)
+                assemblyTarget = Luau::CodeGen::AssemblyOptions::A64;
+            else if (strcmp(value, "a64_nf") == 0)
+                assemblyTarget = Luau::CodeGen::AssemblyOptions::A64_NoFeatures;
+            else if (strcmp(value, "x64") == 0)
+                assemblyTarget = Luau::CodeGen::AssemblyOptions::X64_SystemV;
+            else if (strcmp(value, "x64_ms") == 0)
+                assemblyTarget = Luau::CodeGen::AssemblyOptions::X64_Windows;
+            else
+            {
+                fprintf(stderr, "Error: unknown target\n");
+                return 1;
+            }
         }
         else if (strcmp(argv[i], "--timetrace") == 0)
         {
@@ -331,7 +352,7 @@ int main(int argc, char** argv)
     int failed = 0;
 
     for (const std::string& path : files)
-        failed += !compileFile(path.c_str(), compileFormat, stats);
+        failed += !compileFile(path.c_str(), compileFormat, assemblyTarget, stats);
 
     if (compileFormat == CompileFormat::Null)
         printf("Compiled %d KLOC into %d KB bytecode (read %.2fs, parse %.2fs, compile %.2fs)\n", int(stats.lines / 1000), int(stats.bytecode / 1024),
