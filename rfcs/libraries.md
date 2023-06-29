@@ -16,7 +16,7 @@ We need a way to group together related code into libraries and provide easy way
 
 Our require syntax should:
 
-- Allow a library written in Luau to be imported into the Roblox engine and 'just work'.
+- Allow a library written in Luau to be imported into the Roblox engine and "just work".
 - Support compile-time file resolution _where possible_ for type checking.
 - Be consistent across platforms and both inside and outside of Roblox.
 
@@ -26,6 +26,9 @@ Modules can be required relative to the requiring file's location in the filesys
 
 If we are trying to require a module called `MyModule.luau` in `C:/MyLibrary`:
 ```lua
+-- From C:/MyLibrary/SomeModule.luau
+local MyModule = require("MyModule")
+
 -- From C:/MyLibrary/SubDirectory/SubModule.luau
 local MyModule = require("../MyModule")
  
@@ -83,7 +86,7 @@ Aliases are simple bindings and aren't concerned with versioning. The intention 
 
 ##### Root Alias
 
-The blank alias "`@`" cannot be overriden and will remain reserved for now. It has been proposed in the past to use "`@`" to represent the root directory of a script's encapsulating library, but this will remain unimplemented for the time being. Users can use the alias map to explicitly define this behavior, if desired:
+The blank alias "`@`" cannot be overriden and will remain reserved for now. It has been proposed in the past to use "`@`" to represent the root directory of a script's encapsulating library, but this will remain unimplemented for the time being. Users can use the alias map to explicitly define this behavior with a named alias, if desired:
 
 ```json
 "aliases": {
@@ -114,25 +117,26 @@ If multiple files match the given path, we will attempt to require a file with t
 
 In the Roblox engine, the DataModel will act as a virtual file system. At the root of this VFS is the DataModel itself. This will allow packages from Luau to be imported and exported freely without needing to consider the platform they are being used on.
 
-All paths used in the Roblox engine must refer to a location in the DataModel, they cannot be used to access files on disk.
+All paths used in the Roblox engine must refer to a location in the DataModel. They cannot be used to access files on disk.
 
 ```lua
--- TODO: EXAMPLE NEEDED
+-- Requiring MyModule (DataModel > ReplicatedStorage > MyModule)
+local MyModule = require("/ReplicatedStorage/MyModule")
 ```
 
-#### Platforms
+#### Platform Compatibility
 
 For compatability across platforms, we will automatically map `/` onto `\`.
 
 #### Backwards Compatibility
 
-Luau libraries are already not compatible with existing Lua libraries. This is because Lua favors the `.` based require syntax instead and relies on the `LUA_PATH` environment variable to search for modules, whereas Luau currently implements a basic require-by-string syntax.
+Luau libraries are already not compatible with existing Lua libraries. This is because Lua favors the `.` based require syntax instead and relies on the `LUA_PATH` environment variable to search for modules, whereas Luau currently supports a basic require-by-string syntax.
 
 - Libraries are fully compatible with the Roblox engine, as require-by-string is currently unsupported.
 - Luau currently implements relative paths in relation to the current working directory. We propose changing this behavior, and breaking backwards compatibility on this front.
-  - With the current implementation, requiring a library that itself contains relative-path require statements can become a mess if the Lua VM is not launched from the "correct" working directory.
-  - We propose taking a "script-first" approach: relative paths passed to require statements will be considered in relation to the requiring script's location, not the current working directory.
-  - If this causes issues, we can introduce a default alias for the current working directory (e.g. `@CWD`).
+  - With the current implementation, requiring a library that itself contains relative-path require statements can become a mess if the Luau VM is not launched from the "correct" working directory.
+  - We propose taking a "script POV" approach: relative paths passed to require statements will be evaluated in relation to the requiring script's location, not in relation to the current working directory.
+  - If this causes issues, we can later introduce a default alias for the current working directory (e.g. `@CWD`).
 
 ### luauconfig.json
 
@@ -143,23 +147,21 @@ The proposed structure for this file is:
 ```json
 {
     "aliases": {
-        "alias": "./path/of/alias"
+        "alias": "/path/of/alias"
     }
 }
 ```
 
-Missing fields in `luauconfig.json` are inherited (and can be overriden) from any existing parent/grandparent libraries.
+Missing fields in `luauconfig.json` are inherited from any existing parent/grandparent libraries, and fields can be overriden.
 
-### Defining a Library
+### TODO: Defining a Library
 
 Any directory containing a `luauconfig.json` file is considered a library.
 
-Since we don't support `.json` files in the DataModel we will introduce a new `Library` instance which contains the alias map and other properties.
+Since we don't support configuration `.json` files in the DataModel, we will introduce a new `Library` Instance which will contain the alias map and other properties.
 
 ## Drawbacks
-
-TBD
+- The main drawback of this proposal is breaking backwards compatibility. As detailed above, Luau evaluates relative paths in relation to the current working directory. Instead, we propose evaluating these paths relative to the requiring script's location. While there are certainly costs in terms of compatibility, we believe that the benefits of enabling developers to write relative paths that "just work" outweigh them. If we discover that a significant number of Luau developers are reliant on the current functionality, we can later introduce a default alias for the current working directory (e.g. `@CWD`).
 
 ## Alternatives
-
-TBD
+- Rather than defining an alias map in an external configuration file, we could alternatively define aliases directly in Luau scripts (for example, by using `--!` comments). However, this could become cluttered and would likely lead to significant copy-and-pasting between modules in the same library. Using configuration files for alias maps allows modules to share aliases while still providing flexibility to override if needed.
