@@ -111,8 +111,9 @@ local MyModule = require("/MyLibrary/MyModule")
 local MyModule = require("C:/MyLibrary/MyModule")
 
 -- These also work, "\" is internally replaced with "/"
-local MyModule = require("\MyLibrary\MyModule")
-local MyModule = require("C:\MyLibrary\MyModule")
+-- (In a string literal, we must use the escape sequence "\\")
+local MyModule = require("\\MyLibrary\\MyModule")
+local MyModule = require("C:\\MyLibrary\\MyModule")
 ```
 
 Generally, absolute paths should not be used in regular code: if the location of a globally installed package changes, it can be a nuisance to find and change all require statements that reference the old absolute path.
