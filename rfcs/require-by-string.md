@@ -16,7 +16,7 @@ Currently, relative paths are always evaluated relative to the current working d
 
 Suppose the module `math.luau` is located in `/Users/JohnDoe/LuauModules/Math` and contains the following:
 
-```lua=
+```lua
 -- Beginning of /Users/JohnDoe/LuauModules/Math/math.luau
 local sqrt = require("../MathHelperFunctions/sqrt")
 ```
