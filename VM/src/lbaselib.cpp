@@ -11,6 +11,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+#endif
+
 static void writestring(const char* s, size_t l)
 {
     fwrite(s, 1, l, stdout);
@@ -18,6 +28,10 @@ static void writestring(const char* s, size_t l)
 
 static int luaB_print(lua_State* L)
 {
+#ifdef _WIN32
+    UINT oldcode = GetConsoleOutputCP();
+    SetConsoleOutputCP(CP_UTF8);
+#endif
     int n = lua_gettop(L); // number of arguments
     for (int i = 1; i <= n; i++)
     {
@@ -29,6 +43,9 @@ static int luaB_print(lua_State* L)
         lua_pop(L, 1); // pop result
     }
     writestring("\n", 1);
+#ifdef _WIN32
+    SetConsoleOutputCP(oldcode);
+#endif
     return 0;
 }
 
