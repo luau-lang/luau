@@ -1,8 +1,8 @@
-# Libraries
+# Require by String
 
 ## Summary
 
-We need a way to group together related code into libraries and provide easy ways to require them.
+We need to add intuitive alias functionality and fix existing issues with `require` statements to facilitate the grouping together of related Luau files into libraries and allow for future package managers to be developed and integrated easily.
 
 ## Motivation
 
@@ -44,7 +44,7 @@ To require a Luau module under the current implementation, we must require it ei
 
 ```lua
 -- Requiring Roact by absolute path
-local Roact = "C:/LuauModules/Roact-v1.4.2"
+local Roact = require("C:/LuauModules/Roact-v1.4.2")
 ```
 
 If we wanted to change the location of this package on disk, we would have to modify all files that require the old path above, which essentially boils down to manual package management. This approach is tedious and prone to mistakes.
@@ -169,23 +169,23 @@ Of course, users can still use the alias map to explicitly define this behavior 
 - All aliases must be prefixed with `@` when used in a require statement to avoid ambiguity.
 - Aliases can only occur at the beginning of a path.
 
-##### UNCERTAIN: Configuring alias maps: luauconfig.json
+##### Configuring alias maps: .luaurc
 
-As part of this proposal, we will introduce a new `luauconfig.json` file. Initially, this file will only contain information about alias mappings but in the future could be expanded to contain more.
+As part of this proposal, alias maps will be configured in `.luaurc`, which follows a JSON-like syntax.
 
-The proposed structure for this file is:
-
+Proposed structure of an alias map:
 ```json
 {
     "aliases": {
-        "alias": "/path/of/alias"
+        "alias1": "/path/of/alias1",
+        "alias2": "/path/of/alias2"
     }
 }
 ```
 
-Missing fields in `luauconfig.json` are inherited from any existing parent/grandparent libraries, and fields can be overriden.
+Missing aliases in `.luaurc` are inherited from the alias maps of any parent directories, and fields can be overriden.
 
-Additionally, if an alias is bound to a relative path, the path will evaluated relative to the `luauconfig.json` file in which the alias was defined.
+Additionally, if an alias is bound to a relative path, the path will evaluated relative to the `.luaurc` file in which the alias was defined.
 
 #### Path resolution
 
