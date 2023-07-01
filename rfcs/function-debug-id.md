@@ -12,7 +12,7 @@ When debugging, it is often useful to compare identity. Usually `print` will pri
 
 ## Design
 
-`debug.id(value: any)` always returns the identifier unique to that value, and is not possible to override.
+`debug.id(value: any): number` always returns the identifier unique to that value, and is not possible to override.
 
 While tables and userdata have individualized metatables, also allowing functions and threads to be passed to `debug.id` would let their type-level `__tostring` be redefined. Strings are useful to accept because of long, similar strings.
 
