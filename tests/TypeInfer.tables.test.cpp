@@ -3642,7 +3642,7 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "write_common_property_to_table_intersection_1")
+TEST_CASE_FIXTURE(BuiltinsFixture, "write_property_to_table_intersection_1")
 {
 
     CheckResult result = check(R"(
@@ -3657,7 +3657,7 @@ local y = x.Bar
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "write_common_property_to_table_intersection_2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "write_property_to_table_intersection_2")
 {
 
     CheckResult result = check(R"(
