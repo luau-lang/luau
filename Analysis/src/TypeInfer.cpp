@@ -3412,6 +3412,20 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
                 return prop->type();
             }
         }
+        else if (get<IntersectionType>(exprType))
+        {
+            Name name = std::string(value->value.data, value->value.size);
+
+            if (std::optional<TypeId> ty = getIndexTypeFromType(scope, exprType, name, expr.location, /* addErrors= */ false))
+                return *ty;
+
+            // If intersection has a table part, report that it cannot be extended just as a sealed table
+            if (isTableIntersection(exprType))
+            {
+                reportError(TypeError{expr.location, CannotExtendTable{exprType, CannotExtendTable::Property, name}});
+                return errorRecoveryType(scope);
+            }
+        }
     }
     else
     {
