@@ -20,15 +20,13 @@ t[example_data]("Hello world, from Luau!")
 
 Adding this would be consistent with other function name syntax and produces more readable code in most cases. Future motivations of this syntax could enable easier optimizations with regards to table accesses.
 
-As an example, on Roblox these changes enable working with instances in tables in a more readable way. A look-up table of functions linked to players will be able to be written as `function PlayerFunctions[Player]()` and can be accessed with `PlayerFunctions[Player]()` at a later date.
+As an example, on Roblox these changes enable working with instances in tables in a more readable way. A look-up table of functions linked to players will be able to be written as `function PlayerFunctions[Player]()` and can be accessed with `PlayerFunctions[Player]()`.
 
 The addition of this syntax also makes calling syntax parallel, where `function table.member()` is called with `table.member()` and `function table[element]()` is called with `table[element]()`.
 
 # Drawbacks
 
 The addition of new syntactic sugar adds more complexity to the compiler and to the language, which can be considered a drawback. 
-
-This change may introduce more ambiguity in cases when working with arrays of functions and adding a new table, however it is just as ambiguous as `t[1] = function() end` in the same case.
 
 # Alternatives
 
