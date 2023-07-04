@@ -2,7 +2,7 @@
 
 # Summary
 
-Add syntax for creating functions with element access function names similarly to member and method function names. 
+Add syntax for creating functions with element access function names similarly to member and method function names. The ability to chain [<expr>] is allowed as well.
 
 `function <ident>[<expr>]()`
 
