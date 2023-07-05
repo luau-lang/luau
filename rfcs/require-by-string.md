@@ -188,6 +188,8 @@ Missing aliases in `.luaurc` are inherited from the alias maps of any parent dir
 
 Additionally, if an alias is bound to a relative path, the path will evaluated relative to the `.luaurc` file in which the alias was defined.
 
+Finally, providing support for alias maps within the engine is out of the scope of this RFC but is being considered internally.
+
 #### Path resolution
 
 If we find files with the same name but different extensions, then we will attempt to require a file with the following extensions (in this order):
@@ -232,7 +234,7 @@ Luau libraries are already not compatible with existing Lua libraries. This is b
 
 - Libraries are fully compatible with the Roblox engine, as require-by-string is currently unimplemented.
 - Luau currently implements relative paths in relation to the current working directory. 
-- We propose changing this behavior, and breaking backwards compatibility on this front.
+- We propose changing this behavior and breaking backwards compatibility on this front.
 - With the current implementation, requiring a library that itself contains relative-path require statements [can become a mess](https://github.com/Roblox/luau/issues/959) if the Luau VM is not launched from the "correct" working directory.
 - We propose the following change: relative paths passed to require statements will be evaluated in relation to the requiring file's location, not in relation to the current working directory.
     - Caveat: if the relative-path require is called directly in the Luau CLI, this will remain relative to the current working directory, as there is no sense of a "requiring file" here.
