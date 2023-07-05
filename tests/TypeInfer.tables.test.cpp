@@ -216,11 +216,9 @@ TEST_CASE_FIXTURE(Fixture, "used_dot_instead_of_colon")
         local a = T.method()
     )");
 
-    auto it = std::find_if(result.errors.begin(), result.errors.end(),
-        [](const TypeError& e)
-        {
-            return nullptr != get<FunctionRequiresSelf>(e);
-        });
+    auto it = std::find_if(result.errors.begin(), result.errors.end(), [](const TypeError& e) {
+        return nullptr != get<FunctionRequiresSelf>(e);
+    });
     REQUIRE(it != result.errors.end());
 }
 
@@ -263,11 +261,9 @@ TEST_CASE_FIXTURE(Fixture, "used_colon_instead_of_dot")
         local a = T:method()
     )");
 
-    auto it = std::find_if(result.errors.begin(), result.errors.end(),
-        [](const TypeError& e)
-        {
-            return nullptr != get<FunctionDoesNotTakeSelf>(e);
-        });
+    auto it = std::find_if(result.errors.begin(), result.errors.end(), [](const TypeError& e) {
+        return nullptr != get<FunctionDoesNotTakeSelf>(e);
+    });
     REQUIRE(it != result.errors.end());
 }
 
@@ -3646,51 +3642,34 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "write_common_property_to_table_unions")
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_property_table_intersection_1")
 {
 
     CheckResult result = check(R"(
 type Foo = {
-    Enabled: boolean,
-    Size: number,
-}
+	Bar: string,
+} & { Baz: number }
 
-type Bar = {
-    Enabled: boolean,
-    Width: number,
-    Height: number,
-}
-
-local x: Foo | Bar = { Enabled = true, Size = 5 }
-
-x.Enabled = false
+local x: Foo = { Bar = "1", Baz = 2 }
+local y = x.Bar
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "write_common_property_to_table_unions_2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_property_table_intersection_2")
 {
 
     CheckResult result = check(R"(
 type Foo = {
-    Enabled: boolean,
-    Size: number,
-}
+	Bar: string,
+} & { Baz: number }
 
-type Bar = {
-    Enabled: boolean,
-    Width: number,
-    Height: number,
-}
-
-local x: Foo | Bar = { Enabled = true, Size = 5 }
-
-x.Size = 6
+local x: Foo = { Bar = "1", Baz = 2 }
+local y = x["Bar"]
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("error", toString(result.errors[0])); // TODO
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();
