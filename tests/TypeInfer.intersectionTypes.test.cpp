@@ -880,4 +880,34 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types_2")
     CHECK_EQ("({| x: number |} & {| x: string |}) -> never", toString(requireType("f")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_property_table_intersection_1")
+{
+    CheckResult result = check(R"(
+type Foo = {
+	Bar: string,
+} & { Baz: number }
+
+local x: Foo = { Bar = "1", Baz = 2 }
+local y = x.Bar
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_property_table_intersection_2")
+{
+    ScopedFastFlag sff{"LuauIndexTableIntersectionStringExpr", true};
+
+    CheckResult result = check(R"(
+type Foo = {
+	Bar: string,
+} & { Baz: number }
+
+local x: Foo = { Bar = "1", Baz = 2 }
+local y = x["Bar"]
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

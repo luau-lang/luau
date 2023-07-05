@@ -41,6 +41,7 @@ LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckClassTypeIndexers, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAG(LuauParseDeclareClassIndexer)
+LUAU_FASTFLAGVARIABLE(LuauIndexTableIntersectionStringExpr, false)
 
 namespace Luau
 {
@@ -3412,7 +3413,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
                 return prop->type();
             }
         }
-        else if (get<IntersectionType>(exprType))
+        else if (FFlag::LuauIndexTableIntersectionStringExpr && get<IntersectionType>(exprType))
         {
             Name name = std::string(value->value.data, value->value.size);
 
