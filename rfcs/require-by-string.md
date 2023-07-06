@@ -201,6 +201,27 @@ If the string resolves to a directory instead of a file, then we will attempt to
 1. `init.luau`
 2. `init.lua`
 
+#### Caching
+
+In the current implementation, required modules are cached based on the string that was used to require them. This means that using a mix of relative/absolute/aliased paths might lead to a cache miss—even if the module has already been required.
+
+```lua
+-- Requiring test.luau by absolute path
+absolute = require("/Users/johndoe/luau-files/test")
+
+-- Requiring test.luau by relative path
+relative = require("test")
+
+-- Currently prints false, module was re-required rather than loaded from cache
+print(absolute == relative)
+```
+
+Currently, since relative paths are always evaluated in relation to the current working directory and absolute paths are always evaluated in relation to the system's root directory, all files in a project end up using the same paths in the current implementation. However, with the proposed change to resolving relative paths (in relation to the requiring file instead of in relation to cwd), we might have files in different directories requiring modules using different relative paths.
+
+For example, `require("mymodule")` and `require("../mymodule")` might refer to the same module, depending on the requiring files' locations. With the current cache implementation, the second statement would be a cache miss, as `"mymodule"` is not literally equal to `"../mymodule"`.
+
+To solve this issue, we propose transforming every path that is passed to `require` into an equivalent absolute path and using this to cache, regardless of whether it was passed in as a relative, absolute, or aliased path. This way, a module's return value is stored in both a unique and consistent way across different files.
+
 #### DataModel as VFS
 
 In the Roblox engine, the DataModel will act as a virtual file system. At the root of this VFS is the DataModel itself. This will allow packages from Luau to be imported and exported freely without needing to consider the platform they are being used on.
