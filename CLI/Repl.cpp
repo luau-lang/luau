@@ -675,6 +675,10 @@ int replMain(int argc, char** argv)
 
     setLuauFlagsDefault();
 
+#ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+#endif
+
     int profile = 0;
     bool coverage = false;
     bool interactive = false;
