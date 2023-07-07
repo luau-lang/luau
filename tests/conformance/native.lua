@@ -61,4 +61,35 @@ end
 
 assert(pcall(fuzzfail5) == false)
 
+local function fuzzfail6(_)
+  return bit32.extract(_,671088640,_)
+end
+
+assert(pcall(fuzzfail6, 1) == false)
+
+local function fuzzfail7(_)
+  return bit32.extract(_,_,671088640)
+end
+
+assert(pcall(fuzzfail7, 1) == false)
+
+local function fuzzfail8(...)
+  local _ = _,_
+  _.n0,_,_,_,_,_,_,_,_._,_,_,_[...],_,_,_ = nil
+  _,n0,_,_,_,_,_,_,_,_,l0,_,_,_,_ = nil
+  function _()
+  end
+  _._,_,_,_,_,_,_,_,_,_,_[...],_,n0[l0],_ = nil
+  _[...],_,_,_,_,_,_,_,_()[_],_,_,_,_,_ = _(),...
+end
+
+assert(pcall(fuzzfail8) == false)
+
+local function fuzzfail9()
+  local _ = bit32.bor
+  local x = _(_(_,_),_(_,_),_(-16834560,_),_(_(- _,-2130706432)),- _),_(_(_,_),_(-16834560,-2130706432))
+end
+
+assert(pcall(fuzzfail9) == false)
+
 return('OK')

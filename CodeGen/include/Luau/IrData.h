@@ -236,6 +236,10 @@ enum class IrCmd : uint8_t
     // A: pointer (Table)
     TABLE_LEN,
 
+    // Get string length
+    // A: pointer (string)
+    STRING_LEN,
+
     // Allocate new table
     // A: int (array element count)
     // B: int (node element count)
@@ -361,8 +365,10 @@ enum class IrCmd : uint8_t
     // Guard against tag mismatch
     // A, B: tag
     // C: block/undef
+    // D: bool (finish execution in VM on failure)
     // In final x64 lowering, A can also be Rn
-    // When undef is specified instead of a block, execution is aborted on check failure
+    // When undef is specified instead of a block, execution is aborted on check failure; if D is true, execution is continued in VM interpreter
+    // instead.
     CHECK_TAG,
 
     // Guard against readonly table
@@ -377,9 +383,9 @@ enum class IrCmd : uint8_t
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_NO_METATABLE,
 
-    // Guard against executing in unsafe environment
-    // A: block/undef
-    // When undef is specified instead of a block, execution is aborted on check failure
+    // Guard against executing in unsafe environment, exits to VM on check failure
+    // A: unsigned int (pcpos)/undef
+    // When undef is specified, execution is aborted on check failure
     CHECK_SAFE_ENV,
 
     // Guard against index overflowing the table array size
@@ -610,7 +616,6 @@ struct IrConst
 
     union
     {
-        bool valueBool;
         int valueInt;
         unsigned valueUint;
         double valueDouble;

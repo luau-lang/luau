@@ -60,6 +60,12 @@ struct IrLoweringA64
         Label next;
     };
 
+    struct ExitHandler
+    {
+        Label self;
+        unsigned int pcpos;
+    };
+
     AssemblyBuilderA64& build;
     ModuleHelpers& helpers;
 
@@ -70,6 +76,7 @@ struct IrLoweringA64
     IrValueLocationTracking valueTracker;
 
     std::vector<InterruptHandler> interruptHandlers;
+    std::vector<ExitHandler> exitHandlers;
 
     bool error = false;
 };

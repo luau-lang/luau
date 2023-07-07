@@ -18,6 +18,8 @@ namespace CodeGen
 namespace A64
 {
 
+static const int8_t kInvalidSpill = 64;
+
 static int allocSpill(uint32_t& free, KindA64 kind)
 {
     LUAU_ASSERT(kStackSize <= 256); // to support larger stack frames, we need to ensure qN is allocated at 16b boundary to fit in ldr/str encoding
@@ -91,7 +93,8 @@ static void restoreInst(AssemblyBuilderA64& build, uint32_t& freeSpillSlots, IrF
     {
         build.ldr(reg, mem(sp, sSpillArea.data + s.slot * 8));
 
-        freeSpill(freeSpillSlots, reg.kind, s.slot);
+        if (s.slot != kInvalidSpill)
+            freeSpill(freeSpillSlots, reg.kind, s.slot);
     }
     else
     {
@@ -135,9 +138,8 @@ RegisterA64 IrRegAllocA64::allocReg(KindA64 kind, uint32_t index)
 
     if (set.free == 0)
     {
-        // TODO: remember the error and fail lowering
-        LUAU_ASSERT(!"Out of registers to allocate");
-        return noreg;
+        error = true;
+        return RegisterA64{kind, 0};
     }
 
     int reg = 31 - countlz(set.free);
@@ -157,9 +159,8 @@ RegisterA64 IrRegAllocA64::allocTemp(KindA64 kind)
 
     if (set.free == 0)
     {
-        // TODO: remember the error and fail lowering
-        LUAU_ASSERT(!"Out of registers to allocate");
-        return noreg;
+        error = true;
+        return RegisterA64{kind, 0};
     }
 
     int reg = 31 - countlz(set.free);
@@ -332,7 +333,11 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
             else
             {
                 int slot = allocSpill(freeSpillSlots, def.regA64.kind);
-                LUAU_ASSERT(slot >= 0); // TODO: remember the error and fail lowering
+                if (slot < 0)
+                {
+                    slot = kInvalidSpill;
+                    error = true;
+                }
 
                 build.str(def.regA64, mem(sp, sSpillArea.data + slot * 8));
 

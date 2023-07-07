@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include <string>
 namespace Luau
 {
 
@@ -38,6 +39,11 @@ struct Location
     bool containsClosed(const Position& p) const;
     void extend(const Location& other);
     void shift(const Position& start, const Position& oldEnd, const Position& newEnd);
+
+    /**
+     * Use offset=1 when displaying for the user.
+     */
+    std::string toString(int offset = 0, bool useBegin = true) const;
 };
 
 } // namespace Luau

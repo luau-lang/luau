@@ -90,6 +90,11 @@ void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int
         build.mov(qword[rState + offsetof(lua_State, top)], argi);
         build.setLabel(skipVararg);
 
+        // Keep executing new function
+        // ci->savedpc = p->code;
+        build.mov(rax, qword[proto + offsetof(Proto, code)]);
+        build.mov(qword[ci + offsetof(CallInfo, savedpc)], rax);
+
         // Get native function entry
         build.mov(rax, qword[proto + offsetof(Proto, exectarget)]);
         build.test(rax, rax);

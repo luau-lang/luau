@@ -22,6 +22,82 @@ IrBuilder::IrBuilder()
 {
 }
 
+static void buildArgumentTypeChecks(IrBuilder& build, Proto* proto)
+{
+    if (!proto->typeinfo || proto->numparams == 0)
+        return;
+
+    for (int i = 0; i < proto->numparams; ++i)
+    {
+        uint8_t et = proto->typeinfo[2 + i];
+
+        uint8_t tag = et & ~LBC_TYPE_OPTIONAL_BIT;
+        uint8_t optional = et & LBC_TYPE_OPTIONAL_BIT;
+
+        if (tag == LBC_TYPE_ANY)
+            continue;
+
+        IrOp load = build.inst(IrCmd::LOAD_TAG, build.vmReg(i));
+
+        IrOp nextCheck;
+        if (optional)
+        {
+            nextCheck = build.block(IrBlockKind::Internal);
+            IrOp fallbackCheck = build.block(IrBlockKind::Internal);
+
+            build.inst(IrCmd::JUMP_EQ_TAG, load, build.constTag(LUA_TNIL), nextCheck, fallbackCheck);
+
+            build.beginBlock(fallbackCheck);
+        }
+
+        switch (tag)
+        {
+        case LBC_TYPE_NIL:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TNIL), build.undef(), build.constInt(1));
+            break;
+        case LBC_TYPE_BOOLEAN:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TBOOLEAN), build.undef(), build.constInt(1));
+            break;
+        case LBC_TYPE_NUMBER:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TNUMBER), build.undef(), build.constInt(1));
+            break;
+        case LBC_TYPE_STRING:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TSTRING), build.undef(), build.constInt(1));
+            break;
+        case LBC_TYPE_TABLE:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TTABLE), build.undef(), build.constInt(1));
+            break;
+        case LBC_TYPE_FUNCTION:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TFUNCTION), build.undef(), build.constInt(1));
+            break;
+        case LBC_TYPE_THREAD:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TTHREAD), build.undef(), build.constInt(1));
+            break;
+        case LBC_TYPE_USERDATA:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TUSERDATA), build.undef(), build.constInt(1));
+            break;
+        case LBC_TYPE_VECTOR:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TVECTOR), build.undef(), build.constInt(1));
+            break;
+        }
+
+        if (optional)
+        {
+            build.inst(IrCmd::JUMP, nextCheck);
+            build.beginBlock(nextCheck);
+        }
+    }
+
+    // If the last argument is optional, we can skip creating a new internal block since one will already have been created.
+    if (!(proto->typeinfo[2 + proto->numparams - 1] & LBC_TYPE_OPTIONAL_BIT))
+    {
+        IrOp next = build.block(IrBlockKind::Internal);
+        build.inst(IrCmd::JUMP, next);
+
+        build.beginBlock(next);
+    }
+}
+
 void IrBuilder::buildFunctionIr(Proto* proto)
 {
     function.proto = proto;
@@ -46,6 +122,9 @@ void IrBuilder::buildFunctionIr(Proto* proto)
         // Begin new block at this instruction if it was in the bytecode or requested during translation
         if (instIndexToBlock[i] != kNoAssociatedBlockIndex)
             beginBlock(blockAtInst(i));
+
+        if (i == 0)
+            buildArgumentTypeChecks(*this, proto);
 
         // We skip dead bytecode instructions when they appear after block was already terminated
         if (!inTerminatedBlock)

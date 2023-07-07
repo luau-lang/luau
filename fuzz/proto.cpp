@@ -27,12 +27,16 @@ const bool kFuzzTypeck = true;
 const bool kFuzzVM = true;
 const bool kFuzzTranspile = true;
 const bool kFuzzCodegen = true;
+const bool kFuzzCodegenAssembly = true;
 
 // Should we generate type annotations?
 const bool kFuzzTypes = true;
 
+const Luau::CodeGen::AssemblyOptions::Target kFuzzCodegenTarget = Luau::CodeGen::AssemblyOptions::A64;
+
 static_assert(!(kFuzzVM && !kFuzzCompiler), "VM requires the compiler!");
 static_assert(!(kFuzzCodegen && !kFuzzVM), "Codegen requires the VM!");
+static_assert(!(kFuzzCodegenAssembly && !kFuzzCompiler), "Codegen requires the compiler!");
 
 std::vector<std::string> protoprint(const luau::ModuleSet& stat, bool types);
 
@@ -346,6 +350,23 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
                 }
             }
         }
+    }
+
+    // run codegen on resulting bytecode (in separate state)
+    if (kFuzzCodegenAssembly && bytecode.size())
+    {
+        static lua_State* globalState = luaL_newstate();
+
+        if (luau_load(globalState, "=fuzz", bytecode.data(), bytecode.size(), 0) == 0)
+        {
+            Luau::CodeGen::AssemblyOptions options;
+            options.outputBinary = true;
+            options.target = kFuzzCodegenTarget;
+            Luau::CodeGen::getAssembly(globalState, -1, options);
+        }
+
+        lua_pop(globalState, 1);
+        lua_gc(globalState, LUA_GCCOLLECT, 0);
     }
 
     // run resulting bytecode (from last successfully compiler module)

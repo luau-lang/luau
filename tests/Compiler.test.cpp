@@ -49,7 +49,7 @@ static std::string compileFunction0Coverage(const char* source, int level)
     return bcb.dumpFunction(0);
 }
 
-static std::string compileFunction0TypeTable(const char* source)
+static std::string compileTypeTable(const char* source)
 {
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
@@ -7080,12 +7080,9 @@ L1: RETURN R3 1
 
 TEST_CASE("EncodedTypeTable")
 {
-    ScopedFastFlag sffs[] = {
-        {"BytecodeVersion4", true},
-        {"CompileFunctionType", true},
-    };
+    ScopedFastFlag sff("LuauCompileFunctionType", true);
 
-    CHECK_EQ("\n" + compileFunction0TypeTable(R"(
+    CHECK_EQ("\n" + compileTypeTable(R"(
 function myfunc(test: string, num: number)
     print(test)
 end
@@ -7104,6 +7101,9 @@ end
 function myfunc5(test: string | number, n: number | boolean)
 end
 
+function myfunc6(test: (number) -> string)
+end
+
 myfunc('test')
 )"),
         R"(
@@ -7111,9 +7111,10 @@ myfunc('test')
 1: function(number?)
 2: function(string, number)
 3: function(any, number)
+5: function(function)
 )");
 
-    CHECK_EQ("\n" + compileFunction0TypeTable(R"(
+    CHECK_EQ("\n" + compileTypeTable(R"(
 local Str = {
     a = 1
 }
@@ -7126,7 +7127,95 @@ end
 Str:test(234)
 )"),
         R"(
-0: function({ }, number)
+0: function(table, number)
+)");
+}
+
+TEST_CASE("HostTypesAreUserdata")
+{
+    ScopedFastFlag sff("LuauCompileFunctionType", true);
+
+    CHECK_EQ("\n" + compileTypeTable(R"(
+function myfunc(test: string, num: number)
+    print(test)
+end
+
+function myfunc2(test: Instance, num: number)
+end
+
+type Foo = string
+
+function myfunc3(test: string, n: Foo)
+end
+
+function myfunc4<Bar>(test: Bar, n: Part)
+end
+)"),
+        R"(
+0: function(string, number)
+1: function(userdata, number)
+2: function(string, string)
+3: function(any, userdata)
+)");
+}
+
+TEST_CASE("TypeAliasScoping")
+{
+    ScopedFastFlag sff("LuauCompileFunctionType", true);
+
+    CHECK_EQ("\n" + compileTypeTable(R"(
+do
+    type Part = number
+end
+
+function myfunc1(test: Part, num: number)
+end
+
+do
+    type Part = number
+
+    function myfunc2(test: Part, num: number)
+    end
+end
+
+repeat
+    type Part = number
+until (function(test: Part, num: number) end)()
+
+function myfunc4(test: Instance, num: number)
+end
+
+type Instance = string
+)"),
+        R"(
+0: function(userdata, number)
+1: function(number, number)
+2: function(number, number)
+3: function(string, number)
+)");
+}
+
+TEST_CASE("TypeAliasResolve")
+{
+    ScopedFastFlag sff("LuauCompileFunctionType", true);
+
+    CHECK_EQ("\n" + compileTypeTable(R"(
+type Foo1 = number
+type Foo2 = { number }
+type Foo3 = Part
+type Foo4 = Foo1 -- we do not resolve aliases within aliases
+type Foo5<X> = X
+
+function myfunc(f1: Foo1, f2: Foo2, f3: Foo3, f4: Foo4, f5: Foo5<number>)
+end
+
+function myfuncerr(f1: Foo1<string>, f2: Foo5)
+end
+
+)"),
+        R"(
+0: function(number, table, userdata, any, any)
+1: function(number, any)
 )");
 }
 

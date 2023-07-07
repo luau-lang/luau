@@ -23,7 +23,6 @@
 
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
 LUAU_FASTINT(LuauTypeMaximumStringifierLength)
-LUAU_FASTFLAG(LuauTypecheckClassTypeIndexers)
 
 namespace Luau
 {
@@ -527,7 +526,6 @@ struct ClassType
         , definitionModuleName(definitionModuleName)
         , indexer(indexer)
     {
-        LUAU_ASSERT(FFlag::LuauTypecheckClassTypeIndexers);
     }
 };
 

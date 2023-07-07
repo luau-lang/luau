@@ -212,7 +212,13 @@ RegisterX64 IrCallWrapperX64::suggestNextArgumentRegister(SizeX64 size) const
 {
     OperandX64 target = getNextArgumentTarget(size);
 
-    return target.cat == CategoryX64::reg ? regs.takeReg(target.base, kInvalidInstIdx) : regs.allocReg(size, kInvalidInstIdx);
+    if (target.cat != CategoryX64::reg)
+        return regs.allocReg(size, kInvalidInstIdx);
+
+    if (!regs.canTakeReg(target.base))
+        return regs.allocReg(size, kInvalidInstIdx);
+
+    return regs.takeReg(target.base, kInvalidInstIdx);
 }
 
 OperandX64 IrCallWrapperX64::getNextArgumentTarget(SizeX64 size) const

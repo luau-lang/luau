@@ -917,6 +917,52 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_comparison_ifelse_expression")
         CHECK_EQ("any", toString(requireTypeAtPosition({6, 66})));
 }
 
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "is_truthy_constraint_while_expression")
+{
+    CheckResult result = check(R"(
+        function f(v:string?)
+            while v do
+                local foo = v
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("string", toString(requireTypeAtPosition({3, 28})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "invert_is_truthy_constraint_while_expression")
+{
+    CheckResult result = check(R"(
+        function f(v:string?)
+            while not v do
+                local foo = v
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("nil", toString(requireTypeAtPosition({3, 28})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_the_correct_types_opposite_of_while_a_is_not_number_or_string")
+{
+    CheckResult result = check(R"(
+        local function f(a: string | number | boolean)
+            while type(a) ~= "number" and type(a) ~= "string" do
+                local foo = a
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("boolean", toString(requireTypeAtPosition({3, 28})));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "correctly_lookup_a_shadowed_local_that_which_was_previously_refined")
 {
     CheckResult result = check(R"(
@@ -1580,8 +1626,6 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "refine_a_param_that_got_resolved_duri
 
 TEST_CASE_FIXTURE(Fixture, "refine_a_property_of_some_global")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
-
     CheckResult result = check(R"(
         foo = { bar = 5 :: number? }
 
@@ -1590,9 +1634,12 @@ TEST_CASE_FIXTURE(Fixture, "refine_a_property_of_some_global")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
 
-    CHECK_EQ("~(false?)", toString(requireTypeAtPosition({4, 30})));
+        CHECK_EQ("~(false?)", toString(requireTypeAtPosition({4, 30})));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dataflow_analysis_can_tell_refinements_when_its_appropriate_to_refine_into_nil_or_never")
@@ -1755,6 +1802,22 @@ TEST_CASE_FIXTURE(Fixture, "refinements_should_not_affect_assignment")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refinements_should_preserve_error_suppression")
+{
+    CheckResult result = check(R"(
+        local a: any = {}
+        local b
+        if typeof(a) == "table" then
+           b = a.field
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+        LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -776,9 +776,10 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatForIn* f
 
 ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatWhile* while_)
 {
-    check(scope, while_->condition);
+    RefinementId refinement = check(scope, while_->condition).refinement;
 
     ScopePtr whileScope = childScope(while_, scope);
+    applyRefinements(whileScope, while_->condition->location, refinement);
 
     visit(whileScope, while_->body);
 
@@ -825,8 +826,17 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocalFun
     std::unique_ptr<Constraint> c =
         std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{functionType, sig.signature});
 
-    forEachConstraint(start, end, this, [&c](const ConstraintPtr& constraint) {
+    Constraint* previous = nullptr;
+    forEachConstraint(start, end, this, [&c, &previous](const ConstraintPtr& constraint) {
         c->dependencies.push_back(NotNull{constraint.get()});
+
+        if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+        {
+            if (previous)
+                constraint->dependencies.push_back(NotNull{previous});
+
+            previous = constraint.get();
+        }
     });
 
     addConstraint(scope, std::move(c));
@@ -915,9 +925,18 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction
     std::unique_ptr<Constraint> c =
         std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{generalizedType, sig.signature});
 
-    forEachConstraint(start, end, this, [&c, &excludeList](const ConstraintPtr& constraint) {
+    Constraint* previous = nullptr;
+    forEachConstraint(start, end, this, [&c, &excludeList, &previous](const ConstraintPtr& constraint) {
         if (!excludeList.count(constraint.get()))
             c->dependencies.push_back(NotNull{constraint.get()});
+
+        if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+        {
+            if (previous)
+                constraint->dependencies.push_back(NotNull{previous});
+
+            previous = constraint.get();
+        }
     });
 
     addConstraint(scope, std::move(c));
@@ -936,7 +955,7 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatReturn* 
         expectedTypes.push_back(ty);
 
     TypePackId exprTypes = checkPack(scope, ret->list, expectedTypes).tp;
-    addConstraint(scope, ret->location, PackSubtypeConstraint{exprTypes, scope->returnType});
+    addConstraint(scope, ret->location, PackSubtypeConstraint{exprTypes, scope->returnType, /*returns*/ true});
 
     return ControlFlow::Returns;
 }
@@ -1408,6 +1427,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
     std::vector<std::optional<TypeId>> expectedTypesForCall = getExpectedCallTypesForFunctionOverloads(fnType);
 
     module->astOriginalCallTypes[call->func] = fnType;
+    module->astOriginalCallTypes[call] = fnType;
 
     TypePackId expectedArgPack = arena->freshTypePack(scope.get());
     TypePackId expectedRetPack = arena->freshTypePack(scope.get());
@@ -1547,7 +1567,6 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
                 rets,
                 call,
                 std::move(discriminantTypes),
-                &module->astOriginalCallTypes,
                 &module->astOverloadResolvedTypes,
             });
 
@@ -1642,7 +1661,7 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprConstantSt
     if (expectedType)
     {
         const TypeId expectedTy = follow(*expectedType);
-        if (get<BlockedType>(expectedTy) || get<PendingExpansionType>(expectedTy))
+        if (get<BlockedType>(expectedTy) || get<PendingExpansionType>(expectedTy) || get<FreeType>(expectedTy))
         {
             TypeId ty = arena->addType(BlockedType{});
             TypeId singletonType = arena->addType(SingletonType(StringSingleton{std::string(string->value.data, string->value.size)}));
@@ -1774,8 +1793,17 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprFunction* 
     TypeId generalizedTy = arena->addType(BlockedType{});
     NotNull<Constraint> gc = addConstraint(sig.signatureScope, func->location, GeneralizationConstraint{generalizedTy, sig.signature});
 
-    forEachConstraint(startCheckpoint, endCheckpoint, this, [gc](const ConstraintPtr& constraint) {
+    Constraint* previous = nullptr;
+    forEachConstraint(startCheckpoint, endCheckpoint, this, [gc, &previous](const ConstraintPtr& constraint) {
         gc->dependencies.emplace_back(constraint.get());
+
+        if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+        {
+            if (previous)
+                constraint->dependencies.push_back(NotNull{previous});
+
+            previous = constraint.get();
+        }
     });
 
     return Inference{generalizedTy};
@@ -2412,7 +2440,7 @@ void ConstraintGraphBuilder::checkFunctionBody(const ScopePtr& scope, AstExprFun
 
     if (nullptr != getFallthrough(fn->body))
     {
-        TypePackId empty = arena->addTypePack({}); // TODO we could have CSG retain one of these forever
+        TypePackId empty = arena->addTypePack({}); // TODO we could have CGB retain one of these forever
         addConstraint(scope, fn->location, PackSubtypeConstraint{scope->returnType, empty});
     }
 }

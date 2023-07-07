@@ -479,7 +479,6 @@ TEST_CASE_FIXTURE(ClassFixture, "callable_classes")
 TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
 {
     // Test reading from an index
-    ScopedFastFlag LuauTypecheckClassTypeIndexers("LuauTypecheckClassTypeIndexers", true);
     {
         CheckResult result = check(R"(
             local x : IndexableClass

@@ -191,16 +191,8 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
         {
             if (alwaysClone)
             {
-                if (FFlag::LuauTypecheckClassTypeIndexers)
-                {
-                    ClassType clone{a.name, a.props, a.parent, a.metatable, a.tags, a.userData, a.definitionModuleName, a.indexer};
-                    return dest.addType(std::move(clone));
-                }
-                else
-                {
-                    ClassType clone{a.name, a.props, a.parent, a.metatable, a.tags, a.userData, a.definitionModuleName};
-                    return dest.addType(std::move(clone));
-                }
+                ClassType clone{a.name, a.props, a.parent, a.metatable, a.tags, a.userData, a.definitionModuleName, a.indexer};
+                return dest.addType(std::move(clone));
             }
             else
                 return ty;
@@ -316,13 +308,10 @@ void Tarjan::visitChildren(TypeId ty, int index)
         if (ctv->metatable)
             visitChild(*ctv->metatable);
 
-        if (FFlag::LuauTypecheckClassTypeIndexers)
+        if (ctv->indexer)
         {
-            if (ctv->indexer)
-            {
-                visitChild(ctv->indexer->indexType);
-                visitChild(ctv->indexer->indexResultType);
-            }
+            visitChild(ctv->indexer->indexType);
+            visitChild(ctv->indexer->indexResultType);
         }
     }
     else if (const NegationType* ntv = get<NegationType>(ty))
@@ -1038,13 +1027,10 @@ void Substitution::replaceChildren(TypeId ty)
         if (ctv->metatable)
             ctv->metatable = replace(*ctv->metatable);
 
-        if (FFlag::LuauTypecheckClassTypeIndexers)
+        if (ctv->indexer)
         {
-            if (ctv->indexer)
-            {
-                ctv->indexer->indexType = replace(ctv->indexer->indexType);
-                ctv->indexer->indexResultType = replace(ctv->indexer->indexResultType);
-            }
+            ctv->indexer->indexType = replace(ctv->indexer->indexType);
+            ctv->indexer->indexResultType = replace(ctv->indexer->indexResultType);
         }
     }
     else if (NegationType* ntv = getMutable<NegationType>(ty))
