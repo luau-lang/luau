@@ -9,6 +9,20 @@ using namespace Luau;
 
 TEST_SUITE_BEGIN("TypeSingletons");
 
+TEST_CASE_FIXTURE(Fixture, "function_args_infer_singletons")
+{
+    CheckResult result = check(R"(
+--!strict
+type Phase = "A" | "B" | "C"
+local function f(e : Phase) : number
+    return 0
+end
+local e = f("B")
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "bool_singletons")
 {
     CheckResult result = check(R"(

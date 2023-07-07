@@ -121,6 +121,14 @@ RegisterX64 IrRegAllocX64::takeReg(RegisterX64 reg, uint32_t instIdx)
     return reg;
 }
 
+bool IrRegAllocX64::canTakeReg(RegisterX64 reg) const
+{
+    const std::array<bool, 16>& freeMap = reg.size == SizeX64::xmmword ? freeXmmMap : freeGprMap;
+    const std::array<uint32_t, 16>& instUsers = reg.size == SizeX64::xmmword ? xmmInstUsers : gprInstUsers;
+
+    return freeMap[reg.index] || instUsers[reg.index] != kInvalidInstIdx;
+}
+
 void IrRegAllocX64::freeReg(RegisterX64 reg)
 {
     if (reg.size == SizeX64::xmmword)

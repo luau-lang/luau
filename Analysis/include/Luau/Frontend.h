@@ -144,6 +144,10 @@ struct Frontend
 
     Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options = {});
 
+    // Parse module graph and prepare SourceNode/SourceModule data, including required dependencies without running typechecking
+    void parse(const ModuleName& name);
+
+    // Parse and typecheck module graph
     CheckResult check(const ModuleName& name, std::optional<FrontendOptions> optionOverride = {}); // new shininess
 
     bool isDirty(const ModuleName& name, bool forAutocomplete = false) const;

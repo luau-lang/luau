@@ -80,6 +80,8 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::None;
     case IrCmd::TABLE_LEN:
         return IrValueKind::Double;
+    case IrCmd::STRING_LEN:
+        return IrValueKind::Int;
     case IrCmd::NEW_TABLE:
     case IrCmd::DUP_TABLE:
         return IrValueKind::Pointer;
@@ -684,8 +686,7 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
             unsigned op1 = unsigned(function.intOp(inst.a));
             int op2 = function.intOp(inst.b);
 
-            if (unsigned(op2) < 32)
-                substitute(function, inst, build.constInt(op1 << op2));
+            substitute(function, inst, build.constInt(op1 << (op2 & 31)));
         }
         else if (inst.b.kind == IrOpKind::Constant && function.intOp(inst.b) == 0)
         {
@@ -698,8 +699,7 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
             unsigned op1 = unsigned(function.intOp(inst.a));
             int op2 = function.intOp(inst.b);
 
-            if (unsigned(op2) < 32)
-                substitute(function, inst, build.constInt(op1 >> op2));
+            substitute(function, inst, build.constInt(op1 >> (op2 & 31)));
         }
         else if (inst.b.kind == IrOpKind::Constant && function.intOp(inst.b) == 0)
         {
@@ -712,12 +712,9 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
             int op1 = function.intOp(inst.a);
             int op2 = function.intOp(inst.b);
 
-            if (unsigned(op2) < 32)
-            {
-                // note: technically right shift of negative values is UB, but this behavior is getting defined in C++20 and all compilers do the
-                // right (shift) thing.
-                substitute(function, inst, build.constInt(op1 >> op2));
-            }
+            // note: technically right shift of negative values is UB, but this behavior is getting defined in C++20 and all compilers do the
+            // right (shift) thing.
+            substitute(function, inst, build.constInt(op1 >> (op2 & 31)));
         }
         else if (inst.b.kind == IrOpKind::Constant && function.intOp(inst.b) == 0)
         {
@@ -792,6 +789,18 @@ uint32_t getNativeContextOffset(int bfid)
     }
 
     return 0;
+}
+
+void killUnusedBlocks(IrFunction& function)
+{
+    // Start from 1 as the first block is the entry block
+    for (unsigned i = 1; i < function.blocks.size(); i++)
+    {
+        IrBlock& block = function.blocks[i];
+
+        if (block.kind != IrBlockKind::Dead && block.useCount == 0)
+            kill(function, block);
+    }
 }
 
 } // namespace CodeGen

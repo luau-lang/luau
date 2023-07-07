@@ -376,8 +376,9 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
             build.add(inst.regA64, regOp(inst.b), uint16_t(intOp(inst.a)));
         else
         {
-            RegisterA64 temp = tempInt(inst.b);
-            build.add(inst.regA64, regOp(inst.a), temp);
+            RegisterA64 temp1 = tempInt(inst.a);
+            RegisterA64 temp2 = tempInt(inst.b);
+            build.add(inst.regA64, temp1, temp2);
         }
         break;
     case IrCmd::SUB_INT:
@@ -386,8 +387,9 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
             build.sub(inst.regA64, regOp(inst.a), uint16_t(intOp(inst.b)));
         else
         {
-            RegisterA64 temp = tempInt(inst.b);
-            build.sub(inst.regA64, regOp(inst.a), temp);
+            RegisterA64 temp1 = tempInt(inst.a);
+            RegisterA64 temp2 = tempInt(inst.b);
+            build.sub(inst.regA64, temp1, temp2);
         }
         break;
     case IrCmd::ADD_NUM:
@@ -689,6 +691,14 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.scvtf(inst.regA64, x0);
         break;
     }
+    case IrCmd::STRING_LEN:
+    {
+        RegisterA64 reg = regOp(inst.a);
+        inst.regA64 = regs.allocReg(KindA64::w, index);
+
+        build.ldr(inst.regA64, mem(reg, offsetof(TString, len)));
+        break;
+    }
     case IrCmd::NEW_TABLE:
     {
         regs.spill(build, index);
@@ -816,7 +826,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     }
     case IrCmd::FASTCALL:
         regs.spill(build, index);
-        error |= emitBuiltin(build, function, regs, uintOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c), inst.d, intOp(inst.e), intOp(inst.f));
+        error |= !emitBuiltin(build, function, regs, uintOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c), inst.d, intOp(inst.e), intOp(inst.f));
         break;
     case IrCmd::INVOKE_FASTCALL:
     {
@@ -1018,8 +1028,9 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         break;
     case IrCmd::CHECK_TAG:
     {
+        bool continueInVm = (inst.d.kind == IrOpKind::Constant && intOp(inst.d));
         Label abort; // used when guard aborts execution
-        Label& fail = inst.c.kind == IrOpKind::Undef ? abort : labelOp(inst.c);
+        Label& fail = inst.c.kind == IrOpKind::Undef ? (continueInVm ? helpers.exitContinueVmClearNativeFlag : abort) : labelOp(inst.c);
         if (tagOp(inst.b) == 0)
         {
             build.cbnz(regOp(inst.a), fail);
@@ -1029,7 +1040,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
             build.cmp(regOp(inst.a), tagOp(inst.b));
             build.b(ConditionA64::NotEqual, fail);
         }
-        if (abort.id)
+        if (abort.id && !continueInVm)
             emitAbort(build, abort);
         break;
     }
@@ -1060,9 +1071,18 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         RegisterA64 tempw = castReg(KindA64::w, temp);
         build.ldr(temp, mem(rClosure, offsetof(Closure, env)));
         build.ldrb(tempw, mem(temp, offsetof(Table, safeenv)));
-        build.cbz(tempw, inst.a.kind == IrOpKind::Undef ? abort : labelOp(inst.a));
-        if (abort.id)
+
+        if (inst.a.kind == IrOpKind::Undef)
+        {
+            build.cbz(tempw, abort);
             emitAbort(build, abort);
+        }
+        else
+        {
+            Label self;
+            build.cbz(tempw, self);
+            exitHandlers.push_back({self, uintOp(inst.a)});
+        }
         break;
     }
     case IrCmd::CHECK_ARRAY_SIZE:
@@ -1528,7 +1548,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     case IrCmd::BITAND_UINT:
     {
         inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a, inst.b});
-        if (inst.b.kind == IrOpKind::Constant && AssemblyBuilderA64::isMaskSupported(unsigned(intOp(inst.b))))
+        if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Constant && AssemblyBuilderA64::isMaskSupported(unsigned(intOp(inst.b))))
             build.and_(inst.regA64, regOp(inst.a), unsigned(intOp(inst.b)));
         else
         {
@@ -1541,7 +1561,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     case IrCmd::BITXOR_UINT:
     {
         inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a, inst.b});
-        if (inst.b.kind == IrOpKind::Constant && AssemblyBuilderA64::isMaskSupported(unsigned(intOp(inst.b))))
+        if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Constant && AssemblyBuilderA64::isMaskSupported(unsigned(intOp(inst.b))))
             build.eor(inst.regA64, regOp(inst.a), unsigned(intOp(inst.b)));
         else
         {
@@ -1554,7 +1574,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     case IrCmd::BITOR_UINT:
     {
         inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a, inst.b});
-        if (inst.b.kind == IrOpKind::Constant && AssemblyBuilderA64::isMaskSupported(unsigned(intOp(inst.b))))
+        if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Constant && AssemblyBuilderA64::isMaskSupported(unsigned(intOp(inst.b))))
             build.orr(inst.regA64, regOp(inst.a), unsigned(intOp(inst.b)));
         else
         {
@@ -1574,7 +1594,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     case IrCmd::BITLSHIFT_UINT:
     {
         inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a, inst.b});
-        if (inst.b.kind == IrOpKind::Constant)
+        if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Constant)
             build.lsl(inst.regA64, regOp(inst.a), uint8_t(unsigned(intOp(inst.b)) & 31));
         else
         {
@@ -1587,7 +1607,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     case IrCmd::BITRSHIFT_UINT:
     {
         inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a, inst.b});
-        if (inst.b.kind == IrOpKind::Constant)
+        if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Constant)
             build.lsr(inst.regA64, regOp(inst.a), uint8_t(unsigned(intOp(inst.b)) & 31));
         else
         {
@@ -1600,7 +1620,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     case IrCmd::BITARSHIFT_UINT:
     {
         inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a, inst.b});
-        if (inst.b.kind == IrOpKind::Constant)
+        if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Constant)
             build.asr(inst.regA64, regOp(inst.a), uint8_t(unsigned(intOp(inst.b)) & 31));
         else
         {
@@ -1612,7 +1632,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     }
     case IrCmd::BITLROTATE_UINT:
     {
-        if (inst.b.kind == IrOpKind::Constant)
+        if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Constant)
         {
             inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a});
             build.ror(inst.regA64, regOp(inst.a), uint8_t((32 - unsigned(intOp(inst.b))) & 31));
@@ -1630,7 +1650,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     case IrCmd::BITRROTATE_UINT:
     {
         inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a, inst.b});
-        if (inst.b.kind == IrOpKind::Constant)
+        if (inst.a.kind == IrOpKind::Inst && inst.b.kind == IrOpKind::Constant)
             build.ror(inst.regA64, regOp(inst.a), uint8_t(unsigned(intOp(inst.b)) & 31));
         else
         {
@@ -1751,11 +1771,21 @@ void IrLoweringA64::finishFunction()
         build.adr(x1, handler.next);
         build.b(helpers.interrupt);
     }
+
+    if (build.logText)
+        build.logAppend("; exit handlers\n");
+
+    for (ExitHandler& handler : exitHandlers)
+    {
+        build.setLabel(handler.self);
+        build.mov(x0, handler.pcpos * sizeof(Instruction));
+        build.b(helpers.updatePcAndContinueInVm);
+    }
 }
 
 bool IrLoweringA64::hasError() const
 {
-    return error;
+    return error || regs.error;
 }
 
 bool IrLoweringA64::isFallthroughBlock(IrBlock target, IrBlock next)

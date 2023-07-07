@@ -24,6 +24,8 @@ struct ModuleHelpers
     // A64/X64
     Label exitContinueVm;
     Label exitNoContinueVm;
+    Label exitContinueVmClearNativeFlag;
+    Label updatePcAndContinueInVm;
     Label return_;
     Label interrupt;
 

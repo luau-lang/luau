@@ -2314,9 +2314,9 @@ static const char* getBaseTypeString(uint8_t type)
     case LBC_TYPE_STRING:
         return "string";
     case LBC_TYPE_TABLE:
-        return "{ }";
+        return "table";
     case LBC_TYPE_FUNCTION:
-        return "function( )";
+        return "function";
     case LBC_TYPE_THREAD:
         return "thread";
     case LBC_TYPE_USERDATA:

@@ -258,13 +258,10 @@ void StateDot::visitChildren(TypeId ty, int index)
         if (ctv->metatable)
             visitChild(*ctv->metatable, index, "[metatable]");
 
-        if (FFlag::LuauTypecheckClassTypeIndexers)
+        if (ctv->indexer)
         {
-            if (ctv->indexer)
-            {
-                visitChild(ctv->indexer->indexType, index, "[index]");
-                visitChild(ctv->indexer->indexResultType, index, "[value]");
-            }
+            visitChild(ctv->indexer->indexType, index, "[index]");
+            visitChild(ctv->indexer->indexResultType, index, "[value]");
         }
     }
     else if (const SingletonType* stv = get<SingletonType>(ty))

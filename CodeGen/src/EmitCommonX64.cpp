@@ -268,6 +268,13 @@ void callStepGc(IrRegAllocX64& regs, AssemblyBuilderX64& build)
     build.setLabel(skip);
 }
 
+
+void emitClearNativeFlag(AssemblyBuilderX64& build)
+{
+    build.mov(rax, qword[rState + offsetof(lua_State, ci)]);
+    build.and_(dword[rax + offsetof(CallInfo, flags)], ~LUA_CALLINFO_NATIVE);
+}
+
 void emitExit(AssemblyBuilderX64& build, bool continueInVm)
 {
     if (continueInVm)
@@ -343,6 +350,16 @@ void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, int offset, in
     callWrap.call(qword[rNativeContext + offset]);
 
     emitUpdateBase(build);
+}
+
+void emitUpdatePcAndContinueInVm(AssemblyBuilderX64& build)
+{
+    // edx = pcpos * sizeof(Instruction)
+    build.add(rdx, sCode);
+    build.mov(rax, qword[rState + offsetof(lua_State, ci)]);
+    build.mov(qword[rax + offsetof(CallInfo, savedpc)], rdx);
+
+    emitExit(build, /* continueInVm */ true);
 }
 
 void emitContinueCallInVm(AssemblyBuilderX64& build)

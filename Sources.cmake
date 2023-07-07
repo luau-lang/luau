@@ -152,6 +152,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/DataFlowGraph.h
     Analysis/include/Luau/DcrLogger.h
     Analysis/include/Luau/Def.h
+    Analysis/include/Luau/Differ.h
     Analysis/include/Luau/Documentation.h
     Analysis/include/Luau/Error.h
     Analysis/include/Luau/FileResolver.h
@@ -209,6 +210,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/DataFlowGraph.cpp
     Analysis/src/DcrLogger.cpp
     Analysis/src/Def.cpp
+    Analysis/src/Differ.cpp
     Analysis/src/EmbeddedBuiltinDefinitions.cpp
     Analysis/src/Error.cpp
     Analysis/src/Frontend.cpp
@@ -366,6 +368,7 @@ if(TARGET Luau.UnitTest)
         tests/CostModel.test.cpp
         tests/DataFlowGraph.test.cpp
         tests/DenseHash.test.cpp
+	tests/Differ.test.cpp
         tests/Error.test.cpp
         tests/Frontend.test.cpp
         tests/IrBuilder.test.cpp

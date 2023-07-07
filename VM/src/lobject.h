@@ -279,6 +279,8 @@ typedef struct Proto
     void* execdata;
     uintptr_t exectarget;
 
+    uint8_t* typeinfo;
+
     GCObject* gclist;
 
 

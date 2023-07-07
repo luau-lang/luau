@@ -1259,18 +1259,13 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     else if (auto it = get<IntersectionType>(fn))
         fn = collapse(it).value_or(fn);
 
-    if (c.callSite)
-        (*c.astOriginalCallTypes)[c.callSite] = fn;
-
     // We don't support magic __call metamethods.
     if (std::optional<TypeId> callMm = findMetatableEntry(builtinTypes, errors, fn, "__call", constraint->location))
     {
-        std::vector<TypeId> args{fn};
+        auto [head, tail] = flatten(c.argsPack);
+        head.insert(head.begin(), fn);
 
-        for (TypeId arg : c.argsPack)
-            args.push_back(arg);
-
-        argsPack = arena->addTypePack(TypePack{args, {}});
+        argsPack = arena->addTypePack(TypePack{std::move(head), tail});
         fn = *callMm;
         asMutable(c.result)->ty.emplace<FreeTypePack>(constraint->scope);
     }
@@ -1890,7 +1885,20 @@ bool ConstraintSolver::tryDispatch(const RefineConstraint& c, NotNull<const Cons
     if (!force && !blockedTypes.empty())
         return block(blockedTypes, constraint);
 
-    asMutable(c.resultType)->ty.emplace<BoundType>(result);
+    const NormalizedType* normType = normalizer->normalize(c.type);
+
+    if (!normType)
+        reportError(NormalizationTooComplex{}, constraint->location);
+
+    if (normType && normType->shouldSuppressErrors())
+    {
+        auto resultOrError = simplifyUnion(builtinTypes, arena, result, builtinTypes->errorType).result;
+        asMutable(c.resultType)->ty.emplace<BoundType>(resultOrError);
+    }
+    else
+    {
+        asMutable(c.resultType)->ty.emplace<BoundType>(result);
+    }
 
     unblock(c.resultType, constraint->location);
 

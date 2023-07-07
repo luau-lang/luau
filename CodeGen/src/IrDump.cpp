@@ -163,6 +163,8 @@ const char* getCmdName(IrCmd cmd)
         return "JUMP_SLOT_MATCH";
     case IrCmd::TABLE_LEN:
         return "TABLE_LEN";
+    case IrCmd::STRING_LEN:
+        return "STRING_LEN";
     case IrCmd::NEW_TABLE:
         return "NEW_TABLE";
     case IrCmd::DUP_TABLE:

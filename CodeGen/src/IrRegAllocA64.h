@@ -77,6 +77,8 @@ struct IrRegAllocA64
 
     // which 8-byte slots are free
     uint32_t freeSpillSlots = 0;
+
+    bool error = false;
 };
 
 } // namespace A64
