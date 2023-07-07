@@ -415,6 +415,18 @@ Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, c
 {
 }
 
+void Frontend::parse(const ModuleName& name)
+{
+    LUAU_TIMETRACE_SCOPE("Frontend::parse", "Frontend");
+    LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
+
+    if (getCheckResult(name, false, false))
+        return;
+
+    std::vector<ModuleName> buildQueue;
+    parseGraph(buildQueue, name, false);
+}
+
 CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOptions> optionOverride)
 {
     LUAU_TIMETRACE_SCOPE("Frontend::check", "Frontend");

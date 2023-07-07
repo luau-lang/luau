@@ -26,8 +26,7 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAGVARIABLE(CompileFunctionType, false)
-LUAU_FASTFLAG(BytecodeVersion4)
+LUAU_FASTFLAGVARIABLE(LuauCompileFunctionType, false)
 
 namespace Luau
 {
@@ -103,6 +102,7 @@ struct Compiler
         , locstants(nullptr)
         , tableShapes(nullptr)
         , builtins(nullptr)
+        , typeMap(nullptr)
     {
         // preallocate some buffers that are very likely to grow anyway; this works around std::vector's inefficient growth policy for small arrays
         localStack.reserve(16);
@@ -204,11 +204,11 @@ struct Compiler
 
         setDebugLine(func);
 
-        if (FFlag::BytecodeVersion4 && FFlag::CompileFunctionType)
+        if (FFlag::LuauCompileFunctionType)
         {
-            std::string funcType = getFunctionType(func);
-            if (!funcType.empty())
-                bytecode.setFunctionTypeInfo(std::move(funcType));
+            // note: we move types out of typeMap which is safe because compileFunction is only called once per function
+            if (std::string* funcType = typeMap.find(func))
+                bytecode.setFunctionTypeInfo(std::move(*funcType));
         }
 
         if (func->vararg)
@@ -3807,6 +3807,8 @@ struct Compiler
     DenseHashMap<AstLocal*, Constant> locstants;
     DenseHashMap<AstExprTable*, TableShape> tableShapes;
     DenseHashMap<AstExprCall*, int> builtins;
+    DenseHashMap<AstExprFunction*, std::string> typeMap;
+
     const DenseHashMap<AstExprCall*, int>* builtinsFold = nullptr;
 
     unsigned int regTop = 0;
@@ -3868,6 +3870,11 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     {
         Compiler::FenvVisitor fenvVisitor(compiler.getfenvUsed, compiler.setfenvUsed);
         root->visit(&fenvVisitor);
+    }
+
+    if (FFlag::LuauCompileFunctionType)
+    {
+        buildTypeMap(compiler.typeMap, root);
     }
 
     // gathers all functions with the invariant that all function references are to functions earlier in the list

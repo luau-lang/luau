@@ -735,6 +735,37 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_metatables_where_the_metata
     CHECK("{ @metatable *error-type*, {|  |} }" == toString(normal("Mt<{}, any> & Mt<{}, err>")));
 }
 
+TEST_CASE_FIXTURE(NormalizeFixture, "recurring_intersection")
+{
+    CheckResult result = check(R"(
+        type A = any?
+        type B = A & A
+    )");
+
+    std::optional<TypeId> t = lookupType("B");
+    REQUIRE(t);
+
+    const NormalizedType* nt = normalizer.normalize(*t);
+    REQUIRE(nt);
+
+    CHECK("any" == toString(normalizer.typeFromNormal(*nt)));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_union")
+{
+    ScopedFastFlag sff{"LuauNormalizeCyclicUnions", true};
+
+    // T where T = any & (number | T)
+    TypeId t = arena.addType(BlockedType{});
+    TypeId u = arena.addType(UnionType{{builtinTypes->numberType, t}});
+    asMutable(t)->ty.emplace<IntersectionType>(IntersectionType{{builtinTypes->anyType, u}});
+
+    const NormalizedType* nt = normalizer.normalize(t);
+    REQUIRE(nt);
+
+    CHECK("number" == toString(normalizer.typeFromNormal(*nt)));
+}
+
 TEST_CASE_FIXTURE(NormalizeFixture, "crazy_metatable")
 {
     CHECK("never" == toString(normal("Mt<{}, number> & Mt<{}, string>")));

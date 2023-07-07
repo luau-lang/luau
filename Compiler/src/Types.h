@@ -3,7 +3,11 @@
 
 #include "Luau/Ast.h"
 
+#include <string>
+
 namespace Luau
 {
-std::string getFunctionType(const AstExprFunction* func);
+
+void buildTypeMap(DenseHashMap<AstExprFunction*, std::string>& typeMap, AstNode* root);
+
 } // namespace Luau

@@ -1090,6 +1090,11 @@ struct TypeChecker2
             args.head.push_back(lookupType(indexExpr->expr));
             argLocs.push_back(indexExpr->expr->location);
         }
+        else if (findMetatableEntry(builtinTypes, module->errors, *originalCallTy, "__call", call->func->location))
+        {
+            args.head.insert(args.head.begin(), lookupType(call->func));
+            argLocs.push_back(call->func->location);
+        }
 
         for (size_t i = 0; i < call->args.size; ++i)
         {

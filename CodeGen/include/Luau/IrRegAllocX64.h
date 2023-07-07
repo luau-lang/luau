@@ -39,6 +39,8 @@ struct IrRegAllocX64
     RegisterX64 allocRegOrReuse(SizeX64 size, uint32_t instIdx, std::initializer_list<IrOp> oprefs);
     RegisterX64 takeReg(RegisterX64 reg, uint32_t instIdx);
 
+    bool canTakeReg(RegisterX64 reg) const;
+
     void freeReg(RegisterX64 reg);
     void freeLastUseReg(IrInst& target, uint32_t instIdx);
     void freeLastUseRegs(const IrInst& inst, uint32_t instIdx);

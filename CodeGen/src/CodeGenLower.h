@@ -221,6 +221,8 @@ inline bool lowerIr(A64::AssemblyBuilderA64& build, IrBuilder& ir, ModuleHelpers
 template<typename AssemblyBuilder>
 inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
 {
+    killUnusedBlocks(ir.function);
+
     computeCfgInfo(ir.function);
 
     if (!FFlag::DebugCodegenNoOpt)

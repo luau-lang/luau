@@ -6,22 +6,58 @@
 namespace Luau
 {
 
-static LuauBytecodeEncodedType getType(AstType* ty)
+static bool isGeneric(AstName name, const AstArray<AstGenericType>& generics)
+{
+    for (const AstGenericType& gt : generics)
+        if (gt.name == name)
+            return true;
+
+    return false;
+}
+
+static LuauBytecodeEncodedType getPrimitiveType(AstName name)
+{
+    if (name == "nil")
+        return LBC_TYPE_NIL;
+    else if (name == "boolean")
+        return LBC_TYPE_BOOLEAN;
+    else if (name == "number")
+        return LBC_TYPE_NUMBER;
+    else if (name == "string")
+        return LBC_TYPE_STRING;
+    else if (name == "thread")
+        return LBC_TYPE_THREAD;
+    else if (name == "any" || name == "unknown")
+        return LBC_TYPE_ANY;
+    else
+        return LBC_TYPE_INVALID;
+}
+
+static LuauBytecodeEncodedType getType(
+    AstType* ty, const AstArray<AstGenericType>& generics, const DenseHashMap<AstName, AstStatTypeAlias*>& typeAliases, bool resolveAliases)
 {
     if (AstTypeReference* ref = ty->as<AstTypeReference>())
     {
-        if (ref->name == "nil")
-            return LBC_TYPE_NIL;
-        else if (ref->name == "boolean")
-            return LBC_TYPE_BOOLEAN;
-        else if (ref->name == "number")
-            return LBC_TYPE_NUMBER;
-        else if (ref->name == "string")
-            return LBC_TYPE_STRING;
-        else if (ref->name == "thread")
-            return LBC_TYPE_THREAD;
-        else if (ref->name == "any" || ref->name == "unknown")
+        if (ref->prefix)
             return LBC_TYPE_ANY;
+
+        if (AstStatTypeAlias* const* alias = typeAliases.find(ref->name); alias && *alias)
+        {
+            // note: we only resolve aliases to the depth of 1 to avoid dealing with recursive aliases
+            if (resolveAliases)
+                return getType((*alias)->type, (*alias)->generics, typeAliases, /* resolveAliases= */ false);
+            else
+                return LBC_TYPE_ANY;
+        }
+
+        if (isGeneric(ref->name, generics))
+            return LBC_TYPE_ANY;
+
+        if (LuauBytecodeEncodedType prim = getPrimitiveType(ref->name); prim != LBC_TYPE_INVALID)
+            return prim;
+
+        // not primitive or alias or generic => host-provided, we assume userdata for now
+        return LBC_TYPE_USERDATA;
     }
     else if (AstTypeTable* table = ty->as<AstTypeTable>())
     {
@@ -38,7 +74,7 @@ static LuauBytecodeEncodedType getType(AstType* ty)
 
         for (AstType* ty : un->types)
         {
-            LuauBytecodeEncodedType et = getType(ty);
+            LuauBytecodeEncodedType et = getType(ty, generics, typeAliases, resolveAliases);
 
             if (et == LBC_TYPE_NIL)
             {
@@ -69,11 +105,8 @@ static LuauBytecodeEncodedType getType(AstType* ty)
     return LBC_TYPE_ANY;
 }
 
-std::string getFunctionType(const AstExprFunction* func)
+static std::string getFunctionType(const AstExprFunction* func, const DenseHashMap<AstName, AstStatTypeAlias*>& typeAliases)
 {
-    if (func->vararg || func->generics.size || func->genericPacks.size)
-        return {};
-
     bool self = func->self != 0;
 
     std::string typeInfo;
@@ -88,7 +121,8 @@ std::string getFunctionType(const AstExprFunction* func)
     bool haveNonAnyParam = false;
     for (AstLocal* arg : func->args)
     {
-        LuauBytecodeEncodedType ty = arg->annotation ? getType(arg->annotation) : LBC_TYPE_ANY;
+        LuauBytecodeEncodedType ty =
+            arg->annotation ? getType(arg->annotation, func->generics, typeAliases, /* resolveAliases= */ true) : LBC_TYPE_ANY;
 
         if (ty != LBC_TYPE_ANY)
             haveNonAnyParam = true;
@@ -101,6 +135,90 @@ std::string getFunctionType(const AstExprFunction* func)
         return {};
 
     return typeInfo;
+}
+
+struct TypeMapVisitor : AstVisitor
+{
+    DenseHashMap<AstExprFunction*, std::string>& typeMap;
+
+    DenseHashMap<AstName, AstStatTypeAlias*> typeAliases;
+    std::vector<std::pair<AstName, AstStatTypeAlias*>> typeAliasStack;
+
+    TypeMapVisitor(DenseHashMap<AstExprFunction*, std::string>& typeMap)
+        : typeMap(typeMap)
+        , typeAliases(AstName())
+    {
+    }
+
+    size_t pushTypeAliases(AstStatBlock* block)
+    {
+        size_t aliasStackTop = typeAliasStack.size();
+
+        for (AstStat* stat : block->body)
+            if (AstStatTypeAlias* alias = stat->as<AstStatTypeAlias>())
+            {
+                AstStatTypeAlias*& prevAlias = typeAliases[alias->name];
+
+                typeAliasStack.push_back(std::make_pair(alias->name, prevAlias));
+                prevAlias = alias;
+            }
+
+        return aliasStackTop;
+    }
+
+    void popTypeAliases(size_t aliasStackTop)
+    {
+        while (typeAliasStack.size() > aliasStackTop)
+        {
+            std::pair<AstName, AstStatTypeAlias*>& top = typeAliasStack.back();
+
+            typeAliases[top.first] = top.second;
+            typeAliasStack.pop_back();
+        }
+    }
+
+    bool visit(AstStatBlock* node) override
+    {
+        size_t aliasStackTop = pushTypeAliases(node);
+
+        for (AstStat* stat : node->body)
+            stat->visit(this);
+
+        popTypeAliases(aliasStackTop);
+
+        return false;
+    }
+
+    // repeat..until scoping rules are such that condition (along with any possible functions declared in it) has aliases from repeat body in scope
+    bool visit(AstStatRepeat* node) override
+    {
+        size_t aliasStackTop = pushTypeAliases(node->body);
+
+        for (AstStat* stat : node->body->body)
+            stat->visit(this);
+
+        node->condition->visit(this);
+
+        popTypeAliases(aliasStackTop);
+
+        return false;
+    }
+
+    bool visit(AstExprFunction* node) override
+    {
+        std::string type = getFunctionType(node, typeAliases);
+
+        if (!type.empty())
+            typeMap[node] = std::move(type);
+
+        return true;
+    }
+};
+
+void buildTypeMap(DenseHashMap<AstExprFunction*, std::string>& typeMap, AstNode* root)
+{
+    TypeMapVisitor visitor(typeMap);
+    root->visit(&visitor);
 }
 
 } // namespace Luau

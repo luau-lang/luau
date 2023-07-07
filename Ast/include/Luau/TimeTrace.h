@@ -4,6 +4,7 @@
 #include "Luau/Common.h"
 
 #include <vector>
+#include <memory>
 
 #include <stdint.h>
 
@@ -54,7 +55,7 @@ struct Event
 struct GlobalContext;
 struct ThreadContext;
 
-GlobalContext& getGlobalContext();
+std::shared_ptr<GlobalContext> getGlobalContext();
 
 uint16_t createToken(GlobalContext& context, const char* name, const char* category);
 uint32_t createThread(GlobalContext& context, ThreadContext* threadContext);
@@ -66,7 +67,7 @@ struct ThreadContext
     ThreadContext()
         : globalContext(getGlobalContext())
     {
-        threadId = createThread(globalContext, this);
+        threadId = createThread(*globalContext, this);
     }
 
     ~ThreadContext()
@@ -74,16 +75,16 @@ struct ThreadContext
         if (!events.empty())
             flushEvents();
 
-        releaseThread(globalContext, this);
+        releaseThread(*globalContext, this);
     }
 
     void flushEvents()
     {
-        static uint16_t flushToken = createToken(globalContext, "flushEvents", "TimeTrace");
+        static uint16_t flushToken = createToken(*globalContext, "flushEvents", "TimeTrace");
 
         events.push_back({EventType::Enter, flushToken, {getClockMicroseconds()}});
 
-        TimeTrace::flushEvents(globalContext, threadId, events, data);
+        TimeTrace::flushEvents(*globalContext, threadId, events, data);
 
         events.clear();
         data.clear();
@@ -125,7 +126,7 @@ struct ThreadContext
         events.push_back({EventType::ArgValue, 0, {pos}});
     }
 
-    GlobalContext& globalContext;
+    std::shared_ptr<GlobalContext> globalContext;
     uint32_t threadId;
     std::vector<Event> events;
     std::vector<char> data;

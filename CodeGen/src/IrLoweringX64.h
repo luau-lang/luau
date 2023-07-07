@@ -34,7 +34,7 @@ struct IrLoweringX64
 
     bool isFallthroughBlock(IrBlock target, IrBlock next);
     void jumpOrFallthrough(IrBlock& target, IrBlock& next);
-    void jumpOrAbortOnUndef(ConditionX64 cond, ConditionX64 condInverse, IrOp targetOrUndef);
+    void jumpOrAbortOnUndef(ConditionX64 cond, ConditionX64 condInverse, IrOp targetOrUndef, bool continueInVm = false);
 
     void storeDoubleAsFloat(OperandX64 dst, IrOp src);
 
@@ -60,6 +60,12 @@ struct IrLoweringX64
         Label next;
     };
 
+    struct ExitHandler
+    {
+        Label self;
+        unsigned int pcpos;
+    };
+
     AssemblyBuilderX64& build;
     ModuleHelpers& helpers;
 
@@ -70,6 +76,7 @@ struct IrLoweringX64
     IrValueLocationTracking valueTracker;
 
     std::vector<InterruptHandler> interruptHandlers;
+    std::vector<ExitHandler> exitHandlers;
 };
 
 } // namespace X64

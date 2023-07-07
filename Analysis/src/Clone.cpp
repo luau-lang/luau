@@ -55,7 +55,6 @@ Property clone(const Property& prop, TypeArena& dest, CloneState& cloneState)
 
 static TableIndexer clone(const TableIndexer& indexer, TypeArena& dest, CloneState& cloneState)
 {
-    LUAU_ASSERT(FFlag::LuauTypecheckClassTypeIndexers);
     return TableIndexer{clone(indexer.indexType, dest, cloneState), clone(indexer.indexResultType, dest, cloneState)};
 }
 
@@ -312,16 +311,8 @@ void TypeCloner::operator()(const TableType& t)
     for (const auto& [name, prop] : t.props)
         ttv->props[name] = clone(prop, dest, cloneState);
 
-    if (FFlag::LuauTypecheckClassTypeIndexers)
-    {
-        if (t.indexer)
-            ttv->indexer = clone(*t.indexer, dest, cloneState);
-    }
-    else
-    {
-        if (t.indexer)
-            ttv->indexer = TableIndexer{clone(t.indexer->indexType, dest, cloneState), clone(t.indexer->indexResultType, dest, cloneState)};
-    }
+    if (t.indexer)
+        ttv->indexer = clone(*t.indexer, dest, cloneState);
 
     for (TypeId& arg : ttv->instantiatedTypeParams)
         arg = clone(arg, dest, cloneState);
@@ -360,11 +351,8 @@ void TypeCloner::operator()(const ClassType& t)
     if (t.metatable)
         ctv->metatable = clone(*t.metatable, dest, cloneState);
 
-    if (FFlag::LuauTypecheckClassTypeIndexers)
-    {
-        if (t.indexer)
-            ctv->indexer = clone(*t.indexer, dest, cloneState);
-    }
+    if (t.indexer)
+        ctv->indexer = clone(*t.indexer, dest, cloneState);
 }
 
 void TypeCloner::operator()(const AnyType& t)

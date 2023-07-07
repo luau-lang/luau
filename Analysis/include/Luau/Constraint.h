@@ -34,6 +34,11 @@ struct PackSubtypeConstraint
 {
     TypePackId subPack;
     TypePackId superPack;
+
+    // HACK!! TODO clip.
+    // We need to know which of `PackSubtypeConstraint` are emitted from `AstStatReturn` vs any others.
+    // Then we force these specific `PackSubtypeConstraint` to only dispatch in the order of the `return`s.
+    bool returns = false;
 };
 
 // generalizedType ~ gen sourceType
@@ -108,13 +113,12 @@ struct FunctionCallConstraint
     TypeId fn;
     TypePackId argsPack;
     TypePackId result;
-    class AstExprCall* callSite;
+    class AstExprCall* callSite = nullptr;
     std::vector<std::optional<TypeId>> discriminantTypes;
 
     // When we dispatch this constraint, we update the key at this map to record
     // the overload that we selected.
-    DenseHashMap<const AstNode*, TypeId>* astOriginalCallTypes;
-    DenseHashMap<const AstNode*, TypeId>* astOverloadResolvedTypes;
+    DenseHashMap<const AstNode*, TypeId>* astOverloadResolvedTypes = nullptr;
 };
 
 // result ~ prim ExpectedType SomeSingletonType MultitonType

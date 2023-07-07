@@ -516,6 +516,7 @@ void translateInstCloseUpvals(IrBuilder& build, const Instruction* pc)
 
 void translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool customParams, int customParamCount, IrOp customArgs, IrOp next)
 {
+    LuauOpcode opcode = LuauOpcode(LUAU_INSN_OP(*pc));
     int bfid = LUAU_INSN_A(*pc);
     int skip = LUAU_INSN_C(*pc);
 
@@ -540,7 +541,8 @@ void translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
-    build.inst(IrCmd::CHECK_SAFE_ENV, fallback);
+    // In unsafe environment, instead of retrying fastcall at 'pcpos' we side-exit directly to fallback sequence
+    build.inst(IrCmd::CHECK_SAFE_ENV, build.constUint(pcpos + getOpLength(opcode)));
 
     BuiltinImplResult br = translateBuiltin(build, LuauBuiltinFunction(bfid), ra, arg, builtinArgs, nparams, nresults, fallback);
 
@@ -554,7 +556,7 @@ void translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
     else
     {
         // TODO: we can skip saving pc for some well-behaved builtins which we didn't inline
-        build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
+        build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + getOpLength(opcode)));
 
         IrOp res = build.inst(IrCmd::INVOKE_FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), args, build.constInt(nparams),
             build.constInt(nresults));
@@ -668,7 +670,7 @@ void translateInstForGPrepNext(IrBuilder& build, const Instruction* pc, int pcpo
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
     // fast-path: pairs/next
-    build.inst(IrCmd::CHECK_SAFE_ENV, fallback);
+    build.inst(IrCmd::CHECK_SAFE_ENV, build.constUint(pcpos));
     IrOp tagB = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 1));
     build.inst(IrCmd::CHECK_TAG, tagB, build.constTag(LUA_TTABLE), fallback);
     IrOp tagC = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 2));
@@ -695,7 +697,7 @@ void translateInstForGPrepInext(IrBuilder& build, const Instruction* pc, int pcp
     IrOp finish = build.block(IrBlockKind::Internal);
 
     // fast-path: ipairs/inext
-    build.inst(IrCmd::CHECK_SAFE_ENV, fallback);
+    build.inst(IrCmd::CHECK_SAFE_ENV, build.constUint(pcpos));
     IrOp tagB = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 1));
     build.inst(IrCmd::CHECK_TAG, tagB, build.constTag(LUA_TTABLE), fallback);
     IrOp tagC = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 2));
@@ -921,7 +923,7 @@ void translateInstGetImport(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp fastPath = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
-    build.inst(IrCmd::CHECK_SAFE_ENV, fallback);
+    build.inst(IrCmd::CHECK_SAFE_ENV, build.constUint(pcpos));
 
     // note: if import failed, k[] is nil; we could check this during codegen, but we instead use runtime fallback
     // this allows us to handle ahead-of-time codegen smoothly when an import fails to resolve at runtime

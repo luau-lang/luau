@@ -526,7 +526,7 @@ bb_0:
 )");
 }
 
-TEST_CASE_FIXTURE(IrBuilderFixture, "Bit32Blocked")
+TEST_CASE_FIXTURE(IrBuilderFixture, "Bit32RangeReduction")
 {
     IrOp block = build.block(IrBlockKind::Internal);
 
@@ -534,10 +534,10 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Bit32Blocked")
 
     build.inst(IrCmd::STORE_INT, build.vmReg(10), build.inst(IrCmd::BITLSHIFT_UINT, build.constInt(0xf), build.constInt(-10)));
     build.inst(IrCmd::STORE_INT, build.vmReg(10), build.inst(IrCmd::BITLSHIFT_UINT, build.constInt(0xf), build.constInt(140)));
-    build.inst(IrCmd::STORE_INT, build.vmReg(10), build.inst(IrCmd::BITRSHIFT_UINT, build.constInt(0xf), build.constInt(-10)));
-    build.inst(IrCmd::STORE_INT, build.vmReg(10), build.inst(IrCmd::BITRSHIFT_UINT, build.constInt(0xf), build.constInt(140)));
-    build.inst(IrCmd::STORE_INT, build.vmReg(10), build.inst(IrCmd::BITARSHIFT_UINT, build.constInt(0xf), build.constInt(-10)));
-    build.inst(IrCmd::STORE_INT, build.vmReg(10), build.inst(IrCmd::BITARSHIFT_UINT, build.constInt(0xf), build.constInt(140)));
+    build.inst(IrCmd::STORE_INT, build.vmReg(10), build.inst(IrCmd::BITRSHIFT_UINT, build.constInt(0xffffff), build.constInt(-10)));
+    build.inst(IrCmd::STORE_INT, build.vmReg(10), build.inst(IrCmd::BITRSHIFT_UINT, build.constInt(0xffffff), build.constInt(140)));
+    build.inst(IrCmd::STORE_INT, build.vmReg(10), build.inst(IrCmd::BITARSHIFT_UINT, build.constInt(0xffffff), build.constInt(-10)));
+    build.inst(IrCmd::STORE_INT, build.vmReg(10), build.inst(IrCmd::BITARSHIFT_UINT, build.constInt(0xffffff), build.constInt(140)));
 
     build.inst(IrCmd::RETURN, build.constUint(0));
 
@@ -546,18 +546,12 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Bit32Blocked")
 
     CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
 bb_0:
-   %0 = BITLSHIFT_UINT 15i, -10i
-   STORE_INT R10, %0
-   %2 = BITLSHIFT_UINT 15i, 140i
-   STORE_INT R10, %2
-   %4 = BITRSHIFT_UINT 15i, -10i
-   STORE_INT R10, %4
-   %6 = BITRSHIFT_UINT 15i, 140i
-   STORE_INT R10, %6
-   %8 = BITARSHIFT_UINT 15i, -10i
-   STORE_INT R10, %8
-   %10 = BITARSHIFT_UINT 15i, 140i
-   STORE_INT R10, %10
+   STORE_INT R10, 62914560i
+   STORE_INT R10, 61440i
+   STORE_INT R10, 3i
+   STORE_INT R10, 4095i
+   STORE_INT R10, 3i
+   STORE_INT R10, 4095i
    RETURN 0u
 
 )");
@@ -1859,6 +1853,34 @@ bb_0:
    STORE_TAG R2, tnumber
    FALLBACK_GETVARARGS 0u, R1, -1i
    STORE_TAG R2, tnumber
+   RETURN 0u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "LoadPropagatesOnlyRightType")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), build.constInt(2));
+    IrOp value1 = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(0));
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(1), value1);
+    IrOp value2 = build.inst(IrCmd::LOAD_INT, build.vmReg(1));
+    build.inst(IrCmd::STORE_INT, build.vmReg(2), value2);
+    build.inst(IrCmd::RETURN, build.constUint(0));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build, true);
+
+    CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
+bb_0:
+   STORE_INT R0, 2i
+   %1 = LOAD_DOUBLE R0
+   STORE_DOUBLE R1, %1
+   %3 = LOAD_INT R1
+   STORE_INT R2, %3
    RETURN 0u
 
 )");

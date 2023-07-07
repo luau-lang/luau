@@ -304,13 +304,10 @@ struct GenericTypeVisitor
                 if (ctv->metatable)
                     traverse(*ctv->metatable);
 
-                if (FFlag::LuauTypecheckClassTypeIndexers)
+                if (ctv->indexer)
                 {
-                    if (ctv->indexer)
-                    {
-                        traverse(ctv->indexer->indexType);
-                        traverse(ctv->indexer->indexResultType);
-                    }
+                    traverse(ctv->indexer->indexType);
+                    traverse(ctv->indexer->indexResultType);
                 }
             }
         }

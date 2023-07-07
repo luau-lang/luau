@@ -584,6 +584,13 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.vcvtsi2sd(inst.regX64, inst.regX64, eax);
         break;
     }
+    case IrCmd::STRING_LEN:
+    {
+        RegisterX64 ptr = regOp(inst.a);
+        inst.regX64 = regs.allocReg(SizeX64::dword, index);
+        build.mov(inst.regX64, dword[ptr + offsetof(TString, len)]);
+        break;
+    }
     case IrCmd::NEW_TABLE:
     {
         IrCallWrapperX64 callWrap(regs, build, index);
@@ -720,9 +727,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         int nparams = intOp(inst.e);
         int nresults = intOp(inst.f);
 
-        ScopedRegX64 func{regs, SizeX64::qword};
-        build.mov(func.reg, qword[rNativeContext + offsetof(NativeContext, luauF_table) + bfid * sizeof(luau_FastFunction)]);
-
         IrCallWrapperX64 callWrap(regs, build, index);
         callWrap.addArgument(SizeX64::qword, rState);
         callWrap.addArgument(SizeX64::qword, luauRegAddress(ra));
@@ -747,6 +751,9 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         {
             callWrap.addArgument(SizeX64::dword, nparams);
         }
+
+        ScopedRegX64 func{regs, SizeX64::qword};
+        build.mov(func.reg, qword[rNativeContext + offsetof(NativeContext, luauF_table) + bfid * sizeof(luau_FastFunction)]);
 
         callWrap.call(func.release());
         inst.regX64 = regs.takeReg(eax, index); // Result of a builtin call is returned in eax
@@ -878,9 +885,12 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         callPrepareForN(regs, build, vmRegOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c));
         break;
     case IrCmd::CHECK_TAG:
+    {
+        bool continueInVm = (inst.d.kind == IrOpKind::Constant && intOp(inst.d));
         build.cmp(memRegTagOp(inst.a), tagOp(inst.b));
-        jumpOrAbortOnUndef(ConditionX64::NotEqual, ConditionX64::Equal, inst.c);
+        jumpOrAbortOnUndef(ConditionX64::NotEqual, ConditionX64::Equal, inst.c, continueInVm);
         break;
+    }
     case IrCmd::CHECK_READONLY:
         build.cmp(byte[regOp(inst.a) + offsetof(Table, readonly)], 0);
         jumpOrAbortOnUndef(ConditionX64::NotEqual, ConditionX64::Equal, inst.b);
@@ -896,7 +906,20 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.mov(tmp.reg, sClosure);
         build.mov(tmp.reg, qword[tmp.reg + offsetof(Closure, env)]);
         build.cmp(byte[tmp.reg + offsetof(Table, safeenv)], 0);
-        jumpOrAbortOnUndef(ConditionX64::Equal, ConditionX64::NotEqual, inst.a);
+
+        if (inst.a.kind == IrOpKind::Undef)
+        {
+            Label skip;
+            build.jcc(ConditionX64::NotEqual, skip);
+            build.ud2();
+            build.setLabel(skip);
+        }
+        else
+        {
+            Label self;
+            build.jcc(ConditionX64::Equal, self);
+            exitHandlers.push_back({self, uintOp(inst.a)});
+        }
         break;
     }
     case IrCmd::CHECK_ARRAY_SIZE:
@@ -1403,6 +1426,16 @@ void IrLoweringX64::finishFunction()
         build.lea(rbx, handler.next);
         build.jmp(helpers.interrupt);
     }
+
+    if (build.logText)
+        build.logAppend("; exit handlers\n");
+
+    for (ExitHandler& handler : exitHandlers)
+    {
+        build.setLabel(handler.self);
+        build.mov(edx, handler.pcpos * sizeof(Instruction));
+        build.jmp(helpers.updatePcAndContinueInVm);
+    }
 }
 
 bool IrLoweringX64::hasError() const
@@ -1425,10 +1458,16 @@ void IrLoweringX64::jumpOrFallthrough(IrBlock& target, IrBlock& next)
         build.jmp(target.label);
 }
 
-void IrLoweringX64::jumpOrAbortOnUndef(ConditionX64 cond, ConditionX64 condInverse, IrOp targetOrUndef)
+void IrLoweringX64::jumpOrAbortOnUndef(ConditionX64 cond, ConditionX64 condInverse, IrOp targetOrUndef, bool continueInVm)
 {
     if (targetOrUndef.kind == IrOpKind::Undef)
     {
+        if (continueInVm)
+        {
+            build.jcc(cond, helpers.exitContinueVmClearNativeFlag);
+            return;
+        }
+
         Label skip;
         build.jcc(condInverse, skip);
         build.ud2();

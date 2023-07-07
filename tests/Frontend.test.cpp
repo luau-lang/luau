@@ -1146,4 +1146,35 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "module_scope_check")
     CHECK_EQ(toString(ty), "number");
 }
 
+TEST_CASE_FIXTURE(FrontendFixture, "parse_only")
+{
+    fileResolver.source["game/Gui/Modules/A"] = R"(
+        local a: number = 'oh no a type error'
+        return {a=a}
+    )";
+
+    fileResolver.source["game/Gui/Modules/B"] = R"(
+        local Modules = script.Parent
+        local A = require(Modules.A)
+        local b: number = 2
+    )";
+
+    frontend.parse("game/Gui/Modules/B");
+
+    REQUIRE(frontend.sourceNodes.count("game/Gui/Modules/A"));
+    REQUIRE(frontend.sourceNodes.count("game/Gui/Modules/B"));
+
+    auto node = frontend.sourceNodes["game/Gui/Modules/B"];
+    CHECK_EQ(node->requireSet.count("game/Gui/Modules/A"), 1);
+    REQUIRE_EQ(node->requireLocations.size(), 1);
+    CHECK_EQ(node->requireLocations[0].second, Luau::Location(Position(2, 18), Position(2, 36)));
+
+    // Early parse doesn't cause typechecking to be skipped
+    CheckResult result = frontend.check("game/Gui/Modules/B");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK_EQ("game/Gui/Modules/A", result.errors[0].moduleName);
+    CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+}
+
 TEST_SUITE_END();

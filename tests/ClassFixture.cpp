@@ -107,7 +107,6 @@ ClassFixture::ClassFixture()
     globals.globalScope->exportedTypeBindings["CallableClass"] = TypeFun{{}, callableClassType};
 
     auto addIndexableClass = [&arena, &globals](const char* className, TypeId keyType, TypeId returnType) {
-        ScopedFastFlag LuauTypecheckClassTypeIndexers("LuauTypecheckClassTypeIndexers", true);
         TypeId indexableClassMetaType = arena.addType(TableType{});
         TypeId indexableClassType =
             arena.addType(ClassType{className, {}, nullopt, indexableClassMetaType, {}, {}, "Test", TableIndexer{keyType, returnType}});

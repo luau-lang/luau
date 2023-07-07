@@ -2096,4 +2096,46 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_wi
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "num_is_solved_before_num_or_str")
+{
+    CheckResult result = check(R"(
+        function num()
+            return 5
+        end
+
+        local function num_or_str()
+            if math.random() > 0.5 then
+                return num()
+            else
+                return "some string"
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+    CHECK_EQ("() -> number", toString(requireType("num_or_str")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "num_is_solved_after_num_or_str")
+{
+    CheckResult result = check(R"(
+        local function num_or_str()
+            if math.random() > 0.5 then
+                return num()
+            else
+                return "some string"
+            end
+        end
+
+        function num()
+            return 5
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+    CHECK_EQ("() -> number", toString(requireType("num_or_str")));
+}
+
 TEST_SUITE_END();
