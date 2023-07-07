@@ -28,7 +28,7 @@ TEST_CASE_FIXTURE(Fixture, "equal_numbers")
         DifferResult diffRes = diff(foo, almostFoo);
         CHECK(!diffRes.diffError.has_value());
     }
-    catch (InternalCompilerError e)
+    catch (const InternalCompilerError& e)
     {
         INFO(("InternalCompilerError: " + e.message));
         CHECK(false);
@@ -51,7 +51,7 @@ TEST_CASE_FIXTURE(Fixture, "equal_strings")
         DifferResult diffRes = diff(foo, almostFoo);
         CHECK(!diffRes.diffError.has_value());
     }
-    catch (InternalCompilerError e)
+    catch (const InternalCompilerError& e)
     {
         INFO(("InternalCompilerError: " + e.message));
         CHECK(false);
@@ -74,7 +74,7 @@ TEST_CASE_FIXTURE(Fixture, "equal_tables")
         DifferResult diffRes = diff(foo, almostFoo);
         CHECK(!diffRes.diffError.has_value());
     }
-    catch (InternalCompilerError e)
+    catch (const InternalCompilerError& e)
     {
         INFO(("InternalCompilerError: " + e.message));
         CHECK(false);
@@ -97,7 +97,7 @@ TEST_CASE_FIXTURE(Fixture, "a_table_missing_property")
     {
         diffMessage = diff(foo, almostFoo).diffError->toString();
     }
-    catch (InternalCompilerError e)
+    catch (const InternalCompilerError& e)
     {
         INFO(("InternalCompilerError: " + e.message));
         CHECK(false);
@@ -123,7 +123,7 @@ TEST_CASE_FIXTURE(Fixture, "left_table_missing_property")
     {
         diffMessage = diff(foo, almostFoo).diffError->toString();
     }
-    catch (InternalCompilerError e)
+    catch (const InternalCompilerError& e)
     {
         INFO(("InternalCompilerError: " + e.message));
         CHECK(false);
@@ -149,7 +149,7 @@ TEST_CASE_FIXTURE(Fixture, "a_table_wrong_type")
     {
         diffMessage = diff(foo, almostFoo).diffError->toString();
     }
-    catch (InternalCompilerError e)
+    catch (const InternalCompilerError& e)
     {
         INFO(("InternalCompilerError: " + e.message));
         CHECK(false);
@@ -175,7 +175,7 @@ TEST_CASE_FIXTURE(Fixture, "a_table_wrong_type")
     {
         diffMessage = diff(foo, almostFoo).diffError->toString();
     }
-    catch (InternalCompilerError e)
+    catch (const InternalCompilerError& e)
     {
         INFO(("InternalCompilerError: " + e.message));
         CHECK(false);
@@ -201,7 +201,7 @@ TEST_CASE_FIXTURE(Fixture, "a_nested_table_wrong_type")
     {
         diffMessage = diff(foo, almostFoo).diffError->toString();
     }
-    catch (InternalCompilerError e)
+    catch (const InternalCompilerError& e)
     {
         INFO(("InternalCompilerError: " + e.message));
         CHECK(false);
@@ -227,7 +227,7 @@ TEST_CASE_FIXTURE(Fixture, "a_nested_table_wrong_match")
     {
         diffMessage = diff(foo, almostFoo).diffError->toString();
     }
-    catch (InternalCompilerError e)
+    catch (const InternalCompilerError& e)
     {
         INFO(("InternalCompilerError: " + e.message));
         CHECK(false);
@@ -253,7 +253,7 @@ TEST_CASE_FIXTURE(Fixture, "singleton")
     {
         diffMessage = diff(foo, almostFoo).diffError->toString();
     }
-    catch (InternalCompilerError e)
+    catch (const InternalCompilerError& e)
     {
         INFO(("InternalCompilerError: " + e.message));
         CHECK(false);
@@ -280,7 +280,7 @@ TEST_CASE_FIXTURE(Fixture, "equal_singleton")
         INFO(diffRes.diffError->toString());
         CHECK(!diffRes.diffError.has_value());
     }
-    catch (InternalCompilerError e)
+    catch (const InternalCompilerError& e)
     {
         INFO(("InternalCompilerError: " + e.message));
         CHECK(false);
@@ -303,7 +303,7 @@ TEST_CASE_FIXTURE(Fixture, "singleton_string")
     {
         diffMessage = diff(foo, almostFoo).diffError->toString();
     }
-    catch (InternalCompilerError e)
+    catch (const InternalCompilerError& e)
     {
         INFO(("InternalCompilerError: " + e.message));
         CHECK(false);
