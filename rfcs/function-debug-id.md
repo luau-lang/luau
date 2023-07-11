@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add `debug.id` which accepts a value and always returns the identifier unique to all values that haven't been garbage collected.
+Add `debug.id` which accepts a value and always returns the identifier unique to that value.
 
 ## Motivation
 
@@ -12,7 +12,7 @@ When debugging, it is often useful to compare identity. Usually `print` will pri
 
 ## Design
 
-`debug.id(value: string | userdata | table | thread | function): number` always returns the identifier unique to that value, and is not possible to override. Uniqueness is only guaranteed for values that haven't been garbage collected.
+`debug.id(value: string | userdata | table | thread | function): number` always returns the identifier unique to that value, and is not possible to override. The identifier can be reused after the value associated with it is garbage collected.
 
 While tables and userdata have individualized metatables, also allowing functions and threads to be passed to `debug.id` would let their type-level `__tostring` be redefined. Strings are useful to accept because of long, similar strings.
 
