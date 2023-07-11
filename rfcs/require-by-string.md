@@ -75,9 +75,11 @@ Our require syntax should:
 - Provide support for binding unambiguous aliases to relative and absolute paths.
 - Attempt to remain consistent with the existing Luau path syntax.
 
+For compatibility across platforms, we will automatically map `/` onto `\`.
+
 #### Relative paths
 
-Modules can be required relative to the requiring file's location in the filesystem.
+Modules can be required relative to the requiring file's location in the filesystem (note, this is different from the current implementation, which evaluates all relative paths in relation to the current working directory).
 
 If we are trying to require a module called `MyModule.luau` in `C:/MyLibrary`:
 ```lua
@@ -201,7 +203,7 @@ If the string resolves to a directory instead of a file, then we will attempt to
 1. `init.luau`
 2. `init.lua`
 
-#### Caching
+### Caching
 
 In the current implementation, required modules are cached based on the string that was used to require them. This means that using a mix of relative/absolute/aliased paths might lead to a cache miss—even if the module has already been required.
 
@@ -220,9 +222,61 @@ Currently, since relative paths are always evaluated in relation to the current 
 
 For example, `require("mymodule")` and `require("../mymodule")` might refer to the same module, depending on the requiring files' locations. With the current cache implementation, the second statement would be a cache miss, as `"mymodule"` is not literally equal to `"../mymodule"`.
 
-To solve this issue, we propose transforming every path that is passed to `require` into an equivalent absolute path and using this to cache, regardless of whether it was passed in as a relative, absolute, or aliased path. This way, a module's return value is stored in both a unique and consistent way across different files.
+To solve this issue, we propose transforming every path that is passed to `require` into an equivalent absolute path and using this to cache, regardless of whether it was originally passed in as a relative, absolute, or aliased path. This way, a module's return value is stored in both a unique and consistent way across different files.
 
-#### DataModel as VFS
+### Implementing changes to relative paths
+
+The current implementation of evaluating relative paths (in relation to the current working directory) can be found in [lua_require](https://github.com/Roblox/luau/blob/e25de95445f2d635a125ab463426bb7fda017093/CLI/Repl.cpp#L133).
+
+When reading in the contents of a module using [readFile](https://github.com/Roblox/luau/blob/e25de95445f2d635a125ab463426bb7fda017093/CLI/FileUtils.cpp#L47), the function `fopen`/`_wfopen` is called, which itself evaluates relative paths in relation to the CWD. In order to implement relative paths in relation to the requiring file, we have two options when evaluating a relative path.
+
+**Assume the following:**
+ - Current working directory: `"/Users/johndoe/project/subdirectory/cwd`
+ - Requiring file's location: `"/Users/johndoe/project/requirer.luau`
+ - Relative path given to require by user: `"./sibling"`
+
+**Approach 1: Translate to the "correct" relative path**
+ - Translated relative path given to `fopen`/`_wfopen`: `"../../sibling"`
+
+**Approach 2: Convert the given relative path into its corresponding absolute path**
+ - Translated relative path given to `fopen`/`_wfopen`: `"/Users/johndoe/project/sibling"`
+
+Although `fopen`/`_wfopen` can handle both relative (to CWD) and absolute paths, the second approach makes more sense for our use case. We already need absolute paths for caching, as explained in the "Caching" section, so we might as well generate these absolute paths during the path resolution stage. With the first approach, we would need to call `realpath` to convert the relative-to-CWD path into an absolute path for caching, which is an unnecessary extra step.
+
+The second approach is also easier to implement. In order to implement the first approach, we would need to constantly keep track of the relationship between the current working directory and the requiring file in order to translate paths correctly. With the second approach, we can safely ignore the location of the current working directory: everything will be relative to the absolute path of the requiring file.
+
+Using the second approach for the example above, we know that the absolute path to the requiring file is `"/Users/johndoe/project/requirer.luau`. To find `"./sibling"`, we can simply traverse the requiring file's absolute path to arrive at `"/Users/johndoe/project/sibling.luau`. This logic is fairly easy to implement (for example, if `".."`, move up one directory).
+
+#### Where to begin traversal
+
+One key assumption of this section is that we will have the absolute path of the requiring file when requiring a module by relative path.
+
+While we could add an explicit reference to this directory to the `lua_State`, we already have an internal mechanism that allows us to get this information. We essentially want to call the `C++` equivalent of `debug.info(1, "s")` when we enter `lua_require`, which would return the name of the file that called `require`, or `stdin` if the module was required directly from the CLI.
+
+As an example, we might do something like this in `lua_require`:
+
+```cpp
+static int lua_require(lua_State* L)
+{
+    lua_Debug ar;
+    lua_getinfo(L, 1, "s", &ar);
+
+    // Path of requiring file
+    const char* basepath = ar.source;
+
+    // ...
+}
+```
+
+#### Impact on `debug.info` output
+
+In order for the above approach (using `debug.info` to obtain the requiring file's path) to work properly, we need to change the `chunkname` that is passed to `luau_load` [here](https://github.com/Roblox/luau/blob/e25de95445f2d635a125ab463426bb7fda017093/CLI/Repl.cpp#L152) to be an absolute path. This slightly changes the behavior of `debug.info`: the source file name returned by `debug.info` will now be an absolute path to the file rather than the string that was used to require that file.
+
+The current implementation also has a slight inconsistency that should be addressed. When executing a Luau script directly (launching Luau with a command-line argument: `"luau script.luau"`), that base script's name is internally stored with a file extension. However, files that are later required are stored with this extension omitted. As a result, the output of `debug.info` depends on whether the file was the base Luau script being executed or was required as a dependency of the base script.
+
+For consistency, we propose storing the file extension in `lua_require` and always outputting it when `debug.info` is called.
+
+### DataModel as VFS
 
 In the Roblox engine, the DataModel will act as a virtual file system. At the root of this VFS is the DataModel itself. This will allow packages from Luau to be imported and exported freely without needing to consider the platform they are being used on.
 
@@ -239,13 +293,9 @@ local MyModule = require("/ReplicatedStorage/MyModule")
 local MyModule = require("MyModule")
 ```
 
-##### Considerations
+#### Considerations
 
 Within the Roblox engine, we will have to handle replication and waiting for modules to be loaded into the DataModel before requiring them. However, this is outside of the scope of this RFC and will be discussed internally.
-
-#### Platform compatibility
-
-For compatibility across platforms, we will automatically map `/` onto `\`.
 
 ## Drawbacks
 
