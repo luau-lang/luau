@@ -18,7 +18,7 @@ While tables and userdata have individualized metatables, also allowing function
 
 ## Drawbacks
 
-None known.
+Identifiers being reused has the potential to confuse humans reading them.
 
 ## Alternatives
 
