@@ -789,4 +789,19 @@ TEST_CASE_FIXTURE(Fixture, "lookup_prop_of_intersection_containing_unions")
     CHECK("variables" == unknownProp->key);
 }
 
+TEST_CASE_FIXTURE(Fixture, "suppress_errors_for_prop_lookup_of_a_union_that_includes_error")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    registerHiddenTypes(&frontend);
+
+    CheckResult result = check(R"(
+        local a : err | Not<nil>
+
+        local b = a.foo
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

@@ -92,4 +92,13 @@ end
 
 assert(pcall(fuzzfail9) == false)
 
+local function fuzzfail10()
+  local _
+  _ = false,if _ then _ else _
+  _ = not _
+  l0,_[l0] = not _
+end
+
+assert(pcall(fuzzfail10) == false)
+
 return('OK')

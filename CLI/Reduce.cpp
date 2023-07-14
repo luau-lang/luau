@@ -429,8 +429,7 @@ struct Reducer
         }
     }
 
-    void run(const std::string scriptName, const std::string command, std::string_view source,
-        std::string_view searchText)
+    void run(const std::string scriptName, const std::string command, std::string_view source, std::string_view searchText)
     {
         this->scriptName = scriptName;
 

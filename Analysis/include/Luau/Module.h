@@ -112,6 +112,7 @@ struct Module
     Mode mode;
     SourceCode::Type type;
     bool timeout = false;
+    bool cancelled = false;
 
     TypePackId returnType = nullptr;
     std::unordered_map<Name, TypeFun> exportedTypeBindings;

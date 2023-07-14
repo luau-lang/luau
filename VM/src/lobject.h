@@ -263,9 +263,22 @@ typedef struct Proto
     CommonHeader;
 
 
+    uint8_t nups; // number of upvalues
+    uint8_t numparams;
+    uint8_t is_vararg;
+    uint8_t maxstacksize;
+    uint8_t flags;
+
+
     TValue* k;              // constants used by the function
     Instruction* code;      // function bytecode
     struct Proto** p;       // functions defined inside the function
+    const Instruction* codeentry;
+
+    void* execdata;
+    uintptr_t exectarget;
+
+
     uint8_t* lineinfo;      // for each instruction, line number as a delta from baseline
     int* abslineinfo;       // baseline line info, one entry for each 1<<linegaplog2 instructions; allocated after lineinfo
     struct LocVar* locvars; // information about local variables
@@ -274,10 +287,6 @@ typedef struct Proto
 
     TString* debugname;
     uint8_t* debuginsn; // a copy of code[] array with just opcodes
-
-    const Instruction* codeentry;
-    void* execdata;
-    uintptr_t exectarget;
 
     uint8_t* typeinfo;
 
@@ -293,12 +302,6 @@ typedef struct Proto
     int linegaplog2;
     int linedefined;
     int bytecodeid;
-
-
-    uint8_t nups; // number of upvalues
-    uint8_t numparams;
-    uint8_t is_vararg;
-    uint8_t maxstacksize;
 } Proto;
 // clang-format on
 

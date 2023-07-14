@@ -3874,7 +3874,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
 
     if (FFlag::LuauCompileFunctionType)
     {
-        buildTypeMap(compiler.typeMap, root);
+        buildTypeMap(compiler.typeMap, root, options.vectorType);
     }
 
     // gathers all functions with the invariant that all function references are to functions earlier in the list

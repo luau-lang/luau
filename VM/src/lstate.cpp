@@ -101,10 +101,8 @@ static void close_state(lua_State* L)
     for (int i = 1; i < LUA_MEMORY_CATEGORIES; i++)
         LUAU_ASSERT(g->memcatbytes[i] == 0);
 
-#if LUA_CUSTOM_EXECUTION
     if (L->global->ecb.close)
         L->global->ecb.close(L);
-#endif
 
     (*g->frealloc)(g->ud, L, sizeof(LG), 0);
 }

@@ -268,7 +268,6 @@ void callStepGc(IrRegAllocX64& regs, AssemblyBuilderX64& build)
     build.setLabel(skip);
 }
 
-
 void emitClearNativeFlag(AssemblyBuilderX64& build)
 {
     build.mov(rax, qword[rState + offsetof(lua_State, ci)]);

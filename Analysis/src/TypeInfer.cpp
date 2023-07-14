@@ -2,6 +2,7 @@
 #include "Luau/TypeInfer.h"
 
 #include "Luau/ApplyTypeFunction.h"
+#include "Luau/Cancellation.h"
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/Instantiation.h"
@@ -302,6 +303,10 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     {
         currentModule->timeout = true;
     }
+    catch (const UserCancelError&)
+    {
+        currentModule->cancelled = true;
+    }
 
     if (FFlag::DebugLuauSharedSelf)
     {
@@ -345,7 +350,9 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
 ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStat& program)
 {
     if (finishTime && TimeTrace::getClock() > *finishTime)
-        throw TimeLimitError(iceHandler->moduleName);
+        throwTimeLimitError();
+    if (cancellationToken && cancellationToken->requested())
+        throwUserCancelError();
 
     if (auto block = program.as<AstStatBlock>())
         return check(scope, *block);
@@ -4929,14 +4936,24 @@ void TypeChecker::reportErrors(const ErrorVec& errors)
         reportError(err);
 }
 
-void TypeChecker::ice(const std::string& message, const Location& location)
+LUAU_NOINLINE void TypeChecker::ice(const std::string& message, const Location& location)
 {
     iceHandler->ice(message, location);
 }
 
-void TypeChecker::ice(const std::string& message)
+LUAU_NOINLINE void TypeChecker::ice(const std::string& message)
 {
     iceHandler->ice(message);
+}
+
+LUAU_NOINLINE void TypeChecker::throwTimeLimitError()
+{
+    throw TimeLimitError(iceHandler->moduleName);
+}
+
+LUAU_NOINLINE void TypeChecker::throwUserCancelError()
+{
+    throw UserCancelError(iceHandler->moduleName);
 }
 
 void TypeChecker::prepareErrorsForDisplay(ErrorVec& errVec)

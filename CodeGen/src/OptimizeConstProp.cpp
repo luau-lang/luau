@@ -977,7 +977,7 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
 
         // Unconditional jump into a block with a single user (current block) allows us to continue optimization
         // with the information we have gathered so far (unless we have already visited that block earlier)
-        if (termInst.cmd == IrCmd::JUMP)
+        if (termInst.cmd == IrCmd::JUMP && termInst.a.kind != IrOpKind::VmExit)
         {
             IrBlock& target = function.blockOp(termInst.a);
             uint32_t targetIdx = function.getBlockIndex(target);
@@ -1011,7 +1011,7 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
         IrBlock* nextBlock = nullptr;
 
         // A chain is made from internal blocks that were not a part of bytecode CFG
-        if (termInst.cmd == IrCmd::JUMP)
+        if (termInst.cmd == IrCmd::JUMP && termInst.a.kind != IrOpKind::VmExit)
         {
             IrBlock& target = function.blockOp(termInst.a);
             uint32_t targetIdx = function.getBlockIndex(target);
@@ -1052,6 +1052,10 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
     if (termInst.cmd != IrCmd::JUMP)
         return;
 
+    // And it can't be jump to a VM exit
+    if (termInst.a.kind == IrOpKind::VmExit)
+        return;
+
     // And it has to jump to a block with more than one user
     // If there's only one use, it should already be optimized by constPropInBlockChain
     if (function.blockOp(termInst.a).useCount == 1)
@@ -1084,7 +1088,8 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
 
     build.beginBlock(newBlock);
 
-    // By default, blocks are ordered according to start instruction; we alter sort order to make sure linearized block is placed right after the starting block
+    // By default, blocks are ordered according to start instruction; we alter sort order to make sure linearized block is placed right after the
+    // starting block
     function.blocks[newBlock.index].sortkey = startingInsn + 1;
 
     replace(function, termInst.a, newBlock);

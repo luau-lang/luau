@@ -15,8 +15,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAGVARIABLE(LuauClonePublicInterfaceLess2, false);
-LUAU_FASTFLAGVARIABLE(LuauCloneSkipNonInternalVisit, false);
 
 namespace Luau
 {
@@ -98,7 +96,7 @@ struct ClonePublicInterface : Substitution
 
     bool ignoreChildrenVisit(TypeId ty) override
     {
-        if (FFlag::LuauCloneSkipNonInternalVisit && ty->owningArena != &module->internalTypes)
+        if (ty->owningArena != &module->internalTypes)
             return true;
 
         return false;
@@ -106,7 +104,7 @@ struct ClonePublicInterface : Substitution
 
     bool ignoreChildrenVisit(TypePackId tp) override
     {
-        if (FFlag::LuauCloneSkipNonInternalVisit && tp->owningArena != &module->internalTypes)
+        if (tp->owningArena != &module->internalTypes)
             return true;
 
         return false;
@@ -211,35 +209,23 @@ void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalEr
     TxnLog log;
     ClonePublicInterface clonePublicInterface{&log, builtinTypes, this};
 
-    if (FFlag::LuauClonePublicInterfaceLess2)
-        returnType = clonePublicInterface.cloneTypePack(returnType);
-    else
-        returnType = clone(returnType, interfaceTypes, cloneState);
+    returnType = clonePublicInterface.cloneTypePack(returnType);
 
     moduleScope->returnType = returnType;
     if (varargPack)
     {
-        if (FFlag::LuauClonePublicInterfaceLess2)
-            varargPack = clonePublicInterface.cloneTypePack(*varargPack);
-        else
-            varargPack = clone(*varargPack, interfaceTypes, cloneState);
+        varargPack = clonePublicInterface.cloneTypePack(*varargPack);
         moduleScope->varargPack = varargPack;
     }
 
     for (auto& [name, tf] : moduleScope->exportedTypeBindings)
     {
-        if (FFlag::LuauClonePublicInterfaceLess2)
-            tf = clonePublicInterface.cloneTypeFun(tf);
-        else
-            tf = clone(tf, interfaceTypes, cloneState);
+        tf = clonePublicInterface.cloneTypeFun(tf);
     }
 
     for (auto& [name, ty] : declaredGlobals)
     {
-        if (FFlag::LuauClonePublicInterfaceLess2)
-            ty = clonePublicInterface.cloneType(ty);
-        else
-            ty = clone(ty, interfaceTypes, cloneState);
+        ty = clonePublicInterface.cloneType(ty);
     }
 
     // Copy external stuff over to Module itself

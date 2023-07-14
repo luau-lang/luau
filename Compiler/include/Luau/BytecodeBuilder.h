@@ -47,7 +47,7 @@ public:
     BytecodeBuilder(BytecodeEncoder* encoder = 0);
 
     uint32_t beginFunction(uint8_t numparams, bool isvararg = false);
-    void endFunction(uint8_t maxstacksize, uint8_t numupvalues);
+    void endFunction(uint8_t maxstacksize, uint8_t numupvalues, uint8_t flags = 0);
 
     void setMainFunction(uint32_t fid);
 
@@ -274,7 +274,7 @@ private:
     void dumpConstant(std::string& result, int k) const;
     void dumpInstruction(const uint32_t* opcode, std::string& output, int targetLabel) const;
 
-    void writeFunction(std::string& ss, uint32_t id) const;
+    void writeFunction(std::string& ss, uint32_t id, uint8_t flags) const;
     void writeLineInfo(std::string& ss) const;
     void writeStringTable(std::string& ss) const;
 

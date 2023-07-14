@@ -100,7 +100,8 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
     case AssemblyOptions::Host:
     {
 #if defined(__aarch64__)
-        A64::AssemblyBuilderA64 build(/* logText= */ options.includeAssembly, getCpuFeaturesA64());
+        static unsigned int cpuFeatures = getCpuFeaturesA64();
+        A64::AssemblyBuilderA64 build(/* logText= */ options.includeAssembly, cpuFeatures);
 #else
         X64::AssemblyBuilderX64 build(/* logText= */ options.includeAssembly);
 #endif

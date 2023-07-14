@@ -35,6 +35,9 @@ struct CompileOptions
     const char* vectorLib = nullptr;
     const char* vectorCtor = nullptr;
 
+    // vector type name for type tables; disabled by default
+    const char* vectorType = nullptr;
+
     // null-terminated array of globals that are mutable; disables the import optimization for fields accessed through these
     const char** mutableGlobals = nullptr;
 };

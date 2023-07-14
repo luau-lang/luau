@@ -8,93 +8,15 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAG(LuauClonePublicInterfaceLess2)
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
-LUAU_FASTFLAG(LuauCloneSkipNonInternalVisit)
 LUAU_FASTFLAGVARIABLE(LuauTarjanSingleArr, false)
 
 namespace Luau
 {
 
-static TypeId DEPRECATED_shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysClone)
-{
-    ty = log->follow(ty);
-
-    TypeId result = ty;
-
-    if (auto pty = log->pending(ty))
-        ty = &pty->pending;
-
-    if (const FunctionType* ftv = get<FunctionType>(ty))
-    {
-        FunctionType clone = FunctionType{ftv->level, ftv->scope, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
-        clone.generics = ftv->generics;
-        clone.genericPacks = ftv->genericPacks;
-        clone.magicFunction = ftv->magicFunction;
-        clone.dcrMagicFunction = ftv->dcrMagicFunction;
-        clone.dcrMagicRefinement = ftv->dcrMagicRefinement;
-        clone.tags = ftv->tags;
-        clone.argNames = ftv->argNames;
-        result = dest.addType(std::move(clone));
-    }
-    else if (const TableType* ttv = get<TableType>(ty))
-    {
-        LUAU_ASSERT(!ttv->boundTo);
-        TableType clone = TableType{ttv->props, ttv->indexer, ttv->level, ttv->scope, ttv->state};
-        clone.definitionModuleName = ttv->definitionModuleName;
-        clone.definitionLocation = ttv->definitionLocation;
-        clone.name = ttv->name;
-        clone.syntheticName = ttv->syntheticName;
-        clone.instantiatedTypeParams = ttv->instantiatedTypeParams;
-        clone.instantiatedTypePackParams = ttv->instantiatedTypePackParams;
-        clone.tags = ttv->tags;
-        result = dest.addType(std::move(clone));
-    }
-    else if (const MetatableType* mtv = get<MetatableType>(ty))
-    {
-        MetatableType clone = MetatableType{mtv->table, mtv->metatable};
-        clone.syntheticName = mtv->syntheticName;
-        result = dest.addType(std::move(clone));
-    }
-    else if (const UnionType* utv = get<UnionType>(ty))
-    {
-        UnionType clone;
-        clone.options = utv->options;
-        result = dest.addType(std::move(clone));
-    }
-    else if (const IntersectionType* itv = get<IntersectionType>(ty))
-    {
-        IntersectionType clone;
-        clone.parts = itv->parts;
-        result = dest.addType(std::move(clone));
-    }
-    else if (const PendingExpansionType* petv = get<PendingExpansionType>(ty))
-    {
-        PendingExpansionType clone{petv->prefix, petv->name, petv->typeArguments, petv->packArguments};
-        result = dest.addType(std::move(clone));
-    }
-    else if (const NegationType* ntv = get<NegationType>(ty))
-    {
-        result = dest.addType(NegationType{ntv->ty});
-    }
-    else if (const TypeFamilyInstanceType* tfit = get<TypeFamilyInstanceType>(ty))
-    {
-        TypeFamilyInstanceType clone{tfit->family, tfit->typeArguments, tfit->packArguments};
-        result = dest.addType(std::move(clone));
-    }
-    else
-        return result;
-
-    asMutable(result)->documentationSymbol = ty->documentationSymbol;
-    return result;
-}
-
 static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysClone)
 {
-    if (!FFlag::LuauClonePublicInterfaceLess2)
-        return DEPRECATED_shallowClone(ty, dest, log, alwaysClone);
-
     auto go = [ty, &dest, alwaysClone](auto&& a) {
         using T = std::decay_t<decltype(a)>;
 
@@ -224,7 +146,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
 {
     LUAU_ASSERT(ty == log->follow(ty));
 
-    if (FFlag::LuauCloneSkipNonInternalVisit ? ignoreChildrenVisit(ty) : ignoreChildren(ty))
+    if (ignoreChildrenVisit(ty))
         return;
 
     if (auto pty = log->pending(ty))
@@ -324,7 +246,7 @@ void Tarjan::visitChildren(TypePackId tp, int index)
 {
     LUAU_ASSERT(tp == log->follow(tp));
 
-    if (FFlag::LuauCloneSkipNonInternalVisit ? ignoreChildrenVisit(tp) : ignoreChildren(tp))
+    if (ignoreChildrenVisit(tp))
         return;
 
     if (auto ptp = log->pending(tp))
@@ -856,7 +778,7 @@ std::optional<TypePackId> Substitution::substitute(TypePackId tp)
 
 TypeId Substitution::clone(TypeId ty)
 {
-    return shallowClone(ty, *arena, log, /* alwaysClone */ FFlag::LuauClonePublicInterfaceLess2);
+    return shallowClone(ty, *arena, log, /* alwaysClone */ true);
 }
 
 TypePackId Substitution::clone(TypePackId tp)
@@ -888,12 +810,8 @@ TypePackId Substitution::clone(TypePackId tp)
         clone.packArguments.assign(tfitp->packArguments.begin(), tfitp->packArguments.end());
         return addTypePack(std::move(clone));
     }
-    else if (FFlag::LuauClonePublicInterfaceLess2)
-    {
-        return addTypePack(*tp);
-    }
     else
-        return tp;
+        return addTypePack(*tp);
 }
 
 void Substitution::foundDirty(TypeId ty)

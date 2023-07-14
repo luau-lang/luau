@@ -1913,8 +1913,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_assert_when_the_tarjan_limit_is_exceede
     ScopedFastInt sfi{"LuauTarjanChildLimit", 2};
     ScopedFastFlag sff[] = {
         {"DebugLuauDeferredConstraintResolution", true},
-        {"LuauClonePublicInterfaceLess2", true},
-        {"LuauCloneSkipNonInternalVisit", true},
     };
 
     CheckResult result = check(R"(

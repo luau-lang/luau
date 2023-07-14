@@ -225,7 +225,8 @@ TEST_CASE_FIXTURE(Fixture, "internal_families_raise_errors")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(toString(result.errors[0]) == "Type family instance Add<a, b> depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time");
+    CHECK(toString(result.errors[0]) == "Type family instance Add<a, b> depends on generic function parameters but does not appear in the function "
+                                        "signature; this construct cannot be type-checked at this time");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_families_inhabited_with_normalization")

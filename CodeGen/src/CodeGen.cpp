@@ -141,14 +141,6 @@ static int onEnter(lua_State* L, Proto* proto)
     return GateFn(data->context.gateEntry)(L, proto, target, &data->context);
 }
 
-static void onSetBreakpoint(lua_State* L, Proto* proto, int instruction)
-{
-    if (!proto->execdata)
-        return;
-
-    LUAU_ASSERT(!"Native breakpoints are not implemented");
-}
-
 #if defined(__aarch64__)
 unsigned int getCpuFeaturesA64()
 {
@@ -245,7 +237,6 @@ void create(lua_State* L)
     ecb->close = onCloseState;
     ecb->destroy = onDestroyFunction;
     ecb->enter = onEnter;
-    ecb->setbreakpoint = onSetBreakpoint;
 }
 
 void compile(lua_State* L, int idx)
@@ -259,7 +250,8 @@ void compile(lua_State* L, int idx)
         return;
 
 #if defined(__aarch64__)
-    A64::AssemblyBuilderA64 build(/* logText= */ false, getCpuFeaturesA64());
+    static unsigned int cpuFeatures = getCpuFeaturesA64();
+    A64::AssemblyBuilderA64 build(/* logText= */ false, cpuFeatures);
 #else
     X64::AssemblyBuilderX64 build(/* logText= */ false);
 #endif
