@@ -15,7 +15,7 @@ static bool isGeneric(AstName name, const AstArray<AstGenericType>& generics)
     return false;
 }
 
-static LuauBytecodeEncodedType getPrimitiveType(AstName name)
+static LuauBytecodeType getPrimitiveType(AstName name)
 {
     if (name == "nil")
         return LBC_TYPE_NIL;
@@ -33,8 +33,8 @@ static LuauBytecodeEncodedType getPrimitiveType(AstName name)
         return LBC_TYPE_INVALID;
 }
 
-static LuauBytecodeEncodedType getType(
-    AstType* ty, const AstArray<AstGenericType>& generics, const DenseHashMap<AstName, AstStatTypeAlias*>& typeAliases, bool resolveAliases)
+static LuauBytecodeType getType(AstType* ty, const AstArray<AstGenericType>& generics, const DenseHashMap<AstName, AstStatTypeAlias*>& typeAliases,
+    bool resolveAliases, const char* vectorType)
 {
     if (AstTypeReference* ref = ty->as<AstTypeReference>())
     {
@@ -45,7 +45,7 @@ static LuauBytecodeEncodedType getType(
         {
             // note: we only resolve aliases to the depth of 1 to avoid dealing with recursive aliases
             if (resolveAliases)
-                return getType((*alias)->type, (*alias)->generics, typeAliases, /* resolveAliases= */ false);
+                return getType((*alias)->type, (*alias)->generics, typeAliases, /* resolveAliases= */ false, vectorType);
             else
                 return LBC_TYPE_ANY;
         }
@@ -53,7 +53,10 @@ static LuauBytecodeEncodedType getType(
         if (isGeneric(ref->name, generics))
             return LBC_TYPE_ANY;
 
-        if (LuauBytecodeEncodedType prim = getPrimitiveType(ref->name); prim != LBC_TYPE_INVALID)
+        if (vectorType && ref->name == vectorType)
+            return LBC_TYPE_VECTOR;
+
+        if (LuauBytecodeType prim = getPrimitiveType(ref->name); prim != LBC_TYPE_INVALID)
             return prim;
 
         // not primitive or alias or generic => host-provided, we assume userdata for now
@@ -70,11 +73,11 @@ static LuauBytecodeEncodedType getType(
     else if (AstTypeUnion* un = ty->as<AstTypeUnion>())
     {
         bool optional = false;
-        LuauBytecodeEncodedType type = LBC_TYPE_INVALID;
+        LuauBytecodeType type = LBC_TYPE_INVALID;
 
         for (AstType* ty : un->types)
         {
-            LuauBytecodeEncodedType et = getType(ty, generics, typeAliases, resolveAliases);
+            LuauBytecodeType et = getType(ty, generics, typeAliases, resolveAliases, vectorType);
 
             if (et == LBC_TYPE_NIL)
             {
@@ -95,7 +98,7 @@ static LuauBytecodeEncodedType getType(
         if (type == LBC_TYPE_INVALID)
             return LBC_TYPE_ANY;
 
-        return LuauBytecodeEncodedType(type | (optional && (type != LBC_TYPE_ANY) ? LBC_TYPE_OPTIONAL_BIT : 0));
+        return LuauBytecodeType(type | (optional && (type != LBC_TYPE_ANY) ? LBC_TYPE_OPTIONAL_BIT : 0));
     }
     else if (AstTypeIntersection* inter = ty->as<AstTypeIntersection>())
     {
@@ -105,7 +108,7 @@ static LuauBytecodeEncodedType getType(
     return LBC_TYPE_ANY;
 }
 
-static std::string getFunctionType(const AstExprFunction* func, const DenseHashMap<AstName, AstStatTypeAlias*>& typeAliases)
+static std::string getFunctionType(const AstExprFunction* func, const DenseHashMap<AstName, AstStatTypeAlias*>& typeAliases, const char* vectorType)
 {
     bool self = func->self != 0;
 
@@ -121,8 +124,8 @@ static std::string getFunctionType(const AstExprFunction* func, const DenseHashM
     bool haveNonAnyParam = false;
     for (AstLocal* arg : func->args)
     {
-        LuauBytecodeEncodedType ty =
-            arg->annotation ? getType(arg->annotation, func->generics, typeAliases, /* resolveAliases= */ true) : LBC_TYPE_ANY;
+        LuauBytecodeType ty =
+            arg->annotation ? getType(arg->annotation, func->generics, typeAliases, /* resolveAliases= */ true, vectorType) : LBC_TYPE_ANY;
 
         if (ty != LBC_TYPE_ANY)
             haveNonAnyParam = true;
@@ -140,12 +143,14 @@ static std::string getFunctionType(const AstExprFunction* func, const DenseHashM
 struct TypeMapVisitor : AstVisitor
 {
     DenseHashMap<AstExprFunction*, std::string>& typeMap;
+    const char* vectorType;
 
     DenseHashMap<AstName, AstStatTypeAlias*> typeAliases;
     std::vector<std::pair<AstName, AstStatTypeAlias*>> typeAliasStack;
 
-    TypeMapVisitor(DenseHashMap<AstExprFunction*, std::string>& typeMap)
+    TypeMapVisitor(DenseHashMap<AstExprFunction*, std::string>& typeMap, const char* vectorType)
         : typeMap(typeMap)
+        , vectorType(vectorType)
         , typeAliases(AstName())
     {
     }
@@ -206,7 +211,7 @@ struct TypeMapVisitor : AstVisitor
 
     bool visit(AstExprFunction* node) override
     {
-        std::string type = getFunctionType(node, typeAliases);
+        std::string type = getFunctionType(node, typeAliases, vectorType);
 
         if (!type.empty())
             typeMap[node] = std::move(type);
@@ -215,9 +220,9 @@ struct TypeMapVisitor : AstVisitor
     }
 };
 
-void buildTypeMap(DenseHashMap<AstExprFunction*, std::string>& typeMap, AstNode* root)
+void buildTypeMap(DenseHashMap<AstExprFunction*, std::string>& typeMap, AstNode* root, const char* vectorType)
 {
-    TypeMapVisitor visitor(typeMap);
+    TypeMapVisitor visitor(typeMap, vectorType);
     root->visit(&visitor);
 }
 

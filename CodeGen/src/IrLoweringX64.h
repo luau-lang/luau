@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/AssemblyBuilderX64.h"
+#include "Luau/DenseHash.h"
 #include "Luau/IrData.h"
 #include "Luau/IrRegAllocX64.h"
 
@@ -77,6 +78,7 @@ struct IrLoweringX64
 
     std::vector<InterruptHandler> interruptHandlers;
     std::vector<ExitHandler> exitHandlers;
+    DenseHashMap<uint32_t, uint32_t> exitHandlerMap;
 };
 
 } // namespace X64

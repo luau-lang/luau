@@ -602,3 +602,229 @@ void luaC_dump(lua_State* L, void* file, const char* (*categoryName)(lua_State* 
     fprintf(f, "}\n");
     fprintf(f, "}}\n");
 }
+
+struct EnumContext
+{
+    lua_State* L;
+    void* context;
+    void (*node)(void* context, void* ptr, uint8_t tt, uint8_t memcat, const char* name);
+    void (*edge)(void* context, void* from, void* to, const char* name);
+};
+
+static void* enumtopointer(GCObject* gco)
+{
+    // To match lua_topointer, userdata pointer is represented as a pointer to internal data
+    return gco->gch.tt == LUA_TUSERDATA ? (void*)gco2u(gco)->data : (void*)gco;
+}
+
+static void enumnode(EnumContext* ctx, GCObject* gco, const char* objname)
+{
+    ctx->node(ctx->context, enumtopointer(gco), gco->gch.tt, gco->gch.memcat, objname);
+}
+
+static void enumedge(EnumContext* ctx, GCObject* from, GCObject* to, const char* edgename)
+{
+    ctx->edge(ctx->context, enumtopointer(from), enumtopointer(to), edgename);
+}
+
+static void enumedges(EnumContext* ctx, GCObject* from, TValue* data, size_t size, const char* edgename)
+{
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (iscollectable(&data[i]))
+            enumedge(ctx, from, gcvalue(&data[i]), edgename);
+    }
+}
+
+static void enumstring(EnumContext* ctx, TString* ts)
+{
+    enumnode(ctx, obj2gco(ts), NULL);
+}
+
+static void enumtable(EnumContext* ctx, Table* h)
+{
+    // Provide a name for a special registry table
+    enumnode(ctx, obj2gco(h), h == hvalue(registry(ctx->L)) ? "registry" : NULL);
+
+    if (h->node != &luaH_dummynode)
+    {
+        for (int i = 0; i < sizenode(h); ++i)
+        {
+            const LuaNode& n = h->node[i];
+
+            if (!ttisnil(&n.val) && (iscollectable(&n.key) || iscollectable(&n.val)))
+            {
+                if (iscollectable(&n.key))
+                    enumedge(ctx, obj2gco(h), gcvalue(&n.key), "[key]");
+
+                if (iscollectable(&n.val))
+                {
+                    if (ttisstring(&n.key))
+                    {
+                        enumedge(ctx, obj2gco(h), gcvalue(&n.val), svalue(&n.key));
+                    }
+                    else if (ttisnumber(&n.key))
+                    {
+                        char buf[32];
+                        snprintf(buf, sizeof(buf), "%.14g", nvalue(&n.key));
+                        enumedge(ctx, obj2gco(h), gcvalue(&n.val), buf);
+                    }
+                    else
+                    {
+                        enumedge(ctx, obj2gco(h), gcvalue(&n.val), NULL);
+                    }
+                }
+            }
+        }
+    }
+
+    if (h->sizearray)
+        enumedges(ctx, obj2gco(h), h->array, h->sizearray, "array");
+
+    if (h->metatable)
+        enumedge(ctx, obj2gco(h), obj2gco(h->metatable), "metatable");
+}
+
+static void enumclosure(EnumContext* ctx, Closure* cl)
+{
+    if (cl->isC)
+    {
+        enumnode(ctx, obj2gco(cl), cl->c.debugname);
+    }
+    else
+    {
+        Proto* p = cl->l.p;
+
+        char buf[LUA_IDSIZE];
+
+        if (p->source)
+            snprintf(buf, sizeof(buf), "%s:%d %s", p->debugname ? getstr(p->debugname) : "", p->linedefined, getstr(p->source));
+        else
+            snprintf(buf, sizeof(buf), "%s:%d", p->debugname ? getstr(p->debugname) : "", p->linedefined);
+
+        enumnode(ctx, obj2gco(cl), buf);
+    }
+
+    enumedge(ctx, obj2gco(cl), obj2gco(cl->env), "env");
+
+    if (cl->isC)
+    {
+        if (cl->nupvalues)
+            enumedges(ctx, obj2gco(cl), cl->c.upvals, cl->nupvalues, "upvalue");
+    }
+    else
+    {
+        enumedge(ctx, obj2gco(cl), obj2gco(cl->l.p), "proto");
+
+        if (cl->nupvalues)
+            enumedges(ctx, obj2gco(cl), cl->l.uprefs, cl->nupvalues, "upvalue");
+    }
+}
+
+static void enumudata(EnumContext* ctx, Udata* u)
+{
+    enumnode(ctx, obj2gco(u), NULL);
+
+    if (u->metatable)
+        enumedge(ctx, obj2gco(u), obj2gco(u->metatable), "metatable");
+}
+
+static void enumthread(EnumContext* ctx, lua_State* th)
+{
+    Closure* tcl = NULL;
+    for (CallInfo* ci = th->base_ci; ci <= th->ci; ++ci)
+    {
+        if (ttisfunction(ci->func))
+        {
+            tcl = clvalue(ci->func);
+            break;
+        }
+    }
+
+    if (tcl && !tcl->isC && tcl->l.p->source)
+    {
+        Proto* p = tcl->l.p;
+
+        enumnode(ctx, obj2gco(th), getstr(p->source));
+    }
+    else
+    {
+        enumnode(ctx, obj2gco(th), NULL);
+    }
+
+    enumedge(ctx, obj2gco(th), obj2gco(th->gt), "globals");
+
+    if (th->top > th->stack)
+        enumedges(ctx, obj2gco(th), th->stack, th->top - th->stack, "stack");
+}
+
+static void enumproto(EnumContext* ctx, Proto* p)
+{
+    enumnode(ctx, obj2gco(p), p->source ? getstr(p->source) : NULL);
+
+    if (p->sizek)
+        enumedges(ctx, obj2gco(p), p->k, p->sizek, "constants");
+
+    for (int i = 0; i < p->sizep; ++i)
+        enumedge(ctx, obj2gco(p), obj2gco(p->p[i]), "protos");
+}
+
+static void enumupval(EnumContext* ctx, UpVal* uv)
+{
+    enumnode(ctx, obj2gco(uv), NULL);
+
+    if (iscollectable(uv->v))
+        enumedge(ctx, obj2gco(uv), gcvalue(uv->v), "value");
+}
+
+static void enumobj(EnumContext* ctx, GCObject* o)
+{
+    switch (o->gch.tt)
+    {
+    case LUA_TSTRING:
+        return enumstring(ctx, gco2ts(o));
+
+    case LUA_TTABLE:
+        return enumtable(ctx, gco2h(o));
+
+    case LUA_TFUNCTION:
+        return enumclosure(ctx, gco2cl(o));
+
+    case LUA_TUSERDATA:
+        return enumudata(ctx, gco2u(o));
+
+    case LUA_TTHREAD:
+        return enumthread(ctx, gco2th(o));
+
+    case LUA_TPROTO:
+        return enumproto(ctx, gco2p(o));
+
+    case LUA_TUPVAL:
+        return enumupval(ctx, gco2uv(o));
+
+    default:
+        LUAU_ASSERT(!"Unknown object tag");
+    }
+}
+
+static bool enumgco(void* context, lua_Page* page, GCObject* gco)
+{
+    enumobj((EnumContext*)context, gco);
+    return false;
+}
+
+void luaC_enumheap(lua_State* L, void* context, void (*node)(void* context, void* ptr, uint8_t tt, uint8_t memcat, const char* name),
+    void (*edge)(void* context, void* from, void* to, const char* name))
+{
+    global_State* g = L->global;
+
+    EnumContext ctx;
+    ctx.L = L;
+    ctx.context = context;
+    ctx.node = node;
+    ctx.edge = edge;
+
+    enumgco(&ctx, NULL, obj2gco(g->mainthread));
+
+    luaM_visitgco(L, &ctx, enumgco);
+}

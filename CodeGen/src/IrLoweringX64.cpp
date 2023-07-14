@@ -28,6 +28,7 @@ IrLoweringX64::IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, 
     , function(function)
     , regs(build, function)
     , valueTracker(function)
+    , exitHandlerMap(~0u)
 {
     // In order to allocate registers during lowering, we need to know where instruction results are last used
     updateLastUseLocations(function);
@@ -492,8 +493,17 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
             build.jcc(ConditionX64::NotEqual, savezero);
         }
 
-        build.cmp(regOp(inst.b), 0);
-        build.jcc(ConditionX64::Equal, saveone);
+        if (inst.b.kind == IrOpKind::Constant)
+        {
+            // If value is 1, we fallthrough to storing 0
+            if (intOp(inst.b) == 0)
+                build.jmp(saveone);
+        }
+        else
+        {
+            build.cmp(regOp(inst.b), 0);
+            build.jcc(ConditionX64::Equal, saveone);
+        }
 
         build.setLabel(savezero);
         build.mov(inst.regX64, 0);
@@ -506,7 +516,24 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         break;
     }
     case IrCmd::JUMP:
-        jumpOrFallthrough(blockOp(inst.a), next);
+        if (inst.a.kind == IrOpKind::VmExit)
+        {
+            if (uint32_t* index = exitHandlerMap.find(inst.a.index))
+            {
+                build.jmp(exitHandlers[*index].self);
+            }
+            else
+            {
+                Label self;
+                build.jmp(self);
+                exitHandlerMap[inst.a.index] = uint32_t(exitHandlers.size());
+                exitHandlers.push_back({self, inst.a.index});
+            }
+        }
+        else
+        {
+            jumpOrFallthrough(blockOp(inst.a), next);
+        }
         break;
     case IrCmd::JUMP_IF_TRUTHY:
         jumpIfTruthy(build, vmRegOp(inst.a), labelOp(inst.b), labelOp(inst.c));
@@ -907,19 +934,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.mov(tmp.reg, qword[tmp.reg + offsetof(Closure, env)]);
         build.cmp(byte[tmp.reg + offsetof(Table, safeenv)], 0);
 
-        if (inst.a.kind == IrOpKind::Undef)
-        {
-            Label skip;
-            build.jcc(ConditionX64::NotEqual, skip);
-            build.ud2();
-            build.setLabel(skip);
-        }
-        else
-        {
-            Label self;
-            build.jcc(ConditionX64::Equal, self);
-            exitHandlers.push_back({self, uintOp(inst.a)});
-        }
+        jumpOrAbortOnUndef(ConditionX64::Equal, ConditionX64::NotEqual, inst.a);
         break;
     }
     case IrCmd::CHECK_ARRAY_SIZE:
@@ -1472,6 +1487,20 @@ void IrLoweringX64::jumpOrAbortOnUndef(ConditionX64 cond, ConditionX64 condInver
         build.jcc(condInverse, skip);
         build.ud2();
         build.setLabel(skip);
+    }
+    else if (targetOrUndef.kind == IrOpKind::VmExit)
+    {
+        if (uint32_t* index = exitHandlerMap.find(targetOrUndef.index))
+        {
+            build.jcc(cond, exitHandlers[*index].self);
+        }
+        else
+        {
+            Label self;
+            build.jcc(cond, self);
+            exitHandlerMap[targetOrUndef.index] = uint32_t(exitHandlers.size());
+            exitHandlers.push_back({self, targetOrUndef.index});
+        }
     }
     else
     {

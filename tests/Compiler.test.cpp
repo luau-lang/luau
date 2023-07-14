@@ -53,7 +53,10 @@ static std::string compileTypeTable(const char* source)
 {
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
-    Luau::compileOrThrow(bcb, source);
+
+    Luau::CompileOptions opts;
+    opts.vectorType = "Vector3";
+    Luau::compileOrThrow(bcb, source, opts);
 
     return bcb.dumpTypeInfo();
 }
@@ -7156,6 +7159,31 @@ end
 1: function(userdata, number)
 2: function(string, string)
 3: function(any, userdata)
+)");
+}
+
+TEST_CASE("HostTypesVector")
+{
+    ScopedFastFlag sff("LuauCompileFunctionType", true);
+
+    CHECK_EQ("\n" + compileTypeTable(R"(
+function myfunc(test: Instance, pos: Vector3)
+end
+
+function myfunc2<Vector3>(test: Instance, pos: Vector3)
+end
+
+do
+    type Vector3 = number
+
+    function myfunc3(test: Instance, pos: Vector3)
+    end
+end
+)"),
+        R"(
+0: function(userdata, vector)
+1: function(userdata, any)
+2: function(userdata, number)
 )");
 }
 

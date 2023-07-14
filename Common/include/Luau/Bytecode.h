@@ -428,7 +428,7 @@ enum LuauBytecodeTag
 };
 
 // Type table tags
-enum LuauBytecodeEncodedType
+enum LuauBytecodeType
 {
     LBC_TYPE_NIL = 0,
     LBC_TYPE_BOOLEAN,

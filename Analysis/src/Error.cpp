@@ -495,12 +495,16 @@ struct ErrorConverter
 
     std::string operator()(const WhereClauseNeeded& e) const
     {
-        return "Type family instance " + Luau::toString(e.ty) + " depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time";
+        return "Type family instance " + Luau::toString(e.ty) +
+               " depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this "
+               "time";
     }
 
     std::string operator()(const PackWhereClauseNeeded& e) const
     {
-        return "Type pack family instance " + Luau::toString(e.tp) + " depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this time";
+        return "Type pack family instance " + Luau::toString(e.tp) +
+               " depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this "
+               "time";
     }
 };
 

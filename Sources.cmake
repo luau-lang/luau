@@ -143,6 +143,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Autocomplete.h
     Analysis/include/Luau/Breadcrumb.h
     Analysis/include/Luau/BuiltinDefinitions.h
+    Analysis/include/Luau/Cancellation.h
     Analysis/include/Luau/Clone.h
     Analysis/include/Luau/Config.h
     Analysis/include/Luau/Constraint.h

@@ -1239,7 +1239,8 @@ struct TypeChecker2
             return std::move(u.errors);
         }
 
-        std::pair<Analysis, ErrorVec> checkOverload(TypeId fnTy, const TypePack* args, Location fnLoc, const std::vector<Location>* argLocs, bool callMetamethodOk = true)
+        std::pair<Analysis, ErrorVec> checkOverload(
+            TypeId fnTy, const TypePack* args, Location fnLoc, const std::vector<Location>* argLocs, bool callMetamethodOk = true)
         {
             fnTy = follow(fnTy);
 
@@ -1257,17 +1258,18 @@ struct TypeChecker2
                 std::vector<Location> withSelfLocs = *argLocs;
                 withSelfLocs.insert(withSelfLocs.begin(), fnLoc);
 
-                return checkOverload(*callMm, &withSelf, fnLoc, &withSelfLocs, /*callMetamethodOk=*/ false);
+                return checkOverload(*callMm, &withSelf, fnLoc, &withSelfLocs, /*callMetamethodOk=*/false);
             }
             else
                 return {TypeIsNotAFunction, {}}; // Intentionally empty. We can just fabricate the type error later on.
         }
 
         LUAU_NOINLINE
-        std::pair<Analysis, ErrorVec> checkOverload_(TypeId fnTy, const FunctionType* fn, const TypePack* args, Location fnLoc, const std::vector<Location>* argLocs)
+        std::pair<Analysis, ErrorVec> checkOverload_(
+            TypeId fnTy, const FunctionType* fn, const TypePack* args, Location fnLoc, const std::vector<Location>* argLocs)
         {
             TxnLog fake;
-            FamilyGraphReductionResult result = reduceFamilies(fnTy, callLoc, arena, builtinTypes, scope, normalizer, &fake, /*force=*/ true);
+            FamilyGraphReductionResult result = reduceFamilies(fnTy, callLoc, arena, builtinTypes, scope, normalizer, &fake, /*force=*/true);
             if (!result.errors.empty())
                 return {OverloadIsNonviable, result.errors};
 
@@ -2374,6 +2376,9 @@ struct TypeChecker2
             return;
         }
 
+        if (norm->shouldSuppressErrors())
+            return;
+
         bool foundOneProp = false;
         std::vector<TypeId> typesMissingTheProp;
 
@@ -2539,7 +2544,8 @@ struct TypeChecker2
     }
 };
 
-void check(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, DcrLogger* logger, const SourceModule& sourceModule, Module* module)
+void check(
+    NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, DcrLogger* logger, const SourceModule& sourceModule, Module* module)
 {
     TypeChecker2 typeChecker{builtinTypes, unifierState, logger, &sourceModule, module};
 

@@ -29,6 +29,7 @@ struct ModuleResolver;
 struct ParseResult;
 struct HotComment;
 struct BuildQueueItem;
+struct FrontendCancellationToken;
 
 struct LoadDefinitionFileResult
 {
@@ -96,6 +97,8 @@ struct FrontendOptions
     std::optional<unsigned> randomizeConstraintResolutionSeed;
 
     std::optional<LintOptions> enabledLintWarnings;
+
+    std::shared_ptr<FrontendCancellationToken> cancellationToken;
 };
 
 struct CheckResult
@@ -191,6 +194,7 @@ private:
         std::optional<double> finishTime;
         std::optional<int> instantiationChildLimit;
         std::optional<int> unifierIterationLimit;
+        std::shared_ptr<FrontendCancellationToken> cancellationToken;
     };
 
     ModulePtr check(const SourceModule& sourceModule, Mode mode, std::vector<RequireCycle> requireCycles, std::optional<ScopePtr> environmentScope,

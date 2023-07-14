@@ -76,8 +76,7 @@ struct Unifier
     std::vector<TypeId> blockedTypes;
     std::vector<TypePackId> blockedTypePacks;
 
-    Unifier(
-        NotNull<Normalizer> normalizer, NotNull<Scope> scope, const Location& location, Variance variance, TxnLog* parentLog = nullptr);
+    Unifier(NotNull<Normalizer> normalizer, NotNull<Scope> scope, const Location& location, Variance variance, TxnLog* parentLog = nullptr);
 
     // Configure the Unifier to test for scope subsumption via embedded Scope
     // pointers rather than TypeLevels.

@@ -2,6 +2,7 @@
 #include "Luau/TypeInfer.h"
 
 #include "Luau/ApplyTypeFunction.h"
+#include "Luau/Cancellation.h"
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/Instantiation.h"
@@ -40,6 +41,7 @@ LUAU_FASTFLAGVARIABLE(LuauTypecheckTypeguards, false)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAG(LuauParseDeclareClassIndexer)
+LUAU_FASTFLAGVARIABLE(LuauIndexTableIntersectionStringExpr, false)
 
 namespace Luau
 {
@@ -301,6 +303,10 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     {
         currentModule->timeout = true;
     }
+    catch (const UserCancelError&)
+    {
+        currentModule->cancelled = true;
+    }
 
     if (FFlag::DebugLuauSharedSelf)
     {
@@ -344,7 +350,9 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
 ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStat& program)
 {
     if (finishTime && TimeTrace::getClock() > *finishTime)
-        throw TimeLimitError(iceHandler->moduleName);
+        throwTimeLimitError();
+    if (cancellationToken && cancellationToken->requested())
+        throwUserCancelError();
 
     if (auto block = program.as<AstStatBlock>())
         return check(scope, *block);
@@ -3381,6 +3389,20 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
             reportError(TypeError{expr.location, UnknownProperty{exprType, value->value.data}});
             return errorRecoveryType(scope);
         }
+        else if (FFlag::LuauIndexTableIntersectionStringExpr && get<IntersectionType>(exprType))
+        {
+            Name name = std::string(value->value.data, value->value.size);
+
+            if (std::optional<TypeId> ty = getIndexTypeFromType(scope, exprType, name, expr.location, /* addErrors= */ false))
+                return *ty;
+
+            // If intersection has a table part, report that it cannot be extended just as a sealed table
+            if (isTableIntersection(exprType))
+            {
+                reportError(TypeError{expr.location, CannotExtendTable{exprType, CannotExtendTable::Property, name}});
+                return errorRecoveryType(scope);
+            }
+        }
     }
     else
     {
@@ -4914,14 +4936,24 @@ void TypeChecker::reportErrors(const ErrorVec& errors)
         reportError(err);
 }
 
-void TypeChecker::ice(const std::string& message, const Location& location)
+LUAU_NOINLINE void TypeChecker::ice(const std::string& message, const Location& location)
 {
     iceHandler->ice(message, location);
 }
 
-void TypeChecker::ice(const std::string& message)
+LUAU_NOINLINE void TypeChecker::ice(const std::string& message)
 {
     iceHandler->ice(message);
+}
+
+LUAU_NOINLINE void TypeChecker::throwTimeLimitError()
+{
+    throw TimeLimitError(iceHandler->moduleName);
+}
+
+LUAU_NOINLINE void TypeChecker::throwUserCancelError()
+{
+    throw UserCancelError(iceHandler->moduleName);
 }
 
 void TypeChecker::prepareErrorsForDisplay(ErrorVec& errVec)

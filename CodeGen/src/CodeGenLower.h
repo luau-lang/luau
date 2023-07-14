@@ -44,6 +44,18 @@ inline void gatherFunctions(std::vector<Proto*>& results, Proto* proto)
         gatherFunctions(results, proto->p[i]);
 }
 
+inline IrBlock& getNextBlock(IrFunction& function, std::vector<uint32_t>& sortedBlocks, IrBlock& dummy, size_t i)
+{
+    for (size_t j = i + 1; j < sortedBlocks.size(); ++j)
+    {
+        IrBlock& block = function.blocks[sortedBlocks[j]];
+        if (block.kind != IrBlockKind::Dead)
+            return block;
+    }
+
+    return dummy;
+}
+
 template<typename AssemblyBuilder, typename IrLowering>
 inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& function, int bytecodeid, AssemblyOptions options)
 {
@@ -118,6 +130,8 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 
         build.setLabel(block.label);
 
+        IrBlock& nextBlock = getNextBlock(function, sortedBlocks, dummy, i);
+
         for (uint32_t index = block.start; index <= block.finish; index++)
         {
             LUAU_ASSERT(index < function.instructions.size());
@@ -156,9 +170,7 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
                 toStringDetailed(ctx, block, blockIndex, inst, index, /* includeUseInfo */ true);
             }
 
-            IrBlock& next = i + 1 < sortedBlocks.size() ? function.blocks[sortedBlocks[i + 1]] : dummy;
-
-            lowering.lowerInst(inst, index, next);
+            lowering.lowerInst(inst, index, nextBlock);
 
             if (lowering.hasError())
             {

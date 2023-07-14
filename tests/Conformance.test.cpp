@@ -5,6 +5,7 @@
 #include "luacodegen.h"
 
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/DenseHash.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/StringUtils.h"
@@ -15,6 +16,7 @@
 #include "ScopedFlags.h"
 
 #include <fstream>
+#include <string>
 #include <vector>
 #include <math.h>
 
@@ -1244,6 +1246,8 @@ TEST_CASE("GCDump")
 {
     // internal function, declared in lgc.h - not exposed via lua.h
     extern void luaC_dump(lua_State * L, void* file, const char* (*categoryName)(lua_State * L, uint8_t memcat));
+    extern void luaC_enumheap(lua_State * L, void* context, void (*node)(void* context, void* ptr, uint8_t tt, uint8_t memcat, const char* name),
+        void (*edge)(void* context, void* from, void* to, const char* name));
 
     StateRef globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
@@ -1287,6 +1291,40 @@ TEST_CASE("GCDump")
     luaC_dump(L, f, nullptr);
 
     fclose(f);
+
+    struct Node
+    {
+        void* ptr;
+        uint8_t tag;
+        uint8_t memcat;
+        std::string name;
+    };
+
+    struct EnumContext
+    {
+        EnumContext()
+            : nodes{nullptr}
+            , edges{nullptr}
+        {
+        }
+
+        Luau::DenseHashMap<void*, Node> nodes;
+        Luau::DenseHashMap<void*, void*> edges;
+    } ctx;
+
+    luaC_enumheap(
+        L, &ctx,
+        [](void* ctx, void* gco, uint8_t tt, uint8_t memcat, const char* name) {
+            EnumContext& context = *(EnumContext*)ctx;
+            context.nodes[gco] = {gco, tt, memcat, name ? name : ""};
+        },
+        [](void* ctx, void* s, void* t, const char*) {
+            EnumContext& context = *(EnumContext*)ctx;
+            context.edges[s] = t;
+        });
+
+    CHECK(!ctx.nodes.empty());
+    CHECK(!ctx.edges.empty());
 }
 
 TEST_CASE("Interrupt")

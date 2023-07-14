@@ -407,19 +407,15 @@ type B = A
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_reexports")
 {
-    ScopedFastFlag flags[] = {
-        {"LuauClonePublicInterfaceLess2", true},
-    };
-
     fileResolver.source["Module/A"] = R"(
-export type A = {p : number}
-return {}
+        export type A = {p : number}
+        return {}
     )";
 
     fileResolver.source["Module/B"] = R"(
-local a = require(script.Parent.A)
-export type B = {q : a.A}
-return {}
+        local a = require(script.Parent.A)
+        export type B = {q : a.A}
+        return {}
     )";
 
     CheckResult result = frontend.check("Module/B");
@@ -442,19 +438,15 @@ return {}
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_types_of_reexported_values")
 {
-    ScopedFastFlag flags[] = {
-        {"LuauClonePublicInterfaceLess2", true},
-    };
-
     fileResolver.source["Module/A"] = R"(
-local exports = {a={p=5}}
-return exports
+        local exports = {a={p=5}}
+        return exports
     )";
 
     fileResolver.source["Module/B"] = R"(
-local a = require(script.Parent.A)
-local exports = {b=a.a}
-return exports
+        local a = require(script.Parent.A)
+        local exports = {b=a.a}
+        return exports
     )";
 
     CheckResult result = frontend.check("Module/B");

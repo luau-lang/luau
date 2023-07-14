@@ -13,8 +13,10 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <string>
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAGVARIABLE(LuauToStringPrettifyLocation, false)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -1739,9 +1741,17 @@ std::string toString(const Position& position)
     return "{ line = " + std::to_string(position.line) + ", col = " + std::to_string(position.column) + " }";
 }
 
-std::string toString(const Location& location)
+std::string toString(const Location& location, int offset, bool useBegin)
 {
-    return "Location { " + toString(location.begin) + ", " + toString(location.end) + " }";
+    if (FFlag::LuauToStringPrettifyLocation)
+    {
+        return "(" + std::to_string(location.begin.line + offset) + ", " + std::to_string(location.begin.column + offset) + ") - (" +
+               std::to_string(location.end.line + offset) + ", " + std::to_string(location.end.column + offset) + ")";
+    }
+    else
+    {
+        return "Location { " + toString(location.begin) + ", " + toString(location.end) + " }";
+    }
 }
 
 } // namespace Luau
