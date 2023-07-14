@@ -341,7 +341,7 @@ TEST_CASE_FIXTURE(Fixture, "equal_function")
         INFO(diffRes.diffError->toString());
         CHECK(!diffRes.diffError.has_value());
     }
-    catch (InternalCompilerError e)
+    catch (const InternalCompilerError& e)
     {
         INFO(("InternalCompilerError: " + e.message));
         CHECK(false);
@@ -377,7 +377,7 @@ TEST_CASE_FIXTURE(Fixture, "equal_function_inferred_ret_length")
         INFO(diffRes.diffError->toString());
         CHECK(!diffRes.diffError.has_value());
     }
-    catch (InternalCompilerError e)
+    catch (const InternalCompilerError& e)
     {
         INFO(("InternalCompilerError: " + e.message));
         CHECK(false);
