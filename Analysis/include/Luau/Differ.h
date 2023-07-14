@@ -21,8 +21,8 @@ struct DiffPathNode
     Kind kind;
     // non-null when TableProperty
     std::optional<Name> tableProperty;
-    // non-null when FunctionArgument, FunctionReturn, Union, or Intersection (i.e. anonymous fields)
-    std::optional<int> index;
+    // non-null when FunctionArgument (unless variadic arg), FunctionReturn (unless variadic arg), Union, or Intersection (i.e. anonymous fields)
+    std::optional<size_t> index;
 
     /**
      * Do not use for leaf nodes
@@ -32,7 +32,7 @@ struct DiffPathNode
     {
     }
 
-    DiffPathNode(Kind kind, std::optional<Name> tableProperty, std::optional<int> index)
+    DiffPathNode(Kind kind, std::optional<Name> tableProperty, std::optional<size_t> index)
         : kind(kind)
         , tableProperty(tableProperty)
         , index(index)
@@ -42,19 +42,35 @@ struct DiffPathNode
     std::string toString() const;
 
     static DiffPathNode constructWithTableProperty(Name tableProperty);
+
+    static DiffPathNode constructWithKindAndIndex(Kind kind, size_t index);
+
+    static DiffPathNode constructWithKind(Kind kind);
 };
+
 struct DiffPathNodeLeaf
 {
     std::optional<TypeId> ty;
     std::optional<Name> tableProperty;
-    DiffPathNodeLeaf(std::optional<TypeId> ty, std::optional<Name> tableProperty)
+    std::optional<int> minLength;
+    bool isVariadic;
+    DiffPathNodeLeaf(std::optional<TypeId> ty, std::optional<Name> tableProperty, std::optional<int> minLength, bool isVariadic)
         : ty(ty)
         , tableProperty(tableProperty)
+        , minLength(minLength)
+        , isVariadic(isVariadic)
     {
     }
 
+    static DiffPathNodeLeaf detailsNormal(TypeId ty);
+
+    static DiffPathNodeLeaf detailsTableProperty(TypeId ty, Name tableProperty);
+
+    static DiffPathNodeLeaf detailsLength(int minLength, bool isVariadic);
+
     static DiffPathNodeLeaf nullopts();
 };
+
 struct DiffPath
 {
     std::vector<DiffPathNode> path;

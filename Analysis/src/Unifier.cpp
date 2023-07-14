@@ -19,7 +19,6 @@
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
-LUAU_FASTFLAGVARIABLE(LuauVariadicAnyCanBeGeneric, false)
 LUAU_FASTFLAGVARIABLE(LuauMaintainScopesInUnifier, false)
 LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauOccursIsntAlwaysFailure, false)

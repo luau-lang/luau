@@ -128,7 +128,15 @@ void IrBuilder::buildFunctionIr(Proto* proto)
 
         // We skip dead bytecode instructions when they appear after block was already terminated
         if (!inTerminatedBlock)
+        {
             translateInst(op, pc, i);
+
+            if (fastcallSkipTarget != -1)
+            {
+                nexti = fastcallSkipTarget;
+                fastcallSkipTarget = -1;
+            }
+        }
 
         i = nexti;
         LUAU_ASSERT(i <= proto->sizecode);
@@ -357,49 +365,17 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstCloseUpvals(*this, pc);
         break;
     case LOP_FASTCALL:
-    {
-        int skip = LUAU_INSN_C(*pc);
-        IrOp next = blockAtInst(i + skip + 2);
-
-        translateFastCallN(*this, pc, i, false, 0, {}, next);
-
-        activeFastcallFallback = true;
-        fastcallFallbackReturn = next;
+        handleFastcallFallback(translateFastCallN(*this, pc, i, false, 0, {}), pc, i);
         break;
-    }
     case LOP_FASTCALL1:
-    {
-        int skip = LUAU_INSN_C(*pc);
-        IrOp next = blockAtInst(i + skip + 2);
-
-        translateFastCallN(*this, pc, i, true, 1, undef(), next);
-
-        activeFastcallFallback = true;
-        fastcallFallbackReturn = next;
+        handleFastcallFallback(translateFastCallN(*this, pc, i, true, 1, undef()), pc, i);
         break;
-    }
     case LOP_FASTCALL2:
-    {
-        int skip = LUAU_INSN_C(*pc);
-        IrOp next = blockAtInst(i + skip + 2);
-
-        translateFastCallN(*this, pc, i, true, 2, vmReg(pc[1]), next);
-
-        activeFastcallFallback = true;
-        fastcallFallbackReturn = next;
+        handleFastcallFallback(translateFastCallN(*this, pc, i, true, 2, vmReg(pc[1])), pc, i);
         break;
-    }
     case LOP_FASTCALL2K:
-    {
-        int skip = LUAU_INSN_C(*pc);
-        IrOp next = blockAtInst(i + skip + 2);
-
-        translateFastCallN(*this, pc, i, true, 2, vmConst(pc[1]), next);
-
-        activeFastcallFallback = true;
-        fastcallFallbackReturn = next;
+        handleFastcallFallback(translateFastCallN(*this, pc, i, true, 2, vmConst(pc[1])), pc, i);
         break;
-    }
     case LOP_FORNPREP:
         translateInstForNPrep(*this, pc, i);
         break;
@@ -490,6 +466,25 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     }
     default:
         LUAU_ASSERT(!"Unknown instruction");
+    }
+}
+
+void IrBuilder::handleFastcallFallback(IrOp fallbackOrUndef, const Instruction* pc, int i)
+{
+    int skip = LUAU_INSN_C(*pc);
+
+    if (fallbackOrUndef.kind != IrOpKind::Undef)
+    {
+        IrOp next = blockAtInst(i + skip + 2);
+        inst(IrCmd::JUMP, next);
+        beginBlock(fallbackOrUndef);
+
+        activeFastcallFallback = true;
+        fastcallFallbackReturn = next;
+    }
+    else
+    {
+        fastcallSkipTarget = i + skip + 2;
     }
 }
 
@@ -716,6 +711,11 @@ IrOp IrBuilder::vmConst(uint32_t index)
 IrOp IrBuilder::vmUpvalue(uint8_t index)
 {
     return {IrOpKind::VmUpvalue, index};
+}
+
+IrOp IrBuilder::vmExit(uint32_t pcpos)
+{
+    return {IrOpKind::VmExit, pcpos};
 }
 
 } // namespace CodeGen

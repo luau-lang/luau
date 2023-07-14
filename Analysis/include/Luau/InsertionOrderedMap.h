@@ -16,10 +16,10 @@ struct InsertionOrderedMap
 {
     static_assert(std::is_trivially_copyable_v<K>, "key must be trivially copyable");
 
-    private:
+private:
     using vec = std::vector<std::pair<K, V>>;
 
-    public:
+public:
     using iterator = typename vec::iterator;
     using const_iterator = typename vec::const_iterator;
 
@@ -131,4 +131,4 @@ private:
     std::unordered_map<K, size_t> indices;
 };
 
-}
+} // namespace Luau

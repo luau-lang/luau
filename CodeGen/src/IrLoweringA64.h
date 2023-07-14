@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/AssemblyBuilderA64.h"
+#include "Luau/DenseHash.h"
 #include "Luau/IrData.h"
 
 #include "IrRegAllocA64.h"
@@ -32,6 +33,9 @@ struct IrLoweringA64
 
     bool isFallthroughBlock(IrBlock target, IrBlock next);
     void jumpOrFallthrough(IrBlock& target, IrBlock& next);
+
+    Label& getTargetLabel(IrOp op, Label& fresh);
+    void finalizeTargetLabel(IrOp op, Label& fresh);
 
     // Operand data build helpers
     // May emit data/address synthesis instructions
@@ -77,6 +81,7 @@ struct IrLoweringA64
 
     std::vector<InterruptHandler> interruptHandlers;
     std::vector<ExitHandler> exitHandlers;
+    DenseHashMap<uint32_t, uint32_t> exitHandlerMap;
 
     bool error = false;
 };

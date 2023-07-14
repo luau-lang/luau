@@ -8,6 +8,6 @@
 namespace Luau
 {
 
-void buildTypeMap(DenseHashMap<AstExprFunction*, std::string>& typeMap, AstNode* root);
+void buildTypeMap(DenseHashMap<AstExprFunction*, std::string>& typeMap, AstNode* root, const char* vectorType);
 
 } // namespace Luau

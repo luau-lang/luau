@@ -1,14 +1,19 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Differ.h"
+#include "Luau/Common.h"
 #include "Luau/Error.h"
 #include "Luau/Frontend.h"
 
 #include "Fixture.h"
 
+#include "Luau/Symbol.h"
+#include "ScopedFlags.h"
 #include "doctest.h"
 #include <iostream>
 
 using namespace Luau;
+
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 TEST_SUITE_BEGIN("Differ");
 
@@ -310,6 +315,687 @@ TEST_CASE_FIXTURE(Fixture, "singleton_string")
     }
     CHECK_EQ(
         R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> has type "hello", while the right type at <unlabeled-symbol> has type "world")",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "equal_function")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo(x: number)
+        return x
+    end
+    function almostFoo(y: number)
+        return y + 10
+    end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        INFO(diffRes.diffError->toString());
+        CHECK(!diffRes.diffError.has_value());
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "equal_function_inferred_ret_length")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function bar(x: number, y: string)
+        return x, y
+    end
+    function almostBar(a: number, b: string)
+        return a, b
+    end
+    function foo(x: number, y: string, z: boolean)
+        return z, bar(x, y)
+    end
+    function almostFoo(a: number, b: string, c: boolean)
+        return c, almostBar(a, b)
+    end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        INFO(diffRes.diffError->toString());
+        CHECK(!diffRes.diffError.has_value());
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "equal_function_inferred_ret_length_2")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function bar(x: number, y: string)
+        return x, y
+    end
+    function foo(x: number, y: string, z: boolean)
+        return bar(x, y), z
+    end
+    function almostFoo(a: number, b: string, c: boolean)
+        return a, c
+    end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        INFO(diffRes.diffError->toString());
+        CHECK(!diffRes.diffError.has_value());
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_arg_normal")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo(x: number, y: number, z: number)
+        return x * y * z
+    end
+    function almostFoo(a: number, b: number, msg: string)
+        return a
+    almostFoo = foo
+    )");
+    LUAU_REQUIRE_ERRORS(result);
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        diffMessage = diff(foo, almostFoo).diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Arg[3] has type number, while the right type at <unlabeled-symbol>.Arg[3] has type string)",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_arg_normal_2")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo(x: number, y: number, z: string)
+        return x * y
+    end
+    function almostFoo(a: number, y: string, msg: string)
+        return a
+    almostFoo = foo
+    )");
+    LUAU_REQUIRE_ERRORS(result);
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        diffMessage = diff(foo, almostFoo).diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Arg[2] has type number, while the right type at <unlabeled-symbol>.Arg[2] has type string)",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_ret_normal")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo(x: number, y: number, z: string)
+        return x
+    end
+    function almostFoo(a: number, b: number, msg: string)
+        return msg
+    end
+    )");
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        if (!diffRes.diffError.has_value())
+        {
+            INFO("Differ did not report type error, even though types are unequal");
+            CHECK(false);
+        }
+        diffMessage = diffRes.diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Ret[1] has type number, while the right type at <unlabeled-symbol>.Ret[1] has type string)",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_arg_length")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo(x: number, y: number)
+        return x
+    end
+    function almostFoo(x: number, y: number, c: number)
+        return x
+    end
+    )");
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        if (!diffRes.diffError.has_value())
+        {
+            INFO("Differ did not report type error, even though types are unequal");
+            CHECK(false);
+        }
+        diffMessage = diffRes.diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 2 or more arguments, while the right type at <unlabeled-symbol> takes 3 or more arguments)",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_arg_length_2")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo(x: number, y: string, z: number)
+        return z
+    end
+    function almostFoo(x: number, y: string)
+        return x
+    end
+    )");
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        if (!diffRes.diffError.has_value())
+        {
+            INFO("Differ did not report type error, even though types are unequal");
+            CHECK(false);
+        }
+        diffMessage = diffRes.diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 3 or more arguments, while the right type at <unlabeled-symbol> takes 2 or more arguments)",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_arg_length_none")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo()
+        return 5
+    end
+    function almostFoo(x: number, y: string)
+        return x
+    end
+    )");
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        if (!diffRes.diffError.has_value())
+        {
+            INFO("Differ did not report type error, even though types are unequal");
+            CHECK(false);
+        }
+        diffMessage = diffRes.diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 0 or more arguments, while the right type at <unlabeled-symbol> takes 2 or more arguments)",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_arg_length_none_2")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo(x: number)
+        return x
+    end
+    function almostFoo()
+        return 5
+    end
+    )");
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        if (!diffRes.diffError.has_value())
+        {
+            INFO("Differ did not report type error, even though types are unequal");
+            CHECK(false);
+        }
+        diffMessage = diffRes.diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 1 or more arguments, while the right type at <unlabeled-symbol> takes 0 or more arguments)",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_ret_length")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo(x: number, y: number)
+        return x
+    end
+    function almostFoo(x: number, y: number)
+        return x, y
+    end
+    )");
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        if (!diffRes.diffError.has_value())
+        {
+            INFO("Differ did not report type error, even though types are unequal");
+            CHECK(false);
+        }
+        diffMessage = diffRes.diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> returns 1 values, while the right type at <unlabeled-symbol> returns 2 values)",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_ret_length_2")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo(x: number, y: string, z: number)
+        return y, x, z
+    end
+    function almostFoo(x: number, y: string, z: number)
+        return y, x
+    end
+    )");
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        if (!diffRes.diffError.has_value())
+        {
+            INFO("Differ did not report type error, even though types are unequal");
+            CHECK(false);
+        }
+        diffMessage = diffRes.diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> returns 3 values, while the right type at <unlabeled-symbol> returns 2 values)",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_ret_length_none")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo(x: number, y: string)
+        return
+    end
+    function almostFoo(x: number, y: string)
+        return x
+    end
+    )");
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        if (!diffRes.diffError.has_value())
+        {
+            INFO("Differ did not report type error, even though types are unequal");
+            CHECK(false);
+        }
+        diffMessage = diffRes.diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> returns 0 values, while the right type at <unlabeled-symbol> returns 1 values)",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_ret_length_none_2")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo()
+        return 5
+    end
+    function almostFoo()
+        return
+    end
+    )");
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        if (!diffRes.diffError.has_value())
+        {
+            INFO("Differ did not report type error, even though types are unequal");
+            CHECK(false);
+        }
+        diffMessage = diffRes.diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> returns 1 values, while the right type at <unlabeled-symbol> returns 0 values)",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_variadic_arg_normal")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo(x: number, y: string, ...: number)
+        return x, y
+    end
+    function almostFoo(a: number, b: string, ...: string)
+        return a, b
+    end
+    )");
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        if (!diffRes.diffError.has_value())
+        {
+            INFO("Differ did not report type error, even though types are unequal");
+            CHECK(false);
+        }
+        diffMessage = diffRes.diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Arg[Variadic] has type number, while the right type at <unlabeled-symbol>.Arg[Variadic] has type string)",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_variadic_arg_missing")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo(x: number, y: string, ...: number)
+        return x, y
+    end
+    function almostFoo(a: number, b: string)
+        return a, b
+    end
+    )");
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        if (!diffRes.diffError.has_value())
+        {
+            INFO("Differ did not report type error, even though types are unequal");
+            CHECK(false);
+        }
+        diffMessage = diffRes.diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Arg[Variadic] has type number, while the right type at <unlabeled-symbol>.Arg[Variadic] has type any)",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_variadic_arg_missing_2")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo(x: number, y: string)
+        return x, y
+    end
+    function almostFoo(a: number, b: string, ...: string)
+        return a, b
+    end
+    )");
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        if (!diffRes.diffError.has_value())
+        {
+            INFO("Differ did not report type error, even though types are unequal");
+            CHECK(false);
+        }
+        diffMessage = diffRes.diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Arg[Variadic] has type any, while the right type at <unlabeled-symbol>.Arg[Variadic] has type string)",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_variadic_oversaturation")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    -- allowed to be oversaturated
+    function foo(x: number, y: string)
+        return x, y
+    end
+    -- must not be oversaturated
+    local almostFoo: (number, string) -> (number, string) = foo
+    )");
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        if (!diffRes.diffError.has_value())
+        {
+            INFO("Differ did not report type error, even though types are unequal");
+            CHECK(false);
+        }
+        diffMessage = diffRes.diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 2 or more arguments, while the right type at <unlabeled-symbol> takes 2 arguments)",
+        diffMessage);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_variadic_oversaturation_2")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    -- must not be oversaturated
+    local foo: (number, string) -> (number, string)
+    -- allowed to be oversaturated
+    function almostFoo(x: number, y: string)
+        return x, y
+    end
+    )");
+
+    TypeId foo = requireType("foo");
+    TypeId almostFoo = requireType("almostFoo");
+    std::string diffMessage;
+    try
+    {
+        DifferResult diffRes = diff(foo, almostFoo);
+        if (!diffRes.diffError.has_value())
+        {
+            INFO("Differ did not report type error, even though types are unequal");
+            CHECK(false);
+        }
+        diffMessage = diffRes.diffError->toString();
+    }
+    catch (const InternalCompilerError& e)
+    {
+        INFO(("InternalCompilerError: " + e.message));
+        CHECK(false);
+    }
+    CHECK_EQ(
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 2 arguments, while the right type at <unlabeled-symbol> takes 2 or more arguments)",
         diffMessage);
 }
 

@@ -24,17 +24,49 @@ extern "C" void __register_frame(const void*);
 extern "C" void __deregister_frame(const void*);
 
 extern "C" void __unw_add_dynamic_fde() __attribute__((weak));
-
 #endif
 
 #if defined(__APPLE__) && defined(__aarch64__)
 #include <sys/sysctl.h>
+#include <mach-o/loader.h>
+#include <dlfcn.h>
+
+struct unw_dynamic_unwind_sections_t
+{
+    uintptr_t dso_base;
+    uintptr_t dwarf_section;
+    size_t dwarf_section_length;
+    uintptr_t compact_unwind_section;
+    size_t compact_unwind_section_length;
+};
+
+typedef int (*unw_add_find_dynamic_unwind_sections_t)(int (*)(uintptr_t addr, unw_dynamic_unwind_sections_t* info));
 #endif
 
 namespace Luau
 {
 namespace CodeGen
 {
+
+#if defined(__APPLE__) && defined(__aarch64__)
+static int findDynamicUnwindSections(uintptr_t addr, unw_dynamic_unwind_sections_t* info)
+{
+    // Define a minimal mach header for JIT'd code.
+    static const mach_header_64 kFakeMachHeader = {
+        MH_MAGIC_64,
+        CPU_TYPE_ARM64,
+        CPU_SUBTYPE_ARM64_ALL,
+        MH_DYLIB,
+    };
+
+    info->dso_base = (uintptr_t)&kFakeMachHeader;
+    info->dwarf_section = 0;
+    info->dwarf_section_length = 0;
+    info->compact_unwind_section = 0;
+    info->compact_unwind_section_length = 0;
+    return 1;
+}
+#endif
 
 #if defined(__linux__) || defined(__APPLE__)
 static void visitFdeEntries(char* pos, void (*cb)(const void*))
@@ -85,6 +117,15 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
     }
 #elif defined(__linux__) || defined(__APPLE__)
     visitFdeEntries(unwindData, __register_frame);
+#endif
+
+#if defined(__APPLE__) && defined(__aarch64__)
+    // Starting from macOS 14, we need to register unwind section callback to state that our ABI doesn't require pointer authentication
+    // This might conflict with other JITs that do the same; unfortunately this is the best we can do for now.
+    static unw_add_find_dynamic_unwind_sections_t unw_add_find_dynamic_unwind_sections =
+        unw_add_find_dynamic_unwind_sections_t(dlsym(RTLD_DEFAULT, "__unw_add_find_dynamic_unwind_sections"));
+    static int regonce = unw_add_find_dynamic_unwind_sections ? unw_add_find_dynamic_unwind_sections(findDynamicUnwindSections) : 0;
+    LUAU_ASSERT(regonce == 0);
 #endif
 
     beginOffset = unwindSize + unwind->getBeginOffset();

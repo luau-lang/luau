@@ -7,7 +7,6 @@
 #include "Luau/Unifiable.h"
 
 LUAU_FASTFLAG(DebugLuauCopyBeforeNormalizing)
-LUAU_FASTFLAG(LuauClonePublicInterfaceLess2)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)

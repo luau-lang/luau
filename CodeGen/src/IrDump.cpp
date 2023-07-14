@@ -389,6 +389,9 @@ void toString(IrToStringContext& ctx, IrOp op)
     case IrOpKind::VmUpvalue:
         append(ctx.result, "U%d", vmUpvalueOp(op));
         break;
+    case IrOpKind::VmExit:
+        append(ctx.result, "exit(%d)", op.index);
+        break;
     }
 }
 

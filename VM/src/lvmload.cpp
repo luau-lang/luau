@@ -230,8 +230,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
 
         if (version >= 4)
         {
-            uint8_t cgflags = read<uint8_t>(data, size, offset);
-            LUAU_ASSERT(cgflags == 0);
+            p->flags = read<uint8_t>(data, size, offset);
 
             uint32_t typesize = readVarInt(data, size, offset);
 

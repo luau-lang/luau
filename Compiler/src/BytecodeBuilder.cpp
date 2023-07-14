@@ -249,7 +249,7 @@ uint32_t BytecodeBuilder::beginFunction(uint8_t numparams, bool isvararg)
     return id;
 }
 
-void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues)
+void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uint8_t flags)
 {
     LUAU_ASSERT(currentFunction != ~0u);
 
@@ -265,7 +265,7 @@ void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues)
     // very approximate: 4 bytes per instruction for code, 1 byte for debug line, and 1-2 bytes for aux data like constants plus overhead
     func.data.reserve(32 + insns.size() * 7);
 
-    writeFunction(func.data, currentFunction);
+    writeFunction(func.data, currentFunction, flags);
 
     currentFunction = ~0u;
 
@@ -631,7 +631,7 @@ void BytecodeBuilder::finalize()
     writeVarInt(bytecode, mainFunction);
 }
 
-void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id) const
+void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags) const
 {
     LUAU_ASSERT(id < functions.size());
     const Function& func = functions[id];
@@ -644,7 +644,7 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id) const
 
     if (FFlag::BytecodeVersion4)
     {
-        writeByte(ss, 0); // Reserved for cgflags
+        writeByte(ss, flags);
 
         writeVarInt(ss, uint32_t(func.typeinfo.size()));
         ss.append(func.typeinfo);
@@ -1213,10 +1213,15 @@ void BytecodeBuilder::validateInstructions() const
             break;
 
         case LOP_GETIMPORT:
+        {
             VREG(LUAU_INSN_A(insn));
             VCONST(LUAU_INSN_D(insn), Import);
-            // TODO: check insn[i + 1] for conformance with 10-bit import encoding
-            break;
+            uint32_t id = insns[i + 1];
+            LUAU_ASSERT((id >> 30) != 0); // import chain with length 1-3
+            for (unsigned int j = 0; j < (id >> 30); ++j)
+                VCONST((id >> (20 - 10 * j)) & 1023, String);
+        }
+        break;
 
         case LOP_GETTABLE:
         case LOP_SETTABLE:

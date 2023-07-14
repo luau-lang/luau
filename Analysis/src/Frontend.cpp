@@ -35,7 +35,7 @@ LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauReadWriteProperties, false)
-LUAU_FASTFLAGVARIABLE(LuauFixBuildQueueExceptionUnwrap, false)
+LUAU_FASTFLAGVARIABLE(LuauTypecheckCancellation, false)
 
 namespace Luau
 {
@@ -461,6 +461,10 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
         if (item.module->timeout)
             checkResult.timeoutHits.push_back(item.name);
 
+        // If check was manually cancelled, do not return partial results
+        if (FFlag::LuauTypecheckCancellation && item.module->cancelled)
+            return {};
+
         checkResult.errors.insert(checkResult.errors.end(), item.module->errors.begin(), item.module->errors.end());
 
         if (item.name == name)
@@ -610,6 +614,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
 
     std::vector<size_t> nextItems;
     std::optional<size_t> itemWithException;
+    bool cancelled = false;
 
     while (remaining != 0)
     {
@@ -626,15 +631,15 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
             {
                 const BuildQueueItem& item = buildQueueItems[i];
 
-                if (FFlag::LuauFixBuildQueueExceptionUnwrap)
-                {
-                    // If exception was thrown, stop adding new items and wait for processing items to complete
-                    if (item.exception)
-                        itemWithException = i;
+                // If exception was thrown, stop adding new items and wait for processing items to complete
+                if (item.exception)
+                    itemWithException = i;
 
-                    if (itemWithException)
-                        break;
-                }
+                if (FFlag::LuauTypecheckCancellation && item.module && item.module->cancelled)
+                    cancelled = true;
+
+                if (itemWithException || cancelled)
+                    break;
 
                 recordItemResult(item);
 
@@ -671,8 +676,12 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
         // If we aren't done, but don't have anything processing, we hit a cycle
         if (remaining != 0 && processing == 0)
         {
+            // Typechecking might have been cancelled by user, don't return partial results
+            if (FFlag::LuauTypecheckCancellation && cancelled)
+                return {};
+
             // We might have stopped because of a pending exception
-            if (FFlag::LuauFixBuildQueueExceptionUnwrap && itemWithException)
+            if (itemWithException)
             {
                 recordItemResult(buildQueueItems[*itemWithException]);
                 break;
@@ -901,6 +910,9 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         else
             typeCheckLimits.unifierIterationLimit = std::nullopt;
 
+        if (FFlag::LuauTypecheckCancellation)
+            typeCheckLimits.cancellationToken = item.options.cancellationToken;
+
         ModulePtr moduleForAutocomplete = check(sourceModule, Mode::Strict, requireCycles, environmentScope, /*forAutocomplete*/ true,
             /*recordJsonLog*/ false, typeCheckLimits);
 
@@ -918,7 +930,12 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         return;
     }
 
-    ModulePtr module = check(sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, {});
+    TypeCheckLimits typeCheckLimits;
+
+    if (FFlag::LuauTypecheckCancellation)
+        typeCheckLimits.cancellationToken = item.options.cancellationToken;
+
+    ModulePtr module = check(sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, typeCheckLimits);
 
     item.stats.timeCheck += getTimestamp() - timestamp;
     item.stats.filesStrict += mode == Mode::Strict;
@@ -996,6 +1013,10 @@ void Frontend::checkBuildQueueItems(std::vector<BuildQueueItem>& items)
     for (BuildQueueItem& item : items)
     {
         checkBuildQueueItem(item);
+
+        if (FFlag::LuauTypecheckCancellation && item.module && item.module->cancelled)
+            break;
+
         recordItemResult(item);
     }
 }
@@ -1232,8 +1253,8 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vect
         catch (const InternalCompilerError& err)
         {
             InternalCompilerError augmented = err.location.has_value()
-                ? InternalCompilerError{err.message, sourceModule.humanReadableName, *err.location}
-                : InternalCompilerError{err.message, sourceModule.humanReadableName};
+                                                  ? InternalCompilerError{err.message, sourceModule.humanReadableName, *err.location}
+                                                  : InternalCompilerError{err.message, sourceModule.humanReadableName};
             throw augmented;
         }
     }
@@ -1253,6 +1274,9 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vect
         typeChecker.finishTime = typeCheckLimits.finishTime;
         typeChecker.instantiationChildLimit = typeCheckLimits.instantiationChildLimit;
         typeChecker.unifierIterationLimit = typeCheckLimits.unifierIterationLimit;
+
+        if (FFlag::LuauTypecheckCancellation)
+            typeChecker.cancellationToken = typeCheckLimits.cancellationToken;
 
         return typeChecker.check(sourceModule, mode, environmentScope);
     }

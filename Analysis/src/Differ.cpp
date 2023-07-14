@@ -3,7 +3,9 @@
 #include "Luau/Error.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
+#include "Luau/TypePack.h"
 #include <optional>
+#include <string>
 
 namespace Luau
 {
@@ -18,6 +20,20 @@ std::string DiffPathNode::toString() const
         return *tableProperty;
         break;
     }
+    case DiffPathNode::Kind::FunctionArgument:
+    {
+        if (!index.has_value())
+            return "Arg[Variadic]";
+        // Add 1 because Lua is 1-indexed
+        return "Arg[" + std::to_string(*index + 1) + "]";
+    }
+    case DiffPathNode::Kind::FunctionReturn:
+    {
+        if (!index.has_value())
+            return "Ret[Variadic]";
+        // Add 1 because Lua is 1-indexed
+        return "Ret[" + std::to_string(*index + 1) + "]";
+    }
     default:
     {
         throw InternalCompilerError{"DiffPathNode::toString is not exhaustive"};
@@ -30,9 +46,34 @@ DiffPathNode DiffPathNode::constructWithTableProperty(Name tableProperty)
     return DiffPathNode{DiffPathNode::Kind::TableProperty, tableProperty, std::nullopt};
 }
 
+DiffPathNode DiffPathNode::constructWithKindAndIndex(Kind kind, size_t index)
+{
+    return DiffPathNode{kind, std::nullopt, index};
+}
+
+DiffPathNode DiffPathNode::constructWithKind(Kind kind)
+{
+    return DiffPathNode{kind, std::nullopt, std::nullopt};
+}
+
+DiffPathNodeLeaf DiffPathNodeLeaf::detailsNormal(TypeId ty)
+{
+    return DiffPathNodeLeaf{ty, std::nullopt, std::nullopt, false};
+}
+
+DiffPathNodeLeaf DiffPathNodeLeaf::detailsTableProperty(TypeId ty, Name tableProperty)
+{
+    return DiffPathNodeLeaf{ty, tableProperty, std::nullopt, false};
+}
+
+DiffPathNodeLeaf DiffPathNodeLeaf::detailsLength(int minLength, bool isVariadic)
+{
+    return DiffPathNodeLeaf{std::nullopt, std::nullopt, minLength, isVariadic};
+}
+
 DiffPathNodeLeaf DiffPathNodeLeaf::nullopts()
 {
-    return DiffPathNodeLeaf{std::nullopt, std::nullopt};
+    return DiffPathNodeLeaf{std::nullopt, std::nullopt, std::nullopt, false};
 }
 
 std::string DiffPath::toString(bool prependDot) const
@@ -79,9 +120,21 @@ std::string DiffError::toStringALeaf(std::string rootName, const DiffPathNodeLea
         }
         throw InternalCompilerError{"Both leaf.ty and otherLeaf.ty is nullopt"};
     }
+    case DiffError::Kind::LengthMismatchInFnArgs:
+    {
+        if (!leaf.minLength.has_value())
+            throw InternalCompilerError{"leaf.minLength is nullopt"};
+        return pathStr + " takes " + std::to_string(*leaf.minLength) + (leaf.isVariadic ? " or more" : "") + " arguments";
+    }
+    case DiffError::Kind::LengthMismatchInFnRets:
+    {
+        if (!leaf.minLength.has_value())
+            throw InternalCompilerError{"leaf.minLength is nullopt"};
+        return pathStr + " returns " + std::to_string(*leaf.minLength) + (leaf.isVariadic ? " or more" : "") + " values";
+    }
     default:
     {
-        throw InternalCompilerError{"DiffPath::toStringWithLeaf is not exhaustive"};
+        throw InternalCompilerError{"DiffPath::toStringALeaf is not exhaustive"};
     }
     }
 }
@@ -139,6 +192,14 @@ static DifferResult diffUsingEnv(DifferEnvironment& env, TypeId left, TypeId rig
 static DifferResult diffTable(DifferEnvironment& env, TypeId left, TypeId right);
 static DifferResult diffPrimitive(DifferEnvironment& env, TypeId left, TypeId right);
 static DifferResult diffSingleton(DifferEnvironment& env, TypeId left, TypeId right);
+static DifferResult diffFunction(DifferEnvironment& env, TypeId left, TypeId right);
+/**
+ * The last argument gives context info on which complex type contained the TypePack.
+ */
+static DifferResult diffTpi(DifferEnvironment& env, DiffError::Kind possibleNonNormalErrorKind, TypePackId left, TypePackId right);
+static DifferResult diffCanonicalTpShape(DifferEnvironment& env, DiffError::Kind possibleNonNormalErrorKind,
+    const std::pair<std::vector<TypeId>, std::optional<TypePackId>>& left, const std::pair<std::vector<TypeId>, std::optional<TypePackId>>& right);
+static DifferResult diffHandleFlattenedTail(DifferEnvironment& env, DiffError::Kind possibleNonNormalErrorKind, TypePackId left, TypePackId right);
 
 static DifferResult diffTable(DifferEnvironment& env, TypeId left, TypeId right)
 {
@@ -152,7 +213,7 @@ static DifferResult diffTable(DifferEnvironment& env, TypeId left, TypeId right)
             // left has a field the right doesn't
             return DifferResult{DiffError{
                 DiffError::Kind::MissingProperty,
-                DiffPathNodeLeaf{value.type(), field},
+                DiffPathNodeLeaf::detailsTableProperty(value.type(), field),
                 DiffPathNodeLeaf::nullopts(),
                 getDevFixFriendlyName(env.rootLeft),
                 getDevFixFriendlyName(env.rootRight),
@@ -164,8 +225,9 @@ static DifferResult diffTable(DifferEnvironment& env, TypeId left, TypeId right)
         if (leftTable->props.find(field) == leftTable->props.end())
         {
             // right has a field the left doesn't
-            return DifferResult{DiffError{DiffError::Kind::MissingProperty, DiffPathNodeLeaf::nullopts(), DiffPathNodeLeaf{value.type(), field},
-                getDevFixFriendlyName(env.rootLeft), getDevFixFriendlyName(env.rootRight)}};
+            return DifferResult{
+                DiffError{DiffError::Kind::MissingProperty, DiffPathNodeLeaf::nullopts(), DiffPathNodeLeaf::detailsTableProperty(value.type(), field),
+                    getDevFixFriendlyName(env.rootLeft), getDevFixFriendlyName(env.rootRight)}};
         }
     }
     // left and right have the same set of keys
@@ -191,8 +253,8 @@ static DifferResult diffPrimitive(DifferEnvironment& env, TypeId left, TypeId ri
     {
         return DifferResult{DiffError{
             DiffError::Kind::Normal,
-            DiffPathNodeLeaf{left, std::nullopt},
-            DiffPathNodeLeaf{right, std::nullopt},
+            DiffPathNodeLeaf::detailsNormal(left),
+            DiffPathNodeLeaf::detailsNormal(right),
             getDevFixFriendlyName(env.rootLeft),
             getDevFixFriendlyName(env.rootRight),
         }};
@@ -209,13 +271,24 @@ static DifferResult diffSingleton(DifferEnvironment& env, TypeId left, TypeId ri
     {
         return DifferResult{DiffError{
             DiffError::Kind::Normal,
-            DiffPathNodeLeaf{left, std::nullopt},
-            DiffPathNodeLeaf{right, std::nullopt},
+            DiffPathNodeLeaf::detailsNormal(left),
+            DiffPathNodeLeaf::detailsNormal(right),
             getDevFixFriendlyName(env.rootLeft),
             getDevFixFriendlyName(env.rootRight),
         }};
     }
     return DifferResult{};
+}
+
+static DifferResult diffFunction(DifferEnvironment& env, TypeId left, TypeId right)
+{
+    const FunctionType* leftFunction = get<FunctionType>(left);
+    const FunctionType* rightFunction = get<FunctionType>(right);
+
+    DifferResult differResult = diffTpi(env, DiffError::Kind::LengthMismatchInFnArgs, leftFunction->argTypes, rightFunction->argTypes);
+    if (differResult.diffError.has_value())
+        return differResult;
+    return diffTpi(env, DiffError::Kind::LengthMismatchInFnRets, leftFunction->retTypes, rightFunction->retTypes);
 }
 
 static DifferResult diffUsingEnv(DifferEnvironment& env, TypeId left, TypeId right)
@@ -227,8 +300,8 @@ static DifferResult diffUsingEnv(DifferEnvironment& env, TypeId left, TypeId rig
     {
         return DifferResult{DiffError{
             DiffError::Kind::Normal,
-            DiffPathNodeLeaf{left, std::nullopt},
-            DiffPathNodeLeaf{right, std::nullopt},
+            DiffPathNodeLeaf::detailsNormal(left),
+            DiffPathNodeLeaf::detailsNormal(right),
             getDevFixFriendlyName(env.rootLeft),
             getDevFixFriendlyName(env.rootRight),
         }};
@@ -244,6 +317,11 @@ static DifferResult diffUsingEnv(DifferEnvironment& env, TypeId left, TypeId rig
         {
             return diffSingleton(env, left, right);
         }
+        else if (auto la = get<AnyType>(left))
+        {
+            // Both left and right must be Any if either is Any for them to be equal!
+            return DifferResult{};
+        }
 
         throw InternalCompilerError{"Unimplemented Simple TypeId variant for diffing"};
     }
@@ -254,7 +332,114 @@ static DifferResult diffUsingEnv(DifferEnvironment& env, TypeId left, TypeId rig
     {
         return diffTable(env, left, right);
     }
+    if (auto lf = get<FunctionType>(left))
+    {
+        return diffFunction(env, left, right);
+    }
     throw InternalCompilerError{"Unimplemented non-simple TypeId variant for diffing"};
+}
+
+static DifferResult diffTpi(DifferEnvironment& env, DiffError::Kind possibleNonNormalErrorKind, TypePackId left, TypePackId right)
+{
+    left = follow(left);
+    right = follow(right);
+
+    // Canonicalize
+    std::pair<std::vector<TypeId>, std::optional<TypePackId>> leftFlatTpi = flatten(left);
+    std::pair<std::vector<TypeId>, std::optional<TypePackId>> rightFlatTpi = flatten(right);
+
+    // Check for shape equality
+    DifferResult diffResult = diffCanonicalTpShape(env, possibleNonNormalErrorKind, leftFlatTpi, rightFlatTpi);
+    if (diffResult.diffError.has_value())
+    {
+        return diffResult;
+    }
+
+    // Left and Right have the same shape
+    for (size_t i = 0; i < leftFlatTpi.first.size(); i++)
+    {
+        DifferResult differResult = diffUsingEnv(env, leftFlatTpi.first[i], rightFlatTpi.first[i]);
+        if (!differResult.diffError.has_value())
+            continue;
+
+        switch (possibleNonNormalErrorKind)
+        {
+        case DiffError::Kind::LengthMismatchInFnArgs:
+        {
+            differResult.wrapDiffPath(DiffPathNode::constructWithKindAndIndex(DiffPathNode::Kind::FunctionArgument, i));
+            return differResult;
+        }
+        case DiffError::Kind::LengthMismatchInFnRets:
+        {
+            differResult.wrapDiffPath(DiffPathNode::constructWithKindAndIndex(DiffPathNode::Kind::FunctionReturn, i));
+            return differResult;
+        }
+        default:
+        {
+            throw InternalCompilerError{"Unhandled Tpi diffing case with same shape"};
+        }
+        }
+    }
+    if (!leftFlatTpi.second.has_value())
+        return DifferResult{};
+
+    return diffHandleFlattenedTail(env, possibleNonNormalErrorKind, *leftFlatTpi.second, *rightFlatTpi.second);
+}
+
+static DifferResult diffCanonicalTpShape(DifferEnvironment& env, DiffError::Kind possibleNonNormalErrorKind,
+    const std::pair<std::vector<TypeId>, std::optional<TypePackId>>& left, const std::pair<std::vector<TypeId>, std::optional<TypePackId>>& right)
+{
+    if (left.first.size() == right.first.size() && left.second.has_value() == right.second.has_value())
+        return DifferResult{};
+
+    return DifferResult{DiffError{
+        possibleNonNormalErrorKind,
+        DiffPathNodeLeaf::detailsLength(int(left.first.size()), left.second.has_value()),
+        DiffPathNodeLeaf::detailsLength(int(right.first.size()), right.second.has_value()),
+        getDevFixFriendlyName(env.rootLeft),
+        getDevFixFriendlyName(env.rootRight),
+    }};
+}
+
+static DifferResult diffHandleFlattenedTail(DifferEnvironment& env, DiffError::Kind possibleNonNormalErrorKind, TypePackId left, TypePackId right)
+{
+    left = follow(left);
+    right = follow(right);
+
+    if (left->ty.index() != right->ty.index())
+    {
+        throw InternalCompilerError{"Unhandled case where the tail of 2 normalized typepacks have different variants"};
+    }
+
+    // Both left and right are the same variant
+
+    if (auto lv = get<VariadicTypePack>(left))
+    {
+        auto rv = get<VariadicTypePack>(right);
+        DifferResult differResult = diffUsingEnv(env, lv->ty, rv->ty);
+        if (!differResult.diffError.has_value())
+            return DifferResult{};
+
+        switch (possibleNonNormalErrorKind)
+        {
+        case DiffError::Kind::LengthMismatchInFnArgs:
+        {
+            differResult.wrapDiffPath(DiffPathNode::constructWithKind(DiffPathNode::Kind::FunctionArgument));
+            return differResult;
+        }
+        case DiffError::Kind::LengthMismatchInFnRets:
+        {
+            differResult.wrapDiffPath(DiffPathNode::constructWithKind(DiffPathNode::Kind::FunctionReturn));
+            return differResult;
+        }
+        default:
+        {
+            throw InternalCompilerError{"Unhandled flattened tail case for VariadicTypePack"};
+        }
+        }
+    }
+
+    throw InternalCompilerError{"Unhandled tail type pack variant for flattened tails"};
 }
 
 DifferResult diff(TypeId ty1, TypeId ty2)
@@ -267,7 +452,7 @@ bool isSimple(TypeId ty)
 {
     ty = follow(ty);
     // TODO: think about GenericType, etc.
-    return get<PrimitiveType>(ty) || get<SingletonType>(ty);
+    return get<PrimitiveType>(ty) || get<SingletonType>(ty) || get<AnyType>(ty);
 }
 
 } // namespace Luau

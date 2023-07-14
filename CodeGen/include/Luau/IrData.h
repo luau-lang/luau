@@ -165,7 +165,7 @@ enum class IrCmd : uint8_t
     NOT_ANY, // TODO: boolean specialization will be useful
 
     // Unconditional jump
-    // A: block
+    // A: block/vmexit
     JUMP,
 
     // Jump if TValue is truthy
@@ -364,7 +364,7 @@ enum class IrCmd : uint8_t
 
     // Guard against tag mismatch
     // A, B: tag
-    // C: block/undef
+    // C: block/vmexit/undef
     // D: bool (finish execution in VM on failure)
     // In final x64 lowering, A can also be Rn
     // When undef is specified instead of a block, execution is aborted on check failure; if D is true, execution is continued in VM interpreter
@@ -384,7 +384,7 @@ enum class IrCmd : uint8_t
     CHECK_NO_METATABLE,
 
     // Guard against executing in unsafe environment, exits to VM on check failure
-    // A: unsigned int (pcpos)/undef
+    // A: vmexit/undef
     // When undef is specified, execution is aborted on check failure
     CHECK_SAFE_ENV,
 
@@ -670,6 +670,9 @@ enum class IrOpKind : uint32_t
 
     // To reference a VM upvalue
     VmUpvalue,
+
+    // To reference an exit to VM at specific PC pos
+    VmExit,
 };
 
 struct IrOp

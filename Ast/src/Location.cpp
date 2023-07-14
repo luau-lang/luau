@@ -129,12 +129,4 @@ void Location::shift(const Position& start, const Position& oldEnd, const Positi
     end.shift(start, oldEnd, newEnd);
 }
 
-std::string Location::toString(int offset, bool useBegin) const
-{
-    const Position& pos = useBegin ? this->begin : this->end;
-    std::string line{std::to_string(pos.line + offset)};
-    std::string column{std::to_string(pos.column + offset)};
-    return "(" + line + ", " + column + ")";
-}
-
 } // namespace Luau

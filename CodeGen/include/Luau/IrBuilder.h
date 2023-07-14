@@ -26,6 +26,7 @@ struct IrBuilder
 
     void rebuildBytecodeBasicBlocks(Proto* proto);
     void translateInst(LuauOpcode op, const Instruction* pc, int i);
+    void handleFastcallFallback(IrOp fallbackOrUndef, const Instruction* pc, int i);
 
     bool isInternalBlock(IrOp block);
     void beginBlock(IrOp block);
@@ -61,10 +62,13 @@ struct IrBuilder
     IrOp vmConst(uint32_t index);
     IrOp vmUpvalue(uint8_t index);
 
+    IrOp vmExit(uint32_t pcpos);
+
     bool inTerminatedBlock = false;
 
     bool activeFastcallFallback = false;
     IrOp fastcallFallbackReturn;
+    int fastcallSkipTarget = -1;
 
     IrFunction function;
 
