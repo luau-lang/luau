@@ -31,8 +31,9 @@
 In HATRA 2021, we presented \emph{The Goals Of The Luau Type System},
 describing the human factors issues with designing a type system for a
 language with a heterogeneous developer community. In this extended
-abstract we provide a progress report on how the design is being
-delivered.
+abstract we provide a progress report on the work so far, focusing on
+the unexpected aspects: semantic subtyping and type error
+suppression.
 \end{abstract}
 
 \maketitle
@@ -40,7 +41,7 @@ delivered.
 \section{Recap}
 
 Luau~\cite{Luau} is the scripting language used by the
-Roblox~\cite{Roblox} platform for shared 3D experiences.  Luau extends
+Roblox~\cite{Roblox} platform for shared immersive experiences.  Luau extends
 the Lua~\cite{Lua} language, notably by providing type-driven tooling
 such as autocomplete and API documentation (as well as traditional type
 error reporting). Roblox has hundreds of millions of users, and
@@ -65,10 +66,12 @@ For both communities, type-driven tooling is important, so we
 provide \emph{infallible type inference}, which infers types no matter 
 the inputs.
 
-\section{New stuff}
+\section{Progress}
 
-The main improvement is that Luau now has support for \emph{semantic
-subtyping}~\cite{Jef22:SemanticSubtyping}. Semantic subtyping
+There are two unexpected changes to the type system: \emph{semantic subtyping},
+and treating gradual typing as \emph{type error suppression}.
+
+Semantic subtyping
 interprets types as sets of values, and subtyping as set
 inclusion~\cite{GF05:GentleIntroduction}. This is aligned with the
 \emph{minimize false positives} goal of Luau non-strict mode, since
@@ -77,9 +80,10 @@ value which inhabits the candidate subtype, but not the candidate
 supertype. This has the added benefit of improving error reporting in
 the prototype implementation: since the prototype is constructive, the
 witness for the failure of subtyping can help drive error reports.
+See our technical blog for more details~\cite{Jef22:SemanticSubtyping}.
 
-The other big improvement is how we view gradual typing, Rather than
-the approach of~\cite{ST07:GradualTyping}, which uses \emph{consistent
+Rather than the gradual typing approach
+of~\cite{ST07:GradualTyping}, which uses \emph{consistent
 subtyping} where $\ANY \lesssim T \lesssim \ANY$ for any type $T$, we
 adopt an approach based on \emph{error suppression}, where $\ANY$ is
 an error-suppressing type, and any failures of subtyping involving
@@ -93,7 +97,7 @@ mechanically verified~\cite{BJ23:agda-typeck}.
 
 Currently the type inference system uses greedy inference, which is
 very sensitive to order of declarations, and can easily result in
-false positives. This needs replaced by some form of local type
+false positives. We plan to replace this by some form of local type
 inference~\cite{PT00:LocalTypeInference}.
 
 Currently, non-strict mode operates in the style of gradual type
