@@ -103,8 +103,11 @@ inference~\cite{PT00:LocalTypeInference}.
 Currently, non-strict mode operates in the style of gradual type
 systems by inferring $\ANY$ as the type for local variables. This does
 not play well with type-directed tooling, for example $\ANY$ cannot
-provide autocomplete suggestions. We plan to improve non-strict mode's
-type inference and interaction with error-suppression.
+provide autocomplete suggestions.
+
+We hope that, together with error suppression, these changes will
+result in a significant improvement to type inference and type error
+reporting in non-strict mode.
 
 \bibliographystyle{ACM-Reference-Format} \bibliography{bibliography}
 
