@@ -29,7 +29,7 @@
 
 \begin{abstract}
 In HATRA 2021, we presented \emph{The Goals Of The Luau Type System},
-describing the human factors issues with designing a type system for a
+describing the human factors of designing a type system for a
 language with a heterogeneous developer community. In this extended
 abstract we provide a progress report on the work so far, focusing on
 the unexpected aspects: semantic subtyping and type error
@@ -63,8 +63,8 @@ type-driven tooling is important for productivity. These needs result in a desig
   minimizing false negatives (i.e.~type soundness).
 \end{itemize}
 For both communities, type-driven tooling is important, so we
-provide \emph{infallible type inference}, which infers types no matter 
-the inputs.
+provide \emph{infallible type inference}, which infers types
+even for ill-typed or syntactically invalid programs.
 
 \section{Progress}
 
@@ -90,7 +90,7 @@ an error-suppressing type, and any failures of subtyping involving
 error-suppressing types are not reported. Users can explicitly
 suppress type errors by declaring variables with type $\ANY$, and
 since an expression with a type error has an error-suppressing type we
-avoid cascading errors. Error-suppression is in production Luau, and is
+avoid cascading errors. Error suppression is in production Luau, and is
 mechanically verified~\cite{BJ23:agda-typeck}.
 
 \section{Further work}
