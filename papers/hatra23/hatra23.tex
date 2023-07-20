@@ -62,14 +62,18 @@ type-driven tooling is important for productivity. These needs result in a desig
 \item \emph{strict mode}, aimed at professionals, focused on
   minimizing false negatives (i.e.~type soundness).
 \end{itemize}
-For both communities, type-driven tooling is important, so we
-provide \emph{infallible type inference}, which infers types
-even for ill-typed or syntactically invalid programs.
+%% For both communities, type-driven tooling is important, so we
+%% provide \emph{infallible type inference}, which infers types
+%% even for ill-typed or syntactically invalid programs.
 
 \section{Progress}
 
-There are two unexpected changes to the type system: \emph{semantic subtyping},
-and treating gradual typing as \emph{type error suppression}.
+In the two years since the position paper, we have been making changes
+to the Luau type system to achieve the goals we set out. Most of the
+changes were straightforward, but two were large changes in how we
+thought about the design of the type system: replacing the existing
+syntactic subtyping algorithm by \emph{semantic subtyping}, and
+treating gradual typing as \emph{type error suppression}.
 
 Semantic subtyping
 interprets types as sets of values, and subtyping as set
@@ -103,11 +107,8 @@ inference~\cite{PT00:LocalTypeInference}.
 Currently, non-strict mode operates in the style of gradual type
 systems by inferring $\ANY$ as the type for local variables. This does
 not play well with type-directed tooling, for example $\ANY$ cannot
-provide autocomplete suggestions.
-
-We hope that, together with error suppression, these changes will
-result in a significant improvement to type inference and type error
-reporting in non-strict mode.
+provide autocomplete suggestions. Local type inference will infer more
+precise union types, and hence better type-driven tooling.
 
 \bibliographystyle{ACM-Reference-Format} \bibliography{bibliography}
 
