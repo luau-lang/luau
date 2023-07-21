@@ -1,0 +1,118 @@
+\documentclass[acmsmall]{acmart}
+
+\setcopyright{rightsretained}
+\copyrightyear{2023}
+\acmYear{2023}
+\acmConference[HATRA '23]{Human Aspects of Types and Reasoning Assistants}{October 2023}{Portugal, Spain}
+\acmBooktitle{HATRA '23: Human Aspects of Types and Reasoning Assistants}
+\acmDOI{}
+\acmISBN{}
+\expandafter\def\csname @copyrightpermission\endcsname{\raisebox{-1ex}{\includegraphics[height=3.5ex]{cc-by}} This work is licensed under a Creative Commons Attribution 4.0 International License.}
+\expandafter\def\csname @copyrightowner\endcsname{Roblox.}
+
+\newcommand{\ANY}{\mathtt{any}}
+\newcommand{\ERROR}{\mathtt{error}}
+
+\begin{document}
+
+\title{Goals of the Luau Type System, Two Years On}
+
+\author{Lily Brown}
+\author{Andy Friesen}
+\author{Alan Jeffrey}
+\affiliation{
+  \institution{Roblox}
+  \city{San Mateo}
+  \state{CA}
+  \country{USA}
+}
+
+\begin{abstract}
+In HATRA 2021, we presented \emph{The Goals Of The Luau Type System},
+describing the human factors of a type system for a
+language with a heterogeneous developer community. In this extended
+abstract we provide a progress report, focusing on
+the unexpected aspects: semantic subtyping and type error
+suppression.
+\end{abstract}
+
+\maketitle
+
+\section{Recap}
+
+Luau~\cite{Luau} is the scripting language used by the
+Roblox~\cite{Roblox} platform for shared immersive experiences.  Luau extends
+the Lua~\cite{Lua} language, notably by providing type-driven tooling
+such as autocomplete and API documentation (as well as traditional type
+error reporting). Roblox has hundreds of millions of users, and
+millions of creators, ranging from children learning to program for
+the first time to professional development studios.
+
+In HATRA 2021, we presented \emph{The Goals Of The Luau Type
+System}~\cite{BFJ21:GoalsLuau}, describing the human factors issues
+with designing a type system for a language with a heterogeneous
+developer community. The design flows from the needs of the different
+communities: beginners are focused on immediate goals (``the stairs
+should light up when a player walks on them'') and less on the code
+quality concerns of more experienced developers; for all users
+type-driven tooling is important for productivity. These needs result in a design with two modes:
+\begin{itemize}
+\item \emph{non-strict mode}, aimed at non-professionals, focused on
+  minimizing false positives, and
+\item \emph{strict mode}, aimed at professionals, focused on
+  minimizing false negatives (i.e.~type soundness).
+\end{itemize}
+%% For both communities, type-driven tooling is important, so we
+%% provide \emph{infallible type inference}, which infers types
+%% even for ill-typed or syntactically invalid programs.
+
+\section{Progress}
+
+In the two years since the position paper, we have been making changes
+to the Luau type system to achieve the goals we set out. Most of the
+changes were straightforward, but two were large changes in how we
+thought about the design of the type system: replacing the existing
+syntactic subtyping algorithm by \emph{semantic subtyping}, and
+treating gradual typing as \emph{type error suppression}.
+
+Semantic subtyping
+interprets types as sets of values, and subtyping as set
+inclusion~\cite{GF05:GentleIntroduction}. This is aligned with the
+\emph{minimize false positives} goal of Luau non-strict mode, since
+semantic subtyping only reports a failure of subtyping when there is a
+value which inhabits the candidate subtype, but not the candidate
+supertype. This has the added benefit of improving error reporting in
+the prototype implementation: since the prototype is constructive, the
+witness for the failure of subtyping can help drive error reports.
+See our technical blog for more details~\cite{Jef22:SemanticSubtyping}.
+
+Rather than the gradual typing approach
+of~\cite{ST07:GradualTyping}, which uses \emph{consistent
+subtyping} where $\ANY \lesssim T \lesssim \ANY$ for any type $T$, we
+adopt an approach based on \emph{error suppression}, where $\ANY$ is
+an error-suppressing type, and any failures of subtyping involving
+error-suppressing types are not reported. Users can explicitly
+suppress type errors by declaring variables with type $\ANY$, and
+since an expression with a type error has an error-suppressing type we
+avoid cascading errors. Error suppression is in production Luau, and is
+mechanically verified~\cite{BJ23:agda-typeck}.
+
+\section{Further work}
+
+Currently the type inference system uses greedy inference, which is
+very sensitive to order of declarations, and can easily result in
+false positives. We plan to replace this by some form of local type
+inference~\cite{PT00:LocalTypeInference}.
+
+Currently, non-strict mode operates in the style of gradual type
+systems by inferring $\ANY$ as the type for local variables. This does
+not play well with type-directed tooling, for example $\ANY$ cannot
+provide autocomplete suggestions. Local type inference will infer more
+precise union types, and hence better type-driven tooling.
+
+At some point, we hope that error suppression will be the only difference
+between strict mode and non-strict mode.
+
+\bibliographystyle{ACM-Reference-Format} \bibliography{bibliography}
+
+\end{document}
