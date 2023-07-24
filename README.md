@@ -26,6 +26,7 @@ Alternatively, you can use one of the packaged distributions (note that these ar
 - macOS: [Install Homebrew](https://docs.brew.sh/Installation) and run `brew install luau`
 - Arch Linux: From the AUR (Arch Linux User Repository), install one of these packages via a AUR helper or manually (by cloning their repo and using ``makepkg``): [luau](https://aur.archlinux.org/packages/luau) (manual build), [luau-git](https://aur.archlinux.org/packages/luau-git) (manual build by cloning this repo), or [luau-bin](https://aur.archlinux.org/packages/luau-bin) (pre-built binaries from releases)
 - Alpine Linux: [Enable community repositories](https://wiki.alpinelinux.org/w/index.php?title=Enable_Community_Repository) and run `apk add luau`
+- Gentoo Linux: Luau is [officially packaged by Gentoo](https://packages.gentoo.org/packages/dev-lang/luau) and can be installed using `emerge dev-lang/luau`. You may have to unmask the package first before installing it (which can be done by including the `--autounmask=y` option in the `emerge` command).
 
 After installing, you will want to validate the installation was successful by running the test case [here](https://luau-lang.org/getting-started).
 
