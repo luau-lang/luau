@@ -98,7 +98,7 @@ local MyModule = require("../MyLibrary/MyModule")
 
 Relative paths are chosen as the default path type, meaning that if a given path does not begin with a reserved prefix such as `/` or `@`, then it is considered relative to the requiring file's location. This is chosen for convenience, as libraries may include various internal dependencies that are easier to reference using relative paths.
 
-Relative paths can also begin with `./` or `../`, which denote the directory of the requiring file and its parent directory, respectively. When executing Luau code directly from a CLI (e.g. in the Luau CLI), this is relative to the current working directory.
+Relative paths can also begin with `./` or `../`, which denote the directory of the requiring file and its parent directory, respectively. When requiring a file directly from the REPL, relative paths will be evaluated in relation to the pseudo-file `stdin`, located in the current working directory. If the code being executed is not tied to a file (e.g. using `loadstring`), the require statement will throw an error.
 
 #### Absolute paths
 
@@ -124,7 +124,7 @@ Instead, absolute paths should appear only in the alias map. Then, only the alia
 
 #### Aliases
 
-Aliases can be used to bind an absolute or relative path to a convenient name that can be required directly. In Luau files, aliases will always be prefixed with `@` to unambiguously distinguish them from directory names.
+Aliases can be used to bind an absolute or relative path to a convenient, case-sensitive name that can be required directly. In Luau files, aliases will always be prefixed with `@` to unambiguously distinguish them from directory names.
 
 ```json
 "aliases": {
@@ -148,7 +148,7 @@ Note that the alias map itself does not contain any `@` prefixes, which differs 
 
 ##### Versioning
 
-Aliases are simple bindings and aren't concerned with versioning. The intention is to allow package management software to leverage aliases by automatically adding and updating the alias map to reflect a package's dependencies.
+Aliases are simple bindings and aren't concerned with versioning. The intention is to allow package management software to leverage aliases by automatically adding and updating the alias map to reflect a package's dependencies. For manual versioning, a user could always "version" their aliases: `@MyModule-v1`, `@MyModule-v2`, etc.
 
 ##### Library root alias
 
@@ -165,9 +165,9 @@ Of course, users can still use the alias map to explicitly define this behavior 
 }
 ```
 
-##### Limitations of aliases
+##### Current limitations of aliases
 
-- Aliases cannot reference other aliases.
+- Aliases cannot reference other aliases. (However, this is compatible with this proposal and will likely be implemented in the future.)
 - Alias names cannot contain the directory separators `/` and `\`.
 - All aliases must be prefixed with `@` when used in a require statement to avoid ambiguity.
 - Aliases can only occur at the beginning of a path.
