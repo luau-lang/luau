@@ -98,7 +98,7 @@ local MyModule = require("../MyLibrary/MyModule")
 
 Relative paths are chosen as the default path type, meaning that if a given path does not begin with a reserved prefix such as `/` or `@`, then it is considered relative to the requiring file's location. This is chosen for convenience, as libraries may include various internal dependencies that are easier to reference using relative paths.
 
-Relative paths can also begin with `./` or `../`, which denote the directory of the requiring file and its parent directory, respectively. When requiring a file directly from the REPL, relative paths will be evaluated in relation to the pseudo-file `stdin`, located in the current working directory. If the code being executed is not tied to a file (e.g. using `loadstring`), the require statement will throw an error.
+Relative paths can also begin with `./` or `../`, which denote the directory of the requiring file and its parent directory, respectively. When a require statement is executed directly in a REPL input prompt (not in a file), relative paths will be evaluated in relation to the pseudo-file `stdin`, located in the current working directory. If the code being executed is not tied to a file (e.g. using `loadstring`), executing any require statements in this code will result in an error.
 
 #### Absolute paths
 
@@ -308,7 +308,8 @@ Luau libraries are already not compatible with existing Lua libraries. This is b
 - We propose changing this behavior and breaking backwards compatibility on this front.
 - With the current implementation, requiring a library that itself contains relative-path require statements [can become a mess](https://github.com/Roblox/luau/issues/959) if the Luau VM is not launched from the "correct" working directory.
 - We propose the following change: relative paths passed to require statements will be evaluated in relation to the requiring file's location, not in relation to the current working directory.
-    - Caveat: if the relative-path require is called directly in the Luau CLI, this will remain relative to the current working directory, as there is no sense of a "requiring file" here.
+    - Caveat 1: if the relative-path require is executed directly in a REPL input prompt (not in a file), it will be evaluated relative to the pseudo-file `stdin`, located in the current working directory.
+    - Caveat 2: if the code being executed is not tied to a file (e.g. using `loadstring`), executing require statements contained in this code will throw an error.
 - If this causes issues, we can later introduce a default alias for the current working directory (e.g. `@CWD`).
 
 ## Alternatives
