@@ -102,13 +102,13 @@ declare function require(target: any): any
 declare function getfenv(target: any): { [string]: any }
 
 declare _G: any
-declare _VERSION: string
+declare _VERSION: "Luau"
 
 declare function gcinfo(): number
 
 declare function print<T...>(...: T...)
 
-declare function type<T>(value: T): string
+declare function type<T>(value: T): "nil" | "boolean" | "number" | "vector" | "string" | "table" | "function" | "userdata" | "thread"
 declare function typeof<T>(value: T): string
 
 -- `assert` has a magic function attached that will give more detailed type information
@@ -135,7 +135,7 @@ declare function pcall<A..., R...>(f: (A...) -> R..., ...: A...): (boolean, R...
 declare function xpcall<E, A..., R1..., R2...>(f: (A...) -> R1..., err: (E) -> R2..., ...: A...): (boolean, R1...)
 
 -- `select` has a magic function attached to provide more detailed type information
-declare function select<A...>(i: string | number, ...: A...): ...any
+declare function select<A...>(i: "#" | number, ...: A...): ...any
 
 -- FIXME: This type is not entirely correct - `loadstring` returns a function or
 -- (nil, string).
