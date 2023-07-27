@@ -89,7 +89,7 @@
 <!-- CodeMirror Luau Editor (MUST BE LOADED AFTER CODEMIRROR!) -->
 <script>
 	var editor = CodeMirror.fromTextArea(document.getElementById("script"), {
-		theme: sessionStorage.getItem('theme'),
+		theme: localStorage.getItem('theme'),
 		mode: "luau",
 		matchBrackets: true,
 		lineNumbers: true,
