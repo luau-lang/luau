@@ -50,8 +50,7 @@
 		node2 = document.getElementById('theme_source_2');
 		node1.setAttribute('rel', 'stylesheet alternate');
 		node2.setAttribute('rel', 'stylesheet');
-	}
-	else {
+	} else {
 		localStorage.setItem('theme', 'light');
 	}
 
@@ -61,12 +60,12 @@
 		if (node1.getAttribute("rel") == "stylesheet") {
 			node1.setAttribute("rel", "stylesheet alternate");
 			node2.setAttribute("rel", "stylesheet");
-			try {editor?.setOption("theme", "dark")} catch {};
+			try { editor.setOption("theme", "dark") } catch { };
 			localStorage.setItem("theme", "dark");
 		} else {
 			node2.setAttribute("rel", "stylesheet alternate");
 			node1.setAttribute("rel", "stylesheet");
-			try {editor.setOption("theme", "light")} catch {};
+			try { editor.setOption("theme", "light") } catch { };
 			localStorage.setItem("theme", "light");
 		}
 		return false;
