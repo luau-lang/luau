@@ -63,7 +63,7 @@
 
     function output(text) {
         var output_box = document.getElementById("output");
-        output_box.value += text.replace('stdin:', '') + "\n";
+        output_box.value += text + "\n";
         // scroll to bottom
         output_box.scrollTop = output_box.scrollHeight;
     }
