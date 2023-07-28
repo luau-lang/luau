@@ -56,6 +56,8 @@ void initFunctions(NativeState& data)
     data.context.luaC_step = luaC_step;
 
     data.context.luaF_close = luaF_close;
+    data.context.luaF_findupval = luaF_findupval;
+    data.context.luaF_newLclosure = luaF_newLclosure;
 
     data.context.luaT_gettm = luaT_gettm;
     data.context.luaT_objtypenamestr = luaT_objtypenamestr;

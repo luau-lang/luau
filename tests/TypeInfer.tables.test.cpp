@@ -132,6 +132,24 @@ TEST_CASE_FIXTURE(Fixture, "cannot_change_type_of_table_prop")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "report_sensible_error_when_adding_a_value_to_a_nonexistent_prop")
+{
+    CheckResult result = check(R"(
+        local t = {}
+        t.foo[1] = 'one'
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    INFO(result.errors[0]);
+
+    UnknownProperty* err = get<UnknownProperty>(result.errors[0]);
+    REQUIRE(err);
+
+    CHECK("t" == toString(err->table));
+    CHECK("foo" == err->key);
+}
+
 TEST_CASE_FIXTURE(Fixture, "function_calls_can_produce_tables")
 {
     CheckResult result = check("function get_table() return {prop=999} end    get_table().prop = 0");
@@ -439,8 +457,6 @@ TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_2")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    for (const auto& e : result.errors)
-        std::cout << "Error: " << e << std::endl;
 
     TypeId qType = requireType("q");
     const TableType* qTable = get<TableType>(qType);
@@ -3637,6 +3653,77 @@ return function<T>(array: Array<T>, searchElement: any, fromIndex: number?): boo
 	return -1 ~= indexOf(array, searchElement, fromIndex)
 end
 
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "certain_properties_of_table_literal_arguments_can_be_covariant")
+{
+    CheckResult result = check(R"(
+        function f(a: {[string]: string | {any} | nil })
+            return a
+        end
+
+        local x = f({
+            title = "Feature.VirtualEvents.EnableNotificationsModalTitle",
+            body = "Feature.VirtualEvents.EnableNotificationsModalBody",
+            notNow = "Feature.VirtualEvents.NotNowButton",
+            getNotified = "Feature.VirtualEvents.GetNotifiedButton",
+        })
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "subproperties_can_also_be_covariantly_tested")
+{
+    CheckResult result = check(R"(
+        type T = {
+            [string]: {[string]: (string | number)?}
+        }
+
+        function f(t: T)
+            return t
+        end
+
+        local x = f({
+            subprop={x="hello"}
+        })
+
+        local y = f({
+            subprop={x=41}
+        })
+
+        local z = f({
+            subprop={}
+        })
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "cyclic_shifted_tables")
+{
+    CheckResult result = check(R"(
+        local function id<a>(x: a): a
+          return x
+        end
+
+        -- Remove name from cyclic table
+        local foo = id({})
+        foo.foo = id({})
+        foo.foo.foo = id({})
+        foo.foo.foo.foo = id({})
+        foo.foo.foo.foo.foo = foo
+
+        local almostFoo = id({})
+        almostFoo.foo = id({})
+        almostFoo.foo.foo = id({})
+        almostFoo.foo.foo.foo = id({})
+        almostFoo.foo.foo.foo.foo = almostFoo
+        -- Shift
+        almostFoo = almostFoo.foo.foo
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);

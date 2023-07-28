@@ -444,6 +444,53 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface_longer")
     CHECK_EQ(toString(tyB), "any");
 }
 
+TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface_exports")
+{
+    ScopedFastFlag luauFixCyclicModuleExports{"LuauFixCyclicModuleExports", true};
+
+    fileResolver.source["game/A"] = R"(
+local b = require(game.B)
+export type atype = { x: b.btype }
+return {mod_a = 1}
+    )";
+
+    fileResolver.source["game/B"] = R"(
+export type btype = { x: number }
+
+local function bf()
+    local a = require(game.A)
+    local bfl : a.atype = nil
+    return {bfl.x}
+end
+return {mod_b = 2}
+    )";
+
+    ToStringOptions opts;
+    opts.exhaustive = true;
+
+    CheckResult resultA = frontend.check("game/A");
+    LUAU_REQUIRE_ERRORS(resultA);
+
+    CheckResult resultB = frontend.check("game/B");
+    LUAU_REQUIRE_ERRORS(resultB);
+
+    TypeId tyB = requireExportedType("game/B", "btype");
+    CHECK_EQ(toString(tyB, opts), "{| x: number |}");
+
+    TypeId tyA = requireExportedType("game/A", "atype");
+    CHECK_EQ(toString(tyA, opts), "{| x: any |}");
+
+    frontend.markDirty("game/B");
+    resultB = frontend.check("game/B");
+    LUAU_REQUIRE_ERRORS(resultB);
+
+    tyB = requireExportedType("game/B", "btype");
+    CHECK_EQ(toString(tyB, opts), "{| x: number |}");
+
+    tyA = requireExportedType("game/A", "atype");
+    CHECK_EQ(toString(tyA, opts), "{| x: any |}");
+}
+
 TEST_CASE_FIXTURE(FrontendFixture, "dont_reparse_clean_file_when_linting")
 {
     fileResolver.source["Modules/A"] = R"(

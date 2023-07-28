@@ -274,9 +274,6 @@ std::string runCode(lua_State* L, const std::string& source)
         return error;
     }
 
-    if (codegen)
-        Luau::CodeGen::compile(L, -1);
-
     lua_State* T = lua_newthread(L);
 
     lua_pushvalue(L, -2);

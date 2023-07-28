@@ -8,6 +8,7 @@
 #include "Luau/Normalize.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
+#include "Luau/TypeCheckLimits.h"
 #include "Luau/Variant.h"
 
 #include <vector>
@@ -81,9 +82,11 @@ struct ConstraintSolver
     std::vector<RequireCycle> requireCycles;
 
     DcrLogger* logger;
+    TypeCheckLimits limits;
 
     explicit ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, std::vector<NotNull<Constraint>> constraints,
-        ModuleName moduleName, NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger);
+        ModuleName moduleName, NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger,
+        TypeCheckLimits limits);
 
     // Randomize the order in which to dispatch constraints
     void randomize(unsigned seed);
@@ -279,6 +282,9 @@ private:
     TypeId unionOfTypes(TypeId a, TypeId b, NotNull<Scope> scope, bool unifyFreeTypes);
 
     TypePackId anyifyModuleReturnTypePackGenerics(TypePackId tp);
+
+    void throwTimeLimitError();
+    void throwUserCancelError();
 
     ToStringOptions opts;
 };

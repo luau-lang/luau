@@ -38,6 +38,7 @@ enum class AutocompleteEntryKind
     String,
     Type,
     Module,
+    GeneratedFunction,
 };
 
 enum class ParenthesesRecommendation
@@ -70,6 +71,10 @@ struct AutocompleteEntry
     std::optional<std::string> documentationSymbol = std::nullopt;
     Tags tags;
     ParenthesesRecommendation parens = ParenthesesRecommendation::None;
+    std::optional<std::string> insertText;
+
+    // Only meaningful if kind is Property.
+    bool indexedWithSelf = false;
 };
 
 using AutocompleteEntryMap = std::unordered_map<std::string, AutocompleteEntry>;
@@ -93,5 +98,7 @@ using StringCompletionCallback =
     std::function<std::optional<AutocompleteEntryMap>(std::string tag, std::optional<const ClassType*> ctx, std::optional<std::string> contents)>;
 
 AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName, Position position, StringCompletionCallback callback);
+
+constexpr char kGeneratedAnonymousFunctionEntryName[] = "function (anonymous autofilled)";
 
 } // namespace Luau

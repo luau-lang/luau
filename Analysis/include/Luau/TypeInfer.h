@@ -10,6 +10,7 @@
 #include "Luau/Symbol.h"
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
+#include "Luau/TypeCheckLimits.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier.h"
@@ -54,24 +55,6 @@ struct GenericTypeDefinitions
 struct HashBoolNamePair
 {
     size_t operator()(const std::pair<bool, Name>& pair) const;
-};
-
-class TimeLimitError : public InternalCompilerError
-{
-public:
-    explicit TimeLimitError(const std::string& moduleName)
-        : InternalCompilerError("Typeinfer failed to complete in allotted time", moduleName)
-    {
-    }
-};
-
-class UserCancelError : public InternalCompilerError
-{
-public:
-    explicit UserCancelError(const std::string& moduleName)
-        : InternalCompilerError("Analysis has been cancelled by user", moduleName)
-    {
-    }
 };
 
 struct GlobalTypes

@@ -73,10 +73,12 @@
 
 #define luaC_white(g) cast_to(uint8_t, ((g)->currentwhite) & WHITEBITS)
 
+#define luaC_needsGC(L) (L->global->totalbytes >= L->global->GCthreshold)
+
 #define luaC_checkGC(L) \
     { \
         condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK)); \
-        if (L->global->totalbytes >= L->global->GCthreshold) \
+        if (luaC_needsGC(L)) \
         { \
             condhardmemtests(luaC_validate(L), 1); \
             luaC_step(L, true); \

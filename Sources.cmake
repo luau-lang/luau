@@ -186,6 +186,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/TypeArena.h
     Analysis/include/Luau/TypeAttach.h
     Analysis/include/Luau/TypeChecker2.h
+    Analysis/include/Luau/TypeCheckLimits.h
     Analysis/include/Luau/TypedAllocator.h
     Analysis/include/Luau/TypeFamily.h
     Analysis/include/Luau/TypeInfer.h

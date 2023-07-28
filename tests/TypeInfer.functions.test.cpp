@@ -14,7 +14,8 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauInstantiateInSubtyping);
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -2092,6 +2093,25 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_wi
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_packs_are_not_variadic")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        local function apply<a, b..., c...>(f: (a, b...) -> c..., x: a)
+            return f(x)
+        end
+
+        local function add(x: number, y: number)
+            return x + y
+        end
+
+        apply(add, 5)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "num_is_solved_before_num_or_str")

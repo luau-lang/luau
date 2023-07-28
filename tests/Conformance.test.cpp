@@ -273,6 +273,8 @@ TEST_CASE("Assert")
 
 TEST_CASE("Basic")
 {
+    ScopedFastFlag sff("LuauCompileFixBuiltinArity", true);
+
     runConformance("basic.lua");
 }
 
@@ -326,6 +328,8 @@ TEST_CASE("Clear")
 
 TEST_CASE("Strings")
 {
+    ScopedFastFlag sff("LuauCompileFixBuiltinArity", true);
+
     runConformance("strings.lua");
 }
 
@@ -1110,6 +1114,34 @@ static bool endsWith(const std::string& str, const std::string& suffix)
         return false;
 
     return suffix == std::string_view(str.c_str() + str.length() - suffix.length(), suffix.length());
+}
+
+TEST_CASE("ApiType")
+{
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    lua_pushnumber(L, 2);
+    CHECK(strcmp(luaL_typename(L, -1), "number") == 0);
+    CHECK(strcmp(luaL_typename(L, 1), "number") == 0);
+    CHECK(lua_type(L, -1) == LUA_TNUMBER);
+    CHECK(lua_type(L, 1) == LUA_TNUMBER);
+
+    CHECK(strcmp(luaL_typename(L, 2), "no value") == 0);
+    CHECK(lua_type(L, 2) == LUA_TNONE);
+    CHECK(strcmp(lua_typename(L, lua_type(L, 2)), "no value") == 0);
+
+    lua_newuserdata(L, 0);
+    CHECK(strcmp(luaL_typename(L, -1), "userdata") == 0);
+    CHECK(lua_type(L, -1) == LUA_TUSERDATA);
+
+    lua_newtable(L);
+    lua_pushstring(L, "hello");
+    lua_setfield(L, -2, "__type");
+    lua_setmetatable(L, -2);
+
+    CHECK(strcmp(luaL_typename(L, -1), "hello") == 0);
+    CHECK(lua_type(L, -1) == LUA_TUSERDATA);
 }
 
 #if !LUA_USE_LONGJMP

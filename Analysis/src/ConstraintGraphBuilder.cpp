@@ -139,7 +139,8 @@ void forEachConstraint(const Checkpoint& start, const Checkpoint& end, const Con
 
 ConstraintGraphBuilder::ConstraintGraphBuilder(ModulePtr module, TypeArena* arena, NotNull<ModuleResolver> moduleResolver,
     NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope,
-    std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope, DcrLogger* logger, NotNull<DataFlowGraph> dfg)
+    std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope, DcrLogger* logger, NotNull<DataFlowGraph> dfg,
+    std::vector<RequireCycle> requireCycles)
     : module(module)
     , builtinTypes(builtinTypes)
     , arena(arena)
@@ -149,6 +150,7 @@ ConstraintGraphBuilder::ConstraintGraphBuilder(ModulePtr module, TypeArena* aren
     , ice(ice)
     , globalScope(globalScope)
     , prepareModuleScope(std::move(prepareModuleScope))
+    , requireCycles(std::move(requireCycles))
     , logger(logger)
 {
     LUAU_ASSERT(module);
@@ -703,6 +705,16 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* l
                     {
                         scope->importedTypeBindings[name] = module->exportedTypeBindings;
                         scope->importedModules[name] = moduleInfo->name;
+
+                        // Imported types of requires that transitively refer to current module have to be replaced with 'any'
+                        for (const auto& [location, path] : requireCycles)
+                        {
+                            if (!path.empty() && path.front() == moduleInfo->name)
+                            {
+                                for (auto& [name, tf] : scope->importedTypeBindings[name])
+                                    tf = TypeFun{{}, {}, builtinTypes->anyType};
+                            }
+                        }
                     }
                 }
             }
@@ -1913,6 +1925,9 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGraphBuilder::checkBinary(
         NullableBreadcrumbId bc = dfg->getBreadcrumb(typeguard->target);
         if (!bc)
             return {leftType, rightType, nullptr};
+        auto augmentForErrorSupression = [&](TypeId ty) -> TypeId {
+            return arena->addType(UnionType{{ty, builtinTypes->errorType}});
+        };
 
         TypeId discriminantTy = builtinTypes->neverType;
         if (typeguard->type == "nil")
@@ -1926,9 +1941,9 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGraphBuilder::checkBinary(
         else if (typeguard->type == "thread")
             discriminantTy = builtinTypes->threadType;
         else if (typeguard->type == "table")
-            discriminantTy = builtinTypes->tableType;
+            discriminantTy = augmentForErrorSupression(builtinTypes->tableType);
         else if (typeguard->type == "function")
-            discriminantTy = builtinTypes->functionType;
+            discriminantTy = augmentForErrorSupression(builtinTypes->functionType);
         else if (typeguard->type == "userdata")
         {
             // For now, we don't really care about being accurate with userdata if the typeguard was using typeof.

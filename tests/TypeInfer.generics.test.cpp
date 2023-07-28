@@ -9,7 +9,8 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauInstantiateInSubtyping);
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
 using namespace Luau;
 

@@ -7,6 +7,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 TEST_SUITE_BEGIN("TypeSingletons");
 
 TEST_CASE_FIXTURE(Fixture, "function_args_infer_singletons")

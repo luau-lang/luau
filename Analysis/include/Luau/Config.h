@@ -19,7 +19,7 @@ struct Config
 {
     Config();
 
-    Mode mode;
+    Mode mode = Mode::Nonstrict;
 
     ParseOptions parseOptions;
 

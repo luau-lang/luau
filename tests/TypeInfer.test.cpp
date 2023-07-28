@@ -224,7 +224,7 @@ TEST_CASE_FIXTURE(Fixture, "crazy_complexity")
         A:A():A():A():A():A():A():A():A():A():A():A()
     )");
 
-    std::cout << "OK!  Allocated " << typeChecker.types.size() << " types" << std::endl;
+    MESSAGE("OK!  Allocated ", typeChecker.types.size(), " types");
 }
 #endif
 
@@ -1330,6 +1330,45 @@ TEST_CASE_FIXTURE(Fixture, "handle_self_referential_HasProp_constraints")
             end
         end
     )");
+}
+
+/* We had an issue where we were unifying two type packs
+ *
+ * free-2-0... and (string, free-4-0...)
+ *
+ * The correct thing to do here is to promote everything on the right side to
+ * level 2-0 before binding the left pack to the right.  If we fail to do this,
+ * then the code fragment here fails to typecheck because the argument and
+ * return types of C are generalized before we ever get to checking the body of
+ * C.
+ */
+TEST_CASE_FIXTURE(Fixture, "promote_tail_type_packs")
+{
+    CheckResult result = check(R"(
+        --!strict
+
+        local A: any = nil
+
+        local C
+        local D = A(
+            A({}, {
+                __call = function(a): string
+                    local E: string = C(a)
+                    return E
+                end
+            }),
+            {
+                F = function(s: typeof(C))
+                end
+            }
+        )
+
+        function C(b: any): string
+            return ''
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

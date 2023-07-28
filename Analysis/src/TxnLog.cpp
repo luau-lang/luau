@@ -9,8 +9,6 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-
 namespace Luau
 {
 

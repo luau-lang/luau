@@ -8,6 +8,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 TEST_SUITE_BEGIN("UnionTypes");
 
 TEST_CASE_FIXTURE(Fixture, "return_types_can_be_disjoint")

@@ -364,7 +364,13 @@ Relation relate(TypeId left, TypeId right)
     if (auto ut = get<UnionType>(left))
         return Relation::Intersects;
     else if (auto ut = get<UnionType>(right))
+    {
+        std::vector<Relation> opts;
+        for (TypeId part : ut)
+            if (relate(left, part) == Relation::Subset)
+                return Relation::Subset;
         return Relation::Intersects;
+    }
 
     if (auto rnt = get<NegationType>(right))
     {

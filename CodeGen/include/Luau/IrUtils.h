@@ -150,6 +150,7 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::GET_ARR_ADDR:
     case IrCmd::GET_SLOT_NODE_ADDR:
     case IrCmd::GET_HASH_NODE_ADDR:
+    case IrCmd::GET_CLOSURE_UPVAL_ADDR:
     case IrCmd::ADD_INT:
     case IrCmd::SUB_INT:
     case IrCmd::ADD_NUM:
@@ -192,6 +193,8 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::INVOKE_LIBM:
     case IrCmd::GET_TYPE:
     case IrCmd::GET_TYPEOF:
+    case IrCmd::NEWCLOSURE:
+    case IrCmd::FINDUPVAL:
         return true;
     default:
         break;

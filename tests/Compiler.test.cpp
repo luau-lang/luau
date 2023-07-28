@@ -6978,6 +6978,8 @@ L3: RETURN R0 0
 
 TEST_CASE("BuiltinArity")
 {
+    ScopedFastFlag sff("LuauCompileFixBuiltinArity", true);
+
     // by default we can't assume that we know parameter/result count for builtins as they can be overridden at runtime
     CHECK_EQ("\n" + compileFunction(R"(
 return math.abs(unknown())
@@ -7035,6 +7037,21 @@ GETIMPORT R3 1 [unknown]
 CALL R3 0 -1
 FASTCALL 34 L0
 GETIMPORT R0 4 [bit32.extract]
+CALL R0 -1 1
+L0: RETURN R0 1
+)");
+
+    // some builtins are not variadic and have a fixed number of arguments but are not none-safe, meaning that we can't replace calls that may
+    // return none with calls that will return nil
+    CHECK_EQ("\n" + compileFunction(R"(
+return type(unknown())
+)",
+                        0, 2),
+        R"(
+GETIMPORT R1 1 [unknown]
+CALL R1 0 -1
+FASTCALL 40 L0
+GETIMPORT R0 3 [type]
 CALL R0 -1 1
 L0: RETURN R0 1
 )");
