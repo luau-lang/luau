@@ -295,4 +295,58 @@ TypeId stripNil(NotNull<BuiltinTypes> builtinTypes, TypeArena& arena, TypeId ty)
     return follow(ty);
 }
 
+ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypeId ty)
+{
+    const NormalizedType* normType = normalizer->normalize(ty);
+
+    if (!normType)
+        return ErrorSuppression::NormalizationFailed;
+
+    return (normType->shouldSuppressErrors()) ? ErrorSuppression::Suppress : ErrorSuppression::DoNotSuppress;
+}
+
+ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypePackId tp)
+{
+    auto [tys, tail] = flatten(tp);
+
+    // check the head, one type at a time
+    for (TypeId ty : tys)
+    {
+        auto result = shouldSuppressErrors(normalizer, ty);
+        if (result != ErrorSuppression::DoNotSuppress)
+            return result;
+    }
+
+    // check the tail if we have one and it's finite
+    if (tail && finite(*tail))
+        return shouldSuppressErrors(normalizer, *tail);
+
+    return ErrorSuppression::DoNotSuppress;
+}
+
+// This is a useful helper because it is often the case that we are looking at specifically a pair of types that might suppress.
+ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypeId ty1, TypeId ty2)
+{
+    auto result = shouldSuppressErrors(normalizer, ty1);
+
+    // if ty1 is do not suppress, ty2 determines our overall behavior
+    if (result == ErrorSuppression::DoNotSuppress)
+        return shouldSuppressErrors(normalizer, ty2);
+
+    // otherwise, ty1 is either suppress or normalization failure which are both the appropriate overarching result
+    return result;
+}
+
+ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypePackId tp1, TypePackId tp2)
+{
+    auto result = shouldSuppressErrors(normalizer, tp1);
+
+    // if tp1 is do not suppress, tp2 determines our overall behavior
+    if (result == ErrorSuppression::DoNotSuppress)
+        return shouldSuppressErrors(normalizer, tp2);
+
+    // otherwise, tp1 is either suppress or normalization failure which are both the appropriate overarching result
+    return result;
+}
+
 } // namespace Luau

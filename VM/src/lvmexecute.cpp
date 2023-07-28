@@ -131,6 +131,9 @@
     goto dispatchContinue
 #endif
 
+// Does VM support native execution via ExecutionCallbacks? We mostly assume it does but keep the define to make it easy to quantify the cost.
+#define VM_HAS_NATIVE LUA_CUSTOM_EXECUTION
+
 LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
 {
     ptrdiff_t base = savestack(L, L->base);
@@ -207,7 +210,7 @@ static void luau_execute(lua_State* L)
     LUAU_ASSERT(L->isactive);
     LUAU_ASSERT(!isblack(obj2gco(L))); // we don't use luaC_threadbarrier because active threads never turn black
 
-#if LUA_CUSTOM_EXECUTION
+#if VM_HAS_NATIVE
     if ((L->ci->flags & LUA_CALLINFO_NATIVE) && !SingleStep)
     {
         Proto* p = clvalue(L->ci->func)->l.p;
@@ -1036,7 +1039,7 @@ reentry:
                 Closure* nextcl = clvalue(cip->func);
                 Proto* nextproto = nextcl->l.p;
 
-#if LUA_CUSTOM_EXECUTION
+#if VM_HAS_NATIVE
                 if (LUAU_UNLIKELY((cip->flags & LUA_CALLINFO_NATIVE) && !SingleStep))
                 {
                     if (L->global->ecb.enter(L, nextproto) == 1)
@@ -2371,7 +2374,7 @@ reentry:
                 ci->flags = LUA_CALLINFO_NATIVE;
                 ci->savedpc = p->code;
 
-#if LUA_CUSTOM_EXECUTION
+#if VM_HAS_NATIVE
                 if (L->global->ecb.enter(L, p) == 1)
                     goto reentry;
                 else
@@ -2890,7 +2893,7 @@ int luau_precall(lua_State* L, StkId func, int nresults)
 
         ci->savedpc = p->code;
 
-#if LUA_CUSTOM_EXECUTION
+#if VM_HAS_NATIVE
         if (p->execdata)
             ci->flags = LUA_CALLINFO_NATIVE;
 #endif

@@ -114,6 +114,17 @@ struct SimplifyFixture : Fixture
 
 TEST_SUITE_BEGIN("Simplify");
 
+TEST_CASE_FIXTURE(SimplifyFixture, "overload_negation_refinement_is_never")
+{
+    TypeId f1 = mkFunction(stringTy, numberTy);
+    TypeId f2 = mkFunction(numberTy, stringTy);
+    TypeId intersection = arena->addType(IntersectionType{{f1, f2}});
+    TypeId unionT = arena->addType(UnionType{{errorTy, functionTy}});
+    TypeId negationT = mkNegation(unionT);
+    // The intersection of string -> number & number -> string, ~(error | function)
+    CHECK(neverTy == intersect(intersection, negationT));
+}
+
 TEST_CASE_FIXTURE(SimplifyFixture, "unknown_and_other_tops_and_bottom_types")
 {
     CHECK(unknownTy == intersect(unknownTy, unknownTy));

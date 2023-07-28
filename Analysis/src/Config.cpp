@@ -4,15 +4,12 @@
 #include "Luau/Lexer.h"
 #include "Luau/StringUtils.h"
 
-LUAU_FASTFLAGVARIABLE(LuauEnableNonstrictByDefaultForLuauConfig, false)
-
 namespace Luau
 {
 
 using Error = std::optional<std::string>;
 
 Config::Config()
-    : mode(FFlag::LuauEnableNonstrictByDefaultForLuauConfig ? Mode::Nonstrict : Mode::NoCheck)
 {
     enabledLint.setDefaults();
 }

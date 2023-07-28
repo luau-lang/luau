@@ -88,6 +88,7 @@
 <script src="assets/js/luau_mode.js"></script>
 <!-- CodeMirror Luau Editor (MUST BE LOADED AFTER CODEMIRROR!) -->
 <script>
+
 	var editor = CodeMirror.fromTextArea(document.getElementById("script"), {
 		theme: localStorage.getItem('theme'),
 		mode: "luau",
@@ -112,7 +113,7 @@
 
 	function output(text) {
 		var output_box = document.getElementById("output");
-		output_box.value += text.replace('stdin:', '') + "\n";
+		output_box.value += text + "\n";
 		// scroll to bottom
 		output_box.scrollTop = output_box.scrollHeight;
 	}
@@ -144,6 +145,7 @@
 			}
 		}
 	}
+
 </script>
 <!-- Luau WASM (async fetch; should be the last line) -->
 <script async src="https://github.com/Roblox/luau/releases/latest/download/Luau.Web.js"></script>

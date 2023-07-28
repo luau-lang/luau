@@ -14,6 +14,8 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
+LUAU_FASTFLAGVARIABLE(LuauLintNativeComment, false)
+
 namespace Luau
 {
 
@@ -2825,6 +2827,12 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
                             "optimize directive uses unknown optimization level '%s', 0..2 expected", level);
                 }
             }
+            else if (FFlag::LuauLintNativeComment && first == "native")
+            {
+                if (space != std::string::npos)
+                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
+                        "native directive has extra symbols at the end of the line");
+            }
             else
             {
                 static const char* kHotComments[] = {
@@ -2833,6 +2841,7 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
                     "nonstrict",
                     "strict",
                     "optimize",
+                    "native",
                 };
 
                 if (const char* suggestion = fuzzyMatch(first, kHotComments, std::size(kHotComments)))

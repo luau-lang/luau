@@ -186,14 +186,40 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.add(inst.regX64, tmp.reg);
         break;
     };
+    case IrCmd::GET_CLOSURE_UPVAL_ADDR:
+    {
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::qword, index, {inst.a});
+
+        if (inst.a.kind == IrOpKind::Undef)
+        {
+            build.mov(inst.regX64, sClosure);
+        }
+        else
+        {
+            RegisterX64 cl = regOp(inst.a);
+            if (inst.regX64 != cl)
+                build.mov(inst.regX64, cl);
+        }
+
+        build.add(inst.regX64, offsetof(Closure, l.uprefs) + sizeof(TValue) * vmUpvalueOp(inst.b));
+        break;
+    }
     case IrCmd::STORE_TAG:
         if (inst.b.kind == IrOpKind::Constant)
-            build.mov(luauRegTag(vmRegOp(inst.a)), tagOp(inst.b));
+        {
+            if (inst.a.kind == IrOpKind::Inst)
+                build.mov(dword[regOp(inst.a) + offsetof(TValue, tt)], tagOp(inst.b));
+            else
+                build.mov(luauRegTag(vmRegOp(inst.a)), tagOp(inst.b));
+        }
         else
             LUAU_ASSERT(!"Unsupported instruction form");
         break;
     case IrCmd::STORE_POINTER:
-        build.mov(luauRegValue(vmRegOp(inst.a)), regOp(inst.b));
+        if (inst.a.kind == IrOpKind::Inst)
+            build.mov(qword[regOp(inst.a) + offsetof(TValue, value)], regOp(inst.b));
+        else
+            build.mov(luauRegValue(vmRegOp(inst.a)), regOp(inst.b));
         break;
     case IrCmd::STORE_DOUBLE:
         if (inst.b.kind == IrOpKind::Constant)
@@ -1207,12 +1233,25 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         emitFallback(regs, build, offsetof(NativeContext, executeGETVARARGS), uintOp(inst.a));
         break;
-    case IrCmd::FALLBACK_NEWCLOSURE:
-        LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
-        LUAU_ASSERT(inst.c.kind == IrOpKind::Constant);
+    case IrCmd::NEWCLOSURE:
+    {
+        ScopedRegX64 tmp2{regs, SizeX64::qword};
+        build.mov(tmp2.reg, sClosure);
+        build.mov(tmp2.reg, qword[tmp2.reg + offsetof(Closure, l.p)]);
+        build.mov(tmp2.reg, qword[tmp2.reg + offsetof(Proto, p)]);
+        build.mov(tmp2.reg, qword[tmp2.reg + sizeof(Proto*) * uintOp(inst.c)]);
 
-        emitFallback(regs, build, offsetof(NativeContext, executeNEWCLOSURE), uintOp(inst.a));
+        IrCallWrapperX64 callWrap(regs, build, index);
+        callWrap.addArgument(SizeX64::qword, rState);
+        callWrap.addArgument(SizeX64::dword, uintOp(inst.a), inst.a);
+        callWrap.addArgument(SizeX64::qword, regOp(inst.b), inst.b);
+        callWrap.addArgument(SizeX64::qword, tmp2);
+
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaF_newLclosure)]);
+
+        inst.regX64 = regs.takeReg(rax, index);
         break;
+    }
     case IrCmd::FALLBACK_DUPCLOSURE:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmConst);
@@ -1407,6 +1446,17 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         callWrap.addArgument(SizeX64::qword, rState);
         callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(inst.a)));
         callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaT_objtypenamestr)]);
+
+        inst.regX64 = regs.takeReg(rax, index);
+        break;
+    }
+
+    case IrCmd::FINDUPVAL:
+    {
+        IrCallWrapperX64 callWrap(regs, build);
+        callWrap.addArgument(SizeX64::qword, rState);
+        callWrap.addArgument(SizeX64::qword, luauRegAddress(vmRegOp(inst.a)));
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaF_findupval)]);
 
         inst.regX64 = regs.takeReg(rax, index);
         break;

@@ -9,6 +9,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 TEST_SUITE_BEGIN("ProvisionalTests");
 
 // These tests check for behavior that differs from the final behavior we'd
@@ -502,6 +504,9 @@ TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
     Unifier u{NotNull{&normalizer}, NotNull{scope.get()}, Location{}, Variance::Covariant};
 
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        u.enableNewSolver();
+
     u.tryUnify(option1, option2);
 
     CHECK(!u.failure);
@@ -565,7 +570,7 @@ return wrapStrictTable(Constants, "Constants")
     std::optional<TypeId> result = first(m->returnType);
     REQUIRE(result);
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("(any & ~table)?", toString(*result));
+        CHECK_EQ("(any & ~(*error-type* | table))?", toString(*result));
     else
         CHECK_MESSAGE(get<AnyType>(*result), *result);
 }
@@ -904,6 +909,9 @@ TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
     UnifierSharedState sharedState{&iceHandler};
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
     Unifier u{NotNull{&normalizer}, NotNull{scope.get()}, Location{}, Variance::Covariant};
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        u.enableNewSolver();
 
     u.tryUnify(option1, option2);
 

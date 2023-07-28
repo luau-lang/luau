@@ -6,6 +6,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 TEST_SUITE_BEGIN("TypeInferUnknownNever");
 
 TEST_CASE_FIXTURE(Fixture, "string_subtype_and_unknown_supertype")

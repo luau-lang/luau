@@ -59,7 +59,7 @@ TEST_CASE("BenchmarkLevenshteinDistance")
     auto end = std::chrono::steady_clock::now();
     auto time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
-    std::cout << "Running levenshtein distance " << count << " times took " << time.count() << "ms" << std::endl;
+    MESSAGE("Running levenshtein distance ", count, " times took ", time.count(), "ms");
 }
 #endif
 

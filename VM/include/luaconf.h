@@ -123,7 +123,7 @@
 
 // enables callbacks to redirect code execution from Luau VM to a custom implementation
 #ifndef LUA_CUSTOM_EXECUTION
-#define LUA_CUSTOM_EXECUTION 0
+#define LUA_CUSTOM_EXECUTION 1
 #endif
 
 // }==================================================================

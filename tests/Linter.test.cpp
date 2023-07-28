@@ -1657,6 +1657,8 @@ _ = (math.random() < 0.5 and false) or 42 -- currently ignored
 
 TEST_CASE_FIXTURE(Fixture, "WrongComment")
 {
+    ScopedFastFlag sff("LuauLintNativeComment", true);
+
     LintResult result = lint(R"(
 --!strict
 --!struct
@@ -1666,17 +1668,19 @@ TEST_CASE_FIXTURE(Fixture, "WrongComment")
 --!nolint UnknownGlobal
 --! no more lint
 --!strict here
+--!native on
 do end
 --!nolint
 )");
 
-    REQUIRE(6 == result.warnings.size());
+    REQUIRE(7 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Unknown comment directive 'struct'; did you mean 'strict'?");
     CHECK_EQ(result.warnings[1].text, "Unknown comment directive 'nolintGlobal'");
     CHECK_EQ(result.warnings[2].text, "nolint directive refers to unknown lint rule 'Global'");
     CHECK_EQ(result.warnings[3].text, "nolint directive refers to unknown lint rule 'KnownGlobal'; did you mean 'UnknownGlobal'?");
     CHECK_EQ(result.warnings[4].text, "Comment directive with the type checking mode has extra symbols at the end of the line");
-    CHECK_EQ(result.warnings[5].text, "Comment directive is ignored because it is placed after the first non-comment token");
+    CHECK_EQ(result.warnings[5].text, "native directive has extra symbols at the end of the line");
+    CHECK_EQ(result.warnings[6].text, "Comment directive is ignored because it is placed after the first non-comment token");
 }
 
 TEST_CASE_FIXTURE(Fixture, "WrongCommentMuteSelf")

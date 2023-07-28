@@ -415,6 +415,8 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     case LBF_RAWLEN:
     case LBF_BIT32_EXTRACTK:
     case LBF_GETMETATABLE:
+    case LBF_TONUMBER:
+    case LBF_TOSTRING:
         break;
     case LBF_SETMETATABLE:
         state.invalidateHeap(); // TODO: only knownNoMetatable is affected and we might know which one
@@ -760,6 +762,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::GET_ARR_ADDR:
     case IrCmd::GET_SLOT_NODE_ADDR:
     case IrCmd::GET_HASH_NODE_ADDR:
+    case IrCmd::GET_CLOSURE_UPVAL_ADDR:
         break;
     case IrCmd::ADD_INT:
     case IrCmd::SUB_INT:
@@ -823,6 +826,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::BITXOR_UINT:
     case IrCmd::BITOR_UINT:
     case IrCmd::BITNOT_UINT:
+        break;
     case IrCmd::BITLSHIFT_UINT:
     case IrCmd::BITRSHIFT_UINT:
     case IrCmd::BITARSHIFT_UINT:
@@ -833,6 +837,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::INVOKE_LIBM:
     case IrCmd::GET_TYPE:
     case IrCmd::GET_TYPEOF:
+    case IrCmd::FINDUPVAL:
         break;
 
     case IrCmd::JUMP_CMP_ANY:
@@ -923,8 +928,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::FALLBACK_GETVARARGS:
         state.invalidateRegisterRange(vmRegOp(inst.b), function.intOp(inst.c));
         break;
-    case IrCmd::FALLBACK_NEWCLOSURE:
-        state.invalidate(inst.b);
+    case IrCmd::NEWCLOSURE:
         break;
     case IrCmd::FALLBACK_DUPCLOSURE:
         state.invalidate(inst.b);

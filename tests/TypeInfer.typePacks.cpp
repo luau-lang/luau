@@ -9,6 +9,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 TEST_SUITE_BEGIN("TypePackTests");
 
 TEST_CASE_FIXTURE(Fixture, "infer_multi_return")

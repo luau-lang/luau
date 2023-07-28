@@ -7,6 +7,8 @@
 #include <math.h>
 #include <time.h>
 
+LUAU_FASTFLAGVARIABLE(LuauFasterNoise, false)
+
 #undef PI
 #define PI (3.14159265358979323846)
 #define RADIANS_PER_DEGREE (PI / 180.0)
@@ -275,6 +277,7 @@ static int math_randomseed(lua_State* L)
     return 0;
 }
 
+// TODO: Delete with LuauFasterNoise
 static const unsigned char kPerlin[512] = {151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 103, 30, 69, 142, 8, 99,
     37, 240, 21, 10, 23, 190, 6, 148, 247, 120, 234, 75, 0, 26, 197, 62, 94, 252, 219, 203, 117, 35, 11, 32, 57, 177, 33, 88, 237, 149, 56, 87, 174,
     20, 125, 136, 171, 168, 68, 175, 74, 165, 71, 134, 139, 48, 27, 166, 77, 146, 158, 231, 83, 111, 229, 122, 60, 211, 133, 230, 220, 105, 92, 41,
@@ -295,18 +298,32 @@ static const unsigned char kPerlin[512] = {151, 160, 137, 91, 90, 15, 131, 13, 2
     106, 157, 184, 84, 204, 176, 115, 121, 50, 45, 127, 4, 150, 254, 138, 236, 205, 93, 222, 114, 67, 29, 24, 72, 243, 141, 128, 195, 78, 66, 215, 61,
     156, 180};
 
-static float fade(float t)
+static const unsigned char kPerlinHash[257] = {151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 103, 30, 69, 142, 8, 99,
+    37, 240, 21, 10, 23, 190, 6, 148, 247, 120, 234, 75, 0, 26, 197, 62, 94, 252, 219, 203, 117, 35, 11, 32, 57, 177, 33, 88, 237, 149, 56, 87, 174,
+    20, 125, 136, 171, 168, 68, 175, 74, 165, 71, 134, 139, 48, 27, 166, 77, 146, 158, 231, 83, 111, 229, 122, 60, 211, 133, 230, 220, 105, 92, 41,
+    55, 46, 245, 40, 244, 102, 143, 54, 65, 25, 63, 161, 1, 216, 80, 73, 209, 76, 132, 187, 208, 89, 18, 169, 200, 196, 135, 130, 116, 188, 159, 86,
+    164, 100, 109, 198, 173, 186, 3, 64, 52, 217, 226, 250, 124, 123, 5, 202, 38, 147, 118, 126, 255, 82, 85, 212, 207, 206, 59, 227, 47, 16, 58, 17,
+    182, 189, 28, 42, 223, 183, 170, 213, 119, 248, 152, 2, 44, 154, 163, 70, 221, 153, 101, 155, 167, 43, 172, 9, 129, 22, 39, 253, 19, 98, 108, 110,
+    79, 113, 224, 232, 178, 185, 112, 104, 218, 246, 97, 228, 251, 34, 242, 193, 238, 210, 144, 12, 191, 179, 162, 241, 81, 51, 145, 235, 249, 14,
+    239, 107, 49, 192, 214, 31, 181, 199, 106, 157, 184, 84, 204, 176, 115, 121, 50, 45, 127, 4, 150, 254, 138, 236, 205, 93, 222, 114, 67, 29, 24,
+    72, 243, 141, 128, 195, 78, 66, 215, 61, 156, 180, 151};
+
+const float kPerlinGrad[16][3] = {{1, 1, 0}, {-1, 1, 0}, {1, -1, 0}, {-1, -1, 0}, {1, 0, 1}, {-1, 0, 1}, {1, 0, -1}, {-1, 0, -1}, {0, 1, 1},
+    {0, -1, 1}, {0, 1, -1}, {0, -1, -1}, {1, 1, 0}, {0, -1, 1}, {-1, 1, 0}, {0, -1, -1}};
+
+static float perlin_fade(float t)
 {
     return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
-static float math_lerp(float t, float a, float b)
+static float perlin_lerp(float t, float a, float b)
 {
     return a + t * (b - a);
 }
 
 static float grad(unsigned char hash, float x, float y, float z)
 {
+    LUAU_ASSERT(!FFlag::LuauFasterNoise);
     unsigned char h = hash & 15;
     float u = (h < 8) ? x : y;
     float v = (h < 4) ? y : (h == 12 || h == 14) ? x : z;
@@ -314,8 +331,15 @@ static float grad(unsigned char hash, float x, float y, float z)
     return (h & 1 ? -u : u) + (h & 2 ? -v : v);
 }
 
-static float perlin(float x, float y, float z)
+static float perlin_grad(int hash, float x, float y, float z)
 {
+    const float* g = kPerlinGrad[hash & 15];
+    return g[0] * x + g[1] * y + g[2] * z;
+}
+
+static float perlin_dep(float x, float y, float z)
+{
+    LUAU_ASSERT(!FFlag::LuauFasterNoise);
     float xflr = floorf(x);
     float yflr = floorf(y);
     float zflr = floorf(z);
@@ -328,9 +352,9 @@ static float perlin(float x, float y, float z)
     float yf = y - yflr;
     float zf = z - zflr;
 
-    float u = fade(xf);
-    float v = fade(yf);
-    float w = fade(zf);
+    float u = perlin_fade(xf);
+    float v = perlin_fade(yf);
+    float w = perlin_fade(zf);
 
     const unsigned char* p = kPerlin;
 
@@ -342,24 +366,79 @@ static float perlin(float x, float y, float z)
     int ba = p[b] + zi;
     int bb = p[b + 1] + zi;
 
-    return math_lerp(w,
-        math_lerp(v, math_lerp(u, grad(p[aa], xf, yf, zf), grad(p[ba], xf - 1, yf, zf)),
-            math_lerp(u, grad(p[ab], xf, yf - 1, zf), grad(p[bb], xf - 1, yf - 1, zf))),
-        math_lerp(v, math_lerp(u, grad(p[aa + 1], xf, yf, zf - 1), grad(p[ba + 1], xf - 1, yf, zf - 1)),
-            math_lerp(u, grad(p[ab + 1], xf, yf - 1, zf - 1), grad(p[bb + 1], xf - 1, yf - 1, zf - 1))));
+    return perlin_lerp(w,
+        perlin_lerp(v, perlin_lerp(u, grad(p[aa], xf, yf, zf), grad(p[ba], xf - 1, yf, zf)),
+            perlin_lerp(u, grad(p[ab], xf, yf - 1, zf), grad(p[bb], xf - 1, yf - 1, zf))),
+        perlin_lerp(v, perlin_lerp(u, grad(p[aa + 1], xf, yf, zf - 1), grad(p[ba + 1], xf - 1, yf, zf - 1)),
+            perlin_lerp(u, grad(p[ab + 1], xf, yf - 1, zf - 1), grad(p[bb + 1], xf - 1, yf - 1, zf - 1))));
+}
+
+static float perlin(float x, float y, float z)
+{
+    LUAU_ASSERT(FFlag::LuauFasterNoise);
+    float xflr = floorf(x);
+    float yflr = floorf(y);
+    float zflr = floorf(z);
+
+    int xi = int(xflr) & 255;
+    int yi = int(yflr) & 255;
+    int zi = int(zflr) & 255;
+
+    float xf = x - xflr;
+    float yf = y - yflr;
+    float zf = z - zflr;
+
+    float u = perlin_fade(xf);
+    float v = perlin_fade(yf);
+    float w = perlin_fade(zf);
+
+    const unsigned char* p = kPerlinHash;
+
+    int a = (p[xi] + yi) & 255;
+    int aa = (p[a] + zi) & 255;
+    int ab = (p[a + 1] + zi) & 255;
+
+    int b = (p[xi + 1] + yi) & 255;
+    int ba = (p[b] + zi) & 255;
+    int bb = (p[b + 1] + zi) & 255;
+
+    float la = perlin_lerp(u, perlin_grad(p[aa], xf, yf, zf), perlin_grad(p[ba], xf - 1, yf, zf));
+    float lb = perlin_lerp(u, perlin_grad(p[ab], xf, yf - 1, zf), perlin_grad(p[bb], xf - 1, yf - 1, zf));
+    float la1 = perlin_lerp(u, perlin_grad(p[aa + 1], xf, yf, zf - 1), perlin_grad(p[ba + 1], xf - 1, yf, zf - 1));
+    float lb1 = perlin_lerp(u, perlin_grad(p[ab + 1], xf, yf - 1, zf - 1), perlin_grad(p[bb + 1], xf - 1, yf - 1, zf - 1));
+
+    return perlin_lerp(w, perlin_lerp(v, la, lb), perlin_lerp(v, la1, lb1));
 }
 
 static int math_noise(lua_State* L)
 {
-    double x = luaL_checknumber(L, 1);
-    double y = luaL_optnumber(L, 2, 0.0);
-    double z = luaL_optnumber(L, 3, 0.0);
+    if (FFlag::LuauFasterNoise)
+    {
+        int nx, ny, nz;
+        double x = lua_tonumberx(L, 1, &nx);
+        double y = lua_tonumberx(L, 2, &ny);
+        double z = lua_tonumberx(L, 3, &nz);
 
-    double r = perlin((float)x, (float)y, (float)z);
+        luaL_argexpected(L, nx, 1, "number");
+        luaL_argexpected(L, ny || lua_isnoneornil(L, 2), 2, "number");
+        luaL_argexpected(L, nz || lua_isnoneornil(L, 3), 3, "number");
 
-    lua_pushnumber(L, r);
+        double r = perlin((float)x, (float)y, (float)z);
 
-    return 1;
+        lua_pushnumber(L, r);
+        return 1;
+    }
+    else
+    {
+        double x = luaL_checknumber(L, 1);
+        double y = luaL_optnumber(L, 2, 0.0);
+        double z = luaL_optnumber(L, 3, 0.0);
+
+        double r = perlin_dep((float)x, (float)y, (float)z);
+
+        lua_pushnumber(L, r);
+        return 1;
+    }
 }
 
 static int math_clamp(lua_State* L)

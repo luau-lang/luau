@@ -77,6 +77,12 @@ enum class IrCmd : uint8_t
     // B: unsigned int (hash)
     GET_HASH_NODE_ADDR,
 
+    // Get pointer (TValue) to Closure upvalue.
+    // A: pointer or undef (Closure)
+    // B: UPn
+    // When undef is specified, uses current function Closure.
+    GET_CLOSURE_UPVAL_ADDR,
+
     // Store a tag into TValue
     // A: Rn
     // B: tag
@@ -542,10 +548,10 @@ enum class IrCmd : uint8_t
     FALLBACK_GETVARARGS,
 
     // Create closure from a child proto
-    // A: unsigned int (bytecode instruction index)
-    // B: Rn (dest)
+    // A: unsigned int (nups)
+    // B: pointer (table)
     // C: unsigned int (protoid)
-    FALLBACK_NEWCLOSURE,
+    NEWCLOSURE,
 
     // Create closure from a pre-created function object (reusing it unless environments diverge)
     // A: unsigned int (bytecode instruction index)
@@ -600,6 +606,10 @@ enum class IrCmd : uint8_t
     // Returns the string name of a type either from a __type metatable field or just based on the tag, alternative for typeof(x)
     // A: Rn
     GET_TYPEOF,
+
+    // Find or create an upval at the given level
+    // A: Rn (level)
+    FINDUPVAL,
 };
 
 enum class IrConstKind : uint8_t

@@ -27,6 +27,9 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileFunctionType, false)
+LUAU_FASTFLAGVARIABLE(LuauCompileNativeComment, false)
+
+LUAU_FASTFLAGVARIABLE(LuauCompileFixBuiltinArity, false)
 
 namespace Luau
 {
@@ -187,7 +190,7 @@ struct Compiler
             return node->as<AstExprFunction>();
     }
 
-    uint32_t compileFunction(AstExprFunction* func)
+    uint32_t compileFunction(AstExprFunction* func, uint8_t protoflags)
     {
         LUAU_TIMETRACE_SCOPE("Compiler::compileFunction", "Compiler");
 
@@ -262,7 +265,7 @@ struct Compiler
         if (bytecode.getInstructionCount() > kMaxInstructionCount)
             CompileError::raise(func->location, "Exceeded function instruction limit; split the function into parts to compile");
 
-        bytecode.endFunction(uint8_t(stackSize), uint8_t(upvals.size()));
+        bytecode.endFunction(uint8_t(stackSize), uint8_t(upvals.size()), protoflags);
 
         Function& f = functions[func];
         f.id = fid;
@@ -792,8 +795,19 @@ struct Compiler
         {
             if (!isExprMultRet(expr->args.data[expr->args.size - 1]))
                 return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, bfid);
-            else if (options.optimizationLevel >= 2 && int(expr->args.size) == getBuiltinInfo(bfid).params)
-                return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, bfid);
+            else if (options.optimizationLevel >= 2)
+            {
+                if (FFlag::LuauCompileFixBuiltinArity)
+                {
+                    // when a builtin is none-safe with matching arity, even if the last expression returns 0 or >1 arguments,
+                    // we can rely on the behavior of the function being the same (none-safe means nil and none are interchangeable)
+                    BuiltinInfo info = getBuiltinInfo(bfid);
+                    if (int(expr->args.size) == info.params && (info.flags & BuiltinInfo::Flag_NoneSafe) != 0)
+                        return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, bfid);
+                }
+                else if (int(expr->args.size) == getBuiltinInfo(bfid).params)
+                    return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, bfid);
+            }
         }
 
         if (expr->self)
@@ -3147,7 +3161,7 @@ struct Compiler
             }
         }
 
-        // compute expressions with side effects for lulz
+        // compute expressions with side effects
         for (size_t i = stat->vars.size; i < stat->values.size; ++i)
         {
             RegScope rsi(this);
@@ -3834,10 +3848,19 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     LUAU_ASSERT(parseResult.errors.empty());
 
     CompileOptions options = inputOptions;
+    uint8_t mainFlags = 0;
 
     for (const HotComment& hc : parseResult.hotcomments)
+    {
         if (hc.header && hc.content.compare(0, 9, "optimize ") == 0)
             options.optimizationLevel = std::max(0, std::min(2, atoi(hc.content.c_str() + 9)));
+
+        if (FFlag::LuauCompileNativeComment && hc.header && hc.content == "native")
+        {
+            mainFlags |= LPF_NATIVE_MODULE;
+            options.optimizationLevel = 2; // note: this might be removed in the future in favor of --!optimize
+        }
+    }
 
     AstStatBlock* root = parseResult.root;
 
@@ -3884,12 +3907,12 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     root->visit(&functionVisitor);
 
     for (AstExprFunction* expr : functions)
-        compiler.compileFunction(expr);
+        compiler.compileFunction(expr, 0);
 
     AstExprFunction main(root->location, /*generics= */ AstArray<AstGenericType>(), /*genericPacks= */ AstArray<AstGenericTypePack>(),
         /* self= */ nullptr, AstArray<AstLocal*>(), /* vararg= */ true, /* varargLocation= */ Luau::Location(), root, /* functionDepth= */ 0,
         /* debugname= */ AstName());
-    uint32_t mainid = compiler.compileFunction(&main);
+    uint32_t mainid = compiler.compileFunction(&main, mainFlags);
 
     const Compiler::Function* mainf = compiler.functions.find(&main);
     LUAU_ASSERT(mainf && mainf->upvals.empty());

@@ -452,7 +452,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         inst(IrCmd::FALLBACK_GETVARARGS, constUint(i), vmReg(LUAU_INSN_A(*pc)), constInt(LUAU_INSN_B(*pc) - 1));
         break;
     case LOP_NEWCLOSURE:
-        inst(IrCmd::FALLBACK_NEWCLOSURE, constUint(i), vmReg(LUAU_INSN_A(*pc)), constUint(LUAU_INSN_D(*pc)));
+        translateInstNewClosure(*this, pc, i);
         break;
     case LOP_DUPCLOSURE:
         inst(IrCmd::FALLBACK_DUPCLOSURE, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmConst(LUAU_INSN_D(*pc)));
