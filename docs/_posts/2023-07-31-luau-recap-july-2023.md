@@ -43,7 +43,8 @@ Other fixes include:
 
 ## Runtime improvements
 
-Out-of-memory exception handling has been improved. `xpcall` handlers will now actually be called with a "not enough memory" string and whatever string/object they return will be correctly propagated.
+Out-of-memory exception handling has been improved.
+`xpcall` handlers will now actually be called with a "not enough memory" string and whatever string/object they return will be correctly propagated.
 
 Other runtime improvements we've made:
 
