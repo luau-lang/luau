@@ -403,11 +403,12 @@ When using a two-argument version, appends the value to the array portion of the
 When using a three-argument version, inserts the value at index `i` and shifts values at indices after that by 1. `i` should be in `[1..#t]` range.
 
 ```
-function table.remove<V>(t: {V}, i: number?)
+function table.remove<V>(t: {V}, i: number?): V?
 ```
 
 Removes element `i` from the table and shifts values at indices after that by 1. If `i` is not specified, removes the last element of the table.
 `i` should be in `[1..#t]` range.
+Returns the value of the removed element, or `nil` if no element was removed (e.g. table was empty).
 
 ```
 function table.sort<V>(t: {V}, f: ((V, V) -> boolean)?)
