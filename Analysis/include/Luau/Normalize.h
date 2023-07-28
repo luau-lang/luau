@@ -277,6 +277,9 @@ struct NormalizedType
     /// Returns true if this type should result in error suppressing behavior.
     bool shouldSuppressErrors() const;
 
+    /// Returns true if this type contains the primitve top table type, `table`.
+    bool hasTopTable() const;
+
     // Helpers that improve readability of the above (they just say if the component is present)
     bool hasTops() const;
     bool hasBooleans() const;

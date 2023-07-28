@@ -14,6 +14,7 @@ namespace Luau
 
 struct TxnLog;
 struct TypeArena;
+class Normalizer;
 
 enum class ValueContext
 {
@@ -54,6 +55,51 @@ std::vector<TypeId> reduceUnion(const std::vector<TypeId>& types);
  * @returns a type with nil removed, or nil itself if that were the only option.
  */
 TypeId stripNil(NotNull<BuiltinTypes> builtinTypes, TypeArena& arena, TypeId ty);
+
+enum class ErrorSuppression
+{
+    Suppress,
+    DoNotSuppress,
+    NormalizationFailed
+};
+
+/**
+ * Normalizes the given type using the normalizer to determine if the type
+ * should suppress any errors that would be reported involving it.
+ * @param normalizer the normalizer to use
+ * @param ty the type to check for error suppression
+ * @returns an enum indicating whether or not to suppress the error or to signal a normalization failure
+ */
+ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypeId ty);
+
+/**
+ * Flattens and normalizes the given typepack using the normalizer to determine if the type
+ * should suppress any errors that would be reported involving it.
+ * @param normalizer the normalizer to use
+ * @param tp the typepack to check for error suppression
+ * @returns an enum indicating whether or not to suppress the error or to signal a normalization failure
+ */
+ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypePackId tp);
+
+/**
+ * Normalizes the two given type using the normalizer to determine if either type
+ * should suppress any errors that would be reported involving it.
+ * @param normalizer the normalizer to use
+ * @param ty1 the first type to check for error suppression
+ * @param ty2 the second type to check for error suppression
+ * @returns an enum indicating whether or not to suppress the error or to signal a normalization failure
+ */
+ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypeId ty1, TypeId ty2);
+
+/**
+ * Flattens and normalizes the two given typepacks using the normalizer to determine if either type
+ * should suppress any errors that would be reported involving it.
+ * @param normalizer the normalizer to use
+ * @param tp1 the first typepack to check for error suppression
+ * @param tp2 the second typepack to check for error suppression
+ * @returns an enum indicating whether or not to suppress the error or to signal a normalization failure
+ */
+ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypePackId tp1, TypePackId tp2);
 
 template<typename T, typename Ty>
 const T* get(std::optional<Ty> ty)

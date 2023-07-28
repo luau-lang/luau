@@ -9,7 +9,6 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAG(DebugLuauSharedSelf)
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
 namespace Luau
 {

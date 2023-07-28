@@ -176,7 +176,7 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
             if (FFlag::DebugLuauDeferredConstraintResolution)
             {
                 ModulePtr module = Luau::check(*sourceModule, {}, builtinTypes, NotNull{&ice}, NotNull{&moduleResolver}, NotNull{&fileResolver},
-                    frontend.globals.globalScope, /*prepareModuleScope*/ nullptr, frontend.options);
+                    frontend.globals.globalScope, /*prepareModuleScope*/ nullptr, frontend.options, {});
 
                 Luau::lint(sourceModule->root, *sourceModule->names, frontend.globals.globalScope, module.get(), sourceModule->hotcomments, {});
             }
@@ -413,6 +413,17 @@ TypeId Fixture::requireTypeAlias(const std::string& name)
     std::optional<TypeId> ty = lookupType(name);
     REQUIRE(ty);
     return *ty;
+}
+
+TypeId Fixture::requireExportedType(const ModuleName& moduleName, const std::string& name)
+{
+    ModulePtr module = frontend.moduleResolver.getModule(moduleName);
+    REQUIRE(module);
+
+    auto it = module->exportedTypeBindings.find(name);
+    REQUIRE(it != module->exportedTypeBindings.end());
+
+    return it->second.type;
 }
 
 std::string Fixture::decorateWithTypes(const std::string& code)

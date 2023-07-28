@@ -1,9 +1,11 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/DenseHash.h"
 #include "Luau/Type.h"
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 namespace Luau
 {
@@ -17,6 +19,7 @@ struct DiffPathNode
         FunctionReturn,
         Union,
         Intersection,
+        Negation,
     };
     Kind kind;
     // non-null when TableProperty
@@ -54,17 +57,23 @@ struct DiffPathNodeLeaf
     std::optional<Name> tableProperty;
     std::optional<int> minLength;
     bool isVariadic;
-    DiffPathNodeLeaf(std::optional<TypeId> ty, std::optional<Name> tableProperty, std::optional<int> minLength, bool isVariadic)
+    // TODO: Rename to anonymousIndex, for both union and Intersection
+    std::optional<size_t> unionIndex;
+    DiffPathNodeLeaf(
+        std::optional<TypeId> ty, std::optional<Name> tableProperty, std::optional<int> minLength, bool isVariadic, std::optional<size_t> unionIndex)
         : ty(ty)
         , tableProperty(tableProperty)
         , minLength(minLength)
         , isVariadic(isVariadic)
+        , unionIndex(unionIndex)
     {
     }
 
     static DiffPathNodeLeaf detailsNormal(TypeId ty);
 
     static DiffPathNodeLeaf detailsTableProperty(TypeId ty, Name tableProperty);
+
+    static DiffPathNodeLeaf detailsUnionIndex(TypeId ty, size_t index);
 
     static DiffPathNodeLeaf detailsLength(int minLength, bool isVariadic);
 
@@ -82,11 +91,12 @@ struct DiffError
     enum Kind
     {
         Normal,
-        MissingProperty,
+        MissingTableProperty,
+        MissingUnionMember,
+        MissingIntersectionMember,
+        IncompatibleGeneric,
         LengthMismatchInFnArgs,
         LengthMismatchInFnRets,
-        LengthMismatchInUnion,
-        LengthMismatchInIntersection,
     };
     Kind kind;
 
@@ -141,6 +151,8 @@ struct DifferEnvironment
 {
     TypeId rootLeft;
     TypeId rootRight;
+
+    DenseHashMap<TypeId, TypeId> genericMatchedPairs;
 };
 DifferResult diff(TypeId ty1, TypeId ty2);
 

@@ -36,6 +36,7 @@ Proto* luaF_newproto(lua_State* L)
     f->execdata = NULL;
     f->exectarget = 0;
     f->typeinfo = NULL;
+    f->userdata = NULL;
 
     return f;
 }

@@ -9,11 +9,15 @@
 
 namespace Luau
 {
+struct Module;
 
 struct TypeArena
 {
     TypedAllocator<Type> types;
     TypedAllocator<TypePackVar> typePacks;
+
+    // Owning module, if any
+    Module* owningModule = nullptr;
 
     void clear();
 

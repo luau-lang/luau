@@ -235,6 +235,12 @@ assert(flag);
 
 assert(select(2, pcall(math.random, 1, 2, 3)):match("wrong number of arguments"))
 
+-- argument count
+function nothing() end
+
+assert(pcall(math.abs) == false)
+assert(pcall(function() return math.abs(nothing()) end) == false)
+
 -- min/max
 assert(math.min(1) == 1)
 assert(math.min(1, 2) == 1)
@@ -249,6 +255,7 @@ assert(math.max(1, -1, 2) == 2)
 assert(math.noise(0.5) == 0)
 assert(math.noise(0.5, 0.5) == -0.25)
 assert(math.noise(0.5, 0.5, -0.5) == 0.125)
+assert(math.noise(455.7204209769105, 340.80410508750134, 121.80087666537628) == 0.5010709762573242)
 
 local inf = math.huge * 2
 local nan = 0 / 0

@@ -12,6 +12,8 @@
 using namespace Luau;
 using std::nullopt;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 TEST_SUITE_BEGIN("TypeInferClasses");
 
 TEST_CASE_FIXTURE(ClassFixture, "call_method_of_a_class")

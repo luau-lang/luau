@@ -314,6 +314,14 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.add(inst.regA64, inst.regA64, zextReg(temp2), kLuaNodeSizeLog2);
         break;
     }
+    case IrCmd::GET_CLOSURE_UPVAL_ADDR:
+    {
+        inst.regA64 = regs.allocReuse(KindA64::x, index, {inst.a});
+        RegisterA64 cl = inst.a.kind == IrOpKind::Undef ? rClosure : regOp(inst.a);
+
+        build.add(inst.regA64, cl, uint16_t(offsetof(Closure, l.uprefs) + sizeof(TValue) * vmUpvalueOp(inst.b)));
+        break;
+    }
     case IrCmd::STORE_TAG:
     {
         RegisterA64 temp = regs.allocTemp(KindA64::w);
@@ -1044,13 +1052,20 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         bool continueInVm = (inst.d.kind == IrOpKind::Constant && intOp(inst.d));
         Label fresh; // used when guard aborts execution or jumps to a VM exit
         Label& fail = continueInVm ? helpers.exitContinueVmClearNativeFlag : getTargetLabel(inst.c, fresh);
+
+        // To support DebugLuauAbortingChecks, CHECK_TAG with VmReg has to be handled
+        RegisterA64 tag = inst.a.kind == IrOpKind::VmReg ? regs.allocTemp(KindA64::w) : regOp(inst.a);
+
+        if (inst.a.kind == IrOpKind::VmReg)
+            build.ldr(tag, mem(rBase, vmRegOp(inst.a) * sizeof(TValue) + offsetof(TValue, tt)));
+
         if (tagOp(inst.b) == 0)
         {
-            build.cbnz(regOp(inst.a), fail);
+            build.cbnz(tag, fail);
         }
         else
         {
-            build.cmp(regOp(inst.a), tagOp(inst.b));
+            build.cmp(tag, tagOp(inst.b));
             build.b(ConditionA64::NotEqual, fail);
         }
         if (!continueInVm)
@@ -1517,13 +1532,26 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         regs.spill(build, index);
         emitFallback(build, offsetof(NativeContext, executeGETVARARGS), uintOp(inst.a));
         break;
-    case IrCmd::FALLBACK_NEWCLOSURE:
-        LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
-        LUAU_ASSERT(inst.c.kind == IrOpKind::Constant);
+    case IrCmd::NEWCLOSURE:
+    {
+        RegisterA64 reg = regOp(inst.b); // note: we need to call regOp before spill so that we don't do redundant reloads
 
-        regs.spill(build, index);
-        emitFallback(build, offsetof(NativeContext, executeNEWCLOSURE), uintOp(inst.a));
+        regs.spill(build, index, {reg});
+        build.mov(x2, reg);
+
+        build.mov(x0, rState);
+        build.mov(w1, uintOp(inst.a));
+
+        build.ldr(x3, mem(rClosure, offsetof(Closure, l.p)));
+        build.ldr(x3, mem(x3, offsetof(Proto, p)));
+        build.ldr(x3, mem(x3, sizeof(Proto*) * uintOp(inst.c)));
+
+        build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaF_newLclosure)));
+        build.blr(x4);
+
+        inst.regA64 = regs.takeReg(x0, index);
         break;
+    }
     case IrCmd::FALLBACK_DUPCLOSURE:
         LUAU_ASSERT(inst.b.kind == IrOpKind::VmReg);
         LUAU_ASSERT(inst.c.kind == IrOpKind::VmConst);
@@ -1737,6 +1765,18 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.mov(x0, rState);
         build.add(x1, rBase, uint16_t(vmRegOp(inst.a) * sizeof(TValue)));
         build.ldr(x2, mem(rNativeContext, offsetof(NativeContext, luaT_objtypenamestr)));
+        build.blr(x2);
+
+        inst.regA64 = regs.takeReg(x0, index);
+        break;
+    }
+
+    case IrCmd::FINDUPVAL:
+    {
+        regs.spill(build, index);
+        build.mov(x0, rState);
+        build.add(x1, rBase, uint16_t(vmRegOp(inst.a) * sizeof(TValue)));
+        build.ldr(x2, mem(rNativeContext, offsetof(NativeContext, luaF_findupval)));
         build.blr(x2);
 
         inst.regA64 = regs.takeReg(x0, index);
