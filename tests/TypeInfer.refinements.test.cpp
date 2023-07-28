@@ -1820,4 +1820,46 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refinements_should_preserve_error_suppressio
         LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "many_refinements_on_val")
+{
+    CheckResult result = check(R"(
+        local function is_nan(val: any): boolean
+            return type(val) == "number" and val ~= val
+        end
+
+        local function is_js_boolean(val: any): boolean
+            return not not val and val ~= 0 and val ~= "" and not is_nan(val)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("(any) -> boolean", toString(requireType("is_nan")));
+    CHECK_EQ("(any) -> boolean", toString(requireType("is_js_boolean")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    // this test is DCR-only as an instance of DCR fixing a bug in the old solver
+
+    CheckResult result = check(R"(
+        local a : unknown = nil
+
+        local idx, val
+
+        if typeof(a) == "table" then
+            for i, v in a do
+                idx = i
+                val = v
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("unknown", toString(requireType("idx")));
+    CHECK_EQ("unknown", toString(requireType("val")));
+}
+
 TEST_SUITE_END();

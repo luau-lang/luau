@@ -12,12 +12,18 @@ namespace Luau
 namespace CodeGen
 {
 
+enum CodeGenFlags
+{
+    // Only run native codegen for modules that have been marked with --!native
+    CodeGen_OnlyNativeModules = 1 << 0,
+};
+
 bool isSupported();
 
 void create(lua_State* L);
 
 // Builds target function and all inner functions
-void compile(lua_State* L, int idx);
+void compile(lua_State* L, int idx, unsigned int flags = 0);
 
 using AnnotatorFn = void (*)(void* context, std::string& result, int fid, int instpos);
 

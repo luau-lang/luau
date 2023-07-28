@@ -336,7 +336,7 @@ const char* luaL_findtable(lua_State* L, int idx, const char* fname, int szhint)
 const char* luaL_typename(lua_State* L, int idx)
 {
     const TValue* obj = luaA_toobject(L, idx);
-    return luaT_objtypename(L, obj);
+    return obj ? luaT_objtypename(L, obj) : "no value";
 }
 
 /*

@@ -61,6 +61,12 @@ static const char* getTagName(uint8_t tag)
         return "tuserdata";
     case LUA_TTHREAD:
         return "tthread";
+    case LUA_TPROTO:
+        return "tproto";
+    case LUA_TUPVAL:
+        return "tupval";
+    case LUA_TDEADKEY:
+        return "tdeadkey";
     default:
         LUAU_ASSERT(!"Unknown type tag");
         LUAU_UNREACHABLE();
@@ -93,6 +99,8 @@ const char* getCmdName(IrCmd cmd)
         return "GET_SLOT_NODE_ADDR";
     case IrCmd::GET_HASH_NODE_ADDR:
         return "GET_HASH_NODE_ADDR";
+    case IrCmd::GET_CLOSURE_UPVAL_ADDR:
+        return "GET_CLOSURE_UPVAL_ADDR";
     case IrCmd::STORE_TAG:
         return "STORE_TAG";
     case IrCmd::STORE_POINTER:
@@ -267,8 +275,8 @@ const char* getCmdName(IrCmd cmd)
         return "FALLBACK_PREPVARARGS";
     case IrCmd::FALLBACK_GETVARARGS:
         return "FALLBACK_GETVARARGS";
-    case IrCmd::FALLBACK_NEWCLOSURE:
-        return "FALLBACK_NEWCLOSURE";
+    case IrCmd::NEWCLOSURE:
+        return "NEWCLOSURE";
     case IrCmd::FALLBACK_DUPCLOSURE:
         return "FALLBACK_DUPCLOSURE";
     case IrCmd::FALLBACK_FORGPREP:
@@ -303,6 +311,8 @@ const char* getCmdName(IrCmd cmd)
         return "GET_TYPE";
     case IrCmd::GET_TYPEOF:
         return "GET_TYPEOF";
+    case IrCmd::FINDUPVAL:
+        return "FINDUPVAL";
     }
 
     LUAU_UNREACHABLE();

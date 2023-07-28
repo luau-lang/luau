@@ -19,7 +19,6 @@ LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeBlockedTypes, false);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCyclicUnions, false);
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauTransitiveSubtyping)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
@@ -251,6 +250,14 @@ bool NormalizedType::isSubtypeOfString() const
 bool NormalizedType::shouldSuppressErrors() const
 {
     return hasErrors() || get<AnyType>(tops);
+}
+
+bool NormalizedType::hasTopTable() const
+{
+    return hasTables() && std::any_of(tables.begin(), tables.end(), [&](TypeId ty) {
+        auto primTy = get<PrimitiveType>(ty);
+        return primTy && primTy->type == PrimitiveType::Type::Table;
+    });
 }
 
 bool NormalizedType::hasTops() const

@@ -6,7 +6,7 @@
 #define LUACODEGEN_API extern
 #endif
 
-struct lua_State;
+typedef struct lua_State lua_State;
 
 // returns 1 if Luau code generator is supported, 0 otherwise
 LUACODEGEN_API int luau_codegen_supported(void);

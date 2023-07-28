@@ -944,6 +944,11 @@ end)(true) == 5050)
 assert(pcall(typeof) == false)
 assert(pcall(type) == false)
 
+function nothing() end
+
+assert(pcall(function() return typeof(nothing()) end) == false)
+assert(pcall(function() return type(nothing()) end) == false)
+
 -- typeof == type in absence of custom userdata
 assert(concat(typeof(5), typeof(nil), typeof({}), typeof(newproxy())) == "number,nil,table,userdata")
 

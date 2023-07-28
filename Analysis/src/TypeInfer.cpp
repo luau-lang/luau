@@ -36,6 +36,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauAllowIndexClassParameters, false)
+LUAU_FASTFLAGVARIABLE(LuauFixCyclicModuleExports, false)
 LUAU_FASTFLAG(LuauOccursIsntAlwaysFailure)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckTypeguards, false)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
@@ -269,6 +270,8 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     currentModule.reset(new Module);
     currentModule->name = module.name;
     currentModule->humanReadableName = module.humanReadableName;
+    currentModule->internalTypes.owningModule = currentModule.get();
+    currentModule->interfaceTypes.owningModule = currentModule.get();
     currentModule->type = module.type;
     currentModule->allocator = module.allocator;
     currentModule->names = module.names;
@@ -1193,6 +1196,19 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatLocal& local)
                     {
                         scope->importedTypeBindings[name] = module->exportedTypeBindings;
                         scope->importedModules[name] = moduleInfo->name;
+
+                        if (FFlag::LuauFixCyclicModuleExports)
+                        {
+                            // Imported types of requires that transitively refer to current module have to be replaced with 'any'
+                            for (const auto& [location, path] : requireCycles)
+                            {
+                                if (!path.empty() && path.front() == moduleInfo->name)
+                                {
+                                    for (auto& [name, tf] : scope->importedTypeBindings[name])
+                                        tf = TypeFun{{}, {}, anyType};
+                                }
+                            }
+                        }
                     }
 
                     // In non-strict mode we force the module type on the variable, in strict mode it is already unified

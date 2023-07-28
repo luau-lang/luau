@@ -12,6 +12,7 @@
 #include "Luau/ModuleResolver.h"
 #include "Luau/Quantify.h"
 #include "Luau/Simplify.h"
+#include "Luau/TimeTrace.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFamily.h"
@@ -259,7 +260,7 @@ struct InstantiationQueuer : TypeOnceVisitor
 };
 
 ConstraintSolver::ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, std::vector<NotNull<Constraint>> constraints,
-    ModuleName moduleName, NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger)
+    ModuleName moduleName, NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger, TypeCheckLimits limits)
     : arena(normalizer->arena)
     , builtinTypes(normalizer->builtinTypes)
     , normalizer(normalizer)
@@ -269,6 +270,7 @@ ConstraintSolver::ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope
     , moduleResolver(moduleResolver)
     , requireCycles(requireCycles)
     , logger(logger)
+    , limits(std::move(limits))
 {
     opts.exhaustive = true;
 
@@ -333,6 +335,11 @@ void ConstraintSolver::run()
                 ++i;
                 continue;
             }
+
+            if (limits.finishTime && TimeTrace::getClock() > *limits.finishTime)
+                throwTimeLimitError();
+            if (limits.cancellationToken && limits.cancellationToken->requested())
+                throwUserCancelError();
 
             std::string saveMe = FFlag::DebugLuauLogSolver ? toString(*c, opts) : std::string{};
             StepSnapshot snapshot;
@@ -555,6 +562,9 @@ bool ConstraintSolver::tryDispatch(const InstantiationConstraint& c, NotNull<con
 
     Instantiation inst(TxnLog::empty(), arena, TypeLevel{}, constraint->scope);
 
+    if (limits.instantiationChildLimit)
+        inst.childLimit = *limits.instantiationChildLimit;
+
     std::optional<TypeId> instantiated = inst.substitute(c.superType);
 
     LUAU_ASSERT(get<BlockedType>(c.subType));
@@ -586,7 +596,7 @@ bool ConstraintSolver::tryDispatch(const UnaryConstraint& c, NotNull<const Const
     if (isBlocked(operandType))
         return block(operandType, constraint);
 
-    if (get<FreeType>(operandType))
+    if (!force && get<FreeType>(operandType))
         return block(operandType, constraint);
 
     LUAU_ASSERT(get<BlockedType>(c.resultType));
@@ -713,6 +723,10 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
         if (mm)
         {
             Instantiation instantiation{TxnLog::empty(), arena, TypeLevel{}, constraint->scope};
+
+            if (limits.instantiationChildLimit)
+                instantiation.childLimit = *limits.instantiationChildLimit;
+
             std::optional<TypeId> instantiatedMm = instantiation.substitute(*mm);
             if (!instantiatedMm)
             {
@@ -1318,6 +1332,9 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
     Instantiation inst(TxnLog::empty(), arena, TypeLevel{}, constraint->scope);
 
+    if (limits.instantiationChildLimit)
+        inst.childLimit = *limits.instantiationChildLimit;
+
     std::vector<TypeId> arityMatchingOverloads;
     std::optional<TxnLog> bestOverloadLog;
 
@@ -1334,7 +1351,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         }
 
         Unifier u{normalizer, constraint->scope, Location{}, Covariant};
-        u.enableScopeTests();
+        u.enableNewSolver();
 
         u.tryUnify(*instantiated, inferredTy, /* isFunctionCall */ true);
 
@@ -1384,7 +1401,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     if (!bestOverloadLog)
     {
         Unifier u{normalizer, constraint->scope, Location{}, Covariant};
-        u.enableScopeTests();
+        u.enableNewSolver();
 
         u.tryUnify(inferredTy, builtinTypes->anyType);
         u.tryUnify(fn, builtinTypes->anyType);
@@ -1505,6 +1522,7 @@ static void updateTheTableType(
 
     for (size_t i = 0; i < path.size() - 1; ++i)
     {
+        t = follow(t);
         auto propTy = findTablePropertyRespectingMeta(builtinTypes, dummy, t, path[i], Location{});
         dummy.clear();
 
@@ -1885,19 +1903,20 @@ bool ConstraintSolver::tryDispatch(const RefineConstraint& c, NotNull<const Cons
     if (!force && !blockedTypes.empty())
         return block(blockedTypes, constraint);
 
-    const NormalizedType* normType = normalizer->normalize(c.type);
-
-    if (!normType)
-        reportError(NormalizationTooComplex{}, constraint->location);
-
-    if (normType && normType->shouldSuppressErrors())
+    switch (shouldSuppressErrors(normalizer, c.type))
+    {
+    case ErrorSuppression::Suppress:
     {
         auto resultOrError = simplifyUnion(builtinTypes, arena, result, builtinTypes->errorType).result;
         asMutable(c.resultType)->ty.emplace<BoundType>(resultOrError);
+        break;
     }
-    else
-    {
+    case ErrorSuppression::DoNotSuppress:
         asMutable(c.resultType)->ty.emplace<BoundType>(result);
+        break;
+    case ErrorSuppression::NormalizationFailed:
+        reportError(NormalizationTooComplex{}, constraint->location);
+        break;
     }
 
     unblock(c.resultType, constraint->location);
@@ -1983,6 +2002,15 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
             unify(*anyified, ty, constraint->scope);
     };
 
+    auto unknownify = [&](auto ty) {
+        Anyification anyify{arena, constraint->scope, builtinTypes, &iceReporter, builtinTypes->unknownType, builtinTypes->anyTypePack};
+        std::optional anyified = anyify.substitute(ty);
+        if (!anyified)
+            reportError(CodeTooComplex{}, constraint->location);
+        else
+            unify(*anyified, ty, constraint->scope);
+    };
+
     auto errorify = [&](auto ty) {
         Anyification anyify{arena, constraint->scope, builtinTypes, &iceReporter, errorRecoveryType(), errorRecoveryTypePack()};
         std::optional errorified = anyify.substitute(ty);
@@ -2051,6 +2079,9 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
 
         Instantiation instantiation(TxnLog::empty(), arena, TypeLevel{}, constraint->scope);
 
+        if (limits.instantiationChildLimit)
+            instantiation.childLimit = *limits.instantiationChildLimit;
+
         if (std::optional<TypeId> instantiatedIterFn = instantiation.substitute(*iterFn))
         {
             if (auto iterFtv = get<FunctionType>(*instantiatedIterFn))
@@ -2107,6 +2138,8 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
 
         LUAU_ASSERT(false);
     }
+    else if (auto primitiveTy = get<PrimitiveType>(iteratorTy); primitiveTy && primitiveTy->type == PrimitiveType::Type::Table)
+        unknownify(c.variables);
     else
         errorify(c.variables);
 
@@ -2357,7 +2390,7 @@ template<typename TID>
 bool ConstraintSolver::tryUnify(NotNull<const Constraint> constraint, TID subTy, TID superTy)
 {
     Unifier u{normalizer, constraint->scope, constraint->location, Covariant};
-    u.enableScopeTests();
+    u.enableNewSolver();
 
     u.tryUnify(subTy, superTy);
 
@@ -2606,7 +2639,7 @@ bool ConstraintSolver::isBlocked(NotNull<const Constraint> constraint)
 ErrorVec ConstraintSolver::unify(TypeId subType, TypeId superType, NotNull<Scope> scope)
 {
     Unifier u{normalizer, scope, Location{}, Covariant};
-    u.enableScopeTests();
+    u.enableNewSolver();
 
     u.tryUnify(subType, superType);
 
@@ -2631,7 +2664,7 @@ ErrorVec ConstraintSolver::unify(TypePackId subPack, TypePackId superPack, NotNu
 {
     UnifierSharedState sharedState{&iceReporter};
     Unifier u{normalizer, scope, Location{}, Covariant};
-    u.enableScopeTests();
+    u.enableNewSolver();
 
     u.tryUnify(subPack, superPack);
 
@@ -2728,7 +2761,7 @@ TypeId ConstraintSolver::unionOfTypes(TypeId a, TypeId b, NotNull<Scope> scope, 
     if (unifyFreeTypes && (get<FreeType>(a) || get<FreeType>(b)))
     {
         Unifier u{normalizer, scope, Location{}, Covariant};
-        u.enableScopeTests();
+        u.enableNewSolver();
         u.tryUnify(b, a);
 
         if (u.errors.empty())
@@ -2783,6 +2816,16 @@ TypePackId ConstraintSolver::anyifyModuleReturnTypePackGenerics(TypePackId tp)
         resultTail = anyifyModuleReturnTypePackGenerics(*tail);
 
     return arena->addTypePack(resultTypes, resultTail);
+}
+
+LUAU_NOINLINE void ConstraintSolver::throwTimeLimitError()
+{
+    throw TimeLimitError(currentModuleName);
+}
+
+LUAU_NOINLINE void ConstraintSolver::throwUserCancelError()
+{
+    throw UserCancelError(currentModuleName);
 }
 
 } // namespace Luau

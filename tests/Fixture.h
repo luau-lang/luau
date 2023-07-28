@@ -2,6 +2,8 @@
 #pragma once
 
 #include "Luau/Config.h"
+#include "Luau/Differ.h"
+#include "Luau/Error.h"
 #include "Luau/FileResolver.h"
 #include "Luau/Frontend.h"
 #include "Luau/IostreamHelpers.h"
@@ -15,6 +17,7 @@
 #include "IostreamOptional.h"
 #include "ScopedFlags.h"
 
+#include "doctest.h"
 #include <string>
 #include <unordered_map>
 #include <optional>
@@ -92,6 +95,7 @@ struct Fixture
     std::optional<TypeId> lookupType(const std::string& name);
     std::optional<TypeId> lookupImportedType(const std::string& moduleAlias, const std::string& name);
     TypeId requireTypeAlias(const std::string& name);
+    TypeId requireExportedType(const ModuleName& moduleName, const std::string& name);
 
     ScopedFastFlag sff_DebugLuauFreezeArena;
 
@@ -152,6 +156,51 @@ std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name);
 
 void registerHiddenTypes(Frontend* frontend);
 void createSomeClasses(Frontend* frontend);
+
+template<typename BaseFixture>
+struct DifferFixtureGeneric : BaseFixture
+{
+    void compareNe(TypeId left, TypeId right, const std::string& expectedMessage)
+    {
+        std::string diffMessage;
+        try
+        {
+            DifferResult diffRes = diff(left, right);
+            REQUIRE_MESSAGE(diffRes.diffError.has_value(), "Differ did not report type error, even though types are unequal");
+            diffMessage = diffRes.diffError->toString();
+        }
+        catch (const InternalCompilerError& e)
+        {
+            REQUIRE_MESSAGE(false, ("InternalCompilerError: " + e.message));
+        }
+        CHECK_EQ(expectedMessage, diffMessage);
+    }
+
+    void compareTypesNe(const std::string& leftSymbol, const std::string& rightSymbol, const std::string& expectedMessage)
+    {
+        compareNe(BaseFixture::requireType(leftSymbol), BaseFixture::requireType(rightSymbol), expectedMessage);
+    }
+
+    void compareEq(TypeId left, TypeId right)
+    {
+        try
+        {
+            DifferResult diffRes = diff(left, right);
+            CHECK_MESSAGE(!diffRes.diffError.has_value(), diffRes.diffError->toString());
+        }
+        catch (const InternalCompilerError& e)
+        {
+            REQUIRE_MESSAGE(false, ("InternalCompilerError: " + e.message));
+        }
+    }
+
+    void compareTypesEq(const std::string& leftSymbol, const std::string& rightSymbol)
+    {
+        compareEq(BaseFixture::requireType(leftSymbol), BaseFixture::requireType(rightSymbol));
+    }
+};
+using DifferFixture = DifferFixtureGeneric<Fixture>;
+using DifferFixtureWithBuiltins = DifferFixtureGeneric<BuiltinsFixture>;
 
 } // namespace Luau
 

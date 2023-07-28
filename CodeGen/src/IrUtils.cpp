@@ -38,6 +38,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::GET_ARR_ADDR:
     case IrCmd::GET_SLOT_NODE_ADDR:
     case IrCmd::GET_HASH_NODE_ADDR:
+    case IrCmd::GET_CLOSURE_UPVAL_ADDR:
         return IrValueKind::Pointer;
     case IrCmd::STORE_TAG:
     case IrCmd::STORE_POINTER:
@@ -141,7 +142,9 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::FALLBACK_NAMECALL:
     case IrCmd::FALLBACK_PREPVARARGS:
     case IrCmd::FALLBACK_GETVARARGS:
-    case IrCmd::FALLBACK_NEWCLOSURE:
+        return IrValueKind::None;
+    case IrCmd::NEWCLOSURE:
+        return IrValueKind::Pointer;
     case IrCmd::FALLBACK_DUPCLOSURE:
     case IrCmd::FALLBACK_FORGPREP:
         return IrValueKind::None;
@@ -163,6 +166,8 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::Double;
     case IrCmd::GET_TYPE:
     case IrCmd::GET_TYPEOF:
+        return IrValueKind::Pointer;
+    case IrCmd::FINDUPVAL:
         return IrValueKind::Pointer;
     }
 

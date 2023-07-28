@@ -52,6 +52,8 @@ struct NativeContext
     size_t (*luaC_step)(lua_State* L, bool assist) = nullptr;
 
     void (*luaF_close)(lua_State* L, StkId level) = nullptr;
+    UpVal* (*luaF_findupval)(lua_State* L, StkId level) = nullptr;
+    Closure* (*luaF_newLclosure)(lua_State* L, int nelems, Table* e, Proto* p) = nullptr;
 
     const TValue* (*luaT_gettm)(Table* events, TMS event, TString* ename) = nullptr;
     const TString* (*luaT_objtypenamestr)(lua_State* L, const TValue* o) = nullptr;

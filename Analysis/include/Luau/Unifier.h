@@ -43,6 +43,21 @@ struct Widen : Substitution
     TypePackId operator()(TypePackId ty);
 };
 
+/**
+ * Normally, when we unify table properties, we must do so invariantly, but we
+ * can introduce a special exception: If the table property in the subtype
+ * position arises from a literal expression, it is safe to instead perform a
+ * covariant check.
+ *
+ * This is very useful for typechecking cases where table literals (and trees of
+ * table literals) are passed directly to functions.
+ *
+ * In this case, we know that the property has no other name referring to it and
+ * so it is perfectly safe for the function to mutate the table any way it
+ * wishes.
+ */
+using LiteralProperties = DenseHashSet<Name>;
+
 // TODO: Use this more widely.
 struct UnifierOptions
 {
@@ -80,7 +95,7 @@ struct Unifier
 
     // Configure the Unifier to test for scope subsumption via embedded Scope
     // pointers rather than TypeLevels.
-    void enableScopeTests();
+    void enableNewSolver();
 
     // Test whether the two type vars unify.  Never commits the result.
     ErrorVec canUnify(TypeId subTy, TypeId superTy);
@@ -90,10 +105,10 @@ struct Unifier
      * Populate the vector errors with any type errors that may arise.
      * Populate the transaction log with the set of TypeIds that need to be reset to undo the unification attempt.
      */
-    void tryUnify(TypeId subTy, TypeId superTy, bool isFunctionCall = false, bool isIntersection = false);
+    void tryUnify(TypeId subTy, TypeId superTy, bool isFunctionCall = false, bool isIntersection = false, const LiteralProperties* aliasableMap = nullptr);
 
 private:
-    void tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall = false, bool isIntersection = false);
+    void tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall = false, bool isIntersection = false, const LiteralProperties* aliasableMap = nullptr);
     void tryUnifyUnionWithType(TypeId subTy, const UnionType* uv, TypeId superTy);
 
     // Traverse the two types provided and block on any BlockedTypes we find.
@@ -108,7 +123,7 @@ private:
     void tryUnifyPrimitives(TypeId subTy, TypeId superTy);
     void tryUnifySingletons(TypeId subTy, TypeId superTy);
     void tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCall = false);
-    void tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection = false);
+    void tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection = false, const LiteralProperties* aliasableMap = nullptr);
     void tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed);
@@ -163,8 +178,10 @@ private:
     // Available after regular type pack unification errors
     std::optional<int> firstPackErrorPos;
 
-    // If true, we use the scope hierarchy rather than TypeLevels
-    bool useScopes = false;
+    // If true, we do a bunch of small things differently to work better with
+    // the new type inference engine. Most notably, we use the Scope hierarchy
+    // directly rather than using TypeLevels.
+    bool useNewSolver = false;
 };
 
 void promoteTypeLevels(TxnLog& log, const TypeArena* arena, TypeLevel minLevel, Scope* outerScope, bool useScope, TypePackId tp);

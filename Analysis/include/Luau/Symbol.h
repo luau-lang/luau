@@ -6,8 +6,6 @@
 
 #include <string>
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-
 namespace Luau
 {
 
@@ -42,17 +40,7 @@ struct Symbol
         return local != nullptr || global.value != nullptr;
     }
 
-    bool operator==(const Symbol& rhs) const
-    {
-        if (local)
-            return local == rhs.local;
-        else if (global.value)
-            return rhs.global.value && global == rhs.global.value; // Subtlety: AstName::operator==(const char*) uses strcmp, not pointer identity.
-        else if (FFlag::DebugLuauDeferredConstraintResolution)
-            return !rhs.local && !rhs.global.value; // Reflexivity: we already know `this` Symbol is empty, so check that rhs is.
-        else
-            return false;
-    }
+    bool operator==(const Symbol& rhs) const;
 
     bool operator!=(const Symbol& rhs) const
     {

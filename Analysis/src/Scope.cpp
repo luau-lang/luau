@@ -2,6 +2,8 @@
 
 #include "Luau/Scope.h"
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 namespace Luau
 {
 
@@ -160,14 +162,12 @@ void Scope::inheritRefinements(const ScopePtr& childScope)
                 dcrRefinements[k] = a;
         }
     }
-    else
+
+    for (const auto& [k, a] : childScope->refinements)
     {
-        for (const auto& [k, a] : childScope->refinements)
-        {
-            Symbol symbol = getBaseSymbol(k);
-            if (lookup(symbol))
-                refinements[k] = a;
-        }
+        Symbol symbol = getBaseSymbol(k);
+        if (lookup(symbol))
+            refinements[k] = a;
     }
 }
 

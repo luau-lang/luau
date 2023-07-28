@@ -13,6 +13,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 TEST_SUITE_BEGIN("TypeInferAnyError");
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_returns_any")

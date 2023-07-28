@@ -427,9 +427,6 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
         case IrCmd::FALLBACK_GETVARARGS:
             defRange(vmRegOp(inst.b), function.intOp(inst.c));
             break;
-        case IrCmd::FALLBACK_NEWCLOSURE:
-            def(inst.b);
-            break;
         case IrCmd::FALLBACK_DUPCLOSURE:
             def(inst.b);
             break;
@@ -445,6 +442,10 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
             // While this can be considered to be a vararg consumer, it is already handled in fastcall instructions
             break;
         case IrCmd::GET_TYPEOF:
+            use(inst.a);
+            break;
+
+        case IrCmd::FINDUPVAL:
             use(inst.a);
             break;
 

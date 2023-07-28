@@ -133,6 +133,8 @@ end
 
 TEST_CASE("ControlFlow")
 {
+    ScopedFastFlag sff("LuauAssignmentHasCost", true);
+
     uint64_t model = modelFunction(R"(
 function test(a)
     while a < 0 do
@@ -156,8 +158,8 @@ end
     const bool args1[] = {false};
     const bool args2[] = {true};
 
-    CHECK_EQ(82, Luau::Compile::computeCost(model, args1, 1));
-    CHECK_EQ(79, Luau::Compile::computeCost(model, args2, 1));
+    CHECK_EQ(76, Luau::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(73, Luau::Compile::computeCost(model, args2, 1));
 }
 
 TEST_CASE("Conditional")
@@ -238,6 +240,27 @@ end
 
     CHECK_EQ(3, Luau::Compile::computeCost(model, args1, 1));
     CHECK_EQ(3, Luau::Compile::computeCost(model, args2, 1));
+}
+
+TEST_CASE("MultipleAssignments")
+{
+    ScopedFastFlag sff("LuauAssignmentHasCost", true);
+
+    uint64_t model = modelFunction(R"(
+function test(a)
+    local x = 0
+    x = a
+    x = a + 1
+    x, x, x = a
+    x = a, a, a
+end
+)");
+
+    const bool args1[] = {false};
+    const bool args2[] = {true};
+
+    CHECK_EQ(8, Luau::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(7, Luau::Compile::computeCost(model, args2, 1));
 }
 
 TEST_SUITE_END();
