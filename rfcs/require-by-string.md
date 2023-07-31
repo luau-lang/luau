@@ -49,7 +49,7 @@ local Roact = require("C:/LuauModules/Roact-v1.4.2")
 
 If we wanted to change the location of this package on disk, we would have to modify all files that require the old path above, which essentially boils down to manual package management. This approach is tedious and prone to mistakes.
 
-To solve this, we introduce aliases in this RFC, which would allow for future package management software to maintain package paths and versions by directly modifying alias maps.
+To solve this, we introduce path and alias configuration in this RFC, which would allow for future package management software to maintain package paths and versions by directly modifying configuration files.
 
 This would also create simple and readable require statements for developers.
 
@@ -77,6 +77,17 @@ Our require syntax should:
 
 For compatibility across platforms, we will automatically map `/` onto `\`.
 
+#### Path resolution
+
+If we find files with the same name but different extensions, then we will attempt to require a file with the following extensions (in this order):
+1. `.luau`
+2. `.lua`
+3. All other file extensions are invalid.
+
+If the string resolves to a directory instead of a file, then we will attempt to require a file in that directory with the following name (in this order):
+1. `init.luau`
+2. `init.lua`
+
 #### Relative paths
 
 Modules can be required relative to the requiring file's location in the filesystem (note, this is different from the current implementation, which evaluates all relative paths in relation to the current working directory).
@@ -96,17 +107,45 @@ local MyModule = require("../MyModule")
 local MyModule = require("../MyLibrary/MyModule")
 ```
 
-Relative paths are chosen as the default path type, meaning that if a given path does not begin with a reserved prefix such as `/` or `@`, then it is considered relative to the requiring file's location. This is chosen for convenience, as libraries may include various internal dependencies that are easier to reference using relative paths.
+Relative paths can begin with `./` or `../`, which denote the directory of the requiring file and its parent directory, respectively. When a relative path does begin with one of these prefixes, it will only be resolved relative to the requiring file. If these prefixes are not provided, path resolution will fallback to checking the paths in the `paths` configuration variable, as described later.
 
-Relative paths can also begin with `./` or `../`, which denote the directory of the requiring file and its parent directory, respectively. When a require statement is executed directly in a REPL input prompt (not in a file), relative paths will be evaluated in relation to the pseudo-file `stdin`, located in the current working directory. If the code being executed is not tied to a file (e.g. using `loadstring`), executing any require statements in this code will result in an error.
+When a require statement is executed directly in a REPL input prompt (not in a file), relative paths will be evaluated in relation to the pseudo-file `stdin`, located in the current working directory. If the code being executed is not tied to a file (e.g. using `loadstring`), executing any require statements in this code will result in an error.
 
 #### Absolute paths
 
-Absolute paths will no longer be supported in `require` statements, as they are unportable. The only way to require by absolute path will be through an alias, as described below.
+Absolute paths will no longer be supported in `require` statements, as they are unportable. The only way to require by absolute path will be through a explicitly defined paths or aliases defined in configuration files, as described later.
+
+#### Paths
+
+Similar to [paths in TypeScript](https://www.typescriptlang.org/tsconfig#paths), we will introduce a `paths` array that can be configured in `.luaurc` files. Whenever a path is passed to `require` and does not begin with `./` or `../`, the path will first be resolved relative to the requiring file. If this fails, we will attempt to resolve paths relative to each path in the `paths` array.
+
+The `paths` array can contain absolute paths, and relative paths are resolved relative to `.luaurc` file in which they appear.
+
+##### Example Definition
+
+With the given `paths` definition:
+```json
+// .luaurc file in /Users/johndoe/Projects/MyProject/src
+"paths": [
+    "../dependencies",
+    "/Users/johndoe/MyLuauLibraries",
+    "/Users/johndoe/MyOtherLuauLibraries",
+]
+```
+
+If `/Users/johndoe/Projects/MyProject/src/init.luau` contained the following code:
+```lua
+local graphing = require("graphing")
+```
+We would search the following directories, in order:
+- `/Users/johndoe/Projects/MyProject/src`
+- `/Users/johndoe/Projects/MyProject/dependencies`
+- `/Users/johndoe/MyLuauLibraries`
+- `/Users/johndoe/MyOtherLuauLibraries`
 
 #### Aliases
 
-Aliases can be used to bind an absolute or relative path to a convenient, case-sensitive name that can be required directly. In Luau files, aliases will always be prefixed with `@` to unambiguously distinguish them from directory names.
+Aliases can be used to bind an absolute or relative path to a convenient, case-sensitive name that can be required directly.
 
 ```json
 "aliases": {
@@ -117,16 +156,16 @@ Aliases can be used to bind an absolute or relative path to a convenient, case-s
 Based on the alias map above, you would be able to require Roact directly:
 
 ```lua
-local Roact = require("@Roact")
+local Roact = require("Roact")
 ```
 
 Or even a sub-module:
 
 ```lua
-local createElement = require("@Roact/createElement")
+local createElement = require("Roact/createElement")
 ```
 
-Note that the alias map itself does not contain any `@` prefixes, which differs from some other languages. For example, when configuring paths in `tsconfig.json` for TypeScript projects, the `@` prefix is optional. Instead, the alias name is matched exactly in require statements. To reduce ambiguity in Luau files, we will always require `@` to be prepended to the alias name that appears in the alias map.
+Aliases are overrides. Whenever the first component of a path exactly matches a pre-defined alias, it will be replaced before the path is resolved to a file.
 
 ##### Versioning
 
@@ -134,10 +173,10 @@ Aliases are simple bindings and aren't concerned with versioning. The intention 
 
 ##### Library root alias
 
-In the past, it has been proposed to use the blank alias "`@`" to represent the root directory of a file's encapsulating library. 
+In the past, it has been proposed to define alias (e.g. "`@`") to represent the root directory of a file's encapsulating library. 
 - However, the concept of a "Luau library" and its root directory is not yet rigorously defined in Luau, in terms of folder/file structure. 
 - In the future, we may add a `package.json` file or something similar that marks the root directory of a library, but this is outside of the scope of this RFC, which primarily focuses on improving require-by-string.
-- For the time being, this functionality will remain unimplemented for this reason. The blank alias "`@`" will remain reserved for now, meaning it cannot be overriden.
+- For the time being, this functionality will remain unimplemented for this reason. The alias "`@`" will remain reserved for now, meaning it cannot be overriden.
 
 Of course, users can still use the alias map to explicitly define this behavior with a named alias:
 
@@ -151,7 +190,6 @@ Of course, users can still use the alias map to explicitly define this behavior 
 
 - Aliases cannot reference other aliases. (However, this is compatible with this proposal and will likely be implemented in the future.)
 - Alias names cannot contain the directory separators `/` and `\`.
-- All aliases must be prefixed with `@` when used in a require statement to avoid ambiguity.
 - Aliases can only occur at the beginning of a path.
 
 ##### Configuring alias maps: .luaurc
@@ -174,17 +212,6 @@ Additionally, if an alias is bound to a relative path, the path will evaluated r
 
 Finally, providing support for alias maps within the engine is out of the scope of this RFC but is being considered internally.
 
-#### Path resolution
-
-If we find files with the same name but different extensions, then we will attempt to require a file with the following extensions (in this order):
-1. `.luau`
-2. `.lua`
-3. All other file extensions are invalid.
-
-If the string resolves to a directory instead of a file, then we will attempt to require a file in that directory with the following name (in this order):
-1. `init.luau`
-2. `init.lua`
-
 ### Caching
 
 In the current implementation, required modules are cached based on the string that was used to require them. This means that using a mix of relative/absolute/aliased paths might lead to a cache miss—even if the module has already been required.
@@ -200,11 +227,11 @@ relative = require("test")
 print(absolute == relative)
 ```
 
-Currently, since relative paths are always evaluated in relation to the current working directory and absolute paths are always evaluated in relation to the system's root directory, all files in a project end up using the same paths in the current implementation. However, with the proposed change to resolving relative paths (in relation to the requiring file instead of in relation to cwd), we might have files in different directories requiring modules using different relative paths.
+Currently, since relative paths are always evaluated in relation to the current working directory and absolute paths are always evaluated in relation to the system's root directory, all files in a project end up using the same paths in the current implementation. However, with the proposed change to resolving relative paths (in relation to the requiring file instead of in relation to the CWD), we might have files in different directories requiring modules using different relative paths.
 
 For example, `require("mymodule")` and `require("../mymodule")` might refer to the same module, depending on the requiring files' locations. With the current cache implementation, the second statement would be a cache miss, as `"mymodule"` is not literally equal to `"../mymodule"`.
 
-To solve this issue, we propose transforming every path that is passed to `require` into an equivalent absolute path and using this to cache, regardless of whether it was originally passed in as a relative, absolute, or aliased path. This way, a module's return value is stored in both a unique and consistent way across different files. Additionally, using absolute paths as opposed to, say, relative-to-cwd paths ensures that aliased paths also maximize cache hits.
+To solve this issue, we propose transforming every path that is passed to `require` into an equivalent absolute path and using this to cache, regardless of whether it was originally passed in as a relative, absolute, or aliased path. This way, a module's return value is stored in both a unique and consistent way across different files. Additionally, using absolute paths as opposed to, say, relative-to-cwd paths for caching ensures that aliased paths also maximize cache hits.
 
 ### Implementing changes to relative paths
 
@@ -299,34 +326,11 @@ Luau libraries are already not compatible with existing Lua libraries. This is b
 
 ## Alternatives
 
-### Prohibiting absolute paths in require
-
-Again, using aliases to refer to absolute paths is encouraged over directly passing absolute paths to require. To promote this, we might consider prohibiting the passing of absolute paths to require statements altogether.
-
-There are two main reasons for *not* doing this.
-
-#### Fast prototyping and testing
-
-First, aliases certainly make code simple and readable, but we still want to allow developers to prototype and test their code quickly. Requiring developers to set up/update their alias map each time they want to refer to a package by its absolute path isn't ideal.
-
-If absolute paths are prohibited in require statements altogether, developers might lean toward using relative paths, which often take more effort to understand:
-```lua
--- This is long, but the directory structure is clear
-local result = require("Users/JohnDoe/Luau/LuauModules/HelperModules/graphing")
-
--- This is shorter, but it is unclear which directory each "../" refers to
-local result = require("../../../../../HelperModules/graphing")
-```
-
-#### Backwards compatibility
-
-Second, backwards compatibility. Luau currently uses `fopen`/`_wfopen` to locate required modules, which both support absolute paths. Any existing code that relies on absolute paths being passed to require statements will break if this behavior is changed.
-
 ### Different ways of defining aliases
 
-#### Defining aliases directly in the requiring file
+#### Defining paths/aliases directly in the requiring file
 
-Rather than defining an alias map in an external configuration file, we could alternatively define aliases directly in the files that require them. For example, this could manifest itself through an extension of the `--!` comment syntax or introduce new syntax like `--@<ALIAS> = @<PATH>`.
+Rather than defining paths/alias maps in an external configuration file, we could alternatively define paths/aliases directly in the files that require them. For example, this could manifest itself through an extension of the `--!` comment syntax or introduce new syntax like `--@<ALIAS> = @<PATH>`.
 ```lua
 --@"Roact" = @"C:/LuauModules/Roact-v1.4.2"
 local Roact = require("@Roact")
@@ -337,9 +341,9 @@ local Roact = require("@C:/LuauModules/Roact-v1.4.2")
 
 Some potential issues with this approach:
 - Could lead to Luau file headers becoming cluttered.
-- Would probably lead to substantial copy-and-pasting between modules in the same library, as they would likely need to share certain aliases.
-- Using configuration files for alias maps allows modules to share aliases while still providing the flexibility to override if needed. This approach does not support inheritance and overriding in an obvious way.
-- Removes the layer of abstraction that is provided by external alias maps. This might also blur the scope of package managers. The software would need to directly modify lines of code in `.luau` files, rather than modifying configuration files.
+- Would probably lead to substantial copy-and-pasting between modules in the same library, as they would likely need to share certain paths/aliases.
+- Using configuration files for paths/alias maps allows modules to share aliases while still providing the flexibility to override if needed. This approach does not support inheritance and overriding in an obvious way.
+- Removes the layer of abstraction that is provided by external paths/alias maps. This might also blur the scope of package managers. The software would need to directly modify lines of code in `.luau` files, rather than modifying configuration files.
 
 #### Defining configuration files in a non-JSON format
 
