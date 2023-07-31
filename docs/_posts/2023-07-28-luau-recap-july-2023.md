@@ -49,6 +49,8 @@ Out-of-memory exception handling has been improved.
 Other runtime improvements we've made:
 
 * Performance of `table.sort` was improved further. It now guarantees N*log(N) time complexity in the worst case
+* Performance of `table.concat` was improved by ~5-7%
+* Performance of `math.noise` was improved by ~30%
 * Inlining of functions is now possible even when they used to compute their own arguments
 
 ## Autocomplete improvements
