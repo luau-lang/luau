@@ -123,9 +123,8 @@ The `paths` array can contain absolute paths, and relative paths are resolved re
 
 ##### Example Definition
 
-With the given `paths` definition:
+With the given `paths` definition (`.luaurc` file located in `/Users/johndoe/Projects/MyProject/src`):
 ```json
-// .luaurc file in /Users/johndoe/Projects/MyProject/src
 "paths": [
     "../dependencies",
     "/Users/johndoe/MyLuauLibraries",
