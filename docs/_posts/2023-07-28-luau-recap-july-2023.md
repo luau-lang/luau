@@ -38,8 +38,8 @@ We have also improved our general typechecking performance by ~17% and by additi
 
 Other fixes include:
 
-* fixed issue with type `T?` not being convertible to `T | T` or `T?` which could've generated confusing errors
-* `os.date` return type is now inferred as `DateTypeResult` when argument is "*t" or "!*t"
+* Fixed issue with type `T?` not being convertible to `T | T` or `T?` which could've generated confusing errors
+* Return type of `os.date` is now inferred as `DateTypeResult` when argument is "*t" or "!*t"
 
 ## Runtime improvements
 
@@ -48,8 +48,8 @@ Out-of-memory exception handling has been improved.
 
 Other runtime improvements we've made:
 
-* table.sort was improved further. It now guarantees N*log(N) time complexity in the worst case
-* inlining of functions is now possible even when they used to compute their own arguments
+* Performance of `table.sort` was improved further. It now guarantees N*log(N) time complexity in the worst case
+* Inlining of functions is now possible even when they used to compute their own arguments
 
 ## Autocomplete improvements
 
