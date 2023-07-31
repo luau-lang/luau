@@ -1,4 +1,4 @@
-# `math.clamp(nan, a, b)` returns a instead of `nan`
+# Change `math.clamp(nan, a, b)` to return a instead of `nan`
 
 ## Summary
 
