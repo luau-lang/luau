@@ -102,25 +102,7 @@ Relative paths can also begin with `./` or `../`, which denote the directory of 
 
 #### Absolute paths
 
-Modules can also be required by their absolute path by prefixing the root of the filesystem (e.g. `C:/` or `/`).
-
-Requiring a file called `MyModule.luau` in `<ROOT>/MyLibrary`:
-```lua
--- Relative to root directory "/" (Linux/Unix)
-local MyModule = require("/MyLibrary/MyModule")
-
--- Relative to root directory "C:/" (Windows)
-local MyModule = require("C:/MyLibrary/MyModule")
-
--- These also work, "\" is internally replaced with "/"
--- (In a string literal, we must use the escape sequence "\\")
-local MyModule = require("\\MyLibrary\\MyModule")
-local MyModule = require("C:\\MyLibrary\\MyModule")
-```
-
-Generally, absolute paths should not be used in regular code: if the location of a globally installed package changes, it can be a nuisance to find and change all require statements that reference the old absolute path.
-
-Instead, absolute paths should appear only in the alias map. Then, only the alias map will need to be modified if a package's location is changed on disk, and in the future, package management software could automatically manage the alias map rather than needing to reach into and modify individual Luau files.
+Absolute paths will no longer be supported in `require` statements, as they are unportable. The only way to require by absolute path will be through an alias, as described below.
 
 #### Aliases
 
@@ -222,7 +204,7 @@ Currently, since relative paths are always evaluated in relation to the current 
 
 For example, `require("mymodule")` and `require("../mymodule")` might refer to the same module, depending on the requiring files' locations. With the current cache implementation, the second statement would be a cache miss, as `"mymodule"` is not literally equal to `"../mymodule"`.
 
-To solve this issue, we propose transforming every path that is passed to `require` into an equivalent absolute path and using this to cache, regardless of whether it was originally passed in as a relative, absolute, or aliased path. This way, a module's return value is stored in both a unique and consistent way across different files.
+To solve this issue, we propose transforming every path that is passed to `require` into an equivalent absolute path and using this to cache, regardless of whether it was originally passed in as a relative, absolute, or aliased path. This way, a module's return value is stored in both a unique and consistent way across different files. Additionally, using absolute paths as opposed to, say, relative-to-cwd paths ensures that aliased paths also maximize cache hits.
 
 ### Implementing changes to relative paths
 
@@ -231,8 +213,8 @@ The current implementation of evaluating relative paths (in relation to the curr
 When reading in the contents of a module using [readFile](https://github.com/Roblox/luau/blob/e25de95445f2d635a125ab463426bb7fda017093/CLI/FileUtils.cpp#L47), the function `fopen`/`_wfopen` is called, which itself evaluates relative paths in relation to the CWD. In order to implement relative paths in relation to the requiring file, we have two options when evaluating a relative path.
 
 **Assume the following:**
- - Current working directory: `"/Users/johndoe/project/subdirectory/cwd`
- - Requiring file's location: `"/Users/johndoe/project/requirer.luau`
+ - Current working directory: `"/Users/johndoe/project/subdirectory/cwd"`
+ - Requiring file's location: `"/Users/johndoe/project/requirer.luau"`
  - Relative path given to require by user: `"./sibling"`
 
 **Approach 1: Translate to the "correct" relative path**
@@ -243,9 +225,14 @@ When reading in the contents of a module using [readFile](https://github.com/Rob
 
 Although `fopen`/`_wfopen` can handle both relative (to CWD) and absolute paths, the second approach makes more sense for our use case. We already need absolute paths for caching, as explained in the "Caching" section, so we might as well generate these absolute paths during the path resolution stage. With the first approach, we would need to call `realpath` to convert the relative-to-CWD path into an absolute path for caching, which is an unnecessary extra step.
 
-The second approach is also easier to implement. In order to implement the first approach, we would need to constantly keep track of the relationship between the current working directory and the requiring file in order to translate paths correctly. With the second approach, we can safely ignore the location of the current working directory: everything will be relative to the absolute path of the requiring file.
+However, for security reasons, we don't want to expose absolute paths directly to Luau scripts (for example, through `debug.info`). To prevent this, even though we will cache and read files by absolute path (which helps reduce cache misses), the `chunkname` used to load code [here](https://github.com/Roblox/luau/blob/e25de95445f2d635a125ab463426bb7fda017093/CLI/Repl.cpp#L152) will be the file's path relative to the current working directory. This way, the output of `debug.info` will be unaffected by this RFC's proposed changes.
 
-Using the second approach for the example above, we know that the absolute path to the requiring file is `"/Users/johndoe/project/requirer.luau`. To find `"./sibling"`, we can simply traverse the requiring file's absolute path to arrive at `"/Users/johndoe/project/sibling.luau`. This logic is fairly easy to implement (for example, if `".."`, move up one directory).
+- In the example above, the requiring file's stored `chunkname` would be `"../../requirer.luau"`, and its cache key would be `"/Users/johndoe/project/requirer.luau"` (was set when it was required).
+- When resolving the path `"./sibling"`, we would apply this to `"../../requirer.luau"`, obtaining the relative-to-cwd path `"../../sibling.luau"`.
+- This would become the `chunkname` of `sibling.luau` during loading.
+- This would then be converted to an absolute path `"/Users/johndoe/project/sibling"` for caching by resolving it relative to the CWD.
+
+In the case of an aliased path, it doesn't make sense to make the path relative to the CWD. In this case, the alias would remain in the `chunkname` to prevent leaking any absolute paths.
 
 #### Where to begin traversal
 
@@ -269,8 +256,6 @@ static int lua_require(lua_State* L)
 ```
 
 #### Impact on `debug.info` output
-
-In order for the above approach (using `debug.info` to obtain the requiring file's path) to work properly, we need to change the `chunkname` that is passed to `luau_load` [here](https://github.com/Roblox/luau/blob/e25de95445f2d635a125ab463426bb7fda017093/CLI/Repl.cpp#L152) to be an absolute path. This slightly changes the behavior of `debug.info`: the source file name returned by `debug.info` will now be an absolute path to the file rather than the string that was used to require that file.
 
 The current implementation also has a slight inconsistency that should be addressed. When executing a Luau script directly (launching Luau with a command-line argument: `"luau script.luau"`), that base script's name is internally stored with a file extension. However, files that are later required are stored with this extension omitted. As a result, the output of `debug.info` depends on whether the file was the base Luau script being executed or was required as a dependency of the base script.
 
