@@ -5,7 +5,7 @@ title:  "Luau Recap: July 2023"
 
 Our team is still spending a lot of time working on upcoming replacement for our type inference engine as well as working on native code generation to improve runtime performance.
 
-But doing that doesn't mean we can't have a recap of other things we and our contributors did, even if it's only a small list.
+However, we also worked on unrelated improvements during this time that are summarized here.
 
 [Cross-posted to the [Roblox Developer Forum](https://devforum.roblox.com/t/luau-recap-july-2023/).]
 
