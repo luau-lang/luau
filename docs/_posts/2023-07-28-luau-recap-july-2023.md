@@ -52,6 +52,7 @@ Other runtime improvements we've made:
 * Performance of `table.concat` was improved by ~5-7%
 * Performance of `math.noise` was improved by ~30%
 * Inlining of functions is now possible even when they used to compute their own arguments
+* Improved logic for determining whether inlining a function or unrolling a loop is profitable
 
 ## Autocomplete improvements
 
