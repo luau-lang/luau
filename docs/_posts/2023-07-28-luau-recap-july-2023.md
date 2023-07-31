@@ -60,7 +60,7 @@ An issue with exported types not being suggested is now fixed.
 
 ## Debugger improvements
 
-We have fixed search for closest executable breakpoint line.
+We have fixed the search for the closest executable breakpoint line.
 
 Previously, breakpoints might have been skipped in `else` blocks at the end of a function.
 This simplified example shows the issue:
