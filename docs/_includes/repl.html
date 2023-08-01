@@ -2,11 +2,11 @@
     <div>
         <label class="header-center"><b>Input</b></label>
         <br>
-        <textarea rows="10" cols="70" id="script"></textarea>
+        <textarea rows="10" cols="80" id="script"></textarea>
         <div class="button-group">
             <button onclick="executeScript(); return false;" class="demo-button">Run</button>
-            <input type="checkbox" checked="true" class="demo-button" id="output-clear" />
             <label for="output-clear">Clear Output</label>
+            <input type="checkbox" checked="true" id="output-clear" />
         </div>
     </div>
     <div>
@@ -26,31 +26,81 @@
         padding: 7px 7px;
         vertical-align: middle;
     }
+
     .line-error {
         background: #e65f55;
     }
 </style>
 
 <!-- CodeMirror -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/codemirror.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/addon/edit/matchbrackets.min.js"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/codemirror.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/addon/edit/matchbrackets.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.css" />
+
+
+<style>
+    .cm-s-dark.CodeMirror {background: rgb(37, 37, 37); color: rgb(204, 204, 204);}
+    .cm-s-dark div.CodeMirror-selected {background: rgb(11, 90, 175) !important;}
+    .cm-s-dark .CodeMirror-gutters {background: rgb(50, 50, 50); border-right: 0px;}
+    .cm-s-dark .CodeMirror-linenumber {color: rgb(204, 204, 204);}
+    .cm-s-dark .CodeMirror-cursor {border-left: 1px solid rgb(204, 204, 204) !important;}
+
+    .cm-s-dark span.cm-comment {color: rgb(102, 102, 102);}
+    .cm-s-dark span.cm-atom {color: rgb(255, 198, 0);}
+    .cm-s-dark span.cm-number {color: rgb(255, 198, 0);}
+
+    .cm-s-dark span.cm-keyword {color: rgb(248, 109, 124);}
+    .cm-s-dark span.cm-string {color: rgb(173, 241, 149);}
+
+    .cm-s-dark span.cm-variable {color: rgb(204, 204, 204);}
+    .cm-s-dark span.cm-builtin {color:rgb(132, 214, 247);}
+    .cm-s-dark span.cm-bracket {color: rgb(204, 204, 204);}
+    .cm-s-dark span.cm-tag {color: rgb(255, 0, 0);}
+
+    .cm-s-dark .CodeMirror-matchingbracket { text-decoration: underline; color: white !important;}
+    .cm-s-dark .CodeMirror-activeline-background { background: #202020; }
+</style>
+
+<style>
+    .cm-s-light.CodeMirror {background: white; color: black;}
+    .cm-s-light div.CodeMirror-selected {background: rgb(110, 161, 241) !important;}
+    .cm-s-light .CodeMirror-gutters {background: rgb(221, 221, 221); border-right: 0px;}
+    .cm-s-light .CodeMirror-linenumber {color: black;}
+    .cm-s-light .CodeMirror-cursor {border-left: 1px solid black !important;}
+
+    .cm-s-light span.cm-comment {color: rgb(0, 127, 9);}
+    .cm-s-light span.cm-atom {color: rgb(0, 127, 127);}
+    .cm-s-light span.cm-number {color: rgb(0, 127, 127);}
+
+    .cm-s-light span.cm-keyword {color: rgb(0, 0, 127);}
+    .cm-s-light span.cm-string {color: rgb(127, 0, 127);}
+
+    .cm-s-light span.cm-variable {color: black;}
+    .cm-s-light span.cm-builtin {color:rgb(127, 0, 0);}
+    .cm-s-light span.cm-bracket {color: rgb(127, 127, 0);}
+    .cm-s-light span.cm-tag {color: rgb(255, 0, 0);}
+
+    .cm-s-light .CodeMirror-matchingbracket { text-decoration: underline; color: black !important;}
+    .cm-s-light .CodeMirror-activeline-background { background: #202020; }
+</style>
+
 <!-- Luau Parser for CodeMirror -->
 <script src="assets/js/luau_mode.js"></script>
 <!-- CodeMirror Luau Editor (MUST BE LOADED AFTER CODEMIRROR!) -->
 <script>
+
     var editor = CodeMirror.fromTextArea(document.getElementById("script"), {
-        theme: "default",
+        theme: localStorage.getItem('theme'),
         mode: "luau",
         matchBrackets: true,
         lineNumbers: true,
         smartIndent: true,
         indentWithTabs: true,
-        indentUnit: 4,
+        indentUnit: 4
     });
     editor.setValue("print(\"Hello World!\")\n");
-        editor.addKeyMap({
-        "Ctrl-Enter": function(cm) {
+    editor.addKeyMap({
+        "Ctrl-Enter": function (cm) {
             executeScript();
         },
         "Shift-Tab": function (cm) {
@@ -91,10 +141,11 @@
 
             var err_line = parseInt(err_text);
             if (err_line) {
-                lastError = editor.addLineClass(err_line-1, "background", "line-error");
+                lastError = editor.addLineClass(err_line - 1, "background", "line-error");
             }
         }
     }
+
 </script>
 <!-- Luau WASM (async fetch; should be the last line) -->
 <script async src="https://github.com/Roblox/luau/releases/latest/download/Luau.Web.js"></script>

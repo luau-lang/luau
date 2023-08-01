@@ -1,5 +1,6 @@
-remote_theme: "mmistakes/minimal-mistakes@4.22.0"
+remote_theme: "mmistakes/minimal-mistakes@4.24.0"
 minimal_mistakes_skin: "default" #"air", "aqua", "contrast", "dark", "dirt", "neon", "mint", "plum" "sunrise"
+minimal_mistakes_skin2: "dark"
 url:
 name: Roblox
 title: Luau
