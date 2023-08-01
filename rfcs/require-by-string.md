@@ -207,7 +207,7 @@ Proposed structure of an alias map:
 
 Missing aliases in `.luaurc` are inherited from the alias maps of any parent directories, and fields can be overriden.
 
-Additionally, if an alias is bound to a relative path, the path will evaluated relative to the `.luaurc` file in which the alias was defined.
+Additionally, if an alias is bound to a relative path, the path will be evaluated relative to the `.luaurc` file in which the alias was defined.
 
 Finally, providing support for alias maps within the Roblox engine is out of the scope of this RFC but is being considered internally.
 
