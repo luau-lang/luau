@@ -175,7 +175,7 @@ Aliases are simple bindings and aren't concerned with versioning. The intention 
 In the past, it has been proposed to define alias (e.g. "`@`") to represent the root directory of a file's encapsulating library. 
 - However, the concept of a "Luau library" and its root directory is not yet rigorously defined in Luau, in terms of folder/file structure. 
 - In the future, we may add a `package.json` file or something similar that marks the root directory of a library, but this is outside of the scope of this RFC, which primarily focuses on improving require-by-string.
-- For the time being, this functionality will remain unimplemented for this reason. The alias "`@`" will remain reserved for now, meaning it cannot be overriden.
+- For the time being, this functionality will remain unimplemented for this reason. The alias "`@`" will remain reserved for now, meaning it cannot be overridden.
 
 Of course, users can still use the alias map to explicitly define this behavior with a named alias:
 
