@@ -205,7 +205,7 @@ Proposed structure of an alias map:
 }
 ```
 
-Missing aliases in `.luaurc` are inherited from the alias maps of any parent directories, and fields can be overriden.
+Missing aliases in `.luaurc` are inherited from the alias maps of any parent directories, and fields can be overridden.
 
 Additionally, if an alias is bound to a relative path, the path will be evaluated relative to the `.luaurc` file in which the alias was defined.
 
