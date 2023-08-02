@@ -28,7 +28,7 @@ laststat = 'return' [explist] | 'break' | 'continue'
 
 funcname = NAME {'.' NAME} [':' NAME]
 funcbody = ['<' GenericTypeList '>'] '(' [parlist] ')' [':' ReturnType] block 'end'
-parlist = bindinglist [',' '...'] | '...'
+parlist = bindinglist [',' '...'] | '...' [':' GenericTypePack]
 
 explist = {exp ','} exp
 namelist = NAME {',' NAME}
