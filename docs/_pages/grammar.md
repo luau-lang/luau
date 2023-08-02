@@ -28,7 +28,7 @@ laststat = 'return' [explist] | 'break' | 'continue'
 
 funcname = NAME {'.' NAME} [':' NAME]
 funcbody = ['<' GenericTypeList '>'] '(' [parlist] ')' [':' ReturnType] block 'end'
-parlist = bindinglist [',' '...'] | '...' [':' GenericTypePack]
+parlist = bindinglist [',' '...'] | '...' [':' (Type | GenericTypePack)]
 
 explist = {exp ','} exp
 namelist = NAME {',' NAME}
@@ -93,6 +93,6 @@ TableIndexer = '[' Type ']' ':' Type
 TableProp = NAME ':' Type
 TablePropOrIndexer = TableProp | TableIndexer
 PropList = TablePropOrIndexer {fieldsep TablePropOrIndexer} [fieldsep]
-TableType = '{' [(PropList | Type)] '}'
+TableType = '{' Type '}' | '{' [PropList] '}'
 FunctionType = ['<' GenericTypeList '>'] '(' [BoundTypeList] ')' '->' ReturnType
 ```
