@@ -10,4 +10,5 @@
 /luau
 /luau-tests
 /luau-analyze
+/luau-compile
 __pycache__
