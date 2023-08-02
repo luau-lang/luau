@@ -83,6 +83,7 @@ GenericTypeListWithDefaults =
     GenericTypePackParameterWithDefault {',' GenericTypePackParameterWithDefault}
 
 TypeList = Type [',' TypeList] | '...' Type
+BoundTypeList = [NAME ':'] Type [',' BoundTypeList] | '...' Type
 TypeParams = (Type | TypePack | VariadicTypePack | GenericTypePack) [',' TypeParams]
 TypePack = '(' [TypeList] ')'
 GenericTypePack = NAME '...'
@@ -93,5 +94,5 @@ TableProp = NAME ':' Type
 TablePropOrIndexer = TableProp | TableIndexer
 PropList = TablePropOrIndexer {fieldsep TablePropOrIndexer} [fieldsep]
 TableType = '{' [PropList] '}'
-FunctionType = ['<' GenericTypeList '>'] '(' [TypeList] ')' '->' ReturnType
+FunctionType = ['<' GenericTypeList '>'] '(' [BoundTypeList] ')' '->' ReturnType
 ```
