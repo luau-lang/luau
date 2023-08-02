@@ -29,3 +29,5 @@ Works identically to `getfenv` but only provides read-only access to the functio
 Type-checking can be difficult.
 
 Roblox's marketplace currently hides assets that use `getfenv` so it would need to be updated to hide assets with `_ENV`/`getenv`/`getrenv`.
+
+Environments can have metamethods of their own which may not interface well with a read-only `getenv`/`getrenv`.
