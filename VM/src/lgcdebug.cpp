@@ -648,16 +648,28 @@ static void enumtable(EnumContext* ctx, Table* h)
 
     if (h->node != &luaH_dummynode)
     {
+        bool weakkey = false;
+        bool weakvalue = false;
+
+        if (const TValue* mode = gfasttm(ctx->L->global, h->metatable, TM_MODE))
+        {
+            if (ttisstring(mode))
+            {
+                weakkey = strchr(svalue(mode), 'k') != NULL;
+                weakvalue = strchr(svalue(mode), 'v') != NULL;
+            }
+        }
+
         for (int i = 0; i < sizenode(h); ++i)
         {
             const LuaNode& n = h->node[i];
 
             if (!ttisnil(&n.val) && (iscollectable(&n.key) || iscollectable(&n.val)))
             {
-                if (iscollectable(&n.key))
+                if (!weakkey && iscollectable(&n.key))
                     enumedge(ctx, obj2gco(h), gcvalue(&n.key), "[key]");
 
-                if (iscollectable(&n.val))
+                if (!weakvalue && iscollectable(&n.val))
                 {
                     if (ttisstring(&n.key))
                     {
@@ -671,7 +683,9 @@ static void enumtable(EnumContext* ctx, Table* h)
                     }
                     else
                     {
-                        enumedge(ctx, obj2gco(h), gcvalue(&n.val), NULL);
+                        char buf[32];
+                        snprintf(buf, sizeof(buf), "[%s]", getstr(ctx->L->global->ttname[n.key.tt]));
+                        enumedge(ctx, obj2gco(h), gcvalue(&n.val), buf);
                     }
                 }
             }
@@ -745,7 +759,14 @@ static void enumthread(EnumContext* ctx, lua_State* th)
     {
         Proto* p = tcl->l.p;
 
-        enumnode(ctx, obj2gco(th), getstr(p->source));
+        char buf[LUA_IDSIZE];
+
+        if (p->source)
+            snprintf(buf, sizeof(buf), "%s:%d %s", p->debugname ? getstr(p->debugname) : "", p->linedefined, getstr(p->source));
+        else
+            snprintf(buf, sizeof(buf), "%s:%d", p->debugname ? getstr(p->debugname) : "", p->linedefined);
+
+        enumnode(ctx, obj2gco(th), buf);
     }
     else
     {

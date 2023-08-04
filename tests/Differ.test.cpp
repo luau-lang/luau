@@ -5,8 +5,10 @@
 #include "Luau/Frontend.h"
 
 #include "Fixture.h"
+#include "ClassFixture.h"
 
 #include "Luau/Symbol.h"
+#include "Luau/Type.h"
 #include "ScopedFlags.h"
 #include "doctest.h"
 #include <iostream>
@@ -126,6 +128,592 @@ TEST_CASE_FIXTURE(DifferFixture, "a_nested_table_wrong_match")
     compareTypesNe("foo", "almostFoo",
         "DiffError: these two types are not equal because the left type at foo.inner.table.has.wrong.variant has type { because: { it: { goes: "
         "{ on: string } } } }, while the right type at almostFoo.inner.table.has.wrong.variant has type string");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "left_cyclic_table_right_table_missing_property")
+{
+    CheckResult result = check(R"(
+    local function id<a>(x: a): a
+      return x
+    end
+
+    -- Remove name from cyclic table
+    local foo = id({})
+    foo.foo = foo
+    local almostFoo = { x = 2 }
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesNe("foo", "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.foo has type t1 where t1 = { foo: t1 }, while the right type at almostFoo is missing the property foo)");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "left_cyclic_table_right_table_property_wrong")
+{
+    CheckResult result = check(R"(
+    local function id<a>(x: a): a
+      return x
+    end
+    
+    -- Remove name from cyclic table
+    local foo = id({})
+    foo.foo = foo
+    local almostFoo = { foo = 2 }
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesNe("foo", "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.foo has type t1 where t1 = { foo: t1 }, while the right type at almostFoo.foo has type number)");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "right_cyclic_table_left_table_missing_property")
+{
+    CheckResult result = check(R"(
+    local function id<a>(x: a): a
+      return x
+    end
+    
+    -- Remove name from cyclic table
+    local foo = id({})
+    foo.foo = foo
+    local almostFoo = { x = 2 }
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesNe("almostFoo", "foo",
+        R"(DiffError: these two types are not equal because the left type at almostFoo.x has type number, while the right type at <unlabeled-symbol> is missing the property x)");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "right_cyclic_table_left_table_property_wrong")
+{
+    CheckResult result = check(R"(
+    local function id<a>(x: a): a
+      return x
+    end
+    
+    -- Remove name from cyclic table
+    local foo = id({})
+    foo.foo = foo
+    local almostFoo = { foo = 2 }
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesNe("almostFoo", "foo",
+        R"(DiffError: these two types are not equal because the left type at almostFoo.foo has type number, while the right type at <unlabeled-symbol>.foo has type t1 where t1 = { foo: t1 })");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "equal_table_two_cyclic_tables_are_not_different")
+{
+    CheckResult result = check(R"(
+    local function id<a>(x: a): a
+      return x
+    end
+    
+    -- Remove name from cyclic table
+    local foo = id({})
+    foo.foo = foo
+    local almostFoo = id({})
+    almostFoo.foo = almostFoo
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesEq("foo", "almostFoo");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "equal_table_two_shifted_circles_are_not_different")
+{
+    CheckResult result = check(R"(
+    local function id<a>(x: a): a
+      return x
+    end
+    
+    -- Remove name from cyclic table
+    local foo = id({})
+    foo.foo = id({})
+    foo.foo.foo = id({})
+    foo.foo.foo.foo = id({})
+    foo.foo.foo.foo.foo = foo
+
+    local builder = id({})
+    builder.foo = id({})
+    builder.foo.foo = id({})
+    builder.foo.foo.foo = id({})
+    builder.foo.foo.foo.foo = builder
+    -- Shift
+    local almostFoo = builder.foo.foo
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesEq("foo", "almostFoo");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "table_left_circle_right_measuring_tape")
+{
+    // Left is a circle, right is a measuring tape
+    CheckResult result = check(R"(
+    local function id<a>(x: a): a
+      return x
+    end
+    
+    -- Remove name from cyclic table
+    local foo = id({})
+    foo.foo = id({})
+    foo.foo.foo = id({})
+    foo.foo.foo.foo = id({})
+    foo.foo.foo.bar = id({}) -- anchor to pin shape
+    foo.foo.foo.foo.foo = foo
+    local almostFoo = id({})
+    almostFoo.foo = id({})
+    almostFoo.foo.foo = id({})
+    almostFoo.foo.foo.foo = id({})
+    almostFoo.foo.foo.bar = id({}) -- anchor to pin shape
+    almostFoo.foo.foo.foo.foo = almostFoo.foo
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesNe("foo", "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.foo.foo.foo.foo.foo is missing the property bar, while the right type at <unlabeled-symbol>.foo.foo.foo.foo.foo.bar has type {  })");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "equal_table_measuring_tapes")
+{
+    CheckResult result = check(R"(
+    local function id<a>(x: a): a
+      return x
+    end
+    
+    -- Remove name from cyclic table
+    local foo = id({})
+    foo.foo = id({})
+    foo.foo.foo = id({})
+    foo.foo.foo.foo = id({})
+    foo.foo.foo.foo.foo = foo.foo
+    local almostFoo = id({})
+    almostFoo.foo = id({})
+    almostFoo.foo.foo = id({})
+    almostFoo.foo.foo.foo = id({})
+    almostFoo.foo.foo.foo.foo = almostFoo.foo
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesEq("foo", "almostFoo");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "equal_table_A_B_C")
+{
+    CheckResult result = check(R"(
+    local function id<a>(x: a): a
+      return x
+    end
+    
+    -- Remove name from cyclic table
+    local foo = id({})
+    foo.foo = id({})
+    foo.foo.foo = id({})
+    foo.foo.foo.foo = id({})
+    foo.foo.foo.foo.foo = foo.foo
+    local almostFoo = id({})
+    almostFoo.foo = id({})
+    almostFoo.foo.foo = id({})
+    almostFoo.foo.foo.foo = id({})
+    almostFoo.foo.foo.foo.foo = almostFoo.foo
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesEq("foo", "almostFoo");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "equal_table_kind_A")
+{
+    CheckResult result = check(R"(
+    -- Remove name from cyclic table
+    local function id<a>(x: a): a
+      return x
+    end
+
+    local foo = id({})
+    foo.left = id({})
+    foo.right = id({})
+    foo.left.left = id({})
+    foo.left.right = id({})
+    foo.right.left = id({})
+    foo.right.right = id({})
+    foo.right.left.left = id({})
+    foo.right.left.right = id({})
+
+    foo.right.left.left.child = foo.right
+
+    local almostFoo = id({})
+    almostFoo.left = id({})
+    almostFoo.right = id({})
+    almostFoo.left.left = id({})
+    almostFoo.left.right = id({})
+    almostFoo.right.left = id({})
+    almostFoo.right.right = id({})
+    almostFoo.right.left.left = id({})
+    almostFoo.right.left.right = id({})
+
+    almostFoo.right.left.left.child = almostFoo.right
+
+    -- Bindings for requireType
+    local fooLeft = foo.left
+    local fooRight = foo.left.right
+    local fooLeftLeft = foo.left.left
+    local fooLeftRight = foo.left.right
+    local fooRightLeft = foo.right.left
+    local fooRightRight = foo.right.right
+    local fooRightLeftLeft = foo.right.left.left
+    local fooRightLeftRight = foo.right.left.right
+
+    local almostFooLeft = almostFoo.left
+    local almostFooRight = almostFoo.left.right
+    local almostFooLeftLeft = almostFoo.left.left
+    local almostFooLeftRight = almostFoo.left.right
+    local almostFooRightLeft = almostFoo.right.left
+    local almostFooRightRight = almostFoo.right.right
+    local almostFooRightLeftLeft = almostFoo.right.left.left
+    local almostFooRightLeftRight = almostFoo.right.left.right
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesEq("foo", "almostFoo");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "equal_table_kind_B")
+{
+    CheckResult result = check(R"(
+    -- Remove name from cyclic table
+    local function id<a>(x: a): a
+      return x
+    end
+
+    local foo = id({})
+    foo.left = id({})
+    foo.right = id({})
+    foo.left.left = id({})
+    foo.left.right = id({})
+    foo.right.left = id({})
+    foo.right.right = id({})
+    foo.right.left.left = id({})
+    foo.right.left.right = id({})
+
+    foo.right.left.left.child = foo.left
+
+    local almostFoo = id({})
+    almostFoo.left = id({})
+    almostFoo.right = id({})
+    almostFoo.left.left = id({})
+    almostFoo.left.right = id({})
+    almostFoo.right.left = id({})
+    almostFoo.right.right = id({})
+    almostFoo.right.left.left = id({})
+    almostFoo.right.left.right = id({})
+
+    almostFoo.right.left.left.child = almostFoo.left
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesEq("foo", "almostFoo");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "equal_table_kind_C")
+{
+    CheckResult result = check(R"(
+    -- Remove name from cyclic table
+    local function id<a>(x: a): a
+      return x
+    end
+
+    local foo = id({})
+    foo.left = id({})
+    foo.right = id({})
+    foo.left.left = id({})
+    foo.left.right = id({})
+    foo.right.left = id({})
+    foo.right.right = id({})
+    foo.right.left.left = id({})
+    foo.right.left.right = id({})
+
+    foo.right.left.left.child = foo
+
+    local almostFoo = id({})
+    almostFoo.left = id({})
+    almostFoo.right = id({})
+    almostFoo.left.left = id({})
+    almostFoo.left.right = id({})
+    almostFoo.right.left = id({})
+    almostFoo.right.right = id({})
+    almostFoo.right.left.left = id({})
+    almostFoo.right.left.right = id({})
+
+    almostFoo.right.left.left.child = almostFoo
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesEq("foo", "almostFoo");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "equal_table_kind_D")
+{
+    CheckResult result = check(R"(
+    -- Remove name from cyclic table
+    local function id<a>(x: a): a
+      return x
+    end
+
+    local foo = id({})
+    foo.left = id({})
+    foo.right = id({})
+    foo.left.left = id({})
+    foo.left.right = id({})
+    foo.right.left = id({})
+    foo.right.right = id({})
+    foo.right.left.left = id({})
+    foo.right.left.right = id({})
+
+    foo.right.left.left.child = foo.right.left.left
+
+    local almostFoo = id({})
+    almostFoo.left = id({})
+    almostFoo.right = id({})
+    almostFoo.left.left = id({})
+    almostFoo.left.right = id({})
+    almostFoo.right.left = id({})
+    almostFoo.right.right = id({})
+    almostFoo.right.left.left = id({})
+    almostFoo.right.left.right = id({})
+
+    almostFoo.right.left.left.child = almostFoo.right.left.left
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesEq("foo", "almostFoo");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "equal_table_cyclic_diamonds_unraveled")
+{
+    CheckResult result = check(R"(
+    -- Remove name from cyclic table
+    local function id<a>(x: a): a
+      return x
+    end
+
+    -- Pattern 1
+    local foo = id({})
+    foo.child = id({})
+    foo.child.left = id({})
+    foo.child.right = id({})
+
+    foo.child.left.child = foo
+    foo.child.right.child = foo
+
+    -- Pattern 2
+    local almostFoo = id({})
+    almostFoo.child = id({})
+    almostFoo.child.left = id({})
+    almostFoo.child.right = id({})
+
+    almostFoo.child.left.child = id({}) -- Use a new table
+    almostFoo.child.right.child = almostFoo.child.left.child -- Refer to the same new table
+
+    almostFoo.child.left.child.child = id({})
+    almostFoo.child.left.child.child.left = id({})
+    almostFoo.child.left.child.child.right = id({})
+
+    almostFoo.child.left.child.child.left.child = almostFoo.child.left.child
+    almostFoo.child.left.child.child.right.child = almostFoo.child.left.child
+
+    -- Pattern 3
+    local anotherFoo = id({})
+    anotherFoo.child = id({})
+    anotherFoo.child.left = id({})
+    anotherFoo.child.right = id({})
+
+    anotherFoo.child.left.child = id({}) -- Use a new table
+    anotherFoo.child.right.child = id({}) -- Use another new table
+
+    anotherFoo.child.left.child.child = id({})
+    anotherFoo.child.left.child.child.left = id({})
+    anotherFoo.child.left.child.child.right = id({})
+    anotherFoo.child.right.child.child = id({})
+    anotherFoo.child.right.child.child.left = id({})
+    anotherFoo.child.right.child.child.right = id({})
+
+    anotherFoo.child.left.child.child.left.child = anotherFoo.child.left.child
+    anotherFoo.child.left.child.child.right.child = anotherFoo.child.left.child
+    anotherFoo.child.right.child.child.left.child = anotherFoo.child.right.child
+    anotherFoo.child.right.child.child.right.child = anotherFoo.child.right.child
+
+    -- Pattern 4
+    local cleverFoo = id({})
+    cleverFoo.child = id({})
+    cleverFoo.child.left = id({})
+    cleverFoo.child.right = id({})
+
+    cleverFoo.child.left.child = id({}) -- Use a new table
+    cleverFoo.child.right.child = id({}) -- Use another new table
+
+    cleverFoo.child.left.child.child = id({})
+    cleverFoo.child.left.child.child.left = id({})
+    cleverFoo.child.left.child.child.right = id({})
+    cleverFoo.child.right.child.child = id({})
+    cleverFoo.child.right.child.child.left = id({})
+    cleverFoo.child.right.child.child.right = id({})
+    -- Same as pattern 3, but swapped here
+    cleverFoo.child.left.child.child.left.child = cleverFoo.child.right.child -- Swap
+    cleverFoo.child.left.child.child.right.child = cleverFoo.child.right.child
+    cleverFoo.child.right.child.child.left.child = cleverFoo.child.left.child
+    cleverFoo.child.right.child.child.right.child = cleverFoo.child.left.child
+
+    -- Pattern 5
+    local cheekyFoo = id({})
+    cheekyFoo.child = id({})
+    cheekyFoo.child.left = id({})
+    cheekyFoo.child.right = id({})
+
+    cheekyFoo.child.left.child = foo -- Use existing pattern
+    cheekyFoo.child.right.child = foo -- Use existing pattern
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    std::vector<std::string> symbols{"foo", "almostFoo", "anotherFoo", "cleverFoo", "cheekyFoo"};
+
+    for (auto left : symbols)
+    {
+        for (auto right : symbols)
+        {
+            compareTypesEq(left, right);
+        }
+    }
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "equal_function_cyclic")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        function foo()
+            return foo
+        end
+        function almostFoo()
+            function bar()
+                return bar
+            end
+            return bar
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesEq("foo", "almostFoo");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "equal_function_table_cyclic")
+{
+    // Old solver does not correctly infer function typepacks
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        function foo()
+            return {
+                bar = foo
+            }
+        end
+        function almostFoo()
+            function bar()
+                return {
+                    bar = bar
+                }
+            end
+            return {
+                bar = bar
+            }
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesEq("foo", "almostFoo");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "function_table_self_referential_cyclic")
+{
+    // Old solver does not correctly infer function typepacks
+    // ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        function foo()
+            return {
+                bar = foo
+            }
+        end
+        function almostFoo()
+            function bar()
+                return bar
+            end
+            return {
+                bar = bar
+            }
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesNe("foo", "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Ret[1].bar.Ret[1] has type t1 where t1 = {| bar: () -> t1 |}, while the right type at <unlabeled-symbol>.Ret[1].bar.Ret[1] has type t1 where t1 = () -> t1)");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "equal_union_cyclic")
+{
+    TypeArena arena;
+    TypeId number = arena.addType(PrimitiveType{PrimitiveType::Number});
+    TypeId string = arena.addType(PrimitiveType{PrimitiveType::String});
+
+    TypeId foo = arena.addType(UnionType{std::vector<TypeId>{number, string}});
+    UnionType* unionFoo = getMutable<UnionType>(foo);
+    unionFoo->options.push_back(foo);
+
+    TypeId almostFoo = arena.addType(UnionType{std::vector<TypeId>{number, string}});
+    UnionType* unionAlmostFoo = getMutable<UnionType>(almostFoo);
+    unionAlmostFoo->options.push_back(almostFoo);
+
+    compareEq(foo, almostFoo);
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "equal_intersection_cyclic")
+{
+    // Old solver does not correctly refine test types
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+    function foo1(x: number)
+        return x
+    end
+    function foo2(x: string)
+        return 0
+    end
+    function bar1(x: number)
+        return x
+    end
+    function bar2(x: string)
+        return 0
+    end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+    TypeId foo1 = requireType("foo1");
+    TypeId foo2 = requireType("foo2");
+    TypeId bar1 = requireType("bar1");
+    TypeId bar2 = requireType("bar2");
+
+    TypeArena arena;
+
+    TypeId foo = arena.addType(IntersectionType{std::vector<TypeId>{foo1, foo2}});
+    IntersectionType* intersectionFoo = getMutable<IntersectionType>(foo);
+    intersectionFoo->parts.push_back(foo);
+
+    TypeId almostFoo = arena.addType(IntersectionType{std::vector<TypeId>{bar1, bar2}});
+    IntersectionType* intersectionAlmostFoo = getMutable<IntersectionType>(almostFoo);
+    intersectionAlmostFoo->parts.push_back(almostFoo);
+
+    compareEq(foo, almostFoo);
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "singleton")
@@ -698,6 +1286,246 @@ TEST_CASE_FIXTURE(DifferFixture, "generic_three_or_three")
 
     compareTypesNe("foo", "almostFoo",
         R"(DiffError: these two types are not equal because the left generic at <unlabeled-symbol>.Arg[2] cannot be the same type parameter as the right generic at <unlabeled-symbol>.Arg[2])");
+}
+
+TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "equal_metatable")
+{
+    CheckResult result = check(R"(
+    local metaFoo = {
+        metaBar = 5
+    }
+    local metaAlmostFoo = {
+        metaBar = 1
+    }
+    local foo = {
+        bar = 3
+    }
+    setmetatable(foo, metaFoo)
+    local almostFoo = {
+        bar = 4
+    }
+    setmetatable(almostFoo, metaAlmostFoo)
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesEq("foo", "almostFoo");
+}
+
+TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "metatable_normal")
+{
+    CheckResult result = check(R"(
+    local metaFoo = {
+        metaBar = 5
+    }
+    local metaAlmostFoo = {
+        metaBar = 1
+    }
+    local foo = {
+        bar = 3
+    }
+    setmetatable(foo, metaFoo)
+    local almostFoo = {
+        bar = "hello"
+    }
+    setmetatable(almostFoo, metaAlmostFoo)
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesNe("foo", "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.bar has type number, while the right type at <unlabeled-symbol>.bar has type string)");
+}
+
+TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "metatable_metanormal")
+{
+    CheckResult result = check(R"(
+    local metaFoo = {
+        metaBar = "world"
+    }
+    local metaAlmostFoo = {
+        metaBar = 1
+    }
+    local foo = {
+        bar = "amazing"
+    }
+    setmetatable(foo, metaFoo)
+    local almostFoo = {
+        bar = "hello"
+    }
+    setmetatable(almostFoo, metaAlmostFoo)
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesNe("foo", "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.__metatable.metaBar has type string, while the right type at <unlabeled-symbol>.__metatable.metaBar has type number)");
+}
+
+TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "metatable_metamissing_left")
+{
+    CheckResult result = check(R"(
+    local metaFoo = {
+        metaBar = "world"
+    }
+    local metaAlmostFoo = {
+        metaBar = 1,
+        thisIsOnlyInRight = 2,
+    }
+    local foo = {
+        bar = "amazing"
+    }
+    setmetatable(foo, metaFoo)
+    local almostFoo = {
+        bar = "hello"
+    }
+    setmetatable(almostFoo, metaAlmostFoo)
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesNe("foo", "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.__metatable is missing the property thisIsOnlyInRight, while the right type at <unlabeled-symbol>.__metatable.thisIsOnlyInRight has type number)");
+}
+
+TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "metatable_metamissing_right")
+{
+    CheckResult result = check(R"(
+    local metaFoo = {
+        metaBar = "world",
+        thisIsOnlyInLeft = 2,
+    }
+    local metaAlmostFoo = {
+        metaBar = 1,
+    }
+    local foo = {
+        bar = "amazing"
+    }
+    setmetatable(foo, metaFoo)
+    local almostFoo = {
+        bar = "hello"
+    }
+    setmetatable(almostFoo, metaAlmostFoo)
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesNe("foo", "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.__metatable.thisIsOnlyInLeft has type number, while the right type at <unlabeled-symbol>.__metatable is missing the property thisIsOnlyInLeft)");
+}
+
+TEST_CASE_FIXTURE(DifferFixtureGeneric<ClassFixture>, "equal_class")
+{
+    CheckResult result = check(R"(
+        local foo = BaseClass
+        local almostFoo = BaseClass
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesEq("foo", "almostFoo");
+}
+
+TEST_CASE_FIXTURE(DifferFixtureGeneric<ClassFixture>, "class_normal")
+{
+    CheckResult result = check(R"(
+        local foo = BaseClass
+        local almostFoo = ChildClass
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesNe("foo", "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> has type BaseClass, while the right type at <unlabeled-symbol> has type ChildClass)");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "equal_generictp")
+{
+    CheckResult result = check(R"(
+        local foo: <T...>() -> T...
+        local almostFoo: <U...>() -> U...
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesEq("foo", "almostFoo");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "generictp_ne_fn")
+{
+    CheckResult result = check(R"(
+        local foo: <T, U...>(...T) -> U...
+        local almostFoo: <U...>(U...) -> U...
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    compareTypesNe("foo", "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> has type <T, U...>(...T) -> (U...), while the right type at <unlabeled-symbol> has type <U...>(U...) -> (U...))");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "generictp_normal")
+{
+    CheckResult result = check(R"(
+        -- trN should be X... -> Y...
+        -- s should be X -> Y...
+        -- x should be X
+        -- bij should be X... -> X...
+
+        -- Intended signature: <X..., Y..., Z>(X... -> Y..., Z -> X..., X... -> Y..., Z, Y... -> Y...) -> ()
+        function foo(tr, s, tr2, x, bij)
+            bij(bij(tr(s(x))))
+            bij(bij(tr2(s(x))))
+        end
+        -- Intended signature: <X..., Y..., Z>(X... -> X..., Z -> X..., X... -> Y..., Z, Y... -> Y...) -> ()
+        function almostFoo(bij, s, tr, x, bij2)
+            bij(bij(s(x)))
+            bij2(bij2(tr(s(x))))
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    INFO(Luau::toString(requireType("foo")));
+    INFO(Luau::toString(requireType("almostFoo")));
+
+    compareTypesNe("foo", "almostFoo",
+        R"(DiffError: these two types are not equal because the left generic at <unlabeled-symbol>.Arg[1].Ret[Variadic] cannot be the same type parameter as the right generic at <unlabeled-symbol>.Arg[1].Ret[Variadic])");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "generictp_normal_2")
+{
+    CheckResult result = check(R"(
+        -- trN should be X... -> Y...
+        -- s should be X -> Y...
+        -- x should be X
+        -- bij should be X... -> X...
+
+        function foo(s, tr, tr2, x, bij)
+            bij(bij(tr(s(x))))
+            bij(bij(tr2(s(x))))
+        end
+        function almostFoo(s, bij, tr, x, bij2)
+            bij2(bij2(bij(bij(tr(s(x))))))
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    INFO(Luau::toString(requireType("foo")));
+    INFO(Luau::toString(requireType("almostFoo")));
+
+    compareTypesNe("foo", "almostFoo",
+        R"(DiffError: these two types are not equal because the left generic at <unlabeled-symbol>.Arg[2].Arg[Variadic] cannot be the same type parameter as the right generic at <unlabeled-symbol>.Arg[2].Arg[Variadic])");
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "equal_generictp_cyclic")
+{
+    CheckResult result = check(R"(
+        function foo(f, g, s, x)
+            f(f(g(g(s(x)))))
+            return foo
+        end
+        function almostFoo(f, g, s, x)
+            g(g(f(f(s(x)))))
+            return almostFoo
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    INFO(Luau::toString(requireType("foo")));
+    INFO(Luau::toString(requireType("almostFoo")));
+
+    compareTypesEq("foo", "almostFoo");
 }
 
 TEST_SUITE_END();

@@ -78,9 +78,37 @@ TEST_CASE_FIXTURE(Fixture, "infer_locals_via_assignment_from_its_call_site")
         f("foo")
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK("number | string" == toString(requireType("a")));
+        CHECK("(number | string) -> ()" == toString(requireType("f")));
 
-    CHECK_EQ("number", toString(requireType("a")));
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        CHECK_EQ("number", toString(requireType("a")));
+    }
+}
+TEST_CASE_FIXTURE(Fixture, "interesting_local_type_inference_case")
+{
+    ScopedFastFlag sff[] = {
+        {"DebugLuauDeferredConstraintResolution", true},
+    };
+
+    CheckResult result = check(R"(
+        local a
+        function f(x) a = x end
+        f({x = 5})
+        f({x = 5})
+    )");
+
+    CHECK("{ x: number }" == toString(requireType("a")));
+    CHECK("({ x: number }) -> ()" == toString(requireType("f")));
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_in_nocheck_mode")

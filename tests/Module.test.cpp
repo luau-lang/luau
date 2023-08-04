@@ -267,13 +267,16 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
 
 TEST_CASE_FIXTURE(Fixture, "clone_free_types")
 {
-    Type freeTy(FreeType{TypeLevel{}});
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", false};
+
+    TypeArena arena;
+    TypeId freeTy = freshType(NotNull{&arena}, builtinTypes, nullptr);
     TypePackVar freeTp(FreeTypePack{TypeLevel{}});
 
     TypeArena dest;
     CloneState cloneState;
 
-    TypeId clonedTy = clone(&freeTy, dest, cloneState);
+    TypeId clonedTy = clone(freeTy, dest, cloneState);
     CHECK(get<FreeType>(clonedTy));
 
     cloneState = {};

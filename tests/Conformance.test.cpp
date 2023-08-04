@@ -1723,6 +1723,52 @@ TEST_CASE("Native")
     runConformance("native.lua");
 }
 
+TEST_CASE("NativeTypeAnnotations")
+{
+    ScopedFastFlag bytecodeVersion4("BytecodeVersion4", true);
+    ScopedFastFlag luauCompileFunctionType("LuauCompileFunctionType", true);
+
+    // This tests requires code to run natively, otherwise all 'is_native' checks will fail
+    if (!codegen || !luau_codegen_supported())
+        return;
+
+    lua_CompileOptions copts = defaultOptions();
+    copts.vectorCtor = "vector";
+    copts.vectorType = "vector";
+
+    runConformance(
+        "native_types.lua",
+        [](lua_State* L) {
+            // add is_native() function
+            lua_pushcclosurek(
+                L,
+                [](lua_State* L) -> int {
+                    extern int luaG_isnative(lua_State * L, int level);
+
+                    lua_pushboolean(L, luaG_isnative(L, 1));
+                    return 1;
+                },
+                "is_native", 0, nullptr);
+            lua_setglobal(L, "is_native");
+
+            // for vector tests
+            lua_pushcfunction(L, lua_vector, "vector");
+            lua_setglobal(L, "vector");
+
+#if LUA_VECTOR_SIZE == 4
+            lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
+#else
+            lua_pushvector(L, 0.0f, 0.0f, 0.0f);
+#endif
+            luaL_newmetatable(L, "vector");
+
+            lua_setreadonly(L, -1, true);
+            lua_setmetatable(L, -2);
+            lua_pop(L, 1);
+        },
+        nullptr, nullptr, &copts);
+}
+
 TEST_CASE("HugeFunction")
 {
     std::string source;

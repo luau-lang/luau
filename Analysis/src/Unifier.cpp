@@ -24,6 +24,8 @@ LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauOccursIsntAlwaysFailure, false)
 LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
 LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAGVARIABLE(LuauTableUnifyRecursionLimit, false)
 
 namespace Luau
 {
@@ -1741,7 +1743,10 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
         }
 
         auto mkFreshType = [this](Scope* scope, TypeLevel level) {
-            return types->freshType(scope, level);
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+                return freshType(NotNull{types}, builtinTypes, scope);
+            else
+                return types->freshType(scope, level);
         };
 
         const TypePackId emptyTp = types->addTypePack(TypePack{{}, std::nullopt});
@@ -1977,7 +1982,7 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
     // generic methods in tables to be marked read-only.
     if (FFlag::LuauInstantiateInSubtyping && shouldInstantiate)
     {
-        Instantiation instantiation{&log, types, scope->level, scope};
+        Instantiation instantiation{&log, types, builtinTypes, scope->level, scope};
 
         std::optional<TypeId> instantiated = instantiation.substitute(subTy);
         if (instantiated.has_value())
@@ -2126,7 +2131,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
     {
         if (variance == Covariant && subTable->state == TableState::Generic && superTable->state != TableState::Generic)
         {
-            Instantiation instantiation{&log, types, subTable->level, scope};
+            Instantiation instantiation{&log, types, builtinTypes, subTable->level, scope};
 
             std::optional<TypeId> instantiated = instantiation.substitute(subTy);
             if (instantiated.has_value())
@@ -2251,10 +2256,23 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
 
         if (superTable != newSuperTable || subTable != newSubTable)
         {
-            if (errors.empty())
-                return tryUnifyTables(subTy, superTy, isIntersection);
-            else
+            if (FFlag::LuauTableUnifyRecursionLimit)
+            {
+                if (errors.empty())
+                {
+                    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                    tryUnifyTables(subTy, superTy, isIntersection);
+                }
+
                 return;
+            }
+            else
+            {
+                if (errors.empty())
+                    return tryUnifyTables(subTy, superTy, isIntersection);
+                else
+                    return;
+            }
         }
     }
 
@@ -2329,10 +2347,23 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
 
         if (superTable != newSuperTable || subTable != newSubTable)
         {
-            if (errors.empty())
-                return tryUnifyTables(subTy, superTy, isIntersection);
-            else
+            if (FFlag::LuauTableUnifyRecursionLimit)
+            {
+                if (errors.empty())
+                {
+                    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                    tryUnifyTables(subTy, superTy, isIntersection);
+                }
+
                 return;
+            }
+            else
+            {
+                if (errors.empty())
+                    return tryUnifyTables(subTy, superTy, isIntersection);
+                else
+                    return;
+            }
         }
     }
 

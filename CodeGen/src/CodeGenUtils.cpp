@@ -794,34 +794,31 @@ const Instruction* executeFORGPREP(lua_State* L, const Instruction* pc, StkId ba
     return pc;
 }
 
-const Instruction* executeGETVARARGS(lua_State* L, const Instruction* pc, StkId base, TValue* k)
+void executeGETVARARGSMultRet(lua_State* L, const Instruction* pc, StkId base, int rai)
 {
     [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
-    Instruction insn = *pc++;
-    int b = LUAU_INSN_B(insn) - 1;
     int n = cast_int(base - L->ci->func) - cl->l.p->numparams - 1;
 
-    if (b == LUA_MULTRET)
-    {
-        VM_PROTECT(luaD_checkstack(L, n));
-        StkId ra = VM_REG(LUAU_INSN_A(insn)); // previous call may change the stack
+    VM_PROTECT(luaD_checkstack(L, n));
+    StkId ra = VM_REG(rai); // previous call may change the stack
 
-        for (int j = 0; j < n; j++)
-            setobj2s(L, ra + j, base - n + j);
+    for (int j = 0; j < n; j++)
+        setobj2s(L, ra + j, base - n + j);
 
-        L->top = ra + n;
-        return pc;
-    }
-    else
-    {
-        StkId ra = VM_REG(LUAU_INSN_A(insn));
+    L->top = ra + n;
+}
 
-        for (int j = 0; j < b && j < n; j++)
-            setobj2s(L, ra + j, base - n + j);
-        for (int j = n; j < b; j++)
-            setnilvalue(ra + j);
-        return pc;
-    }
+void executeGETVARARGSConst(lua_State* L, StkId base, int rai, int b)
+{
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
+    int n = cast_int(base - L->ci->func) - cl->l.p->numparams - 1;
+
+    StkId ra = VM_REG(rai);
+
+    for (int j = 0; j < b && j < n; j++)
+        setobj2s(L, ra + j, base - n + j);
+    for (int j = n; j < b; j++)
+        setnilvalue(ra + j);
 }
 
 const Instruction* executeDUPCLOSURE(lua_State* L, const Instruction* pc, StkId base, TValue* k)

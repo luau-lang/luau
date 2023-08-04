@@ -8,6 +8,8 @@
 #include <string.h>
 #include <stdio.h>
 
+LUAU_FASTFLAGVARIABLE(LuauFasterInterp, false)
+
 // macro to `unsign' a character
 #define uchar(c) ((unsigned char)(c))
 
@@ -966,6 +968,14 @@ static int str_format(lua_State* L)
             luaL_addchar(&b, *strfrmt++);
         else if (*++strfrmt == L_ESC)
             luaL_addchar(&b, *strfrmt++); // %%
+        else if (FFlag::LuauFasterInterp && *strfrmt == '*')
+        {
+            strfrmt++;
+            if (++arg > top)
+                luaL_error(L, "missing argument #%d", arg);
+
+            luaL_addvalueany(&b, arg);
+        }
         else
         {                          // format item
             char form[MAX_FORMAT]; // to store the format (`%...')
@@ -1034,7 +1044,7 @@ static int str_format(lua_State* L)
             }
             case '*':
             {
-                if (formatItemSize != 1)
+                if (FFlag::LuauFasterInterp || formatItemSize != 1)
                     luaL_error(L, "'%%*' does not take a form");
 
                 size_t length;

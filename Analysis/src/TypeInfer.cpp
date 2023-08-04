@@ -4860,7 +4860,7 @@ TypeId TypeChecker::instantiate(const ScopePtr& scope, TypeId ty, Location locat
     if (ftv && ftv->hasNoFreeOrGenericTypes)
         return ty;
 
-    Instantiation instantiation{log, &currentModule->internalTypes, scope->level, /*scope*/ nullptr};
+    Instantiation instantiation{log, &currentModule->internalTypes, builtinTypes, scope->level, /*scope*/ nullptr};
 
     if (instantiationChildLimit)
         instantiation.childLimit = *instantiationChildLimit;

@@ -199,6 +199,13 @@ std::string getDevFixFriendlyName(TypeId ty)
         else if (table->syntheticName.has_value())
             return *table->syntheticName;
     }
+    if (auto metatable = get<MetatableType>(ty))
+    {
+        if (metatable->syntheticName.has_value())
+        {
+            return *metatable->syntheticName;
+        }
+    }
     // else if (auto primitive = get<PrimitiveType>(ty))
     //{
     //    return "<unlabeled-symbol>";
@@ -246,11 +253,13 @@ void DifferResult::wrapDiffPath(DiffPathNode node)
 
 static DifferResult diffUsingEnv(DifferEnvironment& env, TypeId left, TypeId right);
 static DifferResult diffTable(DifferEnvironment& env, TypeId left, TypeId right);
+static DifferResult diffMetatable(DifferEnvironment& env, TypeId left, TypeId right);
 static DifferResult diffPrimitive(DifferEnvironment& env, TypeId left, TypeId right);
 static DifferResult diffSingleton(DifferEnvironment& env, TypeId left, TypeId right);
 static DifferResult diffFunction(DifferEnvironment& env, TypeId left, TypeId right);
 static DifferResult diffGeneric(DifferEnvironment& env, TypeId left, TypeId right);
 static DifferResult diffNegation(DifferEnvironment& env, TypeId left, TypeId right);
+static DifferResult diffClass(DifferEnvironment& env, TypeId left, TypeId right);
 struct FindSeteqCounterexampleResult
 {
     // nullopt if no counterexample found
@@ -269,6 +278,7 @@ static DifferResult diffTpi(DifferEnvironment& env, DiffError::Kind possibleNonN
 static DifferResult diffCanonicalTpShape(DifferEnvironment& env, DiffError::Kind possibleNonNormalErrorKind,
     const std::pair<std::vector<TypeId>, std::optional<TypePackId>>& left, const std::pair<std::vector<TypeId>, std::optional<TypePackId>>& right);
 static DifferResult diffHandleFlattenedTail(DifferEnvironment& env, DiffError::Kind possibleNonNormalErrorKind, TypePackId left, TypePackId right);
+static DifferResult diffGenericTp(DifferEnvironment& env, TypePackId left, TypePackId right);
 
 static DifferResult diffTable(DifferEnvironment& env, TypeId left, TypeId right)
 {
@@ -311,6 +321,28 @@ static DifferResult diffTable(DifferEnvironment& env, TypeId left, TypeId right)
             differResult.wrapDiffPath(DiffPathNode::constructWithTableProperty(field));
             return differResult;
         }
+    }
+    return DifferResult{};
+}
+
+static DifferResult diffMetatable(DifferEnvironment& env, TypeId left, TypeId right)
+{
+    const MetatableType* leftMetatable = get<MetatableType>(left);
+    const MetatableType* rightMetatable = get<MetatableType>(right);
+    LUAU_ASSERT(leftMetatable);
+    LUAU_ASSERT(rightMetatable);
+
+    DifferResult diffRes = diffUsingEnv(env, leftMetatable->table, rightMetatable->table);
+    if (diffRes.diffError.has_value())
+    {
+        return diffRes;
+    }
+
+    diffRes = diffUsingEnv(env, leftMetatable->metatable, rightMetatable->metatable);
+    if (diffRes.diffError.has_value())
+    {
+        diffRes.wrapDiffPath(DiffPathNode::constructWithTableProperty("__metatable"));
+        return diffRes;
     }
     return DifferResult{};
 }
@@ -420,6 +452,27 @@ static DifferResult diffNegation(DifferEnvironment& env, TypeId left, TypeId rig
     return differResult;
 }
 
+static DifferResult diffClass(DifferEnvironment& env, TypeId left, TypeId right)
+{
+    const ClassType* leftClass = get<ClassType>(left);
+    const ClassType* rightClass = get<ClassType>(right);
+    LUAU_ASSERT(leftClass);
+    LUAU_ASSERT(rightClass);
+
+    if (leftClass == rightClass)
+    {
+        return DifferResult{};
+    }
+
+    return DifferResult{DiffError{
+        DiffError::Kind::Normal,
+        DiffPathNodeLeaf::detailsNormal(left),
+        DiffPathNodeLeaf::detailsNormal(right),
+        getDevFixFriendlyName(env.rootLeft),
+        getDevFixFriendlyName(env.rootRight),
+    }};
+}
+
 static FindSeteqCounterexampleResult findSeteqCounterexample(
     DifferEnvironment& env, const std::vector<TypeId>& left, const std::vector<TypeId>& right)
 {
@@ -438,8 +491,8 @@ static FindSeteqCounterexampleResult findSeteqCounterexample(
                 unmatchedRightIdxIt++;
                 continue;
             }
-
             // unmatchedRightIdxIt is matched with current leftIdx
+            env.recordProvenEqual(left[leftIdx], right[*unmatchedRightIdxIt]);
             leftIdxIsMatched = true;
             unmatchedRightIdxIt = unmatchedRightIdxes.erase(unmatchedRightIdxIt);
         }
@@ -537,6 +590,10 @@ static DifferResult diffUsingEnv(DifferEnvironment& env, TypeId left, TypeId rig
 
     // Both left and right are the same variant
 
+    // Check cycles & caches
+    if (env.isAssumedEqual(left, right) || env.isProvenEqual(left, right))
+        return DifferResult{};
+
     if (isSimple(left))
     {
         if (auto lp = get<PrimitiveType>(left))
@@ -550,39 +607,89 @@ static DifferResult diffUsingEnv(DifferEnvironment& env, TypeId left, TypeId rig
             // Both left and right must be Any if either is Any for them to be equal!
             return DifferResult{};
         }
+        else if (auto lu = get<UnknownType>(left))
+        {
+            return DifferResult{};
+        }
+        else if (auto ln = get<NeverType>(left))
+        {
+            return DifferResult{};
+        }
         else if (auto ln = get<NegationType>(left))
         {
             return diffNegation(env, left, right);
+        }
+        else if (auto lc = get<ClassType>(left))
+        {
+            return diffClass(env, left, right);
         }
 
         throw InternalCompilerError{"Unimplemented Simple TypeId variant for diffing"};
     }
 
     // Both left and right are the same non-Simple
+    // Non-simple types must record visits in the DifferEnvironment
+    env.pushVisiting(left, right);
 
     if (auto lt = get<TableType>(left))
     {
-        return diffTable(env, left, right);
+        DifferResult diffRes = diffTable(env, left, right);
+        if (!diffRes.diffError.has_value())
+        {
+            env.recordProvenEqual(left, right);
+        }
+        env.popVisiting();
+        return diffRes;
+    }
+    if (auto lm = get<MetatableType>(left))
+    {
+        env.popVisiting();
+        return diffMetatable(env, left, right);
     }
     if (auto lf = get<FunctionType>(left))
     {
-        return diffFunction(env, left, right);
+        DifferResult diffRes = diffFunction(env, left, right);
+        if (!diffRes.diffError.has_value())
+        {
+            env.recordProvenEqual(left, right);
+        }
+        env.popVisiting();
+        return diffRes;
     }
     if (auto lg = get<GenericType>(left))
     {
-        return diffGeneric(env, left, right);
+        DifferResult diffRes = diffGeneric(env, left, right);
+        if (!diffRes.diffError.has_value())
+        {
+            env.recordProvenEqual(left, right);
+        }
+        env.popVisiting();
+        return diffRes;
     }
     if (auto lu = get<UnionType>(left))
     {
-        return diffUnion(env, left, right);
+        DifferResult diffRes = diffUnion(env, left, right);
+        if (!diffRes.diffError.has_value())
+        {
+            env.recordProvenEqual(left, right);
+        }
+        env.popVisiting();
+        return diffRes;
     }
     if (auto li = get<IntersectionType>(left))
     {
-        return diffIntersection(env, left, right);
+        DifferResult diffRes = diffIntersection(env, left, right);
+        if (!diffRes.diffError.has_value())
+        {
+            env.recordProvenEqual(left, right);
+        }
+        env.popVisiting();
+        return diffRes;
     }
     if (auto le = get<Luau::Unifiable::Error>(left))
     {
         // TODO: return debug-friendly result state
+        env.popVisiting();
         return DifferResult{};
     }
 
@@ -658,7 +765,13 @@ static DifferResult diffHandleFlattenedTail(DifferEnvironment& env, DiffError::K
 
     if (left->ty.index() != right->ty.index())
     {
-        throw InternalCompilerError{"Unhandled case where the tail of 2 normalized typepacks have different variants"};
+        return DifferResult{DiffError{
+            DiffError::Kind::Normal,
+            DiffPathNodeLeaf::detailsNormal(env.visitingBegin()->first),
+            DiffPathNodeLeaf::detailsNormal(env.visitingBegin()->second),
+            getDevFixFriendlyName(env.rootLeft),
+            getDevFixFriendlyName(env.rootRight),
+        }};
     }
 
     // Both left and right are the same variant
@@ -688,13 +801,116 @@ static DifferResult diffHandleFlattenedTail(DifferEnvironment& env, DiffError::K
         }
         }
     }
+    if (auto lg = get<GenericTypePack>(left))
+    {
+        DifferResult diffRes = diffGenericTp(env, left, right);
+        if (!diffRes.diffError.has_value())
+            return DifferResult{};
+        switch (possibleNonNormalErrorKind)
+        {
+        case DiffError::Kind::LengthMismatchInFnArgs:
+        {
+            diffRes.wrapDiffPath(DiffPathNode::constructWithKind(DiffPathNode::Kind::FunctionArgument));
+            return diffRes;
+        }
+        case DiffError::Kind::LengthMismatchInFnRets:
+        {
+            diffRes.wrapDiffPath(DiffPathNode::constructWithKind(DiffPathNode::Kind::FunctionReturn));
+            return diffRes;
+        }
+        default:
+        {
+            throw InternalCompilerError{"Unhandled flattened tail case for GenericTypePack"};
+        }
+        }
+    }
 
     throw InternalCompilerError{"Unhandled tail type pack variant for flattened tails"};
 }
 
+static DifferResult diffGenericTp(DifferEnvironment& env, TypePackId left, TypePackId right)
+{
+    LUAU_ASSERT(get<GenericTypePack>(left));
+    LUAU_ASSERT(get<GenericTypePack>(right));
+    // Try to pair up the generics
+    bool isLeftFree = !env.genericTpMatchedPairs.contains(left);
+    bool isRightFree = !env.genericTpMatchedPairs.contains(right);
+    if (isLeftFree && isRightFree)
+    {
+        env.genericTpMatchedPairs[left] = right;
+        env.genericTpMatchedPairs[right] = left;
+        return DifferResult{};
+    }
+    else if (isLeftFree || isRightFree)
+    {
+        return DifferResult{DiffError{
+            DiffError::Kind::IncompatibleGeneric,
+            DiffPathNodeLeaf::nullopts(),
+            DiffPathNodeLeaf::nullopts(),
+            getDevFixFriendlyName(env.rootLeft),
+            getDevFixFriendlyName(env.rootRight),
+        }};
+    }
+
+    // Both generics are already paired up
+    if (*env.genericTpMatchedPairs.find(left) == right)
+        return DifferResult{};
+
+    return DifferResult{DiffError{
+        DiffError::Kind::IncompatibleGeneric,
+        DiffPathNodeLeaf::nullopts(),
+        DiffPathNodeLeaf::nullopts(),
+        getDevFixFriendlyName(env.rootLeft),
+        getDevFixFriendlyName(env.rootRight),
+    }};
+}
+
+bool DifferEnvironment::isProvenEqual(TypeId left, TypeId right) const
+{
+    return provenEqual.find({left, right}) != provenEqual.end();
+}
+
+bool DifferEnvironment::isAssumedEqual(TypeId left, TypeId right) const
+{
+    return visiting.find({left, right}) != visiting.end();
+}
+
+void DifferEnvironment::recordProvenEqual(TypeId left, TypeId right)
+{
+    provenEqual.insert({left, right});
+    provenEqual.insert({right, left});
+}
+
+void DifferEnvironment::pushVisiting(TypeId left, TypeId right)
+{
+    LUAU_ASSERT(visiting.find({left, right}) == visiting.end());
+    LUAU_ASSERT(visiting.find({right, left}) == visiting.end());
+    visitingStack.push_back({left, right});
+    visiting.insert({left, right});
+    visiting.insert({right, left});
+}
+
+void DifferEnvironment::popVisiting()
+{
+    auto tyPair = visitingStack.back();
+    visiting.erase({tyPair.first, tyPair.second});
+    visiting.erase({tyPair.second, tyPair.first});
+    visitingStack.pop_back();
+}
+
+std::vector<std::pair<TypeId, TypeId>>::const_reverse_iterator DifferEnvironment::visitingBegin() const
+{
+    return visitingStack.crbegin();
+}
+
+std::vector<std::pair<TypeId, TypeId>>::const_reverse_iterator DifferEnvironment::visitingEnd() const
+{
+    return visitingStack.crend();
+}
+
 DifferResult diff(TypeId ty1, TypeId ty2)
 {
-    DifferEnvironment differEnv{ty1, ty2, DenseHashMap<TypeId, TypeId>{nullptr}};
+    DifferEnvironment differEnv{ty1, ty2};
     return diffUsingEnv(differEnv, ty1, ty2);
 }
 
@@ -702,7 +918,8 @@ bool isSimple(TypeId ty)
 {
     ty = follow(ty);
     // TODO: think about GenericType, etc.
-    return get<PrimitiveType>(ty) || get<SingletonType>(ty) || get<AnyType>(ty) || get<NegationType>(ty);
+    return get<PrimitiveType>(ty) || get<SingletonType>(ty) || get<AnyType>(ty) || get<NegationType>(ty) || get<ClassType>(ty) ||
+           get<UnknownType>(ty) || get<NeverType>(ty);
 }
 
 } // namespace Luau

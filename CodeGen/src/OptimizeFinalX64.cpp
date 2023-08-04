@@ -35,6 +35,25 @@ static void optimizeMemoryOperandsX64(IrFunction& function, IrBlock& block)
             }
             break;
         }
+        case IrCmd::CHECK_TRUTHY:
+        {
+            if (inst.a.kind == IrOpKind::Inst)
+            {
+                IrInst& tag = function.instOp(inst.a);
+
+                if (tag.useCount == 1 && tag.cmd == IrCmd::LOAD_TAG && (tag.a.kind == IrOpKind::VmReg || tag.a.kind == IrOpKind::VmConst))
+                    replace(function, inst.a, tag.a);
+            }
+
+            if (inst.b.kind == IrOpKind::Inst)
+            {
+                IrInst& value = function.instOp(inst.b);
+
+                if (value.useCount == 1 && value.cmd == IrCmd::LOAD_INT)
+                    replace(function, inst.b, value.a);
+            }
+            break;
+        }
         case IrCmd::ADD_NUM:
         case IrCmd::SUB_NUM:
         case IrCmd::MUL_NUM:

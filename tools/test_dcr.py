@@ -126,12 +126,6 @@ def main():
 
     args = parser.parse_args()
 
-    if args.write and args.rwp:
-        print_stderr(
-            "Cannot run test_dcr.py with --write *and* --rwp. You don't want to commit local type inference faillist.txt yet."
-        )
-        sys.exit(1)
-
     failList = loadFailList()
 
     flags = ["true", "DebugLuauDeferredConstraintResolution"]
