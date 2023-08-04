@@ -27,27 +27,24 @@
     // long list of standard functions from lua manual
     var builtins = wordRE([
       "_G","_VERSION","assert","error","getfenv","getmetatable","ipairs","load", "loadstring","next","pairs","pcall",
-      "print","rawequal","rawget","rawset","require","select","setfenv","setmetatable","tonumber","tostring","type",
+      "print","rawequal","rawget","rawset","require","select","setfenv","setmetatable","tonumber","tostring","type","typeof",
       "unpack","xpcall",
   
       "coroutine.create","coroutine.resume","coroutine.running","coroutine.status","coroutine.wrap","coroutine.yield",
   
-      "debug.debug","debug.getfenv","debug.gethook","debug.getinfo","debug.getlocal","debug.getmetatable",
-      "debug.getregistry","debug.getupvalue","debug.setfenv","debug.sethook","debug.setlocal","debug.setmetatable",
-      "debug.setupvalue","debug.traceback",
+      "debug.info","debug.traceback",
   
       "math.abs","math.acos","math.asin","math.atan","math.atan2","math.ceil","math.cos","math.cosh","math.deg",
       "math.exp","math.floor","math.fmod","math.frexp","math.huge","math.ldexp","math.log","math.log10","math.max",
       "math.min","math.modf","math.pi","math.pow","math.rad","math.random","math.randomseed","math.sin","math.sinh",
       "math.sqrt","math.tan","math.tanh",
   
-      "os.clock","os.date","os.difftime","os.execute","os.exit","os.getenv","os.remove","os.rename","os.setlocale",
-      "os.time","os.tmpname",
+      "os.clock","os.date","os.difftime","os.time",
 
-      "string.byte","string.char","string.dump","string.find","string.format","string.gmatch","string.gsub",
+      "string.byte","string.char","string.find","string.format","string.gmatch","string.gsub",
       "string.len","string.lower","string.match","string.rep","string.reverse","string.sub","string.upper",
   
-      "table.concat","table.insert","table.maxn","table.remove","table.sort"
+      "table.concat","table.clone","table.create","table.freeze","table.isfrozen","table.insert","table.maxn","table.move","table.remove","table.sort","table.unpack"
     ]);
     var keywords = wordRE(["and","break","elseif","false","nil","not","or","return",
                            "true","function", "end", "if", "then", "else", "do",
@@ -72,7 +69,7 @@
             stream.skipToEnd();
             return "comment";
         }
-        if (ch == "\"" || ch == "'")
+        if (ch == "\"" || ch == "'" || ch == "`")
             return (state.cur = string(ch))(stream, state);
         if (ch == "[" && /[\[=]/.test(stream.peek()))
             return (state.cur = bracketed(readBracket(stream), "string"))(stream, state);
