@@ -513,6 +513,15 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         {
             state.invalidateValue(inst.a);
             state.forwardVmRegStoreToLoad(inst, IrCmd::LOAD_POINTER);
+
+            if (IrInst* instOp = function.asInstOp(inst.b); instOp && instOp->cmd == IrCmd::NEW_TABLE)
+            {
+                if (RegisterInfo* info = state.tryGetRegisterInfo(inst.a))
+                {
+                    info->knownNotReadonly = true;
+                    info->knownNoMetatable = true;
+                }
+            }
         }
         break;
     case IrCmd::STORE_DOUBLE:
@@ -681,6 +690,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         }
         break;
     }
+    case IrCmd::CHECK_TRUTHY:
+        // It is possible to check if current tag in state is truthy or not, but this case almost never comes up
+        break;
     case IrCmd::CHECK_READONLY:
         if (RegisterInfo* info = state.tryGetRegisterInfo(inst.a))
         {
@@ -782,6 +794,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::NOT_ANY:
         state.substituteOrRecord(inst, index);
         break;
+    case IrCmd::CMP_ANY:
+        state.invalidateUserCall();
+        break;
     case IrCmd::JUMP:
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_SLOT_MATCH:
@@ -840,9 +855,6 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::FINDUPVAL:
         break;
 
-    case IrCmd::JUMP_CMP_ANY:
-        state.invalidateUserCall(); // TODO: if arguments are strings, there will be no user calls
-        break;
     case IrCmd::DO_ARITH:
         state.invalidate(inst.a);
         state.invalidateUserCall();

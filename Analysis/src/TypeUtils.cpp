@@ -8,6 +8,8 @@
 
 #include <algorithm>
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 namespace Luau
 {
 
@@ -190,7 +192,13 @@ TypePack extendTypePack(
                 }
                 else
                 {
-                    t = arena.freshType(ftp->scope);
+                    if (FFlag::DebugLuauDeferredConstraintResolution)
+                    {
+                        FreeType ft{ftp->scope, builtinTypes->neverType, builtinTypes->unknownType};
+                        t = arena.addType(ft);
+                    }
+                    else
+                        t = arena.freshType(ftp->scope);
                 }
 
                 newPack.head.push_back(t);

@@ -99,6 +99,7 @@ LUALIB_API char* luaL_extendbuffer(luaL_Buffer* B, size_t additionalsize, int bo
 LUALIB_API void luaL_reservebuffer(luaL_Buffer* B, size_t size, int boxloc);
 LUALIB_API void luaL_addlstring(luaL_Buffer* B, const char* s, size_t l, int boxloc);
 LUALIB_API void luaL_addvalue(luaL_Buffer* B);
+LUALIB_API void luaL_addvalueany(luaL_Buffer* B, int idx);
 LUALIB_API void luaL_pushresult(luaL_Buffer* B);
 LUALIB_API void luaL_pushresultsize(luaL_Buffer* B, size_t size);
 

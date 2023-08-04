@@ -168,7 +168,12 @@ enum class IrCmd : uint8_t
     // Compute Luau 'not' operation on destructured TValue
     // A: tag
     // B: int (value)
-    NOT_ANY, // TODO: boolean specialization will be useful
+    NOT_ANY,
+
+    // Perform a TValue comparison, supported conditions are LessEqual, Less and Equal
+    // A, B: Rn
+    // C: condition
+    CMP_ANY,
 
     // Unconditional jump
     // A: block/vmexit
@@ -223,13 +228,6 @@ enum class IrCmd : uint8_t
     // D: block (if true)
     // E: block (if false)
     JUMP_CMP_NUM,
-
-    // Perform a conditional jump based on the result of TValue comparison
-    // A, B: Rn
-    // C: condition
-    // D: block (if true)
-    // E: block (if false)
-    JUMP_CMP_ANY,
 
     // Perform a conditional jump based on cached table node slot matching the actual table node slot for a key
     // A: pointer (LuaNode)
@@ -377,27 +375,33 @@ enum class IrCmd : uint8_t
     // instead.
     CHECK_TAG,
 
+    // Guard against a falsy tag+value
+    // A: tag
+    // B: value
+    // C: block/vmexit/undef
+    CHECK_TRUTHY,
+
     // Guard against readonly table
     // A: pointer (Table)
-    // B: block/undef
+    // B: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_READONLY,
 
     // Guard against table having a metatable
     // A: pointer (Table)
-    // B: block/undef
+    // B: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_NO_METATABLE,
 
     // Guard against executing in unsafe environment, exits to VM on check failure
-    // A: vmexit/undef
+    // A: vmexit/vmexit/undef
     // When undef is specified, execution is aborted on check failure
     CHECK_SAFE_ENV,
 
     // Guard against index overflowing the table array size
     // A: pointer (Table)
     // B: int (index)
-    // C: block/undef
+    // C: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_ARRAY_SIZE,
 
@@ -410,7 +414,7 @@ enum class IrCmd : uint8_t
 
     // Guard against table node with a linked next node to ensure that our lookup hits the main position of the key
     // A: pointer (LuaNode)
-    // B: block/undef
+    // B: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_NODE_NO_NEXT,
 

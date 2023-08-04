@@ -1125,6 +1125,10 @@ until false
 
 TEST_CASE_FIXTURE(Fixture, "parse_nesting_based_end_detection_local_function")
 {
+    ScopedFastFlag sff[] = {
+        {"DebugLuauDeferredConstraintResolution", false},
+    };
+
     try
     {
         parse(R"(-- i am line 1
@@ -1157,6 +1161,10 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "parse_nesting_based_end_detection_failsafe_earlier")
 {
+    ScopedFastFlag sff[] = {
+        {"DebugLuauDeferredConstraintResolution", false},
+    };
+
     try
     {
         parse(R"(-- i am line 1
@@ -2418,6 +2426,10 @@ TEST_CASE_FIXTURE(Fixture, "recovery_of_parenthesized_expressions")
         }
     };
 
+    ScopedFastFlag sff[] = {
+        {"DebugLuauDeferredConstraintResolution", false},
+    };
+
     checkRecovery("function foo(a, b. c) return a + b end", "function foo(a, b) return a + b end", 1);
     checkRecovery("function foo(a, b: { a: number, b: number. c:number }) return a + b end",
         "function foo(a, b: { a: number, b: number }) return a + b end", 1);
@@ -2648,6 +2660,10 @@ TEST_CASE_FIXTURE(Fixture, "AstName_comparison")
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_list_recovery")
 {
+    ScopedFastFlag sff[] = {
+        {"DebugLuauDeferredConstraintResolution", false},
+    };
+
     try
     {
         parse(R"(

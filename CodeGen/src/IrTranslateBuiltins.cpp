@@ -137,16 +137,17 @@ static BuiltinImplResult translateBuiltinNumberTo2Number(
     return {BuiltinImplType::Full, 2};
 }
 
-static BuiltinImplResult translateBuiltinAssert(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, IrOp fallback)
+static BuiltinImplResult translateBuiltinAssert(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
 {
     if (nparams < 1 || nresults != 0)
         return {BuiltinImplType::None, -1};
 
-    IrOp cont = build.block(IrBlockKind::Internal);
+    IrOp tag = build.inst(IrCmd::LOAD_TAG, build.vmReg(arg));
 
-    // TODO: maybe adding a guard like CHECK_TRUTHY can be useful
-    build.inst(IrCmd::JUMP_IF_FALSY, build.vmReg(arg), fallback, cont);
-    build.beginBlock(cont);
+    // We don't know if it's really a boolean at this point, but we will only check this value if it is
+    IrOp value = build.inst(IrCmd::LOAD_INT, build.vmReg(arg));
+
+    build.inst(IrCmd::CHECK_TRUTHY, tag, value, build.vmExit(pcpos));
 
     return {BuiltinImplType::UsesFallback, 0};
 }
@@ -463,8 +464,6 @@ static BuiltinImplResult translateBuiltinBit32Shift(
     if (nparams < 2 || nresults > 1)
         return {BuiltinImplType::None, -1};
 
-    IrOp block = build.block(IrBlockKind::Internal);
-
     builtinCheckDouble(build, build.vmReg(arg), pcpos);
     builtinCheckDouble(build, args, pcpos);
 
@@ -472,10 +471,22 @@ static BuiltinImplResult translateBuiltinBit32Shift(
     IrOp vb = builtinLoadDouble(build, args);
 
     IrOp vaui = build.inst(IrCmd::NUM_TO_UINT, va);
-    IrOp vbi = build.inst(IrCmd::NUM_TO_INT, vb);
 
-    build.inst(IrCmd::JUMP_GE_UINT, vbi, build.constInt(32), fallback, block);
-    build.beginBlock(block);
+    IrOp vbi;
+
+    if (std::optional<double> vbd = build.function.asDoubleOp(vb); vbd && *vbd >= INT_MIN && *vbd <= INT_MAX)
+        vbi = build.constInt(int(*vbd));
+    else
+        vbi = build.inst(IrCmd::NUM_TO_INT, vb);
+
+    bool knownGoodShift = unsigned(build.function.asIntOp(vbi).value_or(-1)) < 32u;
+
+    if (!knownGoodShift)
+    {
+        IrOp block = build.block(IrBlockKind::Internal);
+        build.inst(IrCmd::JUMP_GE_UINT, vbi, build.constInt(32), fallback, block);
+        build.beginBlock(block);
+    }
 
     IrCmd cmd = IrCmd::NOP;
     if (bfid == LBF_BIT32_LSHIFT)
@@ -763,7 +774,7 @@ BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, 
     switch (bfid)
     {
     case LBF_ASSERT:
-        return translateBuiltinAssert(build, nparams, ra, arg, args, nresults, fallback);
+        return translateBuiltinAssert(build, nparams, ra, arg, args, nresults, pcpos);
     case LBF_MATH_DEG:
         return translateBuiltinMathDeg(build, nparams, ra, arg, args, nresults, pcpos);
     case LBF_MATH_RAD:

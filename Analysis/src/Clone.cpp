@@ -9,6 +9,7 @@
 LUAU_FASTFLAG(DebugLuauCopyBeforeNormalizing)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
 LUAU_FASTFLAGVARIABLE(LuauCloneCyclicUnions, false)
 
@@ -204,7 +205,14 @@ void TypeCloner::defaultClone(const T& t)
 
 void TypeCloner::operator()(const FreeType& t)
 {
-    defaultClone(t);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        FreeType ft{t.scope, clone(t.lowerBound, dest, cloneState), clone(t.upperBound, dest, cloneState)};
+        TypeId res = dest.addType(ft);
+        seenTypes[typeId] = res;
+    }
+    else
+        defaultClone(t);
 }
 
 void TypeCloner::operator()(const GenericType& t)
@@ -363,7 +371,10 @@ void TypeCloner::operator()(const UnionType& t)
 {
     if (FFlag::LuauCloneCyclicUnions)
     {
-        TypeId result = dest.addType(FreeType{nullptr});
+        // We're just using this FreeType as a placeholder until we've finished
+        // cloning the parts of this union so it is okay that its bounds are
+        // nullptr.  We'll never indirect them.
+        TypeId result = dest.addType(FreeType{nullptr, /*lowerBound*/nullptr, /*upperBound*/nullptr});
         seenTypes[typeId] = result;
 
         std::vector<TypeId> options;

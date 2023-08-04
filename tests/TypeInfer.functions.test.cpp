@@ -1912,9 +1912,8 @@ end
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_assert_when_the_tarjan_limit_is_exceeded_during_generalization")
 {
     ScopedFastInt sfi{"LuauTarjanChildLimit", 2};
-    ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", true},
-    };
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
 
     CheckResult result = check(R"(
         function f(t)
@@ -2154,6 +2153,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "num_is_solved_after_num_or_str")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
     CHECK_EQ("() -> number", toString(requireType("num_or_str")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "apply_of_lambda_with_inferred_and_explicit_types")
+{
+    CheckResult result = check(R"(
+        local function apply(f, x) return f(x) end
+        local x = apply(function(x: string): number return 5 end, "hello!")
+
+        local function apply_explicit<A, B...>(f: (A) -> B..., x: A): B... return f(x) end
+        local x = apply_explicit(function(x: string): number return 5 end, "hello!")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

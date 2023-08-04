@@ -66,6 +66,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::ABS_NUM:
         return IrValueKind::Double;
     case IrCmd::NOT_ANY:
+    case IrCmd::CMP_ANY:
         return IrValueKind::Int;
     case IrCmd::JUMP:
     case IrCmd::JUMP_IF_TRUTHY:
@@ -76,7 +77,6 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::JUMP_GE_UINT:
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_CMP_NUM:
-    case IrCmd::JUMP_CMP_ANY:
     case IrCmd::JUMP_SLOT_MATCH:
         return IrValueKind::None;
     case IrCmd::TABLE_LEN:
@@ -114,6 +114,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::SET_UPVALUE:
     case IrCmd::PREPARE_FORN:
     case IrCmd::CHECK_TAG:
+    case IrCmd::CHECK_TRUTHY:
     case IrCmd::CHECK_READONLY:
     case IrCmd::CHECK_NO_METATABLE:
     case IrCmd::CHECK_SAFE_ENV:
@@ -622,6 +623,29 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                 kill(function, inst);
             else
                 replace(function, block, index, {IrCmd::JUMP, inst.c}); // Shows a conflict in assumptions on this path
+        }
+        break;
+    case IrCmd::CHECK_TRUTHY:
+        if (inst.a.kind == IrOpKind::Constant)
+        {
+            if (function.tagOp(inst.a) == LUA_TNIL)
+            {
+                replace(function, block, index, {IrCmd::JUMP, inst.c}); // Shows a conflict in assumptions on this path
+            }
+            else if (function.tagOp(inst.a) == LUA_TBOOLEAN)
+            {
+                if (inst.b.kind == IrOpKind::Constant)
+                {
+                    if (function.intOp(inst.b) == 0)
+                        replace(function, block, index, {IrCmd::JUMP, inst.c}); // Shows a conflict in assumptions on this path
+                    else
+                        kill(function, inst);
+                }
+            }
+            else
+            {
+                kill(function, inst);
+            }
         }
         break;
     case IrCmd::BITAND_UINT:

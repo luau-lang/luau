@@ -7264,4 +7264,47 @@ end
 )");
 }
 
+TEST_CASE("BuiltinFoldMathK")
+{
+    ScopedFastFlag sff("LuauCompileFoldMathK", true);
+
+    // we can fold math.pi at optimization level 2
+    CHECK_EQ("\n" + compileFunction(R"(
+function test()
+    return math.pi * 2
+end
+)", 0, 2),
+        R"(
+LOADK R0 K0 [6.2831853071795862]
+RETURN R0 1
+)");
+
+    // we don't do this at optimization level 1 because it may interfere with environment substitution
+    CHECK_EQ("\n" + compileFunction(R"(
+function test()
+    return math.pi * 2
+end
+)", 0, 1),
+        R"(
+GETIMPORT R1 3 [math.pi]
+MULK R0 R1 K0 [2]
+RETURN R0 1
+)");
+
+    // we also don't do it if math global is assigned to
+    CHECK_EQ("\n" + compileFunction(R"(
+function test()
+    return math.pi * 2
+end
+
+math = { pi = 4 }
+)", 0, 2),
+        R"(
+GETGLOBAL R2 K1 ['math']
+GETTABLEKS R1 R2 K2 ['pi']
+MULK R0 R1 K0 [2]
+RETURN R0 1
+)");
+}
+
 TEST_SUITE_END();

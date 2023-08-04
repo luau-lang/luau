@@ -197,17 +197,19 @@ struct ConstantVisitor : AstVisitor
     DenseHashMap<AstLocal*, Constant>& locals;
 
     const DenseHashMap<AstExprCall*, int>* builtins;
+    bool foldMathK = false;
 
     bool wasEmpty = false;
 
     std::vector<Constant> builtinArgs;
 
     ConstantVisitor(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables,
-        DenseHashMap<AstLocal*, Constant>& locals, const DenseHashMap<AstExprCall*, int>* builtins)
+        DenseHashMap<AstLocal*, Constant>& locals, const DenseHashMap<AstExprCall*, int>* builtins, bool foldMathK)
         : constants(constants)
         , variables(variables)
         , locals(locals)
         , builtins(builtins)
+        , foldMathK(foldMathK)
     {
         // since we do a single pass over the tree, if the initial state was empty we don't need to clear out old entries
         wasEmpty = constants.empty() && locals.empty();
@@ -296,6 +298,14 @@ struct ConstantVisitor : AstVisitor
         else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
         {
             analyze(expr->expr);
+
+            if (foldMathK)
+            {
+                if (AstExprGlobal* eg = expr->expr->as<AstExprGlobal>(); eg && eg->name == "math")
+                {
+                    result = foldBuiltinMath(expr->index);
+                }
+            }
         }
         else if (AstExprIndexExpr* expr = node->as<AstExprIndexExpr>())
         {
@@ -437,9 +447,9 @@ struct ConstantVisitor : AstVisitor
 };
 
 void foldConstants(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables,
-    DenseHashMap<AstLocal*, Constant>& locals, const DenseHashMap<AstExprCall*, int>* builtins, AstNode* root)
+    DenseHashMap<AstLocal*, Constant>& locals, const DenseHashMap<AstExprCall*, int>* builtins, bool foldMathK, AstNode* root)
 {
-    ConstantVisitor visitor{constants, variables, locals, builtins};
+    ConstantVisitor visitor{constants, variables, locals, builtins, foldMathK};
     root->visit(&visitor);
 }
 

@@ -31,6 +31,8 @@ LUAU_FASTFLAGVARIABLE(LuauCompileNativeComment, false)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileFixBuiltinArity, false)
 
+LUAU_FASTFLAGVARIABLE(LuauCompileFoldMathK, false)
+
 namespace Luau
 {
 
@@ -661,7 +663,7 @@ struct Compiler
         inlineFrames.push_back({func, oldLocals, target, targetCount});
 
         // fold constant values updated above into expressions in the function body
-        foldConstants(constants, variables, locstants, builtinsFold, func->body);
+        foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldMathK, func->body);
 
         bool usedFallthrough = false;
 
@@ -702,7 +704,7 @@ struct Compiler
             if (Constant* var = locstants.find(func->args.data[i]))
                 var->type = Constant::Type_Unknown;
 
-        foldConstants(constants, variables, locstants, builtinsFold, func->body);
+        foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldMathK, func->body);
     }
 
     void compileExprCall(AstExprCall* expr, uint8_t target, uint8_t targetCount, bool targetTop = false, bool multRet = false)
@@ -2807,7 +2809,7 @@ struct Compiler
             locstants[var].type = Constant::Type_Number;
             locstants[var].valueNumber = from + iv * step;
 
-            foldConstants(constants, variables, locstants, builtinsFold, stat);
+            foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldMathK, stat);
 
             size_t iterJumps = loopJumps.size();
 
@@ -2835,7 +2837,7 @@ struct Compiler
         // clean up fold state in case we need to recompile - normally we compile the loop body once, but due to inlining we may need to do it again
         locstants[var].type = Constant::Type_Unknown;
 
-        foldConstants(constants, variables, locstants, builtinsFold, stat);
+        foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldMathK, stat);
     }
 
     void compileStatFor(AstStatFor* stat)
@@ -3604,6 +3606,7 @@ struct Compiler
     {
         Compiler* self;
         std::vector<AstExprFunction*>& functions;
+        bool hasTypes = false;
 
         FunctionVisitor(Compiler* self, std::vector<AstExprFunction*>& functions)
             : self(self)
@@ -3616,6 +3619,10 @@ struct Compiler
         bool visit(AstExprFunction* node) override
         {
             node->body->visit(this);
+
+            if (FFlag::LuauCompileFunctionType)
+                for (AstLocal* arg : node->args)
+                    hasTypes |= arg->annotation != nullptr;
 
             // this makes sure all functions that are used when compiling this one have been already added to the vector
             functions.push_back(node);
@@ -3824,6 +3831,7 @@ struct Compiler
     DenseHashMap<AstExprFunction*, std::string> typeMap;
 
     const DenseHashMap<AstExprCall*, int>* builtinsFold = nullptr;
+    bool builtinsFoldMathK = false;
 
     unsigned int regTop = 0;
     unsigned int stackSize = 0;
@@ -3874,7 +3882,13 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
 
     // builtin folding is enabled on optimization level 2 since we can't deoptimize folding at runtime
     if (options.optimizationLevel >= 2)
+    {
         compiler.builtinsFold = &compiler.builtins;
+
+        if (FFlag::LuauCompileFoldMathK)
+            if (AstName math = names.get("math"); math.value && getGlobalState(compiler.globals, math) == Global::Default)
+                compiler.builtinsFoldMathK = true;
+    }
 
     if (options.optimizationLevel >= 1)
     {
@@ -3882,7 +3896,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
         analyzeBuiltins(compiler.builtins, compiler.globals, compiler.variables, options, root);
 
         // this pass analyzes constantness of expressions
-        foldConstants(compiler.constants, compiler.variables, compiler.locstants, compiler.builtinsFold, root);
+        foldConstants(compiler.constants, compiler.variables, compiler.locstants, compiler.builtinsFold, compiler.builtinsFoldMathK, root);
 
         // this pass analyzes table assignments to estimate table shapes for initially empty tables
         predictTableShapes(compiler.tableShapes, root);
@@ -3895,16 +3909,15 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
         root->visit(&fenvVisitor);
     }
 
-    if (FFlag::LuauCompileFunctionType)
-    {
-        buildTypeMap(compiler.typeMap, root, options.vectorType);
-    }
-
     // gathers all functions with the invariant that all function references are to functions earlier in the list
     // for example, function foo() return function() end end will result in two vector entries, [0] = anonymous and [1] = foo
     std::vector<AstExprFunction*> functions;
     Compiler::FunctionVisitor functionVisitor(&compiler, functions);
     root->visit(&functionVisitor);
+
+    // computes type information for all functions based on type annotations
+    if (FFlag::LuauCompileFunctionType && functionVisitor.hasTypes)
+        buildTypeMap(compiler.typeMap, root, options.vectorType);
 
     for (AstExprFunction* expr : functions)
         compiler.compileFunction(expr, 0);

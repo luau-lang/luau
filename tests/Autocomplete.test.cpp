@@ -3595,7 +3595,7 @@ TEST_CASE_FIXTURE(ACFixture, "string_completion_outside_quotes")
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_empty")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo(a: () -> ())
@@ -3618,7 +3618,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_args")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo(a: (number, string) -> ())
@@ -3641,7 +3641,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_args_single_return")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo(a: (number, string) -> (string))
@@ -3664,7 +3664,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_args_multi_return")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo(a: (number, string) -> (string, number))
@@ -3687,7 +3687,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled__noargs_multi_return")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo(a: () -> (string, number))
@@ -3710,7 +3710,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled__varargs_multi_return")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo(a: (...number) -> (string, number))
@@ -3733,7 +3733,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_multi_varargs_multi_return")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo(a: (string, ...number) -> (string, number))
@@ -3756,7 +3756,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_multi_varargs_varargs_return")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo(a: (string, ...number) -> ...number)
@@ -3779,7 +3779,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_multi_varargs_multi_varargs_return")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo(a: (string, ...number) -> (boolean, ...number))
@@ -3802,7 +3802,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_named_args")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo(a: (foo: number, bar: string) -> (string, number))
@@ -3825,7 +3825,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_partially_args")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo(a: (number, bar: string) -> (string, number))
@@ -3848,7 +3848,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_partially_args_last")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo(a: (foo: number, string) -> (string, number))
@@ -3871,7 +3871,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_typeof_args")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local t = { a = 1, b = 2 }
@@ -3896,7 +3896,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_table_literal_args")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo(a: (tbl: { x: number, y: number }) -> number) return a({x=2, y = 3}) end
@@ -3916,7 +3916,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_typeof_returns")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local t = { a = 1, b = 2 }
@@ -3941,7 +3941,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_table_literal_args")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo(a: () -> { x: number, y: number }) return {x=2, y = 3} end
@@ -3961,7 +3961,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_typeof_vararg")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local t = { a = 1, b = 2 }
@@ -3986,7 +3986,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_generic_type_pack_vararg")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo<A>(a: (...A) -> number, ...: A)
@@ -4009,7 +4009,7 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_generic_on_argument_type_pack_vararg")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled", true};
+    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
 
     check(R"(
 local function foo(a: <T...>(...: T...) -> number)

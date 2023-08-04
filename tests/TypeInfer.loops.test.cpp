@@ -77,7 +77,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967_alt")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     CheckResult result = check(R"(
         type Iterable = typeof(setmetatable(
             {},
@@ -911,7 +913,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_xpath_candidates")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_on_never_gives_never")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     CheckResult result = check(R"(
         local iter: never
         local ans

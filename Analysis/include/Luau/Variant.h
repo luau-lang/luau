@@ -1,12 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Common.h"
+#include <initializer_list>
 #include <new>
 #include <type_traits>
-#include <initializer_list>
-#include <stddef.h>
 #include <utility>
+
+#include <stddef.h>
 
 namespace Luau
 {

@@ -9,6 +9,7 @@
 #include <algorithm>
 
 LUAU_FASTINT(LuauTypeReductionRecursionLimit)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 namespace Luau
 {
@@ -1109,6 +1110,19 @@ TypeId TypeSimplifier::intersect(TypeId left, TypeId right)
     if (get<NeverType>(right))
         return right;
 
+    if (auto lf = get<FreeType>(left))
+    {
+        Relation r = relate(lf->upperBound, right);
+        if (r == Relation::Subset || r == Relation::Coincident)
+            return left;
+    }
+    else if (auto rf = get<FreeType>(right))
+    {
+        Relation r = relate(left, rf->upperBound);
+        if (r == Relation::Superset || r == Relation::Coincident)
+            return right;
+    }
+
     if (isTypeVariable(left))
     {
         blockedTypes.insert(left);
@@ -1159,6 +1173,11 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
 
     left = simplify(left);
     right = simplify(right);
+
+    if (get<NeverType>(left))
+        return right;
+    if (get<NeverType>(right))
+        return left;
 
     if (auto leftUnion = get<UnionType>(left))
     {
@@ -1263,6 +1282,8 @@ TypeId TypeSimplifier::simplify(TypeId ty, DenseHashSet<TypeId>& seen)
 
 SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId left, TypeId right)
 {
+    LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
+
     TypeSimplifier s{builtinTypes, arena};
 
     // fprintf(stderr, "Intersect %s and %s ...\n", toString(left).c_str(), toString(right).c_str());
@@ -1276,11 +1297,13 @@ SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<
 
 SimplifyResult simplifyUnion(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId left, TypeId right)
 {
+    LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
+
     TypeSimplifier s{builtinTypes, arena};
 
     TypeId res = s.union_(left, right);
 
-    // fprintf(stderr, "Union %s and %s -> %s\n", toString(a).c_str(), toString(b).c_str(), toString(res).c_str());
+    // fprintf(stderr, "Union %s and %s -> %s\n", toString(left).c_str(), toString(right).c_str(), toString(res).c_str());
 
     return SimplifyResult{res, std::move(s.blockedTypes)};
 }

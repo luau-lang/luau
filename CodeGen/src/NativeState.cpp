@@ -101,7 +101,8 @@ void initFunctions(NativeState& data)
     data.context.executeNEWCLOSURE = executeNEWCLOSURE;
     data.context.executeNAMECALL = executeNAMECALL;
     data.context.executeFORGPREP = executeFORGPREP;
-    data.context.executeGETVARARGS = executeGETVARARGS;
+    data.context.executeGETVARARGSMultRet = executeGETVARARGSMultRet;
+    data.context.executeGETVARARGSConst = executeGETVARARGSConst;
     data.context.executeDUPCLOSURE = executeDUPCLOSURE;
     data.context.executePREPVARARGS = executePREPVARARGS;
     data.context.executeSETLIST = executeSETLIST;

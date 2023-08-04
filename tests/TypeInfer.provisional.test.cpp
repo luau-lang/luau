@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypeInfer.h"
+#include "Luau/RecursionCounter.h"
 
 #include "Fixture.h"
 
@@ -997,6 +998,50 @@ end
     CheckResult result = frontend.check("Module/Map");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+// We would prefer this unification to be able to complete, but at least it should not crash
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_unification_infinite_recursion")
+{
+    ScopedFastFlag luauTableUnifyRecursionLimit{"LuauTableUnifyRecursionLimit", true};
+
+#if defined(_NOOPT) || defined(_DEBUG)
+    ScopedFastInt LuauTypeInferRecursionLimit{"LuauTypeInferRecursionLimit", 100};
+#endif
+
+    fileResolver.source["game/A"] = R"(
+local tbl = {}
+
+function tbl:f1(state)
+    self.someNonExistentvalue2 = state
+end
+
+function tbl:f2()
+    self.someNonExistentvalue:Dc()
+end
+
+function tbl:f3()
+    self:f2()
+    self:f1(false)
+end
+return tbl
+    )";
+
+    fileResolver.source["game/B"] = R"(
+local tbl = require(game.A)
+tbl:f3()
+    )";
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // TODO: DCR should transform RecursionLimitException into a CodeTooComplex error (currently it rethows it as InternalCompilerError)
+        CHECK_THROWS_AS(frontend.check("game/B"), Luau::InternalCompilerError);
+    }
+    else
+    {
+        CheckResult result = frontend.check("game/B");
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+    }
 }
 
 TEST_SUITE_END();
