@@ -228,7 +228,8 @@ struct TypeChecker2
 {
     NotNull<BuiltinTypes> builtinTypes;
     DcrLogger* logger;
-    NotNull<InternalErrorReporter> ice;
+    const NotNull<TypeCheckLimits> limits;
+    const NotNull<InternalErrorReporter> ice;
     const SourceModule* sourceModule;
     Module* module;
     TypeArena testArena;
@@ -240,10 +241,11 @@ struct TypeChecker2
 
     Normalizer normalizer;
 
-    TypeChecker2(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, DcrLogger* logger, const SourceModule* sourceModule,
+    TypeChecker2(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, NotNull<TypeCheckLimits> limits, DcrLogger* logger, const SourceModule* sourceModule,
         Module* module)
         : builtinTypes(builtinTypes)
         , logger(logger)
+        , limits(limits)
         , ice(unifierState->iceHandler)
         , sourceModule(sourceModule)
         , module(module)
@@ -807,9 +809,9 @@ struct TypeChecker2
         else if (std::optional<TypeId> iterMmTy =
                      findMetatableEntry(builtinTypes, module->errors, iteratorTy, "__iter", forInStatement->values.data[0]->location))
         {
-            Instantiation instantiation{TxnLog::empty(), &arena, TypeLevel{}, scope};
+            Instantiation instantiation{TxnLog::empty(), &arena, builtinTypes, TypeLevel{}, scope};
 
-            if (std::optional<TypeId> instantiatedIterMmTy = instantiation.substitute(*iterMmTy))
+            if (std::optional<TypeId> instantiatedIterMmTy = instantiate(builtinTypes, NotNull{&arena}, limits, scope, *iterMmTy))
             {
                 if (const FunctionType* iterMmFtv = get<FunctionType>(*instantiatedIterMmTy))
                 {
@@ -2679,9 +2681,9 @@ struct TypeChecker2
 };
 
 void check(
-    NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, DcrLogger* logger, const SourceModule& sourceModule, Module* module)
+    NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, NotNull<TypeCheckLimits> limits, DcrLogger* logger, const SourceModule& sourceModule, Module* module)
 {
-    TypeChecker2 typeChecker{builtinTypes, unifierState, logger, &sourceModule, module};
+    TypeChecker2 typeChecker{builtinTypes, unifierState, limits, logger, &sourceModule, module};
 
     typeChecker.visit(sourceModule.root);
 

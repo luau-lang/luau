@@ -147,6 +147,8 @@ const char* getCmdName(IrCmd cmd)
         return "ABS_NUM";
     case IrCmd::NOT_ANY:
         return "NOT_ANY";
+    case IrCmd::CMP_ANY:
+        return "CMP_ANY";
     case IrCmd::JUMP:
         return "JUMP";
     case IrCmd::JUMP_IF_TRUTHY:
@@ -165,8 +167,6 @@ const char* getCmdName(IrCmd cmd)
         return "JUMP_EQ_POINTER";
     case IrCmd::JUMP_CMP_NUM:
         return "JUMP_CMP_NUM";
-    case IrCmd::JUMP_CMP_ANY:
-        return "JUMP_CMP_ANY";
     case IrCmd::JUMP_SLOT_MATCH:
         return "JUMP_SLOT_MATCH";
     case IrCmd::TABLE_LEN:
@@ -219,6 +219,8 @@ const char* getCmdName(IrCmd cmd)
         return "PREPARE_FORN";
     case IrCmd::CHECK_TAG:
         return "CHECK_TAG";
+    case IrCmd::CHECK_TRUTHY:
+        return "CHECK_TRUTHY";
     case IrCmd::CHECK_READONLY:
         return "CHECK_READONLY";
     case IrCmd::CHECK_NO_METATABLE:

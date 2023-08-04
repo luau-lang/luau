@@ -10,7 +10,8 @@ namespace Luau
 namespace Compile
 {
 
-const double kRadDeg = 3.14159265358979323846 / 180.0;
+const double kPi = 3.14159265358979323846;
+const double kRadDeg = kPi / 180.0;
 
 static Constant cvar()
 {
@@ -456,6 +457,17 @@ Constant foldBuiltin(int bfid, const Constant* args, size_t count)
             return cnum(round(args[0].valueNumber));
         break;
     }
+
+    return cvar();
+}
+
+Constant foldBuiltinMath(AstName index)
+{
+    if (index == "pi")
+        return cnum(kPi);
+
+    if (index == "huge")
+        return cnum(HUGE_VAL);
 
     return cvar();
 }

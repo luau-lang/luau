@@ -14,7 +14,7 @@
 
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 LUAU_FASTFLAGVARIABLE(LuauDisableCompletionOutsideQuotes, false)
-LUAU_FASTFLAGVARIABLE(LuauAnonymousAutofilled, false);
+LUAU_FASTFLAGVARIABLE(LuauAnonymousAutofilled1, false);
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteLastTypecheck, false)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteHideSelfArg, false)
 
@@ -618,7 +618,7 @@ std::optional<TypeId> getLocalTypeInScopeAt(const Module& module, Position posit
 template <typename T>
 static std::optional<std::string> tryToStringDetailed(const ScopePtr& scope, T ty, bool functionTypeArguments)
 {
-    LUAU_ASSERT(FFlag::LuauAnonymousAutofilled);
+    LUAU_ASSERT(FFlag::LuauAnonymousAutofilled1);
     ToStringOptions opts;
     opts.useLineBreaks = false;
     opts.hideTableKind = true;
@@ -637,7 +637,7 @@ static std::optional<Name> tryGetTypeNameInScope(ScopePtr scope, TypeId ty, bool
     if (!canSuggestInferredType(scope, ty))
         return std::nullopt;
 
-    if (FFlag::LuauAnonymousAutofilled)
+    if (FFlag::LuauAnonymousAutofilled1)
     {
         return tryToStringDetailed(scope, ty, functionTypeArguments);
     }
@@ -1419,7 +1419,7 @@ static AutocompleteResult autocompleteWhileLoopKeywords(std::vector<AstNode*> an
 
 static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& funcTy)
 {
-    LUAU_ASSERT(FFlag::LuauAnonymousAutofilled);
+    LUAU_ASSERT(FFlag::LuauAnonymousAutofilled1);
     std::string result = "function(";
 
     auto [args, tail] = Luau::flatten(funcTy.argTypes);
@@ -1485,7 +1485,7 @@ static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& func
 
 static std::optional<AutocompleteEntry> makeAnonymousAutofilled(const ModulePtr& module, Position position, const AstNode* node, const std::vector<AstNode*>& ancestry)
 {
-    LUAU_ASSERT(FFlag::LuauAnonymousAutofilled);
+    LUAU_ASSERT(FFlag::LuauAnonymousAutofilled1);
     const AstExprCall* call = node->as<AstExprCall>();
     if (!call && ancestry.size() > 1)
         call = ancestry[ancestry.size() - 2]->as<AstExprCall>();
@@ -1803,7 +1803,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
 
     if (node->asExpr())
     {
-        if (FFlag::LuauAnonymousAutofilled)
+        if (FFlag::LuauAnonymousAutofilled1)
         {
             AutocompleteResult ret = autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
             if (std::optional<AutocompleteEntry> generated = makeAnonymousAutofilled(module, position, node, ancestry))

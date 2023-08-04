@@ -394,6 +394,15 @@ int luaG_getline(Proto* p, int pc)
     return p->abslineinfo[pc >> p->linegaplog2] + p->lineinfo[pc];
 }
 
+int luaG_isnative(lua_State* L, int level)
+{
+    if (unsigned(level) >= unsigned(L->ci - L->base_ci))
+        return 0;
+
+    CallInfo* ci = L->ci - level;
+    return (ci->flags & LUA_CALLINFO_NATIVE) != 0 ? 1 : 0;
+}
+
 void lua_singlestep(lua_State* L, int enabled)
 {
     L->singlestep = bool(enabled);

@@ -13,6 +13,7 @@
 #include "Luau/Type.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Variant.h"
+#include "Normalize.h"
 
 #include <memory>
 #include <vector>
@@ -86,6 +87,8 @@ struct ConstraintGraphBuilder
     // It is pretty uncommon for constraint generation to itself produce errors, but it can happen.
     std::vector<TypeError> errors;
 
+    // Needed to be able to enable error-suppression preservation for immediate refinements.
+    NotNull<Normalizer> normalizer;
     // Needed to resolve modules to make 'require' import types properly.
     NotNull<ModuleResolver> moduleResolver;
     // Occasionally constraint generation needs to produce an ICE.
@@ -98,7 +101,7 @@ struct ConstraintGraphBuilder
 
     DcrLogger* logger;
 
-    ConstraintGraphBuilder(ModulePtr module, TypeArena* arena, NotNull<ModuleResolver> moduleResolver, NotNull<BuiltinTypes> builtinTypes,
+    ConstraintGraphBuilder(ModulePtr module, NotNull<Normalizer> normalizer, NotNull<ModuleResolver> moduleResolver, NotNull<BuiltinTypes> builtinTypes,
         NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope, std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
         DcrLogger* logger, NotNull<DataFlowGraph> dfg, std::vector<RequireCycle> requireCycles);
 

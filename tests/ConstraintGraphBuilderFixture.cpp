@@ -20,7 +20,7 @@ void ConstraintGraphBuilderFixture::generateConstraints(const std::string& code)
 {
     AstStatBlock* root = parse(code);
     dfg = std::make_unique<DataFlowGraph>(DataFlowGraphBuilder::build(root, NotNull{&ice}));
-    cgb = std::make_unique<ConstraintGraphBuilder>(mainModule, &arena, NotNull(&moduleResolver), builtinTypes, NotNull(&ice),
+    cgb = std::make_unique<ConstraintGraphBuilder>(mainModule, NotNull{&normalizer}, NotNull(&moduleResolver), builtinTypes, NotNull(&ice),
         frontend.globals.globalScope, /*prepareModuleScope*/ nullptr, &logger, NotNull{dfg.get()}, std::vector<RequireCycle>());
     cgb->visit(root);
     rootScope = cgb->rootScope;

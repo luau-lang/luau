@@ -75,6 +75,20 @@ struct FindCyclicTypes final : TypeVisitor
         return visitedPacks.insert(tp).second;
     }
 
+    bool visit(TypeId ty, const FreeType& ft) override
+    {
+        if (!visited.insert(ty).second)
+            return false;
+
+        if (FFlag::DebugLuauDeferredConstraintResolution)
+        {
+            traverse(ft.lowerBound);
+            traverse(ft.upperBound);
+        }
+
+        return false;
+    }
+
     bool visit(TypeId ty, const TableType& ttv) override
     {
         if (!visited.insert(ty).second)
@@ -427,6 +441,36 @@ struct TypeStringifier
     void operator()(TypeId ty, const FreeType& ftv)
     {
         state.result.invalid = true;
+
+        if (FFlag::DebugLuauDeferredConstraintResolution)
+        {
+            const TypeId lowerBound = follow(ftv.lowerBound);
+            const TypeId upperBound = follow(ftv.upperBound);
+            if (get<NeverType>(lowerBound) && get<UnknownType>(upperBound))
+            {
+                state.emit("'");
+                state.emit(state.getName(ty));
+            }
+            else
+            {
+                state.emit("(");
+                if (!get<NeverType>(lowerBound))
+                {
+                    stringify(lowerBound);
+                    state.emit(" <: ");
+                }
+                state.emit("'");
+                state.emit(state.getName(ty));
+
+                if (!get<UnknownType>(upperBound))
+                {
+                    state.emit(" <: ");
+                    stringify(upperBound);
+                }
+                state.emit(")");
+            }
+            return;
+        }
 
         if (FInt::DebugLuauVerboseTypeNames >= 1)
             state.emit("free-");

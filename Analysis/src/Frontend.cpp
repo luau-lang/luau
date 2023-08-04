@@ -1182,7 +1182,7 @@ ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle
 
     Normalizer normalizer{&result->internalTypes, builtinTypes, NotNull{&unifierState}};
 
-    ConstraintGraphBuilder cgb{result, &result->internalTypes, moduleResolver, builtinTypes, iceHandler, parentScope, std::move(prepareModuleScope),
+    ConstraintGraphBuilder cgb{result, NotNull{&normalizer}, moduleResolver, builtinTypes, iceHandler, parentScope, std::move(prepareModuleScope),
         logger.get(), NotNull{&dfg}, requireCycles};
 
     cgb.visit(sourceModule.root);
@@ -1229,7 +1229,7 @@ ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle
     }
     else
     {
-        Luau::check(builtinTypes, NotNull{&unifierState}, logger.get(), sourceModule, result.get());
+        Luau::check(builtinTypes, NotNull{&unifierState}, NotNull{&limits}, logger.get(), sourceModule, result.get());
     }
 
     // It would be nice if we could freeze the arenas before doing type

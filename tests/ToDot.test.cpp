@@ -269,6 +269,10 @@ n3 [label="TableType 3"];
 
 TEST_CASE_FIXTURE(Fixture, "free")
 {
+    ScopedFastFlag sff[] = {
+        {"DebugLuauDeferredConstraintResolution", false},
+    };
+
     Type type{TypeVariant{FreeType{TypeLevel{0, 0}}}};
 
     ToDotOptions opts;

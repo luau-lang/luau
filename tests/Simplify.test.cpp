@@ -42,7 +42,7 @@ struct SimplifyFixture : Fixture
     const TypeId truthyTy = builtinTypes->truthyType;
     const TypeId falsyTy = builtinTypes->falsyType;
 
-    const TypeId freeTy = arena->addType(FreeType{&scope});
+    const TypeId freeTy = freshType(arena, builtinTypes, &scope);
     const TypeId genericTy = arena->addType(GenericType{});
     const TypeId blockedTy = arena->addType(BlockedType{});
     const TypeId pendingTy = arena->addType(PendingExpansionType{{}, {}, {}, {}});
@@ -59,6 +59,8 @@ struct SimplifyFixture : Fixture
     TypeId childClassTy = nullptr;
     TypeId anotherChildClassTy = nullptr;
     TypeId unrelatedClassTy = nullptr;
+
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
 
     SimplifyFixture()
     {
@@ -176,8 +178,8 @@ TEST_CASE_FIXTURE(SimplifyFixture, "boolean_and_truthy_and_falsy")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "any_and_indeterminate_types")
 {
-    CHECK("a" == intersectStr(anyTy, freeTy));
-    CHECK("a" == intersectStr(freeTy, anyTy));
+    CHECK("'a" == intersectStr(anyTy, freeTy));
+    CHECK("'a" == intersectStr(freeTy, anyTy));
 
     CHECK("b" == intersectStr(anyTy, genericTy));
     CHECK("b" == intersectStr(genericTy, anyTy));
@@ -191,17 +193,25 @@ TEST_CASE_FIXTURE(SimplifyFixture, "any_and_indeterminate_types")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "unknown_and_indeterminate_types")
 {
-    CHECK(isIntersection(intersect(unknownTy, freeTy)));
-    CHECK(isIntersection(intersect(freeTy, unknownTy)));
+    CHECK(freeTy == intersect(unknownTy, freeTy));
+    CHECK(freeTy == intersect(freeTy, unknownTy));
 
-    CHECK(isIntersection(intersect(unknownTy, genericTy)));
-    CHECK(isIntersection(intersect(genericTy, unknownTy)));
+    TypeId t = nullptr;
 
-    CHECK(isIntersection(intersect(unknownTy, blockedTy)));
-    CHECK(isIntersection(intersect(blockedTy, unknownTy)));
+    t = intersect(unknownTy, genericTy);
+    CHECK_MESSAGE(isIntersection(t), "Should be an intersection but got " << t);
+    t = intersect(genericTy, unknownTy);
+    CHECK_MESSAGE(isIntersection(t), "Should be an intersection but got " << t);
 
-    CHECK(isIntersection(intersect(unknownTy, pendingTy)));
-    CHECK(isIntersection(intersect(pendingTy, unknownTy)));
+    t = intersect(unknownTy, blockedTy);
+    CHECK_MESSAGE(isIntersection(t), "Should be an intersection but got " << t);
+    t = intersect(blockedTy, unknownTy);
+    CHECK_MESSAGE(isIntersection(t), "Should be an intersection but got " << t);
+
+    t = intersect(unknownTy, pendingTy);
+    CHECK_MESSAGE(isIntersection(t), "Should be an intersection but got " << t);
+    t = intersect(pendingTy, unknownTy);
+    CHECK_MESSAGE(isIntersection(t), "Should be an intersection but got " << t);
 }
 
 TEST_CASE_FIXTURE(SimplifyFixture, "unknown_and_concrete")
@@ -225,8 +235,8 @@ TEST_CASE_FIXTURE(SimplifyFixture, "error_and_other_tops_and_bottom_types")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "error_and_indeterminate_types")
 {
-    CHECK("*error-type* & a" == intersectStr(errorTy, freeTy));
-    CHECK("*error-type* & a" == intersectStr(freeTy, errorTy));
+    CHECK("'a & *error-type*" == intersectStr(errorTy, freeTy));
+    CHECK("'a & *error-type*" == intersectStr(freeTy, errorTy));
 
     CHECK("*error-type* & b" == intersectStr(errorTy, genericTy));
     CHECK("*error-type* & b" == intersectStr(genericTy, errorTy));
@@ -430,7 +440,7 @@ TEST_CASE_FIXTURE(SimplifyFixture, "curious_union")
     TypeId curious =
         arena->addType(UnionType{{arena->addType(IntersectionType{{freeTy, falseTy}}), arena->addType(IntersectionType{{freeTy, nilTy}})}});
 
-    CHECK("(a & false) | (a & nil) | number" == toString(union_(curious, numberTy)));
+    CHECK("('a & false) | ('a & nil) | number" == toString(union_(curious, numberTy)));
 }
 
 TEST_CASE_FIXTURE(SimplifyFixture, "negations")
@@ -514,6 +524,15 @@ TEST_CASE_FIXTURE(SimplifyFixture, "simplify_stops_at_cycles")
 
     CHECK(t2 == intersect(t2, anyTy));
     CHECK(t2 == intersect(anyTy, t2));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "free_type_bound_by_any_with_any")
+{
+    CHECK(freeTy == intersect(freeTy, anyTy));
+    CHECK(freeTy == intersect(anyTy, freeTy));
+
+    CHECK(freeTy == intersect(freeTy, anyTy));
+    CHECK(freeTy == intersect(anyTy, freeTy));
 }
 
 TEST_SUITE_END();

@@ -22,9 +22,9 @@ struct TxnLogFixture
     ScopePtr globalScope = std::make_shared<Scope>(builtinTypes.anyTypePack);
     ScopePtr childScope = std::make_shared<Scope>(globalScope);
 
-    TypeId a = arena.freshType(globalScope.get());
-    TypeId b = arena.freshType(globalScope.get());
-    TypeId c = arena.freshType(childScope.get());
+    TypeId a = freshType(NotNull{&arena}, NotNull{&builtinTypes}, globalScope.get());
+    TypeId b = freshType(NotNull{&arena}, NotNull{&builtinTypes}, globalScope.get());
+    TypeId c = freshType(NotNull{&arena}, NotNull{&builtinTypes}, childScope.get());
 
     TypeId g = arena.addType(GenericType{"G"});
 };
@@ -108,8 +108,8 @@ TEST_CASE_FIXTURE(TxnLogFixture, "colliding_coincident_logs_do_not_create_degene
 
     log.commit();
 
-    CHECK("a" == toString(a));
-    CHECK("a" == toString(b));
+    CHECK("'a" == toString(a));
+    CHECK("'a" == toString(b));
 }
 
 TEST_CASE_FIXTURE(TxnLogFixture, "replacing_persistent_types_is_allowed_but_makes_the_log_radioactive")

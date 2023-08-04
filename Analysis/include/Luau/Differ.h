@@ -3,6 +3,7 @@
 
 #include "Luau/DenseHash.h"
 #include "Luau/Type.h"
+#include "Luau/UnifierSharedState.h"
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -151,8 +152,31 @@ struct DifferEnvironment
 {
     TypeId rootLeft;
     TypeId rootRight;
-
     DenseHashMap<TypeId, TypeId> genericMatchedPairs;
+    DenseHashMap<TypePackId, TypePackId> genericTpMatchedPairs;
+
+    DifferEnvironment(TypeId rootLeft, TypeId rootRight)
+        : rootLeft(rootLeft)
+        , rootRight(rootRight)
+        , genericMatchedPairs(nullptr)
+        , genericTpMatchedPairs(nullptr)
+    {
+    }
+
+    bool isProvenEqual(TypeId left, TypeId right) const;
+    bool isAssumedEqual(TypeId left, TypeId right) const;
+    void recordProvenEqual(TypeId left, TypeId right);
+    void pushVisiting(TypeId left, TypeId right);
+    void popVisiting();
+    std::vector<std::pair<TypeId, TypeId>>::const_reverse_iterator visitingBegin() const;
+    std::vector<std::pair<TypeId, TypeId>>::const_reverse_iterator visitingEnd() const;
+
+private:
+    // TODO: consider using DenseHashSet
+    std::unordered_set<std::pair<TypeId, TypeId>, TypeIdPairHash> provenEqual;
+    // Ancestors of current types
+    std::unordered_set<std::pair<TypeId, TypeId>, TypeIdPairHash> visiting;
+    std::vector<std::pair<TypeId, TypeId>> visitingStack;
 };
 DifferResult diff(TypeId ty1, TypeId ty2);
 

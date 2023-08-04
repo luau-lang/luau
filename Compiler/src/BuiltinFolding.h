@@ -9,6 +9,7 @@ namespace Compile
 {
 
 Constant foldBuiltin(int bfid, const Constant* args, size_t count);
+Constant foldBuiltinMath(AstName index);
 
 } // namespace Compile
 } // namespace Luau

@@ -194,6 +194,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/TypeUtils.h
     Analysis/include/Luau/Unifiable.h
     Analysis/include/Luau/Unifier.h
+    Analysis/include/Luau/Unifier2.h
     Analysis/include/Luau/UnifierSharedState.h
     Analysis/include/Luau/Variant.h
     Analysis/include/Luau/VisitType.h
@@ -246,6 +247,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/TypeUtils.cpp
     Analysis/src/Unifiable.cpp
     Analysis/src/Unifier.cpp
+    Analysis/src/Unifier2.cpp
 )
 
 # Luau.VM Sources
@@ -424,6 +426,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.unknownnever.test.cpp
         tests/TypePack.test.cpp
         tests/TypeVar.test.cpp
+        tests/Unifier2.test.cpp
         tests/Variant.test.cpp
         tests/VisitType.test.cpp
         tests/InsertionOrderedMap.test.cpp

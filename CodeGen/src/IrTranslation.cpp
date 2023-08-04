@@ -167,7 +167,9 @@ void translateInstJumpIfEq(IrBuilder& build, const Instruction* pc, int pcpos, b
 
     build.beginBlock(fallback);
     build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
-    build.inst(IrCmd::JUMP_CMP_ANY, build.vmReg(ra), build.vmReg(rb), build.cond(not_ ? IrCondition::NotEqual : IrCondition::Equal), target, next);
+
+    IrOp result = build.inst(IrCmd::CMP_ANY, build.vmReg(ra), build.vmReg(rb), build.cond(IrCondition::Equal));
+    build.inst(IrCmd::JUMP_EQ_INT, result, build.constInt(0), not_ ? target : next, not_ ? next : target);
 
     build.beginBlock(next);
 }
@@ -195,7 +197,27 @@ void translateInstJumpIfCond(IrBuilder& build, const Instruction* pc, int pcpos,
 
     build.beginBlock(fallback);
     build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
-    build.inst(IrCmd::JUMP_CMP_ANY, build.vmReg(ra), build.vmReg(rb), build.cond(cond), target, next);
+
+    bool reverse = false;
+
+    if (cond == IrCondition::NotLessEqual)
+    {
+        reverse = true;
+        cond = IrCondition::LessEqual;
+    }
+    else if (cond == IrCondition::NotLess)
+    {
+        reverse = true;
+        cond = IrCondition::Less;
+    }
+    else if (cond == IrCondition::NotEqual)
+    {
+        reverse = true;
+        cond = IrCondition::Equal;
+    }
+
+    IrOp result = build.inst(IrCmd::CMP_ANY, build.vmReg(ra), build.vmReg(rb), build.cond(cond));
+    build.inst(IrCmd::JUMP_EQ_INT, result, build.constInt(0), reverse ? target : next, reverse ? next : target);
 
     build.beginBlock(next);
 }

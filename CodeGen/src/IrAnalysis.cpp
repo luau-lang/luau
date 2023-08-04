@@ -274,13 +274,13 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
         case IrCmd::STORE_TVALUE:
             maybeDef(inst.a); // Argument can also be a pointer value
             break;
+        case IrCmd::CMP_ANY:
+            use(inst.a);
+            use(inst.b);
+            break;
         case IrCmd::JUMP_IF_TRUTHY:
         case IrCmd::JUMP_IF_FALSY:
             use(inst.a);
-            break;
-        case IrCmd::JUMP_CMP_ANY:
-            use(inst.a);
-            use(inst.b);
             break;
             // A <- B, C
         case IrCmd::DO_ARITH:

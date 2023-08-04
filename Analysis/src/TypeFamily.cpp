@@ -3,14 +3,15 @@
 #include "Luau/TypeFamily.h"
 
 #include "Luau/DenseHash.h"
-#include "Luau/VisitType.h"
-#include "Luau/TxnLog.h"
-#include "Luau/Substitution.h"
-#include "Luau/ToString.h"
-#include "Luau/TypeUtils.h"
-#include "Luau/Unifier.h"
 #include "Luau/Instantiation.h"
 #include "Luau/Normalize.h"
+#include "Luau/Substitution.h"
+#include "Luau/ToString.h"
+#include "Luau/TxnLog.h"
+#include "Luau/TypeCheckLimits.h"
+#include "Luau/TypeUtils.h"
+#include "Luau/Unifier.h"
+#include "Luau/VisitType.h"
 
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyGraphReductionMaximumSteps, 1'000'000);
 
@@ -397,8 +398,8 @@ TypeFamilyReductionResult<TypeId> addFamilyFn(std::vector<TypeId> typeParams, st
     if (!mmFtv)
         return {std::nullopt, true, {}, {}};
 
-    Instantiation instantiation{log.get(), arena.get(), TypeLevel{}, scope.get()};
-    if (std::optional<TypeId> instantiatedAddMm = instantiation.substitute(log->follow(*addMm)))
+    TypeCheckLimits limits; // TODO: We need to thread TypeCheckLimits in from Frontend to here.
+    if (std::optional<TypeId> instantiatedAddMm = instantiate(builtins, arena, NotNull{&limits}, scope, log->follow(*addMm)))
     {
         if (const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedAddMm))
         {
