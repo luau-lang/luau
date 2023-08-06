@@ -28,7 +28,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
@@ -48,7 +51,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
@@ -90,7 +96,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_y_return")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_not_y_break")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
@@ -115,7 +124,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_not_y_break")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_not_y_continue")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
@@ -164,7 +176,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_rand_return_elif_not_y_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_rand_break_elif_not_y_break")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
@@ -191,7 +206,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_rand_break_elif_not_y_br
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_rand_continue_elif_not_y_continue")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
@@ -242,7 +260,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_rand_return_elif_no
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_rand_break_elif_not_y_fallthrough")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
@@ -269,7 +290,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_rand_break_elif_not_y_fa
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_rand_continue_elif_not_y_fallthrough")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
@@ -322,7 +346,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_y_fallthrough_elif_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_not_y_fallthrough_elif_not_z_break")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}}, z: {{value: string?}})
@@ -352,7 +379,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_not_y_fallthrough_elif_n
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_not_y_fallthrough_elif_not_z_continue")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}}, z: {{value: string?}})
@@ -402,7 +432,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_if_not_x_return")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_record_do_if_not_x_break")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
@@ -424,7 +457,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_record_do_if_not_x_break")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_record_do_if_not_x_continue")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
@@ -575,7 +611,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_if_not_y_return")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_if_not_y_break")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
@@ -602,7 +641,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_if_not_y_break")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_if_not_y_continue")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
@@ -652,7 +694,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_does_not_leak_out")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_does_not_leak_out_breaking")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
@@ -677,7 +722,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_does_not_leak_out_breaking")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_does_not_leak_out_continuing")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
@@ -728,7 +776,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prototyping_and_visiting_alias_has_the_same_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "prototyping_and_visiting_alias_has_the_same_scope_breaking")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
@@ -753,7 +804,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prototyping_and_visiting_alias_has_the_same_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "prototyping_and_visiting_alias_has_the_same_scope_continuing")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
@@ -813,7 +867,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tagged_unions")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tagged_unions_breaking")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         type Ok<T> = { tag: "ok", value: T }
@@ -846,7 +903,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tagged_unions_breaking")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tagged_unions_continuing")
 {
-    ScopedFastFlag sff{"LuauLoopControlFlowAnalysis", true};
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
 
     CheckResult result = check(R"(
         type Ok<T> = { tag: "ok", value: T }
