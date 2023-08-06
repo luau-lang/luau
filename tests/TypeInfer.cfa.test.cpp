@@ -150,6 +150,62 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_not_y_continue")
     CHECK_EQ("string", toString(requireTypeAtPosition({11, 38})));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_y_break")
+{
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
+
+    CheckResult result = check(R"(
+        local function f(x: {{value: string?}}, y: {{value: string?}})
+            for i, recordX in x do
+                local recordY = y[i]
+                if not recordX.value then
+                    return
+                elseif not recordY.value then
+                    break
+                end
+
+                local foo = recordX.value
+                local bar = recordY.value
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireTypeAtPosition({10, 38})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({11, 38})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_not_y_continue")
+{
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
+
+    CheckResult result = check(R"(
+        local function f(x: {{value: string?}}, y: {{value: string?}})
+            for i, recordX in x do
+                local recordY = y[i]
+                if not recordX.value then
+                    break
+                elseif not recordY.value then
+                    continue
+                end
+
+                local foo = recordX.value
+                local bar = recordY.value
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireTypeAtPosition({10, 38})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({11, 38})));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_rand_return_elif_not_y_return")
 {
     ScopedFastFlag sff{"LuauTinyControlFlowAnalysis", true};
@@ -410,6 +466,72 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_not_y_fallthrough_eli
     CHECK_EQ("string?", toString(requireTypeAtPosition({15, 38})));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_not_y_throw_elif_not_z_fallthrough")
+{
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
+
+    CheckResult result = check(R"(
+        local function f(x: {{value: string?}}, y: {{value: string?}}, z: {{value: string?}})
+            for i, recordX in x do
+                local recordY = y[i]
+                local recordZ = y[i]
+                if not recordX.value then
+                    continue
+                elseif not recordY.value then
+                    error("Y value not defined")
+                elseif not recordZ.value then
+                    
+                end
+
+                local foo = recordX.value
+                local bar = recordY.value
+                local baz = recordZ.value
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireTypeAtPosition({13, 38})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({14, 38})));
+    CHECK_EQ("string?", toString(requireTypeAtPosition({15, 38})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_y_fallthrough_elif_not_z_break")
+{
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
+
+    CheckResult result = check(R"(
+        local function f(x: {{value: string?}}, y: {{value: string?}}, z: {{value: string?}})
+            for i, recordX in x do
+                local recordY = y[i]
+                local recordZ = y[i]
+                if not recordX.value then
+                    return
+                elseif not recordY.value then
+                    
+                elseif not recordZ.value then
+                    break
+                end
+
+                local foo = recordX.value
+                local bar = recordY.value
+                local baz = recordZ.value
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireTypeAtPosition({13, 38})));
+    CHECK_EQ("string?", toString(requireTypeAtPosition({14, 38})));
+    CHECK_EQ("string?", toString(requireTypeAtPosition({15, 38})));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_if_not_x_return")
 {
     ScopedFastFlag sff{"LuauTinyControlFlowAnalysis", true};
@@ -652,6 +774,66 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_if_not_y_continue")
                 local recordY = y[i]
                 if not recordX.value then
                     continue
+                end
+
+                if not recordY.value then
+                    continue
+                end
+
+                local foo = recordX.value
+                local bar = recordY.value
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireTypeAtPosition({12, 38})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({13, 38})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_if_not_y_throw")
+{
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
+
+    CheckResult result = check(R"(
+        local function f(x: {{value: string?}}, y: {{value: string?}})
+            for i, recordX in x do
+                local recordY = y[i]
+                if not recordX.value then
+                    continue
+                end
+
+                if not recordY.value then
+                    error("Y value not defined")
+                end
+
+                local foo = recordX.value
+                local bar = recordY.value
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireTypeAtPosition({12, 38})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({13, 38})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_if_not_y_continue")
+{
+    ScopedFastFlag flags[] = {
+        {"LuauTinyControlFlowAnalysis", true},
+        {"LuauLoopControlFlowAnalysis", true}
+    };
+
+    CheckResult result = check(R"(
+        local function f(x: {{value: string?}}, y: {{value: string?}})
+            for i, recordX in x do
+                local recordY = y[i]
+                if not recordX.value then
+                    break
                 end
 
                 if not recordY.value then
