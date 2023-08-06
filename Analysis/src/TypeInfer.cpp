@@ -366,11 +366,14 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStat& program)
         return check(scope, *while_);
     else if (auto repeat = program.as<AstStatRepeat>())
         return check(scope, *repeat);
-    else if (program.is<AstStatBreak>() || program.is<AstStatContinue>())
-    {
-        // Nothing to do
-        return ControlFlow::None;
-    }
+    else if (program.is<AstStatBreak>())
+        return FFlag::LuauLoopControlFlowAnalysis
+            ? ControlFlow::Breaks
+            : ControlFlow::None;
+    else if (program.is<AstStatContinue>())
+        return FFlag::LuauLoopControlFlowAnalysis
+            ? ControlFlow::Continues
+            : ControlFlow::None;
     else if (auto return_ = program.as<AstStatReturn>())
         return check(scope, *return_);
     else if (auto expr = program.as<AstStatExpr>())
@@ -763,20 +766,60 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatIf& statement
         ScopePtr elseScope = childScope(scope, statement.elsebody ? statement.elsebody->location : statement.location);
         resolve(result.predicates, elseScope, false);
 
+        const ControlFlow guardClauseFlows = FFlag::LuauLoopControlFlowAnalysis
+            ? ExitingControlFlows
+            : ControlFlow::Returns | ControlFlow :: Throws;
+
         ControlFlow thencf = check(thenScope, *statement.thenbody);
         ControlFlow elsecf = ControlFlow::None;
         if (statement.elsebody)
             elsecf = check(elseScope, *statement.elsebody);
 
-        if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && elsecf == ControlFlow::None)
+        if (matches(thencf, guardClauseFlows) && elsecf == ControlFlow::None)
             scope->inheritRefinements(elseScope);
-        else if (thencf == ControlFlow::None && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
+        else if (thencf == ControlFlow::None && matches(elsecf, guardClauseFlows))
             scope->inheritRefinements(thenScope);
 
-        if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
-            return ControlFlow::Returns;
-        else
+        if (FFlag::LuauLoopControlFlowAnalysis)
+        {
+            if (thencf == elsecf)
+            {
+                return thencf;
+            }
+            if (
+                matches(thencf, FunctionExitControlFlows)
+                && matches(elsecf, FunctionExitControlFlows)
+            )
+            {
+                return ControlFlow::MixedFunctionExit;
+            }
+            if (
+                matches(thencf, LoopExitControlFlows)
+                && matches(elsecf, LoopExitControlFlows)
+            )
+            {
+                return ControlFlow::MixedLoopExit;
+            }
+            if (
+                matches(thencf, ExitingControlFlows)
+                && matches(elsecf, ExitingControlFlows)
+            )
+            {
+                return ControlFlow::MixedExit;
+            }
             return ControlFlow::None;
+        }
+        else
+        {
+            if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
+            {
+                return ControlFlow::Returns;
+            }
+            else
+            {
+                return ControlFlow::None;
+            }
+        }
     }
     else
     {

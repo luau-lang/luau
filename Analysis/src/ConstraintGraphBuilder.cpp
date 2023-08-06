@@ -24,6 +24,7 @@ LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
 LUAU_FASTFLAG(LuauParseDeclareClassIndexer);
+LUAU_FASTFLAG(LuauLoopControlFlowAnalysis);
 
 namespace Luau
 {
@@ -536,11 +537,14 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStat* stat)
         return visit(scope, s);
     else if (auto s = stat->as<AstStatRepeat>())
         return visit(scope, s);
-    else if (stat->is<AstStatBreak>() || stat->is<AstStatContinue>())
-    {
-        // Nothing
-        return ControlFlow::None; // TODO: ControlFlow::Break/Continue
-    }
+    else if (stat->is<AstStatBreak>())
+        return FFlag::LuauLoopControlFlowAnalysis
+            ? ControlFlow::Breaks
+            : ControlFlow::None;
+    else if (stat->is<AstStatContinue>())
+        return FFlag::LuauLoopControlFlowAnalysis
+            ? ControlFlow::Continues
+            : ControlFlow::None;
     else if (auto r = stat->as<AstStatReturn>())
         return visit(scope, r);
     else if (auto e = stat->as<AstStatExpr>())
@@ -1066,20 +1070,60 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatIf* ifSt
     ScopePtr elseScope = childScope(ifStatement->elsebody ? ifStatement->elsebody : ifStatement, scope);
     applyRefinements(elseScope, ifStatement->elseLocation.value_or(ifStatement->condition->location), refinementArena.negation(refinement));
 
+    const ControlFlow guardClauseFlows = FFlag::LuauLoopControlFlowAnalysis
+        ? ExitingControlFlows
+        : ControlFlow::Returns | ControlFlow :: Throws;
+
     ControlFlow thencf = visit(thenScope, ifStatement->thenbody);
     ControlFlow elsecf = ControlFlow::None;
     if (ifStatement->elsebody)
         elsecf = visit(elseScope, ifStatement->elsebody);
 
-    if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && elsecf == ControlFlow::None)
+    if (matches(thencf, guardClauseFlows) && elsecf == ControlFlow::None)
         scope->inheritRefinements(elseScope);
-    else if (thencf == ControlFlow::None && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
+    else if (thencf == ControlFlow::None && matches(elsecf, guardClauseFlows))
         scope->inheritRefinements(thenScope);
 
-    if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
-        return ControlFlow::Returns;
-    else
+    if (FFlag::LuauLoopControlFlowAnalysis)
+    {
+        if (thencf == elsecf)
+        {
+            return thencf;
+        }
+        if (
+            matches(thencf, FunctionExitControlFlows)
+            && matches(elsecf, FunctionExitControlFlows)
+        )
+        {
+            return ControlFlow::MixedFunctionExit;
+        }
+        if (
+            matches(thencf, LoopExitControlFlows)
+            && matches(elsecf, LoopExitControlFlows)
+        )
+        {
+            return ControlFlow::MixedLoopExit;
+        }
+        if (
+            matches(thencf, ExitingControlFlows)
+            && matches(elsecf, ExitingControlFlows)
+        )
+        {
+            return ControlFlow::MixedExit;
+        }
         return ControlFlow::None;
+    }
+    else
+    {
+        if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
+        {
+            return ControlFlow::Returns;
+        }
+        else
+        {
+            return ControlFlow::None;
+        }
+    }
 }
 
 static bool occursCheck(TypeId needle, TypeId haystack)
