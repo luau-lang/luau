@@ -82,13 +82,13 @@ struct ValueVisitor : AstVisitor
     }
 };
 
-void assignMutable(DenseHashMap<AstName, Global>& globals, const AstNameTable& names, const char** mutableGlobals)
+void assignMutable(DenseHashMap<AstName, Global>& globals, const AstNameTable& names, const char* const* mutableGlobals)
 {
     if (AstName name = names.get("_G"); name.value)
         globals[name] = Global::Mutable;
 
     if (mutableGlobals)
-        for (const char** ptr = mutableGlobals; *ptr; ++ptr)
+        for (const char* const* ptr = mutableGlobals; *ptr; ++ptr)
             if (AstName name = names.get(*ptr); name.value)
                 globals[name] = Global::Mutable;
 }
