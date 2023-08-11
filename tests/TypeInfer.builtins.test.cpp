@@ -132,7 +132,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_predicate")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
 {
-    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+    ScopedFastFlag sff[] = {
+        {"LuauAlwaysCommitInferencesOfFunctionCalls", true},
+        {"LuauIndentTypeMismatch", true},
+    };
+    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
 
     CheckResult result = check(R"(
         --!strict
@@ -142,12 +146,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(R"(Type '(number, number) -> boolean' could not be converted into '((string, string) -> boolean)?'
+    const std::string expected = R"(Type
+    '(number, number) -> boolean'
+could not be converted into
+    '((string, string) -> boolean)?'
 caused by:
-  None of the union options are compatible. For example: Type '(number, number) -> boolean' could not be converted into '(string, string) -> boolean'
+  None of the union options are compatible. For example: 
+Type
+    '(number, number) -> boolean'
+could not be converted into
+    '(string, string) -> boolean'
 caused by:
-  Argument #1 type is not compatible. Type 'string' could not be converted into 'number')",
-        toString(result.errors[0]));
+  Argument #1 type is not compatible. 
+Type 'string' could not be converted into 'number')";
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "strings_have_methods")

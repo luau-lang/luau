@@ -5,6 +5,7 @@
 #include "ByteUtils.h"
 
 #include <stdarg.h>
+#include <stdio.h>
 
 namespace Luau
 {

@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Linter.h"
+#include "Luau/LinterConfig.h"
 #include "Luau/ParseOptions.h"
 
 #include <string>

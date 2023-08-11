@@ -163,6 +163,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/IostreamHelpers.h
     Analysis/include/Luau/JsonEmitter.h
     Analysis/include/Luau/Linter.h
+    Analysis/include/Luau/LinterConfig.h
     Analysis/include/Luau/LValue.h
     Analysis/include/Luau/Metamethods.h
     Analysis/include/Luau/Module.h
@@ -221,6 +222,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/IostreamHelpers.cpp
     Analysis/src/JsonEmitter.cpp
     Analysis/src/Linter.cpp
+    Analysis/src/LinterConfig.cpp
     Analysis/src/LValue.cpp
     Analysis/src/Module.cpp
     Analysis/src/Normalize.cpp

@@ -180,7 +180,7 @@ void emitUpdateBase(AssemblyBuilderX64& build);
 void emitInterrupt(AssemblyBuilderX64& build);
 void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, int offset, int pcpos);
 
-void emitUpdatePcAndContinueInVm(AssemblyBuilderX64& build);
+void emitUpdatePcForExit(AssemblyBuilderX64& build);
 void emitContinueCallInVm(AssemblyBuilderX64& build);
 
 void emitReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers);

@@ -27,15 +27,20 @@ struct IrLoweringX64
 {
     IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, IrFunction& function);
 
-    void lowerInst(IrInst& inst, uint32_t index, IrBlock& next);
+    void lowerInst(IrInst& inst, uint32_t index, const IrBlock& next);
     void finishBlock();
     void finishFunction();
 
     bool hasError() const;
 
-    bool isFallthroughBlock(IrBlock target, IrBlock next);
-    void jumpOrFallthrough(IrBlock& target, IrBlock& next);
-    void jumpOrAbortOnUndef(ConditionX64 cond, ConditionX64 condInverse, IrOp targetOrUndef, bool continueInVm = false);
+    bool isFallthroughBlock(const IrBlock& target, const IrBlock& next);
+    void jumpOrFallthrough(IrBlock& target, const IrBlock& next);
+
+    Label& getTargetLabel(IrOp op, Label& fresh);
+    void finalizeTargetLabel(IrOp op, Label& fresh);
+
+    void jumpOrAbortOnUndef(ConditionX64 cond, IrOp target, const IrBlock& next);
+    void jumpOrAbortOnUndef(IrOp target, const IrBlock& next);
 
     void storeDoubleAsFloat(OperandX64 dst, IrOp src);
 

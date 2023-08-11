@@ -2,7 +2,7 @@
 #include "Luau/OptimizeConstProp.h"
 
 #include "Luau/DenseHash.h"
-#include "Luau/IrAnalysis.h"
+#include "Luau/IrData.h"
 #include "Luau/IrBuilder.h"
 #include "Luau/IrUtils.h"
 

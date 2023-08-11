@@ -186,75 +186,12 @@ void requireVariadicSequence(RegisterSet& sourceRs, const RegisterSet& defRs, ui
     }
 }
 
-static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock& block, RegisterSet& defRs, std::bitset<256>& capturedRegs)
+template<typename T>
+static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrBlock& block)
 {
-    RegisterSet inRs;
-
-    auto def = [&](IrOp op, int offset = 0) {
-        defRs.regs.set(vmRegOp(op) + offset, true);
-    };
-
-    auto use = [&](IrOp op, int offset = 0) {
-        if (!defRs.regs.test(vmRegOp(op) + offset))
-            inRs.regs.set(vmRegOp(op) + offset, true);
-    };
-
-    auto maybeDef = [&](IrOp op) {
-        if (op.kind == IrOpKind::VmReg)
-            defRs.regs.set(vmRegOp(op), true);
-    };
-
-    auto maybeUse = [&](IrOp op) {
-        if (op.kind == IrOpKind::VmReg)
-        {
-            if (!defRs.regs.test(vmRegOp(op)))
-                inRs.regs.set(vmRegOp(op), true);
-        }
-    };
-
-    auto defVarargs = [&](uint8_t varargStart) {
-        defRs.varargSeq = true;
-        defRs.varargStart = varargStart;
-    };
-
-    auto useVarargs = [&](uint8_t varargStart) {
-        requireVariadicSequence(inRs, defRs, varargStart);
-
-        // Variadic sequence has been consumed
-        defRs.varargSeq = false;
-        defRs.varargStart = 0;
-    };
-
-    auto defRange = [&](int start, int count) {
-        if (count == -1)
-        {
-            defVarargs(start);
-        }
-        else
-        {
-            for (int i = start; i < start + count; i++)
-                defRs.regs.set(i, true);
-        }
-    };
-
-    auto useRange = [&](int start, int count) {
-        if (count == -1)
-        {
-            useVarargs(start);
-        }
-        else
-        {
-            for (int i = start; i < start + count; i++)
-            {
-                if (!defRs.regs.test(i))
-                    inRs.regs.set(i, true);
-            }
-        }
-    };
-
     for (uint32_t instIdx = block.start; instIdx <= block.finish; instIdx++)
     {
-        const IrInst& inst = function.instructions[instIdx];
+        IrInst& inst = function.instructions[instIdx];
 
         // For correct analysis, all instruction uses must be handled before handling the definitions
         switch (inst.cmd)
@@ -264,7 +201,7 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
         case IrCmd::LOAD_DOUBLE:
         case IrCmd::LOAD_INT:
         case IrCmd::LOAD_TVALUE:
-            maybeUse(inst.a); // Argument can also be a VmConst
+            visitor.maybeUse(inst.a); // Argument can also be a VmConst
             break;
         case IrCmd::STORE_TAG:
         case IrCmd::STORE_POINTER:
@@ -272,63 +209,63 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
         case IrCmd::STORE_INT:
         case IrCmd::STORE_VECTOR:
         case IrCmd::STORE_TVALUE:
-            maybeDef(inst.a); // Argument can also be a pointer value
+            visitor.maybeDef(inst.a); // Argument can also be a pointer value
             break;
         case IrCmd::CMP_ANY:
-            use(inst.a);
-            use(inst.b);
+            visitor.use(inst.a);
+            visitor.use(inst.b);
             break;
         case IrCmd::JUMP_IF_TRUTHY:
         case IrCmd::JUMP_IF_FALSY:
-            use(inst.a);
+            visitor.use(inst.a);
             break;
             // A <- B, C
         case IrCmd::DO_ARITH:
         case IrCmd::GET_TABLE:
-            use(inst.b);
-            maybeUse(inst.c); // Argument can also be a VmConst
+            visitor.use(inst.b);
+            visitor.maybeUse(inst.c); // Argument can also be a VmConst
 
-            def(inst.a);
+            visitor.def(inst.a);
             break;
         case IrCmd::SET_TABLE:
-            use(inst.a);
-            use(inst.b);
-            maybeUse(inst.c); // Argument can also be a VmConst
+            visitor.use(inst.a);
+            visitor.use(inst.b);
+            visitor.maybeUse(inst.c); // Argument can also be a VmConst
             break;
             // A <- B
         case IrCmd::DO_LEN:
-            use(inst.b);
+            visitor.use(inst.b);
 
-            def(inst.a);
+            visitor.def(inst.a);
             break;
         case IrCmd::GET_IMPORT:
-            def(inst.a);
+            visitor.def(inst.a);
             break;
         case IrCmd::CONCAT:
-            useRange(vmRegOp(inst.a), function.uintOp(inst.b));
+            visitor.useRange(vmRegOp(inst.a), function.uintOp(inst.b));
 
-            defRange(vmRegOp(inst.a), function.uintOp(inst.b));
+            visitor.defRange(vmRegOp(inst.a), function.uintOp(inst.b));
             break;
         case IrCmd::GET_UPVALUE:
-            def(inst.a);
+            visitor.def(inst.a);
             break;
         case IrCmd::SET_UPVALUE:
-            use(inst.b);
+            visitor.use(inst.b);
             break;
         case IrCmd::PREPARE_FORN:
-            use(inst.a);
-            use(inst.b);
-            use(inst.c);
+            visitor.use(inst.a);
+            visitor.use(inst.b);
+            visitor.use(inst.c);
 
-            def(inst.a);
-            def(inst.b);
-            def(inst.c);
+            visitor.def(inst.a);
+            visitor.def(inst.b);
+            visitor.def(inst.c);
             break;
         case IrCmd::INTERRUPT:
             break;
         case IrCmd::BARRIER_OBJ:
         case IrCmd::BARRIER_TABLE_FORWARD:
-            use(inst.b);
+            visitor.use(inst.b);
             break;
         case IrCmd::CLOSE_UPVALS:
             // Closing an upvalue should be counted as a register use (it copies the fresh register value)
@@ -336,23 +273,23 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
             // Because we don't plan to optimize captured registers atm, we skip full dataflow analysis for them right now
             break;
         case IrCmd::CAPTURE:
-            maybeUse(inst.a);
+            visitor.maybeUse(inst.a);
 
             if (function.uintOp(inst.b) == 1)
-                capturedRegs.set(vmRegOp(inst.a), true);
+                visitor.capture(vmRegOp(inst.a));
             break;
         case IrCmd::SETLIST:
-            use(inst.b);
-            useRange(vmRegOp(inst.c), function.intOp(inst.d));
+            visitor.use(inst.b);
+            visitor.useRange(vmRegOp(inst.c), function.intOp(inst.d));
             break;
         case IrCmd::CALL:
-            use(inst.a);
-            useRange(vmRegOp(inst.a) + 1, function.intOp(inst.b));
+            visitor.use(inst.a);
+            visitor.useRange(vmRegOp(inst.a) + 1, function.intOp(inst.b));
 
-            defRange(vmRegOp(inst.a), function.intOp(inst.c));
+            visitor.defRange(vmRegOp(inst.a), function.intOp(inst.c));
             break;
         case IrCmd::RETURN:
-            useRange(vmRegOp(inst.a), function.intOp(inst.b));
+            visitor.useRange(vmRegOp(inst.a), function.intOp(inst.b));
             break;
 
             // TODO: FASTCALL is more restrictive than INVOKE_FASTCALL; we should either determine the exact semantics, or rework it
@@ -364,89 +301,89 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
                 {
                     LUAU_ASSERT(inst.d.kind == IrOpKind::VmReg && vmRegOp(inst.d) == vmRegOp(inst.c) + 1);
 
-                    useRange(vmRegOp(inst.c), count);
+                    visitor.useRange(vmRegOp(inst.c), count);
                 }
                 else
                 {
                     if (count >= 1)
-                        use(inst.c);
+                        visitor.use(inst.c);
 
                     if (count >= 2)
-                        maybeUse(inst.d); // Argument can also be a VmConst
+                        visitor.maybeUse(inst.d); // Argument can also be a VmConst
                 }
             }
             else
             {
-                useVarargs(vmRegOp(inst.c));
+                visitor.useVarargs(vmRegOp(inst.c));
             }
 
             // Multiple return sequences (count == -1) are defined by ADJUST_STACK_TO_REG
             if (int count = function.intOp(inst.f); count != -1)
-                defRange(vmRegOp(inst.b), count);
+                visitor.defRange(vmRegOp(inst.b), count);
             break;
         case IrCmd::FORGLOOP:
             // First register is not used by instruction, we check that it's still 'nil' with CHECK_TAG
-            use(inst.a, 1);
-            use(inst.a, 2);
+            visitor.use(inst.a, 1);
+            visitor.use(inst.a, 2);
 
-            def(inst.a, 2);
-            defRange(vmRegOp(inst.a) + 3, function.intOp(inst.b));
+            visitor.def(inst.a, 2);
+            visitor.defRange(vmRegOp(inst.a) + 3, function.intOp(inst.b));
             break;
         case IrCmd::FORGLOOP_FALLBACK:
-            useRange(vmRegOp(inst.a), 3);
+            visitor.useRange(vmRegOp(inst.a), 3);
 
-            def(inst.a, 2);
-            defRange(vmRegOp(inst.a) + 3, uint8_t(function.intOp(inst.b))); // ignore most significant bit
+            visitor.def(inst.a, 2);
+            visitor.defRange(vmRegOp(inst.a) + 3, uint8_t(function.intOp(inst.b))); // ignore most significant bit
             break;
         case IrCmd::FORGPREP_XNEXT_FALLBACK:
-            use(inst.b);
+            visitor.use(inst.b);
             break;
         case IrCmd::FALLBACK_GETGLOBAL:
-            def(inst.b);
+            visitor.def(inst.b);
             break;
         case IrCmd::FALLBACK_SETGLOBAL:
-            use(inst.b);
+            visitor.use(inst.b);
             break;
         case IrCmd::FALLBACK_GETTABLEKS:
-            use(inst.c);
+            visitor.use(inst.c);
 
-            def(inst.b);
+            visitor.def(inst.b);
             break;
         case IrCmd::FALLBACK_SETTABLEKS:
-            use(inst.b);
-            use(inst.c);
+            visitor.use(inst.b);
+            visitor.use(inst.c);
             break;
         case IrCmd::FALLBACK_NAMECALL:
-            use(inst.c);
+            visitor.use(inst.c);
 
-            defRange(vmRegOp(inst.b), 2);
+            visitor.defRange(vmRegOp(inst.b), 2);
             break;
         case IrCmd::FALLBACK_PREPVARARGS:
             // No effect on explicitly referenced registers
             break;
         case IrCmd::FALLBACK_GETVARARGS:
-            defRange(vmRegOp(inst.b), function.intOp(inst.c));
+            visitor.defRange(vmRegOp(inst.b), function.intOp(inst.c));
             break;
         case IrCmd::FALLBACK_DUPCLOSURE:
-            def(inst.b);
+            visitor.def(inst.b);
             break;
         case IrCmd::FALLBACK_FORGPREP:
-            use(inst.b);
+            visitor.use(inst.b);
 
-            defRange(vmRegOp(inst.b), 3);
+            visitor.defRange(vmRegOp(inst.b), 3);
             break;
         case IrCmd::ADJUST_STACK_TO_REG:
-            defRange(vmRegOp(inst.a), -1);
+            visitor.defRange(vmRegOp(inst.a), -1);
             break;
         case IrCmd::ADJUST_STACK_TO_TOP:
             // While this can be considered to be a vararg consumer, it is already handled in fastcall instructions
             break;
         case IrCmd::GET_TYPEOF:
-            use(inst.a);
+            visitor.use(inst.a);
             break;
 
         case IrCmd::FINDUPVAL:
-            use(inst.a);
+            visitor.use(inst.a);
             break;
 
         default:
@@ -460,8 +397,102 @@ static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock&
             break;
         }
     }
+}
 
-    return inRs;
+struct BlockVmRegLiveInComputation
+{
+    BlockVmRegLiveInComputation(RegisterSet& defRs, std::bitset<256>& capturedRegs)
+        : defRs(defRs)
+        , capturedRegs(capturedRegs)
+    {
+    }
+
+    RegisterSet& defRs;
+    std::bitset<256>& capturedRegs;
+
+    RegisterSet inRs;
+
+    void def(IrOp op, int offset = 0)
+    {
+        defRs.regs.set(vmRegOp(op) + offset, true);
+    }
+
+    void use(IrOp op, int offset = 0)
+    {
+        if (!defRs.regs.test(vmRegOp(op) + offset))
+            inRs.regs.set(vmRegOp(op) + offset, true);
+    }
+
+    void maybeDef(IrOp op)
+    {
+        if (op.kind == IrOpKind::VmReg)
+            defRs.regs.set(vmRegOp(op), true);
+    }
+
+    void maybeUse(IrOp op)
+    {
+        if (op.kind == IrOpKind::VmReg)
+        {
+            if (!defRs.regs.test(vmRegOp(op)))
+                inRs.regs.set(vmRegOp(op), true);
+        }
+    }
+
+    void defVarargs(uint8_t varargStart)
+    {
+        defRs.varargSeq = true;
+        defRs.varargStart = varargStart;
+    }
+
+    void useVarargs(uint8_t varargStart)
+    {
+        requireVariadicSequence(inRs, defRs, varargStart);
+
+        // Variadic sequence has been consumed
+        defRs.varargSeq = false;
+        defRs.varargStart = 0;
+    }
+
+    void defRange(int start, int count)
+    {
+        if (count == -1)
+        {
+            defVarargs(start);
+        }
+        else
+        {
+            for (int i = start; i < start + count; i++)
+                defRs.regs.set(i, true);
+        }
+    }
+
+    void useRange(int start, int count)
+    {
+        if (count == -1)
+        {
+            useVarargs(start);
+        }
+        else
+        {
+            for (int i = start; i < start + count; i++)
+            {
+                if (!defRs.regs.test(i))
+                    inRs.regs.set(i, true);
+            }
+        }
+    }
+
+    void capture(int reg)
+    {
+        capturedRegs.set(reg, true);
+    }
+};
+
+static RegisterSet computeBlockLiveInRegSet(IrFunction& function, const IrBlock& block, RegisterSet& defRs, std::bitset<256>& capturedRegs)
+{
+    BlockVmRegLiveInComputation visitor(defRs, capturedRegs);
+    visitVmRegDefsUses(visitor, function, block);
+    return visitor.inRs;
 }
 
 // The algorithm used here is commonly known as backwards data-flow analysis.

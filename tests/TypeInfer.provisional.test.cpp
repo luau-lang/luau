@@ -787,6 +787,9 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "functions_with_mismatching_arity_but_any_is
 
 TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_type_is_illegal")
 {
+    ScopedFastFlag sff{"LuauIndentTypeMismatch", true};
+    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
+
     CheckResult result = check(R"(
         local t: {x: number?} = {x = nil}
 
@@ -796,11 +799,14 @@ TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_ty
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    CHECK_EQ(R"(Type '{| x: number? |}' could not be converted into '{| x: number |}'
+    const std::string expected = R"(Type
+    '{| x: number? |}'
+could not be converted into
+    '{| x: number |}'
 caused by:
-  Property 'x' is not compatible. Type 'number?' could not be converted into 'number' in an invariant context)",
-        toString(result.errors[0]));
+  Property 'x' is not compatible. 
+Type 'number?' could not be converted into 'number' in an invariant context)";
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_with_a_singleton_argument")

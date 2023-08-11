@@ -1528,4 +1528,43 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_generictp_cyclic")
     compareTypesEq("foo", "almostFoo");
 }
 
+TEST_CASE_FIXTURE(DifferFixture, "symbol_forward")
+{
+    CheckResult result = check(R"(
+        local foo = 5
+        local almostFoo = "five"
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    INFO(Luau::toString(requireType("foo")));
+    INFO(Luau::toString(requireType("almostFoo")));
+
+    compareTypesNe("foo", "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at foo has type number, while the right type at almostFoo has type string)",
+        true);
+}
+
+TEST_CASE_FIXTURE(DifferFixture, "newlines")
+{
+    CheckResult result = check(R"(
+        local foo = 5
+        local almostFoo = "five"
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    INFO(Luau::toString(requireType("foo")));
+    INFO(Luau::toString(requireType("almostFoo")));
+
+    compareTypesNe("foo", "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at
+    foo
+has type
+    number,
+while the right type at
+    almostFoo
+has type
+    string)",
+        true, true);
+}
+
 TEST_SUITE_END();

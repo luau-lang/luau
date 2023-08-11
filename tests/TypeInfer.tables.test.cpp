@@ -2083,6 +2083,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_prope
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_prop")
 {
+    ScopedFastFlag sff[] = {{"LuauIndentTypeMismatch", true}};
+    ScopedFastInt sfi[] = {{"LuauIndentTypeMismatchMaxTypeLength", 10}};
     CheckResult result = check(R"(
 type A = { x: number, y: number }
 type B = { x: number, y: string }
@@ -2092,13 +2094,17 @@ local b: B = a
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+    const std::string expected = R"(Type 'A' could not be converted into 'B'
 caused by:
-  Property 'y' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
+  Property 'y' is not compatible. 
+Type 'number' could not be converted into 'string' in an invariant context)";
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_prop_nested")
 {
+    ScopedFastFlag sff[] = {{"LuauIndentTypeMismatch", true}};
+    ScopedFastInt sfi[] = {{"LuauIndentTypeMismatchMaxTypeLength", 10}};
     CheckResult result = check(R"(
 type AS = { x: number, y: number }
 type BS = { x: number, y: string }
@@ -2111,15 +2117,21 @@ local b: B = a
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+    const std::string expected = R"(Type 'A' could not be converted into 'B'
 caused by:
-  Property 'b' is not compatible. Type 'AS' could not be converted into 'BS'
+  Property 'b' is not compatible. 
+Type 'AS' could not be converted into 'BS'
 caused by:
-  Property 'y' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
+  Property 'y' is not compatible. 
+Type 'number' could not be converted into 'string' in an invariant context)";
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "error_detailed_metatable_prop")
 {
+    ScopedFastFlag sff{"LuauIndentTypeMismatch", true};
+    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
+
     CheckResult result = check(R"(
 local a1 = setmetatable({ x = 2, y = 3 }, { __call = function(s) end });
 local b1 = setmetatable({ x = 2, y = "hello" }, { __call = function(s) end });
@@ -2130,33 +2142,68 @@ local b2 = setmetatable({ x = 2, y = 4 }, { __call = function(s, t) end });
 local c2: typeof(a2) = b2
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'b1' could not be converted into 'a1'
+    const std::string expected1 = R"(Type 'b1' could not be converted into 'a1'
 caused by:
-  Type '{ x: number, y: string }' could not be converted into '{ x: number, y: number }'
+  Type
+    '{ x: number, y: string }'
+could not be converted into
+    '{ x: number, y: number }'
 caused by:
-  Property 'y' is not compatible. Type 'string' could not be converted into 'number' in an invariant context)");
+  Property 'y' is not compatible. 
+Type 'string' could not be converted into 'number' in an invariant context)";
+    const std::string expected2 = R"(Type 'b2' could not be converted into 'a2'
+caused by:
+  Type
+    '{ __call: <a, b>(a, b) -> () }'
+could not be converted into
+    '{ __call: <a>(a) -> () }'
+caused by:
+  Property '__call' is not compatible. 
+Type
+    '<a, b>(a, b) -> ()'
+could not be converted into
+    '<a>(a) -> ()'; different number of generic type parameters)";
+    const std::string expected3 = R"(Type 'b2' could not be converted into 'a2'
+caused by:
+  Type
+    '{ __call: <a, b>(a, b) -> () }'
+could not be converted into
+    '{ __call: <a>(a) -> () }'
+caused by:
+  Property '__call' is not compatible. 
+Type
+    '<a, b>(a, b) -> ()'
+could not be converted into
+    '<a>(a) -> ()'; different number of generic type parameters)";
 
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(expected1, toString(result.errors[0]));
     if (FFlag::LuauInstantiateInSubtyping)
     {
-        CHECK_EQ(toString(result.errors[1]), R"(Type 'b2' could not be converted into 'a2'
-caused by:
-  Type '{ __call: <a, b>(a, b) -> () }' could not be converted into '{ __call: <a>(a) -> () }'
-caused by:
-  Property '__call' is not compatible. Type '<a, b>(a, b) -> ()' could not be converted into '<a>(a) -> ()'; different number of generic type parameters)");
+        CHECK_EQ(expected2, toString(result.errors[1]));
     }
     else
     {
-        CHECK_EQ(toString(result.errors[1]), R"(Type 'b2' could not be converted into 'a2'
+        std::string expected3 = R"(Type 'b2' could not be converted into 'a2'
 caused by:
-  Type '{ __call: (a, b) -> () }' could not be converted into '{ __call: <a>(a) -> () }'
+  Type
+    '{ __call: (a, b) -> () }'
+could not be converted into
+    '{ __call: <a>(a) -> () }'
 caused by:
-  Property '__call' is not compatible. Type '(a, b) -> ()' could not be converted into '<a>(a) -> ()'; different number of generic type parameters)");
+  Property '__call' is not compatible. 
+Type
+    '(a, b) -> ()'
+could not be converted into
+    '<a>(a) -> ()'; different number of generic type parameters)";
+        CHECK_EQ(expected3, toString(result.errors[1]));
     }
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_key")
 {
+    ScopedFastFlag sff[] = {{"LuauIndentTypeMismatch", true}};
+    ScopedFastInt sfi[] = {{"LuauIndentTypeMismatchMaxTypeLength", 10}};
     CheckResult result = check(R"(
         type A = { [number]: string }
         type B = { [string]: string }
@@ -2166,13 +2213,17 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_key")
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+    const std::string expected = R"(Type 'A' could not be converted into 'B'
 caused by:
-  Property '[indexer key]' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
+  Property '[indexer key]' is not compatible. 
+Type 'number' could not be converted into 'string' in an invariant context)";
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_value")
 {
+    ScopedFastFlag sff[] = {{"LuauIndentTypeMismatch", true}};
+    ScopedFastInt sfi[] = {{"LuauIndentTypeMismatchMaxTypeLength", 10}};
     CheckResult result = check(R"(
         type A = { [number]: number }
         type B = { [number]: string }
@@ -2182,9 +2233,11 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_value")
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+    const std::string expected = R"(Type 'A' could not be converted into 'B'
 caused by:
-  Property '[indexer value]' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
+  Property '[indexer value]' is not compatible. 
+Type 'number' could not be converted into 'string' in an invariant context)";
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table")
@@ -2204,6 +2257,8 @@ a.p = { x = 9 }
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_error")
 {
+    ScopedFastFlag sff[] = {{"LuauIndentTypeMismatch", true}};
+    ScopedFastInt sfi[] = {{"LuauIndentTypeMismatchMaxTypeLength", 10}};
     CheckResult result = check(R"(
 --!strict
 type Super = { x : number }
@@ -2218,9 +2273,11 @@ local y: number = tmp.p.y
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'tmp' could not be converted into 'HasSuper'
+    const std::string expected = R"(Type 'tmp' could not be converted into 'HasSuper'
 caused by:
-  Property 'p' is not compatible. Table type '{ x: number, y: number }' not compatible with type 'Super' because the former has extra field 'y')");
+  Property 'p' is not compatible. 
+Table type '{ x: number, y: number }' not compatible with type 'Super' because the former has extra field 'y')";
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_with_indexer")
@@ -3302,7 +3359,13 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shap
 
 TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_shape_type")
 {
-    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+    ScopedFastInt sfi[] = {{"LuauIndentTypeMismatchMaxTypeLength", 10}};
+    ScopedFastFlag sff[] = {
+        {"LuauAlwaysCommitInferencesOfFunctionCalls", true},
+        {"LuauIndentTypeMismatch", true},
+    };
+
+
 
     CheckResult result = check(R"(
         local function f(s)
@@ -3316,22 +3379,32 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_
 
     LUAU_REQUIRE_ERROR_COUNT(3, result);
 
-    CHECK_EQ(R"(Type 'string' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
+    const std::string expected1 =
+        R"(Type 'string' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
 caused by:
-  The former's metatable does not satisfy the requirements. Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')",
-        toString(result.errors[0]));
+  The former's metatable does not satisfy the requirements. 
+Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
+    CHECK_EQ(expected1, toString(result.errors[0]));
 
-    CHECK_EQ(R"(Type '"bar"' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
-caused by:
-  The former's metatable does not satisfy the requirements. Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')",
-        toString(result.errors[1]));
 
-    CHECK_EQ(R"(Type '"bar" | "baz"' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
+    const std::string expected2 =
+        R"(Type '"bar"' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
 caused by:
-  Not all union options are compatible. Type '"bar"' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
+  The former's metatable does not satisfy the requirements. 
+Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
+    CHECK_EQ(expected2, toString(result.errors[1]));
+
+    const std::string expected3 = R"(Type
+    '"bar" | "baz"'
+could not be converted into
+    't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
 caused by:
-  The former's metatable does not satisfy the requirements. Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')",
-        toString(result.errors[2]));
+  Not all union options are compatible. 
+Type '"bar"' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
+caused by:
+  The former's metatable does not satisfy the requirements. 
+Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
+    CHECK_EQ(expected3, toString(result.errors[2]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "a_free_shape_can_turn_into_a_scalar_if_it_is_compatible")
@@ -3349,6 +3422,9 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_can_turn_into_a_scalar_if_it_is_compati
 
 TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_compatible")
 {
+    ScopedFastFlag sff{"LuauIndentTypeMismatch", true};
+    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
+
     CheckResult result = check(R"(
         local function f(s): string
             local foo = s:absolutely_no_scalar_has_this_method()
@@ -3356,11 +3432,13 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(R"(Type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}' could not be converted into 'string'
+    const std::string expected =
+        R"(Type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}' could not be converted into 'string'
 caused by:
-  The former's metatable does not satisfy the requirements. Table type 'typeof(string)' not compatible with type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}' because the former is missing field 'absolutely_no_scalar_has_this_method')",
-        toString(result.errors[0]));
+  The former's metatable does not satisfy the requirements. 
+Table type 'typeof(string)' not compatible with type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(expected, toString(result.errors[0]));
     CHECK_EQ("<a, b...>(t1) -> string where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}", toString(requireType("f")));
 }
 

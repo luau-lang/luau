@@ -14,6 +14,17 @@ assert((function(x, y)
   return c, b, t, t1, t2
 end)(5, 10) == 50)
 
+assert((function(x)
+  local oops -- split to prevent inlining
+  function oops()
+  end
+
+  -- x is checked to be a number here; we can not execute a reentry from oops() because optimizer assumes this holds until return
+  local y = math.abs(x)
+  oops()
+  return y * x
+end)("42") == 1764)
+
 local function fuzzfail1(...)
   repeat
     _ = nil
