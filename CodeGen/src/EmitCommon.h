@@ -25,7 +25,7 @@ struct ModuleHelpers
     Label exitContinueVm;
     Label exitNoContinueVm;
     Label exitContinueVmClearNativeFlag;
-    Label updatePcAndContinueInVm;
+    Label updatePcAndContinueInVm; // no reentry
     Label return_;
     Label interrupt;
 

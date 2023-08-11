@@ -13,8 +13,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauLoadCheckGC, false)
-
 // TODO: RAII deallocation doesn't work for longjmp builds if a memory error happens
 template<typename T>
 struct TempBuffer
@@ -181,8 +179,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     }
 
     // we will allocate a fair amount of memory so check GC before we do
-    if (FFlag::LuauLoadCheckGC)
-        luaC_checkGC(L);
+    luaC_checkGC(L);
 
     // pause GC for the duration of deserialization - some objects we're creating aren't rooted
     // TODO: if an allocation error happens mid-load, we do not unpause GC!

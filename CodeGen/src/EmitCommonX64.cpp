@@ -328,14 +328,12 @@ void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, int offset, in
     emitUpdateBase(build);
 }
 
-void emitUpdatePcAndContinueInVm(AssemblyBuilderX64& build)
+void emitUpdatePcForExit(AssemblyBuilderX64& build)
 {
     // edx = pcpos * sizeof(Instruction)
     build.add(rdx, sCode);
     build.mov(rax, qword[rState + offsetof(lua_State, ci)]);
     build.mov(qword[rax + offsetof(CallInfo, savedpc)], rdx);
-
-    emitExit(build, /* continueInVm */ true);
 }
 
 void emitContinueCallInVm(AssemblyBuilderX64& build)

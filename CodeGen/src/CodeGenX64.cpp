@@ -181,6 +181,11 @@ bool initHeaderFunctions(NativeState& data)
 void assembleHelpers(X64::AssemblyBuilderX64& build, ModuleHelpers& helpers)
 {
     if (build.logText)
+        build.logAppend("; updatePcAndContinueInVm\n");
+    build.setLabel(helpers.updatePcAndContinueInVm);
+    emitUpdatePcForExit(build);
+
+    if (build.logText)
         build.logAppend("; exitContinueVmClearNativeFlag\n");
     build.setLabel(helpers.exitContinueVmClearNativeFlag);
     emitClearNativeFlag(build);
@@ -194,11 +199,6 @@ void assembleHelpers(X64::AssemblyBuilderX64& build, ModuleHelpers& helpers)
         build.logAppend("; exitNoContinueVm\n");
     build.setLabel(helpers.exitNoContinueVm);
     emitExit(build, /* continueInVm */ false);
-
-    if (build.logText)
-        build.logAppend("; updatePcAndContinueInVm\n");
-    build.setLabel(helpers.updatePcAndContinueInVm);
-    emitUpdatePcAndContinueInVm(build);
 
     if (build.logText)
         build.logAppend("; continueCallInVm\n");

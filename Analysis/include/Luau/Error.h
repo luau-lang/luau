@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Location.h"
+#include "Luau/NotNull.h"
 #include "Luau/Type.h"
 #include "Luau/Variant.h"
 
@@ -432,7 +433,7 @@ std::string toString(const TypeError& error, TypeErrorToStringOptions options);
 bool containsParseErrorName(const TypeError& error);
 
 // Copy any types named in the error into destArena.
-void copyErrors(ErrorVec& errors, struct TypeArena& destArena);
+void copyErrors(ErrorVec& errors, struct TypeArena& destArena, NotNull<BuiltinTypes> builtinTypes);
 
 // Internal Compiler Error
 struct InternalErrorReporter

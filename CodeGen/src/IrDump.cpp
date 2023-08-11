@@ -402,7 +402,7 @@ void toString(IrToStringContext& ctx, IrOp op)
         append(ctx.result, "U%d", vmUpvalueOp(op));
         break;
     case IrOpKind::VmExit:
-        append(ctx.result, "exit(%d)", op.index);
+        append(ctx.result, "exit(%d)", vmExitOp(op));
         break;
     }
 }

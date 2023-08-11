@@ -47,6 +47,56 @@ TEST_CASE("CodeAllocation")
     CHECK(nativeEntry == nativeData + kCodeAlignment);
 }
 
+TEST_CASE("CodeAllocationCallbacks")
+{
+    struct AllocationData
+    {
+        size_t bytesAllocated = 0;
+        size_t bytesFreed = 0;
+    };
+
+    AllocationData allocationData{};
+
+    const auto allocationCallback = [](void* context, void* oldPointer, size_t oldSize, void* newPointer, size_t newSize)
+    {
+        AllocationData& allocationData = *static_cast<AllocationData*>(context);
+        if (oldPointer != nullptr)
+        {
+            CHECK(oldSize != 0);
+
+            allocationData.bytesFreed += oldSize;
+        }
+
+        if (newPointer != nullptr)
+        {
+            CHECK(newSize != 0);
+
+            allocationData.bytesAllocated += newSize;
+        }
+    };
+
+    const size_t blockSize = 1024 * 1024;
+    const size_t maxTotalSize = 1024 * 1024;
+
+    {
+        CodeAllocator allocator(blockSize, maxTotalSize, allocationCallback, &allocationData);
+
+        uint8_t* nativeData = nullptr;
+        size_t sizeNativeData = 0;
+        uint8_t* nativeEntry = nullptr;
+
+        std::vector<uint8_t> code;
+        code.resize(128);
+
+        REQUIRE(allocator.allocate(nullptr, 0, code.data(), code.size(), nativeData, sizeNativeData, nativeEntry));
+        CHECK(allocationData.bytesAllocated == blockSize);
+        CHECK(allocationData.bytesFreed == 0);
+    }
+
+    CHECK(allocationData.bytesAllocated == blockSize);
+    CHECK(allocationData.bytesFreed == blockSize);
+}
+
 TEST_CASE("CodeAllocationFailure")
 {
     size_t blockSize = 3000;

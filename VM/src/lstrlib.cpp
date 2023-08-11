@@ -9,6 +9,7 @@
 #include <stdio.h>
 
 LUAU_FASTFLAGVARIABLE(LuauFasterInterp, false)
+LUAU_FASTFLAGVARIABLE(LuauFasterFormatS, false)
 
 // macro to `unsign' a character
 #define uchar(c) ((unsigned char)(c))
@@ -1028,18 +1029,35 @@ static int str_format(lua_State* L)
             {
                 size_t l;
                 const char* s = luaL_checklstring(L, arg, &l);
-                if (!strchr(form, '.') && l >= 100)
+                if (FFlag::LuauFasterFormatS)
                 {
-                    /* no precision and string is too long to be formatted;
-                       keep original string */
-                    lua_pushvalue(L, arg);
-                    luaL_addvalue(&b);
-                    continue; // skip the `luaL_addlstring' at the end
+                    // no precision and string is too long to be formatted, or no format necessary to begin with
+                    if (form[2] == '\0' || (!strchr(form, '.') && l >= 100))
+                    {
+                        luaL_addlstring(&b, s, l, -1);
+                        continue; // skip the `luaL_addlstring' at the end
+                    }
+                    else
+                    {
+                        snprintf(buff, sizeof(buff), form, s);
+                        break;
+                    }
                 }
                 else
                 {
-                    snprintf(buff, sizeof(buff), form, s);
-                    break;
+                    if (!strchr(form, '.') && l >= 100)
+                    {
+                        /* no precision and string is too long to be formatted;
+                           keep original string */
+                        lua_pushvalue(L, arg);
+                        luaL_addvalue(&b);
+                        continue; // skip the `luaL_addlstring' at the end
+                    }
+                    else
+                    {
+                        snprintf(buff, sizeof(buff), form, s);
+                        break;
+                    }
                 }
             }
             case '*':

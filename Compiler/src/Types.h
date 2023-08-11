@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Ast.h"
+#include "Luau/DenseHash.h"
 
 #include <string>
 

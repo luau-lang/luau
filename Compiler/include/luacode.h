@@ -35,7 +35,7 @@ struct lua_CompileOptions
     const char* vectorType;
 
     // null-terminated array of globals that are mutable; disables the import optimization for fields accessed through these
-    const char** mutableGlobals;
+    const char* const* mutableGlobals;
 };
 
 // compile source to bytecode; when source compilation fails, the resulting bytecode contains the encoded error. use free() to destroy

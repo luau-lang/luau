@@ -112,6 +112,7 @@ using GateFn = int (*)(lua_State*, Proto*, uintptr_t, NativeContext*);
 struct NativeState
 {
     NativeState();
+    NativeState(AllocationCallback* allocationCallback, void* allocationCallbackContext);
     ~NativeState();
 
     CodeAllocator codeAllocator;
