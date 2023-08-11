@@ -130,6 +130,11 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 
         build.setLabel(block.label);
 
+        if (blockIndex == function.entryBlock)
+        {
+            function.entryLocation = build.getLabelOffset(block.label);
+        }
+
         IrBlock& nextBlock = getNextBlock(function, sortedBlocks, dummy, i);
 
         for (uint32_t index = block.start; index <= block.finish; index++)

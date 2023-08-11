@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/BytecodeBuilder.h"
-
 #include "Types.h"
+
+#include "Luau/BytecodeBuilder.h"
 
 namespace Luau
 {

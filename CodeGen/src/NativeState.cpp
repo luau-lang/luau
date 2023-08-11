@@ -23,7 +23,12 @@ constexpr unsigned kBlockSize = 4 * 1024 * 1024;
 constexpr unsigned kMaxTotalSize = 256 * 1024 * 1024;
 
 NativeState::NativeState()
-    : codeAllocator(kBlockSize, kMaxTotalSize)
+    : NativeState(nullptr, nullptr)
+{
+}
+
+NativeState::NativeState(AllocationCallback* allocationCallback, void* allocationCallbackContext)
+    : codeAllocator{kBlockSize, kMaxTotalSize, allocationCallback, allocationCallbackContext}
 {
 }
 

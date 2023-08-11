@@ -2688,7 +2688,7 @@ void check(
     typeChecker.visit(sourceModule.root);
 
     unfreeze(module->interfaceTypes);
-    copyErrors(module->errors, module->interfaceTypes);
+    copyErrors(module->errors, module->interfaceTypes, builtinTypes);
     freeze(module->interfaceTypes);
 }
 

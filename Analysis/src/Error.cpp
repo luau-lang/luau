@@ -4,12 +4,16 @@
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/FileResolver.h"
+#include "Luau/NotNull.h"
 #include "Luau/StringUtils.h"
 #include "Luau/ToString.h"
 
+#include <optional>
 #include <stdexcept>
 #include <type_traits>
 
+LUAU_FASTFLAGVARIABLE(LuauIndentTypeMismatch, false)
+LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount, std::optional<size_t> maximumCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
@@ -66,6 +70,20 @@ struct ErrorConverter
 
         std::string result;
 
+        auto quote = [&](std::string s) {
+            return "'" + s + "'";
+        };
+
+        auto constructErrorMessage = [&](std::string givenType, std::string wantedType, std::optional<std::string> givenModule,
+                                         std::optional<std::string> wantedModule) -> std::string {
+            std::string given = givenModule ? quote(givenType) + " from " + quote(*givenModule) : quote(givenType);
+            std::string wanted = wantedModule ? quote(wantedType) + " from " + quote(*wantedModule) : quote(wantedType);
+            size_t luauIndentTypeMismatchMaxTypeLength = size_t(FInt::LuauIndentTypeMismatchMaxTypeLength);
+            if (givenType.length() <= luauIndentTypeMismatchMaxTypeLength || wantedType.length() <= luauIndentTypeMismatchMaxTypeLength)
+                return "Type " + given + " could not be converted into " + wanted;
+            return "Type\n    " + given + "\ncould not be converted into\n    " + wanted;
+        };
+
         if (givenTypeName == wantedTypeName)
         {
             if (auto givenDefinitionModule = getDefinitionModuleName(tm.givenType))
@@ -76,20 +94,31 @@ struct ErrorConverter
                     {
                         std::string givenModuleName = fileResolver->getHumanReadableModuleName(*givenDefinitionModule);
                         std::string wantedModuleName = fileResolver->getHumanReadableModuleName(*wantedDefinitionModule);
-                        result = "Type '" + givenTypeName + "' from '" + givenModuleName + "' could not be converted into '" + wantedTypeName +
-                                 "' from '" + wantedModuleName + "'";
+                        if (FFlag::LuauIndentTypeMismatch)
+                            result = constructErrorMessage(givenTypeName, wantedTypeName, givenModuleName, wantedModuleName);
+                        else
+                            result = "Type '" + givenTypeName + "' from '" + givenModuleName + "' could not be converted into '" + wantedTypeName +
+                                     "' from '" + wantedModuleName + "'";
                     }
                     else
                     {
-                        result = "Type '" + givenTypeName + "' from '" + *givenDefinitionModule + "' could not be converted into '" + wantedTypeName +
-                                 "' from '" + *wantedDefinitionModule + "'";
+                        if (FFlag::LuauIndentTypeMismatch)
+                            result = constructErrorMessage(givenTypeName, wantedTypeName, *givenDefinitionModule, *wantedDefinitionModule);
+                        else
+                            result = "Type '" + givenTypeName + "' from '" + *givenDefinitionModule + "' could not be converted into '" +
+                                     wantedTypeName + "' from '" + *wantedDefinitionModule + "'";
                     }
                 }
             }
         }
 
         if (result.empty())
-            result = "Type '" + givenTypeName + "' could not be converted into '" + wantedTypeName + "'";
+        {
+            if (FFlag::LuauIndentTypeMismatch)
+                result = constructErrorMessage(givenTypeName, wantedTypeName, std::nullopt, std::nullopt);
+            else
+                result = "Type '" + givenTypeName + "' could not be converted into '" + wantedTypeName + "'";
+        }
 
 
         if (tm.error)
@@ -97,7 +126,7 @@ struct ErrorConverter
             result += "\ncaused by:\n  ";
 
             if (!tm.reason.empty())
-                result += tm.reason + " ";
+                result += tm.reason + (FFlag::LuauIndentTypeMismatch ? " \n" : " ");
 
             result += Luau::toString(*tm.error, TypeErrorToStringOptions{fileResolver});
         }
@@ -845,7 +874,7 @@ bool containsParseErrorName(const TypeError& error)
 }
 
 template<typename T>
-void copyError(T& e, TypeArena& destArena, CloneState cloneState)
+void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
 {
     auto clone = [&](auto&& ty) {
         return ::Luau::clone(ty, destArena, cloneState);
@@ -998,9 +1027,9 @@ void copyError(T& e, TypeArena& destArena, CloneState cloneState)
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }
 
-void copyErrors(ErrorVec& errors, TypeArena& destArena)
+void copyErrors(ErrorVec& errors, TypeArena& destArena, NotNull<BuiltinTypes> builtinTypes)
 {
-    CloneState cloneState;
+    CloneState cloneState{builtinTypes};
 
     auto visitErrorData = [&](auto&& e) {
         copyError(e, destArena, cloneState);

@@ -16,6 +16,8 @@ using SeenTypePacks = std::unordered_map<TypePackId, TypePackId>;
 
 struct CloneState
 {
+    NotNull<BuiltinTypes> builtinTypes;
+
     SeenTypes seenTypes;
     SeenTypePacks seenTypePacks;
 

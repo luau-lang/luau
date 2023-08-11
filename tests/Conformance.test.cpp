@@ -266,6 +266,12 @@ static void* limitedRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
 
 TEST_SUITE_BEGIN("Conformance");
 
+TEST_CASE("CodegenSupported")
+{
+    if (codegen && !luau_codegen_supported())
+        MESSAGE("Native code generation is not supported by the current configuration and will be disabled");
+}
+
 TEST_CASE("Assert")
 {
     runConformance("assert.lua");
@@ -1726,7 +1732,6 @@ TEST_CASE("Native")
 TEST_CASE("NativeTypeAnnotations")
 {
     ScopedFastFlag bytecodeVersion4("BytecodeVersion4", true);
-    ScopedFastFlag luauCompileFunctionType("LuauCompileFunctionType", true);
 
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())

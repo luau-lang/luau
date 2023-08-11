@@ -33,13 +33,17 @@ static size_t alignToPageSize(size_t size)
 }
 
 #if defined(_WIN32)
-static uint8_t* allocatePages(size_t size)
+static uint8_t* allocatePagesImpl(size_t size)
 {
-    return (uint8_t*)VirtualAlloc(nullptr, alignToPageSize(size), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    LUAU_ASSERT(size == alignToPageSize(size));
+
+    return (uint8_t*)VirtualAlloc(nullptr, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 }
 
-static void freePages(uint8_t* mem, size_t size)
+static void freePagesImpl(uint8_t* mem, size_t size)
 {
+    LUAU_ASSERT(size == alignToPageSize(size));
+
     if (VirtualFree(mem, 0, MEM_RELEASE) == 0)
         LUAU_ASSERT(!"failed to deallocate block memory");
 }
@@ -62,14 +66,22 @@ static void flushInstructionCache(uint8_t* mem, size_t size)
 #endif
 }
 #else
-static uint8_t* allocatePages(size_t size)
+static uint8_t* allocatePagesImpl(size_t size)
 {
-    return (uint8_t*)mmap(nullptr, alignToPageSize(size), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    LUAU_ASSERT(size == alignToPageSize(size));
+
+#ifdef __APPLE__
+    return (uint8_t*)mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
+#else
+    return (uint8_t*)mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+#endif
 }
 
-static void freePages(uint8_t* mem, size_t size)
+static void freePagesImpl(uint8_t* mem, size_t size)
 {
-    if (munmap(mem, alignToPageSize(size)) != 0)
+    LUAU_ASSERT(size == alignToPageSize(size));
+
+    if (munmap(mem, size) != 0)
         LUAU_ASSERT(!"Failed to deallocate block memory");
 }
 
@@ -94,8 +106,15 @@ namespace CodeGen
 {
 
 CodeAllocator::CodeAllocator(size_t blockSize, size_t maxTotalSize)
-    : blockSize(blockSize)
-    , maxTotalSize(maxTotalSize)
+    : CodeAllocator(blockSize, maxTotalSize, nullptr, nullptr)
+{
+}
+
+CodeAllocator::CodeAllocator(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext)
+    : blockSize{blockSize}
+    , maxTotalSize{maxTotalSize}
+    , allocationCallback{allocationCallback}
+    , allocationCallbackContext{allocationCallbackContext}
 {
     LUAU_ASSERT(blockSize > kMaxReservedDataSize);
     LUAU_ASSERT(maxTotalSize >= blockSize);
@@ -205,6 +224,30 @@ bool CodeAllocator::allocateNewBlock(size_t& unwindInfoSize)
     }
 
     return true;
+}
+
+uint8_t* CodeAllocator::allocatePages(size_t size) const
+{
+    const size_t pageAlignedSize = alignToPageSize(size);
+
+    uint8_t* const mem = allocatePagesImpl(pageAlignedSize);
+    if (mem == nullptr)
+        return nullptr;
+
+    if (allocationCallback)
+        allocationCallback(allocationCallbackContext, nullptr, 0, mem, pageAlignedSize);
+
+    return mem;
+}
+
+void CodeAllocator::freePages(uint8_t* mem, size_t size) const
+{
+    const size_t pageAlignedSize = alignToPageSize(size);
+
+    if (allocationCallback)
+        allocationCallback(allocationCallbackContext, mem, pageAlignedSize, nullptr, 0);
+
+    freePagesImpl(mem, pageAlignedSize);
 }
 
 } // namespace CodeGen

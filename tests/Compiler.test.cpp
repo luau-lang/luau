@@ -7100,8 +7100,6 @@ L1: RETURN R3 1
 
 TEST_CASE("EncodedTypeTable")
 {
-    ScopedFastFlag sff("LuauCompileFunctionType", true);
-
     CHECK_EQ("\n" + compileTypeTable(R"(
 function myfunc(test: string, num: number)
     print(test)
@@ -7153,8 +7151,6 @@ Str:test(234)
 
 TEST_CASE("HostTypesAreUserdata")
 {
-    ScopedFastFlag sff("LuauCompileFunctionType", true);
-
     CHECK_EQ("\n" + compileTypeTable(R"(
 function myfunc(test: string, num: number)
     print(test)
@@ -7181,8 +7177,6 @@ end
 
 TEST_CASE("HostTypesVector")
 {
-    ScopedFastFlag sff("LuauCompileFunctionType", true);
-
     CHECK_EQ("\n" + compileTypeTable(R"(
 function myfunc(test: Instance, pos: Vector3)
 end
@@ -7206,8 +7200,6 @@ end
 
 TEST_CASE("TypeAliasScoping")
 {
-    ScopedFastFlag sff("LuauCompileFunctionType", true);
-
     CHECK_EQ("\n" + compileTypeTable(R"(
 do
     type Part = number
@@ -7242,8 +7234,6 @@ type Instance = string
 
 TEST_CASE("TypeAliasResolve")
 {
-    ScopedFastFlag sff("LuauCompileFunctionType", true);
-
     CHECK_EQ("\n" + compileTypeTable(R"(
 type Foo1 = number
 type Foo2 = { number }

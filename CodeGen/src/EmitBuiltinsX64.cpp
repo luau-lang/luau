@@ -1,8 +1,9 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "EmitBuiltinsX64.h"
 
-#include "Luau/AssemblyBuilderX64.h"
 #include "Luau/Bytecode.h"
+
+#include "Luau/AssemblyBuilderX64.h"
 #include "Luau/IrCallWrapperX64.h"
 #include "Luau/IrRegAllocX64.h"
 

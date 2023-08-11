@@ -1,10 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "IrLoweringA64.h"
 
-#include "Luau/CodeGen.h"
 #include "Luau/DenseHash.h"
-#include "Luau/IrAnalysis.h"
-#include "Luau/IrDump.h"
+#include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
 
 #include "EmitCommonA64.h"
@@ -189,7 +187,7 @@ IrLoweringA64::IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, 
     });
 }
 
-void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
+void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 {
     valueTracker.beforeInstLowering(inst);
 
@@ -566,7 +564,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         break;
     }
     case IrCmd::JUMP:
-        if (inst.a.kind == IrOpKind::VmExit)
+        if (inst.a.kind == IrOpKind::Undef || inst.a.kind == IrOpKind::VmExit)
         {
             Label fresh;
             build.b(getTargetLabel(inst.a, fresh));
@@ -1047,9 +1045,8 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         break;
     case IrCmd::CHECK_TAG:
     {
-        bool continueInVm = (inst.d.kind == IrOpKind::Constant && intOp(inst.d));
         Label fresh; // used when guard aborts execution or jumps to a VM exit
-        Label& fail = continueInVm ? helpers.exitContinueVmClearNativeFlag : getTargetLabel(inst.c, fresh);
+        Label& fail = getTargetLabel(inst.c, fresh);
 
         // To support DebugLuauAbortingChecks, CHECK_TAG with VmReg has to be handled
         RegisterA64 tag = inst.a.kind == IrOpKind::VmReg ? regs.allocTemp(KindA64::w) : regOp(inst.a);
@@ -1066,8 +1063,8 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
             build.cmp(tag, tagOp(inst.b));
             build.b(ConditionA64::NotEqual, fail);
         }
-        if (!continueInVm)
-            finalizeTargetLabel(inst.c, fresh);
+
+        finalizeTargetLabel(inst.c, fresh);
         break;
     }
     case IrCmd::CHECK_TRUTHY:
@@ -1862,7 +1859,10 @@ void IrLoweringA64::finishFunction()
 
     for (ExitHandler& handler : exitHandlers)
     {
+        LUAU_ASSERT(handler.pcpos != kVmExitEntryGuardPc);
+
         build.setLabel(handler.self);
+
         build.mov(x0, handler.pcpos * sizeof(Instruction));
         build.b(helpers.updatePcAndContinueInVm);
     }
@@ -1873,12 +1873,12 @@ bool IrLoweringA64::hasError() const
     return error || regs.error;
 }
 
-bool IrLoweringA64::isFallthroughBlock(IrBlock target, IrBlock next)
+bool IrLoweringA64::isFallthroughBlock(const IrBlock& target, const IrBlock& next)
 {
     return target.start == next.start;
 }
 
-void IrLoweringA64::jumpOrFallthrough(IrBlock& target, IrBlock& next)
+void IrLoweringA64::jumpOrFallthrough(IrBlock& target, const IrBlock& next)
 {
     if (!isFallthroughBlock(target, next))
         build.b(target.label);
@@ -1891,7 +1891,11 @@ Label& IrLoweringA64::getTargetLabel(IrOp op, Label& fresh)
 
     if (op.kind == IrOpKind::VmExit)
     {
-        if (uint32_t* index = exitHandlerMap.find(op.index))
+        // Special exit case that doesn't have to update pcpos
+        if (vmExitOp(op) == kVmExitEntryGuardPc)
+            return helpers.exitContinueVmClearNativeFlag;
+
+        if (uint32_t* index = exitHandlerMap.find(vmExitOp(op)))
             return exitHandlers[*index].self;
 
         return fresh;
@@ -1906,10 +1910,10 @@ void IrLoweringA64::finalizeTargetLabel(IrOp op, Label& fresh)
     {
         emitAbort(build, fresh);
     }
-    else if (op.kind == IrOpKind::VmExit && fresh.id != 0)
+    else if (op.kind == IrOpKind::VmExit && fresh.id != 0 && fresh.id != helpers.exitContinueVmClearNativeFlag.id)
     {
-        exitHandlerMap[op.index] = uint32_t(exitHandlers.size());
-        exitHandlers.push_back({fresh, op.index});
+        exitHandlerMap[vmExitOp(op)] = uint32_t(exitHandlers.size());
+        exitHandlers.push_back({fresh, vmExitOp(op)});
     }
 }
 
