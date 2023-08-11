@@ -39,7 +39,7 @@ struct CompileOptions
     const char* vectorType = nullptr;
 
     // null-terminated array of globals that are mutable; disables the import optimization for fields accessed through these
-    const char** mutableGlobals = nullptr;
+    const char* const* mutableGlobals = nullptr;
 };
 
 class CompileError : public std::exception
