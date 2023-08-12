@@ -466,7 +466,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "overloaded_op_accept_structured_subtype")
     LUAU_REQUIRE_ERROR_COUNT(0, result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "overloaded_op_decline_unrelated_type")
+TEST_CASE_FIXTURE(BuiltinsFixture, "overloaded_op_disallow_unrelated_type")
 {
     ScopedFastFlag sff{"LuauIntersectedBinopOverloadFix", true};
     CheckResult result = check(R"(
