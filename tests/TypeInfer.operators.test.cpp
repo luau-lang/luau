@@ -466,6 +466,26 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "overloaded_op_accept_structured_subtype")
     LUAU_REQUIRE_ERROR_COUNT(0, result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "overloaded_op_decline_unrelated_type")
+{
+    ScopedFastFlag sff{"LuauIntersectedBinopOverloadFix", true};
+    CheckResult result = check(R"(
+        --!strict
+        type BaseType = typeof(setmetatable(
+            {},
+            ({} :: any) :: {__mul: (BaseType, BaseType) -> BaseType})
+        )
+        type Unrelated = {extraField: string}
+
+        local function add(x: BaseType, y: Unrelated)
+            return x * y
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Type 'Unrelated' could not be converted into 'BaseType'");
+}
+
 TEST_CASE_FIXTURE(Fixture, "CallOrOfFunctions")
 {
     CheckResult result = check(R"(
