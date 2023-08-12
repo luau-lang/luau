@@ -27,6 +27,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
+LUAU_FASTFLAG(LuauIntersectedBinopOverloadFix)
 
 namespace Luau
 {
@@ -263,15 +264,18 @@ std::optional<TypeId> getMetatable(TypeId type, NotNull<BuiltinTypes> builtinTyp
 {
     type = follow(type);
 
-    if (const IntersectionType* itv = get<IntersectionType>(type))
+    if (FFlag::LuauIntersectedBinopOverloadFix)
     {
-        for (TypeId part : itv->parts)
+        if (const IntersectionType* itv = get<IntersectionType>(type))
         {
-            auto partMT = getMetatable(part, builtinTypes);
-            if (partMT != std::nullopt)
-                return partMT;
+            for (TypeId part : itv->parts)
+            {
+                auto partMT = getMetatable(part, builtinTypes);
+                if (partMT != std::nullopt)
+                    return partMT;
+            }
+            return std::nullopt;
         }
-        return std::nullopt;
     }
 
     if (const MetatableType* mtType = get<MetatableType>(type))
