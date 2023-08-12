@@ -263,6 +263,17 @@ std::optional<TypeId> getMetatable(TypeId type, NotNull<BuiltinTypes> builtinTyp
 {
     type = follow(type);
 
+    if (const IntersectionType* itv = get<IntersectionType>(type))
+    {
+        for (TypeId part : itv->parts)
+        {
+            auto partMT = getMetatable(part, builtinTypes);
+            if (partMT != std::nullopt)
+                return partMT;
+        }
+        return std::nullopt;
+    }
+
     if (const MetatableType* mtType = get<MetatableType>(type))
         return mtType->metatable;
     else if (const ClassType* classType = get<ClassType>(type))
