@@ -35,7 +35,6 @@ LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauReadWriteProperties, false)
-LUAU_FASTFLAGVARIABLE(LuauTypecheckCancellation, false)
 
 namespace Luau
 {
@@ -126,7 +125,7 @@ static ParseResult parseSourceForModule(std::string_view source, Luau::SourceMod
 
 static void persistCheckedTypes(ModulePtr checkedModule, GlobalTypes& globals, ScopePtr targetScope, const std::string& packageName)
 {
-    CloneState cloneState;
+    CloneState cloneState{globals.builtinTypes};
 
     std::vector<TypeId> typesToPersist;
     typesToPersist.reserve(checkedModule->declaredGlobals.size() + checkedModule->exportedTypeBindings.size());
@@ -462,7 +461,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
             checkResult.timeoutHits.push_back(item.name);
 
         // If check was manually cancelled, do not return partial results
-        if (FFlag::LuauTypecheckCancellation && item.module->cancelled)
+        if (item.module->cancelled)
             return {};
 
         checkResult.errors.insert(checkResult.errors.end(), item.module->errors.begin(), item.module->errors.end());
@@ -635,7 +634,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
                 if (item.exception)
                     itemWithException = i;
 
-                if (FFlag::LuauTypecheckCancellation && item.module && item.module->cancelled)
+                if (item.module && item.module->cancelled)
                     cancelled = true;
 
                 if (itemWithException || cancelled)
@@ -677,7 +676,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
         if (remaining != 0 && processing == 0)
         {
             // Typechecking might have been cancelled by user, don't return partial results
-            if (FFlag::LuauTypecheckCancellation && cancelled)
+            if (cancelled)
                 return {};
 
             // We might have stopped because of a pending exception
@@ -910,8 +909,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         else
             typeCheckLimits.unifierIterationLimit = std::nullopt;
 
-        if (FFlag::LuauTypecheckCancellation)
-            typeCheckLimits.cancellationToken = item.options.cancellationToken;
+        typeCheckLimits.cancellationToken = item.options.cancellationToken;
 
         ModulePtr moduleForAutocomplete = check(sourceModule, Mode::Strict, requireCycles, environmentScope, /*forAutocomplete*/ true,
             /*recordJsonLog*/ false, typeCheckLimits);
@@ -932,8 +930,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
 
     TypeCheckLimits typeCheckLimits;
 
-    if (FFlag::LuauTypecheckCancellation)
-        typeCheckLimits.cancellationToken = item.options.cancellationToken;
+    typeCheckLimits.cancellationToken = item.options.cancellationToken;
 
     ModulePtr module = check(sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, typeCheckLimits);
 
@@ -969,7 +966,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         // copyErrors needs to allocate into interfaceTypes as it copies
         // types out of internalTypes, so we unfreeze it here.
         unfreeze(module->interfaceTypes);
-        copyErrors(module->errors, module->interfaceTypes);
+        copyErrors(module->errors, module->interfaceTypes, builtinTypes);
         freeze(module->interfaceTypes);
 
         module->internalTypes.clear();
@@ -1014,7 +1011,7 @@ void Frontend::checkBuildQueueItems(std::vector<BuildQueueItem>& items)
     {
         checkBuildQueueItem(item);
 
-        if (FFlag::LuauTypecheckCancellation && item.module && item.module->cancelled)
+        if (item.module && item.module->cancelled)
             break;
 
         recordItemResult(item);
@@ -1295,9 +1292,7 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vect
         typeChecker.finishTime = typeCheckLimits.finishTime;
         typeChecker.instantiationChildLimit = typeCheckLimits.instantiationChildLimit;
         typeChecker.unifierIterationLimit = typeCheckLimits.unifierIterationLimit;
-
-        if (FFlag::LuauTypecheckCancellation)
-            typeChecker.cancellationToken = typeCheckLimits.cancellationToken;
+        typeChecker.cancellationToken = typeCheckLimits.cancellationToken;
 
         return typeChecker.check(sourceModule, mode, environmentScope);
     }

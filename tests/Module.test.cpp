@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Clone.h"
+#include "Luau/Common.h"
 #include "Luau/Module.h"
 #include "Luau/Scope.h"
 #include "Luau/RecursionCounter.h"
@@ -7,11 +8,13 @@
 
 #include "Fixture.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauStacklessTypeClone)
 
 TEST_SUITE_BEGIN("ModuleTests");
 
@@ -78,7 +81,7 @@ TEST_CASE_FIXTURE(Fixture, "is_within_comment_parse_result")
 TEST_CASE_FIXTURE(Fixture, "dont_clone_persistent_primitive")
 {
     TypeArena dest;
-    CloneState cloneState;
+    CloneState cloneState{builtinTypes};
 
     // numberType is persistent.  We leave it as-is.
     TypeId newNumber = clone(builtinTypes->numberType, dest, cloneState);
@@ -88,7 +91,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_clone_persistent_primitive")
 TEST_CASE_FIXTURE(Fixture, "deepClone_non_persistent_primitive")
 {
     TypeArena dest;
-    CloneState cloneState;
+    CloneState cloneState{builtinTypes};
 
     // Create a new number type that isn't persistent
     unfreeze(frontend.globals.globalTypes);
@@ -129,7 +132,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
     TypeId ty = requireType("Cyclic");
 
     TypeArena dest;
-    CloneState cloneState;
+    CloneState cloneState{builtinTypes};
     TypeId cloneTy = clone(ty, dest, cloneState);
 
     TableType* ttv = getMutable<TableType>(cloneTy);
@@ -147,8 +150,8 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
     REQUIRE(methodReturnType);
 
     CHECK_MESSAGE(methodReturnType == cloneTy, toString(methodType, {true}) << " should be pointer identical to " << toString(cloneTy, {true}));
-    CHECK_EQ(2, dest.typePacks.size()); // one for the function args, and another for its return type
-    CHECK_EQ(2, dest.types.size());     // One table and one function
+    CHECK_EQ(FFlag::LuauStacklessTypeClone ? 1 : 2, dest.typePacks.size()); // one for the function args, and another for its return type
+    CHECK_EQ(2, dest.types.size());                                         // One table and one function
 }
 
 TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table_2")
@@ -165,7 +168,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table_2")
 
     TypeArena dest;
 
-    CloneState cloneState;
+    CloneState cloneState{builtinTypes};
     TypeId cloneTy = clone(tableTy, dest, cloneState);
     TableType* ctt = getMutable<TableType>(cloneTy);
     REQUIRE(ctt);
@@ -209,7 +212,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")
 TEST_CASE_FIXTURE(Fixture, "deepClone_union")
 {
     TypeArena dest;
-    CloneState cloneState;
+    CloneState cloneState{builtinTypes};
 
     unfreeze(frontend.globals.globalTypes);
     TypeId oldUnion = frontend.globals.globalTypes.addType(UnionType{{builtinTypes->numberType, builtinTypes->stringType}});
@@ -224,7 +227,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_union")
 TEST_CASE_FIXTURE(Fixture, "deepClone_intersection")
 {
     TypeArena dest;
-    CloneState cloneState;
+    CloneState cloneState{builtinTypes};
 
     unfreeze(frontend.globals.globalTypes);
     TypeId oldIntersection = frontend.globals.globalTypes.addType(IntersectionType{{builtinTypes->numberType, builtinTypes->stringType}});
@@ -251,7 +254,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
         std::nullopt, &exampleMetaClass, {}, {}, "Test"}};
 
     TypeArena dest;
-    CloneState cloneState;
+    CloneState cloneState{builtinTypes};
 
     TypeId cloned = clone(&exampleClass, dest, cloneState);
     const ClassType* ctv = get<ClassType>(cloned);
@@ -274,12 +277,12 @@ TEST_CASE_FIXTURE(Fixture, "clone_free_types")
     TypePackVar freeTp(FreeTypePack{TypeLevel{}});
 
     TypeArena dest;
-    CloneState cloneState;
+    CloneState cloneState{builtinTypes};
 
     TypeId clonedTy = clone(freeTy, dest, cloneState);
     CHECK(get<FreeType>(clonedTy));
 
-    cloneState = {};
+    cloneState = {builtinTypes};
     TypePackId clonedTp = clone(&freeTp, dest, cloneState);
     CHECK(get<FreeTypePack>(clonedTp));
 }
@@ -291,7 +294,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_free_tables")
     ttv->state = TableState::Free;
 
     TypeArena dest;
-    CloneState cloneState;
+    CloneState cloneState{builtinTypes};
 
     TypeId cloned = clone(&tableTy, dest, cloneState);
     const TableType* clonedTtv = get<TableType>(cloned);
@@ -332,6 +335,8 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
 #else
     int limit = 400;
 #endif
+
+    ScopedFastFlag sff{"LuauStacklessTypeClone", false};
     ScopedFastInt luauTypeCloneRecursionLimit{"LuauTypeCloneRecursionLimit", limit};
 
     TypeArena src;
@@ -348,9 +353,37 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
     }
 
     TypeArena dest;
-    CloneState cloneState;
+    CloneState cloneState{builtinTypes};
 
     CHECK_THROWS_AS(clone(table, dest, cloneState), RecursionLimitException);
+}
+
+TEST_CASE_FIXTURE(Fixture, "clone_iteration_limit")
+{
+    ScopedFastFlag sff{"LuauStacklessTypeClone", true};
+    ScopedFastInt sfi{"LuauTypeCloneIterationLimit", 500};
+
+    TypeArena src;
+
+    TypeId table = src.addType(TableType{});
+    TypeId nested = table;
+
+    for (int i = 0; i < 2500; i++)
+    {
+        TableType* ttv = getMutable<TableType>(nested);
+        ttv->props["a"].setType(src.addType(TableType{}));
+        nested = ttv->props["a"].type();
+    }
+
+    TypeArena dest;
+    CloneState cloneState{builtinTypes};
+
+    TypeId ty = clone(table, dest, cloneState);
+    CHECK(get<ErrorType>(ty));
+
+    // Cloning it again is an important test.
+    TypeId ty2 = clone(table, dest, cloneState);
+    CHECK(get<ErrorType>(ty2));
 }
 
 // Unions should never be cyclic, but we should clone them correctly even if
@@ -368,7 +401,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_cyclic_union")
     uu->options.push_back(u);
 
     TypeArena dest;
-    CloneState cloneState;
+    CloneState cloneState{builtinTypes};
 
     TypeId cloned = clone(u, dest, cloneState);
     REQUIRE(cloned);

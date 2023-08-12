@@ -107,15 +107,19 @@ std::string DiffPath::toString(bool prependDot) const
     }
     return pathStr;
 }
-std::string DiffError::toStringALeaf(std::string rootName, const DiffPathNodeLeaf& leaf, const DiffPathNodeLeaf& otherLeaf) const
+std::string DiffError::toStringALeaf(std::string rootName, const DiffPathNodeLeaf& leaf, const DiffPathNodeLeaf& otherLeaf, bool multiLine) const
 {
+    std::string conditionalNewline = multiLine ? "\n" : " ";
+    std::string conditionalIndent = multiLine ? "    " : "";
     std::string pathStr{rootName + diffPath.toString(true)};
     switch (kind)
     {
     case DiffError::Kind::Normal:
     {
         checkNonMissingPropertyLeavesHaveNulloptTableProperty();
-        return pathStr + " has type " + Luau::toString(*leaf.ty);
+        return pathStr + conditionalNewline
+            + "has type" + conditionalNewline
+            + conditionalIndent + Luau::toString(*leaf.ty);
     }
     case DiffError::Kind::MissingTableProperty:
     {
@@ -123,13 +127,17 @@ std::string DiffError::toStringALeaf(std::string rootName, const DiffPathNodeLea
         {
             if (!leaf.tableProperty.has_value())
                 throw InternalCompilerError{"leaf.tableProperty is nullopt"};
-            return pathStr + "." + *leaf.tableProperty + " has type " + Luau::toString(*leaf.ty);
+            return pathStr + "." + *leaf.tableProperty + conditionalNewline
+                + "has type" + conditionalNewline
+                + conditionalIndent + Luau::toString(*leaf.ty);
         }
         else if (otherLeaf.ty.has_value())
         {
             if (!otherLeaf.tableProperty.has_value())
                 throw InternalCompilerError{"otherLeaf.tableProperty is nullopt"};
-            return pathStr + " is missing the property " + *otherLeaf.tableProperty;
+            return pathStr + conditionalNewline
+                + "is missing the property" + conditionalNewline
+                + conditionalIndent + *otherLeaf.tableProperty;
         }
         throw InternalCompilerError{"Both leaf.ty and otherLeaf.ty is nullopt"};
     }
@@ -140,11 +148,15 @@ std::string DiffError::toStringALeaf(std::string rootName, const DiffPathNodeLea
         {
             if (!leaf.unionIndex.has_value())
                 throw InternalCompilerError{"leaf.unionIndex is nullopt"};
-            return pathStr + " is a union containing type " + Luau::toString(*leaf.ty);
+            return pathStr + conditionalNewline
+                + "is a union containing type" + conditionalNewline
+                + conditionalIndent + Luau::toString(*leaf.ty);
         }
         else if (otherLeaf.ty.has_value())
         {
-            return pathStr + " is a union missing type " + Luau::toString(*otherLeaf.ty);
+            return pathStr + conditionalNewline
+                + "is a union missing type" + conditionalNewline
+                + conditionalIndent + Luau::toString(*otherLeaf.ty);
         }
         throw InternalCompilerError{"Both leaf.ty and otherLeaf.ty is nullopt"};
     }
@@ -157,11 +169,15 @@ std::string DiffError::toStringALeaf(std::string rootName, const DiffPathNodeLea
         {
             if (!leaf.unionIndex.has_value())
                 throw InternalCompilerError{"leaf.unionIndex is nullopt"};
-            return pathStr + " is an intersection containing type " + Luau::toString(*leaf.ty);
+            return pathStr + conditionalNewline
+                + "is an intersection containing type" + conditionalNewline
+                + conditionalIndent + Luau::toString(*leaf.ty);
         }
         else if (otherLeaf.ty.has_value())
         {
-            return pathStr + " is an intersection missing type " + Luau::toString(*otherLeaf.ty);
+            return pathStr + conditionalNewline
+                + "is an intersection missing type" + conditionalNewline
+                + conditionalIndent + Luau::toString(*otherLeaf.ty);
         }
         throw InternalCompilerError{"Both leaf.ty and otherLeaf.ty is nullopt"};
     }
@@ -169,13 +185,15 @@ std::string DiffError::toStringALeaf(std::string rootName, const DiffPathNodeLea
     {
         if (!leaf.minLength.has_value())
             throw InternalCompilerError{"leaf.minLength is nullopt"};
-        return pathStr + " takes " + std::to_string(*leaf.minLength) + (leaf.isVariadic ? " or more" : "") + " arguments";
+        return pathStr + conditionalNewline
+            + "takes " + std::to_string(*leaf.minLength) + (leaf.isVariadic ? " or more" : "") + " arguments";
     }
     case DiffError::Kind::LengthMismatchInFnRets:
     {
         if (!leaf.minLength.has_value())
             throw InternalCompilerError{"leaf.minLength is nullopt"};
-        return pathStr + " returns " + std::to_string(*leaf.minLength) + (leaf.isVariadic ? " or more" : "") + " values";
+        return pathStr + conditionalNewline
+            + "returns " + std::to_string(*leaf.minLength) + (leaf.isVariadic ? " or more" : "") + " values";
     }
     default:
     {
@@ -190,8 +208,11 @@ void DiffError::checkNonMissingPropertyLeavesHaveNulloptTableProperty() const
         throw InternalCompilerError{"Non-MissingProperty DiffError should have nullopt tableProperty in both leaves"};
 }
 
-std::string getDevFixFriendlyName(TypeId ty)
+std::string getDevFixFriendlyName(const std::optional<std::string>& maybeSymbol, TypeId ty)
 {
+    if (maybeSymbol.has_value())
+        return *maybeSymbol;
+
     if (auto table = get<TableType>(ty))
     {
         if (table->name.has_value())
@@ -206,27 +227,39 @@ std::string getDevFixFriendlyName(TypeId ty)
             return *metatable->syntheticName;
         }
     }
-    // else if (auto primitive = get<PrimitiveType>(ty))
-    //{
-    //    return "<unlabeled-symbol>";
-    //}
     return "<unlabeled-symbol>";
 }
 
-std::string DiffError::toString() const
+std::string DifferEnvironment::getDevFixFriendlyNameLeft() const
 {
+    return getDevFixFriendlyName(externalSymbolLeft, rootLeft);
+}
+
+std::string DifferEnvironment::getDevFixFriendlyNameRight() const
+{
+    return getDevFixFriendlyName(externalSymbolRight, rootRight);
+}
+
+std::string DiffError::toString(bool multiLine) const
+{
+    std::string conditionalNewline = multiLine ? "\n" : " ";
+    std::string conditionalIndent = multiLine ? "    " : "";
     switch (kind)
     {
     case DiffError::Kind::IncompatibleGeneric:
     {
         std::string diffPathStr{diffPath.toString(true)};
-        return "DiffError: these two types are not equal because the left generic at " + leftRootName + diffPathStr +
-               " cannot be the same type parameter as the right generic at " + rightRootName + diffPathStr;
+        return "DiffError: these two types are not equal because the left generic at" + conditionalNewline
+                + conditionalIndent + leftRootName + diffPathStr + conditionalNewline
+                + "cannot be the same type parameter as the right generic at" + conditionalNewline
+                + conditionalIndent + rightRootName + diffPathStr;
     }
     default:
     {
-        return "DiffError: these two types are not equal because the left type at " + toStringALeaf(leftRootName, left, right) +
-               ", while the right type at " + toStringALeaf(rightRootName, right, left);
+        return "DiffError: these two types are not equal because the left type at" + conditionalNewline
+                + conditionalIndent + toStringALeaf(leftRootName, left, right, multiLine) + "," + conditionalNewline +
+                "while the right type at" + conditionalNewline
+                + conditionalIndent + toStringALeaf(rightRootName, right, left, multiLine);
     }
     }
 }
@@ -296,8 +329,8 @@ static DifferResult diffTable(DifferEnvironment& env, TypeId left, TypeId right)
                 DiffError::Kind::MissingTableProperty,
                 DiffPathNodeLeaf::detailsTableProperty(value.type(), field),
                 DiffPathNodeLeaf::nullopts(),
-                getDevFixFriendlyName(env.rootLeft),
-                getDevFixFriendlyName(env.rootRight),
+                env.getDevFixFriendlyNameLeft(),
+                env.getDevFixFriendlyNameRight(),
             }};
         }
     }
@@ -307,8 +340,7 @@ static DifferResult diffTable(DifferEnvironment& env, TypeId left, TypeId right)
         {
             // right has a field the left doesn't
             return DifferResult{DiffError{DiffError::Kind::MissingTableProperty, DiffPathNodeLeaf::nullopts(),
-                DiffPathNodeLeaf::detailsTableProperty(value.type(), field), getDevFixFriendlyName(env.rootLeft),
-                getDevFixFriendlyName(env.rootRight)}};
+                DiffPathNodeLeaf::detailsTableProperty(value.type(), field), env.getDevFixFriendlyNameLeft(), env.getDevFixFriendlyNameRight()}};
         }
     }
     // left and right have the same set of keys
@@ -360,8 +392,8 @@ static DifferResult diffPrimitive(DifferEnvironment& env, TypeId left, TypeId ri
             DiffError::Kind::Normal,
             DiffPathNodeLeaf::detailsNormal(left),
             DiffPathNodeLeaf::detailsNormal(right),
-            getDevFixFriendlyName(env.rootLeft),
-            getDevFixFriendlyName(env.rootRight),
+            env.getDevFixFriendlyNameLeft(),
+            env.getDevFixFriendlyNameRight(),
         }};
     }
     return DifferResult{};
@@ -380,8 +412,8 @@ static DifferResult diffSingleton(DifferEnvironment& env, TypeId left, TypeId ri
             DiffError::Kind::Normal,
             DiffPathNodeLeaf::detailsNormal(left),
             DiffPathNodeLeaf::detailsNormal(right),
-            getDevFixFriendlyName(env.rootLeft),
-            getDevFixFriendlyName(env.rootRight),
+            env.getDevFixFriendlyNameLeft(),
+            env.getDevFixFriendlyNameRight(),
         }};
     }
     return DifferResult{};
@@ -419,8 +451,8 @@ static DifferResult diffGeneric(DifferEnvironment& env, TypeId left, TypeId righ
             DiffError::Kind::IncompatibleGeneric,
             DiffPathNodeLeaf::nullopts(),
             DiffPathNodeLeaf::nullopts(),
-            getDevFixFriendlyName(env.rootLeft),
-            getDevFixFriendlyName(env.rootRight),
+            env.getDevFixFriendlyNameLeft(),
+            env.getDevFixFriendlyNameRight(),
         }};
     }
 
@@ -432,8 +464,8 @@ static DifferResult diffGeneric(DifferEnvironment& env, TypeId left, TypeId righ
         DiffError::Kind::IncompatibleGeneric,
         DiffPathNodeLeaf::nullopts(),
         DiffPathNodeLeaf::nullopts(),
-        getDevFixFriendlyName(env.rootLeft),
-        getDevFixFriendlyName(env.rootRight),
+        env.getDevFixFriendlyNameLeft(),
+        env.getDevFixFriendlyNameRight(),
     }};
 }
 
@@ -468,8 +500,8 @@ static DifferResult diffClass(DifferEnvironment& env, TypeId left, TypeId right)
         DiffError::Kind::Normal,
         DiffPathNodeLeaf::detailsNormal(left),
         DiffPathNodeLeaf::detailsNormal(right),
-        getDevFixFriendlyName(env.rootLeft),
-        getDevFixFriendlyName(env.rootRight),
+        env.getDevFixFriendlyNameLeft(),
+        env.getDevFixFriendlyNameRight(),
     }};
 }
 
@@ -521,16 +553,16 @@ static DifferResult diffUnion(DifferEnvironment& env, TypeId left, TypeId right)
                 DiffError::Kind::MissingUnionMember,
                 DiffPathNodeLeaf::detailsUnionIndex(leftUnion->options[*findSeteqCexResult.mismatchIdx], *findSeteqCexResult.mismatchIdx),
                 DiffPathNodeLeaf::nullopts(),
-                getDevFixFriendlyName(env.rootLeft),
-                getDevFixFriendlyName(env.rootRight),
+                env.getDevFixFriendlyNameLeft(),
+                env.getDevFixFriendlyNameRight(),
             }};
         else
             return DifferResult{DiffError{
                 DiffError::Kind::MissingUnionMember,
                 DiffPathNodeLeaf::nullopts(),
                 DiffPathNodeLeaf::detailsUnionIndex(rightUnion->options[*findSeteqCexResult.mismatchIdx], *findSeteqCexResult.mismatchIdx),
-                getDevFixFriendlyName(env.rootLeft),
-                getDevFixFriendlyName(env.rootRight),
+                env.getDevFixFriendlyNameLeft(),
+                env.getDevFixFriendlyNameRight(),
             }};
     }
 
@@ -554,16 +586,16 @@ static DifferResult diffIntersection(DifferEnvironment& env, TypeId left, TypeId
                 DiffError::Kind::MissingIntersectionMember,
                 DiffPathNodeLeaf::detailsUnionIndex(leftIntersection->parts[*findSeteqCexResult.mismatchIdx], *findSeteqCexResult.mismatchIdx),
                 DiffPathNodeLeaf::nullopts(),
-                getDevFixFriendlyName(env.rootLeft),
-                getDevFixFriendlyName(env.rootRight),
+                env.getDevFixFriendlyNameLeft(),
+                env.getDevFixFriendlyNameRight(),
             }};
         else
             return DifferResult{DiffError{
                 DiffError::Kind::MissingIntersectionMember,
                 DiffPathNodeLeaf::nullopts(),
                 DiffPathNodeLeaf::detailsUnionIndex(rightIntersection->parts[*findSeteqCexResult.mismatchIdx], *findSeteqCexResult.mismatchIdx),
-                getDevFixFriendlyName(env.rootLeft),
-                getDevFixFriendlyName(env.rootRight),
+                env.getDevFixFriendlyNameLeft(),
+                env.getDevFixFriendlyNameRight(),
             }};
     }
 
@@ -583,8 +615,8 @@ static DifferResult diffUsingEnv(DifferEnvironment& env, TypeId left, TypeId rig
             DiffError::Kind::Normal,
             DiffPathNodeLeaf::detailsNormal(left),
             DiffPathNodeLeaf::detailsNormal(right),
-            getDevFixFriendlyName(env.rootLeft),
-            getDevFixFriendlyName(env.rootRight),
+            env.getDevFixFriendlyNameLeft(),
+            env.getDevFixFriendlyNameRight(),
         }};
     }
 
@@ -753,8 +785,8 @@ static DifferResult diffCanonicalTpShape(DifferEnvironment& env, DiffError::Kind
         possibleNonNormalErrorKind,
         DiffPathNodeLeaf::detailsLength(int(left.first.size()), left.second.has_value()),
         DiffPathNodeLeaf::detailsLength(int(right.first.size()), right.second.has_value()),
-        getDevFixFriendlyName(env.rootLeft),
-        getDevFixFriendlyName(env.rootRight),
+        env.getDevFixFriendlyNameLeft(),
+        env.getDevFixFriendlyNameRight(),
     }};
 }
 
@@ -769,8 +801,8 @@ static DifferResult diffHandleFlattenedTail(DifferEnvironment& env, DiffError::K
             DiffError::Kind::Normal,
             DiffPathNodeLeaf::detailsNormal(env.visitingBegin()->first),
             DiffPathNodeLeaf::detailsNormal(env.visitingBegin()->second),
-            getDevFixFriendlyName(env.rootLeft),
-            getDevFixFriendlyName(env.rootRight),
+            env.getDevFixFriendlyNameLeft(),
+            env.getDevFixFriendlyNameRight(),
         }};
     }
 
@@ -847,8 +879,8 @@ static DifferResult diffGenericTp(DifferEnvironment& env, TypePackId left, TypeP
             DiffError::Kind::IncompatibleGeneric,
             DiffPathNodeLeaf::nullopts(),
             DiffPathNodeLeaf::nullopts(),
-            getDevFixFriendlyName(env.rootLeft),
-            getDevFixFriendlyName(env.rootRight),
+            env.getDevFixFriendlyNameLeft(),
+            env.getDevFixFriendlyNameRight(),
         }};
     }
 
@@ -860,8 +892,8 @@ static DifferResult diffGenericTp(DifferEnvironment& env, TypePackId left, TypeP
         DiffError::Kind::IncompatibleGeneric,
         DiffPathNodeLeaf::nullopts(),
         DiffPathNodeLeaf::nullopts(),
-        getDevFixFriendlyName(env.rootLeft),
-        getDevFixFriendlyName(env.rootRight),
+        env.getDevFixFriendlyNameLeft(),
+        env.getDevFixFriendlyNameRight(),
     }};
 }
 
@@ -910,7 +942,13 @@ std::vector<std::pair<TypeId, TypeId>>::const_reverse_iterator DifferEnvironment
 
 DifferResult diff(TypeId ty1, TypeId ty2)
 {
-    DifferEnvironment differEnv{ty1, ty2};
+    DifferEnvironment differEnv{ty1, ty2, std::nullopt, std::nullopt};
+    return diffUsingEnv(differEnv, ty1, ty2);
+}
+
+DifferResult diffWithSymbols(TypeId ty1, TypeId ty2, std::optional<std::string> symbol1, std::optional<std::string> symbol2)
+{
+    DifferEnvironment differEnv{ty1, ty2, symbol1, symbol2};
     return diffUsingEnv(differEnv, ty1, ty2);
 }
 

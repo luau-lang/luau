@@ -872,6 +872,9 @@ type R = { m: F<R> }
 
 TEST_CASE_FIXTURE(Fixture, "pack_tail_unification_check")
 {
+    ScopedFastFlag sff{"LuauIndentTypeMismatch", true};
+    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
+
     CheckResult result = check(R"(
 local a: () -> (number, ...string)
 local b: () -> (number, ...boolean)
@@ -879,9 +882,13 @@ a = b
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), R"(Type '() -> (number, ...boolean)' could not be converted into '() -> (number, ...string)'
+    const std::string expected = R"(Type
+    '() -> (number, ...boolean)'
+could not be converted into
+    '() -> (number, ...string)'
 caused by:
-  Type 'boolean' could not be converted into 'string')");
+  Type 'boolean' could not be converted into 'string')";
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 // TODO: File a Jira about this

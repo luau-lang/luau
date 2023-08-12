@@ -161,8 +161,10 @@ struct BoostLikeReporter : doctest::IReporter
     }
 
     void log_message(const doctest::MessageData& md) override
-    { //
-        printf("%s(%d): ERROR: %s\n", md.m_file, md.m_line, md.m_string.c_str());
+    {
+        const char* severity = (md.m_severity & doctest::assertType::is_warn) ? "WARNING" : "ERROR";
+
+        printf("%s(%d): %s: %s\n", md.m_file, md.m_line, severity, md.m_string.c_str());
     }
 
     // called when a test case is skipped either because it doesn't pass the filters, has a skip decorator

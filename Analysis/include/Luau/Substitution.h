@@ -147,9 +147,6 @@ struct Tarjan
     void visitEdge(int index, int parentIndex);
     void visitSCC(int index);
 
-    TarjanResult loop_DEPRECATED();
-    void visitSCC_DEPRECATED(int index);
-
     // Each subclass can decide to ignore some nodes.
     virtual bool ignoreChildren(TypeId ty)
     {
@@ -178,13 +175,6 @@ struct Tarjan
     virtual bool isDirty(TypePackId tp) = 0;
     virtual void foundDirty(TypeId ty) = 0;
     virtual void foundDirty(TypePackId tp) = 0;
-
-    // TODO: remove with FFlagLuauTarjanSingleArr
-    std::vector<TypeId> indexToType;
-    std::vector<TypePackId> indexToPack;
-    std::vector<bool> onStack;
-    std::vector<int> lowlink;
-    std::vector<bool> dirty;
 };
 
 // And finally substitution, which finds all the reachable dirty vertices

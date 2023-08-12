@@ -176,7 +176,7 @@ enum class IrCmd : uint8_t
     CMP_ANY,
 
     // Unconditional jump
-    // A: block/vmexit
+    // A: block/vmexit/undef
     JUMP,
 
     // Jump if TValue is truthy
@@ -369,10 +369,8 @@ enum class IrCmd : uint8_t
     // Guard against tag mismatch
     // A, B: tag
     // C: block/vmexit/undef
-    // D: bool (finish execution in VM on failure)
     // In final x64 lowering, A can also be Rn
-    // When undef is specified instead of a block, execution is aborted on check failure; if D is true, execution is continued in VM interpreter
-    // instead.
+    // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_TAG,
 
     // Guard against a falsy tag+value
@@ -689,6 +687,10 @@ enum class IrOpKind : uint32_t
     VmExit,
 };
 
+// VmExit uses a special value to indicate that pcpos update should be skipped
+// This is only used during type checking at function entry
+constexpr uint32_t kVmExitEntryGuardPc = (1u << 28) - 1;
+
 struct IrOp
 {
     IrOpKind kind : 4;
@@ -851,6 +853,8 @@ struct IrFunction
     std::vector<IrConst> constants;
 
     std::vector<BytecodeMapping> bcMapping;
+    uint32_t entryBlock = 0;
+    uint32_t entryLocation = 0;
 
     // For each instruction, an operand that can be used to recompute the value
     std::vector<IrOp> valueRestoreOps;
@@ -1034,6 +1038,12 @@ inline int vmConstOp(IrOp op)
 inline int vmUpvalueOp(IrOp op)
 {
     LUAU_ASSERT(op.kind == IrOpKind::VmUpvalue);
+    return op.index;
+}
+
+inline uint32_t vmExitOp(IrOp op)
+{
+    LUAU_ASSERT(op.kind == IrOpKind::VmExit);
     return op.index;
 }
 

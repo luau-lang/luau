@@ -26,9 +26,6 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileFunctionType, false)
-LUAU_FASTFLAGVARIABLE(LuauCompileNativeComment, false)
-
 LUAU_FASTFLAGVARIABLE(LuauCompileFixBuiltinArity, false)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileFoldMathK, false)
@@ -209,12 +206,9 @@ struct Compiler
 
         setDebugLine(func);
 
-        if (FFlag::LuauCompileFunctionType)
-        {
-            // note: we move types out of typeMap which is safe because compileFunction is only called once per function
-            if (std::string* funcType = typeMap.find(func))
-                bytecode.setFunctionTypeInfo(std::move(*funcType));
-        }
+        // note: we move types out of typeMap which is safe because compileFunction is only called once per function
+        if (std::string* funcType = typeMap.find(func))
+            bytecode.setFunctionTypeInfo(std::move(*funcType));
 
         if (func->vararg)
             bytecode.emitABC(LOP_PREPVARARGS, uint8_t(self + func->args.size), 0, 0);
@@ -3620,9 +3614,8 @@ struct Compiler
         {
             node->body->visit(this);
 
-            if (FFlag::LuauCompileFunctionType)
-                for (AstLocal* arg : node->args)
-                    hasTypes |= arg->annotation != nullptr;
+            for (AstLocal* arg : node->args)
+                hasTypes |= arg->annotation != nullptr;
 
             // this makes sure all functions that are used when compiling this one have been already added to the vector
             functions.push_back(node);
@@ -3863,7 +3856,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
         if (hc.header && hc.content.compare(0, 9, "optimize ") == 0)
             options.optimizationLevel = std::max(0, std::min(2, atoi(hc.content.c_str() + 9)));
 
-        if (FFlag::LuauCompileNativeComment && hc.header && hc.content == "native")
+        if (hc.header && hc.content == "native")
         {
             mainFlags |= LPF_NATIVE_MODULE;
             options.optimizationLevel = 2; // note: this might be removed in the future in favor of --!optimize
@@ -3916,7 +3909,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     root->visit(&functionVisitor);
 
     // computes type information for all functions based on type annotations
-    if (FFlag::LuauCompileFunctionType && functionVisitor.hasTypes)
+    if (functionVisitor.hasTypes)
         buildTypeMap(compiler.typeMap, root, options.vectorType);
 
     for (AstExprFunction* expr : functions)

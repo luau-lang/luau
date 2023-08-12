@@ -992,6 +992,9 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
 {
+    ScopedFastFlag sff{"LuauIndentTypeMismatch", true};
+    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
+
     CheckResult result = check(R"(
         --!strict
         --!nolint
@@ -1028,16 +1031,23 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
         // unsound.
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-        CHECK_EQ(
-            R"(Type 'Policies' from 'MainModule' could not be converted into 'Policies' from 'MainModule'
+        const std::string expected = R"(Type 'Policies' from 'MainModule' could not be converted into 'Policies' from 'MainModule'
 caused by:
-  Property 'getStoreFieldName' is not compatible. Type '(Policies, FieldSpecifier & {| from: number? |}) -> (a, b...)' could not be converted into '(Policies, FieldSpecifier) -> string'
+  Property 'getStoreFieldName' is not compatible. 
+Type
+    '(Policies, FieldSpecifier & {| from: number? |}) -> (a, b...)'
+could not be converted into
+    '(Policies, FieldSpecifier) -> string'
 caused by:
-  Argument #2 type is not compatible. Type 'FieldSpecifier' could not be converted into 'FieldSpecifier & {| from: number? |}'
+  Argument #2 type is not compatible. 
+Type
+    'FieldSpecifier'
+could not be converted into
+    'FieldSpecifier & {| from: number? |}'
 caused by:
-  Not all intersection parts are compatible. Table type 'FieldSpecifier' not compatible with type '{| from: number? |}' because the former has extra field 'fieldName')",
-            toString(result.errors[0]));
+  Not all intersection parts are compatible. 
+Table type 'FieldSpecifier' not compatible with type '{| from: number? |}' because the former has extra field 'fieldName')";
+        CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
     {
@@ -1205,8 +1215,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typechecking_in_type_guards")
 {
-    ScopedFastFlag sff{"LuauTypecheckTypeguards", true};
-
     CheckResult result = check(R"(
 local a = type(foo) == 'nil'
 local b = typeof(foo) ~= 'nil'

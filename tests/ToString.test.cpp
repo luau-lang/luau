@@ -831,4 +831,39 @@ TEST_CASE_FIXTURE(Fixture, "tostring_unsee_ttv_if_array")
     CHECK(toString(requireType("y")) == "({string}, {string}) -> ()");
 }
 
+TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauIndentTypeMismatch", true},
+    };
+
+    ScopedFastInt sfi[] = {
+        {"LuauIndentTypeMismatchMaxTypeLength", 10},
+    };
+
+    CheckResult result = check(R"(
+--!strict
+   function f1() : {a : number, b : string, c : { d : number}}
+     return { a = 1, b = "a", c = {d = "a"}}
+   end
+
+)");
+    std::string expected = R"(Type
+    '{ a: number, b: string, c: { d: string } }'
+could not be converted into
+    '{| a: number, b: string, c: {| d: number |} |}'
+caused by:
+  Property 'c' is not compatible. 
+Type
+    '{ d: string }'
+could not be converted into
+    '{| d: number |}'
+caused by:
+  Property 'd' is not compatible. 
+Type 'string' could not be converted into 'number' in an invariant context)";
+    std::string actual = toString(result.errors[0]);
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(expected == actual);
+}
 TEST_SUITE_END();

@@ -38,11 +38,9 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauAllowIndexClassParameters, false)
 LUAU_FASTFLAGVARIABLE(LuauFixCyclicModuleExports, false)
 LUAU_FASTFLAG(LuauOccursIsntAlwaysFailure)
-LUAU_FASTFLAGVARIABLE(LuauTypecheckTypeguards, false)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAG(LuauParseDeclareClassIndexer)
-LUAU_FASTFLAGVARIABLE(LuauIndexTableIntersectionStringExpr, false)
 LUAU_FASTFLAGVARIABLE(LuauIntersectedBinopOverloadFix, false)
 
 namespace Luau
@@ -3120,22 +3118,13 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     }
     else if (expr.op == AstExprBinary::CompareEq || expr.op == AstExprBinary::CompareNe)
     {
-        if (!FFlag::LuauTypecheckTypeguards)
-        {
-            if (auto predicate = tryGetTypeGuardPredicate(expr))
-                return {booleanType, {std::move(*predicate)}};
-        }
-
         // For these, passing expectedType is worse than simply forcing them, because their implementation
         // may inadvertently check if expectedTypes exist first and use it, instead of forceSingleton first.
         WithPredicate<TypeId> lhs = checkExpr(scope, *expr.left, std::nullopt, /*forceSingleton=*/true);
         WithPredicate<TypeId> rhs = checkExpr(scope, *expr.right, std::nullopt, /*forceSingleton=*/true);
 
-        if (FFlag::LuauTypecheckTypeguards)
-        {
-            if (auto predicate = tryGetTypeGuardPredicate(expr))
-                return {booleanType, {std::move(*predicate)}};
-        }
+        if (auto predicate = tryGetTypeGuardPredicate(expr))
+            return {booleanType, {std::move(*predicate)}};
 
         PredicateVec predicates;
 
@@ -3415,7 +3404,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
             reportError(TypeError{expr.location, UnknownProperty{exprType, value->value.data}});
             return errorRecoveryType(scope);
         }
-        else if (FFlag::LuauIndexTableIntersectionStringExpr && get<IntersectionType>(exprType))
+        else if (get<IntersectionType>(exprType))
         {
             Name name = std::string(value->value.data, value->value.size);
 

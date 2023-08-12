@@ -160,14 +160,37 @@ void createSomeClasses(Frontend* frontend);
 template<typename BaseFixture>
 struct DifferFixtureGeneric : BaseFixture
 {
-    void compareNe(TypeId left, TypeId right, const std::string& expectedMessage)
+    std::string normalizeWhitespace(std::string msg)
+    {
+        std::string normalizedMsg = "";
+        bool wasWhitespace = true;
+        for (char c : msg)
+        {
+            bool isWhitespace = c == ' ' || c == '\n';
+            if (wasWhitespace && isWhitespace)
+                continue;
+            normalizedMsg += isWhitespace ? ' ' : c;
+            wasWhitespace = isWhitespace;
+        }
+        if (wasWhitespace)
+            normalizedMsg.pop_back();
+        return normalizedMsg;
+    }
+
+    void compareNe(TypeId left, TypeId right, const std::string& expectedMessage, bool multiLine)
+    {
+        compareNe(left, std::nullopt, right, std::nullopt, expectedMessage, multiLine);
+    }
+
+    void compareNe(TypeId left, std::optional<std::string> symbolLeft, TypeId right, std::optional<std::string> symbolRight,
+        const std::string& expectedMessage, bool multiLine)
     {
         std::string diffMessage;
         try
         {
-            DifferResult diffRes = diff(left, right);
+            DifferResult diffRes = diffWithSymbols(left, right, symbolLeft, symbolRight);
             REQUIRE_MESSAGE(diffRes.diffError.has_value(), "Differ did not report type error, even though types are unequal");
-            diffMessage = diffRes.diffError->toString();
+            diffMessage = diffRes.diffError->toString(multiLine);
         }
         catch (const InternalCompilerError& e)
         {
@@ -176,9 +199,19 @@ struct DifferFixtureGeneric : BaseFixture
         CHECK_EQ(expectedMessage, diffMessage);
     }
 
-    void compareTypesNe(const std::string& leftSymbol, const std::string& rightSymbol, const std::string& expectedMessage)
+    void compareTypesNe(const std::string& leftSymbol, const std::string& rightSymbol, const std::string& expectedMessage, bool forwardSymbol = false,
+        bool multiLine = false)
     {
-        compareNe(BaseFixture::requireType(leftSymbol), BaseFixture::requireType(rightSymbol), expectedMessage);
+        if (forwardSymbol)
+        {
+            compareNe(
+                BaseFixture::requireType(leftSymbol), leftSymbol, BaseFixture::requireType(rightSymbol), rightSymbol, expectedMessage, multiLine);
+        }
+        else
+        {
+            compareNe(
+                BaseFixture::requireType(leftSymbol), std::nullopt, BaseFixture::requireType(rightSymbol), std::nullopt, expectedMessage, multiLine);
+        }
     }
 
     void compareEq(TypeId left, TypeId right)
