@@ -438,6 +438,34 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compound_assign_mismatch_metatable")
     CHECK("Type 'number' could not be converted into 'V2'" == toString(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "overloaded_op_accept_structured_subtype")
+{
+    ScopedFastFlag sff{"LuauIntersectedBinopOverloadFix", true};
+    CheckResult result = check(R"(
+        --!strict
+        type BaseType = typeof(setmetatable(
+            {},
+            ({} :: any) :: {__add: (BaseType, BaseType) -> BaseType})
+        )
+        type SubType = BaseType & {extraField: string}
+
+        local function add1(x: BaseType, y: BaseType): BaseType
+            return x + y
+        end
+        local function add2(x: SubType, y: BaseType): BaseType
+            return x + y
+        end
+        local function add3(x: BaseType, y: SubType): BaseType
+            return x + y
+        end
+        local function add4(x: SubType, y: SubType): BaseType
+            return x + y
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "CallOrOfFunctions")
 {
     CheckResult result = check(R"(

@@ -43,12 +43,22 @@ LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAG(LuauParseDeclareClassIndexer)
 LUAU_FASTFLAGVARIABLE(LuauIndexTableIntersectionStringExpr, false)
+LUAU_FASTFLAGVARIABLE(LuauIntersectedBinopOverloadFix, false)
 
 namespace Luau
 {
 
 static bool typeCouldHaveMetatable(TypeId ty)
 {
+    if (FFlag::LuauIntersectedBinopOverloadFix) {
+        if (auto itv = get<IntersectionType>(follow(ty)))
+        {
+            for (TypeId part : itv->parts)
+                if (typeCouldHaveMetatable(part))
+                    return true;
+            return false;
+        }
+    }
     return get<TableType>(follow(ty)) || get<ClassType>(follow(ty)) || get<MetatableType>(follow(ty));
 }
 
