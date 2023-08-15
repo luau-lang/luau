@@ -102,7 +102,7 @@ local MyModule = require("./MyModule")
 
 -- From C:/MyLibrary/SubDirectory/SubModule.luau
 local MyModule = require("../MyModule")
- 
+
 -- From C:/MyOtherLibrary/MainModule.luau
 local MyModule = require("../MyLibrary/MyModule")
 ```
@@ -172,8 +172,8 @@ Aliases are simple bindings and aren't concerned with versioning. The intention 
 
 ##### Library root alias
 
-In the past, it has been proposed to define alias (e.g. "`@`") to represent the root directory of a file's encapsulating library. 
-- However, the concept of a "Luau library" and its root directory is not yet rigorously defined in Luau, in terms of folder/file structure. 
+In the past, it has been proposed to define an alias (e.g. "`@`") to represent the root directory of a file's encapsulating library.
+- However, the concept of a "Luau library" and its root directory is not yet rigorously defined in Luau, in terms of folder/file structure.
 - In the future, we may add a `package.json` file or something similar that marks the root directory of a library, but this is outside of the scope of this RFC, which primarily focuses on improving require-by-string.
 - For the time being, this functionality will remain unimplemented for this reason. The alias "`@`" will remain reserved for now, meaning it cannot be overridden.
 
@@ -231,6 +231,16 @@ Currently, since relative paths are always evaluated in relation to the current 
 For example, `require("mymodule")` and `require("../mymodule")` might refer to the same module, depending on the requiring files' locations. With the current cache implementation, the second statement would be a cache miss, as `"mymodule"` is not literally equal to `"../mymodule"`.
 
 To solve this issue, we propose transforming every path that is passed to `require` into an equivalent absolute path and using this to cache, regardless of whether it was originally passed in as a relative, absolute, or aliased path. This way, a module's return value is stored in both a unique and consistent way across different files. Additionally, using absolute paths as opposed to, say, relative-to-cwd paths for caching ensures that aliased paths also maximize cache hits.
+
+### Symlinks
+
+Symlinks carry some security concerns; for example, a link's target might exist outside of the project folder in which the link was defined. For the first version of this implementation, symlinks will not be supported and will be treated as ordinary files.
+
+If we do implement symlinks in the future, we will likely use our own limit to the number of symlinks to "follow through" for cross-platform compatibility. It is also possible that we will add a new configurable property in `.luaurc` that will allow developers to toggle whether or not to resolve symlinks.
+
+Similar examples:
+- https://www.typescriptlang.org/tsconfig#preserveSymlinks
+- https://webpack.js.org/configuration/resolve/#resolvesymlinks
 
 ### Implementing changes to relative paths
 
@@ -308,6 +318,117 @@ local MyModule = require("MyModule")
 
 Within the Roblox engine, we will have to handle replication and waiting for modules to be loaded into the DataModel before requiring them. However, this is outside of the scope of this RFC and will be discussed internally.
 
+## Use cases
+
+### Improvements to relative-path requires
+
+By interpreting relative paths relative to the requiring file's location, Luau projects can now have internal dependencies. For example, in [Roact's current implementation](https://github.com/Roblox/roact), `Component.lua` requires `assign.lua` [like this](https://github.com/Roblox/roact/blob/beb0bc2706b307b04204abdcf129385fd3cb3e6f/src/Component.lua#L1C1-L1C45):
+
+```lua
+local assign = require(script.Parent.assign)
+```
+
+By using "Roblox-style" syntax (referring to Roblox Instances in the require statement), `Component.lua` is able to perform a relative-to-requiring-script require. However, with the proposed changes in this RFC, we could instead do this with clean syntax that works outside of the context of Roblox:
+
+```lua
+local assign = require("./assign")
+```
+
+(Of course, for this to work in the Roblox engine, there needs to be support for require-by-string in the engine. This is being discussed internally.)
+
+### Paths array
+
+The `paths` configuration variable provides convenience and allows Luau developers to build complex, well-organized libraries. Imagine the following project structure:
+
+```
+luau-paths-project
+├── .luaurc
+├── dependencies
+│   └── dependency.luau
+└── src
+    └── module.luau
+```
+
+If `.luaurc` contained the following `paths` array:
+```json
+{
+    "paths": ["./dependencies"]
+}
+```
+
+Then, `module.luau` could simply require `dependency.luau` like this:
+```lua
+local dependency = require("dependency")
+
+-- Instead of: require("../dependencies/dependency")
+```
+
+Using the `paths` array allows Luau developers to organize their projects however they like without compromising code readability.
+
+### Alias map
+
+Using alias maps, Luau developers can require globally installed Luau libraries in their code without needing to specify their locations in Luau scripts.
+
+```
+luau-aliases-project
+├── .luaurc
+└── src
+    └── module.luau
+```
+
+For example, if we wanted to require `Roact` in `module.luau`, we could add the following alias to `.luaurc`:
+
+```json
+{
+    "aliases": {
+        "Roact": "/Users/johndoe/LuauLibraries/Roact/src"
+    }
+}
+```
+
+Then, we could simply write the following in `module.luau`, and everything would work as intended:
+```lua
+local Roact = require("Roact")
+local Component = require("Roact/Component")
+```
+
+If we ever wanted to change the version of `Roact` used by `luau-aliases-project`, we would simply change the absolute path to `Roact` in `.luaurc`. By abstracting away the exact location of globally installed libraries like this, we get clean, readable code, and we make it easier for a future package manager to update dependencies by modifying `.luaurc` files.
+
+### Large-scale projects in Luau
+
+For large-scale Luau projects, we might imagine that every dependency of the project is a Luau project itself. We might use an organizational structure like this to create a clean hierarchy:
+
+```
+large-luau-project
+├── .luaurc
+├── subproject-1
+├── subproject-2
+└── subproject-3
+```
+
+We can provide the following alias in `large-luau-project/.luaurc`:
+
+```json
+{
+    "aliases": {
+        "com.roblox.luau": "."
+    }
+}
+```
+
+This way, each subproject directory can contain its own source code, dependencies, and `.luaurc` configuration files, while also inheriting the `com.roblox.luau` alias from `large-luau-project/.luaurc`.
+
+This allows us to refer to other subprojects like this, regardless of the exact location of the requiring file in `large-luau-project`:
+```lua
+local subproject1 = require("com.roblox.luau/subproject-1")
+```
+
+### Roblox specifics
+
+In the Roblox engine, developers can reasonably expect something similar to be implemented. Assuming a central package management system were available for storing packages and providing default aliases to require them, a Roblox Script could contain `local Roact = require("Roact")`, and everything would "just work".
+
+However, when requiring a "floating" ModuleScript (not part of this central package management system), there will not be a default alias provided. This is bad style and will not be encouraged.
+
 ## Drawbacks
 
 ### Backwards compatibility
@@ -315,7 +436,7 @@ Within the Roblox engine, we will have to handle replication and waiting for mod
 Luau libraries are already not compatible with existing Lua libraries. This is because Lua favors the `.` based require syntax instead and relies on the `LUA_PATH` environment variable to search for modules, whereas Luau currently supports a basic require-by-string syntax.
 
 - Libraries are fully compatible with the Roblox engine, as require-by-string is currently unimplemented.
-- Luau currently implements relative paths in relation to the current working directory. 
+- Luau currently implements relative paths in relation to the current working directory.
 - We propose changing this behavior and breaking backwards compatibility on this front.
 - With the current implementation, requiring a library that itself contains relative-path require statements [can become a mess](https://github.com/Roblox/luau/issues/959) if the Luau VM is not launched from the "correct" working directory.
 - We propose the following change: relative paths passed to require statements will be evaluated in relation to the requiring file's location, not in relation to the current working directory.
