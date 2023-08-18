@@ -411,11 +411,6 @@ void IrRegAllocA64::restoreReg(AssemblyBuilderA64& build, IrInst& inst)
     LUAU_ASSERT(!"Expected to find a spill record");
 }
 
-void IrRegAllocA64::assertNoSpills() const
-{
-    LUAU_ASSERT(spills.empty());
-}
-
 IrRegAllocA64::Set& IrRegAllocA64::getSet(KindA64 kind)
 {
     switch (kind)

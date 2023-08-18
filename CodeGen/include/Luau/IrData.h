@@ -53,11 +53,8 @@ enum class IrCmd : uint8_t
 
     // Load a TValue from memory
     // A: Rn or Kn or pointer (TValue)
+    // B: int (optional 'A' pointer offset)
     LOAD_TVALUE,
-
-    // Load a TValue from table node value
-    // A: pointer (LuaNode)
-    LOAD_NODE_VALUE_TV, // TODO: we should find a way to generalize LOAD_TVALUE
 
     // Load current environment table
     LOAD_ENV,
@@ -113,12 +110,15 @@ enum class IrCmd : uint8_t
     // Store a TValue into memory
     // A: Rn or pointer (TValue)
     // B: TValue
+    // C: int (optional 'A' pointer offset)
     STORE_TVALUE,
 
-    // Store a TValue into table node value
-    // A: pointer (LuaNode)
-    // B: TValue
-    STORE_NODE_VALUE_TV, // TODO: we should find a way to generalize STORE_TVALUE
+    // Store a pair of tag and value into memory
+    // A: Rn or pointer (TValue)
+    // B: tag (must be a constant)
+    // C: int/double/pointer
+    // D: int (optional 'A' pointer offset)
+    STORE_SPLIT_TVALUE,
 
     // Add/Sub two integers together
     // A, B: int
@@ -356,6 +356,7 @@ enum class IrCmd : uint8_t
     // Store TValue from stack slot into a function upvalue
     // A: UPn
     // B: Rn
+    // C: tag/undef (tag of the value that was written)
     SET_UPVALUE,
 
     // Convert TValues into numbers for a numerical for loop

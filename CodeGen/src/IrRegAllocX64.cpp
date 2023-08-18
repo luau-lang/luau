@@ -54,7 +54,12 @@ RegisterX64 IrRegAllocX64::allocReg(SizeX64 size, uint32_t instIdx)
     // Out of registers, spill the value with the furthest next use
     const std::array<uint32_t, 16>& regInstUsers = size == SizeX64::xmmword ? xmmInstUsers : gprInstUsers;
     if (uint32_t furthestUseTarget = findInstructionWithFurthestNextUse(regInstUsers); furthestUseTarget != kInvalidInstIdx)
-        return takeReg(function.instructions[furthestUseTarget].regX64, instIdx);
+    {
+        RegisterX64 reg = function.instructions[furthestUseTarget].regX64;
+        reg.size = size; // Adjust size to the requested
+
+        return takeReg(reg, instIdx);
+    }
 
     LUAU_ASSERT(!"Out of registers to allocate");
     return noreg;

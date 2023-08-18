@@ -6,8 +6,6 @@
 
 #include <limits.h>
 
-LUAU_FASTFLAGVARIABLE(LuauAssignmentHasCost, false)
-
 namespace Luau
 {
 namespace Compile
@@ -308,10 +306,7 @@ struct CostVisitor : AstVisitor
     {
         // unconditional 'else' may require a jump after the 'if' body
         // note: this ignores cases when 'then' always terminates and also assumes comparison requires an extra instruction which may be false
-        if (!FFlag::LuauAssignmentHasCost)
-            result += 2;
-        else
-            result += 1 + (node->elsebody && !node->elsebody->is<AstStatIf>());
+        result += 1 + (node->elsebody && !node->elsebody->is<AstStatIf>());
 
         return true;
     }
@@ -336,9 +331,6 @@ struct CostVisitor : AstVisitor
     {
         for (size_t i = 0; i < node->vars.size; ++i)
             assign(node->vars.data[i]);
-
-        if (!FFlag::LuauAssignmentHasCost)
-            return true;
 
         for (size_t i = 0; i < node->vars.size || i < node->values.size; ++i)
         {

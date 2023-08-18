@@ -89,8 +89,6 @@ const char* getCmdName(IrCmd cmd)
         return "LOAD_INT";
     case IrCmd::LOAD_TVALUE:
         return "LOAD_TVALUE";
-    case IrCmd::LOAD_NODE_VALUE_TV:
-        return "LOAD_NODE_VALUE_TV";
     case IrCmd::LOAD_ENV:
         return "LOAD_ENV";
     case IrCmd::GET_ARR_ADDR:
@@ -113,8 +111,8 @@ const char* getCmdName(IrCmd cmd)
         return "STORE_VECTOR";
     case IrCmd::STORE_TVALUE:
         return "STORE_TVALUE";
-    case IrCmd::STORE_NODE_VALUE_TV:
-        return "STORE_NODE_VALUE_TV";
+    case IrCmd::STORE_SPLIT_TVALUE:
+        return "STORE_SPLIT_TVALUE";
     case IrCmd::ADD_INT:
         return "ADD_INT";
     case IrCmd::SUB_INT:

@@ -32,7 +32,6 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::LOAD_INT:
         return IrValueKind::Int;
     case IrCmd::LOAD_TVALUE:
-    case IrCmd::LOAD_NODE_VALUE_TV:
         return IrValueKind::Tvalue;
     case IrCmd::LOAD_ENV:
     case IrCmd::GET_ARR_ADDR:
@@ -46,7 +45,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::STORE_INT:
     case IrCmd::STORE_VECTOR:
     case IrCmd::STORE_TVALUE:
-    case IrCmd::STORE_NODE_VALUE_TV:
+    case IrCmd::STORE_SPLIT_TVALUE:
         return IrValueKind::None;
     case IrCmd::ADD_INT:
     case IrCmd::SUB_INT:
@@ -216,6 +215,8 @@ void removeUse(IrFunction& function, IrOp op)
 
 bool isGCO(uint8_t tag)
 {
+    LUAU_ASSERT(tag < LUA_T_COUNT);
+
     // mirrors iscollectable(o) from VM/lobject.h
     return tag >= LUA_TSTRING;
 }
@@ -388,6 +389,7 @@ void applySubstitutions(IrFunction& function, IrInst& inst)
 
 bool compare(double a, double b, IrCondition cond)
 {
+    // Note: redundant bool() casts work around invalid MSVC optimization that merges cases in this switch, violating IEEE754 comparison semantics
     switch (cond)
     {
     case IrCondition::Equal:
@@ -397,19 +399,19 @@ bool compare(double a, double b, IrCondition cond)
     case IrCondition::Less:
         return a < b;
     case IrCondition::NotLess:
-        return !(a < b);
+        return !bool(a < b);
     case IrCondition::LessEqual:
         return a <= b;
     case IrCondition::NotLessEqual:
-        return !(a <= b);
+        return !bool(a <= b);
     case IrCondition::Greater:
         return a > b;
     case IrCondition::NotGreater:
-        return !(a > b);
+        return !bool(a > b);
     case IrCondition::GreaterEqual:
         return a >= b;
     case IrCondition::NotGreaterEqual:
-        return !(a >= b);
+        return !bool(a >= b);
     default:
         LUAU_ASSERT(!"Unsupported condition");
     }

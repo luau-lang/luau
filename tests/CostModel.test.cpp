@@ -133,8 +133,6 @@ end
 
 TEST_CASE("ControlFlow")
 {
-    ScopedFastFlag sff("LuauAssignmentHasCost", true);
-
     uint64_t model = modelFunction(R"(
 function test(a)
     while a < 0 do
@@ -244,8 +242,6 @@ end
 
 TEST_CASE("MultipleAssignments")
 {
-    ScopedFastFlag sff("LuauAssignmentHasCost", true);
-
     uint64_t model = modelFunction(R"(
 function test(a)
     local x = 0

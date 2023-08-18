@@ -6978,8 +6978,6 @@ L3: RETURN R0 0
 
 TEST_CASE("BuiltinArity")
 {
-    ScopedFastFlag sff("LuauCompileFixBuiltinArity", true);
-
     // by default we can't assume that we know parameter/result count for builtins as they can be overridden at runtime
     CHECK_EQ("\n" + compileFunction(R"(
 return math.abs(unknown())

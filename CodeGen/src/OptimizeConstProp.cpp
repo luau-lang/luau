@@ -9,6 +9,7 @@
 #include "lua.h"
 
 #include <array>
+#include <utility>
 #include <vector>
 
 LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
@@ -31,6 +32,7 @@ struct RegisterInfo
 
     bool knownNotReadonly = false;
     bool knownNoMetatable = false;
+    int knownTableArraySize = -1;
 };
 
 // Load instructions are linked to target register to carry knowledge about the target
@@ -95,6 +97,7 @@ struct ConstPropState
                 info->value = value;
                 info->knownNotReadonly = false;
                 info->knownNoMetatable = false;
+                info->knownTableArraySize = -1;
                 info->version++;
             }
         }
@@ -112,6 +115,7 @@ struct ConstPropState
             reg.value = {};
             reg.knownNotReadonly = false;
             reg.knownNoMetatable = false;
+            reg.knownTableArraySize = -1;
         }
 
         reg.version++;
@@ -176,6 +180,7 @@ struct ConstPropState
     {
         reg.knownNotReadonly = false;
         reg.knownNoMetatable = false;
+        reg.knownTableArraySize = -1;
     }
 
     void invalidateUserCall()
@@ -236,28 +241,66 @@ struct ConstPropState
         return IrInst{loadCmd, op};
     }
 
+    uint32_t* getPreviousInstIndex(const IrInst& inst)
+    {
+        LUAU_ASSERT(useValueNumbering);
+
+        if (uint32_t* prevIdx = valueMap.find(inst))
+        {
+            // Previous load might have been removed as unused
+            if (function.instructions[*prevIdx].useCount != 0)
+                return prevIdx;
+        }
+
+        return nullptr;
+    }
+
+    uint32_t* getPreviousVersionedLoadIndex(IrCmd cmd, IrOp vmReg)
+    {
+        LUAU_ASSERT(vmReg.kind == IrOpKind::VmReg);
+        return getPreviousInstIndex(versionedVmRegLoad(cmd, vmReg));
+    }
+
+    std::pair<IrCmd, uint32_t> getPreviousVersionedLoadForTag(uint8_t tag, IrOp vmReg)
+    {
+        if (useValueNumbering && !function.cfg.captured.regs.test(vmRegOp(vmReg)))
+        {
+            if (tag == LUA_TBOOLEAN)
+            {
+                if (uint32_t* prevIdx = getPreviousVersionedLoadIndex(IrCmd::LOAD_INT, vmReg))
+                    return std::make_pair(IrCmd::LOAD_INT, *prevIdx);
+            }
+            else if (tag == LUA_TNUMBER)
+            {
+                if (uint32_t* prevIdx = getPreviousVersionedLoadIndex(IrCmd::LOAD_DOUBLE, vmReg))
+                    return std::make_pair(IrCmd::LOAD_DOUBLE, *prevIdx);
+            }
+            else if (isGCO(tag))
+            {
+                if (uint32_t* prevIdx = getPreviousVersionedLoadIndex(IrCmd::LOAD_POINTER, vmReg))
+                    return std::make_pair(IrCmd::LOAD_POINTER, *prevIdx);
+            }
+        }
+
+        return std::make_pair(IrCmd::NOP, kInvalidInstIdx);
+    }
+
     // Find existing value of the instruction that is exactly the same, or record current on for future lookups
     void substituteOrRecord(IrInst& inst, uint32_t instIdx)
     {
         if (!useValueNumbering)
             return;
 
-        if (uint32_t* prevIdx = valueMap.find(inst))
+        if (uint32_t* prevIdx = getPreviousInstIndex(inst))
         {
-            const IrInst& prev = function.instructions[*prevIdx];
-
-            // Previous load might have been removed as unused
-            if (prev.useCount != 0)
-            {
-                substitute(function, inst, IrOp{IrOpKind::Inst, *prevIdx});
-                return;
-            }
+            substitute(function, inst, IrOp{IrOpKind::Inst, *prevIdx});
+            return;
         }
 
         valueMap[inst] = instIdx;
     }
 
-    // Vm register load can be replaced by a previous load of the same version of the register
+    // VM register load can be replaced by a previous load of the same version of the register
     // If there is no previous load, we record the current one for future lookups
     void substituteOrRecordVmRegLoad(IrInst& loadInst)
     {
@@ -274,22 +317,16 @@ struct ConstPropState
         IrInst versionedLoad = versionedVmRegLoad(loadInst.cmd, loadInst.a);
 
         // Check if there is a value that already has this version of the register
-        if (uint32_t* prevIdx = valueMap.find(versionedLoad))
+        if (uint32_t* prevIdx = getPreviousInstIndex(versionedLoad))
         {
-            const IrInst& prev = function.instructions[*prevIdx];
+            // Previous value might not be linked to a register yet
+            // For example, it could be a NEW_TABLE stored into a register and we might need to track guards made with this value
+            if (!instLink.contains(*prevIdx))
+                createRegLink(*prevIdx, loadInst.a);
 
-            // Previous load might have been removed as unused
-            if (prev.useCount != 0)
-            {
-                // Previous value might not be linked to a register yet
-                // For example, it could be a NEW_TABLE stored into a register and we might need to track guards made with this value
-                if (!instLink.contains(*prevIdx))
-                    createRegLink(*prevIdx, loadInst.a);
-
-                // Substitute load instructon with the previous value
-                substitute(function, loadInst, IrOp{IrOpKind::Inst, *prevIdx});
-                return;
-            }
+            // Substitute load instructon with the previous value
+            substitute(function, loadInst, IrOp{IrOpKind::Inst, *prevIdx});
+            return;
         }
 
         uint32_t instIdx = function.getInstIndex(loadInst);
@@ -403,10 +440,8 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     case LBF_MATH_CLAMP:
     case LBF_MATH_SIGN:
     case LBF_MATH_ROUND:
-    case LBF_RAWSET:
     case LBF_RAWGET:
     case LBF_RAWEQUAL:
-    case LBF_TABLE_INSERT:
     case LBF_TABLE_UNPACK:
     case LBF_VECTOR:
     case LBF_BIT32_COUNTLZ:
@@ -417,6 +452,12 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     case LBF_GETMETATABLE:
     case LBF_TONUMBER:
     case LBF_TOSTRING:
+        break;
+    case LBF_TABLE_INSERT:
+        state.invalidateHeap();
+        return; // table.insert does not modify result registers.
+    case LBF_RAWSET:
+        state.invalidateHeap();
         break;
     case LBF_SETMETATABLE:
         state.invalidateHeap(); // TODO: only knownNoMetatable is affected and we might know which one
@@ -470,21 +511,18 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         if (inst.a.kind == IrOpKind::VmReg)
         {
             const IrOp source = inst.a;
-            uint32_t activeLoadDoubleValue = kInvalidInstIdx;
+
+            IrCmd activeLoadCmd = IrCmd::NOP;
+            uint32_t activeLoadValue = kInvalidInstIdx;
 
             if (inst.b.kind == IrOpKind::Constant)
             {
                 uint8_t value = function.tagOp(inst.b);
 
                 // STORE_TAG usually follows a store of the value, but it also bumps the version of the whole register
-                // To be able to propagate STORE_DOUBLE into LOAD_DOUBLE, we find active LOAD_DOUBLE value and recreate it with updated version
+                // To be able to propagate STORE_*** into LOAD_***, we find active LOAD_*** value and recreate it with updated version
                 // Register in this optimization cannot be captured to avoid complications in lowering (IrValueLocationTracking doesn't model it)
-                // If stored tag is not a number, we can skip the lookup as there won't be future loads of this register as a number
-                if (value == LUA_TNUMBER && !function.cfg.captured.regs.test(vmRegOp(source)))
-                {
-                    if (uint32_t* prevIdx = state.valueMap.find(state.versionedVmRegLoad(IrCmd::LOAD_DOUBLE, source)))
-                        activeLoadDoubleValue = *prevIdx;
-                }
+                std::tie(activeLoadCmd, activeLoadValue) = state.getPreviousVersionedLoadForTag(value, source);
 
                 if (state.tryGetTag(source) == value)
                 {
@@ -503,9 +541,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 state.invalidateTag(source);
             }
 
-            // Future LOAD_DOUBLE instructions can re-use previous register version load
-            if (activeLoadDoubleValue != kInvalidInstIdx)
-                state.valueMap[state.versionedVmRegLoad(IrCmd::LOAD_DOUBLE, source)] = activeLoadDoubleValue;
+            // Future LOAD_*** instructions can re-use previous register version load
+            if (activeLoadValue != kInvalidInstIdx)
+                state.valueMap[state.versionedVmRegLoad(activeLoadCmd, source)] = activeLoadValue;
         }
         break;
     case IrCmd::STORE_POINTER:
@@ -520,6 +558,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 {
                     info->knownNotReadonly = true;
                     info->knownNoMetatable = true;
+                    info->knownTableArraySize = function.uintOp(instOp->a);
                 }
             }
         }
@@ -562,17 +601,62 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         state.invalidateValue(inst.a);
         break;
     case IrCmd::STORE_TVALUE:
+        if (inst.a.kind == IrOpKind::VmReg || inst.a.kind == IrOpKind::Inst)
+        {
+            if (inst.a.kind == IrOpKind::VmReg)
+                state.invalidate(inst.a);
+
+            uint8_t tag = state.tryGetTag(inst.b);
+            IrOp value = state.tryGetValue(inst.b);
+
+            if (inst.a.kind == IrOpKind::VmReg)
+            {
+                if (tag != 0xff)
+                    state.saveTag(inst.a, tag);
+
+                if (value.kind != IrOpKind::None)
+                    state.saveValue(inst.a, value);
+            }
+
+            IrCmd activeLoadCmd = IrCmd::NOP;
+            uint32_t activeLoadValue = kInvalidInstIdx;
+
+            if (tag != 0xff)
+            {
+                // If we know the tag, try to extract the value from a register used by LOAD_TVALUE
+                if (IrInst* arg = function.asInstOp(inst.b); arg && arg->cmd == IrCmd::LOAD_TVALUE && arg->a.kind == IrOpKind::VmReg)
+                {
+                    std::tie(activeLoadCmd, activeLoadValue) = state.getPreviousVersionedLoadForTag(tag, arg->a);
+
+                    if (activeLoadValue != kInvalidInstIdx)
+                        value = IrOp{IrOpKind::Inst, activeLoadValue};
+                }
+            }
+
+            // If we have constant tag and value, replace TValue store with tag/value pair store
+            if (tag != 0xff && value.kind != IrOpKind::None && (tag == LUA_TBOOLEAN || tag == LUA_TNUMBER || isGCO(tag)))
+            {
+                replace(function, block, index, {IrCmd::STORE_SPLIT_TVALUE, inst.a, build.constTag(tag), value, inst.c});
+
+                // Value can be propagated to future loads of the same register
+                if (inst.a.kind == IrOpKind::VmReg && activeLoadValue != kInvalidInstIdx)
+                    state.valueMap[state.versionedVmRegLoad(activeLoadCmd, inst.a)] = activeLoadValue;
+            }
+            else if (inst.a.kind == IrOpKind::VmReg)
+            {
+                state.forwardVmRegStoreToLoad(inst, IrCmd::LOAD_TVALUE);
+            }
+        }
+        break;
+    case IrCmd::STORE_SPLIT_TVALUE:
         if (inst.a.kind == IrOpKind::VmReg)
         {
             state.invalidate(inst.a);
 
-            if (uint8_t tag = state.tryGetTag(inst.b); tag != 0xff)
-                state.saveTag(inst.a, tag);
+            state.saveTag(inst.a, function.tagOp(inst.b));
 
-            if (IrOp value = state.tryGetValue(inst.b); value.kind != IrOpKind::None)
-                state.saveValue(inst.a, value);
-
-            state.forwardVmRegStoreToLoad(inst, IrCmd::LOAD_TVALUE);
+            if (inst.c.kind == IrOpKind::Constant)
+                state.saveValue(inst.a, inst.c);
         }
         break;
     case IrCmd::JUMP_IF_TRUTHY:
@@ -665,6 +749,15 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     }
     case IrCmd::GET_UPVALUE:
         state.invalidate(inst.a);
+        break;
+    case IrCmd::SET_UPVALUE:
+        if (inst.b.kind == IrOpKind::VmReg)
+        {
+            if (uint8_t tag = state.tryGetTag(inst.b); tag != 0xff)
+            {
+                replace(function, inst.c, build.constTag(tag));
+            }
+        }
         break;
     case IrCmd::CHECK_TAG:
     {
@@ -768,8 +861,6 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
 
         // These instructions don't have an effect on register/memory state we are tracking
     case IrCmd::NOP:
-    case IrCmd::LOAD_NODE_VALUE_TV:
-    case IrCmd::STORE_NODE_VALUE_TV:
     case IrCmd::LOAD_ENV:
     case IrCmd::GET_ARR_ADDR:
     case IrCmd::GET_SLOT_NODE_ADDR:
@@ -824,12 +915,33 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.substituteOrRecord(inst, index);
         break;
     case IrCmd::CHECK_ARRAY_SIZE:
+    {
+        std::optional<int> arrayIndex = function.asIntOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b));
+
+        if (RegisterInfo* info = state.tryGetRegisterInfo(inst.a); info && arrayIndex)
+        {
+            if (info->knownTableArraySize >= 0)
+            {
+                if (unsigned(*arrayIndex) < unsigned(info->knownTableArraySize))
+                {
+                    if (FFlag::DebugLuauAbortingChecks)
+                        replace(function, inst.c, build.undef());
+                    else
+                        kill(function, inst);
+                }
+                else
+                {
+                    replace(function, block, index, {IrCmd::JUMP, inst.c});
+                }
+            }
+        }
+        break;
+    }
     case IrCmd::CHECK_SLOT_MATCH:
     case IrCmd::CHECK_NODE_NO_NEXT:
     case IrCmd::BARRIER_TABLE_BACK:
     case IrCmd::RETURN:
     case IrCmd::COVERAGE:
-    case IrCmd::SET_UPVALUE:
     case IrCmd::SET_SAVEDPC:  // TODO: we may be able to remove some updates to PC
     case IrCmd::CLOSE_UPVALS: // Doesn't change memory that we track
     case IrCmd::CAPTURE:

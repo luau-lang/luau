@@ -69,14 +69,24 @@ static LUAU_NOINLINE TypeId unwrapLazy(LazyType* ltv)
 
 TypeId follow(TypeId t)
 {
-    return follow(t, nullptr, [](const void*, TypeId t) -> TypeId {
+    return follow(t, FollowOption::Normal);
+}
+
+TypeId follow(TypeId t, FollowOption followOption)
+{
+    return follow(t, followOption, nullptr, [](const void*, TypeId t) -> TypeId {
         return t;
     });
 }
 
 TypeId follow(TypeId t, const void* context, TypeId (*mapper)(const void*, TypeId))
 {
-    auto advance = [context, mapper](TypeId ty) -> std::optional<TypeId> {
+    return follow(t, FollowOption::Normal, context, mapper);
+}
+
+TypeId follow(TypeId t, FollowOption followOption, const void* context, TypeId (*mapper)(const void*, TypeId))
+{
+    auto advance = [followOption, context, mapper](TypeId ty) -> std::optional<TypeId> {
         TypeId mapped = mapper(context, ty);
 
         if (auto btv = get<Unifiable::Bound<TypeId>>(mapped))
@@ -85,7 +95,7 @@ TypeId follow(TypeId t, const void* context, TypeId (*mapper)(const void*, TypeI
         if (auto ttv = get<TableType>(mapped))
             return ttv->boundTo;
 
-        if (auto ltv = getMutable<LazyType>(mapped))
+        if (auto ltv = getMutable<LazyType>(mapped); ltv && followOption != FollowOption::DisableLazyTypeThunks)
             return unwrapLazy(ltv);
 
         return std::nullopt;
@@ -945,6 +955,7 @@ BuiltinTypes::BuiltinTypes()
     , truthyType(arena->addType(Type{NegationType{falsyType}, /*persistent*/ true}))
     , optionalNumberType(arena->addType(Type{UnionType{{numberType, nilType}}, /*persistent*/ true}))
     , optionalStringType(arena->addType(Type{UnionType{{stringType, nilType}}, /*persistent*/ true}))
+    , emptyTypePack(arena->addTypePack(TypePackVar{TypePack{{}}, /*persistent*/ true}))
     , anyTypePack(arena->addTypePack(TypePackVar{VariadicTypePack{anyType}, /*persistent*/ true}))
     , neverTypePack(arena->addTypePack(TypePackVar{VariadicTypePack{neverType}, /*persistent*/ true}))
     , uninhabitableTypePack(arena->addTypePack(TypePackVar{TypePack{{neverType}, neverTypePack}, /*persistent*/ true}))

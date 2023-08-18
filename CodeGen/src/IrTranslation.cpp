@@ -2,6 +2,7 @@
 #include "IrTranslation.h"
 
 #include "Luau/Bytecode.h"
+#include "Luau/BytecodeUtils.h"
 #include "Luau/IrBuilder.h"
 #include "Luau/IrUtils.h"
 
@@ -526,7 +527,7 @@ void translateInstSetUpval(IrBuilder& build, const Instruction* pc, int pcpos)
     int ra = LUAU_INSN_A(*pc);
     int up = LUAU_INSN_B(*pc);
 
-    build.inst(IrCmd::SET_UPVALUE, build.vmUpvalue(up), build.vmReg(ra));
+    build.inst(IrCmd::SET_UPVALUE, build.vmUpvalue(up), build.vmReg(ra), build.undef());
 }
 
 void translateInstCloseUpvals(IrBuilder& build, const Instruction* pc)
@@ -988,7 +989,7 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
 
     build.inst(IrCmd::CHECK_SLOT_MATCH, addrSlotEl, build.vmConst(aux), fallback);
 
-    IrOp tvn = build.inst(IrCmd::LOAD_NODE_VALUE_TV, addrSlotEl);
+    IrOp tvn = build.inst(IrCmd::LOAD_TVALUE, addrSlotEl, build.constInt(offsetof(LuaNode, val)));
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), tvn);
 
     IrOp next = build.blockAtInst(pcpos + 2);
@@ -1017,7 +1018,7 @@ void translateInstSetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::CHECK_READONLY, vb, fallback);
 
     IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
-    build.inst(IrCmd::STORE_NODE_VALUE_TV, addrSlotEl, tva);
+    build.inst(IrCmd::STORE_TVALUE, addrSlotEl, tva, build.constInt(offsetof(LuaNode, val)));
 
     build.inst(IrCmd::BARRIER_TABLE_FORWARD, vb, build.vmReg(ra), build.undef());
 
@@ -1040,7 +1041,7 @@ void translateInstGetGlobal(IrBuilder& build, const Instruction* pc, int pcpos)
 
     build.inst(IrCmd::CHECK_SLOT_MATCH, addrSlotEl, build.vmConst(aux), fallback);
 
-    IrOp tvn = build.inst(IrCmd::LOAD_NODE_VALUE_TV, addrSlotEl);
+    IrOp tvn = build.inst(IrCmd::LOAD_TVALUE, addrSlotEl, build.constInt(offsetof(LuaNode, val)));
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), tvn);
 
     IrOp next = build.blockAtInst(pcpos + 2);
@@ -1064,7 +1065,7 @@ void translateInstSetGlobal(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::CHECK_READONLY, env, fallback);
 
     IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
-    build.inst(IrCmd::STORE_NODE_VALUE_TV, addrSlotEl, tva);
+    build.inst(IrCmd::STORE_TVALUE, addrSlotEl, tva, build.constInt(offsetof(LuaNode, val)));
 
     build.inst(IrCmd::BARRIER_TABLE_FORWARD, env, build.vmReg(ra), build.undef());
 
@@ -1136,7 +1137,7 @@ void translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::STORE_POINTER, build.vmReg(ra + 1), table);
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra + 1), build.constTag(LUA_TTABLE));
 
-    IrOp nodeEl = build.inst(IrCmd::LOAD_NODE_VALUE_TV, addrNodeEl);
+    IrOp nodeEl = build.inst(IrCmd::LOAD_TVALUE, addrNodeEl, build.constInt(offsetof(LuaNode, val)));
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), nodeEl);
     build.inst(IrCmd::JUMP, next);
 
@@ -1158,7 +1159,7 @@ void translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::STORE_POINTER, build.vmReg(ra + 1), table2);
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra + 1), build.constTag(LUA_TTABLE));
 
-    IrOp indexNodeEl = build.inst(IrCmd::LOAD_NODE_VALUE_TV, addrIndexNodeEl);
+    IrOp indexNodeEl = build.inst(IrCmd::LOAD_TVALUE, addrIndexNodeEl, build.constInt(offsetof(LuaNode, val)));
     build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), indexNodeEl);
     build.inst(IrCmd::JUMP, next);
 

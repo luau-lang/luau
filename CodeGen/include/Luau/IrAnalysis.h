@@ -4,6 +4,7 @@
 #include "Luau/Common.h"
 
 #include <bitset>
+#include <queue>
 #include <utility>
 #include <vector>
 
@@ -95,6 +96,46 @@ struct CfgInfo
 //   This is also where PHI instructions in SSA are placed.
 void computeCfgImmediateDominators(IrFunction& function);
 void computeCfgDominanceTreeChildren(IrFunction& function);
+
+struct IdfContext
+{
+    struct BlockAndOrdering
+    {
+        uint32_t blockIdx;
+        BlockOrdering ordering;
+
+        bool operator<(const BlockAndOrdering& rhs) const
+        {
+            if (ordering.depth != rhs.ordering.depth)
+                return ordering.depth < rhs.ordering.depth;
+
+            return ordering.preOrder < rhs.ordering.preOrder;
+        }
+    };
+
+    // Using priority queue to work on nodes in the order from the bottom of the dominator tree to the top
+    // If the depth of keys is equal, DFS order is used to provide strong ordering
+    std::priority_queue<BlockAndOrdering> queue;
+    std::vector<uint32_t> worklist;
+
+    struct IdfVisitMarks
+    {
+        bool seenInQueue = false;
+        bool seenInWorklist = false;
+    };
+
+    std::vector<IdfVisitMarks> visits;
+
+    std::vector<uint32_t> idf;
+};
+
+// Compute iterated dominance frontier (IDF or DF+) for a variable, given the set of blocks where that variable is defined
+// Providing a set of blocks where the variable is a live-in at the entry helps produce a pruned SSA form (inserted phi nodes will not be dead)
+//
+// 'Iterated' comes from the definition where we recompute the IDFn+1 = DF(S) while adding IDFn to S until a fixed point is reached
+// Iterated dominance frontier has been shown to be equal to the set of nodes where phi instructions have to be inserted
+void computeIteratedDominanceFrontierForDefs(
+    IdfContext& ctx, const IrFunction& function, const std::vector<uint32_t>& defBlocks, const std::vector<uint32_t>& liveInBlocks);
 
 // Function used to update all CFG data
 void computeCfgInfo(IrFunction& function);

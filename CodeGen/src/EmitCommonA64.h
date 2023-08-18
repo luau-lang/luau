@@ -31,23 +31,24 @@ namespace A64
 // 1. Constant registers (only loaded during codegen entry)
 constexpr RegisterA64 rState = x19;         // lua_State* L
 constexpr RegisterA64 rNativeContext = x20; // NativeContext* context
+constexpr RegisterA64 rGlobalState = x21;   // global_State* L->global
 
 // 2. Frame registers (reloaded when call frame changes; rBase is also reloaded after all calls that may reallocate stack)
-constexpr RegisterA64 rConstants = x21; // TValue* k
-constexpr RegisterA64 rClosure = x22;   // Closure* cl
-constexpr RegisterA64 rCode = x23;      // Instruction* code
-constexpr RegisterA64 rBase = x24;      // StkId base
+constexpr RegisterA64 rConstants = x22; // TValue* k
+constexpr RegisterA64 rClosure = x23;   // Closure* cl
+constexpr RegisterA64 rCode = x24;      // Instruction* code
+constexpr RegisterA64 rBase = x25;      // StkId base
 
 // Native code is as stackless as the interpreter, so we can place some data on the stack once and have it accessible at any point
 // See CodeGenA64.cpp for layout
-constexpr unsigned kStashSlots = 8;  // stashed non-volatile registers
+constexpr unsigned kStashSlots = 9;  // stashed non-volatile registers
+constexpr unsigned kTempSlots = 1;   // 8 bytes of temporary space, such luxury!
 constexpr unsigned kSpillSlots = 22; // slots for spilling temporary registers
-constexpr unsigned kTempSlots = 2;   // 16 bytes of temporary space, such luxury!
 
-constexpr unsigned kStackSize = (kStashSlots + kSpillSlots + kTempSlots) * 8;
+constexpr unsigned kStackSize = (kStashSlots + kTempSlots + kSpillSlots) * 8;
 
-constexpr AddressA64 sSpillArea = mem(sp, kStashSlots * 8);
-constexpr AddressA64 sTemporary = mem(sp, (kStashSlots + kSpillSlots) * 8);
+constexpr AddressA64 sSpillArea = mem(sp, (kStashSlots + kTempSlots) * 8);
+constexpr AddressA64 sTemporary = mem(sp, kStashSlots * 8);
 
 inline void emitUpdateBase(AssemblyBuilderA64& build)
 {

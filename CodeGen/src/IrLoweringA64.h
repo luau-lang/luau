@@ -26,7 +26,7 @@ struct IrLoweringA64
     IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, IrFunction& function);
 
     void lowerInst(IrInst& inst, uint32_t index, const IrBlock& next);
-    void finishBlock();
+    void finishBlock(const IrBlock& curr, const IrBlock& next);
     void finishFunction();
 
     bool hasError() const;
