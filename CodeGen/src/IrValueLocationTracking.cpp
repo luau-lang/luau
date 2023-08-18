@@ -28,6 +28,7 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::STORE_INT:
     case IrCmd::STORE_VECTOR:
     case IrCmd::STORE_TVALUE:
+    case IrCmd::STORE_SPLIT_TVALUE:
         invalidateRestoreOp(inst.a);
         break;
     case IrCmd::ADJUST_STACK_TO_REG:

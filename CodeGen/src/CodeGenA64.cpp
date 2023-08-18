@@ -225,6 +225,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     build.stp(x19, x20, mem(sp, 16));
     build.stp(x21, x22, mem(sp, 32));
     build.stp(x23, x24, mem(sp, 48));
+    build.str(x25, mem(sp, 64));
 
     build.mov(x29, sp); // this is only necessary if we maintain frame pointers, which we do in the JIT for now
 
@@ -235,6 +236,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     // Setup native execution environment
     build.mov(rState, x0);
     build.mov(rNativeContext, x3);
+    build.ldr(rGlobalState, mem(x0, offsetof(lua_State, global)));
 
     build.ldr(rBase, mem(x0, offsetof(lua_State, base))); // L->base
 
@@ -252,6 +254,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     locations.epilogueStart = build.setLabel();
 
     // Cleanup and exit
+    build.ldr(x25, mem(sp, 64));
     build.ldp(x23, x24, mem(sp, 48));
     build.ldp(x21, x22, mem(sp, 32));
     build.ldp(x19, x20, mem(sp, 16));
@@ -262,7 +265,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
 
     // Our entry function is special, it spans the whole remaining code area
     unwind.startFunction();
-    unwind.prologueA64(prologueSize, kStackSize, {x29, x30, x19, x20, x21, x22, x23, x24});
+    unwind.prologueA64(prologueSize, kStackSize, {x29, x30, x19, x20, x21, x22, x23, x24, x25});
     unwind.finishFunction(build.getLabelOffset(locations.start), kFullBlockFuncton);
 
     return locations;

@@ -407,7 +407,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cycle_between_object_constructor_and_alias")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "promise_type_error_too_complex")
 {
-    ScopedFastFlag sff{"LuauStacklessTypeClone", true};
+    ScopedFastFlag sff{"LuauStacklessTypeClone2", true};
 
     frontend.options.retainFullTypeGraphs = false;
 

@@ -3556,8 +3556,6 @@ TEST_CASE_FIXTURE(ACFixture, "frontend_use_correct_global_scope")
 
 TEST_CASE_FIXTURE(ACFixture, "string_completion_outside_quotes")
 {
-    ScopedFastFlag flag{"LuauDisableCompletionOutsideQuotes", true};
-
     loadDefinition(R"(
         declare function require(path: string): any
     )");

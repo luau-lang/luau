@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IrBuilder.h"
 
+#include "Luau/Bytecode.h"
+#include "Luau/BytecodeUtils.h"
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
 

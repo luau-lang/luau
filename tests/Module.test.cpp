@@ -14,7 +14,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauStacklessTypeClone)
+LUAU_FASTFLAG(LuauStacklessTypeClone2)
 
 TEST_SUITE_BEGIN("ModuleTests");
 
@@ -150,8 +150,8 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
     REQUIRE(methodReturnType);
 
     CHECK_MESSAGE(methodReturnType == cloneTy, toString(methodType, {true}) << " should be pointer identical to " << toString(cloneTy, {true}));
-    CHECK_EQ(FFlag::LuauStacklessTypeClone ? 1 : 2, dest.typePacks.size()); // one for the function args, and another for its return type
-    CHECK_EQ(2, dest.types.size());                                         // One table and one function
+    CHECK_EQ(2, dest.typePacks.size()); // one for the function args, and another for its return type
+    CHECK_EQ(2, dest.types.size());     // One table and one function
 }
 
 TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table_2")
@@ -336,7 +336,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
     int limit = 400;
 #endif
 
-    ScopedFastFlag sff{"LuauStacklessTypeClone", false};
+    ScopedFastFlag sff{"LuauStacklessTypeClone2", false};
     ScopedFastInt luauTypeCloneRecursionLimit{"LuauTypeCloneRecursionLimit", limit};
 
     TypeArena src;
@@ -360,7 +360,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
 
 TEST_CASE_FIXTURE(Fixture, "clone_iteration_limit")
 {
-    ScopedFastFlag sff{"LuauStacklessTypeClone", true};
+    ScopedFastFlag sff{"LuauStacklessTypeClone2", true};
     ScopedFastInt sfi{"LuauTypeCloneIterationLimit", 500};
 
     TypeArena src;
@@ -499,6 +499,34 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_types_of_reexported_values")
     TableType* tableA = getMutable<TableType>(*typeA);
     TableType* tableB = getMutable<TableType>(*typeB);
     CHECK(tableA->props["a"].type() == tableB->props["b"].type());
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "clone_table_bound_to_table_bound_to_table")
+{
+    TypeArena arena;
+
+    TypeId a = arena.addType(TableType{TableState::Free, TypeLevel{}});
+    getMutable<TableType>(a)->name = "a";
+
+    TypeId b = arena.addType(TableType{TableState::Free, TypeLevel{}});
+    getMutable<TableType>(b)->name = "b";
+
+    TypeId c = arena.addType(TableType{TableState::Free, TypeLevel{}});
+    getMutable<TableType>(c)->name = "c";
+
+    getMutable<TableType>(a)->boundTo = b;
+    getMutable<TableType>(b)->boundTo = c;
+
+    TypeArena dest;
+    CloneState state{builtinTypes};
+    TypeId res = clone(a, dest, state);
+
+    REQUIRE(dest.types.size() == 1);
+
+    auto tableA = get<TableType>(res);
+    REQUIRE_MESSAGE(tableA, "Expected table, got " << res);
+    REQUIRE(tableA->name == "c");
+    REQUIRE(!tableA->boundTo);
 }
 
 TEST_SUITE_END();

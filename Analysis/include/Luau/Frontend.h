@@ -100,6 +100,12 @@ struct FrontendOptions
     std::optional<LintOptions> enabledLintWarnings;
 
     std::shared_ptr<FrontendCancellationToken> cancellationToken;
+
+    // Time limit for typechecking a single module
+    std::optional<double> moduleTimeLimitSec;
+
+    // When true, some internal complexity limits will be scaled down for modules that miss the limit set by moduleTimeLimitSec
+    bool applyInternalLimitScaling = false;
 };
 
 struct CheckResult

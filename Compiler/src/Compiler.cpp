@@ -26,8 +26,6 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileFixBuiltinArity, false)
-
 LUAU_FASTFLAGVARIABLE(LuauCompileFoldMathK, false)
 
 namespace Luau
@@ -793,15 +791,10 @@ struct Compiler
                 return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, bfid);
             else if (options.optimizationLevel >= 2)
             {
-                if (FFlag::LuauCompileFixBuiltinArity)
-                {
-                    // when a builtin is none-safe with matching arity, even if the last expression returns 0 or >1 arguments,
-                    // we can rely on the behavior of the function being the same (none-safe means nil and none are interchangeable)
-                    BuiltinInfo info = getBuiltinInfo(bfid);
-                    if (int(expr->args.size) == info.params && (info.flags & BuiltinInfo::Flag_NoneSafe) != 0)
-                        return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, bfid);
-                }
-                else if (int(expr->args.size) == getBuiltinInfo(bfid).params)
+                // when a builtin is none-safe with matching arity, even if the last expression returns 0 or >1 arguments,
+                // we can rely on the behavior of the function being the same (none-safe means nil and none are interchangeable)
+                BuiltinInfo info = getBuiltinInfo(bfid);
+                if (int(expr->args.size) == info.params && (info.flags & BuiltinInfo::Flag_NoneSafe) != 0)
                     return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, bfid);
             }
         }

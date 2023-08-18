@@ -194,7 +194,7 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
             }
         }
 
-        lowering.finishBlock();
+        lowering.finishBlock(block, nextBlock);
 
         if (options.includeIr)
             build.logAppend("#\n");

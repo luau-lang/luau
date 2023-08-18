@@ -13,7 +13,6 @@
 #include <utility>
 
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
-LUAU_FASTFLAGVARIABLE(LuauDisableCompletionOutsideQuotes, false)
 LUAU_FASTFLAGVARIABLE(LuauAnonymousAutofilled1, false);
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteLastTypecheck, false)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteHideSelfArg, false)
@@ -1345,7 +1344,7 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(const Source
         return std::nullopt;
     }
 
-    if (FFlag::LuauDisableCompletionOutsideQuotes && !nodes.back()->is<AstExprError>())
+    if (!nodes.back()->is<AstExprError>())
     {
         if (nodes.back()->location.end == position || nodes.back()->location.begin == position)
         {

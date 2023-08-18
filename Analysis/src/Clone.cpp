@@ -4,6 +4,7 @@
 #include "Luau/NotNull.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/TxnLog.h"
+#include "Luau/Type.h"
 #include "Luau/TypePack.h"
 #include "Luau/Unifiable.h"
 
@@ -14,7 +15,7 @@ LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
 LUAU_FASTFLAGVARIABLE(LuauCloneCyclicUnions, false)
 
-LUAU_FASTFLAGVARIABLE(LuauStacklessTypeClone, false)
+LUAU_FASTFLAGVARIABLE(LuauStacklessTypeClone2, false)
 LUAU_FASTINTVARIABLE(LuauTypeCloneIterationLimit, 100'000)
 
 namespace Luau
@@ -115,6 +116,7 @@ private:
 
     std::optional<TypeId> find(TypeId ty) const
     {
+        ty = follow(ty, FollowOption::DisableLazyTypeThunks);
         if (auto it = types->find(ty); it != types->end())
             return it->second;
         return std::nullopt;
@@ -122,6 +124,7 @@ private:
 
     std::optional<TypePackId> find(TypePackId tp) const
     {
+        tp = follow(tp);
         if (auto it = packs->find(tp); it != packs->end())
             return it->second;
         return std::nullopt;
@@ -143,24 +146,17 @@ private:
 private:
     TypeId shallowClone(TypeId ty)
     {
+        // We want to [`Luau::follow`] but without forcing the expansion of [`LazyType`]s.
+        ty = follow(ty, FollowOption::DisableLazyTypeThunks);
+
         if (auto clone = find(ty))
             return *clone;
         else if (ty->persistent)
             return ty;
 
-        // We want to [`Luau::follow`] but without forcing the expansion of [`LazyType`]s.
-        TypeId target = nullptr;
-        if (auto bt = get<BoundType>(ty))
-            target = bt->boundTo;
-        else if (auto tt = get<TableType>(ty); tt && tt->boundTo)
-            target = *tt->boundTo;
-        else
-        {
-            target = arena->addType(ty->ty);
-            asMutable(target)->documentationSymbol = ty->documentationSymbol;
-        }
+        TypeId target = arena->addType(ty->ty);
+        asMutable(target)->documentationSymbol = ty->documentationSymbol;
 
-        LUAU_ASSERT(target);
         (*types)[ty] = target;
         queue.push_back(target);
         return target;
@@ -168,18 +164,15 @@ private:
 
     TypePackId shallowClone(TypePackId tp)
     {
+        tp = follow(tp);
+
         if (auto clone = find(tp))
             return *clone;
         else if (tp->persistent)
             return tp;
 
-        TypePackId target;
-        if (auto btp = get<BoundTypePack>(tp))
-            target = btp->boundTo;
-        else
-            target = arena->addTypePack(tp->ty);
+        TypePackId target = arena->addTypePack(tp->ty);
 
-        LUAU_ASSERT(target);
         (*packs)[tp] = target;
         queue.push_back(target);
         return target;
@@ -883,7 +876,7 @@ TypePackId clone(TypePackId tp, TypeArena& dest, CloneState& cloneState)
     if (tp->persistent)
         return tp;
 
-    if (FFlag::LuauStacklessTypeClone)
+    if (FFlag::LuauStacklessTypeClone2)
     {
         TypeCloner2 cloner{NotNull{&dest}, cloneState.builtinTypes, NotNull{&cloneState.seenTypes}, NotNull{&cloneState.seenTypePacks}};
         return cloner.clone(tp);
@@ -909,7 +902,7 @@ TypeId clone(TypeId typeId, TypeArena& dest, CloneState& cloneState)
     if (typeId->persistent)
         return typeId;
 
-    if (FFlag::LuauStacklessTypeClone)
+    if (FFlag::LuauStacklessTypeClone2)
     {
         TypeCloner2 cloner{NotNull{&dest}, cloneState.builtinTypes, NotNull{&cloneState.seenTypes}, NotNull{&cloneState.seenTypePacks}};
         return cloner.clone(typeId);
@@ -938,7 +931,7 @@ TypeId clone(TypeId typeId, TypeArena& dest, CloneState& cloneState)
 
 TypeFun clone(const TypeFun& typeFun, TypeArena& dest, CloneState& cloneState)
 {
-    if (FFlag::LuauStacklessTypeClone)
+    if (FFlag::LuauStacklessTypeClone2)
     {
         TypeCloner2 cloner{NotNull{&dest}, cloneState.builtinTypes, NotNull{&cloneState.seenTypes}, NotNull{&cloneState.seenTypePacks}};
 

@@ -111,22 +111,21 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.mov(inst.regX64, luauRegValueInt(vmRegOp(inst.a)));
         break;
     case IrCmd::LOAD_TVALUE:
+    {
         inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
+
+        int addrOffset = inst.b.kind != IrOpKind::None ? intOp(inst.b) : 0;
 
         if (inst.a.kind == IrOpKind::VmReg)
             build.vmovups(inst.regX64, luauReg(vmRegOp(inst.a)));
         else if (inst.a.kind == IrOpKind::VmConst)
             build.vmovups(inst.regX64, luauConstant(vmConstOp(inst.a)));
         else if (inst.a.kind == IrOpKind::Inst)
-            build.vmovups(inst.regX64, xmmword[regOp(inst.a)]);
+            build.vmovups(inst.regX64, xmmword[regOp(inst.a) + addrOffset]);
         else
             LUAU_ASSERT(!"Unsupported instruction form");
         break;
-    case IrCmd::LOAD_NODE_VALUE_TV:
-        inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
-
-        build.vmovups(inst.regX64, luauNodeValue(regOp(inst.a)));
-        break;
+    }
     case IrCmd::LOAD_ENV:
         inst.regX64 = regs.allocReg(SizeX64::qword, index);
 
@@ -252,16 +251,59 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         storeDoubleAsFloat(luauRegValueVector(vmRegOp(inst.a), 2), inst.d);
         break;
     case IrCmd::STORE_TVALUE:
+    {
+        int addrOffset = inst.c.kind != IrOpKind::None ? intOp(inst.c) : 0;
+
         if (inst.a.kind == IrOpKind::VmReg)
             build.vmovups(luauReg(vmRegOp(inst.a)), regOp(inst.b));
         else if (inst.a.kind == IrOpKind::Inst)
-            build.vmovups(xmmword[regOp(inst.a)], regOp(inst.b));
+            build.vmovups(xmmword[regOp(inst.a) + addrOffset], regOp(inst.b));
         else
             LUAU_ASSERT(!"Unsupported instruction form");
         break;
-    case IrCmd::STORE_NODE_VALUE_TV:
-        build.vmovups(luauNodeValue(regOp(inst.a)), regOp(inst.b));
+    }
+    case IrCmd::STORE_SPLIT_TVALUE:
+    {
+        int addrOffset = inst.d.kind != IrOpKind::None ? intOp(inst.d) : 0;
+
+        OperandX64 tagLhs = inst.a.kind == IrOpKind::Inst ? dword[regOp(inst.a) + offsetof(TValue, tt) + addrOffset] : luauRegTag(vmRegOp(inst.a));
+        build.mov(tagLhs, tagOp(inst.b));
+
+        if (tagOp(inst.b) == LUA_TBOOLEAN)
+        {
+            OperandX64 valueLhs =
+                inst.a.kind == IrOpKind::Inst ? dword[regOp(inst.a) + offsetof(TValue, value) + addrOffset] : luauRegValueInt(vmRegOp(inst.a));
+            build.mov(valueLhs, inst.c.kind == IrOpKind::Constant ? OperandX64(intOp(inst.c)) : regOp(inst.c));
+        }
+        else if (tagOp(inst.b) == LUA_TNUMBER)
+        {
+            OperandX64 valueLhs =
+                inst.a.kind == IrOpKind::Inst ? qword[regOp(inst.a) + offsetof(TValue, value) + addrOffset] : luauRegValue(vmRegOp(inst.a));
+
+            if (inst.c.kind == IrOpKind::Constant)
+            {
+                ScopedRegX64 tmp{regs, SizeX64::xmmword};
+
+                build.vmovsd(tmp.reg, build.f64(doubleOp(inst.c)));
+                build.vmovsd(valueLhs, tmp.reg);
+            }
+            else
+            {
+                build.vmovsd(valueLhs, regOp(inst.c));
+            }
+        }
+        else if (isGCO(tagOp(inst.b)))
+        {
+            OperandX64 valueLhs =
+                inst.a.kind == IrOpKind::Inst ? qword[regOp(inst.a) + offsetof(TValue, value) + addrOffset] : luauRegValue(vmRegOp(inst.a));
+            build.mov(valueLhs, regOp(inst.c));
+        }
+        else
+        {
+            LUAU_ASSERT(!"Unsupported instruction form");
+        }
         break;
+    }
     case IrCmd::ADD_INT:
     {
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
@@ -951,7 +993,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         tmp1.free();
 
-        callBarrierObject(regs, build, tmp2.release(), {}, vmRegOp(inst.b), /* ratag */ -1);
+        if (inst.c.kind == IrOpKind::Undef || isGCO(tagOp(inst.c)))
+            callBarrierObject(regs, build, tmp2.release(), {}, vmRegOp(inst.b), inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c));
         break;
     }
     case IrCmd::PREPARE_FORN:
@@ -1540,9 +1583,17 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     regs.freeLastUseRegs(inst, index);
 }
 
-void IrLoweringX64::finishBlock()
+void IrLoweringX64::finishBlock(const IrBlock& curr, const IrBlock& next)
 {
-    regs.assertNoSpills();
+    if (!regs.spills.empty())
+    {
+        // If we have spills remaining, we have to immediately lower the successor block
+        for (uint32_t predIdx : predecessors(function.cfg, function.getBlockIndex(next)))
+            LUAU_ASSERT(predIdx == function.getBlockIndex(curr));
+
+        // And the next block cannot be a join block in cfg
+        LUAU_ASSERT(next.useCount == 1);
+    }
 }
 
 void IrLoweringX64::finishFunction()

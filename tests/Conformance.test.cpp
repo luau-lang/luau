@@ -8,7 +8,6 @@
 #include "Luau/DenseHash.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/StringUtils.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Frontend.h"
 
@@ -23,6 +22,8 @@
 extern bool verbose;
 extern bool codegen;
 extern int optimizationLevel;
+
+LUAU_FASTFLAG(LuauPCallDebuggerFix);
 
 static lua_CompileOptions defaultOptions()
 {
@@ -279,8 +280,6 @@ TEST_CASE("Assert")
 
 TEST_CASE("Basic")
 {
-    ScopedFastFlag sff("LuauCompileFixBuiltinArity", true);
-
     runConformance("basic.lua");
 }
 
@@ -334,8 +333,6 @@ TEST_CASE("Clear")
 
 TEST_CASE("Strings")
 {
-    ScopedFastFlag sff("LuauCompileFixBuiltinArity", true);
-
     runConformance("strings.lua");
 }
 
@@ -1217,15 +1214,90 @@ TEST_CASE("IfElseExpression")
     runConformance("ifelseexpr.lua");
 }
 
+// Optionally returns debug info for the first Luau stack frame that is encountered on the callstack.
+static std::optional<lua_Debug> getFirstLuauFrameDebugInfo(lua_State* L)
+{
+    static std::string_view kLua = "Lua";
+    lua_Debug ar;
+    for (int i = 0; lua_getinfo(L, i, "sl", &ar); i++)
+    {
+        if (kLua == ar.what)
+            return ar;
+    }
+    return std::nullopt;
+}
+
 TEST_CASE("TagMethodError")
 {
-    runConformance("tmerror.lua", [](lua_State* L) {
-        auto* cb = lua_callbacks(L);
+    static std::vector<int> expectedHits;
 
-        cb->debugprotectederror = [](lua_State* L) {
-            CHECK(lua_isyieldable(L));
-        };
-    });
+    // Loop over two modes:
+    //   when doLuaBreak is false the test only verifies that callbacks occur on the expected lines in the Luau source
+    //   when doLuaBreak is true the test additionally calls lua_break to ensure breaking the debugger doesn't cause the VM to crash
+    for (bool doLuaBreak : {false, true})
+    {
+        std::optional<ScopedFastFlag> sff;
+        if (doLuaBreak)
+        {
+            // If doLuaBreak is true then LuauPCallDebuggerFix must be enabled to avoid crashing the tests.
+            sff = {"LuauPCallDebuggerFix", true};
+        }
+
+        if (FFlag::LuauPCallDebuggerFix)
+        {
+            expectedHits = {22, 32};
+        }
+        else
+        {
+            expectedHits = {
+                9,
+                17,
+                17,
+                22,
+                27,
+                27,
+                32,
+                37,
+            };
+        }
+
+        static int index;
+        static bool luaBreak;
+        index = 0;
+        luaBreak = doLuaBreak;
+
+        // 'yieldCallback' doesn't do anything, but providing the callback to runConformance
+        // ensures that the call to lua_break doesn't cause an error to be generated because
+        // runConformance doesn't expect the VM to be in the state LUA_BREAK.
+        auto yieldCallback = [](lua_State* L) {};
+
+        runConformance(
+            "tmerror.lua",
+            [](lua_State* L) {
+                auto* cb = lua_callbacks(L);
+
+                cb->debugprotectederror = [](lua_State* L) {
+                    std::optional<lua_Debug> ar = getFirstLuauFrameDebugInfo(L);
+
+                    CHECK(lua_isyieldable(L));
+                    REQUIRE(ar.has_value());
+                    REQUIRE(index < int(std::size(expectedHits)));
+                    CHECK(ar->currentline == expectedHits[index++]);
+
+                    if (luaBreak)
+                    {
+                        // Cause luau execution to break when 'error' is called via 'pcall'
+                        // This call to lua_break is a regression test for an issue where debugprotectederror
+                        // was called on a thread that couldn't be yielded even though lua_isyieldable was true.
+                        lua_break(L);
+                    }
+                };
+            },
+            yieldCallback);
+
+        // Make sure the number of break points hit was the expected number
+        CHECK(index == std::size(expectedHits));
+    }
 }
 
 TEST_CASE("Coverage")
