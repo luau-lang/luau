@@ -1,12 +1,14 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BytecodeBuilder.h"
 
+#include "Luau/BytecodeUtils.h"
 #include "Luau/StringUtils.h"
 
 #include <algorithm>
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(BytecodeVersion4, false)
+LUAU_FASTFLAGVARIABLE(BytecodeEnc, false)
 
 namespace Luau
 {
@@ -53,39 +55,6 @@ static void writeVarInt(std::string& ss, unsigned int value)
         writeByte(ss, (value & 127) | ((value > 127) << 7));
         value >>= 7;
     } while (value);
-}
-
-static int getOpLength(LuauOpcode op)
-{
-    switch (op)
-    {
-    case LOP_GETGLOBAL:
-    case LOP_SETGLOBAL:
-    case LOP_GETIMPORT:
-    case LOP_GETTABLEKS:
-    case LOP_SETTABLEKS:
-    case LOP_NAMECALL:
-    case LOP_JUMPIFEQ:
-    case LOP_JUMPIFLE:
-    case LOP_JUMPIFLT:
-    case LOP_JUMPIFNOTEQ:
-    case LOP_JUMPIFNOTLE:
-    case LOP_JUMPIFNOTLT:
-    case LOP_NEWTABLE:
-    case LOP_SETLIST:
-    case LOP_FORGLOOP:
-    case LOP_LOADKX:
-    case LOP_FASTCALL2:
-    case LOP_FASTCALL2K:
-    case LOP_JUMPXEQKNIL:
-    case LOP_JUMPXEQKB:
-    case LOP_JUMPXEQKN:
-    case LOP_JUMPXEQKS:
-        return 2;
-
-    default:
-        return 1;
-    }
 }
 
 inline bool isJumpD(LuauOpcode op)
@@ -262,16 +231,19 @@ void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uin
     validate();
 #endif
 
+    // this call is indirect to make sure we only gain link time dependency on dumpCurrentFunction when needed
+    if (dumpFunctionPtr)
+        func.dump = (this->*dumpFunctionPtr)(func.dumpinstoffs);
+
     // very approximate: 4 bytes per instruction for code, 1 byte for debug line, and 1-2 bytes for aux data like constants plus overhead
     func.data.reserve(32 + insns.size() * 7);
+
+    if (FFlag::BytecodeEnc && encoder)
+        encoder->encode(insns.data(), insns.size());
 
     writeFunction(func.data, currentFunction, flags);
 
     currentFunction = ~0u;
-
-    // this call is indirect to make sure we only gain link time dependency on dumpCurrentFunction when needed
-    if (dumpFunctionPtr)
-        func.dump = (this->*dumpFunctionPtr)(func.dumpinstoffs);
 
     insns.clear();
     lines.clear();
@@ -653,20 +625,28 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
     // instructions
     writeVarInt(ss, uint32_t(insns.size()));
 
-    for (size_t i = 0; i < insns.size();)
+    if (encoder && !FFlag::BytecodeEnc)
     {
-        uint8_t op = LUAU_INSN_OP(insns[i]);
-        LUAU_ASSERT(op < LOP__COUNT);
+        for (size_t i = 0; i < insns.size();)
+        {
+            uint8_t op = LUAU_INSN_OP(insns[i]);
+            LUAU_ASSERT(op < LOP__COUNT);
 
-        int oplen = getOpLength(LuauOpcode(op));
-        uint8_t openc = encoder ? encoder->encodeOp(op) : op;
+            int oplen = getOpLength(LuauOpcode(op));
+            uint8_t openc = encoder->encodeOp(op);
 
-        writeInt(ss, openc | (insns[i] & ~0xff));
+            writeInt(ss, openc | (insns[i] & ~0xff));
 
-        for (int j = 1; j < oplen; ++j)
-            writeInt(ss, insns[i + j]);
+            for (int j = 1; j < oplen; ++j)
+                writeInt(ss, insns[i + j]);
 
-        i += oplen;
+            i += oplen;
+        }
+    }
+    else
+    {
+        for (uint32_t insn : insns)
+            writeInt(ss, insn);
     }
 
     // constants

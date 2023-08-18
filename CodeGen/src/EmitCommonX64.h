@@ -114,11 +114,6 @@ inline OperandX64 luauNodeKeyTag(RegisterX64 node)
     return dword[node + offsetof(LuaNode, key) + kOffsetOfTKeyTagNext];
 }
 
-inline OperandX64 luauNodeValue(RegisterX64 node)
-{
-    return xmmword[node + offsetof(LuaNode, val)];
-}
-
 inline void setLuauReg(AssemblyBuilderX64& build, RegisterX64 tmp, int ri, OperandX64 op)
 {
     LUAU_ASSERT(op.cat == CategoryX64::mem);

@@ -288,17 +288,17 @@ static const unsigned char kPerlinHash[257] = {151, 160, 137, 91, 90, 15, 131, 1
 const float kPerlinGrad[16][3] = {{1, 1, 0}, {-1, 1, 0}, {1, -1, 0}, {-1, -1, 0}, {1, 0, 1}, {-1, 0, 1}, {1, 0, -1}, {-1, 0, -1}, {0, 1, 1},
     {0, -1, 1}, {0, 1, -1}, {0, -1, -1}, {1, 1, 0}, {0, -1, 1}, {-1, 1, 0}, {0, -1, -1}};
 
-static float perlin_fade(float t)
+inline float perlin_fade(float t)
 {
     return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
-static float perlin_lerp(float t, float a, float b)
+inline float perlin_lerp(float t, float a, float b)
 {
     return a + t * (b - a);
 }
 
-static float perlin_grad(int hash, float x, float y, float z)
+inline float perlin_grad(int hash, float x, float y, float z)
 {
     const float* g = kPerlinGrad[hash & 15];
     return g[0] * x + g[1] * y + g[2] * z;

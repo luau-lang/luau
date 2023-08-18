@@ -733,9 +733,17 @@ struct Type final
 using SeenSet = std::set<std::pair<const void*, const void*>>;
 bool areEqual(SeenSet& seen, const Type& lhs, const Type& rhs);
 
+enum class FollowOption
+{
+    Normal,
+    DisableLazyTypeThunks,
+};
+
 // Follow BoundTypes until we get to something real
 TypeId follow(TypeId t);
+TypeId follow(TypeId t, FollowOption followOption);
 TypeId follow(TypeId t, const void* context, TypeId (*mapper)(const void*, TypeId));
+TypeId follow(TypeId t, FollowOption followOption, const void* context, TypeId (*mapper)(const void*, TypeId));
 
 std::vector<TypeId> flattenIntersection(TypeId ty);
 
@@ -818,6 +826,7 @@ public:
     const TypeId optionalNumberType;
     const TypeId optionalStringType;
 
+    const TypePackId emptyTypePack;
     const TypePackId anyTypePack;
     const TypePackId neverTypePack;
     const TypePackId uninhabitableTypePack;

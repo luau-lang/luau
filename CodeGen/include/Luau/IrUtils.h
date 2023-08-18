@@ -145,7 +145,6 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::LOAD_DOUBLE:
     case IrCmd::LOAD_INT:
     case IrCmd::LOAD_TVALUE:
-    case IrCmd::LOAD_NODE_VALUE_TV:
     case IrCmd::LOAD_ENV:
     case IrCmd::GET_ARR_ADDR:
     case IrCmd::GET_SLOT_NODE_ADDR:

@@ -209,6 +209,7 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrBlock& 
         case IrCmd::STORE_INT:
         case IrCmd::STORE_VECTOR:
         case IrCmd::STORE_TVALUE:
+        case IrCmd::STORE_SPLIT_TVALUE:
             visitor.maybeDef(inst.a); // Argument can also be a pointer value
             break;
         case IrCmd::CMP_ANY:
@@ -895,6 +896,79 @@ void computeCfgDominanceTreeChildren(IrFunction& function)
     info.domChildrenOffsets[0] = 0;
 
     computeBlockOrdering<domChildren>(function, info.domOrdering, /* preOrder */ nullptr, /* postOrder */ nullptr);
+}
+
+// This algorithm is based on 'A Linear Time Algorithm for Placing Phi-Nodes' [Vugranam C.Sreedhar]
+// It uses the optimized form from LLVM that relies an implicit DJ-graph (join edges are edges of the CFG that are not part of the dominance tree)
+void computeIteratedDominanceFrontierForDefs(
+    IdfContext& ctx, const IrFunction& function, const std::vector<uint32_t>& defBlocks, const std::vector<uint32_t>& liveInBlocks)
+{
+    LUAU_ASSERT(!function.cfg.domOrdering.empty());
+
+    LUAU_ASSERT(ctx.queue.empty());
+    LUAU_ASSERT(ctx.worklist.empty());
+
+    ctx.idf.clear();
+
+    ctx.visits.clear();
+    ctx.visits.resize(function.blocks.size());
+
+    for (uint32_t defBlock : defBlocks)
+    {
+        const BlockOrdering& ordering = function.cfg.domOrdering[defBlock];
+        ctx.queue.push({defBlock, ordering});
+    }
+
+    while (!ctx.queue.empty())
+    {
+        IdfContext::BlockAndOrdering root = ctx.queue.top();
+        ctx.queue.pop();
+
+        LUAU_ASSERT(ctx.worklist.empty());
+        ctx.worklist.push_back(root.blockIdx);
+        ctx.visits[root.blockIdx].seenInWorklist = true;
+
+        while (!ctx.worklist.empty())
+        {
+            uint32_t blockIdx = ctx.worklist.back();
+            ctx.worklist.pop_back();
+
+            // Check if successor node is the node where dominance of the current root ends, making it a part of dominance frontier set
+            for (uint32_t succIdx : successors(function.cfg, blockIdx))
+            {
+                const BlockOrdering& succOrdering = function.cfg.domOrdering[succIdx];
+
+                // Nodes in the DF of root always have a level that is less than or equal to the level of root
+                if (succOrdering.depth > root.ordering.depth)
+                    continue;
+
+                if (ctx.visits[succIdx].seenInQueue)
+                    continue;
+
+                ctx.visits[succIdx].seenInQueue = true;
+
+                // Skip successor block if it doesn't have our variable as a live in there
+                if (std::find(liveInBlocks.begin(), liveInBlocks.end(), succIdx) == liveInBlocks.end())
+                    continue;
+
+                ctx.idf.push_back(succIdx);
+
+                // If block doesn't have its own definition of the variable, add it to the queue
+                if (std::find(defBlocks.begin(), defBlocks.end(), succIdx) == defBlocks.end())
+                    ctx.queue.push({succIdx, succOrdering});
+            }
+
+            // Add dominance tree children that haven't been processed yet to the worklist
+            for (uint32_t domChildIdx : domChildren(function.cfg, blockIdx))
+            {
+                if (ctx.visits[domChildIdx].seenInWorklist)
+                    continue;
+
+                ctx.visits[domChildIdx].seenInWorklist = true;
+                ctx.worklist.push_back(domChildIdx);
+            }
+        }
+    }
 }
 
 void computeCfgInfo(IrFunction& function)

@@ -4,6 +4,7 @@ if(NOT ${CMAKE_VERSION} VERSION_LESS "3.19")
     target_sources(Luau.Common PRIVATE
         Common/include/Luau/Common.h
         Common/include/Luau/Bytecode.h
+        Common/include/Luau/BytecodeUtils.h
         Common/include/Luau/DenseHash.h
         Common/include/Luau/ExperimentalFlags.h
     )
@@ -53,6 +54,15 @@ target_sources(Luau.Compiler PRIVATE
     Compiler/src/TableShape.h
     Compiler/src/Types.h
     Compiler/src/ValueTracking.h
+)
+
+# Luau.Config Sources
+target_sources(Luau.Config PRIVATE
+    Config/include/Luau/Config.h
+    Config/include/Luau/LinterConfig.h
+
+    Config/src/Config.cpp
+    Config/src/LinterConfig.cpp
 )
 
 # Luau.CodeGen Sources
@@ -145,7 +155,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/BuiltinDefinitions.h
     Analysis/include/Luau/Cancellation.h
     Analysis/include/Luau/Clone.h
-    Analysis/include/Luau/Config.h
     Analysis/include/Luau/Constraint.h
     Analysis/include/Luau/ConstraintGraphBuilder.h
     Analysis/include/Luau/ConstraintSolver.h
@@ -163,7 +172,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/IostreamHelpers.h
     Analysis/include/Luau/JsonEmitter.h
     Analysis/include/Luau/Linter.h
-    Analysis/include/Luau/LinterConfig.h
     Analysis/include/Luau/LValue.h
     Analysis/include/Luau/Metamethods.h
     Analysis/include/Luau/Module.h
@@ -177,6 +185,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Scope.h
     Analysis/include/Luau/Simplify.h
     Analysis/include/Luau/Substitution.h
+    Analysis/include/Luau/Subtyping.h
     Analysis/include/Luau/Symbol.h
     Analysis/include/Luau/ToDot.h
     Analysis/include/Luau/TopoSortStatements.h
@@ -207,7 +216,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Autocomplete.cpp
     Analysis/src/BuiltinDefinitions.cpp
     Analysis/src/Clone.cpp
-    Analysis/src/Config.cpp
     Analysis/src/Constraint.cpp
     Analysis/src/ConstraintGraphBuilder.cpp
     Analysis/src/ConstraintSolver.cpp
@@ -222,7 +230,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/IostreamHelpers.cpp
     Analysis/src/JsonEmitter.cpp
     Analysis/src/Linter.cpp
-    Analysis/src/LinterConfig.cpp
     Analysis/src/LValue.cpp
     Analysis/src/Module.cpp
     Analysis/src/Normalize.cpp
@@ -232,6 +239,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Scope.cpp
     Analysis/src/Simplify.cpp
     Analysis/src/Substitution.cpp
+    Analysis/src/Subtyping.cpp
     Analysis/src/Symbol.cpp
     Analysis/src/ToDot.cpp
     Analysis/src/TopoSortStatements.cpp
@@ -350,33 +358,32 @@ endif()
 if(TARGET Luau.UnitTest)
     # Luau.UnitTest Sources
     target_sources(Luau.UnitTest PRIVATE
-        tests/AstQueryDsl.cpp
-        tests/AstQueryDsl.h
-        tests/ClassFixture.cpp
-        tests/ClassFixture.h
-        tests/ConstraintGraphBuilderFixture.cpp
-        tests/ConstraintGraphBuilderFixture.h
-        tests/Fixture.cpp
-        tests/Fixture.h
-        tests/IostreamOptional.h
-        tests/ScopedFlags.h
         tests/AssemblyBuilderA64.test.cpp
         tests/AssemblyBuilderX64.test.cpp
         tests/AstJsonEncoder.test.cpp
         tests/AstQuery.test.cpp
+        tests/AstQueryDsl.cpp
+        tests/AstQueryDsl.h
         tests/AstVisitor.test.cpp
         tests/Autocomplete.test.cpp
         tests/BuiltinDefinitions.test.cpp
+        tests/ClassFixture.cpp
+        tests/ClassFixture.h
         tests/CodeAllocator.test.cpp
         tests/Compiler.test.cpp
         tests/Config.test.cpp
+        tests/ConstraintGraphBuilderFixture.cpp
+        tests/ConstraintGraphBuilderFixture.h
         tests/ConstraintSolver.test.cpp
         tests/CostModel.test.cpp
         tests/DataFlowGraph.test.cpp
         tests/DenseHash.test.cpp
-	tests/Differ.test.cpp
+        tests/Differ.test.cpp
         tests/Error.test.cpp
+        tests/Fixture.cpp
+        tests/Fixture.h
         tests/Frontend.test.cpp
+        tests/IostreamOptional.h
         tests/IrBuilder.test.cpp
         tests/IrCallWrapperX64.test.cpp
         tests/IrRegAllocX64.test.cpp
@@ -391,8 +398,10 @@ if(TARGET Luau.UnitTest)
         tests/Parser.test.cpp
         tests/RequireTracer.test.cpp
         tests/RuntimeLimits.test.cpp
+        tests/ScopedFlags.h
         tests/Simplify.test.cpp
         tests/StringUtils.test.cpp
+        tests/Subtyping.test.cpp
         tests/Symbol.test.cpp
         tests/ToDot.test.cpp
         tests/TopoSort.test.cpp

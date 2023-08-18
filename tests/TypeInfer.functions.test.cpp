@@ -1212,6 +1212,71 @@ f(function(x) return x * 2 end)
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument")
+{
+    CheckResult result = check(R"(
+local function sum<a>(x: a, y: a, f: (a, a) -> a) return f(x, y) end
+return sum(2, 3, function(a, b) return a + b end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    result = check(R"(
+local function map<a, b>(arr: {a}, f: (a) -> b) local r = {} for i,v in ipairs(arr) do table.insert(r, f(v)) end return r end
+local a = {1, 2, 3}
+local r = map(a, function(a) return a + a > 100 end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    REQUIRE_EQ("{boolean}", toString(requireType("r")));
+
+    check(R"(
+local function foldl<a, b>(arr: {a}, init: b, f: (b, a) -> b) local r = init for i,v in ipairs(arr) do r = f(r, v) end return r end
+local a = {1, 2, 3}
+local r = foldl(a, {s=0,c=0}, function(a, b) return {s = a.s + b, c = a.c + 1} end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    REQUIRE_EQ("{ c: number, s: number }", toString(requireType("r")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded")
+{
+    CheckResult result = check(R"(
+local function g1<T>(a: T, f: (T) -> T) return f(a) end
+local function g2<T>(a: T, b: T, f: (T, T) -> T) return f(a, b) end
+
+local g12: typeof(g1) & typeof(g2)
+
+g12(1, function(x) return x + x end)
+g12(1, 2, function(x, y) return x + y end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    result = check(R"(
+local function g1<T>(a: T, f: (T) -> T) return f(a) end
+local function g2<T>(a: T, b: T, f: (T, T) -> T) return f(a, b) end
+
+local g12: typeof(g1) & typeof(g2)
+
+g12({x=1}, function(x) return {x=-x.x} end)
+g12({x=1}, {x=2}, function(x, y) return {x=x.x + y.x} end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument")
+{
+    CheckResult result = check(R"(
+local a = {{x=4}, {x=7}, {x=1}}
+table.sort(a, function(x, y) return x.x < y.x end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "variadic_any_is_compatible_with_a_generic_TypePack")
 {
     CheckResult result = check(R"(

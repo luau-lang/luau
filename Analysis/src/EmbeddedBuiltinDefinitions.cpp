@@ -148,8 +148,7 @@ declare coroutine: {
     resume: <A..., R...>(co: thread, A...) -> (boolean, R...),
     running: () -> thread,
     status: (co: thread) -> "dead" | "running" | "normal" | "suspended",
-    -- FIXME: This technically returns a function, but we can't represent this yet.
-    wrap: <A..., R...>(f: (A...) -> R...) -> any,
+    wrap: <A..., R...>(f: (A...) -> R...) -> ((A...) -> R...),
     yield: <A..., R...>(A...) -> R...,
     isyieldable: () -> boolean,
     close: (co: thread) -> (boolean, any)

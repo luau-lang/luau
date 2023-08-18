@@ -112,4 +112,22 @@ end
 
 assert(pcall(fuzzfail10) == false)
 
+local function fuzzfail11(x, ...)
+  return bit32.arshift(bit32.bnot(x),(...))
+end
+
+assert(fuzzfail11(0xffff0000, 8) == 0xff)
+
+local function fuzzfail12()
+  _,_,_,_,_,_,_,_ = not _, not _, not _, not _, not _, not _, not _, not _
+end
+
+assert(pcall(fuzzfail12) == true)
+
+local function fuzzfail13()
+  _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_ = not _, not _, not _, not _, not _, not _, not _, not _, not _, not _, not _, not _, not _, not _, not _, not _
+end
+
+assert(pcall(fuzzfail13) == true)
+
 return('OK')

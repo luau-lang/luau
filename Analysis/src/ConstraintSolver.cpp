@@ -2727,41 +2727,6 @@ TypePackId ConstraintSolver::errorRecoveryTypePack() const
     return builtinTypes->errorRecoveryTypePack();
 }
 
-TypeId ConstraintSolver::unionOfTypes(TypeId a, TypeId b, NotNull<Scope> scope, bool unifyFreeTypes)
-{
-    a = follow(a);
-    b = follow(b);
-
-    if (unifyFreeTypes && (get<FreeType>(a) || get<FreeType>(b)))
-    {
-        Unifier u{normalizer, scope, Location{}, Covariant};
-        u.enableNewSolver();
-        u.tryUnify(b, a);
-
-        if (u.errors.empty())
-        {
-            u.log.commit();
-            return a;
-        }
-        else
-        {
-            return builtinTypes->errorRecoveryType(builtinTypes->anyType);
-        }
-    }
-
-    if (*a == *b)
-        return a;
-
-    std::vector<TypeId> types = reduceUnion({a, b});
-    if (types.empty())
-        return builtinTypes->neverType;
-
-    if (types.size() == 1)
-        return types[0];
-
-    return arena->addType(UnionType{types});
-}
-
 TypePackId ConstraintSolver::anyifyModuleReturnTypePackGenerics(TypePackId tp)
 {
     tp = follow(tp);
