@@ -151,7 +151,7 @@ To only import certain members from a module, their identifiers can be listed:
 
 ```Lua
 import thing1, type thing2, local thing3 from "foo/bar/baz"
-import not_baz = thing1, type thing2, local thing3 from "foo/bar/baz"
+import thing1, type thing2, local thing3 from "foo/bar/baz" = not_baz
 ```
 
 Unless only types are being imported, the module must return a table. All of the non-type identifiers in the list should correspond with members inside of that table (at least, members which can be found through analysis).
