@@ -228,17 +228,7 @@ local Tween, Spring = Fusion.Tween, Fusion.Spring
 import * from Package.Libraries.Fusion
 ```
 
-Individual functions, `do` blocks or other scopes can statically import into their namespace without spilling imports to other code and without introducing extra scopes or indentation. The imports are resolved ahead of time, so they need not even call into C code more than once:
-
-```Lua
-do
-    local fast_eq = require(Package.Libraries.fast_eq)
-    function AbstractLayer:fast_eq(other)
-        return fast_eq(self._ir, other._ir)
-    end
-end
--- fast_eq is not accessible here
-```
+Individual functions, `do` blocks or other scopes can statically import into their namespace without spilling imports to other code, just as they can do today.
 
 ```Lua
 function AbstractLayer:fast_eq(other)
@@ -246,6 +236,14 @@ function AbstractLayer:fast_eq(other)
     return fast_eq(self._ir, other._ir)
 end
 -- fast_eq is not accessible here
+```
+
+Dynamic code can continue to use `require()`, just as they do today.
+
+```Lua
+for _, child in script:GetChildren() do
+    require(child)()
+end
 ```
 
 ## Drawbacks
