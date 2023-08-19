@@ -8,7 +8,7 @@ Improve ergonomics of importing modules and open room for extended importing fea
 
 Currently, Luau follows Lua convention by using the `require()` standard library function for importing values from other code files. Later, this syntax was retrofitted to support importing types statically at compile time, so long as the module path can be statically resolved and is constant.
 
-Some users have begun to see issues with the automatic type importing behaviour. Specifically, it is not currently possible to import only the types of a module. Instead, the whole module must be required, meaning it is invoked at runtime. This means that types often have to be extracted into their own separate modules to avoid cyclic require loops, which means moving the definition of types far away from the places they are being used.
+Some users have begun to see issues with the automatic type importing behaviour. Specifically, it is not currently possible to import only the types of a module. Instead, the whole module must be required, meaning it is invoked at runtime. 
 
 By this point, the Luau developer community have largely settled into a philosophy: `require()` all of your modules at the top of your file, and treat them as you would treat a static import expression in any other language. This is so pervasive at this point, that it is worth considering if it is appropriate to formalise this with syntax, and properly distinguish it from the few rare cases where non-statically-resolvable importing is still used.
 
@@ -109,8 +109,6 @@ To import only the types from a module, and skip evaluating the module at runtim
 !import type "foo/bar/baz"
 !import not_baz = type "foo/bar/baz"
 ```
-
-This allows type information to be fetched from a module without introducing cyclic dependencies at runtime.
 
 There is currently no exactly equivalent code snippet for this. The closest is ['type smuggling' as presented by Anaminus](https://twitter.com/Anaminus/status/1585287008661938180), which does not work with exported types:
 
