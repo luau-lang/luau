@@ -2,7 +2,7 @@
 
 ## Summary
 
-Improve ergonomics of importing modules and open room for extended importing features by introducing an import expression, to replace a majority of `require()` calls in Luau codebases while respecting backwards compatibility concerns.
+Improve ergonomics of importing modules and open room for extended importing features by introducing an import statement, to replace a majority of `require()` calls in Luau codebases while respecting backwards compatibility concerns.
 
 ## Motivation
 
