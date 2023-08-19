@@ -87,7 +87,7 @@ local baz = require("foo/bar/baz")
 
 ### Syntax: Renaming
 
-To use a different name for the local variable/type namespace, an equals sign is added at the start of the statement:
+To use a different name for the local variable/type namespace, an equals sign is added at the end of the statement:
 
 ```Lua
 import from "foo/bar/baz" = not_baz
@@ -267,6 +267,10 @@ Statically evaluated statements might feel 'out of step' with Lua's dynamic natu
 The extensions to the `!import` syntax, such as renaming or destructuring, may be seen as a measurable increase in complexity from what was previously a simple and predictable operation. Depending on the syntax and keywords used, these extended features may run the risk of confusing newer users, or making the way code is imported less immediately clear.
 
 While efforts have been made to align this feature to the kinds of analysis already done internally by Luau's tooling, it undeniably still introduces internal complexity. Even though these statements are more explicitly designed for static analysis and useful type inference compared to the more dynamic and unpredictable `require()`, backwards compatibility concerns mean that the more complex logic for detecting `require()` usage still needs to be maintained, and cannot be removed even if it were to be superseded by a more predictable form. In addition, some of the extended importing features are novel, and do not correspond to existing language features, which introduces new internal considerations that were not present before.
+
+While the developer retains complete control over which members are imported by selectively `local`-ing desired members to the current namespace (or avoiding the feature entirely), it is appreciable that the `local` syntax without a list of identifiers would introduce some level of implicitness and. This is both a feature and a bug - this is explicitly what is wanted (and very highly so) for users of DSL-like libraries, while it is also a potential semver hazard. Scoping and order of variable initialisation become important in this case; imports overwrite variable declarations before them (which may break future users), but variable declarations equally overwrite imports before them (which does not). Since imports are generally kept at the top of the code file, I do not think these are worrisome enough breaking changes, except in cases where users are using globals or function environments, which are uncommon and unidiomatic anyway.
+
+Some external tooling operates per-file, which does not necessarily align with the `local` syntax because the names of the imported members are implied. However, these tools are also already incapable of modelling Luau's current implicit inferences between files, which this system was modelled to mirror, so the importance of this point is not certain and should be discussed.
 
 ## Alternatives
 
