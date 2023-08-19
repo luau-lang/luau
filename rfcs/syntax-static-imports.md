@@ -46,7 +46,7 @@ local foo = doSomething(require("foo")) -- ok
 local bar = doSomething(import from "foo") -- not ok
 ```
 
-Since this statement will need to be evaluated for the purposes of type autocomplete/inference/etc, the argument *must* be statically evaluatable (as is currently done to provide typechecking for `require()`):
+The module path is evaluated at runtime, but is required to be analysable for the purposes of static type checking. Specifically, imports are *not* hardcoded at compile time, because especially in Roblox-like environments, the same code may execute from different locations.
 
 ```Lua
 import from "foo" -- ok
