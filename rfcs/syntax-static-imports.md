@@ -1,4 +1,4 @@
-# Static import syntax
+# Import syntax
 
 ## Summary
 
@@ -31,7 +31,7 @@ The hope is, by exploring systems beyond `require()`, we can open up space to ex
 
 ## Design
 
-This RFC proposes the addition of a static "import statement" to supersede almost all of the current use of `require()` in static contexts. *Almost* all, because there are many valid use cases for wanting to dynamically import modules, and these use cases are outside the scope of this change.
+This RFC proposes the addition of an "import statement" to supersede almost all of the current use of `require()`. *Almost* all, because there are many valid use cases for wanting to dynamically import modules in a way which is not statically analysable, and these use cases are outside the scope of this change.
 
 ```Lua
 import from "foo/bar/baz"
@@ -71,7 +71,7 @@ import from Package:WaitForChild("Libraries"):WaitForChild("Fusion")
 
 ### Syntax: Basic form
 
-The most basic form gives only the expression which resolves statically to the module path:
+The most basic form consists of a module path, which is an expression that indicates what module should be imported.
 
 ```Lua
 import from "foo/bar/baz"
@@ -125,9 +125,9 @@ import local from "foo/bar/baz"
 import local type from "foo/bar/baz"
 ```
 
-This is especially useful in the case of DSL-like libraries, or any libraries that wish to include a prelude of commonly used members. It is acknowledged that this can lead to namespace pollution, but this is something the developer is in control of at all times, and explicitly opts into.
+This is especially useful in the case of DSL-like libraries, or any libraries that wish to include a prelude of commonly used members. It is acknowledged that this can lead to namespace pollution, but this is something the developer is in control of at all times, and explicitly opts into. See the Drawbacks section for more on this.
 
-Unless only types are being imported, the module must return a table. All statically resolvable members of the table, which have string keys and are valid identifiers, are turned into local variables in the current namespace.
+Unless only types are being imported, the module must return a table. All members of the table which can be found through analysis, which have string keys and are valid identifiers, are turned into local variables in the current namespace.
 
 While there is no syntax ambiguity, the `local` prefix is not sensible with renaming, because it does not make sense to rename a namespace that will not be created. This case should likely warn, but is not necessarily a failure case.
 
@@ -154,7 +154,7 @@ import thing1, type thing2, local thing3 from "foo/bar/baz"
 import not_baz = thing1, type thing2, local thing3 from "foo/bar/baz"
 ```
 
-Unless only types are being imported, the module must return a table. All of the non-type identifiers in the list should correspond with statically resolvable members inside of that table.
+Unless only types are being imported, the module must return a table. All of the non-type identifiers in the list should correspond with members inside of that table (at least, members which can be found through analysis).
 
 `type` and `local` prefixes are specified per-identifier. This allows an identically-named value/type pair to be addressed separately. This also allows developers to keep namespace pollution under control if there are only select members they wish to import into the current namespace.
 
@@ -262,11 +262,11 @@ end
 
 `require()` keeps in line with existing Lua 5.1 codebases, and already serves the basic function of importing modules. It may be nice to keep the consistency between static and dynamic imports, even at the expense of some of the features listed here. It's easier to understand where values are imported to when expressed in a familiar `local x = y` construct, though admittedly this does not quite extend to type importing.
 
-Statically evaluated statements might feel 'out of step' with Lua's dynamic nature. Even though an attempt has been made at ensuring it does not become confused with dynamic statements, the idea of statically evaluated statements might still not necessarily fit the philosophy of the language at all. It may be argued that it is instead better to try and guess user intent from predictable patterns in the usage of dynamic code patterns, rather than trying to make areas used in static analysis explicit.
+These less dynamic statements might feel 'out of step' with Lua's dynamic nature. Even though an attempt has been made at ensuring importing does not become confused with dynamic statements, the idea of import statements might still not necessarily fit the philosophy of the language at all. It may be argued that it is instead better to try and guess user intent from predictable patterns in the usage of dynamic code patterns, rather than trying to make areas used in static analysis explicit.
 
 The extensions to the `import` syntax, such as renaming or destructuring, may be seen as a measurable increase in complexity from what was previously a simple and predictable operation. Depending on the syntax and keywords used, these extended features may run the risk of confusing newer users, or making the way code is imported less immediately clear.
 
-While efforts have been made to align this feature to the kinds of analysis already done internally by Luau's tooling, it undeniably still introduces internal complexity. Even though these statements are more explicitly designed for static analysis and useful type inference compared to the more dynamic and unpredictable `require()`, backwards compatibility concerns mean that the more complex logic for detecting `require()` usage still needs to be maintained, and cannot be removed even if it were to be superseded by a more predictable form. In addition, some of the extended importing features are novel, and do not correspond to existing language features, which introduces new internal considerations that were not present before.
+While efforts have been made to align this feature to the kinds of analysis already done internally by Luau's tooling, it undeniably still introduces internal complexity. Even though these statements are more explicitly designed for analysis and useful type inference compared to the more dynamic and unpredictable `require()`, backwards compatibility concerns mean that the more complex logic for detecting `require()` usage still needs to be maintained, and cannot be removed even if it were to be superseded by a more predictable form. In addition, some of the extended importing features are novel, and do not correspond to existing language features, which introduces new internal considerations that were not present before.
 
 While the developer retains complete control over which members are imported by selectively `local`-ing desired members to the current namespace (or avoiding the feature entirely), it is appreciable that the `local` syntax without a list of identifiers would introduce some level of implicitness. This is both a feature and a bug - this is explicitly what is wanted (and very highly so) for users of DSL-like libraries, while it is also a potential semver hazard. Scoping and order of variable initialisation become important in this case; imports overwrite variable declarations before them (which may break future users), but variable declarations equally overwrite imports before them (which does not). Since imports are generally kept at the top of the code file, I do not think these are worrisome enough breaking changes, except in cases where users are using globals or function environments, which are uncommon and unidiomatic anyway.
 
@@ -279,6 +279,8 @@ A comment/preprocesser style `--!import` would better align with `--!strict` et 
 Instead of `import from`, a previous iteration of the RFC proposed the `!import` syntax, which was met with objection as it did not stylistically fit with Luau as a language.
 
 Instead of `=` for renaming modules, a previous idea was to use `::`, but this had the potential to introduce ambiguity with the expression it appeared after. `=` is less susceptible to this because it is already used after left-hand expressions when assigning values.
+
+Instead of `local` for importing members to the current namespace, `*` was considered (as in `import * from "foo/bar/baz"`) but this made the syntax for `local`-ing individual members awkward and inconsistent.
 
 It may instead be more appropriate to try and investigate whether the extended features of this import statement can be better addressed by more general features such as generalised destructuring of values at runtime. However, these RFCs appear to struggle to reconcile syntax desires with backwards compatibility restrictions. [The RFC can be found here.](https://github.com/Roblox/luau/pull/629).
 
