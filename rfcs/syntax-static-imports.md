@@ -25,7 +25,7 @@ local Tween, Spring = Fusion.Tween, Fusion.Spring
 
 Previously, these issues were solved using `getfenv()`, `_G` or other similar features to try and 'inject' commonly used values from other modules. Since these are not good practice to depend upon - and can even lead to deoptimisation scenarios - there is a void left unfilled for codebases that previously would depend on these features for ergonomic reasons.
 
-The primary issue the above code block points to, is the lack of utilites available for destructuring imports. RFCs exist attempting to implement general value destructuring, but they are running into difficulties and ultimately could very well be too difficult to implement cleanly without sacrificing the conciseness that destructuring is pursued for in the first place. It should be noted that a likely-prominent use case for destructuring would be for extracting specific members from imported modules in a convenient way.
+The primary issue the above code block points to, is the lack of utilites available for destructuring imports. [RFCs exist attempting to implement general value destructuring](https://github.com/Roblox/luau/pull/629), but they are running into difficulties and ultimately could very well be too difficult to implement cleanly without sacrificing the conciseness that destructuring is pursued for in the first place. It should be noted that a likely-prominent use case for destructuring would be for extracting specific members from imported modules in a convenient way.
 
 The hope is, by exploring systems beyond `require()`, we can open up space to explore these ideas in a way that can preserve backwards compatibility much more easily, without ruining the potential for conciseness by having to work around existing syntax quirks.
 
@@ -276,6 +276,6 @@ While efforts have been made to align this feature to the kinds of analysis alre
 
 A comment/preprocesser style `--!import` would better align with `--!strict` et al, but this was decided against because it did not make clear that this statement would affect the execution of the code, and generally is not in the spirit of how comments should work.
 
-It may instead be more appropriate to try and investigate whether the extended features of this import statement can be better addressed by more general features such as generalised destructuring of values at runtime. However, these RFCs appear to struggle to reconcile syntax desires with backwards compatibility restrictions.
+It may instead be more appropriate to try and investigate whether the extended features of this import statement can be better addressed by more general features such as generalised destructuring of values at runtime. However, these RFCs appear to struggle to reconcile syntax desires with backwards compatibility restrictions. [The RFC can be found here.](https://github.com/Roblox/luau/pull/629).
 
 If we do not do this, then it will remain difficult to extend or make changes to Luau's module importing system, as `require()` has a lot of legacy usage and is used in highly dynamic and user-extendable environments which pose challenging problems for backwards compatibility. This means it may be difficult - or even impossible - to adequately meet demands of large codebases using Luau today and into the future.
