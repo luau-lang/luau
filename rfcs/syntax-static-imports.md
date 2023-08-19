@@ -34,39 +34,39 @@ The hope is, by exploring systems beyond `require()`, we can open up space to ex
 This RFC proposes the addition of a static "import statement" to supersede almost all of the current use of `require()` in static contexts. *Almost* all, because there are many valid use cases for wanting to dynamically import modules, and these use cases are outside the scope of this change.
 
 ```Lua
-!import "foo/bar/baz"
+import from "foo/bar/baz"
 ```
 
-The `!import` used here is designed to mirror the current `export` used for exporting type annotations. To avoid ambiguity with function call syntax, the exclamation point is added, which lines up in style with the current `--!strict` style. This syntax may perhaps be extended in the future to cover other types of static declaration - perhaps even the aforementioned type checking mode.
+The `import` used here is designed to mirror the current `export` used for exporting type annotations. To avoid ambiguity with function call syntax, the `from` keyword is added, which distinguishes the statement from function call syntax with a string literal.
 
-Unlike `require()` it is intended to introduce members to the namespace statically, not to return a value dynamically. This is why it is specifically a statement, not an expression:
+Unlike `require()` it is intended to introduce members to the namespace, not to return a value dynamically. This is why it is specifically a statement, not an expression:
 
 ```Lua
 local foo = doSomething(require("foo")) -- ok
-local bar = doSomething(!import "foo") -- not ok
+local bar = doSomething(import from "foo") -- not ok
 ```
 
-Since this statement is statically evaluated, the argument *must* be statically evaluatable (as is currently done to provide typechecking for `require()`):
+Since this statement will need to be evaluated for the purposes of type autocomplete/inference/etc, the argument *must* be statically evaluatable (as is currently done to provide typechecking for `require()`):
 
 ```Lua
-!import "foo" -- ok
+import from "foo" -- ok
 
 local bar = "foo"
-!import bar -- ok
+import from bar -- ok
 
 local bar = tostring(os.clock())
-!import bar -- not ok
+import from bar -- not ok
 ```
 
 The reason this is not specifically limited to string literals is to allow Roblox-like environments to evaluate statements for their imports, including the use of previously defined constant-like values:
 
 ```Lua
-!import script.Parent.Libraries.Fusion
+import from script.Parent.Libraries.Fusion
 
 local Package = script.Parent
-!import Package.Libraries.Fusion
-!import Package:FindFirstChild("Libraries"):FindFirstChild("Fusion")
-!import Package:WaitForChild("Libraries"):WaitForChild("Fusion")
+import from Package.Libraries.Fusion
+import from Package:FindFirstChild("Libraries"):FindFirstChild("Fusion")
+import from Package:WaitForChild("Libraries"):WaitForChild("Fusion")
 ```
 
 ### Syntax: Basic form
@@ -74,7 +74,7 @@ local Package = script.Parent
 The most basic form gives only the expression which resolves statically to the module path:
 
 ```Lua
-!import "foo/bar/baz"
+import from "foo/bar/baz"
 ```
 
 The returned value from the module is placed in a local variable, adopting the module's name. Types are placed in a namespace of the same name. This is how `require()` works today.
@@ -90,7 +90,7 @@ local baz = require("foo/bar/baz")
 To use a different name for the local variable/type namespace, an equals sign is added at the start of the statement:
 
 ```Lua
-!import not_baz = "foo/bar/baz"
+import from "foo/bar/baz" = not_baz
 ```
 
 Beyond user convenience, this allows code to deal with modules named identically, as can be done today with `require()`.
@@ -106,8 +106,8 @@ local not_baz = require("foo/bar/baz")
 To import only the types from a module, and skip evaluating the module at runtime, the `type` keyword can be added.
 
 ```Lua
-!import type "foo/bar/baz"
-!import not_baz = type "foo/bar/baz"
+import type from "foo/bar/baz"
+import type from "foo/bar/baz" = not_baz
 ```
 
 There is currently no exactly equivalent code snippet for this. The closest is ['type smuggling' as presented by Anaminus](https://twitter.com/Anaminus/status/1585287008661938180), which does not work with exported types:
@@ -121,8 +121,8 @@ type baz = typeof(require("foo/bar/baz"))
 To destructure an import and insert its contents directly into the current namespace, the `local` keyword can be added (before `type` if present):
 
 ```Lua
-!import local "foo/bar/baz"
-!import local type "foo/bar/baz"
+import local from "foo/bar/baz"
+import local type from "foo/bar/baz"
 ```
 
 This is especially useful in the case of DSL-like libraries, or any libraries that wish to include a prelude of commonly used members. It is acknowledged that this can lead to namespace pollution, but this is something the developer is in control of at all times, and explicitly opts into.
@@ -132,7 +132,7 @@ Unless only types are being imported, the module must return a table. All static
 While there is no syntax ambiguity, the `local` prefix is not sensible with renaming, because it does not make sense to rename a namespace that will not be created. This case should likely warn, but is not necessarily a failure case.
 
 ```Lua
-!import not_baz = local "foo/bar/baz" -- why?
+import local from "foo/bar/baz" = not_baz -- why?
 ```
 
 There is no equivalent code snippet, though similar behaviour without type importing can be achieved with unidiomatic use of `getfenv()`:
@@ -147,11 +147,11 @@ _temp = nil
 
 ### Syntax: Member list
 
-To only import certain members from a module, their identifiers can be listed, followed by the `in` keyword:
+To only import certain members from a module, their identifiers can be listed:
 
 ```Lua
-!import thing1, type thing2, local thing3 in "foo/bar/baz"
-!import not_baz = thing1, type thing2, local thing3 in "foo/bar/baz"
+import thing1, type thing2, local thing3 from "foo/bar/baz"
+import not_baz = thing1, type thing2, local thing3 from "foo/bar/baz"
 ```
 
 Unless only types are being imported, the module must return a table. All of the non-type identifiers in the list should correspond with statically resolvable members inside of that table.
@@ -161,13 +161,13 @@ Unless only types are being imported, the module must return a table. All of the
 If all imported members are `local`, then the module's namespace is not created. For reasons similar to previously, this makes renaming not sensible, and so this should probably warn:
 
 ```Lua
-!import not_baz = local thing1, local thing2, local thing3 in "foo/bar/baz" -- why?
+import local thing1, local thing2, local thing3 from "foo/bar/baz" = not_baz -- why?
 ```
 
 These two snippets are equivalent:
 
 ```Lua
-!import thing1, thing2, thing3 in "foo/bar/baz"
+import thing1, thing2, thing3 from "foo/bar/baz"
 ```
 
 ```Lua
@@ -193,9 +193,9 @@ local Renderable2D = require(Package.Libraries.Layman.Element.Traits.Renderable2
 ```Lua
 local Package = script.Parent
 
-!import Package.Libraries.Layman.Layout.GroupOp.Smart.FittedLength
-!import Package.Libraries.Layman.Layout.GroupOp.Stack
-!import Package.Libraries.Layman.Element.Traits.Renderable2D
+import from Package.Libraries.Layman.Layout.GroupOp.Smart.FittedLength
+import from Package.Libraries.Layman.Layout.GroupOp.Stack
+import from Package.Libraries.Layman.Element.Traits.Renderable2D
 ```
 
 Granular imports are made simpler, and remove boilerplate type declarations which are forced to depend on the generics declared on the original type:
@@ -219,10 +219,10 @@ type RenderProps2D = Renderable2D.RenderProps2D
 local SuiteUI = script.Parent
 local Layman = SuiteUI.Parent.Layman
 
-!import local Computed, local New, local type CanBeState in SuiteUI.Parent.Fusion
-!import Layman.Element
-!import Layman.Extents.WithExtents
-!import local type RenderProps2D in Layman.Element.Traits.Renderable2D
+import local Computed, local New, local type CanBeState from SuiteUI.Parent.Fusion
+import from Layman.Element
+import from Layman.Extents.WithExtents
+import local type RenderProps2D from Layman.Element.Traits.Renderable2D
 ```
 
 DSL-like libraries, whose preludes previously had to be manually destructured, can enjoy new conciseness, and no longer have to continually synchronise their header code as new members are added to the library. It is anticipated that a future convention may be to include 'prelude' sub-modules in libraries which re-export the most common constructs, values and types, as is done in other ecosystems such as Rust, to allow them to be imported in one step:
@@ -235,7 +235,7 @@ local Tween, Spring = Fusion.Tween, Fusion.Spring
 ```
 
 ```Lua
-!import local Package.Libraries.Fusion
+import local from Package.Libraries.Fusion
 ```
 
 Individual functions, `do` blocks or other scopes can statically import into their namespace without spilling imports to other code and without introducing extra scopes or indentation. The imports are resolved ahead of time, so they need not even call into C code more than once:
@@ -252,7 +252,7 @@ end
 
 ```Lua
 function AbstractLayer:fast_eq(other)
-    !import local Package.Libraries.fast_eq
+    import local from Package.Libraries.fast_eq
     return fast_eq(self._ir, other._ir)
 end
 -- fast_eq is not accessible here
@@ -269,8 +269,6 @@ The extensions to the `!import` syntax, such as renaming or destructuring, may b
 While efforts have been made to align this feature to the kinds of analysis already done internally by Luau's tooling, it undeniably still introduces internal complexity. Even though these statements are more explicitly designed for static analysis and useful type inference compared to the more dynamic and unpredictable `require()`, backwards compatibility concerns mean that the more complex logic for detecting `require()` usage still needs to be maintained, and cannot be removed even if it were to be superseded by a more predictable form. In addition, some of the extended importing features are novel, and do not correspond to existing language features, which introduces new internal considerations that were not present before.
 
 ## Alternatives
-
-`local import`, `import in`, `do import` or some other two-keyword form would also allow the declaration of these statements after user declarations. While this looks more stylistically in-line with existing statements and still preserves backwards compatibility, this seems unwieldy and bulky, and depending on keyword choice, could introduce confusion with the extended features of the statement or may contradict how the keywords are used elsewhere.
 
 A comment/preprocesser style `--!import` would better align with `--!strict` et al, but this was decided against because it did not make clear that this statement would affect the execution of the code, and generally is not in the spirit of how comments should work.
 
