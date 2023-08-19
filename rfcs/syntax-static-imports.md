@@ -116,52 +116,23 @@ There is currently no exactly equivalent code snippet for this. The closest is [
 type baz = typeof(require("foo/bar/baz"))
 ```
 
-### Syntax: Local prefix
-
-To destructure an import and insert its contents directly into the current namespace, the `local` keyword can be added (before `type` if present):
-
-```Lua
-import local from "foo/bar/baz"
-import local type from "foo/bar/baz"
-```
-
-This is especially useful in the case of DSL-like libraries, or any libraries that wish to include a prelude of commonly used members. It is acknowledged that this can lead to namespace pollution, but this is something the developer is in control of at all times, and explicitly opts into. See the Drawbacks section for more on this.
-
-Unless only types are being imported, the module must return a table. All members of the table which can be found through analysis, which have string keys and are valid identifiers, are turned into local variables in the current namespace.
-
-While there is no syntax ambiguity, the `local` prefix is not sensible with renaming, because it does not make sense to rename a namespace that will not be created. This case should likely warn, but is not necessarily a failure case.
-
-```Lua
-import local from "foo/bar/baz" = not_baz -- why?
-```
-
-There is no equivalent code snippet, though similar behaviour without type importing can be achieved with unidiomatic use of `getfenv()`:
-
-```Lua
-local _temp = require("foo/bar/baz")
-for ident, value in _temp do
-    getfenv()[ident] = value
-end
-_temp = nil
-```
-
 ### Syntax: Member list
 
 To only import certain members from a module, their identifiers can be listed:
 
 ```Lua
-import thing1, type thing2, local thing3 from "foo/bar/baz"
-import thing1, type thing2, local thing3 from "foo/bar/baz" = not_baz
+import thing1, type thing2, thing3 from "foo/bar/baz"
+import thing1, type thing2, thing3 from "foo/bar/baz" = not_baz
 ```
 
 Unless only types are being imported, the module must return a table. All of the non-type identifiers in the list should correspond with members inside of that table (at least, members which can be found through analysis).
 
-`type` and `local` prefixes are specified per-identifier. This allows an identically-named value/type pair to be addressed separately. This also allows developers to keep namespace pollution under control if there are only select members they wish to import into the current namespace.
+`type` prefixes are specified per-identifier. This allows an identically-named value/type pair to be addressed separately. This also allows developers to keep namespace pollution under control if there are only select members they wish to import into the current namespace.
 
-If all imported members are `local`, then the module's namespace is not created. For reasons similar to previously, this makes renaming not sensible, and so this should probably warn:
+The module's namespace is not created. This makes renaming not sensible, and so this should probably warn:
 
 ```Lua
-import local thing1, local thing2, local thing3 from "foo/bar/baz" = not_baz -- why?
+import thing1, thing2, thing3 from "foo/bar/baz" = not_baz -- why?
 ```
 
 These two snippets are equivalent:
@@ -176,6 +147,27 @@ local baz = {
     thing2 = require("foo/bar/baz").thing2,
     thing3 = require("foo/bar/baz").thing3
 }
+```
+
+### Syntax: Asterisk
+
+To import all members of a module, without having to exhaustively list them out, an asterisk can be used in place of a member list (optionally prefixed with `type` to limit to types only):
+
+```Lua
+import * from "foo/bar/baz"
+import type * from "foo/bar/baz"
+```
+
+This is especially useful in the case of DSL-like libraries, or any libraries that wish to include a prelude of commonly used members. It is acknowledged that this can lead to namespace pollution, but this is something the developer is in control of at all times, and explicitly opts into. See the Drawbacks section for more on this.
+
+There is no equivalent code snippet, though similar behaviour without type importing can be achieved with unidiomatic use of `getfenv()`:
+
+```Lua
+local _temp = require("foo/bar/baz")
+for ident, value in _temp do
+    getfenv()[ident] = value
+end
+_temp = nil
 ```
 
 ### Example usage
@@ -219,10 +211,10 @@ type RenderProps2D = Renderable2D.RenderProps2D
 local SuiteUI = script.Parent
 local Layman = SuiteUI.Parent.Layman
 
-import local Computed, local New, local type CanBeState from SuiteUI.Parent.Fusion
+import Computed, New, type CanBeState from SuiteUI.Parent.Fusion
 import from Layman.Element
 import from Layman.Extents.WithExtents
-import local type RenderProps2D from Layman.Element.Traits.Renderable2D
+import type RenderProps2D from Layman.Element.Traits.Renderable2D
 ```
 
 DSL-like libraries, whose preludes previously had to be manually destructured, can enjoy new conciseness, and no longer have to continually synchronise their header code as new members are added to the library. It is anticipated that a future convention may be to include 'prelude' sub-modules in libraries which re-export the most common constructs, values and types, as is done in other ecosystems such as Rust, to allow them to be imported in one step:
@@ -235,7 +227,7 @@ local Tween, Spring = Fusion.Tween, Fusion.Spring
 ```
 
 ```Lua
-import local from Package.Libraries.Fusion
+import * from Package.Libraries.Fusion
 ```
 
 Individual functions, `do` blocks or other scopes can statically import into their namespace without spilling imports to other code and without introducing extra scopes or indentation. The imports are resolved ahead of time, so they need not even call into C code more than once:
@@ -252,7 +244,7 @@ end
 
 ```Lua
 function AbstractLayer:fast_eq(other)
-    import local from Package.Libraries.fast_eq
+    import from Package.Libraries.fast_eq
     return fast_eq(self._ir, other._ir)
 end
 -- fast_eq is not accessible here
@@ -268,9 +260,9 @@ The extensions to the `import` syntax, such as renaming or destructuring, may be
 
 While efforts have been made to align this feature to the kinds of analysis already done internally by Luau's tooling, it undeniably still introduces internal complexity. Even though these statements are more explicitly designed for analysis and useful type inference compared to the more dynamic and unpredictable `require()`, backwards compatibility concerns mean that the more complex logic for detecting `require()` usage still needs to be maintained, and cannot be removed even if it were to be superseded by a more predictable form. In addition, some of the extended importing features are novel, and do not correspond to existing language features, which introduces new internal considerations that were not present before.
 
-While the developer retains complete control over which members are imported by selectively `local`-ing desired members to the current namespace (or avoiding the feature entirely), it is appreciable that the `local` syntax without a list of identifiers would introduce some level of implicitness. This is both a feature and a bug - this is explicitly what is wanted (and very highly so) for users of DSL-like libraries, while it is also a potential semver hazard. Scoping and order of variable initialisation become important in this case; imports overwrite variable declarations before them (which may break future users), but variable declarations equally overwrite imports before them (which does not). Since imports are generally kept at the top of the code file, I do not think these are worrisome enough breaking changes, except in cases where users are using globals or function environments, which are uncommon and unidiomatic anyway.
+While the developer retains complete control over which members are imported by selectively importing desired members to the current namespace (or avoiding the feature entirely), it is appreciable that the `*` syntax would introduce some level of implicitness. This is both a feature and a bug - this is explicitly what is wanted (and very highly so) for users of DSL-like libraries, while it is also a potential semver hazard. Scoping and order of variable initialisation become important in this case; imports overwrite variable declarations before them (which may break future users), but variable declarations equally overwrite imports before them (which does not). Since imports are generally kept at the top of the code file, I do not think these are worrisome enough breaking changes, except in cases where users are using globals or function environments, which are uncommon and unidiomatic anyway.
 
-Some external tooling operates per-file, which does not necessarily align with the `local` syntax because the names of the imported members are implied. However, these tools are also already incapable of modelling Luau's current implicit inferences between files, which this system was modelled to mirror, so the importance of this point is not certain and should be discussed.
+Some external tooling operates per-file, which does not necessarily align with the `*` syntax because the names of the imported members are implied. However, these tools are also already incapable of modelling Luau's current implicit inferences between files, which this system was modelled to mirror, so the importance of this point is not certain and should be discussed.
 
 ## Alternatives
 
@@ -279,8 +271,6 @@ A comment/preprocesser style `--!import` would better align with `--!strict` et 
 Instead of `import from`, a previous iteration of the RFC proposed the `!import` syntax, which was met with objection as it did not stylistically fit with Luau as a language.
 
 Instead of `=` for renaming modules, a previous idea was to use `::`, but this had the potential to introduce ambiguity with the expression it appeared after. `=` is less susceptible to this because it is already used after left-hand expressions when assigning values.
-
-Instead of `local` for importing members to the current namespace, `*` was considered (as in `import * from "foo/bar/baz"`) but this made the syntax for `local`-ing individual members awkward and inconsistent.
 
 It may instead be more appropriate to try and investigate whether the extended features of this import statement can be better addressed by more general features such as generalised destructuring of values at runtime. However, these RFCs appear to struggle to reconcile syntax desires with backwards compatibility restrictions. [The RFC can be found here.](https://github.com/Roblox/luau/pull/629).
 
