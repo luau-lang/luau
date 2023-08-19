@@ -142,11 +142,9 @@ import thing1, thing2, thing3 from "foo/bar/baz"
 ```
 
 ```Lua
-local baz = {
-    thing1 = require("foo/bar/baz").thing1,
-    thing2 = require("foo/bar/baz").thing2,
-    thing3 = require("foo/bar/baz").thing3
-}
+local thing1 = require("foo/bar/baz").thing1,
+local thing2 = require("foo/bar/baz").thing2,
+local thing3 = require("foo/bar/baz").thing3
 ```
 
 ### Syntax: Asterisk
