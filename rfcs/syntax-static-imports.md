@@ -264,7 +264,7 @@ end
 
 Statically evaluated statements might feel 'out of step' with Lua's dynamic nature. Even though an attempt has been made at ensuring it does not become confused with dynamic statements, the idea of statically evaluated statements might still not necessarily fit the philosophy of the language at all. It may be argued that it is instead better to try and guess user intent from predictable patterns in the usage of dynamic code patterns, rather than trying to make areas used in static analysis explicit.
 
-The extensions to the `!import` syntax, such as renaming or destructuring, may be seen as a measurable increase in complexity from what was previously a simple and predictable operation. Depending on the syntax and keywords used, these extended features may run the risk of confusing newer users, or making the way code is imported less immediately clear.
+The extensions to the `import` syntax, such as renaming or destructuring, may be seen as a measurable increase in complexity from what was previously a simple and predictable operation. Depending on the syntax and keywords used, these extended features may run the risk of confusing newer users, or making the way code is imported less immediately clear.
 
 While efforts have been made to align this feature to the kinds of analysis already done internally by Luau's tooling, it undeniably still introduces internal complexity. Even though these statements are more explicitly designed for static analysis and useful type inference compared to the more dynamic and unpredictable `require()`, backwards compatibility concerns mean that the more complex logic for detecting `require()` usage still needs to be maintained, and cannot be removed even if it were to be superseded by a more predictable form. In addition, some of the extended importing features are novel, and do not correspond to existing language features, which introduces new internal considerations that were not present before.
 
@@ -275,6 +275,10 @@ Some external tooling operates per-file, which does not necessarily align with t
 ## Alternatives
 
 A comment/preprocesser style `--!import` would better align with `--!strict` et al, but this was decided against because it did not make clear that this statement would affect the execution of the code, and generally is not in the spirit of how comments should work.
+
+Instead of `import from`, a previous iteration of the RFC proposed the `!import` syntax, which was met with objection as it did not stylistically fit with Luau as a language.
+
+Instead of `=` for renaming modules, a previous idea was to use `::`, but this had the potential to introduce ambiguity with the expression it appeared after. `=` is less susceptible to this because it is already used after left-hand expressions when assigning values.
 
 It may instead be more appropriate to try and investigate whether the extended features of this import statement can be better addressed by more general features such as generalised destructuring of values at runtime. However, these RFCs appear to struggle to reconcile syntax desires with backwards compatibility restrictions. [The RFC can be found here.](https://github.com/Roblox/luau/pull/629).
 
