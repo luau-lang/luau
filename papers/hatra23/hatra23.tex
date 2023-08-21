@@ -12,6 +12,7 @@
 
 \newcommand{\ANY}{\mathtt{any}}
 \newcommand{\ERROR}{\mathtt{error}}
+\newcommand{\NUMBER}{\mathtt{number}}
 
 \begin{document}
 
@@ -58,9 +59,9 @@ quality concerns of more experienced developers; for all users
 type-driven tooling is important for productivity. These needs result in a design with two modes:
 \begin{itemize}
 \item \emph{non-strict mode}, aimed at non-professionals, focused on
-  minimizing false positives, and
+  minimizing false positives (that is, in non-strict mode, any program with a type error has a defect), and
 \item \emph{strict mode}, aimed at professionals, focused on
-  minimizing false negatives (i.e.~type soundness).
+  minimizing false negatives (that is, in strict mode, any program with a defect has a type error).
 \end{itemize}
 %% For both communities, type-driven tooling is important, so we
 %% provide \emph{infallible type inference}, which infers types
@@ -81,9 +82,24 @@ inclusion~\cite{GF05:GentleIntroduction}. This is aligned with the
 \emph{minimize false positives} goal of Luau non-strict mode, since
 semantic subtyping only reports a failure of subtyping when there is a
 value which inhabits the candidate subtype, but not the candidate
-supertype. This has the added benefit of improving error reporting in
-the prototype implementation: since the prototype is constructive, the
-witness for the failure of subtyping can help drive error reports.
+supertype.
+For example, the program:
+\begin{verbatim}
+  local x : CFrame = CFrame.new()
+  local y : Vector3 | CFrame
+  if math.random() < 0.5 then y = CFrame.new() else y = Vector3.new() end
+  local z : Vector3 | CFrame = x * y
+\end{verbatim}
+cannot produce a run-time error, since multiplication of \verb|CFrame|s is overloaded:
+\begin{verbatim}
+  ((CFrame, CFrame) -> CFrame) & ((CFrame, Vector3) -> Vector3)
+\end{verbatim}
+In order to typecheck this program, we check that that type is a subtype of:
+\begin{verbatim}
+  (CFrame, Vector3 | CFrame) -> (Vector3 | CFrame)
+\end{verbatim}
+In the previous, syntax-driven, implementation of subtyping, this subtype check  would fail, resulting in a false positive.
+We have now released an implementation of semantic subtyping, which does not suffer from this defect.
 See our technical blog for more details~\cite{Jef22:SemanticSubtyping}.
 
 Rather than the gradual typing approach
@@ -94,8 +110,30 @@ an error-suppressing type, and any failures of subtyping involving
 error-suppressing types are not reported. Users can explicitly
 suppress type errors by declaring variables with type $\ANY$, and
 since an expression with a type error has an error-suppressing type we
-avoid cascading errors. Error suppression is in production Luau, and is
-mechanically verified~\cite{BJ23:agda-typeck}.
+avoid cascading errors.
+
+We do this by defining a \emph{infallible} typing judgment $\Gamma \vdash M : T$
+such that for any $\Gamma$ and $M$, there is a $T$ such that $\Gamma \vdash M : T$.
+For example the rule for addition (ignoring overloads for simplicity) is:
+\[
+  \frac{\Gamma \vdash M : T \quad \Gamma \vdash M : U}{\Gamma \vdash M+N : \NUMBER} 
+\]
+We define which judgments produce warnings, for example that rule produces a warning
+when
+\begin{itemize}
+  \item either $T \not<: \NUMBER$ and $T$ is not error-suppressing,
+  \item or $U \not<: \NUMBER$ and $U$ is not error-suppressing.
+\end{itemize}
+To retain type soundness (in the absence of user-supplied error-suppressing types)
+we  show that
+if $\Gamma \vdash M : T$ and $T$ is error-suppressing, then either
+\begin{itemize}
+  \item $\Gamma$ or $M$ contains an error-suppressing type, or
+  \item $\Gamma \vdash M : T$ produces a warning.
+\end{itemize}
+From this it is straightforward to show the usual ``well typed
+programs don't go wrong'' type soundness result for programs without explicit
+error-suppressing types~\cite{BJ23:agda-typeck}.
 
 \section{Further work}
 
