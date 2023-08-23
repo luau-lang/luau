@@ -88,7 +88,7 @@ For this mechanism to work, function call must be "obvious" to the compiler - it
 
 The mechanism works by directly invoking a highly specialized and optimized implementation of a builtin function from the interpreter core loop without setting up a stack frame and omitting other work; additionally, some fastcall specializations are partial in that they don't support all types of arguments, for example all `math` library builtins are only specialized for numeric arguments, so calling `math.abs` with a string argument will fall back to the slower implementation that will do string->number coercion.
 
-As a result, builtin calls are very fast in Luau - they are still slightly slower than core instructions such as arithmetic operations, but only slightly so. The set of fastcall builtins is slowly expanding over time and as of this writing contains `assert`, `type`, `typeof`, `rawget`/`rawset`/`rawequal`, `getmetatable`/`setmetatable`, all functions from `math` and `bit32`, and some functions from `string` and `table` library.
+As a result, builtin calls are very fast in Luau - they are still slightly slower than core instructions such as arithmetic operations, but only slightly so. The set of fastcall builtins is slowly expanding over time and as of this writing contains `assert`, `type`, `typeof`, `rawget`/`rawset`/`rawequal`, `getmetatable`/`setmetatable`, `tonumber`/`tostring`, all functions from `math` (except `noise` and `random`/`randomseed`) and `bit32`, and some functions from `string` and `table` library.
 
 Some builtin functions have partial specializations that reduce the cost of the common case further. Notably:
 
@@ -98,7 +98,7 @@ Some builtin functions have partial specializations that reduce the cost of the 
 
 Some functions from `math` library like `math.floor` can additionally take advantage of advanced SIMD instruction sets like SSE4.1 when available.
 
-In addition to runtime optimizations for builtin calls, many builtin calls can also be constant-folded by the bytecode compiler when using aggressive optimizations (level 2); this currently applies to most builtin calls with constant arguments and a single return value. For builtin calls that can not be constant folded, compiler assumes knowledge of argument/return count (level 2) to produce more efficient bytecode instructions.
+In addition to runtime optimizations for builtin calls, many builtin calls, as well as constants like `math.pi`/`math.huge`, can also be constant-folded by the bytecode compiler when using aggressive optimizations (level 2); this currently applies to most builtin calls with constant arguments and a single return value. For builtin calls that can not be constant folded, compiler assumes knowledge of argument/return count (level 2) to produce more efficient bytecode instructions.
 
 ## Optimized table iteration
 
