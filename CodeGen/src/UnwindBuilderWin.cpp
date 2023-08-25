@@ -82,7 +82,7 @@ void UnwindBuilderWin::finishFunction(uint32_t beginOffset, uint32_t endOffset)
     if (!unwindCodes.empty())
     {
         // Copy unwind codes in reverse order
-        // Some unwind codes take up two array slots, but we don't use those atm
+        // Some unwind codes take up two array slots, we write those in reverse order
         uint8_t* unwindCodePos = rawDataPos + sizeof(UnwindCodeWin) * (unwindCodes.size() - 1);
         LUAU_ASSERT(unwindCodePos <= rawData + kRawDataLimit);
 
@@ -109,9 +109,10 @@ void UnwindBuilderWin::prologueA64(uint32_t prologueSize, uint32_t stackSize, st
     LUAU_ASSERT(!"Not implemented");
 }
 
-void UnwindBuilderWin::prologueX64(uint32_t prologueSize, uint32_t stackSize, bool setupFrame, std::initializer_list<X64::RegisterX64> regs)
+void UnwindBuilderWin::prologueX64(uint32_t prologueSize, uint32_t stackSize, bool setupFrame, std::initializer_list<X64::RegisterX64> gpr,
+    const std::vector<X64::RegisterX64>& simd)
 {
-    LUAU_ASSERT(stackSize > 0 && stackSize <= 128 && stackSize % 8 == 0);
+    LUAU_ASSERT(stackSize > 0 && stackSize < 4096 && stackSize % 8 == 0);
     LUAU_ASSERT(prologueSize < 256);
 
     unsigned int stackOffset = 8; // Return address was pushed by calling the function
@@ -132,7 +133,7 @@ void UnwindBuilderWin::prologueX64(uint32_t prologueSize, uint32_t stackSize, bo
     }
 
     // push reg
-    for (X64::RegisterX64 reg : regs)
+    for (X64::RegisterX64 reg : gpr)
     {
         LUAU_ASSERT(reg.size == X64::SizeX64::qword);
 
@@ -141,10 +142,51 @@ void UnwindBuilderWin::prologueX64(uint32_t prologueSize, uint32_t stackSize, bo
         unwindCodes.push_back({uint8_t(prologueOffset), UWOP_PUSH_NONVOL, reg.index});
     }
 
+    // If frame pointer is used, simd register storage is not implemented, it will require reworking store offsets
+    LUAU_ASSERT(!setupFrame || simd.size() == 0);
+
+    unsigned int simdStorageSize = unsigned(simd.size()) * 16;
+
+    // It's the responsibility of the caller to provide simd register storage in 'stackSize', including alignment to 16 bytes
+    if (!simd.empty() && stackOffset % 16 == 8)
+        simdStorageSize += 8;
+
     // sub rsp, stackSize
-    stackOffset += stackSize;
-    prologueOffset += 4;
-    unwindCodes.push_back({uint8_t(prologueOffset), UWOP_ALLOC_SMALL, uint8_t((stackSize - 8) / 8)});
+    if (stackSize <= 128)
+    {
+        stackOffset += stackSize;
+        prologueOffset += stackSize == 128 ? 7 : 4;
+        unwindCodes.push_back({uint8_t(prologueOffset), UWOP_ALLOC_SMALL, uint8_t((stackSize - 8) / 8)});
+    }
+    else
+    {
+        // This command can handle allocations up to 512K-8 bytes, but that potentially requires stack probing
+        LUAU_ASSERT(stackSize < 4096);
+
+        stackOffset += stackSize;
+        prologueOffset += 7;
+
+        uint16_t encodedOffset = stackSize / 8;
+        unwindCodes.push_back(UnwindCodeWin());
+        memcpy(&unwindCodes.back(), &encodedOffset, sizeof(encodedOffset));
+
+        unwindCodes.push_back({uint8_t(prologueOffset), UWOP_ALLOC_LARGE, 0});
+    }
+
+    // It's the responsibility of the caller to provide simd register storage in 'stackSize'
+    unsigned int xmmStoreOffset = stackSize - simdStorageSize;
+
+    // vmovaps [rsp+n], xmm
+    for (X64::RegisterX64 reg : simd)
+    {
+        LUAU_ASSERT(reg.size == X64::SizeX64::xmmword);
+        LUAU_ASSERT(xmmStoreOffset % 16 == 0 && "simd stores have to be performed to aligned locations");
+
+        prologueOffset += xmmStoreOffset >= 128 ? 10 : 7;
+        unwindCodes.push_back({uint8_t(xmmStoreOffset / 16), 0, 0});
+        unwindCodes.push_back({uint8_t(prologueOffset), UWOP_SAVE_XMM128, reg.index});
+        xmmStoreOffset += 16;
+    }
 
     LUAU_ASSERT(stackOffset % 16 == 0);
     LUAU_ASSERT(prologueOffset == prologueSize);

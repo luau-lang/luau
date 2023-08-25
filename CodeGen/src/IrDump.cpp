@@ -213,8 +213,6 @@ const char* getCmdName(IrCmd cmd)
         return "GET_UPVALUE";
     case IrCmd::SET_UPVALUE:
         return "SET_UPVALUE";
-    case IrCmd::PREPARE_FORN:
-        return "PREPARE_FORN";
     case IrCmd::CHECK_TAG:
         return "CHECK_TAG";
     case IrCmd::CHECK_TRUTHY:

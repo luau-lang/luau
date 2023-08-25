@@ -1080,16 +1080,6 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
         break;
     }
-    case IrCmd::PREPARE_FORN:
-        regs.spill(build, index);
-        build.mov(x0, rState);
-        build.add(x1, rBase, uint16_t(vmRegOp(inst.a) * sizeof(TValue)));
-        build.add(x2, rBase, uint16_t(vmRegOp(inst.b) * sizeof(TValue)));
-        build.add(x3, rBase, uint16_t(vmRegOp(inst.c) * sizeof(TValue)));
-        build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_prepareFORN)));
-        build.blr(x4);
-        // note: no emitUpdateBase necessary because prepareFORN does not reallocate stack
-        break;
     case IrCmd::CHECK_TAG:
     {
         Label fresh; // used when guard aborts execution or jumps to a VM exit

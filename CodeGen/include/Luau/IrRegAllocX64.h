@@ -77,6 +77,7 @@ struct IrRegAllocX64
     std::array<uint32_t, 16> gprInstUsers;
     std::array<bool, 16> freeXmmMap;
     std::array<uint32_t, 16> xmmInstUsers;
+    uint8_t usableXmmRegCount = 0;
 
     std::bitset<256> usedSpillSlots;
     unsigned maxUsedSlot = 0;

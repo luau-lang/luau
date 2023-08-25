@@ -6,6 +6,8 @@
 
 #include <limits.h>
 
+LUAU_FASTFLAGVARIABLE(LuauLexerConsumeFast, false)
+
 namespace Luau
 {
 
@@ -373,7 +375,7 @@ const Lexeme& Lexer::next(bool skipComments, bool updatePrevLocation)
     {
         // consume whitespace before the token
         while (isSpace(peekch()))
-            consume();
+            consumeAny();
 
         if (updatePrevLocation)
             prevLocation = lexeme.location;
@@ -438,7 +440,28 @@ Position Lexer::position() const
     return Position(line, offset - lineOffset);
 }
 
+LUAU_FORCEINLINE
 void Lexer::consume()
+{
+    if (isNewline(buffer[offset]))
+    {
+        // TODO: When the flag is removed, remove the outer condition
+        if (FFlag::LuauLexerConsumeFast)
+        {
+            LUAU_ASSERT(!isNewline(buffer[offset]));
+        }
+        else
+        {
+            line++;
+            lineOffset = offset + 1;
+        }
+    }
+
+    offset++;
+}
+
+LUAU_FORCEINLINE
+void Lexer::consumeAny()
 {
     if (isNewline(buffer[offset]))
     {
@@ -524,7 +547,7 @@ Lexeme Lexer::readLongString(const Position& start, int sep, Lexeme::Type ok, Le
         }
         else
         {
-            consume();
+            consumeAny();
         }
     }
 
@@ -540,7 +563,7 @@ void Lexer::readBackslashInString()
     case '\r':
         consume();
         if (peekch() == '\n')
-            consume();
+            consumeAny();
         break;
 
     case 0:
@@ -549,11 +572,11 @@ void Lexer::readBackslashInString()
     case 'z':
         consume();
         while (isSpace(peekch()))
-            consume();
+            consumeAny();
         break;
 
     default:
-        consume();
+        consumeAny();
     }
 }
 
@@ -939,6 +962,9 @@ Lexeme Lexer::readNext()
     case ';':
     case ',':
     case '#':
+    case '?':
+    case '&':
+    case '|':
     {
         char ch = peekch();
         consume();

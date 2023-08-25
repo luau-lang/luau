@@ -900,7 +900,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_begin")
     }
     catch (const ParseErrors& e)
     {
-        CHECK_EQ("Double braces are not permitted within interpolated strings. Did you mean '\\{'?", e.getErrors().front().getMessage());
+        CHECK_EQ("Double braces are not permitted within interpolated strings; did you mean '\\{'?", e.getErrors().front().getMessage());
     }
 }
 
@@ -915,7 +915,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_mid")
     }
     catch (const ParseErrors& e)
     {
-        CHECK_EQ("Double braces are not permitted within interpolated strings. Did you mean '\\{'?", e.getErrors().front().getMessage());
+        CHECK_EQ("Double braces are not permitted within interpolated strings; did you mean '\\{'?", e.getErrors().front().getMessage());
     }
 }
 
@@ -933,7 +933,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
             CHECK_EQ(e.getErrors().size(), 1);
 
             auto error = e.getErrors().front();
-            CHECK_EQ("Malformed interpolated string, did you forget to add a '}'?", error.getMessage());
+            CHECK_EQ("Malformed interpolated string; did you forget to add a '}'?", error.getMessage());
             return error.getLocation().begin.column;
         }
     };
@@ -956,7 +956,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace_in_table
     {
         CHECK_EQ(e.getErrors().size(), 2);
 
-        CHECK_EQ("Malformed interpolated string, did you forget to add a '}'?", e.getErrors().front().getMessage());
+        CHECK_EQ("Malformed interpolated string; did you forget to add a '}'?", e.getErrors().front().getMessage());
         CHECK_EQ("Expected '}' (to close '{' at line 2), got <eof>", e.getErrors().back().getMessage());
     }
 }
@@ -974,7 +974,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_mid_without_end_brace_in_t
     {
         CHECK_EQ(e.getErrors().size(), 2);
 
-        CHECK_EQ("Malformed interpolated string, did you forget to add a '}'?", e.getErrors().front().getMessage());
+        CHECK_EQ("Malformed interpolated string; did you forget to add a '}'?", e.getErrors().front().getMessage());
         CHECK_EQ("Expected '}' (to close '{' at line 2), got <eof>", e.getErrors().back().getMessage());
     }
 }
@@ -1038,6 +1038,36 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_expression")
     catch (const ParseErrors& e)
     {
         CHECK_EQ("Malformed interpolated string, expected expression inside '{}'", e.getErrors().front().getMessage());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_malformed_escape")
+{
+    try
+    {
+        parse(R"(
+            local a = `???\xQQ {1}`
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ("Interpolated string literal contains malformed escape sequence", e.getErrors().front().getMessage());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_weird_token")
+{
+    try
+    {
+        parse(R"(
+            local a = `??? {42 !!}`
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ("Malformed interpolated string, got '!'", e.getErrors().front().getMessage());
     }
 }
 
@@ -1569,9 +1599,9 @@ TEST_CASE_FIXTURE(Fixture, "string_literals_escapes_broken")
 
 TEST_CASE_FIXTURE(Fixture, "string_literals_broken")
 {
-    matchParseError("return \"", "Malformed string");
-    matchParseError("return \"\\", "Malformed string");
-    matchParseError("return \"\r\r", "Malformed string");
+    matchParseError("return \"", "Malformed string; did you forget to finish it?");
+    matchParseError("return \"\\", "Malformed string; did you forget to finish it?");
+    matchParseError("return \"\r\r", "Malformed string; did you forget to finish it?");
 }
 
 TEST_CASE_FIXTURE(Fixture, "number_literals")
@@ -2530,12 +2560,12 @@ TEST_CASE_FIXTURE(Fixture, "incomplete_method_call_still_yields_an_AstExprIndexN
 TEST_CASE_FIXTURE(Fixture, "recover_confusables")
 {
     // Binary
-    matchParseError("local a = 4 != 10", "Unexpected '!=', did you mean '~='?");
-    matchParseError("local a = true && false", "Unexpected '&&', did you mean 'and'?");
-    matchParseError("local a = false || true", "Unexpected '||', did you mean 'or'?");
+    matchParseError("local a = 4 != 10", "Unexpected '!='; did you mean '~='?");
+    matchParseError("local a = true && false", "Unexpected '&&'; did you mean 'and'?");
+    matchParseError("local a = false || true", "Unexpected '||'; did you mean 'or'?");
 
     // Unary
-    matchParseError("local a = !false", "Unexpected '!', did you mean 'not'?");
+    matchParseError("local a = !false", "Unexpected '!'; did you mean 'not'?");
 
     // Check that separate tokens are not considered as a single one
     matchParseError("local a = 4 ! = 10", "Expected identifier when parsing expression, got '!'");
@@ -2878,6 +2908,66 @@ TEST_CASE_FIXTURE(Fixture, "missing_default_type_pack_argument_after_variadic_ty
 
     CHECK_EQ(Location{{1, 23}, {1, 24}}, result.errors[1].getLocation());
     CHECK_EQ("Expected type pack after '=', got type", result.errors[1].getMessage());
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_type_keys_cant_contain_nul")
+{
+    ParseResult result = tryParse(R"(
+        type Foo = { ["\0"]: number }
+    )");
+
+    REQUIRE_EQ(1, result.errors.size());
+
+    CHECK_EQ(Location{{1, 21}, {1, 22}}, result.errors[0].getLocation());
+    CHECK_EQ("String literal contains malformed escape sequence or \\0", result.errors[0].getMessage());
+}
+
+TEST_CASE_FIXTURE(Fixture, "invalid_escape_literals_get_reported_but_parsing_continues")
+{
+    ParseResult result = tryParse(R"(
+        local foo = "\xQQ"
+        print(foo)
+    )");
+
+    REQUIRE_EQ(1, result.errors.size());
+
+    CHECK_EQ(Location{{1, 20}, {1, 26}}, result.errors[0].getLocation());
+    CHECK_EQ("String literal contains malformed escape sequence", result.errors[0].getMessage());
+
+    REQUIRE(result.root);
+    CHECK_EQ(result.root->body.size, 2);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unfinished_string_literals_get_reported_but_parsing_continues")
+{
+    ParseResult result = tryParse(R"(
+        local foo = "hi
+        print(foo)
+    )");
+
+    REQUIRE_EQ(1, result.errors.size());
+
+    CHECK_EQ(Location{{1, 20}, {1, 23}}, result.errors[0].getLocation());
+    CHECK_EQ("Malformed string; did you forget to finish it?", result.errors[0].getMessage());
+
+    REQUIRE(result.root);
+    CHECK_EQ(result.root->body.size, 2);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unfinished_string_literal_types_get_reported_but_parsing_continues")
+{
+    ParseResult result = tryParse(R"(
+        type Foo = "hi
+        print(foo)
+    )");
+
+    REQUIRE_EQ(1, result.errors.size());
+
+    CHECK_EQ(Location{{1, 19}, {1, 22}}, result.errors[0].getLocation());
+    CHECK_EQ("Malformed string; did you forget to finish it?", result.errors[0].getMessage());
+
+    REQUIRE(result.root);
+    CHECK_EQ(result.root->body.size, 2);
 }
 
 TEST_SUITE_END();

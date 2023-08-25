@@ -62,9 +62,10 @@ void AstExprConstantNumber::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
-AstExprConstantString::AstExprConstantString(const Location& location, const AstArray<char>& value)
+AstExprConstantString::AstExprConstantString(const Location& location, const AstArray<char>& value, QuoteStyle quoteStyle)
     : AstExpr(ClassIndex(), location)
     , value(value)
+    , quoteStyle(quoteStyle)
 {
 }
 

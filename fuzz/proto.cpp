@@ -7,6 +7,7 @@
 #include "Luau/CodeGen.h"
 #include "Luau/Common.h"
 #include "Luau/Compiler.h"
+#include "Luau/Config.h"
 #include "Luau/Frontend.h"
 #include "Luau/Linter.h"
 #include "Luau/ModuleResolver.h"

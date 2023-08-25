@@ -622,7 +622,10 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         LUAU_ASSERT(inst.b.kind == IrOpKind::Inst || inst.b.kind == IrOpKind::Constant);
         OperandX64 opb = inst.b.kind == IrOpKind::Inst ? regOp(inst.b) : OperandX64(tagOp(inst.b));
 
-        build.cmp(memRegTagOp(inst.a), opb);
+        if (inst.a.kind == IrOpKind::Constant)
+            build.cmp(opb, tagOp(inst.a));
+        else
+            build.cmp(memRegTagOp(inst.a), opb);
 
         if (isFallthroughBlock(blockOp(inst.d), next))
         {
@@ -997,9 +1000,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             callBarrierObject(regs, build, tmp2.release(), {}, vmRegOp(inst.b), inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c));
         break;
     }
-    case IrCmd::PREPARE_FORN:
-        callPrepareForN(regs, build, vmRegOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c));
-        break;
     case IrCmd::CHECK_TAG:
         build.cmp(memRegTagOp(inst.a), tagOp(inst.b));
         jumpOrAbortOnUndef(ConditionX64::NotEqual, inst.c, next);
@@ -1205,7 +1205,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         // Fallbacks to non-IR instruction implementations
     case IrCmd::SETLIST:
         regs.assertAllFree();
-        emitInstSetList(regs, build, vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.d), uintOp(inst.e));
+        emitInstSetList(
+            regs, build, vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.d), uintOp(inst.e), inst.f.kind == IrOpKind::Undef ? -1 : int(uintOp(inst.f)));
         break;
     case IrCmd::CALL:
         regs.assertAllFree();

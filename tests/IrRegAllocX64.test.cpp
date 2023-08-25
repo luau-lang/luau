@@ -49,9 +49,9 @@ TEST_CASE_FIXTURE(IrRegAllocX64Fixture, "RelocateFix")
     LUAU_ASSERT(function.instructions[1].spilled);
 
     checkMatch(R"(
- vmovsd      qword ptr [rsp+048h],rax
- vmovsd      qword ptr [rsp+050h],rax
- vmovsd      rax,qword ptr [rsp+048h]
+ vmovsd      qword ptr [rsp+070h],rax
+ vmovsd      qword ptr [rsp+078h],rax
+ vmovsd      rax,qword ptr [rsp+070h]
 )");
 }
 

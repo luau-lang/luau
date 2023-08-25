@@ -992,25 +992,20 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         state.invalidateRegisterRange(vmRegOp(inst.a), function.uintOp(inst.b));
         state.invalidateUserCall(); // TODO: if only strings and numbers are concatenated, there will be no user calls
         break;
-    case IrCmd::PREPARE_FORN:
-        state.invalidateValue(inst.a);
-        state.saveTag(inst.a, LUA_TNUMBER);
-        state.invalidateValue(inst.b);
-        state.saveTag(inst.b, LUA_TNUMBER);
-        state.invalidateValue(inst.c);
-        state.saveTag(inst.c, LUA_TNUMBER);
-        break;
     case IrCmd::INTERRUPT:
         state.invalidateUserCall();
         break;
     case IrCmd::SETLIST:
+        if (RegisterInfo* info = state.tryGetRegisterInfo(inst.b); info && info->knownTableArraySize >= 0)
+            replace(function, inst.f, build.constUint(info->knownTableArraySize));
+
         state.valueMap.clear(); // TODO: this can be relaxed when x64 emitInstSetList becomes aware of register allocator
         break;
     case IrCmd::CALL:
         state.invalidateRegistersFrom(vmRegOp(inst.a));
         state.invalidateUserCall();
 
-        // We cannot guarantee right now that all live values can be remeterialized from non-stack memory locations
+        // We cannot guarantee right now that all live values can be rematerialized from non-stack memory locations
         // To prevent earlier values from being propagated to after the call, we have to clear the map
         // TODO: remove only the values that don't have a guaranteed restore location
         state.valueMap.clear();

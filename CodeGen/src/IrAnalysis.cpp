@@ -253,15 +253,6 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrBlock& 
         case IrCmd::SET_UPVALUE:
             visitor.use(inst.b);
             break;
-        case IrCmd::PREPARE_FORN:
-            visitor.use(inst.a);
-            visitor.use(inst.b);
-            visitor.use(inst.c);
-
-            visitor.def(inst.a);
-            visitor.def(inst.b);
-            visitor.def(inst.c);
-            break;
         case IrCmd::INTERRUPT:
             break;
         case IrCmd::BARRIER_OBJ:

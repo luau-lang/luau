@@ -609,22 +609,19 @@ void translateInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos)
 
     IrOp loopStart = build.blockAtInst(pcpos + getOpLength(LuauOpcode(LUAU_INSN_OP(*pc))));
     IrOp loopExit = build.blockAtInst(getJumpTarget(*pc, pcpos));
-    IrOp fallback = build.block(IrBlockKind::Fallback);
 
-    IrOp nextStep = build.block(IrBlockKind::Internal);
     IrOp direct = build.block(IrBlockKind::Internal);
     IrOp reverse = build.block(IrBlockKind::Internal);
 
+    // When loop parameters are not numbers, VM tries to perform type coercion from string and raises an exception if that fails
+    // Performing that fallback in native code increases code size and complicates CFG, obscuring the values when they are constant
+    // To avoid that overhead for an extreemely rare case (that doesn't even typecheck), we exit to VM to handle it
     IrOp tagLimit = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 0));
-    build.inst(IrCmd::CHECK_TAG, tagLimit, build.constTag(LUA_TNUMBER), fallback);
+    build.inst(IrCmd::CHECK_TAG, tagLimit, build.constTag(LUA_TNUMBER), build.vmExit(pcpos));
     IrOp tagStep = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 1));
-    build.inst(IrCmd::CHECK_TAG, tagStep, build.constTag(LUA_TNUMBER), fallback);
+    build.inst(IrCmd::CHECK_TAG, tagStep, build.constTag(LUA_TNUMBER), build.vmExit(pcpos));
     IrOp tagIdx = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 2));
-    build.inst(IrCmd::CHECK_TAG, tagIdx, build.constTag(LUA_TNUMBER), fallback);
-    build.inst(IrCmd::JUMP, nextStep);
-
-    // After successful conversion of arguments to number in a fallback, we return here
-    build.beginBlock(nextStep);
+    build.inst(IrCmd::CHECK_TAG, tagIdx, build.constTag(LUA_TNUMBER), build.vmExit(pcpos));
 
     IrOp zero = build.constDouble(0.0);
     IrOp limit = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 0));
@@ -643,12 +640,6 @@ void translateInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos)
     // step <= 0 is true, check limit <= idx
     build.beginBlock(reverse);
     build.inst(IrCmd::JUMP_CMP_NUM, limit, idx, build.cond(IrCondition::LessEqual), loopStart, loopExit);
-
-    // Fallback will try to convert loop variables to numbers or throw an error
-    build.beginBlock(fallback);
-    build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
-    build.inst(IrCmd::PREPARE_FORN, build.vmReg(ra + 0), build.vmReg(ra + 1), build.vmReg(ra + 2));
-    build.inst(IrCmd::JUMP, nextStep);
 
     // Fallthrough in original bytecode is implicit, so we start next internal block here
     if (build.isInternalBlock(loopStart))

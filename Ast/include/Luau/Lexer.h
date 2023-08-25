@@ -204,7 +204,9 @@ private:
 
     Position position() const;
 
+    // consume() assumes current character is not a newline for performance; when that is not known, consumeAny() should be used instead.
     void consume();
+    void consumeAny();
 
     Lexeme readCommentBody();
 

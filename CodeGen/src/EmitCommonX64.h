@@ -42,16 +42,54 @@ constexpr RegisterX64 rBase = r14;          // StkId base
 constexpr RegisterX64 rNativeContext = r13; // NativeContext* context
 constexpr RegisterX64 rConstants = r12;     // TValue* k
 
-// Native code is as stackless as the interpreter, so we can place some data on the stack once and have it accessible at any point
-// See CodeGenX64.cpp for layout
-constexpr unsigned kStackSize = 32 + 16;               // 4 home locations for registers, 16 bytes for additional function call arguments
-constexpr unsigned kSpillSlots = 4;                    // locations for register allocator to spill data into
-constexpr unsigned kLocalsSize = 24 + 8 * kSpillSlots; // 3 extra slots for our custom locals (also aligns the stack to 16 byte boundary)
+constexpr unsigned kExtraLocals = 3; // Number of 8 byte slots available for specialized local variables specified below
+constexpr unsigned kSpillSlots = 5;  // Number of 8 byte slots available for register allocator to spill data into
+static_assert((kExtraLocals + kSpillSlots) * 8 % 16 == 0, "locals have to preserve 16 byte alignment");
 
-constexpr OperandX64 sClosure = qword[rsp + kStackSize + 0]; // Closure* cl
-constexpr OperandX64 sCode = qword[rsp + kStackSize + 8];    // Instruction* code
-constexpr OperandX64 sTemporarySlot = addr[rsp + kStackSize + 16];
-constexpr OperandX64 sSpillArea = addr[rsp + kStackSize + 24];
+constexpr uint8_t kWindowsFirstNonVolXmmReg = 6;
+
+constexpr uint8_t kWindowsUsableXmmRegs = 10; // Some xmm regs are non-volatile, we have to balance how many we want to use/preserve
+constexpr uint8_t kSystemVUsableXmmRegs = 16; // All xmm regs are volatile
+
+inline uint8_t getXmmRegisterCount(ABIX64 abi)
+{
+    return abi == ABIX64::SystemV ? kSystemVUsableXmmRegs : kWindowsUsableXmmRegs;
+}
+
+// Native code is as stackless as the interpreter, so we can place some data on the stack once and have it accessible at any point
+// Stack is separated into sections for different data. See CodeGenX64.cpp for layout overview
+constexpr unsigned kStackAlign = 8; // Bytes we need to align the stack for non-vol xmm register storage
+constexpr unsigned kStackLocalStorage = 8 * kExtraLocals + 8 * kSpillSlots;
+constexpr unsigned kStackExtraArgumentStorage = 2 * 8; // Bytes for 5th and 6th function call arguments used under Windows ABI
+constexpr unsigned kStackRegHomeStorage = 4 * 8;       // Register 'home' locations that can be used by callees under Windows ABI
+
+inline unsigned getNonVolXmmStorageSize(ABIX64 abi, uint8_t xmmRegCount)
+{
+    if (abi == ABIX64::SystemV)
+        return 0;
+
+    // First 6 are volatile
+    if (xmmRegCount <= kWindowsFirstNonVolXmmReg)
+        return 0;
+
+    LUAU_ASSERT(xmmRegCount <= 16);
+    return (xmmRegCount - kWindowsFirstNonVolXmmReg) * 16;
+}
+
+// Useful offsets to specific parts
+constexpr unsigned kStackOffsetToLocals = kStackExtraArgumentStorage + kStackRegHomeStorage;
+constexpr unsigned kStackOffsetToSpillSlots = kStackOffsetToLocals + kStackLocalStorage;
+
+inline unsigned getFullStackSize(ABIX64 abi, uint8_t xmmRegCount)
+{
+    return kStackOffsetToSpillSlots + getNonVolXmmStorageSize(abi, xmmRegCount) + kStackAlign;
+}
+
+constexpr OperandX64 sClosure = qword[rsp + kStackOffsetToLocals + 0]; // Closure* cl
+constexpr OperandX64 sCode = qword[rsp + kStackOffsetToLocals + 8];    // Instruction* code
+constexpr OperandX64 sTemporarySlot = addr[rsp + kStackOffsetToLocals + 16];
+
+constexpr OperandX64 sSpillArea = addr[rsp + kStackOffsetToSpillSlots];
 
 inline OperandX64 luauReg(int ri)
 {
@@ -161,7 +199,6 @@ void convertNumberToIndexOrJump(AssemblyBuilderX64& build, RegisterX64 tmp, Regi
 
 void callArithHelper(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, OperandX64 c, TMS tm);
 void callLengthHelper(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb);
-void callPrepareForN(IrRegAllocX64& regs, AssemblyBuilderX64& build, int limit, int step, int init);
 void callGetTable(IrRegAllocX64& regs, AssemblyBuilderX64& build, int rb, OperandX64 c, int ra);
 void callSetTable(IrRegAllocX64& regs, AssemblyBuilderX64& build, int rb, OperandX64 c, int ra);
 void checkObjectBarrierConditions(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 object, int ra, int ratag, Label& skip);
