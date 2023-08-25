@@ -108,7 +108,7 @@ struct TryPair {
     A first;
     B second;
 
-    operator bool() const
+    explicit operator bool() const
     {
         return bool(first) && bool(second);
     }

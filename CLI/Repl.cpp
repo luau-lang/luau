@@ -757,14 +757,6 @@ int replMain(int argc, char** argv)
     }
 #endif
 
-#if !LUA_CUSTOM_EXECUTION
-    if (codegen)
-    {
-        fprintf(stderr, "To run with --codegen, Luau has to be built with LUA_CUSTOM_EXECUTION enabled\n");
-        return 1;
-    }
-#endif
-
     if (codegenPerf)
     {
 #if __linux__
@@ -784,10 +776,7 @@ int replMain(int argc, char** argv)
     }
 
     if (codegen && !Luau::CodeGen::isSupported())
-    {
-        fprintf(stderr, "Cannot enable --codegen, native code generation is not supported in current configuration\n");
-        return 1;
-    }
+        fprintf(stderr, "Warning: Native code generation is not supported in current configuration\n");
 
     const std::vector<std::string> files = getSourceFiles(argc, argv);
 

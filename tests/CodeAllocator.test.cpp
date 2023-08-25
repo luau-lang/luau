@@ -187,7 +187,7 @@ TEST_CASE("WindowsUnwindCodesX64")
 
     unwind.startInfo(UnwindBuilder::X64);
     unwind.startFunction();
-    unwind.prologueX64(/* prologueSize= */ 23, /* stackSize= */ 72, /* setupFrame= */ true, {rdi, rsi, rbx, r12, r13, r14, r15});
+    unwind.prologueX64(/* prologueSize= */ 23, /* stackSize= */ 72, /* setupFrame= */ true, {rdi, rsi, rbx, r12, r13, r14, r15}, {});
     unwind.finishFunction(0x11223344, 0x55443322);
     unwind.finishInfo();
 
@@ -211,7 +211,7 @@ TEST_CASE("Dwarf2UnwindCodesX64")
 
     unwind.startInfo(UnwindBuilder::X64);
     unwind.startFunction();
-    unwind.prologueX64(/* prologueSize= */ 23, /* stackSize= */ 72, /* setupFrame= */ true, {rdi, rsi, rbx, r12, r13, r14, r15});
+    unwind.prologueX64(/* prologueSize= */ 23, /* stackSize= */ 72, /* setupFrame= */ true, {rdi, rsi, rbx, r12, r13, r14, r15}, {});
     unwind.finishFunction(0, 0);
     unwind.finishInfo();
 
@@ -309,6 +309,11 @@ static void throwing(int64_t arg)
     throw std::runtime_error("testing");
 }
 
+static void nonthrowing(int64_t arg)
+{
+    CHECK(arg == 25);
+}
+
 TEST_CASE("GeneratedCodeExecutionWithThrowX64")
 {
     using namespace X64;
@@ -339,7 +344,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64")
 
     uint32_t prologueSize = build.setLabel().location;
 
-    unwind->prologueX64(prologueSize, stackSize + localsSize, /* setupFrame= */ true, {rNonVol1, rNonVol2});
+    unwind->prologueX64(prologueSize, stackSize + localsSize, /* setupFrame= */ true, {rNonVol1, rNonVol2}, {});
 
     // Body
     build.mov(rNonVol1, rArg1);
@@ -379,6 +384,8 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64")
     using FunctionType = int64_t(int64_t, void (*)(int64_t));
     FunctionType* f = (FunctionType*)nativeEntry;
 
+    f(10, nonthrowing);
+
     // To simplify debugging, CHECK_THROWS_WITH_AS is not used here
     try
     {
@@ -388,6 +395,121 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64")
     {
         CHECK(strcmp(error.what(), "testing") == 0);
     }
+}
+
+static void obscureThrowCase(int64_t (*f)(int64_t, void (*)(int64_t)))
+{
+    // To simplify debugging, CHECK_THROWS_WITH_AS is not used here
+    try
+    {
+        f(10, throwing);
+    }
+    catch (const std::runtime_error& error)
+    {
+        CHECK(strcmp(error.what(), "testing") == 0);
+    }
+}
+
+TEST_CASE("GeneratedCodeExecutionWithThrowX64Simd")
+{
+    // This test requires AVX
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    using namespace X64;
+
+    AssemblyBuilderX64 build(/* logText= */ false);
+
+#if defined(_WIN32)
+    std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderWin>();
+#else
+    std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderDwarf2>();
+#endif
+
+    unwind->startInfo(UnwindBuilder::X64);
+
+    Label functionBegin = build.setLabel();
+    unwind->startFunction();
+
+    int stackSize = 32 + 64;
+    int localsSize = 16;
+
+    // Prologue
+    build.push(rNonVol1);
+    build.push(rNonVol2);
+    build.push(rbp);
+    build.sub(rsp, stackSize + localsSize);
+
+    if (build.abi == ABIX64::Windows)
+    {
+        build.vmovaps(xmmword[rsp + ((stackSize + localsSize) - 0x40)], xmm6);
+        build.vmovaps(xmmword[rsp + ((stackSize + localsSize) - 0x30)], xmm7);
+        build.vmovaps(xmmword[rsp + ((stackSize + localsSize) - 0x20)], xmm8);
+        build.vmovaps(xmmword[rsp + ((stackSize + localsSize) - 0x10)], xmm9);
+    }
+
+    uint32_t prologueSize = build.setLabel().location;
+
+    if (build.abi == ABIX64::Windows)
+        unwind->prologueX64(prologueSize, stackSize + localsSize, /* setupFrame= */ false, {rNonVol1, rNonVol2, rbp}, {xmm6, xmm7, xmm8, xmm9});
+    else
+        unwind->prologueX64(prologueSize, stackSize + localsSize, /* setupFrame= */ false, {rNonVol1, rNonVol2, rbp}, {});
+
+    // Body
+    build.vxorpd(xmm0, xmm0, xmm0);
+    build.vmovsd(xmm6, xmm0, xmm0);
+    build.vmovsd(xmm7, xmm0, xmm0);
+    build.vmovsd(xmm8, xmm0, xmm0);
+    build.vmovsd(xmm9, xmm0, xmm0);
+
+    build.mov(rNonVol1, rArg1);
+    build.mov(rNonVol2, rArg2);
+
+    build.add(rNonVol1, 15);
+    build.mov(rArg1, rNonVol1);
+    build.call(rNonVol2);
+
+    // Epilogue
+    if (build.abi == ABIX64::Windows)
+    {
+        build.vmovaps(xmm6, xmmword[rsp + ((stackSize + localsSize) - 0x40)]);
+        build.vmovaps(xmm7, xmmword[rsp + ((stackSize + localsSize) - 0x30)]);
+        build.vmovaps(xmm8, xmmword[rsp + ((stackSize + localsSize) - 0x20)]);
+        build.vmovaps(xmm9, xmmword[rsp + ((stackSize + localsSize) - 0x10)]);
+    }
+
+    build.add(rsp, stackSize + localsSize);
+    build.pop(rbp);
+    build.pop(rNonVol2);
+    build.pop(rNonVol1);
+    build.ret();
+
+    unwind->finishFunction(build.getLabelOffset(functionBegin), ~0u);
+
+    build.finalize();
+
+    unwind->finishInfo();
+
+    size_t blockSize = 1024 * 1024;
+    size_t maxTotalSize = 1024 * 1024;
+    CodeAllocator allocator(blockSize, maxTotalSize);
+
+    allocator.context = unwind.get();
+    allocator.createBlockUnwindInfo = createBlockUnwindInfo;
+    allocator.destroyBlockUnwindInfo = destroyBlockUnwindInfo;
+
+    uint8_t* nativeData;
+    size_t sizeNativeData;
+    uint8_t* nativeEntry;
+    REQUIRE(allocator.allocate(build.data.data(), build.data.size(), build.code.data(), build.code.size(), nativeData, sizeNativeData, nativeEntry));
+    REQUIRE(nativeEntry);
+
+    using FunctionType = int64_t(int64_t, void (*)(int64_t));
+    FunctionType* f = (FunctionType*)nativeEntry;
+
+    f(10, nonthrowing);
+
+    obscureThrowCase(f);
 }
 
 TEST_CASE("GeneratedCodeExecutionMultipleFunctionsWithThrowX64")
@@ -425,7 +547,7 @@ TEST_CASE("GeneratedCodeExecutionMultipleFunctionsWithThrowX64")
 
         uint32_t prologueSize = build.setLabel().location - start1.location;
 
-        unwind->prologueX64(prologueSize, stackSize + localsSize, /* setupFrame= */ true, {rNonVol1, rNonVol2});
+        unwind->prologueX64(prologueSize, stackSize + localsSize, /* setupFrame= */ true, {rNonVol1, rNonVol2}, {});
 
         // Body
         build.mov(rNonVol1, rArg1);
@@ -464,7 +586,7 @@ TEST_CASE("GeneratedCodeExecutionMultipleFunctionsWithThrowX64")
 
         uint32_t prologueSize = build.setLabel().location - start2.location;
 
-        unwind->prologueX64(prologueSize, stackSize + localsSize, /* setupFrame= */ false, {rNonVol1, rNonVol2, rNonVol3, rNonVol4});
+        unwind->prologueX64(prologueSize, stackSize + localsSize, /* setupFrame= */ false, {rNonVol1, rNonVol2, rNonVol3, rNonVol4}, {});
 
         // Body
         build.mov(rNonVol3, rArg1);
@@ -561,7 +683,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
 
     uint32_t prologueSize = build.setLabel().location;
 
-    unwind->prologueX64(prologueSize, stackSize + localsSize, /* setupFrame= */ true, {r10, r11, r12, r13, r14, r15});
+    unwind->prologueX64(prologueSize, stackSize + localsSize, /* setupFrame= */ true, {r10, r11, r12, r13, r14, r15}, {});
 
     // Body
     build.mov(rax, rArg1);

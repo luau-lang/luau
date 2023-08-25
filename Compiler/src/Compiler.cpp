@@ -26,8 +26,6 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileFoldMathK, false)
-
 namespace Luau
 {
 
@@ -3871,9 +3869,8 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     {
         compiler.builtinsFold = &compiler.builtins;
 
-        if (FFlag::LuauCompileFoldMathK)
-            if (AstName math = names.get("math"); math.value && getGlobalState(compiler.globals, math) == Global::Default)
-                compiler.builtinsFoldMathK = true;
+        if (AstName math = names.get("math"); math.value && getGlobalState(compiler.globals, math) == Global::Default)
+            compiler.builtinsFoldMathK = true;
     }
 
     if (options.optimizationLevel >= 1)

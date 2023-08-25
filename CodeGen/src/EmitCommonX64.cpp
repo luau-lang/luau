@@ -123,16 +123,6 @@ void callLengthHelper(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, in
     emitUpdateBase(build);
 }
 
-void callPrepareForN(IrRegAllocX64& regs, AssemblyBuilderX64& build, int limit, int step, int init)
-{
-    IrCallWrapperX64 callWrap(regs, build);
-    callWrap.addArgument(SizeX64::qword, rState);
-    callWrap.addArgument(SizeX64::qword, luauRegAddress(limit));
-    callWrap.addArgument(SizeX64::qword, luauRegAddress(step));
-    callWrap.addArgument(SizeX64::qword, luauRegAddress(init));
-    callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_prepareFORN)]);
-}
-
 void callGetTable(IrRegAllocX64& regs, AssemblyBuilderX64& build, int rb, OperandX64 c, int ra)
 {
     IrCallWrapperX64 callWrap(regs, build);

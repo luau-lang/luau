@@ -245,8 +245,8 @@ enum class IrCmd : uint8_t
     STRING_LEN,
 
     // Allocate new table
-    // A: int (array element count)
-    // B: int (node element count)
+    // A: unsigned int (array element count)
+    // B: unsigned int (node element count)
     NEW_TABLE,
 
     // Duplicate a table
@@ -359,12 +359,6 @@ enum class IrCmd : uint8_t
     // C: tag/undef (tag of the value that was written)
     SET_UPVALUE,
 
-    // Convert TValues into numbers for a numerical for loop
-    // A: Rn (start)
-    // B: Rn (end)
-    // C: Rn (step)
-    PREPARE_FORN,
-
     // Guards and checks (these instructions are not block terminators even though they jump to fallback)
 
     // Guard against tag mismatch
@@ -463,6 +457,7 @@ enum class IrCmd : uint8_t
     // C: Rn (source start)
     // D: int (count or -1 to assign values up to stack top)
     // E: unsigned int (table index to start from)
+    // F: undef/unsigned int (target table known size)
     SETLIST,
 
     // Call specified function

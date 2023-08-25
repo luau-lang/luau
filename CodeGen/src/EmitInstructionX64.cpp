@@ -251,7 +251,7 @@ void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, i
     }
 }
 
-void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, int count, uint32_t index)
+void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, int count, uint32_t index, int knownSize)
 {
     // TODO: This should use IrCallWrapperX64
     RegisterX64 rArg1 = (build.abi == ABIX64::Windows) ? rcx : rdi;
@@ -285,25 +285,28 @@ void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int
         build.add(last, index - 1);
     }
 
-    Label skipResize;
-
     RegisterX64 table = regs.takeReg(rax, kInvalidInstIdx);
 
     build.mov(table, luauRegValue(ra));
 
-    // Resize if h->sizearray < last
-    build.cmp(dword[table + offsetof(Table, sizearray)], last);
-    build.jcc(ConditionX64::NotBelow, skipResize);
+    if (count == LUA_MULTRET || knownSize < 0 || knownSize < int(index + count - 1))
+    {
+        Label skipResize;
 
-    // Argument setup reordered to avoid conflicts
-    LUAU_ASSERT(rArg3 != table);
-    build.mov(dwordReg(rArg3), last);
-    build.mov(rArg2, table);
-    build.mov(rArg1, rState);
-    build.call(qword[rNativeContext + offsetof(NativeContext, luaH_resizearray)]);
-    build.mov(table, luauRegValue(ra)); // Reload cloberred register value
+        // Resize if h->sizearray < last
+        build.cmp(dword[table + offsetof(Table, sizearray)], last);
+        build.jcc(ConditionX64::NotBelow, skipResize);
 
-    build.setLabel(skipResize);
+        // Argument setup reordered to avoid conflicts
+        LUAU_ASSERT(rArg3 != table);
+        build.mov(dwordReg(rArg3), last);
+        build.mov(rArg2, table);
+        build.mov(rArg1, rState);
+        build.call(qword[rNativeContext + offsetof(NativeContext, luaH_resizearray)]);
+        build.mov(table, luauRegValue(ra)); // Reload clobbered register value
+
+        build.setLabel(skipResize);
+    }
 
     RegisterX64 arrayDst = rdx;
     RegisterX64 offset = rcx;

@@ -272,11 +272,18 @@ class AstExprConstantString : public AstExpr
 public:
     LUAU_RTTI(AstExprConstantString)
 
-    AstExprConstantString(const Location& location, const AstArray<char>& value);
+    enum QuoteStyle
+    {
+        Quoted,
+        Unquoted
+    };
+
+    AstExprConstantString(const Location& location, const AstArray<char>& value, QuoteStyle quoteStyle = Quoted);
 
     void visit(AstVisitor* visitor) override;
 
     AstArray<char> value;
+    QuoteStyle quoteStyle = Quoted;
 };
 
 class AstExprLocal : public AstExpr

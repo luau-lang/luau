@@ -3,8 +3,12 @@
 #include "Luau/Subtyping.h"
 
 #include "Luau/Common.h"
+#include "Luau/Error.h"
 #include "Luau/Normalize.h"
+#include "Luau/StringUtils.h"
+#include "Luau/ToString.h"
 #include "Luau/Type.h"
+#include "Luau/TypeArena.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
 
@@ -13,42 +17,109 @@
 namespace Luau
 {
 
-SubtypingGraph SubtypingGraph::and_(const SubtypingGraph& other)
+struct VarianceFlipper
 {
-    return SubtypingGraph{
-        isSubtype && other.isSubtype,
-        // `||` is intentional here, we want to preserve error-suppressing flag.
-        isErrorSuppressing || other.isErrorSuppressing,
-        normalizationTooComplex || other.normalizationTooComplex,
-    };
+    Subtyping::Variance* variance;
+    Subtyping::Variance oldValue;
+
+    VarianceFlipper(Subtyping::Variance* v)
+        : variance(v)
+        , oldValue(*v)
+    {
+        switch (oldValue)
+        {
+            case Subtyping::Variance::Covariant:
+                *variance = Subtyping::Variance::Contravariant;
+                break;
+            case Subtyping::Variance::Contravariant:
+                *variance = Subtyping::Variance::Covariant;
+                break;
+        }
+    }
+
+    ~VarianceFlipper()
+    {
+        *variance = oldValue;
+    }
+};
+
+void SubtypingResult::andAlso(const SubtypingResult& other)
+{
+    isSubtype &= other.isSubtype;
+    // `|=` is intentional here, we want to preserve error related flags.
+    isErrorSuppressing |= other.isErrorSuppressing;
+    normalizationTooComplex |= other.normalizationTooComplex;
 }
 
-SubtypingGraph SubtypingGraph::or_(const SubtypingGraph& other)
+void SubtypingResult::orElse(const SubtypingResult& other)
 {
-    return SubtypingGraph{
-        isSubtype || other.isSubtype,
-        isErrorSuppressing || other.isErrorSuppressing,
-        normalizationTooComplex || other.normalizationTooComplex,
-    };
+    isSubtype |= other.isSubtype;
+    isErrorSuppressing |= other.isErrorSuppressing;
+    normalizationTooComplex |= other.normalizationTooComplex;
 }
 
-SubtypingGraph SubtypingGraph::and_(const std::vector<SubtypingGraph>& results)
+SubtypingResult SubtypingResult::all(const std::vector<SubtypingResult>& results)
 {
-    SubtypingGraph acc{true, false};
-    for (const SubtypingGraph& current : results)
-        acc = acc.and_(current);
+    SubtypingResult acc{true, false};
+    for (const SubtypingResult& current : results)
+        acc.andAlso(current);
     return acc;
 }
 
-SubtypingGraph SubtypingGraph::or_(const std::vector<SubtypingGraph>& results)
+SubtypingResult SubtypingResult::any(const std::vector<SubtypingResult>& results)
 {
-    SubtypingGraph acc{false, false};
-    for (const SubtypingGraph& current : results)
-        acc = acc.or_(current);
+    SubtypingResult acc{false, false};
+    for (const SubtypingResult& current : results)
+        acc.orElse(current);
     return acc;
 }
 
-SubtypingGraph Subtyping::isSubtype(TypeId subTy, TypeId superTy)
+SubtypingResult Subtyping::isSubtype(TypeId subTy, TypeId superTy)
+{
+    mappedGenerics.clear();
+    mappedGenericPacks.clear();
+
+    SubtypingResult result = isSubtype_(subTy, superTy);
+
+    for (const auto& [subTy, bounds]: mappedGenerics)
+    {
+        const auto& lb = bounds.lowerBound;
+        const auto& ub = bounds.upperBound;
+
+        TypeId lowerBound = makeAggregateType<UnionType>(lb, builtinTypes->neverType);
+        TypeId upperBound = makeAggregateType<IntersectionType>(ub, builtinTypes->unknownType);
+
+        result.andAlso(isSubtype_(lowerBound, upperBound));
+    }
+
+    return result;
+}
+
+SubtypingResult Subtyping::isSubtype(TypePackId subTp, TypePackId superTp)
+{
+    return isSubtype_(subTp, superTp);
+}
+
+namespace
+{
+struct SeenSetPopper
+{
+    Subtyping::SeenSet* seenTypes;
+    std::pair<TypeId, TypeId> pair;
+
+    SeenSetPopper(Subtyping::SeenSet* seenTypes, std::pair<TypeId, TypeId> pair)
+        : seenTypes(seenTypes)
+        , pair(pair)
+    {}
+
+    ~SeenSetPopper()
+    {
+        seenTypes->erase(pair);
+    }
+};
+}
+
+SubtypingResult Subtyping::isSubtype_(TypeId subTy, TypeId superTy)
 {
     subTy = follow(subTy);
     superTy = follow(superTy);
@@ -60,20 +131,25 @@ SubtypingGraph Subtyping::isSubtype(TypeId subTy, TypeId superTy)
     if (subTy == superTy)
         return {true};
 
+    std::pair<TypeId, TypeId> typePair{subTy, superTy};
+    if (!seenTypes.insert(typePair).second)
+        return {true};
+
+    SeenSetPopper ssp{&seenTypes, typePair};
 
     if (auto superUnion = get<UnionType>(superTy))
-        return isSubtype(subTy, superUnion);
+        return isSubtype_(subTy, superUnion);
     else if (auto subUnion = get<UnionType>(subTy))
-        return isSubtype(subUnion, superTy);
+        return isSubtype_(subUnion, superTy);
     else if (auto superIntersection = get<IntersectionType>(superTy))
-        return isSubtype(subTy, superIntersection);
+        return isSubtype_(subTy, superIntersection);
     else if (auto subIntersection = get<IntersectionType>(subTy))
     {
-        SubtypingGraph result = isSubtype(subIntersection, superTy);
+        SubtypingResult result = isSubtype_(subIntersection, superTy);
         if (result.isSubtype || result.isErrorSuppressing || result.normalizationTooComplex)
             return result;
         else
-            return isSubtype(normalizer->normalize(subTy), normalizer->normalize(superTy));
+            return isSubtype_(normalizer->normalize(subTy), normalizer->normalize(superTy));
     }
     else if (get<AnyType>(superTy))
         return {true}; // This is always true.
@@ -81,9 +157,11 @@ SubtypingGraph Subtyping::isSubtype(TypeId subTy, TypeId superTy)
     {
         // any = unknown | error, so we rewrite this to match.
         // As per TAPL: A | B <: T iff A <: T && B <: T
-        return isSubtype(builtinTypes->unknownType, superTy).and_(isSubtype(builtinTypes->errorType, superTy));
+        SubtypingResult result = isSubtype_(builtinTypes->unknownType, superTy);
+        result.andAlso(isSubtype_(builtinTypes->errorType, superTy));
+        return result;
     }
-    else if (auto superUnknown = get<UnknownType>(superTy))
+    else if (get<UnknownType>(superTy))
     {
         LUAU_ASSERT(!get<AnyType>(subTy)); // TODO: replace with ice.
         LUAU_ASSERT(!get<UnionType>(subTy)); // TODO: replace with ice.
@@ -98,19 +176,31 @@ SubtypingGraph Subtyping::isSubtype(TypeId subTy, TypeId superTy)
         return {false, true};
     else if (get<ErrorType>(subTy))
         return {false, true};
+    else if (auto subGeneric = get<GenericType>(subTy); subGeneric && variance == Variance::Covariant)
+    {
+        bool ok = bindGeneric(subTy, superTy);
+        return {ok};
+    }
+    else if (auto superGeneric = get<GenericType>(superTy); superGeneric && variance == Variance::Contravariant)
+    {
+        bool ok = bindGeneric(subTy, superTy);
+        return {ok};
+    }
     else if (auto p = get2<PrimitiveType, PrimitiveType>(subTy, superTy))
-        return isSubtype(p);
+        return isSubtype_(p);
     else if (auto p = get2<SingletonType, PrimitiveType>(subTy, superTy))
-        return isSubtype(p);
+        return isSubtype_(p);
     else if (auto p = get2<SingletonType, SingletonType>(subTy, superTy))
-        return isSubtype(p);
+        return isSubtype_(p);
     else if (auto p = get2<FunctionType, FunctionType>(subTy, superTy))
-        return isSubtype(p);
+        return isSubtype_(p);
+    else if (auto p = get2<TableType, TableType>(subTy, superTy))
+        return isSubtype_(p);
 
     return {false};
 }
 
-SubtypingGraph Subtyping::isSubtype(TypePackId subTp, TypePackId superTp)
+SubtypingResult Subtyping::isSubtype_(TypePackId subTp, TypePackId superTp)
 {
     subTp = follow(subTp);
     superTp = follow(superTp);
@@ -120,14 +210,17 @@ SubtypingGraph Subtyping::isSubtype(TypePackId subTp, TypePackId superTp)
 
     const size_t headSize = std::min(subHead.size(), superHead.size());
 
-    std::vector<SubtypingGraph> results;
+    std::vector<SubtypingResult> results;
     results.reserve(std::max(subHead.size(), superHead.size()) + 1);
+
+    if (subTp == superTp)
+        return {true};
 
     // Match head types pairwise
 
     for (size_t i = 0; i < headSize; ++i)
     {
-        results.push_back(isSubtype(subHead[i], superHead[i]));
+        results.push_back(isSubtype_(subHead[i], superHead[i]));
         if (!results.back().isSubtype)
             return {false};
     }
@@ -141,12 +234,40 @@ SubtypingGraph Subtyping::isSubtype(TypePackId subTp, TypePackId superTp)
             if (auto vt = get<VariadicTypePack>(*subTail))
             {
                 for (size_t i = headSize; i < superHead.size(); ++i)
+                    results.push_back(isSubtype_(vt->ty, superHead[i]));
+            }
+            else if (auto gt = get<GenericTypePack>(*subTail))
+            {
+                if (variance == Variance::Covariant)
                 {
-                    results.push_back(isSubtype(vt->ty, superHead[i]));
+                    // For any non-generic type T:
+                    //
+                    // <X>(X) -> () <: (T) -> ()
+
+                    // Possible optimization: If headSize == 0 then we can just use subTp as-is.
+                    std::vector<TypeId> headSlice(begin(superHead), end(superHead) + headSize);
+                    TypePackId superTailPack = arena->addTypePack(std::move(headSlice), superTail);
+
+                    if (TypePackId* other = mappedGenericPacks.find(*subTail))
+                        results.push_back(isSubtype_(*other, superTailPack));
+                    else
+                        mappedGenericPacks.try_insert(*subTail, superTailPack);
+
+                    // FIXME? Not a fan of the early return here.  It makes the
+                    // control flow harder to reason about.
+                    return SubtypingResult::all(results);
+                }
+                else
+                {
+                    // For any non-generic type T:
+                    //
+                    // (T) -> () </: <X>(X) -> ()
+                    //
+                    return {false};
                 }
             }
             else
-                LUAU_ASSERT(0); // TODO
+                unexpected(*subTail);
         }
         else
             return {false};
@@ -158,19 +279,42 @@ SubtypingGraph Subtyping::isSubtype(TypePackId subTp, TypePackId superTp)
             if (auto vt = get<VariadicTypePack>(*superTail))
             {
                 for (size_t i = headSize; i < subHead.size(); ++i)
+                    results.push_back(isSubtype_(subHead[i], vt->ty));
+            }
+            else if (auto gt = get<GenericTypePack>(*superTail))
+            {
+                if (variance == Variance::Contravariant)
                 {
-                    results.push_back(isSubtype(subHead[i], vt->ty));
+                    // For any non-generic type T:
+                    //
+                    // <X...>(X...) -> () <: (T) -> ()
+
+                    // Possible optimization: If headSize == 0 then we can just use subTp as-is.
+                    std::vector<TypeId> headSlice(begin(subHead), end(subHead) + headSize);
+                    TypePackId subTailPack = arena->addTypePack(std::move(headSlice), subTail);
+
+                    if (TypePackId* other = mappedGenericPacks.find(*superTail))
+                        results.push_back(isSubtype_(*other, subTailPack));
+                    else
+                        mappedGenericPacks.try_insert(*superTail, subTailPack);
+
+                    // FIXME? Not a fan of the early return here.  It makes the
+                    // control flow harder to reason about.
+                    return SubtypingResult::all(results);
+                }
+                else
+                {
+                    // For any non-generic type T:
+                    //
+                    // () -> T </: <X...>() -> X...
+                    return {false};
                 }
             }
             else
-                LUAU_ASSERT(0); // TODO
+                unexpected(*superTail);
         }
         else
             return {false};
-    }
-    else
-    {
-        // subHead and superHead are the same size.  Nothing more must be done.
     }
 
     // Handle tails
@@ -179,10 +323,43 @@ SubtypingGraph Subtyping::isSubtype(TypePackId subTp, TypePackId superTp)
     {
         if (auto p = get2<VariadicTypePack, VariadicTypePack>(*subTail, *superTail))
         {
-            results.push_back(isSubtype(p.first->ty, p.second->ty));
+            results.push_back(isSubtype_(p.first->ty, p.second->ty));
+        }
+        else if (auto p = get2<GenericTypePack, GenericTypePack>(*subTail, *superTail))
+        {
+            bool ok = bindGeneric(*subTail, *superTail);
+            results.push_back({ok});
+        }
+        else if (get2<VariadicTypePack, GenericTypePack>(*subTail, *superTail))
+        {
+            if (variance == Variance::Contravariant)
+            {
+                // <A...>(A...) -> number <: (...number) -> number
+                bool ok = bindGeneric(*subTail, *superTail);
+                results.push_back({ok});
+            }
+            else
+            {
+                // (number) -> ...number </: <A...>(number) -> A...
+                results.push_back({false});
+            }
+        }
+        else if (get2<GenericTypePack, VariadicTypePack>(*subTail, *superTail))
+        {
+            if (variance == Variance::Contravariant)
+            {
+                // (...number) -> number </: <A...>(A...) -> number
+                results.push_back({false});
+            }
+            else
+            {
+                // <A...>() -> A... <: () -> ...number
+                bool ok = bindGeneric(*subTail, *superTail);
+                results.push_back({ok});
+            }
         }
         else
-            LUAU_ASSERT(0); // TODO
+            iceReporter->ice(format("Subtyping::isSubtype got unexpected type packs %s and %s", toString(*subTail).c_str(), toString(*superTail).c_str()));
     }
     else if (subTail)
     {
@@ -190,8 +367,13 @@ SubtypingGraph Subtyping::isSubtype(TypePackId subTp, TypePackId superTp)
         {
             return {false};
         }
-
-        LUAU_ASSERT(0); // TODO
+        else if (get<GenericTypePack>(*subTail))
+        {
+            bool ok = bindGeneric(*subTail, builtinTypes->emptyTypePack);
+            return {ok};
+        }
+        else
+            unexpected(*subTail);
     }
     else if (superTail)
     {
@@ -207,17 +389,27 @@ SubtypingGraph Subtyping::isSubtype(TypePackId subTp, TypePackId superTp)
              * All variadic type packs are therefore supertypes of the empty type pack.
              */
         }
+        else if (get<GenericTypePack>(*superTail))
+        {
+            if (variance == Variance::Contravariant)
+            {
+                bool ok = bindGeneric(builtinTypes->emptyTypePack, *superTail);
+                results.push_back({ok});
+            }
+            else
+                results.push_back({false});
+        }
         else
             LUAU_ASSERT(0); // TODO
     }
 
-    return SubtypingGraph::and_(results);
+    return SubtypingResult::all(results);
 }
 
 template<typename SubTy, typename SuperTy>
-SubtypingGraph Subtyping::isSubtype(const TryPair<const SubTy*, const SuperTy*>& pair)
+SubtypingResult Subtyping::isSubtype_(const TryPair<const SubTy*, const SuperTy*>& pair)
 {
-    return isSubtype(pair.first, pair.second);
+    return isSubtype_(pair.first, pair.second);
 }
 
 /*
@@ -251,49 +443,49 @@ SubtypingGraph Subtyping::isSubtype(const TryPair<const SubTy*, const SuperTy*>&
  * other just asks for boolean ~ 'b. We can dispatch this and only commit
  * boolean ~ 'b.  This constraint does not teach us anything about 'a.
  */
-SubtypingGraph Subtyping::isSubtype(TypeId subTy, const UnionType* superUnion)
+SubtypingResult Subtyping::isSubtype_(TypeId subTy, const UnionType* superUnion)
 {
     // As per TAPL: T <: A | B iff T <: A || T <: B
-    std::vector<SubtypingGraph> subtypings;
+    std::vector<SubtypingResult> subtypings;
     for (TypeId ty : superUnion)
-        subtypings.push_back(isSubtype(subTy, ty));
-    return SubtypingGraph::or_(subtypings);
+        subtypings.push_back(isSubtype_(subTy, ty));
+    return SubtypingResult::any(subtypings);
 }
 
-SubtypingGraph Subtyping::isSubtype(const UnionType* subUnion, TypeId superTy)
+SubtypingResult Subtyping::isSubtype_(const UnionType* subUnion, TypeId superTy)
 {
     // As per TAPL: A | B <: T iff A <: T && B <: T
-    std::vector<SubtypingGraph> subtypings;
+    std::vector<SubtypingResult> subtypings;
     for (TypeId ty : subUnion)
-        subtypings.push_back(isSubtype(ty, superTy));
-    return SubtypingGraph::and_(subtypings);
+        subtypings.push_back(isSubtype_(ty, superTy));
+    return SubtypingResult::all(subtypings);
 }
 
-SubtypingGraph Subtyping::isSubtype(TypeId subTy, const IntersectionType* superIntersection)
+SubtypingResult Subtyping::isSubtype_(TypeId subTy, const IntersectionType* superIntersection)
 {
     // As per TAPL: T <: A & B iff T <: A && T <: B
-    std::vector<SubtypingGraph> subtypings;
+    std::vector<SubtypingResult> subtypings;
     for (TypeId ty : superIntersection)
-        subtypings.push_back(isSubtype(subTy, ty));
-    return SubtypingGraph::and_(subtypings);
+        subtypings.push_back(isSubtype_(subTy, ty));
+    return SubtypingResult::all(subtypings);
 }
 
-SubtypingGraph Subtyping::isSubtype(const IntersectionType* subIntersection, TypeId superTy)
+SubtypingResult Subtyping::isSubtype_(const IntersectionType* subIntersection, TypeId superTy)
 {
     // TODO: Semantic subtyping here.
     // As per TAPL: A & B <: T iff A <: T || B <: T
-    std::vector<SubtypingGraph> subtypings;
+    std::vector<SubtypingResult> subtypings;
     for (TypeId ty : subIntersection)
-        subtypings.push_back(isSubtype(ty, superTy));
-    return SubtypingGraph::or_(subtypings);
+        subtypings.push_back(isSubtype_(ty, superTy));
+    return SubtypingResult::any(subtypings);
 }
 
-SubtypingGraph Subtyping::isSubtype(const PrimitiveType* subPrim, const PrimitiveType* superPrim)
+SubtypingResult Subtyping::isSubtype_(const PrimitiveType* subPrim, const PrimitiveType* superPrim)
 {
     return {subPrim->type == superPrim->type};
 }
 
-SubtypingGraph Subtyping::isSubtype(const SingletonType* subSingleton, const PrimitiveType* superPrim)
+SubtypingResult Subtyping::isSubtype_(const SingletonType* subSingleton, const PrimitiveType* superPrim)
 {
     if (get<StringSingleton>(subSingleton) && superPrim->type == PrimitiveType::String)
         return {true};
@@ -303,42 +495,123 @@ SubtypingGraph Subtyping::isSubtype(const SingletonType* subSingleton, const Pri
         return {false};
 }
 
-SubtypingGraph Subtyping::isSubtype(const SingletonType* subSingleton, const SingletonType* superSingleton)
+SubtypingResult Subtyping::isSubtype_(const SingletonType* subSingleton, const SingletonType* superSingleton)
 {
     return {*subSingleton == *superSingleton};
 }
 
-SubtypingGraph Subtyping::isSubtype(const FunctionType* subFunction, const FunctionType* superFunction)
+SubtypingResult Subtyping::isSubtype_(const TableType* subTable, const TableType* superTable)
 {
-    SubtypingGraph argResult = isSubtype(superFunction->argTypes, subFunction->argTypes);
-    SubtypingGraph retResult = isSubtype(subFunction->retTypes, superFunction->retTypes);
+    SubtypingResult result{true};
 
-    return argResult.and_(retResult);
+    for (const auto& [name, prop]: superTable->props)
+    {
+        auto it = subTable->props.find(name);
+        if (it != subTable->props.end())
+        {
+            // Table properties are invariant
+            result.andAlso(isSubtype(it->second.type(), prop.type()));
+            result.andAlso(isSubtype(prop.type(), it->second.type()));
+        }
+        else
+            return SubtypingResult{false};
+    }
+
+    return result;
 }
 
-SubtypingGraph Subtyping::isSubtype(const NormalizedType* subNorm, const NormalizedType* superNorm)
+SubtypingResult Subtyping::isSubtype_(const FunctionType* subFunction, const FunctionType* superFunction)
+{
+    SubtypingResult result;
+    {
+        VarianceFlipper vf{&variance};
+        result.orElse(isSubtype_(superFunction->argTypes, subFunction->argTypes));
+    }
+
+    result.andAlso(isSubtype_(subFunction->retTypes, superFunction->retTypes));
+
+    return result;
+}
+
+SubtypingResult Subtyping::isSubtype_(const NormalizedType* subNorm, const NormalizedType* superNorm)
 {
     if (!subNorm || !superNorm)
         return {false, true, true};
 
-    SubtypingGraph result{true};
-    result = result.and_(isSubtype(subNorm->tops, superNorm->tops));
-    result = result.and_(isSubtype(subNorm->booleans, superNorm->booleans));
-    // isSubtype(subNorm->classes, superNorm->classes);
-    // isSubtype(subNorm->classes, superNorm->tables);
-    result = result.and_(isSubtype(subNorm->errors, superNorm->errors));
-    result = result.and_(isSubtype(subNorm->nils, superNorm->nils));
-    result = result.and_(isSubtype(subNorm->numbers, superNorm->numbers));
+    SubtypingResult result = isSubtype_(subNorm->tops, superNorm->tops);
+    result.andAlso(isSubtype_(subNorm->booleans, superNorm->booleans));
+    // isSubtype_(subNorm->classes, superNorm->classes);
+    // isSubtype_(subNorm->classes, superNorm->tables);
+    result.andAlso(isSubtype_(subNorm->errors, superNorm->errors));
+    result.andAlso(isSubtype_(subNorm->nils, superNorm->nils));
+    result.andAlso(isSubtype_(subNorm->numbers, superNorm->numbers));
     result.isSubtype &= Luau::isSubtype(subNorm->strings, superNorm->strings);
-    // isSubtype(subNorm->strings, superNorm->tables);
-    result = result.and_(isSubtype(subNorm->threads, superNorm->threads));
-    // isSubtype(subNorm->tables, superNorm->tables);
-    // isSubtype(subNorm->tables, superNorm->strings);
-    // isSubtype(subNorm->tables, superNorm->classes);
-    // isSubtype(subNorm->functions, superNorm->functions);
-    // isSubtype(subNorm->tyvars, superNorm->tyvars);
+    // isSubtype_(subNorm->strings, superNorm->tables);
+    result.andAlso(isSubtype_(subNorm->threads, superNorm->threads));
+    // isSubtype_(subNorm->tables, superNorm->tables);
+    // isSubtype_(subNorm->tables, superNorm->strings);
+    // isSubtype_(subNorm->tables, superNorm->classes);
+    // isSubtype_(subNorm->functions, superNorm->functions);
+    // isSubtype_(subNorm->tyvars, superNorm->tyvars);
 
     return result;
+}
+
+bool Subtyping::bindGeneric(TypeId subTy, TypeId superTy)
+{
+    if (variance == Variance::Covariant)
+    {
+        if (!get<GenericType>(subTy))
+            return false;
+
+        mappedGenerics[subTy].upperBound.insert(superTy);
+    }
+    else
+    {
+        if (!get<GenericType>(superTy))
+            return false;
+
+        mappedGenerics[superTy].lowerBound.insert(subTy);
+    }
+
+    return true;
+}
+
+/*
+ * If, when performing a subtyping test, we encounter a generic on the left
+ * side, it is permissible to tentatively bind that generic to the right side
+ * type.
+ */
+bool Subtyping::bindGeneric(TypePackId subTp, TypePackId superTp)
+{
+    if (variance == Variance::Contravariant)
+        std::swap(superTp, subTp);
+
+    if (!get<GenericTypePack>(subTp))
+        return false;
+
+    if (TypePackId* m = mappedGenericPacks.find(subTp))
+        return *m == superTp;
+
+    mappedGenericPacks[subTp] = superTp;
+
+    return true;
+}
+
+template <typename T, typename Container>
+TypeId Subtyping::makeAggregateType(const Container& container, TypeId orElse)
+{
+    if (container.empty())
+        return orElse;
+    else if (container.size() == 1)
+        return *begin(container);
+    else
+        return arena->addType(T{std::vector<TypeId>(begin(container), end(container))});
+}
+
+void Subtyping::unexpected(TypePackId tp)
+{
+    iceReporter->ice(format("Unexpected type pack %s", toString(tp).c_str()));
 }
 
 } // namespace Luau

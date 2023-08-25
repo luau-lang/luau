@@ -225,9 +225,10 @@ void UnwindBuilderDwarf2::prologueA64(uint32_t prologueSize, uint32_t stackSize,
     }
 }
 
-void UnwindBuilderDwarf2::prologueX64(uint32_t prologueSize, uint32_t stackSize, bool setupFrame, std::initializer_list<X64::RegisterX64> regs)
+void UnwindBuilderDwarf2::prologueX64(uint32_t prologueSize, uint32_t stackSize, bool setupFrame, std::initializer_list<X64::RegisterX64> gpr,
+    const std::vector<X64::RegisterX64>& simd)
 {
-    LUAU_ASSERT(stackSize > 0 && stackSize <= 128 && stackSize % 8 == 0);
+    LUAU_ASSERT(stackSize > 0 && stackSize < 4096 && stackSize % 8 == 0);
 
     unsigned int stackOffset = 8; // Return address was pushed by calling the function
     unsigned int prologueOffset = 0;
@@ -247,7 +248,7 @@ void UnwindBuilderDwarf2::prologueX64(uint32_t prologueSize, uint32_t stackSize,
     }
 
     // push reg
-    for (X64::RegisterX64 reg : regs)
+    for (X64::RegisterX64 reg : gpr)
     {
         LUAU_ASSERT(reg.size == X64::SizeX64::qword);
 
@@ -258,9 +259,11 @@ void UnwindBuilderDwarf2::prologueX64(uint32_t prologueSize, uint32_t stackSize,
         pos = defineSavedRegisterLocation(pos, regIndexToDwRegX64[reg.index], stackOffset);
     }
 
+    LUAU_ASSERT(simd.empty());
+
     // sub rsp, stackSize
     stackOffset += stackSize;
-    prologueOffset += 4;
+    prologueOffset += stackSize >= 128 ? 7 : 4;
     pos = advanceLocation(pos, 4);
     pos = defineCfaExpressionOffset(pos, stackOffset);
 

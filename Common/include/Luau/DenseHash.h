@@ -282,6 +282,13 @@ public:
     class const_iterator
     {
     public:
+        using value_type = Item;
+        using reference = Item&;
+        using pointer = Item*;
+        using iterator = pointer;
+        using difference_type = size_t;
+        using iterator_category = std::input_iterator_tag;
+
         const_iterator()
             : set(0)
             , index(0)

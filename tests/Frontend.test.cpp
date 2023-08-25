@@ -446,8 +446,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface_longer")
 
 TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface_exports")
 {
-    ScopedFastFlag luauFixCyclicModuleExports{"LuauFixCyclicModuleExports", true};
-
     fileResolver.source["game/A"] = R"(
 local b = require(game.B)
 export type atype = { x: b.btype }

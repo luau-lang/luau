@@ -18,6 +18,16 @@ enum CodeGenFlags
     CodeGen_OnlyNativeModules = 1 << 0,
 };
 
+enum class CodeGenCompilationResult
+{
+    Success,          // Successfully generated code for at least one function
+    NothingToCompile, // There were no new functions to compile
+
+    CodeGenNotInitialized, // Native codegen system is not initialized
+    CodeGenFailed,         // Native codegen failed due to an internal compiler error
+    AllocationFailed,      // Native codegen failed due to an allocation error
+};
+
 struct CompilationStats
 {
     size_t bytecodeSizeBytes = 0;
@@ -36,7 +46,7 @@ void create(lua_State* L, AllocationCallback* allocationCallback, void* allocati
 void create(lua_State* L);
 
 // Builds target function and all inner functions
-void compile(lua_State* L, int idx, unsigned int flags = 0, CompilationStats* stats = nullptr);
+CodeGenCompilationResult compile(lua_State* L, int idx, unsigned int flags = 0, CompilationStats* stats = nullptr);
 
 using AnnotatorFn = void (*)(void* context, std::string& result, int fid, int instpos);
 
