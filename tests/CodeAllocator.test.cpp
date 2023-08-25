@@ -412,6 +412,10 @@ static void obscureThrowCase(int64_t (*f)(int64_t, void (*)(int64_t)))
 
 TEST_CASE("GeneratedCodeExecutionWithThrowX64Simd")
 {
+    // This test requires AVX
+    if (!Luau::CodeGen::isSupported())
+        return;
+
     using namespace X64;
 
     AssemblyBuilderX64 build(/* logText= */ false);
