@@ -111,7 +111,6 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::CONCAT:
     case IrCmd::GET_UPVALUE:
     case IrCmd::SET_UPVALUE:
-    case IrCmd::PREPARE_FORN:
     case IrCmd::CHECK_TAG:
     case IrCmd::CHECK_TRUTHY:
     case IrCmd::CHECK_READONLY:

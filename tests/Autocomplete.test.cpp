@@ -80,7 +80,7 @@ struct ACFixtureImpl : BaseType
         {
             if (prevChar == '@')
             {
-                LUAU_ASSERT("Illegal marker character" && c >= '0' && c <= '9');
+                LUAU_ASSERT("Illegal marker character" && ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z')));
                 LUAU_ASSERT("Duplicate marker found" && markerPosition.count(c) == 0);
                 markerPosition.insert(std::pair{c, curPos});
             }
@@ -126,7 +126,6 @@ struct ACFixtureImpl : BaseType
         LUAU_ASSERT(i != markerPosition.end());
         return i->second;
     }
-    ScopedFastFlag flag{"LuauAutocompleteHideSelfArg", true};
     // Maps a marker character (0-9 inclusive) to a position in the source code.
     std::map<char, Position> markerPosition;
 };
@@ -3081,6 +3080,86 @@ TEST_CASE_FIXTURE(ACFixture, "string_singleton_as_table_key")
 
     CHECK(ac.entryMap.count("\"up\""));
     CHECK(ac.entryMap.count("\"down\""));
+}
+
+// https://github.com/Roblox/luau/issues/858
+TEST_CASE_FIXTURE(ACFixture, "string_singleton_in_if_statement")
+{
+    ScopedFastFlag sff{"LuauAutocompleteStringLiteralBounds", true};
+
+    check(R"(
+        --!strict
+
+        type Direction = "left" | "right"
+
+        local dir: Direction = "left"
+
+        if dir == @1"@2"@3 then end
+        local a: {[Direction]: boolean} = {[@4"@5"@6]}
+
+        if dir == @7`@8`@9 then end
+        local a: {[Direction]: boolean} = {[@A`@B`@C]}
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
+
+    ac = autocomplete('2');
+
+    CHECK(ac.entryMap.count("left"));
+    CHECK(ac.entryMap.count("right"));
+
+    ac = autocomplete('3');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
+
+    ac = autocomplete('4');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
+
+    ac = autocomplete('5');
+
+    CHECK(ac.entryMap.count("left"));
+    CHECK(ac.entryMap.count("right"));
+
+    ac = autocomplete('6');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
+
+    ac = autocomplete('7');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
+
+    ac = autocomplete('8');
+
+    CHECK(ac.entryMap.count("left"));
+    CHECK(ac.entryMap.count("right"));
+
+    ac = autocomplete('9');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
+
+    ac = autocomplete('A');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
+
+    ac = autocomplete('B');
+
+    CHECK(ac.entryMap.count("left"));
+    CHECK(ac.entryMap.count("right"));
+
+    ac = autocomplete('C');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
 }
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_equality")

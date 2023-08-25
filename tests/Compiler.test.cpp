@@ -63,6 +63,35 @@ static std::string compileTypeTable(const char* source)
 
 TEST_SUITE_BEGIN("Compiler");
 
+TEST_CASE("BytecodeIsStable")
+{
+    // As noted in Bytecode.h, all enums used for bytecode storage and serialization are order-sensitive
+    // Adding entries in the middle will typically pass the tests but break compatibility
+    // This test codifies this by validating that in each enum, the last (or close-to-last) entry has a fixed encoding
+
+    // This test will need to get occasionally revised to "move" the checked enum entries forward as we ship newer versions
+    // When doing so, please add *new* checks for more recent bytecode versions and keep existing checks in place.
+
+    // Bytecode ops (serialized & in-memory)
+    CHECK(LOP_FASTCALL2K == 75); // bytecode v1
+    CHECK(LOP_JUMPXEQKS == 80); // bytecode v3
+
+    // Bytecode fastcall ids (serialized & in-memory)
+    // Note: these aren't strictly bound to specific bytecode versions, but must monotonically increase to keep backwards compat
+    CHECK(LBF_VECTOR == 54);
+    CHECK(LBF_TOSTRING == 63);
+
+    // Bytecode capture type (serialized & in-memory)
+    CHECK(LCT_UPVAL == 2); // bytecode v1
+
+    // Bytecode constants (serialized)
+    CHECK(LBC_CONSTANT_CLOSURE == 6); // bytecode v1
+
+    // Bytecode type encoding (serialized & in-memory)
+    // Note: these *can* change retroactively *if* type version is bumped, but probably shouldn't
+    LUAU_ASSERT(LBC_TYPE_VECTOR == 8); // type version 1
+}
+
 TEST_CASE("CompileToBytecode")
 {
     Luau::BytecodeBuilder bcb;
@@ -5085,7 +5114,7 @@ RETURN R1 1
 )");
 }
 
-TEST_CASE("InlineBasicProhibited")
+TEST_CASE("InlineProhibited")
 {
     // we can't inline variadic functions
     CHECK_EQ("\n" + compileFunction(R"(
@@ -5121,6 +5150,66 @@ MOVE R1 R0
 CALL R1 0 1
 GETIMPORT R2 2 [getfenv]
 CALL R2 0 0
+RETURN R1 1
+)");
+}
+
+TEST_CASE("InlineProhibitedRecursion")
+{
+    // we can't inline recursive invocations of functions in the functions
+    // this is actually profitable in certain cases, but it complicates the compiler as it means a local has multiple registers/values
+
+    // in this example, inlining is blocked because we're compiling fact() and we don't yet have the cost model / profitability data for fact()
+    CHECK_EQ("\n" + compileFunction(R"(
+local function fact(n)
+    return if n <= 1 then 1 else fact(n-1)*n
+end
+
+return fact
+)",
+                        0, 2),
+        R"(
+LOADN R2 1
+JUMPIFNOTLE R0 R2 L0
+LOADN R1 1
+RETURN R1 1
+L0: GETUPVAL R2 0
+SUBK R3 R0 K0 [1]
+CALL R2 1 1
+MUL R1 R2 R0
+RETURN R1 1
+)");
+
+    // in this example, inlining of fact() succeeds, but the nested call to fact() fails since fact is already on the inline stack
+    CHECK_EQ("\n" + compileFunction(R"(
+local function fact(n)
+    return if n <= 1 then 1 else fact(n-1)*n
+end
+
+local function factsafe(n)
+    assert(n >= 1)
+    return fact(n)
+end
+
+return factsafe
+)",
+                        1, 2),
+        R"(
+LOADN R3 1
+JUMPIFLE R3 R0 L0
+LOADB R2 0 +1
+L0: LOADB R2 1
+L1: FASTCALL1 1 R2 L2
+GETIMPORT R1 1 [assert]
+CALL R1 1 0
+L2: LOADN R2 1
+JUMPIFNOTLE R0 R2 L3
+LOADN R1 1
+RETURN R1 1
+L3: GETUPVAL R2 0
+SUBK R3 R0 K2 [1]
+CALL R2 1 1
+MUL R1 R2 R0
 RETURN R1 1
 )");
 }
@@ -7252,10 +7341,31 @@ end
 )");
 }
 
+TEST_CASE("TypeUnionIntersection")
+{
+    CHECK_EQ("\n" + compileTypeTable(R"(
+function myfunc(test: string | nil, foo: nil)
+end
+
+function myfunc2(test: string & nil, foo: nil)
+end
+
+function myfunc3(test: string | number, foo: nil)
+end
+
+function myfunc4(test: string & number, foo: nil)
+end
+)"),
+        R"(
+0: function(string?, nil)
+1: function(any, nil)
+2: function(any, nil)
+3: function(any, nil)
+)");
+}
+
 TEST_CASE("BuiltinFoldMathK")
 {
-    ScopedFastFlag sff("LuauCompileFoldMathK", true);
-
     // we can fold math.pi at optimization level 2
     CHECK_EQ("\n" + compileFunction(R"(
 function test()

@@ -17,6 +17,7 @@ static const RegisterX64 kGprAllocOrder[] = {rax, rdx, rcx, rbx, rsi, rdi, r8, r
 IrRegAllocX64::IrRegAllocX64(AssemblyBuilderX64& build, IrFunction& function)
     : build(build)
     , function(function)
+    , usableXmmRegCount(getXmmRegisterCount(build.abi))
 {
     freeGprMap.fill(true);
     gprInstUsers.fill(kInvalidInstIdx);
@@ -28,7 +29,7 @@ RegisterX64 IrRegAllocX64::allocReg(SizeX64 size, uint32_t instIdx)
 {
     if (size == SizeX64::xmmword)
     {
-        for (size_t i = 0; i < freeXmmMap.size(); ++i)
+        for (size_t i = 0; i < usableXmmRegCount; ++i)
         {
             if (freeXmmMap[i])
             {

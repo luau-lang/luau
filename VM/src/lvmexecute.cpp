@@ -132,7 +132,7 @@
 #endif
 
 // Does VM support native execution via ExecutionCallbacks? We mostly assume it does but keep the define to make it easy to quantify the cost.
-#define VM_HAS_NATIVE LUA_CUSTOM_EXECUTION
+#define VM_HAS_NATIVE 1
 
 LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
 {
@@ -2380,7 +2380,7 @@ reentry:
                 else
                     goto exit;
 #else
-                LUAU_ASSERT(!"Opcode is only valid when LUA_CUSTOM_EXECUTION is defined");
+                LUAU_ASSERT(!"Opcode is only valid when VM_HAS_NATIVE is defined");
                 LUAU_UNREACHABLE();
 #endif
             }

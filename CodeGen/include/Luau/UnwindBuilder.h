@@ -5,6 +5,7 @@
 #include "Luau/RegisterX64.h"
 
 #include <initializer_list>
+#include <vector>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -48,7 +49,8 @@ public:
     //     mov rbp, rsp
     //   push reg in the order specified in regs
     //   sub rsp, stackSize
-    virtual void prologueX64(uint32_t prologueSize, uint32_t stackSize, bool setupFrame, std::initializer_list<X64::RegisterX64> regs) = 0;
+    virtual void prologueX64(uint32_t prologueSize, uint32_t stackSize, bool setupFrame, std::initializer_list<X64::RegisterX64> gpr,
+        const std::vector<X64::RegisterX64>& simd) = 0;
 
     virtual size_t getSize() const = 0;
     virtual size_t getFunctionCount() const = 0;

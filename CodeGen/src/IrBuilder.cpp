@@ -373,7 +373,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstDupTable(*this, pc, i);
         break;
     case LOP_SETLIST:
-        inst(IrCmd::SETLIST, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), constInt(LUAU_INSN_C(*pc) - 1), constUint(pc[1]));
+        inst(IrCmd::SETLIST, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), constInt(LUAU_INSN_C(*pc) - 1), constUint(pc[1]), undef());
         break;
     case LOP_GETUPVAL:
         translateInstGetUpval(*this, pc, i);

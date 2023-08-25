@@ -4,16 +4,18 @@
 #include "Fixture.h"
 
 #include "Luau/Subtyping.h"
+#include "Luau/TypePack.h"
 
 using namespace Luau;
 
 struct SubtypeFixture : Fixture
 {
     TypeArena arena;
-    InternalErrorReporter ice;
+    InternalErrorReporter iceReporter;
     UnifierSharedState sharedState{&ice};
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    Subtyping subtyping{builtinTypes, NotNull{&normalizer}};
+
+    Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&iceReporter}};
 
     TypePackId pack(std::initializer_list<TypeId> tys)
     {
@@ -45,7 +47,28 @@ struct SubtypeFixture : Fixture
         return arena.addType(FunctionType{pack(argHead, std::move(argTail)), pack(retHead, std::move(retTail))});
     }
 
-    SubtypingGraph isSubtype(TypeId subTy, TypeId superTy)
+    TypeId tbl(TableType::Props&& props)
+    {
+        return arena.addType(TableType{std::move(props), std::nullopt, {}, TableState::Sealed});
+    }
+
+    TypeId cyclicTable(std::function<void(TypeId, TableType*)>&& cb)
+    {
+        TypeId res = arena.addType(GenericType{});
+        TableType tt{};
+        cb(res, &tt);
+        emplaceType<TableType>(asMutable(res), std::move(tt));
+        return res;
+    }
+
+    TypeId genericT = arena.addType(GenericType{"T"});
+    TypeId genericU = arena.addType(GenericType{"U"});
+
+    TypePackId genericAs = arena.addTypePack(GenericTypePack{"A"});
+    TypePackId genericBs = arena.addTypePack(GenericTypePack{"B"});
+    TypePackId genericCs = arena.addTypePack(GenericTypePack{"C"});
+
+    SubtypingResult isSubtype(TypeId subTy, TypeId superTy)
     {
         return subtyping.isSubtype(subTy, superTy);
     }
@@ -57,7 +80,16 @@ struct SubtypeFixture : Fixture
     TypeId helloOrWorldType = arena.addType(UnionType{{helloType, worldType}});
     TypeId trueOrFalseType = arena.addType(UnionType{{builtinTypes->trueType, builtinTypes->falseType}});
 
+    // "hello" | "hello"
+    TypeId helloOrHelloType = arena.addType(UnionType{{helloType, helloType}});
+
+    // () -> ()
+    const TypeId nothingToNothingType = fn({}, {});
+
+    // ("hello") -> "world"
     TypeId helloAndWorldType = arena.addType(IntersectionType{{helloType, worldType}});
+
+    // (boolean) -> true
     TypeId booleanAndTrueType = arena.addType(IntersectionType{{builtinTypes->booleanType, builtinTypes->trueType}});
 
     // (number) -> string
@@ -70,6 +102,24 @@ struct SubtypeFixture : Fixture
     const TypeId unknownToStringType = fn(
         {builtinTypes->unknownType},
         {builtinTypes->stringType}
+    );
+
+    // (number) -> ()
+    const TypeId numberToNothingType = fn(
+        {builtinTypes->numberType},
+        {}
+    );
+
+    // () -> number
+    const TypeId nothingToNumberType = fn(
+        {},
+        {builtinTypes->numberType}
+    );
+
+    // (number) -> number
+    const TypeId numberToNumberType = fn(
+        {builtinTypes->numberType},
+        {builtinTypes->numberType}
     );
 
     // (number) -> unknown
@@ -120,6 +170,83 @@ struct SubtypeFixture : Fixture
         {builtinTypes->stringType}
     );
 
+    // (...number) -> number
+    const TypeId numbersToNumberType = arena.addType(FunctionType{
+        arena.addTypePack(VariadicTypePack{builtinTypes->numberType}),
+        arena.addTypePack({builtinTypes->numberType})
+    });
+
+    // <T>(T) -> ()
+    const TypeId genericTToNothingType = arena.addType(FunctionType{
+        {genericT},
+        {},
+        arena.addTypePack({genericT}),
+        builtinTypes->emptyTypePack
+    });
+
+    // <T>(T) -> T
+    const TypeId genericTToTType = arena.addType(FunctionType{
+        {genericT},
+        {},
+        arena.addTypePack({genericT}),
+        arena.addTypePack({genericT})
+    });
+
+    // <U>(U) -> ()
+    const TypeId genericUToNothingType = arena.addType(FunctionType{
+        {genericU},
+        {},
+        arena.addTypePack({genericU}),
+        builtinTypes->emptyTypePack
+    });
+
+    // <T>() -> T
+    const TypeId genericNothingToTType = arena.addType(FunctionType{
+        {genericT},
+        {},
+        builtinTypes->emptyTypePack,
+        arena.addTypePack({genericT})
+    });
+
+    // <A...>(A...) -> A...
+    const TypeId genericAsToAsType = arena.addType(FunctionType{
+        {},
+        {genericAs},
+        genericAs,
+        genericAs
+    });
+
+    // <A...>(A...) -> number
+    const TypeId genericAsToNumberType = arena.addType(FunctionType{
+        {},
+        {genericAs},
+        genericAs,
+        arena.addTypePack({builtinTypes->numberType})
+    });
+
+    // <B...>(B...) -> B...
+    const TypeId genericBsToBsType = arena.addType(FunctionType{
+        {},
+        {genericBs},
+        genericBs,
+        genericBs
+    });
+
+    // <B..., C...>(B...) -> C...
+    const TypeId genericBsToCsType = arena.addType(FunctionType{
+        {},
+        {genericBs, genericCs},
+        genericBs,
+        genericCs
+    });
+
+    // <A...>() -> A...
+    const TypeId genericNothingToAsType = arena.addType(FunctionType{
+        {},
+        {genericAs},
+        builtinTypes->emptyTypePack,
+        genericAs
+    });
 };
 
 #define CHECK_IS_SUBTYPE(left, right) \
@@ -127,7 +254,7 @@ struct SubtypeFixture : Fixture
     { \
         const auto& leftTy = (left); \
         const auto& rightTy = (right); \
-        SubtypingGraph result = isSubtype(leftTy, rightTy); \
+        SubtypingResult result = isSubtype(leftTy, rightTy); \
         CHECK_MESSAGE(result.isSubtype, "Expected " << leftTy << " <: " << rightTy); \
     } while (0)
 
@@ -136,7 +263,7 @@ struct SubtypeFixture : Fixture
     { \
         const auto& leftTy = (left); \
         const auto& rightTy = (right); \
-        SubtypingGraph result = isSubtype(leftTy, rightTy); \
+        SubtypingResult result = isSubtype(leftTy, rightTy); \
         CHECK_MESSAGE(!result.isSubtype, "Expected " << leftTy << " </: " << rightTy); \
     } while (0)
 
@@ -145,7 +272,7 @@ struct SubtypeFixture : Fixture
     { \
         const auto& leftTy = (left); \
         const auto& rightTy = (right); \
-        SubtypingGraph result = isSubtype(leftTy, rightTy); \
+        SubtypingResult result = isSubtype(leftTy, rightTy); \
         CHECK_MESSAGE(result.isErrorSuppressing, "Expected " << leftTy << " to error-suppress " << rightTy); \
     } while (0)
 
@@ -154,7 +281,7 @@ struct SubtypeFixture : Fixture
     { \
         const auto& leftTy = (left); \
         const auto& rightTy = (right); \
-        SubtypingGraph result = isSubtype(leftTy, rightTy); \
+        SubtypingResult result = isSubtype(leftTy, rightTy); \
         CHECK_MESSAGE(!result.isErrorSuppressing, "Expected " << leftTy << " to error-suppress " << rightTy); \
     } while (0)
 
@@ -169,7 +296,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "number <: any")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "any <!: unknown")
 {
-    SubtypingGraph result = isSubtype(builtinTypes->anyType, builtinTypes->unknownType);
+    SubtypingResult result = isSubtype(builtinTypes->anyType, builtinTypes->unknownType);
     CHECK(!result.isSubtype);
     CHECK(result.isErrorSuppressing);
 }
@@ -242,6 +369,11 @@ TEST_CASE_FIXTURE(SubtypeFixture, "true | false <: true | false")
 TEST_CASE_FIXTURE(SubtypeFixture, "\"hello\" | \"world\" <: number")
 {
     CHECK_IS_NOT_SUBTYPE(helloOrWorldType, builtinTypes->numberType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "string <!: ('hello' | 'hello')")
+{
+    CHECK_IS_NOT_SUBTYPE(builtinTypes->stringType, helloOrHelloType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "true <: boolean & true")
@@ -348,5 +480,207 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(number, string) -> string <!: (number, ...st
 {
     CHECK_IS_NOT_SUBTYPE(numberAndStringToStringType, numberAndStringsToStringType);
 }
+
+TEST_CASE_FIXTURE(SubtypeFixture, "<T>() -> T <: () -> number")
+{
+    CHECK_IS_SUBTYPE(genericNothingToTType, nothingToNumberType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "<T>(T) -> () <: <U>(U) -> ()")
+{
+    CHECK_IS_SUBTYPE(genericTToNothingType, genericUToNothingType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "() -> number <!: <T>() -> T")
+{
+    CHECK_IS_NOT_SUBTYPE(nothingToNumberType, genericNothingToTType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "<T>(T) -> () <: (number) -> ()")
+{
+    CHECK_IS_SUBTYPE(genericTToNothingType, numberToNothingType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "<T>(T) -> T <: (number) -> number")
+{
+    CHECK_IS_SUBTYPE(genericTToTType, numberToNumberType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "<T>(T) -> T <!: (number) -> string")
+{
+    CHECK_IS_NOT_SUBTYPE(genericTToTType, numberToStringType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "<T>(T) -> () <: <U>(U) -> ()")
+{
+    CHECK_IS_SUBTYPE(genericTToNothingType, genericUToNothingType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "(number) -> () <!: <T>(T) -> ()")
+{
+    CHECK_IS_NOT_SUBTYPE(numberToNothingType, genericTToNothingType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "<A...>(A...) -> A... <: (number) -> number")
+{
+    CHECK_IS_SUBTYPE(genericAsToAsType, numberToNumberType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "(number) -> number <!: <A...>(A...) -> A...")
+{
+    CHECK_IS_NOT_SUBTYPE(numberToNumberType, genericAsToAsType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "<A...>(A...) -> A... <: <B...>(B...) -> B...")
+{
+    CHECK_IS_SUBTYPE(genericAsToAsType, genericBsToBsType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "<B..., C...>(B...) -> C... <: <A...>(A...) -> A...")
+{
+    CHECK_IS_SUBTYPE(genericBsToCsType, genericAsToAsType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "<A...>(A...) -> A... <!: <B..., C...>(B...) -> C...")
+{
+    CHECK_IS_NOT_SUBTYPE(genericAsToAsType, genericBsToCsType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "<A...>(A...) -> number <: (number) -> number")
+{
+    CHECK_IS_SUBTYPE(genericAsToNumberType, numberToNumberType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "(number) -> number <!: <A...>(A...) -> number")
+{
+    CHECK_IS_NOT_SUBTYPE(numberToNumberType, genericAsToNumberType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "<A...>(A...) -> number <: (...number) -> number")
+{
+    CHECK_IS_SUBTYPE(genericAsToNumberType, numbersToNumberType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "(...number) -> number <!: <A...>(A...) -> number")
+{
+    CHECK_IS_NOT_SUBTYPE(numbersToNumberType, genericAsToNumberType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "<A...>() -> A... <: () -> ()")
+{
+    CHECK_IS_SUBTYPE(genericNothingToAsType, nothingToNothingType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "() -> () <!: <A...>() -> A...")
+{
+    CHECK_IS_NOT_SUBTYPE(nothingToNothingType, genericNothingToAsType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "<A...>(A...) -> A... <: () -> ()")
+{
+    CHECK_IS_SUBTYPE(genericAsToAsType, nothingToNothingType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "() -> () <!: <A...>(A...) -> A...")
+{
+    CHECK_IS_NOT_SUBTYPE(nothingToNothingType, genericAsToAsType);
+}
+
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{} <: {}")
+{
+    CHECK_IS_SUBTYPE(tbl({}), tbl({}));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{x: number} <: {}")
+{
+    CHECK_IS_SUBTYPE(tbl({{"x", builtinTypes->numberType}}), tbl({}));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{x: number} <!: {x: string}")
+{
+    CHECK_IS_NOT_SUBTYPE(tbl({{"x", builtinTypes->numberType}}), tbl({{"x", builtinTypes->stringType}}));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{x: number} <!: {x: number?}")
+{
+    CHECK_IS_NOT_SUBTYPE(tbl({{"x", builtinTypes->numberType}}), tbl({{"x", builtinTypes->optionalNumberType}}));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{x: number?} <!: {x: number}")
+{
+    CHECK_IS_NOT_SUBTYPE(tbl({{"x", builtinTypes->optionalNumberType}}), tbl({{"x", builtinTypes->numberType}}));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{x: <T>(T) -> ()} <: {x: <U>(U) -> ()}")
+{
+    CHECK_IS_SUBTYPE(
+        tbl({{"x", genericTToNothingType}}),
+        tbl({{"x", genericUToNothingType}})
+    );
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "t1 where t1 = {trim: (t1) -> string} <: t2 where t2 = {trim: (t2) -> string}")
+{
+    TypeId t1 = cyclicTable([&](TypeId ty, TableType* tt)
+    {
+        tt->props["trim"] = fn({ty}, {builtinTypes->stringType});
+    });
+
+    TypeId t2 = cyclicTable([&](TypeId ty, TableType* tt)
+    {
+        tt->props["trim"] = fn({ty}, {builtinTypes->stringType});
+    });
+
+    CHECK_IS_SUBTYPE(t1, t2);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "t1 where t1 = {trim: (t1) -> string} <!: t2 where t2 = {trim: (t2) -> t2}")
+{
+    TypeId t1 = cyclicTable([&](TypeId ty, TableType* tt)
+    {
+        tt->props["trim"] = fn({ty}, {builtinTypes->stringType});
+    });
+
+    TypeId t2 = cyclicTable([&](TypeId ty, TableType* tt)
+    {
+        tt->props["trim"] = fn({ty}, {ty});
+    });
+
+    CHECK_IS_NOT_SUBTYPE(t1, t2);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "t1 where t1 = {trim: (t1) -> t1} <!: t2 where t2 = {trim: (t2) -> string}")
+{
+    TypeId t1 = cyclicTable([&](TypeId ty, TableType* tt)
+    {
+        tt->props["trim"] = fn({ty}, {ty});
+    });
+
+    TypeId t2 = cyclicTable([&](TypeId ty, TableType* tt)
+    {
+        tt->props["trim"] = fn({ty}, {builtinTypes->stringType});
+    });
+
+    CHECK_IS_NOT_SUBTYPE(t1, t2);
+}
+
+/*
+ * <A>(A) -> A <: <X>(X) -> X
+ *      A can be bound to X.
+ *
+ * <A>(A) -> A </: <X>(X) -> number
+ *      A can be bound to X, but A </: number
+ *
+ * (number) -> number </: <A>(A) -> A
+ *      Only generics on the left side can be bound.
+ *      number </: A
+ *
+ * <A, B>(A, B) -> boolean <: <X>(X, X) -> boolean
+ *      It is ok to bind both A and B to X.
+ *
+ * <A>(A, A) -> boolean </: <X, Y>(X, Y) -> boolean
+ *      A cannot be bound to both X and Y.
+ */
 
 TEST_SUITE_END();

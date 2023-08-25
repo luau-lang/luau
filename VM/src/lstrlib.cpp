@@ -8,9 +8,6 @@
 #include <string.h>
 #include <stdio.h>
 
-LUAU_FASTFLAGVARIABLE(LuauFasterInterp, false)
-LUAU_FASTFLAGVARIABLE(LuauFasterFormatS, false)
-
 // macro to `unsign' a character
 #define uchar(c) ((unsigned char)(c))
 
@@ -969,7 +966,7 @@ static int str_format(lua_State* L)
             luaL_addchar(&b, *strfrmt++);
         else if (*++strfrmt == L_ESC)
             luaL_addchar(&b, *strfrmt++); // %%
-        else if (FFlag::LuauFasterInterp && *strfrmt == '*')
+        else if (*strfrmt == '*')
         {
             strfrmt++;
             if (++arg > top)
@@ -1029,49 +1026,22 @@ static int str_format(lua_State* L)
             {
                 size_t l;
                 const char* s = luaL_checklstring(L, arg, &l);
-                if (FFlag::LuauFasterFormatS)
+                // no precision and string is too long to be formatted, or no format necessary to begin with
+                if (form[2] == '\0' || (!strchr(form, '.') && l >= 100))
                 {
-                    // no precision and string is too long to be formatted, or no format necessary to begin with
-                    if (form[2] == '\0' || (!strchr(form, '.') && l >= 100))
-                    {
-                        luaL_addlstring(&b, s, l, -1);
-                        continue; // skip the `luaL_addlstring' at the end
-                    }
-                    else
-                    {
-                        snprintf(buff, sizeof(buff), form, s);
-                        break;
-                    }
+                    luaL_addlstring(&b, s, l, -1);
+                    continue; // skip the `luaL_addlstring' at the end
                 }
                 else
                 {
-                    if (!strchr(form, '.') && l >= 100)
-                    {
-                        /* no precision and string is too long to be formatted;
-                           keep original string */
-                        lua_pushvalue(L, arg);
-                        luaL_addvalue(&b);
-                        continue; // skip the `luaL_addlstring' at the end
-                    }
-                    else
-                    {
-                        snprintf(buff, sizeof(buff), form, s);
-                        break;
-                    }
+                    snprintf(buff, sizeof(buff), form, s);
+                    break;
                 }
             }
             case '*':
             {
-                if (FFlag::LuauFasterInterp || formatItemSize != 1)
-                    luaL_error(L, "'%%*' does not take a form");
-
-                size_t length;
-                const char* string = luaL_tolstring(L, arg, &length);
-
-                luaL_addlstring(&b, string, length, -2);
-                lua_pop(L, 1);
-
-                continue; // skip the `luaL_addlstring' at the end
+                // %* is parsed above, so if we got here we must have %...*
+                luaL_error(L, "'%%*' does not take a form");
             }
             default:
             { // also treat cases `pnLlh'

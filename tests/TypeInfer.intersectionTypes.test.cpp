@@ -1017,4 +1017,54 @@ local y = x["Bar"]
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_degenerate_intersections")
+{
+    ScopedFastFlag dcr{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        type A = {
+            x: number?,
+        }
+
+        type B = {
+            x: number?,
+        }
+
+        type C = A & B
+        local obj: C = {
+            x = 3,
+        }
+
+        local x: number = obj.x or 3
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_more_realistic_intersections")
+{
+    ScopedFastFlag dcr{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        type A = {
+            x: number?,
+            y: string?,
+        }
+
+        type B = {
+            x: number?,
+            z: string?,
+        }
+
+        type C = A & B
+        local obj: C = {
+            x = 3,
+        }
+
+        local x: number = obj.x or 3
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();
