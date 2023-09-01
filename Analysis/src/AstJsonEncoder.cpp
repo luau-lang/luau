@@ -8,6 +8,8 @@
 
 #include <math.h>
 
+LUAU_FASTFLAG(LuauFloorDivision)
+
 namespace Luau
 {
 
@@ -514,6 +516,9 @@ struct AstJsonEncoder : public AstVisitor
             return writeString("Mul");
         case AstExprBinary::Div:
             return writeString("Div");
+        case AstExprBinary::FloorDiv:
+            LUAU_ASSERT(FFlag::LuauFloorDivision);
+            return writeString("FloorDiv");
         case AstExprBinary::Mod:
             return writeString("Mod");
         case AstExprBinary::Pow:
@@ -536,6 +541,8 @@ struct AstJsonEncoder : public AstVisitor
             return writeString("And");
         case AstExprBinary::Or:
             return writeString("Or");
+        default:
+            LUAU_ASSERT(!"Unknown Op");
         }
     }
 

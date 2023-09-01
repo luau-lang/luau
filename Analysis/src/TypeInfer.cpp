@@ -40,6 +40,7 @@ LUAU_FASTFLAG(LuauOccursIsntAlwaysFailure)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAG(LuauParseDeclareClassIndexer)
+LUAU_FASTFLAG(LuauFloorDivision);
 
 namespace Luau
 {
@@ -200,7 +201,8 @@ static bool isMetamethod(const Name& name)
 {
     return name == "__index" || name == "__newindex" || name == "__call" || name == "__concat" || name == "__unm" || name == "__add" ||
            name == "__sub" || name == "__mul" || name == "__div" || name == "__mod" || name == "__pow" || name == "__tostring" ||
-           name == "__metatable" || name == "__eq" || name == "__lt" || name == "__le" || name == "__mode" || name == "__iter" || name == "__len";
+           name == "__metatable" || name == "__eq" || name == "__lt" || name == "__le" || name == "__mode" || name == "__iter" || name == "__len" ||
+           (FFlag::LuauFloorDivision && name == "__idiv");
 }
 
 size_t HashBoolNamePair::operator()(const std::pair<bool, Name>& pair) const
@@ -2571,6 +2573,9 @@ std::string opToMetaTableEntry(const AstExprBinary::Op& op)
         return "__mul";
     case AstExprBinary::Div:
         return "__div";
+    case AstExprBinary::FloorDiv:
+        LUAU_ASSERT(FFlag::LuauFloorDivision);
+        return "__idiv";
     case AstExprBinary::Mod:
         return "__mod";
     case AstExprBinary::Pow:
@@ -3064,8 +3069,11 @@ TypeId TypeChecker::checkBinaryOperation(
     case AstExprBinary::Sub:
     case AstExprBinary::Mul:
     case AstExprBinary::Div:
+    case AstExprBinary::FloorDiv:
     case AstExprBinary::Mod:
     case AstExprBinary::Pow:
+        LUAU_ASSERT(FFlag::LuauFloorDivision || expr.op != AstExprBinary::FloorDiv);
+
         reportErrors(tryUnify(lhsType, numberType, scope, expr.left->location));
         reportErrors(tryUnify(rhsType, numberType, scope, expr.right->location));
         return numberType;

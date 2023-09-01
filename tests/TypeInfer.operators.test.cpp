@@ -12,6 +12,8 @@
 
 #include "doctest.h"
 
+#include "ScopedFlags.h"
+
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
@@ -140,6 +142,24 @@ TEST_CASE_FIXTURE(Fixture, "some_primitive_binary_ops")
     CHECK_EQ("number", toString(requireType("b")));
     CHECK_EQ("string", toString(requireType("s")));
     CHECK_EQ("string", toString(requireType("t")));
+    CHECK_EQ("number", toString(requireType("c")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "floor_division_binary_op")
+{
+    ScopedFastFlag sffs{"LuauFloorDivision", true};
+
+    CheckResult result = check(R"(
+        local a = 4 // 8
+        local b = -4 // 9 
+        local c = 9
+        c //= -6.5 
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("number", toString(requireType("a")));
+    CHECK_EQ("number", toString(requireType("b")));
     CHECK_EQ("number", toString(requireType("c")));
 }
 

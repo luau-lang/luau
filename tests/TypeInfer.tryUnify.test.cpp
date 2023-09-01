@@ -345,9 +345,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "metatables_unify_against_shape_of_free_table
 {
     ScopedFastFlag sff[] = {
         {"LuauTransitiveSubtyping", true},
-        {"LuauIndentTypeMismatch", true},
     };
-    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
 
     TableType::Props freeProps{
         {"foo", {builtinTypes->numberType}},

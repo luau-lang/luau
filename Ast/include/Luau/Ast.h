@@ -457,6 +457,7 @@ public:
         Sub,
         Mul,
         Div,
+        FloorDiv,
         Mod,
         Pow,
         Concat,
@@ -467,7 +468,9 @@ public:
         CompareGt,
         CompareGe,
         And,
-        Or
+        Or,
+
+        Op__Count
     };
 
     AstExprBinary(const Location& location, Op op, AstExpr* left, AstExpr* right);
@@ -531,11 +534,12 @@ class AstStatBlock : public AstStat
 public:
     LUAU_RTTI(AstStatBlock)
 
-    AstStatBlock(const Location& location, const AstArray<AstStat*>& body);
+    AstStatBlock(const Location& location, const AstArray<AstStat*>& body, bool hasEnd=true);
 
     void visit(AstVisitor* visitor) override;
 
     AstArray<AstStat*> body;
+    bool hasEnd = false;
 };
 
 class AstStatIf : public AstStat

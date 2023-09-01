@@ -52,6 +52,35 @@ struct SubtypeFixture : Fixture
         return arena.addType(TableType{std::move(props), std::nullopt, {}, TableState::Sealed});
     }
 
+    // `&`
+    TypeId meet(TypeId a, TypeId b)
+    {
+        return arena.addType(IntersectionType{{a, b}});
+    }
+
+    // `|`
+    TypeId join(TypeId a, TypeId b)
+    {
+        return arena.addType(UnionType{{a, b}});
+    }
+
+    TypeId negate(TypeId ty)
+    {
+        return arena.addType(NegationType{ty});
+    }
+
+    TypeId cls(const std::string& name, std::optional<TypeId> parent = std::nullopt)
+    {
+        return arena.addType(ClassType{name, {}, parent.value_or(builtinTypes->classType), {}, {}, nullptr, ""});
+    }
+
+    TypeId cls(const std::string& name, ClassType::Props&& props)
+    {
+        TypeId ty = cls(name);
+        getMutable<ClassType>(ty)->props = std::move(props);
+        return ty;
+    }
+
     TypeId cyclicTable(std::function<void(TypeId, TableType*)>&& cb)
     {
         TypeId res = arena.addType(GenericType{});
@@ -59,6 +88,11 @@ struct SubtypeFixture : Fixture
         cb(res, &tt);
         emplaceType<TableType>(asMutable(res), std::move(tt));
         return res;
+    }
+
+    TypeId meta(TableType::Props&& metaProps, TableType::Props&& tableProps = {})
+    {
+        return arena.addType(MetatableType{tbl(std::move(tableProps)), tbl(std::move(metaProps))});
     }
 
     TypeId genericT = arena.addType(GenericType{"T"});
@@ -77,20 +111,40 @@ struct SubtypeFixture : Fixture
     TypeId helloType2 = arena.addType(SingletonType{StringSingleton{"hello"}});
     TypeId worldType = arena.addType(SingletonType{StringSingleton{"world"}});
 
-    TypeId helloOrWorldType = arena.addType(UnionType{{helloType, worldType}});
-    TypeId trueOrFalseType = arena.addType(UnionType{{builtinTypes->trueType, builtinTypes->falseType}});
+    TypeId helloOrWorldType = join(helloType, worldType);
+    TypeId trueOrFalseType = join(builtinTypes->trueType, builtinTypes->falseType);
+
+    TypeId helloAndWorldType = meet(helloType, worldType);
+    TypeId booleanAndTrueType = meet(builtinTypes->booleanType, builtinTypes->trueType);
+
+    /**
+     * class
+     * \- Root
+     *    |- Child
+     *    |  |-GrandchildOne
+     *    |  \-GrandchildTwo
+     *    \- AnotherChild
+     *       |- AnotherGrandchildOne
+     *       \- AnotherGrandchildTwo
+    */
+    TypeId rootClass = cls("Root");
+    TypeId childClass = cls("Child", rootClass);
+    TypeId grandchildOneClass = cls("GrandchildOne", childClass);
+    TypeId grandchildTwoClass = cls("GrandchildTwo", childClass);
+    TypeId anotherChildClass = cls("AnotherChild", rootClass);
+    TypeId anotherGrandchildOneClass = cls("AnotherGrandchildOne", anotherChildClass);
+    TypeId anotherGrandchildTwoClass = cls("AnotherGrandchildTwo", anotherChildClass);
+
+    TypeId vec2Class = cls("Vec2", {
+        {"X", builtinTypes->numberType},
+        {"Y", builtinTypes->numberType},
+    });
 
     // "hello" | "hello"
     TypeId helloOrHelloType = arena.addType(UnionType{{helloType, helloType}});
 
     // () -> ()
     const TypeId nothingToNothingType = fn({}, {});
-
-    // ("hello") -> "world"
-    TypeId helloAndWorldType = arena.addType(IntersectionType{{helloType, worldType}});
-
-    // (boolean) -> true
-    TypeId booleanAndTrueType = arena.addType(IntersectionType{{builtinTypes->booleanType, builtinTypes->trueType}});
 
     // (number) -> string
     const TypeId numberToStringType = fn(
@@ -247,6 +301,11 @@ struct SubtypeFixture : Fixture
         builtinTypes->emptyTypePack,
         genericAs
     });
+
+    // { lower : string -> string }
+    TypeId tableWithLower = tbl(TableType::Props{{"lower", fn({builtinTypes->stringType}, {builtinTypes->stringType})}});
+    // { insaneThingNoScalarHas : () -> () }
+    TypeId tableWithoutScalarProp = tbl(TableType::Props{{"insaneThingNoScalarHas", fn({}, {})}});
 };
 
 #define CHECK_IS_SUBTYPE(left, right) \
@@ -620,6 +679,99 @@ TEST_CASE_FIXTURE(SubtypeFixture, "{x: <T>(T) -> ()} <: {x: <U>(U) -> ()}")
     );
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { x: number } } <: { @metatable {} }")
+{
+    CHECK_IS_SUBTYPE(
+        meta({{"x", builtinTypes->numberType}}),
+        meta({})
+    );
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { x: number } } <!: { @metatable { x: boolean } }")
+{
+    CHECK_IS_NOT_SUBTYPE(
+        meta({{"x", builtinTypes->numberType}}),
+        meta({{"x", builtinTypes->booleanType}})
+    );
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable {} } <!: { @metatable { x: boolean } }")
+{
+    CHECK_IS_NOT_SUBTYPE(
+        meta({}),
+        meta({{"x", builtinTypes->booleanType}})
+    );
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable {} } <: {}")
+{
+    CHECK_IS_SUBTYPE(
+        meta({}),
+        tbl({})
+    );
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { u: boolean }, x: number } <: { x: number }")
+{
+    CHECK_IS_SUBTYPE(
+        meta({{"u", builtinTypes->booleanType}}, {{"x", builtinTypes->numberType}}),
+        tbl({{"x", builtinTypes->numberType}})
+    );
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { x: number } } <!: { x: number }")
+{
+    CHECK_IS_NOT_SUBTYPE(
+        meta({{"x", builtinTypes->numberType}}),
+        tbl({{"x", builtinTypes->numberType}})
+    );
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "Root <: class")
+{
+    CHECK_IS_SUBTYPE(rootClass, builtinTypes->classType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "Child | AnotherChild <: class")
+{
+    CHECK_IS_SUBTYPE(join(childClass, anotherChildClass), builtinTypes->classType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "Child | AnotherChild <: Child | AnotherChild")
+{
+    CHECK_IS_SUBTYPE(join(childClass, anotherChildClass), join(childClass, anotherChildClass));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "Child | Root <: Root")
+{
+    CHECK_IS_SUBTYPE(join(childClass, rootClass), rootClass);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "Child & AnotherChild <: class")
+{
+    CHECK_IS_SUBTYPE(meet(childClass, anotherChildClass), builtinTypes->classType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "Child & Root <: class")
+{
+    CHECK_IS_SUBTYPE(meet(childClass, rootClass), builtinTypes->classType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "Child & ~Root <: class")
+{
+    CHECK_IS_SUBTYPE(meet(childClass, negate(rootClass)), builtinTypes->classType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "Child & AnotherChild <: number")
+{
+    CHECK_IS_SUBTYPE(meet(childClass, anotherChildClass), builtinTypes->numberType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "Child & ~GrandchildOne <!: number")
+{
+    CHECK_IS_NOT_SUBTYPE(meet(childClass, negate(grandchildOneClass)), builtinTypes->numberType);
+}
+
 TEST_CASE_FIXTURE(SubtypeFixture, "t1 where t1 = {trim: (t1) -> string} <: t2 where t2 = {trim: (t2) -> string}")
 {
     TypeId t1 = cyclicTable([&](TypeId ty, TableType* tt)
@@ -663,6 +815,84 @@ TEST_CASE_FIXTURE(SubtypeFixture, "t1 where t1 = {trim: (t1) -> t1} <!: t2 where
     });
 
     CHECK_IS_NOT_SUBTYPE(t1, t2);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "Vec2 <: { X: number, Y: number }")
+{
+    TypeId xy = tbl({
+        {"X", builtinTypes->numberType},
+        {"Y", builtinTypes->numberType},
+    });
+
+    CHECK_IS_SUBTYPE(vec2Class, xy);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "Vec2 <: { X: number }")
+{
+    TypeId x = tbl({
+        {"X", builtinTypes->numberType},
+    });
+
+    CHECK_IS_SUBTYPE(vec2Class, x);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{ X: number, Y: number } <!: Vec2")
+{
+    TypeId xy = tbl({
+        {"X", builtinTypes->numberType},
+        {"Y", builtinTypes->numberType},
+    });
+
+    CHECK_IS_NOT_SUBTYPE(xy, vec2Class);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{ X: number } <!: Vec2")
+{
+    TypeId x = tbl({
+        {"X", builtinTypes->numberType},
+    });
+
+    CHECK_IS_NOT_SUBTYPE(x, vec2Class);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "table & { X: number, Y: number } <!: Vec2")
+{
+    TypeId x = tbl({
+        {"X", builtinTypes->numberType},
+        {"Y", builtinTypes->numberType},
+    });
+
+    CHECK_IS_NOT_SUBTYPE(meet(builtinTypes->tableType, x), vec2Class);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "Vec2 <!: table & { X: number, Y: number }")
+{
+    TypeId xy = tbl({
+        {"X", builtinTypes->numberType},
+        {"Y", builtinTypes->numberType},
+    });
+
+    CHECK_IS_NOT_SUBTYPE(vec2Class, meet(builtinTypes->tableType, xy));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "\"hello\" <: { lower : (string) -> string }")
+{
+    CHECK_IS_SUBTYPE(helloType, tableWithLower);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "\"hello\" <!: { insaneThingNoScalarHas : () -> () }")
+{
+    CHECK_IS_NOT_SUBTYPE(helloType, tableWithoutScalarProp);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "string <: { lower : (string) -> string }")
+{
+    CHECK_IS_SUBTYPE(builtinTypes->stringType, tableWithLower);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "string <!: { insaneThingNoScalarHas : () -> () }")
+{
+    CHECK_IS_NOT_SUBTYPE(builtinTypes->stringType, tableWithoutScalarProp);
 }
 
 /*

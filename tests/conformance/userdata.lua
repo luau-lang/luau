@@ -30,6 +30,12 @@ assert(int64(4) / 2 == int64(2))
 assert(int64(4) % 3 == int64(1))
 assert(int64(2) ^ 3 == int64(8))
 
+-- / and // round in different directions in our test implementation
+assert(int64(5) / int64(2) == int64(2))
+assert(int64(5) // int64(2) == int64(2))
+assert(int64(-5) / int64(2) == int64(-2))
+assert(int64(-5) // int64(2) == int64(-3))
+
 -- tostring
 assert(tostring(int64(2)) == "2")
 

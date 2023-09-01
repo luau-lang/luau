@@ -2083,8 +2083,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_prope
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_prop")
 {
-    ScopedFastFlag sff[] = {{"LuauIndentTypeMismatch", true}};
-    ScopedFastInt sfi[] = {{"LuauIndentTypeMismatchMaxTypeLength", 10}};
     CheckResult result = check(R"(
 type A = { x: number, y: number }
 type B = { x: number, y: string }
@@ -2103,8 +2101,6 @@ Type 'number' could not be converted into 'string' in an invariant context)";
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_prop_nested")
 {
-    ScopedFastFlag sff[] = {{"LuauIndentTypeMismatch", true}};
-    ScopedFastInt sfi[] = {{"LuauIndentTypeMismatchMaxTypeLength", 10}};
     CheckResult result = check(R"(
 type AS = { x: number, y: number }
 type BS = { x: number, y: string }
@@ -2129,9 +2125,6 @@ Type 'number' could not be converted into 'string' in an invariant context)";
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "error_detailed_metatable_prop")
 {
-    ScopedFastFlag sff{"LuauIndentTypeMismatch", true};
-    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
-
     CheckResult result = check(R"(
 local a1 = setmetatable({ x = 2, y = 3 }, { __call = function(s) end });
 local b1 = setmetatable({ x = 2, y = "hello" }, { __call = function(s) end });
@@ -2202,8 +2195,6 @@ could not be converted into
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_key")
 {
-    ScopedFastFlag sff[] = {{"LuauIndentTypeMismatch", true}};
-    ScopedFastInt sfi[] = {{"LuauIndentTypeMismatchMaxTypeLength", 10}};
     CheckResult result = check(R"(
         type A = { [number]: string }
         type B = { [string]: string }
@@ -2222,8 +2213,6 @@ Type 'number' could not be converted into 'string' in an invariant context)";
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_value")
 {
-    ScopedFastFlag sff[] = {{"LuauIndentTypeMismatch", true}};
-    ScopedFastInt sfi[] = {{"LuauIndentTypeMismatchMaxTypeLength", 10}};
     CheckResult result = check(R"(
         type A = { [number]: number }
         type B = { [number]: string }
@@ -2257,8 +2246,6 @@ a.p = { x = 9 }
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_error")
 {
-    ScopedFastFlag sff[] = {{"LuauIndentTypeMismatch", true}};
-    ScopedFastInt sfi[] = {{"LuauIndentTypeMismatchMaxTypeLength", 10}};
     CheckResult result = check(R"(
 --!strict
 type Super = { x : number }
@@ -3359,13 +3346,9 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shap
 
 TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_shape_type")
 {
-    ScopedFastInt sfi[] = {{"LuauIndentTypeMismatchMaxTypeLength", 10}};
     ScopedFastFlag sff[] = {
         {"LuauAlwaysCommitInferencesOfFunctionCalls", true},
-        {"LuauIndentTypeMismatch", true},
     };
-
-
 
     CheckResult result = check(R"(
         local function f(s)
@@ -3422,8 +3405,6 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_can_turn_into_a_scalar_if_it_is_compati
 
 TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_compatible")
 {
-    ScopedFastFlag sff{"LuauIndentTypeMismatch", true};
-    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
 
     CheckResult result = check(R"(
         local function f(s): string

@@ -74,7 +74,11 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
             return (a.kind == IrBlockKind::Fallback) < (b.kind == IrBlockKind::Fallback);
 
         // Try to order by instruction order
-        return a.sortkey < b.sortkey;
+        if (a.sortkey != b.sortkey)
+            return a.sortkey < b.sortkey;
+
+        // Chains of blocks are merged together by having the same sort key and consecutive chain key
+        return a.chainkey < b.chainkey;
     });
 
     // For each IR instruction that begins a bytecode instruction, which bytecode instruction is it?
@@ -99,6 +103,9 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 
     IrBlock dummy;
     dummy.start = ~0u;
+
+    // Make sure entry block is first
+    LUAU_ASSERT(sortedBlocks[0] == 0);
 
     for (size_t i = 0; i < sortedBlocks.size(); ++i)
     {
@@ -136,6 +143,11 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
         }
 
         IrBlock& nextBlock = getNextBlock(function, sortedBlocks, dummy, i);
+
+        // Optimizations often propagate information between blocks
+        // To make sure the register and spill state is correct when blocks are lowered, we check that sorted block order matches the expected one
+        if (block.expectedNextBlock != ~0u)
+            LUAU_ASSERT(function.getBlockIndex(nextBlock) == block.expectedNextBlock);
 
         for (uint32_t index = block.start; index <= block.finish; index++)
         {

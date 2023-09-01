@@ -6,7 +6,9 @@
 
 #include <limits.h>
 
+LUAU_FASTFLAGVARIABLE(LuauFloorDivision, false)
 LUAU_FASTFLAGVARIABLE(LuauLexerConsumeFast, false)
+LUAU_FASTFLAGVARIABLE(LuauLexerLookaheadRemembersBraceType, false)
 
 namespace Luau
 {
@@ -138,6 +140,9 @@ std::string Lexeme::toString() const
     case DoubleColon:
         return "'::'";
 
+    case FloorDiv:
+        return FFlag::LuauFloorDivision ? "'//'" : "<unknown>";
+
     case AddAssign:
         return "'+='";
 
@@ -149,6 +154,9 @@ std::string Lexeme::toString() const
 
     case DivAssign:
         return "'/='";
+
+    case FloorDivAssign:
+        return FFlag::LuauFloorDivision ? "'//='" : "<unknown>";
 
     case ModAssign:
         return "'%='";
@@ -402,6 +410,8 @@ Lexeme Lexer::lookahead()
     unsigned int currentLineOffset = lineOffset;
     Lexeme currentLexeme = lexeme;
     Location currentPrevLocation = prevLocation;
+    size_t currentBraceStackSize = braceStack.size();
+    BraceType currentBraceType = braceStack.empty() ? BraceType::Normal : braceStack.back();
 
     Lexeme result = next();
 
@@ -410,6 +420,13 @@ Lexeme Lexer::lookahead()
     lineOffset = currentLineOffset;
     lexeme = currentLexeme;
     prevLocation = currentPrevLocation;
+    if (FFlag::LuauLexerLookaheadRemembersBraceType)
+    {
+        if (braceStack.size() < currentBraceStackSize)
+            braceStack.push_back(currentBraceType);
+        else if (braceStack.size() > currentBraceStackSize)
+            braceStack.pop_back();
+    }
 
     return result;
 }
@@ -901,15 +918,46 @@ Lexeme Lexer::readNext()
             return Lexeme(Location(start, 1), '+');
 
     case '/':
-        consume();
-
-        if (peekch() == '=')
+    {
+        if (FFlag::LuauFloorDivision)
         {
             consume();
-            return Lexeme(Location(start, 2), Lexeme::DivAssign);
+
+            char ch = peekch();
+
+            if (ch == '=')
+            {
+                consume();
+                return Lexeme(Location(start, 2), Lexeme::DivAssign);
+            }
+            else if (ch == '/')
+            {
+                consume();
+
+                if (peekch() == '=')
+                {
+                    consume();
+                    return Lexeme(Location(start, 3), Lexeme::FloorDivAssign);
+                }
+                else
+                    return Lexeme(Location(start, 2), Lexeme::FloorDiv);
+            }
+            else
+                return Lexeme(Location(start, 1), '/');
         }
         else
-            return Lexeme(Location(start, 1), '/');
+        {
+            consume();
+
+            if (peekch() == '=')
+            {
+                consume();
+                return Lexeme(Location(start, 2), Lexeme::DivAssign);
+            }
+            else
+                return Lexeme(Location(start, 1), '/');
+        }
+    }
 
     case '*':
         consume();

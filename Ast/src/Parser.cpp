@@ -14,6 +14,7 @@
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauParseDeclareClassIndexer, false)
+LUAU_FASTFLAG(LuauFloorDivision)
 
 namespace Luau
 {
@@ -460,11 +461,11 @@ AstStat* Parser::parseDo()
     Lexeme matchDo = lexer.current();
     nextLexeme(); // do
 
-    AstStat* body = parseBlock();
+    AstStatBlock* body = parseBlock();
 
     body->location.begin = start.begin;
 
-    expectMatchEndAndConsume(Lexeme::ReservedEnd, matchDo);
+    body->hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchDo);
 
     return body;
 }
@@ -1766,6 +1767,12 @@ std::optional<AstExprBinary::Op> Parser::parseBinaryOp(const Lexeme& l)
         return AstExprBinary::Mul;
     else if (l.type == '/')
         return AstExprBinary::Div;
+    else if (l.type == Lexeme::FloorDiv)
+    {
+        LUAU_ASSERT(FFlag::LuauFloorDivision);
+
+        return AstExprBinary::FloorDiv;
+    }
     else if (l.type == '%')
         return AstExprBinary::Mod;
     else if (l.type == '^')
@@ -1802,6 +1809,12 @@ std::optional<AstExprBinary::Op> Parser::parseCompoundOp(const Lexeme& l)
         return AstExprBinary::Mul;
     else if (l.type == Lexeme::DivAssign)
         return AstExprBinary::Div;
+    else if (l.type == Lexeme::FloorDivAssign)
+    {
+        LUAU_ASSERT(FFlag::LuauFloorDivision);
+
+        return AstExprBinary::FloorDiv;
+    }
     else if (l.type == Lexeme::ModAssign)
         return AstExprBinary::Mod;
     else if (l.type == Lexeme::PowAssign)
@@ -1872,12 +1885,13 @@ std::optional<AstExprBinary::Op> Parser::checkBinaryConfusables(const BinaryOpPr
 AstExpr* Parser::parseExpr(unsigned int limit)
 {
     static const BinaryOpPriority binaryPriority[] = {
-        {6, 6}, {6, 6}, {7, 7}, {7, 7}, {7, 7}, // `+' `-' `*' `/' `%'
-        {10, 9}, {5, 4},                        // power and concat (right associative)
-        {3, 3}, {3, 3},                         // equality and inequality
-        {3, 3}, {3, 3}, {3, 3}, {3, 3},         // order
-        {2, 2}, {1, 1}                          // logical (and/or)
+        {6, 6}, {6, 6}, {7, 7}, {7, 7}, {7, 7}, {7, 7}, // `+' `-' `*' `/' `//' `%'
+        {10, 9}, {5, 4},                                // power and concat (right associative)
+        {3, 3}, {3, 3},                                 // equality and inequality
+        {3, 3}, {3, 3}, {3, 3}, {3, 3},                 // order
+        {2, 2}, {1, 1}                                  // logical (and/or)
     };
+    static_assert(sizeof(binaryPriority) / sizeof(binaryPriority[0]) == size_t(AstExprBinary::Op__Count), "binaryPriority needs an entry per op");
 
     unsigned int recursionCounterOld = recursionCounter;
 

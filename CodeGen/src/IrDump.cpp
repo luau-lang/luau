@@ -125,6 +125,8 @@ const char* getCmdName(IrCmd cmd)
         return "MUL_NUM";
     case IrCmd::DIV_NUM:
         return "DIV_NUM";
+    case IrCmd::IDIV_NUM:
+        return "IDIV_NUM";
     case IrCmd::MOD_NUM:
         return "MOD_NUM";
     case IrCmd::MIN_NUM:
@@ -169,6 +171,8 @@ const char* getCmdName(IrCmd cmd)
         return "JUMP_SLOT_MATCH";
     case IrCmd::TABLE_LEN:
         return "TABLE_LEN";
+    case IrCmd::TABLE_SETNUM:
+        return "TABLE_SETNUM";
     case IrCmd::STRING_LEN:
         return "STRING_LEN";
     case IrCmd::NEW_TABLE:
@@ -229,6 +233,8 @@ const char* getCmdName(IrCmd cmd)
         return "CHECK_SLOT_MATCH";
     case IrCmd::CHECK_NODE_NO_NEXT:
         return "CHECK_NODE_NO_NEXT";
+    case IrCmd::CHECK_NODE_VALUE:
+        return "CHECK_NODE_VALUE";
     case IrCmd::INTERRUPT:
         return "INTERRUPT";
     case IrCmd::CHECK_GC:

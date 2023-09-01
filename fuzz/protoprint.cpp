@@ -495,6 +495,8 @@ struct ProtoToLuau
             source += " * ";
         else if (expr.op() == luau::ExprBinary::Div)
             source += " / ";
+        else if (expr.op() == luau::ExprBinary::FloorDiv)
+            source += " // ";
         else if (expr.op() == luau::ExprBinary::Mod)
             source += " % ";
         else if (expr.op() == luau::ExprBinary::Pow)

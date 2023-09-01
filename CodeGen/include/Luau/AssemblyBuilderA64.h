@@ -221,6 +221,7 @@ private:
     void placeFMOV(const char* name, RegisterA64 dst, double src, uint32_t op);
     void placeBM(const char* name, RegisterA64 dst, RegisterA64 src1, uint32_t src2, uint8_t op);
     void placeBFM(const char* name, RegisterA64 dst, RegisterA64 src1, int src2, uint8_t op, int immr, int imms);
+    void placeER(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t op, int shift);
 
     void place(uint32_t word);
 

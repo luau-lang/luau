@@ -255,6 +255,7 @@ $(BUILD)/fuzz/protoprint.cpp.o: fuzz/luau.pb.cpp
 
 build/libprotobuf-mutator:
 	git clone https://github.com/google/libprotobuf-mutator build/libprotobuf-mutator
+	git -C build/libprotobuf-mutator checkout 212a7be1eb08e7f9c79732d2aab9b2097085d936
 	CXX= cmake -S build/libprotobuf-mutator -B build/libprotobuf-mutator $(DPROTOBUF)
 	make -C build/libprotobuf-mutator -j8
 
