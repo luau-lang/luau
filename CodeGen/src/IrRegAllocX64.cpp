@@ -338,7 +338,9 @@ unsigned IrRegAllocX64::findSpillStackSlot(IrValueKind valueKind)
 
 IrOp IrRegAllocX64::getRestoreOp(const IrInst& inst) const
 {
-    if (IrOp location = function.findRestoreOp(inst); location.kind == IrOpKind::VmReg || location.kind == IrOpKind::VmConst)
+    // When restoring the value, we allow cross-block restore because we have commited to the target location at spill time
+    if (IrOp location = function.findRestoreOp(inst, /*limitToCurrentBlock*/ false);
+        location.kind == IrOpKind::VmReg || location.kind == IrOpKind::VmConst)
         return location;
 
     return IrOp();
@@ -346,11 +348,16 @@ IrOp IrRegAllocX64::getRestoreOp(const IrInst& inst) const
 
 bool IrRegAllocX64::hasRestoreOp(const IrInst& inst) const
 {
-    return getRestoreOp(inst).kind != IrOpKind::None;
+    // When checking if value has a restore operation to spill it, we only allow it in the same block
+    IrOp location = function.findRestoreOp(inst, /*limitToCurrentBlock*/ true);
+
+    return location.kind == IrOpKind::VmReg || location.kind == IrOpKind::VmConst;
 }
 
 OperandX64 IrRegAllocX64::getRestoreAddress(const IrInst& inst, IrOp restoreOp)
 {
+    LUAU_ASSERT(restoreOp.kind != IrOpKind::None);
+
     switch (getCmdValueKind(inst.cmd))
     {
     case IrValueKind::Unknown:

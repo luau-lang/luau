@@ -382,6 +382,9 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
         case TM_DIV:
             result = build.inst(IrCmd::DIV_NUM, vb, vc);
             break;
+        case TM_IDIV:
+            result = build.inst(IrCmd::IDIV_NUM, vb, vc);
+            break;
         case TM_MOD:
             result = build.inst(IrCmd::MOD_NUM, vb, vc);
             break;
@@ -472,8 +475,9 @@ void translateInstLength(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::CHECK_NO_METATABLE, vb, fallback);
 
     IrOp va = build.inst(IrCmd::TABLE_LEN, vb);
+    IrOp vai = build.inst(IrCmd::INT_TO_NUM, va);
 
-    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), va);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), vai);
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
 
     IrOp next = build.blockAtInst(pcpos + 1);
@@ -554,7 +558,7 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
     IrOp builtinArgs = args;
 
-    if (customArgs.kind == IrOpKind::VmConst)
+    if (customArgs.kind == IrOpKind::VmConst && bfid != LBF_TABLE_INSERT)
     {
         TValue protok = build.function.proto->k[customArgs.index];
 
@@ -976,7 +980,7 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
 
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
 
-    IrOp addrSlotEl = build.inst(IrCmd::GET_SLOT_NODE_ADDR, vb, build.constUint(pcpos));
+    IrOp addrSlotEl = build.inst(IrCmd::GET_SLOT_NODE_ADDR, vb, build.constUint(pcpos), build.vmConst(aux));
 
     build.inst(IrCmd::CHECK_SLOT_MATCH, addrSlotEl, build.vmConst(aux), fallback);
 
@@ -1003,7 +1007,7 @@ void translateInstSetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
 
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
 
-    IrOp addrSlotEl = build.inst(IrCmd::GET_SLOT_NODE_ADDR, vb, build.constUint(pcpos));
+    IrOp addrSlotEl = build.inst(IrCmd::GET_SLOT_NODE_ADDR, vb, build.constUint(pcpos), build.vmConst(aux));
 
     build.inst(IrCmd::CHECK_SLOT_MATCH, addrSlotEl, build.vmConst(aux), fallback);
     build.inst(IrCmd::CHECK_READONLY, vb, fallback);
@@ -1028,7 +1032,7 @@ void translateInstGetGlobal(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
     IrOp env = build.inst(IrCmd::LOAD_ENV);
-    IrOp addrSlotEl = build.inst(IrCmd::GET_SLOT_NODE_ADDR, env, build.constUint(pcpos));
+    IrOp addrSlotEl = build.inst(IrCmd::GET_SLOT_NODE_ADDR, env, build.constUint(pcpos), build.vmConst(aux));
 
     build.inst(IrCmd::CHECK_SLOT_MATCH, addrSlotEl, build.vmConst(aux), fallback);
 
@@ -1050,7 +1054,7 @@ void translateInstSetGlobal(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
     IrOp env = build.inst(IrCmd::LOAD_ENV);
-    IrOp addrSlotEl = build.inst(IrCmd::GET_SLOT_NODE_ADDR, env, build.constUint(pcpos));
+    IrOp addrSlotEl = build.inst(IrCmd::GET_SLOT_NODE_ADDR, env, build.constUint(pcpos), build.vmConst(aux));
 
     build.inst(IrCmd::CHECK_SLOT_MATCH, addrSlotEl, build.vmConst(aux), fallback);
     build.inst(IrCmd::CHECK_READONLY, env, fallback);
@@ -1141,7 +1145,7 @@ void translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
     build.loadAndCheckTag(indexPtr, LUA_TTABLE, fallback);
     IrOp index = build.inst(IrCmd::LOAD_POINTER, indexPtr);
 
-    IrOp addrIndexNodeEl = build.inst(IrCmd::GET_SLOT_NODE_ADDR, index, build.constUint(pcpos));
+    IrOp addrIndexNodeEl = build.inst(IrCmd::GET_SLOT_NODE_ADDR, index, build.constUint(pcpos), build.vmConst(aux));
     build.inst(IrCmd::CHECK_SLOT_MATCH, addrIndexNodeEl, build.vmConst(aux), fallback);
 
     // TODO: original 'table' was clobbered by a call inside 'FASTGETTM'

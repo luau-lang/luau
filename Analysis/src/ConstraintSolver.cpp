@@ -22,6 +22,7 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
+LUAU_FASTFLAG(LuauFloorDivision);
 
 namespace Luau
 {
@@ -719,6 +720,8 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     // Metatables go first, even if there is primitive behavior.
     if (auto it = kBinaryOpMetamethods.find(c.op); it != kBinaryOpMetamethods.end())
     {
+        LUAU_ASSERT(FFlag::LuauFloorDivision || c.op != AstExprBinary::Op::FloorDiv);
+
         // Metatables are not the same. The metamethod will not be invoked.
         if ((c.op == AstExprBinary::Op::CompareEq || c.op == AstExprBinary::Op::CompareNe) &&
             getMetatable(leftType, builtinTypes) != getMetatable(rightType, builtinTypes))
@@ -806,9 +809,12 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     case AstExprBinary::Op::Sub:
     case AstExprBinary::Op::Mul:
     case AstExprBinary::Op::Div:
+    case AstExprBinary::Op::FloorDiv:
     case AstExprBinary::Op::Pow:
     case AstExprBinary::Op::Mod:
     {
+        LUAU_ASSERT(FFlag::LuauFloorDivision || c.op != AstExprBinary::Op::FloorDiv);
+
         const NormalizedType* normLeftTy = normalizer->normalize(leftType);
         if (hasTypeInIntersection<FreeType>(leftType) && force)
             asMutable(leftType)->ty.emplace<BoundType>(anyPresent ? builtinTypes->anyType : builtinTypes->numberType);

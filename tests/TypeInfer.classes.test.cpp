@@ -369,9 +369,7 @@ TEST_CASE_FIXTURE(ClassFixture, "detailed_class_unification_error")
 {
     ScopedFastFlag sff[] = {
         {"LuauAlwaysCommitInferencesOfFunctionCalls", true},
-        {"LuauIndentTypeMismatch", true},
     };
-    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
     CheckResult result = check(R"(
 local function foo(v)
     return v.X :: number + string.len(v.Y)
@@ -457,8 +455,6 @@ TEST_CASE_FIXTURE(ClassFixture, "index_instance_property_nonstrict")
 
 TEST_CASE_FIXTURE(ClassFixture, "type_mismatch_invariance_required_for_error")
 {
-    ScopedFastFlag sff{"LuauIndentTypeMismatch", true};
-    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
     CheckResult result = check(R"(
 type A = { x: ChildClass }
 type B = { x: BaseClass }

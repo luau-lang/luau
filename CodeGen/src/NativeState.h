@@ -44,6 +44,7 @@ struct NativeContext
     Table* (*luaH_new)(lua_State* L, int narray, int lnhash) = nullptr;
     Table* (*luaH_clone)(lua_State* L, Table* tt) = nullptr;
     void (*luaH_resizearray)(lua_State* L, Table* t, int nasize) = nullptr;
+    TValue* (*luaH_setnum)(lua_State* L, Table* t, int key);
 
     void (*luaC_barriertable)(lua_State* L, Table* t, GCObject* v) = nullptr;
     void (*luaC_barrierf)(lua_State* L, GCObject* o, GCObject* v) = nullptr;

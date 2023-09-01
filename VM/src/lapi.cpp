@@ -38,7 +38,7 @@ const char* lua_ident = "$Lua: Lua 5.1.4 Copyright (C) 1994-2008 Lua.org, PUC-Ri
                         "$Authors: R. Ierusalimschy, L. H. de Figueiredo & W. Celes $\n"
                         "$URL: www.lua.org $\n";
 
-const char* luau_ident = "$Luau: Copyright (C) 2019-2022 Roblox Corporation $\n"
+const char* luau_ident = "$Luau: Copyright (C) 2019-2023 Roblox Corporation $\n"
                          "$URL: luau-lang.org $\n";
 
 #define api_checknelems(L, n) api_check(L, (n) <= (L->top - L->base))

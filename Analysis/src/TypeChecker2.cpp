@@ -23,6 +23,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(LuauFloorDivision);
 
 namespace Luau
 {
@@ -1817,6 +1818,8 @@ struct TypeChecker2
         bool typesHaveIntersection = normalizer.isIntersectionInhabited(leftType, rightType);
         if (auto it = kBinaryOpMetamethods.find(expr->op); it != kBinaryOpMetamethods.end())
         {
+            LUAU_ASSERT(FFlag::LuauFloorDivision || expr->op != AstExprBinary::Op::FloorDiv);
+
             std::optional<TypeId> leftMt = getMetatable(leftType, builtinTypes);
             std::optional<TypeId> rightMt = getMetatable(rightType, builtinTypes);
             bool matches = leftMt == rightMt;
@@ -2002,8 +2005,11 @@ struct TypeChecker2
         case AstExprBinary::Op::Sub:
         case AstExprBinary::Op::Mul:
         case AstExprBinary::Op::Div:
+        case AstExprBinary::Op::FloorDiv:
         case AstExprBinary::Op::Pow:
         case AstExprBinary::Op::Mod:
+            LUAU_ASSERT(FFlag::LuauFloorDivision || expr->op != AstExprBinary::Op::FloorDiv);
+
             reportErrors(tryUnify(scope, expr->left->location, leftType, builtinTypes->numberType));
             reportErrors(tryUnify(scope, expr->right->location, rightType, builtinTypes->numberType));
 

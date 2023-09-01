@@ -24,6 +24,7 @@ extern bool codegen;
 extern int optimizationLevel;
 
 LUAU_FASTFLAG(LuauPCallDebuggerFix);
+LUAU_FASTFLAG(LuauFloorDivision);
 
 static lua_CompileOptions defaultOptions()
 {
@@ -280,6 +281,7 @@ TEST_CASE("Assert")
 
 TEST_CASE("Basic")
 {
+    ScopedFastFlag sffs{"LuauFloorDivision", true};
     runConformance("basic.lua");
 }
 
@@ -363,6 +365,7 @@ TEST_CASE("Errors")
 
 TEST_CASE("Events")
 {
+    ScopedFastFlag sffs{"LuauFloorDivision", true};
     runConformance("events.lua");
 }
 
@@ -444,6 +447,8 @@ TEST_CASE("Pack")
 
 TEST_CASE("Vector")
 {
+    ScopedFastFlag sffs{"LuauFloorDivision", true};
+
     lua_CompileOptions copts = defaultOptions();
     copts.vectorCtor = "vector";
 
@@ -1616,6 +1621,9 @@ static void pushInt64(lua_State* L, int64_t value)
 
 TEST_CASE("Userdata")
 {
+
+    ScopedFastFlag sffs{"LuauFloorDivision", true};
+
     runConformance("userdata.lua", [](lua_State* L) {
         // create metatable with all the metamethods
         lua_newtable(L);
@@ -1734,6 +1742,19 @@ TEST_CASE("Userdata")
             },
             nullptr);
         lua_setfield(L, -2, "__div");
+
+        // __idiv
+        lua_pushcfunction(
+            L,
+            [](lua_State* L) {
+                // for testing we use different semantics here compared to __div: __idiv rounds to negative inf, __div truncates (rounds to zero)
+                // additionally, division loses precision here outside of 2^53 range
+                // we do not necessarily recommend this behavior in production code!
+                pushInt64(L, int64_t(floor(double(getInt64(L, 1)) / double(getInt64(L, 2)))));
+                return 1;
+            },
+            nullptr);
+        lua_setfield(L, -2, "__idiv");
 
         // __mod
         lua_pushcfunction(

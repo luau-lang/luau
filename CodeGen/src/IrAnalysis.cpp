@@ -257,7 +257,7 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrBlock& 
             break;
         case IrCmd::BARRIER_OBJ:
         case IrCmd::BARRIER_TABLE_FORWARD:
-            visitor.use(inst.b);
+            visitor.maybeUse(inst.b);
             break;
         case IrCmd::CLOSE_UPVALS:
             // Closing an upvalue should be counted as a register use (it copies the fresh register value)

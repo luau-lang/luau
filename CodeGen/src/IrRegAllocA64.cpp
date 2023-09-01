@@ -70,9 +70,9 @@ static int getReloadOffset(IrCmd cmd)
     LUAU_UNREACHABLE();
 }
 
-static AddressA64 getReloadAddress(const IrFunction& function, const IrInst& inst)
+static AddressA64 getReloadAddress(const IrFunction& function, const IrInst& inst, bool limitToCurrentBlock)
 {
-    IrOp location = function.findRestoreOp(inst);
+    IrOp location = function.findRestoreOp(inst, limitToCurrentBlock);
 
     if (location.kind == IrOpKind::VmReg)
         return mem(rBase, vmRegOp(location) * sizeof(TValue) + getReloadOffset(inst.cmd));
@@ -99,7 +99,7 @@ static void restoreInst(AssemblyBuilderA64& build, uint32_t& freeSpillSlots, IrF
     else
     {
         LUAU_ASSERT(!inst.spilled && inst.needsReload);
-        AddressA64 addr = getReloadAddress(function, function.instructions[s.inst]);
+        AddressA64 addr = getReloadAddress(function, function.instructions[s.inst], /*limitToCurrentBlock*/ false);
         LUAU_ASSERT(addr.base != xzr);
         build.ldr(reg, addr);
     }
@@ -321,7 +321,7 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
             {
                 // instead of spilling the register to never reload it, we assume the register is not needed anymore
             }
-            else if (getReloadAddress(function, def).base != xzr)
+            else if (getReloadAddress(function, def, /*limitToCurrentBlock*/ true).base != xzr)
             {
                 // instead of spilling the register to stack, we can reload it from VM stack/constants
                 // we still need to record the spill for restore(start) to work

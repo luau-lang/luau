@@ -58,6 +58,15 @@ void SubtypingResult::orElse(const SubtypingResult& other)
     normalizationTooComplex |= other.normalizationTooComplex;
 }
 
+SubtypingResult SubtypingResult::negate(const SubtypingResult& result)
+{
+    return SubtypingResult{
+        !result.isSubtype,
+        result.isErrorSuppressing,
+        result.normalizationTooComplex,
+    };
+}
+
 SubtypingResult SubtypingResult::all(const std::vector<SubtypingResult>& results)
 {
     SubtypingResult acc{true, false};
@@ -137,10 +146,10 @@ SubtypingResult Subtyping::isSubtype_(TypeId subTy, TypeId superTy)
 
     SeenSetPopper ssp{&seenTypes, typePair};
 
-    if (auto superUnion = get<UnionType>(superTy))
-        return isSubtype_(subTy, superUnion);
-    else if (auto subUnion = get<UnionType>(subTy))
+    if (auto subUnion = get<UnionType>(subTy))
         return isSubtype_(subUnion, superTy);
+    else if (auto superUnion = get<UnionType>(superTy))
+        return isSubtype_(subTy, superUnion);
     else if (auto superIntersection = get<IntersectionType>(superTy))
         return isSubtype_(subTy, superIntersection);
     else if (auto subIntersection = get<IntersectionType>(subTy))
@@ -195,6 +204,18 @@ SubtypingResult Subtyping::isSubtype_(TypeId subTy, TypeId superTy)
     else if (auto p = get2<FunctionType, FunctionType>(subTy, superTy))
         return isSubtype_(p);
     else if (auto p = get2<TableType, TableType>(subTy, superTy))
+        return isSubtype_(p);
+    else if (auto p = get2<MetatableType, MetatableType>(subTy, superTy))
+        return isSubtype_(p);
+    else if (auto p = get2<MetatableType, TableType>(subTy, superTy))
+        return isSubtype_(p);
+    else if (auto p = get2<ClassType, ClassType>(subTy, superTy))
+        return isSubtype_(p);
+    else if (auto p = get2<ClassType, TableType>(subTy, superTy))
+        return isSubtype_(p);
+    else if (auto p = get2<PrimitiveType, TableType>(subTy, superTy))
+        return isSubtype_(p);
+    else if (auto p = get2<SingletonType, TableType>(subTy, superTy))
         return isSubtype_(p);
 
     return {false};
@@ -323,7 +344,7 @@ SubtypingResult Subtyping::isSubtype_(TypePackId subTp, TypePackId superTp)
     {
         if (auto p = get2<VariadicTypePack, VariadicTypePack>(*subTail, *superTail))
         {
-            results.push_back(isSubtype_(p.first->ty, p.second->ty));
+            results.push_back(isSubtype_(p));
         }
         else if (auto p = get2<GenericTypePack, GenericTypePack>(*subTail, *superTail))
         {
@@ -472,7 +493,6 @@ SubtypingResult Subtyping::isSubtype_(TypeId subTy, const IntersectionType* supe
 
 SubtypingResult Subtyping::isSubtype_(const IntersectionType* subIntersection, TypeId superTy)
 {
-    // TODO: Semantic subtyping here.
     // As per TAPL: A & B <: T iff A <: T || B <: T
     std::vector<SubtypingResult> subtypings;
     for (TypeId ty : subIntersection)
@@ -520,6 +540,59 @@ SubtypingResult Subtyping::isSubtype_(const TableType* subTable, const TableType
     return result;
 }
 
+SubtypingResult Subtyping::isSubtype_(const MetatableType* subMt, const MetatableType* superMt)
+{
+    return SubtypingResult::all({
+        isSubtype_(subMt->table, superMt->table),
+        isSubtype_(subMt->metatable, superMt->metatable),
+    });
+}
+
+SubtypingResult Subtyping::isSubtype_(const MetatableType* subMt, const TableType* superTable)
+{
+    if (auto subTable = get<TableType>(subMt->table)) {
+        // Metatables cannot erase properties from the table they're attached to, so
+        // the subtyping rule for this is just if the table component is a subtype
+        // of the supertype table.
+        //
+        // There's a flaw here in that if the __index metamethod contributes a new
+        // field that would satisfy the subtyping relationship, we'll erronously say
+        // that the metatable isn't a subtype of the table, even though they have
+        // compatible properties/shapes. We'll revisit this later when we have a
+        // better understanding of how important this is.
+        return isSubtype_(subTable, superTable);
+    }
+    else
+    {
+        // TODO: This may be a case we actually hit?
+        return {false};
+    }
+}
+
+SubtypingResult Subtyping::isSubtype_(const ClassType* subClass, const ClassType* superClass)
+{
+    return {isSubclass(subClass, superClass)};
+}
+
+SubtypingResult Subtyping::isSubtype_(const ClassType* subClass, const TableType* superTable)
+{
+    SubtypingResult result{true};
+
+    for (const auto& [name, prop]: superTable->props)
+    {
+        if (auto classProp = lookupClassProp(subClass, name))
+        {
+            // Table properties are invariant
+            result.andAlso(isSubtype_(classProp->type(), prop.type()));
+            result.andAlso(isSubtype_(prop.type(), classProp->type()));
+        }
+        else
+            return SubtypingResult{false};
+    }
+
+    return result;
+}
+
 SubtypingResult Subtyping::isSubtype_(const FunctionType* subFunction, const FunctionType* superFunction)
 {
     SubtypingResult result;
@@ -533,6 +606,47 @@ SubtypingResult Subtyping::isSubtype_(const FunctionType* subFunction, const Fun
     return result;
 }
 
+SubtypingResult Subtyping::isSubtype_(const PrimitiveType* subPrim, const TableType* superTable)
+{
+    SubtypingResult result{false};
+    if (subPrim->type == PrimitiveType::String)
+    {
+        if (auto metatable = getMetatable(builtinTypes->stringType, builtinTypes))
+        {
+            if (auto mttv = get<TableType>(follow(metatable)))
+            {
+                if (auto it = mttv->props.find("__index"); it != mttv->props.end())
+                {
+                    if (auto stringTable = get<TableType>(it->second.type()))
+                        result.orElse(isSubtype_(stringTable, superTable));
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+SubtypingResult Subtyping::isSubtype_(const SingletonType* subSingleton, const TableType* superTable)
+{
+    SubtypingResult result{false};
+    if (auto stringleton = get<StringSingleton>(subSingleton))
+    {
+        if (auto metatable = getMetatable(builtinTypes->stringType, builtinTypes))
+        {
+            if (auto mttv = get<TableType>(follow(metatable)))
+            {
+                if (auto it = mttv->props.find("__index"); it != mttv->props.end())
+                {
+                    if (auto stringTable = get<TableType>(it->second.type()))
+                        result.orElse(isSubtype_(stringTable, superTable));
+                }
+            }
+        }
+    }
+    return result;
+}
+
 SubtypingResult Subtyping::isSubtype_(const NormalizedType* subNorm, const NormalizedType* superNorm)
 {
     if (!subNorm || !superNorm)
@@ -540,21 +654,72 @@ SubtypingResult Subtyping::isSubtype_(const NormalizedType* subNorm, const Norma
 
     SubtypingResult result = isSubtype_(subNorm->tops, superNorm->tops);
     result.andAlso(isSubtype_(subNorm->booleans, superNorm->booleans));
-    // isSubtype_(subNorm->classes, superNorm->classes);
-    // isSubtype_(subNorm->classes, superNorm->tables);
+    result.andAlso(isSubtype_(subNorm->classes, superNorm->classes, superNorm->tables));
     result.andAlso(isSubtype_(subNorm->errors, superNorm->errors));
     result.andAlso(isSubtype_(subNorm->nils, superNorm->nils));
     result.andAlso(isSubtype_(subNorm->numbers, superNorm->numbers));
     result.isSubtype &= Luau::isSubtype(subNorm->strings, superNorm->strings);
     // isSubtype_(subNorm->strings, superNorm->tables);
     result.andAlso(isSubtype_(subNorm->threads, superNorm->threads));
-    // isSubtype_(subNorm->tables, superNorm->tables);
+    result.andAlso(isSubtype_(subNorm->tables, superNorm->tables));
     // isSubtype_(subNorm->tables, superNorm->strings);
     // isSubtype_(subNorm->tables, superNorm->classes);
     // isSubtype_(subNorm->functions, superNorm->functions);
     // isSubtype_(subNorm->tyvars, superNorm->tyvars);
 
     return result;
+}
+
+SubtypingResult Subtyping::isSubtype_(const NormalizedClassType& subClass, const NormalizedClassType& superClass, const TypeIds& superTables)
+{
+    for (const auto& [subClassTy, _] : subClass.classes)
+    {
+        SubtypingResult result;
+
+        for (const auto& [superClassTy, superNegations] : superClass.classes)
+        {
+            result.orElse(isSubtype_(subClassTy, superClassTy));
+            if (!result.isSubtype)
+                continue;
+
+            for (TypeId negation : superNegations)
+            {
+                result.andAlso(SubtypingResult::negate(isSubtype_(subClassTy, negation)));
+                if (result.isSubtype)
+                    break;
+            }
+        }
+
+        if (result.isSubtype)
+            continue;
+
+        for (TypeId superTableTy : superTables)
+            result.orElse(isSubtype_(subClassTy, superTableTy));
+
+        if (!result.isSubtype)
+            return result;
+    }
+
+    return {true};
+}
+
+SubtypingResult Subtyping::isSubtype_(const TypeIds& subTypes, const TypeIds& superTypes)
+{
+    std::vector<SubtypingResult> results;
+
+    for (TypeId subTy : subTypes)
+    {
+        results.emplace_back();
+        for (TypeId superTy : superTypes)
+            results.back().orElse(isSubtype_(subTy, superTy));
+    }
+
+    return SubtypingResult::all(results);
+}
+
+SubtypingResult Subtyping::isSubtype_(const VariadicTypePack* subVariadic, const VariadicTypePack* superVariadic)
+{
+    return isSubtype_(subVariadic->ty, superVariadic->ty);
 }
 
 bool Subtyping::bindGeneric(TypeId subTy, TypeId superTy)

@@ -67,6 +67,18 @@ assert(vector(1, 2, 4) / '8' == vector(1/8, 1/4, 1/2));
 
 assert(-vector(1, 2, 4) == vector(-1, -2, -4));
 
+-- test floor division
+assert(vector(1, 3, 5) // 2 == vector(0, 1, 2))
+assert(vector(1, 3, 5) // val == vector(8, 24, 40))
+
+if vector_size == 4 then
+	assert(10 // vector(1, 2, 3, 4) == vector(10, 5, 3, 2))
+	assert(vector(10, 9, 8, 7) // vector(1, 2, 3, 4) == vector(10, 4, 2, 1))
+else
+	assert(10 // vector(1, 2, 3) == vector(10, 5, 3))
+	assert(vector(10, 9, 8) // vector(1, 2, 3) == vector(10, 4, 2))
+end
+
 -- test NaN comparison
 local nanv = vector(0/0, 0/0, 0/0)
 assert(nanv ~= nanv);

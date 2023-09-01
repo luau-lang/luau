@@ -134,9 +134,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
 {
     ScopedFastFlag sff[] = {
         {"LuauAlwaysCommitInferencesOfFunctionCalls", true},
-        {"LuauIndentTypeMismatch", true},
     };
-    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
 
     CheckResult result = check(R"(
         --!strict

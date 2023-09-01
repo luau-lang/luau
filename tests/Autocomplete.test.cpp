@@ -986,6 +986,33 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_end_with_lambda")
     CHECK_EQ(ac.context, AutocompleteContext::Statement);
 }
 
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_end_of_do_block")
+{
+    ScopedFastFlag sff{"LuauAutocompleteDoEnd", true};
+
+    check("do @1");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("end"));
+
+    check(R"(
+        function f()
+            do
+                @1
+        end
+        @2
+    )");
+
+    ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("end"));
+
+    ac = autocomplete('2');
+
+    CHECK(ac.entryMap.count("end"));
+}
+
 TEST_CASE_FIXTURE(ACFixture, "stop_at_first_stat_when_recommending_keywords")
 {
     check(R"(

@@ -713,9 +713,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "generic_functions_should_be_memory_safe")
 {
-    ScopedFastFlag sff{"LuauIndentTypeMismatch", true};
-    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
-
     CheckResult result = check(R"(
 --!strict
 -- At one point this produced a UAF

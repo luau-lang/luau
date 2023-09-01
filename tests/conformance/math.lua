@@ -82,6 +82,7 @@ assert(not(1>1) and not(1>2) and (2>1))
 assert(not('a'>'a') and not('a'>'b') and ('b'>'a'))
 assert((1>=1) and not(1>=2) and (2>=1))
 assert(('a'>='a') and not('a'>='b') and ('b'>='a'))
+assert((unk and unk > 0) == nil) -- validate precedence between and and >
 
 -- testing mod operator
 assert(-4%3 == 2)

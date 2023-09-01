@@ -48,6 +48,7 @@ const char* const luaT_eventname[] = {
     "__sub",
     "__mul",
     "__div",
+    "__idiv",
     "__mod",
     "__pow",
     "__unm",

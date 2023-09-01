@@ -91,6 +91,15 @@ assert((function() local a = 1 a = a + 2 return a end)() == 3)
 assert((function() local a = 1 a = a - 2 return a end)() == -1)
 assert((function() local a = 1 a = a * 2 return a end)() == 2)
 assert((function() local a = 1 a = a / 2 return a end)() == 0.5)
+
+-- floor division should always round towards -Infinity
+assert((function() local a = 1 a = a // 2 return a end)() == 0)
+assert((function() local a = 3 a = a // 2 return a end)() == 1)
+assert((function() local a = 3.5 a = a // 2 return a end)() == 1)
+assert((function() local a = -1 a = a // 2 return a end)() == -1)
+assert((function() local a = -3 a = a // 2 return a end)() == -2)
+assert((function() local a = -3.5 a = a // 2 return a end)() == -2)
+
 assert((function() local a = 5 a = a % 2 return a end)() == 1)
 assert((function() local a = 3 a = a ^ 2 return a end)() == 9)
 assert((function() local a = 3 a = a ^ 3 return a end)() == 27)
@@ -494,6 +503,7 @@ local function vec3t(x, y, z)
         __sub = function(l, r) return vec3t(l.x - r.x, l.y - r.y, l.z - r.z) end,
         __mul = function(l, r) return type(r) == "number" and vec3t(l.x * r, l.y * r, l.z * r) or vec3t(l.x * r.x, l.y * r.y, l.z * r.z) end,
         __div = function(l, r) return type(r) == "number" and vec3t(l.x / r, l.y / r, l.z / r) or vec3t(l.x / r.x, l.y / r.y, l.z / r.z) end,
+        __idiv = function(l, r) return type(r) == "number" and vec3t(l.x // r, l.y // r, l.z // r) or vec3t(l.x // r.x, l.y // r.y, l.z // r.z) end,
         __unm = function(v) return vec3t(-v.x, -v.y, -v.z) end,
         __tostring = function(v) return string.format("%g, %g, %g", v.x, v.y, v.z) end
     })
@@ -504,10 +514,13 @@ assert((function() return tostring(vec3t(1,2,3) + vec3t(4,5,6)) end)() == "5, 7,
 assert((function() return tostring(vec3t(1,2,3) - vec3t(4,5,6)) end)() == "-3, -3, -3")
 assert((function() return tostring(vec3t(1,2,3) * vec3t(4,5,6)) end)() == "4, 10, 18")
 assert((function() return tostring(vec3t(1,2,3) / vec3t(2,4,8)) end)() == "0.5, 0.5, 0.375")
+assert((function() return tostring(vec3t(1,2,3) // vec3t(2,4,2)) end)() == "0, 0, 1")
+assert((function() return tostring(vec3t(1,2,3) // vec3t(-2,-4,-2)) end)() == "-1, -1, -2")
 
 -- reg vs constant
 assert((function() return tostring(vec3t(1,2,3) * 2) end)() == "2, 4, 6")
 assert((function() return tostring(vec3t(1,2,3) / 2) end)() == "0.5, 1, 1.5")
+assert((function() return tostring(vec3t(1,2,3) // 2) end)() == "0, 1, 1")
 
 -- unary
 assert((function() return tostring(-vec3t(1,2,3)) end)() == "-1, -2, -3")

@@ -130,4 +130,45 @@ end
 
 assert(pcall(fuzzfail13) == true)
 
+local function arraySizeInv1()
+  local t = {1, 2, nil, nil, nil, nil, nil, nil, nil, true}
+
+  table.insert(t, 3)
+
+  return t[10]
+end
+
+assert(arraySizeInv1() == true)
+
+local function arraySizeInv2()
+  local t = {1, 2, nil, nil, nil, nil, nil, nil, nil, true}
+
+  local u = {a = t}
+  table.insert(u.a, 3) -- aliased modifiction of 't' register through other value
+
+  return t[10]
+end
+
+assert(arraySizeInv2() == true)
+
+local function nilInvalidatesSlot()
+  local function tabs()
+    local t = { x=1, y=2, z=3 }
+    setmetatable(t, { __index = function(t, k) return 42 end })
+    return t, t
+  end
+
+  local t1, t2 = tabs()
+
+  for i=1,2 do
+    local a = t1.x
+    t2.x = nil
+    local b = t1.x
+    t2.x = 1
+    assert(a == 1 and b == 42)
+  end
+end
+
+nilInvalidatesSlot()
+
 return('OK')

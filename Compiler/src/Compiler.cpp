@@ -26,6 +26,8 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
+LUAU_FASTFLAG(LuauFloorDivision)
+
 namespace Luau
 {
 
@@ -1019,6 +1021,11 @@ struct Compiler
         case AstExprBinary::Div:
             return k ? LOP_DIVK : LOP_DIV;
 
+        case AstExprBinary::FloorDiv:
+            LUAU_ASSERT(FFlag::LuauFloorDivision);
+
+            return k ? LOP_IDIVK : LOP_IDIV;
+
         case AstExprBinary::Mod:
             return k ? LOP_MODK : LOP_MOD;
 
@@ -1469,9 +1476,12 @@ struct Compiler
         case AstExprBinary::Sub:
         case AstExprBinary::Mul:
         case AstExprBinary::Div:
+        case AstExprBinary::FloorDiv:
         case AstExprBinary::Mod:
         case AstExprBinary::Pow:
         {
+            LUAU_ASSERT(FFlag::LuauFloorDivision || expr->op != AstExprBinary::FloorDiv);
+
             int32_t rc = getConstantNumber(expr->right);
 
             if (rc >= 0 && rc <= 255)
@@ -3192,9 +3202,12 @@ struct Compiler
         case AstExprBinary::Sub:
         case AstExprBinary::Mul:
         case AstExprBinary::Div:
+        case AstExprBinary::FloorDiv:
         case AstExprBinary::Mod:
         case AstExprBinary::Pow:
         {
+            LUAU_ASSERT(FFlag::LuauFloorDivision || stat->op != AstExprBinary::FloorDiv);
+
             if (var.kind != LValue::Kind_Local)
                 compileLValueUse(var, target, /* set= */ false);
 

@@ -15,6 +15,7 @@
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 LUAU_FASTFLAGVARIABLE(LuauAnonymousAutofilled1, false);
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteLastTypecheck, false)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteDoEnd, false)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteStringLiteralBounds, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
@@ -1089,14 +1090,19 @@ static AutocompleteEntryMap autocompleteStatement(
     {
         if (AstStatForIn* statForIn = (*it)->as<AstStatForIn>(); statForIn && !statForIn->hasEnd)
             result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-        if (AstStatFor* statFor = (*it)->as<AstStatFor>(); statFor && !statFor->hasEnd)
+        else if (AstStatFor* statFor = (*it)->as<AstStatFor>(); statFor && !statFor->hasEnd)
             result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-        if (AstStatIf* statIf = (*it)->as<AstStatIf>(); statIf && !statIf->hasEnd)
+        else if (AstStatIf* statIf = (*it)->as<AstStatIf>(); statIf && !statIf->hasEnd)
             result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-        if (AstStatWhile* statWhile = (*it)->as<AstStatWhile>(); statWhile && !statWhile->hasEnd)
+        else if (AstStatWhile* statWhile = (*it)->as<AstStatWhile>(); statWhile && !statWhile->hasEnd)
             result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-        if (AstExprFunction* exprFunction = (*it)->as<AstExprFunction>(); exprFunction && !exprFunction->hasEnd)
+        else if (AstExprFunction* exprFunction = (*it)->as<AstExprFunction>(); exprFunction && !exprFunction->hasEnd)
             result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        if (FFlag::LuauAutocompleteDoEnd)
+        {
+            if (AstStatBlock* exprBlock = (*it)->as<AstStatBlock>(); exprBlock && !exprBlock->hasEnd)
+                result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        }
     }
 
     if (ancestry.size() >= 2)

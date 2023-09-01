@@ -389,9 +389,6 @@ type Table = typeof(tbl)
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "module_type_conflict")
 {
-    ScopedFastFlag sff{"LuauIndentTypeMismatch", true};
-    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
-
     fileResolver.source["game/A"] = R"(
 export type T = { x: number }
 return {}
@@ -420,9 +417,6 @@ Type 'number' could not be converted into 'string' in an invariant context)";
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "module_type_conflict_instantiated")
 {
-    ScopedFastFlag sff{"LuauIndentTypeMismatch", true};
-    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
-
     fileResolver.source["game/A"] = R"(
 export type Wrap<T> = { x: T }
 return {}

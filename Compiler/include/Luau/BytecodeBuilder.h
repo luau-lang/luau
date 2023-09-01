@@ -15,7 +15,6 @@ class BytecodeEncoder
 public:
     virtual ~BytecodeEncoder() {}
 
-    virtual uint8_t encodeOp(uint8_t op) = 0;
     virtual void encode(uint32_t* data, size_t count) = 0;
 };
 
