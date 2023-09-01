@@ -71,10 +71,12 @@ static uint8_t* allocatePagesImpl(size_t size)
     LUAU_ASSERT(size == alignToPageSize(size));
 
 #ifdef __APPLE__
-    return (uint8_t*)mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
+    void* result = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
 #else
-    return (uint8_t*)mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    void* result = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
 #endif
+
+    return (result == MAP_FAILED) ? nullptr : static_cast<uint8_t*>(result);
 }
 
 static void freePagesImpl(uint8_t* mem, size_t size)

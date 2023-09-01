@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Type.h"
+#include "Luau/TypePack.h"
 #include "Luau/UnifierSharedState.h"
 
 #include <vector>
@@ -14,8 +15,10 @@ template<typename A, typename B>
 struct TryPair;
 struct InternalErrorReporter;
 
+class TypeIds;
 class Normalizer;
 struct NormalizedType;
+struct NormalizedClassType;
 
 struct SubtypingResult
 {
@@ -30,6 +33,8 @@ struct SubtypingResult
     void andAlso(const SubtypingResult& other);
     void orElse(const SubtypingResult& other);
 
+    // Only negates the `isSubtype`.
+    static SubtypingResult negate(const SubtypingResult& result);
     static SubtypingResult all(const std::vector<SubtypingResult>& results);
     static SubtypingResult any(const std::vector<SubtypingResult>& results);
 };
@@ -63,7 +68,7 @@ struct Subtyping
     DenseHashMap<TypePackId, TypePackId> mappedGenericPacks{nullptr};
 
     using SeenSet = std::unordered_set<std::pair<TypeId, TypeId>, TypeIdPairHash>;
-    
+
     SeenSet seenTypes;
 
     // TODO cache
@@ -88,8 +93,19 @@ private:
     SubtypingResult isSubtype_(const SingletonType* subSingleton, const PrimitiveType* superPrim);
     SubtypingResult isSubtype_(const SingletonType* subSingleton, const SingletonType* superSingleton);
     SubtypingResult isSubtype_(const TableType* subTable, const TableType* superTable);
+    SubtypingResult isSubtype_(const MetatableType* subMt, const MetatableType* superMt);
+    SubtypingResult isSubtype_(const MetatableType* subMt, const TableType* superTable);
+    SubtypingResult isSubtype_(const ClassType* subClass, const ClassType* superClass);
+    SubtypingResult isSubtype_(const ClassType* subClass, const TableType* superTable); // Actually a class <: shape.
     SubtypingResult isSubtype_(const FunctionType* subFunction, const FunctionType* superFunction);
+    SubtypingResult isSubtype_(const PrimitiveType* subPrim, const TableType* superTable);
+    SubtypingResult isSubtype_(const SingletonType* subSingleton, const TableType* superTable);
+
     SubtypingResult isSubtype_(const NormalizedType* subNorm, const NormalizedType* superNorm);
+    SubtypingResult isSubtype_(const NormalizedClassType& subClass, const NormalizedClassType& superClass, const TypeIds& superTables);
+    SubtypingResult isSubtype_(const TypeIds& subTypes, const TypeIds& superTypes);
+
+    SubtypingResult isSubtype_(const VariadicTypePack* subVariadic, const VariadicTypePack* superVariadic);
 
     bool bindGeneric(TypeId subTp, TypeId superTp);
     bool bindGeneric(TypePackId subTp, TypePackId superTp);

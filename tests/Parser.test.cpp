@@ -2970,4 +2970,40 @@ TEST_CASE_FIXTURE(Fixture, "unfinished_string_literal_types_get_reported_but_par
     CHECK_EQ(result.root->body.size, 2);
 }
 
+TEST_CASE_FIXTURE(Fixture, "do_block_with_no_end")
+{
+    ParseResult result = tryParse(R"(
+        do
+    )");
+
+    REQUIRE_EQ(1, result.errors.size());
+
+    AstStatBlock* stat0 = result.root->body.data[0]->as<AstStatBlock>();
+    REQUIRE(stat0);
+
+    CHECK(!stat0->hasEnd);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_with_lookahead_involved")
+{
+    ScopedFastFlag sff{"LuauLexerLookaheadRemembersBraceType", true};
+
+    ParseResult result = tryParse(R"(
+        local x = `{ {y} }`
+    )");
+
+    REQUIRE_MESSAGE(result.errors.empty(), result.errors[0].getMessage());
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_with_lookahead_involved2")
+{
+    ScopedFastFlag sff{"LuauLexerLookaheadRemembersBraceType", true};
+
+    ParseResult result = tryParse(R"(
+        local x = `{ { y{} } }`
+    )");
+
+    REQUIRE_MESSAGE(result.errors.empty(), result.errors[0].getMessage());
+}
+
 TEST_SUITE_END();

@@ -62,6 +62,7 @@ struct Lexeme
         Dot3,
         SkinnyArrow,
         DoubleColon,
+        FloorDiv,
 
         InterpStringBegin,
         InterpStringMid,
@@ -73,6 +74,7 @@ struct Lexeme
         SubAssign,
         MulAssign,
         DivAssign,
+        FloorDivAssign,
         ModAssign,
         PowAssign,
         ConcatAssign,

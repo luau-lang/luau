@@ -833,14 +833,6 @@ TEST_CASE_FIXTURE(Fixture, "tostring_unsee_ttv_if_array")
 
 TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauIndentTypeMismatch", true},
-    };
-
-    ScopedFastInt sfi[] = {
-        {"LuauIndentTypeMismatchMaxTypeLength", 10},
-    };
-
     CheckResult result = check(R"(
 --!strict
    function f1() : {a : number, b : string, c : { d : number}}

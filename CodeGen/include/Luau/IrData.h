@@ -67,6 +67,7 @@ enum class IrCmd : uint8_t
     // Get pointer (LuaNode) to table node element at the active cached slot index
     // A: pointer (Table)
     // B: unsigned int (pcpos)
+    // C: Kn
     GET_SLOT_NODE_ADDR,
 
     // Get pointer (LuaNode) to table node element at the main position of the specified key hash
@@ -132,6 +133,7 @@ enum class IrCmd : uint8_t
     SUB_NUM,
     MUL_NUM,
     DIV_NUM,
+    IDIV_NUM,
     MOD_NUM,
 
     // Get the minimum/maximum of two numbers
@@ -252,6 +254,11 @@ enum class IrCmd : uint8_t
     // Duplicate a table
     // A: pointer (Table)
     DUP_TABLE,
+
+    // Insert an integer key into a table
+    // A: pointer (Table)
+    // B: int (key)
+    TABLE_SETNUM,
 
     // Try to convert a double number into a table index (int) or jump if it's not an integer
     // A: double
@@ -410,6 +417,12 @@ enum class IrCmd : uint8_t
     // B: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_NODE_NO_NEXT,
+
+    // Guard against table node with 'nil' value
+    // A: pointer (LuaNode)
+    // B: block/vmexit/undef
+    // When undef is specified instead of a block, execution is aborted on check failure
+    CHECK_NODE_VALUE,
 
     // Special operations
 
@@ -832,6 +845,8 @@ struct IrBlock
     uint32_t finish = ~0u;
 
     uint32_t sortkey = ~0u;
+    uint32_t chainkey = 0;
+    uint32_t expectedNextBlock = ~0u;
 
     Label label;
 };
@@ -993,23 +1008,26 @@ struct IrFunction
         valueRestoreOps[instIdx] = location;
     }
 
-    IrOp findRestoreOp(uint32_t instIdx) const
+    IrOp findRestoreOp(uint32_t instIdx, bool limitToCurrentBlock) const
     {
         if (instIdx >= valueRestoreOps.size())
             return {};
 
         const IrBlock& block = blocks[validRestoreOpBlockIdx];
 
-        // Values can only reference restore operands in the current block
-        if (instIdx < block.start || instIdx > block.finish)
-            return {};
+        // When spilled, values can only reference restore operands in the current block
+        if (limitToCurrentBlock)
+        {
+            if (instIdx < block.start || instIdx > block.finish)
+                return {};
+        }
 
         return valueRestoreOps[instIdx];
     }
 
-    IrOp findRestoreOp(const IrInst& inst) const
+    IrOp findRestoreOp(const IrInst& inst, bool limitToCurrentBlock) const
     {
-        return findRestoreOp(getInstIndex(inst));
+        return findRestoreOp(getInstIndex(inst), limitToCurrentBlock);
     }
 };
 

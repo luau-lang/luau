@@ -108,13 +108,14 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::FINDUPVAL:
         break;
 
-        // These instrucitons read VmReg only after optimizeMemoryOperandsX64
+        // These instructions read VmReg only after optimizeMemoryOperandsX64
     case IrCmd::CHECK_TAG:
     case IrCmd::CHECK_TRUTHY:
     case IrCmd::ADD_NUM:
     case IrCmd::SUB_NUM:
     case IrCmd::MUL_NUM:
     case IrCmd::DIV_NUM:
+    case IrCmd::IDIV_NUM:
     case IrCmd::MOD_NUM:
     case IrCmd::MIN_NUM:
     case IrCmd::MAX_NUM:

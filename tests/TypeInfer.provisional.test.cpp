@@ -787,9 +787,6 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "functions_with_mismatching_arity_but_any_is
 
 TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_type_is_illegal")
 {
-    ScopedFastFlag sff{"LuauIndentTypeMismatch", true};
-    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
-
     CheckResult result = check(R"(
         local t: {x: number?} = {x = nil}
 
@@ -1048,6 +1045,44 @@ tbl:f3()
         CheckResult result = frontend.check("game/B");
         LUAU_REQUIRE_ERROR_COUNT(1, result);
     }
+}
+
+// Ideally, unification with any will not cause a 2^n normalization of a function overload
+TEST_CASE_FIXTURE(BuiltinsFixture, "normalization_limit_in_unify_with_any")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauTransitiveSubtyping", true},
+        {"DebugLuauDeferredConstraintResolution", true},
+    };
+
+    // With default limit, this test will take 10 seconds in NoOpt
+    ScopedFastInt luauNormalizeCacheLimit{"LuauNormalizeCacheLimit", 1000};
+
+    // Build a function type with a large overload set
+    const int parts = 100;
+    std::string source;
+
+    for (int i = 0; i < parts; i++)
+        formatAppend(source, "type T%d = { f%d: number }\n", i, i);
+
+    source += "type Instance = { new: (('s0', extra: Instance?) -> T0)";
+
+    for (int i = 1; i < parts; i++)
+        formatAppend(source, " & (('s%d', extra: Instance?) -> T%d)", i, i);
+
+    source += " }\n";
+
+    source += R"(
+local Instance: Instance = {} :: any
+
+local function foo(a: typeof(Instance.new)) return if a then 2 else 3 end
+
+foo(1 :: any)
+)";
+
+    CheckResult result = check(source);
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

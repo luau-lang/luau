@@ -5,6 +5,7 @@
 #include "Luau/IrUtils.h"
 #include "Luau/OptimizeConstProp.h"
 #include "Luau/OptimizeFinalX64.h"
+#include "ScopedFlags.h"
 
 #include "doctest.h"
 
@@ -1926,6 +1927,135 @@ bb_0:
    %3 = LOAD_INT R1
    STORE_INT R2, %3
    RETURN 0u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateHashSlotChecks")
+{
+    ScopedFastFlag luauReuseHashSlots{"LuauReuseHashSlots2", true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.block(IrBlockKind::Fallback);
+
+    build.beginBlock(block);
+
+    // This roughly corresponds to 'return t.a + t.a'
+    IrOp table1 = build.inst(IrCmd::LOAD_POINTER, build.vmReg(1));
+    IrOp slot1 = build.inst(IrCmd::GET_SLOT_NODE_ADDR, table1, build.constUint(3), build.vmConst(1));
+    build.inst(IrCmd::CHECK_SLOT_MATCH, slot1, build.vmConst(1), fallback);
+    IrOp value1 = build.inst(IrCmd::LOAD_TVALUE, slot1, build.constInt(0));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(3), value1);
+
+    IrOp slot1b = build.inst(IrCmd::GET_SLOT_NODE_ADDR, table1, build.constUint(8), build.vmConst(1)); // This will be removed
+    build.inst(IrCmd::CHECK_SLOT_MATCH, slot1b, build.vmConst(1), fallback);                           // Key will be replaced with undef here
+    IrOp value1b = build.inst(IrCmd::LOAD_TVALUE, slot1b, build.constInt(0));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(4), value1b);
+
+    IrOp a = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(3));
+    IrOp b = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(4));
+    IrOp sum = build.inst(IrCmd::ADD_NUM, a, b);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), sum);
+
+    build.inst(IrCmd::RETURN, build.vmReg(2), build.constUint(1));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constUint(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build, true);
+
+    // In the future, we might even see duplicate identical TValue loads go away
+    // In the future, we might even see loads of different VM regs with the same value go away
+    CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
+bb_0:
+   %0 = LOAD_POINTER R1
+   %1 = GET_SLOT_NODE_ADDR %0, 3u, K1
+   CHECK_SLOT_MATCH %1, K1, bb_fallback_1
+   %3 = LOAD_TVALUE %1, 0i
+   STORE_TVALUE R3, %3
+   CHECK_NODE_VALUE %1, bb_fallback_1
+   %7 = LOAD_TVALUE %1, 0i
+   STORE_TVALUE R4, %7
+   %9 = LOAD_DOUBLE R3
+   %10 = LOAD_DOUBLE R4
+   %11 = ADD_NUM %9, %10
+   STORE_DOUBLE R2, %11
+   RETURN R2, 1u
+
+bb_fallback_1:
+   RETURN R0, 1u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateHashSlotChecksAvoidNil")
+{
+    ScopedFastFlag luauReuseHashSlots{"LuauReuseHashSlots2", true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.block(IrBlockKind::Fallback);
+
+    build.beginBlock(block);
+
+    IrOp table1 = build.inst(IrCmd::LOAD_POINTER, build.vmReg(1));
+    IrOp slot1 = build.inst(IrCmd::GET_SLOT_NODE_ADDR, table1, build.constUint(3), build.vmConst(1));
+    build.inst(IrCmd::CHECK_SLOT_MATCH, slot1, build.vmConst(1), fallback);
+    IrOp value1 = build.inst(IrCmd::LOAD_TVALUE, slot1, build.constInt(0));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(3), value1);
+
+    IrOp table2 = build.inst(IrCmd::LOAD_POINTER, build.vmReg(2));
+    IrOp slot2 = build.inst(IrCmd::GET_SLOT_NODE_ADDR, table2, build.constUint(6), build.vmConst(1));
+    build.inst(IrCmd::CHECK_SLOT_MATCH, slot2, build.vmConst(1), fallback);
+    build.inst(IrCmd::CHECK_READONLY, table2, fallback);
+
+    build.inst(IrCmd::STORE_TAG, build.vmReg(4), build.constTag(tnil));
+    IrOp valueNil = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(4));
+    build.inst(IrCmd::STORE_TVALUE, slot2, valueNil, build.constInt(0));
+
+    // In the future, we might get to track that value became 'nil' and that fallback will be taken
+    IrOp slot1b = build.inst(IrCmd::GET_SLOT_NODE_ADDR, table1, build.constUint(8), build.vmConst(1)); // This will be removed
+    build.inst(IrCmd::CHECK_SLOT_MATCH, slot1b, build.vmConst(1), fallback);                           // Key will be replaced with undef here
+    IrOp value1b = build.inst(IrCmd::LOAD_TVALUE, slot1b, build.constInt(0));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(3), value1b);
+
+    IrOp slot2b = build.inst(IrCmd::GET_SLOT_NODE_ADDR, table2, build.constUint(11), build.vmConst(1)); // This will be removed
+    build.inst(IrCmd::CHECK_SLOT_MATCH, slot2b, build.vmConst(1), fallback);                            // Key will be replaced with undef here
+    build.inst(IrCmd::CHECK_READONLY, table2, fallback);
+
+    build.inst(IrCmd::STORE_SPLIT_TVALUE, slot2b, build.constTag(tnumber), build.constDouble(1), build.constInt(0));
+
+    build.inst(IrCmd::RETURN, build.vmReg(3), build.constUint(2));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::RETURN, build.vmReg(1), build.constUint(2));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build, true);
+
+    CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
+bb_0:
+   %0 = LOAD_POINTER R1
+   %1 = GET_SLOT_NODE_ADDR %0, 3u, K1
+   CHECK_SLOT_MATCH %1, K1, bb_fallback_1
+   %3 = LOAD_TVALUE %1, 0i
+   STORE_TVALUE R3, %3
+   %5 = LOAD_POINTER R2
+   %6 = GET_SLOT_NODE_ADDR %5, 6u, K1
+   CHECK_SLOT_MATCH %6, K1, bb_fallback_1
+   CHECK_READONLY %5, bb_fallback_1
+   STORE_TAG R4, tnil
+   %10 = LOAD_TVALUE R4
+   STORE_TVALUE %6, %10, 0i
+   CHECK_NODE_VALUE %1, bb_fallback_1
+   %14 = LOAD_TVALUE %1, 0i
+   STORE_TVALUE R3, %14
+   CHECK_NODE_VALUE %6, bb_fallback_1
+   STORE_SPLIT_TVALUE %6, tnumber, 1, 0i
+   RETURN R3, 2u
+
+bb_fallback_1:
+   RETURN R1, 2u
 
 )");
 }

@@ -45,7 +45,7 @@ class TablePrinter(object):
     def _print_horizontal_separator(self):
         for i, align_width in enumerate(self._widths):
             if i > 0:
-                print('-+-', end='')
+                print('-|-', end='')
             print('-' * (align_width+1), end='')
         print()
         pass

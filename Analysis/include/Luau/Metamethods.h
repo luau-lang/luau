@@ -19,6 +19,7 @@ static const std::unordered_map<AstExprBinary::Op, const char*> kBinaryOpMetamet
     {AstExprBinary::Op::Sub, "__sub"},
     {AstExprBinary::Op::Mul, "__mul"},
     {AstExprBinary::Op::Div, "__div"},
+    {AstExprBinary::Op::FloorDiv, "__idiv"},
     {AstExprBinary::Op::Pow, "__pow"},
     {AstExprBinary::Op::Mod, "__mod"},
     {AstExprBinary::Op::Concat, "__concat"},

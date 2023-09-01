@@ -54,6 +54,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::SUB_NUM:
     case IrCmd::MUL_NUM:
     case IrCmd::DIV_NUM:
+    case IrCmd::IDIV_NUM:
     case IrCmd::MOD_NUM:
     case IrCmd::MIN_NUM:
     case IrCmd::MAX_NUM:
@@ -79,7 +80,9 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::JUMP_SLOT_MATCH:
         return IrValueKind::None;
     case IrCmd::TABLE_LEN:
-        return IrValueKind::Double;
+        return IrValueKind::Int;
+    case IrCmd::TABLE_SETNUM:
+        return IrValueKind::Pointer;
     case IrCmd::STRING_LEN:
         return IrValueKind::Int;
     case IrCmd::NEW_TABLE:
@@ -119,6 +122,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::CHECK_ARRAY_SIZE:
     case IrCmd::CHECK_SLOT_MATCH:
     case IrCmd::CHECK_NODE_NO_NEXT:
+    case IrCmd::CHECK_NODE_VALUE:
     case IrCmd::INTERRUPT:
     case IrCmd::CHECK_GC:
     case IrCmd::BARRIER_OBJ:
@@ -463,6 +467,10 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
     case IrCmd::DIV_NUM:
         if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
             substitute(function, inst, build.constDouble(function.doubleOp(inst.a) / function.doubleOp(inst.b)));
+        break;
+    case IrCmd::IDIV_NUM:
+        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
+            substitute(function, inst, build.constDouble(luai_numidiv(function.doubleOp(inst.a), function.doubleOp(inst.b))));
         break;
     case IrCmd::MOD_NUM:
         if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)

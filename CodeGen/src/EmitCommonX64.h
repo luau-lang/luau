@@ -59,7 +59,8 @@ inline uint8_t getXmmRegisterCount(ABIX64 abi)
 // Native code is as stackless as the interpreter, so we can place some data on the stack once and have it accessible at any point
 // Stack is separated into sections for different data. See CodeGenX64.cpp for layout overview
 constexpr unsigned kStackAlign = 8; // Bytes we need to align the stack for non-vol xmm register storage
-constexpr unsigned kStackLocalStorage = 8 * kExtraLocals + 8 * kSpillSlots;
+constexpr unsigned kStackLocalStorage = 8 * kExtraLocals;
+constexpr unsigned kStackSpillStorage = 8 * kSpillSlots;
 constexpr unsigned kStackExtraArgumentStorage = 2 * 8; // Bytes for 5th and 6th function call arguments used under Windows ABI
 constexpr unsigned kStackRegHomeStorage = 4 * 8;       // Register 'home' locations that can be used by callees under Windows ABI
 
@@ -82,7 +83,7 @@ constexpr unsigned kStackOffsetToSpillSlots = kStackOffsetToLocals + kStackLocal
 
 inline unsigned getFullStackSize(ABIX64 abi, uint8_t xmmRegCount)
 {
-    return kStackOffsetToSpillSlots + getNonVolXmmStorageSize(abi, xmmRegCount) + kStackAlign;
+    return kStackOffsetToSpillSlots + kStackSpillStorage + getNonVolXmmStorageSize(abi, xmmRegCount) + kStackAlign;
 }
 
 constexpr OperandX64 sClosure = qword[rsp + kStackOffsetToLocals + 0]; // Closure* cl
@@ -201,8 +202,8 @@ void callArithHelper(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int
 void callLengthHelper(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb);
 void callGetTable(IrRegAllocX64& regs, AssemblyBuilderX64& build, int rb, OperandX64 c, int ra);
 void callSetTable(IrRegAllocX64& regs, AssemblyBuilderX64& build, int rb, OperandX64 c, int ra);
-void checkObjectBarrierConditions(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 object, int ra, int ratag, Label& skip);
-void callBarrierObject(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 object, IrOp objectOp, int ra, int ratag);
+void checkObjectBarrierConditions(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 object, IrOp ra, int ratag, Label& skip);
+void callBarrierObject(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 object, IrOp objectOp, IrOp ra, int ratag);
 void callBarrierTableFast(IrRegAllocX64& regs, AssemblyBuilderX64& build, RegisterX64 table, IrOp tableOp);
 void callStepGc(IrRegAllocX64& regs, AssemblyBuilderX64& build);
 

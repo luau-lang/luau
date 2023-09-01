@@ -53,6 +53,7 @@ void initFunctions(NativeState& data)
     data.context.luaH_new = luaH_new;
     data.context.luaH_clone = luaH_clone;
     data.context.luaH_resizearray = luaH_resizearray;
+    data.context.luaH_setnum = luaH_setnum;
 
     data.context.luaC_barriertable = luaC_barriertable;
     data.context.luaC_barrierf = luaC_barrierf;

@@ -333,6 +333,9 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     case LOP_DIV:
         translateInstBinary(*this, pc, i, TM_DIV);
         break;
+    case LOP_IDIV:
+        translateInstBinary(*this, pc, i, TM_IDIV);
+        break;
     case LOP_MOD:
         translateInstBinary(*this, pc, i, TM_MOD);
         break;
@@ -350,6 +353,9 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         break;
     case LOP_DIVK:
         translateInstBinaryK(*this, pc, i, TM_DIV);
+        break;
+    case LOP_IDIVK:
+        translateInstBinaryK(*this, pc, i, TM_IDIV);
         break;
     case LOP_MODK:
         translateInstBinaryK(*this, pc, i, TM_MOD);

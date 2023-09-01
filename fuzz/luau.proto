@@ -135,17 +135,18 @@ message ExprBinary {
         Sub = 1;
         Mul = 2;
         Div = 3;
-        Mod = 4;
-        Pow = 5;
-        Concat = 6;
-        CompareNe = 7;
-        CompareEq = 8;
-        CompareLt = 9;
-        CompareLe = 10;
-        CompareGt = 11;
-        CompareGe = 12;
-        And = 13;
-        Or = 14;
+        FloorDiv = 4;
+        Mod = 5;
+        Pow = 6;
+        Concat = 7;
+        CompareNe = 8;
+        CompareEq = 9;
+        CompareLt = 10;
+        CompareLe = 11;
+        CompareGt = 12;
+        CompareGe = 13;
+        And = 14;
+        Or = 15;
 	}
 
 	required Op op = 1;

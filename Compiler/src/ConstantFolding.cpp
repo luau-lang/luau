@@ -104,6 +104,14 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         }
         break;
 
+    case AstExprBinary::FloorDiv:
+        if (la.type == Constant::Type_Number && ra.type == Constant::Type_Number)
+        {
+            result.type = Constant::Type_Number;
+            result.valueNumber = floor(la.valueNumber / ra.valueNumber);
+        }
+        break;
+
     case AstExprBinary::Mod:
         if (la.type == Constant::Type_Number && ra.type == Constant::Type_Number)
         {

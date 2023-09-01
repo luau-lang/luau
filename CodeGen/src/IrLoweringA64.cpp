@@ -58,30 +58,6 @@ inline ConditionA64 getConditionFP(IrCondition cond)
     }
 }
 
-static void checkObjectBarrierConditions(AssemblyBuilderA64& build, RegisterA64 object, RegisterA64 temp, int ra, int ratag, Label& skip)
-{
-    RegisterA64 tempw = castReg(KindA64::w, temp);
-
-    // Barrier should've been optimized away if we know that it's not collectable, checking for correctness
-    if (ratag == -1 || !isGCO(ratag))
-    {
-        // iscollectable(ra)
-        build.ldr(tempw, mem(rBase, ra * sizeof(TValue) + offsetof(TValue, tt)));
-        build.cmp(tempw, LUA_TSTRING);
-        build.b(ConditionA64::Less, skip);
-    }
-
-    // isblack(obj2gco(o))
-    build.ldrb(tempw, mem(object, offsetof(GCheader, marked)));
-    build.tbz(tempw, BLACKBIT, skip);
-
-    // iswhite(gcvalue(ra))
-    build.ldr(temp, mem(rBase, ra * sizeof(TValue) + offsetof(TValue, value)));
-    build.ldrb(tempw, mem(temp, offsetof(GCheader, marked)));
-    build.tst(tempw, bit2mask(WHITE0BIT, WHITE1BIT));
-    build.b(ConditionA64::Equal, skip); // Equal = Zero after tst
-}
-
 static void emitAddOffset(AssemblyBuilderA64& build, RegisterA64 dst, RegisterA64 src, size_t offset)
 {
     LUAU_ASSERT(dst != src);
@@ -96,6 +72,47 @@ static void emitAddOffset(AssemblyBuilderA64& build, RegisterA64 dst, RegisterA6
         build.mov(dst, int(offset));
         build.add(dst, dst, src);
     }
+}
+
+static void checkObjectBarrierConditions(AssemblyBuilderA64& build, RegisterA64 object, RegisterA64 temp, IrOp ra, int ratag, Label& skip)
+{
+    RegisterA64 tempw = castReg(KindA64::w, temp);
+    AddressA64 addr = temp;
+
+    // iscollectable(ra)
+    if (ratag == -1 || !isGCO(ratag))
+    {
+        if (ra.kind == IrOpKind::VmReg)
+        {
+            addr = mem(rBase, vmRegOp(ra) * sizeof(TValue) + offsetof(TValue, tt));
+        }
+        else if (ra.kind == IrOpKind::VmConst)
+        {
+            emitAddOffset(build, temp, rConstants, vmConstOp(ra) * sizeof(TValue) + offsetof(TValue, tt));
+        }
+
+        build.ldr(tempw, addr);
+        build.cmp(tempw, LUA_TSTRING);
+        build.b(ConditionA64::Less, skip);
+    }
+
+    // isblack(obj2gco(o))
+    build.ldrb(tempw, mem(object, offsetof(GCheader, marked)));
+    build.tbz(tempw, BLACKBIT, skip);
+
+    // iswhite(gcvalue(ra))
+    if (ra.kind == IrOpKind::VmReg)
+    {
+        addr = mem(rBase, vmRegOp(ra) * sizeof(TValue) + offsetof(TValue, value));
+    }
+    else if (ra.kind == IrOpKind::VmConst)
+    {
+        emitAddOffset(build, temp, rConstants, vmConstOp(ra) * sizeof(TValue) + offsetof(TValue, value));
+    }
+    build.ldr(temp, addr);
+    build.ldrb(tempw, mem(temp, offsetof(GCheader, marked)));
+    build.tst(tempw, bit2mask(WHITE0BIT, WHITE1BIT));
+    build.b(ConditionA64::Equal, skip); // Equal = Zero after tst
 }
 
 static void emitAbort(AssemblyBuilderA64& build, Label& abort)
@@ -242,7 +259,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         if (inst.b.kind == IrOpKind::Inst)
         {
-            build.add(inst.regA64, inst.regA64, zextReg(regOp(inst.b)), kTValueSizeLog2);
+            build.add(inst.regA64, inst.regA64, regOp(inst.b), kTValueSizeLog2);
         }
         else if (inst.b.kind == IrOpKind::Constant)
         {
@@ -271,6 +288,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         RegisterA64 temp1 = regs.allocTemp(KindA64::x);
         RegisterA64 temp1w = castReg(KindA64::w, temp1);
         RegisterA64 temp2 = regs.allocTemp(KindA64::w);
+        RegisterA64 temp2x = castReg(KindA64::x, temp2);
 
         // note: since the stride of the load is the same as the destination register size, we can range check the array index, not the byte offset
         if (uintOp(inst.b) <= AddressA64::kMaxOffset)
@@ -288,7 +306,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         // note: this may clobber inst.a, so it's important that we don't use it after this
         build.ldr(inst.regA64, mem(regOp(inst.a), offsetof(Table, node)));
-        build.add(inst.regA64, inst.regA64, zextReg(temp2), kLuaNodeSizeLog2);
+        build.add(inst.regA64, inst.regA64, temp2x, kLuaNodeSizeLog2); // "zero extend" temp2 to get a larger shift (top 32 bits are zero)
         break;
     }
     case IrCmd::GET_HASH_NODE_ADDR:
@@ -296,6 +314,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         inst.regA64 = regs.allocReuse(KindA64::x, index, {inst.a});
         RegisterA64 temp1 = regs.allocTemp(KindA64::w);
         RegisterA64 temp2 = regs.allocTemp(KindA64::w);
+        RegisterA64 temp2x = castReg(KindA64::x, temp2);
 
         // hash & ((1 << lsizenode) - 1) == hash & ~(-1 << lsizenode)
         build.mov(temp1, -1);
@@ -306,7 +325,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         // note: this may clobber inst.a, so it's important that we don't use it after this
         build.ldr(inst.regA64, mem(regOp(inst.a), offsetof(Table, node)));
-        build.add(inst.regA64, inst.regA64, zextReg(temp2), kLuaNodeSizeLog2);
+        build.add(inst.regA64, inst.regA64, temp2x, kLuaNodeSizeLog2); // "zero extend" temp2 to get a larger shift (top 32 bits are zero)
         break;
     }
     case IrCmd::GET_CLOSURE_UPVAL_ADDR:
@@ -477,6 +496,15 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.fdiv(inst.regA64, temp1, temp2);
         break;
     }
+    case IrCmd::IDIV_NUM:
+    {
+        inst.regA64 = regs.allocReuse(KindA64::d, index, {inst.a, inst.b});
+        RegisterA64 temp1 = tempDouble(inst.a);
+        RegisterA64 temp2 = tempDouble(inst.b);
+        build.fdiv(inst.regA64, temp1, temp2);
+        build.frintm(inst.regA64, inst.regA64);
+        break;
+    }
     case IrCmd::MOD_NUM:
     {
         inst.regA64 = regs.allocReg(KindA64::d, index); // can't allocReuse because both A and B are used twice
@@ -604,9 +632,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         emitUpdateBase(build);
 
-        // since w0 came from a call, we need to move it so that we don't violate zextReg safety contract
-        inst.regA64 = regs.allocReg(KindA64::w, index);
-        build.mov(inst.regA64, w0);
+        inst.regA64 = regs.takeReg(w0, index);
         break;
     }
     case IrCmd::JUMP:
@@ -750,8 +776,8 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.mov(x0, reg);
         build.ldr(x1, mem(rNativeContext, offsetof(NativeContext, luaH_getn)));
         build.blr(x1);
-        inst.regA64 = regs.allocReg(KindA64::d, index);
-        build.scvtf(inst.regA64, w0);
+
+        inst.regA64 = regs.takeReg(w0, index);
         break;
     }
     case IrCmd::STRING_LEN:
@@ -760,6 +786,33 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         build.ldr(inst.regA64, mem(regOp(inst.a), offsetof(TString, len)));
         break;
+    }
+    case IrCmd::TABLE_SETNUM:
+    {
+        // note: we need to call regOp before spill so that we don't do redundant reloads
+        RegisterA64 table = regOp(inst.a);
+        RegisterA64 key = regOp(inst.b);
+        RegisterA64 temp = regs.allocTemp(KindA64::w);
+
+        regs.spill(build, index, {table, key});
+
+        if (w1 != key)
+        {
+            build.mov(x1, table);
+            build.mov(w2, key);
+        }
+        else
+        {
+            build.mov(temp, w1);
+            build.mov(x1, table);
+            build.mov(w2, temp);
+        }
+
+        build.mov(x0, rState);
+        build.ldr(x3, mem(rNativeContext, offsetof(NativeContext, luaH_setnum)));
+        build.blr(x3);
+        inst.regA64 = regs.takeReg(x0, index);
+        break;   
     }
     case IrCmd::NEW_TABLE:
     {
@@ -854,8 +907,6 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         inst.regA64 = regs.allocReg(KindA64::w, index);
         RegisterA64 temp = tempDouble(inst.a);
         build.fcvtzs(castReg(KindA64::x, inst.regA64), temp);
-        // truncation needs to clear high bits to preserve zextReg safety contract
-        build.mov(inst.regA64, inst.regA64);
         break;
     }
     case IrCmd::ADJUST_STACK_TO_REG:
@@ -870,7 +921,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         else if (inst.b.kind == IrOpKind::Inst)
         {
             build.add(temp, rBase, uint16_t(vmRegOp(inst.a) * sizeof(TValue)));
-            build.add(temp, temp, zextReg(regOp(inst.b)), kTValueSizeLog2);
+            build.add(temp, temp, regOp(inst.b), kTValueSizeLog2);
             build.str(temp, mem(rState, offsetof(lua_State, top)));
         }
         else
@@ -919,9 +970,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.ldr(x6, mem(rNativeContext, offsetof(NativeContext, luauF_table) + uintOp(inst.a) * sizeof(luau_FastFunction)));
         build.blr(x6);
 
-        // since w0 came from a call, we need to move it so that we don't violate zextReg safety contract
-        inst.regA64 = regs.allocReg(KindA64::w, index);
-        build.mov(inst.regA64, w0);
+        inst.regA64 = regs.takeReg(w0, index);
         break;
     }
     case IrCmd::CHECK_FASTCALL_RES:
@@ -1063,7 +1112,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         if (inst.c.kind == IrOpKind::Undef || isGCO(tagOp(inst.c)))
         {
             Label skip;
-            checkObjectBarrierConditions(build, temp1, temp2, vmRegOp(inst.b), inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
+            checkObjectBarrierConditions(build, temp1, temp2, inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
 
             size_t spills = regs.spill(build, index, {temp1});
 
@@ -1244,6 +1293,17 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         finalizeTargetLabel(inst.b, fresh);
         break;
     }
+    case IrCmd::CHECK_NODE_VALUE:
+    {
+        Label fresh; // used when guard aborts execution or jumps to a VM exit
+        RegisterA64 temp = regs.allocTemp(KindA64::w);
+
+        build.ldr(temp, mem(regOp(inst.a), offsetof(LuaNode, val.tt)));
+        LUAU_ASSERT(LUA_TNIL == 0);
+        build.cbz(temp, getTargetLabel(inst.b, fresh));
+        finalizeTargetLabel(inst.b, fresh);
+        break;
+    }
     case IrCmd::INTERRUPT:
     {
         regs.spill(build, index);
@@ -1288,7 +1348,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         RegisterA64 temp = regs.allocTemp(KindA64::x);
 
         Label skip;
-        checkObjectBarrierConditions(build, regOp(inst.a), temp, vmRegOp(inst.b), inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
+        checkObjectBarrierConditions(build, regOp(inst.a), temp, inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
 
         RegisterA64 reg = regOp(inst.a); // note: we need to call regOp before spill so that we don't do redundant reloads
         size_t spills = regs.spill(build, index, {reg});
@@ -1332,13 +1392,14 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         RegisterA64 temp = regs.allocTemp(KindA64::x);
 
         Label skip;
-        checkObjectBarrierConditions(build, regOp(inst.a), temp, vmRegOp(inst.b), inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
+        checkObjectBarrierConditions(build, regOp(inst.a), temp, inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
 
         RegisterA64 reg = regOp(inst.a); // note: we need to call regOp before spill so that we don't do redundant reloads
+        AddressA64 addr = tempAddr(inst.b, offsetof(TValue, value));
         size_t spills = regs.spill(build, index, {reg});
         build.mov(x1, reg);
         build.mov(x0, rState);
-        build.ldr(x2, mem(rBase, vmRegOp(inst.b) * sizeof(TValue) + offsetof(TValue, value)));
+        build.ldr(x2, addr);
         build.ldr(x3, mem(rNativeContext, offsetof(NativeContext, luaC_barriertable)));
         build.blr(x3);
 
@@ -1829,7 +1890,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         LUAU_ASSERT(sizeof(TString*) == 8);
 
         if (inst.a.kind == IrOpKind::Inst)
-            build.add(inst.regA64, rGlobalState, zextReg(regOp(inst.a)), 3);
+            build.add(inst.regA64, rGlobalState, regOp(inst.a), 3);
         else if (inst.a.kind == IrOpKind::Constant)
             build.add(inst.regA64, rGlobalState, uint16_t(tagOp(inst.a)) * 8);
         else

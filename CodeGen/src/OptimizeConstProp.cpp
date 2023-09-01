@@ -13,7 +13,10 @@
 #include <vector>
 
 LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
+LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
+LUAU_FASTFLAGVARIABLE(LuauReuseHashSlots2, false)
+LUAU_FASTFLAGVARIABLE(LuauKeepVmapLinear, false)
 
 namespace Luau
 {
@@ -174,6 +177,10 @@ struct ConstPropState
     {
         for (int i = 0; i <= maxReg; ++i)
             invalidateHeap(regs[i]);
+
+        // If table memory has changed, we can't reuse previously computed and validated table slot lookups
+        getSlotNodeCache.clear();
+        checkSlotMatchCache.clear();
     }
 
     void invalidateHeap(RegisterInfo& reg)
@@ -188,6 +195,21 @@ struct ConstPropState
         invalidateHeap();
         invalidateCapturedRegisters();
         inSafeEnv = false;
+    }
+
+    void invalidateTableArraySize()
+    {
+        for (int i = 0; i <= maxReg; ++i)
+            invalidateTableArraySize(regs[i]);
+
+        // If table memory has changed, we can't reuse previously computed and validated table slot lookups
+        getSlotNodeCache.clear();
+        checkSlotMatchCache.clear();
+    }
+
+    void invalidateTableArraySize(RegisterInfo& reg)
+    {
+        reg.knownTableArraySize = -1;
     }
 
     void createRegLink(uint32_t instIdx, IrOp regOp)
@@ -367,6 +389,8 @@ struct ConstPropState
 
         instLink.clear();
         valueMap.clear();
+        getSlotNodeCache.clear();
+        checkSlotMatchCache.clear();
     }
 
     IrFunction& function;
@@ -384,6 +408,9 @@ struct ConstPropState
     DenseHashMap<uint32_t, RegisterLink> instLink{~0u};
 
     DenseHashMap<IrInst, uint32_t, IrInstHash, IrInstEq> valueMap;
+
+    std::vector<uint32_t> getSlotNodeCache;
+    std::vector<uint32_t> checkSlotMatchCache;
 };
 
 static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid, uint32_t firstReturnReg, int nresults)
@@ -863,7 +890,25 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::NOP:
     case IrCmd::LOAD_ENV:
     case IrCmd::GET_ARR_ADDR:
+        break;
     case IrCmd::GET_SLOT_NODE_ADDR:
+        if (!FFlag::LuauReuseHashSlots2)
+            break;
+
+        for (uint32_t prevIdx : state.getSlotNodeCache)
+        {
+            const IrInst& prev = function.instructions[prevIdx];
+
+            if (prev.a == inst.a && prev.c == inst.c)
+            {
+                substitute(function, inst, IrOp{IrOpKind::Inst, prevIdx});
+                return; // Break out from both the loop and the switch
+            }
+        }
+
+        if (int(state.getSlotNodeCache.size()) < FInt::LuauCodeGenReuseSlotLimit)
+            state.getSlotNodeCache.push_back(index);
+        break;
     case IrCmd::GET_HASH_NODE_ADDR:
     case IrCmd::GET_CLOSURE_UPVAL_ADDR:
         break;
@@ -873,6 +918,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::SUB_NUM:
     case IrCmd::MUL_NUM:
     case IrCmd::DIV_NUM:
+    case IrCmd::IDIV_NUM:
     case IrCmd::MOD_NUM:
     case IrCmd::MIN_NUM:
     case IrCmd::MAX_NUM:
@@ -892,6 +938,10 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_SLOT_MATCH:
     case IrCmd::TABLE_LEN:
+        break;
+    case IrCmd::TABLE_SETNUM:
+        state.invalidateTableArraySize();
+        break;
     case IrCmd::STRING_LEN:
     case IrCmd::NEW_TABLE:
     case IrCmd::DUP_TABLE:
@@ -938,7 +988,26 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         break;
     }
     case IrCmd::CHECK_SLOT_MATCH:
+        if (!FFlag::LuauReuseHashSlots2)
+            break;
+
+        for (uint32_t prevIdx : state.checkSlotMatchCache)
+        {
+            const IrInst& prev = function.instructions[prevIdx];
+
+            if (prev.a == inst.a && prev.b == inst.b)
+            {
+                // Only a check for 'nil' value is left
+                replace(function, block, index, {IrCmd::CHECK_NODE_VALUE, inst.a, inst.c});
+                return; // Break out from both the loop and the switch
+            }
+        }
+
+        if (int(state.checkSlotMatchCache.size()) < FInt::LuauCodeGenReuseSlotLimit)
+            state.checkSlotMatchCache.push_back(index);
+        break;
     case IrCmd::CHECK_NODE_NO_NEXT:
+    case IrCmd::CHECK_NODE_VALUE:
     case IrCmd::BARRIER_TABLE_BACK:
     case IrCmd::RETURN:
     case IrCmd::COVERAGE:
@@ -999,7 +1068,10 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         if (RegisterInfo* info = state.tryGetRegisterInfo(inst.b); info && info->knownTableArraySize >= 0)
             replace(function, inst.f, build.constUint(info->knownTableArraySize));
 
-        state.valueMap.clear(); // TODO: this can be relaxed when x64 emitInstSetList becomes aware of register allocator
+        // TODO: this can be relaxed when x64 emitInstSetList becomes aware of register allocator
+        state.valueMap.clear();
+        state.getSlotNodeCache.clear();
+        state.checkSlotMatchCache.clear();
         break;
     case IrCmd::CALL:
         state.invalidateRegistersFrom(vmRegOp(inst.a));
@@ -1012,7 +1084,11 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         break;
     case IrCmd::FORGLOOP:
         state.invalidateRegistersFrom(vmRegOp(inst.a) + 2); // Rn and Rn+1 are not modified
-        state.valueMap.clear();                             // TODO: this can be relaxed when x64 emitInstForGLoop becomes aware of register allocator
+
+        // TODO: this can be relaxed when x64 emitInstForGLoop becomes aware of register allocator
+        state.valueMap.clear();
+        state.getSlotNodeCache.clear();
+        state.checkSlotMatchCache.clear();
         break;
     case IrCmd::FORGLOOP_FALLBACK:
         state.invalidateRegistersFrom(vmRegOp(inst.a) + 2); // Rn and Rn+1 are not modified
@@ -1076,8 +1152,15 @@ static void constPropInBlock(IrBuilder& build, IrBlock& block, ConstPropState& s
         constPropInInst(state, build, function, block, inst, index);
     }
 
-    // Value numbering and load/store propagation is not performed between blocks
-    state.valueMap.clear();
+    if (!FFlag::LuauKeepVmapLinear)
+    {
+        // Value numbering and load/store propagation is not performed between blocks
+        state.valueMap.clear();
+
+        // Same for table slot data propagation
+        state.getSlotNodeCache.clear();
+        state.checkSlotMatchCache.clear();
+    }
 }
 
 static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visited, IrBlock* block, ConstPropState& state)
@@ -1085,6 +1168,9 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
     IrFunction& function = build.function;
 
     state.clear();
+
+    const uint32_t startSortkey = block->sortkey;
+    uint32_t chainPos = 0;
 
     while (block)
     {
@@ -1094,19 +1180,40 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
 
         constPropInBlock(build, *block, state);
 
+        if (FFlag::LuauKeepVmapLinear)
+        {
+            // Value numbering and load/store propagation is not performed between blocks right now
+            // This is because cross-block value uses limit creation of linear block (restriction in collectDirectBlockJumpPath)
+            state.valueMap.clear();
+
+            // Same for table slot data propagation
+            state.getSlotNodeCache.clear();
+            state.checkSlotMatchCache.clear();
+        }
+
+        // Blocks in a chain are guaranteed to follow each other
+        // We force that by giving all blocks the same sorting key, but consecutive chain keys
+        block->sortkey = startSortkey;
+        block->chainkey = chainPos++;
+
         IrInst& termInst = function.instructions[block->finish];
 
         IrBlock* nextBlock = nullptr;
 
         // Unconditional jump into a block with a single user (current block) allows us to continue optimization
         // with the information we have gathered so far (unless we have already visited that block earlier)
-        if (termInst.cmd == IrCmd::JUMP && termInst.a.kind != IrOpKind::VmExit)
+        if (termInst.cmd == IrCmd::JUMP && termInst.a.kind == IrOpKind::Block)
         {
             IrBlock& target = function.blockOp(termInst.a);
             uint32_t targetIdx = function.getBlockIndex(target);
 
             if (target.useCount == 1 && !visited[targetIdx] && target.kind != IrBlockKind::Fallback)
+            {
+                // Make sure block ordering guarantee is checked at lowering time
+                block->expectedNextBlock = function.getBlockIndex(target);
+
                 nextBlock = &target;
+            }
         }
 
         block = nextBlock;
@@ -1134,7 +1241,7 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
         IrBlock* nextBlock = nullptr;
 
         // A chain is made from internal blocks that were not a part of bytecode CFG
-        if (termInst.cmd == IrCmd::JUMP && termInst.a.kind != IrOpKind::VmExit)
+        if (termInst.cmd == IrCmd::JUMP && termInst.a.kind == IrOpKind::Block)
         {
             IrBlock& target = function.blockOp(termInst.a);
             uint32_t targetIdx = function.getBlockIndex(target);
@@ -1175,8 +1282,8 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
     if (termInst.cmd != IrCmd::JUMP)
         return;
 
-    // And it can't be jump to a VM exit
-    if (termInst.a.kind == IrOpKind::VmExit)
+    // And it can't be jump to a VM exit or undef
+    if (termInst.a.kind != IrOpKind::Block)
         return;
 
     // And it has to jump to a block with more than one user
@@ -1196,14 +1303,14 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
     // Initialize state with the knowledge of our current block
     state.clear();
 
-    // TODO: using values from the first block can cause 'live out' of the linear block predecessor to not have all required registers
     constPropInBlock(build, startingBlock, state);
 
     // Verify that target hasn't changed
     LUAU_ASSERT(function.instructions[startingBlock.finish].a.index == targetBlockIdx);
 
     // Note: using startingBlock after this line is unsafe as the reference may be reallocated by build.block() below
-    uint32_t startingInsn = startingBlock.start;
+    const uint32_t startingSortKey = startingBlock.sortkey;
+    const uint32_t startingChainKey = startingBlock.chainkey;
 
     // Create new linearized block into which we are going to redirect starting block jump
     IrOp newBlock = build.block(IrBlockKind::Linearized);
@@ -1213,7 +1320,11 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
 
     // By default, blocks are ordered according to start instruction; we alter sort order to make sure linearized block is placed right after the
     // starting block
-    function.blocks[newBlock.index].sortkey = startingInsn + 1;
+    function.blocks[newBlock.index].sortkey = startingSortKey;
+    function.blocks[newBlock.index].chainkey = startingChainKey + 1;
+
+    // Make sure block ordering guarantee is checked at lowering time
+    function.blocks[blockIdx].expectedNextBlock = newBlock.index;
 
     replace(function, termInst.a, newBlock);
 
@@ -1252,6 +1363,12 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
                 def.varargStart = pathDef.varargStart;
             }
         }
+
+        // Update predecessors
+        function.cfg.predecessorsOffsets.push_back(uint32_t(function.cfg.predecessors.size()));
+        function.cfg.predecessors.push_back(blockIdx);
+
+        // Updating successors will require visiting the instructions again and we don't have a current use for linearized block successor list
     }
 
     // Optimize our linear block

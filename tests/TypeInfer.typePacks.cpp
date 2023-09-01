@@ -872,9 +872,6 @@ type R = { m: F<R> }
 
 TEST_CASE_FIXTURE(Fixture, "pack_tail_unification_check")
 {
-    ScopedFastFlag sff{"LuauIndentTypeMismatch", true};
-    ScopedFastInt sfi{"LuauIndentTypeMismatchMaxTypeLength", 10};
-
     CheckResult result = check(R"(
 local a: () -> (number, ...string)
 local b: () -> (number, ...boolean)

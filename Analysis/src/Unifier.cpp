@@ -605,6 +605,10 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         {
             // TODO: there are probably cheaper ways to check if any <: T.
             const NormalizedType* superNorm = normalizer->normalize(superTy);
+
+            if (!superNorm)
+                return reportError(location, UnificationTooComplex{});
+
             if (!log.get<AnyType>(superNorm->tops))
                 failure = true;
         }

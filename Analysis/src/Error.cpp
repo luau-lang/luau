@@ -12,7 +12,6 @@
 #include <stdexcept>
 #include <type_traits>
 
-LUAU_FASTFLAGVARIABLE(LuauIndentTypeMismatch, false)
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 
 static std::string wrongNumberOfArgsString(
@@ -94,31 +93,18 @@ struct ErrorConverter
                     {
                         std::string givenModuleName = fileResolver->getHumanReadableModuleName(*givenDefinitionModule);
                         std::string wantedModuleName = fileResolver->getHumanReadableModuleName(*wantedDefinitionModule);
-                        if (FFlag::LuauIndentTypeMismatch)
-                            result = constructErrorMessage(givenTypeName, wantedTypeName, givenModuleName, wantedModuleName);
-                        else
-                            result = "Type '" + givenTypeName + "' from '" + givenModuleName + "' could not be converted into '" + wantedTypeName +
-                                     "' from '" + wantedModuleName + "'";
+                        result = constructErrorMessage(givenTypeName, wantedTypeName, givenModuleName, wantedModuleName);
                     }
                     else
                     {
-                        if (FFlag::LuauIndentTypeMismatch)
-                            result = constructErrorMessage(givenTypeName, wantedTypeName, *givenDefinitionModule, *wantedDefinitionModule);
-                        else
-                            result = "Type '" + givenTypeName + "' from '" + *givenDefinitionModule + "' could not be converted into '" +
-                                     wantedTypeName + "' from '" + *wantedDefinitionModule + "'";
+                        result = constructErrorMessage(givenTypeName, wantedTypeName, *givenDefinitionModule, *wantedDefinitionModule);
                     }
                 }
             }
         }
 
         if (result.empty())
-        {
-            if (FFlag::LuauIndentTypeMismatch)
-                result = constructErrorMessage(givenTypeName, wantedTypeName, std::nullopt, std::nullopt);
-            else
-                result = "Type '" + givenTypeName + "' could not be converted into '" + wantedTypeName + "'";
-        }
+            result = constructErrorMessage(givenTypeName, wantedTypeName, std::nullopt, std::nullopt);
 
 
         if (tm.error)
@@ -126,7 +112,7 @@ struct ErrorConverter
             result += "\ncaused by:\n  ";
 
             if (!tm.reason.empty())
-                result += tm.reason + (FFlag::LuauIndentTypeMismatch ? " \n" : " ");
+                result += tm.reason + " \n";
 
             result += Luau::toString(*tm.error, TypeErrorToStringOptions{fileResolver});
         }

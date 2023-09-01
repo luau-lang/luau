@@ -748,6 +748,28 @@ static BuiltinImplResult translateBuiltinVector(IrBuilder& build, int nparams, i
     return {BuiltinImplType::Full, 1};
 }
 
+static BuiltinImplResult translateBuiltinTableInsert(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
+{
+    if (nparams != 2 || nresults > 0)
+        return {BuiltinImplType::None, -1};
+
+    build.loadAndCheckTag(build.vmReg(arg), LUA_TTABLE, build.vmExit(pcpos));
+
+    IrOp table = build.inst(IrCmd::LOAD_POINTER, build.vmReg(arg));
+    build.inst(IrCmd::CHECK_READONLY, table, build.vmExit(pcpos));
+
+    IrOp pos = build.inst(IrCmd::ADD_INT, build.inst(IrCmd::TABLE_LEN, table), build.constInt(1));
+
+    IrOp setnum = build.inst(IrCmd::TABLE_SETNUM, table, pos);
+
+    IrOp va = build.inst(IrCmd::LOAD_TVALUE, args);
+    build.inst(IrCmd::STORE_TVALUE, setnum, va);
+
+    build.inst(IrCmd::BARRIER_TABLE_FORWARD, table, args, build.undef());
+
+    return {BuiltinImplType::Full, 0};
+}
+
 static BuiltinImplResult translateBuiltinStringLen(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
 {
     if (nparams < 1 || nresults > 1)
@@ -849,6 +871,8 @@ BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, 
         return translateBuiltinTypeof(build, nparams, ra, arg, args, nresults);
     case LBF_VECTOR:
         return translateBuiltinVector(build, nparams, ra, arg, args, nresults, pcpos);
+    case LBF_TABLE_INSERT:
+        return translateBuiltinTableInsert(build, nparams, ra, arg, args, nresults, pcpos);
     case LBF_STRING_LEN:
         return translateBuiltinStringLen(build, nparams, ra, arg, args, nresults, pcpos);
     default:
