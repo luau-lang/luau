@@ -13,7 +13,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <Windows.h> // IsDebuggerPresent
+#include <Windows.h> // IsDebuggerPresent, CreateThread
 #endif
 
 #ifdef __APPLE__
@@ -249,6 +249,22 @@ static void setFastFlags(const std::vector<doctest::String>& flags)
     }
 }
 
+#if defined(_WIN32)
+struct thrdarg
+{
+    int* result;
+    doctest::Context* ctx;
+};
+
+DWORD WINAPI testthreadproc(LPVOID param)
+{
+    auto threadresult = ((thrdarg*)param)->result;
+    auto context = ((thrdarg*)param)->ctx;
+    *threadresult = context->run();
+    return 0;
+}
+#endif
+
 int main(int argc, char** argv)
 {
     Luau::assertHandler() = testAssertionHandler;
@@ -327,7 +343,16 @@ int main(int argc, char** argv)
         }
     }
 
+#if !defined(_WIN32)
     int result = context.run();
+#else
+    int result;
+    thrdarg args;
+    args.result = &result;
+    args.ctx = &context;
+    HANDLE testthread = CreateThread(NULL, 0x400000, testthreadproc, &args, 0, NULL);
+    WaitForSingleObject(testthread, INFINITE);
+#endif
     if (doctest::parseFlag(argc, argv, "--help") || doctest::parseFlag(argc, argv, "-h"))
     {
         printf("Additional command line options:\n");
