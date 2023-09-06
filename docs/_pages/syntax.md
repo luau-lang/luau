@@ -273,3 +273,9 @@ This restriction is made to prevent developers using other programming languages
 Luau currently does not support backtick string literals as a type annotation, so `` type Foo = `Foo` `` is invalid.
 
 Function calls with a backtick string literal without parenthesis is not supported, so `` print`hello` `` is invalid.
+
+## Floor division (`//`)
+
+Luau implements support for floor division operator (`//`) for numbers as well as support for `__idiv` metamethod. The syntax and semantics follow [Lua 5.3](https://www.lua.org/manual/5.3/manual.html#3.4.1).
+
+For numbers, `a // b` is equal to `math.floor(a / b)`; when `b` is 0, `a // b` results in infinity or NaN as appropriate.
