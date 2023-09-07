@@ -87,7 +87,7 @@ Ephemeron tables may be implemented at some point since they do have valid uses 
 | bitwise operators | ❌ | `bit32` library covers this in absence of 64-bit integers |
 | basic utf-8 support | ✔️ | we include `utf8` library and other UTF8 features |
 | functions for packing and unpacking values (string.pack/unpack/packsize) | ✔️ | |
-| floor division | 🔜 | |
+| floor division | ✔️ | |
 | `ipairs` and the `table` library respect metamethods | ❌ | no strong use cases, performance implications |
 | new function `table.move` | ✔️ | |
 | `collectgarbage("count")` now returns only one result | ✔️ | |
