@@ -798,11 +798,12 @@ struct BuiltinTypes
     TypeId errorRecoveryType() const;
     TypePackId errorRecoveryTypePack() const;
 
+    friend TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes);
+    friend struct GlobalTypes;
+
 private:
     std::unique_ptr<struct TypeArena> arena;
     bool debugFreezeArena = false;
-
-    TypeId makeStringMetatable();
 
 public:
     const TypeId nilType;

@@ -2,12 +2,12 @@
 #pragma once
 
 #include "Luau/Config.h"
+#include "Luau/GlobalTypes.h"
 #include "Luau/Module.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/RequireTracer.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeCheckLimits.h"
-#include "Luau/TypeInfer.h"
 #include "Luau/Variant.h"
 
 #include <mutex>

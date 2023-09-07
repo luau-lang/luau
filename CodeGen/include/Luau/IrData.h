@@ -199,24 +199,12 @@ enum class IrCmd : uint8_t
     // D: block (if false)
     JUMP_EQ_TAG,
 
-    // Jump if two int numbers are equal
-    // A, B: int
-    // C: block (if true)
-    // D: block (if false)
-    JUMP_EQ_INT,
-
-    // Jump if A < B
-    // A, B: int
-    // C: block (if true)
-    // D: block (if false)
-    JUMP_LT_INT,
-
-    // Jump if unsigned(A) >= unsigned(B)
+    // Perform a conditional jump based on the result of integer comparison
     // A, B: int
     // C: condition
     // D: block (if true)
     // E: block (if false)
-    JUMP_GE_UINT,
+    JUMP_CMP_INT,
 
     // Jump if pointers are equal
     // A, B: pointer (*)

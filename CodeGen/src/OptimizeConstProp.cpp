@@ -17,6 +17,7 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
 LUAU_FASTFLAGVARIABLE(LuauReuseHashSlots2, false)
 LUAU_FASTFLAGVARIABLE(LuauKeepVmapLinear, false)
+LUAU_FASTFLAGVARIABLE(LuauMergeTagLoads, false)
 
 namespace Luau
 {
@@ -502,9 +503,16 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     {
     case IrCmd::LOAD_TAG:
         if (uint8_t tag = state.tryGetTag(inst.a); tag != 0xff)
+        {
             substitute(function, inst, build.constTag(tag));
+        }
         else if (inst.a.kind == IrOpKind::VmReg)
-            state.createRegLink(index, inst.a);
+        {
+            if (FFlag::LuauMergeTagLoads)
+                state.substituteOrRecordVmRegLoad(inst);
+            else
+                state.createRegLink(index, inst.a);
+        }
         break;
     case IrCmd::LOAD_POINTER:
         if (inst.a.kind == IrOpKind::VmReg)
@@ -716,44 +724,20 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             else
                 replace(function, block, index, {IrCmd::JUMP, inst.d});
         }
+        else if (FFlag::LuauMergeTagLoads && inst.a == inst.b)
+        {
+            replace(function, block, index, {IrCmd::JUMP, inst.c});
+        }
         break;
     }
-    case IrCmd::JUMP_EQ_INT:
+    case IrCmd::JUMP_CMP_INT:
     {
         std::optional<int> valueA = function.asIntOp(inst.a.kind == IrOpKind::Constant ? inst.a : state.tryGetValue(inst.a));
         std::optional<int> valueB = function.asIntOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b));
 
         if (valueA && valueB)
         {
-            if (*valueA == *valueB)
-                replace(function, block, index, {IrCmd::JUMP, inst.c});
-            else
-                replace(function, block, index, {IrCmd::JUMP, inst.d});
-        }
-        break;
-    }
-    case IrCmd::JUMP_LT_INT:
-    {
-        std::optional<int> valueA = function.asIntOp(inst.a.kind == IrOpKind::Constant ? inst.a : state.tryGetValue(inst.a));
-        std::optional<int> valueB = function.asIntOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b));
-
-        if (valueA && valueB)
-        {
-            if (*valueA < *valueB)
-                replace(function, block, index, {IrCmd::JUMP, inst.c});
-            else
-                replace(function, block, index, {IrCmd::JUMP, inst.d});
-        }
-        break;
-    }
-    case IrCmd::JUMP_GE_UINT:
-    {
-        std::optional<unsigned> valueA = function.asUintOp(inst.a.kind == IrOpKind::Constant ? inst.a : state.tryGetValue(inst.a));
-        std::optional<unsigned> valueB = function.asUintOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b));
-
-        if (valueA && valueB)
-        {
-            if (*valueA >= *valueB)
+            if (compare(*valueA, *valueB, conditionOp(inst.c)))
                 replace(function, block, index, {IrCmd::JUMP, inst.c});
             else
                 replace(function, block, index, {IrCmd::JUMP, inst.d});

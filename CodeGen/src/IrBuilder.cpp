@@ -149,6 +149,12 @@ void IrBuilder::buildFunctionIr(Proto* proto)
         // We skip dead bytecode instructions when they appear after block was already terminated
         if (!inTerminatedBlock)
         {
+            if (interruptRequested)
+            {
+                interruptRequested = false;
+                inst(IrCmd::INTERRUPT, constUint(i));
+            }
+
             translateInst(op, pc, i);
 
             if (fastcallSkipTarget != -1)
