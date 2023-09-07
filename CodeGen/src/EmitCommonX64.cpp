@@ -12,6 +12,8 @@
 #include "lgc.h"
 #include "lstate.h"
 
+#include <utility>
+
 namespace Luau
 {
 namespace CodeGen
@@ -22,9 +24,14 @@ namespace X64
 void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs, OperandX64 rhs, IrCondition cond, Label& label)
 {
     // Refresher on comi/ucomi EFLAGS:
+    // all zero: greater
     // CF only: less
     // ZF only: equal
     // PF+CF+ZF: unordered (NaN)
+
+    // To avoid the lack of conditional jumps that check for "greater" conditions in IEEE 754 compliant way, we use "less" forms to emulate these
+    if (cond == IrCondition::Greater || cond == IrCondition::GreaterEqual || cond == IrCondition::NotGreater || cond == IrCondition::NotGreaterEqual)
+        std::swap(lhs, rhs);
 
     if (rhs.cat == CategoryX64::reg)
     {
@@ -41,18 +48,22 @@ void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs,
     switch (cond)
     {
     case IrCondition::NotLessEqual:
+    case IrCondition::NotGreaterEqual:
         // (b < a) is the same as !(a <= b). jnae checks CF=1 which means < or NaN
         build.jcc(ConditionX64::NotAboveEqual, label);
         break;
     case IrCondition::LessEqual:
+    case IrCondition::GreaterEqual:
         // (b >= a) is the same as (a <= b). jae checks CF=0 which means >= and not NaN
         build.jcc(ConditionX64::AboveEqual, label);
         break;
     case IrCondition::NotLess:
+    case IrCondition::NotGreater:
         // (b <= a) is the same as !(a < b). jna checks CF=1 or ZF=1 which means <= or NaN
         build.jcc(ConditionX64::NotAbove, label);
         break;
     case IrCondition::Less:
+    case IrCondition::Greater:
         // (b > a) is the same as (a < b). ja checks CF=0 and ZF=0 which means > and not NaN
         build.jcc(ConditionX64::Above, label);
         break;
@@ -63,6 +74,44 @@ void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs,
         break;
     default:
         LUAU_ASSERT(!"Unsupported condition");
+    }
+}
+
+ConditionX64 getConditionInt(IrCondition cond)
+{
+    switch (cond)
+    {
+    case IrCondition::Equal:
+        return ConditionX64::Equal;
+    case IrCondition::NotEqual:
+        return ConditionX64::NotEqual;
+    case IrCondition::Less:
+        return ConditionX64::Less;
+    case IrCondition::NotLess:
+        return ConditionX64::NotLess;
+    case IrCondition::LessEqual:
+        return ConditionX64::LessEqual;
+    case IrCondition::NotLessEqual:
+        return ConditionX64::NotLessEqual;
+    case IrCondition::Greater:
+        return ConditionX64::Greater;
+    case IrCondition::NotGreater:
+        return ConditionX64::NotGreater;
+    case IrCondition::GreaterEqual:
+        return ConditionX64::GreaterEqual;
+    case IrCondition::NotGreaterEqual:
+        return ConditionX64::NotGreaterEqual;
+    case IrCondition::UnsignedLess:
+        return ConditionX64::Below;
+    case IrCondition::UnsignedLessEqual:
+        return ConditionX64::BelowEqual;
+    case IrCondition::UnsignedGreater:
+        return ConditionX64::Above;
+    case IrCondition::UnsignedGreaterEqual:
+        return ConditionX64::AboveEqual;
+    default:
+        LUAU_ASSERT(!"Unsupported condition");
+        return ConditionX64::Zero;
     }
 }
 

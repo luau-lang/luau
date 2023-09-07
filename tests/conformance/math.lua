@@ -189,6 +189,26 @@ do   -- testing NaN
   assert(a[NaN] == nil)
 end
 
+-- extra NaN tests, hidden in a function
+do
+  function neq(a) return a ~= a end
+  function eq(a) return a == a end
+  function lt(a) return a < a end
+  function le(a) return a <= a end
+  function gt(a) return a > a end
+  function ge(a) return a >= a end
+
+  local NaN -- to avoid constant folding
+  NaN = 10e500 - 10e400
+
+  assert(neq(NaN))
+  assert(not eq(NaN))
+  assert(not lt(NaN))
+  assert(not le(NaN))
+  assert(not gt(NaN))
+  assert(not ge(NaN))
+end
+
 -- require "checktable"
 -- stat(a)
 

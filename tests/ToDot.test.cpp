@@ -44,25 +44,34 @@ TEST_SUITE_BEGIN("ToDot");
 
 TEST_CASE_FIXTURE(Fixture, "primitive")
 {
-    CheckResult result = check(R"(
-local a: nil
-local b: number
-local c: any
-)");
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_NE("nil", toDot(requireType("a")));
+    CHECK_EQ(R"(digraph graphname {
+n1 [label="nil"];
+})",
+        toDot(builtinTypes->nilType));
 
     CHECK_EQ(R"(digraph graphname {
 n1 [label="number"];
 })",
-        toDot(requireType("b")));
+        toDot(builtinTypes->numberType));
 
     CHECK_EQ(R"(digraph graphname {
 n1 [label="any"];
 })",
-        toDot(requireType("c")));
+        toDot(builtinTypes->anyType));
 
+    CHECK_EQ(R"(digraph graphname {
+n1 [label="unknown"];
+})",
+        toDot(builtinTypes->unknownType));
+
+    CHECK_EQ(R"(digraph graphname {
+n1 [label="never"];
+})",
+        toDot(builtinTypes->neverType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "no_duplicatePrimitives")
+{
     ToDotOptions opts;
     opts.showPointers = false;
     opts.duplicatePrimitives = false;
@@ -70,12 +79,22 @@ n1 [label="any"];
     CHECK_EQ(R"(digraph graphname {
 n1 [label="PrimitiveType number"];
 })",
-        toDot(requireType("b"), opts));
+        toDot(builtinTypes->numberType, opts));
 
     CHECK_EQ(R"(digraph graphname {
 n1 [label="AnyType 1"];
 })",
-        toDot(requireType("c"), opts));
+        toDot(builtinTypes->anyType, opts));
+
+    CHECK_EQ(R"(digraph graphname {
+n1 [label="UnknownType 1"];
+})",
+        toDot(builtinTypes->unknownType, opts));
+
+    CHECK_EQ(R"(digraph graphname {
+n1 [label="NeverType 1"];
+})",
+        toDot(builtinTypes->neverType, opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "bound")
@@ -283,6 +302,30 @@ n1 [label="FreeType 1"];
         toDot(&type, opts));
 }
 
+TEST_CASE_FIXTURE(Fixture, "free_with_constraints")
+{
+    ScopedFastFlag sff[] = {
+        {"DebugLuauDeferredConstraintResolution", true},
+    };
+
+    Type type{TypeVariant{FreeType{nullptr, builtinTypes->numberType, builtinTypes->optionalNumberType}}};
+
+    ToDotOptions opts;
+    opts.showPointers = false;
+    CHECK_EQ(R"(digraph graphname {
+n1 [label="FreeType 1"];
+n1 -> n2 [label="[lowerBound]"];
+n2 [label="number"];
+n1 -> n3 [label="[upperBound]"];
+n3 [label="UnionType 3"];
+n3 -> n4;
+n4 [label="number"];
+n3 -> n5;
+n5 [label="nil"];
+})",
+        toDot(&type, opts));
+}
+
 TEST_CASE_FIXTURE(Fixture, "error")
 {
     Type type{TypeVariant{ErrorType{}}};
@@ -438,6 +481,21 @@ n1 -> n5;
 n5 [label="SingletonType boolean: false"];
 })",
         toDot(requireType("x"), opts));
+}
+
+TEST_CASE_FIXTURE(Fixture, "negation")
+{
+    TypeArena arena;
+    TypeId t = arena.addType(NegationType{builtinTypes->stringType});
+
+    ToDotOptions opts;
+    opts.showPointers = false;
+
+    CHECK(R"(digraph graphname {
+n1 [label="NegationType 1"];
+n1 -> n2 [label="[negated]"];
+n2 [label="string"];
+})" == toDot(t, opts));
 }
 
 TEST_SUITE_END();

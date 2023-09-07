@@ -72,9 +72,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::JUMP_IF_TRUTHY:
     case IrCmd::JUMP_IF_FALSY:
     case IrCmd::JUMP_EQ_TAG:
-    case IrCmd::JUMP_EQ_INT:
-    case IrCmd::JUMP_LT_INT:
-    case IrCmd::JUMP_GE_UINT:
+    case IrCmd::JUMP_CMP_INT:
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_CMP_NUM:
     case IrCmd::JUMP_SLOT_MATCH:
@@ -422,6 +420,45 @@ bool compare(double a, double b, IrCondition cond)
     return false;
 }
 
+bool compare(int a, int b, IrCondition cond)
+{
+    switch (cond)
+    {
+    case IrCondition::Equal:
+        return a == b;
+    case IrCondition::NotEqual:
+        return a != b;
+    case IrCondition::Less:
+        return a < b;
+    case IrCondition::NotLess:
+        return !(a < b);
+    case IrCondition::LessEqual:
+        return a <= b;
+    case IrCondition::NotLessEqual:
+        return !(a <= b);
+    case IrCondition::Greater:
+        return a > b;
+    case IrCondition::NotGreater:
+        return !(a > b);
+    case IrCondition::GreaterEqual:
+        return a >= b;
+    case IrCondition::NotGreaterEqual:
+        return !(a >= b);
+    case IrCondition::UnsignedLess:
+        return unsigned(a) < unsigned(b);
+    case IrCondition::UnsignedLessEqual:
+        return unsigned(a) <= unsigned(b);
+    case IrCondition::UnsignedGreater:
+        return unsigned(a) > unsigned(b);
+    case IrCondition::UnsignedGreaterEqual:
+        return unsigned(a) >= unsigned(b);
+    default:
+        LUAU_ASSERT(!"Unsupported condition");
+    }
+
+    return false;
+}
+
 void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint32_t index)
 {
     IrInst& inst = function.instructions[index];
@@ -540,31 +577,13 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
                 replace(function, block, index, {IrCmd::JUMP, inst.d});
         }
         break;
-    case IrCmd::JUMP_EQ_INT:
+    case IrCmd::JUMP_CMP_INT:
         if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
         {
-            if (function.intOp(inst.a) == function.intOp(inst.b))
-                replace(function, block, index, {IrCmd::JUMP, inst.c});
-            else
+            if (compare(function.intOp(inst.a), function.intOp(inst.b), conditionOp(inst.c)))
                 replace(function, block, index, {IrCmd::JUMP, inst.d});
-        }
-        break;
-    case IrCmd::JUMP_LT_INT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
-        {
-            if (function.intOp(inst.a) < function.intOp(inst.b))
-                replace(function, block, index, {IrCmd::JUMP, inst.c});
             else
-                replace(function, block, index, {IrCmd::JUMP, inst.d});
-        }
-        break;
-    case IrCmd::JUMP_GE_UINT:
-        if (inst.a.kind == IrOpKind::Constant && inst.b.kind == IrOpKind::Constant)
-        {
-            if (unsigned(function.intOp(inst.a)) >= unsigned(function.intOp(inst.b)))
-                replace(function, block, index, {IrCmd::JUMP, inst.c});
-            else
-                replace(function, block, index, {IrCmd::JUMP, inst.d});
+                replace(function, block, index, {IrCmd::JUMP, inst.e});
         }
         break;
     case IrCmd::JUMP_CMP_NUM:

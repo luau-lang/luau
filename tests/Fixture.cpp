@@ -9,6 +9,7 @@
 #include "Luau/Parser.h"
 #include "Luau/Type.h"
 #include "Luau/TypeAttach.h"
+#include "Luau/TypeInfer.h"
 #include "Luau/Transpiler.h"
 
 #include "doctest.h"
@@ -143,8 +144,6 @@ Fixture::Fixture(bool freeze, bool prepareAutocomplete)
     configResolver.defaultConfig.mode = Mode::Strict;
     configResolver.defaultConfig.enabledLint.warningMask = ~0ull;
     configResolver.defaultConfig.parseOptions.captureComments = true;
-
-    registerBuiltinTypes(frontend.globals);
 
     Luau::freeze(frontend.globals.globalTypes);
     Luau::freeze(frontend.globalsForAutocomplete.globalTypes);

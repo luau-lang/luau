@@ -177,6 +177,33 @@ assert((function() local a = 1 for b=1,9 do a = a * 2 if a == 128 then break els
 -- make sure internal index is protected against modification
 assert((function() local a = 1 for b=9,1,-2 do a = a * 2 b = nil end return a end)() == 32)
 
+-- make sure that when step is 0, we treat it as backward iteration (and as such, iterate zero times or indefinitely)
+-- this is consistent with Lua 5.1; future Lua versions emit an error when step is 0; LuaJIT instead treats 0 as forward iteration
+-- we repeat tests twice, with and without constant folding
+local zero = tonumber("0")
+assert((function() local c = 0 for i=1,10,0 do c += 1 if c > 10 then break end end return c end)() == 0)
+assert((function() local c = 0 for i=10,1,0 do c += 1 if c > 10 then break end end return c end)() == 11)
+assert((function() local c = 0 for i=1,10,zero do c += 1 if c > 10 then break end end return c end)() == 0)
+assert((function() local c = 0 for i=10,1,zero do c += 1 if c > 10 then break end end return c end)() == 11)
+
+-- make sure that when limit is nan, we iterate zero times (this is consistent with Lua 5.1; future Lua versions break this)
+-- we repeat tests twice, with and without constant folding
+local nan = tonumber("nan")
+assert((function() local c = 0 for i=1,0/0 do c += 1 end return c end)() == 0)
+assert((function() local c = 0 for i=1,0/0,-1 do c += 1 end return c end)() == 0)
+assert((function() local c = 0 for i=1,nan do c += 1 end return c end)() == 0)
+assert((function() local c = 0 for i=1,nan,-1 do c += 1 end return c end)() == 0)
+
+-- make sure that when step is nan, we treat it as backward iteration and as such iterate once iff start<=limit
+assert((function() local c = 0 for i=1,10,0/0 do c += 1 end return c end)() == 0)
+assert((function() local c = 0 for i=10,1,0/0 do c += 1 end return c end)() == 1)
+assert((function() local c = 0 for i=1,10,nan do c += 1 end return c end)() == 0)
+assert((function() local c = 0 for i=10,1,nan do c += 1 end return c end)() == 1)
+
+-- make sure that when index becomes nan mid-iteration, we correctly exit the loop (this is broken in Lua 5.1; future Lua versions fix this)
+assert((function() local c = 0 for i=-math.huge,0,math.huge do c += 1 end return c end)() == 1)
+assert((function() local c = 0 for i=math.huge,math.huge,-math.huge do c += 1 end return c end)() == 1)
+
 -- generic for
 -- ipairs
 assert((function() local a = '' for k in ipairs({5, 6, 7}) do a = a .. k end return a end)() == "123")
@@ -285,6 +312,10 @@ assert((function()
     for k in pairs(kSelectedBiomes) do result = result .. k end
     return result
 end)() == "ArcticDunesCanyonsWaterMountainsHillsLavaflowPlainsMarsh")
+
+-- table literals may contain duplicate fields; the language doesn't specify assignment order but we currently assign left to right
+assert((function() local t = {data = 4, data = nil, data = 42} return t.data end)() == 42)
+assert((function() local t = {data = 4, data = nil, data = 42, data = nil} return t.data end)() == nil)
 
 -- multiple returns
 -- local=

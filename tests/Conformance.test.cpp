@@ -282,6 +282,8 @@ TEST_CASE("Assert")
 TEST_CASE("Basic")
 {
     ScopedFastFlag sffs{"LuauFloorDivision", true};
+    ScopedFastFlag sfff{"LuauImproveForN", true};
+
     runConformance("basic.lua");
 }
 

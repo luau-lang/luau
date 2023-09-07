@@ -6,6 +6,8 @@
 #define DOCTEST_CONFIG_OPTIONS_PREFIX ""
 #include "doctest.h"
 
+#include "RegisterCallbacks.h"
+
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -326,6 +328,14 @@ int main(int argc, char** argv)
             context.addFilter("test-suite", f);
         }
     }
+
+    // These callbacks register unit tests that need runtime support to be
+    // correctly set up. Running them here means that all command line flags
+    // have been parsed, fast flags have been set, and we've potentially already
+    // exited. Once doctest::Context::run is invoked, the test list will be
+    // picked up from global state.
+    for (Luau::RegisterCallback cb : Luau::getRegisterCallbacks())
+        cb();
 
     int result = context.run();
     if (doctest::parseFlag(argc, argv, "--help") || doctest::parseFlag(argc, argv, "-h"))

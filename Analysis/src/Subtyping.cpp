@@ -664,9 +664,8 @@ SubtypingResult Subtyping::isSubtype_(const NormalizedType* subNorm, const Norma
     result.andAlso(isSubtype_(subNorm->tables, superNorm->tables));
     // isSubtype_(subNorm->tables, superNorm->strings);
     // isSubtype_(subNorm->tables, superNorm->classes);
-    // isSubtype_(subNorm->functions, superNorm->functions);
+    result.andAlso(isSubtype_(subNorm->functions, superNorm->functions));
     // isSubtype_(subNorm->tyvars, superNorm->tyvars);
-
     return result;
 }
 
@@ -701,6 +700,16 @@ SubtypingResult Subtyping::isSubtype_(const NormalizedClassType& subClass, const
     }
 
     return {true};
+}
+
+SubtypingResult Subtyping::isSubtype_(const NormalizedFunctionType& subFunction, const NormalizedFunctionType& superFunction)
+{
+    if (subFunction.isNever())
+        return {true};
+    else if (superFunction.isTop)
+        return {true};
+    else
+        return isSubtype_(subFunction.parts, superFunction.parts);
 }
 
 SubtypingResult Subtyping::isSubtype_(const TypeIds& subTypes, const TypeIds& superTypes)

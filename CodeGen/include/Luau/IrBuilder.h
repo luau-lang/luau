@@ -66,6 +66,8 @@ struct IrBuilder
 
     bool inTerminatedBlock = false;
 
+    bool interruptRequested = false;
+
     bool activeFastcallFallback = false;
     IrOp fastcallFallbackReturn;
     int fastcallSkipTarget = -1;
@@ -75,6 +77,8 @@ struct IrBuilder
     uint32_t activeBlockIdx = ~0u;
 
     std::vector<uint32_t> instIndexToBlock; // Block index at the bytecode instruction
+
+    std::vector<IrOp> loopStepStack;
 
     // Similar to BytecodeBuilder, duplicate constants are removed used the same method
     struct ConstantKey
