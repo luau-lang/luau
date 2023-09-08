@@ -167,6 +167,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Error.h
     Analysis/include/Luau/FileResolver.h
     Analysis/include/Luau/Frontend.h
+    Analysis/include/Luau/GlobalTypes.h
     Analysis/include/Luau/InsertionOrderedMap.h
     Analysis/include/Luau/Instantiation.h
     Analysis/include/Luau/IostreamHelpers.h
@@ -226,6 +227,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/EmbeddedBuiltinDefinitions.cpp
     Analysis/src/Error.cpp
     Analysis/src/Frontend.cpp
+    Analysis/src/GlobalTypes.cpp
     Analysis/src/Instantiation.cpp
     Analysis/src/IostreamHelpers.cpp
     Analysis/src/JsonEmitter.cpp
@@ -365,6 +367,8 @@ if(TARGET Luau.UnitTest)
         tests/AstQueryDsl.cpp
         tests/AstQueryDsl.h
         tests/AstVisitor.test.cpp
+        tests/RegisterCallbacks.h
+        tests/RegisterCallbacks.cpp
         tests/Autocomplete.test.cpp
         tests/BuiltinDefinitions.test.cpp
         tests/ClassFixture.cpp
@@ -447,6 +451,8 @@ endif()
 if(TARGET Luau.Conformance)
     # Luau.Conformance Sources
     target_sources(Luau.Conformance PRIVATE
+        tests/RegisterCallbacks.h
+        tests/RegisterCallbacks.cpp
         tests/Conformance.test.cpp
         tests/main.cpp)
 endif()
@@ -464,6 +470,8 @@ if(TARGET Luau.CLI.Test)
         CLI/Profiler.cpp
         CLI/Repl.cpp
 
+        tests/RegisterCallbacks.h
+        tests/RegisterCallbacks.cpp
         tests/Repl.test.cpp
         tests/main.cpp)
 endif()

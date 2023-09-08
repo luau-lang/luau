@@ -13,8 +13,6 @@
 #include <utility>
 
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
-LUAU_FASTFLAGVARIABLE(LuauAnonymousAutofilled1, false);
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteLastTypecheck, false)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteDoEnd, false)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteStringLiteralBounds, false);
 
@@ -611,7 +609,6 @@ std::optional<TypeId> getLocalTypeInScopeAt(const Module& module, Position posit
 template <typename T>
 static std::optional<std::string> tryToStringDetailed(const ScopePtr& scope, T ty, bool functionTypeArguments)
 {
-    LUAU_ASSERT(FFlag::LuauAnonymousAutofilled1);
     ToStringOptions opts;
     opts.useLineBreaks = false;
     opts.hideTableKind = true;
@@ -630,23 +627,7 @@ static std::optional<Name> tryGetTypeNameInScope(ScopePtr scope, TypeId ty, bool
     if (!canSuggestInferredType(scope, ty))
         return std::nullopt;
 
-    if (FFlag::LuauAnonymousAutofilled1)
-    {
-        return tryToStringDetailed(scope, ty, functionTypeArguments);
-    }
-    else
-    {
-        ToStringOptions opts;
-        opts.useLineBreaks = false;
-        opts.hideTableKind = true;
-        opts.scope = scope;
-        ToStringResult name = toStringDetailed(ty, opts);
-
-        if (name.error || name.invalid || name.cycle || name.truncated)
-            return std::nullopt;
-
-        return name.name;
-    }
+    return tryToStringDetailed(scope, ty, functionTypeArguments);
 }
 
 static bool tryAddTypeCorrectSuggestion(AutocompleteEntryMap& result, ScopePtr scope, AstType* topType, TypeId inferredType, Position position)
@@ -1417,7 +1398,6 @@ static AutocompleteResult autocompleteWhileLoopKeywords(std::vector<AstNode*> an
 
 static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& funcTy)
 {
-    LUAU_ASSERT(FFlag::LuauAnonymousAutofilled1);
     std::string result = "function(";
 
     auto [args, tail] = Luau::flatten(funcTy.argTypes);
@@ -1483,7 +1463,6 @@ static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& func
 
 static std::optional<AutocompleteEntry> makeAnonymousAutofilled(const ModulePtr& module, Position position, const AstNode* node, const std::vector<AstNode*>& ancestry)
 {
-    LUAU_ASSERT(FFlag::LuauAnonymousAutofilled1);
     const AstExprCall* call = node->as<AstExprCall>();
     if (!call && ancestry.size() > 1)
         call = ancestry[ancestry.size() - 2]->as<AstExprCall>();
@@ -1801,17 +1780,10 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
 
     if (node->asExpr())
     {
-        if (FFlag::LuauAnonymousAutofilled1)
-        {
-            AutocompleteResult ret = autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
-            if (std::optional<AutocompleteEntry> generated = makeAnonymousAutofilled(module, position, node, ancestry))
-                ret.entryMap[kGeneratedAnonymousFunctionEntryName] = std::move(*generated);
-            return ret;
-        }
-        else
-        {
-            return autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
-        }
+        AutocompleteResult ret = autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position);
+        if (std::optional<AutocompleteEntry> generated = makeAnonymousAutofilled(module, position, node, ancestry))
+            ret.entryMap[kGeneratedAnonymousFunctionEntryName] = std::move(*generated);
+        return ret;
     }
     else if (node->asStat())
         return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
@@ -1821,15 +1793,6 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
 
 AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName, Position position, StringCompletionCallback callback)
 {
-    if (!FFlag::LuauAutocompleteLastTypecheck)
-    {
-        // FIXME: We can improve performance here by parsing without checking.
-        // The old type graph is probably fine. (famous last words!)
-        FrontendOptions opts;
-        opts.forAutocomplete = true;
-        frontend.check(moduleName, opts);
-    }
-
     const SourceModule* sourceModule = frontend.getSourceModule(moduleName);
     if (!sourceModule)
         return {};

@@ -36,6 +36,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauReadWriteProperties, false)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckLimitControls, false)
+LUAU_FASTFLAGVARIABLE(CorrectEarlyReturnInMarkDirty, false)
 
 namespace Luau
 {
@@ -928,7 +929,6 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         {
             // The autocomplete typecheck is always in strict mode with DM awareness
             // to provide better type information for IDE features
-            TypeCheckLimits typeCheckLimits;
 
             if (autocompleteTimeLimit != 0.0)
                 typeCheckLimits.finishTime = TimeTrace::getClock() + autocompleteTimeLimit;
@@ -1149,8 +1149,16 @@ bool Frontend::isDirty(const ModuleName& name, bool forAutocomplete) const
  */
 void Frontend::markDirty(const ModuleName& name, std::vector<ModuleName>* markedDirty)
 {
-    if (!moduleResolver.getModule(name) && !moduleResolverForAutocomplete.getModule(name))
-        return;
+    if (FFlag::CorrectEarlyReturnInMarkDirty)
+    {
+        if (sourceNodes.count(name) == 0)
+            return;
+    }
+    else
+    {
+        if (!moduleResolver.getModule(name) && !moduleResolverForAutocomplete.getModule(name))
+            return;
+    }
 
     std::unordered_map<ModuleName, std::vector<ModuleName>> reverseDeps;
     for (const auto& module : sourceNodes)

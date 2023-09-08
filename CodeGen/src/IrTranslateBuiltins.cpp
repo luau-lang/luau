@@ -411,7 +411,7 @@ static BuiltinImplResult translateBuiltinBit32BinaryOp(
         IrOp falsey = build.block(IrBlockKind::Internal);
         IrOp truthy = build.block(IrBlockKind::Internal);
         IrOp exit = build.block(IrBlockKind::Internal);
-        build.inst(IrCmd::JUMP_EQ_INT, res, build.constInt(0), falsey, truthy);
+        build.inst(IrCmd::JUMP_CMP_INT, res, build.constInt(0), build.cond(IrCondition::Equal), falsey, truthy);
 
         build.beginBlock(falsey);
         build.inst(IrCmd::STORE_INT, build.vmReg(ra), build.constInt(0));
@@ -484,7 +484,7 @@ static BuiltinImplResult translateBuiltinBit32Shift(
     if (!knownGoodShift)
     {
         IrOp block = build.block(IrBlockKind::Internal);
-        build.inst(IrCmd::JUMP_GE_UINT, vbi, build.constInt(32), fallback, block);
+        build.inst(IrCmd::JUMP_CMP_INT, vbi, build.constInt(32), build.cond(IrCondition::UnsignedGreaterEqual), fallback, block);
         build.beginBlock(block);
     }
 
@@ -549,36 +549,56 @@ static BuiltinImplResult translateBuiltinBit32Extract(
     IrOp vb = builtinLoadDouble(build, args);
 
     IrOp n = build.inst(IrCmd::NUM_TO_UINT, va);
-    IrOp f = build.inst(IrCmd::NUM_TO_INT, vb);
 
     IrOp value;
     if (nparams == 2)
     {
-        IrOp block = build.block(IrBlockKind::Internal);
-        build.inst(IrCmd::JUMP_GE_UINT, f, build.constInt(32), fallback, block);
-        build.beginBlock(block);
+        if (vb.kind == IrOpKind::Constant)
+        {
+            int f = int(build.function.doubleOp(vb));
 
-        // TODO: this can be optimized using a bit-select instruction (bt on x86)
-        IrOp shift = build.inst(IrCmd::BITRSHIFT_UINT, n, f);
-        value = build.inst(IrCmd::BITAND_UINT, shift, build.constInt(1));
+            if (unsigned(f) >= 32)
+                build.inst(IrCmd::JUMP, fallback);
+
+            // TODO: this pair can be optimized using a bit-select instruction (bt on x86)
+            if (f)
+                value = build.inst(IrCmd::BITRSHIFT_UINT, n, build.constInt(f));
+
+            if ((f + 1) < 32)
+                value = build.inst(IrCmd::BITAND_UINT, value, build.constInt(1));
+        }
+        else
+        {
+            IrOp f = build.inst(IrCmd::NUM_TO_INT, vb);
+
+            IrOp block = build.block(IrBlockKind::Internal);
+            build.inst(IrCmd::JUMP_CMP_INT, f, build.constInt(32), build.cond(IrCondition::UnsignedGreaterEqual), fallback, block);
+            build.beginBlock(block);
+
+            // TODO: this pair can be optimized using a bit-select instruction (bt on x86)
+            IrOp shift = build.inst(IrCmd::BITRSHIFT_UINT, n, f);
+            value = build.inst(IrCmd::BITAND_UINT, shift, build.constInt(1));
+        }
     }
     else
     {
+        IrOp f = build.inst(IrCmd::NUM_TO_INT, vb);
+
         builtinCheckDouble(build, build.vmReg(args.index + 1), pcpos);
         IrOp vc = builtinLoadDouble(build, build.vmReg(args.index + 1));
         IrOp w = build.inst(IrCmd::NUM_TO_INT, vc);
 
         IrOp block1 = build.block(IrBlockKind::Internal);
-        build.inst(IrCmd::JUMP_LT_INT, f, build.constInt(0), fallback, block1);
+        build.inst(IrCmd::JUMP_CMP_INT, f, build.constInt(0), build.cond(IrCondition::Less), fallback, block1);
         build.beginBlock(block1);
 
         IrOp block2 = build.block(IrBlockKind::Internal);
-        build.inst(IrCmd::JUMP_LT_INT, w, build.constInt(1), fallback, block2);
+        build.inst(IrCmd::JUMP_CMP_INT, w, build.constInt(1), build.cond(IrCondition::Less), fallback, block2);
         build.beginBlock(block2);
 
         IrOp block3 = build.block(IrBlockKind::Internal);
         IrOp fw = build.inst(IrCmd::ADD_INT, f, w);
-        build.inst(IrCmd::JUMP_LT_INT, fw, build.constInt(33), block3, fallback);
+        build.inst(IrCmd::JUMP_CMP_INT, fw, build.constInt(33), build.cond(IrCondition::Less), block3, fallback);
         build.beginBlock(block3);
 
         IrOp shift = build.inst(IrCmd::BITLSHIFT_UINT, build.constInt(0xfffffffe), build.inst(IrCmd::SUB_INT, w, build.constInt(1)));
@@ -615,10 +635,15 @@ static BuiltinImplResult translateBuiltinBit32ExtractK(
 
     uint32_t m = ~(0xfffffffeu << w1);
 
-    IrOp nf = build.inst(IrCmd::BITRSHIFT_UINT, n, build.constInt(f));
-    IrOp and_ = build.inst(IrCmd::BITAND_UINT, nf, build.constInt(m));
+    IrOp result = n;
 
-    IrOp value = build.inst(IrCmd::UINT_TO_NUM, and_);
+    if (f)
+        result = build.inst(IrCmd::BITRSHIFT_UINT, result, build.constInt(f));
+
+    if ((f + w1 + 1) < 32)
+        result = build.inst(IrCmd::BITAND_UINT, result, build.constInt(m));
+
+    IrOp value = build.inst(IrCmd::UINT_TO_NUM, result);
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), value);
 
     if (ra != arg)
@@ -673,7 +698,7 @@ static BuiltinImplResult translateBuiltinBit32Replace(
     if (nparams == 3)
     {
         IrOp block = build.block(IrBlockKind::Internal);
-        build.inst(IrCmd::JUMP_GE_UINT, f, build.constInt(32), fallback, block);
+        build.inst(IrCmd::JUMP_CMP_INT, f, build.constInt(32), build.cond(IrCondition::UnsignedGreaterEqual), fallback, block);
         build.beginBlock(block);
 
         // TODO: this can be optimized using a bit-select instruction (btr on x86)
@@ -694,16 +719,16 @@ static BuiltinImplResult translateBuiltinBit32Replace(
         IrOp w = build.inst(IrCmd::NUM_TO_INT, vd);
 
         IrOp block1 = build.block(IrBlockKind::Internal);
-        build.inst(IrCmd::JUMP_LT_INT, f, build.constInt(0), fallback, block1);
+        build.inst(IrCmd::JUMP_CMP_INT, f, build.constInt(0), build.cond(IrCondition::Less), fallback, block1);
         build.beginBlock(block1);
 
         IrOp block2 = build.block(IrBlockKind::Internal);
-        build.inst(IrCmd::JUMP_LT_INT, w, build.constInt(1), fallback, block2);
+        build.inst(IrCmd::JUMP_CMP_INT, w, build.constInt(1), build.cond(IrCondition::Less), fallback, block2);
         build.beginBlock(block2);
 
         IrOp block3 = build.block(IrBlockKind::Internal);
         IrOp fw = build.inst(IrCmd::ADD_INT, f, w);
-        build.inst(IrCmd::JUMP_LT_INT, fw, build.constInt(33), block3, fallback);
+        build.inst(IrCmd::JUMP_CMP_INT, fw, build.constInt(33), build.cond(IrCondition::Less), block3, fallback);
         build.beginBlock(block3);
 
         IrOp shift1 = build.inst(IrCmd::BITLSHIFT_UINT, build.constInt(0xfffffffe), build.inst(IrCmd::SUB_INT, w, build.constInt(1)));

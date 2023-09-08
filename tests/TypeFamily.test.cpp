@@ -1,5 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypeFamily.h"
+
+#include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 
 #include "Fixture.h"

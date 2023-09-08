@@ -38,6 +38,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauAllowIndexClassParameters, false)
 LUAU_FASTFLAG(LuauOccursIsntAlwaysFailure)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
+LUAU_FASTFLAGVARIABLE(LuauVariadicOverloadFix, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAG(LuauParseDeclareClassIndexer)
 LUAU_FASTFLAG(LuauFloorDivision);
@@ -208,21 +209,6 @@ static bool isMetamethod(const Name& name)
 size_t HashBoolNamePair::operator()(const std::pair<bool, Name>& pair) const
 {
     return std::hash<bool>()(pair.first) ^ std::hash<Name>()(pair.second);
-}
-
-GlobalTypes::GlobalTypes(NotNull<BuiltinTypes> builtinTypes)
-    : builtinTypes(builtinTypes)
-{
-    globalScope = std::make_shared<Scope>(globalTypes.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}}));
-
-    globalScope->addBuiltinTypeBinding("any", TypeFun{{}, builtinTypes->anyType});
-    globalScope->addBuiltinTypeBinding("nil", TypeFun{{}, builtinTypes->nilType});
-    globalScope->addBuiltinTypeBinding("number", TypeFun{{}, builtinTypes->numberType});
-    globalScope->addBuiltinTypeBinding("string", TypeFun{{}, builtinTypes->stringType});
-    globalScope->addBuiltinTypeBinding("boolean", TypeFun{{}, builtinTypes->booleanType});
-    globalScope->addBuiltinTypeBinding("thread", TypeFun{{}, builtinTypes->threadType});
-    globalScope->addBuiltinTypeBinding("unknown", TypeFun{{}, builtinTypes->unknownType});
-    globalScope->addBuiltinTypeBinding("never", TypeFun{{}, builtinTypes->neverType});
 }
 
 TypeChecker::TypeChecker(const ScopePtr& globalScope, ModuleResolver* resolver, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter* iceHandler)
@@ -4038,7 +4024,13 @@ void TypeChecker::checkArgumentList(const ScopePtr& scope, const AstExpr& funNam
                     if (argIndex < argLocations.size())
                         location = argLocations[argIndex];
 
-                    unify(*argIter, vtp->ty, scope, location);
+                    if (FFlag::LuauVariadicOverloadFix)
+                    {
+                        state.location = location;
+                        state.tryUnify(*argIter, vtp->ty);
+                    }
+                    else
+                        unify(*argIter, vtp->ty, scope, location);
                     ++argIter;
                     ++argIndex;
                 }

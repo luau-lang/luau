@@ -25,7 +25,6 @@ LUAU_FASTFLAGVARIABLE(LuauOccursIsntAlwaysFailure, false)
 LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
 LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAGVARIABLE(LuauTableUnifyRecursionLimit, false)
 
 namespace Luau
 {
@@ -2260,23 +2259,13 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
 
         if (superTable != newSuperTable || subTable != newSubTable)
         {
-            if (FFlag::LuauTableUnifyRecursionLimit)
+            if (errors.empty())
             {
-                if (errors.empty())
-                {
-                    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
-                    tryUnifyTables(subTy, superTy, isIntersection);
-                }
+                RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                tryUnifyTables(subTy, superTy, isIntersection);
+            }
 
-                return;
-            }
-            else
-            {
-                if (errors.empty())
-                    return tryUnifyTables(subTy, superTy, isIntersection);
-                else
-                    return;
-            }
+            return;
         }
     }
 
@@ -2351,23 +2340,13 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
 
         if (superTable != newSuperTable || subTable != newSubTable)
         {
-            if (FFlag::LuauTableUnifyRecursionLimit)
+            if (errors.empty())
             {
-                if (errors.empty())
-                {
-                    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
-                    tryUnifyTables(subTy, superTy, isIntersection);
-                }
+                RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                tryUnifyTables(subTy, superTy, isIntersection);
+            }
 
-                return;
-            }
-            else
-            {
-                if (errors.empty())
-                    return tryUnifyTables(subTy, superTy, isIntersection);
-                else
-                    return;
-            }
+            return;
         }
     }
 

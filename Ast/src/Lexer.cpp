@@ -7,7 +7,6 @@
 #include <limits.h>
 
 LUAU_FASTFLAGVARIABLE(LuauFloorDivision, false)
-LUAU_FASTFLAGVARIABLE(LuauLexerConsumeFast, false)
 LUAU_FASTFLAGVARIABLE(LuauLexerLookaheadRemembersBraceType, false)
 
 namespace Luau
@@ -460,19 +459,8 @@ Position Lexer::position() const
 LUAU_FORCEINLINE
 void Lexer::consume()
 {
-    if (isNewline(buffer[offset]))
-    {
-        // TODO: When the flag is removed, remove the outer condition
-        if (FFlag::LuauLexerConsumeFast)
-        {
-            LUAU_ASSERT(!isNewline(buffer[offset]));
-        }
-        else
-        {
-            line++;
-            lineOffset = offset + 1;
-        }
-    }
+    // consume() assumes current character is known to not be a newline; use consumeAny if this is not guaranteed
+    LUAU_ASSERT(!isNewline(buffer[offset]));
 
     offset++;
 }

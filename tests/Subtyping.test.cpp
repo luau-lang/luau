@@ -2,7 +2,9 @@
 
 #include "doctest.h"
 #include "Fixture.h"
+#include "RegisterCallbacks.h"
 
+#include "Luau/Normalize.h"
 #include "Luau/Subtyping.h"
 #include "Luau/TypePack.h"
 
@@ -344,14 +346,72 @@ struct SubtypeFixture : Fixture
         CHECK_MESSAGE(!result.isErrorSuppressing, "Expected " << leftTy << " to error-suppress " << rightTy); \
     } while (0)
 
+/// Internal macro for registering a generated test case.
+///
+/// @param der the name of the derived fixture struct
+/// @param reg the name of the registration callback, invoked immediately before
+/// tests are ran to register the test
+/// @param run the name of the run callback, invoked to actually run the test case
+#define TEST_REGISTER(der, reg, run) \
+    static inline DOCTEST_NOINLINE void run() \
+    { \
+        der fix; \
+        fix.test(); \
+    } \
+    static inline DOCTEST_NOINLINE void reg() \
+    { \
+        /* we have to mark this as `static` to ensure the memory remains alive \
+        for the entirety of the test process */ \
+        static std::string name = der().testName; \
+        doctest::detail::regTest(doctest::detail::TestCase(run, __FILE__, __LINE__, \
+                                     doctest_detail_test_suite_ns::getCurrentTestSuite()) /* the test case's name, determined at runtime */ \
+                                 * name.c_str() /* getCurrentTestSuite() only works at static initialization \
+                                                time due to implementation details. To ensure that test cases \
+                                                are grouped where they should be, manually override the suite \
+                                                with the test_suite decorator. */ \
+                                 * doctest::test_suite("Subtyping")); \
+    } \
+    DOCTEST_GLOBAL_NO_WARNINGS(DOCTEST_ANONYMOUS(DOCTEST_ANON_VAR_), addTestCallback(reg));
+
+/// Internal macro for deriving a test case fixture. Roughly analogous to
+/// DOCTEST_IMPLEMENT_FIXTURE.
+///
+/// @param op a function (or macro) to call that compares the subtype to
+/// the supertype.
+/// @param symbol the symbol to use in stringification
+/// @param der the name of the derived fixture struct
+/// @param left the subtype expression
+/// @param right the supertype expression
+#define TEST_DERIVE(op, symbol, der, left, right) \
+    namespace \
+    { \
+    struct der : SubtypeFixture \
+    { \
+        const TypeId subTy = (left); \
+        const TypeId superTy = (right); \
+        const std::string testName = toString(subTy) + " " symbol " " + toString(superTy); \
+        inline DOCTEST_NOINLINE void test() \
+        { \
+            op(subTy, superTy); \
+        } \
+    }; \
+    TEST_REGISTER(der, DOCTEST_ANONYMOUS(DOCTEST_ANON_FUNC_), DOCTEST_ANONYMOUS(DOCTEST_ANON_FUNC_)); \
+    }
+
+/// Generates a test that checks if a type is a subtype of another.
+#define TEST_IS_SUBTYPE(left, right) TEST_DERIVE(CHECK_IS_SUBTYPE, "<:", DOCTEST_ANONYMOUS(DOCTEST_ANON_CLASS_), left, right)
+
+/// Generates a test that checks if a type is _not_ a subtype of another.
+/// Uses <!: instead of </: to ensure that rotest doesn't explode when it splits
+/// on / characters.
+#define TEST_IS_NOT_SUBTYPE(left, right) TEST_DERIVE(CHECK_IS_NOT_SUBTYPE, "<!:", DOCTEST_ANONYMOUS(DOCTEST_ANON_CLASS_), left, right)
+
 TEST_SUITE_BEGIN("Subtyping");
 
 // We would like to write </: to mean "is not a subtype," but rotest does not like that at all, so we instead use <!:
 
-TEST_CASE_FIXTURE(SubtypeFixture, "number <: any")
-{
-    CHECK_IS_SUBTYPE(builtinTypes->numberType, builtinTypes->anyType);
-}
+TEST_IS_SUBTYPE(builtinTypes->numberType, builtinTypes->anyType);
+TEST_IS_NOT_SUBTYPE(builtinTypes->numberType, builtinTypes->stringType);
 
 TEST_CASE_FIXTURE(SubtypeFixture, "any <!: unknown")
 {
@@ -373,11 +433,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "number <: unknown")
 TEST_CASE_FIXTURE(SubtypeFixture, "number <: number")
 {
     CHECK_IS_SUBTYPE(builtinTypes->numberType, builtinTypes->numberType);
-}
-
-TEST_CASE_FIXTURE(SubtypeFixture, "number <!: string")
-{
-    CHECK_IS_NOT_SUBTYPE(builtinTypes->numberType, builtinTypes->stringType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "number <: number?")
@@ -893,6 +948,16 @@ TEST_CASE_FIXTURE(SubtypeFixture, "string <: { lower : (string) -> string }")
 TEST_CASE_FIXTURE(SubtypeFixture, "string <!: { insaneThingNoScalarHas : () -> () }")
 {
     CHECK_IS_NOT_SUBTYPE(builtinTypes->stringType, tableWithoutScalarProp);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "~fun & (string) -> number <: (string) -> number")
+{
+    CHECK_IS_SUBTYPE(meet(negate(builtinTypes->functionType), numberToStringType), numberToStringType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "(string) -> number <: ~fun & (string) -> number")
+{
+    CHECK_IS_NOT_SUBTYPE(numberToStringType, meet(negate(builtinTypes->functionType), numberToStringType));
 }
 
 /*

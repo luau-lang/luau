@@ -19,6 +19,7 @@ class TypeIds;
 class Normalizer;
 struct NormalizedType;
 struct NormalizedClassType;
+struct NormalizedFunctionType;
 
 struct SubtypingResult
 {
@@ -103,6 +104,7 @@ private:
 
     SubtypingResult isSubtype_(const NormalizedType* subNorm, const NormalizedType* superNorm);
     SubtypingResult isSubtype_(const NormalizedClassType& subClass, const NormalizedClassType& superClass, const TypeIds& superTables);
+    SubtypingResult isSubtype_(const NormalizedFunctionType& subFunction, const NormalizedFunctionType& superFunction);
     SubtypingResult isSubtype_(const TypeIds& subTypes, const TypeIds& superTypes);
 
     SubtypingResult isSubtype_(const VariadicTypePack* subVariadic, const VariadicTypePack* superVariadic);

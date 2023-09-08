@@ -1222,4 +1222,28 @@ TEST_CASE_FIXTURE(FrontendFixture, "parse_only")
     CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(FrontendFixture, "markdirty_early_return")
+{
+    ScopedFastFlag fflag("CorrectEarlyReturnInMarkDirty", true);
+
+    constexpr char moduleName[] = "game/Gui/Modules/A";
+    fileResolver.source[moduleName] = R"(
+        return 1
+    )";
+
+    {
+        std::vector<ModuleName> markedDirty;
+        frontend.markDirty(moduleName, &markedDirty);
+        CHECK(markedDirty.empty());
+    }
+
+    frontend.parse(moduleName);
+
+    {
+        std::vector<ModuleName> markedDirty;
+        frontend.markDirty(moduleName, &markedDirty);
+        CHECK(!markedDirty.empty());
+    }
+}
+
 TEST_SUITE_END();

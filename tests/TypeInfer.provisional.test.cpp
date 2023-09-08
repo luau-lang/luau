@@ -1006,8 +1006,6 @@ end
 // We would prefer this unification to be able to complete, but at least it should not crash
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_unification_infinite_recursion")
 {
-    ScopedFastFlag luauTableUnifyRecursionLimit{"LuauTableUnifyRecursionLimit", true};
-
 #if defined(_NOOPT) || defined(_DEBUG)
     ScopedFastInt LuauTypeInferRecursionLimit{"LuauTypeInferRecursionLimit", 100};
 #endif

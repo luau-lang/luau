@@ -621,11 +621,11 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ControlFlowEq")
     });
 
     withTwoBlocks([this](IrOp a, IrOp b) {
-        build.inst(IrCmd::JUMP_EQ_INT, build.constInt(0), build.constInt(0), a, b);
+        build.inst(IrCmd::JUMP_CMP_INT, build.constInt(0), build.constInt(0), build.cond(IrCondition::Equal), a, b);
     });
 
     withTwoBlocks([this](IrOp a, IrOp b) {
-        build.inst(IrCmd::JUMP_EQ_INT, build.constInt(0), build.constInt(1), a, b);
+        build.inst(IrCmd::JUMP_CMP_INT, build.constInt(0), build.constInt(1), build.cond(IrCondition::Equal), a, b);
     });
 
     updateUseCounts(build.function);
@@ -1359,7 +1359,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "IntEqRemoval")
     build.beginBlock(block);
     build.inst(IrCmd::STORE_INT, build.vmReg(1), build.constInt(5));
     IrOp value = build.inst(IrCmd::LOAD_INT, build.vmReg(1));
-    build.inst(IrCmd::JUMP_EQ_INT, value, build.constInt(5), trueBlock, falseBlock);
+    build.inst(IrCmd::JUMP_CMP_INT, value, build.constInt(5), build.cond(IrCondition::Equal), trueBlock, falseBlock);
 
     build.beginBlock(trueBlock);
     build.inst(IrCmd::RETURN, build.constUint(1));
@@ -1556,7 +1556,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "RecursiveSccUseRemoval2")
     IrOp repeat = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
-    build.inst(IrCmd::JUMP_EQ_INT, build.constInt(0), build.constInt(1), block, exit1);
+    build.inst(IrCmd::JUMP_CMP_INT, build.constInt(0), build.constInt(1), build.cond(IrCondition::Equal), block, exit1);
 
     build.beginBlock(exit1);
     build.inst(IrCmd::RETURN, build.vmReg(0), build.constInt(0));
@@ -2781,6 +2781,39 @@ bb_0:
    STORE_DOUBLE R0, 0.5
    SET_UPVALUE U0, R0, tnumber
    RETURN R0, 0i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "TagSelfEqualityCheckRemoval")
+{
+    ScopedFastFlag luauMergeTagLoads{"LuauMergeTagLoads", true};
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+    IrOp trueBlock = build.block(IrBlockKind::Internal);
+    IrOp falseBlock = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+
+    IrOp tag1 = build.inst(IrCmd::LOAD_TAG, build.vmReg(0));
+    IrOp tag2 = build.inst(IrCmd::LOAD_TAG, build.vmReg(0));
+    build.inst(IrCmd::JUMP_EQ_TAG, tag1, tag2, trueBlock, falseBlock);
+
+    build.beginBlock(trueBlock);
+    build.inst(IrCmd::RETURN, build.constUint(1));
+
+    build.beginBlock(falseBlock);
+    build.inst(IrCmd::RETURN, build.constUint(2));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build, true);
+
+    CHECK("\n" + toString(build.function, /* includeUseInfo */ false) == R"(
+bb_0:
+   JUMP bb_1
+
+bb_1:
+   RETURN 1u
 
 )");
 }

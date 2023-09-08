@@ -58,6 +58,58 @@ inline ConditionA64 getConditionFP(IrCondition cond)
     }
 }
 
+inline ConditionA64 getConditionInt(IrCondition cond)
+{
+    switch (cond)
+    {
+    case IrCondition::Equal:
+        return ConditionA64::Equal;
+
+    case IrCondition::NotEqual:
+        return ConditionA64::NotEqual;
+
+    case IrCondition::Less:
+        return ConditionA64::Minus;
+
+    case IrCondition::NotLess:
+        return ConditionA64::Plus;
+
+    case IrCondition::LessEqual:
+        return ConditionA64::LessEqual;
+
+    case IrCondition::NotLessEqual:
+        return ConditionA64::Greater;
+
+    case IrCondition::Greater:
+        return ConditionA64::Greater;
+
+    case IrCondition::NotGreater:
+        return ConditionA64::LessEqual;
+
+    case IrCondition::GreaterEqual:
+        return ConditionA64::GreaterEqual;
+
+    case IrCondition::NotGreaterEqual:
+        return ConditionA64::Less;
+
+    case IrCondition::UnsignedLess:
+        return ConditionA64::CarryClear;
+
+    case IrCondition::UnsignedLessEqual:
+        return ConditionA64::UnsignedLessEqual;
+
+    case IrCondition::UnsignedGreater:
+        return ConditionA64::UnsignedGreater;
+
+    case IrCondition::UnsignedGreaterEqual:
+        return ConditionA64::CarrySet;
+
+    default:
+        LUAU_ASSERT(!"Unexpected condition code");
+        return ConditionA64::Always;
+    }
+}
+
 static void emitAddOffset(AssemblyBuilderA64& build, RegisterA64 dst, RegisterA64 src, size_t offset)
 {
     LUAU_ASSERT(dst != src);
@@ -714,31 +766,25 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
         break;
     }
-    case IrCmd::JUMP_EQ_INT:
-        if (intOp(inst.b) == 0)
+    case IrCmd::JUMP_CMP_INT:
+    {
+        IrCondition cond = conditionOp(inst.c);
+
+        if (cond == IrCondition::Equal && intOp(inst.b) == 0)
         {
-            build.cbz(regOp(inst.a), labelOp(inst.c));
+            build.cbz(regOp(inst.a), labelOp(inst.d));
+        }
+        else if (cond == IrCondition::NotEqual && intOp(inst.b) == 0)
+        {
+            build.cbnz(regOp(inst.a), labelOp(inst.d));
         }
         else
         {
             LUAU_ASSERT(unsigned(intOp(inst.b)) <= AssemblyBuilderA64::kMaxImmediate);
             build.cmp(regOp(inst.a), uint16_t(intOp(inst.b)));
-            build.b(ConditionA64::Equal, labelOp(inst.c));
+            build.b(getConditionInt(cond), labelOp(inst.d));
         }
-        jumpOrFallthrough(blockOp(inst.d), next);
-        break;
-    case IrCmd::JUMP_LT_INT:
-        LUAU_ASSERT(unsigned(intOp(inst.b)) <= AssemblyBuilderA64::kMaxImmediate);
-        build.cmp(regOp(inst.a), uint16_t(intOp(inst.b)));
-        build.b(ConditionA64::Less, labelOp(inst.c));
-        jumpOrFallthrough(blockOp(inst.d), next);
-        break;
-    case IrCmd::JUMP_GE_UINT:
-    {
-        LUAU_ASSERT(unsigned(intOp(inst.b)) <= AssemblyBuilderA64::kMaxImmediate);
-        build.cmp(regOp(inst.a), uint16_t(unsigned(intOp(inst.b))));
-        build.b(ConditionA64::CarrySet, labelOp(inst.c));
-        jumpOrFallthrough(blockOp(inst.d), next);
+        jumpOrFallthrough(blockOp(inst.e), next);
         break;
     }
     case IrCmd::JUMP_EQ_POINTER:
