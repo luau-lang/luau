@@ -270,6 +270,8 @@ Here, `T` is a testable type, that is a scalar type, singleton type,
 
 As a further extension, we might allow users to explicitly provide `@checked` type annotations.
 
+Checked functions are known as strong functions in Elixir.
+
 ## Drawbacks
 
 This is a breaking change, since it results in more errors being issued.
@@ -318,13 +320,18 @@ The problem with doing this is what to do about recursive functions.
 ## References
 
 Lily Brown, Andy Friesen and Alan Jeffrey
-*Position Paper: Goals of the Luau Type System*
-In HATRA '21: Human Aspects of Types and Reasoning Assistants,
+*Position Paper: Goals of the Luau Type System*,
+in HATRA '21: Human Aspects of Types and Reasoning Assistants,
 2021.
 https://doi.org/10.48550/arXiv.2109.11397
 
+Giuseppe Castagna, Guillaume Duboc, José Valim
+*The Design Principles of the Elixir Type System*,
+2023.
+https://doi.org/10.48550/arXiv.2306.06391
+
 Tobias Lindahl and Konstantinos Sagonas,
 *Practical Type Inference Based on Success Typings*,
-In PPDP '06: Principles and Practice of Declarative Programming,
+in PPDP '06: Principles and Practice of Declarative Programming,
 pp. 167–178, 2006.
 https://doi.org/10.1145/1140335.1140356
