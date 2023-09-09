@@ -17,10 +17,10 @@
     var indentUnit = 4;
   
     function prefixRE(words) {
-        return new RegExp("^(?:" + words.join("|") + ")", "i");
+        return new RegExp("^(?:" + words.join("|") + ")");
     }
     function wordRE(words) {
-        return new RegExp("^(?:" + words.join("|") + ")$", "i");
+        return new RegExp("^(?:" + words.join("|") + ")$");
     }
     var specials = wordRE(parserConfig.specials || ["type"]);
   
