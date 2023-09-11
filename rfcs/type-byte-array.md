@@ -2,7 +2,7 @@
 
 ## Summary
 
-A new constructed type which serves as a mutable array of bytes. Ideally, it would expose an API that would allow for building, reading, and writing to the internal buffer. A particularly good example type that this could be derived from is [this Java class](https://docs.oracle.com/en/java/javase/18/docs/api/java.base/java/nio/ByteBuffer.html).
+A new built in type to serve as an array of bytes, with a library for reading and writing to the internal buffer. A particularly good example type that this could be derived from is [this Java class](https://docs.oracle.com/en/java/javase/18/docs/api/java.base/java/nio/ByteBuffer.html).
 
 ## Motivation
 
@@ -10,33 +10,33 @@ With this type, we ideally solve the use cases for binary format encoding and de
 
 ## Design
 
-While an API as extensive as the example might be good, it's only really necessary to have methods for treating this block of data as a random access collections of bytes with potentially resizable backing. This could ideally be exposed as:
+This could ideally be exposed as a new Luau library similar to that of `string` or `table`. It would contain functions for:
 
-* A constructor with predefined size and endianness.
+* Instantiating a new byte array object with an initial size.
 
-* A method for resizing the existing object while retaining data in bounds.
+* Resizing an existing object while keeping previously assigned values.
 
-* Methods for reading...
+* Reading...
+
+    * ... signed and unsigned integers of 8, 16, and 32 bits given an offset and endianness.
+
+    * ... floating point values of 32 and 64 bits given an offset and endianness.
 
     * ... a string given an offset and size.
 
-    * ... signed and unsigned integers of 8, 16, and 32 bits given an offset.
+ * Writing...
 
-    * ... floating point values of 32 and 64 bits given an offset.
+    * ... signed and unsigned integers of 8, 16, and 32 bits given an offset, value, and endianness.
 
- * Methods for writing...
+    * ... floating point values of 32 and 64 bits given an offset, value, and endianness.
 
     * ... a string given an offset, size, and value.
 
-    * ... signed and unsigned integers of 8, 16, and 32 bits given an offset and value.
-
-    * ... floating point values of 32 and 64 bits given an offset and value.
-
-As Luau can't represent 64 bit integers in user code, the methods for these could be omitted or simply serve as a shortcut for writing what can be represented already without needing 2 calls to the 32 bit methods.
+As Luau can't represent 64 bit integers in user code, the functions for these could be omitted or simply serve as a shortcut for writing what can be represented already without needing 2 calls to the 32 bit functions.
 
 ## Drawbacks
 
-Depending on implementation this could increase the complexity of the VM and related code. If this is to be implemented as a built-in, optimized type it might need specialized fast paths for all relevant opcodes. Additionally, this type would have to come in with methods and some sort of constructor to be useful, which does not have precedent in the open source Luau distribution (even `vector` lacks an exposed constructor or methods).
+Depending on implementation this could increase the complexity of the VM and related code. If this is to be implemented as a built-in, optimized type, it might need specialized fast paths for all relevant opcodes. Additionally, this type would have to come in with a whole new library table as part of the global environment, which could cause name collisions in older code.
 
 ## Alternatives
 
