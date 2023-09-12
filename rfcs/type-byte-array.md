@@ -6,33 +6,37 @@ A new built in type to serve as an array of bytes, with a library for reading an
 
 ## Motivation
 
-With this type, we ideally solve the use cases for binary format encoding and decoding, compression, and active/compact memory. This opens the door for developers to work with file formats that might've been too large to represent with tables or to write to strings. It also allows for writing algorithms that deal with raw data often, such as compression or hashing. Web services that exchange data in packed formats could also benefit from this.
+With this type, we solve the use cases for binary format encoding and decoding, compression, and active/compact memory. This opens the door for developers to work with file formats that might've been too large to represent with tables or to write to strings. It also allows for writing algorithms that deal with raw data often, such as compression or hashing. Web services that exchange data in packed formats could also benefit from this.
 
 ## Design
 
-This could ideally be exposed as a new Luau library similar to that of `string` or `table`. It would contain functions for:
+This would be exposed as a new Luau library similar to that of `string` or `table`, with functions for:
 
-* Instantiating a new byte array object with an initial size.
+* Instantiating the object with a fixed size.
 
-* Resizing an existing object while keeping previously assigned values.
+* Fetching the size of the object.
+
+* Copying a range of data from one object to another.
 
 * Reading...
 
-    * ... signed and unsigned integers of 8, 16, and 32 bits given an offset and endianness.
+    * ... signed and unsigned integers of 8, 16, and 32 bits given an offset.
 
-    * ... floating point values of 32 and 64 bits given an offset and endianness.
+    * ... floating point values of 32 and 64 bits given an offset.
 
     * ... a string given an offset and size.
 
  * Writing...
 
-    * ... signed and unsigned integers of 8, 16, and 32 bits given an offset, value, and endianness.
+    * ... signed and unsigned integers of 8, 16, and 32 bits given an offset and value.
 
-    * ... floating point values of 32 and 64 bits given an offset, value, and endianness.
+    * ... floating point values of 32 and 64 bits given an offset and value.
 
     * ... a string given an offset, size, and value.
 
-As Luau can't represent 64 bit integers in user code, the functions for these could be omitted or simply serve as a shortcut for writing what can be represented already without needing 2 calls to the 32 bit functions.
+Read and write operations for relevant types are little endian as it is the most common use case, and conversion is often trivial to do manually.
+
+Additionally, unaligned offsets in all operations are valid and behave as expected.
 
 ## Drawbacks
 
