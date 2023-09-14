@@ -248,25 +248,25 @@ type of `math.abs`:
 This might be better presented as an annotation on the argument type, something like:
 
 ```
-(@checked number) -> number
+@checked (number) -> number
 ```
 
 The type
 
 ```
-   (S1,...,SM, @checked T, U1...UN) -> V
+   @checked (S1,...,SN) -> T
 ```
 
-is shorthand for
+is equivalent to
 
 
 ```
-   (S1,...,SM, T, U1...UN) -> V
-   & (unknown^M, ~T, unknown^N) -> error
+   (S1,...,SN) -> T
+   & (~S1, unknown^N-1) -> error
+   & (unknown, ~S2, unknown^N-2) -> error
+   ...
+   & (unknown^N-1, SN) -> error
 ```
-
-Here, `T` is a testable type, that is a scalar type, singleton type,
-`table` or `function` (or a union or intersection of testable types).
 
 As a further extension, we might allow users to explicitly provide `@checked` type annotations.
 
@@ -287,6 +287,9 @@ solution. It is similar to this design, except that it only works in
 (the equivalent of) non-strict mode. The success typing function type
 `(S)->T` is the equivalent of our
 `(~S)->error & (unknown)->(T|error)`.
+
+We could put the `@checked` annotation on individual function argments
+rather than the function type.
 
 We could use this design to infer checked functions. In function
 `f(x1, ..., xN) B end`, we could generate the context
@@ -312,7 +315,7 @@ We would infer type
 which is the same as
 
 ```
-  (@checked number, @checked string) -> ()
+  @checked (number, string) -> ()
 ```
 
 The problem with doing this is what to do about recursive functions.
