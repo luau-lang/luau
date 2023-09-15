@@ -19,20 +19,18 @@ class TypeIds;
 class Normalizer;
 struct NormalizedType;
 struct NormalizedClassType;
+struct NormalizedStringType;
 struct NormalizedFunctionType;
+
 
 struct SubtypingResult
 {
-    // Did the test succeed?
     bool isSubtype = false;
     bool isErrorSuppressing = false;
     bool normalizationTooComplex = false;
 
-    // If so, what constraints are implied by this relation?
-    // If not, what happened?
-
-    void andAlso(const SubtypingResult& other);
-    void orElse(const SubtypingResult& other);
+    SubtypingResult& andAlso(const SubtypingResult& other);
+    SubtypingResult& orElse(const SubtypingResult& other);
 
     // Only negates the `isSubtype`.
     static SubtypingResult negate(const SubtypingResult& result);
@@ -46,6 +44,8 @@ struct Subtyping
     NotNull<TypeArena> arena;
     NotNull<Normalizer> normalizer;
     NotNull<InternalErrorReporter> iceReporter;
+
+    NotNull<Scope> scope;
 
     enum class Variance
     {
@@ -72,6 +72,12 @@ struct Subtyping
 
     SeenSet seenTypes;
 
+    Subtyping(const Subtyping&) = delete;
+    Subtyping& operator=(const Subtyping&) = delete;
+
+    Subtyping(Subtyping&&) = default;
+    Subtyping& operator=(Subtyping&&) = default;
+
     // TODO cache
     // TODO cyclic types
     // TODO recursion limits
@@ -80,43 +86,61 @@ struct Subtyping
     SubtypingResult isSubtype(TypePackId subTy, TypePackId superTy);
 
 private:
-    SubtypingResult isSubtype_(TypeId subTy, TypeId superTy);
-    SubtypingResult isSubtype_(TypePackId subTy, TypePackId superTy);
+    SubtypingResult isCovariantWith(TypeId subTy, TypeId superTy);
+    SubtypingResult isCovariantWith(TypePackId subTy, TypePackId superTy);
 
     template<typename SubTy, typename SuperTy>
-    SubtypingResult isSubtype_(const TryPair<const SubTy*, const SuperTy*>& pair);
+    SubtypingResult isContravariantWith(SubTy&& subTy, SuperTy&& superTy);
 
-    SubtypingResult isSubtype_(TypeId subTy, const UnionType* superUnion);
-    SubtypingResult isSubtype_(const UnionType* subUnion, TypeId superTy);
-    SubtypingResult isSubtype_(TypeId subTy, const IntersectionType* superIntersection);
-    SubtypingResult isSubtype_(const IntersectionType* subIntersection, TypeId superTy);
-    SubtypingResult isSubtype_(const PrimitiveType* subPrim, const PrimitiveType* superPrim);
-    SubtypingResult isSubtype_(const SingletonType* subSingleton, const PrimitiveType* superPrim);
-    SubtypingResult isSubtype_(const SingletonType* subSingleton, const SingletonType* superSingleton);
-    SubtypingResult isSubtype_(const TableType* subTable, const TableType* superTable);
-    SubtypingResult isSubtype_(const MetatableType* subMt, const MetatableType* superMt);
-    SubtypingResult isSubtype_(const MetatableType* subMt, const TableType* superTable);
-    SubtypingResult isSubtype_(const ClassType* subClass, const ClassType* superClass);
-    SubtypingResult isSubtype_(const ClassType* subClass, const TableType* superTable); // Actually a class <: shape.
-    SubtypingResult isSubtype_(const FunctionType* subFunction, const FunctionType* superFunction);
-    SubtypingResult isSubtype_(const PrimitiveType* subPrim, const TableType* superTable);
-    SubtypingResult isSubtype_(const SingletonType* subSingleton, const TableType* superTable);
+    template<typename SubTy, typename SuperTy>
+    SubtypingResult isInvariantWith(SubTy&& subTy, SuperTy&& superTy);
 
-    SubtypingResult isSubtype_(const NormalizedType* subNorm, const NormalizedType* superNorm);
-    SubtypingResult isSubtype_(const NormalizedClassType& subClass, const NormalizedClassType& superClass, const TypeIds& superTables);
-    SubtypingResult isSubtype_(const NormalizedFunctionType& subFunction, const NormalizedFunctionType& superFunction);
-    SubtypingResult isSubtype_(const TypeIds& subTypes, const TypeIds& superTypes);
+    template<typename SubTy, typename SuperTy>
+    SubtypingResult isCovariantWith(const TryPair<const SubTy*, const SuperTy*>& pair);
 
-    SubtypingResult isSubtype_(const VariadicTypePack* subVariadic, const VariadicTypePack* superVariadic);
+    template<typename SubTy, typename SuperTy>
+    SubtypingResult isContravariantWith(const TryPair<const SubTy*, const SuperTy*>& pair);
+
+    template<typename SubTy, typename SuperTy>
+    SubtypingResult isInvariantWith(const TryPair<const SubTy*, const SuperTy*>& pair);
+
+    SubtypingResult isCovariantWith(TypeId subTy, const UnionType* superUnion);
+    SubtypingResult isCovariantWith(const UnionType* subUnion, TypeId superTy);
+    SubtypingResult isCovariantWith(TypeId subTy, const IntersectionType* superIntersection);
+    SubtypingResult isCovariantWith(const IntersectionType* subIntersection, TypeId superTy);
+
+    SubtypingResult isCovariantWith(const NegationType* subNegation, TypeId superTy);
+    SubtypingResult isCovariantWith(const TypeId subTy, const NegationType* superNegation);
+
+    SubtypingResult isCovariantWith(const PrimitiveType* subPrim, const PrimitiveType* superPrim);
+    SubtypingResult isCovariantWith(const SingletonType* subSingleton, const PrimitiveType* superPrim);
+    SubtypingResult isCovariantWith(const SingletonType* subSingleton, const SingletonType* superSingleton);
+    SubtypingResult isCovariantWith(const TableType* subTable, const TableType* superTable);
+    SubtypingResult isCovariantWith(const MetatableType* subMt, const MetatableType* superMt);
+    SubtypingResult isCovariantWith(const MetatableType* subMt, const TableType* superTable);
+    SubtypingResult isCovariantWith(const ClassType* subClass, const ClassType* superClass);
+    SubtypingResult isCovariantWith(const ClassType* subClass, const TableType* superTable);
+    SubtypingResult isCovariantWith(const FunctionType* subFunction, const FunctionType* superFunction);
+    SubtypingResult isCovariantWith(const PrimitiveType* subPrim, const TableType* superTable);
+    SubtypingResult isCovariantWith(const SingletonType* subSingleton, const TableType* superTable);
+
+    SubtypingResult isCovariantWith(const NormalizedType* subNorm, const NormalizedType* superNorm);
+    SubtypingResult isCovariantWith(const NormalizedClassType& subClass, const NormalizedClassType& superClass);
+    SubtypingResult isCovariantWith(const NormalizedClassType& subClass, const TypeIds& superTables);
+    SubtypingResult isCovariantWith(const NormalizedStringType& subString, const NormalizedStringType& superString);
+    SubtypingResult isCovariantWith(const NormalizedStringType& subString, const TypeIds& superTables);
+    SubtypingResult isCovariantWith(const NormalizedFunctionType& subFunction, const NormalizedFunctionType& superFunction);
+    SubtypingResult isCovariantWith(const TypeIds& subTypes, const TypeIds& superTypes);
+
+    SubtypingResult isCovariantWith(const VariadicTypePack* subVariadic, const VariadicTypePack* superVariadic);
 
     bool bindGeneric(TypeId subTp, TypeId superTp);
     bool bindGeneric(TypePackId subTp, TypePackId superTp);
 
-    template <typename T, typename Container>
+    template<typename T, typename Container>
     TypeId makeAggregateType(const Container& container, TypeId orElse);
 
-    [[noreturn]]
-    void unexpected(TypePackId tp);
+    [[noreturn]] void unexpected(TypePackId tp);
 };
 
 } // namespace Luau

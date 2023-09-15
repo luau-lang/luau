@@ -55,8 +55,8 @@ struct Unifier2
     bool unify(TypePackId subTp, TypePackId superTp);
 
     std::optional<TypeId> generalize(NotNull<Scope> scope, TypeId ty);
-private:
 
+private:
     /**
      * @returns simplify(left | right)
      */
@@ -72,4 +72,4 @@ private:
     OccursCheckResult occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack);
 };
 
-}
+} // namespace Luau

@@ -240,11 +240,12 @@ static bool emitBuiltin(
     }
 }
 
-IrLoweringA64::IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, IrFunction& function)
+IrLoweringA64::IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, IrFunction& function, LoweringStats* stats)
     : build(build)
     , helpers(helpers)
     , function(function)
-    , regs(function, {{x0, x15}, {x16, x17}, {q0, q7}, {q16, q31}})
+    , stats(stats)
+    , regs(function, stats, {{x0, x15}, {x16, x17}, {q0, q7}, {q16, q31}})
     , valueTracker(function)
     , exitHandlerMap(~0u)
 {
@@ -858,7 +859,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.ldr(x3, mem(rNativeContext, offsetof(NativeContext, luaH_setnum)));
         build.blr(x3);
         inst.regA64 = regs.takeReg(x0, index);
-        break;   
+        break;
     }
     case IrCmd::NEW_TABLE:
     {
@@ -2015,6 +2016,15 @@ void IrLoweringA64::finishFunction()
 
         build.mov(x0, handler.pcpos * sizeof(Instruction));
         build.b(helpers.updatePcAndContinueInVm);
+    }
+
+    if (stats)
+    {
+        if (error)
+            stats->loweringErrors++;
+
+        if (regs.error)
+            stats->regAllocErrors++;
     }
 }
 

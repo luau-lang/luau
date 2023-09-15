@@ -2791,8 +2791,8 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
             else if (first == "native")
             {
                 if (space != std::string::npos)
-                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
-                        "native directive has extra symbols at the end of the line");
+                    emitWarning(
+                        context, LintWarning::Code_CommentDirective, hc.location, "native directive has extra symbols at the end of the line");
             }
             else
             {

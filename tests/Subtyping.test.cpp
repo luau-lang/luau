@@ -6,6 +6,7 @@
 
 #include "Luau/Normalize.h"
 #include "Luau/Subtyping.h"
+#include "Luau/Type.h"
 #include "Luau/TypePack.h"
 
 using namespace Luau;
@@ -17,7 +18,15 @@ struct SubtypeFixture : Fixture
     UnifierSharedState sharedState{&ice};
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
 
-    Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&iceReporter}};
+    ScopePtr rootScope{new Scope(builtinTypes->emptyTypePack)};
+    ScopePtr moduleScope{new Scope(rootScope)};
+
+    Subtyping subtyping = mkSubtyping(rootScope);
+
+    Subtyping mkSubtyping(const ScopePtr& scope)
+    {
+        return Subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&iceReporter}, NotNull{scope.get()}};
+    }
 
     TypePackId pack(std::initializer_list<TypeId> tys)
     {
@@ -66,9 +75,16 @@ struct SubtypeFixture : Fixture
         return arena.addType(UnionType{{a, b}});
     }
 
+    // `~`
     TypeId negate(TypeId ty)
     {
         return arena.addType(NegationType{ty});
+    }
+
+    // "literal"
+    TypeId str(const char* literal)
+    {
+        return arena.addType(SingletonType{StringSingleton{literal}});
     }
 
     TypeId cls(const std::string& name, std::optional<TypeId> parent = std::nullopt)
@@ -97,8 +113,8 @@ struct SubtypeFixture : Fixture
         return arena.addType(MetatableType{tbl(std::move(tableProps)), tbl(std::move(metaProps))});
     }
 
-    TypeId genericT = arena.addType(GenericType{"T"});
-    TypeId genericU = arena.addType(GenericType{"U"});
+    TypeId genericT = arena.addType(GenericType{moduleScope.get(), "T"});
+    TypeId genericU = arena.addType(GenericType{moduleScope.get(), "U"});
 
     TypePackId genericAs = arena.addTypePack(GenericTypePack{"A"});
     TypePackId genericBs = arena.addTypePack(GenericTypePack{"B"});
@@ -113,6 +129,10 @@ struct SubtypeFixture : Fixture
     TypeId helloType2 = arena.addType(SingletonType{StringSingleton{"hello"}});
     TypeId worldType = arena.addType(SingletonType{StringSingleton{"world"}});
 
+    TypeId aType = arena.addType(SingletonType{StringSingleton{"a"}});
+    TypeId bType = arena.addType(SingletonType{StringSingleton{"b"}});
+    TypeId trueSingleton = arena.addType(SingletonType{BooleanSingleton{true}});
+    TypeId falseSingleton = arena.addType(SingletonType{BooleanSingleton{false}});
     TypeId helloOrWorldType = join(helloType, worldType);
     TypeId trueOrFalseType = join(builtinTypes->trueType, builtinTypes->falseType);
 
@@ -128,7 +148,7 @@ struct SubtypeFixture : Fixture
      *    \- AnotherChild
      *       |- AnotherGrandchildOne
      *       \- AnotherGrandchildTwo
-    */
+     */
     TypeId rootClass = cls("Root");
     TypeId childClass = cls("Child", rootClass);
     TypeId grandchildOneClass = cls("GrandchildOne", childClass);
@@ -138,9 +158,9 @@ struct SubtypeFixture : Fixture
     TypeId anotherGrandchildTwoClass = cls("AnotherGrandchildTwo", anotherChildClass);
 
     TypeId vec2Class = cls("Vec2", {
-        {"X", builtinTypes->numberType},
-        {"Y", builtinTypes->numberType},
-    });
+                                       {"X", builtinTypes->numberType},
+                                       {"Y", builtinTypes->numberType},
+                                   });
 
     // "hello" | "hello"
     TypeId helloOrHelloType = arena.addType(UnionType{{helloType, helloType}});
@@ -149,160 +169,76 @@ struct SubtypeFixture : Fixture
     const TypeId nothingToNothingType = fn({}, {});
 
     // (number) -> string
-    const TypeId numberToStringType = fn(
-        {builtinTypes->numberType},
-        {builtinTypes->stringType}
-    );
+    const TypeId numberToStringType = fn({builtinTypes->numberType}, {builtinTypes->stringType});
 
     // (unknown) -> string
-    const TypeId unknownToStringType = fn(
-        {builtinTypes->unknownType},
-        {builtinTypes->stringType}
-    );
+    const TypeId unknownToStringType = fn({builtinTypes->unknownType}, {builtinTypes->stringType});
 
     // (number) -> ()
-    const TypeId numberToNothingType = fn(
-        {builtinTypes->numberType},
-        {}
-    );
+    const TypeId numberToNothingType = fn({builtinTypes->numberType}, {});
 
     // () -> number
-    const TypeId nothingToNumberType = fn(
-        {},
-        {builtinTypes->numberType}
-    );
+    const TypeId nothingToNumberType = fn({}, {builtinTypes->numberType});
 
     // (number) -> number
-    const TypeId numberToNumberType = fn(
-        {builtinTypes->numberType},
-        {builtinTypes->numberType}
-    );
+    const TypeId numberToNumberType = fn({builtinTypes->numberType}, {builtinTypes->numberType});
 
     // (number) -> unknown
-    const TypeId numberToUnknownType = fn(
-        {builtinTypes->numberType},
-        {builtinTypes->unknownType}
-    );
+    const TypeId numberToUnknownType = fn({builtinTypes->numberType}, {builtinTypes->unknownType});
 
     // (number) -> (string, string)
-    const TypeId numberToTwoStringsType = fn(
-        {builtinTypes->numberType},
-        {builtinTypes->stringType, builtinTypes->stringType}
-    );
+    const TypeId numberToTwoStringsType = fn({builtinTypes->numberType}, {builtinTypes->stringType, builtinTypes->stringType});
 
     // (number) -> (string, unknown)
-    const TypeId numberToStringAndUnknownType = fn(
-        {builtinTypes->numberType},
-        {builtinTypes->stringType, builtinTypes->unknownType}
-    );
+    const TypeId numberToStringAndUnknownType = fn({builtinTypes->numberType}, {builtinTypes->stringType, builtinTypes->unknownType});
 
     // (number, number) -> string
-    const TypeId numberNumberToStringType = fn(
-        {builtinTypes->numberType, builtinTypes->numberType},
-        {builtinTypes->stringType}
-    );
+    const TypeId numberNumberToStringType = fn({builtinTypes->numberType, builtinTypes->numberType}, {builtinTypes->stringType});
 
     // (unknown, number) -> string
-    const TypeId unknownNumberToStringType = fn(
-        {builtinTypes->unknownType, builtinTypes->numberType},
-        {builtinTypes->stringType}
-    );
+    const TypeId unknownNumberToStringType = fn({builtinTypes->unknownType, builtinTypes->numberType}, {builtinTypes->stringType});
 
     // (number, string) -> string
-    const TypeId numberAndStringToStringType = fn(
-        {builtinTypes->numberType, builtinTypes->stringType},
-        {builtinTypes->stringType}
-    );
+    const TypeId numberAndStringToStringType = fn({builtinTypes->numberType, builtinTypes->stringType}, {builtinTypes->stringType});
 
     // (number, ...string) -> string
-    const TypeId numberAndStringsToStringType = fn(
-        {builtinTypes->numberType}, VariadicTypePack{builtinTypes->stringType},
-        {builtinTypes->stringType}
-    );
+    const TypeId numberAndStringsToStringType =
+        fn({builtinTypes->numberType}, VariadicTypePack{builtinTypes->stringType}, {builtinTypes->stringType});
 
     // (number, ...string?) -> string
-    const TypeId numberAndOptionalStringsToStringType = fn(
-        {builtinTypes->numberType}, VariadicTypePack{builtinTypes->optionalStringType},
-        {builtinTypes->stringType}
-    );
+    const TypeId numberAndOptionalStringsToStringType =
+        fn({builtinTypes->numberType}, VariadicTypePack{builtinTypes->optionalStringType}, {builtinTypes->stringType});
 
     // (...number) -> number
-    const TypeId numbersToNumberType = arena.addType(FunctionType{
-        arena.addTypePack(VariadicTypePack{builtinTypes->numberType}),
-        arena.addTypePack({builtinTypes->numberType})
-    });
+    const TypeId numbersToNumberType =
+        arena.addType(FunctionType{arena.addTypePack(VariadicTypePack{builtinTypes->numberType}), arena.addTypePack({builtinTypes->numberType})});
 
     // <T>(T) -> ()
-    const TypeId genericTToNothingType = arena.addType(FunctionType{
-        {genericT},
-        {},
-        arena.addTypePack({genericT}),
-        builtinTypes->emptyTypePack
-    });
+    const TypeId genericTToNothingType = arena.addType(FunctionType{{genericT}, {}, arena.addTypePack({genericT}), builtinTypes->emptyTypePack});
 
     // <T>(T) -> T
-    const TypeId genericTToTType = arena.addType(FunctionType{
-        {genericT},
-        {},
-        arena.addTypePack({genericT}),
-        arena.addTypePack({genericT})
-    });
+    const TypeId genericTToTType = arena.addType(FunctionType{{genericT}, {}, arena.addTypePack({genericT}), arena.addTypePack({genericT})});
 
     // <U>(U) -> ()
-    const TypeId genericUToNothingType = arena.addType(FunctionType{
-        {genericU},
-        {},
-        arena.addTypePack({genericU}),
-        builtinTypes->emptyTypePack
-    });
+    const TypeId genericUToNothingType = arena.addType(FunctionType{{genericU}, {}, arena.addTypePack({genericU}), builtinTypes->emptyTypePack});
 
     // <T>() -> T
-    const TypeId genericNothingToTType = arena.addType(FunctionType{
-        {genericT},
-        {},
-        builtinTypes->emptyTypePack,
-        arena.addTypePack({genericT})
-    });
+    const TypeId genericNothingToTType = arena.addType(FunctionType{{genericT}, {}, builtinTypes->emptyTypePack, arena.addTypePack({genericT})});
 
     // <A...>(A...) -> A...
-    const TypeId genericAsToAsType = arena.addType(FunctionType{
-        {},
-        {genericAs},
-        genericAs,
-        genericAs
-    });
+    const TypeId genericAsToAsType = arena.addType(FunctionType{{}, {genericAs}, genericAs, genericAs});
 
     // <A...>(A...) -> number
-    const TypeId genericAsToNumberType = arena.addType(FunctionType{
-        {},
-        {genericAs},
-        genericAs,
-        arena.addTypePack({builtinTypes->numberType})
-    });
+    const TypeId genericAsToNumberType = arena.addType(FunctionType{{}, {genericAs}, genericAs, arena.addTypePack({builtinTypes->numberType})});
 
     // <B...>(B...) -> B...
-    const TypeId genericBsToBsType = arena.addType(FunctionType{
-        {},
-        {genericBs},
-        genericBs,
-        genericBs
-    });
+    const TypeId genericBsToBsType = arena.addType(FunctionType{{}, {genericBs}, genericBs, genericBs});
 
     // <B..., C...>(B...) -> C...
-    const TypeId genericBsToCsType = arena.addType(FunctionType{
-        {},
-        {genericBs, genericCs},
-        genericBs,
-        genericCs
-    });
+    const TypeId genericBsToCsType = arena.addType(FunctionType{{}, {genericBs, genericCs}, genericBs, genericCs});
 
     // <A...>() -> A...
-    const TypeId genericNothingToAsType = arena.addType(FunctionType{
-        {},
-        {genericAs},
-        builtinTypes->emptyTypePack,
-        genericAs
-    });
+    const TypeId genericNothingToAsType = arena.addType(FunctionType{{}, {genericAs}, builtinTypes->emptyTypePack, genericAs});
 
     // { lower : string -> string }
     TypeId tableWithLower = tbl(TableType::Props{{"lower", fn({builtinTypes->stringType}, {builtinTypes->stringType})}});
@@ -728,59 +664,97 @@ TEST_CASE_FIXTURE(SubtypeFixture, "{x: number?} <!: {x: number}")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{x: <T>(T) -> ()} <: {x: <U>(U) -> ()}")
 {
-    CHECK_IS_SUBTYPE(
-        tbl({{"x", genericTToNothingType}}),
-        tbl({{"x", genericUToNothingType}})
-    );
+    CHECK_IS_SUBTYPE(tbl({{"x", genericTToNothingType}}), tbl({{"x", genericUToNothingType}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { x: number } } <: { @metatable {} }")
 {
-    CHECK_IS_SUBTYPE(
-        meta({{"x", builtinTypes->numberType}}),
-        meta({})
-    );
+    CHECK_IS_SUBTYPE(meta({{"x", builtinTypes->numberType}}), meta({}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { x: number } } <!: { @metatable { x: boolean } }")
 {
-    CHECK_IS_NOT_SUBTYPE(
-        meta({{"x", builtinTypes->numberType}}),
-        meta({{"x", builtinTypes->booleanType}})
-    );
+    CHECK_IS_NOT_SUBTYPE(meta({{"x", builtinTypes->numberType}}), meta({{"x", builtinTypes->booleanType}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable {} } <!: { @metatable { x: boolean } }")
 {
-    CHECK_IS_NOT_SUBTYPE(
-        meta({}),
-        meta({{"x", builtinTypes->booleanType}})
-    );
+    CHECK_IS_NOT_SUBTYPE(meta({}), meta({{"x", builtinTypes->booleanType}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable {} } <: {}")
 {
-    CHECK_IS_SUBTYPE(
-        meta({}),
-        tbl({})
-    );
+    CHECK_IS_SUBTYPE(meta({}), tbl({}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { u: boolean }, x: number } <: { x: number }")
 {
-    CHECK_IS_SUBTYPE(
-        meta({{"u", builtinTypes->booleanType}}, {{"x", builtinTypes->numberType}}),
-        tbl({{"x", builtinTypes->numberType}})
-    );
+    CHECK_IS_SUBTYPE(meta({{"u", builtinTypes->booleanType}}, {{"x", builtinTypes->numberType}}), tbl({{"x", builtinTypes->numberType}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { x: number } } <!: { x: number }")
 {
-    CHECK_IS_NOT_SUBTYPE(
-        meta({{"x", builtinTypes->numberType}}),
-        tbl({{"x", builtinTypes->numberType}})
-    );
+    CHECK_IS_NOT_SUBTYPE(meta({{"x", builtinTypes->numberType}}), tbl({{"x", builtinTypes->numberType}}));
 }
+
+// Negated subtypes
+TEST_IS_NOT_SUBTYPE(negate(builtinTypes->neverType), builtinTypes->stringType);
+TEST_IS_SUBTYPE(negate(builtinTypes->unknownType), builtinTypes->stringType);
+TEST_IS_NOT_SUBTYPE(negate(builtinTypes->anyType), builtinTypes->stringType);
+TEST_IS_SUBTYPE(negate(meet(builtinTypes->neverType, builtinTypes->unknownType)), builtinTypes->stringType);
+TEST_IS_NOT_SUBTYPE(negate(join(builtinTypes->neverType, builtinTypes->unknownType)), builtinTypes->stringType);
+
+// Negated supertypes: never/unknown/any/error
+TEST_IS_SUBTYPE(builtinTypes->stringType, negate(builtinTypes->neverType));
+TEST_IS_SUBTYPE(builtinTypes->neverType, negate(builtinTypes->unknownType));
+TEST_IS_NOT_SUBTYPE(builtinTypes->stringType, negate(builtinTypes->unknownType));
+TEST_IS_SUBTYPE(builtinTypes->numberType, negate(builtinTypes->anyType));
+TEST_IS_SUBTYPE(builtinTypes->unknownType, negate(builtinTypes->anyType));
+
+// Negated supertypes: unions
+TEST_IS_SUBTYPE(builtinTypes->booleanType, negate(join(builtinTypes->stringType, builtinTypes->numberType)));
+TEST_IS_SUBTYPE(rootClass, negate(join(childClass, builtinTypes->numberType)));
+TEST_IS_SUBTYPE(str("foo"), negate(join(builtinTypes->numberType, builtinTypes->booleanType)));
+TEST_IS_NOT_SUBTYPE(str("foo"), negate(join(builtinTypes->stringType, builtinTypes->numberType)));
+TEST_IS_NOT_SUBTYPE(childClass, negate(join(rootClass, builtinTypes->numberType)));
+TEST_IS_NOT_SUBTYPE(numbersToNumberType, negate(join(builtinTypes->functionType, rootClass)));
+
+// Negated supertypes: intersections
+TEST_IS_SUBTYPE(builtinTypes->booleanType, negate(meet(builtinTypes->stringType, str("foo"))));
+TEST_IS_SUBTYPE(builtinTypes->trueType, negate(meet(builtinTypes->booleanType, builtinTypes->numberType)));
+TEST_IS_SUBTYPE(rootClass, negate(meet(builtinTypes->classType, childClass)));
+TEST_IS_SUBTYPE(childClass, negate(meet(builtinTypes->classType, builtinTypes->numberType)));
+TEST_IS_NOT_SUBTYPE(builtinTypes->unknownType, negate(meet(builtinTypes->classType, builtinTypes->numberType)));
+TEST_IS_NOT_SUBTYPE(str("foo"), negate(meet(builtinTypes->stringType, negate(str("bar")))));
+
+// Negated supertypes: tables and metatables
+TEST_IS_SUBTYPE(tbl({}), negate(builtinTypes->numberType));
+TEST_IS_NOT_SUBTYPE(tbl({}), negate(builtinTypes->tableType));
+TEST_IS_SUBTYPE(meta({}), negate(builtinTypes->numberType));
+TEST_IS_NOT_SUBTYPE(meta({}), negate(builtinTypes->tableType));
+
+// Negated supertypes: Functions
+TEST_IS_SUBTYPE(numberToNumberType, negate(builtinTypes->classType));
+TEST_IS_NOT_SUBTYPE(numberToNumberType, negate(builtinTypes->functionType));
+
+// Negated supertypes: Primitives and singletons
+TEST_IS_SUBTYPE(builtinTypes->stringType, negate(builtinTypes->numberType));
+TEST_IS_SUBTYPE(str("foo"), meet(builtinTypes->stringType, negate(str("bar"))));
+TEST_IS_NOT_SUBTYPE(builtinTypes->trueType, negate(builtinTypes->booleanType));
+TEST_IS_NOT_SUBTYPE(str("foo"), negate(str("foo")));
+TEST_IS_NOT_SUBTYPE(str("foo"), negate(builtinTypes->stringType));
+TEST_IS_SUBTYPE(builtinTypes->falseType, negate(builtinTypes->trueType));
+TEST_IS_SUBTYPE(builtinTypes->falseType, meet(builtinTypes->booleanType, negate(builtinTypes->trueType)));
+TEST_IS_NOT_SUBTYPE(builtinTypes->stringType, meet(builtinTypes->booleanType, negate(builtinTypes->trueType)));
+TEST_IS_NOT_SUBTYPE(builtinTypes->stringType, negate(str("foo")));
+TEST_IS_NOT_SUBTYPE(builtinTypes->booleanType, negate(builtinTypes->falseType));
+
+// Negated supertypes: Classes
+TEST_IS_SUBTYPE(rootClass, negate(builtinTypes->tableType));
+TEST_IS_NOT_SUBTYPE(rootClass, negate(builtinTypes->classType));
+TEST_IS_NOT_SUBTYPE(childClass, negate(rootClass));
+TEST_IS_NOT_SUBTYPE(childClass, meet(builtinTypes->classType, negate(rootClass)));
+TEST_IS_SUBTYPE(anotherChildClass, meet(builtinTypes->classType, negate(childClass)));
 
 TEST_CASE_FIXTURE(SubtypeFixture, "Root <: class")
 {
@@ -829,13 +803,11 @@ TEST_CASE_FIXTURE(SubtypeFixture, "Child & ~GrandchildOne <!: number")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "t1 where t1 = {trim: (t1) -> string} <: t2 where t2 = {trim: (t2) -> string}")
 {
-    TypeId t1 = cyclicTable([&](TypeId ty, TableType* tt)
-    {
+    TypeId t1 = cyclicTable([&](TypeId ty, TableType* tt) {
         tt->props["trim"] = fn({ty}, {builtinTypes->stringType});
     });
 
-    TypeId t2 = cyclicTable([&](TypeId ty, TableType* tt)
-    {
+    TypeId t2 = cyclicTable([&](TypeId ty, TableType* tt) {
         tt->props["trim"] = fn({ty}, {builtinTypes->stringType});
     });
 
@@ -844,13 +816,11 @@ TEST_CASE_FIXTURE(SubtypeFixture, "t1 where t1 = {trim: (t1) -> string} <: t2 wh
 
 TEST_CASE_FIXTURE(SubtypeFixture, "t1 where t1 = {trim: (t1) -> string} <!: t2 where t2 = {trim: (t2) -> t2}")
 {
-    TypeId t1 = cyclicTable([&](TypeId ty, TableType* tt)
-    {
+    TypeId t1 = cyclicTable([&](TypeId ty, TableType* tt) {
         tt->props["trim"] = fn({ty}, {builtinTypes->stringType});
     });
 
-    TypeId t2 = cyclicTable([&](TypeId ty, TableType* tt)
-    {
+    TypeId t2 = cyclicTable([&](TypeId ty, TableType* tt) {
         tt->props["trim"] = fn({ty}, {ty});
     });
 
@@ -859,13 +829,11 @@ TEST_CASE_FIXTURE(SubtypeFixture, "t1 where t1 = {trim: (t1) -> string} <!: t2 w
 
 TEST_CASE_FIXTURE(SubtypeFixture, "t1 where t1 = {trim: (t1) -> t1} <!: t2 where t2 = {trim: (t2) -> string}")
 {
-    TypeId t1 = cyclicTable([&](TypeId ty, TableType* tt)
-    {
+    TypeId t1 = cyclicTable([&](TypeId ty, TableType* tt) {
         tt->props["trim"] = fn({ty}, {ty});
     });
 
-    TypeId t2 = cyclicTable([&](TypeId ty, TableType* tt)
-    {
+    TypeId t2 = cyclicTable([&](TypeId ty, TableType* tt) {
         tt->props["trim"] = fn({ty}, {builtinTypes->stringType});
     });
 
@@ -958,6 +926,50 @@ TEST_CASE_FIXTURE(SubtypeFixture, "~fun & (string) -> number <: (string) -> numb
 TEST_CASE_FIXTURE(SubtypeFixture, "(string) -> number <: ~fun & (string) -> number")
 {
     CHECK_IS_NOT_SUBTYPE(numberToStringType, meet(negate(builtinTypes->functionType), numberToStringType));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "~\"a\" & ~\"b\" & string <: { lower : (string) -> ()}")
+{
+    CHECK_IS_SUBTYPE(meet(meet(negate(aType), negate(bType)), builtinTypes->stringType), tableWithLower);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "\"a\" | (~\"b\" & string) <: { lower : (string) -> ()}")
+{
+    CHECK_IS_SUBTYPE(join(aType, meet(negate(bType), builtinTypes->stringType)), tableWithLower);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "(string | number) & (\"a\" | true) <: { lower: (string) -> string }")
+{
+    auto base = meet(join(builtinTypes->stringType, builtinTypes->numberType), join(aType, trueSingleton));
+    CHECK_IS_SUBTYPE(base, tableWithLower);
+}
+
+/*
+ * Within the scope to which a generic belongs, that generic ought to be treated
+ * as its bounds.
+ *
+ * We do not yet support bounded generics, so all generics are considered to be
+ * bounded by unknown.
+ */
+TEST_CASE_FIXTURE(SubtypeFixture, "unknown <: X")
+{
+    ScopePtr childScope{new Scope(rootScope)};
+    ScopePtr grandChildScope{new Scope(childScope)};
+
+    TypeId genericX = arena.addType(GenericType(childScope.get(), "X"));
+
+    SubtypingResult usingGlobalScope = subtyping.isSubtype(builtinTypes->unknownType, genericX);
+    CHECK_MESSAGE(!usingGlobalScope.isSubtype, "Expected " << builtinTypes->unknownType << " </: " << genericX);
+
+    Subtyping childSubtyping{mkSubtyping(childScope)};
+
+    SubtypingResult usingChildScope = childSubtyping.isSubtype(builtinTypes->unknownType, genericX);
+    CHECK_MESSAGE(usingChildScope.isSubtype, "Expected " << builtinTypes->unknownType << " <: " << genericX);
+
+    Subtyping grandChildSubtyping{mkSubtyping(grandChildScope)};
+
+    SubtypingResult usingGrandChildScope = grandChildSubtyping.isSubtype(builtinTypes->unknownType, genericX);
+    CHECK_MESSAGE(usingGrandChildScope.isSubtype, "Expected " << builtinTypes->unknownType << " <: " << genericX);
 }
 
 /*

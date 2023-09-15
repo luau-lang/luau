@@ -534,7 +534,7 @@ class AstStatBlock : public AstStat
 public:
     LUAU_RTTI(AstStatBlock)
 
-    AstStatBlock(const Location& location, const AstArray<AstStat*>& body, bool hasEnd=true);
+    AstStatBlock(const Location& location, const AstArray<AstStat*>& body, bool hasEnd = true);
 
     void visit(AstVisitor* visitor) override;
 

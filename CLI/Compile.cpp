@@ -89,13 +89,14 @@ static void reportError(const char* name, const Luau::CompileError& error)
     report(name, error.getLocation(), "CompileError", error.what());
 }
 
-static std::string getCodegenAssembly(const char* name, const std::string& bytecode, Luau::CodeGen::AssemblyOptions options)
+static std::string getCodegenAssembly(
+    const char* name, const std::string& bytecode, Luau::CodeGen::AssemblyOptions options, Luau::CodeGen::LoweringStats* stats)
 {
     std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 
     if (luau_load(L, name, bytecode.data(), bytecode.size(), 0) == 0)
-        return Luau::CodeGen::getAssembly(L, -1, options);
+        return Luau::CodeGen::getAssembly(L, -1, options, stats);
 
     fprintf(stderr, "Error loading bytecode %s\n", name);
     return "";
@@ -119,6 +120,8 @@ struct CompileStats
     double parseTime;
     double compileTime;
     double codegenTime;
+
+    Luau::CodeGen::LoweringStats lowerStats;
 };
 
 static double recordDeltaTime(double& timer)
@@ -213,10 +216,10 @@ static bool compileFile(const char* name, CompileFormat format, Luau::CodeGen::A
         case CompileFormat::CodegenAsm:
         case CompileFormat::CodegenIr:
         case CompileFormat::CodegenVerbose:
-            printf("%s", getCodegenAssembly(name, bcb.getBytecode(), options).c_str());
+            printf("%s", getCodegenAssembly(name, bcb.getBytecode(), options, &stats.lowerStats).c_str());
             break;
         case CompileFormat::CodegenNull:
-            stats.codegen += getCodegenAssembly(name, bcb.getBytecode(), options).size();
+            stats.codegen += getCodegenAssembly(name, bcb.getBytecode(), options, &stats.lowerStats).size();
             stats.codegenTime += recordDeltaTime(currts);
             break;
         case CompileFormat::Null:
@@ -355,13 +358,22 @@ int main(int argc, char** argv)
         failed += !compileFile(path.c_str(), compileFormat, assemblyTarget, stats);
 
     if (compileFormat == CompileFormat::Null)
+    {
         printf("Compiled %d KLOC into %d KB bytecode (read %.2fs, parse %.2fs, compile %.2fs)\n", int(stats.lines / 1000), int(stats.bytecode / 1024),
             stats.readTime, stats.parseTime, stats.compileTime);
+    }
     else if (compileFormat == CompileFormat::CodegenNull)
+    {
         printf("Compiled %d KLOC into %d KB bytecode => %d KB native code (%.2fx) (read %.2fs, parse %.2fs, compile %.2fs, codegen %.2fs)\n",
             int(stats.lines / 1000), int(stats.bytecode / 1024), int(stats.codegen / 1024),
             stats.bytecode == 0 ? 0.0 : double(stats.codegen) / double(stats.bytecode), stats.readTime, stats.parseTime, stats.compileTime,
             stats.codegenTime);
+
+        printf("Lowering stats:\n");
+        printf("- spills to stack: %d, spills to restore: %d, max spill slot %u\n", stats.lowerStats.spillsToSlot, stats.lowerStats.spillsToRestore,
+            stats.lowerStats.maxSpillSlotsUsed);
+        printf("- regalloc failed: %d, lowering failed %d\n", stats.lowerStats.regAllocErrors, stats.lowerStats.loweringErrors);
+    }
 
     return failed ? 1 : 0;
 }

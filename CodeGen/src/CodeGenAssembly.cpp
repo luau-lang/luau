@@ -43,7 +43,7 @@ static void logFunctionHeader(AssemblyBuilder& build, Proto* proto)
 }
 
 template<typename AssemblyBuilder>
-static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, AssemblyOptions options)
+static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, AssemblyOptions options, LoweringStats* stats)
 {
     std::vector<Proto*> protos;
     gatherFunctions(protos, clvalue(func)->l.p);
@@ -66,7 +66,7 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
             if (options.includeAssembly || options.includeIr)
                 logFunctionHeader(build, p);
 
-            if (!lowerFunction(ir, build, helpers, p, options))
+            if (!lowerFunction(ir, build, helpers, p, options, stats))
             {
                 if (build.logText)
                     build.logAppend("; skipping (can't lower)\n");
@@ -90,7 +90,7 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
 unsigned int getCpuFeaturesA64();
 #endif
 
-std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
+std::string getAssembly(lua_State* L, int idx, AssemblyOptions options, LoweringStats* stats)
 {
     LUAU_ASSERT(lua_isLfunction(L, idx));
     const TValue* func = luaA_toobject(L, idx);
@@ -106,35 +106,35 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
         X64::AssemblyBuilderX64 build(/* logText= */ options.includeAssembly);
 #endif
 
-        return getAssemblyImpl(build, func, options);
+        return getAssemblyImpl(build, func, options, stats);
     }
 
     case AssemblyOptions::A64:
     {
         A64::AssemblyBuilderA64 build(/* logText= */ options.includeAssembly, /* features= */ A64::Feature_JSCVT);
 
-        return getAssemblyImpl(build, func, options);
+        return getAssemblyImpl(build, func, options, stats);
     }
 
     case AssemblyOptions::A64_NoFeatures:
     {
         A64::AssemblyBuilderA64 build(/* logText= */ options.includeAssembly, /* features= */ 0);
 
-        return getAssemblyImpl(build, func, options);
+        return getAssemblyImpl(build, func, options, stats);
     }
 
     case AssemblyOptions::X64_Windows:
     {
         X64::AssemblyBuilderX64 build(/* logText= */ options.includeAssembly, X64::ABIX64::Windows);
 
-        return getAssemblyImpl(build, func, options);
+        return getAssemblyImpl(build, func, options, stats);
     }
 
     case AssemblyOptions::X64_SystemV:
     {
         X64::AssemblyBuilderX64 build(/* logText= */ options.includeAssembly, X64::ABIX64::SystemV);
 
-        return getAssemblyImpl(build, func, options);
+        return getAssemblyImpl(build, func, options, stats);
     }
 
     default:

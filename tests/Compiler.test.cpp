@@ -74,7 +74,7 @@ TEST_CASE("BytecodeIsStable")
 
     // Bytecode ops (serialized & in-memory)
     CHECK(LOP_FASTCALL2K == 75); // bytecode v1
-    CHECK(LOP_JUMPXEQKS == 80); // bytecode v3
+    CHECK(LOP_JUMPXEQKS == 80);  // bytecode v3
 
     // Bytecode fastcall ids (serialized & in-memory)
     // Note: these aren't strictly bound to specific bytecode versions, but must monotonically increase to keep backwards compat
@@ -7371,7 +7371,8 @@ TEST_CASE("BuiltinFoldMathK")
 function test()
     return math.pi * 2
 end
-)", 0, 2),
+)",
+                        0, 2),
         R"(
 LOADK R0 K0 [6.2831853071795862]
 RETURN R0 1
@@ -7382,7 +7383,8 @@ RETURN R0 1
 function test()
     return math.pi * 2
 end
-)", 0, 1),
+)",
+                        0, 1),
         R"(
 GETIMPORT R1 3 [math.pi]
 MULK R0 R1 K0 [2]
@@ -7396,7 +7398,8 @@ function test()
 end
 
 math = { pi = 4 }
-)", 0, 2),
+)",
+                        0, 2),
         R"(
 GETGLOBAL R2 K1 ['math']
 GETTABLEKS R1 R2 K2 ['pi']

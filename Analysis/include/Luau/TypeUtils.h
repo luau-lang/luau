@@ -104,7 +104,8 @@ ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypePackId
 // Similar to `std::optional<std::pair<A, B>>`, but whose `sizeof()` is the same as `std::pair<A, B>`
 // and cooperates with C++'s `if (auto p = ...)` syntax without the extra fatness of `std::optional`.
 template<typename A, typename B>
-struct TryPair {
+struct TryPair
+{
     A first;
     B second;
 

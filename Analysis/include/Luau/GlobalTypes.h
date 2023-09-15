@@ -23,4 +23,4 @@ struct GlobalTypes
     ScopePtr globalScope;     // shared by all modules
 };
 
-}
+} // namespace Luau

@@ -282,20 +282,8 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, NotNul
                 ParenthesesRecommendation parens =
                     indexType == PropIndexType::Key ? ParenthesesRecommendation::None : getParenRecommendation(type, nodes, typeCorrect);
 
-                result[name] = AutocompleteEntry{
-                    AutocompleteEntryKind::Property,
-                    type,
-                    prop.deprecated,
-                    isWrongIndexer(type),
-                    typeCorrect,
-                    containingClass,
-                    &prop,
-                    prop.documentationSymbol,
-                    {},
-                    parens,
-                    {},
-                    indexType == PropIndexType::Colon
-                };
+                result[name] = AutocompleteEntry{AutocompleteEntryKind::Property, type, prop.deprecated, isWrongIndexer(type), typeCorrect,
+                    containingClass, &prop, prop.documentationSymbol, {}, parens, {}, indexType == PropIndexType::Colon};
             }
         }
     };
@@ -606,7 +594,7 @@ std::optional<TypeId> getLocalTypeInScopeAt(const Module& module, Position posit
     return {};
 }
 
-template <typename T>
+template<typename T>
 static std::optional<std::string> tryToStringDetailed(const ScopePtr& scope, T ty, bool functionTypeArguments)
 {
     ToStringOptions opts;
@@ -1418,7 +1406,7 @@ static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& func
             name = "a" + std::to_string(argIdx);
 
         if (std::optional<Name> type = tryGetTypeNameInScope(scope, args[argIdx], true))
-            result += name + ": " + *type; 
+            result += name + ": " + *type;
         else
             result += name;
     }
@@ -1434,7 +1422,7 @@ static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& func
             if (std::optional<std::string> res = tryToStringDetailed(scope, pack->ty, true))
                 varArgType = std::move(res);
         }
-        
+
         if (varArgType)
             result += "...: " + *varArgType;
         else
@@ -1461,7 +1449,8 @@ static std::string makeAnonymous(const ScopePtr& scope, const FunctionType& func
     return result;
 }
 
-static std::optional<AutocompleteEntry> makeAnonymousAutofilled(const ModulePtr& module, Position position, const AstNode* node, const std::vector<AstNode*>& ancestry)
+static std::optional<AutocompleteEntry> makeAnonymousAutofilled(
+    const ModulePtr& module, Position position, const AstNode* node, const std::vector<AstNode*>& ancestry)
 {
     const AstExprCall* call = node->as<AstExprCall>();
     if (!call && ancestry.size() > 1)
@@ -1498,10 +1487,10 @@ static std::optional<AutocompleteEntry> makeAnonymousAutofilled(const ModulePtr&
     auto [args, tail] = flatten(outerFunction->argTypes);
     if (argument < args.size())
         argType = args[argument];
-    
+
     if (!argType)
         return std::nullopt;
-    
+
     TypeId followed = follow(*argType);
     const FunctionType* type = get<FunctionType>(followed);
     if (!type)

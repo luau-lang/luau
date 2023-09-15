@@ -105,10 +105,12 @@ struct Unifier
      * Populate the vector errors with any type errors that may arise.
      * Populate the transaction log with the set of TypeIds that need to be reset to undo the unification attempt.
      */
-    void tryUnify(TypeId subTy, TypeId superTy, bool isFunctionCall = false, bool isIntersection = false, const LiteralProperties* aliasableMap = nullptr);
+    void tryUnify(
+        TypeId subTy, TypeId superTy, bool isFunctionCall = false, bool isIntersection = false, const LiteralProperties* aliasableMap = nullptr);
 
 private:
-    void tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall = false, bool isIntersection = false, const LiteralProperties* aliasableMap = nullptr);
+    void tryUnify_(
+        TypeId subTy, TypeId superTy, bool isFunctionCall = false, bool isIntersection = false, const LiteralProperties* aliasableMap = nullptr);
     void tryUnifyUnionWithType(TypeId subTy, const UnionType* uv, TypeId superTy);
 
     // Traverse the two types provided and block on any BlockedTypes we find.
