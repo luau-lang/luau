@@ -44,42 +44,10 @@ inline void gatherFunctions(std::vector<Proto*>& results, Proto* proto)
         gatherFunctions(results, proto->p[i]);
 }
 
-inline IrBlock& getNextBlock(IrFunction& function, std::vector<uint32_t>& sortedBlocks, IrBlock& dummy, size_t i)
-{
-    for (size_t j = i + 1; j < sortedBlocks.size(); ++j)
-    {
-        IrBlock& block = function.blocks[sortedBlocks[j]];
-        if (block.kind != IrBlockKind::Dead)
-            return block;
-    }
-
-    return dummy;
-}
-
 template<typename AssemblyBuilder, typename IrLowering>
 inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& function, int bytecodeid, AssemblyOptions options)
 {
-    // While we will need a better block ordering in the future, right now we want to mostly preserve build order with fallbacks outlined
-    std::vector<uint32_t> sortedBlocks;
-    sortedBlocks.reserve(function.blocks.size());
-    for (uint32_t i = 0; i < function.blocks.size(); i++)
-        sortedBlocks.push_back(i);
-
-    std::sort(sortedBlocks.begin(), sortedBlocks.end(), [&](uint32_t idxA, uint32_t idxB) {
-        const IrBlock& a = function.blocks[idxA];
-        const IrBlock& b = function.blocks[idxB];
-
-        // Place fallback blocks at the end
-        if ((a.kind == IrBlockKind::Fallback) != (b.kind == IrBlockKind::Fallback))
-            return (a.kind == IrBlockKind::Fallback) < (b.kind == IrBlockKind::Fallback);
-
-        // Try to order by instruction order
-        if (a.sortkey != b.sortkey)
-            return a.sortkey < b.sortkey;
-
-        // Chains of blocks are merged together by having the same sort key and consecutive chain key
-        return a.chainkey < b.chainkey;
-    });
+    std::vector<uint32_t> sortedBlocks = getSortedBlockOrder(function);
 
     // For each IR instruction that begins a bytecode instruction, which bytecode instruction is it?
     std::vector<uint32_t> bcLocations(function.instructions.size() + 1, ~0u);
@@ -231,24 +199,26 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
     return true;
 }
 
-inline bool lowerIr(X64::AssemblyBuilderX64& build, IrBuilder& ir, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
+inline bool lowerIr(
+    X64::AssemblyBuilderX64& build, IrBuilder& ir, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options, LoweringStats* stats)
 {
     optimizeMemoryOperandsX64(ir.function);
 
-    X64::IrLoweringX64 lowering(build, helpers, ir.function);
+    X64::IrLoweringX64 lowering(build, helpers, ir.function, stats);
 
     return lowerImpl(build, lowering, ir.function, proto->bytecodeid, options);
 }
 
-inline bool lowerIr(A64::AssemblyBuilderA64& build, IrBuilder& ir, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
+inline bool lowerIr(
+    A64::AssemblyBuilderA64& build, IrBuilder& ir, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options, LoweringStats* stats)
 {
-    A64::IrLoweringA64 lowering(build, helpers, ir.function);
+    A64::IrLoweringA64 lowering(build, helpers, ir.function, stats);
 
     return lowerImpl(build, lowering, ir.function, proto->bytecodeid, options);
 }
 
 template<typename AssemblyBuilder>
-inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
+inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options, LoweringStats* stats)
 {
     killUnusedBlocks(ir.function);
 
@@ -264,7 +234,7 @@ inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& 
             createLinearBlocks(ir, useValueNumbering);
     }
 
-    return lowerIr(build, ir, helpers, proto, options);
+    return lowerIr(build, ir, helpers, proto, options, stats);
 }
 
 } // namespace CodeGen

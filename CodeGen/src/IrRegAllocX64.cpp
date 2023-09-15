@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IrRegAllocX64.h"
 
+#include "Luau/CodeGen.h"
 #include "Luau/IrUtils.h"
 
 #include "EmitCommonX64.h"
@@ -14,9 +15,10 @@ namespace X64
 
 static const RegisterX64 kGprAllocOrder[] = {rax, rdx, rcx, rbx, rsi, rdi, r8, r9, r10, r11};
 
-IrRegAllocX64::IrRegAllocX64(AssemblyBuilderX64& build, IrFunction& function)
+IrRegAllocX64::IrRegAllocX64(AssemblyBuilderX64& build, IrFunction& function, LoweringStats* stats)
     : build(build)
     , function(function)
+    , stats(stats)
     , usableXmmRegCount(getXmmRegisterCount(build.abi))
 {
     freeGprMap.fill(true);
@@ -225,10 +227,16 @@ void IrRegAllocX64::preserve(IrInst& inst)
 
         spill.stackSlot = uint8_t(i);
         inst.spilled = true;
+
+        if (stats)
+            stats->spillsToSlot++;
     }
     else
     {
         inst.needsReload = true;
+
+        if (stats)
+            stats->spillsToRestore++;
     }
 
     spills.push_back(spill);

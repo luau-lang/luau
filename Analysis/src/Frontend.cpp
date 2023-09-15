@@ -1289,7 +1289,8 @@ ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle
 
     if (result->timeout || result->cancelled)
     {
-        // If solver was interrupted, skip typechecking and replace all module results with error-supressing types to avoid leaking blocked/pending types
+        // If solver was interrupted, skip typechecking and replace all module results with error-supressing types to avoid leaking blocked/pending
+        // types
         ScopePtr moduleScope = result->getModuleScope();
         moduleScope->returnType = builtinTypes->errorRecoveryTypePack();
 

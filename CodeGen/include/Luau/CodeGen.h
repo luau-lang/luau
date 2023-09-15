@@ -3,6 +3,7 @@
 
 #include <string>
 
+#include <stddef.h>
 #include <stdint.h>
 
 struct lua_State;
@@ -74,8 +75,18 @@ struct AssemblyOptions
     void* annotatorContext = nullptr;
 };
 
+struct LoweringStats
+{
+    int spillsToSlot = 0;
+    int spillsToRestore = 0;
+    unsigned maxSpillSlotsUsed = 0;
+
+    int regAllocErrors = 0;
+    int loweringErrors = 0;
+};
+
 // Generates assembly for target function and all inner functions
-std::string getAssembly(lua_State* L, int idx, AssemblyOptions options = {});
+std::string getAssembly(lua_State* L, int idx, AssemblyOptions options = {}, LoweringStats* stats = nullptr);
 
 using PerfLogFn = void (*)(void* context, uintptr_t addr, unsigned size, const char* symbol);
 

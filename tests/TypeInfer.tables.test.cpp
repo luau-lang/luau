@@ -3788,4 +3788,40 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_shifted_tables")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+
+TEST_CASE_FIXTURE(Fixture, "cli_84607_missing_prop_in_array_or_dict")
+{
+    ScopedFastFlag sff{"LuauFixIndexerSubtypingOrdering", true};
+
+    CheckResult result = check(R"(
+        type Thing = { name: string, prop: boolean }
+
+        local arrayOfThings : {Thing} = {
+            { name = "a" }
+        }
+
+        local dictOfThings : {[string]: Thing} = {
+            a = { name = "a" }
+        }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    TypeError& err1 = result.errors[0];
+    MissingProperties* error1 = get<MissingProperties>(err1);
+    REQUIRE(error1);
+    REQUIRE(error1->properties.size() == 1);
+
+    CHECK_EQ("prop", error1->properties[0]);
+
+    TypeError& err2 = result.errors[1];
+    TypeMismatch* mismatch = get<TypeMismatch>(err2);
+    REQUIRE(mismatch);
+    MissingProperties* error2 = get<MissingProperties>(*mismatch->error);
+    REQUIRE(error2);
+    REQUIRE(error2->properties.size() == 1);
+
+    CHECK_EQ("prop", error2->properties[0]);
+}
+
 TEST_SUITE_END();

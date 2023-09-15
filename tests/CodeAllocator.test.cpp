@@ -57,8 +57,7 @@ TEST_CASE("CodeAllocationCallbacks")
 
     AllocationData allocationData{};
 
-    const auto allocationCallback = [](void* context, void* oldPointer, size_t oldSize, void* newPointer, size_t newSize)
-    {
+    const auto allocationCallback = [](void* context, void* oldPointer, size_t oldSize, void* newPointer, size_t newSize) {
         AllocationData& allocationData = *static_cast<AllocationData*>(context);
         if (oldPointer != nullptr)
         {

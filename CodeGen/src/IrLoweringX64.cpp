@@ -22,11 +22,12 @@ namespace CodeGen
 namespace X64
 {
 
-IrLoweringX64::IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, IrFunction& function)
+IrLoweringX64::IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, IrFunction& function, LoweringStats* stats)
     : build(build)
     , helpers(helpers)
     , function(function)
-    , regs(build, function)
+    , stats(stats)
+    , regs(build, function, stats)
     , valueTracker(function)
     , exitHandlerMap(~0u)
 {
@@ -1645,6 +1646,15 @@ void IrLoweringX64::finishFunction()
 
         build.mov(edx, handler.pcpos * sizeof(Instruction));
         build.jmp(helpers.updatePcAndContinueInVm);
+    }
+
+    if (stats)
+    {
+        if (regs.maxUsedSlot > kSpillSlots)
+            stats->regAllocErrors++;
+
+        if (regs.maxUsedSlot > stats->maxSpillSlotsUsed)
+            stats->maxSpillSlotsUsed = regs.maxUsedSlot;
     }
 }
 

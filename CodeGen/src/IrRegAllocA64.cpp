@@ -2,6 +2,7 @@
 #include "IrRegAllocA64.h"
 
 #include "Luau/AssemblyBuilderA64.h"
+#include "Luau/CodeGen.h"
 #include "Luau/IrUtils.h"
 
 #include "BitUtils.h"
@@ -109,8 +110,9 @@ static void restoreInst(AssemblyBuilderA64& build, uint32_t& freeSpillSlots, IrF
     inst.regA64 = reg;
 }
 
-IrRegAllocA64::IrRegAllocA64(IrFunction& function, std::initializer_list<std::pair<RegisterA64, RegisterA64>> regs)
+IrRegAllocA64::IrRegAllocA64(IrFunction& function, LoweringStats* stats, std::initializer_list<std::pair<RegisterA64, RegisterA64>> regs)
     : function(function)
+    , stats(stats)
 {
     for (auto& p : regs)
     {
@@ -329,6 +331,9 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
                 spills.push_back(s);
 
                 def.needsReload = true;
+
+                if (stats)
+                    stats->spillsToRestore++;
             }
             else
             {
@@ -345,6 +350,14 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
                 spills.push_back(s);
 
                 def.spilled = true;
+
+                if (stats)
+                {
+                    stats->spillsToSlot++;
+
+                    if (slot != kInvalidSpill && unsigned(slot + 1) > stats->maxSpillSlotsUsed)
+                        stats->maxSpillSlotsUsed = slot + 1;
+                }
             }
 
             def.regA64 = noreg;

@@ -26,7 +26,6 @@ Unifier2::Unifier2(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes,
     , ice(ice)
     , recursionLimit(FInt::LuauTypeInferRecursionLimit)
 {
-
 }
 
 bool Unifier2::unify(TypeId subTy, TypeId superTy)
@@ -99,10 +98,7 @@ bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
         return true;
     }
 
-    size_t maxLength = std::max(
-        flatten(subTp).first.size(),
-        flatten(superTp).first.size()
-    );
+    size_t maxLength = std::max(flatten(subTp).first.size(), flatten(superTp).first.size());
 
     auto [subTypes, subTail] = extendTypePack(*arena, builtinTypes, subTp, maxLength);
     auto [superTypes, superTail] = extendTypePack(*arena, builtinTypes, superTp, maxLength);
@@ -123,16 +119,25 @@ struct FreeTypeSearcher : TypeVisitor
     explicit FreeTypeSearcher(NotNull<Scope> scope)
         : TypeVisitor(/*skipBoundTypes*/ true)
         , scope(scope)
-    {}
+    {
+    }
 
-    enum { Positive, Negative } polarity = Positive;
+    enum
+    {
+        Positive,
+        Negative
+    } polarity = Positive;
 
     void flip()
     {
         switch (polarity)
         {
-            case Positive: polarity = Negative; break;
-            case Negative: polarity = Positive; break;
+        case Positive:
+            polarity = Negative;
+            break;
+        case Negative:
+            polarity = Positive;
+            break;
         }
     }
 
@@ -152,8 +157,12 @@ struct FreeTypeSearcher : TypeVisitor
 
         switch (polarity)
         {
-            case Positive: positiveTypes.insert(ty); break;
-            case Negative: negativeTypes.insert(ty); break;
+        case Positive:
+            positiveTypes.insert(ty);
+            break;
+        case Negative:
+            negativeTypes.insert(ty);
+            break;
         }
 
         return true;
@@ -180,13 +189,17 @@ struct MutatingGeneralizer : TypeOnceVisitor
     std::unordered_set<TypeId> negativeTypes;
     std::vector<TypeId> generics;
 
-    MutatingGeneralizer(NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, std::unordered_set<TypeId> positiveTypes, std::unordered_set<TypeId> negativeTypes)
+    bool isWithinFunction = false;
+
+    MutatingGeneralizer(
+        NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, std::unordered_set<TypeId> positiveTypes, std::unordered_set<TypeId> negativeTypes)
         : TypeOnceVisitor(/* skipBoundTypes */ true)
         , builtinTypes(builtinTypes)
         , scope(scope)
         , positiveTypes(std::move(positiveTypes))
         , negativeTypes(std::move(negativeTypes))
-    {}
+    {
+    }
 
     static void replace(DenseHashSet<TypeId>& seen, TypeId haystack, TypeId needle, TypeId replacement)
     {
@@ -211,10 +224,7 @@ struct MutatingGeneralizer : TypeOnceVisitor
             // FIXME: I bet this function has reentrancy problems
             option = follow(option);
             if (option == needle)
-            {
-                LUAU_ASSERT(!seen.find(option));
                 option = replacement;
-            }
 
             // TODO seen set
             else if (get<UnionType>(option))
@@ -224,7 +234,21 @@ struct MutatingGeneralizer : TypeOnceVisitor
         }
     }
 
-    bool visit (TypeId ty, const FreeType&) override
+    bool visit(TypeId ty, const FunctionType& ft) override
+    {
+        const bool oldValue = isWithinFunction;
+
+        isWithinFunction = true;
+
+        traverse(ft.argTypes);
+        traverse(ft.retTypes);
+
+        isWithinFunction = oldValue;
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const FreeType&) override
     {
         const FreeType* ft = get<FreeType>(ty);
         LUAU_ASSERT(ft);
@@ -232,7 +256,8 @@ struct MutatingGeneralizer : TypeOnceVisitor
         traverse(ft->lowerBound);
         traverse(ft->upperBound);
 
-        // ft is potentially invalid now.
+        // It is possible for the above traverse() calls to cause ty to be
+        // transmuted.  We must reaquire ft if this happens.
         ty = follow(ty);
         ft = get<FreeType>(ty);
         if (!ft)
@@ -252,8 +277,13 @@ struct MutatingGeneralizer : TypeOnceVisitor
 
         if (!hasLowerBound && !hasUpperBound)
         {
-            emplaceType<GenericType>(asMutable(ty), scope);
-            generics.push_back(ty);
+            if (isWithinFunction)
+            {
+                emplaceType<GenericType>(asMutable(ty), scope);
+                generics.push_back(ty);
+            }
+            else
+                emplaceType<BoundType>(asMutable(ty), builtinTypes->unknownType);
         }
 
         // It is possible that this free type has other free types in its upper
@@ -264,19 +294,27 @@ struct MutatingGeneralizer : TypeOnceVisitor
         // If we do not do this, we get tautological bounds like a <: a <: unknown.
         else if (isPositive && !hasUpperBound)
         {
-            if (FreeType* lowerFree = getMutable<FreeType>(ft->lowerBound); lowerFree && lowerFree->upperBound == ty)
+            TypeId lb = follow(ft->lowerBound);
+            if (FreeType* lowerFree = getMutable<FreeType>(lb); lowerFree && lowerFree->upperBound == ty)
                 lowerFree->upperBound = builtinTypes->unknownType;
             else
-                replace(seen, ft->lowerBound, ty, builtinTypes->unknownType);
-            emplaceType<BoundType>(asMutable(ty), ft->lowerBound);
+            {
+                DenseHashSet<TypeId> replaceSeen{nullptr};
+                replace(replaceSeen, lb, ty, builtinTypes->unknownType);
+            }
+            emplaceType<BoundType>(asMutable(ty), lb);
         }
         else
         {
-            if (FreeType* upperFree = getMutable<FreeType>(ft->upperBound); upperFree && upperFree->lowerBound == ty)
+            TypeId ub = follow(ft->upperBound);
+            if (FreeType* upperFree = getMutable<FreeType>(ub); upperFree && upperFree->lowerBound == ty)
                 upperFree->lowerBound = builtinTypes->neverType;
             else
-                replace(seen, ft->upperBound, ty, builtinTypes->neverType);
-            emplaceType<BoundType>(asMutable(ty), ft->upperBound);
+            {
+                DenseHashSet<TypeId> replaceSeen{nullptr};
+                replace(replaceSeen, ub, ty, builtinTypes->neverType);
+            }
+            emplaceType<BoundType>(asMutable(ty), ub);
         }
 
         return false;
@@ -363,4 +401,4 @@ OccursCheckResult Unifier2::occursCheck(DenseHashSet<TypePackId>& seen, TypePack
     return OccursCheckResult::Pass;
 }
 
-}
+} // namespace Luau

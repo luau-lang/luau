@@ -12,6 +12,9 @@ namespace Luau
 {
 namespace CodeGen
 {
+
+struct LoweringStats;
+
 namespace X64
 {
 
@@ -33,7 +36,7 @@ struct IrSpillX64
 
 struct IrRegAllocX64
 {
-    IrRegAllocX64(AssemblyBuilderX64& build, IrFunction& function);
+    IrRegAllocX64(AssemblyBuilderX64& build, IrFunction& function, LoweringStats* stats);
 
     RegisterX64 allocReg(SizeX64 size, uint32_t instIdx);
     RegisterX64 allocRegOrReuse(SizeX64 size, uint32_t instIdx, std::initializer_list<IrOp> oprefs);
@@ -70,6 +73,7 @@ struct IrRegAllocX64
 
     AssemblyBuilderX64& build;
     IrFunction& function;
+    LoweringStats* stats = nullptr;
 
     uint32_t currInstIdx = ~0u;
 

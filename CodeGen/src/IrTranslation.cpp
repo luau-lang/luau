@@ -615,7 +615,7 @@ static IrOp getLoopStepK(IrBuilder& build, int ra)
 {
     IrBlock& active = build.function.blocks[build.activeBlockIdx];
 
-	if (active.start + 2 < build.function.instructions.size())
+    if (active.start + 2 < build.function.instructions.size())
     {
         IrInst& sv = build.function.instructions[build.function.instructions.size() - 2];
         IrInst& st = build.function.instructions[build.function.instructions.size() - 1];
@@ -665,7 +665,7 @@ void translateInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos)
             IrOp step = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 1));
 
             // step > 0
-			// note: equivalent to 0 < step, but lowers into one instruction on both X64 and A64
+            // note: equivalent to 0 < step, but lowers into one instruction on both X64 and A64
             build.inst(IrCmd::JUMP_CMP_NUM, step, zero, build.cond(IrCondition::Greater), direct, reverse);
 
             // Condition to start the loop: step > 0 ? idx <= limit : limit <= idx
@@ -763,7 +763,7 @@ void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos)
             IrOp reverse = build.block(IrBlockKind::Internal);
 
             // step > 0
-			// note: equivalent to 0 < step, but lowers into one instruction on both X64 and A64
+            // note: equivalent to 0 < step, but lowers into one instruction on both X64 and A64
             build.inst(IrCmd::JUMP_CMP_NUM, step, zero, build.cond(IrCondition::Greater), direct, reverse);
 
             // Condition to continue the loop: step > 0 ? idx <= limit : limit <= idx
@@ -776,8 +776,8 @@ void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos)
             build.beginBlock(direct);
             build.inst(IrCmd::JUMP_CMP_NUM, idx, limit, build.cond(IrCondition::LessEqual), loopRepeat, loopExit);
         }
-		else
-		{
+        else
+        {
             double stepN = build.function.doubleOp(stepK);
 
             // Condition to continue the loop: step > 0 ? idx <= limit : limit <= idx
@@ -785,9 +785,9 @@ void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos)
                 build.inst(IrCmd::JUMP_CMP_NUM, idx, limit, build.cond(IrCondition::LessEqual), loopRepeat, loopExit);
             else
                 build.inst(IrCmd::JUMP_CMP_NUM, limit, idx, build.cond(IrCondition::LessEqual), loopRepeat, loopExit);
-		}
+        }
     }
-	else
+    else
     {
         build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
 

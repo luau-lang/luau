@@ -31,4 +31,4 @@ GlobalTypes::GlobalTypes(NotNull<BuiltinTypes> builtinTypes)
     }
 }
 
-}
+} // namespace Luau

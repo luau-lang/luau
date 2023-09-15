@@ -14,7 +14,7 @@ struct DcrLogger;
 struct TypeCheckLimits;
 struct UnifierSharedState;
 
-void check(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> sharedState, NotNull<TypeCheckLimits> limits, DcrLogger* logger, const SourceModule& sourceModule,
-    Module* module);
+void check(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> sharedState, NotNull<TypeCheckLimits> limits, DcrLogger* logger,
+    const SourceModule& sourceModule, Module* module);
 
 } // namespace Luau

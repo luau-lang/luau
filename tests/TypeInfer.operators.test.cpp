@@ -1067,8 +1067,9 @@ local w = c and 1
         CHECK("false | number" == toString(requireType("z")));
     else
         CHECK("boolean | number" == toString(requireType("z"))); // 'false' widened to boolean
+
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK("((false?) & a) | number" == toString(requireType("w")));
+        CHECK("((false?) & unknown) | number" == toString(requireType("w")));
     else
         CHECK("(boolean | number)?" == toString(requireType("w")));
 }
