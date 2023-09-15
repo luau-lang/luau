@@ -780,7 +780,7 @@ void TypeCloner::operator()(const UnionType& t)
         // We're just using this FreeType as a placeholder until we've finished
         // cloning the parts of this union so it is okay that its bounds are
         // nullptr.  We'll never indirect them.
-        TypeId result = dest.addType(FreeType{nullptr, /*lowerBound*/nullptr, /*upperBound*/nullptr});
+        TypeId result = dest.addType(FreeType{nullptr, /*lowerBound*/ nullptr, /*upperBound*/ nullptr});
         seenTypes[typeId] = result;
 
         std::vector<TypeId> options;

@@ -14,13 +14,13 @@
 #include <math.h>
 #include <string.h>
 
+LUAU_FASTINTVARIABLE(LuauCodeGenBlockSize, 4 * 1024 * 1024)
+LUAU_FASTINTVARIABLE(LuauCodeGenMaxTotalSize, 256 * 1024 * 1024)
+
 namespace Luau
 {
 namespace CodeGen
 {
-
-constexpr unsigned kBlockSize = 4 * 1024 * 1024;
-constexpr unsigned kMaxTotalSize = 256 * 1024 * 1024;
 
 NativeState::NativeState()
     : NativeState(nullptr, nullptr)
@@ -28,7 +28,7 @@ NativeState::NativeState()
 }
 
 NativeState::NativeState(AllocationCallback* allocationCallback, void* allocationCallbackContext)
-    : codeAllocator{kBlockSize, kMaxTotalSize, allocationCallback, allocationCallbackContext}
+    : codeAllocator{size_t(FInt::LuauCodeGenBlockSize), size_t(FInt::LuauCodeGenMaxTotalSize), allocationCallback, allocationCallbackContext}
 {
 }
 

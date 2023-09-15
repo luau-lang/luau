@@ -145,8 +145,7 @@ void StateDot::visitChildren(TypeId ty, int index)
     startNode(index);
     startNodeLabel();
 
-    auto go = [&](auto&& t)
-    {
+    auto go = [&](auto&& t) {
         using T = std::decay_t<decltype(t)>;
 
         if constexpr (std::is_same_v<T, BoundType>)

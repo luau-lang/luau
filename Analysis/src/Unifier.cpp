@@ -25,6 +25,7 @@ LUAU_FASTFLAGVARIABLE(LuauOccursIsntAlwaysFailure, false)
 LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
 LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering, false)
 
 namespace Luau
 {
@@ -2285,7 +2286,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
                 variance = Invariant;
 
             Unifier innerState = makeChildUnifier();
-            if (useNewSolver)
+            if (useNewSolver || FFlag::LuauFixIndexerSubtypingOrdering)
                 innerState.tryUnify_(prop.type(), superTable->indexer->indexResultType);
             else
             {

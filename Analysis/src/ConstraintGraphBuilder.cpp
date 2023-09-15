@@ -420,17 +420,17 @@ void ConstraintGraphBuilder::applyRefinements(const ScopePtr& scope, Location lo
                 {
                     switch (shouldSuppressErrors(normalizer, ty))
                     {
-                        case ErrorSuppression::DoNotSuppress:
-                            ty = simplifyIntersection(builtinTypes, arena, ty, dt).result;
-                            break;
-                        case ErrorSuppression::Suppress:
-                            ty = simplifyIntersection(builtinTypes, arena, ty, dt).result;
-                            ty = simplifyUnion(builtinTypes, arena, ty, builtinTypes->errorType).result;
-                            break;
-                        case ErrorSuppression::NormalizationFailed:
-                            reportError(location, NormalizationTooComplex{});
-                            ty = simplifyIntersection(builtinTypes, arena, ty, dt).result;
-                            break;
+                    case ErrorSuppression::DoNotSuppress:
+                        ty = simplifyIntersection(builtinTypes, arena, ty, dt).result;
+                        break;
+                    case ErrorSuppression::Suppress:
+                        ty = simplifyIntersection(builtinTypes, arena, ty, dt).result;
+                        ty = simplifyUnion(builtinTypes, arena, ty, builtinTypes->errorType).result;
+                        break;
+                    case ErrorSuppression::NormalizationFailed:
+                        reportError(location, NormalizationTooComplex{});
+                        ty = simplifyIntersection(builtinTypes, arena, ty, dt).result;
+                        break;
                     }
                 }
             }

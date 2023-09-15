@@ -264,5 +264,14 @@ uint32_t getNativeContextOffset(int bfid);
 // Cleans up blocks that were created with no users
 void killUnusedBlocks(IrFunction& function);
 
+// Get blocks in order that tries to maximize fallthrough between them during lowering
+// We want to mostly preserve build order with fallbacks outlined
+// But we also use hints from optimization passes that chain blocks together where there's only one out-in edge between them
+std::vector<uint32_t> getSortedBlockOrder(IrFunction& function);
+
+// Returns first non-dead block that comes after block at index 'i' in the sorted blocks array
+// 'dummy' block is returned if the end of array was reached
+IrBlock& getNextBlock(IrFunction& function, std::vector<uint32_t>& sortedBlocks, IrBlock& dummy, size_t i);
+
 } // namespace CodeGen
 } // namespace Luau

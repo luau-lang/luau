@@ -430,6 +430,35 @@ bool ConstraintSolver::isDone()
     return unsolvedConstraints.empty();
 }
 
+namespace
+{
+
+struct TypeAndLocation
+{
+    TypeId typeId;
+    Location location;
+};
+
+struct FreeTypeSearcher : TypeOnceVisitor
+{
+    std::deque<TypeAndLocation>* result;
+    Location location;
+
+    FreeTypeSearcher(std::deque<TypeAndLocation>* result, Location location)
+        : result(result)
+        , location(location)
+    {
+    }
+
+    bool visit(TypeId ty, const FreeType&) override
+    {
+        result->push_back({ty, location});
+        return false;
+    }
+};
+
+} // namespace
+
 void ConstraintSolver::finalizeModule()
 {
     Anyification a{arena, rootScope, builtinTypes, &iceReporter, builtinTypes->anyType, builtinTypes->anyTypePack};
@@ -446,12 +475,28 @@ void ConstraintSolver::finalizeModule()
 
     Unifier2 u2{NotNull{arena}, builtinTypes, NotNull{&iceReporter}};
 
+    std::deque<TypeAndLocation> queue;
     for (auto& [name, binding] : rootScope->bindings)
+        queue.push_back({binding.typeId, binding.location});
+
+    DenseHashSet<TypeId> seen{nullptr};
+
+    while (!queue.empty())
     {
-        auto generalizedTy = u2.generalize(rootScope, binding.typeId);
-        if (generalizedTy)
-            binding.typeId = *generalizedTy;
-        else
+        TypeAndLocation binding = queue.front();
+        queue.pop_front();
+
+        TypeId ty = follow(binding.typeId);
+
+        if (seen.find(ty))
+            continue;
+        seen.insert(ty);
+
+        FreeTypeSearcher fts{&queue, binding.location};
+        fts.traverse(ty);
+
+        auto result = u2.generalize(rootScope, ty);
+        if (!result)
             reportError(CodeTooComplex{}, binding.location);
     }
 }
@@ -2642,20 +2687,14 @@ ErrorVec ConstraintSolver::unify(NotNull<Scope> scope, Location location, TypeId
 
 ErrorVec ConstraintSolver::unify(NotNull<Scope> scope, Location location, TypePackId subPack, TypePackId superPack)
 {
-    UnifierSharedState sharedState{&iceReporter};
-    Unifier u{normalizer, scope, Location{}, Covariant};
-    u.enableNewSolver();
+    Unifier2 u{arena, builtinTypes, NotNull{&iceReporter}};
 
-    u.tryUnify(subPack, superPack);
+    u.unify(subPack, superPack);
 
-    const auto [changedTypes, changedPacks] = u.log.getChanges();
+    unblock(subPack, Location{});
+    unblock(superPack, Location{});
 
-    u.log.commit();
-
-    unblock(changedTypes, Location{});
-    unblock(changedPacks, Location{});
-
-    return std::move(u.errors);
+    return {};
 }
 
 NotNull<Constraint> ConstraintSolver::pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv)

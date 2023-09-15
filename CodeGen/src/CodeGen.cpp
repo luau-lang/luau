@@ -106,7 +106,7 @@ static std::optional<NativeProto> createNativeFunction(AssemblyBuilder& build, M
     IrBuilder ir;
     ir.buildFunctionIr(proto);
 
-    if (!lowerFunction(ir, build, helpers, proto, {}))
+    if (!lowerFunction(ir, build, helpers, proto, {}, /* stats */ nullptr))
         return std::nullopt;
 
     return createNativeProto(proto, ir);

@@ -2291,7 +2291,7 @@ reentry:
                     {
                         // table or userdata with __call, will be called during FORGLOOP
                         // TODO: we might be able to stop supporting this depending on whether it's used in practice
-                        void (*telemetrycb)(lua_State* L, int gtt, int stt, int itt) = lua_iter_call_telemetry;
+                        void (*telemetrycb)(lua_State * L, int gtt, int stt, int itt) = lua_iter_call_telemetry;
 
                         if (telemetrycb)
                             telemetrycb(L, ttype(ra), ttype(ra + 1), ttype(ra + 2));

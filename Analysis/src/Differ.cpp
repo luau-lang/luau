@@ -117,9 +117,7 @@ std::string DiffError::toStringALeaf(std::string rootName, const DiffPathNodeLea
     case DiffError::Kind::Normal:
     {
         checkNonMissingPropertyLeavesHaveNulloptTableProperty();
-        return pathStr + conditionalNewline
-            + "has type" + conditionalNewline
-            + conditionalIndent + Luau::toString(*leaf.ty);
+        return pathStr + conditionalNewline + "has type" + conditionalNewline + conditionalIndent + Luau::toString(*leaf.ty);
     }
     case DiffError::Kind::MissingTableProperty:
     {
@@ -127,17 +125,14 @@ std::string DiffError::toStringALeaf(std::string rootName, const DiffPathNodeLea
         {
             if (!leaf.tableProperty.has_value())
                 throw InternalCompilerError{"leaf.tableProperty is nullopt"};
-            return pathStr + "." + *leaf.tableProperty + conditionalNewline
-                + "has type" + conditionalNewline
-                + conditionalIndent + Luau::toString(*leaf.ty);
+            return pathStr + "." + *leaf.tableProperty + conditionalNewline + "has type" + conditionalNewline + conditionalIndent +
+                   Luau::toString(*leaf.ty);
         }
         else if (otherLeaf.ty.has_value())
         {
             if (!otherLeaf.tableProperty.has_value())
                 throw InternalCompilerError{"otherLeaf.tableProperty is nullopt"};
-            return pathStr + conditionalNewline
-                + "is missing the property" + conditionalNewline
-                + conditionalIndent + *otherLeaf.tableProperty;
+            return pathStr + conditionalNewline + "is missing the property" + conditionalNewline + conditionalIndent + *otherLeaf.tableProperty;
         }
         throw InternalCompilerError{"Both leaf.ty and otherLeaf.ty is nullopt"};
     }
@@ -148,15 +143,11 @@ std::string DiffError::toStringALeaf(std::string rootName, const DiffPathNodeLea
         {
             if (!leaf.unionIndex.has_value())
                 throw InternalCompilerError{"leaf.unionIndex is nullopt"};
-            return pathStr + conditionalNewline
-                + "is a union containing type" + conditionalNewline
-                + conditionalIndent + Luau::toString(*leaf.ty);
+            return pathStr + conditionalNewline + "is a union containing type" + conditionalNewline + conditionalIndent + Luau::toString(*leaf.ty);
         }
         else if (otherLeaf.ty.has_value())
         {
-            return pathStr + conditionalNewline
-                + "is a union missing type" + conditionalNewline
-                + conditionalIndent + Luau::toString(*otherLeaf.ty);
+            return pathStr + conditionalNewline + "is a union missing type" + conditionalNewline + conditionalIndent + Luau::toString(*otherLeaf.ty);
         }
         throw InternalCompilerError{"Both leaf.ty and otherLeaf.ty is nullopt"};
     }
@@ -169,15 +160,13 @@ std::string DiffError::toStringALeaf(std::string rootName, const DiffPathNodeLea
         {
             if (!leaf.unionIndex.has_value())
                 throw InternalCompilerError{"leaf.unionIndex is nullopt"};
-            return pathStr + conditionalNewline
-                + "is an intersection containing type" + conditionalNewline
-                + conditionalIndent + Luau::toString(*leaf.ty);
+            return pathStr + conditionalNewline + "is an intersection containing type" + conditionalNewline + conditionalIndent +
+                   Luau::toString(*leaf.ty);
         }
         else if (otherLeaf.ty.has_value())
         {
-            return pathStr + conditionalNewline
-                + "is an intersection missing type" + conditionalNewline
-                + conditionalIndent + Luau::toString(*otherLeaf.ty);
+            return pathStr + conditionalNewline + "is an intersection missing type" + conditionalNewline + conditionalIndent +
+                   Luau::toString(*otherLeaf.ty);
         }
         throw InternalCompilerError{"Both leaf.ty and otherLeaf.ty is nullopt"};
     }
@@ -185,15 +174,13 @@ std::string DiffError::toStringALeaf(std::string rootName, const DiffPathNodeLea
     {
         if (!leaf.minLength.has_value())
             throw InternalCompilerError{"leaf.minLength is nullopt"};
-        return pathStr + conditionalNewline
-            + "takes " + std::to_string(*leaf.minLength) + (leaf.isVariadic ? " or more" : "") + " arguments";
+        return pathStr + conditionalNewline + "takes " + std::to_string(*leaf.minLength) + (leaf.isVariadic ? " or more" : "") + " arguments";
     }
     case DiffError::Kind::LengthMismatchInFnRets:
     {
         if (!leaf.minLength.has_value())
             throw InternalCompilerError{"leaf.minLength is nullopt"};
-        return pathStr + conditionalNewline
-            + "returns " + std::to_string(*leaf.minLength) + (leaf.isVariadic ? " or more" : "") + " values";
+        return pathStr + conditionalNewline + "returns " + std::to_string(*leaf.minLength) + (leaf.isVariadic ? " or more" : "") + " values";
     }
     default:
     {
@@ -249,17 +236,15 @@ std::string DiffError::toString(bool multiLine) const
     case DiffError::Kind::IncompatibleGeneric:
     {
         std::string diffPathStr{diffPath.toString(true)};
-        return "DiffError: these two types are not equal because the left generic at" + conditionalNewline
-                + conditionalIndent + leftRootName + diffPathStr + conditionalNewline
-                + "cannot be the same type parameter as the right generic at" + conditionalNewline
-                + conditionalIndent + rightRootName + diffPathStr;
+        return "DiffError: these two types are not equal because the left generic at" + conditionalNewline + conditionalIndent + leftRootName +
+               diffPathStr + conditionalNewline + "cannot be the same type parameter as the right generic at" + conditionalNewline +
+               conditionalIndent + rightRootName + diffPathStr;
     }
     default:
     {
-        return "DiffError: these two types are not equal because the left type at" + conditionalNewline
-                + conditionalIndent + toStringALeaf(leftRootName, left, right, multiLine) + "," + conditionalNewline +
-                "while the right type at" + conditionalNewline
-                + conditionalIndent + toStringALeaf(rightRootName, right, left, multiLine);
+        return "DiffError: these two types are not equal because the left type at" + conditionalNewline + conditionalIndent +
+               toStringALeaf(leftRootName, left, right, multiLine) + "," + conditionalNewline + "while the right type at" + conditionalNewline +
+               conditionalIndent + toStringALeaf(rightRootName, right, left, multiLine);
     }
     }
 }

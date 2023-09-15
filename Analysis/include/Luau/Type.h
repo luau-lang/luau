@@ -849,6 +849,18 @@ bool isSubclass(const ClassType* cls, const ClassType* parent);
 
 Type* asMutable(TypeId ty);
 
+template<typename... Ts, typename T>
+bool is(T&& tv)
+{
+    if (!tv)
+        return false;
+
+    if constexpr (std::is_same_v<TypeId, T> && !(std::is_same_v<BoundType, Ts> || ...))
+        LUAU_ASSERT(get_if<BoundType>(&tv->ty) == nullptr);
+
+    return (get<Ts>(tv) || ...);
+}
+
 template<typename T>
 const T* get(TypeId tv)
 {

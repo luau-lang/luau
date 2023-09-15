@@ -1428,7 +1428,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "be_sure_to_use_active_txnlog_when_evaluating
 
     LUAU_REQUIRE_ERRORS(result);
 
-    for (const auto& e: result.errors)
+    for (const auto& e : result.errors)
         CHECK(5 == e.location.begin.line);
 }
 
