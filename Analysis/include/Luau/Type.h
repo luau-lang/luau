@@ -404,6 +404,7 @@ struct Property
     bool deprecated = false;
     std::string deprecatedSuggestion;
     std::optional<Location> location = std::nullopt;
+    std::optional<Location> typeLocation = std::nullopt;
     Tags tags;
     std::optional<std::string> documentationSymbol;
 
@@ -411,7 +412,7 @@ struct Property
     // TODO: Kill all constructors in favor of `Property::rw(TypeId read, TypeId write)` and friends.
     Property();
     Property(TypeId readTy, bool deprecated = false, const std::string& deprecatedSuggestion = "", std::optional<Location> location = std::nullopt,
-        const Tags& tags = {}, const std::optional<std::string>& documentationSymbol = std::nullopt);
+        const Tags& tags = {}, const std::optional<std::string>& documentationSymbol = std::nullopt, std::optional<Location> typeLocation = std::nullopt);
 
     // DEPRECATED: Should only be called in non-RWP! We assert that the `readTy` is not nullopt.
     // TODO: Kill once we don't have non-RWP.
