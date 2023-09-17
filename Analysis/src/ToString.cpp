@@ -851,11 +851,15 @@ struct TypeStringifier
             state.emit("(");
 
         bool first = true;
+        bool shouldPlaceOnNewlines = results.size() > state.opts.compositeTypesSingleLineLimit;
         for (std::string& ss : results)
         {
             if (!first)
             {
-                state.newline();
+                if (shouldPlaceOnNewlines)
+                    state.newline();
+                else
+                    state.emit(" ");
                 state.emit("| ");
             }
             state.emit(ss);
@@ -875,7 +879,7 @@ struct TypeStringifier
         }
     }
 
-    void operator()(TypeId, const IntersectionType& uv)
+    void operator()(TypeId ty, const IntersectionType& uv)
     {
         if (state.hasSeen(&uv))
         {
@@ -911,11 +915,15 @@ struct TypeStringifier
             std::sort(results.begin(), results.end());
 
         bool first = true;
+        bool shouldPlaceOnNewlines = results.size() > state.opts.compositeTypesSingleLineLimit || isOverloadedFunction(ty);
         for (std::string& ss : results)
         {
             if (!first)
             {
-                state.newline();
+                if (shouldPlaceOnNewlines)
+                    state.newline();
+                else
+                    state.emit(" ");
                 state.emit("& ");
             }
             state.emit(ss);
