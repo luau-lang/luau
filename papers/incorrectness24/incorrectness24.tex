@@ -81,20 +81,20 @@ type-driven tooling is important for productivity. These needs result in a desig
 \end{itemize}
 The focus of this extended abstract is the design of non-strict mode: what constitutes
 a defect, and how can we design a complete type system for detecting them.
-(The words ``sound'' and ``complete'' in this sense arte far from ideal,
+(The words ``sound'' and ``complete'' in this sense are far from ideal,
 but ``sound type system'' has a well-established meaning, and ``complete''
 is well-established as the dual of ``sound'', so here we are.)
 
 The closest work to ours is success typing~\cite{SuccessTyping}, used
 in Erlang Dialyzer~\cite{Dialyzer}.  The new feature of our work is
-that strict and non-strict mode have to intertact, whereas Dialyzer only has
+that strict and non-strict mode have to interact, whereas Dialyzer only has
 the equivalent of non-strict mode.
 
 New non-strict mode is specified in a Luau Request For
 Comment~\cite{NewNonStrictRFC}, and is currently being implemented.
-We expect it (and other new typechecking features) to be available in
+We expect it (and other new type checking features) to be available in
 2024. This extended abstract is based on the RFC, but written in
-``greek letters and horizontal lines'' rather than ``monspaced text''
+``Greek letters and horizontal lines'' rather than ``monospaced text''
 for mat.
 
 \section{Code defects}
@@ -117,7 +117,7 @@ For this reason, we consider a larger class of defects:
 \subsection{Run-time errors}
 
 Run-time errors occur due to run-time type mismatches (such as \verb|5("hi")|)
-or buit-in functios (such as \verb|math.abs("hi")|).
+or built-in function (such as \verb|math.abs("hi")|).
 Detecting run-time errors is undecidable, for example:
 \begin{verbatim}
   if cond() then
@@ -256,7 +256,7 @@ Since \verb|~number & ~string| is not equivalent to \verb|unknown|, non-strict m
       \Gamma \vdash M : (S \fun \ERROR) \\
       \Gamma \vdash M : \neg{\FUNCTION} \dashv \Delta_1 \\
       \Gamma \vdash N : S \dashv \Delta_2  \\
-      \mbox{(warn if $\Gamma \vdash M : (\UNKNOWN \fun T)$)}
+      \mbox{(warn if $\Gamma \vdash M : (\UNKNOWN \fun (T \cup \ERROR))$)}
     }{
       \Gamma \vdash M(N) : T \dashv \Delta_1 \cup \Delta_2
     }
@@ -268,13 +268,15 @@ Since \verb|~number & ~string| is not equivalent to \verb|unknown|, non-strict m
 \begin{figure*}
   \[
     \infer{
-      \infer{}{\Gamma \vdash \MATH.\ABS : (\neg\NUMBER \fun \ERROR)} \quad
-      \infer{}{\Gamma \vdash \MATH.\ABS : \neg{\FUNCTION} \dashv \emptyset} \quad
+      \begin{array}[b]{c}
+      \infer{}{\Gamma \vdash \MATH.\ABS : (\neg\NUMBER \fun \ERROR)} \\[\bigskipamount]
+      \infer{}{\Gamma \vdash \MATH.\ABS : \neg{\FUNCTION} \dashv \emptyset}
+      \end{array}
       \infer{
         \Gamma \vdash \STRING.\LOWER : (\neg\STRING \fun \ERROR) \\
         \Gamma \vdash \STRING.\LOWER : \neg{\FUNCTION} \dashv \emptyset \\
         \Gamma \vdash x : \neg{\STRING} \dashv (x : \neg\STRING) \\
-        \mbox{(warn since $\Gamma \vdash \STRING.\LOWER : \UNKNOWN \fun \neg\NUMBER$)}
+        \mbox{(warn since $\Gamma \vdash \STRING.\LOWER : \UNKNOWN \fun (\neg\NUMBER \cup \ERROR)$)}
       }{\Gamma \vdash \STRING.\LOWER(x) : \neg{\NUMBER} \dashv (x : \neg\STRING)}
     }{\Gamma \vdash (\MATH.\ABS(\STRING.\LOWER(x)) : \NEVER \dashv (x : \neg\STRING)}
   \]
@@ -283,34 +285,83 @@ Since \verb|~number & ~string| is not equivalent to \verb|unknown|, non-strict m
 \end{figure*}
 
 
-In Figure~ref{fig:ctxtgen} we provide some of the inference rules for
+In Figure~\ref{fig:ctxtgen} we provide some of the inference rules for
 conbtext generation, and the warnings that context generation produces.
-These are run after type inference, so theay can assume that all code is fully typed.
+These are run after type inference, so they can assume that all code is fully typed.
 
-These rules generaralize type intersection and union to type contexts,
+These rules generalize type intersection and union to type contexts,
 write $\emptyset$ for the everywhere-$\NEVER$ context, and write $x:T$
 for the context that is everywhere $\NEVER$ except for $x$ where it
 maps to $T$.
 
-\begin{conjecture}
+\begin{conjecture}\label{conj:complete}%
 If $\Gamma \vdash M : T \dashv \Delta, x:U$ and $\sigma$ is a closing
-substitution where $\sigma(x) : U$, and $M[\sigma] \rightarrow^* v$
+substitution where $\sigma(x) : U$ and $M[\sigma] \rightarrow^* v$,
 then $v : T$.
 \end{conjecture}
 
 \begin{corollary}
 If $\Gamma \vdash M : \NEVER \dashv \Delta, x:\UNKNOWN$ and $\sigma$ is a closing
-substitution and $M[\sigma]$ does not terminate successfully.
+substitution, then $M[\sigma]$ does not terminate successfully.
 \end{corollary}
 
 \section{Checked functions}
 
-TODO
+The crucial aspect of this type system is that we have a type $\ERROR$
+inhabited by no values, and by expressions which may throw a run-time exception.
+(This is essentially a very simple type and effect system~\cite{Nielson1999}
+with one effect.)
+The rule for function application $M(N)$
+has two dependencies on the type for $M$:
+\[\begin{array}{c}
+  \Gamma \vdash M : (S \fun \ERROR)
+  \\[\jot]
+  \Gamma \vdash M : (\UNKNOWN \fun (T \cup \ERROR))
+\end{array}\]
+Since Luau is based on semantic subtyping~\cite{GF05:GentleIntroduction,Jef22:SemanticSubtyping} and supports
+intersection types, this is equivalent to asking for $M$ to be an
+overloaded function, where one overload has argument type $\UNKNOWN$ one
+one has result type $\ERROR$. For example:
+\[
+  \MATH.\ABS : (\NUMBER \fun \NUMBER) \cap (\neg\NUMBER \fun \ERROR)
+\]
+and so (by subsumption):
+\[\begin{array}{c}
+  \MATH.\ABS : (\neg\NUMBER \fun \ERROR)
+  \\[\jot]
+  \MATH.\ABS : (\UNKNOWN \fun (\NUMBER \cup \ERROR))
+\end{array}\]
+This is a common enough idiom it is worth naming it:
+we call any function of type 
+\[
+  (S \fun T) \cap (\neg S \fun \ERROR)
+\]
+a \emph{checked} function, since it performs a run-time check
+on its argument. Checked functions are called \emph{strong functions}
+in Elixir~\cite{DesignElixir}.
+
+Note that this formulation does not change the subtyping rule for
+functions: they are still contravariant in their argument type, and
+covariant in their result type. This contrasts with checked functions,
+which are invariant in their argument type (since one overload
+$S \fun T$ is contravariant in $S$, and the other $\neg S \fun \ERROR$
+is covariant).
+
+This formulation is also different from functions in success
+typings~\cite{SuccessTyping}, which in our system is $(\neg S \fun \ERROR) \cap
+(\UNKNOWN \fun (T \cup \ERROR))$, and is covariant in $S$.
 
 \section{Future work}
 
-TODO
+This type system is still in the design phase~\cite{NewNonStrictRFC}, though we hope
+the implementation will be ready in by the end of 2023. This will include
+testing the implementation on our unit tests, and on large code bases.
 
+There is an Agda development of a core of strict mode~\cite{BJ23:agda-typeck}.  It
+should extend to non-strict mode, at which point
+Conjecture~\ref{conj:complete} (or something like it)
+will be mechanically verified.
+  
 \bibliographystyle{ACM-Reference-Format} \bibliography{bibliography}
 
 \end{document}
