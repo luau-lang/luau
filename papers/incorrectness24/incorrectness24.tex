@@ -74,10 +74,10 @@ should light up when a player walks on them'') and less on the code
 quality concerns of more experienced developers; for all users
 type-driven tooling is important for productivity. These needs result in a design with two modes:
 \begin{itemize}
-\item \emph{non-strict mode}, aimed at non-professionals, focused on
-  minimizing false positives (that is, in non-strict mode, any program with a type error has a defect), and
-\item \emph{strict mode}, aimed at professionals, focused on
-  minimizing false negatives (that is, in strict mode, any program with a defect has a type error).
+\item \emph{non-strict mode}, aimed at non-professionals, which
+  minimizes false positives (that is, in non-strict mode, any program with a type error has a defect), and
+\item \emph{strict mode}, aimed at professionals, which
+  minimizes false negatives (that is, in strict mode, any program with a defect has a type error).
 \end{itemize}
 The focus of this extended abstract is the design of non-strict mode: what constitutes
 a defect, and how can we design a complete type system for detecting them.
@@ -94,13 +94,12 @@ New non-strict mode is specified in a Luau Request For
 Comment~\cite{NewNonStrictRFC}, and is currently being implemented.
 We expect it (and other new type checking features) to be available in
 2024. This extended abstract is based on the RFC, but written in
-``Greek letters and horizontal lines'' rather than ``monospaced text''
-for mat.
+``Greek letters and horizontal lines'' rather than ``monospaced text''.
 
 \section{Code defects}
 
 The main goal of non-strict mode is to identify defects, but this requires
-identifying what constitutes a defect,. Run-time errors are an obvious defect:
+deciding what a defect is. Run-time errors are an obvious defect:
 \begin{verbatim}
   local hi = "hi"
   print(math.abs(hi))
@@ -117,14 +116,14 @@ For this reason, we consider a larger class of defects:
 \subsection{Run-time errors}
 
 Run-time errors occur due to run-time type mismatches (such as \verb|5("hi")|)
-or built-in function (such as \verb|math.abs("hi")|).
-Detecting run-time errors is undecidable, for example:
+or incorrect built-in function calls (such as \verb|math.abs("hi")|).
+Precisely identifying run-time errors is undecidable, for example:
 \begin{verbatim}
   if cond() then
     math.abs(“hi”)
   end
 \end{verbatim}
-In general, we cannot be sure that this code produces a run-time
+We cannot be sure that this code produces a run-time
 error, but we do know that if \verb|math.abs("hi")| is executed, it
 will produce an error, so we consider this to be a defect.
 
@@ -136,11 +135,11 @@ Luau tables do not error when a missing property is accessed (though embeddings 
   local x = t.Fop
 \end{verbatim}
 won’t produce a run-time error, but is more likely than not a
-programmer error. In this case, if the programmer intent was to
+programmer error. If the programmer intended to
 initialize \verb|x| as \verb|nil|, they could have initialized
 \verb|x = nil|.  For this reason, we consider it a code defect to use
 an expression that the type system infers is of type \verb|nil|, other
-than the \verb|nil| constant itself.
+than the \verb|nil| literal.
 
 \subsection{Writing properties that are never read}
 
@@ -166,39 +165,36 @@ prohibitively expensive.
 
 \section{New Non-strict error reporting}
 
-The difficult part of non-strict mode error-reporting is detecting
-guaranteed run-time errors. We do this using an error-reporting
-pass that generates a type context such that if any of the $x : T$ in
-the type context are satisfied, then the program is guaranteed to
-produce a type error.
-
-For example in the program
+The difficult part of non-strict mode error-reporting is predicting
+run-time errors. We do this using an error-reporting
+pass that synthesizes a type context such that if any of the $x : T$ in
+the type context are satisfied, then the program will
+produce a type error. For example in the program
 \begin{verbatim}
   function h(x, y)
     math.abs(x)
     string.lower(y)
   end
 \end{verbatim}
-an error is reported when \verb|x| isn’t a \verb|number|, or \verb|y| isn’t a \verb|string|, so the generated context is
+an error is reported when \verb|x| isn’t a \verb|number|, or \verb|y| isn’t a \verb|string|, so the synthesized context is
 \begin{verbatim}
-  x : ~number
-  y : ~string
+  x : ~number, y : ~string
 \end{verbatim}
 (\verb|~T| is Luau's concrete syntax for type negation.)
-In the function:
+In:
 \begin{verbatim}
   function f(x)
     math.abs(x)
     string.lower(x)
   end
 \end{verbatim}
-an error is reported when \verb|x| isn’t a \verb|number| or isn’t a \verb|string|, so the constraint set is
+an error is reported when \verb|x| isn’t a \verb|number| or isn’t a \verb|string|, so the context is
 \begin{verbatim}
   x : ~number | ~string
 \end{verbatim}
-(\verb"T|U" is Luau's concrete syntax for type negation.)
-Since \verb"~number | ~string" is equivalent to the type \verb|unknown| (which contains every value),
-non-strict mode can report a warning, since calling the function is guaranteed to throw a run-time error.
+(\verb"T | U" is Luau's concrete syntax for type union.)
+Since the type \verb"~number | ~string" is equivalent to the type \verb|unknown| (which contains every value),
+non-strict mode can report a warning, since calling the function will throw a run-time error.
 In contrast:
 \begin{verbatim}
   function g(x)
@@ -209,11 +205,11 @@ In contrast:
     end
   end
 \end{verbatim}
-generates context
+synthesizes context
 \begin{verbatim}
   x : ~number & ~string
 \end{verbatim}
-(\verb|T&U| is Luau's concrete syntax for type intersection.)
+(\verb|T & U| is Luau's concrete syntax for type intersection.)
 Since \verb|~number & ~string| is not equivalent to \verb|unknown|, non-strict mode reports no warning.
 
 \begin{figure*}
@@ -261,7 +257,7 @@ Since \verb|~number & ~string| is not equivalent to \verb|unknown|, non-strict m
       \Gamma \vdash M(N) : T \dashv \Delta_1 \cup \Delta_2
     }
   \end{array}\]
-  \caption{Type context generation for blocks ($\Gamma \vdash B \dashv \Delta$) and expressions ($\Gamma \vdash M:T \dashv \Delta$)}
+  \caption{Type context synthesis for blocks ($\Gamma \vdash B \dashv \Delta$) and expressions ($\Gamma \vdash M:T \dashv \Delta$)}
   \label{fig:ctxtgen}
 \end{figure*}
 
@@ -284,15 +280,16 @@ Since \verb|~number & ~string| is not equivalent to \verb|unknown|, non-strict m
   \label{fig:example}
 \end{figure*}
 
-
 In Figure~\ref{fig:ctxtgen} we provide some of the inference rules for
-conbtext generation, and the warnings that context generation produces.
-These are run after type inference, so they can assume that all code is fully typed.
+context synthesis, and the warnings that it
+produces.  These are run after type inference, so they can assume that
+all code is fully typed.
 
-These rules generalize type intersection and union to type contexts,
-write $\emptyset$ for the everywhere-$\NEVER$ context, and write $x:T$
-for the context that is everywhere $\NEVER$ except for $x$ where it
-maps to $T$.
+In the judgment $\Gamma \vdash M : T \dashv
+\Delta$, the type context $\Gamma$ is the usual \emph{checked} type
+context and $\Delta$ is the \emph{synthesized} context used to predict
+run-time errors (following the terminology of bidirectional
+typing~\cite{BidirectionalTyping}).
 
 \begin{conjecture}\label{conj:complete}%
 If $\Gamma \vdash M : T \dashv \Delta, x:U$ and $\sigma$ is a closing
@@ -300,7 +297,7 @@ substitution where $\sigma(x) : U$ and $M[\sigma] \rightarrow^* v$,
 then $v : T$.
 \end{conjecture}
 
-\begin{corollary}
+\begin{corollary}\label{cor:complete}%
 If $\Gamma \vdash M : \NEVER \dashv \Delta, x:\UNKNOWN$ and $\sigma$ is a closing
 substitution, then $M[\sigma]$ does not terminate successfully.
 \end{corollary}
@@ -311,6 +308,7 @@ The crucial aspect of this type system is that we have a type $\ERROR$
 inhabited by no values, and by expressions which may throw a run-time exception.
 (This is essentially a very simple type and effect system~\cite{Nielson1999}
 with one effect.)
+
 The rule for function application $M(N)$
 has two dependencies on the type for $M$:
 \[\begin{array}{c}
@@ -320,7 +318,7 @@ has two dependencies on the type for $M$:
 \end{array}\]
 Since Luau is based on semantic subtyping~\cite{GF05:GentleIntroduction,Jef22:SemanticSubtyping} and supports
 intersection types, this is equivalent to asking for $M$ to be an
-overloaded function, where one overload has argument type $\UNKNOWN$ one
+overloaded function, where one overload has argument type $\UNKNOWN$, and
 one has result type $\ERROR$. For example:
 \[
   \MATH.\ABS : (\NUMBER \fun \NUMBER) \cap (\neg\NUMBER \fun \ERROR)
@@ -337,19 +335,20 @@ we call any function of type
   (S \fun T) \cap (\neg S \fun \ERROR)
 \]
 a \emph{checked} function, since it performs a run-time check
-on its argument. Checked functions are called \emph{strong functions}
+on its argument. They are called \emph{strong functions}
 in Elixir~\cite{DesignElixir}.
 
-Note that this formulation does not change the subtyping rule for
-functions: they are still contravariant in their argument type, and
-covariant in their result type. This contrasts with checked functions,
-which are invariant in their argument type (since one overload
+Note that this type system has the usual subtyping rule for
+functions: contravariant in their argument type, and
+covariant in their result type. In contrast, checked functions
+are invariant in their argument type, since one overload
 $S \fun T$ is contravariant in $S$, and the other $\neg S \fun \ERROR$
-is covariant).
+is covariant.
 
-This formulation is also different from functions in success
-typings~\cite{SuccessTyping}, which in our system is $(\neg S \fun \ERROR) \cap
-(\UNKNOWN \fun (T \cup \ERROR))$, and is covariant in $S$.
+This system is also different from  success
+typings~\cite{SuccessTyping}, which has functions
+$(\neg S \fun \ERROR) \cap (\UNKNOWN \fun (T \cup \ERROR))$,
+in our system, which are covariant in both $S$ and $T$.
 
 \section{Future work}
 
