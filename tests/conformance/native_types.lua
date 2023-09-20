@@ -68,5 +68,16 @@ ecall(checkuserdata, 2)
 call(checkvector, vector(1, 2, 3))
 ecall(checkvector, 2)
 
+local function mutation_causes_bad_exit(a: number, count: number, sum: number)
+  repeat
+    a = 's'
+    sum += count
+    pcall(function() end)
+    count -= 1
+  until count == 0
+  return sum
+end
+
+assert(call(mutation_causes_bad_exit, 5, 10, 0) == 55)
 
 return('OK')

@@ -31,11 +31,12 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
-LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100)
+LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100) // TODO: Remove with FFlagLuauTypecheckLimitControls
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauReadWriteProperties, false)
-LUAU_FASTFLAGVARIABLE(LuauTypecheckCancellation, false)
+LUAU_FASTFLAGVARIABLE(LuauTypecheckLimitControls, false)
+LUAU_FASTFLAGVARIABLE(CorrectEarlyReturnInMarkDirty, false)
 
 namespace Luau
 {
@@ -126,7 +127,7 @@ static ParseResult parseSourceForModule(std::string_view source, Luau::SourceMod
 
 static void persistCheckedTypes(ModulePtr checkedModule, GlobalTypes& globals, ScopePtr targetScope, const std::string& packageName)
 {
-    CloneState cloneState;
+    CloneState cloneState{globals.builtinTypes};
 
     std::vector<TypeId> typesToPersist;
     typesToPersist.reserve(checkedModule->declaredGlobals.size() + checkedModule->exportedTypeBindings.size());
@@ -462,7 +463,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
             checkResult.timeoutHits.push_back(item.name);
 
         // If check was manually cancelled, do not return partial results
-        if (FFlag::LuauTypecheckCancellation && item.module->cancelled)
+        if (item.module->cancelled)
             return {};
 
         checkResult.errors.insert(checkResult.errors.end(), item.module->errors.begin(), item.module->errors.end());
@@ -635,7 +636,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
                 if (item.exception)
                     itemWithException = i;
 
-                if (FFlag::LuauTypecheckCancellation && item.module && item.module->cancelled)
+                if (item.module && item.module->cancelled)
                     cancelled = true;
 
                 if (itemWithException || cancelled)
@@ -677,7 +678,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
         if (remaining != 0 && processing == 0)
         {
             // Typechecking might have been cancelled by user, don't return partial results
-            if (FFlag::LuauTypecheckCancellation && cancelled)
+            if (cancelled)
                 return {};
 
             // We might have stopped because of a pending exception
@@ -874,6 +875,14 @@ void Frontend::addBuildQueueItems(std::vector<BuildQueueItem>& items, std::vecto
     }
 }
 
+static void applyInternalLimitScaling(SourceNode& sourceNode, const ModulePtr module, double limit)
+{
+    if (module->timeout)
+        sourceNode.autocompleteLimitsMult = sourceNode.autocompleteLimitsMult / 2.0;
+    else if (module->checkDurationSec < limit / 2.0)
+        sourceNode.autocompleteLimitsMult = std::min(sourceNode.autocompleteLimitsMult * 2.0, 1.0);
+}
+
 void Frontend::checkBuildQueueItem(BuildQueueItem& item)
 {
     SourceNode& sourceNode = *item.sourceNode;
@@ -884,44 +893,84 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     double timestamp = getTimestamp();
     const std::vector<RequireCycle>& requireCycles = item.requireCycles;
 
-    if (item.options.forAutocomplete)
+    TypeCheckLimits typeCheckLimits;
+
+    if (FFlag::LuauTypecheckLimitControls)
     {
-        double autocompleteTimeLimit = FInt::LuauAutocompleteCheckTimeoutMs / 1000.0;
-
-        // The autocomplete typecheck is always in strict mode with DM awareness
-        // to provide better type information for IDE features
-        TypeCheckLimits typeCheckLimits;
-
-        if (autocompleteTimeLimit != 0.0)
-            typeCheckLimits.finishTime = TimeTrace::getClock() + autocompleteTimeLimit;
+        if (item.options.moduleTimeLimitSec)
+            typeCheckLimits.finishTime = TimeTrace::getClock() + *item.options.moduleTimeLimitSec;
         else
             typeCheckLimits.finishTime = std::nullopt;
 
         // TODO: This is a dirty ad hoc solution for autocomplete timeouts
         // We are trying to dynamically adjust our existing limits to lower total typechecking time under the limit
         // so that we'll have type information for the whole file at lower quality instead of a full abort in the middle
-        if (FInt::LuauTarjanChildLimit > 0)
-            typeCheckLimits.instantiationChildLimit = std::max(1, int(FInt::LuauTarjanChildLimit * sourceNode.autocompleteLimitsMult));
-        else
-            typeCheckLimits.instantiationChildLimit = std::nullopt;
+        if (item.options.applyInternalLimitScaling)
+        {
+            if (FInt::LuauTarjanChildLimit > 0)
+                typeCheckLimits.instantiationChildLimit = std::max(1, int(FInt::LuauTarjanChildLimit * sourceNode.autocompleteLimitsMult));
+            else
+                typeCheckLimits.instantiationChildLimit = std::nullopt;
 
-        if (FInt::LuauTypeInferIterationLimit > 0)
-            typeCheckLimits.unifierIterationLimit = std::max(1, int(FInt::LuauTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
-        else
-            typeCheckLimits.unifierIterationLimit = std::nullopt;
+            if (FInt::LuauTypeInferIterationLimit > 0)
+                typeCheckLimits.unifierIterationLimit = std::max(1, int(FInt::LuauTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
+            else
+                typeCheckLimits.unifierIterationLimit = std::nullopt;
+        }
 
-        if (FFlag::LuauTypecheckCancellation)
+        typeCheckLimits.cancellationToken = item.options.cancellationToken;
+    }
+
+    if (item.options.forAutocomplete)
+    {
+        double autocompleteTimeLimit = FInt::LuauAutocompleteCheckTimeoutMs / 1000.0;
+
+        if (!FFlag::LuauTypecheckLimitControls)
+        {
+            // The autocomplete typecheck is always in strict mode with DM awareness
+            // to provide better type information for IDE features
+
+            if (autocompleteTimeLimit != 0.0)
+                typeCheckLimits.finishTime = TimeTrace::getClock() + autocompleteTimeLimit;
+            else
+                typeCheckLimits.finishTime = std::nullopt;
+
+            // TODO: This is a dirty ad hoc solution for autocomplete timeouts
+            // We are trying to dynamically adjust our existing limits to lower total typechecking time under the limit
+            // so that we'll have type information for the whole file at lower quality instead of a full abort in the middle
+            if (FInt::LuauTarjanChildLimit > 0)
+                typeCheckLimits.instantiationChildLimit = std::max(1, int(FInt::LuauTarjanChildLimit * sourceNode.autocompleteLimitsMult));
+            else
+                typeCheckLimits.instantiationChildLimit = std::nullopt;
+
+            if (FInt::LuauTypeInferIterationLimit > 0)
+                typeCheckLimits.unifierIterationLimit = std::max(1, int(FInt::LuauTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
+            else
+                typeCheckLimits.unifierIterationLimit = std::nullopt;
+
             typeCheckLimits.cancellationToken = item.options.cancellationToken;
+        }
 
+        // The autocomplete typecheck is always in strict mode with DM awareness to provide better type information for IDE features
         ModulePtr moduleForAutocomplete = check(sourceModule, Mode::Strict, requireCycles, environmentScope, /*forAutocomplete*/ true,
             /*recordJsonLog*/ false, typeCheckLimits);
 
         double duration = getTimestamp() - timestamp;
 
-        if (moduleForAutocomplete->timeout)
-            sourceNode.autocompleteLimitsMult = sourceNode.autocompleteLimitsMult / 2.0;
-        else if (duration < autocompleteTimeLimit / 2.0)
-            sourceNode.autocompleteLimitsMult = std::min(sourceNode.autocompleteLimitsMult * 2.0, 1.0);
+        if (FFlag::LuauTypecheckLimitControls)
+        {
+            moduleForAutocomplete->checkDurationSec = duration;
+
+            if (item.options.moduleTimeLimitSec && item.options.applyInternalLimitScaling)
+                applyInternalLimitScaling(sourceNode, moduleForAutocomplete, *item.options.moduleTimeLimitSec);
+        }
+        else
+        {
+            if (moduleForAutocomplete->timeout)
+                sourceNode.autocompleteLimitsMult = sourceNode.autocompleteLimitsMult / 2.0;
+            else if (duration < autocompleteTimeLimit / 2.0)
+                sourceNode.autocompleteLimitsMult = std::min(sourceNode.autocompleteLimitsMult * 2.0, 1.0);
+        }
 
         item.stats.timeCheck += duration;
         item.stats.filesStrict += 1;
@@ -930,14 +979,29 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         return;
     }
 
-    TypeCheckLimits typeCheckLimits;
-
-    if (FFlag::LuauTypecheckCancellation)
+    if (!FFlag::LuauTypecheckLimitControls)
+    {
         typeCheckLimits.cancellationToken = item.options.cancellationToken;
+    }
 
     ModulePtr module = check(sourceModule, mode, requireCycles, environmentScope, /*forAutocomplete*/ false, item.recordJsonLog, typeCheckLimits);
 
-    item.stats.timeCheck += getTimestamp() - timestamp;
+    if (FFlag::LuauTypecheckLimitControls)
+    {
+        double duration = getTimestamp() - timestamp;
+
+        module->checkDurationSec = duration;
+
+        if (item.options.moduleTimeLimitSec && item.options.applyInternalLimitScaling)
+            applyInternalLimitScaling(sourceNode, module, *item.options.moduleTimeLimitSec);
+
+        item.stats.timeCheck += duration;
+    }
+    else
+    {
+        item.stats.timeCheck += getTimestamp() - timestamp;
+    }
+
     item.stats.filesStrict += mode == Mode::Strict;
     item.stats.filesNonstrict += mode == Mode::Nonstrict;
 
@@ -969,7 +1033,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         // copyErrors needs to allocate into interfaceTypes as it copies
         // types out of internalTypes, so we unfreeze it here.
         unfreeze(module->interfaceTypes);
-        copyErrors(module->errors, module->interfaceTypes);
+        copyErrors(module->errors, module->interfaceTypes, builtinTypes);
         freeze(module->interfaceTypes);
 
         module->internalTypes.clear();
@@ -1014,7 +1078,7 @@ void Frontend::checkBuildQueueItems(std::vector<BuildQueueItem>& items)
     {
         checkBuildQueueItem(item);
 
-        if (FFlag::LuauTypecheckCancellation && item.module && item.module->cancelled)
+        if (item.module && item.module->cancelled)
             break;
 
         recordItemResult(item);
@@ -1085,8 +1149,16 @@ bool Frontend::isDirty(const ModuleName& name, bool forAutocomplete) const
  */
 void Frontend::markDirty(const ModuleName& name, std::vector<ModuleName>* markedDirty)
 {
-    if (!moduleResolver.getModule(name) && !moduleResolverForAutocomplete.getModule(name))
-        return;
+    if (FFlag::CorrectEarlyReturnInMarkDirty)
+    {
+        if (sourceNodes.count(name) == 0)
+            return;
+    }
+    else
+    {
+        if (!moduleResolver.getModule(name) && !moduleResolverForAutocomplete.getModule(name))
+            return;
+    }
 
     std::unordered_map<ModuleName, std::vector<ModuleName>> reverseDeps;
     for (const auto& module : sourceNodes)
@@ -1217,7 +1289,8 @@ ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle
 
     if (result->timeout || result->cancelled)
     {
-        // If solver was interrupted, skip typechecking and replace all module results with error-supressing types to avoid leaking blocked/pending types
+        // If solver was interrupted, skip typechecking and replace all module results with error-supressing types to avoid leaking blocked/pending
+        // types
         ScopePtr moduleScope = result->getModuleScope();
         moduleScope->returnType = builtinTypes->errorRecoveryTypePack();
 
@@ -1295,9 +1368,7 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vect
         typeChecker.finishTime = typeCheckLimits.finishTime;
         typeChecker.instantiationChildLimit = typeCheckLimits.instantiationChildLimit;
         typeChecker.unifierIterationLimit = typeCheckLimits.unifierIterationLimit;
-
-        if (FFlag::LuauTypecheckCancellation)
-            typeChecker.cancellationToken = typeCheckLimits.cancellationToken;
+        typeChecker.cancellationToken = typeCheckLimits.cancellationToken;
 
         return typeChecker.check(sourceModule, mode, environmentScope);
     }

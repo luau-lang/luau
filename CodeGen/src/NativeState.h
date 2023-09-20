@@ -35,7 +35,6 @@ struct NativeContext
     int (*luaV_equalval)(lua_State* L, const TValue* t1, const TValue* t2) = nullptr;
     void (*luaV_doarith)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TMS op) = nullptr;
     void (*luaV_dolen)(lua_State* L, StkId ra, const TValue* rb) = nullptr;
-    void (*luaV_prepareFORN)(lua_State* L, StkId plimit, StkId pstep, StkId pinit) = nullptr;
     void (*luaV_gettable)(lua_State* L, const TValue* t, TValue* key, StkId val) = nullptr;
     void (*luaV_settable)(lua_State* L, const TValue* t, TValue* key, StkId val) = nullptr;
     void (*luaV_getimport)(lua_State* L, Table* env, TValue* k, StkId res, uint32_t id, bool propagatenil) = nullptr;
@@ -45,6 +44,7 @@ struct NativeContext
     Table* (*luaH_new)(lua_State* L, int narray, int lnhash) = nullptr;
     Table* (*luaH_clone)(lua_State* L, Table* tt) = nullptr;
     void (*luaH_resizearray)(lua_State* L, Table* t, int nasize) = nullptr;
+    TValue* (*luaH_setnum)(lua_State* L, Table* t, int key);
 
     void (*luaC_barriertable)(lua_State* L, Table* t, GCObject* v) = nullptr;
     void (*luaC_barrierf)(lua_State* L, GCObject* o, GCObject* v) = nullptr;
@@ -112,6 +112,7 @@ using GateFn = int (*)(lua_State*, Proto*, uintptr_t, NativeContext*);
 struct NativeState
 {
     NativeState();
+    NativeState(AllocationCallback* allocationCallback, void* allocationCallbackContext);
     ~NativeState();
 
     CodeAllocator codeAllocator;

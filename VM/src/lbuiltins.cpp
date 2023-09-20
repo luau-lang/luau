@@ -23,8 +23,6 @@
 #endif
 #endif
 
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauFastcallGC, false)
-
 // luauF functions implement FASTCALL instruction that performs a direct execution of some builtin functions from the VM
 // The rule of thumb is that FASTCALL functions can not call user code, yield, fail, or reallocate stack.
 // If types of the arguments mismatch, luauF_* needs to return -1 and the execution will fall back to the usual call path
@@ -832,7 +830,7 @@ static int luauF_char(lua_State* L, StkId res, TValue* arg0, int nresults, StkId
 
     if (nparams < int(sizeof(buffer)) && nresults <= 1)
     {
-        if (DFFlag::LuauFastcallGC && luaC_needsGC(L))
+        if (luaC_needsGC(L))
             return -1; // we can't call luaC_checkGC so fall back to C implementation
 
         if (nparams >= 1)
@@ -904,7 +902,7 @@ static int luauF_sub(lua_State* L, StkId res, TValue* arg0, int nresults, StkId 
         int i = int(nvalue(args));
         int j = int(nvalue(args + 1));
 
-        if (DFFlag::LuauFastcallGC && luaC_needsGC(L))
+        if (luaC_needsGC(L))
             return -1; // we can't call luaC_checkGC so fall back to C implementation
 
         if (i >= 1 && j >= i && unsigned(j - 1) < unsigned(ts->len))
@@ -1300,7 +1298,7 @@ static int luauF_tostring(lua_State* L, StkId res, TValue* arg0, int nresults, S
         }
         case LUA_TNUMBER:
         {
-            if (DFFlag::LuauFastcallGC && luaC_needsGC(L))
+            if (luaC_needsGC(L))
                 return -1; // we can't call luaC_checkGC so fall back to C implementation
 
             char s[LUAI_MAXNUM2STR];

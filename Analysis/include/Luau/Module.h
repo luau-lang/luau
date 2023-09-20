@@ -111,6 +111,7 @@ struct Module
     LintResult lintResult;
     Mode mode;
     SourceCode::Type type;
+    double checkDurationSec = 0.0;
     bool timeout = false;
     bool cancelled = false;
 

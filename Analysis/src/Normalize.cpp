@@ -176,7 +176,7 @@ const NormalizedStringType NormalizedStringType::never;
 
 bool isSubtype(const NormalizedStringType& subStr, const NormalizedStringType& superStr)
 {
-    if (subStr.isUnion() && superStr.isUnion())
+    if (subStr.isUnion() && (superStr.isUnion() && !superStr.isNever()))
     {
         for (auto [name, ty] : subStr.singletons)
         {
@@ -1983,18 +1983,68 @@ void Normalizer::intersectClassesWithClass(NormalizedClassType& heres, TypeId th
 
 void Normalizer::intersectStrings(NormalizedStringType& here, const NormalizedStringType& there)
 {
+    /* There are 9 cases to worry about here
+         Normalized Left    | Normalized Right
+       C1 string            | string              ===> trivial
+       C2 string - {u_1,..} | string              ===> trivial
+       C3 {u_1, ..}         | string              ===> trivial
+       C4 string            | string - {v_1, ..}  ===> string - {v_1, ..}
+       C5 string - {u_1,..} | string - {v_1, ..}  ===> string - ({u_s} U {v_s})
+       C6 {u_1, ..}         | string - {v_1, ..}  ===> {u_s} - {v_s}
+       C7 string            | {v_1, ..}           ===> {v_s}
+       C8 string - {u_1,..} | {v_1, ..}           ===> {v_s} - {u_s}
+       C9 {u_1, ..}         | {v_1, ..}           ===> {u_s} ∩ {v_s}
+    */
+    // Case 1,2,3
     if (there.isString())
         return;
-    if (here.isString())
-        here.resetToNever();
-
-    for (auto it = here.singletons.begin(); it != here.singletons.end();)
+    // Case 4, Case 7
+    else if (here.isString())
     {
-        if (there.singletons.count(it->first))
-            it++;
-        else
-            it = here.singletons.erase(it);
+        here.singletons.clear();
+        for (const auto& [key, type] : there.singletons)
+            here.singletons[key] = type;
+        here.isCofinite = here.isCofinite && there.isCofinite;
     }
+    // Case 5
+    else if (here.isIntersection() && there.isIntersection())
+    {
+        here.isCofinite = true;
+        for (const auto& [key, type] : there.singletons)
+            here.singletons[key] = type;
+    }
+    // Case 6
+    else if (here.isUnion() && there.isIntersection())
+    {
+        here.isCofinite = false;
+        for (const auto& [key, _] : there.singletons)
+            here.singletons.erase(key);
+    }
+    // Case 8
+    else if (here.isIntersection() && there.isUnion())
+    {
+        here.isCofinite = false;
+        std::map<std::string, TypeId> result(there.singletons);
+        for (const auto& [key, _] : here.singletons)
+            result.erase(key);
+        here.singletons = result;
+    }
+    // Case 9
+    else if (here.isUnion() && there.isUnion())
+    {
+        here.isCofinite = false;
+        std::map<std::string, TypeId> result;
+        result.insert(here.singletons.begin(), here.singletons.end());
+        result.insert(there.singletons.begin(), there.singletons.end());
+        for (auto it = result.begin(); it != result.end();)
+            if (!here.singletons.count(it->first) || !there.singletons.count(it->first))
+                it = result.erase(it);
+            else
+                ++it;
+        here.singletons = result;
+    }
+    else
+        LUAU_ASSERT(0 && "Internal Error - unrecognized case");
 }
 
 std::optional<TypePackId> Normalizer::intersectionOfTypePacks(TypePackId here, TypePackId there)

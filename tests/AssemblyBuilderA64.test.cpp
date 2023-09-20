@@ -107,6 +107,13 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Binary")
     SINGLE_COMPARE(cmp(w0, 42), 0x7100A81F);
 }
 
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "BinaryExtended")
+{
+    // reg, reg
+    SINGLE_COMPARE(add(x0, x1, w2, 3), 0x8B224C20);
+    SINGLE_COMPARE(sub(x0, x1, w2, 3), 0xCB224C20);
+}
+
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "BinaryImm")
 {
     // instructions
@@ -524,6 +531,8 @@ TEST_CASE("LogTest")
     build.ldr(x0, mem(x1, 1, AddressKindA64::pre));
     build.ldr(x0, mem(x1, 1, AddressKindA64::post));
 
+    build.add(x1, x2, w3, 3);
+
     build.setLabel(l);
     build.ret();
 
@@ -560,6 +569,7 @@ TEST_CASE("LogTest")
  ldr         x0,[x1,#1]
  ldr         x0,[x1,#1]!
  ldr         x0,[x1]!,#1
+ add         x1,x2,w3 UXTW #3
 .L1:
  ret
 )";

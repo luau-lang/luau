@@ -4,6 +4,7 @@
 #include "Luau/Lexer.h"
 #include "Luau/StringUtils.h"
 
+LUAU_FASTFLAG(LuauFloorDivision)
 namespace Luau
 {
 
@@ -112,14 +113,23 @@ static void next(Lexer& lexer)
     lexer.next();
 
     // skip C-style comments as Lexer only understands Lua-style comments atm
-    while (lexer.current().type == '/')
+
+    if (FFlag::LuauFloorDivision)
     {
-        Lexeme peek = lexer.lookahead();
+        while (lexer.current().type == Luau::Lexeme::FloorDiv)
+            lexer.nextline();
+    }
+    else
+    {
+        while (lexer.current().type == '/')
+        {
+            Lexeme peek = lexer.lookahead();
 
-        if (peek.type != '/' || peek.location.begin != lexer.current().location.end)
-            break;
+            if (peek.type != '/' || peek.location.begin != lexer.current().location.end)
+                break;
 
-        lexer.nextline();
+            lexer.nextline();
+        }
     }
 }
 

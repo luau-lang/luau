@@ -11,8 +11,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauFasterInterp)
-
 // convert a stack index to positive
 #define abs_index(L, i) ((i) > 0 || (i) <= LUA_REGISTRYINDEX ? (i) : lua_gettop(L) + (i) + 1)
 
@@ -524,19 +522,10 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
 {
     if (luaL_callmeta(L, idx, "__tostring")) // is there a metafield?
     {
-        if (FFlag::LuauFasterInterp)
-        {
-            const char* s = lua_tolstring(L, -1, len);
-            if (!s)
-                luaL_error(L, "'__tostring' must return a string");
-            return s;
-        }
-        else
-        {
-            if (!lua_isstring(L, -1))
-                luaL_error(L, "'__tostring' must return a string");
-            return lua_tolstring(L, -1, len);
-        }
+        const char* s = lua_tolstring(L, -1, len);
+        if (!s)
+            luaL_error(L, "'__tostring' must return a string");
+        return s;
     }
 
     switch (lua_type(L, idx))

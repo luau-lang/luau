@@ -407,11 +407,12 @@ local b: B.T = a
     )";
 
     CheckResult result = frontend.check("game/C");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'
+    const std::string expected = R"(Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'
 caused by:
-  Property 'x' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
+  Property 'x' is not compatible. 
+Type 'number' could not be converted into 'string' in an invariant context)";
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "module_type_conflict_instantiated")
@@ -441,11 +442,12 @@ local b: B.T = a
     )";
 
     CheckResult result = frontend.check("game/D");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'
+    const std::string expected = R"(Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'
 caused by:
-  Property 'x' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
+  Property 'x' is not compatible. 
+Type 'number' could not be converted into 'string' in an invariant context)";
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(expected, toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "constrained_anyification_clone_immutable_types")

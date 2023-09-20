@@ -91,6 +91,15 @@ assert((function() local a = 1 a = a + 2 return a end)() == 3)
 assert((function() local a = 1 a = a - 2 return a end)() == -1)
 assert((function() local a = 1 a = a * 2 return a end)() == 2)
 assert((function() local a = 1 a = a / 2 return a end)() == 0.5)
+
+-- floor division should always round towards -Infinity
+assert((function() local a = 1 a = a // 2 return a end)() == 0)
+assert((function() local a = 3 a = a // 2 return a end)() == 1)
+assert((function() local a = 3.5 a = a // 2 return a end)() == 1)
+assert((function() local a = -1 a = a // 2 return a end)() == -1)
+assert((function() local a = -3 a = a // 2 return a end)() == -2)
+assert((function() local a = -3.5 a = a // 2 return a end)() == -2)
+
 assert((function() local a = 5 a = a % 2 return a end)() == 1)
 assert((function() local a = 3 a = a ^ 2 return a end)() == 9)
 assert((function() local a = 3 a = a ^ 3 return a end)() == 27)
@@ -167,6 +176,33 @@ assert((function() local a = 1 for b=1,9 do a = a * 2 if a == 128 then break els
 
 -- make sure internal index is protected against modification
 assert((function() local a = 1 for b=9,1,-2 do a = a * 2 b = nil end return a end)() == 32)
+
+-- make sure that when step is 0, we treat it as backward iteration (and as such, iterate zero times or indefinitely)
+-- this is consistent with Lua 5.1; future Lua versions emit an error when step is 0; LuaJIT instead treats 0 as forward iteration
+-- we repeat tests twice, with and without constant folding
+local zero = tonumber("0")
+assert((function() local c = 0 for i=1,10,0 do c += 1 if c > 10 then break end end return c end)() == 0)
+assert((function() local c = 0 for i=10,1,0 do c += 1 if c > 10 then break end end return c end)() == 11)
+assert((function() local c = 0 for i=1,10,zero do c += 1 if c > 10 then break end end return c end)() == 0)
+assert((function() local c = 0 for i=10,1,zero do c += 1 if c > 10 then break end end return c end)() == 11)
+
+-- make sure that when limit is nan, we iterate zero times (this is consistent with Lua 5.1; future Lua versions break this)
+-- we repeat tests twice, with and without constant folding
+local nan = tonumber("nan")
+assert((function() local c = 0 for i=1,0/0 do c += 1 end return c end)() == 0)
+assert((function() local c = 0 for i=1,0/0,-1 do c += 1 end return c end)() == 0)
+assert((function() local c = 0 for i=1,nan do c += 1 end return c end)() == 0)
+assert((function() local c = 0 for i=1,nan,-1 do c += 1 end return c end)() == 0)
+
+-- make sure that when step is nan, we treat it as backward iteration and as such iterate once iff start<=limit
+assert((function() local c = 0 for i=1,10,0/0 do c += 1 end return c end)() == 0)
+assert((function() local c = 0 for i=10,1,0/0 do c += 1 end return c end)() == 1)
+assert((function() local c = 0 for i=1,10,nan do c += 1 end return c end)() == 0)
+assert((function() local c = 0 for i=10,1,nan do c += 1 end return c end)() == 1)
+
+-- make sure that when index becomes nan mid-iteration, we correctly exit the loop (this is broken in Lua 5.1; future Lua versions fix this)
+assert((function() local c = 0 for i=-math.huge,0,math.huge do c += 1 end return c end)() == 1)
+assert((function() local c = 0 for i=math.huge,math.huge,-math.huge do c += 1 end return c end)() == 1)
 
 -- generic for
 -- ipairs
@@ -276,6 +312,10 @@ assert((function()
     for k in pairs(kSelectedBiomes) do result = result .. k end
     return result
 end)() == "ArcticDunesCanyonsWaterMountainsHillsLavaflowPlainsMarsh")
+
+-- table literals may contain duplicate fields; the language doesn't specify assignment order but we currently assign left to right
+assert((function() local t = {data = 4, data = nil, data = 42} return t.data end)() == 42)
+assert((function() local t = {data = 4, data = nil, data = 42, data = nil} return t.data end)() == nil)
 
 -- multiple returns
 -- local=
@@ -494,6 +534,7 @@ local function vec3t(x, y, z)
         __sub = function(l, r) return vec3t(l.x - r.x, l.y - r.y, l.z - r.z) end,
         __mul = function(l, r) return type(r) == "number" and vec3t(l.x * r, l.y * r, l.z * r) or vec3t(l.x * r.x, l.y * r.y, l.z * r.z) end,
         __div = function(l, r) return type(r) == "number" and vec3t(l.x / r, l.y / r, l.z / r) or vec3t(l.x / r.x, l.y / r.y, l.z / r.z) end,
+        __idiv = function(l, r) return type(r) == "number" and vec3t(l.x // r, l.y // r, l.z // r) or vec3t(l.x // r.x, l.y // r.y, l.z // r.z) end,
         __unm = function(v) return vec3t(-v.x, -v.y, -v.z) end,
         __tostring = function(v) return string.format("%g, %g, %g", v.x, v.y, v.z) end
     })
@@ -504,10 +545,13 @@ assert((function() return tostring(vec3t(1,2,3) + vec3t(4,5,6)) end)() == "5, 7,
 assert((function() return tostring(vec3t(1,2,3) - vec3t(4,5,6)) end)() == "-3, -3, -3")
 assert((function() return tostring(vec3t(1,2,3) * vec3t(4,5,6)) end)() == "4, 10, 18")
 assert((function() return tostring(vec3t(1,2,3) / vec3t(2,4,8)) end)() == "0.5, 0.5, 0.375")
+assert((function() return tostring(vec3t(1,2,3) // vec3t(2,4,2)) end)() == "0, 0, 1")
+assert((function() return tostring(vec3t(1,2,3) // vec3t(-2,-4,-2)) end)() == "-1, -1, -2")
 
 -- reg vs constant
 assert((function() return tostring(vec3t(1,2,3) * 2) end)() == "2, 4, 6")
 assert((function() return tostring(vec3t(1,2,3) / 2) end)() == "0.5, 1, 1.5")
+assert((function() return tostring(vec3t(1,2,3) // 2) end)() == "0, 1, 1")
 
 -- unary
 assert((function() return tostring(-vec3t(1,2,3)) end)() == "-1, -2, -3")

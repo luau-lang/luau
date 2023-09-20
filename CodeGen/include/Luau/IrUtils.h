@@ -94,9 +94,7 @@ inline bool isBlockTerminator(IrCmd cmd)
     case IrCmd::JUMP_IF_TRUTHY:
     case IrCmd::JUMP_IF_FALSY:
     case IrCmd::JUMP_EQ_TAG:
-    case IrCmd::JUMP_EQ_INT:
-    case IrCmd::JUMP_LT_INT:
-    case IrCmd::JUMP_GE_UINT:
+    case IrCmd::JUMP_CMP_INT:
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_CMP_NUM:
     case IrCmd::JUMP_SLOT_MATCH:
@@ -128,6 +126,7 @@ inline bool isNonTerminatingJump(IrCmd cmd)
     case IrCmd::CHECK_ARRAY_SIZE:
     case IrCmd::CHECK_SLOT_MATCH:
     case IrCmd::CHECK_NODE_NO_NEXT:
+    case IrCmd::CHECK_NODE_VALUE:
         return true;
     default:
         break;
@@ -145,7 +144,6 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::LOAD_DOUBLE:
     case IrCmd::LOAD_INT:
     case IrCmd::LOAD_TVALUE:
-    case IrCmd::LOAD_NODE_VALUE_TV:
     case IrCmd::LOAD_ENV:
     case IrCmd::GET_ARR_ADDR:
     case IrCmd::GET_SLOT_NODE_ADDR:
@@ -157,6 +155,7 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::SUB_NUM:
     case IrCmd::MUL_NUM:
     case IrCmd::DIV_NUM:
+    case IrCmd::IDIV_NUM:
     case IrCmd::MOD_NUM:
     case IrCmd::MIN_NUM:
     case IrCmd::MAX_NUM:
@@ -169,6 +168,7 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:
     case IrCmd::TABLE_LEN:
+    case IrCmd::TABLE_SETNUM:
     case IrCmd::STRING_LEN:
     case IrCmd::NEW_TABLE:
     case IrCmd::DUP_TABLE:
@@ -263,6 +263,15 @@ uint32_t getNativeContextOffset(int bfid);
 
 // Cleans up blocks that were created with no users
 void killUnusedBlocks(IrFunction& function);
+
+// Get blocks in order that tries to maximize fallthrough between them during lowering
+// We want to mostly preserve build order with fallbacks outlined
+// But we also use hints from optimization passes that chain blocks together where there's only one out-in edge between them
+std::vector<uint32_t> getSortedBlockOrder(IrFunction& function);
+
+// Returns first non-dead block that comes after block at index 'i' in the sorted blocks array
+// 'dummy' block is returned if the end of array was reached
+IrBlock& getNextBlock(IrFunction& function, std::vector<uint32_t>& sortedBlocks, IrBlock& dummy, size_t i);
 
 } // namespace CodeGen
 } // namespace Luau

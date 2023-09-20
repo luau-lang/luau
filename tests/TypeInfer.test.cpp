@@ -1028,16 +1028,23 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
         // unsound.
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-        CHECK_EQ(
-            R"(Type 'Policies' from 'MainModule' could not be converted into 'Policies' from 'MainModule'
+        const std::string expected = R"(Type 'Policies' from 'MainModule' could not be converted into 'Policies' from 'MainModule'
 caused by:
-  Property 'getStoreFieldName' is not compatible. Type '(Policies, FieldSpecifier & {| from: number? |}) -> (a, b...)' could not be converted into '(Policies, FieldSpecifier) -> string'
+  Property 'getStoreFieldName' is not compatible. 
+Type
+    '(Policies, FieldSpecifier & {| from: number? |}) -> (a, b...)'
+could not be converted into
+    '(Policies, FieldSpecifier) -> string'
 caused by:
-  Argument #2 type is not compatible. Type 'FieldSpecifier' could not be converted into 'FieldSpecifier & {| from: number? |}'
+  Argument #2 type is not compatible. 
+Type
+    'FieldSpecifier'
+could not be converted into
+    'FieldSpecifier & {| from: number? |}'
 caused by:
-  Not all intersection parts are compatible. Table type 'FieldSpecifier' not compatible with type '{| from: number? |}' because the former has extra field 'fieldName')",
-            toString(result.errors[0]));
+  Not all intersection parts are compatible. 
+Table type 'FieldSpecifier' not compatible with type '{| from: number? |}' because the former has extra field 'fieldName')";
+        CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
     {
@@ -1205,8 +1212,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typechecking_in_type_guards")
 {
-    ScopedFastFlag sff{"LuauTypecheckTypeguards", true};
-
     CheckResult result = check(R"(
 local a = type(foo) == 'nil'
 local b = typeof(foo) ~= 'nil'
@@ -1397,6 +1402,34 @@ TEST_CASE_FIXTURE(Fixture, "promote_tail_type_packs")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+/*
+ * CLI-49876
+ *
+ * We had a bug where we would not use the correct TxnLog when evaluating a
+ * variadic overload. We could therefore get into a state where the TxnLog has
+ * logged that a generic matches to one type, but the variadic tail has already
+ * been bound to another type outside of that TxnLog.
+ *
+ * This caused type checking to succeed when it should have failed.
+ */
+TEST_CASE_FIXTURE(BuiltinsFixture, "be_sure_to_use_active_txnlog_when_evaluating_a_variadic_overload")
+{
+    ScopedFastFlag sff{"LuauVariadicOverloadFix", true};
+
+    CheckResult result = check(R"(
+        local function concat<T>(target: {T}, ...: {T} | T): {T}
+            return (nil :: any) :: {T}
+        end
+
+        local res = concat({"alic"}, 1, 2)
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+
+    for (const auto& e : result.errors)
+        CHECK(5 == e.location.begin.line);
 }
 
 TEST_SUITE_END();

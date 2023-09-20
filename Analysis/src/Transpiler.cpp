@@ -10,6 +10,8 @@
 #include <limits>
 #include <math.h>
 
+LUAU_FASTFLAG(LuauFloorDivision)
+
 namespace
 {
 bool isIdentifierStartChar(char c)
@@ -467,10 +469,13 @@ struct Printer
             case AstExprBinary::Sub:
             case AstExprBinary::Mul:
             case AstExprBinary::Div:
+            case AstExprBinary::FloorDiv:
             case AstExprBinary::Mod:
             case AstExprBinary::Pow:
             case AstExprBinary::CompareLt:
             case AstExprBinary::CompareGt:
+                LUAU_ASSERT(FFlag::LuauFloorDivision || a->op != AstExprBinary::FloorDiv);
+
                 writer.maybeSpace(a->right->location.begin, 2);
                 writer.symbol(toString(a->op));
                 break;
@@ -487,6 +492,8 @@ struct Printer
                 writer.maybeSpace(a->right->location.begin, 4);
                 writer.keyword(toString(a->op));
                 break;
+            default:
+                LUAU_ASSERT(!"Unknown Op");
             }
 
             visualize(*a->right);
@@ -752,6 +759,12 @@ struct Printer
             case AstExprBinary::Div:
                 writer.maybeSpace(a->value->location.begin, 2);
                 writer.symbol("/=");
+                break;
+            case AstExprBinary::FloorDiv:
+                LUAU_ASSERT(FFlag::LuauFloorDivision);
+
+                writer.maybeSpace(a->value->location.begin, 2);
+                writer.symbol("//=");
                 break;
             case AstExprBinary::Mod:
                 writer.maybeSpace(a->value->location.begin, 2);

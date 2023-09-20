@@ -89,8 +89,6 @@ const char* getCmdName(IrCmd cmd)
         return "LOAD_INT";
     case IrCmd::LOAD_TVALUE:
         return "LOAD_TVALUE";
-    case IrCmd::LOAD_NODE_VALUE_TV:
-        return "LOAD_NODE_VALUE_TV";
     case IrCmd::LOAD_ENV:
         return "LOAD_ENV";
     case IrCmd::GET_ARR_ADDR:
@@ -113,8 +111,8 @@ const char* getCmdName(IrCmd cmd)
         return "STORE_VECTOR";
     case IrCmd::STORE_TVALUE:
         return "STORE_TVALUE";
-    case IrCmd::STORE_NODE_VALUE_TV:
-        return "STORE_NODE_VALUE_TV";
+    case IrCmd::STORE_SPLIT_TVALUE:
+        return "STORE_SPLIT_TVALUE";
     case IrCmd::ADD_INT:
         return "ADD_INT";
     case IrCmd::SUB_INT:
@@ -127,6 +125,8 @@ const char* getCmdName(IrCmd cmd)
         return "MUL_NUM";
     case IrCmd::DIV_NUM:
         return "DIV_NUM";
+    case IrCmd::IDIV_NUM:
+        return "IDIV_NUM";
     case IrCmd::MOD_NUM:
         return "MOD_NUM";
     case IrCmd::MIN_NUM:
@@ -157,12 +157,8 @@ const char* getCmdName(IrCmd cmd)
         return "JUMP_IF_FALSY";
     case IrCmd::JUMP_EQ_TAG:
         return "JUMP_EQ_TAG";
-    case IrCmd::JUMP_EQ_INT:
-        return "JUMP_EQ_INT";
-    case IrCmd::JUMP_LT_INT:
-        return "JUMP_LT_INT";
-    case IrCmd::JUMP_GE_UINT:
-        return "JUMP_GE_UINT";
+    case IrCmd::JUMP_CMP_INT:
+        return "JUMP_CMP_INT";
     case IrCmd::JUMP_EQ_POINTER:
         return "JUMP_EQ_POINTER";
     case IrCmd::JUMP_CMP_NUM:
@@ -171,6 +167,8 @@ const char* getCmdName(IrCmd cmd)
         return "JUMP_SLOT_MATCH";
     case IrCmd::TABLE_LEN:
         return "TABLE_LEN";
+    case IrCmd::TABLE_SETNUM:
+        return "TABLE_SETNUM";
     case IrCmd::STRING_LEN:
         return "STRING_LEN";
     case IrCmd::NEW_TABLE:
@@ -215,8 +213,6 @@ const char* getCmdName(IrCmd cmd)
         return "GET_UPVALUE";
     case IrCmd::SET_UPVALUE:
         return "SET_UPVALUE";
-    case IrCmd::PREPARE_FORN:
-        return "PREPARE_FORN";
     case IrCmd::CHECK_TAG:
         return "CHECK_TAG";
     case IrCmd::CHECK_TRUTHY:
@@ -233,6 +229,8 @@ const char* getCmdName(IrCmd cmd)
         return "CHECK_SLOT_MATCH";
     case IrCmd::CHECK_NODE_NO_NEXT:
         return "CHECK_NODE_NO_NEXT";
+    case IrCmd::CHECK_NODE_VALUE:
+        return "CHECK_NODE_VALUE";
     case IrCmd::INTERRUPT:
         return "INTERRUPT";
     case IrCmd::CHECK_GC:
@@ -402,7 +400,7 @@ void toString(IrToStringContext& ctx, IrOp op)
         append(ctx.result, "U%d", vmUpvalueOp(op));
         break;
     case IrOpKind::VmExit:
-        append(ctx.result, "exit(%d)", op.index);
+        append(ctx.result, "exit(%d)", vmExitOp(op));
         break;
     }
 }

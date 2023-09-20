@@ -8,7 +8,6 @@
 #include "Luau/DenseHash.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/StringUtils.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Frontend.h"
 
@@ -23,6 +22,9 @@
 extern bool verbose;
 extern bool codegen;
 extern int optimizationLevel;
+
+LUAU_FASTFLAG(LuauPCallDebuggerFix);
+LUAU_FASTFLAG(LuauFloorDivision);
 
 static lua_CompileOptions defaultOptions()
 {
@@ -266,6 +268,12 @@ static void* limitedRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
 
 TEST_SUITE_BEGIN("Conformance");
 
+TEST_CASE("CodegenSupported")
+{
+    if (codegen && !luau_codegen_supported())
+        MESSAGE("Native code generation is not supported by the current configuration and will be disabled");
+}
+
 TEST_CASE("Assert")
 {
     runConformance("assert.lua");
@@ -273,7 +281,8 @@ TEST_CASE("Assert")
 
 TEST_CASE("Basic")
 {
-    ScopedFastFlag sff("LuauCompileFixBuiltinArity", true);
+    ScopedFastFlag sffs{"LuauFloorDivision", true};
+    ScopedFastFlag sfff{"LuauImproveForN", true};
 
     runConformance("basic.lua");
 }
@@ -328,8 +337,6 @@ TEST_CASE("Clear")
 
 TEST_CASE("Strings")
 {
-    ScopedFastFlag sff("LuauCompileFixBuiltinArity", true);
-
     runConformance("strings.lua");
 }
 
@@ -360,6 +367,7 @@ TEST_CASE("Errors")
 
 TEST_CASE("Events")
 {
+    ScopedFastFlag sffs{"LuauFloorDivision", true};
     runConformance("events.lua");
 }
 
@@ -441,6 +449,8 @@ TEST_CASE("Pack")
 
 TEST_CASE("Vector")
 {
+    ScopedFastFlag sffs{"LuauFloorDivision", true};
+
     lua_CompileOptions copts = defaultOptions();
     copts.vectorCtor = "vector";
 
@@ -1211,15 +1221,90 @@ TEST_CASE("IfElseExpression")
     runConformance("ifelseexpr.lua");
 }
 
+// Optionally returns debug info for the first Luau stack frame that is encountered on the callstack.
+static std::optional<lua_Debug> getFirstLuauFrameDebugInfo(lua_State* L)
+{
+    static std::string_view kLua = "Lua";
+    lua_Debug ar;
+    for (int i = 0; lua_getinfo(L, i, "sl", &ar); i++)
+    {
+        if (kLua == ar.what)
+            return ar;
+    }
+    return std::nullopt;
+}
+
 TEST_CASE("TagMethodError")
 {
-    runConformance("tmerror.lua", [](lua_State* L) {
-        auto* cb = lua_callbacks(L);
+    static std::vector<int> expectedHits;
 
-        cb->debugprotectederror = [](lua_State* L) {
-            CHECK(lua_isyieldable(L));
-        };
-    });
+    // Loop over two modes:
+    //   when doLuaBreak is false the test only verifies that callbacks occur on the expected lines in the Luau source
+    //   when doLuaBreak is true the test additionally calls lua_break to ensure breaking the debugger doesn't cause the VM to crash
+    for (bool doLuaBreak : {false, true})
+    {
+        std::optional<ScopedFastFlag> sff;
+        if (doLuaBreak)
+        {
+            // If doLuaBreak is true then LuauPCallDebuggerFix must be enabled to avoid crashing the tests.
+            sff = {"LuauPCallDebuggerFix", true};
+        }
+
+        if (FFlag::LuauPCallDebuggerFix)
+        {
+            expectedHits = {22, 32};
+        }
+        else
+        {
+            expectedHits = {
+                9,
+                17,
+                17,
+                22,
+                27,
+                27,
+                32,
+                37,
+            };
+        }
+
+        static int index;
+        static bool luaBreak;
+        index = 0;
+        luaBreak = doLuaBreak;
+
+        // 'yieldCallback' doesn't do anything, but providing the callback to runConformance
+        // ensures that the call to lua_break doesn't cause an error to be generated because
+        // runConformance doesn't expect the VM to be in the state LUA_BREAK.
+        auto yieldCallback = [](lua_State* L) {};
+
+        runConformance(
+            "tmerror.lua",
+            [](lua_State* L) {
+                auto* cb = lua_callbacks(L);
+
+                cb->debugprotectederror = [](lua_State* L) {
+                    std::optional<lua_Debug> ar = getFirstLuauFrameDebugInfo(L);
+
+                    CHECK(lua_isyieldable(L));
+                    REQUIRE(ar.has_value());
+                    REQUIRE(index < int(std::size(expectedHits)));
+                    CHECK(ar->currentline == expectedHits[index++]);
+
+                    if (luaBreak)
+                    {
+                        // Cause luau execution to break when 'error' is called via 'pcall'
+                        // This call to lua_break is a regression test for an issue where debugprotectederror
+                        // was called on a thread that couldn't be yielded even though lua_isyieldable was true.
+                        lua_break(L);
+                    }
+                };
+            },
+            yieldCallback);
+
+        // Make sure the number of break points hit was the expected number
+        CHECK(index == std::size(expectedHits));
+    }
 }
 
 TEST_CASE("Coverage")
@@ -1538,6 +1623,9 @@ static void pushInt64(lua_State* L, int64_t value)
 
 TEST_CASE("Userdata")
 {
+
+    ScopedFastFlag sffs{"LuauFloorDivision", true};
+
     runConformance("userdata.lua", [](lua_State* L) {
         // create metatable with all the metamethods
         lua_newtable(L);
@@ -1657,6 +1745,19 @@ TEST_CASE("Userdata")
             nullptr);
         lua_setfield(L, -2, "__div");
 
+        // __idiv
+        lua_pushcfunction(
+            L,
+            [](lua_State* L) {
+                // for testing we use different semantics here compared to __div: __idiv rounds to negative inf, __div truncates (rounds to zero)
+                // additionally, division loses precision here outside of 2^53 range
+                // we do not necessarily recommend this behavior in production code!
+                pushInt64(L, int64_t(floor(double(getInt64(L, 1)) / double(getInt64(L, 2)))));
+                return 1;
+            },
+            nullptr);
+        lua_setfield(L, -2, "__idiv");
+
         // __mod
         lua_pushcfunction(
             L,
@@ -1726,7 +1827,6 @@ TEST_CASE("Native")
 TEST_CASE("NativeTypeAnnotations")
 {
     ScopedFastFlag bytecodeVersion4("BytecodeVersion4", true);
-    ScopedFastFlag luauCompileFunctionType("LuauCompileFunctionType", true);
 
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())

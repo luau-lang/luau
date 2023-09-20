@@ -14,16 +14,21 @@
 #include <math.h>
 #include <string.h>
 
+LUAU_FASTINTVARIABLE(LuauCodeGenBlockSize, 4 * 1024 * 1024)
+LUAU_FASTINTVARIABLE(LuauCodeGenMaxTotalSize, 256 * 1024 * 1024)
+
 namespace Luau
 {
 namespace CodeGen
 {
 
-constexpr unsigned kBlockSize = 4 * 1024 * 1024;
-constexpr unsigned kMaxTotalSize = 256 * 1024 * 1024;
-
 NativeState::NativeState()
-    : codeAllocator(kBlockSize, kMaxTotalSize)
+    : NativeState(nullptr, nullptr)
+{
+}
+
+NativeState::NativeState(AllocationCallback* allocationCallback, void* allocationCallbackContext)
+    : codeAllocator{size_t(FInt::LuauCodeGenBlockSize), size_t(FInt::LuauCodeGenMaxTotalSize), allocationCallback, allocationCallbackContext}
 {
 }
 
@@ -39,7 +44,6 @@ void initFunctions(NativeState& data)
     data.context.luaV_equalval = luaV_equalval;
     data.context.luaV_doarith = luaV_doarith;
     data.context.luaV_dolen = luaV_dolen;
-    data.context.luaV_prepareFORN = luaV_prepareFORN;
     data.context.luaV_gettable = luaV_gettable;
     data.context.luaV_settable = luaV_settable;
     data.context.luaV_getimport = luaV_getimport;
@@ -49,6 +53,7 @@ void initFunctions(NativeState& data)
     data.context.luaH_new = luaH_new;
     data.context.luaH_clone = luaH_clone;
     data.context.luaH_resizearray = luaH_resizearray;
+    data.context.luaH_setnum = luaH_setnum;
 
     data.context.luaC_barriertable = luaC_barriertable;
     data.context.luaC_barrierf = luaC_barrierf;

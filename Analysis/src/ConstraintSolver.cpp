@@ -22,6 +22,7 @@
 #include "Luau/VisitType.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
+LUAU_FASTFLAG(LuauFloorDivision);
 
 namespace Luau
 {
@@ -429,6 +430,35 @@ bool ConstraintSolver::isDone()
     return unsolvedConstraints.empty();
 }
 
+namespace
+{
+
+struct TypeAndLocation
+{
+    TypeId typeId;
+    Location location;
+};
+
+struct FreeTypeSearcher : TypeOnceVisitor
+{
+    std::deque<TypeAndLocation>* result;
+    Location location;
+
+    FreeTypeSearcher(std::deque<TypeAndLocation>* result, Location location)
+        : result(result)
+        , location(location)
+    {
+    }
+
+    bool visit(TypeId ty, const FreeType&) override
+    {
+        result->push_back({ty, location});
+        return false;
+    }
+};
+
+} // namespace
+
 void ConstraintSolver::finalizeModule()
 {
     Anyification a{arena, rootScope, builtinTypes, &iceReporter, builtinTypes->anyType, builtinTypes->anyTypePack};
@@ -445,12 +475,28 @@ void ConstraintSolver::finalizeModule()
 
     Unifier2 u2{NotNull{arena}, builtinTypes, NotNull{&iceReporter}};
 
+    std::deque<TypeAndLocation> queue;
     for (auto& [name, binding] : rootScope->bindings)
+        queue.push_back({binding.typeId, binding.location});
+
+    DenseHashSet<TypeId> seen{nullptr};
+
+    while (!queue.empty())
     {
-        auto generalizedTy = u2.generalize(rootScope, binding.typeId);
-        if (generalizedTy)
-            binding.typeId = *generalizedTy;
-        else
+        TypeAndLocation binding = queue.front();
+        queue.pop_front();
+
+        TypeId ty = follow(binding.typeId);
+
+        if (seen.find(ty))
+            continue;
+        seen.insert(ty);
+
+        FreeTypeSearcher fts{&queue, binding.location};
+        fts.traverse(ty);
+
+        auto result = u2.generalize(rootScope, ty);
+        if (!result)
             reportError(CodeTooComplex{}, binding.location);
     }
 }
@@ -719,6 +765,8 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     // Metatables go first, even if there is primitive behavior.
     if (auto it = kBinaryOpMetamethods.find(c.op); it != kBinaryOpMetamethods.end())
     {
+        LUAU_ASSERT(FFlag::LuauFloorDivision || c.op != AstExprBinary::Op::FloorDiv);
+
         // Metatables are not the same. The metamethod will not be invoked.
         if ((c.op == AstExprBinary::Op::CompareEq || c.op == AstExprBinary::Op::CompareNe) &&
             getMetatable(leftType, builtinTypes) != getMetatable(rightType, builtinTypes))
@@ -806,9 +854,12 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     case AstExprBinary::Op::Sub:
     case AstExprBinary::Op::Mul:
     case AstExprBinary::Op::Div:
+    case AstExprBinary::Op::FloorDiv:
     case AstExprBinary::Op::Pow:
     case AstExprBinary::Op::Mod:
     {
+        LUAU_ASSERT(FFlag::LuauFloorDivision || c.op != AstExprBinary::Op::FloorDiv);
+
         const NormalizedType* normLeftTy = normalizer->normalize(leftType);
         if (hasTypeInIntersection<FreeType>(leftType) && force)
             asMutable(leftType)->ty.emplace<BoundType>(anyPresent ? builtinTypes->anyType : builtinTypes->numberType);
@@ -2636,20 +2687,14 @@ ErrorVec ConstraintSolver::unify(NotNull<Scope> scope, Location location, TypeId
 
 ErrorVec ConstraintSolver::unify(NotNull<Scope> scope, Location location, TypePackId subPack, TypePackId superPack)
 {
-    UnifierSharedState sharedState{&iceReporter};
-    Unifier u{normalizer, scope, Location{}, Covariant};
-    u.enableNewSolver();
+    Unifier2 u{arena, builtinTypes, NotNull{&iceReporter}};
 
-    u.tryUnify(subPack, superPack);
+    u.unify(subPack, superPack);
 
-    const auto [changedTypes, changedPacks] = u.log.getChanges();
+    unblock(subPack, Location{});
+    unblock(superPack, Location{});
 
-    u.log.commit();
-
-    unblock(changedTypes, Location{});
-    unblock(changedPacks, Location{});
-
-    return std::move(u.errors);
+    return {};
 }
 
 NotNull<Constraint> ConstraintSolver::pushConstraint(NotNull<Scope> scope, const Location& location, ConstraintV cv)
@@ -2725,41 +2770,6 @@ TypeId ConstraintSolver::errorRecoveryType() const
 TypePackId ConstraintSolver::errorRecoveryTypePack() const
 {
     return builtinTypes->errorRecoveryTypePack();
-}
-
-TypeId ConstraintSolver::unionOfTypes(TypeId a, TypeId b, NotNull<Scope> scope, bool unifyFreeTypes)
-{
-    a = follow(a);
-    b = follow(b);
-
-    if (unifyFreeTypes && (get<FreeType>(a) || get<FreeType>(b)))
-    {
-        Unifier u{normalizer, scope, Location{}, Covariant};
-        u.enableNewSolver();
-        u.tryUnify(b, a);
-
-        if (u.errors.empty())
-        {
-            u.log.commit();
-            return a;
-        }
-        else
-        {
-            return builtinTypes->errorRecoveryType(builtinTypes->anyType);
-        }
-    }
-
-    if (*a == *b)
-        return a;
-
-    std::vector<TypeId> types = reduceUnion({a, b});
-    if (types.empty())
-        return builtinTypes->neverType;
-
-    if (types.size() == 1)
-        return types[0];
-
-    return arena->addType(UnionType{types});
 }
 
 TypePackId ConstraintSolver::anyifyModuleReturnTypePackGenerics(TypePackId tp)

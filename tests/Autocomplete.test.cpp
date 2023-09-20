@@ -15,7 +15,6 @@
 
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
-LUAU_FASTFLAG(LuauAutocompleteLastTypecheck)
 
 using namespace Luau;
 
@@ -34,36 +33,27 @@ struct ACFixtureImpl : BaseType
 
     AutocompleteResult autocomplete(unsigned row, unsigned column)
     {
-        if (FFlag::LuauAutocompleteLastTypecheck)
-        {
-            FrontendOptions opts;
-            opts.forAutocomplete = true;
-            this->frontend.check("MainModule", opts);
-        }
+        FrontendOptions opts;
+        opts.forAutocomplete = true;
+        this->frontend.check("MainModule", opts);
 
         return Luau::autocomplete(this->frontend, "MainModule", Position{row, column}, nullCallback);
     }
 
     AutocompleteResult autocomplete(char marker, StringCompletionCallback callback = nullCallback)
     {
-        if (FFlag::LuauAutocompleteLastTypecheck)
-        {
-            FrontendOptions opts;
-            opts.forAutocomplete = true;
-            this->frontend.check("MainModule", opts);
-        }
+        FrontendOptions opts;
+        opts.forAutocomplete = true;
+        this->frontend.check("MainModule", opts);
 
         return Luau::autocomplete(this->frontend, "MainModule", getPosition(marker), callback);
     }
 
     AutocompleteResult autocomplete(const ModuleName& name, Position pos, StringCompletionCallback callback = nullCallback)
     {
-        if (FFlag::LuauAutocompleteLastTypecheck)
-        {
-            FrontendOptions opts;
-            opts.forAutocomplete = true;
-            this->frontend.check(name, opts);
-        }
+        FrontendOptions opts;
+        opts.forAutocomplete = true;
+        this->frontend.check(name, opts);
 
         return Luau::autocomplete(this->frontend, name, pos, callback);
     }
@@ -80,7 +70,7 @@ struct ACFixtureImpl : BaseType
         {
             if (prevChar == '@')
             {
-                LUAU_ASSERT("Illegal marker character" && c >= '0' && c <= '9');
+                LUAU_ASSERT("Illegal marker character" && ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z')));
                 LUAU_ASSERT("Duplicate marker found" && markerPosition.count(c) == 0);
                 markerPosition.insert(std::pair{c, curPos});
             }
@@ -126,7 +116,6 @@ struct ACFixtureImpl : BaseType
         LUAU_ASSERT(i != markerPosition.end());
         return i->second;
     }
-    ScopedFastFlag flag{"LuauAutocompleteHideSelfArg", true};
     // Maps a marker character (0-9 inclusive) to a position in the source code.
     std::map<char, Position> markerPosition;
 };
@@ -985,6 +974,33 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_end_with_lambda")
     auto ac = autocomplete('1');
     CHECK_EQ(ac.entryMap.count("end"), 1);
     CHECK_EQ(ac.context, AutocompleteContext::Statement);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_end_of_do_block")
+{
+    ScopedFastFlag sff{"LuauAutocompleteDoEnd", true};
+
+    check("do @1");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("end"));
+
+    check(R"(
+        function f()
+            do
+                @1
+        end
+        @2
+    )");
+
+    ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("end"));
+
+    ac = autocomplete('2');
+
+    CHECK(ac.entryMap.count("end"));
 }
 
 TEST_CASE_FIXTURE(ACFixture, "stop_at_first_stat_when_recommending_keywords")
@@ -3083,6 +3099,86 @@ TEST_CASE_FIXTURE(ACFixture, "string_singleton_as_table_key")
     CHECK(ac.entryMap.count("\"down\""));
 }
 
+// https://github.com/Roblox/luau/issues/858
+TEST_CASE_FIXTURE(ACFixture, "string_singleton_in_if_statement")
+{
+    ScopedFastFlag sff{"LuauAutocompleteStringLiteralBounds", true};
+
+    check(R"(
+        --!strict
+
+        type Direction = "left" | "right"
+
+        local dir: Direction = "left"
+
+        if dir == @1"@2"@3 then end
+        local a: {[Direction]: boolean} = {[@4"@5"@6]}
+
+        if dir == @7`@8`@9 then end
+        local a: {[Direction]: boolean} = {[@A`@B`@C]}
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
+
+    ac = autocomplete('2');
+
+    CHECK(ac.entryMap.count("left"));
+    CHECK(ac.entryMap.count("right"));
+
+    ac = autocomplete('3');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
+
+    ac = autocomplete('4');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
+
+    ac = autocomplete('5');
+
+    CHECK(ac.entryMap.count("left"));
+    CHECK(ac.entryMap.count("right"));
+
+    ac = autocomplete('6');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
+
+    ac = autocomplete('7');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
+
+    ac = autocomplete('8');
+
+    CHECK(ac.entryMap.count("left"));
+    CHECK(ac.entryMap.count("right"));
+
+    ac = autocomplete('9');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
+
+    ac = autocomplete('A');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
+
+    ac = autocomplete('B');
+
+    CHECK(ac.entryMap.count("left"));
+    CHECK(ac.entryMap.count("right"));
+
+    ac = autocomplete('C');
+
+    CHECK(!ac.entryMap.count("left"));
+    CHECK(!ac.entryMap.count("right"));
+}
+
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_equality")
 {
     check(R"(
@@ -3556,8 +3652,6 @@ TEST_CASE_FIXTURE(ACFixture, "frontend_use_correct_global_scope")
 
 TEST_CASE_FIXTURE(ACFixture, "string_completion_outside_quotes")
 {
-    ScopedFastFlag flag{"LuauDisableCompletionOutsideQuotes", true};
-
     loadDefinition(R"(
         declare function require(path: string): any
     )");
@@ -3573,8 +3667,7 @@ TEST_CASE_FIXTURE(ACFixture, "string_completion_outside_quotes")
     )");
 
     StringCompletionCallback callback = [](std::string, std::optional<const ClassType*>,
-                                            std::optional<std::string> contents) -> std::optional<AutocompleteEntryMap>
-    {
+                                            std::optional<std::string> contents) -> std::optional<AutocompleteEntryMap> {
         Luau::AutocompleteEntryMap results = {{"test", Luau::AutocompleteEntry{Luau::AutocompleteEntryKind::String, std::nullopt, false, false}}};
         return results;
     };
@@ -3595,8 +3688,6 @@ TEST_CASE_FIXTURE(ACFixture, "string_completion_outside_quotes")
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_empty")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo(a: () -> ())
     a()
@@ -3618,8 +3709,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_args")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo(a: (number, string) -> ())
     a()
@@ -3641,8 +3730,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_args_single_return")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo(a: (number, string) -> (string))
     a()
@@ -3664,8 +3751,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_args_multi_return")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo(a: (number, string) -> (string, number))
     a()
@@ -3687,8 +3772,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled__noargs_multi_return")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo(a: () -> (string, number))
     a()
@@ -3710,8 +3793,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled__varargs_multi_return")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo(a: (...number) -> (string, number))
     a()
@@ -3733,8 +3814,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_multi_varargs_multi_return")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo(a: (string, ...number) -> (string, number))
     a()
@@ -3756,8 +3835,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_multi_varargs_varargs_return")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo(a: (string, ...number) -> ...number)
     a()
@@ -3779,8 +3856,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_multi_varargs_multi_varargs_return")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo(a: (string, ...number) -> (boolean, ...number))
     a()
@@ -3802,8 +3877,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_named_args")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo(a: (foo: number, bar: string) -> (string, number))
     a()
@@ -3825,8 +3898,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_partially_args")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo(a: (number, bar: string) -> (string, number))
     a()
@@ -3848,8 +3919,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_partially_args_last")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo(a: (foo: number, string) -> (string, number))
     a()
@@ -3871,8 +3940,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_typeof_args")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local t = { a = 1, b = 2 }
 
@@ -3896,8 +3963,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_table_literal_args")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo(a: (tbl: { x: number, y: number }) -> number) return a({x=2, y = 3}) end
 foo(@1)
@@ -3916,8 +3981,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_typeof_returns")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local t = { a = 1, b = 2 }
 
@@ -3941,8 +4004,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_table_literal_args")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo(a: () -> { x: number, y: number }) return {x=2, y = 3} end
 foo(@1)
@@ -3961,8 +4022,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_typeof_vararg")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local t = { a = 1, b = 2 }
 
@@ -3986,8 +4045,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_generic_type_pack_vararg")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo<A>(a: (...A) -> number, ...: A)
 	return a(...)
@@ -4009,8 +4066,6 @@ foo(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "anonymous_autofilled_generic_on_argument_type_pack_vararg")
 {
-    ScopedFastFlag flag{"LuauAnonymousAutofilled1", true};
-
     check(R"(
 local function foo(a: <T...>(...: T...) -> number)
 	return a(4, 5, 6)

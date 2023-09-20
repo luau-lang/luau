@@ -24,15 +24,6 @@ struct EntryLocations
     Label epilogueStart;
 };
 
-static void emitClearNativeFlag(AssemblyBuilderA64& build)
-{
-    build.ldr(x0, mem(rState, offsetof(lua_State, ci)));
-    build.ldr(w1, mem(x0, offsetof(CallInfo, flags)));
-    build.mov(w2, ~LUA_CALLINFO_NATIVE);
-    build.and_(w1, w1, w2);
-    build.str(w1, mem(x0, offsetof(CallInfo, flags)));
-}
-
 static void emitExit(AssemblyBuilderA64& build, bool continueInVm)
 {
     build.mov(x0, continueInVm);
@@ -40,14 +31,21 @@ static void emitExit(AssemblyBuilderA64& build, bool continueInVm)
     build.br(x1);
 }
 
-static void emitUpdatePcAndContinueInVm(AssemblyBuilderA64& build)
+static void emitUpdatePcForExit(AssemblyBuilderA64& build)
 {
     // x0 = pcpos * sizeof(Instruction)
     build.add(x0, rCode, x0);
     build.ldr(x1, mem(rState, offsetof(lua_State, ci)));
     build.str(x0, mem(x1, offsetof(CallInfo, savedpc)));
+}
 
-    emitExit(build, /* continueInVm */ true);
+static void emitClearNativeFlag(AssemblyBuilderA64& build)
+{
+    build.ldr(x0, mem(rState, offsetof(lua_State, ci)));
+    build.ldr(w1, mem(x0, offsetof(CallInfo, flags)));
+    build.mov(w2, ~LUA_CALLINFO_NATIVE);
+    build.and_(w1, w1, w2);
+    build.str(w1, mem(x0, offsetof(CallInfo, flags)));
 }
 
 static void emitInterrupt(AssemblyBuilderA64& build)
@@ -227,6 +225,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     build.stp(x19, x20, mem(sp, 16));
     build.stp(x21, x22, mem(sp, 32));
     build.stp(x23, x24, mem(sp, 48));
+    build.str(x25, mem(sp, 64));
 
     build.mov(x29, sp); // this is only necessary if we maintain frame pointers, which we do in the JIT for now
 
@@ -237,6 +236,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     // Setup native execution environment
     build.mov(rState, x0);
     build.mov(rNativeContext, x3);
+    build.ldr(rGlobalState, mem(x0, offsetof(lua_State, global)));
 
     build.ldr(rBase, mem(x0, offsetof(lua_State, base))); // L->base
 
@@ -254,6 +254,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     locations.epilogueStart = build.setLabel();
 
     // Cleanup and exit
+    build.ldr(x25, mem(sp, 64));
     build.ldp(x23, x24, mem(sp, 48));
     build.ldp(x21, x22, mem(sp, 32));
     build.ldp(x19, x20, mem(sp, 16));
@@ -264,7 +265,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
 
     // Our entry function is special, it spans the whole remaining code area
     unwind.startFunction();
-    unwind.prologueA64(prologueSize, kStackSize, {x29, x30, x19, x20, x21, x22, x23, x24});
+    unwind.prologueA64(prologueSize, kStackSize, {x29, x30, x19, x20, x21, x22, x23, x24, x25});
     unwind.finishFunction(build.getLabelOffset(locations.start), kFullBlockFuncton);
 
     return locations;
@@ -306,6 +307,11 @@ bool initHeaderFunctions(NativeState& data)
 void assembleHelpers(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 {
     if (build.logText)
+        build.logAppend("; updatePcAndContinueInVm\n");
+    build.setLabel(helpers.updatePcAndContinueInVm);
+    emitUpdatePcForExit(build);
+
+    if (build.logText)
         build.logAppend("; exitContinueVmClearNativeFlag\n");
     build.setLabel(helpers.exitContinueVmClearNativeFlag);
     emitClearNativeFlag(build);
@@ -319,11 +325,6 @@ void assembleHelpers(AssemblyBuilderA64& build, ModuleHelpers& helpers)
         build.logAppend("; exitNoContinueVm\n");
     build.setLabel(helpers.exitNoContinueVm);
     emitExit(build, /* continueInVm */ false);
-
-    if (build.logText)
-        build.logAppend("; updatePcAndContinueInVm\n");
-    build.setLabel(helpers.updatePcAndContinueInVm);
-    emitUpdatePcAndContinueInVm(build);
 
     if (build.logText)
         build.logAppend("; reentry\n");

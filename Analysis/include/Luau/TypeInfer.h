@@ -57,17 +57,6 @@ struct HashBoolNamePair
     size_t operator()(const std::pair<bool, Name>& pair) const;
 };
 
-struct GlobalTypes
-{
-    GlobalTypes(NotNull<BuiltinTypes> builtinTypes);
-
-    NotNull<BuiltinTypes> builtinTypes; // Global types are based on builtin types
-
-    TypeArena globalTypes;
-    SourceModule globalNames; // names for symbols entered into globalScope
-    ScopePtr globalScope;     // shared by all modules
-};
-
 // All Types are retained via Environment::types.  All TypeIds
 // within a program are borrowed pointers into this set.
 struct TypeChecker

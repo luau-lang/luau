@@ -19,23 +19,29 @@ namespace CodeGen
 
 struct ModuleHelpers;
 struct AssemblyOptions;
+struct LoweringStats;
 
 namespace X64
 {
 
 struct IrLoweringX64
 {
-    IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, IrFunction& function);
+    IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, IrFunction& function, LoweringStats* stats);
 
-    void lowerInst(IrInst& inst, uint32_t index, IrBlock& next);
-    void finishBlock();
+    void lowerInst(IrInst& inst, uint32_t index, const IrBlock& next);
+    void finishBlock(const IrBlock& curr, const IrBlock& next);
     void finishFunction();
 
     bool hasError() const;
 
-    bool isFallthroughBlock(IrBlock target, IrBlock next);
-    void jumpOrFallthrough(IrBlock& target, IrBlock& next);
-    void jumpOrAbortOnUndef(ConditionX64 cond, ConditionX64 condInverse, IrOp targetOrUndef, bool continueInVm = false);
+    bool isFallthroughBlock(const IrBlock& target, const IrBlock& next);
+    void jumpOrFallthrough(IrBlock& target, const IrBlock& next);
+
+    Label& getTargetLabel(IrOp op, Label& fresh);
+    void finalizeTargetLabel(IrOp op, Label& fresh);
+
+    void jumpOrAbortOnUndef(ConditionX64 cond, IrOp target, const IrBlock& next);
+    void jumpOrAbortOnUndef(IrOp target, const IrBlock& next);
 
     void storeDoubleAsFloat(OperandX64 dst, IrOp src);
 
@@ -71,6 +77,7 @@ struct IrLoweringX64
     ModuleHelpers& helpers;
 
     IrFunction& function;
+    LoweringStats* stats = nullptr;
 
     IrRegAllocX64 regs;
 

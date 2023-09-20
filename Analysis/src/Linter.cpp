@@ -14,47 +14,8 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
-LUAU_FASTFLAGVARIABLE(LuauLintNativeComment, false)
-
 namespace Luau
 {
-
-// clang-format off
-static const char* kWarningNames[] = {
-    "Unknown",
-
-    "UnknownGlobal",
-    "DeprecatedGlobal",
-    "GlobalUsedAsLocal",
-    "LocalShadow",
-    "SameLineStatement",
-    "MultiLineStatement",
-    "LocalUnused",
-    "FunctionUnused",
-    "ImportUnused",
-    "BuiltinGlobalWrite",
-    "PlaceholderRead",
-    "UnreachableCode",
-    "UnknownType",
-    "ForRange",
-    "UnbalancedAssignment",
-    "ImplicitReturn",
-    "DuplicateLocal",
-    "FormatString",
-    "TableLiteral",
-    "UninitializedLocal",
-    "DuplicateFunction",
-    "DeprecatedApi",
-    "TableOperations",
-    "DuplicateCondition",
-    "MisleadingAndOr",
-    "CommentDirective",
-    "IntegerParsing",
-    "ComparisonPrecedence",
-};
-// clang-format on
-
-static_assert(std::size(kWarningNames) == unsigned(LintWarning::Code__Count), "did you forget to add warning to the list?");
 
 struct LintContext
 {
@@ -2827,11 +2788,11 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
                             "optimize directive uses unknown optimization level '%s', 0..2 expected", level);
                 }
             }
-            else if (FFlag::LuauLintNativeComment && first == "native")
+            else if (first == "native")
             {
                 if (space != std::string::npos)
-                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
-                        "native directive has extra symbols at the end of the line");
+                    emitWarning(
+                        context, LintWarning::Code_CommentDirective, hc.location, "native directive has extra symbols at the end of the line");
             }
             else
             {
@@ -2853,12 +2814,6 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
             }
         }
     }
-}
-
-void LintOptions::setDefaults()
-{
-    // By default, we enable all warnings
-    warningMask = ~0ull;
 }
 
 std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const ScopePtr& env, const Module* module,
@@ -2950,54 +2905,6 @@ std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const Sc
     std::sort(context.result.begin(), context.result.end(), WarningComparator());
 
     return context.result;
-}
-
-const char* LintWarning::getName(Code code)
-{
-    LUAU_ASSERT(unsigned(code) < Code__Count);
-
-    return kWarningNames[code];
-}
-
-LintWarning::Code LintWarning::parseName(const char* name)
-{
-    for (int code = Code_Unknown; code < Code__Count; ++code)
-        if (strcmp(name, getName(Code(code))) == 0)
-            return Code(code);
-
-    return Code_Unknown;
-}
-
-uint64_t LintWarning::parseMask(const std::vector<HotComment>& hotcomments)
-{
-    uint64_t result = 0;
-
-    for (const HotComment& hc : hotcomments)
-    {
-        if (!hc.header)
-            continue;
-
-        if (hc.content.compare(0, 6, "nolint") != 0)
-            continue;
-
-        size_t name = hc.content.find_first_not_of(" \t", 6);
-
-        // --!nolint disables everything
-        if (name == std::string::npos)
-            return ~0ull;
-
-        // --!nolint needs to be followed by a whitespace character
-        if (name == 6)
-            continue;
-
-        // --!nolint name disables the specific lint
-        LintWarning::Code code = LintWarning::parseName(hc.content.c_str() + name);
-
-        if (code != LintWarning::Code_Unknown)
-            result |= 1ull << int(code);
-    }
-
-    return result;
 }
 
 std::vector<AstName> getDeprecatedGlobals(const AstNameTable& names)

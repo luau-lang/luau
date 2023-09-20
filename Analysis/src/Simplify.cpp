@@ -2,10 +2,12 @@
 
 #include "Luau/Simplify.h"
 
+#include "Luau/Normalize.h" // TypeIds
 #include "Luau/RecursionCounter.h"
 #include "Luau/ToString.h"
 #include "Luau/TypeArena.h"
-#include "Luau/Normalize.h" // TypeIds
+#include "Luau/TypeUtils.h"
+
 #include <algorithm>
 
 LUAU_FASTINT(LuauTypeReductionRecursionLimit)
@@ -46,14 +48,6 @@ struct TypeSimplifier
     TypeId simplify(TypeId ty);
     TypeId simplify(TypeId ty, DenseHashSet<TypeId>& seen);
 };
-
-template<typename A, typename B, typename TID>
-static std::pair<const A*, const B*> get2(TID one, TID two)
-{
-    const A* a = get<A>(one);
-    const B* b = get<B>(two);
-    return a && b ? std::make_pair(a, b) : std::make_pair(nullptr, nullptr);
-}
 
 // Match the exact type false|nil
 static bool isFalsyType(TypeId ty)

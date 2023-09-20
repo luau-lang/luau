@@ -2,6 +2,7 @@
 #include "IrRegAllocA64.h"
 
 #include "Luau/AssemblyBuilderA64.h"
+#include "Luau/CodeGen.h"
 #include "Luau/IrUtils.h"
 
 #include "BitUtils.h"
@@ -70,9 +71,9 @@ static int getReloadOffset(IrCmd cmd)
     LUAU_UNREACHABLE();
 }
 
-static AddressA64 getReloadAddress(const IrFunction& function, const IrInst& inst)
+static AddressA64 getReloadAddress(const IrFunction& function, const IrInst& inst, bool limitToCurrentBlock)
 {
-    IrOp location = function.findRestoreOp(inst);
+    IrOp location = function.findRestoreOp(inst, limitToCurrentBlock);
 
     if (location.kind == IrOpKind::VmReg)
         return mem(rBase, vmRegOp(location) * sizeof(TValue) + getReloadOffset(inst.cmd));
@@ -99,7 +100,7 @@ static void restoreInst(AssemblyBuilderA64& build, uint32_t& freeSpillSlots, IrF
     else
     {
         LUAU_ASSERT(!inst.spilled && inst.needsReload);
-        AddressA64 addr = getReloadAddress(function, function.instructions[s.inst]);
+        AddressA64 addr = getReloadAddress(function, function.instructions[s.inst], /*limitToCurrentBlock*/ false);
         LUAU_ASSERT(addr.base != xzr);
         build.ldr(reg, addr);
     }
@@ -109,8 +110,9 @@ static void restoreInst(AssemblyBuilderA64& build, uint32_t& freeSpillSlots, IrF
     inst.regA64 = reg;
 }
 
-IrRegAllocA64::IrRegAllocA64(IrFunction& function, std::initializer_list<std::pair<RegisterA64, RegisterA64>> regs)
+IrRegAllocA64::IrRegAllocA64(IrFunction& function, LoweringStats* stats, std::initializer_list<std::pair<RegisterA64, RegisterA64>> regs)
     : function(function)
+    , stats(stats)
 {
     for (auto& p : regs)
     {
@@ -321,7 +323,7 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
             {
                 // instead of spilling the register to never reload it, we assume the register is not needed anymore
             }
-            else if (getReloadAddress(function, def).base != xzr)
+            else if (getReloadAddress(function, def, /*limitToCurrentBlock*/ true).base != xzr)
             {
                 // instead of spilling the register to stack, we can reload it from VM stack/constants
                 // we still need to record the spill for restore(start) to work
@@ -329,6 +331,9 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
                 spills.push_back(s);
 
                 def.needsReload = true;
+
+                if (stats)
+                    stats->spillsToRestore++;
             }
             else
             {
@@ -345,6 +350,14 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
                 spills.push_back(s);
 
                 def.spilled = true;
+
+                if (stats)
+                {
+                    stats->spillsToSlot++;
+
+                    if (slot != kInvalidSpill && unsigned(slot + 1) > stats->maxSpillSlotsUsed)
+                        stats->maxSpillSlotsUsed = slot + 1;
+                }
             }
 
             def.regA64 = noreg;
@@ -409,11 +422,6 @@ void IrRegAllocA64::restoreReg(AssemblyBuilderA64& build, IrInst& inst)
     }
 
     LUAU_ASSERT(!"Expected to find a spill record");
-}
-
-void IrRegAllocA64::assertNoSpills() const
-{
-    LUAU_ASSERT(spills.empty());
 }
 
 IrRegAllocA64::Set& IrRegAllocA64::getSet(KindA64 kind)

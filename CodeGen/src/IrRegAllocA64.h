@@ -12,6 +12,9 @@ namespace Luau
 {
 namespace CodeGen
 {
+
+struct LoweringStats;
+
 namespace A64
 {
 
@@ -19,7 +22,7 @@ class AssemblyBuilderA64;
 
 struct IrRegAllocA64
 {
-    IrRegAllocA64(IrFunction& function, std::initializer_list<std::pair<RegisterA64, RegisterA64>> regs);
+    IrRegAllocA64(IrFunction& function, LoweringStats* stats, std::initializer_list<std::pair<RegisterA64, RegisterA64>> regs);
 
     RegisterA64 allocReg(KindA64 kind, uint32_t index);
     RegisterA64 allocTemp(KindA64 kind);
@@ -42,8 +45,6 @@ struct IrRegAllocA64
 
     // Restores register for a single instruction; may not assign the previously used register!
     void restoreReg(AssemblyBuilderA64& build, IrInst& inst);
-
-    void assertNoSpills() const;
 
     struct Set
     {
@@ -71,6 +72,7 @@ struct IrRegAllocA64
     Set& getSet(KindA64 kind);
 
     IrFunction& function;
+    LoweringStats* stats = nullptr;
     Set gpr, simd;
 
     std::vector<Spill> spills;

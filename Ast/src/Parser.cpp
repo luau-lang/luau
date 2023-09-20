@@ -14,8 +14,7 @@
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauParseDeclareClassIndexer, false)
-
-#define ERROR_INVALID_INTERP_DOUBLE_BRACE "Double braces are not permitted within interpolated strings. Did you mean '\\{'?"
+LUAU_FASTFLAG(LuauFloorDivision)
 
 namespace Luau
 {
@@ -462,11 +461,11 @@ AstStat* Parser::parseDo()
     Lexeme matchDo = lexer.current();
     nextLexeme(); // do
 
-    AstStat* body = parseBlock();
+    AstStatBlock* body = parseBlock();
 
     body->location.begin = start.begin;
 
-    expectMatchEndAndConsume(Lexeme::ReservedEnd, matchDo);
+    body->hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchDo);
 
     return body;
 }
@@ -899,13 +898,13 @@ AstStat* Parser::parseDeclaration(const Location& start)
                 expectAndConsume(':', "property type annotation");
                 AstType* type = parseType();
 
-                // TODO: since AstName conains a char*, it can't contain null
+                // since AstName contains a char*, it can't contain null
                 bool containsNull = chars && (strnlen(chars->data, chars->size) < chars->size);
 
                 if (chars && !containsNull)
                     props.push_back(AstDeclaredClassProp{AstName(chars->data), type, false});
                 else
-                    report(begin.location, "String literal contains malformed escape sequence");
+                    report(begin.location, "String literal contains malformed escape sequence or \\0");
             }
             else if (lexer.current().type == '[' && FFlag::LuauParseDeclareClassIndexer)
             {
@@ -1328,13 +1327,13 @@ AstType* Parser::parseTableType()
 
             AstType* type = parseType();
 
-            // TODO: since AstName conains a char*, it can't contain null
+            // since AstName contains a char*, it can't contain null
             bool containsNull = chars && (strnlen(chars->data, chars->size) < chars->size);
 
             if (chars && !containsNull)
                 props.push_back({AstName(chars->data), begin.location, type});
             else
-                report(begin.location, "String literal contains malformed escape sequence");
+                report(begin.location, "String literal contains malformed escape sequence or \\0");
         }
         else if (lexer.current().type == '[')
         {
@@ -1622,7 +1621,7 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack)
     else if (lexer.current().type == Lexeme::BrokenString)
     {
         nextLexeme();
-        return {reportTypeError(start, {}, "Malformed string")};
+        return {reportTypeError(start, {}, "Malformed string; did you forget to finish it?")};
     }
     else if (lexer.current().type == Lexeme::Name)
     {
@@ -1741,7 +1740,8 @@ AstTypePack* Parser::parseTypePack()
         return allocator.alloc<AstTypePackGeneric>(Location(name.location, end), name.name);
     }
 
-    // No type pack annotation exists here.
+    // TODO: shouldParseTypePack can be removed and parseTypePack can be called unconditionally instead
+    LUAU_ASSERT(!"parseTypePack can't be called if shouldParseTypePack() returned false");
     return nullptr;
 }
 
@@ -1767,6 +1767,12 @@ std::optional<AstExprBinary::Op> Parser::parseBinaryOp(const Lexeme& l)
         return AstExprBinary::Mul;
     else if (l.type == '/')
         return AstExprBinary::Div;
+    else if (l.type == Lexeme::FloorDiv)
+    {
+        LUAU_ASSERT(FFlag::LuauFloorDivision);
+
+        return AstExprBinary::FloorDiv;
+    }
     else if (l.type == '%')
         return AstExprBinary::Mod;
     else if (l.type == '^')
@@ -1803,6 +1809,12 @@ std::optional<AstExprBinary::Op> Parser::parseCompoundOp(const Lexeme& l)
         return AstExprBinary::Mul;
     else if (l.type == Lexeme::DivAssign)
         return AstExprBinary::Div;
+    else if (l.type == Lexeme::FloorDivAssign)
+    {
+        LUAU_ASSERT(FFlag::LuauFloorDivision);
+
+        return AstExprBinary::FloorDiv;
+    }
     else if (l.type == Lexeme::ModAssign)
         return AstExprBinary::Mod;
     else if (l.type == Lexeme::PowAssign)
@@ -1826,7 +1838,7 @@ std::optional<AstExprUnary::Op> Parser::checkUnaryConfusables()
 
     if (curr.type == '!')
     {
-        report(start, "Unexpected '!', did you mean 'not'?");
+        report(start, "Unexpected '!'; did you mean 'not'?");
         return AstExprUnary::Not;
     }
 
@@ -1848,20 +1860,20 @@ std::optional<AstExprBinary::Op> Parser::checkBinaryConfusables(const BinaryOpPr
     if (curr.type == '&' && next.type == '&' && curr.location.end == next.location.begin && binaryPriority[AstExprBinary::And].left > limit)
     {
         nextLexeme();
-        report(Location(start, next.location), "Unexpected '&&', did you mean 'and'?");
+        report(Location(start, next.location), "Unexpected '&&'; did you mean 'and'?");
         return AstExprBinary::And;
     }
     else if (curr.type == '|' && next.type == '|' && curr.location.end == next.location.begin && binaryPriority[AstExprBinary::Or].left > limit)
     {
         nextLexeme();
-        report(Location(start, next.location), "Unexpected '||', did you mean 'or'?");
+        report(Location(start, next.location), "Unexpected '||'; did you mean 'or'?");
         return AstExprBinary::Or;
     }
     else if (curr.type == '!' && next.type == '=' && curr.location.end == next.location.begin &&
              binaryPriority[AstExprBinary::CompareNe].left > limit)
     {
         nextLexeme();
-        report(Location(start, next.location), "Unexpected '!=', did you mean '~='?");
+        report(Location(start, next.location), "Unexpected '!='; did you mean '~='?");
         return AstExprBinary::CompareNe;
     }
 
@@ -1873,12 +1885,13 @@ std::optional<AstExprBinary::Op> Parser::checkBinaryConfusables(const BinaryOpPr
 AstExpr* Parser::parseExpr(unsigned int limit)
 {
     static const BinaryOpPriority binaryPriority[] = {
-        {6, 6}, {6, 6}, {7, 7}, {7, 7}, {7, 7}, // `+' `-' `*' `/' `%'
-        {10, 9}, {5, 4},                        // power and concat (right associative)
-        {3, 3}, {3, 3},                         // equality and inequality
-        {3, 3}, {3, 3}, {3, 3}, {3, 3},         // order
-        {2, 2}, {1, 1}                          // logical (and/or)
+        {6, 6}, {6, 6}, {7, 7}, {7, 7}, {7, 7}, {7, 7}, // `+' `-' `*' `/' `//' `%'
+        {10, 9}, {5, 4},                                // power and concat (right associative)
+        {3, 3}, {3, 3},                                 // equality and inequality
+        {3, 3}, {3, 3}, {3, 3}, {3, 3},                 // order
+        {2, 2}, {1, 1}                                  // logical (and/or)
     };
+    static_assert(sizeof(binaryPriority) / sizeof(binaryPriority[0]) == size_t(AstExprBinary::Op__Count), "binaryPriority needs an entry per op");
 
     unsigned int recursionCounterOld = recursionCounter;
 
@@ -2169,12 +2182,12 @@ AstExpr* Parser::parseSimpleExpr()
     else if (lexer.current().type == Lexeme::BrokenString)
     {
         nextLexeme();
-        return reportExprError(start, {}, "Malformed string");
+        return reportExprError(start, {}, "Malformed string; did you forget to finish it?");
     }
     else if (lexer.current().type == Lexeme::BrokenInterpDoubleBrace)
     {
         nextLexeme();
-        return reportExprError(start, {}, ERROR_INVALID_INTERP_DOUBLE_BRACE);
+        return reportExprError(start, {}, "Double braces are not permitted within interpolated strings; did you mean '\\{'?");
     }
     else if (lexer.current().type == Lexeme::Dot3)
     {
@@ -2312,7 +2325,7 @@ AstExpr* Parser::parseTableConstructor()
             nameString.data = const_cast<char*>(name.name.value);
             nameString.size = strlen(name.name.value);
 
-            AstExpr* key = allocator.alloc<AstExprConstantString>(name.location, nameString);
+            AstExpr* key = allocator.alloc<AstExprConstantString>(name.location, nameString, AstExprConstantString::Unquoted);
             AstExpr* value = parseExpr();
 
             if (AstExprFunction* func = value->as<AstExprFunction>())
@@ -2661,7 +2674,7 @@ AstExpr* Parser::parseInterpString()
         {
             errorWhileChecking = true;
             nextLexeme();
-            expressions.push_back(reportExprError(endLocation, {}, "Malformed interpolated string, did you forget to add a '`'?"));
+            expressions.push_back(reportExprError(endLocation, {}, "Malformed interpolated string; did you forget to add a '`'?"));
             break;
         }
         default:
@@ -2681,10 +2694,10 @@ AstExpr* Parser::parseInterpString()
             break;
         case Lexeme::BrokenInterpDoubleBrace:
             nextLexeme();
-            return reportExprError(endLocation, {}, ERROR_INVALID_INTERP_DOUBLE_BRACE);
+            return reportExprError(endLocation, {}, "Double braces are not permitted within interpolated strings; did you mean '\\{'?");
         case Lexeme::BrokenString:
             nextLexeme();
-            return reportExprError(endLocation, {}, "Malformed interpolated string, did you forget to add a '}'?");
+            return reportExprError(endLocation, {}, "Malformed interpolated string; did you forget to add a '}'?");
         default:
             return reportExprError(endLocation, {}, "Malformed interpolated string, got %s", lexer.current().toString().c_str());
         }

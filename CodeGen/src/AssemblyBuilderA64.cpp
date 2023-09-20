@@ -5,6 +5,7 @@
 #include "ByteUtils.h"
 
 #include <stdarg.h>
+#include <stdio.h>
 
 namespace Luau
 {
@@ -104,7 +105,10 @@ void AssemblyBuilderA64::movk(RegisterA64 dst, uint16_t src, int shift)
 
 void AssemblyBuilderA64::add(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, int shift)
 {
-    placeSR3("add", dst, src1, src2, 0b00'01011, shift);
+    if (src1.kind == KindA64::x && src2.kind == KindA64::w)
+        placeER("add", dst, src1, src2, 0b00'01011, shift);
+    else
+        placeSR3("add", dst, src1, src2, 0b00'01011, shift);
 }
 
 void AssemblyBuilderA64::add(RegisterA64 dst, RegisterA64 src1, uint16_t src2)
@@ -114,7 +118,10 @@ void AssemblyBuilderA64::add(RegisterA64 dst, RegisterA64 src1, uint16_t src2)
 
 void AssemblyBuilderA64::sub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, int shift)
 {
-    placeSR3("sub", dst, src1, src2, 0b10'01011, shift);
+    if (src1.kind == KindA64::x && src2.kind == KindA64::w)
+        placeER("sub", dst, src1, src2, 0b10'01011, shift);
+    else
+        placeSR3("sub", dst, src1, src2, 0b10'01011, shift);
 }
 
 void AssemblyBuilderA64::sub(RegisterA64 dst, RegisterA64 src1, uint16_t src2)
@@ -1074,6 +1081,22 @@ void AssemblyBuilderA64::placeBFM(const char* name, RegisterA64 dst, RegisterA64
     commit();
 }
 
+void AssemblyBuilderA64::placeER(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t op, int shift)
+{
+    if (logText)
+        log(name, dst, src1, src2, shift);
+
+    LUAU_ASSERT(dst.kind == KindA64::x && src1.kind == KindA64::x);
+    LUAU_ASSERT(src2.kind == KindA64::w);
+    LUAU_ASSERT(shift >= 0 && shift <= 4);
+
+    uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0; // could be useful in the future for byte->word extends
+    int option = 0b010;                                      // UXTW
+
+    place(dst.index | (src1.index << 5) | (shift << 10) | (option << 13) | (src2.index << 16) | (1 << 21) | (op << 24) | sf);
+    commit();
+}
+
 void AssemblyBuilderA64::place(uint32_t word)
 {
     LUAU_ASSERT(codePos < codeEnd);
@@ -1166,7 +1189,9 @@ void AssemblyBuilderA64::log(const char* opcode, RegisterA64 dst, RegisterA64 sr
     log(src1);
     text.append(",");
     log(src2);
-    if (shift > 0)
+    if (src1.kind == KindA64::x && src2.kind == KindA64::w)
+        logAppend(" UXTW #%d", shift);
+    else if (shift > 0)
         logAppend(" LSL #%d", shift);
     else if (shift < 0)
         logAppend(" LSR #%d", -shift);

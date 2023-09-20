@@ -37,6 +37,13 @@ bench.runCode(function()
 end, "interp: interp number")
 
 bench.runCode(function()
+    local ok = "hello!"
+    for j=1,1e6 do
+        local _ = string.format("j=%s", ok)
+    end
+end, "interp: %s format")
+
+bench.runCode(function()
 	local ok = "hello!"
     for j=1,1e6 do
         local _ = `j={ok}`

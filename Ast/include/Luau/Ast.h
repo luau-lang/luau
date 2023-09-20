@@ -272,11 +272,18 @@ class AstExprConstantString : public AstExpr
 public:
     LUAU_RTTI(AstExprConstantString)
 
-    AstExprConstantString(const Location& location, const AstArray<char>& value);
+    enum QuoteStyle
+    {
+        Quoted,
+        Unquoted
+    };
+
+    AstExprConstantString(const Location& location, const AstArray<char>& value, QuoteStyle quoteStyle = Quoted);
 
     void visit(AstVisitor* visitor) override;
 
     AstArray<char> value;
+    QuoteStyle quoteStyle = Quoted;
 };
 
 class AstExprLocal : public AstExpr
@@ -450,6 +457,7 @@ public:
         Sub,
         Mul,
         Div,
+        FloorDiv,
         Mod,
         Pow,
         Concat,
@@ -460,7 +468,9 @@ public:
         CompareGt,
         CompareGe,
         And,
-        Or
+        Or,
+
+        Op__Count
     };
 
     AstExprBinary(const Location& location, Op op, AstExpr* left, AstExpr* right);
@@ -524,11 +534,12 @@ class AstStatBlock : public AstStat
 public:
     LUAU_RTTI(AstStatBlock)
 
-    AstStatBlock(const Location& location, const AstArray<AstStat*>& body);
+    AstStatBlock(const Location& location, const AstArray<AstStat*>& body, bool hasEnd = true);
 
     void visit(AstVisitor* visitor) override;
 
     AstArray<AstStat*> body;
+    bool hasEnd = false;
 };
 
 class AstStatIf : public AstStat

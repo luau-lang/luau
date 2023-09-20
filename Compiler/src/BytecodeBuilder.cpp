@@ -1,12 +1,15 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BytecodeBuilder.h"
 
+#include "Luau/BytecodeUtils.h"
 #include "Luau/StringUtils.h"
 
 #include <algorithm>
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(BytecodeVersion4, false)
+
+LUAU_FASTFLAG(LuauFloorDivision)
 
 namespace Luau
 {
@@ -53,39 +56,6 @@ static void writeVarInt(std::string& ss, unsigned int value)
         writeByte(ss, (value & 127) | ((value > 127) << 7));
         value >>= 7;
     } while (value);
-}
-
-static int getOpLength(LuauOpcode op)
-{
-    switch (op)
-    {
-    case LOP_GETGLOBAL:
-    case LOP_SETGLOBAL:
-    case LOP_GETIMPORT:
-    case LOP_GETTABLEKS:
-    case LOP_SETTABLEKS:
-    case LOP_NAMECALL:
-    case LOP_JUMPIFEQ:
-    case LOP_JUMPIFLE:
-    case LOP_JUMPIFLT:
-    case LOP_JUMPIFNOTEQ:
-    case LOP_JUMPIFNOTLE:
-    case LOP_JUMPIFNOTLT:
-    case LOP_NEWTABLE:
-    case LOP_SETLIST:
-    case LOP_FORGLOOP:
-    case LOP_LOADKX:
-    case LOP_FASTCALL2:
-    case LOP_FASTCALL2K:
-    case LOP_JUMPXEQKNIL:
-    case LOP_JUMPXEQKB:
-    case LOP_JUMPXEQKN:
-    case LOP_JUMPXEQKS:
-        return 2;
-
-    default:
-        return 1;
-    }
 }
 
 inline bool isJumpD(LuauOpcode op)
@@ -262,16 +232,19 @@ void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uin
     validate();
 #endif
 
+    // this call is indirect to make sure we only gain link time dependency on dumpCurrentFunction when needed
+    if (dumpFunctionPtr)
+        func.dump = (this->*dumpFunctionPtr)(func.dumpinstoffs);
+
     // very approximate: 4 bytes per instruction for code, 1 byte for debug line, and 1-2 bytes for aux data like constants plus overhead
     func.data.reserve(32 + insns.size() * 7);
+
+    if (encoder)
+        encoder->encode(insns.data(), insns.size());
 
     writeFunction(func.data, currentFunction, flags);
 
     currentFunction = ~0u;
-
-    // this call is indirect to make sure we only gain link time dependency on dumpCurrentFunction when needed
-    if (dumpFunctionPtr)
-        func.dump = (this->*dumpFunctionPtr)(func.dumpinstoffs);
 
     insns.clear();
     lines.clear();
@@ -653,21 +626,8 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
     // instructions
     writeVarInt(ss, uint32_t(insns.size()));
 
-    for (size_t i = 0; i < insns.size();)
-    {
-        uint8_t op = LUAU_INSN_OP(insns[i]);
-        LUAU_ASSERT(op < LOP__COUNT);
-
-        int oplen = getOpLength(LuauOpcode(op));
-        uint8_t openc = encoder ? encoder->encodeOp(op) : op;
-
-        writeInt(ss, openc | (insns[i] & ~0xff));
-
-        for (int j = 1; j < oplen; ++j)
-            writeInt(ss, insns[i + j]);
-
-        i += oplen;
-    }
+    for (uint32_t insn : insns)
+        writeInt(ss, insn);
 
     // constants
     writeVarInt(ss, uint32_t(constants.size()));
@@ -1326,8 +1286,11 @@ void BytecodeBuilder::validateInstructions() const
         case LOP_SUB:
         case LOP_MUL:
         case LOP_DIV:
+        case LOP_IDIV:
         case LOP_MOD:
         case LOP_POW:
+            LUAU_ASSERT(FFlag::LuauFloorDivision || op != LOP_IDIV);
+
             VREG(LUAU_INSN_A(insn));
             VREG(LUAU_INSN_B(insn));
             VREG(LUAU_INSN_C(insn));
@@ -1337,8 +1300,11 @@ void BytecodeBuilder::validateInstructions() const
         case LOP_SUBK:
         case LOP_MULK:
         case LOP_DIVK:
+        case LOP_IDIVK:
         case LOP_MODK:
         case LOP_POWK:
+            LUAU_ASSERT(FFlag::LuauFloorDivision || op != LOP_IDIVK);
+
             VREG(LUAU_INSN_A(insn));
             VREG(LUAU_INSN_B(insn));
             VCONST(LUAU_INSN_C(insn), Number);
@@ -1905,6 +1871,12 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         formatAppend(result, "DIV R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
         break;
 
+    case LOP_IDIV:
+        LUAU_ASSERT(FFlag::LuauFloorDivision);
+
+        formatAppend(result, "IDIV R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        break;
+
     case LOP_MOD:
         formatAppend(result, "MOD R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
         break;
@@ -1933,6 +1905,14 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
 
     case LOP_DIVK:
         formatAppend(result, "DIVK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        dumpConstant(result, LUAU_INSN_C(insn));
+        result.append("]\n");
+        break;
+
+    case LOP_IDIVK:
+        LUAU_ASSERT(FFlag::LuauFloorDivision);
+
+        formatAppend(result, "IDIVK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
         dumpConstant(result, LUAU_INSN_C(insn));
         result.append("]\n");
         break;

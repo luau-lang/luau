@@ -25,6 +25,7 @@ LUAU_FASTFLAG(DebugLuauLogSolverToJson);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
 LUAU_FASTFLAG(LuauParseDeclareClassIndexer);
 LUAU_FASTFLAG(LuauLoopControlFlowAnalysis);
+LUAU_FASTFLAG(LuauFloorDivision);
 
 namespace Luau
 {
@@ -420,17 +421,17 @@ void ConstraintGraphBuilder::applyRefinements(const ScopePtr& scope, Location lo
                 {
                     switch (shouldSuppressErrors(normalizer, ty))
                     {
-                        case ErrorSuppression::DoNotSuppress:
-                            ty = simplifyIntersection(builtinTypes, arena, ty, dt).result;
-                            break;
-                        case ErrorSuppression::Suppress:
-                            ty = simplifyIntersection(builtinTypes, arena, ty, dt).result;
-                            ty = simplifyUnion(builtinTypes, arena, ty, builtinTypes->errorType).result;
-                            break;
-                        case ErrorSuppression::NormalizationFailed:
-                            reportError(location, NormalizationTooComplex{});
-                            ty = simplifyIntersection(builtinTypes, arena, ty, dt).result;
-                            break;
+                    case ErrorSuppression::DoNotSuppress:
+                        ty = simplifyIntersection(builtinTypes, arena, ty, dt).result;
+                        break;
+                    case ErrorSuppression::Suppress:
+                        ty = simplifyIntersection(builtinTypes, arena, ty, dt).result;
+                        ty = simplifyUnion(builtinTypes, arena, ty, builtinTypes->errorType).result;
+                        break;
+                    case ErrorSuppression::NormalizationFailed:
+                        reportError(location, NormalizationTooComplex{});
+                        ty = simplifyIntersection(builtinTypes, arena, ty, dt).result;
+                        break;
                     }
                 }
             }
@@ -1188,7 +1189,8 @@ static bool isMetamethod(const Name& name)
 {
     return name == "__index" || name == "__newindex" || name == "__call" || name == "__concat" || name == "__unm" || name == "__add" ||
            name == "__sub" || name == "__mul" || name == "__div" || name == "__mod" || name == "__pow" || name == "__tostring" ||
-           name == "__metatable" || name == "__eq" || name == "__lt" || name == "__le" || name == "__mode" || name == "__iter" || name == "__len";
+           name == "__metatable" || name == "__eq" || name == "__lt" || name == "__le" || name == "__mode" || name == "__iter" || name == "__len" ||
+           (FFlag::LuauFloorDivision && name == "__idiv");
 }
 
 ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareClass* declaredClass)

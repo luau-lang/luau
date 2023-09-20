@@ -1,5 +1,7 @@
 # Floor division operator
 
+**Status**: Implemented
+
 ## Summary
 
 Add floor division operator `//` to ease computing with integers.

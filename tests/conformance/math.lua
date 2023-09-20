@@ -82,6 +82,7 @@ assert(not(1>1) and not(1>2) and (2>1))
 assert(not('a'>'a') and not('a'>'b') and ('b'>'a'))
 assert((1>=1) and not(1>=2) and (2>=1))
 assert(('a'>='a') and not('a'>='b') and ('b'>='a'))
+assert((unk and unk > 0) == nil) -- validate precedence between and and >
 
 -- testing mod operator
 assert(-4%3 == 2)
@@ -186,6 +187,26 @@ do   -- testing NaN
   a[1] = 1
   assert(not pcall(function () a[NaN] = 1 end))
   assert(a[NaN] == nil)
+end
+
+-- extra NaN tests, hidden in a function
+do
+  function neq(a) return a ~= a end
+  function eq(a) return a == a end
+  function lt(a) return a < a end
+  function le(a) return a <= a end
+  function gt(a) return a > a end
+  function ge(a) return a >= a end
+
+  local NaN -- to avoid constant folding
+  NaN = 10e500 - 10e400
+
+  assert(neq(NaN))
+  assert(not eq(NaN))
+  assert(not lt(NaN))
+  assert(not le(NaN))
+  assert(not gt(NaN))
+  assert(not ge(NaN))
 end
 
 -- require "checktable"

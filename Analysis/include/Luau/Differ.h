@@ -128,10 +128,10 @@ struct DiffError
         checkValidInitialization(left, right);
     }
 
-    std::string toString() const;
+    std::string toString(bool multiLine = false) const;
 
 private:
-    std::string toStringALeaf(std::string rootName, const DiffPathNodeLeaf& leaf, const DiffPathNodeLeaf& otherLeaf) const;
+    std::string toStringALeaf(std::string rootName, const DiffPathNodeLeaf& leaf, const DiffPathNodeLeaf& otherLeaf, bool multiLine) const;
     void checkValidInitialization(const DiffPathNodeLeaf& left, const DiffPathNodeLeaf& right);
     void checkNonMissingPropertyLeavesHaveNulloptTableProperty() const;
 };
@@ -152,12 +152,17 @@ struct DifferEnvironment
 {
     TypeId rootLeft;
     TypeId rootRight;
+    std::optional<std::string> externalSymbolLeft;
+    std::optional<std::string> externalSymbolRight;
     DenseHashMap<TypeId, TypeId> genericMatchedPairs;
     DenseHashMap<TypePackId, TypePackId> genericTpMatchedPairs;
 
-    DifferEnvironment(TypeId rootLeft, TypeId rootRight)
+    DifferEnvironment(
+        TypeId rootLeft, TypeId rootRight, std::optional<std::string> externalSymbolLeft, std::optional<std::string> externalSymbolRight)
         : rootLeft(rootLeft)
         , rootRight(rootRight)
+        , externalSymbolLeft(externalSymbolLeft)
+        , externalSymbolRight(externalSymbolRight)
         , genericMatchedPairs(nullptr)
         , genericTpMatchedPairs(nullptr)
     {
@@ -170,6 +175,8 @@ struct DifferEnvironment
     void popVisiting();
     std::vector<std::pair<TypeId, TypeId>>::const_reverse_iterator visitingBegin() const;
     std::vector<std::pair<TypeId, TypeId>>::const_reverse_iterator visitingEnd() const;
+    std::string getDevFixFriendlyNameLeft() const;
+    std::string getDevFixFriendlyNameRight() const;
 
 private:
     // TODO: consider using DenseHashSet
@@ -179,6 +186,7 @@ private:
     std::vector<std::pair<TypeId, TypeId>> visitingStack;
 };
 DifferResult diff(TypeId ty1, TypeId ty2);
+DifferResult diffWithSymbols(TypeId ty1, TypeId ty2, std::optional<std::string> symbol1, std::optional<std::string> symbol2);
 
 /**
  * True if ty is a "simple" type, i.e. cannot contain types.

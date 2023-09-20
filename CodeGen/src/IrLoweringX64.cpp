@@ -1,12 +1,11 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "IrLoweringX64.h"
 
-#include "Luau/CodeGen.h"
 #include "Luau/DenseHash.h"
-#include "Luau/IrAnalysis.h"
-#include "Luau/IrCallWrapperX64.h"
-#include "Luau/IrDump.h"
+#include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
+
+#include "Luau/IrCallWrapperX64.h"
 
 #include "EmitBuiltinsX64.h"
 #include "EmitCommonX64.h"
@@ -14,6 +13,7 @@
 #include "NativeState.h"
 
 #include "lstate.h"
+#include "lgc.h"
 
 namespace Luau
 {
@@ -22,11 +22,12 @@ namespace CodeGen
 namespace X64
 {
 
-IrLoweringX64::IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, IrFunction& function)
+IrLoweringX64::IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, IrFunction& function, LoweringStats* stats)
     : build(build)
     , helpers(helpers)
     , function(function)
-    , regs(build, function)
+    , stats(stats)
+    , regs(build, function, stats)
     , valueTracker(function)
     , exitHandlerMap(~0u)
 {
@@ -59,7 +60,7 @@ void IrLoweringX64::storeDoubleAsFloat(OperandX64 dst, IrOp src)
     build.vmovss(dst, tmp.reg);
 }
 
-void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
+void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 {
     regs.currInstIdx = index;
 
@@ -111,22 +112,21 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.mov(inst.regX64, luauRegValueInt(vmRegOp(inst.a)));
         break;
     case IrCmd::LOAD_TVALUE:
+    {
         inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
+
+        int addrOffset = inst.b.kind != IrOpKind::None ? intOp(inst.b) : 0;
 
         if (inst.a.kind == IrOpKind::VmReg)
             build.vmovups(inst.regX64, luauReg(vmRegOp(inst.a)));
         else if (inst.a.kind == IrOpKind::VmConst)
             build.vmovups(inst.regX64, luauConstant(vmConstOp(inst.a)));
         else if (inst.a.kind == IrOpKind::Inst)
-            build.vmovups(inst.regX64, xmmword[regOp(inst.a)]);
+            build.vmovups(inst.regX64, xmmword[regOp(inst.a) + addrOffset]);
         else
             LUAU_ASSERT(!"Unsupported instruction form");
         break;
-    case IrCmd::LOAD_NODE_VALUE_TV:
-        inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
-
-        build.vmovups(inst.regX64, luauNodeValue(regOp(inst.a)));
-        break;
+    }
     case IrCmd::LOAD_ENV:
         inst.regX64 = regs.allocReg(SizeX64::qword, index);
 
@@ -252,16 +252,59 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         storeDoubleAsFloat(luauRegValueVector(vmRegOp(inst.a), 2), inst.d);
         break;
     case IrCmd::STORE_TVALUE:
+    {
+        int addrOffset = inst.c.kind != IrOpKind::None ? intOp(inst.c) : 0;
+
         if (inst.a.kind == IrOpKind::VmReg)
             build.vmovups(luauReg(vmRegOp(inst.a)), regOp(inst.b));
         else if (inst.a.kind == IrOpKind::Inst)
-            build.vmovups(xmmword[regOp(inst.a)], regOp(inst.b));
+            build.vmovups(xmmword[regOp(inst.a) + addrOffset], regOp(inst.b));
         else
             LUAU_ASSERT(!"Unsupported instruction form");
         break;
-    case IrCmd::STORE_NODE_VALUE_TV:
-        build.vmovups(luauNodeValue(regOp(inst.a)), regOp(inst.b));
+    }
+    case IrCmd::STORE_SPLIT_TVALUE:
+    {
+        int addrOffset = inst.d.kind != IrOpKind::None ? intOp(inst.d) : 0;
+
+        OperandX64 tagLhs = inst.a.kind == IrOpKind::Inst ? dword[regOp(inst.a) + offsetof(TValue, tt) + addrOffset] : luauRegTag(vmRegOp(inst.a));
+        build.mov(tagLhs, tagOp(inst.b));
+
+        if (tagOp(inst.b) == LUA_TBOOLEAN)
+        {
+            OperandX64 valueLhs =
+                inst.a.kind == IrOpKind::Inst ? dword[regOp(inst.a) + offsetof(TValue, value) + addrOffset] : luauRegValueInt(vmRegOp(inst.a));
+            build.mov(valueLhs, inst.c.kind == IrOpKind::Constant ? OperandX64(intOp(inst.c)) : regOp(inst.c));
+        }
+        else if (tagOp(inst.b) == LUA_TNUMBER)
+        {
+            OperandX64 valueLhs =
+                inst.a.kind == IrOpKind::Inst ? qword[regOp(inst.a) + offsetof(TValue, value) + addrOffset] : luauRegValue(vmRegOp(inst.a));
+
+            if (inst.c.kind == IrOpKind::Constant)
+            {
+                ScopedRegX64 tmp{regs, SizeX64::xmmword};
+
+                build.vmovsd(tmp.reg, build.f64(doubleOp(inst.c)));
+                build.vmovsd(valueLhs, tmp.reg);
+            }
+            else
+            {
+                build.vmovsd(valueLhs, regOp(inst.c));
+            }
+        }
+        else if (isGCO(tagOp(inst.b)))
+        {
+            OperandX64 valueLhs =
+                inst.a.kind == IrOpKind::Inst ? qword[regOp(inst.a) + offsetof(TValue, value) + addrOffset] : luauRegValue(vmRegOp(inst.a));
+            build.mov(valueLhs, regOp(inst.c));
+        }
+        else
+        {
+            LUAU_ASSERT(!"Unsupported instruction form");
+        }
         break;
+    }
     case IrCmd::ADD_INT:
     {
         inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
@@ -364,6 +407,22 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         {
             build.vdivsd(inst.regX64, regOp(inst.a), memRegDoubleOp(inst.b));
         }
+        break;
+    case IrCmd::IDIV_NUM:
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});
+
+        if (inst.a.kind == IrOpKind::Constant)
+        {
+            ScopedRegX64 tmp{regs, SizeX64::xmmword};
+
+            build.vmovsd(tmp.reg, memRegDoubleOp(inst.a));
+            build.vdivsd(inst.regX64, tmp.reg, memRegDoubleOp(inst.b));
+        }
+        else
+        {
+            build.vdivsd(inst.regX64, regOp(inst.a), memRegDoubleOp(inst.b));
+        }
+        build.vroundsd(inst.regX64, inst.regX64, inst.regX64, RoundingModeX64::RoundToNegativeInfinity);
         break;
     case IrCmd::MOD_NUM:
     {
@@ -565,24 +624,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         break;
     }
     case IrCmd::JUMP:
-        if (inst.a.kind == IrOpKind::VmExit)
-        {
-            if (uint32_t* index = exitHandlerMap.find(inst.a.index))
-            {
-                build.jmp(exitHandlers[*index].self);
-            }
-            else
-            {
-                Label self;
-                build.jmp(self);
-                exitHandlerMap[inst.a.index] = uint32_t(exitHandlers.size());
-                exitHandlers.push_back({self, inst.a.index});
-            }
-        }
-        else
-        {
-            jumpOrFallthrough(blockOp(inst.a), next);
-        }
+        jumpOrAbortOnUndef(inst.a, next);
         break;
     case IrCmd::JUMP_IF_TRUTHY:
         jumpIfTruthy(build, vmRegOp(inst.a), labelOp(inst.b), labelOp(inst.c));
@@ -597,7 +639,10 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         LUAU_ASSERT(inst.b.kind == IrOpKind::Inst || inst.b.kind == IrOpKind::Constant);
         OperandX64 opb = inst.b.kind == IrOpKind::Inst ? regOp(inst.b) : OperandX64(tagOp(inst.b));
 
-        build.cmp(memRegTagOp(inst.a), opb);
+        if (inst.a.kind == IrOpKind::Constant)
+            build.cmp(opb, tagOp(inst.a));
+        else
+            build.cmp(memRegTagOp(inst.a), opb);
 
         if (isFallthroughBlock(blockOp(inst.d), next))
         {
@@ -611,42 +656,36 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         }
         break;
     }
-    case IrCmd::JUMP_EQ_INT:
-        if (intOp(inst.b) == 0)
+    case IrCmd::JUMP_CMP_INT:
+    {
+        IrCondition cond = conditionOp(inst.c);
+
+        if ((cond == IrCondition::Equal || cond == IrCondition::NotEqual) && intOp(inst.b) == 0)
         {
+            bool invert = cond == IrCondition::NotEqual;
+
             build.test(regOp(inst.a), regOp(inst.a));
 
-            if (isFallthroughBlock(blockOp(inst.c), next))
+            if (isFallthroughBlock(blockOp(inst.d), next))
             {
-                build.jcc(ConditionX64::NotZero, labelOp(inst.d));
-                jumpOrFallthrough(blockOp(inst.c), next);
+                build.jcc(invert ? ConditionX64::Zero : ConditionX64::NotZero, labelOp(inst.e));
+                jumpOrFallthrough(blockOp(inst.d), next);
             }
             else
             {
-                build.jcc(ConditionX64::Zero, labelOp(inst.c));
-                jumpOrFallthrough(blockOp(inst.d), next);
+                build.jcc(invert ? ConditionX64::NotZero : ConditionX64::Zero, labelOp(inst.d));
+                jumpOrFallthrough(blockOp(inst.e), next);
             }
         }
         else
         {
             build.cmp(regOp(inst.a), intOp(inst.b));
 
-            build.jcc(ConditionX64::Equal, labelOp(inst.c));
-            jumpOrFallthrough(blockOp(inst.d), next);
+            build.jcc(getConditionInt(cond), labelOp(inst.d));
+            jumpOrFallthrough(blockOp(inst.e), next);
         }
         break;
-    case IrCmd::JUMP_LT_INT:
-        build.cmp(regOp(inst.a), intOp(inst.b));
-
-        build.jcc(ConditionX64::Less, labelOp(inst.c));
-        jumpOrFallthrough(blockOp(inst.d), next);
-        break;
-    case IrCmd::JUMP_GE_UINT:
-        build.cmp(regOp(inst.a), unsigned(intOp(inst.b)));
-
-        build.jcc(ConditionX64::AboveEqual, labelOp(inst.c));
-        jumpOrFallthrough(blockOp(inst.d), next);
-        break;
+    }
     case IrCmd::JUMP_EQ_POINTER:
         build.cmp(regOp(inst.a), regOp(inst.b));
 
@@ -659,7 +698,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         ScopedRegX64 tmp{regs, SizeX64::xmmword};
 
-        // TODO: jumpOnNumberCmp should work on IrCondition directly
         jumpOnNumberCmp(build, tmp.reg, memRegDoubleOp(inst.a), memRegDoubleOp(inst.b), cond, labelOp(inst.d));
         jumpOrFallthrough(blockOp(inst.e), next);
         break;
@@ -669,9 +707,17 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         IrCallWrapperX64 callWrap(regs, build, index);
         callWrap.addArgument(SizeX64::qword, regOp(inst.a), inst.a);
         callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaH_getn)]);
-
-        inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
-        build.vcvtsi2sd(inst.regX64, inst.regX64, eax);
+        inst.regX64 = regs.takeReg(eax, index);
+        break;
+    }
+    case IrCmd::TABLE_SETNUM:
+    {
+        IrCallWrapperX64 callWrap(regs, build, index);
+        callWrap.addArgument(SizeX64::qword, rState);
+        callWrap.addArgument(SizeX64::qword, regOp(inst.a), inst.a);
+        callWrap.addArgument(SizeX64::dword, regOp(inst.b), inst.b);
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaH_setnum)]);
+        inst.regX64 = regs.takeReg(rax, index);
         break;
     }
     case IrCmd::STRING_LEN:
@@ -968,19 +1014,14 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         tmp1.free();
 
-        callBarrierObject(regs, build, tmp2.release(), {}, vmRegOp(inst.b), /* ratag */ -1);
+        if (inst.c.kind == IrOpKind::Undef || isGCO(tagOp(inst.c)))
+            callBarrierObject(regs, build, tmp2.release(), {}, inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c));
         break;
     }
-    case IrCmd::PREPARE_FORN:
-        callPrepareForN(regs, build, vmRegOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c));
-        break;
     case IrCmd::CHECK_TAG:
-    {
-        bool continueInVm = (inst.d.kind == IrOpKind::Constant && intOp(inst.d));
         build.cmp(memRegTagOp(inst.a), tagOp(inst.b));
-        jumpOrAbortOnUndef(ConditionX64::NotEqual, ConditionX64::Equal, inst.c, continueInVm);
+        jumpOrAbortOnUndef(ConditionX64::NotEqual, inst.c, next);
         break;
-    }
     case IrCmd::CHECK_TRUTHY:
     {
         // Constant tags which don't require boolean value check should've been removed in constant folding
@@ -992,7 +1033,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         {
             // Fail to fallback on 'nil' (falsy)
             build.cmp(memRegTagOp(inst.a), LUA_TNIL);
-            jumpOrAbortOnUndef(ConditionX64::Equal, ConditionX64::NotEqual, inst.c);
+            jumpOrAbortOnUndef(ConditionX64::Equal, inst.c, next);
 
             // Skip value test if it's not a boolean (truthy)
             build.cmp(memRegTagOp(inst.a), LUA_TBOOLEAN);
@@ -1001,7 +1042,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         // fail to fallback on 'false' boolean value (falsy)
         build.cmp(memRegUintOp(inst.b), 0);
-        jumpOrAbortOnUndef(ConditionX64::Equal, ConditionX64::NotEqual, inst.c);
+        jumpOrAbortOnUndef(ConditionX64::Equal, inst.c, next);
 
         if (inst.a.kind != IrOpKind::Constant)
             build.setLabel(skip);
@@ -1009,11 +1050,11 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     }
     case IrCmd::CHECK_READONLY:
         build.cmp(byte[regOp(inst.a) + offsetof(Table, readonly)], 0);
-        jumpOrAbortOnUndef(ConditionX64::NotEqual, ConditionX64::Equal, inst.b);
+        jumpOrAbortOnUndef(ConditionX64::NotEqual, inst.b, next);
         break;
     case IrCmd::CHECK_NO_METATABLE:
         build.cmp(qword[regOp(inst.a) + offsetof(Table, metatable)], 0);
-        jumpOrAbortOnUndef(ConditionX64::NotEqual, ConditionX64::Equal, inst.b);
+        jumpOrAbortOnUndef(ConditionX64::NotEqual, inst.b, next);
         break;
     case IrCmd::CHECK_SAFE_ENV:
     {
@@ -1023,7 +1064,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         build.mov(tmp.reg, qword[tmp.reg + offsetof(Closure, env)]);
         build.cmp(byte[tmp.reg + offsetof(Table, safeenv)], 0);
 
-        jumpOrAbortOnUndef(ConditionX64::Equal, ConditionX64::NotEqual, inst.a);
+        jumpOrAbortOnUndef(ConditionX64::Equal, inst.a, next);
         break;
     }
     case IrCmd::CHECK_ARRAY_SIZE:
@@ -1034,7 +1075,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         else
             LUAU_ASSERT(!"Unsupported instruction form");
 
-        jumpOrAbortOnUndef(ConditionX64::BelowEqual, ConditionX64::NotBelowEqual, inst.c);
+        jumpOrAbortOnUndef(ConditionX64::BelowEqual, inst.c, next);
         break;
     case IrCmd::JUMP_SLOT_MATCH:
     case IrCmd::CHECK_SLOT_MATCH:
@@ -1080,7 +1121,13 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
 
         build.mov(tmp.reg, dword[regOp(inst.a) + offsetof(LuaNode, key) + kOffsetOfTKeyTagNext]);
         build.shr(tmp.reg, kTKeyTagBits);
-        jumpOrAbortOnUndef(ConditionX64::NotZero, ConditionX64::Zero, inst.b);
+        jumpOrAbortOnUndef(ConditionX64::NotZero, inst.b, next);
+        break;
+    }
+    case IrCmd::CHECK_NODE_VALUE:
+    {
+        build.cmp(dword[regOp(inst.a) + offsetof(LuaNode, val) + offsetof(TValue, tt)], LUA_TNIL);
+        jumpOrAbortOnUndef(ConditionX64::Equal, inst.b, next);
         break;
     }
     case IrCmd::INTERRUPT:
@@ -1109,7 +1156,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         callStepGc(regs, build);
         break;
     case IrCmd::BARRIER_OBJ:
-        callBarrierObject(regs, build, regOp(inst.a), inst.a, vmRegOp(inst.b), inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c));
+        callBarrierObject(regs, build, regOp(inst.a), inst.a, inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c));
         break;
     case IrCmd::BARRIER_TABLE_BACK:
         callBarrierTableFast(regs, build, regOp(inst.a), inst.a);
@@ -1119,7 +1166,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         Label skip;
 
         ScopedRegX64 tmp{regs, SizeX64::qword};
-        checkObjectBarrierConditions(build, tmp.reg, regOp(inst.a), vmRegOp(inst.b), inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
+
+        checkObjectBarrierConditions(build, tmp.reg, regOp(inst.a), inst.b, inst.c.kind == IrOpKind::Undef ? -1 : tagOp(inst.c), skip);
 
         {
             ScopedSpills spillGuard(regs);
@@ -1182,7 +1230,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
         // Fallbacks to non-IR instruction implementations
     case IrCmd::SETLIST:
         regs.assertAllFree();
-        emitInstSetList(regs, build, vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.d), uintOp(inst.e));
+        emitInstSetList(
+            regs, build, vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.d), uintOp(inst.e), inst.f.kind == IrOpKind::Undef ? -1 : int(uintOp(inst.f)));
         break;
     case IrCmd::CALL:
         regs.assertAllFree();
@@ -1560,9 +1609,17 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, IrBlock& next)
     regs.freeLastUseRegs(inst, index);
 }
 
-void IrLoweringX64::finishBlock()
+void IrLoweringX64::finishBlock(const IrBlock& curr, const IrBlock& next)
 {
-    regs.assertNoSpills();
+    if (!regs.spills.empty())
+    {
+        // If we have spills remaining, we have to immediately lower the successor block
+        for (uint32_t predIdx : predecessors(function.cfg, function.getBlockIndex(next)))
+            LUAU_ASSERT(predIdx == function.getBlockIndex(curr));
+
+        // And the next block cannot be a join block in cfg
+        LUAU_ASSERT(next.useCount == 1);
+    }
 }
 
 void IrLoweringX64::finishFunction()
@@ -1583,9 +1640,21 @@ void IrLoweringX64::finishFunction()
 
     for (ExitHandler& handler : exitHandlers)
     {
+        LUAU_ASSERT(handler.pcpos != kVmExitEntryGuardPc);
+
         build.setLabel(handler.self);
+
         build.mov(edx, handler.pcpos * sizeof(Instruction));
         build.jmp(helpers.updatePcAndContinueInVm);
+    }
+
+    if (stats)
+    {
+        if (regs.maxUsedSlot > kSpillSlots)
+            stats->regAllocErrors++;
+
+        if (regs.maxUsedSlot > stats->maxSpillSlotsUsed)
+            stats->maxSpillSlotsUsed = regs.maxUsedSlot;
     }
 }
 
@@ -1598,50 +1667,81 @@ bool IrLoweringX64::hasError() const
     return false;
 }
 
-bool IrLoweringX64::isFallthroughBlock(IrBlock target, IrBlock next)
+bool IrLoweringX64::isFallthroughBlock(const IrBlock& target, const IrBlock& next)
 {
     return target.start == next.start;
 }
 
-void IrLoweringX64::jumpOrFallthrough(IrBlock& target, IrBlock& next)
+Label& IrLoweringX64::getTargetLabel(IrOp op, Label& fresh)
+{
+    if (op.kind == IrOpKind::Undef)
+        return fresh;
+
+    if (op.kind == IrOpKind::VmExit)
+    {
+        // Special exit case that doesn't have to update pcpos
+        if (vmExitOp(op) == kVmExitEntryGuardPc)
+            return helpers.exitContinueVmClearNativeFlag;
+
+        if (uint32_t* index = exitHandlerMap.find(vmExitOp(op)))
+            return exitHandlers[*index].self;
+
+        return fresh;
+    }
+
+    return labelOp(op);
+}
+
+void IrLoweringX64::finalizeTargetLabel(IrOp op, Label& fresh)
+{
+    if (op.kind == IrOpKind::VmExit && fresh.id != 0 && fresh.id != helpers.exitContinueVmClearNativeFlag.id)
+    {
+        exitHandlerMap[vmExitOp(op)] = uint32_t(exitHandlers.size());
+        exitHandlers.push_back({fresh, vmExitOp(op)});
+    }
+}
+
+void IrLoweringX64::jumpOrFallthrough(IrBlock& target, const IrBlock& next)
 {
     if (!isFallthroughBlock(target, next))
         build.jmp(target.label);
 }
 
-void IrLoweringX64::jumpOrAbortOnUndef(ConditionX64 cond, ConditionX64 condInverse, IrOp targetOrUndef, bool continueInVm)
+void IrLoweringX64::jumpOrAbortOnUndef(ConditionX64 cond, IrOp target, const IrBlock& next)
 {
-    if (targetOrUndef.kind == IrOpKind::Undef)
-    {
-        if (continueInVm)
-        {
-            build.jcc(cond, helpers.exitContinueVmClearNativeFlag);
-            return;
-        }
+    Label fresh;
+    Label& label = getTargetLabel(target, fresh);
 
-        Label skip;
-        build.jcc(condInverse, skip);
-        build.ud2();
-        build.setLabel(skip);
-    }
-    else if (targetOrUndef.kind == IrOpKind::VmExit)
+    if (target.kind == IrOpKind::Undef)
     {
-        if (uint32_t* index = exitHandlerMap.find(targetOrUndef.index))
+        if (cond == ConditionX64::Count)
         {
-            build.jcc(cond, exitHandlers[*index].self);
+            build.ud2(); // Unconditional jump to abort is just an abort
         }
         else
         {
-            Label self;
-            build.jcc(cond, self);
-            exitHandlerMap[targetOrUndef.index] = uint32_t(exitHandlers.size());
-            exitHandlers.push_back({self, targetOrUndef.index});
+            build.jcc(getReverseCondition(cond), label);
+            build.ud2();
+            build.setLabel(label);
         }
+    }
+    else if (cond == ConditionX64::Count)
+    {
+        // Unconditional jump can be skipped if it's a fallthrough
+        if (target.kind == IrOpKind::VmExit || !isFallthroughBlock(blockOp(target), next))
+            build.jmp(label);
     }
     else
     {
-        build.jcc(cond, labelOp(targetOrUndef));
+        build.jcc(cond, label);
     }
+
+    finalizeTargetLabel(target, fresh);
+}
+
+void IrLoweringX64::jumpOrAbortOnUndef(IrOp target, const IrBlock& next)
+{
+    jumpOrAbortOnUndef(ConditionX64::Count, target, next);
 }
 
 OperandX64 IrLoweringX64::memRegDoubleOp(IrOp op)

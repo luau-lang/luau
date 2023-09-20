@@ -98,6 +98,8 @@
  */
 #if defined(__APPLE__)
 #define ABISWITCH(x64, ms32, gcc32) (sizeof(void*) == 8 ? x64 : gcc32)
+#elif defined(__i386__) && defined(__MINGW32__) && !defined(__MINGW64__)
+#define ABISWITCH(x64, ms32, gcc32) (ms32)
 #elif defined(__i386__) && !defined(_MSC_VER)
 #define ABISWITCH(x64, ms32, gcc32) (gcc32)
 #else

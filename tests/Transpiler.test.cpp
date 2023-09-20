@@ -529,14 +529,17 @@ until c
     CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
-TEST_CASE_FIXTURE(Fixture, "transpile_compound_assignmenr")
+TEST_CASE_FIXTURE(Fixture, "transpile_compound_assignment")
 {
+    ScopedFastFlag sffs{"LuauFloorDivision", true};
+
     std::string code = R"(
 local a = 1
 a += 2
 a -= 3
 a *= 4
 a /= 5
+a //= 5
 a %= 6
 a ^= 7
 a ..= ' - result'

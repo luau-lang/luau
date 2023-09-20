@@ -23,6 +23,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
+LUAU_FASTFLAG(LuauFloorDivision);
 
 namespace Luau
 {
@@ -241,8 +242,8 @@ struct TypeChecker2
 
     Normalizer normalizer;
 
-    TypeChecker2(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, NotNull<TypeCheckLimits> limits, DcrLogger* logger, const SourceModule* sourceModule,
-        Module* module)
+    TypeChecker2(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, NotNull<TypeCheckLimits> limits, DcrLogger* logger,
+        const SourceModule* sourceModule, Module* module)
         : builtinTypes(builtinTypes)
         , logger(logger)
         , limits(limits)
@@ -1294,13 +1295,8 @@ struct TypeChecker2
             else if (auto assertion = expr->as<AstExprTypeAssertion>())
                 return isLiteral(assertion->expr);
 
-            return
-                expr->is<AstExprConstantNil>() ||
-                expr->is<AstExprConstantBool>() ||
-                expr->is<AstExprConstantNumber>() ||
-                expr->is<AstExprConstantString>() ||
-                expr->is<AstExprFunction>() ||
-                expr->is<AstExprTable>();
+            return expr->is<AstExprConstantNil>() || expr->is<AstExprConstantBool>() || expr->is<AstExprConstantNumber>() ||
+                   expr->is<AstExprConstantString>() || expr->is<AstExprFunction>() || expr->is<AstExprTable>();
         }
 
         static std::unique_ptr<LiteralProperties> buildLiteralPropertiesSet(AstExpr* expr)
@@ -1422,7 +1418,7 @@ struct TypeChecker2
             LUAU_ASSERT(argOffset == args->head.size());
 
             const Location argLoc = argExprs->empty() ? Location{} // TODO
-                : argExprs->at(argExprs->size() - 1)->location;
+                                                      : argExprs->at(argExprs->size() - 1)->location;
 
             if (paramIter.tail() && args->tail)
             {
@@ -1817,6 +1813,8 @@ struct TypeChecker2
         bool typesHaveIntersection = normalizer.isIntersectionInhabited(leftType, rightType);
         if (auto it = kBinaryOpMetamethods.find(expr->op); it != kBinaryOpMetamethods.end())
         {
+            LUAU_ASSERT(FFlag::LuauFloorDivision || expr->op != AstExprBinary::Op::FloorDiv);
+
             std::optional<TypeId> leftMt = getMetatable(leftType, builtinTypes);
             std::optional<TypeId> rightMt = getMetatable(rightType, builtinTypes);
             bool matches = leftMt == rightMt;
@@ -2002,8 +2000,11 @@ struct TypeChecker2
         case AstExprBinary::Op::Sub:
         case AstExprBinary::Op::Mul:
         case AstExprBinary::Op::Div:
+        case AstExprBinary::Op::FloorDiv:
         case AstExprBinary::Op::Pow:
         case AstExprBinary::Op::Mod:
+            LUAU_ASSERT(FFlag::LuauFloorDivision || expr->op != AstExprBinary::Op::FloorDiv);
+
             reportErrors(tryUnify(scope, expr->left->location, leftType, builtinTypes->numberType));
             reportErrors(tryUnify(scope, expr->right->location, rightType, builtinTypes->numberType));
 
@@ -2680,15 +2681,15 @@ struct TypeChecker2
     }
 };
 
-void check(
-    NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, NotNull<TypeCheckLimits> limits, DcrLogger* logger, const SourceModule& sourceModule, Module* module)
+void check(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, NotNull<TypeCheckLimits> limits, DcrLogger* logger,
+    const SourceModule& sourceModule, Module* module)
 {
     TypeChecker2 typeChecker{builtinTypes, unifierState, limits, logger, &sourceModule, module};
 
     typeChecker.visit(sourceModule.root);
 
     unfreeze(module->interfaceTypes);
-    copyErrors(module->errors, module->interfaceTypes);
+    copyErrors(module->errors, module->interfaceTypes, builtinTypes);
     freeze(module->interfaceTypes);
 }
 

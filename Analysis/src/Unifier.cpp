@@ -25,7 +25,7 @@ LUAU_FASTFLAGVARIABLE(LuauOccursIsntAlwaysFailure, false)
 LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
 LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAGVARIABLE(LuauTableUnifyRecursionLimit, false)
+LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering, false)
 
 namespace Luau
 {
@@ -605,6 +605,10 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         {
             // TODO: there are probably cheaper ways to check if any <: T.
             const NormalizedType* superNorm = normalizer->normalize(superTy);
+
+            if (!superNorm)
+                return reportError(location, UnificationTooComplex{});
+
             if (!log.get<AnyType>(superNorm->tops))
                 failure = true;
         }
@@ -2256,23 +2260,13 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
 
         if (superTable != newSuperTable || subTable != newSubTable)
         {
-            if (FFlag::LuauTableUnifyRecursionLimit)
+            if (errors.empty())
             {
-                if (errors.empty())
-                {
-                    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
-                    tryUnifyTables(subTy, superTy, isIntersection);
-                }
+                RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                tryUnifyTables(subTy, superTy, isIntersection);
+            }
 
-                return;
-            }
-            else
-            {
-                if (errors.empty())
-                    return tryUnifyTables(subTy, superTy, isIntersection);
-                else
-                    return;
-            }
+            return;
         }
     }
 
@@ -2292,7 +2286,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
                 variance = Invariant;
 
             Unifier innerState = makeChildUnifier();
-            if (useNewSolver)
+            if (useNewSolver || FFlag::LuauFixIndexerSubtypingOrdering)
                 innerState.tryUnify_(prop.type(), superTable->indexer->indexResultType);
             else
             {
@@ -2347,23 +2341,13 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
 
         if (superTable != newSuperTable || subTable != newSubTable)
         {
-            if (FFlag::LuauTableUnifyRecursionLimit)
+            if (errors.empty())
             {
-                if (errors.empty())
-                {
-                    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
-                    tryUnifyTables(subTy, superTy, isIntersection);
-                }
+                RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                tryUnifyTables(subTy, superTy, isIntersection);
+            }
 
-                return;
-            }
-            else
-            {
-                if (errors.empty())
-                    return tryUnifyTables(subTy, superTy, isIntersection);
-                else
-                    return;
-            }
+            return;
         }
     }
 

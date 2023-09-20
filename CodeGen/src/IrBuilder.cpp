@@ -1,7 +1,9 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IrBuilder.h"
 
-#include "Luau/IrAnalysis.h"
+#include "Luau/Bytecode.h"
+#include "Luau/BytecodeUtils.h"
+#include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
 
 #include "IrTranslation.h"
@@ -22,10 +24,14 @@ IrBuilder::IrBuilder()
 {
 }
 
+static bool hasTypedParameters(Proto* proto)
+{
+    return proto->typeinfo && proto->numparams != 0;
+}
+
 static void buildArgumentTypeChecks(IrBuilder& build, Proto* proto)
 {
-    if (!proto->typeinfo || proto->numparams == 0)
-        return;
+    LUAU_ASSERT(hasTypedParameters(proto));
 
     for (int i = 0; i < proto->numparams; ++i)
     {
@@ -53,31 +59,31 @@ static void buildArgumentTypeChecks(IrBuilder& build, Proto* proto)
         switch (tag)
         {
         case LBC_TYPE_NIL:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TNIL), build.undef(), build.constInt(1));
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TNIL), build.vmExit(kVmExitEntryGuardPc));
             break;
         case LBC_TYPE_BOOLEAN:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TBOOLEAN), build.undef(), build.constInt(1));
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TBOOLEAN), build.vmExit(kVmExitEntryGuardPc));
             break;
         case LBC_TYPE_NUMBER:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TNUMBER), build.undef(), build.constInt(1));
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TNUMBER), build.vmExit(kVmExitEntryGuardPc));
             break;
         case LBC_TYPE_STRING:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TSTRING), build.undef(), build.constInt(1));
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TSTRING), build.vmExit(kVmExitEntryGuardPc));
             break;
         case LBC_TYPE_TABLE:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TTABLE), build.undef(), build.constInt(1));
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TTABLE), build.vmExit(kVmExitEntryGuardPc));
             break;
         case LBC_TYPE_FUNCTION:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TFUNCTION), build.undef(), build.constInt(1));
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TFUNCTION), build.vmExit(kVmExitEntryGuardPc));
             break;
         case LBC_TYPE_THREAD:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TTHREAD), build.undef(), build.constInt(1));
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TTHREAD), build.vmExit(kVmExitEntryGuardPc));
             break;
         case LBC_TYPE_USERDATA:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TUSERDATA), build.undef(), build.constInt(1));
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TUSERDATA), build.vmExit(kVmExitEntryGuardPc));
             break;
         case LBC_TYPE_VECTOR:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TVECTOR), build.undef(), build.constInt(1));
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TVECTOR), build.vmExit(kVmExitEntryGuardPc));
             break;
         }
 
@@ -103,10 +109,27 @@ void IrBuilder::buildFunctionIr(Proto* proto)
     function.proto = proto;
     function.variadic = proto->is_vararg != 0;
 
+    // Reserve entry block
+    bool generateTypeChecks = hasTypedParameters(proto);
+    IrOp entry = generateTypeChecks ? block(IrBlockKind::Internal) : IrOp{};
+
     // Rebuild original control flow blocks
     rebuildBytecodeBasicBlocks(proto);
 
     function.bcMapping.resize(proto->sizecode, {~0u, ~0u});
+
+    if (generateTypeChecks)
+    {
+        beginBlock(entry);
+        buildArgumentTypeChecks(*this, proto);
+        inst(IrCmd::JUMP, blockAtInst(0));
+    }
+    else
+    {
+        entry = blockAtInst(0);
+    }
+
+    function.entryBlock = entry.index;
 
     // Translate all instructions to IR inside blocks
     for (int i = 0; i < proto->sizecode;)
@@ -123,12 +146,15 @@ void IrBuilder::buildFunctionIr(Proto* proto)
         if (instIndexToBlock[i] != kNoAssociatedBlockIndex)
             beginBlock(blockAtInst(i));
 
-        if (i == 0)
-            buildArgumentTypeChecks(*this, proto);
-
         // We skip dead bytecode instructions when they appear after block was already terminated
         if (!inTerminatedBlock)
         {
+            if (interruptRequested)
+            {
+                interruptRequested = false;
+                inst(IrCmd::INTERRUPT, constUint(i));
+            }
+
             translateInst(op, pc, i);
 
             if (fastcallSkipTarget != -1)
@@ -313,6 +339,9 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     case LOP_DIV:
         translateInstBinary(*this, pc, i, TM_DIV);
         break;
+    case LOP_IDIV:
+        translateInstBinary(*this, pc, i, TM_IDIV);
+        break;
     case LOP_MOD:
         translateInstBinary(*this, pc, i, TM_MOD);
         break;
@@ -330,6 +359,9 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         break;
     case LOP_DIVK:
         translateInstBinaryK(*this, pc, i, TM_DIV);
+        break;
+    case LOP_IDIVK:
+        translateInstBinaryK(*this, pc, i, TM_IDIV);
         break;
     case LOP_MODK:
         translateInstBinaryK(*this, pc, i, TM_MOD);
@@ -353,7 +385,8 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstDupTable(*this, pc, i);
         break;
     case LOP_SETLIST:
-        inst(IrCmd::SETLIST, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), constInt(LUAU_INSN_C(*pc) - 1), constUint(pc[1]));
+        inst(IrCmd::SETLIST, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), constInt(LUAU_INSN_C(*pc) - 1), constUint(pc[1]),
+            undef());
         break;
     case LOP_GETUPVAL:
         translateInstGetUpval(*this, pc, i);

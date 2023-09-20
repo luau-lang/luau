@@ -10,6 +10,7 @@
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
 LUAU_FASTFLAG(LuauBoundLazyTypes2)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
 namespace Luau
@@ -220,7 +221,21 @@ struct GenericTypeVisitor
                 traverse(btv->boundTo);
         }
         else if (auto ftv = get<FreeType>(ty))
-            visit(ty, *ftv);
+        {
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+            {
+                if (visit(ty, *ftv))
+                {
+                    LUAU_ASSERT(ftv->lowerBound);
+                    traverse(ftv->lowerBound);
+
+                    LUAU_ASSERT(ftv->upperBound);
+                    traverse(ftv->upperBound);
+                }
+            }
+            else
+                visit(ty, *ftv);
+        }
         else if (auto gtv = get<GenericType>(ty))
             visit(ty, *gtv);
         else if (auto etv = get<ErrorType>(ty))

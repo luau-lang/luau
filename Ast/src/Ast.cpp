@@ -3,6 +3,8 @@
 
 #include "Luau/Common.h"
 
+LUAU_FASTFLAG(LuauFloorDivision)
+
 namespace Luau
 {
 
@@ -62,9 +64,10 @@ void AstExprConstantNumber::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
-AstExprConstantString::AstExprConstantString(const Location& location, const AstArray<char>& value)
+AstExprConstantString::AstExprConstantString(const Location& location, const AstArray<char>& value, QuoteStyle quoteStyle)
     : AstExpr(ClassIndex(), location)
     , value(value)
+    , quoteStyle(quoteStyle)
 {
 }
 
@@ -278,6 +281,9 @@ std::string toString(AstExprBinary::Op op)
         return "*";
     case AstExprBinary::Div:
         return "/";
+    case AstExprBinary::FloorDiv:
+        LUAU_ASSERT(FFlag::LuauFloorDivision);
+        return "//";
     case AstExprBinary::Mod:
         return "%";
     case AstExprBinary::Pow:
@@ -374,9 +380,10 @@ void AstExprError::visit(AstVisitor* visitor)
     }
 }
 
-AstStatBlock::AstStatBlock(const Location& location, const AstArray<AstStat*>& body)
+AstStatBlock::AstStatBlock(const Location& location, const AstArray<AstStat*>& body, bool hasEnd)
     : AstStat(ClassIndex(), location)
     , body(body)
+    , hasEnd(hasEnd)
 {
 }
 

@@ -308,7 +308,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_if_condition_position")
     else
         CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
     CHECK_EQ("number", toString(requireTypeAtPosition({6, 26})));
-
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_assert_position")

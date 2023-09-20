@@ -101,6 +101,31 @@ ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypeId ty1
  */
 ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypePackId tp1, TypePackId tp2);
 
+// Similar to `std::optional<std::pair<A, B>>`, but whose `sizeof()` is the same as `std::pair<A, B>`
+// and cooperates with C++'s `if (auto p = ...)` syntax without the extra fatness of `std::optional`.
+template<typename A, typename B>
+struct TryPair
+{
+    A first;
+    B second;
+
+    explicit operator bool() const
+    {
+        return bool(first) && bool(second);
+    }
+};
+
+template<typename A, typename B, typename Ty>
+TryPair<const A*, const B*> get2(Ty one, Ty two)
+{
+    const A* a = get<A>(one);
+    const B* b = get<B>(two);
+    if (a && b)
+        return {a, b};
+    else
+        return {nullptr, nullptr};
+}
+
 template<typename T, typename Ty>
 const T* get(std::optional<Ty> ty)
 {

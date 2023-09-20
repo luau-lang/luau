@@ -446,8 +446,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface_longer")
 
 TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface_exports")
 {
-    ScopedFastFlag luauFixCyclicModuleExports{"LuauFixCyclicModuleExports", true};
-
     fileResolver.source["game/A"] = R"(
 local b = require(game.B)
 export type atype = { x: b.btype }
@@ -1222,6 +1220,30 @@ TEST_CASE_FIXTURE(FrontendFixture, "parse_only")
 
     CHECK_EQ("game/Gui/Modules/A", result.errors[0].moduleName);
     CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "markdirty_early_return")
+{
+    ScopedFastFlag fflag("CorrectEarlyReturnInMarkDirty", true);
+
+    constexpr char moduleName[] = "game/Gui/Modules/A";
+    fileResolver.source[moduleName] = R"(
+        return 1
+    )";
+
+    {
+        std::vector<ModuleName> markedDirty;
+        frontend.markDirty(moduleName, &markedDirty);
+        CHECK(markedDirty.empty());
+    }
+
+    frontend.parse(moduleName);
+
+    {
+        std::vector<ModuleName> markedDirty;
+        frontend.markDirty(moduleName, &markedDirty);
+        CHECK(!markedDirty.empty());
+    }
 }
 
 TEST_SUITE_END();

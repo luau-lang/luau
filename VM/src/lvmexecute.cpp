@@ -103,7 +103,8 @@
         VM_DISPATCH_OP(LOP_LOADKX), VM_DISPATCH_OP(LOP_JUMPX), VM_DISPATCH_OP(LOP_FASTCALL), VM_DISPATCH_OP(LOP_COVERAGE), \
         VM_DISPATCH_OP(LOP_CAPTURE), VM_DISPATCH_OP(LOP_DEP_JUMPIFEQK), VM_DISPATCH_OP(LOP_DEP_JUMPIFNOTEQK), VM_DISPATCH_OP(LOP_FASTCALL1), \
         VM_DISPATCH_OP(LOP_FASTCALL2), VM_DISPATCH_OP(LOP_FASTCALL2K), VM_DISPATCH_OP(LOP_FORGPREP), VM_DISPATCH_OP(LOP_JUMPXEQKNIL), \
-        VM_DISPATCH_OP(LOP_JUMPXEQKB), VM_DISPATCH_OP(LOP_JUMPXEQKN), VM_DISPATCH_OP(LOP_JUMPXEQKS),
+        VM_DISPATCH_OP(LOP_JUMPXEQKB), VM_DISPATCH_OP(LOP_JUMPXEQKN), VM_DISPATCH_OP(LOP_JUMPXEQKS), VM_DISPATCH_OP(LOP_IDIV), \
+        VM_DISPATCH_OP(LOP_IDIVK),
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VM_USE_CGOTO 1
@@ -132,7 +133,9 @@
 #endif
 
 // Does VM support native execution via ExecutionCallbacks? We mostly assume it does but keep the define to make it easy to quantify the cost.
-#define VM_HAS_NATIVE LUA_CUSTOM_EXECUTION
+#define VM_HAS_NATIVE 1
+
+void (*lua_iter_call_telemetry)(lua_State* L, int gtt, int stt, int itt) = NULL;
 
 LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
 {
@@ -1660,6 +1663,54 @@ reentry:
                 }
             }
 
+            VM_CASE(LOP_IDIV)
+            {
+                Instruction insn = *pc++;
+                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId rb = VM_REG(LUAU_INSN_B(insn));
+                StkId rc = VM_REG(LUAU_INSN_C(insn));
+
+                // fast-path
+                if (LUAU_LIKELY(ttisnumber(rb) && ttisnumber(rc)))
+                {
+                    setnvalue(ra, luai_numidiv(nvalue(rb), nvalue(rc)));
+                    VM_NEXT();
+                }
+                else if (ttisvector(rb) && ttisnumber(rc))
+                {
+                    const float* vb = vvalue(rb);
+                    float vc = cast_to(float, nvalue(rc));
+                    setvvalue(ra, float(luai_numidiv(vb[0], vc)), float(luai_numidiv(vb[1], vc)), float(luai_numidiv(vb[2], vc)),
+                        float(luai_numidiv(vb[3], vc)));
+                    VM_NEXT();
+                }
+                else
+                {
+                    // fast-path for userdata with C functions
+                    StkId rbc = ttisnumber(rb) ? rc : rb;
+                    const TValue* fn = 0;
+                    if (ttisuserdata(rbc) && (fn = luaT_gettmbyobj(L, rbc, TM_IDIV)) && ttisfunction(fn) && clvalue(fn)->isC)
+                    {
+                        // note: it's safe to push arguments past top for complicated reasons (see top of the file)
+                        LUAU_ASSERT(L->top + 3 < L->stack + L->stacksize);
+                        StkId top = L->top;
+                        setobj2s(L, top + 0, fn);
+                        setobj2s(L, top + 1, rb);
+                        setobj2s(L, top + 2, rc);
+                        L->top = top + 3;
+
+                        VM_PROTECT(luaV_callTM(L, 2, LUAU_INSN_A(insn)));
+                        VM_NEXT();
+                    }
+                    else
+                    {
+                        // slow-path, may invoke C/Lua via metamethods
+                        VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_IDIV));
+                        VM_NEXT();
+                    }
+                }
+            }
+
             VM_CASE(LOP_MOD)
             {
                 Instruction insn = *pc++;
@@ -1833,6 +1884,53 @@ reentry:
                     {
                         // slow-path, may invoke C/Lua via metamethods
                         VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_DIV));
+                        VM_NEXT();
+                    }
+                }
+            }
+
+            VM_CASE(LOP_IDIVK)
+            {
+                Instruction insn = *pc++;
+                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId rb = VM_REG(LUAU_INSN_B(insn));
+                TValue* kv = VM_KV(LUAU_INSN_C(insn));
+
+                // fast-path
+                if (LUAU_LIKELY(ttisnumber(rb)))
+                {
+                    setnvalue(ra, luai_numidiv(nvalue(rb), nvalue(kv)));
+                    VM_NEXT();
+                }
+                else if (ttisvector(rb))
+                {
+                    const float* vb = vvalue(rb);
+                    float vc = cast_to(float, nvalue(kv));
+                    setvvalue(ra, float(luai_numidiv(vb[0], vc)), float(luai_numidiv(vb[1], vc)), float(luai_numidiv(vb[2], vc)),
+                        float(luai_numidiv(vb[3], vc)));
+                    VM_NEXT();
+                }
+                else
+                {
+                    // fast-path for userdata with C functions
+                    const TValue* fn = 0;
+                    if (ttisuserdata(rb) && (fn = luaT_gettmbyobj(L, rb, TM_IDIV)) && ttisfunction(fn) && clvalue(fn)->isC)
+                    {
+                        // note: it's safe to push arguments past top for complicated reasons (see top of the file)
+                        LUAU_ASSERT(L->top + 3 < L->stack + L->stacksize);
+                        StkId top = L->top;
+                        setobj2s(L, top + 0, fn);
+                        setobj2s(L, top + 1, rb);
+                        setobj2s(L, top + 2, kv);
+                        L->top = top + 3;
+
+                        VM_PROTECT(luaV_callTM(L, 2, LUAU_INSN_A(insn)));
+                        VM_NEXT();
+                    }
+                    else
+                    {
+                        // slow-path, may invoke C/Lua via metamethods
+                        VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_IDIV));
                         VM_NEXT();
                     }
                 }
@@ -2193,6 +2291,10 @@ reentry:
                     {
                         // table or userdata with __call, will be called during FORGLOOP
                         // TODO: we might be able to stop supporting this depending on whether it's used in practice
+                        void (*telemetrycb)(lua_State * L, int gtt, int stt, int itt) = lua_iter_call_telemetry;
+
+                        if (telemetrycb)
+                            telemetrycb(L, ttype(ra), ttype(ra + 1), ttype(ra + 2));
                     }
                     else if (ttistable(ra))
                     {
@@ -2380,7 +2482,7 @@ reentry:
                 else
                     goto exit;
 #else
-                LUAU_ASSERT(!"Opcode is only valid when LUA_CUSTOM_EXECUTION is defined");
+                LUAU_ASSERT(!"Opcode is only valid when VM_HAS_NATIVE is defined");
                 LUAU_UNREACHABLE();
 #endif
             }

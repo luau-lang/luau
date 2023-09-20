@@ -12,6 +12,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
+LUAU_FASTFLAGVARIABLE(FixFindBindingAtFunctionName, false);
 
 namespace Luau
 {
@@ -148,6 +149,23 @@ struct FindNode : public AstVisitor
         return false;
     }
 
+    bool visit(AstStatFunction* node) override
+    {
+        if (FFlag::FixFindBindingAtFunctionName)
+        {
+            visit(static_cast<AstNode*>(node));
+            if (node->name->location.contains(pos))
+                node->name->visit(this);
+            else if (node->func->location.contains(pos))
+                node->func->visit(this);
+            return false;
+        }
+        else
+        {
+            return AstVisitor::visit(node);
+        }
+    }
+
     bool visit(AstStatBlock* block) override
     {
         visit(static_cast<AstNode*>(block));
@@ -186,6 +204,23 @@ struct FindFullAncestry final : public AstVisitor
             return visit(static_cast<AstNode*>(type));
         else
             return false;
+    }
+
+    bool visit(AstStatFunction* node) override
+    {
+        if (FFlag::FixFindBindingAtFunctionName)
+        {
+            visit(static_cast<AstNode*>(node));
+            if (node->name->location.contains(pos))
+                node->name->visit(this);
+            else if (node->func->location.contains(pos))
+                node->func->visit(this);
+            return false;
+        }
+        else
+        {
+            return AstVisitor::visit(node);
+        }
     }
 
     bool visit(AstNode* node) override

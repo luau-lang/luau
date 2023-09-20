@@ -279,8 +279,6 @@ private:
     TypeId errorRecoveryType() const;
     TypePackId errorRecoveryTypePack() const;
 
-    TypeId unionOfTypes(TypeId a, TypeId b, NotNull<Scope> scope, bool unifyFreeTypes);
-
     TypePackId anyifyModuleReturnTypePackGenerics(TypePackId tp);
 
     void throwTimeLimitError();
