@@ -38,6 +38,7 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauAllowIndexClassParameters, false)
 LUAU_FASTFLAG(LuauOccursIsntAlwaysFailure)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
+LUAU_FASTFLAGVARIABLE(LuauLoopControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauVariadicOverloadFix, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAG(LuauParseDeclareClassIndexer)
@@ -350,11 +351,10 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStat& program)
         return check(scope, *while_);
     else if (auto repeat = program.as<AstStatRepeat>())
         return check(scope, *repeat);
-    else if (program.is<AstStatBreak>() || program.is<AstStatContinue>())
-    {
-        // Nothing to do
-        return ControlFlow::None;
-    }
+    else if (program.is<AstStatBreak>())
+        return FFlag::LuauLoopControlFlowAnalysis ? ControlFlow::Breaks : ControlFlow::None;
+    else if (program.is<AstStatContinue>())
+        return FFlag::LuauLoopControlFlowAnalysis ? ControlFlow::Continues : ControlFlow::None;
     else if (auto return_ = program.as<AstStatReturn>())
         return check(scope, *return_);
     else if (auto expr = program.as<AstStatExpr>())
@@ -752,12 +752,14 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatIf& statement
         if (statement.elsebody)
             elsecf = check(elseScope, *statement.elsebody);
 
-        if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && elsecf == ControlFlow::None)
+        if (thencf != ControlFlow::None && elsecf == ControlFlow::None)
             scope->inheritRefinements(elseScope);
-        else if (thencf == ControlFlow::None && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
+        else if (thencf == ControlFlow::None && elsecf != ControlFlow::None)
             scope->inheritRefinements(thenScope);
 
-        if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
+        if (FFlag::LuauLoopControlFlowAnalysis && thencf == elsecf)
+            return thencf;
+        else if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
             return ControlFlow::Returns;
         else
             return ControlFlow::None;
