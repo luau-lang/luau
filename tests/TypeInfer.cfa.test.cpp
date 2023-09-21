@@ -330,7 +330,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_rand_break_elif_not_y_fa
                 elseif math.random() > 0.5 then
                     break
                 elseif not recordY.value then
-                    
+
                 end
 
                 local foo = recordX.value
@@ -360,7 +360,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_rand_continue_elif_no
                 elseif math.random() > 0.5 then
                     continue
                 elseif not recordY.value then
-                    
+
                 end
 
                 local foo = recordX.value
@@ -415,7 +415,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_not_y_fallthrough_elif_n
                 if not recordX.value then
                     break
                 elseif not recordY.value then
-                    
+
                 elseif not recordZ.value then
                     break
                 end
@@ -448,7 +448,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_not_y_fallthrough_eli
                 if not recordX.value then
                     continue
                 elseif not recordY.value then
-                    
+
                 elseif not recordZ.value then
                     continue
                 end
@@ -483,7 +483,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_not_y_throw_elif_not_
                 elseif not recordY.value then
                     error("Y value not defined")
                 elseif not recordZ.value then
-                    
+
                 end
 
                 local foo = recordX.value
@@ -514,7 +514,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_y_fallthrough_elif_
                 if not recordX.value then
                     return
                 elseif not recordY.value then
-                    
+
                 elseif not recordZ.value then
                     break
                 end

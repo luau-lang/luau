@@ -747,38 +747,22 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatIf& statement
         ScopePtr elseScope = childScope(scope, statement.elsebody ? statement.elsebody->location : statement.location);
         resolve(result.predicates, elseScope, false);
 
-        const ControlFlow guardClauseFlows = FFlag::LuauLoopControlFlowAnalysis ? ExitingControlFlows : ControlFlow::Returns | ControlFlow::Throws;
-
         ControlFlow thencf = check(thenScope, *statement.thenbody);
         ControlFlow elsecf = ControlFlow::None;
         if (statement.elsebody)
             elsecf = check(elseScope, *statement.elsebody);
 
-        if (matches(thencf, guardClauseFlows) && elsecf == ControlFlow::None)
+        if (thencf != ControlFlow::None && elsecf == ControlFlow::None)
             scope->inheritRefinements(elseScope);
-        else if (thencf == ControlFlow::None && matches(elsecf, guardClauseFlows))
+        else if (thencf == ControlFlow::None && elsecf != ControlFlow::None)
             scope->inheritRefinements(thenScope);
 
-        if (FFlag::LuauLoopControlFlowAnalysis)
-        {
-            if (thencf == elsecf)
-                return thencf;
-            else if (matches(thencf, FunctionExitControlFlows) && matches(elsecf, FunctionExitControlFlows))
-                return ControlFlow::MixedFunctionExit;
-            else if (matches(thencf, LoopExitControlFlows) && matches(elsecf, LoopExitControlFlows))
-                return ControlFlow::MixedLoopExit;
-            else if (matches(thencf, ExitingControlFlows) && matches(elsecf, ExitingControlFlows))
-                return ControlFlow::MixedExit;
-            else
-                return ControlFlow::None;
-        }
+        if (FFlag::LuauLoopControlFlowAnalysis && thencf == elsecf)
+            return thencf;
+        else if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
+            return ControlFlow::Returns;
         else
-        {
-            if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
-                return ControlFlow::Returns;
-            else
-                return ControlFlow::None;
-        }
+            return ControlFlow::None;
     }
     else
     {

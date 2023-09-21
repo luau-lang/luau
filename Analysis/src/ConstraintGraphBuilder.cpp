@@ -1067,38 +1067,22 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatIf* ifSt
     ScopePtr elseScope = childScope(ifStatement->elsebody ? ifStatement->elsebody : ifStatement, scope);
     applyRefinements(elseScope, ifStatement->elseLocation.value_or(ifStatement->condition->location), refinementArena.negation(refinement));
 
-    const ControlFlow guardClauseFlows = FFlag::LuauLoopControlFlowAnalysis ? ExitingControlFlows : ControlFlow::Returns | ControlFlow::Throws;
-
     ControlFlow thencf = visit(thenScope, ifStatement->thenbody);
     ControlFlow elsecf = ControlFlow::None;
     if (ifStatement->elsebody)
         elsecf = visit(elseScope, ifStatement->elsebody);
 
-    if (matches(thencf, guardClauseFlows) && elsecf == ControlFlow::None)
+    if (thencf != ControlFlow::None && elsecf == ControlFlow::None)
         scope->inheritRefinements(elseScope);
-    else if (thencf == ControlFlow::None && matches(elsecf, guardClauseFlows))
+    else if (thencf == ControlFlow::None && elsecf != ControlFlow::None)
         scope->inheritRefinements(thenScope);
 
-    if (FFlag::LuauLoopControlFlowAnalysis)
-    {
-        if (thencf == elsecf)
-            return thencf;
-        else if (matches(thencf, FunctionExitControlFlows) && matches(elsecf, FunctionExitControlFlows))
-            return ControlFlow::MixedFunctionExit;
-        else if (matches(thencf, LoopExitControlFlows) && matches(elsecf, LoopExitControlFlows))
-            return ControlFlow::MixedLoopExit;
-        else if (matches(thencf, ExitingControlFlows) && matches(elsecf, ExitingControlFlows))
-            return ControlFlow::MixedExit;
-        else
-            return ControlFlow::None;
-    }
+    if (FFlag::LuauLoopControlFlowAnalysis && thencf == elsecf)
+        return thencf;
+    else if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
+        return ControlFlow::Returns;
     else
-    {
-        if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
-            return ControlFlow::Returns;
-        else
-            return ControlFlow::None;
-    }
+        return ControlFlow::None;
 }
 
 static bool occursCheck(TypeId needle, TypeId haystack)
