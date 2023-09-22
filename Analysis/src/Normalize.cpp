@@ -17,7 +17,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
 // This could theoretically be 2000 on amd64, but x86 requires this.
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
-LUAU_FASTFLAGVARIABLE(LuauNormalizeBlockedTypes, false);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCyclicUnions, false);
 LUAU_FASTFLAG(LuauTransitiveSubtyping)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
@@ -642,7 +641,7 @@ static bool areNormalizedClasses(const NormalizedClassType& tys)
 
 static bool isPlainTyvar(TypeId ty)
 {
-    return (get<FreeType>(ty) || get<GenericType>(ty) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(ty)) ||
+    return (get<FreeType>(ty) || get<GenericType>(ty) || get<BlockedType>(ty) ||
             get<PendingExpansionType>(ty) || get<TypeFamilyInstanceType>(ty));
 }
 
@@ -1515,7 +1514,7 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, std::unor
     }
     else if (FFlag::LuauTransitiveSubtyping && get<UnknownType>(here.tops))
         return true;
-    else if (get<GenericType>(there) || get<FreeType>(there) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there)) ||
+    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) ||
              get<PendingExpansionType>(there) || get<TypeFamilyInstanceType>(there))
     {
         if (tyvarIndex(there) <= ignoreSmallerTyvars)
@@ -1584,8 +1583,6 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, std::unor
         if (!unionNormals(here, *tn))
             return false;
     }
-    else if (!FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there))
-        LUAU_ASSERT(!"Internal error: Trying to normalize a BlockedType");
     else if (get<PendingExpansionType>(there) || get<TypeFamilyInstanceType>(there))
     {
         // nothing
@@ -2658,7 +2655,7 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there, std::
                 return false;
         return true;
     }
-    else if (get<GenericType>(there) || get<FreeType>(there) || (FFlag::LuauNormalizeBlockedTypes && get<BlockedType>(there)) ||
+    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) ||
              get<PendingExpansionType>(there) || get<TypeFamilyInstanceType>(there))
     {
         NormalizedType thereNorm{builtinTypes};

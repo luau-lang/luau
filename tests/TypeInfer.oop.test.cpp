@@ -14,6 +14,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 TEST_SUITE_BEGIN("TypeInferOOP");
 
 TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_not_defined_with_colon")
@@ -337,7 +339,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "augmenting_an_unsealed_table_with_a_metatabl
         end
     )");
 
-    CHECK("{ @metatable { number: number }, { method: <a>(a) -> string } }" == toString(requireType("B"), {true}));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("{ @metatable { number: number }, { method: (unknown) -> string } }" == toString(requireType("B"), {true}));
+    else
+        CHECK("{ @metatable { number: number }, { method: <a>(a) -> string } }" == toString(requireType("B"), {true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "react_style_oo")
@@ -405,8 +410,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cycle_between_object_constructor_and_alias")
     CHECK_MESSAGE(get<MetatableType>(follow(aliasType)), "Expected metatable type but got: " << toString(aliasType));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "promise_type_error_too_complex")
+TEST_CASE_FIXTURE(BuiltinsFixture, "promise_type_error_too_complex" * doctest::timeout(0.5))
 {
+    // TODO: LTI changes to function call resolution have rendered this test impossibly slow
+    // shared self should fix it, but there may be other mitigations possible as well
+    REQUIRE(!FFlag::DebugLuauDeferredConstraintResolution);
     ScopedFastFlag sff{"LuauStacklessTypeClone2", true};
 
     frontend.options.retainFullTypeGraphs = false;

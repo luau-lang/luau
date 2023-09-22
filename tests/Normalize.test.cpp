@@ -876,10 +876,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_tables")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "normalize_blocked_types")
 {
-    ScopedFastFlag sff[]{
-        {"LuauNormalizeBlockedTypes", true},
-    };
-
     Type blocked{BlockedType{}};
 
     const NormalizedType* norm = normalizer.normalize(&blocked);

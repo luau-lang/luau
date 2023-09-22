@@ -226,11 +226,16 @@ struct GenericTypeVisitor
             {
                 if (visit(ty, *ftv))
                 {
-                    LUAU_ASSERT(ftv->lowerBound);
-                    traverse(ftv->lowerBound);
+                    // TODO: Replace these if statements with assert()s when we
+                    // delete FFlag::DebugLuauDeferredConstraintResolution.
+                    //
+                    // When the old solver is used, these pointers are always
+                    // unused. When the new solver is used, they are never null.
+                    if (ftv->lowerBound)
+                        traverse(ftv->lowerBound);
 
-                    LUAU_ASSERT(ftv->upperBound);
-                    traverse(ftv->upperBound);
+                    if (ftv->upperBound)
+                        traverse(ftv->upperBound);
                 }
             }
             else

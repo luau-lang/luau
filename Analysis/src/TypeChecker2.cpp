@@ -11,6 +11,7 @@
 #include "Luau/Instantiation.h"
 #include "Luau/Metamethods.h"
 #include "Luau/Normalize.h"
+#include "Luau/Subtyping.h"
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
@@ -241,6 +242,7 @@ struct TypeChecker2
     DenseHashSet<TypeId> noTypeFamilyErrors{nullptr};
 
     Normalizer normalizer;
+    Subtyping subtyping;
 
     TypeChecker2(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, NotNull<TypeCheckLimits> limits, DcrLogger* logger,
         const SourceModule* sourceModule, Module* module)
@@ -251,6 +253,7 @@ struct TypeChecker2
         , sourceModule(sourceModule)
         , module(module)
         , normalizer{&testArena, builtinTypes, unifierState, /* cacheInhabitance */ true}
+        , subtyping{builtinTypes, NotNull{&testArena}, NotNull{&normalizer}, NotNull{unifierState->iceHandler}, NotNull{module->getModuleScope().get()}}
     {
     }
 
@@ -1080,10 +1083,24 @@ struct TypeChecker2
 
         TypeId* originalCallTy = module->astOriginalCallTypes.find(call);
         TypeId* selectedOverloadTy = module->astOverloadResolvedTypes.find(call);
-        if (!originalCallTy && !selectedOverloadTy)
+        if (!originalCallTy)
             return;
 
-        TypeId fnTy = follow(selectedOverloadTy ? *selectedOverloadTy : *originalCallTy);
+        TypeId fnTy = *originalCallTy;
+        if (selectedOverloadTy)
+        {
+            SubtypingResult result = subtyping.isSubtype(*originalCallTy, *selectedOverloadTy);
+            if (result.isSubtype)
+                fnTy = *selectedOverloadTy;
+
+            if (result.normalizationTooComplex)
+            {
+                reportError(NormalizationTooComplex{}, call->func->location);
+                return;
+            }
+        }
+        fnTy = follow(fnTy);
+
         if (get<AnyType>(fnTy) || get<ErrorType>(fnTy) || get<NeverType>(fnTy))
             return;
         else if (isOptional(fnTy))

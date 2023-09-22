@@ -480,7 +480,11 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
     // would append a new constraint number <: *blocked* to the constraint set
     // to be solved later.  This should be faster and theoretically less prone
     // to cyclic constraint dependencies.
-    CHECK("<a>(a, number) -> ()" == toString(requireType("prime_iter")));
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("(unknown, number) -> ()" == toString(requireType("prime_iter")));
+    else
+        CHECK("<a>(a, number) -> ()" == toString(requireType("prime_iter")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")

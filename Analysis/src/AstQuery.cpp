@@ -12,7 +12,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
-LUAU_FASTFLAGVARIABLE(FixFindBindingAtFunctionName, false);
 
 namespace Luau
 {
@@ -151,19 +150,12 @@ struct FindNode : public AstVisitor
 
     bool visit(AstStatFunction* node) override
     {
-        if (FFlag::FixFindBindingAtFunctionName)
-        {
-            visit(static_cast<AstNode*>(node));
-            if (node->name->location.contains(pos))
-                node->name->visit(this);
-            else if (node->func->location.contains(pos))
-                node->func->visit(this);
-            return false;
-        }
-        else
-        {
-            return AstVisitor::visit(node);
-        }
+        visit(static_cast<AstNode*>(node));
+        if (node->name->location.contains(pos))
+            node->name->visit(this);
+        else if (node->func->location.contains(pos))
+            node->func->visit(this);
+        return false;
     }
 
     bool visit(AstStatBlock* block) override
@@ -208,19 +200,12 @@ struct FindFullAncestry final : public AstVisitor
 
     bool visit(AstStatFunction* node) override
     {
-        if (FFlag::FixFindBindingAtFunctionName)
-        {
-            visit(static_cast<AstNode*>(node));
-            if (node->name->location.contains(pos))
-                node->name->visit(this);
-            else if (node->func->location.contains(pos))
-                node->func->visit(this);
-            return false;
-        }
-        else
-        {
-            return AstVisitor::visit(node);
-        }
+        visit(static_cast<AstNode*>(node));
+        if (node->name->location.contains(pos))
+            node->name->visit(this);
+        else if (node->func->location.contains(pos))
+            node->func->visit(this);
+        return false;
     }
 
     bool visit(AstNode* node) override

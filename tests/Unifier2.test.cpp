@@ -18,7 +18,7 @@ struct Unifier2Fixture
     BuiltinTypes builtinTypes;
     Scope scope{builtinTypes.anyTypePack};
     InternalErrorReporter iceReporter;
-    Unifier2 u2{NotNull{&arena}, NotNull{&builtinTypes}, NotNull{&iceReporter}};
+    Unifier2 u2{NotNull{&arena}, NotNull{&builtinTypes}, NotNull{&scope}, NotNull{&iceReporter}};
     ToStringOptions opts;
 
     ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
@@ -111,12 +111,12 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "generalize_a_type_that_is_bounded_by_another
     ft2->upperBound = t1;
     ft2->lowerBound = builtinTypes.unknownType;
 
-    auto t2generalized = u2.generalize(NotNull{&scope}, t2);
+    auto t2generalized = u2.generalize(t2);
     REQUIRE(t2generalized);
 
     CHECK(follow(t1) == follow(t2));
 
-    auto t1generalized = u2.generalize(NotNull{&scope}, t1);
+    auto t1generalized = u2.generalize(t1);
     REQUIRE(t1generalized);
 
     CHECK(builtinTypes.unknownType == follow(t1));
@@ -137,12 +137,12 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "generalize_a_type_that_is_bounded_by_another
     ft2->upperBound = t1;
     ft2->lowerBound = builtinTypes.unknownType;
 
-    auto t1generalized = u2.generalize(NotNull{&scope}, t1);
+    auto t1generalized = u2.generalize(t1);
     REQUIRE(t1generalized);
 
     CHECK(follow(t1) == follow(t2));
 
-    auto t2generalized = u2.generalize(NotNull{&scope}, t2);
+    auto t2generalized = u2.generalize(t2);
     REQUIRE(t2generalized);
 
     CHECK(builtinTypes.unknownType == follow(t1));

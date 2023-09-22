@@ -54,7 +54,7 @@ struct TypeFamily
 
     /// The reducer function for the type family.
     std::function<TypeFamilyReductionResult<TypeId>(std::vector<TypeId>, std::vector<TypePackId>, NotNull<TypeArena>, NotNull<BuiltinTypes>,
-        NotNull<TxnLog>, NotNull<Scope>, NotNull<Normalizer>)>
+        NotNull<TxnLog>, NotNull<Scope>, NotNull<Normalizer>, ConstraintSolver*)>
         reducer;
 };
 
@@ -68,7 +68,7 @@ struct TypePackFamily
 
     /// The reducer function for the type pack family.
     std::function<TypeFamilyReductionResult<TypePackId>(std::vector<TypeId>, std::vector<TypePackId>, NotNull<TypeArena>, NotNull<BuiltinTypes>,
-        NotNull<TxnLog>, NotNull<Scope>, NotNull<Normalizer>)>
+        NotNull<TxnLog>, NotNull<Scope>, NotNull<Normalizer>, ConstraintSolver*)>
         reducer;
 };
 
@@ -82,36 +82,68 @@ struct FamilyGraphReductionResult
 };
 
 /**
- * Attempt to reduce all instances of any type or type pack family in the type
- * graph provided.
- *
- * @param entrypoint the entry point to the type graph.
- * @param location the location the reduction is occurring at; used to populate
- * type errors.
- * @param arena an arena to allocate types into.
- * @param builtins the built-in types.
- * @param log a TxnLog to use. If one is provided, substitution will take place
- * against the TxnLog, otherwise substitutions will directly mutate the type
- * graph. Do not provide the empty TxnLog, as a result.
- */
+  * Attempt to reduce all instances of any type or type pack family in the type
+  * graph provided.
+  *
+  * @param entrypoint the entry point to the type graph.
+  * @param location the location the reduction is occurring at; used to populate
+  * type errors.
+  * @param arena an arena to allocate types into.
+  * @param builtins the built-in types.
+  * @param normalizer the normalizer to use when normalizing types
+  * @param log a TxnLog to use. If one is provided, substitution will take place
+  * against the TxnLog, otherwise substitutions will directly mutate the type
+  * graph. Do not provide the empty TxnLog, as a result.
+  */
 FamilyGraphReductionResult reduceFamilies(TypeId entrypoint, Location location, NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins,
+    NotNull<Scope> scope, NotNull<Normalizer> normalizer, TxnLog* log = nullptr, bool force = false);
+
+ /**
+  * Attempt to reduce all instances of any type or type pack family in the type
+  * graph provided.
+  *
+  * @param entrypoint the entry point to the type graph.
+  * @param location the location the reduction is occurring at; used to populate
+  * type errors.
+  * @param arena an arena to allocate types into.
+  * @param builtins the built-in types.
+  * @param normalizer the normalizer to use when normalizing types
+  * @param log a TxnLog to use. If one is provided, substitution will take place
+  * against the TxnLog, otherwise substitutions will directly mutate the type
+  * graph. Do not provide the empty TxnLog, as a result.
+  */
+FamilyGraphReductionResult reduceFamilies(TypePackId entrypoint, Location location, NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins,
     NotNull<Scope> scope, NotNull<Normalizer> normalizer, TxnLog* log = nullptr, bool force = false);
 
 /**
  * Attempt to reduce all instances of any type or type pack family in the type
  * graph provided.
  *
+ * @param solver the constraint solver this reduction is being performed in.
  * @param entrypoint the entry point to the type graph.
  * @param location the location the reduction is occurring at; used to populate
  * type errors.
- * @param arena an arena to allocate types into.
- * @param builtins the built-in types.
  * @param log a TxnLog to use. If one is provided, substitution will take place
  * against the TxnLog, otherwise substitutions will directly mutate the type
  * graph. Do not provide the empty TxnLog, as a result.
  */
-FamilyGraphReductionResult reduceFamilies(TypePackId entrypoint, Location location, NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins,
-    NotNull<Scope> scope, NotNull<Normalizer> normalizer, TxnLog* log = nullptr, bool force = false);
+FamilyGraphReductionResult reduceFamilies(
+    NotNull<ConstraintSolver> solver, TypeId entrypoint, Location location, NotNull<Scope> scope, TxnLog* log = nullptr, bool force = false);
+
+/**
+ * Attempt to reduce all instances of any type or type pack family in the type
+ * graph provided.
+ *
+ * @param solver the constraint solver this reduction is being performed in.
+ * @param entrypoint the entry point to the type graph.
+ * @param location the location the reduction is occurring at; used to populate
+ * type errors.
+ * @param log a TxnLog to use. If one is provided, substitution will take place
+ * against the TxnLog, otherwise substitutions will directly mutate the type
+ * graph. Do not provide the empty TxnLog, as a result.
+ */
+FamilyGraphReductionResult reduceFamilies(
+    NotNull<ConstraintSolver> solver, TypePackId entrypoint, Location location, NotNull<Scope> scope, TxnLog* log = nullptr, bool force = false);
 
 struct BuiltinTypeFamilies
 {
