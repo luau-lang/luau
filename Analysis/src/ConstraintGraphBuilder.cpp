@@ -24,6 +24,7 @@ LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
 LUAU_FASTFLAG(LuauParseDeclareClassIndexer);
+LUAU_FASTFLAG(LuauLoopControlFlowAnalysis);
 LUAU_FASTFLAG(LuauFloorDivision);
 
 namespace Luau
@@ -537,11 +538,10 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStat* stat)
         return visit(scope, s);
     else if (auto s = stat->as<AstStatRepeat>())
         return visit(scope, s);
-    else if (stat->is<AstStatBreak>() || stat->is<AstStatContinue>())
-    {
-        // Nothing
-        return ControlFlow::None; // TODO: ControlFlow::Break/Continue
-    }
+    else if (stat->is<AstStatBreak>())
+        return FFlag::LuauLoopControlFlowAnalysis ? ControlFlow::Breaks : ControlFlow::None;
+    else if (stat->is<AstStatContinue>())
+        return FFlag::LuauLoopControlFlowAnalysis ? ControlFlow::Continues : ControlFlow::None;
     else if (auto r = stat->as<AstStatReturn>())
         return visit(scope, r);
     else if (auto e = stat->as<AstStatExpr>())
@@ -1072,12 +1072,14 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatIf* ifSt
     if (ifStatement->elsebody)
         elsecf = visit(elseScope, ifStatement->elsebody);
 
-    if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && elsecf == ControlFlow::None)
+    if (thencf != ControlFlow::None && elsecf == ControlFlow::None)
         scope->inheritRefinements(elseScope);
-    else if (thencf == ControlFlow::None && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
+    else if (thencf == ControlFlow::None && elsecf != ControlFlow::None)
         scope->inheritRefinements(thenScope);
 
-    if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
+    if (FFlag::LuauLoopControlFlowAnalysis && thencf == elsecf)
+        return thencf;
+    else if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
         return ControlFlow::Returns;
     else
         return ControlFlow::None;
