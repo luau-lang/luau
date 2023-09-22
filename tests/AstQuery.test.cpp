@@ -297,7 +297,6 @@ TEST_CASE_FIXTURE(Fixture, "include_types_ancestry")
 
 TEST_CASE_FIXTURE(Fixture, "find_name_ancestry")
 {
-    ScopedFastFlag sff{"FixFindBindingAtFunctionName", true};
     check(R"(
         local tbl = {}
         function tbl:abc() end
@@ -312,7 +311,6 @@ TEST_CASE_FIXTURE(Fixture, "find_name_ancestry")
 
 TEST_CASE_FIXTURE(Fixture, "find_expr_ancestry")
 {
-    ScopedFastFlag sff{"FixFindBindingAtFunctionName", true};
     check(R"(
         local tbl = {}
         function tbl:abc() end

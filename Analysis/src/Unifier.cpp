@@ -22,7 +22,6 @@ LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauMaintainScopesInUnifier, false)
 LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauOccursIsntAlwaysFailure, false)
-LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
 LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering, false)
@@ -607,7 +606,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
             const NormalizedType* superNorm = normalizer->normalize(superTy);
 
             if (!superNorm)
-                return reportError(location, UnificationTooComplex{});
+                return reportError(location, NormalizationTooComplex{});
 
             if (!log.get<AnyType>(superNorm->tops))
                 failure = true;
@@ -850,32 +849,6 @@ void Unifier::tryUnifyUnionWithType(TypeId subTy, const UnionType* subUnion, Typ
     }
 }
 
-struct DEPRECATED_BlockedTypeFinder : TypeOnceVisitor
-{
-    std::unordered_set<TypeId> blockedTypes;
-
-    bool visit(TypeId ty, const BlockedType&) override
-    {
-        blockedTypes.insert(ty);
-        return true;
-    }
-};
-
-bool Unifier::DEPRECATED_blockOnBlockedTypes(TypeId subTy, TypeId superTy)
-{
-    LUAU_ASSERT(!FFlag::LuauNormalizeBlockedTypes);
-    DEPRECATED_BlockedTypeFinder blockedTypeFinder;
-    blockedTypeFinder.traverse(subTy);
-    blockedTypeFinder.traverse(superTy);
-    if (!blockedTypeFinder.blockedTypes.empty())
-    {
-        blockedTypes.insert(end(blockedTypes), begin(blockedTypeFinder.blockedTypes), end(blockedTypeFinder.blockedTypes));
-        return true;
-    }
-
-    return false;
-}
-
 void Unifier::tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionType* uv, bool cacheEnabled, bool isFunctionCall)
 {
     // T <: A | B if T <: A or T <: B
@@ -1001,7 +974,7 @@ void Unifier::tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionTyp
         const NormalizedType* superNorm = normalizer->normalize(superTy);
         Unifier innerState = makeChildUnifier();
         if (!subNorm || !superNorm)
-            return reportError(location, UnificationTooComplex{});
+            return reportError(location, NormalizationTooComplex{});
         else if ((failedOptionCount == 1 || foundHeuristic) && failedOption)
             innerState.tryUnifyNormalizedTypes(
                 subTy, superTy, *subNorm, *superNorm, "None of the union options are compatible. For example:", *failedOption);
@@ -1016,18 +989,13 @@ void Unifier::tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionTyp
     }
     else if (!found && normalize)
     {
-        // We cannot normalize a type that contains blocked types.  We have to
-        // stop for now if we find any.
-        if (!FFlag::LuauNormalizeBlockedTypes && DEPRECATED_blockOnBlockedTypes(subTy, superTy))
-            return;
-
         // It is possible that T <: A | B even though T </: A and T </:B
         // for example boolean <: true | false.
         // We deal with this by type normalization.
         const NormalizedType* subNorm = normalizer->normalize(subTy);
         const NormalizedType* superNorm = normalizer->normalize(superTy);
         if (!subNorm || !superNorm)
-            reportError(location, UnificationTooComplex{});
+            reportError(location, NormalizationTooComplex{});
         else if ((failedOptionCount == 1 || foundHeuristic) && failedOption)
             tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "None of the union options are compatible. For example:", *failedOption);
         else
@@ -1125,11 +1093,6 @@ void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionType*
 
     if (useNewSolver && normalize)
     {
-        // We cannot normalize a type that contains blocked types.  We have to
-        // stop for now if we find any.
-        if (!FFlag::LuauNormalizeBlockedTypes && DEPRECATED_blockOnBlockedTypes(subTy, superTy))
-            return;
-
         // Sometimes a negation type is inside one of the types, e.g. { p: number } & { p: ~number }.
         NegationTypeFinder finder;
         finder.traverse(subTy);
@@ -1144,7 +1107,7 @@ void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionType*
             if (subNorm && superNorm)
                 tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the intersection parts are compatible");
             else
-                reportError(location, UnificationTooComplex{});
+                reportError(location, NormalizationTooComplex{});
 
             return;
         }
@@ -1190,11 +1153,6 @@ void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionType*
         reportError(*unificationTooComplex);
     else if (!found && normalize)
     {
-        // We cannot normalize a type that contains blocked types.  We have to
-        // stop for now if we find any.
-        if (!FFlag::LuauNormalizeBlockedTypes && DEPRECATED_blockOnBlockedTypes(subTy, superTy))
-            return;
-
         // It is possible that A & B <: T even though A </: T and B </: T
         // for example string? & number? <: nil.
         // We deal with this by type normalization.
@@ -1203,7 +1161,7 @@ void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionType*
         if (subNorm && superNorm)
             tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the intersection parts are compatible");
         else
-            reportError(location, UnificationTooComplex{});
+            reportError(location, NormalizationTooComplex{});
     }
     else if (!found)
     {
@@ -2714,15 +2672,10 @@ void Unifier::tryUnifyNegations(TypeId subTy, TypeId superTy)
     if (!log.get<NegationType>(subTy) && !log.get<NegationType>(superTy))
         ice("tryUnifyNegations superTy or subTy must be a negation type");
 
-    // We cannot normalize a type that contains blocked types.  We have to
-    // stop for now if we find any.
-    if (!FFlag::LuauNormalizeBlockedTypes && DEPRECATED_blockOnBlockedTypes(subTy, superTy))
-        return;
-
     const NormalizedType* subNorm = normalizer->normalize(subTy);
     const NormalizedType* superNorm = normalizer->normalize(superTy);
     if (!subNorm || !superNorm)
-        return reportError(location, UnificationTooComplex{});
+        return reportError(location, NormalizationTooComplex{});
 
     // T </: ~U iff T <: U
     Unifier state = makeChildUnifier();

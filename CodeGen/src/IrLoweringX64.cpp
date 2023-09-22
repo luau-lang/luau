@@ -1431,77 +1431,142 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         break;
     case IrCmd::BITLSHIFT_UINT:
     {
+        ScopedRegX64 shiftTmp{regs};
+
         // Custom bit shift value can only be placed in cl
-        ScopedRegX64 shiftTmp{regs, regs.takeReg(ecx, kInvalidInstIdx)};
+        // but we use it if the shift value is not a constant stored in b
+        if (inst.b.kind != IrOpKind::Constant)
+            shiftTmp.take(ecx);
 
-        inst.regX64 = regs.allocReg(SizeX64::dword, index);
-
-        build.mov(shiftTmp.reg, memRegUintOp(inst.b));
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
 
         if (inst.a.kind != IrOpKind::Inst || inst.regX64 != regOp(inst.a))
             build.mov(inst.regX64, memRegUintOp(inst.a));
 
-        build.shl(inst.regX64, byteReg(shiftTmp.reg));
+        if (inst.b.kind == IrOpKind::Constant)
+        {
+            // if shift value is a constant, we extract the byte-sized shift amount
+            int8_t shift = int8_t(unsigned(intOp(inst.b)));
+            build.shl(inst.regX64, shift);
+        }
+        else
+        {
+            build.mov(shiftTmp.reg, memRegUintOp(inst.b));
+            build.shl(inst.regX64, byteReg(shiftTmp.reg));
+        }
+
         break;
     }
     case IrCmd::BITRSHIFT_UINT:
     {
+        ScopedRegX64 shiftTmp{regs};
+
         // Custom bit shift value can only be placed in cl
-        ScopedRegX64 shiftTmp{regs, regs.takeReg(ecx, kInvalidInstIdx)};
+        // but we use it if the shift value is not a constant stored in b
+        if (inst.b.kind != IrOpKind::Constant)
+            shiftTmp.take(ecx);
 
-        inst.regX64 = regs.allocReg(SizeX64::dword, index);
-
-        build.mov(shiftTmp.reg, memRegUintOp(inst.b));
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
 
         if (inst.a.kind != IrOpKind::Inst || inst.regX64 != regOp(inst.a))
             build.mov(inst.regX64, memRegUintOp(inst.a));
 
-        build.shr(inst.regX64, byteReg(shiftTmp.reg));
+        if (inst.b.kind == IrOpKind::Constant)
+        {
+            // if shift value is a constant, we extract the byte-sized shift amount
+            int8_t shift = int8_t(unsigned(intOp(inst.b)));
+            build.shr(inst.regX64, shift);
+        }
+        else
+        {
+            build.mov(shiftTmp.reg, memRegUintOp(inst.b));
+            build.shr(inst.regX64, byteReg(shiftTmp.reg));
+        }
+
         break;
     }
     case IrCmd::BITARSHIFT_UINT:
     {
+        ScopedRegX64 shiftTmp{regs};
+
         // Custom bit shift value can only be placed in cl
-        ScopedRegX64 shiftTmp{regs, regs.takeReg(ecx, kInvalidInstIdx)};
+        // but we use it if the shift value is not a constant stored in b
+        if (inst.b.kind != IrOpKind::Constant)
+            shiftTmp.take(ecx);
 
-        inst.regX64 = regs.allocReg(SizeX64::dword, index);
-
-        build.mov(shiftTmp.reg, memRegUintOp(inst.b));
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
 
         if (inst.a.kind != IrOpKind::Inst || inst.regX64 != regOp(inst.a))
             build.mov(inst.regX64, memRegUintOp(inst.a));
 
-        build.sar(inst.regX64, byteReg(shiftTmp.reg));
+        if (inst.b.kind == IrOpKind::Constant)
+        {
+            // if shift value is a constant, we extract the byte-sized shift amount
+            int8_t shift = int8_t(unsigned(intOp(inst.b)));
+            build.sar(inst.regX64, shift);
+        }
+        else
+        {
+            build.mov(shiftTmp.reg, memRegUintOp(inst.b));
+            build.sar(inst.regX64, byteReg(shiftTmp.reg));
+        }
+
         break;
     }
     case IrCmd::BITLROTATE_UINT:
     {
+        ScopedRegX64 shiftTmp{regs};
+
         // Custom bit shift value can only be placed in cl
-        ScopedRegX64 shiftTmp{regs, regs.takeReg(ecx, kInvalidInstIdx)};
+        // but we use it if the shift value is not a constant stored in b
+        if (inst.b.kind != IrOpKind::Constant)
+            shiftTmp.take(ecx);
 
-        inst.regX64 = regs.allocReg(SizeX64::dword, index);
-
-        build.mov(shiftTmp.reg, memRegUintOp(inst.b));
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
 
         if (inst.a.kind != IrOpKind::Inst || inst.regX64 != regOp(inst.a))
             build.mov(inst.regX64, memRegUintOp(inst.a));
 
-        build.rol(inst.regX64, byteReg(shiftTmp.reg));
+        if (inst.b.kind == IrOpKind::Constant)
+        {
+            // if shift value is a constant, we extract the byte-sized shift amount
+            int8_t shift = int8_t(unsigned(intOp(inst.b)));
+            build.rol(inst.regX64, shift);
+        }
+        else
+        {
+            build.mov(shiftTmp.reg, memRegUintOp(inst.b));
+            build.rol(inst.regX64, byteReg(shiftTmp.reg));
+        }
+
         break;
     }
     case IrCmd::BITRROTATE_UINT:
     {
+        ScopedRegX64 shiftTmp{regs};
+
         // Custom bit shift value can only be placed in cl
-        ScopedRegX64 shiftTmp{regs, regs.takeReg(ecx, kInvalidInstIdx)};
+        // but we use it if the shift value is not a constant stored in b
+        if (inst.b.kind != IrOpKind::Constant)
+            shiftTmp.take(ecx);
 
-        inst.regX64 = regs.allocReg(SizeX64::dword, index);
-
-        build.mov(shiftTmp.reg, memRegUintOp(inst.b));
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
 
         if (inst.a.kind != IrOpKind::Inst || inst.regX64 != regOp(inst.a))
             build.mov(inst.regX64, memRegUintOp(inst.a));
 
-        build.ror(inst.regX64, byteReg(shiftTmp.reg));
+        if (inst.b.kind == IrOpKind::Constant)
+        {
+            // if shift value is a constant, we extract the byte-sized shift amount
+            int8_t shift = int8_t(unsigned(intOp(inst.b)));
+            build.ror(inst.regX64, shift);
+        }
+        else
+        {
+            build.mov(shiftTmp.reg, memRegUintOp(inst.b));
+            build.ror(inst.regX64, byteReg(shiftTmp.reg));
+        }
+
         break;
     }
     case IrCmd::BITCOUNTLZ_UINT:

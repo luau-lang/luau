@@ -473,7 +473,7 @@ void ConstraintSolver::finalizeModule()
         rootScope->returnType = anyifyModuleReturnTypePackGenerics(*returnType);
     }
 
-    Unifier2 u2{NotNull{arena}, builtinTypes, NotNull{&iceReporter}};
+    Unifier2 u2{NotNull{arena}, builtinTypes, rootScope, NotNull{&iceReporter}};
 
     std::deque<TypeAndLocation> queue;
     for (auto& [name, binding] : rootScope->bindings)
@@ -495,7 +495,7 @@ void ConstraintSolver::finalizeModule()
         FreeTypeSearcher fts{&queue, binding.location};
         fts.traverse(ty);
 
-        auto result = u2.generalize(rootScope, ty);
+        auto result = u2.generalize(ty);
         if (!result)
             reportError(CodeTooComplex{}, binding.location);
     }
@@ -586,9 +586,9 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
 
     std::optional<QuantifierResult> generalized;
 
-    Unifier2 u2{NotNull{arena}, builtinTypes, NotNull{&iceReporter}};
+    Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}};
 
-    std::optional<TypeId> generalizedTy = u2.generalize(constraint->scope, c.sourceType);
+    std::optional<TypeId> generalizedTy = u2.generalize(c.sourceType);
     if (generalizedTy)
         generalized = QuantifierResult{*generalizedTy}; // FIXME insertedGenerics and insertedGenericPacks
     else
@@ -1310,7 +1310,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     TypePackId argsPack = follow(c.argsPack);
     TypePackId result = follow(c.result);
 
-    if (isBlocked(fn))
+    if (isBlocked(fn) || hasUnresolvedConstraints(fn))
     {
         return block(c.fn, constraint);
     }
@@ -1381,98 +1381,13 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     }
 
     TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, constraint->scope.get(), argsPack, c.result});
+    Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}};
 
-    const NormalizedType* normFn = normalizer->normalize(fn);
-    if (!normFn)
-    {
-        reportError(UnificationTooComplex{}, constraint->location);
-        return true;
-    }
+    const bool occursCheckPassed = u2.unify(fn, inferredTy);
 
-    // TODO: It would be nice to not need to convert the normalized type back to
-    // an intersection and flatten it.
-    TypeId normFnTy = normalizer->typeFromNormal(*normFn);
-    std::vector<TypeId> overloads = flattenIntersection(normFnTy);
+    if (occursCheckPassed && c.callSite)
+        (*c.astOverloadResolvedTypes)[c.callSite] = inferredTy;
 
-    std::vector<TypeId> arityMatchingOverloads;
-    std::optional<TxnLog> bestOverloadLog;
-
-    for (TypeId overload : overloads)
-    {
-        overload = follow(overload);
-
-        std::optional<TypeId> instantiated = instantiate(builtinTypes, arena, NotNull{&limits}, constraint->scope, overload);
-
-        if (!instantiated.has_value())
-        {
-            reportError(UnificationTooComplex{}, constraint->location);
-            return true;
-        }
-
-        Unifier u{normalizer, constraint->scope, Location{}, Covariant};
-        u.enableNewSolver();
-
-        u.tryUnify(*instantiated, inferredTy, /* isFunctionCall */ true);
-
-        if (!u.blockedTypes.empty() || !u.blockedTypePacks.empty())
-        {
-            for (TypeId bt : u.blockedTypes)
-                block(bt, constraint);
-            for (TypePackId btp : u.blockedTypePacks)
-                block(btp, constraint);
-            return false;
-        }
-
-        if (const auto& e = hasUnificationTooComplex(u.errors))
-            reportError(*e);
-
-        const auto& e = hasCountMismatch(u.errors);
-        bool areArgumentsCompatible = (!e || get<CountMismatch>(*e)->context != CountMismatch::Context::Arg) && get<FunctionType>(*instantiated);
-        if (areArgumentsCompatible)
-            arityMatchingOverloads.push_back(*instantiated);
-
-        if (u.errors.empty())
-        {
-            if (c.callSite)
-                (*c.astOverloadResolvedTypes)[c.callSite] = *instantiated;
-
-            // This overload has no errors, so override the bestOverloadLog and use this one.
-            bestOverloadLog = std::move(u.log);
-            break;
-        }
-        else if (areArgumentsCompatible && !bestOverloadLog)
-        {
-            // This overload is erroneous. Replace its inferences with `any` iff there isn't already a TxnLog.
-            bestOverloadLog = std::move(u.log);
-        }
-    }
-
-    if (arityMatchingOverloads.size() == 1 && c.callSite)
-    {
-        // In the name of better error messages in the type checker, we provide
-        // it with an instantiated function signature that matched arity, but
-        // not the requisite subtyping requirements. This makes errors better in
-        // cases where only one overload fit from an arity perspective.
-        (*c.astOverloadResolvedTypes)[c.callSite] = arityMatchingOverloads.at(0);
-    }
-
-    // We didn't find any overload that were a viable candidate, so replace the inferences with `any`.
-    if (!bestOverloadLog)
-    {
-        Unifier u{normalizer, constraint->scope, Location{}, Covariant};
-        u.enableNewSolver();
-
-        u.tryUnify(inferredTy, builtinTypes->anyType);
-        u.tryUnify(fn, builtinTypes->anyType);
-
-        bestOverloadLog = std::move(u.log);
-    }
-
-    const auto [changedTypes, changedPacks] = bestOverloadLog->getChanges();
-    bestOverloadLog->commit();
-
-    unblock(changedTypes, constraint->location);
-    unblock(changedPacks, constraint->location);
     unblock(c.result, constraint->location);
 
     InstantiationQueuer queuer{constraint->scope, constraint->location, this};
@@ -1994,7 +1909,7 @@ bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Cons
 {
     TypeId ty = follow(c.ty);
     FamilyGraphReductionResult result =
-        reduceFamilies(ty, constraint->location, NotNull{arena}, builtinTypes, constraint->scope, normalizer, nullptr, force);
+        reduceFamilies(NotNull{this}, ty, constraint->location, constraint->scope, nullptr, force);
 
     for (TypeId r : result.reducedTypes)
         unblock(r, constraint->location);
@@ -2018,7 +1933,7 @@ bool ConstraintSolver::tryDispatch(const ReducePackConstraint& c, NotNull<const 
 {
     TypePackId tp = follow(c.tp);
     FamilyGraphReductionResult result =
-        reduceFamilies(tp, constraint->location, NotNull{arena}, builtinTypes, constraint->scope, normalizer, nullptr, force);
+        reduceFamilies(NotNull{this}, tp, constraint->location, constraint->scope, nullptr, force);
 
     for (TypeId r : result.reducedTypes)
         unblock(r, constraint->location);
@@ -2241,13 +2156,13 @@ bool ConstraintSolver::tryDispatchIterableFunction(
     const TypePackId nextRetPack = arena->addTypePack(TypePack{{retIndex}, valueTailTy});
 
     const TypeId expectedNextTy = arena->addType(FunctionType{TypeLevel{}, constraint->scope, nextArgPack, nextRetPack});
-    ErrorVec errors = unify(constraint->scope, constraint->location, nextTy, expectedNextTy);
+    std::optional<TypeError> error = unify(constraint->scope, constraint->location, nextTy, expectedNextTy);
 
     // if there are no errors from unifying the two, we can pass forward the expected type as our selected resolution.
-    if (errors.empty())
-    {
+    if (!error)
         (*c.astForInNextTypes)[c.nextAstFragment] = expectedNextTy;
-    }
+    else
+        reportError(*error);
 
     auto it = begin(nextRetPack);
     std::vector<TypeId> modifiedNextRetHead;
@@ -2440,7 +2355,7 @@ std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTa
 template<typename TID>
 bool ConstraintSolver::tryUnify(NotNull<const Constraint> constraint, TID subTy, TID superTy)
 {
-    Unifier2 u2{NotNull{arena}, builtinTypes, NotNull{&iceReporter}};
+    Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}};
 
     bool success = u2.unify(subTy, superTy);
 
@@ -2670,14 +2585,14 @@ bool ConstraintSolver::isBlocked(NotNull<const Constraint> constraint)
     return blockedIt != blockedConstraints.end() && blockedIt->second > 0;
 }
 
-ErrorVec ConstraintSolver::unify(NotNull<Scope> scope, Location location, TypeId subType, TypeId superType)
+std::optional<TypeError> ConstraintSolver::unify(NotNull<Scope> scope, Location location, TypeId subType, TypeId superType)
 {
-    Unifier2 u2{NotNull{arena}, builtinTypes, NotNull{&iceReporter}};
+    Unifier2 u2{NotNull{arena}, builtinTypes, scope, NotNull{&iceReporter}};
 
     const bool ok = u2.unify(subType, superType);
 
     if (!ok)
-        reportError(UnificationTooComplex{}, location);
+        return {{location, UnificationTooComplex{}}};
 
     unblock(subType, Location{});
     unblock(superType, Location{});
@@ -2687,7 +2602,7 @@ ErrorVec ConstraintSolver::unify(NotNull<Scope> scope, Location location, TypeId
 
 ErrorVec ConstraintSolver::unify(NotNull<Scope> scope, Location location, TypePackId subPack, TypePackId superPack)
 {
-    Unifier2 u{arena, builtinTypes, NotNull{&iceReporter}};
+    Unifier2 u{arena, builtinTypes, scope, NotNull{&iceReporter}};
 
     u.unify(subPack, superPack);
 
@@ -2760,6 +2675,50 @@ void ConstraintSolver::reportError(TypeError e)
 {
     errors.emplace_back(std::move(e));
     errors.back().moduleName = currentModuleName;
+}
+
+struct ContainsType : TypeOnceVisitor
+{
+    TypeId needle;
+    bool found = false;
+
+    explicit ContainsType(TypeId needle)
+        : needle(needle)
+    {
+    }
+
+    bool visit(TypeId) override
+    {
+        return !found; // traverse into the type iff we have yet to find the needle
+    }
+
+    bool visit(TypeId ty, const FreeType&) override
+    {
+        found |= ty == needle;
+        return false;
+    }
+};
+
+bool ConstraintSolver::hasUnresolvedConstraints(TypeId ty)
+{
+    if (!get<FreeType>(ty) || unsolvedConstraints.empty())
+        return false; // if it's not free, it never has any unresolved constraints, maybe?
+
+    ContainsType containsTy{ty};
+
+    for (auto constraint : unsolvedConstraints)
+    {
+        if (auto sc = get<SubtypeConstraint>(*constraint))
+        {
+            containsTy.traverse(sc->subType);
+            containsTy.traverse(sc->superType);
+
+            if (containsTy.found)
+                return true;
+        }
+    }
+
+    return containsTy.found;
 }
 
 TypeId ConstraintSolver::errorRecoveryType() const

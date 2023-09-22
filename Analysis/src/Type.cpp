@@ -25,7 +25,6 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauNormalizeBlockedTypes)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 LUAU_FASTFLAGVARIABLE(LuauInitializeStringMetatableInGlobalTypes, false)
 
@@ -522,11 +521,9 @@ GenericType::GenericType(Scope* scope, const Name& name)
 }
 
 BlockedType::BlockedType()
-    : index(FFlag::LuauNormalizeBlockedTypes ? Unifiable::freshIndex() : ++DEPRECATED_nextIndex)
+    : index(Unifiable::freshIndex())
 {
 }
-
-int BlockedType::DEPRECATED_nextIndex = 0;
 
 PendingExpansionType::PendingExpansionType(
     std::optional<AstName> prefix, AstName name, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)

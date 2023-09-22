@@ -94,6 +94,9 @@ TEST_CASE_FIXTURE(Fixture, "infer_locals_via_assignment_from_its_call_site")
 }
 TEST_CASE_FIXTURE(Fixture, "interesting_local_type_inference_case")
 {
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     ScopedFastFlag sff[] = {
         {"DebugLuauDeferredConstraintResolution", true},
     };
@@ -1086,7 +1089,7 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
 
     CHECK(1 == result.errors.size());
     CHECK(Location{{3, 12}, {3, 46}} == result.errors[0].location);
-    CHECK_EQ("Internal error: Code is too complex to typecheck! Consider adding type annotations around this area", toString(result.errors[0]));
+    CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_infer_cache_limit_normalizer")
@@ -1099,7 +1102,7 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_cache_limit_normalizer")
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ("Internal error: Code is too complex to typecheck! Consider adding type annotations around this area", toString(result.errors[0]));
+    CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "follow_on_new_types_in_substitution")

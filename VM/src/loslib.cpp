@@ -25,12 +25,18 @@ static time_t timegm(struct tm* timep)
 #elif defined(__FreeBSD__)
 static tm* gmtime_r(const time_t* timep, tm* result)
 {
-    return gmtime_s(timep, result) == 0 ? result : NULL;
+    // Note: return is reversed from Windows (0 is success on Windows, but 0/null is failure elsewhere)
+    // Windows https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/gmtime-s-gmtime32-s-gmtime64-s?view=msvc-170#return-value
+    // Everyone else https://en.cppreference.com/w/c/chrono/gmtime
+    return gmtime_s(timep, result);
 }
 
 static tm* localtime_r(const time_t* timep, tm* result)
 {
-    return localtime_s(timep, result) == 0 ? result : NULL;
+    // Note: return is reversed from Windows (0 is success on Windows, but 0/null is failure elsewhere)
+    // Windows https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/localtime-s-localtime32-s-localtime64-s?view=msvc-170#return-value
+    // Everyone else https://en.cppreference.com/w/c/chrono/localtime
+    return localtime_s(timep, result);
 }
 
 static time_t timegm(struct tm* timep)

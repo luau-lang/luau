@@ -23,7 +23,6 @@ extern bool verbose;
 extern bool codegen;
 extern int optimizationLevel;
 
-LUAU_FASTFLAG(LuauPCallDebuggerFix);
 LUAU_FASTFLAG(LuauFloorDivision);
 
 static lua_CompileOptions defaultOptions()
@@ -146,12 +145,19 @@ using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
 static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = nullptr, void (*yield)(lua_State* L) = nullptr,
     lua_State* initialLuaState = nullptr, lua_CompileOptions* options = nullptr, bool skipCodegen = false)
 {
+#ifdef LUAU_CONFORMANCE_SOURCE_DIR
+    std::string path = LUAU_CONFORMANCE_SOURCE_DIR;
+    path += "/";
+    path += name;
+#else
     std::string path = __FILE__;
     path.erase(path.find_last_of("\\/"));
     path += "/conformance/";
     path += name;
+#endif
 
     std::fstream stream(path, std::ios::in | std::ios::binary);
+    INFO(path);
     REQUIRE(stream);
 
     std::string source(std::istreambuf_iterator<char>(stream), {});
@@ -1243,30 +1249,7 @@ TEST_CASE("TagMethodError")
     //   when doLuaBreak is true the test additionally calls lua_break to ensure breaking the debugger doesn't cause the VM to crash
     for (bool doLuaBreak : {false, true})
     {
-        std::optional<ScopedFastFlag> sff;
-        if (doLuaBreak)
-        {
-            // If doLuaBreak is true then LuauPCallDebuggerFix must be enabled to avoid crashing the tests.
-            sff = {"LuauPCallDebuggerFix", true};
-        }
-
-        if (FFlag::LuauPCallDebuggerFix)
-        {
-            expectedHits = {22, 32};
-        }
-        else
-        {
-            expectedHits = {
-                9,
-                17,
-                17,
-                22,
-                27,
-                27,
-                32,
-                37,
-            };
-        }
+        expectedHits = {22, 32};
 
         static int index;
         static bool luaBreak;

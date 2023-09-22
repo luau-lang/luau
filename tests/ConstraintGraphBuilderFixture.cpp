@@ -12,7 +12,6 @@ ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
     mainModule->name = "MainModule";
     mainModule->humanReadableName = "MainModule";
 
-    BlockedType::DEPRECATED_nextIndex = 0;
     BlockedTypePack::nextIndex = 0;
 }
 

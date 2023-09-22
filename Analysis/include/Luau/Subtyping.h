@@ -124,6 +124,8 @@ private:
     SubtypingResult isCovariantWith(const PrimitiveType* subPrim, const TableType* superTable);
     SubtypingResult isCovariantWith(const SingletonType* subSingleton, const TableType* superTable);
 
+    SubtypingResult isCovariantWith(const TableIndexer& subIndexer, const TableIndexer& superIndexer);
+
     SubtypingResult isCovariantWith(const NormalizedType* subNorm, const NormalizedType* superNorm);
     SubtypingResult isCovariantWith(const NormalizedClassType& subClass, const NormalizedClassType& superClass);
     SubtypingResult isCovariantWith(const NormalizedClassType& subClass, const TypeIds& superTables);

@@ -82,8 +82,16 @@ struct FindCyclicTypes final : TypeVisitor
 
         if (FFlag::DebugLuauDeferredConstraintResolution)
         {
-            traverse(ft.lowerBound);
-            traverse(ft.upperBound);
+            // TODO: Replace these if statements with assert()s when we
+            // delete FFlag::DebugLuauDeferredConstraintResolution.
+            //
+            // When the old solver is used, these pointers are always
+            // unused. When the new solver is used, they are never null.
+
+            if (ft.lowerBound)
+                traverse(ft.lowerBound);
+            if (ft.upperBound)
+                traverse(ft.upperBound);
         }
 
         return false;
@@ -442,7 +450,9 @@ struct TypeStringifier
     {
         state.result.invalid = true;
 
-        if (FFlag::DebugLuauDeferredConstraintResolution)
+        // TODO: ftv.lowerBound and ftv.upperBound should always be non-nil when
+        // the new solver is used. This can be replaced with an assert.
+        if (FFlag::DebugLuauDeferredConstraintResolution && ftv.lowerBound && ftv.upperBound)
         {
             const TypeId lowerBound = follow(ftv.lowerBound);
             const TypeId upperBound = follow(ftv.upperBound);

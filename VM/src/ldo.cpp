@@ -17,8 +17,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauPCallDebuggerFix, false)
-
 /*
 ** {======================================================
 ** Error-recovery functions
@@ -584,7 +582,7 @@ int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t e
         L->nCcalls = oldnCcalls;
 
         // an error occurred, check if we have a protected error callback
-        if ((!FFlag::LuauPCallDebuggerFix || yieldable) && L->global->cb.debugprotectederror)
+        if (yieldable && L->global->cb.debugprotectederror)
         {
             L->global->cb.debugprotectederror(L);
 
