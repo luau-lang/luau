@@ -216,6 +216,7 @@ TEST_CASE_FIXTURE(Fixture, "functions_are_always_parenthesized_in_unions_or_inte
 
 TEST_CASE_FIXTURE(Fixture, "simple_intersections_printed_on_one_line")
 {
+    ScopedFastFlag sff{"LuauToStringSimpleCompositeTypesSingleLine", true};
     CheckResult result = check(R"(
         local a: string & number
     )");
@@ -228,6 +229,7 @@ TEST_CASE_FIXTURE(Fixture, "simple_intersections_printed_on_one_line")
 
 TEST_CASE_FIXTURE(Fixture, "complex_intersections_printed_on_multiple_lines")
 {
+    ScopedFastFlag sff{"LuauToStringSimpleCompositeTypesSingleLine", true};
     CheckResult result = check(R"(
         local a: string & number & boolean
     )");
@@ -246,6 +248,7 @@ TEST_CASE_FIXTURE(Fixture, "complex_intersections_printed_on_multiple_lines")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_always_printed_on_multiple_lines")
 {
+    ScopedFastFlag sff{"LuauToStringSimpleCompositeTypesSingleLine", true};
     CheckResult result = check(R"(
         local a: ((string) -> string) & ((number) -> number)
     )");
@@ -262,6 +265,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_always_printed_on_multiple_line
 
 TEST_CASE_FIXTURE(Fixture, "simple_unions_printed_on_one_line")
 {
+    ScopedFastFlag sff{"LuauToStringSimpleCompositeTypesSingleLine", true};
     CheckResult result = check(R"(
         local a: number | boolean
     )");
@@ -274,6 +278,7 @@ TEST_CASE_FIXTURE(Fixture, "simple_unions_printed_on_one_line")
 
 TEST_CASE_FIXTURE(Fixture, "complex_unions_printed_on_multiple_lines")
 {
+    ScopedFastFlag sff{"LuauToStringSimpleCompositeTypesSingleLine", true};
     CheckResult result = check(R"(
         local a: string | number | boolean
     )");

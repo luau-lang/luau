@@ -11,6 +11,7 @@
 
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
 LUAU_FASTINT(LuauTypeMaximumStringifierLength)
+LUAU_FASTFLAG(LuauToStringSimpleCompositeTypesSingleLine)
 
 namespace Luau
 {
@@ -39,6 +40,12 @@ struct ToStringNameMap
 
 struct ToStringOptions
 {
+    ToStringOptions(bool exhaustive = false)
+        : exhaustive(exhaustive)
+        , compositeTypesSingleLineLimit(FFlag::LuauToStringSimpleCompositeTypesSingleLine.value ? 5 : 0)
+    {
+    }
+
     bool exhaustive = false;                      // If true, we produce complete output rather than comprehensible output
     bool useLineBreaks = false;                   // If true, we insert new lines to separate long results such as table entries/metatable.
     bool functionTypeArguments = false;           // If true, output function type argument names when they are available
