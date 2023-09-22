@@ -463,6 +463,12 @@ ScopedRegX64::~ScopedRegX64()
         owner.freeReg(reg);
 }
 
+void ScopedRegX64::take(RegisterX64 reg)
+{
+    LUAU_ASSERT(this->reg == noreg);
+    this->reg = owner.takeReg(reg, kInvalidInstIdx);
+}
+
 void ScopedRegX64::alloc(SizeX64 size)
 {
     LUAU_ASSERT(reg == noreg);

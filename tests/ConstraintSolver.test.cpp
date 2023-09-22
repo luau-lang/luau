@@ -4,6 +4,8 @@
 #include "Fixture.h"
 #include "doctest.h"
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 using namespace Luau;
 
 static TypeId requireBinding(Scope* scope, const char* name)
@@ -57,7 +59,11 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "proper_let_generalization")
     TypeId idType = requireBinding(rootScope, "b");
 
     ToStringOptions opts;
-    CHECK("<a>(a) -> number" == toString(idType, opts));
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("(unknown) -> number" == toString(idType, opts));
+    else
+        CHECK("<a>(a) -> number" == toString(idType, opts));
 }
 
 TEST_SUITE_END();

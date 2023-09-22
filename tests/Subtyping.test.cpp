@@ -63,6 +63,11 @@ struct SubtypeFixture : Fixture
         return arena.addType(TableType{std::move(props), std::nullopt, {}, TableState::Sealed});
     }
 
+    TypeId idx(TypeId keyTy, TypeId valueTy)
+    {
+        return arena.addType(TableType{{}, TableIndexer{keyTy, valueTy}, {}, TableState::Sealed});
+    }
+
     // `&`
     TypeId meet(TypeId a, TypeId b)
     {
@@ -97,6 +102,11 @@ struct SubtypeFixture : Fixture
         TypeId ty = cls(name);
         getMutable<ClassType>(ty)->props = std::move(props);
         return ty;
+    }
+
+    TypeId opt(TypeId ty)
+    {
+        return join(ty, builtinTypes->nilType);
     }
 
     TypeId cyclicTable(std::function<void(TypeId, TableType*)>&& cb)
@@ -531,6 +541,23 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(number, string) -> string <!: (number, ...st
     CHECK_IS_NOT_SUBTYPE(numberAndStringToStringType, numberAndStringsToStringType);
 }
 
+/*
+ * <A>(A) -> A <: <X>(X) -> X
+ *      A can be bound to X.
+ *
+ * <A>(A) -> A </: <X>(X) -> number
+ *      A can be bound to X, but A </: number
+ *
+ * (number) -> number </: <A>(A) -> A
+ *      Only generics on the left side can be bound.
+ *      number </: A
+ *
+ * <A, B>(A, B) -> boolean <: <X>(X, X) -> boolean
+ *      It is ok to bind both A and B to X.
+ *
+ * <A>(A, A) -> boolean </: <X, Y>(X, Y) -> boolean
+ *      A cannot be bound to both X and Y.
+ */
 TEST_CASE_FIXTURE(SubtypeFixture, "<T>() -> T <: () -> number")
 {
     CHECK_IS_SUBTYPE(genericNothingToTType, nothingToNumberType);
@@ -636,7 +663,6 @@ TEST_CASE_FIXTURE(SubtypeFixture, "() -> () <!: <A...>(A...) -> A...")
     CHECK_IS_NOT_SUBTYPE(nothingToNothingType, genericAsToAsType);
 }
 
-
 TEST_CASE_FIXTURE(SubtypeFixture, "{} <: {}")
 {
     CHECK_IS_SUBTYPE(tbl({}), tbl({}));
@@ -645,6 +671,11 @@ TEST_CASE_FIXTURE(SubtypeFixture, "{} <: {}")
 TEST_CASE_FIXTURE(SubtypeFixture, "{x: number} <: {}")
 {
     CHECK_IS_SUBTYPE(tbl({{"x", builtinTypes->numberType}}), tbl({}));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{} <!: {x: number}")
+{
+    CHECK_IS_NOT_SUBTYPE(tbl({}), tbl({{"x", builtinTypes->numberType}}));
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "{x: number} <!: {x: string}")
@@ -972,22 +1003,25 @@ TEST_CASE_FIXTURE(SubtypeFixture, "unknown <: X")
     CHECK_MESSAGE(usingGrandChildScope.isSubtype, "Expected " << builtinTypes->unknownType << " <: " << genericX);
 }
 
-/*
- * <A>(A) -> A <: <X>(X) -> X
- *      A can be bound to X.
- *
- * <A>(A) -> A </: <X>(X) -> number
- *      A can be bound to X, but A </: number
- *
- * (number) -> number </: <A>(A) -> A
- *      Only generics on the left side can be bound.
- *      number </: A
- *
- * <A, B>(A, B) -> boolean <: <X>(X, X) -> boolean
- *      It is ok to bind both A and B to X.
- *
- * <A>(A, A) -> boolean </: <X, Y>(X, Y) -> boolean
- *      A cannot be bound to both X and Y.
- */
+TEST_IS_SUBTYPE(idx(builtinTypes->numberType, builtinTypes->numberType), tbl({}));
+TEST_IS_NOT_SUBTYPE(tbl({}), idx(builtinTypes->numberType, builtinTypes->numberType));
+
+TEST_IS_NOT_SUBTYPE(tbl({{"X", builtinTypes->numberType}}), idx(builtinTypes->numberType, builtinTypes->numberType));
+TEST_IS_NOT_SUBTYPE(idx(builtinTypes->numberType, builtinTypes->numberType), tbl({{"X", builtinTypes->numberType}}));
+
+TEST_IS_NOT_SUBTYPE(idx(join(builtinTypes->numberType, builtinTypes->stringType), builtinTypes->numberType), idx(builtinTypes->numberType, builtinTypes->numberType));
+TEST_IS_NOT_SUBTYPE(idx(builtinTypes->numberType, builtinTypes->numberType), idx(join(builtinTypes->numberType, builtinTypes->stringType), builtinTypes->numberType));
+
+TEST_IS_NOT_SUBTYPE(idx(builtinTypes->numberType, join(builtinTypes->stringType, builtinTypes->numberType)), idx(builtinTypes->numberType, builtinTypes->numberType));
+TEST_IS_NOT_SUBTYPE(idx(builtinTypes->numberType, builtinTypes->numberType), idx(builtinTypes->numberType, join(builtinTypes->stringType, builtinTypes->numberType)));
+
+TEST_IS_NOT_SUBTYPE(tbl({{"X", builtinTypes->numberType}}), idx(builtinTypes->stringType, builtinTypes->numberType));
+TEST_IS_SUBTYPE(idx(builtinTypes->stringType, builtinTypes->numberType), tbl({{"X", builtinTypes->numberType}}));
+
+TEST_IS_NOT_SUBTYPE(tbl({{"X", opt(builtinTypes->numberType)}}), idx(builtinTypes->stringType, builtinTypes->numberType));
+TEST_IS_NOT_SUBTYPE(idx(builtinTypes->stringType, builtinTypes->numberType), tbl({{"X", opt(builtinTypes->numberType)}}));
+
+TEST_IS_SUBTYPE(tbl({{"X", builtinTypes->numberType}, {"Y", builtinTypes->numberType}}), tbl({{"X", builtinTypes->numberType}}));
+TEST_IS_NOT_SUBTYPE(tbl({{"X", builtinTypes->numberType}}), tbl({{"X", builtinTypes->numberType}, {"Y", builtinTypes->numberType}}));
 
 TEST_SUITE_END();

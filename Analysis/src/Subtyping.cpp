@@ -438,7 +438,7 @@ SubtypingResult Subtyping::isCovariantWith(TypePackId subTp, TypePackId superTp)
                 results.push_back({false});
         }
         else
-            LUAU_ASSERT(0); // TODO
+            iceReporter->ice("Subtyping test encountered the unexpected type pack: " + toString(*superTail));
     }
 
     return SubtypingResult::all(results);
@@ -736,13 +736,33 @@ SubtypingResult Subtyping::isCovariantWith(const TableType* subTable, const Tabl
 {
     SubtypingResult result{true};
 
+    if (subTable->props.empty() && !subTable->indexer && superTable->indexer)
+        return {false};
+
     for (const auto& [name, prop] : superTable->props)
     {
-        auto it = subTable->props.find(name);
-        if (it != subTable->props.end())
-            result.andAlso(isInvariantWith(prop.type(), it->second.type()));
+        std::vector<SubtypingResult> results;
+        if (auto it = subTable->props.find(name); it != subTable->props.end())
+            results.push_back(isInvariantWith(it->second.type(), prop.type()));
+
+        if (subTable->indexer)
+        {
+            if (isInvariantWith(subTable->indexer->indexType, builtinTypes->stringType).isSubtype)
+                results.push_back(isInvariantWith(subTable->indexer->indexResultType, prop.type()));
+        }
+
+        if (results.empty())
+            return {false};
+
+        result.andAlso(SubtypingResult::all(results));
+    }
+
+    if (superTable->indexer)
+    {
+        if (subTable->indexer)
+            result.andAlso(isInvariantWith(*subTable->indexer, *superTable->indexer));
         else
-            return SubtypingResult{false};
+            return {false};
     }
 
     return result;
@@ -750,10 +770,7 @@ SubtypingResult Subtyping::isCovariantWith(const TableType* subTable, const Tabl
 
 SubtypingResult Subtyping::isCovariantWith(const MetatableType* subMt, const MetatableType* superMt)
 {
-    return SubtypingResult::all({
-        isCovariantWith(subMt->table, superMt->table),
-        isCovariantWith(subMt->metatable, superMt->metatable),
-    });
+    return isCovariantWith(subMt->table, superMt->table).andAlso(isCovariantWith(subMt->metatable, superMt->metatable));
 }
 
 SubtypingResult Subtyping::isCovariantWith(const MetatableType* subMt, const TableType* superTable)
@@ -850,6 +867,11 @@ SubtypingResult Subtyping::isCovariantWith(const SingletonType* subSingleton, co
         }
     }
     return result;
+}
+
+SubtypingResult Subtyping::isCovariantWith(const TableIndexer& subIndexer, const TableIndexer& superIndexer)
+{
+    return isInvariantWith(subIndexer.indexType, superIndexer.indexType).andAlso(isInvariantWith(superIndexer.indexResultType, subIndexer.indexResultType));
 }
 
 SubtypingResult Subtyping::isCovariantWith(const NormalizedType* subNorm, const NormalizedType* superNorm)

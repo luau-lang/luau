@@ -2,6 +2,7 @@
 
 #include "Luau/TypeFamily.h"
 
+#include "Luau/ConstraintSolver.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Instantiation.h"
 #include "Luau/Normalize.h"
@@ -55,31 +56,38 @@ struct InstanceCollector : TypeOnceVisitor
 
 struct FamilyReducer
 {
+    ConstraintSolver* solver = nullptr;
+
+    // Conditionally from the solver if one is provided.
+    NotNull<TypeArena> arena;
+    NotNull<BuiltinTypes> builtins;
+    NotNull<Normalizer> normalizer;
+
     std::deque<TypeId> queuedTys;
     std::deque<TypePackId> queuedTps;
     DenseHashSet<const void*> irreducible{nullptr};
     FamilyGraphReductionResult result;
-    Location location;
-    NotNull<TypeArena> arena;
-    NotNull<BuiltinTypes> builtins;
     TxnLog* parentLog = nullptr;
     TxnLog log;
     bool force = false;
+
+    // Local to the constraint being reduced.
+    Location location;
     NotNull<Scope> scope;
-    NotNull<Normalizer> normalizer;
 
     FamilyReducer(std::deque<TypeId> queuedTys, std::deque<TypePackId> queuedTps, Location location, NotNull<TypeArena> arena,
-        NotNull<BuiltinTypes> builtins, NotNull<Scope> scope, NotNull<Normalizer> normalizer, TxnLog* parentLog = nullptr, bool force = false)
-        : queuedTys(std::move(queuedTys))
-        , queuedTps(std::move(queuedTps))
-        , location(location)
+        NotNull<BuiltinTypes> builtins, NotNull<Scope> scope, NotNull<Normalizer> normalizer, ConstraintSolver* solver, TxnLog* parentLog = nullptr, bool force = false)
+        : solver(solver)
         , arena(arena)
         , builtins(builtins)
+        , normalizer(normalizer)
+        , queuedTys(std::move(queuedTys))
+        , queuedTps(std::move(queuedTps))
         , parentLog(parentLog)
         , log(parentLog)
         , force(force)
+        , location(location)
         , scope(scope)
-        , normalizer(normalizer)
     {
     }
 
@@ -234,7 +242,7 @@ struct FamilyReducer
                 return;
 
             TypeFamilyReductionResult<TypeId> result =
-                tfit->family->reducer(tfit->typeArguments, tfit->packArguments, arena, builtins, NotNull{&log}, scope, normalizer);
+                tfit->family->reducer(tfit->typeArguments, tfit->packArguments, arena, builtins, NotNull{&log}, scope, normalizer, solver);
             handleFamilyReduction(subject, result);
         }
     }
@@ -253,7 +261,7 @@ struct FamilyReducer
                 return;
 
             TypeFamilyReductionResult<TypePackId> result =
-                tfit->family->reducer(tfit->typeArguments, tfit->packArguments, arena, builtins, NotNull{&log}, scope, normalizer);
+                tfit->family->reducer(tfit->typeArguments, tfit->packArguments, arena, builtins, NotNull{&log}, scope, normalizer, solver);
             handleFamilyReduction(subject, result);
         }
     }
@@ -268,9 +276,10 @@ struct FamilyReducer
 };
 
 static FamilyGraphReductionResult reduceFamiliesInternal(std::deque<TypeId> queuedTys, std::deque<TypePackId> queuedTps, Location location,
-    NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, NotNull<Scope> scope, NotNull<Normalizer> normalizer, TxnLog* log, bool force)
+    NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, NotNull<Scope> scope, NotNull<Normalizer> normalizer, ConstraintSolver* solver,
+    TxnLog* log, bool force)
 {
-    FamilyReducer reducer{std::move(queuedTys), std::move(queuedTps), location, arena, builtins, scope, normalizer, log, force};
+    FamilyReducer reducer{std::move(queuedTys), std::move(queuedTps), location, arena, builtins, scope, normalizer, solver, log, force};
     int iterationCount = 0;
 
     while (!reducer.done())
@@ -305,7 +314,7 @@ FamilyGraphReductionResult reduceFamilies(TypeId entrypoint, Location location, 
     if (collector.tys.empty() && collector.tps.empty())
         return {};
 
-    return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), location, arena, builtins, scope, normalizer, log, force);
+    return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), location, arena, builtins, scope, normalizer, nullptr, log, force);
 }
 
 FamilyGraphReductionResult reduceFamilies(TypePackId entrypoint, Location location, NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins,
@@ -325,16 +334,57 @@ FamilyGraphReductionResult reduceFamilies(TypePackId entrypoint, Location locati
     if (collector.tys.empty() && collector.tps.empty())
         return {};
 
-    return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), location, arena, builtins, scope, normalizer, log, force);
+    return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), location, arena, builtins, scope, normalizer, nullptr, log, force);
 }
 
-bool isPending(TypeId ty, NotNull<TxnLog> log)
+FamilyGraphReductionResult reduceFamilies(
+    NotNull<ConstraintSolver> solver, TypeId entrypoint, Location location, NotNull<Scope> scope, TxnLog* log, bool force)
 {
-    return log->is<FreeType>(ty) || log->is<BlockedType>(ty) || log->is<PendingExpansionType>(ty) || log->is<TypeFamilyInstanceType>(ty);
+    InstanceCollector collector;
+
+    try
+    {
+        collector.traverse(entrypoint);
+    }
+    catch (RecursionLimitException&)
+    {
+        return FamilyGraphReductionResult{};
+    }
+
+    if (collector.tys.empty() && collector.tps.empty())
+        return {};
+
+    return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), location, solver->arena, solver->builtinTypes, scope, solver->normalizer, solver.get(), log, force);
+}
+
+FamilyGraphReductionResult reduceFamilies(
+    NotNull<ConstraintSolver> solver, TypePackId entrypoint, Location location, NotNull<Scope> scope, TxnLog* log, bool force)
+{
+    InstanceCollector collector;
+
+    try
+    {
+        collector.traverse(entrypoint);
+    }
+    catch (RecursionLimitException&)
+    {
+        return FamilyGraphReductionResult{};
+    }
+
+    if (collector.tys.empty() && collector.tps.empty())
+        return {};
+
+    return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), location, solver->arena, solver->builtinTypes, scope, solver->normalizer, solver.get(), log, force);
+}
+
+bool isPending(TypeId ty, NotNull<TxnLog> log, ConstraintSolver* solver)
+{
+    return log->is<BlockedType>(ty) || log->is<PendingExpansionType>(ty) || log->is<TypeFamilyInstanceType>(ty)
+        || (solver && solver->hasUnresolvedConstraints(ty));
 }
 
 TypeFamilyReductionResult<TypeId> addFamilyFn(std::vector<TypeId> typeParams, std::vector<TypePackId> packParams, NotNull<TypeArena> arena,
-    NotNull<BuiltinTypes> builtins, NotNull<TxnLog> log, NotNull<Scope> scope, NotNull<Normalizer> normalizer)
+    NotNull<BuiltinTypes> builtins, NotNull<TxnLog> log, NotNull<Scope> scope, NotNull<Normalizer> normalizer, ConstraintSolver* solver)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -367,11 +417,11 @@ TypeFamilyReductionResult<TypeId> addFamilyFn(std::vector<TypeId> typeParams, st
     {
         return {builtins->neverType, false, {}, {}};
     }
-    else if (isPending(lhsTy, log))
+    else if (isPending(lhsTy, log, solver))
     {
         return {std::nullopt, false, {lhsTy}, {}};
     }
-    else if (isPending(rhsTy, log))
+    else if (isPending(rhsTy, log, solver))
     {
         return {std::nullopt, false, {rhsTy}, {}};
     }
@@ -391,7 +441,7 @@ TypeFamilyReductionResult<TypeId> addFamilyFn(std::vector<TypeId> typeParams, st
     if (!addMm)
         return {std::nullopt, true, {}, {}};
 
-    if (isPending(log->follow(*addMm), log))
+    if (isPending(log->follow(*addMm), log, solver))
         return {std::nullopt, false, {log->follow(*addMm)}, {}};
 
     const FunctionType* mmFtv = log->get<FunctionType>(log->follow(*addMm));

@@ -1192,6 +1192,20 @@ end)
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "apply_type_function_nested_generics3")
+{
+    // This minimization was useful for debugging a particular issue with
+    // cyclic types under local type inference.
+
+    CheckResult result = check(R"(
+        local getReturnValue: <V>(cb: () -> V) -> V = nil :: any
+
+        local y = getReturnValue(function() return nil :: any end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_generic")
 {
     CheckResult result = check(R"(

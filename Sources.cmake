@@ -82,6 +82,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/IrData.h
     CodeGen/include/Luau/IrRegAllocX64.h
     CodeGen/include/Luau/IrUtils.h
+    CodeGen/include/Luau/IrVisitUseDef.h
     CodeGen/include/Luau/Label.h
     CodeGen/include/Luau/OperandX64.h
     CodeGen/include/Luau/OptimizeConstProp.h

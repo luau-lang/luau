@@ -99,6 +99,7 @@ struct ScopedRegX64
     ScopedRegX64(const ScopedRegX64&) = delete;
     ScopedRegX64& operator=(const ScopedRegX64&) = delete;
 
+    void take(RegisterX64 reg);
     void alloc(SizeX64 size);
     void free();
 

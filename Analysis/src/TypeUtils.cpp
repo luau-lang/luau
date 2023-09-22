@@ -326,7 +326,7 @@ ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypePackId
     }
 
     // check the tail if we have one and it's finite
-    if (tail && finite(*tail))
+    if (tail && tp != tail && finite(*tail))
         return shouldSuppressErrors(normalizer, *tail);
 
     return ErrorSuppression::DoNotSuppress;

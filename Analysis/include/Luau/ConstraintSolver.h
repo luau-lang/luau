@@ -203,8 +203,9 @@ struct ConstraintSolver
      * the result.
      * @param subType the sub-type to unify.
      * @param superType the super-type to unify.
+     * @returns optionally a unification too complex error if unification failed
      */
-    ErrorVec unify(NotNull<Scope> scope, Location location, TypeId subType, TypeId superType);
+    std::optional<TypeError> unify(NotNull<Scope> scope, Location location, TypeId subType, TypeId superType);
 
     /**
      * Creates a new Unifier and performs a single unification operation. Commits
@@ -232,6 +233,15 @@ struct ConstraintSolver
 
     void reportError(TypeErrorData&& data, const Location& location);
     void reportError(TypeError e);
+
+    /**
+     * Checks the existing set of constraints to see if there exist any that contain
+     * the provided free type, indicating that it is not yet ready to be replaced by
+     * one of its bounds.
+     * @param ty the free type that to check for related constraints
+     * @returns whether or not it is unsafe to replace the free type by one of its bounds
+     */
+    bool hasUnresolvedConstraints(TypeId ty);
 
 private:
 

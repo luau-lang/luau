@@ -1,6 +1,10 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "IrValueLocationTracking.h"
 
+#include "Luau/IrUtils.h"
+
+LUAU_FASTFLAGVARIABLE(LuauReduceStackSpills, false)
+
 namespace Luau
 {
 namespace CodeGen
@@ -23,13 +27,16 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     switch (inst.cmd)
     {
     case IrCmd::STORE_TAG:
+        // Tag update is a bit tricky, restore operations of values are not affected
+        invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ true);
+        break;
     case IrCmd::STORE_POINTER:
     case IrCmd::STORE_DOUBLE:
     case IrCmd::STORE_INT:
     case IrCmd::STORE_VECTOR:
     case IrCmd::STORE_TVALUE:
     case IrCmd::STORE_SPLIT_TVALUE:
-        invalidateRestoreOp(inst.a);
+        invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ false);
         break;
     case IrCmd::ADJUST_STACK_TO_REG:
         invalidateRestoreVmRegs(vmRegOp(inst.a), -1);
@@ -46,13 +53,13 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::DO_LEN:
     case IrCmd::GET_TABLE:
     case IrCmd::GET_IMPORT:
-        invalidateRestoreOp(inst.a);
+        invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ false);
         break;
     case IrCmd::CONCAT:
         invalidateRestoreVmRegs(vmRegOp(inst.a), function.uintOp(inst.b));
         break;
     case IrCmd::GET_UPVALUE:
-        invalidateRestoreOp(inst.a);
+        invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ false);
         break;
     case IrCmd::CALL:
         // Even if result count is limited, all registers starting from function (ra) might be modified
@@ -65,7 +72,7 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
         break;
     case IrCmd::FALLBACK_GETGLOBAL:
     case IrCmd::FALLBACK_GETTABLEKS:
-        invalidateRestoreOp(inst.b);
+        invalidateRestoreOp(inst.b, /*skipValueInvalidation*/ false);
         break;
     case IrCmd::FALLBACK_NAMECALL:
         invalidateRestoreVmRegs(vmRegOp(inst.b), 2);
@@ -74,7 +81,7 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
         invalidateRestoreVmRegs(vmRegOp(inst.b), function.intOp(inst.c));
         break;
     case IrCmd::FALLBACK_DUPCLOSURE:
-        invalidateRestoreOp(inst.b);
+        invalidateRestoreOp(inst.b, /*skipValueInvalidation*/ false);
         break;
     case IrCmd::FALLBACK_FORGPREP:
         invalidateRestoreVmRegs(vmRegOp(inst.b), 3);
@@ -180,7 +187,7 @@ void IrValueLocationTracking::recordRestoreOp(uint32_t instIdx, IrOp location)
     }
 }
 
-void IrValueLocationTracking::invalidateRestoreOp(IrOp location)
+void IrValueLocationTracking::invalidateRestoreOp(IrOp location, bool skipValueInvalidation)
 {
     if (location.kind == IrOpKind::VmReg)
     {
@@ -189,6 +196,20 @@ void IrValueLocationTracking::invalidateRestoreOp(IrOp location)
         if (instIdx != kInvalidInstIdx)
         {
             IrInst& inst = function.instructions[instIdx];
+
+            // If we are only modifying the tag, we can avoid invalidating tracked location of values
+            if (FFlag::LuauReduceStackSpills && skipValueInvalidation)
+            {
+                switch (getCmdValueKind(inst.cmd))
+                {
+                case IrValueKind::Double:
+                case IrValueKind::Pointer:
+                case IrValueKind::Int:
+                    return;
+                default:
+                    break;
+                }
+            }
 
             // If instruction value is spilled and memory location is about to be lost, it has to be restored immediately
             if (inst.needsReload)
@@ -215,7 +236,7 @@ void IrValueLocationTracking::invalidateRestoreVmRegs(int start, int count)
         end = maxReg;
 
     for (int reg = start; reg <= end; reg++)
-        invalidateRestoreOp(IrOp{IrOpKind::VmReg, uint8_t(reg)});
+        invalidateRestoreOp(IrOp{IrOpKind::VmReg, uint8_t(reg)}, /*skipValueInvalidation*/ false);
 }
 
 } // namespace CodeGen

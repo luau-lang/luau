@@ -34,6 +34,10 @@ TEST_CASE_FIXTURE(Fixture, "for_loop")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_no_table_passed")
 {
+    // This test may block CI if forced to run outside of DCR.
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
     CheckResult result = check(R"(
 
@@ -58,7 +62,9 @@ for a, b in t do end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     CheckResult result = check(R"(
         type Iterable = typeof(setmetatable(
             {},

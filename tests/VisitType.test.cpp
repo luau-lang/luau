@@ -8,9 +8,9 @@
 
 using namespace Luau;
 
-LUAU_FASTINT(LuauVisitRecursionLimit)
+LUAU_FASTINT(LuauVisitRecursionLimit);
 
-TEST_SUITE_BEGIN("VisitTypeVar");
+TEST_SUITE_BEGIN("VisitType");
 
 TEST_CASE_FIXTURE(Fixture, "throw_when_limit_is_exceeded")
 {
@@ -36,6 +36,23 @@ TEST_CASE_FIXTURE(Fixture, "dont_throw_when_limit_is_high_enough")
     TypeId tType = requireType("t");
 
     (void)toString(tType);
+}
+
+TEST_CASE_FIXTURE(Fixture, "some_free_types_do_not_have_bounds")
+{
+    Type t{FreeType{TypeLevel{}}};
+
+    (void)toString(&t);
+}
+
+TEST_CASE_FIXTURE(Fixture, "some_free_types_have_bounds")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    Scope scope{builtinTypes->anyTypePack};
+    Type t{FreeType{&scope, builtinTypes->neverType, builtinTypes->numberType}};
+
+    CHECK("('a <: number)" == toString(&t));
 }
 
 TEST_SUITE_END();

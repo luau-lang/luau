@@ -20,7 +20,7 @@ struct IrValueLocationTracking
     void afterInstLowering(IrInst& inst, uint32_t instIdx);
 
     void recordRestoreOp(uint32_t instIdx, IrOp location);
-    void invalidateRestoreOp(IrOp location);
+    void invalidateRestoreOp(IrOp location, bool skipValueInvalidation);
     void invalidateRestoreVmRegs(int start, int count);
 
     IrFunction& function;

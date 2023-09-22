@@ -220,6 +220,8 @@ if(LUAU_BUILD_TESTS)
     target_compile_options(Luau.Conformance PRIVATE ${LUAU_OPTIONS})
     target_include_directories(Luau.Conformance PRIVATE extern)
     target_link_libraries(Luau.Conformance PRIVATE Luau.Analysis Luau.Compiler Luau.CodeGen Luau.VM)
+    file(REAL_PATH "tests/conformance" LUAU_CONFORMANCE_SOURCE_DIR)
+    target_compile_definitions(Luau.Conformance PRIVATE LUAU_CONFORMANCE_SOURCE_DIR="${LUAU_CONFORMANCE_SOURCE_DIR}")
 
     target_compile_options(Luau.CLI.Test PRIVATE ${LUAU_OPTIONS})
     target_include_directories(Luau.CLI.Test PRIVATE extern CLI)

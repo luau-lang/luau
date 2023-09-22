@@ -367,7 +367,7 @@ TEST_CASE_FIXTURE(Fixture, "open_table_unification_3")
     CHECK(arg0Table->props.count("baz"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_1")
+TEST_CASE_FIXTURE(Fixture, "table_param_width_subtyping_1")
 {
     CheckResult result = check(R"(
         function foo(o)
@@ -382,7 +382,7 @@ TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_1")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_2")
+TEST_CASE_FIXTURE(Fixture, "table_param_width_subtyping_2")
 {
     CheckResult result = check(R"(
         --!strict
@@ -403,7 +403,7 @@ TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_2")
     CHECK_EQ("baz", error->properties[0]);
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_3")
+TEST_CASE_FIXTURE(Fixture, "table_param_width_subtyping_3")
 {
     CheckResult result = check(R"(
         local T = {}
@@ -433,7 +433,7 @@ TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_3")
 }
 
 #if 0
-TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_2")
+TEST_CASE_FIXTURE(Fixture, "table_param_width_subtyping_2")
 {
     CheckResult result = check(R"(
         function id(x)

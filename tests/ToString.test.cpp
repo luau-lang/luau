@@ -789,7 +789,10 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_include_self_param")
     auto ttv = get<TableType>(follow(parentTy));
     auto ftv = get<FunctionType>(follow(ttv->props.at("method").type()));
 
-    CHECK_EQ("foo:method<a>(self: a, arg: string): ()", toStringNamedFunction("foo:method", *ftv));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("foo:method(self: unknown, arg: string): ()", toStringNamedFunction("foo:method", *ftv));
+    else
+        CHECK_EQ("foo:method<a>(self: a, arg: string): ()", toStringNamedFunction("foo:method", *ftv));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_self_param")
@@ -814,7 +817,10 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_self_param")
     auto ftv = get<FunctionType>(methodTy);
     REQUIRE_MESSAGE(ftv, "Expected a function but got " << toString(methodTy, opts));
 
-    CHECK_EQ("foo:method<a>(arg: string): ()", toStringNamedFunction("foo:method", *ftv, opts));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("foo:method(arg: string): ()", toStringNamedFunction("foo:method", *ftv, opts));
+    else
+        CHECK_EQ("foo:method<a>(arg: string): ()", toStringNamedFunction("foo:method", *ftv, opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tostring_unsee_ttv_if_array")
