@@ -6,7 +6,7 @@ Add `bit32.bswap` to swap the endianness of a 32-bit integer.
 
 ## Motivation
 
-The endianness of an integer is generally invisible to Luau users. Numbers are treated as big-endian regardless of their underlying representation, as is standard across programming languages. However, in some file formats and algorithms, the endianness of an integer is important, so it becomees necessary to swap the order of bytes of an integer to 'pretend' that it is little endian.
+The endianness of an integer is generally invisible to Luau users. Numbers are treated as expected regardless of their underlying representation, as is standard across programming languages. However, in some file formats and algorithms, the endianness of an integer is important, so it becomes necessary to swap the order of bytes of an integer to 'pretend' that it is one endian or the other.
 
 While the endianness of numbers can be swapped through a few methods, it is cumbersome. Modern CPUs have instructions dedicated to this (`bswap` on x86-64, `rev` on aarch64) but in Luau, the current best method is to manually shift bytes around and OR them together. For 32-bit integers, this becomes a total of 7 calls:
 
