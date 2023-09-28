@@ -1,8 +1,8 @@
-# bit32.bswap
+# bit32.byteswap
 
 ## Summary
 
-Add `bit32.bswap` to swap the endianness of a 32-bit integer.
+Add `bit32.byteswap` to swap the endianness of a 32-bit integer.
 
 ## Motivation
 
@@ -23,23 +23,23 @@ Along with being inefficient, it is also difficult read this code and remember i
 
 ## Design
 
-The `bit32` library will gain a new function: `bit32.bswap`:
+The `bit32` library will gain a new function: `bit32.byteswap`:
 
 ```
-bit32.bswap(n: number): number
+bit32.byteswap(n: number): number
 ```
 
-`bswap` will take the bytes of a number and swap their endianness. To be exact, for an integer `0xA1B2_C3D4`, it will return `0xD4C3_B2A1`.
+`byteswap` will take the bytes of a number and swap their endianness. To be exact, for an integer `0xA1B2_C3D4`, it will return `0xD4C3_B2A1`.
 
 ## Drawbacks
 
-There is a reasonable expectation that `bit32`` functions recieve built-in implementations to improve their performance. This is even more true with native codegen. As this functionality is relatively niche, it may not be worth including it for that reason alone because it would occupy a built-in function slot in the VM.
+There is a reasonable expectation that `bit32` functions recieve built-in implementations to improve their performance. This is even more true with native codegen. As this functionality is relatively niche, it may not be worth including it for that reason alone because it would occupy a built-in function slot in the VM.
 
 However even without a built-in call, an initial implementation was still significantly faster than the alternative presented above. So, the only drawback known is in the marginal increase to the overall VM complexity, which is not considered to be a serious drawback.
 
 ## Alternatives
 
-A function to simply convert an integer to little-endian was considered, but was rejected due to a basic logic: it is impossible to know whether a given integer is in little-endian so the function may as well be a generic swapping function. Naming such a function is also potentially complex without being verose (`bit32.tole` is a bad name, but `bit32.tolittleendian` is too long).
+A function to simply convert an integer to little-endian was considered, but was rejected due to a basic logic: it is impossible to know whether a given integer is in little-endian so the function may as well be a generic swapping function. Naming such a function is also potentially complex without being verbose (`bit32.tole` is a bad name, but `bit32.tolittleendian` is too long).
 
 Simply using the existing `bit32` functions as presented at the beginning of the RFC is not unworkably slow, so it is a viable alternative for a niche use case like this. However, as noted before it is complicated to visually parse.
 
