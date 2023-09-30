@@ -373,12 +373,22 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "metatables_unify_against_shape_of_free_table
     state.log.commit();
 
     REQUIRE_EQ(state.errors.size(), 1);
-    const std::string expected = R"(Type
+    // clang-format off
+    const std::string expected =
+        (FFlag::DebugLuauDeferredConstraintResolution) ?
+R"(Type
+    '{ @metatable { __index: { foo: string } }, {|  |} }'
+could not be converted into
+    '{- foo: number -}'
+caused by:
+  Type 'number' could not be converted into 'string')" :
+R"(Type
     '{ @metatable {| __index: {| foo: string |} |}, {  } }'
 could not be converted into
     '{- foo: number -}'
 caused by:
   Type 'number' could not be converted into 'string')";
+    // clang-format on
     CHECK_EQ(expected, toString(state.errors[0]));
 }
 

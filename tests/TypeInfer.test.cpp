@@ -69,6 +69,18 @@ TEST_CASE_FIXTURE(Fixture, "infer_locals_with_nil_value")
     CHECK_EQ(getPrimitiveType(ty), PrimitiveType::String);
 }
 
+TEST_CASE_FIXTURE(Fixture, "infer_locals_with_nil_value_2")
+{
+    CheckResult result = check(R"(
+        local a = 2
+        local b = a,nil
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("a")));
+    CHECK_EQ("number", toString(requireType("b")));
+}
+
 TEST_CASE_FIXTURE(Fixture, "infer_locals_via_assignment_from_its_call_site")
 {
     CheckResult result = check(R"(
@@ -1166,6 +1178,28 @@ TEST_CASE_FIXTURE(Fixture, "bidirectional_checking_of_higher_order_function")
     Location location = result.errors[0].location;
     CHECK(location.begin.line == 4);
     CHECK(location.end.line == 4);
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectional_checking_of_callback_property")
+{
+    CheckResult result = check(R"(
+        local print: (number) -> ()
+
+        type Point = {x: number, y: number}
+        local T : {callback: ((Point) -> ())?} = {}
+
+        T.callback = function(p) -- No error here
+            print(p.z)           -- error here.  Point has no property z
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK_MESSAGE(get<UnknownProperty>(result.errors[0]), "Expected UnknownProperty but got " << result.errors[0]);
+
+    Location location = result.errors[0].location;
+    CHECK(location.begin.line == 7);
+    CHECK(location.end.line == 7);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "it_is_ok_to_have_inconsistent_number_of_return_values_in_nonstrict")

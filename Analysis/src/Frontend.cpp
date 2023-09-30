@@ -37,6 +37,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauReadWriteProperties, false)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckLimitControls, false)
 LUAU_FASTFLAGVARIABLE(CorrectEarlyReturnInMarkDirty, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauNewNonStrictMode, false)
 
 namespace Luau
 {
@@ -1257,7 +1258,7 @@ ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle
     ConstraintGraphBuilder cgb{result, NotNull{&normalizer}, moduleResolver, builtinTypes, iceHandler, parentScope, std::move(prepareModuleScope),
         logger.get(), NotNull{&dfg}, requireCycles};
 
-    cgb.visit(sourceModule.root);
+    cgb.visitModuleRoot(sourceModule.root);
     result->errors = std::move(cgb.errors);
 
     ConstraintSolver cs{NotNull{&normalizer}, NotNull(cgb.rootScope), borrowConstraints(cgb.constraints), result->humanReadableName, moduleResolver,

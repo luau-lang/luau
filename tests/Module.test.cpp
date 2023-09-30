@@ -489,15 +489,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_types_of_reexported_values")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     ModulePtr modA = frontend.moduleResolver.getModule("Module/A");
-    ModulePtr modB = frontend.moduleResolver.getModule("Module/B");
     REQUIRE(modA);
+    ModulePtr modB = frontend.moduleResolver.getModule("Module/B");
     REQUIRE(modB);
+
     std::optional<TypeId> typeA = first(modA->returnType);
-    std::optional<TypeId> typeB = first(modB->returnType);
     REQUIRE(typeA);
+    std::optional<TypeId> typeB = first(modB->returnType);
     REQUIRE(typeB);
+
     TableType* tableA = getMutable<TableType>(*typeA);
+    REQUIRE_MESSAGE(tableA, "Expected a table, but got " << toString(*typeA));
     TableType* tableB = getMutable<TableType>(*typeB);
+    REQUIRE_MESSAGE(tableB, "Expected a table, but got " << toString(*typeB));
+
     CHECK(tableA->props["a"].type() == tableB->props["b"].type());
 }
 

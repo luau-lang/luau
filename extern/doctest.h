@@ -3139,7 +3139,11 @@ DOCTEST_MAKE_STD_HEADERS_CLEAN_FROM_WARNINGS_ON_WALL_BEGIN
 #include <unordered_set>
 #include <exception>
 #include <stdexcept>
+
+#if !defined(DOCTEST_CONFIG_NO_POSIX_SIGNALS)
 #include <csignal>
+#endif
+
 #include <cfloat>
 #include <cctype>
 #include <cstdint>
@@ -5667,6 +5671,8 @@ namespace {
                 std::tm timeInfo;
 #ifdef DOCTEST_PLATFORM_WINDOWS
                 gmtime_s(&timeInfo, &rawtime);
+#elif defined(DOCTEST_CONFIG_USE_GMTIME_S)
+                gmtime_s(&rawtime, &timeInfo);
 #else // DOCTEST_PLATFORM_WINDOWS
                 gmtime_r(&rawtime, &timeInfo);
 #endif // DOCTEST_PLATFORM_WINDOWS

@@ -251,10 +251,22 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("{| x: string, y: number |}", toString(requireTypeAtPosition({5, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
 
-    // Should be {| x: nil, y: nil |}
-    CHECK_EQ("{| x: nil, y: nil |} | {| x: string, y: number |}", toString(requireTypeAtPosition({7, 28})));
+        CHECK_EQ("{ x: string, y: number }", toString(requireTypeAtPosition({5, 28})));
+
+        // Should be { x: nil, y: nil }
+        CHECK_EQ("{ x: nil, y: nil } | { x: string, y: number }", toString(requireTypeAtPosition({7, 28})));
+    }
+    else
+    {
+        CHECK_EQ("{| x: string, y: number |}", toString(requireTypeAtPosition({5, 28})));
+
+        // Should be {| x: nil, y: nil |}
+        CHECK_EQ("{| x: nil, y: nil |} | {| x: string, y: number |}", toString(requireTypeAtPosition({7, 28})));
+    }
+
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(0.5))

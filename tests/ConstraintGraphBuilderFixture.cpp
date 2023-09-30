@@ -21,7 +21,7 @@ void ConstraintGraphBuilderFixture::generateConstraints(const std::string& code)
     dfg = std::make_unique<DataFlowGraph>(DataFlowGraphBuilder::build(root, NotNull{&ice}));
     cgb = std::make_unique<ConstraintGraphBuilder>(mainModule, NotNull{&normalizer}, NotNull(&moduleResolver), builtinTypes, NotNull(&ice),
         frontend.globals.globalScope, /*prepareModuleScope*/ nullptr, &logger, NotNull{dfg.get()}, std::vector<RequireCycle>());
-    cgb->visit(root);
+    cgb->visitModuleRoot(root);
     rootScope = cgb->rootScope;
     constraints = Luau::borrowConstraints(cgb->constraints);
 }

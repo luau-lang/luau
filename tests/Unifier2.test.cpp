@@ -38,6 +38,11 @@ struct Unifier2Fixture
     {
         return ::Luau::toString(ty, opts);
     }
+
+    std::string toString(TypePackId ty)
+    {
+        return ::Luau::toString(ty, opts);
+    }
 };
 
 TEST_SUITE_BEGIN("Unifier2");
@@ -97,6 +102,32 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "(string) -> () <: (X) -> Y...")
 
     CHECK(0 == yPack->head.size());
     CHECK(!yPack->tail);
+}
+
+TEST_CASE_FIXTURE(Unifier2Fixture, "unify_binds_free_subtype_tail_pack")
+{
+    TypePackId numberPack = arena.addTypePack({builtinTypes.numberType});
+
+    TypePackId freeTail = arena.freshTypePack(&scope);
+    TypeId freeHead = arena.addType(FreeType{&scope, builtinTypes.neverType, builtinTypes.unknownType});
+    TypePackId freeAndFree = arena.addTypePack({freeHead}, freeTail);
+
+    u2.unify(freeAndFree, numberPack);
+
+    CHECK("('a <: number)" == toString(freeAndFree));
+}
+
+TEST_CASE_FIXTURE(Unifier2Fixture, "unify_binds_free_supertype_tail_pack")
+{
+    TypePackId numberPack = arena.addTypePack({builtinTypes.numberType});
+
+    TypePackId freeTail = arena.freshTypePack(&scope);
+    TypeId freeHead = arena.addType(FreeType{&scope, builtinTypes.neverType, builtinTypes.unknownType});
+    TypePackId freeAndFree = arena.addTypePack({freeHead}, freeTail);
+
+    u2.unify(numberPack, freeAndFree);
+
+    CHECK("(number <: 'a)" == toString(freeAndFree));
 }
 
 TEST_CASE_FIXTURE(Unifier2Fixture, "generalize_a_type_that_is_bounded_by_another_generalizable_type")

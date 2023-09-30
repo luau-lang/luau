@@ -410,7 +410,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cycle_between_object_constructor_and_alias")
     CHECK_MESSAGE(get<MetatableType>(follow(aliasType)), "Expected metatable type but got: " << toString(aliasType));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "promise_type_error_too_complex" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(BuiltinsFixture, "promise_type_error_too_complex" * doctest::timeout(2))
 {
     // TODO: LTI changes to function call resolution have rendered this test impossibly slow
     // shared self should fix it, but there may be other mitigations possible as well

@@ -223,7 +223,7 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
     const std::string expected = R"(Type 'bad' could not be converted into 'U<number>'
 caused by:
   Property 't' is not compatible. 
-Type '{ v: string }' could not be converted into 'T<number>'
+Type '{| v: string |}' could not be converted into 'T<number>'
 caused by:
   Property 'v' is not compatible. 
 Type 'string' could not be converted into 'number' in an invariant context)";
@@ -332,7 +332,10 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ("t1 where t1 = ({| a: t1 |}) -> string", toString(tm->wantedType));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("t1 where t1 = ({ a: t1 }) -> string", toString(tm->wantedType));
+    else
+        CHECK_EQ("t1 where t1 = ({| a: t1 |}) -> string", toString(tm->wantedType));
     CHECK_EQ(builtinTypes->numberType, tm->givenType);
 }
 
@@ -815,7 +818,10 @@ TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_uni
         local d: FutureType = { smth = true } -- missing error, 'd' is resolved to 'any'
     )");
 
-    CHECK_EQ("{| foo: number |}", toString(requireType("d"), {true}));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ foo: number }", toString(requireType("d"), {true}));
+    else
+        CHECK_EQ("{| foo: number |}", toString(requireType("d"), {true}));
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }

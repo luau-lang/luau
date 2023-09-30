@@ -394,8 +394,8 @@ TEST_CASE_FIXTURE(SimplifyFixture, "table_with_a_tag")
     TypeId t1 = mkTable({{"tag", stringTy}, {"prop", numberTy}});
     TypeId t2 = mkTable({{"tag", helloTy}});
 
-    CHECK("{| prop: number, tag: string |} & {| tag: \"hello\" |}" == intersectStr(t1, t2));
-    CHECK("{| prop: number, tag: string |} & {| tag: \"hello\" |}" == intersectStr(t2, t1));
+    CHECK("{ prop: number, tag: string } & { tag: \"hello\" }" == intersectStr(t1, t2));
+    CHECK("{ prop: number, tag: string } & { tag: \"hello\" }" == intersectStr(t2, t1));
 }
 
 TEST_CASE_FIXTURE(SimplifyFixture, "nested_table_tag_test")

@@ -477,17 +477,9 @@ const Instruction* executeSETTABLEKS(lua_State* L, const Instruction* pc, StkId 
     {
         Table* h = hvalue(rb);
 
-        int slot = LUAU_INSN_C(insn) & h->nodemask8;
-        LuaNode* n = &h->node[slot];
+        // we ignore the fast path that checks for the cached slot since IrTranslation already checks for it.
 
-        // fast-path: value is in expected slot
-        if (LUAU_LIKELY(ttisstring(gkey(n)) && tsvalue(gkey(n)) == tsvalue(kv) && !ttisnil(gval(n)) && !h->readonly))
-        {
-            setobj2t(L, gval(n), ra);
-            luaC_barriert(L, h, ra);
-            return pc;
-        }
-        else if (fastnotm(h->metatable, TM_NEWINDEX) && !h->readonly)
+        if (fastnotm(h->metatable, TM_NEWINDEX) && !h->readonly)
         {
             VM_PROTECT_PC(); // set may fail
 
@@ -502,6 +494,7 @@ const Instruction* executeSETTABLEKS(lua_State* L, const Instruction* pc, StkId 
         else
         {
             // slow-path, may invoke Lua calls via __newindex metamethod
+            int slot = LUAU_INSN_C(insn) & h->nodemask8;
             L->cachedslot = slot;
             VM_PROTECT(luaV_settable(L, rb, kv, ra));
             // save cachedslot to accelerate future lookups; patches currently executing instruction since pc-2 rolls back two pc++
