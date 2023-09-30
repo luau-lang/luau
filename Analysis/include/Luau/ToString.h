@@ -42,7 +42,7 @@ struct ToStringOptions
 {
     ToStringOptions(bool exhaustive = false)
         : exhaustive(exhaustive)
-        , compositeTypesSingleLineLimit(FFlag::LuauToStringSimpleCompositeTypesSingleLine.value ? 5 : 0)
+        , compositeTypesSingleLineLimit(FFlag::LuauToStringSimpleCompositeTypesSingleLine ? 5 : 0)
     {
     }
 
