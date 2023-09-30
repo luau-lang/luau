@@ -1380,6 +1380,44 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         *asMutable(follow(*ty)) = BoundType{builtinTypes->anyType};
     }
 
+    // We know the type of the function and the arguments it expects to receive.
+    // We also know the TypeIds of the actual arguments that will be passed.
+    //
+    // Bidirectional type checking: Force those TypeIds to be the expected
+    // arguments. If something is incoherent, we'll spot it in type checking.
+    //
+    // Most important detail: If a function argument is a lambda, we also want
+    // to force unannotated argument types of that lambda to be the expected
+    // types.
+
+    // FIXME: Bidirectional type checking of overloaded functions is not yet supported.
+    if (auto ftv = get<FunctionType>(fn))
+    {
+        const std::vector<TypeId> expectedArgs = flatten(ftv->argTypes).first;
+        const std::vector<TypeId> argPackHead = flatten(argsPack).first;
+
+        for (size_t i = 0; i < c.callSite->args.size && i < expectedArgs.size() && i < argPackHead.size(); ++i)
+        {
+            const FunctionType* expectedLambdaTy = get<FunctionType>(follow(expectedArgs[i]));
+            const FunctionType* lambdaTy = get<FunctionType>(follow(argPackHead[i]));
+            const AstExprFunction* lambdaExpr = c.callSite->args.data[i]->as<AstExprFunction>();
+
+            if (expectedLambdaTy && lambdaTy && lambdaExpr)
+            {
+                const std::vector<TypeId> expectedLambdaArgTys = flatten(expectedLambdaTy->argTypes).first;
+                const std::vector<TypeId> lambdaArgTys = flatten(lambdaTy->argTypes).first;
+
+                for (size_t j = 0; j < expectedLambdaArgTys.size() && j < lambdaArgTys.size() && j < lambdaExpr->args.size; ++j)
+                {
+                    if (!lambdaExpr->args.data[j]->annotation && get<FreeType>(follow(lambdaArgTys[j])))
+                    {
+                        asMutable(lambdaArgTys[j])->ty.emplace<BoundType>(expectedLambdaArgTys[j]);
+                    }
+                }
+            }
+        }
+    }
+
     TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, constraint->scope.get(), argsPack, c.result});
     Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}};
 

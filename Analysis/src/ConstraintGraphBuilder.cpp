@@ -160,6 +160,25 @@ ConstraintGraphBuilder::ConstraintGraphBuilder(ModulePtr module, NotNull<Normali
     LUAU_ASSERT(module);
 }
 
+void ConstraintGraphBuilder::visitModuleRoot(AstStatBlock* block)
+{
+    LUAU_ASSERT(scopes.empty());
+    LUAU_ASSERT(rootScope == nullptr);
+    ScopePtr scope = std::make_shared<Scope>(globalScope);
+    rootScope = scope.get();
+    scopes.emplace_back(block->location, scope);
+    module->astScopes[block] = NotNull{scope.get()};
+
+    rootScope->returnType = freshTypePack(scope);
+
+    prepopulateGlobalScope(scope, block);
+
+    visitBlockWithoutChildScope(scope, block);
+
+    if (logger)
+        logger->captureGenerationModule(module);
+}
+
 TypeId ConstraintGraphBuilder::freshType(const ScopePtr& scope)
 {
     return Luau::freshType(arena, builtinTypes, scope.get());
@@ -444,25 +463,6 @@ void ConstraintGraphBuilder::applyRefinements(const ScopePtr& scope, Location lo
         addConstraint(scope, location, c);
 }
 
-void ConstraintGraphBuilder::visit(AstStatBlock* block)
-{
-    LUAU_ASSERT(scopes.empty());
-    LUAU_ASSERT(rootScope == nullptr);
-    ScopePtr scope = std::make_shared<Scope>(globalScope);
-    rootScope = scope.get();
-    scopes.emplace_back(block->location, scope);
-    module->astScopes[block] = NotNull{scope.get()};
-
-    rootScope->returnType = freshTypePack(scope);
-
-    prepopulateGlobalScope(scope, block);
-
-    visitBlockWithoutChildScope(scope, block);
-
-    if (logger)
-        logger->captureGenerationModule(module);
-}
-
 ControlFlow ConstraintGraphBuilder::visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block)
 {
     RecursionCounter counter{&recursionCount};
@@ -616,7 +616,7 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* l
             // See the test TypeInfer/infer_locals_with_nil_value. Better flow
             // awareness should make this obsolete.
 
-            if (!varTypes[i])
+            if (i < varTypes.size() && !varTypes[i])
                 varTypes[i] = freshType(scope);
         }
         // Only function calls and vararg expressions can produce packs.  All
@@ -627,7 +627,7 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* l
             if (hasAnnotation)
                 expectedType = varTypes.at(i);
 
-            TypeId exprType = check(scope, value, ValueContext::RValue, expectedType).ty;
+            TypeId exprType = check(scope, value, ValueContext::RValue, expectedType, /*forceSingleton*/ false, /*generalize*/ true).ty;
             if (i < varTypes.size())
             {
                 if (varTypes[i])
@@ -645,7 +645,7 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* l
             if (hasAnnotation)
                 expectedTypes.insert(begin(expectedTypes), begin(varTypes) + i, end(varTypes));
 
-            TypePackId exprPack = checkPack(scope, value, expectedTypes).tp;
+            TypePackId exprPack = checkPack(scope, value, expectedTypes, /*generalize*/ true).tp;
 
             if (i < local->vars.size)
             {
@@ -1380,7 +1380,8 @@ InferencePack ConstraintGraphBuilder::checkPack(
         return InferencePack{arena->addTypePack(TypePack{std::move(head), tail})};
 }
 
-InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* expr, const std::vector<std::optional<TypeId>>& expectedTypes)
+InferencePack ConstraintGraphBuilder::checkPack(
+    const ScopePtr& scope, AstExpr* expr, const std::vector<std::optional<TypeId>>& expectedTypes, bool generalize)
 {
     RecursionCounter counter{&recursionCount};
 
@@ -1406,7 +1407,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* 
         std::optional<TypeId> expectedType;
         if (!expectedTypes.empty())
             expectedType = expectedTypes[0];
-        TypeId t = check(scope, expr, ValueContext::RValue, expectedType).ty;
+        TypeId t = check(scope, expr, ValueContext::RValue, expectedType, /*forceSingletons*/ false, generalize).ty;
         result = InferencePack{arena->addTypePack({t})};
     }
 
@@ -1454,51 +1455,25 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
             discriminantTypes.push_back(std::nullopt);
     }
 
-    Checkpoint startCheckpoint = checkpoint(this);
     TypeId fnType = check(scope, call->func).ty;
-    Checkpoint fnEndCheckpoint = checkpoint(this);
 
     std::vector<std::optional<TypeId>> expectedTypesForCall = getExpectedCallTypesForFunctionOverloads(fnType);
 
     module->astOriginalCallTypes[call->func] = fnType;
     module->astOriginalCallTypes[call] = fnType;
 
-    TypePackId expectedArgPack = arena->freshTypePack(scope.get());
-    TypePackId expectedRetPack = arena->freshTypePack(scope.get());
-    TypeId expectedFunctionType = arena->addType(FunctionType{expectedArgPack, expectedRetPack, std::nullopt, call->self});
-
     TypeId instantiatedFnType = arena->addType(BlockedType{});
     addConstraint(scope, call->location, InstantiationConstraint{instantiatedFnType, fnType});
 
-    NotNull<Constraint> extractArgsConstraint = addConstraint(scope, call->location, SubtypeConstraint{instantiatedFnType, expectedFunctionType});
-
-    // Fully solve fnType, then extract its argument list as expectedArgPack.
-    forEachConstraint(startCheckpoint, fnEndCheckpoint, this, [extractArgsConstraint](const ConstraintPtr& constraint) {
-        extractArgsConstraint->dependencies.emplace_back(constraint.get());
-    });
-
-    const AstExpr* lastArg = exprArgs.size() ? exprArgs[exprArgs.size() - 1] : nullptr;
-    const bool needTail = lastArg && (lastArg->is<AstExprCall>() || lastArg->is<AstExprVarargs>());
-
-    TypePack expectedArgs;
-
-    if (!needTail)
-        expectedArgs = extendTypePack(*arena, builtinTypes, expectedArgPack, exprArgs.size(), expectedTypesForCall);
-    else
-        expectedArgs = extendTypePack(*arena, builtinTypes, expectedArgPack, exprArgs.size() - 1, expectedTypesForCall);
+    Checkpoint argBeginCheckpoint = checkpoint(this);
 
     std::vector<TypeId> args;
     std::optional<TypePackId> argTail;
     std::vector<RefinementId> argumentRefinements;
 
-    Checkpoint argCheckpoint = checkpoint(this);
-
     for (size_t i = 0; i < exprArgs.size(); ++i)
     {
         AstExpr* arg = exprArgs[i];
-        std::optional<TypeId> expectedType;
-        if (i < expectedArgs.head.size())
-            expectedType = expectedArgs.head[i];
 
         if (i == 0 && call->self)
         {
@@ -1514,7 +1489,8 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
         }
         else if (i < exprArgs.size() - 1 || !(arg->is<AstExprCall>() || arg->is<AstExprVarargs>()))
         {
-            auto [ty, refinement] = check(scope, arg, ValueContext::RValue, expectedType);
+            auto [ty, refinement] =
+                check(scope, arg, ValueContext::RValue, /*expectedType*/ std::nullopt, /*forceSingleton*/ false, /*generalize*/ false);
             args.push_back(ty);
             argumentRefinements.push_back(refinement);
         }
@@ -1527,12 +1503,6 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
     }
 
     Checkpoint argEndCheckpoint = checkpoint(this);
-
-    // Do not solve argument constraints until after we have extracted the
-    // expected types from the callable.
-    forEachConstraint(argCheckpoint, argEndCheckpoint, this, [extractArgsConstraint](const ConstraintPtr& constraint) {
-        constraint->dependencies.push_back(extractArgsConstraint);
-    });
 
     if (matchSetmetatable(*call))
     {
@@ -1609,8 +1579,8 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
         // This ensures, for instance, that we start inferring the contents of
         // lambdas under the assumption that their arguments and return types
         // will be compatible with the enclosing function call.
-        forEachConstraint(fnEndCheckpoint, argEndCheckpoint, this, [fcc](const ConstraintPtr& constraint) {
-            fcc->dependencies.emplace_back(constraint.get());
+        forEachConstraint(argBeginCheckpoint, argEndCheckpoint, this, [fcc](const ConstraintPtr& constraint) {
+            constraint->dependencies.emplace_back(fcc);
         });
 
         return InferencePack{rets, {refinementArena.variadic(returnRefinements)}};
@@ -1618,7 +1588,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
 }
 
 Inference ConstraintGraphBuilder::check(
-    const ScopePtr& scope, AstExpr* expr, ValueContext context, std::optional<TypeId> expectedType, bool forceSingleton)
+    const ScopePtr& scope, AstExpr* expr, ValueContext context, std::optional<TypeId> expectedType, bool forceSingleton, bool generalize)
 {
     RecursionCounter counter{&recursionCount};
 
@@ -1649,7 +1619,7 @@ Inference ConstraintGraphBuilder::check(
     else if (auto call = expr->as<AstExprCall>())
         result = flattenPack(scope, expr->location, checkPack(scope, call)); // TODO: needs predicates too
     else if (auto a = expr->as<AstExprFunction>())
-        result = check(scope, a, expectedType);
+        result = check(scope, a, expectedType, generalize);
     else if (auto indexName = expr->as<AstExprIndexName>())
         result = check(scope, indexName);
     else if (auto indexExpr = expr->as<AstExprIndexExpr>())
@@ -1817,30 +1787,37 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexExpr*
         return Inference{result};
 }
 
-Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprFunction* func, std::optional<TypeId> expectedType)
+Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprFunction* func, std::optional<TypeId> expectedType, bool generalize)
 {
     Checkpoint startCheckpoint = checkpoint(this);
     FunctionSignature sig = checkFunctionSignature(scope, func, expectedType);
     checkFunctionBody(sig.bodyScope, func);
     Checkpoint endCheckpoint = checkpoint(this);
 
-    TypeId generalizedTy = arena->addType(BlockedType{});
-    NotNull<Constraint> gc = addConstraint(sig.signatureScope, func->location, GeneralizationConstraint{generalizedTy, sig.signature});
+    if (generalize)
+    {
+        TypeId generalizedTy = arena->addType(BlockedType{});
+        NotNull<Constraint> gc = addConstraint(sig.signatureScope, func->location, GeneralizationConstraint{generalizedTy, sig.signature});
 
-    Constraint* previous = nullptr;
-    forEachConstraint(startCheckpoint, endCheckpoint, this, [gc, &previous](const ConstraintPtr& constraint) {
-        gc->dependencies.emplace_back(constraint.get());
+        Constraint* previous = nullptr;
+        forEachConstraint(startCheckpoint, endCheckpoint, this, [gc, &previous](const ConstraintPtr& constraint) {
+            gc->dependencies.emplace_back(constraint.get());
 
-        if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
-        {
-            if (previous)
-                constraint->dependencies.push_back(NotNull{previous});
+            if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+            {
+                if (previous)
+                    constraint->dependencies.push_back(NotNull{previous});
 
-            previous = constraint.get();
-        }
-    });
+                previous = constraint.get();
+            }
+        });
 
-    return Inference{generalizedTy};
+        return Inference{generalizedTy};
+    }
+    else
+    {
+        return Inference{sig.signature};
+    }
 }
 
 Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprUnary* unary)
@@ -2381,10 +2358,11 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
             argTy = resolveType(signatureScope, local->annotation, /* inTypeArguments */ false, /* replaceErrorWithFresh*/ true);
         else
         {
-            argTy = freshType(signatureScope);
 
             if (i < expectedArgPack.head.size())
-                addConstraint(signatureScope, local->location, SubtypeConstraint{argTy, expectedArgPack.head[i]});
+                argTy = expectedArgPack.head[i];
+            else
+                argTy = freshType(signatureScope);
         }
 
         argTypes.push_back(argTy);

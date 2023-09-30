@@ -12,6 +12,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+
 namespace
 {
 
@@ -160,7 +162,10 @@ TEST_CASE_FIXTURE(FrontendFixture, "automatically_check_dependent_scripts")
     auto bExports = first(bModule->returnType);
     REQUIRE(!!bExports);
 
-    CHECK_EQ("{| b_value: number |}", toString(*bExports));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ b_value: number }", toString(*bExports));
+    else
+        CHECK_EQ("{| b_value: number |}", toString(*bExports));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "automatically_check_cyclically_dependent_scripts")
@@ -302,7 +307,11 @@ TEST_CASE_FIXTURE(FrontendFixture, "nocheck_cycle_used_by_checked")
 
     std::optional<TypeId> cExports = first(cModule->returnType);
     REQUIRE(bool(cExports));
-    CHECK_EQ("{| a: any, b: any |}", toString(*cExports));
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ a: any, b: any }", toString(*cExports));
+    else
+        CHECK_EQ("{| a: any, b: any |}", toString(*cExports));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "cycle_detection_disabled_in_nocheck")
@@ -473,20 +482,32 @@ return {mod_b = 2}
     LUAU_REQUIRE_ERRORS(resultB);
 
     TypeId tyB = requireExportedType("game/B", "btype");
-    CHECK_EQ(toString(tyB, opts), "{| x: number |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(tyB, opts), "{ x: number }");
+    else
+        CHECK_EQ(toString(tyB, opts), "{| x: number |}");
 
     TypeId tyA = requireExportedType("game/A", "atype");
-    CHECK_EQ(toString(tyA, opts), "{| x: any |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(tyA, opts), "{ x: any }");
+    else
+        CHECK_EQ(toString(tyA, opts), "{| x: any |}");
 
     frontend.markDirty("game/B");
     resultB = frontend.check("game/B");
     LUAU_REQUIRE_ERRORS(resultB);
 
     tyB = requireExportedType("game/B", "btype");
-    CHECK_EQ(toString(tyB, opts), "{| x: number |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(tyB, opts), "{ x: number }");
+    else
+        CHECK_EQ(toString(tyB, opts), "{| x: number |}");
 
     tyA = requireExportedType("game/A", "atype");
-    CHECK_EQ(toString(tyA, opts), "{| x: any |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(tyA, opts), "{ x: any }");
+    else
+        CHECK_EQ(toString(tyA, opts), "{| x: any |}");
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "dont_reparse_clean_file_when_linting")
@@ -559,7 +580,10 @@ TEST_CASE_FIXTURE(FrontendFixture, "recheck_if_dependent_script_is_dirty")
     auto bExports = first(bModule->returnType);
     REQUIRE(!!bExports);
 
-    CHECK_EQ("{| b_value: string |}", toString(*bExports));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ b_value: string }", toString(*bExports));
+    else
+        CHECK_EQ("{| b_value: string |}", toString(*bExports));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "mark_non_immediate_reverse_deps_as_dirty")
@@ -883,8 +907,12 @@ TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_f
     // When this test fails, it is because the TypeIds needed by the error have been deallocated.
     // It is thus basically impossible to predict what will happen when this assert is evaluated.
     // It could segfault, or you could see weird type names like the empty string or <VALUELESS BY EXCEPTION>
-    REQUIRE_EQ(
-        "Table type 'a' not compatible with type '{| Count: number |}' because the former is missing field 'Count'", toString(result.errors[0]));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        REQUIRE_EQ(
+            "Table type 'a' not compatible with type '{ Count: number }' because the former is missing field 'Count'", toString(result.errors[0]));
+    else
+        REQUIRE_EQ(
+            "Table type 'a' not compatible with type '{| Count: number |}' because the former is missing field 'Count'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "trace_requires_in_nonstrict_mode")

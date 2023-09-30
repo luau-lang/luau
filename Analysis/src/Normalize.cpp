@@ -11,7 +11,6 @@
 #include "Luau/Type.h"
 #include "Luau/Unifier.h"
 
-LUAU_FASTFLAGVARIABLE(DebugLuauCopyBeforeNormalizing, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
 
 // This could theoretically be 2000 on amd64, but x86 requires this.

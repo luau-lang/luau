@@ -50,7 +50,10 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table")
     TableType* tableOne = getMutable<TableType>(&cyclicTable);
     tableOne->props["self"] = {&cyclicTable};
 
-    CHECK_EQ("t1 where t1 = { self: t1 }", toString(&cyclicTable));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("t1 where t1 = {| self: t1 |}", toString(&cyclicTable));
+    else
+        CHECK_EQ("t1 where t1 = { self: t1 }", toString(&cyclicTable));
 }
 
 TEST_CASE_FIXTURE(Fixture, "named_table")
@@ -68,12 +71,18 @@ TEST_CASE_FIXTURE(Fixture, "empty_table")
         local a: {}
     )");
 
-    CHECK_EQ("{|  |}", toString(requireType("a")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{  }", toString(requireType("a")));
+    else
+        CHECK_EQ("{|  |}", toString(requireType("a")));
 
     // Should stay the same with useLineBreaks enabled
     ToStringOptions opts;
     opts.useLineBreaks = true;
-    CHECK_EQ("{|  |}", toString(requireType("a"), opts));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{  }", toString(requireType("a"), opts));
+    else
+        CHECK_EQ("{|  |}", toString(requireType("a"), opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_respects_use_line_break")
@@ -86,12 +95,20 @@ TEST_CASE_FIXTURE(Fixture, "table_respects_use_line_break")
     opts.useLineBreaks = true;
 
     //clang-format off
-    CHECK_EQ("{|\n"
-             "    anotherProp: number,\n"
-             "    prop: string,\n"
-             "    thirdProp: boolean\n"
-             "|}",
-        toString(requireType("a"), opts));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{\n"
+                 "    anotherProp: number,\n"
+                 "    prop: string,\n"
+                 "    thirdProp: boolean\n"
+                 "}",
+            toString(requireType("a"), opts));
+    else
+        CHECK_EQ("{|\n"
+                 "    anotherProp: number,\n"
+                 "    prop: string,\n"
+                 "    thirdProp: boolean\n"
+                 "|}",
+            toString(requireType("a"), opts));
     //clang-format on
 }
 
@@ -122,7 +139,10 @@ TEST_CASE_FIXTURE(Fixture, "metatable")
     Type table{TypeVariant(TableType())};
     Type metatable{TypeVariant(TableType())};
     Type mtv{TypeVariant(MetatableType{&table, &metatable})};
-    CHECK_EQ("{ @metatable {  }, {  } }", toString(&mtv));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ @metatable {|  |}, {|  |} }", toString(&mtv));
+    else
+        CHECK_EQ("{ @metatable {  }, {  } }", toString(&mtv));
 }
 
 TEST_CASE_FIXTURE(Fixture, "named_metatable")
@@ -258,7 +278,10 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_table_type_when_length_is_exceeded
     ToStringOptions o;
     o.exhaustive = false;
     o.maxTableLength = 40;
-    CHECK_EQ(toString(&tv, o), "{ a: number, b: number, c: number, d: number, e: number, ... 10 more ... }");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(&tv, o), "{| a: number, b: number, c: number, d: number, e: number, ... 10 more ... |}");
+    else
+        CHECK_EQ(toString(&tv, o), "{ a: number, b: number, c: number, d: number, e: number, ... 10 more ... }");
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_is_still_capped_when_exhaustive")
@@ -272,7 +295,10 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_is_still_capped_when_exhaust
     ToStringOptions o;
     o.exhaustive = true;
     o.maxTableLength = 40;
-    CHECK_EQ(toString(&tv, o), "{ a: number, b: number, c: number, d: number, e: number, ... 2 more ... }");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(&tv, o), "{| a: number, b: number, c: number, d: number, e: number, ... 2 more ... |}");
+    else
+        CHECK_EQ(toString(&tv, o), "{ a: number, b: number, c: number, d: number, e: number, ... 2 more ... }");
 }
 
 TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
@@ -346,7 +372,10 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_correctly_use_matching_table
 
     ToStringOptions o;
     o.maxTableLength = 40;
-    CHECK_EQ(toString(&tv, o), "{| a: number, b: number, c: number, d: number, e: number, ... 5 more ... |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(&tv, o), "{ a: number, b: number, c: number, d: number, e: number, ... 5 more ... }");
+    else
+        CHECK_EQ(toString(&tv, o), "{| a: number, b: number, c: number, d: number, e: number, ... 5 more ... |}");
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_cyclic_union_type_bails_early")
@@ -377,7 +406,10 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_array_uses_array_syntax")
     CHECK_EQ("{string}", toString(Type{ttv}));
 
     ttv.props["A"] = {builtinTypes->numberType};
-    CHECK_EQ("{| [number]: string, A: number |}", toString(Type{ttv}));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ [number]: string, A: number }", toString(Type{ttv}));
+    else
+        CHECK_EQ("{| [number]: string, A: number |}", toString(Type{ttv}));
 
     ttv.props.clear();
     ttv.state = TableState::Unsealed;
@@ -576,8 +608,17 @@ TEST_CASE_FIXTURE(Fixture, "toString_the_boundTo_table_type_contained_within_a_T
 
     TypePackVar tpv2{TypePack{{&tv2}}};
 
-    CHECK_EQ("{| hello: number, world: number |}", toString(&tpv1));
-    CHECK_EQ("{| hello: number, world: number |}", toString(&tpv2));
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("{ hello: number, world: number }", toString(&tpv1));
+        CHECK_EQ("{ hello: number, world: number }", toString(&tpv2));
+    }
+    else
+    {
+        CHECK_EQ("{| hello: number, world: number |}", toString(&tpv1));
+        CHECK_EQ("{| hello: number, world: number |}", toString(&tpv2));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_return_type_if_pack_has_an_empty_head_link")
@@ -846,7 +887,24 @@ TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
    end
 
 )");
-    std::string expected = R"(Type
+    //clang-format off
+    std::string expected =
+        (FFlag::DebugLuauDeferredConstraintResolution) ?
+R"(Type
+    '{| a: number, b: string, c: {| d: string |} |}'
+could not be converted into
+    '{ a: number, b: string, c: { d: number } }'
+caused by:
+  Property 'c' is not compatible. 
+Type
+    '{| d: string |}'
+could not be converted into
+    '{ d: number }'
+caused by:
+  Property 'd' is not compatible. 
+Type 'string' could not be converted into 'number' in an invariant context)"
+        :
+R"(Type
     '{ a: number, b: string, c: { d: string } }'
 could not be converted into
     '{| a: number, b: string, c: {| d: number |} |}'
@@ -859,9 +917,12 @@ could not be converted into
 caused by:
   Property 'd' is not compatible. 
 Type 'string' could not be converted into 'number' in an invariant context)";
+    //clang-format on
+    //
     std::string actual = toString(result.errors[0]);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+
     CHECK(expected == actual);
 }
 TEST_SUITE_END();

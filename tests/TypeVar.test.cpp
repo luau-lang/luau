@@ -298,7 +298,10 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 
     REQUIRE(!anyification.normalizationTooComplex);
     REQUIRE(any.has_value());
-    CHECK_EQ("{| f: t1 |} where t1 = () -> {| f: () -> {| f: ({| f: t1 |}) -> (), signal: {| f: (any) -> () |} |} |}", toString(*any));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ f: t1 } where t1 = () -> { f: () -> { f: ({ f: t1 }) -> (), signal: { f: (any) -> () } } }", toString(*any));
+    else
+        CHECK_EQ("{| f: t1 |} where t1 = () -> {| f: () -> {| f: ({| f: t1 |}) -> (), signal: {| f: (any) -> () |} |} |}", toString(*any));
 }
 
 TEST_CASE("tagging_tables")

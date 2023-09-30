@@ -91,7 +91,10 @@ TEST_CASE_FIXTURE(Fixture, "cannot_augment_sealed_table")
 
     // TODO: better, more robust comparison of type vars
     auto s = toString(error->tableType, ToStringOptions{/*exhaustive*/ true});
-    CHECK_EQ(s, "{| prop: number |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(s, "{ prop: number }");
+    else
+        CHECK_EQ(s, "{| prop: number |}");
     CHECK_EQ(error->prop, "foo");
     CHECK_EQ(error->context, CannotExtendTable::Property);
 }
@@ -733,7 +736,10 @@ TEST_CASE_FIXTURE(Fixture, "infer_indexer_from_value_property_in_literal")
     CHECK(bool(retType->indexer));
 
     const TableIndexer& indexer = *retType->indexer;
-    CHECK_EQ("{| __name: string |}", toString(indexer.indexType));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ __name: string }", toString(indexer.indexType));
+    else
+        CHECK_EQ("{| __name: string |}", toString(indexer.indexType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_indexer_from_its_variable_type_and_unifiable")
@@ -775,7 +781,10 @@ TEST_CASE_FIXTURE(Fixture, "indexer_mismatch")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm != nullptr);
     CHECK(toString(tm->wantedType) == "{number}");
-    CHECK(toString(tm->givenType) == "{| [string]: string |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(toString(tm->givenType) == "{ [string]: string }");
+    else
+        CHECK(toString(tm->givenType) == "{| [string]: string |}");
 
     CHECK_NE(*t1, *t2);
 }
@@ -1564,8 +1573,16 @@ TEST_CASE_FIXTURE(Fixture, "casting_sealed_tables_with_props_into_table_with_ind
     ToStringOptions o{/* exhaustive= */ true};
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ("{| [string]: string |}", toString(tm->wantedType, o));
-    CHECK_EQ("{| foo: number |}", toString(tm->givenType, o));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("{ [string]: string }", toString(tm->wantedType, o));
+        CHECK_EQ("{ foo: number }", toString(tm->givenType, o));
+    }
+    else
+    {
+        CHECK_EQ("{| [string]: string |}", toString(tm->wantedType, o));
+        CHECK_EQ("{| foo: number |}", toString(tm->givenType, o));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer2")
@@ -1803,8 +1820,16 @@ TEST_CASE_FIXTURE(Fixture, "hide_table_error_properties")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    CHECK_EQ("Cannot add property 'a' to table '{| x: number |}'", toString(result.errors[0]));
-    CHECK_EQ("Cannot add property 'b' to table '{| x: number |}'", toString(result.errors[1]));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("Cannot add property 'a' to table '{ x: number }'", toString(result.errors[0]));
+        CHECK_EQ("Cannot add property 'b' to table '{ x: number }'", toString(result.errors[1]));
+    }
+    else
+    {
+        CHECK_EQ("Cannot add property 'a' to table '{| x: number |}'", toString(result.errors[0]));
+        CHECK_EQ("Cannot add property 'b' to table '{| x: number |}'", toString(result.errors[1]));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_table_names")
@@ -2969,7 +2994,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "access_index_metamethod_that_returns_variadi
 
     ToStringOptions o;
     o.exhaustive = true;
-    CHECK_EQ("{| x: string |}", toString(requireType("foo"), o));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ x: string }", toString(requireType("foo"), o));
+    else
+        CHECK_EQ("{| x: string |}", toString(requireType("foo"), o));
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_invalidate_the_properties_iterator_of_free_table_when_rolled_back")
@@ -3029,7 +3057,10 @@ TEST_CASE_FIXTURE(Fixture, "accidentally_checked_prop_in_opposite_branch")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Value of type '{| x: number? |}?' could be nil", toString(result.errors[0]));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("Value of type '{ x: number? }?' could be nil", toString(result.errors[0]));
+    else
+        CHECK_EQ("Value of type '{| x: number? |}?' could be nil", toString(result.errors[0]));
     CHECK_EQ("boolean", toString(requireType("u")));
 }
 
@@ -3260,7 +3291,10 @@ TEST_CASE_FIXTURE(Fixture, "prop_access_on_unions_of_indexers_where_key_whose_ty
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Type '{number} | {| [boolean]: number |}' does not have key 'x'", toString(result.errors[0]));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("Type '{ [boolean]: number } | {number}' does not have key 'x'", toString(result.errors[0]));
+    else
+        CHECK_EQ("Type '{number} | {| [boolean]: number |}' does not have key 'x'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "quantify_metatables_of_metatables_of_table")
@@ -3822,6 +3856,26 @@ TEST_CASE_FIXTURE(Fixture, "cli_84607_missing_prop_in_array_or_dict")
     REQUIRE(error2->properties.size() == 1);
 
     CHECK_EQ("prop", error2->properties[0]);
+}
+
+TEST_CASE_FIXTURE(Fixture, "simple_method_definition")
+{
+    CheckResult result = check(R"(
+        local T = {}
+
+        function T:m()
+            return 5
+        end
+
+        return T
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ m: (unknown) -> number }", toString(getMainModule()->returnType, ToStringOptions{true}));
+    else
+        CHECK_EQ("{| m: <a>(a) -> number |}", toString(getMainModule()->returnType, ToStringOptions{true}));
 }
 
 TEST_SUITE_END();

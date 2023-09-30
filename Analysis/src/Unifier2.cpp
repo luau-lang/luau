@@ -320,14 +320,26 @@ bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
     for (size_t i = 0; i < maxLength; ++i)
         unify(subTypes[i], superTypes[i]);
 
-    if (!subTail || !superTail)
-        return true;
+    if (subTail && superTail)
+    {
+        TypePackId followedSubTail = follow(*subTail);
+        TypePackId followedSuperTail = follow(*superTail);
 
-    TypePackId followedSubTail = follow(*subTail);
-    TypePackId followedSuperTail = follow(*superTail);
-
-    if (get<FreeTypePack>(followedSubTail) || get<FreeTypePack>(followedSuperTail))
-        return unify(followedSubTail, followedSuperTail);
+        if (get<FreeTypePack>(followedSubTail) || get<FreeTypePack>(followedSuperTail))
+            return unify(followedSubTail, followedSuperTail);
+    }
+    else if (subTail)
+    {
+        TypePackId followedSubTail = follow(*subTail);
+        if (get<FreeTypePack>(followedSubTail))
+            asMutable(followedSubTail)->ty.emplace<BoundTypePack>(builtinTypes->emptyTypePack);
+    }
+    else if (superTail)
+    {
+        TypePackId followedSuperTail = follow(*superTail);
+        if (get<FreeTypePack>(followedSuperTail))
+            asMutable(followedSuperTail)->ty.emplace<BoundTypePack>(builtinTypes->emptyTypePack);
+    }
 
     return true;
 }
@@ -582,13 +594,6 @@ struct MutatingGeneralizer : TypeOnceVisitor
         TableType* tt = getMutable<TableType>(ty);
         LUAU_ASSERT(tt);
 
-        // We only unseal tables if they occur within function argument or
-        // return lists. In principle, we could always seal tables when
-        // generalizing, but that would mean that we'd lose the ability to
-        // report the existence of unsealed tables via things like hovertype.
-        if (tt->state == TableState::Unsealed && !isWithinFunction)
-            return true;
-
         tt->state = TableState::Sealed;
 
         return true;
@@ -611,10 +616,7 @@ std::optional<TypeId> Unifier2::generalize(TypeId ty)
 {
     ty = follow(ty);
 
-    if (ty->owningArena != arena)
-        return ty;
-
-    if (ty->persistent)
+    if (ty->owningArena != arena || ty->persistent)
         return ty;
 
     if (const FunctionType* ft = get<FunctionType>(ty); ft && (!ft->generics.empty() || !ft->genericPacks.empty()))
@@ -627,16 +629,23 @@ std::optional<TypeId> Unifier2::generalize(TypeId ty)
 
     gen.traverse(ty);
 
-    std::optional<TypeId> res = ty;
+    /* MutatingGeneralizer mutates types in place, so it is possible that ty has
+     * been transmuted to a BoundType. We must follow it again and verify that
+     * we are allowed to mutate it before we attach generics to it.
+     */
+    ty = follow(ty);
 
-    FunctionType* ftv = getMutable<FunctionType>(follow(*res));
+    if (ty->owningArena != arena || ty->persistent)
+        return ty;
+
+    FunctionType* ftv = getMutable<FunctionType>(ty);
     if (ftv)
     {
         ftv->generics = std::move(gen.generics);
         ftv->genericPacks = std::move(gen.genericPacks);
     }
 
-    return res;
+    return ty;
 }
 
 TypeId Unifier2::mkUnion(TypeId left, TypeId right)

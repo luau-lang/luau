@@ -308,12 +308,18 @@ local c: Packed<string, number, boolean>
     tf = lookupType("Packed");
     REQUIRE(tf);
     CHECK_EQ(toString(*tf), "Packed<T, U...>");
-    CHECK_EQ(toString(*tf, {true}), "{| f: (T, U...) -> (T, U...) |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(*tf, {true}), "{ f: (T, U...) -> (T, U...) }");
+    else
+        CHECK_EQ(toString(*tf, {true}), "{| f: (T, U...) -> (T, U...) |}");
 
     auto ttvA = get<TableType>(requireType("a"));
     REQUIRE(ttvA);
     CHECK_EQ(toString(requireType("a")), "Packed<number>");
-    CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> number |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(requireType("a"), {true}), "{ f: (number) -> number }");
+    else
+        CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> number |}");
     REQUIRE(ttvA->instantiatedTypeParams.size() == 1);
     REQUIRE(ttvA->instantiatedTypePackParams.size() == 1);
     CHECK_EQ(toString(ttvA->instantiatedTypeParams[0], {true}), "number");
@@ -322,7 +328,10 @@ local c: Packed<string, number, boolean>
     auto ttvB = get<TableType>(requireType("b"));
     REQUIRE(ttvB);
     CHECK_EQ(toString(requireType("b")), "Packed<string, number>");
-    CHECK_EQ(toString(requireType("b"), {true}), "{| f: (string, number) -> (string, number) |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(requireType("b"), {true}), "{ f: (string, number) -> (string, number) }");
+    else
+        CHECK_EQ(toString(requireType("b"), {true}), "{| f: (string, number) -> (string, number) |}");
     REQUIRE(ttvB->instantiatedTypeParams.size() == 1);
     REQUIRE(ttvB->instantiatedTypePackParams.size() == 1);
     CHECK_EQ(toString(ttvB->instantiatedTypeParams[0], {true}), "string");
@@ -331,7 +340,10 @@ local c: Packed<string, number, boolean>
     auto ttvC = get<TableType>(requireType("c"));
     REQUIRE(ttvC);
     CHECK_EQ(toString(requireType("c")), "Packed<string, number, boolean>");
-    CHECK_EQ(toString(requireType("c"), {true}), "{| f: (string, number, boolean) -> (string, number, boolean) |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(requireType("c"), {true}), "{ f: (string, number, boolean) -> (string, number, boolean) }");
+    else
+        CHECK_EQ(toString(requireType("c"), {true}), "{| f: (string, number, boolean) -> (string, number, boolean) |}");
     REQUIRE(ttvC->instantiatedTypeParams.size() == 1);
     REQUIRE(ttvC->instantiatedTypePackParams.size() == 1);
     CHECK_EQ(toString(ttvC->instantiatedTypeParams[0], {true}), "string");
@@ -360,12 +372,25 @@ local d: { a: typeof(c) }
     auto tf = lookupImportedType("Import", "Packed");
     REQUIRE(tf);
     CHECK_EQ(toString(*tf), "Packed<T, U...>");
-    CHECK_EQ(toString(*tf, {true}), "{| a: T, b: (U...) -> () |}");
 
-    CHECK_EQ(toString(requireType("a"), {true}), "{| a: number, b: () -> () |}");
-    CHECK_EQ(toString(requireType("b"), {true}), "{| a: string, b: (number) -> () |}");
-    CHECK_EQ(toString(requireType("c"), {true}), "{| a: string, b: (number, boolean) -> () |}");
-    CHECK_EQ(toString(requireType("d")), "{| a: Packed<string, number, boolean> |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ(toString(*tf, {true}), "{ a: T, b: (U...) -> () }");
+
+        CHECK_EQ(toString(requireType("a"), {true}), "{ a: number, b: () -> () }");
+        CHECK_EQ(toString(requireType("b"), {true}), "{ a: string, b: (number) -> () }");
+        CHECK_EQ(toString(requireType("c"), {true}), "{ a: string, b: (number, boolean) -> () }");
+        CHECK_EQ(toString(requireType("d")), "{ a: Packed<string, number, boolean> }");
+    }
+    else
+    {
+        CHECK_EQ(toString(*tf, {true}), "{| a: T, b: (U...) -> () |}");
+
+        CHECK_EQ(toString(requireType("a"), {true}), "{| a: number, b: () -> () |}");
+        CHECK_EQ(toString(requireType("b"), {true}), "{| a: string, b: (number) -> () |}");
+        CHECK_EQ(toString(requireType("c"), {true}), "{| a: string, b: (number, boolean) -> () |}");
+        CHECK_EQ(toString(requireType("d")), "{| a: Packed<string, number, boolean> |}");
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_pack_type_parameters")
@@ -388,19 +413,31 @@ type C<X...> = Import.Packed<string, (number, X...)>
     auto tf = lookupType("Alias");
     REQUIRE(tf);
     CHECK_EQ(toString(*tf), "Alias<S, T, R...>");
-    CHECK_EQ(toString(*tf, {true}), "{| a: S, b: (T, R...) -> () |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(*tf, {true}), "{ a: S, b: (T, R...) -> () }");
+    else
+        CHECK_EQ(toString(*tf, {true}), "{| a: S, b: (T, R...) -> () |}");
 
-    CHECK_EQ(toString(requireType("a"), {true}), "{| a: string, b: (number, boolean) -> () |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(requireType("a"), {true}), "{ a: string, b: (number, boolean) -> () }");
+    else
+        CHECK_EQ(toString(requireType("a"), {true}), "{| a: string, b: (number, boolean) -> () |}");
 
     tf = lookupType("B");
     REQUIRE(tf);
     CHECK_EQ(toString(*tf), "B<X...>");
-    CHECK_EQ(toString(*tf, {true}), "{| a: string, b: (X...) -> () |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(*tf, {true}), "{ a: string, b: (X...) -> () }");
+    else
+        CHECK_EQ(toString(*tf, {true}), "{| a: string, b: (X...) -> () |}");
 
     tf = lookupType("C");
     REQUIRE(tf);
     CHECK_EQ(toString(*tf), "C<X...>");
-    CHECK_EQ(toString(*tf, {true}), "{| a: string, b: (number, X...) -> () |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(*tf, {true}), "{ a: string, b: (number, X...) -> () }");
+    else
+        CHECK_EQ(toString(*tf, {true}), "{| a: string, b: (number, X...) -> () |}");
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs_nested")
@@ -867,7 +904,10 @@ type R = { m: F<R> }
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(*lookupType("R"), {true}), "t1 where t1 = {| m: (t1) -> (t1) -> () |}");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(*lookupType("R"), {true}), "t1 where t1 = { m: (t1) -> (t1) -> () }");
+    else
+        CHECK_EQ(toString(*lookupType("R"), {true}), "t1 where t1 = {| m: (t1) -> (t1) -> () |}");
 }
 
 TEST_CASE_FIXTURE(Fixture, "pack_tail_unification_check")

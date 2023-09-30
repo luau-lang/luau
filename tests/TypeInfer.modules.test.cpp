@@ -225,7 +225,10 @@ local tbl: string = require(game.A)
 
     CheckResult result = frontend.check("game/B");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Type '{| def: number |}' could not be converted into 'string'", toString(result.errors[0]));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("Type '{ def: number }' could not be converted into 'string'", toString(result.errors[0]));
+    else
+        CHECK_EQ("Type '{| def: number |}' could not be converted into 'string'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "bound_free_table_export_is_ok")

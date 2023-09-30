@@ -107,6 +107,14 @@ struct ConstraintGraphBuilder
         std::vector<RequireCycle> requireCycles);
 
     /**
+     * The entry point to the ConstraintGraphBuilder. This will construct a set
+     * of scopes, constraints, and free types that can be solved later.
+     * @param block the root block to generate constraints for.
+     */
+    void visitModuleRoot(AstStatBlock* block);
+
+private:
+    /**
      * Fabricates a new free type belonging to a given scope.
      * @param scope the scope the free type belongs to.
      */
@@ -143,13 +151,6 @@ struct ConstraintGraphBuilder
 
     void applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement);
 
-    /**
-     * The entry point to the ConstraintGraphBuilder. This will construct a set
-     * of scopes, constraints, and free types that can be solved later.
-     * @param block the root block to generate constraints for.
-     */
-    void visit(AstStatBlock* block);
-
     ControlFlow visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block);
 
     ControlFlow visit(const ScopePtr& scope, AstStat* stat);
@@ -172,7 +173,8 @@ struct ConstraintGraphBuilder
     ControlFlow visit(const ScopePtr& scope, AstStatError* error);
 
     InferencePack checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes = {});
-    InferencePack checkPack(const ScopePtr& scope, AstExpr* expr, const std::vector<std::optional<TypeId>>& expectedTypes = {});
+    InferencePack checkPack(
+        const ScopePtr& scope, AstExpr* expr, const std::vector<std::optional<TypeId>>& expectedTypes = {}, bool generalize = true);
 
     InferencePack checkPack(const ScopePtr& scope, AstExprCall* call);
 
@@ -182,10 +184,11 @@ struct ConstraintGraphBuilder
      * @param expr the expression to check.
      * @param expectedType the type of the expression that is expected from its
      *      surrounding context.  Used to implement bidirectional type checking.
+     * @param generalize If true, generalize any lambdas that are encountered.
      * @return the type of the expression.
      */
     Inference check(const ScopePtr& scope, AstExpr* expr, ValueContext context = ValueContext::RValue, std::optional<TypeId> expectedType = {},
-        bool forceSingleton = false);
+        bool forceSingleton = false, bool generalize = true);
 
     Inference check(const ScopePtr& scope, AstExprConstantString* string, std::optional<TypeId> expectedType, bool forceSingleton);
     Inference check(const ScopePtr& scope, AstExprConstantBool* bool_, std::optional<TypeId> expectedType, bool forceSingleton);
@@ -193,7 +196,7 @@ struct ConstraintGraphBuilder
     Inference check(const ScopePtr& scope, AstExprGlobal* global);
     Inference check(const ScopePtr& scope, AstExprIndexName* indexName);
     Inference check(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
-    Inference check(const ScopePtr& scope, AstExprFunction* func, std::optional<TypeId> expectedType);
+    Inference check(const ScopePtr& scope, AstExprFunction* func, std::optional<TypeId> expectedType, bool generalize);
     Inference check(const ScopePtr& scope, AstExprUnary* unary);
     Inference check(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
     Inference check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType);
