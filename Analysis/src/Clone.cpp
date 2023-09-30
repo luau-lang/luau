@@ -8,7 +8,6 @@
 #include "Luau/TypePack.h"
 #include "Luau/Unifiable.h"
 
-LUAU_FASTFLAG(DebugLuauCopyBeforeNormalizing)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
@@ -253,8 +252,10 @@ private:
 
     void cloneChildren(FreeType* t)
     {
-        // TODO: clone lower and upper bounds.
-        // TODO: In the new solver, we should ice.
+        if (t->lowerBound)
+            t->lowerBound = shallowClone(t->lowerBound);
+        if (t->upperBound)
+            t->upperBound = shallowClone(t->upperBound);
     }
 
     void cloneChildren(GenericType* t)
@@ -376,7 +377,11 @@ private:
 
     void cloneChildren(TypeFamilyInstanceType* t)
     {
-        // TODO: In the new solver, we should ice.
+        for (TypeId& ty : t->typeArguments)
+            ty = shallowClone(ty);
+
+        for (TypePackId& tp : t->packArguments)
+            tp = shallowClone(tp);
     }
 
     void cloneChildren(FreeTypePack* t)
@@ -416,7 +421,11 @@ private:
 
     void cloneChildren(TypeFamilyInstanceTypePack* t)
     {
-        // TODO: In the new solver, we should ice.
+        for (TypeId& ty : t->typeArguments)
+            ty = shallowClone(ty);
+
+        for (TypePackId& tp : t->packArguments)
+            tp = shallowClone(tp);
     }
 };
 
@@ -560,8 +569,6 @@ struct TypePackCloner
     void operator()(const Unifiable::Bound<TypePackId>& t)
     {
         TypePackId cloned = clone(t.boundTo, dest, cloneState);
-        if (FFlag::DebugLuauCopyBeforeNormalizing)
-            cloned = dest.addTypePack(TypePackVar{BoundTypePack{cloned}});
         seenTypePacks[typePackId] = cloned;
     }
 
@@ -629,8 +636,6 @@ void TypeCloner::operator()(const GenericType& t)
 void TypeCloner::operator()(const Unifiable::Bound<TypeId>& t)
 {
     TypeId boundTo = clone(t.boundTo, dest, cloneState);
-    if (FFlag::DebugLuauCopyBeforeNormalizing)
-        boundTo = dest.addType(BoundType{boundTo});
     seenTypes[typeId] = boundTo;
 }
 
@@ -701,7 +706,7 @@ void TypeCloner::operator()(const FunctionType& t)
 void TypeCloner::operator()(const TableType& t)
 {
     // If table is now bound to another one, we ignore the content of the original
-    if (!FFlag::DebugLuauCopyBeforeNormalizing && t.boundTo)
+    if (t.boundTo)
     {
         TypeId boundTo = clone(*t.boundTo, dest, cloneState);
         seenTypes[typeId] = boundTo;
@@ -717,9 +722,6 @@ void TypeCloner::operator()(const TableType& t)
     seenTypes[typeId] = result;
 
     ttv->level = TypeLevel{0, 0};
-
-    if (FFlag::DebugLuauCopyBeforeNormalizing && t.boundTo)
-        ttv->boundTo = clone(*t.boundTo, dest, cloneState);
 
     for (const auto& [name, prop] : t.props)
         ttv->props[name] = clone(prop, dest, cloneState);

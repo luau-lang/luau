@@ -398,7 +398,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("{| [number]: boolean | number | string, n: number |}", toString(requireType("t")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ [number]: boolean | number | string, n: number }", toString(requireType("t")));
+    else
+        CHECK_EQ("{| [number]: boolean | number | string, n: number |}", toString(requireType("t")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_variadic")
@@ -413,7 +416,10 @@ local t = table.pack(f())
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("{| [number]: number | string, n: number |}", toString(requireType("t")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ [number]: number | string, n: number }", toString(requireType("t")));
+    else
+        CHECK_EQ("{| [number]: number | string, n: number |}", toString(requireType("t")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce")
@@ -423,14 +429,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("{| [number]: boolean | number, n: number |}", toString(requireType("t")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ [number]: boolean | number, n: number }", toString(requireType("t")));
+    else
+        CHECK_EQ("{| [number]: boolean | number, n: number |}", toString(requireType("t")));
 
     result = check(R"(
         local t = table.pack("a", "b", "c")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("{| [number]: string, n: number |}", toString(requireType("t")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ [number]: string, n: number }", toString(requireType("t")));
+    else
+        CHECK_EQ("{| [number]: string, n: number |}", toString(requireType("t")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gcinfo")

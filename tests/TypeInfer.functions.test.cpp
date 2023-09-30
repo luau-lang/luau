@@ -2077,7 +2077,7 @@ TEST_CASE_FIXTURE(Fixture, "attempt_to_call_an_intersection_of_tables")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ(toString(result.errors[0]), "Cannot call non-function {| x: number |} & {| y: string |}");
+        CHECK_EQ(toString(result.errors[0]), "Cannot call non-function { x: number } & { y: string }");
     else
         CHECK_EQ(toString(result.errors[0]), "Cannot call non-function {| x: number |}");
 }

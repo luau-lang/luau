@@ -797,7 +797,10 @@ TEST_CASE_FIXTURE(NormalizeFixture, "narrow_union_of_classes_with_intersection")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_metatables_where_the_metatable_is_top_or_bottom")
 {
-    CHECK("{ @metatable *error-type*, {|  |} }" == toString(normal("Mt<{}, any> & Mt<{}, err>")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("{ @metatable *error-type*, {  } }" == toString(normal("Mt<{}, any> & Mt<{}, err>")));
+    else
+        CHECK("{ @metatable *error-type*, {|  |} }" == toString(normal("Mt<{}, any> & Mt<{}, err>")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "recurring_intersection")
@@ -863,7 +866,10 @@ TEST_CASE_FIXTURE(NormalizeFixture, "classes_and_never")
 TEST_CASE_FIXTURE(NormalizeFixture, "top_table_type")
 {
     CHECK("table" == toString(normal("{} | tbl")));
-    CHECK("{|  |}" == toString(normal("{} & tbl")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("{  }" == toString(normal("{} & tbl")));
+    else
+        CHECK("{|  |}" == toString(normal("{} & tbl")));
     CHECK("never" == toString(normal("number & tbl")));
 }
 

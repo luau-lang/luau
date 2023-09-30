@@ -14,8 +14,8 @@ enum class ControlFlow
     None = 0b00001,
     Returns = 0b00010,
     Throws = 0b00100,
-    Break = 0b01000,    // Currently unused.
-    Continue = 0b10000, // Currently unused.
+    Breaks = 0b01000,
+    Continues = 0b10000,
 };
 
 inline ControlFlow operator&(ControlFlow a, ControlFlow b)

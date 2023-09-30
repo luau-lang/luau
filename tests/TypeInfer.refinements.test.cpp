@@ -535,7 +535,10 @@ TEST_CASE_FIXTURE(Fixture, "unknown_lvalue_is_not_synonymous_with_other_on_not_e
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "any");              // a ~= b
-    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "{| x: number |}?"); // a ~= b
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "{ x: number }?"); // a ~= b
+    else
+        CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "{| x: number |}?"); // a ~= b
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_not_equal_to_string_or_nil")
@@ -658,7 +661,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_narrows_for_table")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("{| x: number |} | {| y: boolean |}", toString(requireTypeAtPosition({3, 28}))); // type(x) == "table"
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ x: number } | { y: boolean }", toString(requireTypeAtPosition({3, 28}))); // type(x) == "table"
+    else
+        CHECK_EQ("{| x: number |} | {| y: boolean |}", toString(requireTypeAtPosition({3, 28}))); // type(x) == "table"
     CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));                             // type(x) ~= "table"
 }
 
@@ -697,7 +703,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_guard_can_filter_for_intersection_of_ta
 
     ToStringOptions opts;
     opts.exhaustive = true;
-    CHECK_EQ("{| x: number |} & {| y: number |}", toString(requireTypeAtPosition({4, 28}), opts));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("{ x: number } & { y: number }", toString(requireTypeAtPosition({4, 28}), opts));
+    else
+        CHECK_EQ("{| x: number |} & {| y: number |}", toString(requireTypeAtPosition({4, 28}), opts));
     CHECK_EQ("nil", toString(requireTypeAtPosition({6, 28})));
 }
 
@@ -1216,8 +1225,17 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "discriminate_from_isa_of_x")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(R"({| tag: "Part", x: Part |})", toString(requireTypeAtPosition({5, 28})));
-    CHECK_EQ(R"({| tag: "Folder", x: Folder |})", toString(requireTypeAtPosition({7, 28})));
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ(R"({ tag: "Part", x: Part })", toString(requireTypeAtPosition({5, 28})));
+        CHECK_EQ(R"({ tag: "Folder", x: Folder })", toString(requireTypeAtPosition({7, 28})));
+    }
+    else
+    {
+        CHECK_EQ(R"({| tag: "Part", x: Part |})", toString(requireTypeAtPosition({5, 28})));
+        CHECK_EQ(R"({| tag: "Folder", x: Folder |})", toString(requireTypeAtPosition({7, 28})));
+    }
 }
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_free_table_to_vector")

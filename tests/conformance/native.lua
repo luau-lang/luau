@@ -171,4 +171,38 @@ end
 
 nilInvalidatesSlot()
 
+local function arraySizeOpt1(a)
+  a[1] += 2
+  a[1] *= 3
+
+  table.insert(a, 3)
+  table.insert(a, 4)
+  table.insert(a, 5)
+  table.insert(a, 6)
+
+  a[1] += 4
+  a[1] *= 5
+
+  return a[1] + a[5]
+end
+
+assert(arraySizeOpt1({1}) == 71)
+
+local function arraySizeOpt2(a, i)
+  a[i] += 2
+  a[i] *= 3
+
+  table.insert(a, 3)
+  table.insert(a, 4)
+  table.insert(a, 5)
+  table.insert(a, 6)
+
+  a[i] += 4
+  a[i] *= 5
+
+  return a[i] + a[5]
+end
+
+assert(arraySizeOpt1({1}, 1) == 71)
+
 return('OK')

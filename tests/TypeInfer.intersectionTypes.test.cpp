@@ -164,7 +164,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_property_guarante
 
     LUAU_REQUIRE_NO_ERRORS(result);
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK("{| y: number |}" == toString(requireType("r")));
+        CHECK("{ y: number }" == toString(requireType("r")));
     else
         CHECK("{| y: number |} & {| y: number |}" == toString(requireType("r")));
 }
@@ -513,7 +513,13 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected = R"(Type
+    const std::string expected =
+        (FFlag::DebugLuauDeferredConstraintResolution) ?
+        "Type "
+        "'{ p: number?, q: number?, r: number? } & { p: number?, q: string? }'"
+        " could not be converted into "
+        "'{ p: nil }'; none of the intersection parts are compatible" :
+        R"(Type
     '{| p: number?, q: number?, r: number? |} & {| p: number?, q: string? |}'
 could not be converted into
     '{| p: nil |}'; none of the intersection parts are compatible)";
@@ -581,7 +587,13 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected = R"(Type
+    const std::string expected =
+        (FFlag::DebugLuauDeferredConstraintResolution) ?
+        R"(Type
+    '((number?) -> { p: number } & { q: number }) & ((string?) -> { p: number } & { r: number })'
+could not be converted into
+    '(number?) -> { p: number, q: number, r: number }'; none of the intersection parts are compatible)" :
+        R"(Type
     '((number?) -> {| p: number |} & {| q: number |}) & ((string?) -> {| p: number |} & {| r: number |})'
 could not be converted into
     '(number?) -> {| p: number, q: number, r: number |}'; none of the intersection parts are compatible)";
@@ -933,7 +945,7 @@ TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types_2")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("({| x: number |} & {| x: string |}) -> never", toString(requireType("f")));
+    CHECK_EQ("({ x: number } & { x: string }) -> never", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_property_table_intersection_1")

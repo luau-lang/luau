@@ -696,16 +696,33 @@ struct TypeStringifier
 
         std::string openbrace = "@@@";
         std::string closedbrace = "@@@?!";
-        switch (state.opts.hideTableKind ? TableState::Unsealed : ttv.state)
+        switch (state.opts.hideTableKind ? (FFlag::DebugLuauDeferredConstraintResolution ? TableState::Sealed : TableState::Unsealed) : ttv.state)
         {
         case TableState::Sealed:
-            state.result.invalid = true;
-            openbrace = "{|";
-            closedbrace = "|}";
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+            {
+                openbrace = "{";
+                closedbrace = "}";
+            }
+            else
+            {
+                state.result.invalid = true;
+                openbrace = "{|";
+                closedbrace = "|}";
+            }
             break;
         case TableState::Unsealed:
-            openbrace = "{";
-            closedbrace = "}";
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+            {
+                state.result.invalid = true;
+                openbrace = "{|";
+                closedbrace = "|}";
+            }
+            else
+            {
+                openbrace = "{";
+                closedbrace = "}";
+            }
             break;
         case TableState::Free:
             state.result.invalid = true;

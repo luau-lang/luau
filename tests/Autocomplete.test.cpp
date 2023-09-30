@@ -2162,7 +2162,10 @@ local fp: @1= f
 
     auto ac = autocomplete('1');
 
-    REQUIRE_EQ("({| x: number, y: number |}) -> number", toString(requireType("f")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        REQUIRE_EQ("({ x: number, y: number }) -> number", toString(requireType("f")));
+    else
+        REQUIRE_EQ("({| x: number, y: number |}) -> number", toString(requireType("f")));
     CHECK(ac.entryMap.count("({ x: number, y: number }) -> number"));
 }
 

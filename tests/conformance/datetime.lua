@@ -18,6 +18,11 @@ assert(os.date(string.rep("%d", 1000), t) ==
 assert(os.date(string.rep("%", 200)) == string.rep("%", 100))
 assert(os.date("", -1) == nil)
 
+assert(os.time({ year = 1969, month = 12, day = 31, hour = 23, min = 59, sec = 59}) == nil) -- just before start
+assert(os.time({ year = 1970, month = 1, day = 1, hour = 0, min = 0, sec = 0}) == 0) -- start
+assert(os.time({ year = 3000, month = 12, day = 31, hour = 23, min = 59, sec = 59}) == 32535215999) -- just before Windows max range
+assert(os.time({ year = 1970, month = 1, day = 1, hour = 0, min = 0, sec = -1}) == nil) -- going before using time fields
+
 local function checkDateTable (t)
   local D = os.date("!*t", t)
   assert(os.time(D) == t)

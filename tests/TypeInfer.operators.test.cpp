@@ -571,6 +571,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_len_error")
     CHECK_EQ("number", toString(requireType("a")));
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE_MESSAGE(tm, "Expected a TypeMismatch but got " << result.errors[0]);
+
     REQUIRE_EQ(*tm->wantedType, *builtinTypes->numberType);
     REQUIRE_EQ(*tm->givenType, *builtinTypes->stringType);
 }

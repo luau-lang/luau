@@ -274,6 +274,9 @@ constexpr X64::RegisterX64 rNonVol4 = X64::r14;
 
 TEST_CASE("GeneratedCodeExecutionX64")
 {
+    if (!Luau::CodeGen::isSupported())
+        return;
+
     using namespace X64;
 
     AssemblyBuilderX64 build(/* logText= */ false);
@@ -315,6 +318,9 @@ static void nonthrowing(int64_t arg)
 
 TEST_CASE("GeneratedCodeExecutionWithThrowX64")
 {
+    if (!Luau::CodeGen::isSupported())
+        return;
+
     using namespace X64;
 
     AssemblyBuilderX64 build(/* logText= */ false);
@@ -513,6 +519,9 @@ TEST_CASE("GeneratedCodeExecutionWithThrowX64Simd")
 
 TEST_CASE("GeneratedCodeExecutionMultipleFunctionsWithThrowX64")
 {
+    if (!Luau::CodeGen::isSupported())
+        return;
+
     using namespace X64;
 
     AssemblyBuilderX64 build(/* logText= */ false);
@@ -650,6 +659,9 @@ TEST_CASE("GeneratedCodeExecutionMultipleFunctionsWithThrowX64")
 
 TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
 {
+    if (!Luau::CodeGen::isSupported())
+        return;
+
     using namespace X64;
 
     AssemblyBuilderX64 build(/* logText= */ false);
