@@ -15,7 +15,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <Windows.h>
+#include <windows.h>
 
 #elif defined(__linux__) || defined(__APPLE__)
 

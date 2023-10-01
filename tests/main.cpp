@@ -15,7 +15,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <Windows.h> // IsDebuggerPresent
+#include <windows.h> // IsDebuggerPresent
 #endif
 
 #ifdef __APPLE__

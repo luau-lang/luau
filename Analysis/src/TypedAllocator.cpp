@@ -10,7 +10,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <Windows.h>
+#include <windows.h>
 
 const size_t kPageSize = 4096;
 #else
