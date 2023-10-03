@@ -197,17 +197,34 @@ This allows us to refer to other subprojects like this, regardless of the exact 
 ```lua
 local subproject1 = require("com.roblox.luau/subproject-1")
 ```
-## Roblox Specifics
+### Roblox Specifics
 In the Roblox engine, a similar aliasing system could be implemented. Assuming a central package management system were available, a Roblox Script could contain local Roact = require("Roact"), and everything would "just work".
 
-# Drawbacks
+## Drawbacks
 ## Backwards Compatibility
 This alias system introduces a new layer to require that wasn't previously there. However, the advantages of this system are expected to outweigh the complexities it introduces.
 
-# Alternatives
-## Different Ways of Defining Aliases
-### Defining Paths/Aliases Directly in the Requiring File
-This approach has several drawbacks, such as making the code less clean and complicating the task for package managers.
+## Alternatives
 
-### Defining Configuration Files in a Non-JSON Format
-Alias maps could alternatively be defined in specially named .luau files, but using JSON is simpler and more standardized.
+### Different ways of defining aliases
+
+#### Defining paths/aliases directly in the requiring file
+
+Rather than defining paths/alias maps in an external configuration file, we could alternatively define paths/aliases directly in the files that require them. For example, this could manifest itself through an extension of the `--!` comment syntax or introduce new syntax like `--@<ALIAS> = @<PATH>`.
+```lua
+--@"Roact" = @"C:/LuauModules/Roact-v1.4.2"
+local Roact = require("@Roact")
+
+-- Same as this:
+local Roact = require("@C:/LuauModules/Roact-v1.4.2")
+```
+
+Some potential issues with this approach:
+- Could lead to Luau file headers becoming cluttered.
+- Would probably lead to substantial copy-and-pasting between modules in the same library, as they would likely need to share certain paths/aliases.
+- Using configuration files for paths/alias maps allows modules to share aliases while still providing the flexibility to override if needed. This approach does not support inheritance and overriding in an obvious way.
+- Removes the layer of abstraction that is provided by external paths/alias maps. This might also blur the scope of package managers. The software would need to directly modify lines of code in `.luau` files, rather than modifying configuration files.
+
+#### Defining configuration files in a non-JSON format
+
+Alias maps could alternatively be defined in specially named `.luau` files themselves, or at least adhering to Luau syntax. This approach is somewhat unappealing, however, as it would require package management software to parse Luau syntax. JSON syntax is well-understood and well-supported, which would likely facilitate the development of package management software.
