@@ -67,7 +67,7 @@ When a require statement is executed directly in a REPL input prompt (not in a f
 
 #### Absolute paths
 
-Absolute paths will no longer be supported in `require` statements, as they are unportable. The only way to require by absolute path will be through a explicitly defined paths or aliases defined in configuration files, as described in another [RFC](TODO: add link).
+Absolute paths will no longer be supported in `require` statements, as they are unportable. The only way to require by absolute path will be through a explicitly defined paths or aliases defined in configuration files, as described in another [RFC](https://github.com/Roblox/luau/pull/1061).
 
 #### Paths
 
@@ -278,5 +278,4 @@ In considering alternatives to enhancing relative imports in Luau, one can draw 
 ```lua
 import 'package:my_package/my_file.lua';
 ```
-Undesirable because this would be redundant with the alias RFC. 
-
+Undesirable because this would be redundant with the [alias RFC](https://github.com/Roblox/luau/pull/1061). 
