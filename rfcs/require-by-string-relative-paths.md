@@ -233,7 +233,7 @@ large-luau-project
 
 ### Roblox specifics
 
-In the Roblox engine, developers can reasonably expect something similar to be implemented. Assuming a central package management system were available for storing packages and providing default aliases to require them, a Roblox Script could contain `local Roact = require("Roact")`, and everything would "just work".
+In the Roblox engine, developers can reasonably expect something similar to be implemented. A Roblox Script could contain `local dependency = require("./dependency")`.
 
 However, when requiring a "floating" ModuleScript (not part of this central package management system), there will not be a default alias provided. This is bad style and will not be encouraged.
 
