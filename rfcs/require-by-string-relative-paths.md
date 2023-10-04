@@ -231,12 +231,6 @@ large-luau-project
 └── subproject-3
 ```
 
-### Roblox specifics
-
-In the Roblox engine, developers can reasonably expect something similar to be implemented. A Roblox Script could contain `local dependency = require("./dependency")`.
-
-However, when requiring a "floating" ModuleScript (not part of this central package management system), there will not be a default alias provided. This is bad style and will not be encouraged.
-
 ## Drawbacks
 
 ### Backwards compatibility
