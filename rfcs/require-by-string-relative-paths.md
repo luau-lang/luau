@@ -69,33 +69,6 @@ When a require statement is executed directly in a REPL input prompt (not in a f
 
 Absolute paths will no longer be supported in `require` statements, as they are unportable. The only way to require by absolute path will be through a explicitly defined paths or aliases defined in configuration files, as described in another [RFC](https://github.com/Roblox/luau/pull/1061).
 
-#### Paths
-
-Similar to [paths in TypeScript](https://www.typescriptlang.org/tsconfig#paths), we will introduce a `paths` array that can be configured in `.luaurc` files. Whenever a path is passed to `require` and does not begin with `./` or `../`, the path will first be resolved relative to the requiring file. If this fails, we will attempt to resolve paths relative to each path in the `paths` array.
-
-The `paths` array can contain absolute paths, and relative paths are resolved relative to `.luaurc` file in which they appear.
-
-##### Example Definition
-
-With the given `paths` definition (`.luaurc` file located in `/Users/johndoe/Projects/MyProject/src`):
-```json
-"paths": [
-    "../dependencies",
-    "/Users/johndoe/MyLuauLibraries",
-    "/Users/johndoe/MyOtherLuauLibraries",
-]
-```
-
-If `/Users/johndoe/Projects/MyProject/src/init.luau` contained the following code:
-```lua
-local graphing = require("graphing")
-```
-We would search the following directories, in order:
-- `/Users/johndoe/Projects/MyProject/src`
-- `/Users/johndoe/Projects/MyProject/dependencies`
-- `/Users/johndoe/MyLuauLibraries`
-- `/Users/johndoe/MyOtherLuauLibraries`
-
 ### Implementing changes to relative paths
 
 The current implementation of evaluating relative paths (in relation to the current working directory) can be found in [lua_require](https://github.com/Roblox/luau/blob/e25de95445f2d635a125ab463426bb7fda017093/CLI/Repl.cpp#L133).
@@ -189,47 +162,6 @@ local assign = require("./assign")
 ```
 
 (Of course, for this to work in the Roblox engine, there needs to be support for require-by-string in the engine. This is being discussed internally.)
-
-### Paths array
-
-The `paths` configuration variable provides convenience and allows Luau developers to build complex, well-organized libraries. Imagine the following project structure:
-
-```
-luau-paths-project
-├── .luaurc
-├── dependencies
-│   └── dependency.luau
-└── src
-    └── module.luau
-```
-
-If `.luaurc` contained the following `paths` array:
-```json
-{
-    "paths": ["./dependencies"]
-}
-```
-
-Then, `module.luau` could simply require `dependency.luau` like this:
-```lua
-local dependency = require("dependency")
-
--- Instead of: require("../dependencies/dependency")
-```
-
-Using the `paths` array allows Luau developers to organize their projects however they like without compromising code readability.
-
-### Large-scale projects in Luau
-
-For large-scale Luau projects, we might imagine that every dependency of the project is a Luau project itself. We might use an organizational structure like this to create a clean hierarchy:
-
-```
-large-luau-project
-├── .luaurc
-├── subproject-1
-├── subproject-2
-└── subproject-3
-```
 
 ## Drawbacks
 
