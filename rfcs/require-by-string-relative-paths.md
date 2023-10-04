@@ -231,23 +231,6 @@ large-luau-project
 └── subproject-3
 ```
 
-We can provide the following alias in `large-luau-project/.luaurc`:
-
-```json
-{
-    "aliases": {
-        "com.roblox.luau": "."
-    }
-}
-```
-
-This way, each subproject directory can contain its own source code, dependencies, and `.luaurc` configuration files, while also inheriting the `com.roblox.luau` alias from `large-luau-project/.luaurc`.
-
-This allows us to refer to other subprojects like this, regardless of the exact location of the requiring file in `large-luau-project`:
-```lua
-local subproject1 = require("com.roblox.luau/subproject-1")
-```
-
 ### Roblox specifics
 
 In the Roblox engine, developers can reasonably expect something similar to be implemented. Assuming a central package management system were available for storing packages and providing default aliases to require them, a Roblox Script could contain `local Roact = require("Roact")`, and everything would "just work".
@@ -271,7 +254,7 @@ Luau libraries are already not compatible with existing Lua libraries. This is b
 
 ## Alternatives
 
-### Different ways of defining aliases
+### Different ways of importing packages 
 
 In considering alternatives to enhancing relative imports in Luau, one can draw inspiration from other language systems. An elegant solution is the package import system similar to Dart's approach. Instead of relying on file-specific paths, this proposed system would utilize an absolute `package:` syntax:
 
