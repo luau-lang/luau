@@ -34,8 +34,6 @@ Returns the buffer data as a string.
 
 Returns the size of the buffer.
 
-'__len' metamethod is not proposed at this time.
-
 `buffer.copy(target_buffer: buffer, target_offset: number, source_buffer: buffer, source_offset: number, count: number) -> ()`
 
 Copy 'count' bytes from 'source_buffer' starting at offset 'source_offset' into the 'target_buffer' at 'target_offset'.
@@ -60,6 +58,9 @@ Offsets and 'count' have to be numbers, each number is cast to an integer in an 
 
 Used to read the data from the buffer by reinterpreting bytes at the offset as the type in the argument and converting it into a number.
 
+Floating-point numbers are read from a format specified by IEEE 754.
+When reading the value of any NaN representation, implementation can (but not required to) replace it with a different quiet NaN representation.
+
 `buffer.writei8(b: buffer, offset: number, value: number): ()`
 
 `buffer.writeu8(b: buffer, offset: number, value: number): ()`
@@ -78,7 +79,10 @@ Used to read the data from the buffer by reinterpreting bytes at the offset as t
 
 Used to write data to the buffer by converting the number into the type specified by the argument and reinterpreting it as individual bytes.
 
+Conversion to integer numbers performs a truncation of the number value. Results of converting special number values (inf/nan) is platform-specific.
 Conversion to unsigned numbers uses `bit32` library semantics.
+
+Floating-point numbers are stored in a format specified by IEEE 754.
 
 `buffer.readstring(b: buffer, offset: number, count: number): string`
 
@@ -99,6 +103,20 @@ Read and write operations for relevant types are little endian as it is the most
 Additionally, unaligned offsets in all operations are valid and behave as expected.
 
 Unless otherwise specified, if a read or write operation would cause an access outside the data in the buffer, an error is thrown.
+
+### Metatable
+
+`buffer` also has a metatable, inside this metatable:
+* '__type' is defined to return 'buffer'. `type()` will return 'userdata'
+* '__eq' is defined to compare buffers, by comparing sizes first, followed by content comparison
+* metatable is locked
+
+No other metamethod is defined, naming a few specific onces:
+* '__len' is not proposed at this time
+* '__index' is not defined, so there is no `b[1] = a` interface to write bytes. Neither can you call library functions as methods like `b:writei16(10, 12)`
+* '__iter' is not defined
+* '__tostring' is not defined, generic userdata behavior remains, returning 'buffer: 0xpointer'
+* ordering is not defined
 
 ## Drawbacks
 
