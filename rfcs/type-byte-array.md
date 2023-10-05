@@ -10,37 +10,121 @@ With this type, we solve the use cases for binary format encoding and decoding, 
 
 ## Design
 
-This would be exposed as a new Luau library similar to that of `string` or `table`, with functions for:
+This type will be called 'buffer' and will be implemented using `userdata` with a new reserved tag.
 
-* Instantiating the object with a fixed size.
+Operations on this type will be exposed through a new Luau library called 'buffer`, with the following functions:
 
-* Fetching the size of the object.
+`buffer.create(size: number): buffer`
 
-* Copying a range of data from one object to another.
+Instantiates the object with a fixed size.
+Each byte is initialized to 0.
 
-* Reading...
+'size' has to be an integer and it cannot be negative. Maximum size is defined by implementation, but it at least matches the maximum string size.
 
-    * ... signed and unsigned integers of 8, 16, and 32 bits given an offset.
+`buffer.fromstring(str: string): buffer`
 
-    * ... floating point values of 32 and 64 bits given an offset.
+Instantiates the object from a string.
+Size of the buffer is fixed and equals to the length of the string.
 
-    * ... a string given an offset and size.
+`buffer.tostring(): string`
 
- * Writing...
+Returns the buffer data as a string.
 
-    * ... signed and unsigned integers of 8, 16, and 32 bits given an offset and value.
+`buffer.len(b: buffer): number`
 
-    * ... floating point values of 32 and 64 bits given an offset and value.
+Returns the size of the buffer.
 
-    * ... a string given an offset, size, and value.
+'__len' metamethod is not proposed at this time.
+
+`buffer.copy(target_buffer: buffer, target_offset: number, source_buffer: buffer, source_offset: number, count: number) -> ()`
+
+Copy 'count' bytes from 'source_buffer' starting at offset 'source_offset' into the 'target_buffer' at 'target_offset'.
+
+Offsets and 'count' have to be numbers, each number is cast to an integer in an implementation-defined way.
+
+`buffer.readi8(b: buffer, offset: number): number`
+
+`buffer.readu8(b: buffer, offset: number): number`
+
+`buffer.readi16(b: buffer, offset: number): number`
+
+`buffer.readu16(b: buffer, offset: number): number`
+
+`buffer.readi32(b: buffer, offset: number): number`
+
+`buffer.readu32(b: buffer, offset: number): number`
+
+`buffer.readf32(b: buffer, offset: number): number`
+
+`buffer.readf64(b: buffer, offset: number): number`
+
+Used to read the data from the buffer by reinterpreting bytes at the offset as the type in the argument and converting it into a number.
+
+`buffer.writei8(b: buffer, offset: number, value: number): ()`
+
+`buffer.writeu8(b: buffer, offset: number, value: number): ()`
+
+`buffer.writei16(b: buffer, offset: number, value: number): ()`
+
+`buffer.writeu16(b: buffer, offset: number, value: number): ()`
+
+`buffer.writei32(b: buffer, offset: number, value: number): ()`
+
+`buffer.writeu32(b: buffer, offset: number, value: number): ()`
+
+`buffer.writef32(b: buffer, offset: number, value: number): ()`
+
+`buffer.writef64(b: buffer, offset: number, value: number): ()`
+
+Used to write data to the buffer by converting the number into the type specified by the argument and reinterpreting it as individual bytes.
+
+Conversion to unsigned numbers uses `bit32` library semantics.
+
+`buffer.readstring(b: buffer, offset: number, count: number): string`
+
+Used to read a string of length 'count' from the buffer at specified offset.
+
+`buffer.writestring(b: buffer, offset: number, value: string, count: number?): ()`
+
+Used to write data from a string into the buffer at specified offset.
+
+If an optional 'count' is specified, only 'count' bytes are taken from the string. 'count' cannot be larger that the string length.
+
+---
+
+All offsets start at 0.
 
 Read and write operations for relevant types are little endian as it is the most common use case, and conversion is often trivial to do manually.
 
 Additionally, unaligned offsets in all operations are valid and behave as expected.
 
+Unless otherwise specified, if a read or write operation would cause an access outside the data in the buffer, an error is thrown.
+
 ## Drawbacks
 
-Depending on implementation this could increase the complexity of the VM and related code. If this is to be implemented as a built-in, optimized type, it might need specialized fast paths for all relevant opcodes. Additionally, this type would have to come in with a whole new library table as part of the global environment, which could cause name collisions in older code.
+This introduces 'buffer' as a class type in global typing context and adds new global 'buffer' table.
+While class type might intersect with user-defined 'buffer' type, such type redefinitions ares already allowed in Luau, so this should not cause new type errors.
+Same goes for the global table, users can already override globals like 'string', so additional of a new global is backwards-compatible, but new table will not be accessible in such a case.
+
+Depending on implementation this could increase the complexity of the VM and related code. If this is to be implemented as a built-in, optimized type, it might need specialized fast paths for all relevant opcodes.
+
+## Extensions
+
+To support additional use cases, we can provide a set of `pushTYPE` and `takeTYPE` library functions and extend the type to have an internal cursor.
+This will make it easy to write/read data from a buffer as one would from a file, without having to track the current offset manually.
+Additional functions like `pos` and `setpos` can be added to access this internal cursor.
+
+This extension can be made by changing the internal representation without affecting older code.
+
+One drawback here might be that the cursor is attached to the data and raises a question if the value is preserved when object is serialized over the network.
+
+---
+
+Additional possibility will be to make the buffer change size automatically by `pushTYPE` interface. (explicit resize can be implemented with the existing interface).
+This can also be changed almost transparently for older code.
+One difference will be that `pushTYPE` will not throw when reaching the end of the data. Unless it is decided that other write operations could also resize implicitly.
+
+Implementation can have a performance impact however as data will be read through a pointer redirection.
 
 ## Alternatives
 
