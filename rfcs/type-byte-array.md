@@ -38,6 +38,9 @@ Returns the size of the buffer.
 
 Copy 'count' bytes from 'source_buffer' starting at offset 'source_offset' into the 'target_buffer' at 'target_offset'.
 
+It is possible for 'source_buffer' and 'target_buffer' to be the same. 
+Copying an overlapping region inside the same buffer acts as if the source region is copied into a temporary buffer and then that buffer is copied over to the target.
+
 Offsets and 'count' have to be numbers, each number is cast to an integer in an implementation-defined way.
 
 `buffer.readi8(b: buffer, offset: number): number`
