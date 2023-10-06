@@ -27,6 +27,11 @@ static const char* setccTextForCondition[] = {"seto", "setno", "setc", "setnc", 
     "setge", "setnb", "setnbe", "setna", "setnae", "setne", "setnl", "setnle", "setng", "setnge", "setz", "setnz", "setp", "setnp"};
 static_assert(sizeof(setccTextForCondition) / sizeof(setccTextForCondition[0]) == size_t(ConditionX64::Count), "all conditions have to be covered");
 
+static const char* cmovTextForCondition[] = {"cmovo", "cmovno", "cmovc", "cmovnc", "cmovb", "cmovbe", "cmova", "cmovae", "cmove", "cmovl", "cmovle",
+    "cmovg", "cmovge", "cmovnb", "cmovnbe", "cmovna", "cmovnae", "cmovne", "cmovnl", "cmovnle", "cmovng", "cmovnge", "cmovz", "cmovnz", "cmovp",
+    "cmovnp"};
+static_assert(sizeof(cmovTextForCondition) / sizeof(cmovTextForCondition[0]) == size_t(ConditionX64::Count), "all conditions have to be covered");
+
 #define OP_PLUS_REG(op, reg) ((op) + (reg & 0x7))
 #define OP_PLUS_CC(op, cc) ((op) + uint8_t(cc))
 
@@ -401,6 +406,20 @@ void AssemblyBuilderX64::setcc(ConditionX64 cond, OperandX64 op)
     place(0x0f);
     place(0x90 | codeForCondition[size_t(cond)]);
     placeModRegMem(op, 0);
+    commit();
+}
+
+void AssemblyBuilderX64::cmov(ConditionX64 cond, RegisterX64 lhs, OperandX64 rhs)
+{
+    SizeX64 size = rhs.cat == CategoryX64::reg ? rhs.base.size : rhs.memSize;
+    LUAU_ASSERT(size != SizeX64::byte && size == lhs.size);
+
+    if (logText)
+        log(cmovTextForCondition[size_t(cond)], lhs, rhs);
+    placeRex(lhs, rhs);
+    place(0x0f);
+    place(0x40 | codeForCondition[size_t(cond)]);
+    placeRegAndModRegMem(lhs, rhs);
     commit();
 }
 

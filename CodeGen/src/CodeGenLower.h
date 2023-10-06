@@ -29,7 +29,7 @@ namespace Luau
 namespace CodeGen
 {
 
-inline void gatherFunctions(std::vector<Proto*>& results, Proto* proto)
+inline void gatherFunctions(std::vector<Proto*>& results, Proto* proto, unsigned int flags)
 {
     if (results.size() <= size_t(proto->bytecodeid))
         results.resize(proto->bytecodeid + 1);
@@ -38,10 +38,13 @@ inline void gatherFunctions(std::vector<Proto*>& results, Proto* proto)
     if (results[proto->bytecodeid])
         return;
 
-    results[proto->bytecodeid] = proto;
+    // Only compile cold functions if requested
+    if ((proto->flags & LPF_NATIVE_COLD) == 0 || (flags & CodeGen_ColdFunctions) != 0)
+        results[proto->bytecodeid] = proto;
 
+    // Recursively traverse child protos even if we aren't compiling this one
     for (int i = 0; i < proto->sizep; i++)
-        gatherFunctions(results, proto->p[i]);
+        gatherFunctions(results, proto->p[i], flags);
 }
 
 template<typename AssemblyBuilder, typename IrLowering>

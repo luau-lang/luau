@@ -1515,8 +1515,10 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, callFallback)));
         build.blr(x4);
 
-        // reentry with x0=closure (NULL will trigger exit)
-        build.b(helpers.reentry);
+        emitUpdateBase(build);
+
+        // reentry with x0=closure (NULL implies C function; CALL_FALLBACK_YIELD will trigger exit)
+        build.cbnz(x0, helpers.continueCall);
         break;
     case IrCmd::RETURN:
         regs.spill(build, index);

@@ -1044,6 +1044,14 @@ void persist(TypeId ty)
         else if (get<GenericType>(t) || get<AnyType>(t) || get<FreeType>(t) || get<SingletonType>(t) || get<PrimitiveType>(t) || get<NegationType>(t))
         {
         }
+        else if (auto tfit = get<TypeFamilyInstanceType>(t))
+        {
+            for (auto ty : tfit->typeArguments)
+                queue.push_back(ty);
+
+            for (auto tp : tfit->packArguments)
+                persist(tp);
+        }
         else
         {
             LUAU_ASSERT(!"TypeId is not supported in a persist call");
@@ -1071,6 +1079,14 @@ void persist(TypePackId tp)
     }
     else if (get<GenericTypePack>(tp))
     {
+    }
+    else if (auto tfitp = get<TypeFamilyInstanceTypePack>(tp))
+    {
+        for (auto ty : tfitp->typeArguments)
+            persist(ty);
+
+        for (auto tp : tfitp->packArguments)
+            persist(tp);
     }
     else
     {

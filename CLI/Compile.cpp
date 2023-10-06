@@ -369,10 +369,9 @@ int main(int argc, char** argv)
             stats.bytecode == 0 ? 0.0 : double(stats.codegen) / double(stats.bytecode), stats.readTime, stats.parseTime, stats.compileTime,
             stats.codegenTime);
 
-        printf("Lowering stats:\n");
-        printf("- spills to stack: %d, spills to restore: %d, max spill slot %u\n", stats.lowerStats.spillsToSlot, stats.lowerStats.spillsToRestore,
+        printf("Lowering: regalloc failed: %d, lowering failed %d; spills to stack: %d, spills to restore: %d, max spill slot %u\n",
+            stats.lowerStats.regAllocErrors, stats.lowerStats.loweringErrors, stats.lowerStats.spillsToSlot, stats.lowerStats.spillsToRestore,
             stats.lowerStats.maxSpillSlotsUsed);
-        printf("- regalloc failed: %d, lowering failed %d\n", stats.lowerStats.regAllocErrors, stats.lowerStats.loweringErrors);
     }
 
     return failed ? 1 : 0;

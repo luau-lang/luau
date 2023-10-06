@@ -1942,4 +1942,54 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "conditional_refinement_should_stay_error_sup
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "globals_can_be_narrowed_too")
+{
+    CheckResult result = check(R"(
+        if typeof(string) == 'string' then
+            local foo = string
+        end
+    )");
+
+    CHECK("never" == toString(requireTypeAtPosition(Position{2, 24})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction")
+{
+    CheckResult result = check(R"(
+        local function isIndexKey(k, contiguousLength)
+            return type(k) == "number"
+                and k <= contiguousLength -- nothing out of bounds
+                and 1 <= k -- nothing illegal for array indices
+                and math.floor(k) == k -- no float keys
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "luau_polyfill_isindexkey_refine_conjunction_variant")
+{
+    CheckResult result = check(R"(
+        local function isIndexKey(k, contiguousLength: number)
+            return type(k) == "number"
+                and k <= contiguousLength -- nothing out of bounds
+                and 1 <= k -- nothing illegal for array indices
+                and math.floor(k) == k -- no float keys
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "globals_can_be_narrowed_too")
+{
+    CheckResult result = check(R"(
+        if typeof(string) == 'string' then
+            local foo = string
+        end
+    )");
+
+    CHECK("never" == toString(requireTypeAtPosition(Position{2, 24})));
+}
+
 TEST_SUITE_END();

@@ -12,8 +12,9 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAGVARIABLE(LuauImproveForN, false)
+LUAU_FASTFLAGVARIABLE(LuauImproveForN2, false)
 LUAU_FASTFLAG(LuauReduceStackSpills)
+LUAU_FASTFLAGVARIABLE(LuauInlineArrConstOffset, false)
 
 namespace Luau
 {
@@ -631,6 +632,26 @@ static IrOp getLoopStepK(IrBuilder& build, int ra)
     return build.undef();
 }
 
+void beforeInstForNPrep(IrBuilder& build, const Instruction* pc)
+{
+    if (FFlag::LuauImproveForN2)
+    {
+        int ra = LUAU_INSN_A(*pc);
+
+        IrOp stepK = getLoopStepK(build, ra);
+        build.loopStepStack.push_back(stepK);
+    }
+}
+
+void afterInstForNLoop(IrBuilder& build, const Instruction* pc)
+{
+    if (FFlag::LuauImproveForN2)
+    {
+        LUAU_ASSERT(!build.loopStepStack.empty());
+        build.loopStepStack.pop_back();
+    }
+}
+
 void translateInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
@@ -638,10 +659,10 @@ void translateInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp loopStart = build.blockAtInst(pcpos + getOpLength(LuauOpcode(LUAU_INSN_OP(*pc))));
     IrOp loopExit = build.blockAtInst(getJumpTarget(*pc, pcpos));
 
-    if (FFlag::LuauImproveForN)
+    if (FFlag::LuauImproveForN2)
     {
-        IrOp stepK = getLoopStepK(build, ra);
-        build.loopStepStack.push_back(stepK);
+        LUAU_ASSERT(!build.loopStepStack.empty());
+        IrOp stepK = build.loopStepStack.back();
 
         // When loop parameters are not numbers, VM tries to perform type coercion from string and raises an exception if that fails
         // Performing that fallback in native code increases code size and complicates CFG, obscuring the values when they are constant
@@ -733,7 +754,7 @@ void translateInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos)
     // VM places interrupt in FORNLOOP, but that creates a likely spill point for short loops that use loop index as INTERRUPT always spills
     // We place the interrupt at the beginning of the loop body instead; VM uses FORNLOOP because it doesn't want to waste an extra instruction.
     // Because loop block may not have been started yet (as it's started when lowering the first instruction!), we need to defer INTERRUPT placement.
-    if (FFlag::LuauImproveForN)
+    if (FFlag::LuauImproveForN2)
         build.interruptRequested = true;
 }
 
@@ -744,11 +765,10 @@ void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp loopRepeat = build.blockAtInst(getJumpTarget(*pc, pcpos));
     IrOp loopExit = build.blockAtInst(pcpos + getOpLength(LuauOpcode(LUAU_INSN_OP(*pc))));
 
-    if (FFlag::LuauImproveForN)
+    if (FFlag::LuauImproveForN2)
     {
         LUAU_ASSERT(!build.loopStepStack.empty());
         IrOp stepK = build.loopStepStack.back();
-        build.loopStepStack.pop_back();
 
         IrOp zero = build.constDouble(0.0);
         IrOp limit = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 0));
@@ -950,10 +970,20 @@ void translateInstGetTableN(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::CHECK_ARRAY_SIZE, vb, build.constInt(c), fallback);
     build.inst(IrCmd::CHECK_NO_METATABLE, vb, fallback);
 
-    IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(c));
+    if (FFlag::LuauInlineArrConstOffset)
+    {
+        IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(0));
 
-    IrOp arrElTval = build.inst(IrCmd::LOAD_TVALUE, arrEl);
-    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), arrElTval);
+        IrOp arrElTval = build.inst(IrCmd::LOAD_TVALUE, arrEl, build.constInt(c * sizeof(TValue)));
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), arrElTval);
+    }
+    else
+    {
+        IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(c));
+
+        IrOp arrElTval = build.inst(IrCmd::LOAD_TVALUE, arrEl);
+        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), arrElTval);
+    }
 
     IrOp next = build.blockAtInst(pcpos + 1);
     FallbackStreamScope scope(build, fallback, next);
@@ -980,10 +1010,20 @@ void translateInstSetTableN(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::CHECK_NO_METATABLE, vb, fallback);
     build.inst(IrCmd::CHECK_READONLY, vb, fallback);
 
-    IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(c));
+    if (FFlag::LuauInlineArrConstOffset)
+    {
+        IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(0));
 
-    IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
-    build.inst(IrCmd::STORE_TVALUE, arrEl, tva);
+        IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
+        build.inst(IrCmd::STORE_TVALUE, arrEl, tva, build.constInt(c * sizeof(TValue)));
+    }
+    else
+    {
+        IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(c));
+
+        IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
+        build.inst(IrCmd::STORE_TVALUE, arrEl, tva);
+    }
 
     build.inst(IrCmd::BARRIER_TABLE_FORWARD, vb, build.vmReg(ra), build.undef());
 

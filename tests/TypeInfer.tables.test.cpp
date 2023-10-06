@@ -2672,7 +2672,7 @@ TEST_CASE_FIXTURE(Fixture, "generalize_table_argument")
     std::optional<TypeId> fooArg1 = first(fooType->argTypes);
     REQUIRE(fooArg1);
 
-    const TableType* fooArg1Table = get<TableType>(*fooArg1);
+    const TableType* fooArg1Table = get<TableType>(follow(*fooArg1));
     REQUIRE(fooArg1Table);
 
     CHECK_EQ(fooArg1Table->state, TableState::Generic);

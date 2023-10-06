@@ -154,6 +154,9 @@ bool Unifier2::unify(TypeId subTy, const FunctionType* superFn) {
     if (shouldInstantiate)
     {
         std::optional<TypeId> instantiated = instantiate(builtinTypes, arena, NotNull{&limits}, scope, subTy);
+        if (!instantiated)
+            return false;
+
         subFn = get<FunctionType>(*instantiated);
 
         LUAU_ASSERT(subFn); // instantiation should not make a function type _not_ a function type.

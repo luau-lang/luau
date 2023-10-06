@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Parser.h"
 
+#include "Luau/Common.h"
 #include "Luau/TimeTrace.h"
 
 #include <algorithm>
@@ -15,6 +16,7 @@ LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauParseDeclareClassIndexer, false)
 LUAU_FASTFLAG(LuauFloorDivision)
+LUAU_FASTFLAG(LuauCheckedFunctionSyntax)
 
 namespace Luau
 {
@@ -823,8 +825,14 @@ AstStat* Parser::parseDeclaration(const Location& start)
     if (lexer.current().type == Lexeme::ReservedFunction)
     {
         nextLexeme();
-        Name globalName = parseName("global function name");
+        bool checkedFunction = false;
+        if (FFlag::LuauCheckedFunctionSyntax && lexer.current().type == Lexeme::ReservedChecked)
+        {
+            checkedFunction = true;
+            nextLexeme();
+        }
 
+        Name globalName = parseName("global function name");
         auto [generics, genericPacks] = parseGenericTypeList(/* withDefaultValues= */ false);
 
         MatchLexeme matchParen = lexer.current();
@@ -860,8 +868,8 @@ AstStat* Parser::parseDeclaration(const Location& start)
         if (vararg && !varargAnnotation)
             return reportStatError(Location(start, end), {}, {}, "All declaration parameters must be annotated");
 
-        return allocator.alloc<AstStatDeclareFunction>(
-            Location(start, end), globalName.name, generics, genericPacks, AstTypeList{copy(vars), varargAnnotation}, copy(varNames), retTypes);
+        return allocator.alloc<AstStatDeclareFunction>(Location(start, end), globalName.name, generics, genericPacks,
+            AstTypeList{copy(vars), varargAnnotation}, copy(varNames), retTypes, checkedFunction);
     }
     else if (AstName(lexer.current().name) == "class")
     {
@@ -940,7 +948,7 @@ AstStat* Parser::parseDeclaration(const Location& start)
     {
         expectAndConsume(':', "global variable declaration");
 
-        AstType* type = parseType();
+        AstType* type = parseType(/* in declaration context */ true);
         return allocator.alloc<AstStatDeclareGlobal>(Location(start, type->location), globalName->name, type);
     }
     else
@@ -1302,7 +1310,7 @@ AstTableIndexer* Parser::parseTableIndexer()
 // TablePropOrIndexer ::= TableProp | TableIndexer
 // PropList ::= TablePropOrIndexer {fieldsep TablePropOrIndexer} [fieldsep]
 // TableType ::= `{' PropList `}'
-AstType* Parser::parseTableType()
+AstType* Parser::parseTableType(bool inDeclarationContext)
 {
     incrementRecursionCounter("type annotation");
 
@@ -1370,7 +1378,7 @@ AstType* Parser::parseTableType()
 
             expectAndConsume(':', "table field");
 
-            AstType* type = parseType();
+            AstType* type = parseType(inDeclarationContext);
 
             props.push_back({name->name, name->location, type});
         }
@@ -1396,7 +1404,7 @@ AstType* Parser::parseTableType()
 
 // ReturnType ::= Type | `(' TypeList `)'
 // FunctionType ::= [`<' varlist `>'] `(' [TypeList] `)' `->` ReturnType
-AstTypeOrPack Parser::parseFunctionType(bool allowPack)
+AstTypeOrPack Parser::parseFunctionType(bool allowPack, bool isCheckedFunction)
 {
     incrementRecursionCounter("type annotation");
 
@@ -1444,11 +1452,11 @@ AstTypeOrPack Parser::parseFunctionType(bool allowPack)
 
     AstArray<std::optional<AstArgumentName>> paramNames = copy(names);
 
-    return {parseFunctionTypeTail(begin, generics, genericPacks, paramTypes, paramNames, varargAnnotation), {}};
+    return {parseFunctionTypeTail(begin, generics, genericPacks, paramTypes, paramNames, varargAnnotation, isCheckedFunction), {}};
 }
 
 AstType* Parser::parseFunctionTypeTail(const Lexeme& begin, AstArray<AstGenericType> generics, AstArray<AstGenericTypePack> genericPacks,
-    AstArray<AstType*> params, AstArray<std::optional<AstArgumentName>> paramNames, AstTypePack* varargAnnotation)
+    AstArray<AstType*> params, AstArray<std::optional<AstArgumentName>> paramNames, AstTypePack* varargAnnotation, bool isCheckedFunction)
 {
     incrementRecursionCounter("type annotation");
 
@@ -1472,7 +1480,8 @@ AstType* Parser::parseFunctionTypeTail(const Lexeme& begin, AstArray<AstGenericT
     auto [endLocation, returnTypeList] = parseReturnType();
 
     AstTypeList paramTypes = AstTypeList{params, varargAnnotation};
-    return allocator.alloc<AstTypeFunction>(Location(begin.location, endLocation), generics, genericPacks, paramTypes, paramNames, returnTypeList);
+    return allocator.alloc<AstTypeFunction>(
+        Location(begin.location, endLocation), generics, genericPacks, paramTypes, paramNames, returnTypeList, isCheckedFunction);
 }
 
 // Type ::=
@@ -1565,14 +1574,14 @@ AstTypeOrPack Parser::parseTypeOrPack()
     return {parseTypeSuffix(type, begin), {}};
 }
 
-AstType* Parser::parseType()
+AstType* Parser::parseType(bool inDeclarationContext)
 {
     unsigned int oldRecursionCount = recursionCounter;
     incrementRecursionCounter("type annotation");
 
     Location begin = lexer.current().location;
 
-    AstType* type = parseSimpleType(/* allowPack= */ false).type;
+    AstType* type = parseSimpleType(/* allowPack= */ false, /* in declaration context */ inDeclarationContext).type;
 
     recursionCounter = oldRecursionCount;
 
@@ -1581,7 +1590,7 @@ AstType* Parser::parseType()
 
 // Type ::= nil | Name[`.' Name] [ `<' Type [`,' ...] `>' ] | `typeof' `(' expr `)' | `{' [PropList] `}'
 //   | [`<' varlist `>'] `(' [TypeList] `)' `->` ReturnType
-AstTypeOrPack Parser::parseSimpleType(bool allowPack)
+AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
 {
     incrementRecursionCounter("type annotation");
 
@@ -1673,7 +1682,13 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack)
     }
     else if (lexer.current().type == '{')
     {
-        return {parseTableType(), {}};
+        return {parseTableType(/* inDeclarationContext */ inDeclarationContext), {}};
+    }
+    else if (FFlag::LuauCheckedFunctionSyntax && inDeclarationContext && lexer.current().type == Lexeme::ReservedChecked)
+    {
+        LUAU_ASSERT(FFlag::LuauCheckedFunctionSyntax);
+        nextLexeme();
+        return parseFunctionType(allowPack, /* isCheckedFunction */ true);
     }
     else if (lexer.current().type == '(' || lexer.current().type == '<')
     {

@@ -146,6 +146,11 @@ void IrBuilder::buildFunctionIr(Proto* proto)
         if (instIndexToBlock[i] != kNoAssociatedBlockIndex)
             beginBlock(blockAtInst(i));
 
+        // Numeric for loops require additional processing to maintain loop stack
+        // Notably, this must be performed even when the block is dead so that we maintain the pairing FORNPREP-FORNLOOP
+        if (op == LOP_FORNPREP)
+            beforeInstForNPrep(*this, pc);
+
         // We skip dead bytecode instructions when they appear after block was already terminated
         if (!inTerminatedBlock)
         {
@@ -163,6 +168,10 @@ void IrBuilder::buildFunctionIr(Proto* proto)
                 fastcallSkipTarget = -1;
             }
         }
+
+        // See above for FORNPREP..FORNLOOP processing
+        if (op == LOP_FORNLOOP)
+            afterInstForNLoop(*this, pc);
 
         i = nexti;
         LUAU_ASSERT(i <= proto->sizecode);

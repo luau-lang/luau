@@ -236,7 +236,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Linter.cpp
     Analysis/src/LValue.cpp
     Analysis/src/Module.cpp
-    Analysis/src/NonStrictTypeChecker.cpp        
+    Analysis/src/NonStrictTypeChecker.cpp
     Analysis/src/Normalize.cpp
     Analysis/src/Quantify.cpp
     Analysis/src/Refinement.cpp
@@ -400,7 +400,7 @@ if(TARGET Luau.UnitTest)
         tests/LValue.test.cpp
         tests/Module.test.cpp
         tests/NonstrictMode.test.cpp
-        tests/NonStrictTypeChecker.test.cpp	
+        tests/NonStrictTypeChecker.test.cpp
         tests/Normalize.test.cpp
         tests/NotNull.test.cpp
         tests/Parser.test.cpp

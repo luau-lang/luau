@@ -43,7 +43,7 @@ constexpr RegisterX64 rNativeContext = r13; // NativeContext* context
 constexpr RegisterX64 rConstants = r12;     // TValue* k
 
 constexpr unsigned kExtraLocals = 3; // Number of 8 byte slots available for specialized local variables specified below
-constexpr unsigned kSpillSlots = 5;  // Number of 8 byte slots available for register allocator to spill data into
+constexpr unsigned kSpillSlots = 13; // Number of 8 byte slots available for register allocator to spill data into
 static_assert((kExtraLocals + kSpillSlots) * 8 % 16 == 0, "locals have to preserve 16 byte alignment");
 
 constexpr uint8_t kWindowsFirstNonVolXmmReg = 6;
@@ -216,7 +216,6 @@ void emitInterrupt(AssemblyBuilderX64& build);
 void emitFallback(IrRegAllocX64& regs, AssemblyBuilderX64& build, int offset, int pcpos);
 
 void emitUpdatePcForExit(AssemblyBuilderX64& build);
-void emitContinueCallInVm(AssemblyBuilderX64& build);
 
 void emitReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers);
 
