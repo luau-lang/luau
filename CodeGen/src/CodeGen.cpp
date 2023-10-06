@@ -259,7 +259,7 @@ CodeGenCompilationResult compile(lua_State* L, int idx, unsigned int flags, Comp
         return CodeGenCompilationResult::CodeGenNotInitialized;
 
     std::vector<Proto*> protos;
-    gatherFunctions(protos, root);
+    gatherFunctions(protos, root, flags);
 
     // Skip protos that have been compiled during previous invocations of CodeGen::compile
     protos.erase(std::remove_if(protos.begin(), protos.end(),

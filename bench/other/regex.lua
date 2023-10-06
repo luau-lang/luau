@@ -2061,9 +2061,8 @@ function re.type(...)
 	return proxy[...] and proxy[...].name;
 end;
 
-for k, f in pairs(re_m) do
-	re[k] = f;
-end;
+-- TODO: table.foreach is currently used as top-level loops needlessly increase native code size for this module
+table.foreach(re_m, function(k, f) re[k] = f end)
 
 re_m = { __index = re_m };
 

@@ -795,6 +795,11 @@ public:
         const AstArray<AstGenericTypePack>& genericPacks, const AstTypeList& params, const AstArray<AstArgumentName>& paramNames,
         const AstTypeList& retTypes);
 
+    AstStatDeclareFunction(const Location& location, const AstName& name, const AstArray<AstGenericType>& generics,
+        const AstArray<AstGenericTypePack>& genericPacks, const AstTypeList& params, const AstArray<AstArgumentName>& paramNames,
+        const AstTypeList& retTypes, bool checkedFunction);
+
+
     void visit(AstVisitor* visitor) override;
 
     AstName name;
@@ -803,6 +808,7 @@ public:
     AstTypeList params;
     AstArray<AstArgumentName> paramNames;
     AstTypeList retTypes;
+    bool checkedFunction;
 };
 
 struct AstDeclaredClassProp
@@ -903,6 +909,9 @@ public:
     AstTypeFunction(const Location& location, const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks,
         const AstTypeList& argTypes, const AstArray<std::optional<AstArgumentName>>& argNames, const AstTypeList& returnTypes);
 
+    AstTypeFunction(const Location& location, const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks,
+        const AstTypeList& argTypes, const AstArray<std::optional<AstArgumentName>>& argNames, const AstTypeList& returnTypes, bool checkedFunction);
+
     void visit(AstVisitor* visitor) override;
 
     AstArray<AstGenericType> generics;
@@ -910,6 +919,7 @@ public:
     AstTypeList argTypes;
     AstArray<std::optional<AstArgumentName>> argNames;
     AstTypeList returnTypes;
+    bool checkedFunction;
 };
 
 class AstTypeTypeof : public AstType

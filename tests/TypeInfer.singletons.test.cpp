@@ -366,10 +366,7 @@ TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const std::string expectedError = R"(Type 'a' could not be converted into 'Err<number> | Ok<string>'
-caused by:
-  None of the union options are compatible. For example: 
-Table type 'a' not compatible with type 'Err<number>' because the former is missing field 'error')";
+    const std::string expectedError = "Type 'a' could not be converted into 'Err<number> | Ok<string>'";
 
     CHECK(toString(result.errors[0]) == expectedError);
 }

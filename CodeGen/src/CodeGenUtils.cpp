@@ -275,7 +275,7 @@ Closure* callFallback(lua_State* L, StkId ra, StkId argtop, int nresults)
 
         // yield
         if (n < 0)
-            return NULL;
+            return (Closure*)CALL_FALLBACK_YIELD;
 
         // ci is our callinfo, cip is our parent
         CallInfo* ci = L->ci;
@@ -299,8 +299,7 @@ Closure* callFallback(lua_State* L, StkId ra, StkId argtop, int nresults)
         L->top = (nresults == LUA_MULTRET) ? res : cip->top;
 
         // keep executing current function
-        LUAU_ASSERT(isLua(cip));
-        return clvalue(cip->func);
+        return NULL;
     }
 }
 

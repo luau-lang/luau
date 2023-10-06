@@ -7,8 +7,6 @@
 #include <algorithm>
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(BytecodeVersion4, false)
-
 LUAU_FASTFLAG(LuauFloorDivision)
 
 namespace Luau
@@ -586,12 +584,9 @@ void BytecodeBuilder::finalize()
 
     bytecode = char(version);
 
-    if (FFlag::BytecodeVersion4)
-    {
-        uint8_t typesversion = getTypeEncodingVersion();
-        LUAU_ASSERT(typesversion == 1);
-        writeByte(bytecode, typesversion);
-    }
+    uint8_t typesversion = getTypeEncodingVersion();
+    LUAU_ASSERT(typesversion == 1);
+    writeByte(bytecode, typesversion);
 
     writeStringTable(bytecode);
 
@@ -615,13 +610,10 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
     writeByte(ss, func.numupvalues);
     writeByte(ss, func.isvararg);
 
-    if (FFlag::BytecodeVersion4)
-    {
-        writeByte(ss, flags);
+    writeByte(ss, flags);
 
-        writeVarInt(ss, uint32_t(func.typeinfo.size()));
-        ss.append(func.typeinfo);
-    }
+    writeVarInt(ss, uint32_t(func.typeinfo.size()));
+    ss.append(func.typeinfo);
 
     // instructions
     writeVarInt(ss, uint32_t(insns.size()));
@@ -1074,10 +1066,6 @@ std::string BytecodeBuilder::getError(const std::string& message)
 uint8_t BytecodeBuilder::getVersion()
 {
     // This function usually returns LBC_VERSION_TARGET but may sometimes return a higher number (within LBC_VERSION_MIN/MAX) under fast flags
-
-    if (FFlag::BytecodeVersion4)
-        return 4;
-
     return LBC_VERSION_TARGET;
 }
 

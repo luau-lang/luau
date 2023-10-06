@@ -176,15 +176,16 @@ private:
 
     AstTableIndexer* parseTableIndexer();
 
-    AstTypeOrPack parseFunctionType(bool allowPack);
+    AstTypeOrPack parseFunctionType(bool allowPack, bool isCheckedFunction = false);
     AstType* parseFunctionTypeTail(const Lexeme& begin, AstArray<AstGenericType> generics, AstArray<AstGenericTypePack> genericPacks,
-        AstArray<AstType*> params, AstArray<std::optional<AstArgumentName>> paramNames, AstTypePack* varargAnnotation);
+        AstArray<AstType*> params, AstArray<std::optional<AstArgumentName>> paramNames, AstTypePack* varargAnnotation,
+        bool isCheckedFunction = false);
 
-    AstType* parseTableType();
-    AstTypeOrPack parseSimpleType(bool allowPack);
+    AstType* parseTableType(bool inDeclarationContext = false);
+    AstTypeOrPack parseSimpleType(bool allowPack, bool inDeclarationContext = false);
 
     AstTypeOrPack parseTypeOrPack();
-    AstType* parseType();
+    AstType* parseType(bool inDeclarationContext = false);
 
     AstTypePack* parseTypePack();
     AstTypePack* parseVariadicArgumentTypePack();

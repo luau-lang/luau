@@ -1344,7 +1344,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         head.insert(head.begin(), fn);
 
         argsPack = arena->addTypePack(TypePack{std::move(head), tail});
-        fn = *callMm;
+        fn = follow(*callMm);
         asMutable(c.result)->ty.emplace<FreeTypePack>(constraint->scope);
     }
     else
@@ -1887,6 +1887,9 @@ bool ConstraintSolver::tryDispatch(const RefineConstraint& c, NotNull<const Cons
 
     const TypeId type = follow(c.type);
 
+    if (hasUnresolvedConstraints(type))
+        return block(type, constraint);
+
     LUAU_ASSERT(get<BlockedType>(c.resultType));
 
     if (type == c.resultType)
@@ -1946,8 +1949,7 @@ bool ConstraintSolver::tryDispatch(const RefineConstraint& c, NotNull<const Cons
 bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     TypeId ty = follow(c.ty);
-    FamilyGraphReductionResult result =
-        reduceFamilies(NotNull{this}, ty, constraint->location, constraint->scope, nullptr, force);
+    FamilyGraphReductionResult result = reduceFamilies(ty, constraint->location, TypeFamilyContext{NotNull{this}, constraint->scope}, force);
 
     for (TypeId r : result.reducedTypes)
         unblock(r, constraint->location);
@@ -1970,8 +1972,7 @@ bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Cons
 bool ConstraintSolver::tryDispatch(const ReducePackConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     TypePackId tp = follow(c.tp);
-    FamilyGraphReductionResult result =
-        reduceFamilies(NotNull{this}, tp, constraint->location, constraint->scope, nullptr, force);
+    FamilyGraphReductionResult result = reduceFamilies(tp, constraint->location, TypeFamilyContext{NotNull{this}, constraint->scope}, force);
 
     for (TypeId r : result.reducedTypes)
         unblock(r, constraint->location);

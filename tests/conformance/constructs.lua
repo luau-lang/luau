@@ -237,4 +237,19 @@ repeat
   i = i+1
 until i==c
 
+-- validate continue upvalue close behavior
+local function check_connected(writer, reader)
+    writer(1)
+    assert(reader() == 1)
+    return true
+end
+
+repeat
+    local value = nil
+    local function write(n)
+        value = n
+    end
+    continue
+until check_connected(write, function() return value end)
+
 return 'OK'

@@ -427,7 +427,7 @@ enum LuauBytecodeTag
     // Bytecode version; runtime supports [MIN, MAX], compiler emits TARGET by default but may emit a higher version when flags are enabled
     LBC_VERSION_MIN = 3,
     LBC_VERSION_MAX = 4,
-    LBC_VERSION_TARGET = 3,
+    LBC_VERSION_TARGET = 4,
     // Type encoding version
     LBC_TYPE_VERSION = 1,
     // Types of constant table entries
@@ -575,4 +575,6 @@ enum LuauProtoFlag
 {
     // used to tag main proto for modules with --!native
     LPF_NATIVE_MODULE = 1 << 0,
+    // used to tag individual protos as not profitable to compile natively
+    LPF_NATIVE_COLD = 1 << 1,
 };
