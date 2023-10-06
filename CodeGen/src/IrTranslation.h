@@ -65,5 +65,8 @@ void translateInstAndX(IrBuilder& build, const Instruction* pc, int pcpos, IrOp 
 void translateInstOrX(IrBuilder& build, const Instruction* pc, int pcpos, IrOp c);
 void translateInstNewClosure(IrBuilder& build, const Instruction* pc, int pcpos);
 
+void beforeInstForNPrep(IrBuilder& build, const Instruction* pc);
+void afterInstForNLoop(IrBuilder& build, const Instruction* pc);
+
 } // namespace CodeGen
 } // namespace Luau

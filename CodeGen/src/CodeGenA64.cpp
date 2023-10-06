@@ -5,6 +5,7 @@
 #include "Luau/UnwindBuilder.h"
 
 #include "BitUtils.h"
+#include "CodeGenUtils.h"
 #include "NativeState.h"
 #include "EmitCommonA64.h"
 
@@ -96,42 +97,27 @@ static void emitInterrupt(AssemblyBuilderA64& build)
     build.br(x0);
 }
 
-static void emitReentry(AssemblyBuilderA64& build, ModuleHelpers& helpers)
+static void emitContinueCall(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 {
     // x0 = closure object to reentry (equal to clvalue(L->ci->func))
 
-    // If the fallback requested an exit, we need to do this right away
-    build.cbz(x0, helpers.exitNoContinueVm);
-
-    emitUpdateBase(build);
+    // If the fallback yielded, we need to do this right away
+    // note: it's slightly cheaper to check x0 LSB; a valid Closure pointer must be aligned to 8 bytes
+    LUAU_ASSERT(CALL_FALLBACK_YIELD == 1);
+    build.tbnz(x0, 0, helpers.exitNoContinueVm);
 
     // Need to update state of the current function before we jump away
     build.ldr(x1, mem(x0, offsetof(Closure, l.p))); // cl->l.p aka proto
 
-    build.ldr(x2, mem(rState, offsetof(lua_State, ci))); // L->ci
-
-    // We need to check if the new frame can be executed natively
-    // TODO: .flags and .savedpc load below can be fused with ldp
-    build.ldr(w3, mem(x2, offsetof(CallInfo, flags)));
-    build.tbz(x3, countrz(LUA_CALLINFO_NATIVE), helpers.exitContinueVm);
+    build.ldr(x2, mem(x1, offsetof(Proto, exectarget)));
+    build.cbz(x2, helpers.exitContinueVm);
 
     build.mov(rClosure, x0);
 
     LUAU_ASSERT(offsetof(Proto, code) == offsetof(Proto, k) + 8);
     build.ldp(rConstants, rCode, mem(x1, offsetof(Proto, k))); // proto->k, proto->code
 
-    // Get instruction index from instruction pointer
-    // To get instruction index from instruction pointer, we need to divide byte offset by 4
-    // But we will actually need to scale instruction index by 4 back to byte offset later so it cancels out
-    build.ldr(x2, mem(x2, offsetof(CallInfo, savedpc))); // L->ci->savedpc
-    build.sub(x2, x2, rCode);
-
-    // Get new instruction location and jump to it
-    LUAU_ASSERT(offsetof(Proto, exectarget) == offsetof(Proto, execdata) + 8);
-    build.ldp(x3, x4, mem(x1, offsetof(Proto, execdata)));
-    build.ldr(w2, mem(x3, x2));
-    build.add(x4, x4, x2);
-    build.br(x4);
+    build.br(x2);
 }
 
 void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
@@ -327,11 +313,6 @@ void assembleHelpers(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     emitExit(build, /* continueInVm */ false);
 
     if (build.logText)
-        build.logAppend("; reentry\n");
-    build.setLabel(helpers.reentry);
-    emitReentry(build, helpers);
-
-    if (build.logText)
         build.logAppend("; interrupt\n");
     build.setLabel(helpers.interrupt);
     emitInterrupt(build);
@@ -340,6 +321,11 @@ void assembleHelpers(AssemblyBuilderA64& build, ModuleHelpers& helpers)
         build.logAppend("; return\n");
     build.setLabel(helpers.return_);
     emitReturn(build, helpers);
+
+    if (build.logText)
+        build.logAppend("; continueCall\n");
+    build.setLabel(helpers.continueCall);
+    emitContinueCall(build, helpers);
 }
 
 } // namespace A64

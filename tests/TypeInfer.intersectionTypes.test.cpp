@@ -997,7 +997,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_degenerate_intersections")
         local x: number = obj.x or 3
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_more_realistic_intersections")
@@ -1023,7 +1023,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_more_realistic_intersections")
         local x: number = obj.x or 3
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

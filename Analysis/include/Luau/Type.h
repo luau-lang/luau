@@ -355,6 +355,7 @@ struct FunctionType
     // `hasNoFreeOrGenericTypes` should be true if and only if the type does not have any free or generic types present inside it.
     // this flag is used as an optimization to exit early from procedures that manipulate free or generic types.
     bool hasNoFreeOrGenericTypes = false;
+    bool isCheckedFunction = false;
 };
 
 enum class TableState

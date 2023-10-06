@@ -264,6 +264,14 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfSetcc")
     SINGLE_COMPARE(setcc(ConditionX64::BelowEqual, byte[rcx]), 0x0f, 0x96, 0x01);
 }
 
+TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfCmov")
+{
+    SINGLE_COMPARE(cmov(ConditionX64::LessEqual, ebx, eax), 0x0f, 0x4e, 0xd8);
+    SINGLE_COMPARE(cmov(ConditionX64::NotZero, rbx, qword[rax]), 0x48, 0x0f, 0x45, 0x18);
+    SINGLE_COMPARE(cmov(ConditionX64::Zero, rbx, qword[rax + rcx]), 0x48, 0x0f, 0x44, 0x1c, 0x08);
+    SINGLE_COMPARE(cmov(ConditionX64::BelowEqual, r14d, r15d), 0x45, 0x0f, 0x46, 0xf7);
+}
+
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfAbsoluteJumps")
 {
     SINGLE_COMPARE(jmp(rax), 0xff, 0xe0);
@@ -590,6 +598,7 @@ TEST_CASE("LogTest")
     build.vroundsd(xmm1, xmm2, xmm3, RoundingModeX64::RoundToNearestEven);
     build.add(rdx, qword[rcx - 12]);
     build.pop(r12);
+    build.cmov(ConditionX64::AboveEqual, rax, rbx);
     build.ret();
     build.int3();
 
@@ -634,6 +643,7 @@ TEST_CASE("LogTest")
  vroundsd    xmm1,xmm2,xmm3,8
  add         rdx,qword ptr [rcx-0Ch]
  pop         r12
+ cmovae      rax,rbx
  ret
  int3
  nop

@@ -10,7 +10,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(DebugLuauCodegenChaosA64, false)
+LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64, false)
 
 namespace Luau
 {
@@ -146,7 +146,7 @@ RegisterA64 IrRegAllocA64::allocReg(KindA64 kind, uint32_t index)
 
     int reg = 31 - countlz(set.free);
 
-    if (FFlag::DebugLuauCodegenChaosA64)
+    if (FFlag::DebugCodegenChaosA64)
         reg = countrz(set.free); // allocate from low end; this causes extra conflicts for calls
 
     set.free &= ~(1u << reg);
@@ -167,7 +167,7 @@ RegisterA64 IrRegAllocA64::allocTemp(KindA64 kind)
 
     int reg = 31 - countlz(set.free);
 
-    if (FFlag::DebugLuauCodegenChaosA64)
+    if (FFlag::DebugCodegenChaosA64)
         reg = countrz(set.free); // allocate from low end; this causes extra conflicts for calls
 
     set.free &= ~(1u << reg);
@@ -278,7 +278,7 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
     uint32_t poisongpr = 0;
     uint32_t poisonsimd = 0;
 
-    if (FFlag::DebugLuauCodegenChaosA64)
+    if (FFlag::DebugCodegenChaosA64)
     {
         poisongpr = gpr.base & ~gpr.free;
         poisonsimd = simd.base & ~simd.free;
@@ -370,7 +370,7 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
         LUAU_ASSERT(set.free == set.base);
     }
 
-    if (FFlag::DebugLuauCodegenChaosA64)
+    if (FFlag::DebugCodegenChaosA64)
     {
         for (int reg = 0; reg < 32; ++reg)
         {

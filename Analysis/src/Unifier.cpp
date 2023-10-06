@@ -454,17 +454,21 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
 
     if (log.get<TypeFamilyInstanceType>(superTy))
     {
-        // We do not report errors from reducing here. This is because we will
-        // "double-report" errors in some cases, like when trying to unify
-        // identical type family instantiations like Add<false, false> with
-        // Add<false, false>.
-        reduceFamilies(superTy, location, NotNull(types), builtinTypes, scope, normalizer, &log);
+        // FIXME: we should be be ICEing here because the old unifier is legacy and should not interact with type families at all.
+        // Unfortunately, there are, at the time of writing, still uses of the old unifier under local type inference.
+        TypeCheckLimits limits;
+        reduceFamilies(
+            superTy, location, TypeFamilyContext{NotNull(types), builtinTypes, scope, normalizer, NotNull{sharedState.iceHandler}, NotNull{&limits}});
         superTy = log.follow(superTy);
     }
 
     if (log.get<TypeFamilyInstanceType>(subTy))
     {
-        reduceFamilies(subTy, location, NotNull(types), builtinTypes, scope, normalizer, &log);
+        // FIXME: we should be be ICEing here because the old unifier is legacy and should not interact with type families at all.
+        // Unfortunately, there are, at the time of writing, still uses of the old unifier under local type inference.
+        TypeCheckLimits limits;
+        reduceFamilies(
+            subTy, location, TypeFamilyContext{NotNull(types), builtinTypes, scope, normalizer, NotNull{sharedState.iceHandler}, NotNull{&limits}});
         subTy = log.follow(subTy);
     }
 

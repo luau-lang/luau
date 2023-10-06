@@ -101,6 +101,27 @@ SubtypingResult Subtyping::isSubtype(TypeId subTy, TypeId superTy)
         TypeId lowerBound = makeAggregateType<UnionType>(lb, builtinTypes->neverType);
         TypeId upperBound = makeAggregateType<IntersectionType>(ub, builtinTypes->unknownType);
 
+        const NormalizedType* nt = normalizer->normalize(upperBound);
+        if (!nt)
+            result.normalizationTooComplex = true;
+        else if (!normalizer->isInhabited(nt))
+        {
+            /* If the normalized upper bound we're mapping to a generic is
+             * uninhabited, then we must consider the subtyping relation not to
+             * hold.
+             *
+             * This happens eg in <T>() -> (T, T) <: () -> (string, number)
+             *
+             * T appears in covariant position and would have to be both string
+             * and number at once.
+             *
+             * No actual value is both a string and a number, so the test fails.
+             *
+             * TODO: We'll need to add explanitory context here.
+             */
+            result.isSubtype = false;
+        }
+
         result.andAlso(isCovariantWith(lowerBound, upperBound));
     }
 

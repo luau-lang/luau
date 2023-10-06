@@ -241,11 +241,6 @@ void assembleHelpers(X64::AssemblyBuilderX64& build, ModuleHelpers& helpers)
     emitExit(build, /* continueInVm */ false);
 
     if (build.logText)
-        build.logAppend("; continueCallInVm\n");
-    build.setLabel(helpers.continueCallInVm);
-    emitContinueCallInVm(build);
-
-    if (build.logText)
         build.logAppend("; interrupt\n");
     build.setLabel(helpers.interrupt);
     emitInterrupt(build);

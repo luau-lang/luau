@@ -8,7 +8,9 @@
 #include "Luau/ToString.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/ConstraintGraphBuilder.h"
+#include "Luau/NotNull.h"
 #include "Luau/TypeInfer.h"
+#include "Luau/TypeFamily.h"
 #include "Luau/TypePack.h"
 #include "Luau/Type.h"
 #include "Luau/TypeUtils.h"
@@ -20,6 +22,8 @@
  * Some of them require richer generics than we have.  For instance, we do not yet have a way to talk
  * about a function that takes any number of values, but where each value must have some specific type.
  */
+
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 namespace Luau
 {
@@ -208,6 +212,9 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     TypeArena& arena = globals.globalTypes;
     NotNull<BuiltinTypes> builtinTypes = globals.builtinTypes;
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        kBuiltinTypeFamilies.addToScope(NotNull{&arena}, NotNull{globals.globalScope.get()});
 
     LoadDefinitionFileResult loadResult = frontend.loadDefinitionFile(
         globals, globals.globalScope, getBuiltinDefinitionSource(), "@luau", /* captureComments */ false, typeCheckForAutocomplete);

@@ -79,36 +79,34 @@ void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int
 
         // Set L->top to ci->top as most function expect (no vararg)
         build.mov(rax, qword[ci + offsetof(CallInfo, top)]);
-        build.mov(qword[rState + offsetof(lua_State, top)], rax);
 
         // But if it is vararg, update it to 'argi'
         Label skipVararg;
 
         build.test(byte[proto + offsetof(Proto, is_vararg)], 1);
         build.jcc(ConditionX64::Zero, skipVararg);
+        build.mov(rax, argi);
 
-        build.mov(qword[rState + offsetof(lua_State, top)], argi);
         build.setLabel(skipVararg);
 
-        // Keep executing new function
+        build.mov(qword[rState + offsetof(lua_State, top)], rax);
+
+        // Switch current code
         // ci->savedpc = p->code;
         build.mov(rax, qword[proto + offsetof(Proto, code)]);
+        build.mov(sCode, rax); // note: this needs to be before the next store for optimal performance
         build.mov(qword[ci + offsetof(CallInfo, savedpc)], rax);
-
-        // Get native function entry
-        build.mov(rax, qword[proto + offsetof(Proto, exectarget)]);
-        build.test(rax, rax);
-        build.jcc(ConditionX64::Zero, helpers.continueCallInVm);
-
-        // Mark call frame as native
-        build.mov(dword[ci + offsetof(CallInfo, flags)], LUA_CALLINFO_NATIVE);
 
         // Switch current constants
         build.mov(rConstants, qword[proto + offsetof(Proto, k)]);
 
-        // Switch current code
-        build.mov(rdx, qword[proto + offsetof(Proto, code)]);
-        build.mov(sCode, rdx);
+        // Get native function entry
+        build.mov(rax, qword[proto + offsetof(Proto, exectarget)]);
+        build.test(rax, rax);
+        build.jcc(ConditionX64::Zero, helpers.exitContinueVm);
+
+        // Mark call frame as native
+        build.mov(dword[ci + offsetof(CallInfo, flags)], LUA_CALLINFO_NATIVE);
 
         build.jmp(rax);
     }

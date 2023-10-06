@@ -91,7 +91,6 @@ struct Lexeme
         BrokenComment,
         BrokenUnicode,
         BrokenInterpDoubleBrace,
-
         Error,
 
         Reserved_BEGIN,
@@ -116,6 +115,7 @@ struct Lexeme
         ReservedTrue,
         ReservedUntil,
         ReservedWhile,
+        ReservedChecked,
         Reserved_END
     };
 

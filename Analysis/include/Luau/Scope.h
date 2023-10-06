@@ -52,6 +52,7 @@ struct Scope
     void addBuiltinTypeBinding(const Name& name, const TypeFun& tyFun);
 
     std::optional<TypeId> lookup(Symbol sym) const;
+    std::optional<TypeId> lookupLValue(DefId def) const;
     std::optional<TypeId> lookup(DefId def) const;
     std::optional<std::pair<Binding*, Scope*>> lookupEx(Symbol sym);
 
@@ -65,7 +66,15 @@ struct Scope
     std::optional<Binding> linearSearchForBinding(const std::string& name, bool traverseScopeChain = true) const;
 
     RefinementMap refinements;
-    DenseHashMap<const Def*, TypeId> dcrRefinements{nullptr};
+
+    // This can be viewed as the "unrefined" type of each binding.
+    DenseHashMap<const Def*, TypeId> lvalueTypes{nullptr};
+
+    // Luau values are routinely refined more narrowly than their actual
+    // inferred type through control flow statements.  We retain those refined
+    // types here.
+    DenseHashMap<const Def*, TypeId> rvalueRefinements{nullptr};
+
     void inheritRefinements(const ScopePtr& childScope);
 
     // For mutually recursive type aliases, it's important that

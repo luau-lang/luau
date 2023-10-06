@@ -203,6 +203,33 @@ local function arraySizeOpt2(a, i)
   return a[i] + a[5]
 end
 
-assert(arraySizeOpt1({1}, 1) == 71)
+assert(arraySizeOpt2({1}, 1) == 71)
+
+function deadLoopBody(n)
+  local r = 0
+  if n and false then
+    for i = 1, n do
+      r += 1
+    end
+  end
+  return r
+end
+
+assert(deadLoopBody(5) == 0)
+
+function arrayIndexingSpecialNumbers1(a, b, c)
+  local arr = table.create(100000)
+  arr[a] = 9
+  arr[b-1] = 80
+  arr[b] = 700
+  arr[b+1] = 6000
+  arr[c-1] = 50000
+  arr[c] = 400000
+  arr[c+1] = 3000000
+
+  return arr[1] + arr[255] + arr[256] + arr[257] + arr[65535] + arr[65536] + arr[65537]
+end
+
+assert(arrayIndexingSpecialNumbers1(1, 256, 65536) == 3456789)
 
 return('OK')
