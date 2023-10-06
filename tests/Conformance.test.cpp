@@ -10,6 +10,7 @@
 #include "Luau/TypeInfer.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Frontend.h"
+#include "Luau/CodeGen.h"
 
 #include "doctest.h"
 #include "ScopedFlags.h"
@@ -224,7 +225,7 @@ static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = n
     free(bytecode);
 
     if (result == 0 && codegen && !skipCodegen && luau_codegen_supported())
-        luau_codegen_compile(L, -1);
+        Luau::CodeGen::compile(L, -1, Luau::CodeGen::CodeGen_ColdFunctions);
 
     int status = (result == 0) ? lua_resume(L, nullptr, 0) : LUA_ERRSYNTAX;
 
@@ -288,7 +289,7 @@ TEST_CASE("Assert")
 TEST_CASE("Basic")
 {
     ScopedFastFlag sffs{"LuauFloorDivision", true};
-    ScopedFastFlag sfff{"LuauImproveForN", true};
+    ScopedFastFlag sfff{"LuauImproveForN2", true};
 
     runConformance("basic.lua");
 }
@@ -379,6 +380,8 @@ TEST_CASE("Events")
 
 TEST_CASE("Constructs")
 {
+    ScopedFastFlag sff("LuauCompileContinueCloseUpvals", true);
+
     runConformance("constructs.lua");
 }
 
@@ -1809,8 +1812,6 @@ TEST_CASE("Native")
 
 TEST_CASE("NativeTypeAnnotations")
 {
-    ScopedFastFlag bytecodeVersion4("BytecodeVersion4", true);
-
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;
@@ -1891,7 +1892,7 @@ TEST_CASE("HugeFunction")
     REQUIRE(result == 0);
 
     if (codegen && luau_codegen_supported())
-        luau_codegen_compile(L, -1);
+        Luau::CodeGen::compile(L, -1, Luau::CodeGen::CodeGen_ColdFunctions);
 
     int status = lua_resume(L, nullptr, 0);
     REQUIRE(status == 0);

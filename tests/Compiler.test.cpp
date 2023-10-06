@@ -1772,6 +1772,8 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueUntil")
 {
+    ScopedFastFlag sff("LuauCompileContinueCloseUpvals", true);
+
     // it's valid to use locals defined inside the loop in until expression if they're defined before continue
     CHECK_EQ("\n" + compileFunction0("repeat local r = math.random() if r > 0.5 then continue end r = r + 0.3 until r < 0.5"), R"(
 L0: GETIMPORT R0 2 [math.random]
@@ -1833,17 +1835,15 @@ L2: RETURN R0 0
 L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
 LOADK R1 K3 [0.5]
-JUMPIFNOTLT R1 R0 L1
-CLOSEUPVALS R0
-JUMP L2
-L1: ADDK R0 R0 K4 [0.29999999999999999]
-L2: NEWCLOSURE R1 P0
+JUMPIFLT R1 R0 L1
+ADDK R0 R0 K4 [0.29999999999999999]
+L1: NEWCLOSURE R1 P0
 CAPTURE REF R0
 CALL R1 0 1
-JUMPIF R1 L3
+JUMPIF R1 L2
 CLOSEUPVALS R0
 JUMPBACK L0
-L3: CLOSEUPVALS R0
+L2: CLOSEUPVALS R0
 RETURN R0 0
 )");
 
@@ -1895,40 +1895,186 @@ L2: RETURN R0 0
 L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
 LOADK R1 K3 [0.5]
-JUMPIFNOTLT R1 R0 L1
-CLOSEUPVALS R0
-JUMP L2
-L1: ADDK R0 R0 K4 [0.29999999999999999]
-L2: NEWCLOSURE R1 P0
+JUMPIFLT R1 R0 L1
+ADDK R0 R0 K4 [0.29999999999999999]
+L1: NEWCLOSURE R1 P0
 CAPTURE UPVAL U0
 CAPTURE REF R0
 CALL R1 0 1
-JUMPIF R1 L3
+JUMPIF R1 L2
 CLOSEUPVALS R0
 JUMPBACK L0
-L3: CLOSEUPVALS R0
+L2: CLOSEUPVALS R0
 RETURN R0 0
 )");
 }
 
-TEST_CASE("LoopContinueUntilOops")
+TEST_CASE("LoopContinueIgnoresImplicitConstant")
 {
+    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation", true};
+
     // this used to crash the compiler :(
-    try
-    {
-        Luau::BytecodeBuilder bcb;
-        Luau::compileOrThrow(bcb, R"(
+    CHECK_EQ("\n" + compileFunction0(R"(
 local _
 repeat
 continue
 until not _
+)"),
+        R"(
+RETURN R0 0
+RETURN R0 0
 )");
+}
+
+TEST_CASE("LoopContinueIgnoresExplicitConstant")
+{
+    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation", true};
+
+    // Constants do not allocate locals and 'continue' validation should skip them if their lifetime already started
+    CHECK_EQ("\n" + compileFunction0(R"(
+local c = true
+repeat
+    continue
+until c
+)"),
+        R"(
+RETURN R0 0
+RETURN R0 0
+)");
+}
+
+TEST_CASE("LoopContinueRespectsExplicitConstant")
+{
+    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation", true};
+
+    // If local lifetime hasn't started, even if it's a constant that will not receive an allocation, it cannot be jumped over
+    try
+    {
+        Luau::BytecodeBuilder bcb;
+        Luau::compileOrThrow(bcb, R"(
+repeat
+    do continue end
+
+    local c = true
+until c
+)");
+
+        CHECK(!"Expected CompileError");
     }
     catch (Luau::CompileError& e)
     {
+        CHECK_EQ(e.getLocation().begin.line + 1, 6);
         CHECK_EQ(
-            std::string(e.what()), "Local _ used in the repeat..until condition is undefined because continue statement on line 4 jumps over it");
+            std::string(e.what()), "Local c used in the repeat..until condition is undefined because continue statement on line 3 jumps over it");
     }
+}
+
+TEST_CASE("LoopContinueIgnoresImplicitConstantAfterInline")
+{
+    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation", true};
+
+    // Inlining might also replace some locals with constants instead of allocating them
+    CHECK_EQ("\n" + compileFunction(R"(
+local function inline(f)
+    repeat
+        continue
+    until f
+end
+
+local function test(...)
+    inline(true)
+end
+
+test()
+)",
+                        1, 2),
+        R"(
+RETURN R0 0
+RETURN R0 0
+)");
+}
+
+TEST_CASE("LoopContinueUntilCapture")
+{
+    ScopedFastFlag sff("LuauCompileContinueCloseUpvals", true);
+
+    // validate continue upvalue closing behavior: continue must close locals defined in the nested scopes
+    // but can't close locals defined in the loop scope - these are visible to the condition and will be closed
+    // when evaluating the condition instead.
+    CHECK_EQ("\n" + compileFunction(R"(
+local a a = 0
+repeat
+    local b b = 0
+    if a then
+        local c
+        print(function() c = 0 end)
+        if a then
+            continue -- must close c but not a/b
+        end
+        -- must close c
+    end
+    -- must close b but not a
+until function() a = 0 b = 0 end
+-- must close b on loop exit
+-- must close a
+)",
+                        2),
+        R"(
+LOADNIL R0
+LOADN R0 0
+L0: LOADNIL R1
+LOADN R1 0
+JUMPIFNOT R0 L2
+LOADNIL R2
+GETIMPORT R3 1 [print]
+NEWCLOSURE R4 P0
+CAPTURE REF R2
+CALL R3 1 0
+JUMPIFNOT R0 L1
+CLOSEUPVALS R2
+JUMP L2
+L1: CLOSEUPVALS R2
+L2: NEWCLOSURE R2 P1
+CAPTURE REF R0
+CAPTURE REF R1
+JUMPIF R2 L3
+CLOSEUPVALS R1
+JUMPBACK L0
+L3: CLOSEUPVALS R1
+CLOSEUPVALS R0
+RETURN R0 0
+)");
+
+    // a simpler version of the above test doesn't need to close anything when evaluating continue
+    CHECK_EQ("\n" + compileFunction(R"(
+local a a = 0
+repeat
+    local b b = 0
+    if a then
+        continue -- must not close a/b
+    end
+    -- must close b but not a
+until function() a = 0 b = 0 end
+-- must close b on loop exit
+-- must close a
+)",
+                        1),
+        R"(
+LOADNIL R0
+LOADN R0 0
+L0: LOADNIL R1
+LOADN R1 0
+JUMPIF R0 L1
+L1: NEWCLOSURE R2 P0
+CAPTURE REF R0
+CAPTURE REF R1
+JUMPIF R2 L2
+CLOSEUPVALS R1
+JUMPBACK L0
+L2: CLOSEUPVALS R1
+CLOSEUPVALS R0
+RETURN R0 0
+)");
 }
 
 TEST_CASE("AndOrOptimizations")
@@ -6368,7 +6514,7 @@ return
     math.log10(100),
     math.log(1),
     math.log(4, 2),
-    math.log(27, 3),
+    math.log(64, 4),
     math.max(1, 2, 3),
     math.min(1, 2, 3),
     math.pow(3, 3),
@@ -7405,6 +7551,29 @@ GETGLOBAL R2 K1 ['math']
 GETTABLEKS R1 R2 K2 ['pi']
 MULK R0 R1 K0 [2]
 RETURN R0 1
+)");
+}
+
+TEST_CASE("NoBuiltinFoldFenv")
+{
+    ScopedFastFlag sff("LuauCompileFenvNoBuiltinFold", true);
+
+    // builtin folding is disabled when getfenv/setfenv is used in the module
+    CHECK_EQ("\n" + compileFunction(R"(
+getfenv()
+
+function test()
+    return math.pi, math.sin(0)
+end
+)",
+                        0, 2),
+        R"(
+GETIMPORT R0 2 [math.pi]
+LOADN R2 0
+FASTCALL1 24 R2 L0
+GETIMPORT R1 4 [math.sin]
+CALL R1 1 1
+L0: RETURN R0 2
 )");
 }
 

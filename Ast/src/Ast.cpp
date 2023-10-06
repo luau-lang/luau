@@ -709,6 +709,21 @@ AstStatDeclareFunction::AstStatDeclareFunction(const Location& location, const A
     , params(params)
     , paramNames(paramNames)
     , retTypes(retTypes)
+    , checkedFunction(false)
+{
+}
+
+AstStatDeclareFunction::AstStatDeclareFunction(const Location& location, const AstName& name, const AstArray<AstGenericType>& generics,
+    const AstArray<AstGenericTypePack>& genericPacks, const AstTypeList& params, const AstArray<AstArgumentName>& paramNames,
+    const AstTypeList& retTypes, bool checkedFunction)
+    : AstStat(ClassIndex(), location)
+    , name(name)
+    , generics(generics)
+    , genericPacks(genericPacks)
+    , params(params)
+    , paramNames(paramNames)
+    , retTypes(retTypes)
+    , checkedFunction(checkedFunction)
 {
 }
 
@@ -817,6 +832,20 @@ AstTypeFunction::AstTypeFunction(const Location& location, const AstArray<AstGen
     , argTypes(argTypes)
     , argNames(argNames)
     , returnTypes(returnTypes)
+    , checkedFunction(false)
+{
+    LUAU_ASSERT(argNames.size == 0 || argNames.size == argTypes.types.size);
+}
+
+AstTypeFunction::AstTypeFunction(const Location& location, const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks,
+    const AstTypeList& argTypes, const AstArray<std::optional<AstArgumentName>>& argNames, const AstTypeList& returnTypes, bool checkedFunction)
+    : AstType(ClassIndex(), location)
+    , generics(generics)
+    , genericPacks(genericPacks)
+    , argTypes(argTypes)
+    , argNames(argNames)
+    , returnTypes(returnTypes)
+    , checkedFunction(checkedFunction)
 {
     LUAU_ASSERT(argNames.size == 0 || argNames.size == argTypes.types.size);
 }

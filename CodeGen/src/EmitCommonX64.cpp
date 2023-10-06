@@ -378,17 +378,6 @@ void emitUpdatePcForExit(AssemblyBuilderX64& build)
     build.mov(qword[rax + offsetof(CallInfo, savedpc)], rdx);
 }
 
-void emitContinueCallInVm(AssemblyBuilderX64& build)
-{
-    RegisterX64 proto = rcx; // Sync with emitInstCall
-
-    build.mov(rdx, qword[proto + offsetof(Proto, code)]);
-    build.mov(rax, qword[rState + offsetof(lua_State, ci)]);
-    build.mov(qword[rax + offsetof(CallInfo, savedpc)], rdx);
-
-    emitExit(build, /* continueInVm */ true);
-}
-
 void emitReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers)
 {
     // input: res in rdi, number of written values in ecx

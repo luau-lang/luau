@@ -55,12 +55,25 @@ std::optional<std::pair<Binding*, Scope*>> Scope::lookupEx(Symbol sym)
     }
 }
 
+std::optional<TypeId> Scope::lookupLValue(DefId def) const
+{
+    for (const Scope* current = this; current; current = current->parent.get())
+    {
+        if (auto ty = current->lvalueTypes.find(def))
+            return *ty;
+    }
+
+    return std::nullopt;
+}
+
 // TODO: We might kill Scope::lookup(Symbol) once data flow is fully fleshed out with type states and control flow analysis.
 std::optional<TypeId> Scope::lookup(DefId def) const
 {
     for (const Scope* current = this; current; current = current->parent.get())
     {
-        if (auto ty = current->dcrRefinements.find(def))
+        if (auto ty = current->rvalueRefinements.find(def))
+            return *ty;
+        if (auto ty = current->lvalueTypes.find(def))
             return *ty;
     }
 
@@ -156,10 +169,10 @@ void Scope::inheritRefinements(const ScopePtr& childScope)
 {
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        for (const auto& [k, a] : childScope->dcrRefinements)
+        for (const auto& [k, a] : childScope->rvalueRefinements)
         {
             if (lookup(NotNull{k}))
-                dcrRefinements[k] = a;
+                rvalueRefinements[k] = a;
         }
     }
 

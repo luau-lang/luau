@@ -598,6 +598,20 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(number) -> () <!: <T>(T) -> ()")
     CHECK_IS_NOT_SUBTYPE(numberToNothingType, genericTToNothingType);
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "<T>() -> (T, T) <!: () -> (string, number)")
+{
+    TypeId nothingToTwoTs = arena.addType(FunctionType{
+        {genericT},
+        {},
+        builtinTypes->emptyTypePack,
+        arena.addTypePack({genericT, genericT})
+    });
+
+    TypeId nothingToStringAndNumber = fn({}, {builtinTypes->stringType, builtinTypes->numberType});
+
+    CHECK_IS_NOT_SUBTYPE(nothingToTwoTs, nothingToStringAndNumber);
+}
+
 TEST_CASE_FIXTURE(SubtypeFixture, "<A...>(A...) -> A... <: (number) -> number")
 {
     CHECK_IS_SUBTYPE(genericAsToAsType, numberToNumberType);

@@ -187,12 +187,12 @@ private:
      * @param generalize If true, generalize any lambdas that are encountered.
      * @return the type of the expression.
      */
-    Inference check(const ScopePtr& scope, AstExpr* expr, ValueContext context = ValueContext::RValue, std::optional<TypeId> expectedType = {},
-        bool forceSingleton = false, bool generalize = true);
+    Inference check(
+        const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType = {}, bool forceSingleton = false, bool generalize = true);
 
     Inference check(const ScopePtr& scope, AstExprConstantString* string, std::optional<TypeId> expectedType, bool forceSingleton);
     Inference check(const ScopePtr& scope, AstExprConstantBool* bool_, std::optional<TypeId> expectedType, bool forceSingleton);
-    Inference check(const ScopePtr& scope, AstExprLocal* local, ValueContext context);
+    Inference check(const ScopePtr& scope, AstExprLocal* local);
     Inference check(const ScopePtr& scope, AstExprGlobal* global);
     Inference check(const ScopePtr& scope, AstExprIndexName* indexName);
     Inference check(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
@@ -208,6 +208,11 @@ private:
     std::vector<TypeId> checkLValues(const ScopePtr& scope, AstArray<AstExpr*> exprs);
 
     TypeId checkLValue(const ScopePtr& scope, AstExpr* expr);
+    TypeId checkLValue(const ScopePtr& scope, AstExprLocal* local);
+    TypeId checkLValue(const ScopePtr& scope, AstExprGlobal* global);
+    TypeId checkLValue(const ScopePtr& scope, AstExprIndexName* indexName);
+    TypeId checkLValue(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
+    TypeId updateProperty(const ScopePtr& scope, AstExpr* expr);
 
     struct FunctionSignature
     {

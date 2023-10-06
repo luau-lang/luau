@@ -83,31 +83,10 @@ static BuiltinImplResult translateBuiltin2NumberToNumberLibm(
     IrOp va = builtinLoadDouble(build, build.vmReg(arg));
     IrOp vb = builtinLoadDouble(build, args);
 
+    if (bfid == LBF_MATH_LDEXP)
+        vb = build.inst(IrCmd::NUM_TO_INT, vb);
+
     IrOp res = build.inst(IrCmd::INVOKE_LIBM, build.constUint(bfid), va, vb);
-
-    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), res);
-
-    if (ra != arg)
-        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
-
-    return {BuiltinImplType::Full, 1};
-}
-
-static BuiltinImplResult translateBuiltinMathLdexp(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
-{
-    if (nparams < 2 || nresults > 1)
-        return {BuiltinImplType::None, -1};
-
-    builtinCheckDouble(build, build.vmReg(arg), pcpos);
-    builtinCheckDouble(build, args, pcpos);
-
-    IrOp va = builtinLoadDouble(build, build.vmReg(arg));
-    IrOp vb = builtinLoadDouble(build, args);
-
-    IrOp vbi = build.inst(IrCmd::NUM_TO_INT, vb);
-
-    IrOp res = build.inst(IrCmd::INVOKE_LIBM, build.constUint(bfid), va, vbi);
 
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), res);
 
@@ -152,7 +131,7 @@ static BuiltinImplResult translateBuiltinAssert(IrBuilder& build, int nparams, i
     return {BuiltinImplType::UsesFallback, 0};
 }
 
-static BuiltinImplResult translateBuiltinMathDeg(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
+static BuiltinImplResult translateBuiltinMathDegRad(IrBuilder& build, IrCmd cmd, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
 {
     if (nparams < 1 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -162,26 +141,7 @@ static BuiltinImplResult translateBuiltinMathDeg(IrBuilder& build, int nparams, 
     const double rpd = (3.14159265358979323846 / 180.0);
 
     IrOp varg = builtinLoadDouble(build, build.vmReg(arg));
-    IrOp value = build.inst(IrCmd::DIV_NUM, varg, build.constDouble(rpd));
-    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), value);
-
-    if (ra != arg)
-        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
-
-    return {BuiltinImplType::Full, 1};
-}
-
-static BuiltinImplResult translateBuiltinMathRad(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
-{
-    if (nparams < 1 || nresults > 1)
-        return {BuiltinImplType::None, -1};
-
-    builtinCheckDouble(build, build.vmReg(arg), pcpos);
-
-    const double rpd = (3.14159265358979323846 / 180.0);
-
-    IrOp varg = builtinLoadDouble(build, build.vmReg(arg));
-    IrOp value = build.inst(IrCmd::MUL_NUM, varg, build.constDouble(rpd));
+    IrOp value = build.inst(cmd, varg, build.constDouble(rpd));
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), value);
 
     if (ra != arg)
@@ -231,7 +191,7 @@ static BuiltinImplResult translateBuiltinMathLog(
     return {BuiltinImplType::Full, 1};
 }
 
-static BuiltinImplResult translateBuiltinMathMin(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
+static BuiltinImplResult translateBuiltinMathMinMax(IrBuilder& build, IrCmd cmd, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
 {
     if (nparams < 2 || nparams > kMinMaxUnrolledParams || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -245,42 +205,12 @@ static BuiltinImplResult translateBuiltinMathMin(IrBuilder& build, int nparams, 
     IrOp varg1 = builtinLoadDouble(build, build.vmReg(arg));
     IrOp varg2 = builtinLoadDouble(build, args);
 
-    IrOp res = build.inst(IrCmd::MIN_NUM, varg2, varg1); // Swapped arguments are required for consistency with VM builtins
+    IrOp res = build.inst(cmd, varg2, varg1); // Swapped arguments are required for consistency with VM builtins
 
     for (int i = 3; i <= nparams; ++i)
     {
         IrOp arg = builtinLoadDouble(build, build.vmReg(vmRegOp(args) + (i - 2)));
-        res = build.inst(IrCmd::MIN_NUM, arg, res);
-    }
-
-    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), res);
-
-    if (ra != arg)
-        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
-
-    return {BuiltinImplType::Full, 1};
-}
-
-static BuiltinImplResult translateBuiltinMathMax(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
-{
-    if (nparams < 2 || nparams > kMinMaxUnrolledParams || nresults > 1)
-        return {BuiltinImplType::None, -1};
-
-    builtinCheckDouble(build, build.vmReg(arg), pcpos);
-    builtinCheckDouble(build, args, pcpos);
-
-    for (int i = 3; i <= nparams; ++i)
-        builtinCheckDouble(build, build.vmReg(vmRegOp(args) + (i - 2)), pcpos);
-
-    IrOp varg1 = builtinLoadDouble(build, build.vmReg(arg));
-    IrOp varg2 = builtinLoadDouble(build, args);
-
-    IrOp res = build.inst(IrCmd::MAX_NUM, varg2, varg1); // Swapped arguments are required for consistency with VM builtins
-
-    for (int i = 3; i <= nparams; ++i)
-    {
-        IrOp arg = builtinLoadDouble(build, build.vmReg(vmRegOp(args) + (i - 2)));
-        res = build.inst(IrCmd::MAX_NUM, arg, res);
+        res = build.inst(cmd, arg, res);
     }
 
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), res);
@@ -823,15 +753,15 @@ BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, 
     case LBF_ASSERT:
         return translateBuiltinAssert(build, nparams, ra, arg, args, nresults, pcpos);
     case LBF_MATH_DEG:
-        return translateBuiltinMathDeg(build, nparams, ra, arg, args, nresults, pcpos);
+        return translateBuiltinMathDegRad(build, IrCmd::DIV_NUM, nparams, ra, arg, args, nresults, pcpos);
     case LBF_MATH_RAD:
-        return translateBuiltinMathRad(build, nparams, ra, arg, args, nresults, pcpos);
+        return translateBuiltinMathDegRad(build, IrCmd::MUL_NUM, nparams, ra, arg, args, nresults, pcpos);
     case LBF_MATH_LOG:
         return translateBuiltinMathLog(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
     case LBF_MATH_MIN:
-        return translateBuiltinMathMin(build, nparams, ra, arg, args, nresults, pcpos);
+        return translateBuiltinMathMinMax(build, IrCmd::MIN_NUM, nparams, ra, arg, args, nresults, pcpos);
     case LBF_MATH_MAX:
-        return translateBuiltinMathMax(build, nparams, ra, arg, args, nresults, pcpos);
+        return translateBuiltinMathMinMax(build, IrCmd::MAX_NUM, nparams, ra, arg, args, nresults, pcpos);
     case LBF_MATH_CLAMP:
         return translateBuiltinMathClamp(build, nparams, ra, arg, args, nresults, fallback, pcpos);
     case LBF_MATH_FLOOR:
@@ -861,9 +791,8 @@ BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, 
     case LBF_MATH_POW:
     case LBF_MATH_FMOD:
     case LBF_MATH_ATAN2:
-        return translateBuiltin2NumberToNumberLibm(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
     case LBF_MATH_LDEXP:
-        return translateBuiltinMathLdexp(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
+        return translateBuiltin2NumberToNumberLibm(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
     case LBF_MATH_FREXP:
     case LBF_MATH_MODF:
         return translateBuiltinNumberTo2Number(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);

@@ -936,6 +936,128 @@ TEST_CASE_FIXTURE(Fixture, "infer_any_in_all_modes_when_lhs_is_unknown")
     // the case right now, though.
 }
 
+TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_subtraction")
+{
+    CheckResult result = check(Mode::Strict, R"(
+        local function f(x, y)
+            return x - y
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> Sub<a, b>");
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ(toString(result.errors[0]), "Unknown type used in - operation; consider adding a type annotation to 'x'");
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_multiplication")
+{
+    CheckResult result = check(Mode::Strict, R"(
+        local function f(x, y)
+            return x * y
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> Mul<a, b>");
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ(toString(result.errors[0]), "Unknown type used in * operation; consider adding a type annotation to 'x'");
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_division")
+{
+    CheckResult result = check(Mode::Strict, R"(
+        local function f(x, y)
+            return x / y
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> Div<a, b>");
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ(toString(result.errors[0]), "Unknown type used in / operation; consider adding a type annotation to 'x'");
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_floor_division")
+{
+    ScopedFastFlag floorDiv{"LuauFloorDivision", true};
+
+    CheckResult result = check(Mode::Strict, R"(
+        local function f(x, y)
+            return x // y
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> FloorDiv<a, b>");
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ(toString(result.errors[0]), "Unknown type used in // operation; consider adding a type annotation to 'x'");
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_exponentiation")
+{
+    CheckResult result = check(Mode::Strict, R"(
+        local function f(x, y)
+            return x ^ y
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> Exp<a, b>");
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ(toString(result.errors[0]), "Unknown type used in ^ operation; consider adding a type annotation to 'x'");
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_modulo")
+{
+    CheckResult result = check(Mode::Strict, R"(
+        local function f(x, y)
+            return x % y
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> Mod<a, b>");
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ(toString(result.errors[0]), "Unknown type used in % operation; consider adding a type annotation to 'x'");
+    }
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "equality_operations_succeed_if_any_union_branch_succeeds")
 {
     CheckResult result = check(R"(

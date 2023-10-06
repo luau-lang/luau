@@ -46,7 +46,15 @@ template<typename AssemblyBuilder>
 static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, AssemblyOptions options, LoweringStats* stats)
 {
     std::vector<Proto*> protos;
-    gatherFunctions(protos, clvalue(func)->l.p);
+    gatherFunctions(protos, clvalue(func)->l.p, /* flags= */ 0);
+
+    protos.erase(std::remove_if(protos.begin(), protos.end(), [](Proto* p) { return p == nullptr; }), protos.end());
+
+    if (protos.empty())
+    {
+        build.finalize(); // to avoid assertion in AssemblyBuilder dtor
+        return std::string();
+    }
 
     ModuleHelpers helpers;
     assembleHelpers(build, helpers);
@@ -58,23 +66,22 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
     }
 
     for (Proto* p : protos)
-        if (p)
+    {
+        IrBuilder ir;
+        ir.buildFunctionIr(p);
+
+        if (options.includeAssembly || options.includeIr)
+            logFunctionHeader(build, p);
+
+        if (!lowerFunction(ir, build, helpers, p, options, stats))
         {
-            IrBuilder ir;
-            ir.buildFunctionIr(p);
-
-            if (options.includeAssembly || options.includeIr)
-                logFunctionHeader(build, p);
-
-            if (!lowerFunction(ir, build, helpers, p, options, stats))
-            {
-                if (build.logText)
-                    build.logAppend("; skipping (can't lower)\n");
-            }
-
             if (build.logText)
-                build.logAppend("\n");
+                build.logAppend("; skipping (can't lower)\n");
         }
+
+        if (build.logText)
+            build.logAppend("\n");
+    }
 
     if (!build.finalize())
         return std::string();
