@@ -57,7 +57,7 @@ Sandboxing challenges are [covered in the dedicated section](sandbox).
 | tables honor the `__len` metamethod | ✔️ | |
 | hex and `\z` escapes in strings | ✔️ | |
 | support for hexadecimal floats | 🤷‍♀️ | no strong use cases |
-| order metamethods work for different types | ❌ | no strong use cases and more complicated semantics, compatibility and performance implications |
+| order metamethods (`__lt`/`__le`) are called for unrelated metatables | ❌ | no strong use cases and more complicated semantics, compatibility and performance implications |
 | empty statement | 🤷‍♀️ | less useful in Lua than in JS/C#/C/C++ |
 | `break` statement may appear in the middle of a block | 🤷‍♀️ | we'd like to do it consistently for `break`/`return`/`continue` but there be dragons |
 | arguments for function called through `xpcall` | ✔️ | |
@@ -92,7 +92,8 @@ Ephemeron tables may be implemented at some point since they do have valid uses 
 | new function `table.move` | ✔️ | |
 | `collectgarbage("count")` now returns only one result | ✔️ | |
 | `coroutine.isyieldable` | ✔️ | |
-| stricter error checking for `table.insert`/`table.remove` | 😞 | we love this, but it breaks compatibility
+| stricter error checking for `table.insert`/`table.remove` | 😞 | we love this, but it breaks compatibility |
+| `__eq` metamethod is called for unrelated metatables | ❌ | backwards compatibility and typechecking implications |
 
 It's important to highlight integer support and bitwise operators. For Luau, it's rare that a full 64-bit integer type is necessary - double-precision types support integers up to 2^53 (in Lua which is used in embedded space, integers may be more appealing in environments without a native 64-bit FPU). However, there's a *lot* of value in having a single number type, both from performance perspective and for consistency. Notably, Lua doesn't handle integer overflow properly, so using integers also carries compatibility implications.
 
