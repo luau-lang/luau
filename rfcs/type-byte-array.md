@@ -111,7 +111,6 @@ Unless otherwise specified, if a read or write operation would cause an access o
 
 `buffer` also has a metatable, inside this metatable:
 * '__type' is defined to return 'buffer'. `type()` will return 'userdata'
-* '__eq' is defined to compare buffers, by comparing sizes first, followed by content comparison
 * metatable is locked
 
 No other metamethod is defined, naming a few specific onces:
@@ -119,7 +118,7 @@ No other metamethod is defined, naming a few specific onces:
 * '__index' is not defined, so there is no `b[1] = a` interface to write bytes. Neither can you call library functions as methods like `b:writei16(10, 12)`
 * '__iter' is not defined
 * '__tostring' is not defined, generic userdata behavior remains, returning 'buffer: 0xpointer'
-* ordering is not defined
+* '__eq'/'__lt'/'__le' are not defined
 
 ## Drawbacks
 
