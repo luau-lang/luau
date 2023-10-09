@@ -167,8 +167,8 @@ prohibitively expensive.
 
 The difficult part of non-strict mode error-reporting is predicting
 run-time errors. We do this using an error-reporting
-pass that synthesizes a type context such that if any of the $x : T$ in
-the type context are satisfied, then the program will
+pass that synthesizes a type context $\Delta$ such that if any of the $x : T$ in
+$\Delta$ are satisfied, then the program will
 produce a type error. For example in the program
 \begin{verbatim}
   function h(x, y)
@@ -335,7 +335,7 @@ we call any function of type
   (S \fun T) \cap (\neg S \fun \ERROR)
 \]
 a \emph{checked} function, since it performs a run-time check
-on its argument. They are called \emph{strong functions}
+on its argument. They are called \emph{strong arrows}
 in Elixir~\cite{DesignElixir}.
 
 Note that this type system has the usual subtyping rule for
