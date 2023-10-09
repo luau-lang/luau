@@ -47,10 +47,10 @@ In HATRA 2021, we presented \emph{The Goals Of The Luau Type System},
 describing the human factors of a type system for a language with a
 heterogeneous developer community.  One of the goals was the design of
 type system for bug detection, where we have high confidence that type
-errors isolate genuine software defects, and that false positives are
+errors identify genuine software defects, and that false positives are
 minimized. Such a type system is, by necessity, unsound, but we can ask
 instead that it is complete. This paper presents a work-in-progress report
-on the design and implementation of the new non-strict mode for Luau.
+on the design and implementation of the new unsound type system for Luau.
 \end{abstract}
 
 \maketitle
@@ -134,9 +134,9 @@ Luau tables do not error when a missing property is accessed (though embeddings 
   local t = { Foo = 5 }
   local x = t.Fop
 \end{verbatim}
-won’t produce a run-time error, but is more likely than not a
+does not produce a run-time error, but is more likely than not a
 programmer error. If the programmer intended to
-initialize \verb|x| as \verb|nil|, they could have initialized
+initialize \verb|x| as \verb|nil|, they could have written
 \verb|x = nil|.  For this reason, we consider it a code defect to use
 an expression that the type system infers is of type \verb|nil|, other
 than the \verb|nil| literal.
@@ -152,10 +152,10 @@ There is a matching problem with misspelling properties when writing. For exampl
     print(t.Foo)
   end
 \end{verbatim}
-won’t produce a run-time error, but is more likely than not a
+does not produce a run-time error, but is more likely than not a
 programmer error, since \verb|t.Fop| is written but never read. We can use
-read-only and write-only table properties types for this, and make it an
-error to create a write-only property.
+read-only and write-only table properties types for this, and consider it an
+code defect to create a write-only property.
 
 We have to be careful about this though, because if \verb|f| ended
 with \verb|return t|, then it would be a perfectly sensible function
@@ -194,7 +194,7 @@ an error is reported when \verb|x| isn’t a \verb|number| or isn’t a \verb|st
 \end{verbatim}
 (\verb"T | U" is Luau's concrete syntax for type union.)
 Since the type \verb"~number | ~string" is equivalent to the type \verb|unknown| (which contains every value),
-non-strict mode can report a warning, since calling the function will throw a run-time error.
+non-strict mode can report a warning, since calling the function is guaranteed to throw a run-time error.
 In contrast:
 \begin{verbatim}
   function g(x)
@@ -353,7 +353,7 @@ in our system, which are covariant in both $S$ and $T$.
 \section{Future work}
 
 This type system is still in the design phase~\cite{NewNonStrictRFC}, though we hope
-the implementation will be ready in by the end of 2023. This will include
+the implementation will be ready by the end of 2023. This will include
 testing the implementation on our unit tests, and on large code bases.
 
 There is an Agda development of a core of strict mode~\cite{BJ23:agda-typeck}.  It
