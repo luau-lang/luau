@@ -1,0 +1,366 @@
+\documentclass[sigplan]{acmart}
+
+\setcopyright{rightsretained}
+\copyrightyear{2024}
+\acmYear{2024}
+\acmConference[Incorrectness '24]{Formal Methods for Incorrectness}{January 2024}{London, UK}
+\acmBooktitle{Incorrectness '24: Formal Methods for Incorrectness}
+\acmDOI{}
+\acmISBN{}
+\expandafter\def\csname @copyrightpermission\endcsname{\raisebox{-2ex}{\includegraphics[width=.2\linewidth]{cc-by}} \parbox{.7\linewidth}{\raggedright This work is licensed under a Creative Commons Attribution 4.0 International License.}}
+\expandafter\def\csname @copyrightowner\endcsname{Roblox.}
+\newcommand{\infer}[2]{\frac{\displaystyle\begin{array}{@{}l@{}}#1\end{array}}{\displaystyle#2}}
+\newcommand{\LOCAL}{\mathop{\mathsf{local}}}
+\newcommand{\FUNCTION}{\mathop{\mathsf{function}}}
+\newcommand{\IF}{\mathop{\mathsf{if}}}
+\newcommand{\THEN}{\mathbin{\mathsf{then}}}
+\newcommand{\ELSE}{\mathbin{\mathsf{else}}}
+\newcommand{\END}{\mathop{\mathsf{end}}}
+\newcommand{\NEVER}{\mathsf{never}}
+\newcommand{\ERROR}{\mathsf{error}}
+\newcommand{\UNKNOWN}{\mathsf{unknown}}
+\newcommand{\STRING}{\mathsf{string}}
+\newcommand{\NUMBER}{\mathsf{number}}
+\newcommand{\MATH}{\mathsf{math}}
+\newcommand{\ABS}{\mathsf{abs}}
+\newcommand{\LOWER}{\mathsf{lower}}
+\newcommand{\fun}{\mathbin{\rightarrow}}
+
+\begin{document}
+
+\title{Towards an Unsound But Complete Type System}
+\subtitle{Work In Progress on New Non-Strict Mode for Luau}
+
+\author{Lily Brown}
+\author{Andy Friesen}
+\author{Alan Jeffrey}
+\author{Vighnesh Vijay}
+\affiliation{
+  \institution{Roblox}
+  \city{San Mateo}
+  \state{CA}
+  \country{USA}
+}
+
+\begin{abstract}
+In HATRA 2021, we presented \emph{The Goals Of The Luau Type System},
+describing the human factors of a type system for a language with a
+heterogeneous developer community.  One of the goals was the design of
+type system for bug detection, where we have high confidence that type
+errors identify genuine software defects, and that false positives are
+minimized. Such a type system is, by necessity, unsound, but we can ask
+instead that it is complete. This paper presents a work-in-progress report
+on the design and implementation of the new unsound type system for Luau.
+\end{abstract}
+
+\maketitle
+
+\section{Introduction}
+
+Luau~\cite{Luau} is the scripting language used by the
+Roblox~\cite{Roblox} platform for shared immersive experiences.  Luau extends
+the Lua~\cite{Lua} language, notably by providing type-driven tooling
+such as autocomplete and API documentation (as well as traditional type
+error reporting). Roblox has hundreds of millions of users, and
+millions of creators, ranging from children learning to program for
+the first time to professional development studios.
+
+In HATRA 2021, we presented a position paper on the \emph{Goals Of The Luau Type
+System}~\cite{BFJ21:GoalsLuau}, describing the human factors issues
+with designing a type system for a language with a heterogeneous
+developer community. The design flows from the needs of the different
+communities: beginners are focused on immediate goals (``the stairs
+should light up when a player walks on them'') and less on the code
+quality concerns of more experienced developers; for all users
+type-driven tooling is important for productivity. These needs result in a design with two modes:
+\begin{itemize}
+\item \emph{non-strict mode}, aimed at non-professionals, which
+  minimizes false positives (that is, in non-strict mode, any program with a type error has a defect), and
+\item \emph{strict mode}, aimed at professionals, which
+  minimizes false negatives (that is, in strict mode, any program with a defect has a type error).
+\end{itemize}
+The focus of this extended abstract is the design of non-strict mode: what constitutes
+a defect, and how can we design a complete type system for detecting them.
+(The words ``sound'' and ``complete'' in this sense are far from ideal,
+but ``sound type system'' has a well-established meaning, and ``complete''
+is well-established as the dual of ``sound'', so here we are.)
+
+The closest work to ours is success typing~\cite{SuccessTyping}, used
+in Erlang Dialyzer~\cite{Dialyzer}.  The new feature of our work is
+that strict and non-strict mode have to interact, whereas Dialyzer only has
+the equivalent of non-strict mode.
+
+New non-strict mode is specified in a Luau Request For
+Comment~\cite{NewNonStrictRFC}, and is currently being implemented.
+We expect it (and other new type checking features) to be available in
+2024. This extended abstract is based on the RFC, but written in
+``Greek letters and horizontal lines'' rather than ``monospaced text''.
+
+\section{Code defects}
+
+The main goal of non-strict mode is to identify defects, but this requires
+deciding what a defect is. Run-time errors are an obvious defect:
+\begin{verbatim}
+  local hi = "hi"
+  print(math.abs(hi))
+\end{verbatim}
+but we also want to catch common mistakes such as mis-spelling a property name,
+even though Luau returns \verb|nil| for missing property accesses.
+For this reason, we consider a larger class of defects:
+\begin{itemize}
+\item run-time errors,
+\item expressions guaranteed to be \verb|nil|, and
+\item writing to a table property that is never read.
+\end{itemize}
+
+\subsection{Run-time errors}
+
+Run-time errors occur due to run-time type mismatches (such as \verb|5("hi")|)
+or incorrect built-in function calls (such as \verb|math.abs("hi")|).
+Precisely identifying run-time errors is undecidable, for example:
+\begin{verbatim}
+  if cond() then
+    math.abs(“hi”)
+  end
+\end{verbatim}
+We cannot be sure that this code produces a run-time
+error, but we do know that if \verb|math.abs("hi")| is executed, it
+will produce an error, so we consider this to be a defect.
+
+\subsection{Expressions guaranteed to be nil}
+
+Luau tables do not error when a missing property is accessed (though embeddings may). So
+\begin{verbatim}
+  local t = { Foo = 5 }
+  local x = t.Fop
+\end{verbatim}
+does not produce a run-time error, but is more likely than not a
+programmer error. If the programmer intended to
+initialize \verb|x| as \verb|nil|, they could have written
+\verb|x = nil|.  For this reason, we consider it a code defect to use
+an expression that the type system infers is of type \verb|nil|, other
+than the \verb|nil| literal.
+
+\subsection{Writing properties that are never read}
+
+There is a matching problem with misspelling properties when writing. For example
+\begin{verbatim}
+  function f()
+    local t = {}
+    t.Foo = 5
+    t.Fop = 7
+    print(t.Foo)
+  end
+\end{verbatim}
+does not produce a run-time error, but is more likely than not a
+programmer error, since \verb|t.Fop| is written but never read. We can use
+read-only and write-only table properties types for this, and consider it an
+code defect to create a write-only property.
+
+We have to be careful about this though, because if \verb|f| ended
+with \verb|return t|, then it would be a perfectly sensible function
+with type \verb|() -> { Foo: number, Fop: number }|. The only way to detect
+that \verb|Fop| was never read would be whole-program analysis, which is
+prohibitively expensive.
+
+\section{New Non-strict error reporting}
+
+The difficult part of non-strict mode error-reporting is predicting
+run-time errors. We do this using an error-reporting
+pass that synthesizes a type context $\Delta$ such that if any of the $x : T$ in
+$\Delta$ are satisfied, then the program will
+produce a type error. For example in the program
+\begin{verbatim}
+  function h(x, y)
+    math.abs(x)
+    string.lower(y)
+  end
+\end{verbatim}
+an error is reported when \verb|x| isn’t a \verb|number|, or \verb|y| isn’t a \verb|string|, so the synthesized context is
+\begin{verbatim}
+  x : ~number, y : ~string
+\end{verbatim}
+(\verb|~T| is Luau's concrete syntax for type negation.)
+In:
+\begin{verbatim}
+  function f(x)
+    math.abs(x)
+    string.lower(x)
+  end
+\end{verbatim}
+an error is reported when \verb|x| isn’t a \verb|number| or isn’t a \verb|string|, so the context is
+\begin{verbatim}
+  x : ~number | ~string
+\end{verbatim}
+(\verb"T | U" is Luau's concrete syntax for type union.)
+Since the type \verb"~number | ~string" is equivalent to the type \verb|unknown| (which contains every value),
+non-strict mode can report a warning, since calling the function is guaranteed to throw a run-time error.
+In contrast:
+\begin{verbatim}
+  function g(x)
+    if cond() then
+      math.abs(x)
+    else
+      string.lower(x)
+    end
+  end
+\end{verbatim}
+synthesizes context
+\begin{verbatim}
+  x : ~number & ~string
+\end{verbatim}
+(\verb|T & U| is Luau's concrete syntax for type intersection.)
+Since \verb|~number & ~string| is not equivalent to \verb|unknown|, non-strict mode reports no warning.
+
+\begin{figure*}
+  \[\begin{array}{c}
+    \infer{
+      \Gamma \vdash M : \NEVER \dashv \Delta_1 \\
+      \Gamma, x : T \vdash B \dashv \Delta_2, x : U \\
+      \mbox{(warn if $\UNKNOWN <: U$)}
+    }{
+      \Gamma \vdash (\LOCAL x : T = M; B) \dashv (\Delta_1 \cup \Delta_2)
+    }
+    \quad
+    \infer{
+      \Gamma \vdash M : \NEVER \dashv \Delta_1 \\
+      \Gamma \vdash B \dashv \Delta_2 \\
+      \Gamma \vdash C \dashv \Delta_3 
+    }{
+      \Gamma \vdash (\IF M \THEN B \ELSE C \END) \dashv (\Delta_1 \cup (\Delta_2 \cap \Delta_3))
+    }
+  \\[\bigskipamount]
+    \infer{}{
+      \Gamma \vdash x : T \dashv (x : T)
+    }
+    \quad
+    \infer{
+      \mbox{(warn if $k:T$)}
+    }{
+      \Gamma \vdash k : T \dashv \emptyset
+    }
+    \quad
+    \infer{
+      \Gamma, x:S \vdash B \dashv \Delta, x:U \\
+      \mbox{(warn if $\UNKNOWN <: U$)}\\
+      \mbox{(warn if ${\FUNCTION} <: T$)}
+    }{
+      \Gamma \vdash (\FUNCTION (x : S) B \END) : T \dashv \Delta
+    }
+    \quad
+    \infer{
+      \Gamma \vdash M : (S \fun \ERROR) \\
+      \Gamma \vdash M : \neg{\FUNCTION} \dashv \Delta_1 \\
+      \Gamma \vdash N : S \dashv \Delta_2  \\
+      \mbox{(warn if $\Gamma \vdash M : (\UNKNOWN \fun (T \cup \ERROR))$)}
+    }{
+      \Gamma \vdash M(N) : T \dashv \Delta_1 \cup \Delta_2
+    }
+  \end{array}\]
+  \caption{Type context synthesis for blocks ($\Gamma \vdash B \dashv \Delta$) and expressions ($\Gamma \vdash M:T \dashv \Delta$)}
+  \label{fig:ctxtgen}
+\end{figure*}
+
+\begin{figure*}
+  \[
+    \infer{
+      \begin{array}[b]{c}
+      \infer{}{\Gamma \vdash \MATH.\ABS : (\neg\NUMBER \fun \ERROR)} \\[\bigskipamount]
+      \infer{}{\Gamma \vdash \MATH.\ABS : \neg{\FUNCTION} \dashv \emptyset}
+      \end{array}
+      \infer{
+        \Gamma \vdash \STRING.\LOWER : (\neg\STRING \fun \ERROR) \\
+        \Gamma \vdash \STRING.\LOWER : \neg{\FUNCTION} \dashv \emptyset \\
+        \Gamma \vdash x : \neg{\STRING} \dashv (x : \neg\STRING) \\
+        \mbox{(warn since $\Gamma \vdash \STRING.\LOWER : \UNKNOWN \fun (\neg\NUMBER \cup \ERROR)$)}
+      }{\Gamma \vdash \STRING.\LOWER(x) : \neg{\NUMBER} \dashv (x : \neg\STRING)}
+    }{\Gamma \vdash (\MATH.\ABS(\STRING.\LOWER(x)) : \NEVER \dashv (x : \neg\STRING)}
+  \]
+  \caption{Example warning}
+  \label{fig:example}
+\end{figure*}
+
+In Figure~\ref{fig:ctxtgen} we provide some of the inference rules for
+context synthesis, and the warnings that it
+produces.  These are run after type inference, so they can assume that
+all code is fully typed.
+
+In the judgment $\Gamma \vdash M : T \dashv
+\Delta$, the type context $\Gamma$ is the usual \emph{checked} type
+context and $\Delta$ is the \emph{synthesized} context used to predict
+run-time errors (following the terminology of bidirectional
+typing~\cite{BidirectionalTyping}).
+
+\begin{conjecture}\label{conj:complete}%
+If $\Gamma \vdash M : T \dashv \Delta, x:U$ and $\sigma$ is a closing
+substitution where $\sigma(x) : U$ and $M[\sigma] \rightarrow^* v$,
+then $v : T$.
+\end{conjecture}
+
+\begin{corollary}\label{cor:complete}%
+If $\Gamma \vdash M : \NEVER \dashv \Delta, x:\UNKNOWN$ and $\sigma$ is a closing
+substitution, then $M[\sigma]$ does not terminate successfully.
+\end{corollary}
+
+\section{Checked functions}
+
+The crucial aspect of this type system is that we have a type $\ERROR$
+inhabited by no values, and by expressions which may throw a run-time exception.
+(This is essentially a very simple type and effect system~\cite{Nielson1999}
+with one effect.)
+
+The rule for function application $M(N)$
+has two dependencies on the type for $M$:
+\[\begin{array}{c}
+  \Gamma \vdash M : (S \fun \ERROR)
+  \\[\jot]
+  \Gamma \vdash M : (\UNKNOWN \fun (T \cup \ERROR))
+\end{array}\]
+Since Luau is based on semantic subtyping~\cite{GF05:GentleIntroduction,Jef22:SemanticSubtyping} and supports
+intersection types, this is equivalent to asking for $M$ to be an
+overloaded function, where one overload has argument type $\UNKNOWN$, and
+one has result type $\ERROR$. For example:
+\[
+  \MATH.\ABS : (\NUMBER \fun \NUMBER) \cap (\neg\NUMBER \fun \ERROR)
+\]
+and so (by subsumption):
+\[\begin{array}{c}
+  \MATH.\ABS : (\neg\NUMBER \fun \ERROR)
+  \\[\jot]
+  \MATH.\ABS : (\UNKNOWN \fun (\NUMBER \cup \ERROR))
+\end{array}\]
+This is a common enough idiom it is worth naming it:
+we call any function of type 
+\[
+  (S \fun T) \cap (\neg S \fun \ERROR)
+\]
+a \emph{checked} function, since it performs a run-time check
+on its argument. They are called \emph{strong arrows}
+in Elixir~\cite{DesignElixir}.
+
+Note that this type system has the usual subtyping rule for
+functions: contravariant in their argument type, and
+covariant in their result type. In contrast, checked functions
+are invariant in their argument type, since one overload
+$S \fun T$ is contravariant in $S$, and the other $\neg S \fun \ERROR$
+is covariant.
+
+This system is also different from  success
+typings~\cite{SuccessTyping}, which has functions
+$(\neg S \fun \ERROR) \cap (\UNKNOWN \fun (T \cup \ERROR))$,
+in our system, which are covariant in both $S$ and $T$.
+
+\section{Future work}
+
+This type system is still in the design phase~\cite{NewNonStrictRFC}, though we hope
+the implementation will be ready by the end of 2023. This will include
+testing the implementation on our unit tests, and on large code bases.
+
+There is an Agda development of a core of strict mode~\cite{BJ23:agda-typeck}.  It
+should extend to non-strict mode, at which point
+Conjecture~\ref{conj:complete} (or something like it)
+will be mechanically verified.
+  
+\bibliographystyle{ACM-Reference-Format} \bibliography{bibliography}
+
+\end{document}
