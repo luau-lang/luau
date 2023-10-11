@@ -165,8 +165,8 @@ static bool traverseDirectoryRec(const std::string& path, const std::function<vo
         {
             joinPaths(buf, path.c_str(), data.d_name);
 
-#if defined(ATTOIF)
-            mode_t mode = ATTOIF(data.d_type);
+#if defined(DTTOIF)
+            mode_t mode = DTTOIF(data.d_type);
 #else
             mode_t mode = 0;
 #endif
