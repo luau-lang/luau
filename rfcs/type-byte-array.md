@@ -2,11 +2,19 @@
 
 ## Summary
 
-A new built in type to serve as an array of bytes, with a library for reading and writing to the internal buffer. A particularly good example type that this could be derived from is [this Java class](https://docs.oracle.com/en/java/javase/18/docs/api/java.base/java/nio/ByteBuffer.html).
+A new built in type to serve as a mutable array of bytes, with a library for reading and writing the contents.
 
 ## Motivation
 
-With this type, we solve the use cases for binary format encoding and decoding, compression, and active/compact memory. This opens the door for developers to work with file formats that might've been too large to represent with tables or to write to strings. It also allows for writing algorithms that deal with raw data often, such as compression or hashing. Web services that exchange data in packed formats could also benefit from this.
+Existing mechanisms for representing binary data in Luau can be insufficient for performance-oriented use cases.
+
+A binary blob may be represented as an array of numbers 0-255 (idiomatic and reasonably performant, but very space-inefficient: each element takes 16 bytes, and it's difficult to work with data that is wider than bytes) or a string (only works for read-only cases, data extraction is possible via `string.unpack` but not very efficient). Neither of the two options are optimal, especially when the use case is data encoding (as opposed to decoding).
+
+While the host can provide custom data types that close this gap using `userdata` with overridden `__index`/`__newindex` that provide byte storage, the resulting type would be memory-efficient but not performance-efficient due to the cost of metamethod dispatch for every access. Additionally, since every host has a different API, this would make it difficult to write portable Luau algorithms that require efficient binary access.
+
+With this type, we solve the use cases for binary format encoding and decoding. This opens the door for developers to work with file formats that might've been too large to represent with tables or to write to strings. It also allows for writing algorithms that deal with raw data often, such as compression or hashing. Web services that exchange data in packed formats could also benefit from this. The new type can also serve as a more efficient internal representation for libraries that provide higher level objects like images or geometry data.
+
+Other high level languages support similar data structures, for example [Java ByteByffer](https://docs.oracle.com/en/java/javase/18/docs/api/java.base/java/nio/ByteBuffer.html) or [JavaScript ArrayBuffer](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer).
 
 ## Design
 
