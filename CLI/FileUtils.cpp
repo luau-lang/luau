@@ -184,15 +184,15 @@ static bool traverseDirectoryRec(const std::string& path, const std::function<vo
                 mode = st.st_mode;
             }
 
-            if (mode & S_IFDIR)
+            if (mode == S_IFDIR)
             {
                 traverseDirectoryRec(buf, callback);
             }
-            else if (mode & S_IFREG)
+            else if (mode == S_IFREG)
             {
                 callback(buf);
             }
-            else if (mode & S_IFLNK)
+            else if (mode == S_IFLNK)
             {
                 // Skip symbolic links to avoid handling cycles
             }
