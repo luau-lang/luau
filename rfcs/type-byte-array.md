@@ -18,7 +18,9 @@ Other high level languages support similar data structures, for example [Java By
 
 ## Design
 
-This type will be called 'buffer' and will be implemented using `userdata` with a new reserved tag.
+This type will be called 'buffer' and will be implemented using a new built-in type (GCObject with new tag).
+
+By default, metatable is not set for this type and can only be modified using `lua_setmetatable` C API.
 
 Operations on this type will be exposed through a new Luau library called 'buffer`, with the following functions:
 
@@ -107,7 +109,9 @@ If an optional 'count' is specified, only 'count' bytes are taken from the strin
 
 ---
 
-All offsets start at 0.
+All offsets start at 0 (not to be confused with indices that start at 1 in Luau tables).
+This choice is made for both performance reasons (no need to subtract 1) and for compatibility with data formats that often describe field positions using offsets.
+While there is a way to solve the performance problem using luajit trick where table array part is allocated from index 0, this would mean that data in the buffer has 1 extra byte and this complicates the bounds checking.
 
 Read and write operations for relevant types are little endian as it is the most common use case, and conversion is often trivial to do manually.
 
@@ -115,26 +119,39 @@ Additionally, unaligned offsets in all operations are valid and behave as expect
 
 Unless otherwise specified, if a read or write operation would cause an access outside the data in the buffer, an error is thrown.
 
-### Metatable
+### Public C API
 
-`buffer` also has a metatable, inside this metatable:
-* '__type' is defined to return 'buffer'. `type()` will return 'userdata'
-* metatable is locked
+`void* lua_tobuffer(lua_State* L, int idx, size_t* len);`
 
-No other metamethod is defined, naming a few specific onces:
-* '__len' is not proposed at this time
-* '__index' is not defined, so there is no `b[1] = a` interface to write bytes. Neither can you call library functions as methods like `b:writei16(10, 12)`
-* '__iter' is not defined
-* '__tostring' is not defined, generic userdata behavior remains, returning 'buffer: 0xpointer'
-* '__eq'/'__lt'/'__le' are not defined
+Used to fetch buffer data pointer and buffer size at specified location.
+
+If there is no buffer at the location, `NULL` is returned and `len` is not modified.
+
+`void* lua_newbuffer(lua_State* L, size_t l);`
+
+Pushes new buffer of size `l` onto the stack.
+
+`void* luaL_checkbuffer(lua_State* L, int narg, size_t* len);`
+
+Similar to `lua_tobuffer`, but throws a tag error if there is no buffer at specified location.
+
+`int luaopen_buffer(lua_State* L);`
+
+Registers the 'buffer' library. If `luaL_openlibs` is used, that includes the 'buffer' library.
+
+`LUA_BUFFERLIBNAME`
+
+Macro containing the 'buffer' library name.
 
 ## Drawbacks
 
 This introduces 'buffer' as a class type in global typing context and adds new global 'buffer' table.
-While class type might intersect with user-defined 'buffer' type, such type redefinitions ares already allowed in Luau, so this should not cause new type errors.
+While class type might intersect with user-defined 'buffer' type, such type redefinitions are already allowed in Luau, so this should not cause new type errors.
 Same goes for the global table, users can already override globals like 'string', so additional of a new global is backwards-compatible, but new table will not be accessible in such a case.
 
-Depending on implementation this could increase the complexity of the VM and related code. If this is to be implemented as a built-in, optimized type, it might need specialized fast paths for all relevant opcodes.
+This increases the complexity of the VM a little bit, since support for new tagged type is required in interpreter loop and GC.
+
+There is also a string buffer C API; by having functions talk about 'buffer' (like `luaL_extendbuffer`) and use `luaL_Buffer`, it might be a point of confusion for C API users.
 
 ## Extensions
 
