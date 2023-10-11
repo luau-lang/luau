@@ -1,5 +1,7 @@
 # Deprecate getfenv/setfenv
 
+**Status**: Implemented
+
 ## Summary
 
 Mark getfenv/setfenv as deprecated
