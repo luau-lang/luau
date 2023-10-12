@@ -1173,16 +1173,6 @@ TEST_CASE("AllocApi")
     bool allocfIsSet = lua_getallocf(L, &ud_check) == limitedRealloc;
     CHECK(allocfIsSet);
     CHECK(ud_check == &ud);
-
-    auto limitedReallocAlt = [](void* ud, void* ptr, size_t osize, size_t nsize) -> void* {
-        return limitedRealloc(ud, ptr, osize, nsize);
-    };
-
-    int ud2 = 0;
-    lua_setallocf(L, limitedReallocAlt, &ud2);
-    allocfIsSet = lua_getallocf(L, &ud_check) == limitedReallocAlt;
-    CHECK(allocfIsSet);
-    CHECK(ud_check == &ud2);
 }
 
 #if !LUA_USE_LONGJMP

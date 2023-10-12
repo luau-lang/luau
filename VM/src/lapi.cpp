@@ -1440,9 +1440,3 @@ lua_Alloc lua_getallocf(lua_State* L, void** ud)
         *ud = L->global->ud;
     return f;
 }
-
-void lua_setallocf(lua_State* L, lua_Alloc f, void* ud)
-{
-    L->global->frealloc = f;
-    L->global->ud = ud;
-}
