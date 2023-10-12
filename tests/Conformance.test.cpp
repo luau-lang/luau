@@ -1163,6 +1163,28 @@ TEST_CASE("ApiType")
     CHECK(lua_type(L, -1) == LUA_TUSERDATA);
 }
 
+TEST_CASE("AllocApi")
+{
+    int ud = 0;
+    StateRef globalState(lua_newstate(limitedRealloc, &ud), lua_close);
+    lua_State* L = globalState.get();
+
+    void* ud_check = nullptr;
+    bool allocfIsSet = lua_getallocf(L, &ud_check) == limitedRealloc;
+    CHECK(allocfIsSet);
+    CHECK(ud_check == &ud);
+
+    auto limitedReallocAlt = [](void* ud, void* ptr, size_t osize, size_t nsize) -> void* {
+        return limitedRealloc(ud, ptr, osize, nsize);
+    };
+
+    int ud2 = 0;
+    lua_setallocf(L, limitedReallocAlt, &ud2);
+    allocfIsSet = lua_getallocf(L, &ud_check) == limitedReallocAlt;
+    CHECK(allocfIsSet);
+    CHECK(ud_check == &ud2);
+}
+
 #if !LUA_USE_LONGJMP
 TEST_CASE("ExceptionObject")
 {
