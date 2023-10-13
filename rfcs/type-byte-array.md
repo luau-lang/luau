@@ -44,7 +44,7 @@ Returns the buffer data as a string.
 
 Returns the size of the buffer.
 
-`buffer.copy(target_buffer: buffer, target_offset: number, source_buffer: buffer, source_offset: number, count: number?): ()`
+`buffer.copy(target_buffer: buffer, target_offset: number, source_buffer: buffer, source_offset: number?, count: number?): ()`
 
 Copy 'count' bytes from 'source_buffer' starting at offset 'source_offset' into the 'target_buffer' at 'target_offset'.
 
