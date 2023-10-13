@@ -48,10 +48,9 @@ inline void gatherFunctions(std::vector<Proto*>& results, Proto* proto, unsigned
 }
 
 template<typename AssemblyBuilder, typename IrLowering>
-inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& function, int bytecodeid, AssemblyOptions options)
+inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& function, const std::vector<uint32_t>& sortedBlocks, int bytecodeid,
+    AssemblyOptions options)
 {
-    std::vector<uint32_t> sortedBlocks = getSortedBlockOrder(function);
-
     // For each IR instruction that begins a bytecode instruction, which bytecode instruction is it?
     std::vector<uint32_t> bcLocations(function.instructions.size() + 1, ~0u);
 
@@ -202,22 +201,22 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
     return true;
 }
 
-inline bool lowerIr(
-    X64::AssemblyBuilderX64& build, IrBuilder& ir, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options, LoweringStats* stats)
+inline bool lowerIr(X64::AssemblyBuilderX64& build, IrBuilder& ir, const std::vector<uint32_t>& sortedBlocks, ModuleHelpers& helpers, Proto* proto,
+    AssemblyOptions options, LoweringStats* stats)
 {
     optimizeMemoryOperandsX64(ir.function);
 
     X64::IrLoweringX64 lowering(build, helpers, ir.function, stats);
 
-    return lowerImpl(build, lowering, ir.function, proto->bytecodeid, options);
+    return lowerImpl(build, lowering, ir.function, sortedBlocks, proto->bytecodeid, options);
 }
 
-inline bool lowerIr(
-    A64::AssemblyBuilderA64& build, IrBuilder& ir, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options, LoweringStats* stats)
+inline bool lowerIr(A64::AssemblyBuilderA64& build, IrBuilder& ir, const std::vector<uint32_t>& sortedBlocks, ModuleHelpers& helpers, Proto* proto,
+    AssemblyOptions options, LoweringStats* stats)
 {
     A64::IrLoweringA64 lowering(build, helpers, ir.function, stats);
 
-    return lowerImpl(build, lowering, ir.function, proto->bytecodeid, options);
+    return lowerImpl(build, lowering, ir.function, sortedBlocks, proto->bytecodeid, options);
 }
 
 template<typename AssemblyBuilder>
@@ -237,7 +236,12 @@ inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& 
             createLinearBlocks(ir, useValueNumbering);
     }
 
-    return lowerIr(build, ir, helpers, proto, options, stats);
+    std::vector<uint32_t> sortedBlocks = getSortedBlockOrder(ir.function);
+
+    // In order to allocate registers during lowering, we need to know where instruction results are last used
+    updateLastUseLocations(ir.function, sortedBlocks);
+
+    return lowerIr(build, ir, sortedBlocks, helpers, proto, options, stats);
 }
 
 } // namespace CodeGen

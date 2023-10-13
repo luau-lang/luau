@@ -3,7 +3,7 @@
 
 #include "Luau/Common.h"
 
-LUAU_FASTFLAG(LuauFloorDivision)
+LUAU_FASTFLAG(LuauFloorDivision);
 
 namespace Luau
 {
@@ -164,7 +164,7 @@ void AstExprIndexExpr::visit(AstVisitor* visitor)
 
 AstExprFunction::AstExprFunction(const Location& location, const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks,
     AstLocal* self, const AstArray<AstLocal*>& args, bool vararg, const Location& varargLocation, AstStatBlock* body, size_t functionDepth,
-    const AstName& debugname, const std::optional<AstTypeList>& returnAnnotation, AstTypePack* varargAnnotation, bool hasEnd,
+    const AstName& debugname, const std::optional<AstTypeList>& returnAnnotation, AstTypePack* varargAnnotation, bool DEPRECATED_hasEnd,
     const std::optional<Location>& argLocation)
     : AstExpr(ClassIndex(), location)
     , generics(generics)
@@ -178,7 +178,7 @@ AstExprFunction::AstExprFunction(const Location& location, const AstArray<AstGen
     , body(body)
     , functionDepth(functionDepth)
     , debugname(debugname)
-    , hasEnd(hasEnd)
+    , DEPRECATED_hasEnd(DEPRECATED_hasEnd)
     , argLocation(argLocation)
 {
 }
@@ -397,14 +397,14 @@ void AstStatBlock::visit(AstVisitor* visitor)
 }
 
 AstStatIf::AstStatIf(const Location& location, AstExpr* condition, AstStatBlock* thenbody, AstStat* elsebody,
-    const std::optional<Location>& thenLocation, const std::optional<Location>& elseLocation, bool hasEnd)
+    const std::optional<Location>& thenLocation, const std::optional<Location>& elseLocation, bool DEPRECATED_hasEnd)
     : AstStat(ClassIndex(), location)
     , condition(condition)
     , thenbody(thenbody)
     , elsebody(elsebody)
     , thenLocation(thenLocation)
     , elseLocation(elseLocation)
-    , hasEnd(hasEnd)
+    , DEPRECATED_hasEnd(DEPRECATED_hasEnd)
 {
 }
 
@@ -420,13 +420,13 @@ void AstStatIf::visit(AstVisitor* visitor)
     }
 }
 
-AstStatWhile::AstStatWhile(const Location& location, AstExpr* condition, AstStatBlock* body, bool hasDo, const Location& doLocation, bool hasEnd)
+AstStatWhile::AstStatWhile(const Location& location, AstExpr* condition, AstStatBlock* body, bool hasDo, const Location& doLocation, bool DEPRECATED_hasEnd)
     : AstStat(ClassIndex(), location)
     , condition(condition)
     , body(body)
     , hasDo(hasDo)
     , doLocation(doLocation)
-    , hasEnd(hasEnd)
+    , DEPRECATED_hasEnd(DEPRECATED_hasEnd)
 {
 }
 
@@ -439,11 +439,11 @@ void AstStatWhile::visit(AstVisitor* visitor)
     }
 }
 
-AstStatRepeat::AstStatRepeat(const Location& location, AstExpr* condition, AstStatBlock* body, bool hasUntil)
+AstStatRepeat::AstStatRepeat(const Location& location, AstExpr* condition, AstStatBlock* body, bool DEPRECATED_hasUntil)
     : AstStat(ClassIndex(), location)
     , condition(condition)
     , body(body)
-    , hasUntil(hasUntil)
+    , DEPRECATED_hasUntil(DEPRECATED_hasUntil)
 {
 }
 
@@ -528,7 +528,7 @@ void AstStatLocal::visit(AstVisitor* visitor)
 }
 
 AstStatFor::AstStatFor(const Location& location, AstLocal* var, AstExpr* from, AstExpr* to, AstExpr* step, AstStatBlock* body, bool hasDo,
-    const Location& doLocation, bool hasEnd)
+    const Location& doLocation, bool DEPRECATED_hasEnd)
     : AstStat(ClassIndex(), location)
     , var(var)
     , from(from)
@@ -537,7 +537,7 @@ AstStatFor::AstStatFor(const Location& location, AstLocal* var, AstExpr* from, A
     , body(body)
     , hasDo(hasDo)
     , doLocation(doLocation)
-    , hasEnd(hasEnd)
+    , DEPRECATED_hasEnd(DEPRECATED_hasEnd)
 {
 }
 
@@ -559,7 +559,7 @@ void AstStatFor::visit(AstVisitor* visitor)
 }
 
 AstStatForIn::AstStatForIn(const Location& location, const AstArray<AstLocal*>& vars, const AstArray<AstExpr*>& values, AstStatBlock* body,
-    bool hasIn, const Location& inLocation, bool hasDo, const Location& doLocation, bool hasEnd)
+    bool hasIn, const Location& inLocation, bool hasDo, const Location& doLocation, bool DEPRECATED_hasEnd)
     : AstStat(ClassIndex(), location)
     , vars(vars)
     , values(values)
@@ -568,7 +568,7 @@ AstStatForIn::AstStatForIn(const Location& location, const AstArray<AstLocal*>& 
     , inLocation(inLocation)
     , hasDo(hasDo)
     , doLocation(doLocation)
-    , hasEnd(hasEnd)
+    , DEPRECATED_hasEnd(DEPRECATED_hasEnd)
 {
 }
 

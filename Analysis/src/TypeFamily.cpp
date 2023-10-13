@@ -8,6 +8,7 @@
 #include "Luau/Normalize.h"
 #include "Luau/Simplify.h"
 #include "Luau/Substitution.h"
+#include "Luau/Subtyping.h"
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
 #include "Luau/TypeCheckLimits.h"
@@ -320,8 +321,25 @@ bool isPending(TypeId ty, ConstraintSolver* solver)
     return is<BlockedType>(ty) || is<PendingExpansionType>(ty) || is<TypeFamilyInstanceType>(ty) || (solver && solver->hasUnresolvedConstraints(ty));
 }
 
+TypeFamilyReductionResult<TypeId> notFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+{
+    if (typeParams.size() != 1 || !packParams.empty())
+    {
+        ctx->ice->ice("not type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId ty = follow(typeParams.at(0));
+
+    if (isPending(ty, ctx->solver))
+        return {std::nullopt, false, {ty}, {}};
+
+    // `not` operates on anything and returns a `boolean` always.
+    return {ctx->builtins->booleanType, false, {}, {}};
+}
+
 TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(
-    std::vector<TypeId> typeParams, std::vector<TypePackId> packParams, NotNull<TypeFamilyContext> ctx, const std::string metamethod)
+    const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx, const std::string metamethod)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -333,34 +351,28 @@ TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(
     TypeId rhsTy = follow(typeParams.at(1));
     const NormalizedType* normLhsTy = ctx->normalizer->normalize(lhsTy);
     const NormalizedType* normRhsTy = ctx->normalizer->normalize(rhsTy);
+
+    // if either failed to normalize, we can't reduce, but know nothing about inhabitance.
     if (!normLhsTy || !normRhsTy)
-    {
         return {std::nullopt, false, {}, {}};
-    }
-    else if (is<AnyType>(normLhsTy->tops) || is<AnyType>(normRhsTy->tops))
-    {
+
+    // if one of the types is error suppressing, we can reduce to `any` since we should suppress errors in the result of the usage.
+    if (normLhsTy->shouldSuppressErrors() || normRhsTy->shouldSuppressErrors())
         return {ctx->builtins->anyType, false, {}, {}};
-    }
-    else if ((normLhsTy->hasNumbers() || normLhsTy->hasTops()) && (normRhsTy->hasNumbers() || normRhsTy->hasTops()))
-    {
-        return {ctx->builtins->numberType, false, {}, {}};
-    }
-    else if (is<ErrorType>(lhsTy) || is<ErrorType>(rhsTy))
-    {
-        return {ctx->builtins->errorRecoveryType(), false, {}, {}};
-    }
-    else if (is<NeverType>(lhsTy) || is<NeverType>(rhsTy))
-    {
+
+    // if we have a `never`, we can never observe that the numeric operator didn't work.
+    if (is<NeverType>(lhsTy) || is<NeverType>(rhsTy))
         return {ctx->builtins->neverType, false, {}, {}};
-    }
-    else if (isPending(lhsTy, ctx->solver))
-    {
+
+    // if we're adding two `number` types, the result is `number`.
+    if (normLhsTy->isExactlyNumber() && normRhsTy->isExactlyNumber())
+        return {ctx->builtins->numberType, false, {}, {}};
+
+    // otherwise, check if we need to wait on either type to be further resolved
+    if (isPending(lhsTy, ctx->solver))
         return {std::nullopt, false, {lhsTy}, {}};
-    }
     else if (isPending(rhsTy, ctx->solver))
-    {
         return {std::nullopt, false, {rhsTy}, {}};
-    }
 
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.
@@ -385,39 +397,32 @@ TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(
     if (!mmFtv)
         return {std::nullopt, true, {}, {}};
 
-    if (std::optional<TypeId> instantiatedMmType = instantiate(ctx->builtins, ctx->arena, ctx->limits, ctx->scope, *mmType))
-    {
-        if (const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType))
-        {
-            std::vector<TypeId> inferredArgs;
-            if (!reversed)
-                inferredArgs = {lhsTy, rhsTy};
-            else
-                inferredArgs = {rhsTy, lhsTy};
-
-            TypePackId inferredArgPack = ctx->arena->addTypePack(std::move(inferredArgs));
-            Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
-            if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
-                return {std::nullopt, true, {}, {}}; // occurs check failed
-
-            if (std::optional<TypeId> ret = first(instantiatedMmFtv->retTypes))
-                return {*ret, false, {}, {}};
-            else
-                return {std::nullopt, true, {}, {}};
-        }
-        else
-        {
-            return {ctx->builtins->errorRecoveryType(), false, {}, {}};
-        }
-    }
-    else
-    {
-        // TODO: Not the nicest logic here.
+    std::optional<TypeId> instantiatedMmType = instantiate(ctx->builtins, ctx->arena, ctx->limits, ctx->scope, *mmType);
+    if (!instantiatedMmType)
         return {std::nullopt, true, {}, {}};
-    }
+
+    const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
+    if (!instantiatedMmFtv)
+        return {ctx->builtins->errorRecoveryType(), false, {}, {}};
+
+    std::vector<TypeId> inferredArgs;
+    if (!reversed)
+        inferredArgs = {lhsTy, rhsTy};
+    else
+        inferredArgs = {rhsTy, lhsTy};
+
+    TypePackId inferredArgPack = ctx->arena->addTypePack(std::move(inferredArgs));
+    Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
+    if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
+        return {std::nullopt, true, {}, {}}; // occurs check failed
+
+    if (std::optional<TypeId> ret = first(instantiatedMmFtv->retTypes))
+        return {*ret, false, {}, {}};
+    else
+        return {std::nullopt, true, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> addFamilyFn(std::vector<TypeId> typeParams, std::vector<TypePackId> packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> addFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -428,7 +433,7 @@ TypeFamilyReductionResult<TypeId> addFamilyFn(std::vector<TypeId> typeParams, st
     return numericBinopFamilyFn(typeParams, packParams, ctx, "__add");
 }
 
-TypeFamilyReductionResult<TypeId> subFamilyFn(std::vector<TypeId> typeParams, std::vector<TypePackId> packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> subFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -439,7 +444,7 @@ TypeFamilyReductionResult<TypeId> subFamilyFn(std::vector<TypeId> typeParams, st
     return numericBinopFamilyFn(typeParams, packParams, ctx, "__sub");
 }
 
-TypeFamilyReductionResult<TypeId> mulFamilyFn(std::vector<TypeId> typeParams, std::vector<TypePackId> packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> mulFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -450,7 +455,7 @@ TypeFamilyReductionResult<TypeId> mulFamilyFn(std::vector<TypeId> typeParams, st
     return numericBinopFamilyFn(typeParams, packParams, ctx, "__mul");
 }
 
-TypeFamilyReductionResult<TypeId> divFamilyFn(std::vector<TypeId> typeParams, std::vector<TypePackId> packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> divFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -461,7 +466,7 @@ TypeFamilyReductionResult<TypeId> divFamilyFn(std::vector<TypeId> typeParams, st
     return numericBinopFamilyFn(typeParams, packParams, ctx, "__div");
 }
 
-TypeFamilyReductionResult<TypeId> idivFamilyFn(std::vector<TypeId> typeParams, std::vector<TypePackId> packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> idivFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -472,7 +477,7 @@ TypeFamilyReductionResult<TypeId> idivFamilyFn(std::vector<TypeId> typeParams, s
     return numericBinopFamilyFn(typeParams, packParams, ctx, "__idiv");
 }
 
-TypeFamilyReductionResult<TypeId> powFamilyFn(std::vector<TypeId> typeParams, std::vector<TypePackId> packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> powFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -483,7 +488,7 @@ TypeFamilyReductionResult<TypeId> powFamilyFn(std::vector<TypeId> typeParams, st
     return numericBinopFamilyFn(typeParams, packParams, ctx, "__pow");
 }
 
-TypeFamilyReductionResult<TypeId> modFamilyFn(std::vector<TypeId> typeParams, std::vector<TypePackId> packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> modFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -494,7 +499,91 @@ TypeFamilyReductionResult<TypeId> modFamilyFn(std::vector<TypeId> typeParams, st
     return numericBinopFamilyFn(typeParams, packParams, ctx, "__mod");
 }
 
-TypeFamilyReductionResult<TypeId> andFamilyFn(std::vector<TypeId> typeParams, std::vector<TypePackId> packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> concatFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+{
+    if (typeParams.size() != 2 || !packParams.empty())
+    {
+        ctx->ice->ice("concat type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId lhsTy = follow(typeParams.at(0));
+    TypeId rhsTy = follow(typeParams.at(1));
+    const NormalizedType* normLhsTy = ctx->normalizer->normalize(lhsTy);
+    const NormalizedType* normRhsTy = ctx->normalizer->normalize(rhsTy);
+
+    // if either failed to normalize, we can't reduce, but know nothing about inhabitance.
+    if (!normLhsTy || !normRhsTy)
+        return {std::nullopt, false, {}, {}};
+
+    // if one of the types is error suppressing, we can reduce to `any` since we should suppress errors in the result of the usage.
+    if (normLhsTy->shouldSuppressErrors() || normRhsTy->shouldSuppressErrors())
+        return {ctx->builtins->anyType, false, {}, {}};
+
+    // if we have a `never`, we can never observe that the numeric operator didn't work.
+    if (is<NeverType>(lhsTy) || is<NeverType>(rhsTy))
+        return {ctx->builtins->neverType, false, {}, {}};
+
+    // if we're concatenating two elements that are either strings or numbers, the result is `string`.
+    if ((normLhsTy->isSubtypeOfString() || normLhsTy->isExactlyNumber()) && (normRhsTy->isSubtypeOfString() || normRhsTy->isExactlyNumber()))
+        return {ctx->builtins->stringType, false, {}, {}};
+
+    // otherwise, check if we need to wait on either type to be further resolved
+    if (isPending(lhsTy, ctx->solver))
+        return {std::nullopt, false, {lhsTy}, {}};
+    else if (isPending(rhsTy, ctx->solver))
+        return {std::nullopt, false, {rhsTy}, {}};
+
+    // findMetatableEntry demands the ability to emit errors, so we must give it
+    // the necessary state to do that, even if we intend to just eat the errors.
+    ErrorVec dummy;
+
+    std::optional<TypeId> mmType = findMetatableEntry(ctx->builtins, dummy, lhsTy, "__concat", Location{});
+    bool reversed = false;
+    if (!mmType)
+    {
+        mmType = findMetatableEntry(ctx->builtins, dummy, rhsTy, "__concat", Location{});
+        reversed = true;
+    }
+
+    if (!mmType)
+        return {std::nullopt, true, {}, {}};
+
+    mmType = follow(*mmType);
+    if (isPending(*mmType, ctx->solver))
+        return {std::nullopt, false, {*mmType}, {}};
+
+    const FunctionType* mmFtv = get<FunctionType>(*mmType);
+    if (!mmFtv)
+        return {std::nullopt, true, {}, {}};
+
+    std::optional<TypeId> instantiatedMmType = instantiate(ctx->builtins, ctx->arena, ctx->limits, ctx->scope, *mmType);
+    if (!instantiatedMmType)
+        return {std::nullopt, true, {}, {}};
+
+    const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
+    if (!instantiatedMmFtv)
+        return {ctx->builtins->errorRecoveryType(), false, {}, {}};
+
+    std::vector<TypeId> inferredArgs;
+    if (!reversed)
+        inferredArgs = {lhsTy, rhsTy};
+    else
+        inferredArgs = {rhsTy, lhsTy};
+
+    TypePackId inferredArgPack = ctx->arena->addTypePack(std::move(inferredArgs));
+    Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
+    if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
+        return {std::nullopt, true, {}, {}}; // occurs check failed
+
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice, ctx->scope};
+    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes).isSubtype) // TODO: is this the right variance?
+        return {std::nullopt, true, {}, {}};
+
+    return {ctx->builtins->stringType, false, {}, {}};
+}
+
+TypeFamilyReductionResult<TypeId> andFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -522,7 +611,7 @@ TypeFamilyReductionResult<TypeId> andFamilyFn(std::vector<TypeId> typeParams, st
     return {overallResult.result, false, std::move(blockedTypes), {}};
 }
 
-TypeFamilyReductionResult<TypeId> orFamilyFn(std::vector<TypeId> typeParams, std::vector<TypePackId> packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> orFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -550,16 +639,196 @@ TypeFamilyReductionResult<TypeId> orFamilyFn(std::vector<TypeId> typeParams, std
     return {overallResult.result, false, std::move(blockedTypes), {}};
 }
 
+static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(
+    const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx, const std::string metamethod)
+{
+
+    if (typeParams.size() != 2 || !packParams.empty())
+    {
+        ctx->ice->ice("encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId lhsTy = follow(typeParams.at(0));
+    TypeId rhsTy = follow(typeParams.at(1));
+    const NormalizedType* normLhsTy = ctx->normalizer->normalize(lhsTy);
+    const NormalizedType* normRhsTy = ctx->normalizer->normalize(rhsTy);
+
+    // if either failed to normalize, we can't reduce, but know nothing about inhabitance.
+    if (!normLhsTy || !normRhsTy)
+        return {std::nullopt, false, {}, {}};
+
+    // if one of the types is error suppressing, we can just go ahead and reduce.
+    if (normLhsTy->shouldSuppressErrors() || normRhsTy->shouldSuppressErrors())
+        return {ctx->builtins->booleanType, false, {}, {}};
+
+    // if we have a `never`, we can never observe that the comparison didn't work.
+    if (is<NeverType>(lhsTy) || is<NeverType>(rhsTy))
+        return {ctx->builtins->booleanType, false, {}, {}};
+
+    // If both types are some strict subset of `string`, we can reduce now.
+    if (normLhsTy->isSubtypeOfString() && normRhsTy->isSubtypeOfString())
+        return {ctx->builtins->booleanType, false, {}, {}};
+
+    // If both types are exactly `number`, we can reduce now.
+    if (normLhsTy->isExactlyNumber() && normRhsTy->isExactlyNumber())
+        return {ctx->builtins->booleanType, false, {}, {}};
+
+    // otherwise, check if we need to wait on either type to be further resolved
+    if (isPending(lhsTy, ctx->solver))
+        return {std::nullopt, false, {lhsTy}, {}};
+    else if (isPending(rhsTy, ctx->solver))
+        return {std::nullopt, false, {rhsTy}, {}};
+
+    // findMetatableEntry demands the ability to emit errors, so we must give it
+    // the necessary state to do that, even if we intend to just eat the errors.
+    ErrorVec dummy;
+
+    std::optional<TypeId> mmType = findMetatableEntry(ctx->builtins, dummy, lhsTy, metamethod, Location{});
+    if (!mmType)
+        mmType = findMetatableEntry(ctx->builtins, dummy, rhsTy, metamethod, Location{});
+
+    if (!mmType)
+        return {std::nullopt, true, {}, {}};
+
+    mmType = follow(*mmType);
+    if (isPending(*mmType, ctx->solver))
+        return {std::nullopt, false, {*mmType}, {}};
+
+    const FunctionType* mmFtv = get<FunctionType>(*mmType);
+    if (!mmFtv)
+        return {std::nullopt, true, {}, {}};
+
+    std::optional<TypeId> instantiatedMmType = instantiate(ctx->builtins, ctx->arena, ctx->limits, ctx->scope, *mmType);
+    if (!instantiatedMmType)
+        return {std::nullopt, true, {}, {}};
+
+    const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
+    if (!instantiatedMmFtv)
+        return {ctx->builtins->errorRecoveryType(), false, {}, {}};
+
+    TypePackId inferredArgPack = ctx->arena->addTypePack({lhsTy, rhsTy});
+    Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
+    if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
+        return {std::nullopt, true, {}, {}}; // occurs check failed
+
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice, ctx->scope};
+    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes).isSubtype) // TODO: is this the right variance?
+        return {std::nullopt, true, {}, {}};
+
+    return {ctx->builtins->booleanType, false, {}, {}};
+}
+
+TypeFamilyReductionResult<TypeId> ltFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+{
+    if (typeParams.size() != 2 || !packParams.empty())
+    {
+        ctx->ice->ice("lt type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    return comparisonFamilyFn(typeParams, packParams, ctx, "__lt");
+}
+
+TypeFamilyReductionResult<TypeId> leFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+{
+    if (typeParams.size() != 2 || !packParams.empty())
+    {
+        ctx->ice->ice("le type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    return comparisonFamilyFn(typeParams, packParams, ctx, "__le");
+}
+
+TypeFamilyReductionResult<TypeId> eqFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+{
+    if (typeParams.size() != 2 || !packParams.empty())
+    {
+        ctx->ice->ice("eq type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId lhsTy = follow(typeParams.at(0));
+    TypeId rhsTy = follow(typeParams.at(1));
+    const NormalizedType* normLhsTy = ctx->normalizer->normalize(lhsTy);
+    const NormalizedType* normRhsTy = ctx->normalizer->normalize(rhsTy);
+
+    // if either failed to normalize, we can't reduce, but know nothing about inhabitance.
+    if (!normLhsTy || !normRhsTy)
+        return {std::nullopt, false, {}, {}};
+
+    // if one of the types is error suppressing, we can just go ahead and reduce.
+    if (normLhsTy->shouldSuppressErrors() || normRhsTy->shouldSuppressErrors())
+        return {ctx->builtins->booleanType, false, {}, {}};
+
+    // if we have a `never`, we can never observe that the comparison didn't work.
+    if (is<NeverType>(lhsTy) || is<NeverType>(rhsTy))
+        return {ctx->builtins->booleanType, false, {}, {}};
+
+    // otherwise, check if we need to wait on either type to be further resolved
+    if (isPending(lhsTy, ctx->solver))
+        return {std::nullopt, false, {lhsTy}, {}};
+    else if (isPending(rhsTy, ctx->solver))
+        return {std::nullopt, false, {rhsTy}, {}};
+
+    // findMetatableEntry demands the ability to emit errors, so we must give it
+    // the necessary state to do that, even if we intend to just eat the errors.
+    ErrorVec dummy;
+
+    std::optional<TypeId> mmType = findMetatableEntry(ctx->builtins, dummy, lhsTy, "__eq", Location{});
+    if (!mmType)
+        mmType = findMetatableEntry(ctx->builtins, dummy, rhsTy, "__eq", Location{});
+
+    // if neither type has a metatable entry for `__eq`, then we'll check for inhabitance of the intersection!
+    if (!mmType && ctx->normalizer->isIntersectionInhabited(lhsTy, rhsTy))
+        return {ctx->builtins->booleanType, false, {}, {}}; // if it's inhabited, everything is okay!
+    else if (!mmType)
+        return {std::nullopt, true, {}, {}}; // if it's not, then this family is irreducible!
+
+    mmType = follow(*mmType);
+    if (isPending(*mmType, ctx->solver))
+        return {std::nullopt, false, {*mmType}, {}};
+
+    const FunctionType* mmFtv = get<FunctionType>(*mmType);
+    if (!mmFtv)
+        return {std::nullopt, true, {}, {}};
+
+    std::optional<TypeId> instantiatedMmType = instantiate(ctx->builtins, ctx->arena, ctx->limits, ctx->scope, *mmType);
+    if (!instantiatedMmType)
+        return {std::nullopt, true, {}, {}};
+
+    const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
+    if (!instantiatedMmFtv)
+        return {ctx->builtins->errorRecoveryType(), false, {}, {}};
+
+    TypePackId inferredArgPack = ctx->arena->addTypePack({lhsTy, rhsTy});
+    Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
+    if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
+        return {std::nullopt, true, {}, {}}; // occurs check failed
+
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice, ctx->scope};
+    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes).isSubtype) // TODO: is this the right variance?
+        return {std::nullopt, true, {}, {}};
+
+    return {ctx->builtins->booleanType, false, {}, {}};
+}
+
 BuiltinTypeFamilies::BuiltinTypeFamilies()
-    : addFamily{"Add", addFamilyFn}
-    , subFamily{"Sub", subFamilyFn}
-    , mulFamily{"Mul", mulFamilyFn}
-    , divFamily{"Div", divFamilyFn}
-    , idivFamily{"FloorDiv", idivFamilyFn}
-    , powFamily{"Exp", powFamilyFn}
-    , modFamily{"Mod", modFamilyFn}
-    , andFamily{"And", andFamilyFn}
-    , orFamily{"Or", orFamilyFn}
+    : notFamily{"not", notFamilyFn}
+    , addFamily{"add", addFamilyFn}
+    , subFamily{"sub", subFamilyFn}
+    , mulFamily{"mul", mulFamilyFn}
+    , divFamily{"div", divFamilyFn}
+    , idivFamily{"idiv", idivFamilyFn}
+    , powFamily{"pow", powFamilyFn}
+    , modFamily{"mod", modFamilyFn}
+    , concatFamily{"concat", concatFamilyFn}
+    , andFamily{"and", andFamilyFn}
+    , orFamily{"or", orFamilyFn}
+    , ltFamily{"lt", ltFamilyFn}
+    , leFamily{"le", leFamilyFn}
+    , eqFamily{"eq", eqFamilyFn}
 {
 }
 
@@ -582,6 +851,11 @@ void BuiltinTypeFamilies::addToScope(NotNull<TypeArena> arena, NotNull<Scope> sc
     scope->exportedTypeBindings[idivFamily.name] = mkBinaryTypeFamily(&idivFamily);
     scope->exportedTypeBindings[powFamily.name] = mkBinaryTypeFamily(&powFamily);
     scope->exportedTypeBindings[modFamily.name] = mkBinaryTypeFamily(&modFamily);
+    scope->exportedTypeBindings[concatFamily.name] = mkBinaryTypeFamily(&concatFamily);
+
+    scope->exportedTypeBindings[ltFamily.name] = mkBinaryTypeFamily(&ltFamily);
+    scope->exportedTypeBindings[leFamily.name] = mkBinaryTypeFamily(&leFamily);
+    scope->exportedTypeBindings[eqFamily.name] = mkBinaryTypeFamily(&eqFamily);
 }
 
 } // namespace Luau

@@ -149,13 +149,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
 could not be converted into
     '((string, string) -> boolean)?'
 caused by:
-  None of the union options are compatible. For example: 
+  None of the union options are compatible. For example:
 Type
     '(number, number) -> boolean'
 could not be converted into
     '(string, string) -> boolean'
 caused by:
-  Argument #1 type is not compatible. 
+  Argument #1 type is not compatible.
 Type 'string' could not be converted into 'number')";
     CHECK_EQ(expected, toString(result.errors[0]));
 }

@@ -397,7 +397,7 @@ local a: XYZ = 3
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     const std::string expected = R"(Type 'number' could not be converted into 'X & Y & Z'
 caused by:
-  Not all intersection parts are compatible. 
+  Not all intersection parts are compatible.
 Type 'number' could not be converted into 'X')";
     CHECK_EQ(expected, toString(result.errors[0]));
 }

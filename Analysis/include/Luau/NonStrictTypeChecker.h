@@ -3,13 +3,17 @@
 
 #include "Luau/Module.h"
 #include "Luau/NotNull.h"
+#include "Luau/DataFlowGraph.h"
 
 namespace Luau
 {
 
 struct BuiltinTypes;
+struct UnifierSharedState;
+struct TypeCheckLimits;
 
+void checkNonStrict(NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> ice, NotNull<UnifierSharedState> unifierState,
+    NotNull<const DataFlowGraph> dfg, NotNull<TypeCheckLimits> limits, const SourceModule& sourceModule, Module* module);
 
-void checkNonStrict(NotNull<BuiltinTypes> builtinTypes, Module* module);
 
 } // namespace Luau

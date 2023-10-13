@@ -1785,13 +1785,13 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
 
     // We know that resultPack does not have a tail, but we don't know if
     // sourcePack is long enough to fill every value.  Replace every remaining
-    // result TypeId with the error recovery type.
+    // result TypeId with `nil`.
 
     while (destIter != destEnd)
     {
         if (isBlocked(*destIter))
         {
-            asMutable(*destIter)->ty.emplace<BoundType>(builtinTypes->errorRecoveryType());
+            asMutable(*destIter)->ty.emplace<BoundType>(builtinTypes->nilType);
             unblock(*destIter, constraint->location);
         }
 
@@ -2013,57 +2013,26 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
     if (get<FreeType>(iteratorTy))
         return block_(iteratorTy);
 
-    auto anyify = [&](auto ty) {
-        Anyification anyify{arena, constraint->scope, builtinTypes, &iceReporter, builtinTypes->anyType, builtinTypes->anyTypePack};
-        std::optional anyified = anyify.substitute(ty);
-        if (!anyified)
-            reportError(CodeTooComplex{}, constraint->location);
-        else
-            unify(constraint->scope, constraint->location, *anyified, ty);
-    };
-
-    auto unknownify = [&](auto ty) {
-        Anyification anyify{arena, constraint->scope, builtinTypes, &iceReporter, builtinTypes->unknownType, builtinTypes->anyTypePack};
-        std::optional anyified = anyify.substitute(ty);
-        if (!anyified)
-            reportError(CodeTooComplex{}, constraint->location);
-        else
-            unify(constraint->scope, constraint->location, *anyified, ty);
-    };
-
-    auto errorify = [&](auto ty) {
-        Anyification anyify{arena, constraint->scope, builtinTypes, &iceReporter, errorRecoveryType(), errorRecoveryTypePack()};
-        std::optional errorified = anyify.substitute(ty);
-        if (!errorified)
-            reportError(CodeTooComplex{}, constraint->location);
-        else
-            unify(constraint->scope, constraint->location, *errorified, ty);
-    };
-
-    auto neverify = [&](auto ty) {
-        Anyification anyify{arena, constraint->scope, builtinTypes, &iceReporter, builtinTypes->neverType, builtinTypes->neverTypePack};
-        std::optional neverified = anyify.substitute(ty);
-        if (!neverified)
-            reportError(CodeTooComplex{}, constraint->location);
-        else
-            unify(constraint->scope, constraint->location, *neverified, ty);
+    auto unpack = [&](TypeId ty) {
+        TypePackId variadic = arena->addTypePack(VariadicTypePack{ty});
+        pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, variadic});
     };
 
     if (get<AnyType>(iteratorTy))
     {
-        anyify(c.variables);
+        unpack(builtinTypes->anyType);
         return true;
     }
 
     if (get<ErrorType>(iteratorTy))
     {
-        errorify(c.variables);
+        unpack(builtinTypes->errorType);
         return true;
     }
 
     if (get<NeverType>(iteratorTy))
     {
-        neverify(c.variables);
+        unpack(builtinTypes->neverType);
         return true;
     }
 
@@ -2088,7 +2057,7 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
             unify(constraint->scope, constraint->location, c.variables, expectedVariablePack);
         }
         else
-            errorify(c.variables);
+            unpack(builtinTypes->errorType);
     }
     else if (std::optional<TypeId> iterFn = findMetatableEntry(builtinTypes, errors, iteratorTy, "__iter", Location{}))
     {
@@ -2128,7 +2097,7 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
                     const TypeId expectedNextTy = arena->addType(FunctionType{nextArgPack, nextRetPack});
                     unify(constraint->scope, constraint->location, *instantiatedNextFn, expectedNextTy);
 
-                    pushConstraint(constraint->scope, constraint->location, PackSubtypeConstraint{c.variables, nextRetPack});
+                    pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, nextRetPack});
                 }
                 else
                 {
@@ -2154,9 +2123,9 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
         LUAU_ASSERT(false);
     }
     else if (auto primitiveTy = get<PrimitiveType>(iteratorTy); primitiveTy && primitiveTy->type == PrimitiveType::Type::Table)
-        unknownify(c.variables);
+        unpack(builtinTypes->unknownType);
     else
-        errorify(c.variables);
+        unpack(builtinTypes->errorType);
 
     return true;
 }

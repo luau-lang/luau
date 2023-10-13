@@ -817,7 +817,7 @@ TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_ty
 could not be converted into
     '{| x: number |}'
 caused by:
-  Property 'x' is not compatible. 
+  Property 'x' is not compatible.
 Type 'number?' could not be converted into 'number' in an invariant context)";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
@@ -1097,6 +1097,42 @@ foo(1 :: any)
     CheckResult result = check(source);
 
     LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "luau_roact_useState_minimization")
+{
+    // We don't expect this test to work on the old solver, but it also does not yet work on the new solver.
+    // So, we can't just put a scoped fast flag here, or it would block CI.
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type BasicStateAction<S> = ((S) -> S) | S
+        type Dispatch<A> = (A) -> ()
+
+        local function useState<S>(
+            initialState: (() -> S) | S
+        ): (S, Dispatch<BasicStateAction<S>>)
+            -- fake impl that obeys types
+            local val = if type(initialState) == "function" then initialState() else initialState
+            return val, function(value)
+                return value
+            end
+        end
+
+        local test, setTest = useState(nil :: string?)
+
+        setTest(nil) -- this line causes the type to be narrowed in the old solver!!!
+
+        local function update(value: string)
+            print(test)
+            setTest(value)
+        end
+
+        update("hello")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

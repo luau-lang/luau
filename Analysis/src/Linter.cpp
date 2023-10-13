@@ -14,6 +14,9 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
+LUAU_FASTFLAGVARIABLE(LuauLintDeprecatedFenv, false)
+LUAU_FASTFLAGVARIABLE(LuauLintTableIndexer, false)
+
 namespace Luau
 {
 
@@ -2085,6 +2088,32 @@ private:
         return true;
     }
 
+    bool visit(AstExprCall* node) override
+    {
+        // getfenv/setfenv are deprecated, however they are still used in some test frameworks and don't have a great general replacement
+        // for now we warn about the deprecation only when they are used with a numeric first argument; this produces fewer warnings and makes use
+        // of getfenv/setfenv a little more localized
+        if (FFlag::LuauLintDeprecatedFenv && !node->self && node->args.size >= 1)
+        {
+            if (AstExprGlobal* fenv = node->func->as<AstExprGlobal>(); fenv && (fenv->name == "getfenv" || fenv->name == "setfenv"))
+            {
+                AstExpr* level = node->args.data[0];
+                std::optional<TypeId> ty = context->getType(level);
+
+                if ((ty && isNumber(*ty)) || level->is<AstExprConstantNumber>())
+                {
+                    // some common uses of getfenv(n) can be replaced by debug.info if the goal is to get the caller's identity
+                    const char* suggestion = (fenv->name == "getfenv") ? "; consider using 'debug.info' instead" : "";
+
+                    emitWarning(
+                        *context, LintWarning::Code_DeprecatedApi, node->location, "Function '%s' is deprecated%s", fenv->name.value, suggestion);
+                }
+            }
+        }
+
+        return true;
+    }
+
     void check(AstExprIndexName* node, TypeId ty)
     {
         if (const ClassType* cty = get<ClassType>(ty))
@@ -2154,16 +2183,50 @@ private:
     {
     }
 
+    bool visit(AstExprUnary* node) override
+    {
+        if (FFlag::LuauLintTableIndexer && node->op == AstExprUnary::Len)
+            checkIndexer(node, node->expr, "#");
+
+        return true;
+    }
+
     bool visit(AstExprCall* node) override
     {
-        AstExprIndexName* func = node->func->as<AstExprIndexName>();
-        if (!func)
-            return true;
+        if (AstExprGlobal* func = node->func->as<AstExprGlobal>())
+        {
+            if (FFlag::LuauLintTableIndexer && func->name == "ipairs" && node->args.size == 1)
+                checkIndexer(node, node->args.data[0], "ipairs");
+        }
+        else if (AstExprIndexName* func = node->func->as<AstExprIndexName>())
+        {
+            if (AstExprGlobal* tablib = func->expr->as<AstExprGlobal>(); tablib && tablib->name == "table")
+                checkTableCall(node, func);
+        }
 
-        AstExprGlobal* tablib = func->expr->as<AstExprGlobal>();
-        if (!tablib || tablib->name != "table")
-            return true;
+        return true;
+    }
 
+    void checkIndexer(AstExpr* node, AstExpr* expr, const char* op)
+    {
+        LUAU_ASSERT(FFlag::LuauLintTableIndexer);
+
+        std::optional<Luau::TypeId> ty = context->getType(expr);
+        if (!ty)
+            return;
+
+        const TableType* tty = get<TableType>(follow(*ty));
+        if (!tty)
+            return;
+
+        if (!tty->indexer && !tty->props.empty() && tty->state != TableState::Generic)
+            emitWarning(*context, LintWarning::Code_TableOperations, node->location, "Using '%s' on a table without an array part is likely a bug", op);
+        else if (tty->indexer && isString(tty->indexer->indexType)) // note: to avoid complexity of subtype tests we just check if the key is a string
+            emitWarning(*context, LintWarning::Code_TableOperations, node->location, "Using '%s' on a table with string keys is likely a bug", op);
+    }
+
+    void checkTableCall(AstExprCall* node, AstExprIndexName* func)
+    {
         AstExpr** args = node->args.data;
 
         if (func->index == "insert" && node->args.size == 2)
@@ -2245,8 +2308,6 @@ private:
                 emitWarning(*context, LintWarning::Code_TableOperations, as->expr->location,
                     "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
         }
-
-        return true;
     }
 
     bool isConstant(AstExpr* expr, double value)

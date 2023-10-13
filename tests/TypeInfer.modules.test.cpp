@@ -412,7 +412,7 @@ local b: B.T = a
     CheckResult result = frontend.check("game/C");
     const std::string expected = R"(Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'
 caused by:
-  Property 'x' is not compatible. 
+  Property 'x' is not compatible.
 Type 'number' could not be converted into 'string' in an invariant context)";
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(expected, toString(result.errors[0]));
@@ -447,7 +447,7 @@ local b: B.T = a
     CheckResult result = frontend.check("game/D");
     const std::string expected = R"(Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'
 caused by:
-  Property 'x' is not compatible. 
+  Property 'x' is not compatible.
 Type 'number' could not be converted into 'string' in an invariant context)";
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(expected, toString(result.errors[0]));

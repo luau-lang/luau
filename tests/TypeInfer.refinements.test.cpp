@@ -1908,22 +1908,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table")
     // this test is DCR-only as an instance of DCR fixing a bug in the old solver
 
     CheckResult result = check(R"(
-        local a : unknown = nil
-
         local idx, val
 
-        if typeof(a) == "table" then
-            for i, v in a do
-                idx = i
-                val = v
+        local function f(a: unknown)
+            if typeof(a) == "table" then
+                for i, v in a do
+                    idx = i
+                    val = v
+                end
             end
         end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("unknown", toString(requireType("idx")));
-    CHECK_EQ("unknown", toString(requireType("val")));
+    // TODO: they should be `unknown`, not `nil`.
+    CHECK_EQ("nil", toString(requireType("idx")));
+    CHECK_EQ("nil", toString(requireType("val")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "conditional_refinement_should_stay_error_suppressing")

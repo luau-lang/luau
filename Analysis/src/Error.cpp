@@ -112,7 +112,7 @@ struct ErrorConverter
             result += "\ncaused by:\n  ";
 
             if (!tm.reason.empty())
-                result += tm.reason + " \n";
+                result += tm.reason + "\n";
 
             result += Luau::toString(*tm.error, TypeErrorToStringOptions{fileResolver});
         }
@@ -521,6 +521,13 @@ struct ErrorConverter
                " depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this "
                "time";
     }
+
+    std::string operator()(const CheckedFunctionCallError& e) const
+    {
+        // TODO: What happens if checkedFunctionName cannot be found??
+        return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" + std::to_string(e.argumentIndex) +
+               ", but got '" + Luau::toString(e.passed) + "'";
+    }
 };
 
 struct InvalidNameChecker
@@ -843,6 +850,12 @@ bool PackWhereClauseNeeded::operator==(const PackWhereClauseNeeded& rhs) const
     return tp == rhs.tp;
 }
 
+bool CheckedFunctionCallError::operator==(const CheckedFunctionCallError& rhs) const
+{
+    return *expected == *rhs.expected && *passed == *rhs.passed && checkedFunctionName == rhs.checkedFunctionName &&
+           argumentIndex == rhs.argumentIndex;
+}
+
 std::string toString(const TypeError& error)
 {
     return toString(error, TypeErrorToStringOptions{});
@@ -1009,6 +1022,11 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
         e.ty = clone(e.ty);
     else if constexpr (std::is_same_v<T, PackWhereClauseNeeded>)
         e.tp = clone(e.tp);
+    else if constexpr (std::is_same_v<T, CheckedFunctionCallError>)
+    {
+        e.expected = clone(e.expected);
+        e.passed = clone(e.passed);
+    }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

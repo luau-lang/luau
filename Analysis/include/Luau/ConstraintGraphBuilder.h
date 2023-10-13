@@ -69,6 +69,12 @@ struct ConstraintGraphBuilder
     // This is null when the CGB is initially constructed.
     Scope* rootScope;
 
+    // During constraint generation, we only populate the Scope::bindings
+    // property for annotated symbols.  Unannotated symbols must be handled in a
+    // postprocessing step because we do not yet have the full breadcrumb graph.
+    // We queue them up here.
+    std::vector<std::tuple<Scope*, Symbol, BreadcrumbId>> inferredBindings;
+
     // Constraints that go straight to the solver.
     std::vector<ConstraintPtr> constraints;
 
@@ -205,8 +211,6 @@ private:
     Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
     std::tuple<TypeId, TypeId, RefinementId> checkBinary(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
 
-    std::vector<TypeId> checkLValues(const ScopePtr& scope, AstArray<AstExpr*> exprs);
-
     TypeId checkLValue(const ScopePtr& scope, AstExpr* expr);
     TypeId checkLValue(const ScopePtr& scope, AstExprLocal* local);
     TypeId checkLValue(const ScopePtr& scope, AstExprGlobal* global);
@@ -302,6 +306,8 @@ private:
      * initial scan of the AST and note what globals are defined.
      */
     void prepopulateGlobalScope(const ScopePtr& globalScope, AstStatBlock* program);
+
+    void fillInInferredBindings(const ScopePtr& globalScope, AstStatBlock* block);
 
     /** Given a function type annotation, return a vector describing the expected types of the calls to the function
      *  For example, calling a function with annotation ((number) -> string & ((string) -> number))

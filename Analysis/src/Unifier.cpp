@@ -12,7 +12,6 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Type.h"
 #include "Luau/VisitType.h"
-#include "Luau/TypeFamily.h"
 
 #include <algorithm>
 
@@ -453,32 +452,10 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         blockedTypes.push_back(superTy);
 
     if (log.get<TypeFamilyInstanceType>(superTy))
-    {
-        // FIXME: we should be be ICEing here because the old unifier is legacy and should not interact with type families at all.
-        // Unfortunately, there are, at the time of writing, still uses of the old unifier under local type inference.
-        TypeCheckLimits limits;
-        reduceFamilies(
-            superTy, location, TypeFamilyContext{NotNull(types), builtinTypes, scope, normalizer, NotNull{sharedState.iceHandler}, NotNull{&limits}});
-        superTy = log.follow(superTy);
-    }
+        ice("Unexpected TypeFamilyInstanceType superTy");
 
     if (log.get<TypeFamilyInstanceType>(subTy))
-    {
-        // FIXME: we should be be ICEing here because the old unifier is legacy and should not interact with type families at all.
-        // Unfortunately, there are, at the time of writing, still uses of the old unifier under local type inference.
-        TypeCheckLimits limits;
-        reduceFamilies(
-            subTy, location, TypeFamilyContext{NotNull(types), builtinTypes, scope, normalizer, NotNull{sharedState.iceHandler}, NotNull{&limits}});
-        subTy = log.follow(subTy);
-    }
-
-    // If we can't reduce the families down and we still have type family types
-    // here, we are stuck. Nothing meaningful can be done here. We don't wish to
-    // report an error, either.
-    if (log.get<TypeFamilyInstanceType>(superTy) || log.get<TypeFamilyInstanceType>(subTy))
-    {
-        return;
-    }
+        ice("Unexpected TypeFamilyInstanceType subTy");
 
     auto superFree = log.getMutable<FreeType>(superTy);
     auto subFree = log.getMutable<FreeType>(subTy);

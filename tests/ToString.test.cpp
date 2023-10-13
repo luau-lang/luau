@@ -943,13 +943,13 @@ R"(Type
 could not be converted into
     '{ a: number, b: string, c: { d: number } }'
 caused by:
-  Property 'c' is not compatible. 
+  Property 'c' is not compatible.
 Type
     '{| d: string |}'
 could not be converted into
     '{ d: number }'
 caused by:
-  Property 'd' is not compatible. 
+  Property 'd' is not compatible.
 Type 'string' could not be converted into 'number' in an invariant context)"
         :
 R"(Type
@@ -957,13 +957,13 @@ R"(Type
 could not be converted into
     '{| a: number, b: string, c: {| d: number |} |}'
 caused by:
-  Property 'c' is not compatible. 
+  Property 'c' is not compatible.
 Type
     '{ d: string }'
 could not be converted into
     '{| d: number |}'
 caused by:
-  Property 'd' is not compatible. 
+  Property 'd' is not compatible.
 Type 'string' could not be converted into 'number' in an invariant context)";
     //clang-format on
     //
