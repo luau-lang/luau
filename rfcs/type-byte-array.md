@@ -44,14 +44,23 @@ Returns the buffer data as a string.
 
 Returns the size of the buffer.
 
-`buffer.copy(target_buffer: buffer, target_offset: number, source_buffer: buffer, source_offset: number, count: number) -> ()`
+`buffer.copy(target_buffer: buffer, target_offset: number, source_buffer: buffer, source_offset: number, count: number?): ()`
 
 Copy 'count' bytes from 'source_buffer' starting at offset 'source_offset' into the 'target_buffer' at 'target_offset'.
 
 It is possible for 'source_buffer' and 'target_buffer' to be the same. 
 Copying an overlapping region inside the same buffer acts as if the source region is copied into a temporary buffer and then that buffer is copied over to the target.
 
-Offsets and 'count' have to be numbers, each number is cast to an integer in an implementation-defined way.
+If 'source_offset' is nil or is omitted, it defaults to 0.
+If 'count' is 'nil' or is omitted, the whole 'source_buffer' data starting from 'source_offset' is taken.
+
+`buffer.fill(b: buffer, offset: number, value: number, count: number?): ()`
+
+Set 'count' bytes in the buffer starting from specified offset to 'value'.
+
+'value' is converted to unsigned integer using `bit32` library semantics, lower 8 bits are taken from the resulting integer to use as the byte value.
+
+If 'count' is 'nil' or is omitted, all bytes after the specified offset are set.
 
 `buffer.readi8(b: buffer, offset: number): number`
 
@@ -92,7 +101,7 @@ When reading the value of any NaN representation, implementation can (but not re
 
 Used to write data to the buffer by converting the number into the type specified by the argument and reinterpreting it as individual bytes.
 
-Conversion to integer numbers performs a truncation of the number value. Results of converting special number values (inf/nan) is platform-specific.
+Conversion to integer numbers performs a truncation of the number value. Results of converting special number values (inf/nan) are platform-specific.
 Conversion to unsigned numbers uses `bit32` library semantics.
 
 Floating-point numbers are stored in a format specified by IEEE 754.
@@ -105,13 +114,15 @@ Used to read a string of length 'count' from the buffer at specified offset.
 
 Used to write data from a string into the buffer at specified offset.
 
-If an optional 'count' is specified, only 'count' bytes are taken from the string. 'count' cannot be larger that the string length.
+If an optional 'count' is specified, only 'count' bytes are taken from the string. 'count' cannot be larger than the string length.
 
 ---
 
 All offsets start at 0 (not to be confused with indices that start at 1 in Luau tables).
 This choice is made for both performance reasons (no need to subtract 1) and for compatibility with data formats that often describe field positions using offsets.
 While there is a way to solve the performance problem using luajit trick where table array part is allocated from index 0, this would mean that data in the buffer has 1 extra byte and this complicates the bounds checking.
+
+Offsets and 'count' numbers are cast to an integer in an implementation-defined way.
 
 Read and write operations for relevant types are little endian as it is the most common use case, and conversion is often trivial to do manually.
 
