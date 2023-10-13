@@ -1169,10 +1169,10 @@ TEST_CASE("AllocApi")
     StateRef globalState(lua_newstate(limitedRealloc, &ud), lua_close);
     lua_State* L = globalState.get();
 
-    void* ud_check = nullptr;
-    bool allocfIsSet = lua_getallocf(L, &ud_check) == limitedRealloc;
+    void* udCheck = nullptr;
+    bool allocfIsSet = lua_getallocf(L, &udCheck) == limitedRealloc;
     CHECK(allocfIsSet);
-    CHECK(ud_check == &ud);
+    CHECK(udCheck == &ud);
 }
 
 #if !LUA_USE_LONGJMP
