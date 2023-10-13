@@ -374,7 +374,7 @@ public:
     AstExprFunction(const Location& location, const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks,
         AstLocal* self, const AstArray<AstLocal*>& args, bool vararg, const Location& varargLocation, AstStatBlock* body, size_t functionDepth,
         const AstName& debugname, const std::optional<AstTypeList>& returnAnnotation = {}, AstTypePack* varargAnnotation = nullptr,
-        bool hasEnd = false, const std::optional<Location>& argLocation = std::nullopt);
+        bool DEPRECATED_hasEnd = false, const std::optional<Location>& argLocation = std::nullopt);
 
     void visit(AstVisitor* visitor) override;
 
@@ -393,7 +393,8 @@ public:
 
     AstName debugname;
 
-    bool hasEnd = false;
+    // TODO clip with FFlag::LuauClipExtraHasEndProps
+    bool DEPRECATED_hasEnd = false;
     std::optional<Location> argLocation;
 };
 
@@ -539,6 +540,17 @@ public:
     void visit(AstVisitor* visitor) override;
 
     AstArray<AstStat*> body;
+
+    /* Indicates whether or not this block has been terminated in a
+     * syntactically valid way.
+     *
+     * This is usually but not always done with the 'end' keyword.  AstStatIf
+     * and AstStatRepeat are the two main exceptions to this.
+     *
+     * The 'then' clause of an if statement can properly be closed by the
+     * keywords 'else' or 'elseif'.  A 'repeat' loop's body is closed with the
+     * 'until' keyword.
+     */
     bool hasEnd = false;
 };
 
@@ -548,7 +560,7 @@ public:
     LUAU_RTTI(AstStatIf)
 
     AstStatIf(const Location& location, AstExpr* condition, AstStatBlock* thenbody, AstStat* elsebody, const std::optional<Location>& thenLocation,
-        const std::optional<Location>& elseLocation, bool hasEnd);
+        const std::optional<Location>& elseLocation, bool DEPRECATED_hasEnd);
 
     void visit(AstVisitor* visitor) override;
 
@@ -561,7 +573,8 @@ public:
     // Active for 'elseif' as well
     std::optional<Location> elseLocation;
 
-    bool hasEnd = false;
+    // TODO clip with FFlag::LuauClipExtraHasEndProps
+    bool DEPRECATED_hasEnd = false;
 };
 
 class AstStatWhile : public AstStat
@@ -569,7 +582,7 @@ class AstStatWhile : public AstStat
 public:
     LUAU_RTTI(AstStatWhile)
 
-    AstStatWhile(const Location& location, AstExpr* condition, AstStatBlock* body, bool hasDo, const Location& doLocation, bool hasEnd);
+    AstStatWhile(const Location& location, AstExpr* condition, AstStatBlock* body, bool hasDo, const Location& doLocation, bool DEPRECATED_hasEnd);
 
     void visit(AstVisitor* visitor) override;
 
@@ -579,7 +592,8 @@ public:
     bool hasDo = false;
     Location doLocation;
 
-    bool hasEnd = false;
+    // TODO clip with FFlag::LuauClipExtraHasEndProps
+    bool DEPRECATED_hasEnd = false;
 };
 
 class AstStatRepeat : public AstStat
@@ -587,14 +601,14 @@ class AstStatRepeat : public AstStat
 public:
     LUAU_RTTI(AstStatRepeat)
 
-    AstStatRepeat(const Location& location, AstExpr* condition, AstStatBlock* body, bool hasUntil);
+    AstStatRepeat(const Location& location, AstExpr* condition, AstStatBlock* body, bool DEPRECATED_hasUntil);
 
     void visit(AstVisitor* visitor) override;
 
     AstExpr* condition;
     AstStatBlock* body;
 
-    bool hasUntil = false;
+    bool DEPRECATED_hasUntil = false;
 };
 
 class AstStatBreak : public AstStat
@@ -663,7 +677,7 @@ public:
     LUAU_RTTI(AstStatFor)
 
     AstStatFor(const Location& location, AstLocal* var, AstExpr* from, AstExpr* to, AstExpr* step, AstStatBlock* body, bool hasDo,
-        const Location& doLocation, bool hasEnd);
+        const Location& doLocation, bool DEPRECATED_hasEnd);
 
     void visit(AstVisitor* visitor) override;
 
@@ -676,7 +690,8 @@ public:
     bool hasDo = false;
     Location doLocation;
 
-    bool hasEnd = false;
+    // TODO clip with FFlag::LuauClipExtraHasEndProps
+    bool DEPRECATED_hasEnd = false;
 };
 
 class AstStatForIn : public AstStat
@@ -685,7 +700,7 @@ public:
     LUAU_RTTI(AstStatForIn)
 
     AstStatForIn(const Location& location, const AstArray<AstLocal*>& vars, const AstArray<AstExpr*>& values, AstStatBlock* body, bool hasIn,
-        const Location& inLocation, bool hasDo, const Location& doLocation, bool hasEnd);
+        const Location& inLocation, bool hasDo, const Location& doLocation, bool DEPRECATED_hasEnd);
 
     void visit(AstVisitor* visitor) override;
 
@@ -699,7 +714,8 @@ public:
     bool hasDo = false;
     Location doLocation;
 
-    bool hasEnd = false;
+    // TODO clip with FFlag::LuauClipExtraHasEndProps
+    bool DEPRECATED_hasEnd = false;
 };
 
 class AstStatAssign : public AstStat

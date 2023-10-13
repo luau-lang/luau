@@ -1502,6 +1502,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiUntyped")
     }
 
     LintResult result = lint(R"(
+-- TODO
 return function ()
     print(table.getn({}))
     table.foreach({}, function() end)
@@ -1512,6 +1513,35 @@ end
     REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Member 'table.getn' is deprecated, use '#' instead");
     CHECK_EQ(result.warnings[1].text, "Member 'table.foreach' is deprecated");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiFenv")
+{
+    ScopedFastFlag sff("LuauLintDeprecatedFenv", true);
+
+    LintResult result = lint(R"(
+local f, g, h = ...
+
+getfenv(1)
+getfenv(f :: () -> ())
+getfenv(g :: number)
+getfenv(h :: any)
+
+setfenv(1, {})
+setfenv(f :: () -> (), {})
+setfenv(g :: number, {})
+setfenv(h :: any, {})
+)");
+
+    REQUIRE(4 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Function 'getfenv' is deprecated; consider using 'debug.info' instead");
+    CHECK_EQ(result.warnings[0].location.begin.line + 1, 4);
+    CHECK_EQ(result.warnings[1].text, "Function 'getfenv' is deprecated; consider using 'debug.info' instead");
+    CHECK_EQ(result.warnings[1].location.begin.line + 1, 6);
+    CHECK_EQ(result.warnings[2].text, "Function 'setfenv' is deprecated");
+    CHECK_EQ(result.warnings[2].location.begin.line + 1, 9);
+    CHECK_EQ(result.warnings[3].text, "Function 'setfenv' is deprecated");
+    CHECK_EQ(result.warnings[3].location.begin.line + 1, 11);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "TableOperations")
@@ -1557,6 +1587,62 @@ table.create(42, {} :: {})
         result.warnings[8].text, "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
     CHECK_EQ(
         result.warnings[9].text, "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "TableOperationsIndexer")
+{
+    ScopedFastFlag sff("LuauLintTableIndexer", true);
+
+    LintResult result = lint(R"(
+local t1 = {} -- ok: empty
+local t2 = {1, 2} -- ok: array
+local t3 = { a = 1, b = 2 } -- not ok: dictionary
+local t4: {[number]: number} = {} -- ok: array
+local t5: {[string]: number} = {} -- not ok: dictionary
+local t6: typeof(setmetatable({1, 2}, {})) = {} -- ok: table with metatable
+local t7: string = "hello" -- ok: string
+local t8: {number} | {n: number} = {} -- ok: union
+
+-- not ok
+print(#t3)
+print(#t5)
+ipairs(t5)
+
+-- disabled
+-- ipairs(t3) adds indexer to t3, silencing error on #t3
+
+-- ok
+print(#t1)
+print(#t2)
+print(#t4)
+print(#t6)
+print(#t7)
+print(#t8)
+
+ipairs(t1)
+ipairs(t2)
+ipairs(t4)
+ipairs(t6)
+ipairs(t7)
+ipairs(t8)
+
+-- ok, subtle: text is a string here implicitly, but the type annotation isn't available
+-- type checker assigns a type of generic table with the 'sub' member; we don't emit warnings on generic tables
+-- to avoid generating a false positive here
+function _impliedstring(element, text)
+        for i = 1, #text do
+                element:sendText(text:sub(i, i))
+        end
+end
+)");
+
+    REQUIRE(3 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].location.begin.line + 1, 12);
+    CHECK_EQ(result.warnings[0].text, "Using '#' on a table without an array part is likely a bug");
+    CHECK_EQ(result.warnings[1].location.begin.line + 1, 13);
+    CHECK_EQ(result.warnings[1].text, "Using '#' on a table with string keys is likely a bug");
+    CHECK_EQ(result.warnings[2].location.begin.line + 1, 14);
+    CHECK_EQ(result.warnings[2].text, "Using 'ipairs' on a table with string keys is likely a bug");
 }
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditions")

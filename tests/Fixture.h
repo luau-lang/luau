@@ -65,7 +65,7 @@ struct Fixture
 
     // Throws Luau::ParseErrors if the parse fails.
     AstStatBlock* parse(const std::string& source, const ParseOptions& parseOptions = {});
-    CheckResult check(Mode mode, std::string source);
+    CheckResult check(Mode mode, const std::string& source);
     CheckResult check(const std::string& source);
 
     LintResult lint(const std::string& source, const std::optional<LintOptions>& lintOptions = {});

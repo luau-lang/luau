@@ -200,6 +200,9 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "WhereClauseNeeded { " << toString(err.ty) << " }";
     else if constexpr (std::is_same_v<T, PackWhereClauseNeeded>)
         stream << "PackWhereClauseNeeded { " << toString(err.tp) << " }";
+    else if constexpr (std::is_same_v<T, CheckedFunctionCallError>)
+        stream << "CheckedFunctionCallError { expected = '" << toString(err.expected) << "', passed = '" << toString(err.passed)
+               << "', checkedFunctionName = " << err.checkedFunctionName << ", argumentIndex = " << std::to_string(err.argumentIndex) << " }";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

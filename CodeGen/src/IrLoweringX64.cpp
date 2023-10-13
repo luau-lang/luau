@@ -31,9 +31,6 @@ IrLoweringX64::IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, 
     , valueTracker(function)
     , exitHandlerMap(~0u)
 {
-    // In order to allocate registers during lowering, we need to know where instruction results are last used
-    updateLastUseLocations(function);
-
     valueTracker.setRestoreCallack(&regs, [](void* context, IrInst& inst) {
         ((IrRegAllocX64*)context)->restore(inst, false);
     });

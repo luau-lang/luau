@@ -15,6 +15,7 @@
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauParseDeclareClassIndexer, false)
+LUAU_FASTFLAGVARIABLE(LuauClipExtraHasEndProps, false)
 LUAU_FASTFLAG(LuauFloorDivision)
 LUAU_FASTFLAG(LuauCheckedFunctionSyntax)
 
@@ -371,16 +372,18 @@ AstStat* Parser::parseIf()
     AstStat* elsebody = nullptr;
     Location end = start;
     std::optional<Location> elseLocation;
-    bool hasEnd = false;
+    bool DEPRECATED_hasEnd = false;
 
     if (lexer.current().type == Lexeme::ReservedElseif)
     {
+        if (FFlag::LuauClipExtraHasEndProps)
+            thenbody->hasEnd = true;
         unsigned int recursionCounterOld = recursionCounter;
         incrementRecursionCounter("elseif");
         elseLocation = lexer.current().location;
         elsebody = parseIf();
         end = elsebody->location;
-        hasEnd = elsebody->as<AstStatIf>()->hasEnd;
+        DEPRECATED_hasEnd = elsebody->as<AstStatIf>()->DEPRECATED_hasEnd;
         recursionCounter = recursionCounterOld;
     }
     else
@@ -389,6 +392,8 @@ AstStat* Parser::parseIf()
 
         if (lexer.current().type == Lexeme::ReservedElse)
         {
+            if (FFlag::LuauClipExtraHasEndProps)
+                thenbody->hasEnd = true;
             elseLocation = lexer.current().location;
             matchThenElse = lexer.current();
             nextLexeme();
@@ -399,10 +404,22 @@ AstStat* Parser::parseIf()
 
         end = lexer.current().location;
 
-        hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchThenElse);
+        bool hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchThenElse);
+        DEPRECATED_hasEnd = hasEnd;
+
+        if (FFlag::LuauClipExtraHasEndProps)
+        {
+            if (elsebody)
+            {
+                if (AstStatBlock* elseBlock = elsebody->as<AstStatBlock>())
+                    elseBlock->hasEnd = hasEnd;
+            }
+            else
+                thenbody->hasEnd = hasEnd;
+        }
     }
 
-    return allocator.alloc<AstStatIf>(Location(start, end), cond, thenbody, elsebody, thenLocation, elseLocation, hasEnd);
+    return allocator.alloc<AstStatIf>(Location(start, end), cond, thenbody, elsebody, thenLocation, elseLocation, DEPRECATED_hasEnd);
 }
 
 // while exp do block end
@@ -426,6 +443,8 @@ AstStat* Parser::parseWhile()
     Location end = lexer.current().location;
 
     bool hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchDo);
+    if (FFlag::LuauClipExtraHasEndProps)
+        body->hasEnd = hasEnd;
 
     return allocator.alloc<AstStatWhile>(Location(start, end), cond, body, hasDo, matchDo.location, hasEnd);
 }
@@ -447,6 +466,8 @@ AstStat* Parser::parseRepeat()
     functionStack.back().loopDepth--;
 
     bool hasUntil = expectMatchEndAndConsume(Lexeme::ReservedUntil, matchRepeat);
+    if (FFlag::LuauClipExtraHasEndProps)
+        body->hasEnd = hasUntil;
 
     AstExpr* cond = parseExpr();
 
@@ -543,6 +564,8 @@ AstStat* Parser::parseFor()
         Location end = lexer.current().location;
 
         bool hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchDo);
+        if (FFlag::LuauClipExtraHasEndProps)
+            body->hasEnd = hasEnd;
 
         return allocator.alloc<AstStatFor>(Location(start, end), var, from, to, step, body, hasDo, matchDo.location, hasEnd);
     }
@@ -585,6 +608,8 @@ AstStat* Parser::parseFor()
         Location end = lexer.current().location;
 
         bool hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchDo);
+        if (FFlag::LuauClipExtraHasEndProps)
+            body->hasEnd = hasEnd;
 
         return allocator.alloc<AstStatForIn>(
             Location(start, end), copy(vars), copy(values), body, hasIn, inLocation, hasDo, matchDo.location, hasEnd);
@@ -1074,6 +1099,8 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
     Location end = lexer.current().location;
 
     bool hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchFunction);
+    if (FFlag::LuauClipExtraHasEndProps)
+        body->hasEnd = hasEnd;
 
     return {allocator.alloc<AstExprFunction>(Location(start, end), generics, genericPacks, self, vars, vararg, varargLocation, body,
                 functionStack.size(), debugname, typelist, varargAnnotation, hasEnd, argLocation),

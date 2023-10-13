@@ -263,13 +263,18 @@ TEST_CASE_FIXTURE(Fixture, "cannot_indirectly_compare_types_that_do_not_have_a_m
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    GenericError* gen = get<GenericError>(result.errors[0]);
-    REQUIRE(gen != nullptr);
-
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK(gen->message == "Types 'a' and 'b' cannot be compared with < because neither type has a metatable");
+    {
+        UninhabitedTypeFamily* utf = get<UninhabitedTypeFamily>(result.errors[0]);
+        REQUIRE(utf);
+        REQUIRE_EQ(toString(utf->ty), "lt<a, b>");
+    }
     else
+    {
+        GenericError* gen = get<GenericError>(result.errors[0]);
+        REQUIRE(gen != nullptr);
         REQUIRE_EQ(gen->message, "Type a cannot be compared with < because it has no metatable");
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_indirectly_compare_types_that_do_not_offer_overloaded_ordering_operators")
@@ -288,13 +293,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_indirectly_compare_types_that_do_not_
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    GenericError* gen = get<GenericError>(result.errors[0]);
-    REQUIRE(gen != nullptr);
-
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK(gen->message == "Types 'M' and 'M' cannot be compared with < because neither type's metatable has a '__lt' metamethod");
+    {
+        UninhabitedTypeFamily* utf = get<UninhabitedTypeFamily>(result.errors[0]);
+        REQUIRE(utf);
+        REQUIRE_EQ(toString(utf->ty), "lt<M, M>");
+    }
     else
+    {
+        GenericError* gen = get<GenericError>(result.errors[0]);
+        REQUIRE(gen != nullptr);
         REQUIRE_EQ(gen->message, "Table M does not offer metamethod __lt");
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_compare_tables_that_do_not_have_the_same_metatable")
@@ -727,13 +737,18 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    GenericError* ge = get<GenericError>(result.errors[0]);
-    REQUIRE(ge);
-
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("Types 'boolean' and 'boolean' cannot be compared with relational operator <", ge->message);
+    {
+        UninhabitedTypeFamily* utf = get<UninhabitedTypeFamily>(result.errors[0]);
+        REQUIRE(utf);
+        REQUIRE_EQ(toString(utf->ty), "lt<boolean, boolean>");
+    }
     else
+    {
+        GenericError* ge = get<GenericError>(result.errors[0]);
+        REQUIRE(ge);
         CHECK_EQ("Type 'boolean' cannot be compared with relational operator <", ge->message);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operators2")
@@ -746,12 +761,18 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    GenericError* ge = get<GenericError>(result.errors[0]);
-    REQUIRE(ge);
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("Types 'number | string' and 'number | string' cannot be compared with relational operator <", ge->message);
+    {
+        UninhabitedTypeFamily* utf = get<UninhabitedTypeFamily>(result.errors[0]);
+        REQUIRE(utf);
+        REQUIRE_EQ(toString(utf->ty), "lt<number | string, number | string>");
+    }
     else
+    {
+        GenericError* ge = get<GenericError>(result.errors[0]);
+        REQUIRE(ge);
         CHECK_EQ("Type 'number | string' cannot be compared with relational operator <", ge->message);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "cli_38355_recursive_union")
@@ -915,7 +936,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_any_in_all_modes_when_lhs_is_unknown")
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> Add<a, b>");
+        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> add<a, b>");
     }
     else
     {
@@ -947,7 +968,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_subtraction")
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> Sub<a, b>");
+        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> sub<a, b>");
     }
     else
     {
@@ -967,7 +988,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_multiplication")
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> Mul<a, b>");
+        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> mul<a, b>");
     }
     else
     {
@@ -987,7 +1008,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_division")
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> Div<a, b>");
+        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> div<a, b>");
     }
     else
     {
@@ -1009,7 +1030,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_floor_division")
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> FloorDiv<a, b>");
+        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> idiv<a, b>");
     }
     else
     {
@@ -1029,7 +1050,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_exponentiation")
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> Exp<a, b>");
+        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> pow<a, b>");
     }
     else
     {
@@ -1049,12 +1070,32 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_modulo")
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> Mod<a, b>");
+        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> mod<a, b>");
     }
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(1, result);
         CHECK_EQ(toString(result.errors[0]), "Unknown type used in % operation; consider adding a type annotation to 'x'");
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_concat")
+{
+    CheckResult result = check(Mode::Strict, R"(
+        local function f(x, y)
+            return x .. y
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK(toString(requireType("f")) == "<a, b>(a, b) -> concat<a, b>");
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ(toString(result.errors[0]), "Unknown type used in .. operation; consider adding a type annotation to 'x'");
     }
 }
 

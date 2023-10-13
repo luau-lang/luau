@@ -93,7 +93,7 @@ struct TypeFamily
     std::string name;
 
     /// The reducer function for the type family.
-    std::function<TypeFamilyReductionResult<TypeId>(std::vector<TypeId>, std::vector<TypePackId>, NotNull<TypeFamilyContext>)> reducer;
+    std::function<TypeFamilyReductionResult<TypeId>(const std::vector<TypeId>&, const std::vector<TypePackId>&, NotNull<TypeFamilyContext>)> reducer;
 };
 
 /// Represents a type function that may be applied to map a series of types and
@@ -105,7 +105,7 @@ struct TypePackFamily
     std::string name;
 
     /// The reducer function for the type pack family.
-    std::function<TypeFamilyReductionResult<TypePackId>(std::vector<TypeId>, std::vector<TypePackId>, NotNull<TypeFamilyContext>)> reducer;
+    std::function<TypeFamilyReductionResult<TypePackId>(const std::vector<TypeId>&, const std::vector<TypePackId>&, NotNull<TypeFamilyContext>)> reducer;
 };
 
 struct FamilyGraphReductionResult
@@ -149,6 +149,8 @@ struct BuiltinTypeFamilies
 {
     BuiltinTypeFamilies();
 
+    TypeFamily notFamily;
+
     TypeFamily addFamily;
     TypeFamily subFamily;
     TypeFamily mulFamily;
@@ -157,8 +159,14 @@ struct BuiltinTypeFamilies
     TypeFamily powFamily;
     TypeFamily modFamily;
 
+    TypeFamily concatFamily;
+
     TypeFamily andFamily;
     TypeFamily orFamily;
+
+    TypeFamily ltFamily;
+    TypeFamily leFamily;
+    TypeFamily eqFamily;
 
     void addToScope(NotNull<TypeArena> arena, NotNull<Scope> scope) const;
 };

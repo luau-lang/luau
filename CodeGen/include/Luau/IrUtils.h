@@ -271,7 +271,7 @@ std::vector<uint32_t> getSortedBlockOrder(IrFunction& function);
 
 // Returns first non-dead block that comes after block at index 'i' in the sorted blocks array
 // 'dummy' block is returned if the end of array was reached
-IrBlock& getNextBlock(IrFunction& function, std::vector<uint32_t>& sortedBlocks, IrBlock& dummy, size_t i);
+IrBlock& getNextBlock(IrFunction& function, const std::vector<uint32_t>& sortedBlocks, IrBlock& dummy, size_t i);
 
 } // namespace CodeGen
 } // namespace Luau

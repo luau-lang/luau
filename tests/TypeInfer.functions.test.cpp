@@ -1373,7 +1373,7 @@ local b: B = a
 could not be converted into
     '(number, string) -> string'
 caused by:
-  Argument #2 type is not compatible. 
+  Argument #2 type is not compatible.
 Type 'string' could not be converted into 'number')";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
@@ -1414,7 +1414,7 @@ local b: B = a
 could not be converted into
     '(number, number) -> number'
 caused by:
-  Return type is not compatible. 
+  Return type is not compatible.
 Type 'string' could not be converted into 'number')";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
@@ -1435,7 +1435,7 @@ local b: B = a
 could not be converted into
     '(number, number) -> (number, boolean)'
 caused by:
-  Return #2 type is not compatible. 
+  Return #2 type is not compatible.
 Type 'string' could not be converted into 'boolean')";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
@@ -1565,13 +1565,13 @@ end
 could not be converted into
     '((number) -> number)?'
 caused by:
-  None of the union options are compatible. For example: 
+  None of the union options are compatible. For example:
 Type
     '(string) -> string'
 could not be converted into
     '(number) -> number'
 caused by:
-  Argument #1 type is not compatible. 
+  Argument #1 type is not compatible.
 Type 'number' could not be converted into 'string')");
     CHECK_EQ(toString(result.errors[1]), R"(Type 'string' could not be converted into 'number')");
 }
@@ -2042,7 +2042,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "param_1_and_2_both_takes_the_same_generic_bu
 
     const std::string expected = R"(Type '{ x: number }' could not be converted into 'vec2?'
 caused by:
-  None of the union options are compatible. For example: 
+  None of the union options are compatible. For example:
 Table type '{ x: number }' not compatible with type 'vec2' because the former is missing field 'y')";
     CHECK_EQ(expected, toString(result.errors[0]));
     CHECK_EQ("Type 'vec2' could not be converted into 'number'", toString(result.errors[1]));

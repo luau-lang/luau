@@ -249,9 +249,6 @@ IrLoweringA64::IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, 
     , valueTracker(function)
     , exitHandlerMap(~0u)
 {
-    // In order to allocate registers during lowering, we need to know where instruction results are last used
-    updateLastUseLocations(function);
-
     valueTracker.setRestoreCallack(this, [](void* context, IrInst& inst) {
         IrLoweringA64* self = static_cast<IrLoweringA64*>(context);
         self->regs.restoreReg(self->build, inst);
@@ -2167,6 +2164,8 @@ AddressA64 IrLoweringA64::tempAddr(IrOp op, int offset)
 {
     // This is needed to tighten the bounds checks in the VmConst case below
     LUAU_ASSERT(offset % 4 == 0);
+    // Full encoded range is wider depending on the load size, but this assertion helps establish a smaller guaranteed working range [0..4096)
+    LUAU_ASSERT(offset >= 0 && unsigned(offset / 4) <= AssemblyBuilderA64::kMaxImmediate);
 
     if (op.kind == IrOpKind::VmReg)
         return mem(rBase, vmRegOp(op) * sizeof(TValue) + offset);

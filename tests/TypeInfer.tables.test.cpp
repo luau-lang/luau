@@ -2119,7 +2119,7 @@ local b: B = a
     LUAU_REQUIRE_ERRORS(result);
     const std::string expected = R"(Type 'A' could not be converted into 'B'
 caused by:
-  Property 'y' is not compatible. 
+  Property 'y' is not compatible.
 Type 'number' could not be converted into 'string' in an invariant context)";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
@@ -2140,10 +2140,10 @@ local b: B = a
     LUAU_REQUIRE_ERRORS(result);
     const std::string expected = R"(Type 'A' could not be converted into 'B'
 caused by:
-  Property 'b' is not compatible. 
+  Property 'b' is not compatible.
 Type 'AS' could not be converted into 'BS'
 caused by:
-  Property 'y' is not compatible. 
+  Property 'y' is not compatible.
 Type 'number' could not be converted into 'string' in an invariant context)";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
@@ -2167,7 +2167,7 @@ caused by:
 could not be converted into
     '{ x: number, y: number }'
 caused by:
-  Property 'y' is not compatible. 
+  Property 'y' is not compatible.
 Type 'string' could not be converted into 'number' in an invariant context)";
     const std::string expected2 = R"(Type 'b2' could not be converted into 'a2'
 caused by:
@@ -2176,7 +2176,7 @@ caused by:
 could not be converted into
     '{ __call: <a>(a) -> () }'
 caused by:
-  Property '__call' is not compatible. 
+  Property '__call' is not compatible.
 Type
     '<a, b>(a, b) -> ()'
 could not be converted into
@@ -2188,7 +2188,7 @@ caused by:
 could not be converted into
     '{ __call: <a>(a) -> () }'
 caused by:
-  Property '__call' is not compatible. 
+  Property '__call' is not compatible.
 Type
     '<a, b>(a, b) -> ()'
 could not be converted into
@@ -2209,7 +2209,7 @@ caused by:
 could not be converted into
     '{ __call: <a>(a) -> () }'
 caused by:
-  Property '__call' is not compatible. 
+  Property '__call' is not compatible.
 Type
     '(a, b) -> ()'
 could not be converted into
@@ -2231,7 +2231,7 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_key")
     LUAU_REQUIRE_ERRORS(result);
     const std::string expected = R"(Type 'A' could not be converted into 'B'
 caused by:
-  Property '[indexer key]' is not compatible. 
+  Property '[indexer key]' is not compatible.
 Type 'number' could not be converted into 'string' in an invariant context)";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
@@ -2249,7 +2249,7 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_value")
     LUAU_REQUIRE_ERRORS(result);
     const std::string expected = R"(Type 'A' could not be converted into 'B'
 caused by:
-  Property '[indexer value]' is not compatible. 
+  Property '[indexer value]' is not compatible.
 Type 'number' could not be converted into 'string' in an invariant context)";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
@@ -2287,7 +2287,7 @@ local y: number = tmp.p.y
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     const std::string expected = R"(Type 'tmp' could not be converted into 'HasSuper'
 caused by:
-  Property 'p' is not compatible. 
+  Property 'p' is not compatible.
 Table type '{ x: number, y: number }' not compatible with type 'Super' because the former has extra field 'y')";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
@@ -3399,7 +3399,7 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_
     const std::string expected1 =
         R"(Type 'string' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
 caused by:
-  The former's metatable does not satisfy the requirements. 
+  The former's metatable does not satisfy the requirements.
 Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
     CHECK_EQ(expected1, toString(result.errors[0]));
 
@@ -3407,7 +3407,7 @@ Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutel
     const std::string expected2 =
         R"(Type '"bar"' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
 caused by:
-  The former's metatable does not satisfy the requirements. 
+  The former's metatable does not satisfy the requirements.
 Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
     CHECK_EQ(expected2, toString(result.errors[1]));
 
@@ -3416,10 +3416,10 @@ Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutel
 could not be converted into
     't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
 caused by:
-  Not all union options are compatible. 
+  Not all union options are compatible.
 Type '"bar"' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
 caused by:
-  The former's metatable does not satisfy the requirements. 
+  The former's metatable does not satisfy the requirements.
 Table type 'typeof(string)' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
     CHECK_EQ(expected3, toString(result.errors[2]));
 }
@@ -3450,7 +3450,7 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_
     const std::string expected =
         R"(Type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}' could not be converted into 'string'
 caused by:
-  The former's metatable does not satisfy the requirements. 
+  The former's metatable does not satisfy the requirements.
 Table type 'typeof(string)' not compatible with type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(expected, toString(result.errors[0]));

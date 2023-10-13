@@ -1038,4 +1038,45 @@ TEST_IS_NOT_SUBTYPE(idx(builtinTypes->stringType, builtinTypes->numberType), tbl
 TEST_IS_SUBTYPE(tbl({{"X", builtinTypes->numberType}, {"Y", builtinTypes->numberType}}), tbl({{"X", builtinTypes->numberType}}));
 TEST_IS_NOT_SUBTYPE(tbl({{"X", builtinTypes->numberType}}), tbl({{"X", builtinTypes->numberType}, {"Y", builtinTypes->numberType}}));
 
+TEST_CASE_FIXTURE(SubtypeFixture, "interior_tests_are_cached")
+{
+    TypeId tableA = tbl({{"X", builtinTypes->numberType}, {"Y", builtinTypes->numberType}});
+    TypeId tableB = tbl({{"X", builtinTypes->optionalNumberType}, {"Y", builtinTypes->optionalNumberType}});
+
+    CHECK_IS_NOT_SUBTYPE(tableA, tableB);
+
+    const SubtypingResult* cachedResult = subtyping.peekCache().find({builtinTypes->numberType, builtinTypes->optionalNumberType});
+    REQUIRE(cachedResult);
+
+    CHECK(cachedResult->isSubtype);
+
+    cachedResult = subtyping.peekCache().find({tableA, tableB});
+    REQUIRE(cachedResult);
+
+    CHECK(!cachedResult->isSubtype);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "results_that_are_contingent_on_generics_are_not_cached")
+{
+    // <T>(T) -> T <: (number) -> number
+    CHECK_IS_SUBTYPE(genericTToTType, numberToNumberType);
+
+    CHECK(subtyping.peekCache().empty());
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "dont_cache_tests_involving_cycles")
+{
+    TypeId tableA = arena.addType(BlockedType{});
+    TypeId tableA2 = tbl({{"self", tableA}});
+    asMutable(tableA)->ty.emplace<BoundType>(tableA2);
+
+    TypeId tableB = arena.addType(BlockedType{});
+    TypeId tableB2 = tbl({{"self", tableB}});
+    asMutable(tableB)->ty.emplace<BoundType>(tableB2);
+
+    CHECK_IS_SUBTYPE(tableA, tableB);
+
+    CHECK(!subtyping.peekCache().find({tableA, tableB}));
+}
+
 TEST_SUITE_END();

@@ -20,7 +20,7 @@ struct IrFunction;
 
 void updateUseCounts(IrFunction& function);
 
-void updateLastUseLocations(IrFunction& function);
+void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& sortedBlocks);
 
 uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t startInstIdx);
 
