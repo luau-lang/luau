@@ -1432,3 +1432,11 @@ size_t lua_totalbytes(lua_State* L, int category)
     api_check(L, category < LUA_MEMORY_CATEGORIES);
     return category < 0 ? L->global->totalbytes : L->global->memcatbytes[category];
 }
+
+lua_Alloc lua_getallocf(lua_State* L, void** ud)
+{
+    lua_Alloc f = L->global->frealloc;
+    if (ud)
+        *ud = L->global->ud;
+    return f;
+}

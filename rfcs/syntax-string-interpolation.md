@@ -1,5 +1,7 @@
 # String interpolation
 
+**Status**: Implemented
+
 ## Summary
 
 New string interpolation syntax.

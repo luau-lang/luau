@@ -1,5 +1,7 @@
 # Deprecate table.getn/foreach/foreachi
 
+**Status**: Implemented
+
 ## Summary
 
 Mark table.getn/foreach/foreachi as deprecated
