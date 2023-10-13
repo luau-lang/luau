@@ -54,31 +54,47 @@ void updateUseCounts(IrFunction& function)
     }
 }
 
-void updateLastUseLocations(IrFunction& function)
+void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& sortedBlocks)
 {
     std::vector<IrInst>& instructions = function.instructions;
 
+#if defined(LUAU_ASSERTENABLED)
+    // Last use assignements should be called only once
     for (IrInst& inst : instructions)
-        inst.lastUse = 0;
+        LUAU_ASSERT(inst.lastUse == 0);
+#endif
 
-    for (size_t instIdx = 0; instIdx < instructions.size(); ++instIdx)
+    for (size_t i = 0; i < sortedBlocks.size(); ++i)
     {
-        IrInst& inst = instructions[instIdx];
+        uint32_t blockIndex = sortedBlocks[i];
+        IrBlock& block = function.blocks[blockIndex];
 
-        auto checkOp = [&](IrOp op) {
-            if (op.kind == IrOpKind::Inst)
-                instructions[op.index].lastUse = uint32_t(instIdx);
-        };
-
-        if (isPseudo(inst.cmd))
+        if (block.kind == IrBlockKind::Dead)
             continue;
 
-        checkOp(inst.a);
-        checkOp(inst.b);
-        checkOp(inst.c);
-        checkOp(inst.d);
-        checkOp(inst.e);
-        checkOp(inst.f);
+        LUAU_ASSERT(block.start != ~0u);
+        LUAU_ASSERT(block.finish != ~0u);
+
+        for (uint32_t instIdx = block.start; instIdx <= block.finish; instIdx++)
+        {
+            LUAU_ASSERT(instIdx < function.instructions.size());
+            IrInst& inst = instructions[instIdx];
+
+            auto checkOp = [&](IrOp op) {
+                if (op.kind == IrOpKind::Inst)
+                    instructions[op.index].lastUse = uint32_t(instIdx);
+            };
+
+            if (isPseudo(inst.cmd))
+                continue;
+
+            checkOp(inst.a);
+            checkOp(inst.b);
+            checkOp(inst.c);
+            checkOp(inst.d);
+            checkOp(inst.e);
+            checkOp(inst.f);
+        }
     }
 }
 

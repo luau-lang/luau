@@ -30,7 +30,7 @@ LUAU_FASTFLAGVARIABLE(LuauCompileFenvNoBuiltinFold, false)
 LUAU_FASTFLAGVARIABLE(LuauCompileTopCold, false)
 
 LUAU_FASTFLAG(LuauFloorDivision)
-LUAU_FASTFLAGVARIABLE(LuauCompileFixContinueValidation, false)
+LUAU_FASTFLAGVARIABLE(LuauCompileFixContinueValidation2, false)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileContinueCloseUpvals, false)
 
@@ -276,7 +276,7 @@ struct Compiler
         f.upvals = upvals;
 
         // record information for inlining
-        if (options.optimizationLevel >= 2 && !func->vararg && !getfenvUsed && !setfenvUsed)
+        if (options.optimizationLevel >= 2 && !func->vararg && !func->self && !getfenvUsed && !setfenvUsed)
         {
             f.canInline = true;
             f.stackSize = stackSize;
@@ -665,14 +665,6 @@ struct Compiler
             else
             {
                 locstants[arg.local] = arg.value;
-
-                if (FFlag::LuauCompileFixContinueValidation)
-                {
-                    // Mark that optimization skipped allocation of this local
-                    Local& l = locals[arg.local];
-                    LUAU_ASSERT(!l.skipped);
-                    l.skipped = true;
-                }
             }
         }
 
@@ -721,23 +713,8 @@ struct Compiler
         {
             AstLocal* local = func->args.data[i];
 
-            if (FFlag::LuauCompileFixContinueValidation)
-            {
-                if (Constant* var = locstants.find(local); var && var->type != Constant::Type_Unknown)
-                {
-                    var->type = Constant::Type_Unknown;
-
-                    // Restore local allocation skip flag as well
-                    Local& l = locals[local];
-                    LUAU_ASSERT(l.skipped);
-                    l.skipped = false;
-                }
-            }
-            else
-            {
-                if (Constant* var = locstants.find(local))
-                    var->type = Constant::Type_Unknown;
-            }
+            if (Constant* var = locstants.find(local))
+                var->type = Constant::Type_Unknown;
         }
 
         foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldMathK, func->body);
@@ -2510,12 +2487,18 @@ struct Compiler
             return;
         }
 
-        AstStat* continueStatement = extractStatContinue(stat->thenbody);
+        AstStatContinue* continueStatement = extractStatContinue(stat->thenbody);
 
         // Optimization: body is a "continue" statement with no "else" => we can directly continue in "then" case
         if (!stat->elsebody && continueStatement != nullptr && !areLocalsCaptured(loops.back().localOffsetContinue))
         {
-            if (loops.back().untilCondition)
+            if (FFlag::LuauCompileFixContinueValidation2)
+            {
+                // track continue statement for repeat..until validation (validateContinueUntil)
+                if (!loops.back().continueUsed)
+                    loops.back().continueUsed = continueStatement;
+            }
+            else if (loops.back().untilCondition)
                 validateContinueUntil(continueStatement, loops.back().untilCondition);
 
             // fallthrough = proceed with the loop body as usual
@@ -2577,7 +2560,7 @@ struct Compiler
         size_t oldJumps = loopJumps.size();
         size_t oldLocals = localStack.size();
 
-        loops.push_back({oldLocals, oldLocals, nullptr});
+        loops.push_back({oldLocals, oldLocals, nullptr, nullptr});
         hasLoops = true;
 
         size_t loopLabel = bytecode.emitLabel();
@@ -2613,7 +2596,7 @@ struct Compiler
         size_t oldJumps = loopJumps.size();
         size_t oldLocals = localStack.size();
 
-        loops.push_back({oldLocals, oldLocals, stat->condition});
+        loops.push_back({oldLocals, oldLocals, stat->condition, nullptr});
         hasLoops = true;
 
         size_t loopLabel = bytecode.emitLabel();
@@ -2623,6 +2606,8 @@ struct Compiler
         AstStatBlock* body = stat->body;
 
         RegScope rs(this);
+
+        bool continueValidated = false;
 
         for (size_t i = 0; i < body->body.size; ++i)
         {
@@ -2634,6 +2619,14 @@ struct Compiler
             // expression that continue will jump to.
             if (FFlag::LuauCompileContinueCloseUpvals)
                 loops.back().localOffsetContinue = localStack.size();
+
+            // if continue was called from this statement, then any local defined after this in the loop body should not be accessed by until condition
+            // it is sufficient to check this condition once, as if this holds for the first continue, it must hold for all subsequent continues.
+            if (FFlag::LuauCompileFixContinueValidation2 && loops.back().continueUsed && !continueValidated)
+            {
+                validateContinueUntil(loops.back().continueUsed, stat->condition, body, i + 1);
+                continueValidated = true;
+            }
         }
 
         size_t contLabel = bytecode.emitLabel();
@@ -2762,19 +2755,7 @@ struct Compiler
     {
         // Optimization: we don't need to allocate and assign const locals, since their uses will be constant-folded
         if (options.optimizationLevel >= 1 && options.debugLevel <= 1 && areLocalsRedundant(stat))
-        {
-            if (FFlag::LuauCompileFixContinueValidation)
-            {
-                // Mark that optimization skipped allocation of this local
-                for (AstLocal* local : stat->vars)
-                {
-                    Local& l = locals[local];
-                    l.skipped = true;
-                }
-            }
-
             return;
-        }
 
         // Optimization: for 1-1 local assignments, we can reuse the register *if* neither local is mutated
         if (options.optimizationLevel >= 1 && stat->vars.size == 1 && stat->values.size == 1)
@@ -2863,7 +2844,7 @@ struct Compiler
         size_t oldLocals = localStack.size();
         size_t oldJumps = loopJumps.size();
 
-        loops.push_back({oldLocals, oldLocals, nullptr});
+        loops.push_back({oldLocals, oldLocals, nullptr, nullptr});
 
         for (int iv = 0; iv < tripCount; ++iv)
         {
@@ -2914,7 +2895,7 @@ struct Compiler
         size_t oldLocals = localStack.size();
         size_t oldJumps = loopJumps.size();
 
-        loops.push_back({oldLocals, oldLocals, nullptr});
+        loops.push_back({oldLocals, oldLocals, nullptr, nullptr});
         hasLoops = true;
 
         // register layout: limit, step, index
@@ -2979,7 +2960,7 @@ struct Compiler
         size_t oldLocals = localStack.size();
         size_t oldJumps = loopJumps.size();
 
-        loops.push_back({oldLocals, oldLocals, nullptr});
+        loops.push_back({oldLocals, oldLocals, nullptr, nullptr});
         hasLoops = true;
 
         // register layout: generator, state, index, variables...
@@ -3391,7 +3372,13 @@ struct Compiler
         {
             LUAU_ASSERT(!loops.empty());
 
-            if (loops.back().untilCondition)
+            if (FFlag::LuauCompileFixContinueValidation2)
+            {
+                // track continue statement for repeat..until validation (validateContinueUntil)
+                if (!loops.back().continueUsed)
+                    loops.back().continueUsed = stat;
+            }
+            else if (loops.back().untilCondition)
                 validateContinueUntil(stat, loops.back().untilCondition);
 
             // before continuing, we need to close all local variables that were captured in closures since loop start
@@ -3477,7 +3464,34 @@ struct Compiler
 
     void validateContinueUntil(AstStat* cont, AstExpr* condition)
     {
+        LUAU_ASSERT(!FFlag::LuauCompileFixContinueValidation2);
         UndefinedLocalVisitor visitor(this);
+        condition->visit(&visitor);
+
+        if (visitor.undef)
+            CompileError::raise(condition->location,
+                "Local %s used in the repeat..until condition is undefined because continue statement on line %d jumps over it",
+                visitor.undef->name.value, cont->location.begin.line + 1);
+    }
+
+    void validateContinueUntil(AstStat* cont, AstExpr* condition, AstStatBlock* body, size_t start)
+    {
+        LUAU_ASSERT(FFlag::LuauCompileFixContinueValidation2);
+        UndefinedLocalVisitor visitor(this);
+
+        for (size_t i = start; i < body->body.size; ++i)
+        {
+            if (AstStatLocal* stat = body->body.data[i]->as<AstStatLocal>())
+            {
+                for (AstLocal* local : stat->vars)
+                    visitor.locals.insert(local);
+            }
+            else if (AstStatLocalFunction* stat = body->body.data[i]->as<AstStatLocalFunction>())
+            {
+                visitor.locals.insert(stat->name);
+            }
+        }
+
         condition->visit(&visitor);
 
         if (visitor.undef)
@@ -3702,18 +3716,24 @@ struct Compiler
         UndefinedLocalVisitor(Compiler* self)
             : self(self)
             , undef(nullptr)
+            , locals(nullptr)
         {
         }
 
         void check(AstLocal* local)
         {
-            Local& l = self->locals[local];
+            if (FFlag::LuauCompileFixContinueValidation2)
+            {
+                if (!undef && locals.contains(local))
+                    undef = local;
+            }
+            else
+            {
+                Local& l = self->locals[local];
 
-            if (FFlag::LuauCompileFixContinueValidation && l.skipped)
-                return;
-
-            if (!l.allocated && !undef)
-                undef = local;
+                if (!l.allocated && !undef)
+                    undef = local;
+            }
         }
 
         bool visit(AstExprLocal* node) override
@@ -3742,6 +3762,7 @@ struct Compiler
 
         Compiler* self;
         AstLocal* undef;
+        DenseHashSet<AstLocal*> locals;
     };
 
     struct ConstUpvalueVisitor : AstVisitor
@@ -3837,7 +3858,6 @@ struct Compiler
         uint8_t reg = 0;
         bool allocated = false;
         bool captured = false;
-        bool skipped = false;
         uint32_t debugpc = 0;
     };
 
@@ -3858,7 +3878,10 @@ struct Compiler
         size_t localOffset;
         size_t localOffsetContinue;
 
+        // TODO: Remove with LuauCompileFixContinueValidation2
         AstExpr* untilCondition;
+
+        AstStatContinue* continueUsed;
     };
 
     struct InlineArg

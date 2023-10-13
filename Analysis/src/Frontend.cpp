@@ -15,6 +15,7 @@
 #include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
 #include "Luau/TypeChecker2.h"
+#include "Luau/NonStrictTypeChecker.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Variant.h"
 
@@ -37,7 +38,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauReadWriteProperties, false)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckLimitControls, false)
 LUAU_FASTFLAGVARIABLE(CorrectEarlyReturnInMarkDirty, false)
-LUAU_FASTFLAGVARIABLE(DebugLuauNewNonStrictMode, false)
 
 namespace Luau
 {
@@ -1212,17 +1212,17 @@ const SourceModule* Frontend::getSourceModule(const ModuleName& moduleName) cons
     return const_cast<Frontend*>(this)->getSourceModule(moduleName);
 }
 
-ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle>& requireCycles, NotNull<BuiltinTypes> builtinTypes,
+ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<RequireCycle>& requireCycles, NotNull<BuiltinTypes> builtinTypes,
     NotNull<InternalErrorReporter> iceHandler, NotNull<ModuleResolver> moduleResolver, NotNull<FileResolver> fileResolver,
     const ScopePtr& parentScope, std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope, FrontendOptions options,
     TypeCheckLimits limits)
 {
     const bool recordJsonLog = FFlag::DebugLuauLogSolverToJson;
-    return check(sourceModule, requireCycles, builtinTypes, iceHandler, moduleResolver, fileResolver, parentScope, std::move(prepareModuleScope),
-        options, limits, recordJsonLog);
+    return check(sourceModule, mode, requireCycles, builtinTypes, iceHandler, moduleResolver, fileResolver, parentScope,
+        std::move(prepareModuleScope), options, limits, recordJsonLog);
 }
 
-ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle>& requireCycles, NotNull<BuiltinTypes> builtinTypes,
+ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<RequireCycle>& requireCycles, NotNull<BuiltinTypes> builtinTypes,
     NotNull<InternalErrorReporter> iceHandler, NotNull<ModuleResolver> moduleResolver, NotNull<FileResolver> fileResolver,
     const ScopePtr& parentScope, std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope, FrontendOptions options,
     TypeCheckLimits limits, bool recordJsonLog)
@@ -1303,7 +1303,10 @@ ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle
     }
     else
     {
-        Luau::check(builtinTypes, NotNull{&unifierState}, NotNull{&limits}, logger.get(), sourceModule, result.get());
+        if (mode == Mode::Nonstrict)
+            Luau::checkNonStrict(builtinTypes, iceHandler, NotNull{&unifierState}, NotNull{&dfg}, NotNull{&limits}, sourceModule, result.get());
+        else
+            Luau::check(builtinTypes, NotNull{&unifierState}, NotNull{&limits}, logger.get(), sourceModule, result.get());
     }
 
     // It would be nice if we could freeze the arenas before doing type
@@ -1332,7 +1335,7 @@ ModulePtr check(const SourceModule& sourceModule, const std::vector<RequireCycle
 ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vector<RequireCycle> requireCycles,
     std::optional<ScopePtr> environmentScope, bool forAutocomplete, bool recordJsonLog, TypeCheckLimits typeCheckLimits)
 {
-    if (FFlag::DebugLuauDeferredConstraintResolution && mode == Mode::Strict)
+    if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         auto prepareModuleScopeWrap = [this, forAutocomplete](const ModuleName& name, const ScopePtr& scope) {
             if (prepareModuleScope)
@@ -1341,7 +1344,7 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vect
 
         try
         {
-            return Luau::check(sourceModule, requireCycles, builtinTypes, NotNull{&iceHandler},
+            return Luau::check(sourceModule, mode, requireCycles, builtinTypes, NotNull{&iceHandler},
                 NotNull{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver}, NotNull{fileResolver},
                 environmentScope ? *environmentScope : globals.globalScope, prepareModuleScopeWrap, options, typeCheckLimits, recordJsonLog);
         }

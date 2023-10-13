@@ -196,6 +196,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Transpiler.h
     Analysis/include/Luau/TxnLog.h
     Analysis/include/Luau/Type.h
+    Analysis/include/Luau/TypePairHash.h
     Analysis/include/Luau/TypeArena.h
     Analysis/include/Luau/TypeAttach.h
     Analysis/include/Luau/TypeChecker2.h
@@ -441,6 +442,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.test.cpp
         tests/TypeInfer.tryUnify.test.cpp
         tests/TypeInfer.typePacks.cpp
+        tests/TypeInfer.typestates.test.cpp
         tests/TypeInfer.unionTypes.test.cpp
         tests/TypeInfer.unknownnever.test.cpp
         tests/TypePack.test.cpp

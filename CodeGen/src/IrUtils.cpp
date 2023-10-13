@@ -886,7 +886,7 @@ std::vector<uint32_t> getSortedBlockOrder(IrFunction& function)
     return sortedBlocks;
 }
 
-IrBlock& getNextBlock(IrFunction& function, std::vector<uint32_t>& sortedBlocks, IrBlock& dummy, size_t i)
+IrBlock& getNextBlock(IrFunction& function, const std::vector<uint32_t>& sortedBlocks, IrBlock& dummy, size_t i)
 {
     for (size_t j = i + 1; j < sortedBlocks.size(); ++j)
     {

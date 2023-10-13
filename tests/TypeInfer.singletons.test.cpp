@@ -327,7 +327,7 @@ local a: Animal = { tag = 'cat', cafood = 'something' }
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     const std::string expected = R"(Type 'a' could not be converted into 'Cat | Dog'
 caused by:
-  None of the union options are compatible. For example: 
+  None of the union options are compatible. For example:
 Table type 'a' not compatible with type 'Cat' because the former is missing field 'catfood')";
     CHECK_EQ(expected, toString(result.errors[0]));
 }
@@ -345,7 +345,7 @@ local a: Result = { success = false, result = 'something' }
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     const std::string expected = R"(Type 'a' could not be converted into 'Bad | Good'
 caused by:
-  None of the union options are compatible. For example: 
+  None of the union options are compatible. For example:
 Table type 'a' not compatible with type 'Bad' because the former is missing field 'error')";
     CHECK_EQ(expected, toString(result.errors[0]));
 }

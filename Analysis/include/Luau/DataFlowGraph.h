@@ -120,12 +120,12 @@ private:
     BreadcrumbId visitExpr(DfgScope* scope, AstExprInterpString* i);
     BreadcrumbId visitExpr(DfgScope* scope, AstExprError* error);
 
-    void visitLValue(DfgScope* scope, AstExpr* e);
-    void visitLValue(DfgScope* scope, AstExprLocal* l);
-    void visitLValue(DfgScope* scope, AstExprGlobal* g);
-    void visitLValue(DfgScope* scope, AstExprIndexName* i);
-    void visitLValue(DfgScope* scope, AstExprIndexExpr* i);
-    void visitLValue(DfgScope* scope, AstExprError* e);
+    void visitLValue(DfgScope* scope, AstExpr* e, BreadcrumbId bc);
+    void visitLValue(DfgScope* scope, AstExprLocal* l, BreadcrumbId bc);
+    void visitLValue(DfgScope* scope, AstExprGlobal* g, BreadcrumbId bc);
+    void visitLValue(DfgScope* scope, AstExprIndexName* i, BreadcrumbId bc);
+    void visitLValue(DfgScope* scope, AstExprIndexExpr* i, BreadcrumbId bc);
+    void visitLValue(DfgScope* scope, AstExprError* e, BreadcrumbId bc);
 
     void visitType(DfgScope* scope, AstType* t);
     void visitType(DfgScope* scope, AstTypeReference* r);

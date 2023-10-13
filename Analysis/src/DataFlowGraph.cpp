@@ -1,9 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/DataFlowGraph.h"
 
+#include "Luau/Ast.h"
 #include "Luau/Breadcrumb.h"
 #include "Luau/Error.h"
 #include "Luau/Refinement.h"
+
+#include <algorithm>
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
@@ -278,11 +281,12 @@ void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatForIn* f)
 
 void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatAssign* a)
 {
-    for (AstExpr* r : a->values)
-        visitExpr(scope, r);
-
-    for (AstExpr* l : a->vars)
-        visitLValue(scope, l);
+    for (size_t i = 0; i < std::max(a->vars.size, a->values.size); ++i)
+    {
+        BreadcrumbId bc = i < a->values.size ? visitExpr(scope, a->values.data[i]) : breadcrumbs->add(nullptr, defs->freshCell());
+        if (i < a->vars.size)
+            visitLValue(scope, a->vars.data[i], bc);
+    }
 }
 
 void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatCompoundAssign* c)
@@ -291,12 +295,11 @@ void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatCompoundAssign* c)
     // but the `c->var` only has one pointer address, so we need to come up with a way to store both.
     // For now, it's not important because we don't have type states, but it is going to be important, e.g.
     //
-    // local a = 5 -- a[1]
-    // a += 5      -- a[2] = a[1] + 5
+    // local a = 5 -- a-1
+    // a += 5      -- a-2 = a-1 + 5
     //
     // We can't just visit `c->var` as a rvalue and then separately traverse `c->var` as an lvalue, since that's O(n^2).
-    visitLValue(scope, c->var);
-    visitExpr(scope, c->value);
+    visitLValue(scope, c->var, visitExpr(scope, c->value));
 }
 
 void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatFunction* f)
@@ -311,17 +314,14 @@ void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatFunction* f)
     //
     // which is evidence that references to variables must be a phi node of all possible definitions,
     // but for bug compatibility, we'll assume the same thing here.
-    visitLValue(scope, f->name);
-    visitExpr(scope, f->func);
+    visitLValue(scope, f->name, visitExpr(scope, f->func));
 }
 
 void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatLocalFunction* l)
 {
-    BreadcrumbId bc = breadcrumbs->add(nullptr, defs->freshCell());
+    BreadcrumbId bc = visitExpr(scope, l->func);
     graph.localBreadcrumbs[l->name] = bc;
     scope->bindings[l->name] = bc;
-
-    visitExpr(scope, l->func);
 }
 
 void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatTypeAlias* t)
@@ -423,7 +423,7 @@ BreadcrumbId DataFlowGraphBuilder::visitExpr(DfgScope* scope, AstExprLocal* l)
 {
     NullableBreadcrumbId breadcrumb = scope->lookup(l->local);
     if (!breadcrumb)
-        handle->ice("AstExprLocal came before its declaration?");
+        handle->ice("DFG: AstExprLocal came before its declaration?");
 
     graph.astBreadcrumbs[l] = breadcrumb;
     return NotNull{breadcrumb};
@@ -591,79 +591,67 @@ BreadcrumbId DataFlowGraphBuilder::visitExpr(DfgScope* scope, AstExprError* erro
     return breadcrumbs->add(nullptr, defs->freshCell());
 }
 
-void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExpr* e)
+void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExpr* e, BreadcrumbId bc)
 {
     if (auto l = e->as<AstExprLocal>())
-        return visitLValue(scope, l);
+        return visitLValue(scope, l, bc);
     else if (auto g = e->as<AstExprGlobal>())
-        return visitLValue(scope, g);
+        return visitLValue(scope, g, bc);
     else if (auto i = e->as<AstExprIndexName>())
-        return visitLValue(scope, i);
+        return visitLValue(scope, i, bc);
     else if (auto i = e->as<AstExprIndexExpr>())
-        return visitLValue(scope, i);
+        return visitLValue(scope, i, bc);
     else if (auto error = e->as<AstExprError>())
-    {
-        visitExpr(scope, error); // TODO: is this right?
-        return;
-    }
+        return visitLValue(scope, error, bc);
     else
         handle->ice("Unknown AstExpr in DataFlowGraphBuilder::visitLValue");
 }
 
-void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprLocal* l)
+void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprLocal* l, BreadcrumbId bc)
 {
-    // Bug compatibility: we don't support type states yet, so we need to do this.
-    NullableBreadcrumbId bc = scope->lookup(l->local);
-    LUAU_ASSERT(bc);
-
-    graph.astBreadcrumbs[l] = bc;
-    scope->bindings[l->local] = bc;
+    // In order to avoid alias tracking, we need to clip the reference to the parent breadcrumb
+    // as well as the def that was about to be assigned onto this lvalue. However, we want to
+    // copy the metadata so that refinements can be consistent.
+    BreadcrumbId updated = breadcrumbs->add(scope->lookup(l->local), defs->freshCell(), bc->metadata);
+    graph.astBreadcrumbs[l] = updated;
+    scope->bindings[l->local] = updated;
 }
 
-void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprGlobal* g)
+void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprGlobal* g, BreadcrumbId bc)
 {
-    // Bug compatibility: we don't support type states yet, so we need to do this.
-    NullableBreadcrumbId bc = scope->lookup(g->name);
-    if (!bc)
-        bc = breadcrumbs->add(nullptr, defs->freshCell());
-
-    graph.astBreadcrumbs[g] = bc;
-    scope->bindings[g->name] = bc;
+    // In order to avoid alias tracking, we need to clip the reference to the parent breadcrumb
+    // as well as the def that was about to be assigned onto this lvalue. However, we want to
+    // copy the metadata so that refinements can be consistent.
+    BreadcrumbId updated = breadcrumbs->add(scope->lookup(g->name), defs->freshCell(), bc->metadata);
+    graph.astBreadcrumbs[g] = updated;
+    scope->bindings[g->name] = updated;
 }
 
-void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprIndexName* i)
+void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprIndexName* i, BreadcrumbId bc)
 {
-    // Bug compatibility: we don't support type states yet, so we need to do this.
     BreadcrumbId parentBreadcrumb = visitExpr(scope, i->expr);
 
-    std::string key = i->index.value;
-    NullableBreadcrumbId propBreadcrumb = scope->lookup(parentBreadcrumb->def, key);
-    if (!propBreadcrumb)
-    {
-        propBreadcrumb = breadcrumbs->emplace<FieldMetadata>(parentBreadcrumb, defs->freshCell(), key);
-        moduleScope->props[parentBreadcrumb->def][key] = propBreadcrumb;
-    }
-
-    graph.astBreadcrumbs[i] = propBreadcrumb;
+    BreadcrumbId updated = breadcrumbs->add(scope->props[parentBreadcrumb->def][i->index.value], defs->freshCell(), bc->metadata);
+    graph.astBreadcrumbs[i] = updated;
+    scope->props[parentBreadcrumb->def][i->index.value] = updated;
 }
 
-void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprIndexExpr* i)
+void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprIndexExpr* i, BreadcrumbId bc)
 {
     BreadcrumbId parentBreadcrumb = visitExpr(scope, i->expr);
     visitExpr(scope, i->index);
 
     if (auto string = i->index->as<AstExprConstantString>())
     {
-        std::string key{string->value.data, string->value.size};
-        NullableBreadcrumbId propBreadcrumb = scope->lookup(parentBreadcrumb->def, key);
-        if (!propBreadcrumb)
-        {
-            propBreadcrumb = breadcrumbs->add(parentBreadcrumb, parentBreadcrumb->def);
-            moduleScope->props[parentBreadcrumb->def][key] = propBreadcrumb;
-        }
-
-        graph.astBreadcrumbs[i] = propBreadcrumb;
+        BreadcrumbId updated = breadcrumbs->add(scope->props[parentBreadcrumb->def][string->value.data], defs->freshCell(), bc->metadata);
+        graph.astBreadcrumbs[i] = updated;
+        scope->props[parentBreadcrumb->def][string->value.data] = updated;
     }
+}
+
+void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprError* error, BreadcrumbId bc)
+{
+    visitExpr(scope, error);
 }
 
 void DataFlowGraphBuilder::visitType(DfgScope* scope, AstType* t)

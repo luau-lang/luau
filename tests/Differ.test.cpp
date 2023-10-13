@@ -757,8 +757,8 @@ TEST_CASE_FIXTURE(DifferFixture, "singleton_string")
 
 TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "negation")
 {
-    // Old solver does not correctly refine test types
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
 
     CheckResult result = check(R"(
         local bar: { x: { y: unknown }}
