@@ -419,9 +419,9 @@ type Callback<Args..., Rets...> = { f: (Args...) -> Rets... }
 type A = Callback<(number, string), ...number>
 ```
 
-## Typing idiomatic OOP
+## Adding types for faux object oriented programs
 
-One common pattern we see throughout Roblox is this OOP idiom. A downside with this pattern is that it does not automatically create a type binding for an instance of that class, so one has to write `type Account = typeof(Account.new("", 0))`.
+One common pattern we see with existing Lua/Luau code is the following OO code. While Luau is capable of inferring a decent chunk of this code, it cannot pin down on the types of `self` when it spans multiple methods.
 
 ```lua
 local Account = {}
@@ -435,16 +435,62 @@ function Account.new(name, balance)
     return setmetatable(self, Account)
 end
 
+-- The `self` type is different from the type returned by `Account.new`
 function Account:deposit(credit)
     self.balance += credit
 end
 
+-- The `self` type is different from the type returned by `Account.new`
 function Account:withdraw(debit)
     self.balance -= debit
 end
 
-local account: Account = Account.new("Alexander", 500)
-             --^^^^^^^ not ok, 'Account' does not exist
+local account = Account.new("Alexander", 500)
+```
+
+For example, the type of `Account.new` is `<a, b>(name: a, balance: b) -> { ..., name: a, balance: b, ... }` (snipping out the metatable). For better or worse, this means you are allowed to call `Account.new(5, "hello")` as well as `Account.new({}, {})`. In this case, this is quite unfortunate, so your first attempt may be to add type annotations to the parameters `name` and `balance`.
+
+There's the next problem: the type of `self` is not shared across methods of `Account`, this is because you are allowed to explicitly opt for a different value to pass as `self` by writing `account.deposit(another_account, 50)`. As a result, the type of `Account:deposit` is `<a, b>(self: { balance: a }, credit: b) -> ()`. Consequently, Luau cannot infer the result of the `+` operation from `a` and `b`, so a type error is reported.
+
+We can see there's a lot of problems happening here. This is a case where you will have to guide Luau, but using the power of top-down type inference you only need to do this in _exactly one_ place!
+
+```lua
+type AccountImpl = {
+    __index: AccountImpl,
+    new: (name: string, balance: number) -> Account,
+    deposit: (self: Account, credit: number) -> (),
+    withdraw: (self: Account, debit: number) -> (),
+}
+
+type Account = typeof(setmetatable({} :: { name: string, balance: number }, {} :: AccountImpl))
+
+-- Only these two annotations are necessary
+local Account: AccountImpl = {} :: AccountImpl
+Account.__index = Account
+
+-- Using the knowledge of `Account`, we can take in information of the `new` type from `AccountImpl`, so:
+-- Account.new :: (name: string, balance: number) -> Account
+function Account.new(name, balance)
+    local self = {}
+    self.name = name
+    self.balance = balance
+
+    return setmetatable(self, Account)
+end
+
+-- Ditto:
+-- Account:deposit :: (self: Account, credit: number) -> ()
+function Account:deposit(credit)
+    self.balance += credit
+end
+
+-- Ditto:
+-- Account:withdraw :: (self: Account, debit: number) -> ()
+function Account:withdraw(debit)
+    self.balance -= debit
+end
+
+local account = Account.new("Alexander", 500)
 ```
 
 ## Tagged unions
