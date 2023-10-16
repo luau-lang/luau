@@ -1,4 +1,4 @@
-# Byte Array Type
+# Byte buffer type
 
 ## Summary
 
