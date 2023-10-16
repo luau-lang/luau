@@ -80,7 +80,6 @@ If 'count' is 'nil' or is omitted, all bytes after the specified offset are set.
 
 Used to read the data from the buffer by reinterpreting bytes at the offset as the type in the argument and converting it into a number.
 
-Floating-point numbers are read from a format specified by IEEE 754.
 When reading the value of any NaN representation, implementation can (but not required to) replace it with a different quiet NaN representation.
 
 `buffer.writei8(b: buffer, offset: number, value: number): ()`
@@ -104,8 +103,6 @@ Used to write data to the buffer by converting the number into the type specifie
 Conversion to integer numbers performs a truncation of the number value. Results of converting special number values (inf/nan) are platform-specific.
 Conversion to unsigned numbers uses `bit32` library semantics.
 
-Floating-point numbers are stored in a format specified by IEEE 754.
-
 `buffer.readstring(b: buffer, offset: number, count: number): string`
 
 Used to read a string of length 'count' from the buffer at specified offset.
@@ -125,6 +122,10 @@ While there is a way to solve the performance problem using luajit trick where t
 Offsets and 'count' numbers are cast to an integer in an implementation-defined way.
 
 Read and write operations for relevant types are little endian as it is the most common use case, and conversion is often trivial to do manually.
+
+Integer numbers are read and written using two's complement representation.
+
+Floating-point numbers are read and written using a format specified by IEEE 754.
 
 Additionally, unaligned offsets in all operations are valid and behave as expected.
 
@@ -164,7 +165,7 @@ This increases the complexity of the VM a little bit, since support for new tagg
 
 There is also a string buffer C API; by having functions talk about 'buffer' (like `luaL_extendbuffer`) and use `luaL_Buffer`, it might be a point of confusion for C API users.
 
-## Extensions
+## Alternatives
 
 To support additional use cases, we can provide a set of `pushTYPE` and `takeTYPE` library functions and extend the type to have an internal cursor.
 This will make it easy to write/read data from a buffer as one would from a file, without having to track the current offset manually.
