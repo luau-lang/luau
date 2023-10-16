@@ -167,30 +167,13 @@ There is also a string buffer C API; by having functions talk about 'buffer' (li
 
 ## Alternatives
 
-To support additional use cases, we can provide a set of `pushTYPE` and `takeTYPE` library functions and extend the type to have an internal cursor.
-This will make it easy to write/read data from a buffer as one would from a file, without having to track the current offset manually.
-Additional functions like `pos` and `setpos` can be added to access this internal cursor.
-
-This extension can be made by changing the internal representation without affecting older code.
-
-One drawback here might be that the cursor is attached to the data and raises a question if the value is preserved when object is serialized over the network.
-
----
-
-An additional possibility would be to make the buffer change size automatically by `pushTYPE` interface (explicit resize can be implemented with the existing interface).
-This can also be changed almost transparently for older code.
-One difference will be that `pushTYPE` will not throw when reaching the end of the data. Unless it is decided that other write operations could also resize implicitly.
-
-Implementation can have a performance impact however as data will be read through a pointer redirection.
-
-## Alternatives
-
 The workarounds without this feature are significantly inefficient:
 
 * Tables can, at most, represent 64 bits per slot using expensive `vector` packing.
-
 * Tables with or without packing severely bloat memory, as each array entry is subject to Luau value size and alignment.
-
 * Strings are immutable and can’t be used to efficiently construct binary data without exponential allocations.
-
 * Built in `string.pack` and `string.unpack` can’t cover more complex schemas on their own or formats which are edited mid-creation.
+
+The proposed buffer object has no cursor/position as part of its state; while it would be possible to implement this along with a separate set of APIs like `pushTYPE` and `takeTYPE`, this addition can be possible to implement later and it makes the buffer structure more complicated; additionally, external offset management might be easier to optimize and is more orthogonal as we do not need to duplicate stateful and stateless functions.
+
+The proposed buffer object is not resizeable; this is possible to implement later using explicit `buffer.resize` call, however this may result in a performance impact for native implemenation as the data will be read through a pointer redirection and will be more difficult to optimize; thus this version of the RFC only proposes fixed length buffers. That said, if resizeable buffers are desired in the future, we would plan to enhance the current buffer type instead of making a parallel resizeable buffer type to reduce complexity.
