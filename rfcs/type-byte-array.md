@@ -176,7 +176,7 @@ One drawback here might be that the cursor is attached to the data and raises a 
 
 ---
 
-Additional possibility will be to make the buffer change size automatically by `pushTYPE` interface. (explicit resize can be implemented with the existing interface).
+An additional possibility would be to make the buffer change size automatically by `pushTYPE` interface (explicit resize can be implemented with the existing interface).
 This can also be changed almost transparently for older code.
 One difference will be that `pushTYPE` will not throw when reaching the end of the data. Unless it is decided that other write operations could also resize implicitly.
 
