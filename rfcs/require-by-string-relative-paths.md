@@ -124,27 +124,6 @@ The current implementation also has a slight inconsistency that should be addres
 
 For consistency, we propose storing the file extension in `lua_require` and always outputting it when `debug.info` is called.
 
-### DataModel as VFS
-
-In the Roblox engine, the DataModel will act as a virtual file system. At the root of this VFS is the DataModel itself. This will allow packages from Luau to be imported and exported freely without needing to consider the platform they are being used on.
-
-All paths used in the Roblox engine must refer to a location in the DataModel. They cannot be used to access files on disk.
-
-```lua
--- MyModule location: game:GetService("ReplicatedStorage").MyModule
-
--- Require by absolute path
-local MyModule = require("/ReplicatedStorage/MyModule")
-
--- Require by relative path
--- (From game:GetService("ReplicatedStorage").MyOtherModule)
-local MyModule = require("MyModule")
-```
-
-#### Considerations
-
-Within the Roblox engine, we will have to handle replication and waiting for modules to be loaded into the DataModel before requiring them. However, this is outside of the scope of this RFC and will be discussed internally.
-
 ## Use cases
 
 ### Improvements to relative-path requires
