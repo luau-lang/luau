@@ -1326,8 +1326,9 @@ static int luauF_byteswap(lua_State* L, StkId res, TValue* arg0, int nresults, S
         double a1 = nvalue(arg0);
         unsigned n;
         luai_num2unsigned(n, a1);
+        n = (n << 24) | ((n << 8) & 0xff0000) | (n >> 8 & 0xff00) | n >> 24;
 
-        setnvalue(res, double(((n >> 24) & 0xff) | ((n << 8) & 0xff0000) | ((n >> 8) & 0xff00) | ((n << 24) & 0xff000000)));
+        setnvalue(res, double(n));
         return 1;
     }
 
