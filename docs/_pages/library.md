@@ -728,6 +728,12 @@ function bit32.countrz(n: number): number
 
 Returns the number of consecutive zero bits in the 32-bit representation of `n` starting from the right-most (least significant) bit. Returns 32 if `n` is zero.
 
+```
+function bit32.byteswap(n: number): number
+```
+
+Returns `n` with the order of the bytes swappped.
+
 ## utf8 library
 
 Strings in Luau can contain arbitrary bytes; however, in many applications strings representing text contain UTF8 encoded data by convention, that can be inspected and manipulated using `utf8` library.
