@@ -560,6 +560,9 @@ enum LuauBuiltinFunction
     // tonumber/tostring
     LBF_TONUMBER,
     LBF_TOSTRING,
+
+    // bit32.byteswap(n)
+    LBF_BIT32_BYTESWAP,
 };
 
 // Capture type, used in LOP_CAPTURE

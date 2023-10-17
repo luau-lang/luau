@@ -1319,6 +1319,21 @@ static int luauF_tostring(lua_State* L, StkId res, TValue* arg0, int nresults, S
     return -1;
 }
 
+static int luauF_byteswap(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
+    {
+        double a1 = nvalue(arg0);
+        unsigned n;
+        luai_num2unsigned(n, a1);
+
+        setnvalue(res, double(((n >> 24) & 0xff) | ((n << 8) & 0xff0000) | ((n >> 8) & 0xff00) | ((n << 24) & 0xff000000)));
+        return 1;
+    }
+
+    return -1;
+}
+
 static int luauF_missing(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     return -1;
@@ -1485,6 +1500,8 @@ const luau_FastFunction luauF_table[256] = {
 
     luauF_tonumber,
     luauF_tostring,
+
+    luauF_byteswap,
 
 // When adding builtins, add them above this line; what follows is 64 "dummy" entries with luauF_missing fallback.
 // This is important so that older versions of the runtime that don't support newer builtins automatically fall back via luauF_missing.
