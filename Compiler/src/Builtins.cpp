@@ -4,7 +4,7 @@
 #include "Luau/Bytecode.h"
 #include "Luau/Compiler.h"
 
-LUAU_FASTFLAG(LuauBit32ByteswapBuiltin)
+LUAU_FASTFLAGVARIABLE(LuauBit32ByteswapBuiltin, true)
 
 namespace Luau
 {
@@ -168,11 +168,8 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_BIT32_COUNTLZ;
         if (builtin.method == "countrz")
             return LBF_BIT32_COUNTRZ;
-        if (builtin.method == "byteswap")
-        {
-            LUAU_ASSERT(FFlag::LuauBit32ByteswapBuiltin);
+        if (FFlag::LuauBit32ByteswapBuiltin && builtin.method == "byteswap")
             return LBF_BIT32_BYTESWAP;
-        }
     }
 
     if (builtin.object == "string")
