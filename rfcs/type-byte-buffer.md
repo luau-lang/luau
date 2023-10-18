@@ -143,6 +143,12 @@ If there is no buffer at the location, `NULL` is returned and `len` is not modif
 
 Pushes new buffer of size `l` onto the stack.
 
+`lua_isbuffer(L, n)`
+
+C macro helper to check if value at the specified location is a buffer.
+
+Simiar to `lua_istable`/`lua_isvector`/`lua_isthread` it's a simple wrapper over `lua_type` call and doesn't require internal coercions/internal field access like `lua_isnumber`/`lua_iscfunction`.
+
 `void* luaL_checkbuffer(lua_State* L, int narg, size_t* len);`
 
 Similar to `lua_tobuffer`, but throws a tag error if there is no buffer at specified location.
