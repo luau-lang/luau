@@ -2,11 +2,11 @@
 
 ## Summary
 
-A new built in type to serve as a mutable array of bytes, with a library for reading and writing the contents.
+A new built-in type to serve as a mutable array of bytes, with a library for reading and writing the contents.
 
 ## Motivation
 
-Existing mechanisms for representing binary data in Luau can be insufficient for performance-oriented use cases.
+The existing mechanisms for representing binary data in Luau can be insufficient for performance-oriented use cases.
 
 A binary blob may be represented as an array of numbers 0-255 (idiomatic and reasonably performant, but very space-inefficient: each element takes 16 bytes, and it's difficult to work with data that is wider than bytes) or a string (only works for read-only cases, data extraction is possible via `string.unpack` but not very efficient). Neither of the two options are optimal, especially when the use case is data encoding (as opposed to decoding).
 
@@ -14,7 +14,7 @@ While the host can provide custom data types that close this gap using `userdata
 
 With this type, we solve the use cases for binary format encoding and decoding. This opens the door for developers to work with file formats that might've been too large to represent with tables or to write to strings. It also allows for writing algorithms that deal with raw data often, such as compression or hashing. Web services that exchange data in packed formats could also benefit from this. The new type can also serve as a more efficient internal representation for libraries that provide higher level objects like images or geometry data.
 
-Other high level languages support similar data structures, for example [Java ByteByffer](https://docs.oracle.com/en/java/javase/18/docs/api/java.base/java/nio/ByteBuffer.html) or [JavaScript ArrayBuffer](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer).
+Other high-level languages support similar data structures, for example [Java ByteByffer](https://docs.oracle.com/en/java/javase/18/docs/api/java.base/java/nio/ByteBuffer.html) or [JavaScript ArrayBuffer](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer).
 
 ## Design
 
@@ -34,7 +34,7 @@ Each byte is initialized to 0.
 `buffer.fromstring(str: string): buffer`
 
 Instantiates the object from a string.
-Size of the buffer is fixed and equals to the length of the string.
+The size of the buffer is fixed and equals to the length of the string.
 
 `buffer.tostring(): string`
 
@@ -165,7 +165,7 @@ Macro containing the 'buffer' library name.
 
 This introduces 'buffer' as a class type in global typing context and adds new global 'buffer' table.
 While class type might intersect with user-defined 'buffer' type, such type redefinitions are already allowed in Luau, so this should not cause new type errors.
-Same goes for the global table, users can already override globals like 'string', so additional of a new global is backwards-compatible, but new table will not be accessible in such a case.
+The same goes for the global table, users can already override globals like 'string', so additional of a new global is backwards-compatible, but new table will not be accessible in such a case.
 
 This increases the complexity of the VM a little bit, since support for new tagged type is required in interpreter loop and GC.
 
@@ -182,4 +182,4 @@ The workarounds without this feature are significantly inefficient:
 
 The proposed buffer object has no cursor/position as part of its state; while it would be possible to implement this along with a separate set of APIs like `pushTYPE` and `takeTYPE`, this addition is always possible to implement later and it makes the buffer structure more complicated; additionally, external offset management might be easier to optimize and is more orthogonal as we do not need to duplicate stateful and stateless functions.
 
-The proposed buffer object is not resizeable; this is possible to implement later using explicit `buffer.resize` call, however this may result in a performance impact for native implemenation as the data will be read through a pointer redirection and will be more difficult to optimize; thus this version of the RFC only proposes fixed length buffers. That said, if resizeable buffers are desired in the future, we would plan to enhance the current buffer type instead of making a parallel resizeable buffer type to reduce complexity.
+The proposed buffer object is not resizeable; this is possible to implement later using explicit `buffer.resize` call, however this may result in a performance impact for native implementation as the data will be read through a pointer redirection and will be more difficult to optimize; thus, this version of the RFC only proposes fixed length buffers. That said, if resizeable buffers are desired in the future, we would plan to enhance the current buffer type instead of making a parallel resizeable buffer type to reduce complexity.
