@@ -4,7 +4,7 @@
 #include "Luau/Bytecode.h"
 #include "Luau/Compiler.h"
 
-LUAU_FASTFLAGVARIABLE(LuauBit32ByteswapBuiltin, true)
+LUAU_FASTFLAGVARIABLE(LuauBit32ByteswapBuiltin, false)
 
 namespace Luau
 {

@@ -5,7 +5,7 @@
 #include "lcommon.h"
 #include "lnumutils.h"
 
-LUAU_FASTFLAGVARIABLE(LuauBit32Byteswap, true)
+LUAU_FASTFLAGVARIABLE(LuauBit32Byteswap, false)
 
 #define ALLONES ~0u
 #define NBITS int(8 * sizeof(unsigned))
