@@ -45,10 +45,18 @@ static void logFunctionHeader(AssemblyBuilder& build, Proto* proto)
 template<typename AssemblyBuilder>
 static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, AssemblyOptions options, LoweringStats* stats)
 {
+    Proto* root = clvalue(func)->l.p;
+
+    if ((options.flags & CodeGen_OnlyNativeModules) != 0 && (root->flags & LPF_NATIVE_MODULE) == 0)
+        return std::string();
+
     std::vector<Proto*> protos;
-    gatherFunctions(protos, clvalue(func)->l.p, /* flags= */ 0);
+    gatherFunctions(protos, root, options.flags);
 
     protos.erase(std::remove_if(protos.begin(), protos.end(), [](Proto* p) { return p == nullptr; }), protos.end());
+
+    if (stats)
+        stats->totalFunctions += unsigned(protos.size());
 
     if (protos.empty())
     {
@@ -77,6 +85,9 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
         {
             if (build.logText)
                 build.logAppend("; skipping (can't lower)\n");
+
+            if (stats)
+                stats->skippedFunctions += 1;
         }
 
         if (build.logText)

@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+#include "Luau/TypePath.h"
 #include "doctest.h"
 #include "Fixture.h"
 #include "RegisterCallbacks.h"
@@ -10,6 +11,16 @@
 #include "Luau/TypePack.h"
 
 using namespace Luau;
+
+namespace Luau
+{
+
+std::ostream& operator<<(std::ostream& lhs, const SubtypingReasoning& reasoning)
+{
+    return lhs << toString(reasoning.subPath) << " </: " << toString(reasoning.superPath);
+}
+
+}; // namespace Luau
 
 struct SubtypeFixture : Fixture
 {
@@ -1077,6 +1088,139 @@ TEST_CASE_FIXTURE(SubtypeFixture, "dont_cache_tests_involving_cycles")
     CHECK_IS_SUBTYPE(tableA, tableB);
 
     CHECK(!subtyping.peekCache().find({tableA, tableB}));
+}
+
+TEST_SUITE_END();
+
+TEST_SUITE_BEGIN("Subtyping.Subpaths");
+
+TEST_CASE_FIXTURE(SubtypeFixture, "table_property")
+{
+    TypeId subTy = tbl({{"X", builtinTypes->numberType}});
+    TypeId superTy = tbl({{"X", builtinTypes->booleanType}});
+
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+    CHECK(result.reasoning == SubtypingReasoning{
+                                  /* subPath */ Path(TypePath::Property("X")),
+                                  /* superPath */ Path(TypePath::Property("X")),
+                              });
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "table_indexers")
+{
+    TypeId subTy = idx(builtinTypes->numberType, builtinTypes->stringType);
+    TypeId superTy = idx(builtinTypes->stringType, builtinTypes->numberType);
+
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+    CHECK(result.reasoning == SubtypingReasoning{
+                                  /* subPath */ Path(TypePath::TypeField::IndexLookup),
+                                  /* superPath */ Path(TypePath::TypeField::IndexLookup),
+                              });
+
+    subTy = idx(builtinTypes->stringType, builtinTypes->stringType);
+    result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+    CHECK(result.reasoning == SubtypingReasoning{
+                                  /* subPath */ Path(TypePath::TypeField::IndexResult),
+                                  /* superPath */ Path(TypePath::TypeField::IndexResult),
+                              });
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "fn_arguments")
+{
+    TypeId subTy = fn({builtinTypes->numberType}, {});
+    TypeId superTy = fn({builtinTypes->stringType}, {});
+
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+    CHECK(result.reasoning == SubtypingReasoning{
+                                  /* subPath */ TypePath::PathBuilder().args().index(0).build(),
+                                  /* superPath */ TypePath::PathBuilder().args().index(0).build(),
+                              });
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "fn_arguments_tail")
+{
+    TypeId subTy = fn({}, VariadicTypePack{builtinTypes->numberType}, {});
+    TypeId superTy = fn({}, VariadicTypePack{builtinTypes->stringType}, {});
+
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+    CHECK(result.reasoning == SubtypingReasoning{
+                                  /* subPath */ TypePath::PathBuilder().args().tail().variadic().build(),
+                                  /* superPath */ TypePath::PathBuilder().args().tail().variadic().build(),
+                              });
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "fn_rets")
+{
+    TypeId subTy = fn({}, {builtinTypes->numberType});
+    TypeId superTy = fn({}, {builtinTypes->stringType});
+
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+    CHECK(result.reasoning == SubtypingReasoning{
+                                  /* subPath */ TypePath::PathBuilder().rets().index(0).build(),
+                                  /* superPath */ TypePath::PathBuilder().rets().index(0).build(),
+                              });
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "fn_rets_tail")
+{
+    TypeId subTy = fn({}, {}, VariadicTypePack{builtinTypes->numberType});
+    TypeId superTy = fn({}, {}, VariadicTypePack{builtinTypes->stringType});
+
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+    CHECK(result.reasoning == SubtypingReasoning{
+                                  /* subPath */ TypePath::PathBuilder().rets().tail().variadic().build(),
+                                  /* superPath */ TypePath::PathBuilder().rets().tail().variadic().build(),
+                              });
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "nested_table_properties")
+{
+    TypeId subTy = tbl({{"X", tbl({{"Y", tbl({{"Z", builtinTypes->numberType}})}})}});
+    TypeId superTy = tbl({{"X", tbl({{"Y", tbl({{"Z", builtinTypes->stringType}})}})}});
+
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+    CHECK(result.reasoning == SubtypingReasoning{
+                                  /* subPath */ TypePath::PathBuilder().prop("X").prop("Y").prop("Z").build(),
+                                  /* superPath */ TypePath::PathBuilder().prop("X").prop("Y").prop("Z").build(),
+                              });
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "string_table_mt")
+{
+    TypeId subTy = builtinTypes->stringType;
+    TypeId superTy = tbl({{"X", builtinTypes->numberType}});
+
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+    // This check is weird. Because we don't have built-in types, we don't have
+    // the string metatable. That means subtyping will see that the entire
+    // metatable is empty, and abort there, without looking at the metatable
+    // properties (because there aren't any).
+    CHECK(result.reasoning == SubtypingReasoning{
+                                  /* subPath */ TypePath::PathBuilder().mt().prop("__index").build(),
+                                  /* superPath */ TypePath::kEmpty,
+                              });
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "negation")
+{
+    TypeId subTy = builtinTypes->numberType;
+    TypeId superTy = negate(builtinTypes->numberType);
+
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+    CHECK(result.reasoning == SubtypingReasoning{
+                                  /* subPath */ TypePath::kEmpty,
+                                  /* superPath */ Path(TypePath::TypeField::Negated),
+                              });
 }
 
 TEST_SUITE_END();

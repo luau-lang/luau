@@ -548,6 +548,10 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "MiscInstructions")
     SINGLE_COMPARE(ud2(), 0x0f, 0x0b);
     SINGLE_COMPARE(bsr(eax, edx), 0x0f, 0xbd, 0xc2);
     SINGLE_COMPARE(bsf(eax, edx), 0x0f, 0xbc, 0xc2);
+    SINGLE_COMPARE(bswap(eax), 0x0f, 0xc8);
+    SINGLE_COMPARE(bswap(r12d), 0x41, 0x0f, 0xcc);
+    SINGLE_COMPARE(bswap(rax), 0x48, 0x0f, 0xc8);
+    SINGLE_COMPARE(bswap(r12), 0x49, 0x0f, 0xcc);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "LabelLea")

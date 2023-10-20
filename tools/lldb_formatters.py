@@ -170,9 +170,165 @@ class DenseHashTableSyntheticChildrenProvider:
         return True
 
 
+class DenseHashMapSyntheticChildrenProvider:
+    fixed_names = ["count", "capacity"]
+
+    def __init__(self, valobj, internal_dict):
+        self.valobj = valobj
+        self.values = []
+        self.count = 0
+
+    def num_children(self):
+        return self.count + len(self.fixed_names)
+
+    def get_child_index(self, name):
+        try:
+            if name in self.fixed_names:
+                return self.fixed_names.index(name)
+
+            for index, (key, _) in enumerate(self.values):
+                if key == name:
+                    return index + len(self.fixed_names)
+
+            return -1
+        except Exception as e:
+            print("get_child_index exception", e, name)
+            return -1
+
+    def get_child_at_index(self, index):
+        try:
+            if index < len(self.fixed_names):
+                fixed_name = self.fixed_names[index]
+                impl_child = self.valobj.GetValueForExpressionPath(
+                    f".impl.{fixed_name}")
+
+                return self.valobj.CreateValueFromData(fixed_name, impl_child.GetData(), impl_child.GetType())
+            else:
+                index -= len(self.fixed_names)
+
+            pair = self.items[index]
+            key = pair["key"]
+            value = pair["value"]
+
+            return self.valobj.CreateValueFromData(
+                f"[{key}]",
+                value.data,
+                value.GetType(),
+            )
+
+        except Exception as e:
+            print("get_child_at_index error", e, index)
+
+    def update(self):
+        try:
+            capacity = self.valobj.GetChildMemberWithName("impl").GetChildMemberWithName(
+                "capacity"
+            ).GetValueAsUnsigned()
+
+            self.items = []
+            for index in range(0, capacity):
+                child_pair = self.valobj.GetValueForExpressionPath(
+                    f".impl.data[{index}]")
+                child_key_valobj = child_pair.GetChildMemberWithName("first")
+
+                if child_key_valobj.TypeIsPointerType() and child_key_valobj.GetValueAsUnsigned() == 0:
+                    continue
+
+                child_key = child_key_valobj.GetValue()
+
+                if child_key is None:
+                    child_key = child_key_valobj.GetSummary()
+
+                if child_key is None:
+                    child_key = f"<{index} ({child_key_valobj.GetTypeName()})>"
+
+                child_value = child_pair.GetChildMemberWithName("second")
+                self.items.append({"key": child_key, "value": child_value})
+
+            self.count = len(self.items)
+
+        except Exception as e:
+            print("update error", e)
+
+    def has_children(self):
+        return True
+
+
+class DenseHashSetSyntheticChildrenProvider:
+    fixed_names = ["count", "capacity"]
+
+    def __init__(self, valobj, internal_dict):
+        self.valobj = valobj
+        self.values = []
+        self.count = 0
+
+    def num_children(self):
+        return self.count + len(self.fixed_names)
+
+    def get_child_index(self, name):
+        try:
+            if name in self.fixed_names:
+                return self.fixed_names.index(name)
+
+            if name.startswith("[") and name.endswith("]"):
+                return int(name[1:-1]) + len(self.fixed_names)
+
+            return -1
+        except Exception as e:
+            print("get_child_index exception", e, name)
+            return -1
+
+    def get_child_at_index(self, index):
+        try:
+            if index < len(self.fixed_names):
+                fixed_name = self.fixed_names[index]
+                impl_child = self.valobj.GetValueForExpressionPath(
+                    f".impl.{fixed_name}")
+
+                return self.valobj.CreateValueFromData(fixed_name, impl_child.GetData(), impl_child.GetType())
+            else:
+                index -= len(self.fixed_names)
+
+            value = self.items[index]
+
+            return self.valobj.CreateValueFromData(
+                f"[{index}]",
+                value.data,
+                value.GetType(),
+            )
+
+        except Exception as e:
+            print("get_child_at_index error", e, index)
+
+    def update(self):
+        try:
+            capacity = self.valobj.GetChildMemberWithName("impl").GetChildMemberWithName(
+                "capacity"
+            ).GetValueAsUnsigned()
+
+            self.items = []
+            for index in range(0, capacity):
+                child_value = self.valobj.GetValueForExpressionPath(
+                    f".impl.data[{index}]")
+
+                if child_value.TypeIsPointerType() and child_value.GetValueAsUnsigned() == 0:
+                    continue
+
+                self.items.append(child_value)
+
+            self.count = len(self.items)
+
+        except Exception as e:
+            print("update error", e)
+
+    def has_children(self):
+        return True
+
+
 def luau_symbol_summary(valobj, internal_dict, options):
     local = valobj.GetChildMemberWithName("local")
-    global_ = valobj.GetChildMemberWithName("global").GetChildMemberWithName("value")
+    global_ = valobj.GetChildMemberWithName(
+        "global").GetChildMemberWithName("value")
 
     if local.GetValueAsUnsigned() != 0:
         return f'local {local.GetChildMemberWithName("name").GetChildMemberWithName("value").GetSummary()}'
@@ -209,7 +365,33 @@ class AstArraySyntheticChildrenProvider:
             print("get_child_index error:", e)
 
     def update(self):
-        self.size = self.valobj.GetChildMemberWithName("size").GetValueAsUnsigned()
+        self.size = self.valobj.GetChildMemberWithName(
+            "size").GetValueAsUnsigned()
 
     def has_children(self):
         return True
+
+
+def luau_typepath_property_summary(valobj, internal_dict, options):
+    name = valobj.GetChildMemberWithName("name").GetSummary()
+    result = "["
+
+    read_write = False
+    try:
+        fflag_valobj = valobj.GetFrame().GetValueForVariablePath(
+            "FFlag::DebugLuauReadWriteProperties::value")
+
+        read_write = fflag_valobj.GetValue() == "true"
+    except Exception as e:
+        print("luau_typepath_property_summary error:", e)
+
+    if read_write:
+        is_read = valobj.GetChildMemberWithName("isRead").GetValue() == "true"
+        if is_read:
+            result += "read "
+        else:
+            result += "write "
+
+    result += name
+    result += "]"
+    return result

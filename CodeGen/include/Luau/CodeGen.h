@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include <algorithm>
 #include <string>
 
 #include <stddef.h>
@@ -66,6 +67,8 @@ struct AssemblyOptions
 
     Target target = Host;
 
+    unsigned int flags = 0;
+
     bool outputBinary = false;
 
     bool includeAssembly = false;
@@ -79,12 +82,39 @@ struct AssemblyOptions
 
 struct LoweringStats
 {
+    unsigned totalFunctions = 0;
+    unsigned skippedFunctions = 0;
     int spillsToSlot = 0;
     int spillsToRestore = 0;
     unsigned maxSpillSlotsUsed = 0;
+    unsigned blocksPreOpt = 0;
+    unsigned blocksPostOpt = 0;
+    unsigned maxBlockInstructions = 0;
 
     int regAllocErrors = 0;
     int loweringErrors = 0;
+
+    LoweringStats operator+(const LoweringStats& other) const
+    {
+        LoweringStats result(*this);
+        result += other;
+        return result;
+    }
+
+    LoweringStats& operator+=(const LoweringStats& that)
+    {
+        this->totalFunctions += that.totalFunctions;
+        this->skippedFunctions += that.skippedFunctions;
+        this->spillsToSlot += that.spillsToSlot;
+        this->spillsToRestore += that.spillsToRestore;
+        this->maxSpillSlotsUsed = std::max(this->maxSpillSlotsUsed, that.maxSpillSlotsUsed);
+        this->blocksPreOpt += that.blocksPreOpt;
+        this->blocksPostOpt += that.blocksPostOpt;
+        this->maxBlockInstructions = std::max(this->maxBlockInstructions, that.maxBlockInstructions);
+        this->regAllocErrors += that.regAllocErrors;
+        this->loweringErrors += that.loweringErrors;
+        return *this;
+    }
 };
 
 // Generates assembly for target function and all inner functions

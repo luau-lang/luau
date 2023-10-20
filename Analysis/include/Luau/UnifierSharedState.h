@@ -3,8 +3,7 @@
 
 #include "Luau/DenseHash.h"
 #include "Luau/Error.h"
-#include "Luau/Type.h"
-#include "Luau/TypePack.h"
+#include "Luau/TypeFwd.h"
 
 #include <utility>
 

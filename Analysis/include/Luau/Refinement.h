@@ -4,14 +4,13 @@
 #include "Luau/NotNull.h"
 #include "Luau/TypedAllocator.h"
 #include "Luau/Variant.h"
+#include "Luau/TypeFwd.h"
 
 namespace Luau
 {
 
-using BreadcrumbId = NotNull<const struct Breadcrumb>;
-
-struct Type;
-using TypeId = const Type*;
+struct RefinementKey;
+using DefId = NotNull<const struct Def>;
 
 struct Variadic;
 struct Negation;
@@ -52,7 +51,7 @@ struct Equivalence
 
 struct Proposition
 {
-    BreadcrumbId breadcrumb;
+    const RefinementKey* key;
     TypeId discriminantTy;
 };
 
@@ -69,7 +68,7 @@ struct RefinementArena
     RefinementId conjunction(RefinementId lhs, RefinementId rhs);
     RefinementId disjunction(RefinementId lhs, RefinementId rhs);
     RefinementId equivalence(RefinementId lhs, RefinementId rhs);
-    RefinementId proposition(BreadcrumbId breadcrumb, TypeId discriminantTy);
+    RefinementId proposition(const RefinementKey* key, TypeId discriminantTy);
 
 private:
     TypedAllocator<Refinement> allocator;

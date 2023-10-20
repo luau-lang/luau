@@ -338,6 +338,150 @@ TypeFamilyReductionResult<TypeId> notFamilyFn(const std::vector<TypeId>& typePar
     return {ctx->builtins->booleanType, false, {}, {}};
 }
 
+TypeFamilyReductionResult<TypeId> lenFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+{
+    if (typeParams.size() != 1 || !packParams.empty())
+    {
+        ctx->ice->ice("len type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId operandTy = follow(typeParams.at(0));
+    const NormalizedType* normTy = ctx->normalizer->normalize(operandTy);
+
+    // if the type failed to normalize, we can't reduce, but know nothing about inhabitance.
+    if (!normTy)
+        return {std::nullopt, false, {}, {}};
+
+    // if the operand type is error suppressing, we can immediately reduce to `number`.
+    if (normTy->shouldSuppressErrors())
+        return {ctx->builtins->numberType, false, {}, {}};
+
+    // if we have a `never`, we can never observe that the operator didn't work.
+    if (is<NeverType>(operandTy))
+        return {ctx->builtins->neverType, false, {}, {}};
+
+    // if we're checking the length of a string, that works!
+    if (normTy->isSubtypeOfString())
+        return {ctx->builtins->numberType, false, {}, {}};
+
+    // we use the normalized operand here in case there was an intersection or union.
+    TypeId normalizedOperand = ctx->normalizer->typeFromNormal(*normTy);
+    if (normTy->hasTopTable() || get<TableType>(normalizedOperand))
+        return {ctx->builtins->numberType, false, {}, {}};
+
+    // otherwise, we wait to see if the operand type is resolved
+    if (isPending(operandTy, ctx->solver))
+        return {std::nullopt, false, {operandTy}, {}};
+
+    // findMetatableEntry demands the ability to emit errors, so we must give it
+    // the necessary state to do that, even if we intend to just eat the errors.
+    ErrorVec dummy;
+
+    std::optional<TypeId> mmType = findMetatableEntry(ctx->builtins, dummy, operandTy, "__len", Location{});
+    if (!mmType)
+        return {std::nullopt, true, {}, {}};
+
+    mmType = follow(*mmType);
+    if (isPending(*mmType, ctx->solver))
+        return {std::nullopt, false, {*mmType}, {}};
+
+    const FunctionType* mmFtv = get<FunctionType>(*mmType);
+    if (!mmFtv)
+        return {std::nullopt, true, {}, {}};
+
+    std::optional<TypeId> instantiatedMmType = instantiate(ctx->builtins, ctx->arena, ctx->limits, ctx->scope, *mmType);
+    if (!instantiatedMmType)
+        return {std::nullopt, true, {}, {}};
+
+    const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
+    if (!instantiatedMmFtv)
+        return {ctx->builtins->errorRecoveryType(), false, {}, {}};
+
+    TypePackId inferredArgPack = ctx->arena->addTypePack({operandTy});
+    Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
+    if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
+        return {std::nullopt, true, {}, {}}; // occurs check failed
+
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice, ctx->scope};
+    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes).isSubtype) // TODO: is this the right variance?
+        return {std::nullopt, true, {}, {}};
+
+    // `len` must return a `number`.
+    return {ctx->builtins->numberType, false, {}, {}};
+}
+
+TypeFamilyReductionResult<TypeId> unmFamilyFn(
+    const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+{
+    if (typeParams.size() != 1 || !packParams.empty())
+    {
+        ctx->ice->ice("unm type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId operandTy = follow(typeParams.at(0));
+    const NormalizedType* normTy = ctx->normalizer->normalize(operandTy);
+
+    // if the operand failed to normalize, we can't reduce, but know nothing about inhabitance.
+    if (!normTy)
+        return {std::nullopt, false, {}, {}};
+
+    // if the operand is error suppressing, we can just go ahead and reduce.
+    if (normTy->shouldSuppressErrors())
+        return {operandTy, false, {}, {}};
+
+    // if we have a `never`, we can never observe that the operation didn't work.
+    if (is<NeverType>(operandTy))
+        return {ctx->builtins->neverType, false, {}, {}};
+
+    // If the type is exactly `number`, we can reduce now.
+    if (normTy->isExactlyNumber())
+        return {ctx->builtins->numberType, false, {}, {}};
+
+    // otherwise, check if we need to wait on the type to be further resolved
+    if (isPending(operandTy, ctx->solver))
+        return {std::nullopt, false, {operandTy}, {}};
+
+    // findMetatableEntry demands the ability to emit errors, so we must give it
+    // the necessary state to do that, even if we intend to just eat the errors.
+    ErrorVec dummy;
+
+    std::optional<TypeId> mmType = findMetatableEntry(ctx->builtins, dummy, operandTy, "__unm", Location{});
+    if (!mmType)
+        return {std::nullopt, true, {}, {}};
+
+    mmType = follow(*mmType);
+    if (isPending(*mmType, ctx->solver))
+        return {std::nullopt, false, {*mmType}, {}};
+
+    const FunctionType* mmFtv = get<FunctionType>(*mmType);
+    if (!mmFtv)
+        return {std::nullopt, true, {}, {}};
+
+    std::optional<TypeId> instantiatedMmType = instantiate(ctx->builtins, ctx->arena, ctx->limits, ctx->scope, *mmType);
+    if (!instantiatedMmType)
+        return {std::nullopt, true, {}, {}};
+
+    const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
+    if (!instantiatedMmFtv)
+        return {ctx->builtins->errorRecoveryType(), false, {}, {}};
+
+    TypePackId inferredArgPack = ctx->arena->addTypePack({operandTy});
+    Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
+    if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
+        return {std::nullopt, true, {}, {}}; // occurs check failed
+
+    Subtyping subtyping{ctx->builtins, ctx->arena, ctx->normalizer, ctx->ice, ctx->scope};
+    if (!subtyping.isSubtype(inferredArgPack, instantiatedMmFtv->argTypes).isSubtype) // TODO: is this the right variance?
+        return {std::nullopt, true, {}, {}};
+
+    if (std::optional<TypeId> ret = first(instantiatedMmFtv->retTypes))
+        return {*ret, false, {}, {}};
+    else
+        return {std::nullopt, true, {}, {}};
+}
+
 TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(
     const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx, const std::string metamethod)
 {
@@ -816,6 +960,8 @@ TypeFamilyReductionResult<TypeId> eqFamilyFn(const std::vector<TypeId>& typePara
 
 BuiltinTypeFamilies::BuiltinTypeFamilies()
     : notFamily{"not", notFamilyFn}
+    , lenFamily{"len", lenFamilyFn}
+    , unmFamily{"unm", unmFamilyFn}
     , addFamily{"add", addFamilyFn}
     , subFamily{"sub", subFamilyFn}
     , mulFamily{"mul", mulFamilyFn}
@@ -834,6 +980,14 @@ BuiltinTypeFamilies::BuiltinTypeFamilies()
 
 void BuiltinTypeFamilies::addToScope(NotNull<TypeArena> arena, NotNull<Scope> scope) const
 {
+    // make a type function for a one-argument type family
+    auto mkUnaryTypeFamily = [&](const TypeFamily* family) {
+        TypeId t = arena->addType(GenericType{"T"});
+        GenericTypeDefinition genericT{t};
+
+        return TypeFun{{genericT}, arena->addType(TypeFamilyInstanceType{NotNull{family}, {t}, {}})};
+    };
+
     // make a type function for a two-argument type family
     auto mkBinaryTypeFamily = [&](const TypeFamily* family) {
         TypeId t = arena->addType(GenericType{"T"});
@@ -843,6 +997,9 @@ void BuiltinTypeFamilies::addToScope(NotNull<TypeArena> arena, NotNull<Scope> sc
 
         return TypeFun{{genericT, genericU}, arena->addType(TypeFamilyInstanceType{NotNull{family}, {t, u}, {}})};
     };
+
+    scope->exportedTypeBindings[lenFamily.name] = mkUnaryTypeFamily(&lenFamily);
+    scope->exportedTypeBindings[unmFamily.name] = mkUnaryTypeFamily(&unmFamily);
 
     scope->exportedTypeBindings[addFamily.name] = mkBinaryTypeFamily(&addFamily);
     scope->exportedTypeBindings[subFamily.name] = mkBinaryTypeFamily(&subFamily);

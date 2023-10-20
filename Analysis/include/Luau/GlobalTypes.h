@@ -6,11 +6,10 @@
 #include "Luau/NotNull.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeArena.h"
+#include "Luau/TypeFwd.h"
 
 namespace Luau
 {
-
-struct BuiltinTypes;
 
 struct GlobalTypes
 {

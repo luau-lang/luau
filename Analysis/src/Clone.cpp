@@ -701,6 +701,7 @@ void TypeCloner::operator()(const FunctionType& t)
     ftv->argNames = t.argNames;
     ftv->retTypes = clone(t.retTypes, dest, cloneState);
     ftv->hasNoFreeOrGenericTypes = t.hasNoFreeOrGenericTypes;
+    ftv->isCheckedFunction = t.isCheckedFunction;
 }
 
 void TypeCloner::operator()(const TableType& t)

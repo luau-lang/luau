@@ -22,6 +22,13 @@ LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
 namespace Luau
 {
+
+TypeIds::TypeIds(std::initializer_list<TypeId> tys)
+{
+    for (TypeId ty : tys)
+        insert(ty);
+}
+
 void TypeIds::insert(TypeId ty)
 {
     ty = follow(ty);

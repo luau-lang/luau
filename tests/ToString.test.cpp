@@ -973,4 +973,25 @@ Type 'string' could not be converted into 'number' in an invariant context)";
 
     CHECK(expected == actual);
 }
+
+TEST_CASE_FIXTURE(Fixture, "checked_fn_toString")
+{
+    ScopedFastFlag flags[] = {
+        {"LuauCheckedFunctionSyntax", true},
+        {"DebugLuauDeferredConstraintResolution", true},
+    };
+
+    auto _result = loadDefinition(R"(
+declare function @checked abs(n: number) : number
+)");
+
+    auto result = check(Mode::Nonstrict, R"(
+local f = abs
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    TypeId fn = requireType("f");
+    CHECK("@checked (number) -> number" == toString(fn));
+}
 TEST_SUITE_END();

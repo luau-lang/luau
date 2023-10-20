@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IostreamHelpers.h"
 #include "Luau/ToString.h"
+#include "Luau/TypePath.h"
 
 namespace Luau
 {
@@ -235,5 +236,35 @@ std::ostream& operator<<(std::ostream& stream, const TypePackVar& tv)
 {
     return stream << toString(tv);
 }
+
+std::ostream& operator<<(std::ostream& stream, TypeId ty)
+{
+    // we commonly use a null pointer when a type may not be present; we need to
+    // account for that here.
+    if (!ty)
+        return stream << "<nullptr>";
+
+    return stream << toString(ty);
+}
+
+std::ostream& operator<<(std::ostream& stream, TypePackId tp)
+{
+    // we commonly use a null pointer when a type may not be present; we need to
+    // account for that here.
+    if (!tp)
+        return stream << "<nullptr>";
+
+    return stream << toString(tp);
+}
+
+namespace TypePath
+{
+
+std::ostream& operator<<(std::ostream& stream, const Path& path)
+{
+    return stream << toString(path);
+}
+
+} // namespace TypePath
 
 } // namespace Luau

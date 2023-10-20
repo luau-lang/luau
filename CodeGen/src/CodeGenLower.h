@@ -23,6 +23,9 @@
 LUAU_FASTFLAG(DebugCodegenNoOpt)
 LUAU_FASTFLAG(DebugCodegenOptSize)
 LUAU_FASTFLAG(DebugCodegenSkipNumbering)
+LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
+LUAU_FASTINT(CodegenHeuristicsBlockLimit)
+LUAU_FASTINT(CodegenHeuristicsBlockInstructionLimit)
 
 namespace Luau
 {
@@ -222,7 +225,40 @@ inline bool lowerIr(A64::AssemblyBuilderA64& build, IrBuilder& ir, const std::ve
 template<typename AssemblyBuilder>
 inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options, LoweringStats* stats)
 {
+    helpers.bytecodeInstructionCount += unsigned(ir.function.instructions.size());
+
+    if (helpers.bytecodeInstructionCount >= unsigned(FInt::CodegenHeuristicsInstructionLimit.value))
+        return false;
+
     killUnusedBlocks(ir.function);
+
+    unsigned preOptBlockCount = 0;
+    unsigned maxBlockInstructions = 0;
+
+    for (const IrBlock& block : ir.function.blocks)
+    {
+        preOptBlockCount += (block.kind != IrBlockKind::Dead);
+        unsigned blockInstructions = block.finish - block.start;
+        maxBlockInstructions = std::max(maxBlockInstructions, blockInstructions);
+    };
+
+    helpers.preOptBlockCount += preOptBlockCount;
+
+    // we update stats before checking the heuristic so that even if we bail out
+    // our stats include information about the limit that was exceeded.
+    if (stats)
+    {
+        stats->blocksPreOpt += preOptBlockCount;
+        stats->maxBlockInstructions = maxBlockInstructions;
+    }
+
+    // we use helpers.blocksPreOpt instead of stats.blocksPreOpt since
+    // stats can be null across some code paths.
+    if (helpers.preOptBlockCount >= unsigned(FInt::CodegenHeuristicsBlockLimit.value))
+        return false;
+
+    if (maxBlockInstructions >= unsigned(FInt::CodegenHeuristicsBlockInstructionLimit.value))
+        return false;
 
     computeCfgInfo(ir.function);
 
@@ -240,6 +276,15 @@ inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& 
 
     // In order to allocate registers during lowering, we need to know where instruction results are last used
     updateLastUseLocations(ir.function, sortedBlocks);
+
+    if (stats)
+    {
+        for (const IrBlock& block : ir.function.blocks)
+        {
+            if (block.kind != IrBlockKind::Dead)
+                ++stats->blocksPostOpt;
+        }
+    }
 
     return lowerIr(build, ir, sortedBlocks, helpers, proto, options, stats);
 }

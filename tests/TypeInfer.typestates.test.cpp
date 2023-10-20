@@ -119,4 +119,82 @@ TEST_CASE_FIXTURE(TypeStateFixture, "assign_a_local_and_then_refine_it")
     CHECK("Type 'string' could not be converted into 'never'" == toString(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(TypeStateFixture, "recursive_local_function")
+{
+    CheckResult result = check(R"(
+        local function f(x)
+            f(5)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(TypeStateFixture, "recursive_function")
+{
+    CheckResult result = check(R"(
+        function f(x)
+            f(5)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(TypeStateFixture, "compound_assignment")
+{
+    CheckResult result = check(R"(
+        local x = 5
+        x += 7
+
+        local a = x
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(TypeStateFixture, "assignment_identity")
+{
+    CheckResult result = check(R"(
+        local x = 5
+        x = x
+
+        local a = x
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("number" == toString(requireType("a")));
+}
+
+TEST_CASE_FIXTURE(TypeStateFixture, "assignment_swap")
+{
+    CheckResult result = check(R"(
+        local x, y = 5, "hello"
+        x, y = y, x
+
+        local a, b = x, y
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("string" == toString(requireType("a")));
+    CHECK("number" == toString(requireType("b")));
+}
+
+TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_was_constrained_by_two_types")
+{
+    CheckResult result = check(R"(
+        local function f(x): number?
+            local y: string? = nil  -- 'y <: string?
+            y = x                   -- 'y ~ 'x
+            return y                -- 'y <: number?
+
+                                    -- We therefore infer 'y <: (string | nil) & (number | nil)
+                                    -- or 'y <: nil
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("(nil) -> number?" == toString(requireType("f")));
+}
+
 TEST_SUITE_END();

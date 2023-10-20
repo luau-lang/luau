@@ -9,6 +9,7 @@
 #include "lstring.h"
 #include "ltable.h"
 #include "ludata.h"
+#include "lbuffer.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -164,6 +165,9 @@ static void validateobj(global_State* g, GCObject* o)
 
     case LUA_TTHREAD:
         validatestack(g, gco2th(o));
+        break;
+
+    case LUA_TBUFFER:
         break;
 
     case LUA_TPROTO:
@@ -473,6 +477,11 @@ static void dumpthread(FILE* f, lua_State* th)
     fprintf(f, "}");
 }
 
+static void dumpbuffer(FILE* f, Buffer* b)
+{
+    fprintf(f, "{\"type\":\"buffer\",\"cat\":%d,\"size\":%d}", b->memcat, int(sizebuffer(b->len)));
+}
+
 static void dumpproto(FILE* f, Proto* p)
 {
     size_t size = sizeof(Proto) + sizeof(Instruction) * p->sizecode + sizeof(Proto*) * p->sizep + sizeof(TValue) * p->sizek + p->sizelineinfo +
@@ -541,6 +550,9 @@ static void dumpobj(FILE* f, GCObject* o)
     case LUA_TTHREAD:
         return dumpthread(f, gco2th(o));
 
+    case LUA_TBUFFER:
+        return dumpbuffer(f, gco2buf(o));
+
     case LUA_TPROTO:
         return dumpproto(f, gco2p(o));
 
@@ -607,7 +619,7 @@ struct EnumContext
 {
     lua_State* L;
     void* context;
-    void (*node)(void* context, void* ptr, uint8_t tt, uint8_t memcat, const char* name);
+    void (*node)(void* context, void* ptr, uint8_t tt, uint8_t memcat, size_t size, const char* name);
     void (*edge)(void* context, void* from, void* to, const char* name);
 };
 
@@ -617,9 +629,9 @@ static void* enumtopointer(GCObject* gco)
     return gco->gch.tt == LUA_TUSERDATA ? (void*)gco2u(gco)->data : (void*)gco;
 }
 
-static void enumnode(EnumContext* ctx, GCObject* gco, const char* objname)
+static void enumnode(EnumContext* ctx, GCObject* gco, size_t size, const char* objname)
 {
-    ctx->node(ctx->context, enumtopointer(gco), gco->gch.tt, gco->gch.memcat, objname);
+    ctx->node(ctx->context, enumtopointer(gco), gco->gch.tt, gco->gch.memcat, size, objname);
 }
 
 static void enumedge(EnumContext* ctx, GCObject* from, GCObject* to, const char* edgename)
@@ -638,13 +650,15 @@ static void enumedges(EnumContext* ctx, GCObject* from, TValue* data, size_t siz
 
 static void enumstring(EnumContext* ctx, TString* ts)
 {
-    enumnode(ctx, obj2gco(ts), NULL);
+    enumnode(ctx, obj2gco(ts), ts->len, NULL);
 }
 
 static void enumtable(EnumContext* ctx, Table* h)
 {
+    size_t size = sizeof(Table) + (h->node == &luaH_dummynode ? 0 : sizenode(h) * sizeof(LuaNode)) + h->sizearray * sizeof(TValue);
+
     // Provide a name for a special registry table
-    enumnode(ctx, obj2gco(h), h == hvalue(registry(ctx->L)) ? "registry" : NULL);
+    enumnode(ctx, obj2gco(h), size, h == hvalue(registry(ctx->L)) ? "registry" : NULL);
 
     if (h->node != &luaH_dummynode)
     {
@@ -703,7 +717,7 @@ static void enumclosure(EnumContext* ctx, Closure* cl)
 {
     if (cl->isC)
     {
-        enumnode(ctx, obj2gco(cl), cl->c.debugname);
+        enumnode(ctx, obj2gco(cl), sizeCclosure(cl->nupvalues), cl->c.debugname);
     }
     else
     {
@@ -716,7 +730,7 @@ static void enumclosure(EnumContext* ctx, Closure* cl)
         else
             snprintf(buf, sizeof(buf), "%s:%d", p->debugname ? getstr(p->debugname) : "", p->linedefined);
 
-        enumnode(ctx, obj2gco(cl), buf);
+        enumnode(ctx, obj2gco(cl), sizeLclosure(cl->nupvalues), buf);
     }
 
     enumedge(ctx, obj2gco(cl), obj2gco(cl->env), "env");
@@ -737,7 +751,26 @@ static void enumclosure(EnumContext* ctx, Closure* cl)
 
 static void enumudata(EnumContext* ctx, Udata* u)
 {
-    enumnode(ctx, obj2gco(u), NULL);
+    const char* name = NULL;
+
+    if (Table* h = u->metatable)
+    {
+        if (h->node != &luaH_dummynode)
+        {
+            for (int i = 0; i < sizenode(h); ++i)
+            {
+                const LuaNode& n = h->node[i];
+
+                if (ttisstring(&n.key) && ttisstring(&n.val) && strcmp(svalue(&n.key), "__type") == 0)
+                {
+                    name = svalue(&n.val);
+                    break;
+                }
+            }
+        }
+    }
+
+    enumnode(ctx, obj2gco(u), sizeudata(u->len), name);
 
     if (u->metatable)
         enumedge(ctx, obj2gco(u), obj2gco(u->metatable), "metatable");
@@ -745,6 +778,8 @@ static void enumudata(EnumContext* ctx, Udata* u)
 
 static void enumthread(EnumContext* ctx, lua_State* th)
 {
+    size_t size = sizeof(lua_State) + sizeof(TValue) * th->stacksize + sizeof(CallInfo) * th->size_ci;
+
     Closure* tcl = NULL;
     for (CallInfo* ci = th->base_ci; ci <= th->ci; ++ci)
     {
@@ -766,11 +801,11 @@ static void enumthread(EnumContext* ctx, lua_State* th)
         else
             snprintf(buf, sizeof(buf), "%s:%d", p->debugname ? getstr(p->debugname) : "", p->linedefined);
 
-        enumnode(ctx, obj2gco(th), buf);
+        enumnode(ctx, obj2gco(th), size, buf);
     }
     else
     {
-        enumnode(ctx, obj2gco(th), NULL);
+        enumnode(ctx, obj2gco(th), size, NULL);
     }
 
     enumedge(ctx, obj2gco(th), obj2gco(th->gt), "globals");
@@ -779,9 +814,17 @@ static void enumthread(EnumContext* ctx, lua_State* th)
         enumedges(ctx, obj2gco(th), th->stack, th->top - th->stack, "stack");
 }
 
+static void enumbuffer(EnumContext* ctx, Buffer* b)
+{
+    enumnode(ctx, obj2gco(b), sizebuffer(b->len), NULL);
+}
+
 static void enumproto(EnumContext* ctx, Proto* p)
 {
-    enumnode(ctx, obj2gco(p), p->source ? getstr(p->source) : NULL);
+    size_t size = sizeof(Proto) + sizeof(Instruction) * p->sizecode + sizeof(Proto*) * p->sizep + sizeof(TValue) * p->sizek + p->sizelineinfo +
+                  sizeof(LocVar) * p->sizelocvars + sizeof(TString*) * p->sizeupvalues;
+
+    enumnode(ctx, obj2gco(p), size, p->source ? getstr(p->source) : NULL);
 
     if (p->sizek)
         enumedges(ctx, obj2gco(p), p->k, p->sizek, "constants");
@@ -792,7 +835,7 @@ static void enumproto(EnumContext* ctx, Proto* p)
 
 static void enumupval(EnumContext* ctx, UpVal* uv)
 {
-    enumnode(ctx, obj2gco(uv), NULL);
+    enumnode(ctx, obj2gco(uv), sizeof(UpVal), NULL);
 
     if (iscollectable(uv->v))
         enumedge(ctx, obj2gco(uv), gcvalue(uv->v), "value");
@@ -817,6 +860,9 @@ static void enumobj(EnumContext* ctx, GCObject* o)
     case LUA_TTHREAD:
         return enumthread(ctx, gco2th(o));
 
+    case LUA_TBUFFER:
+        return enumbuffer(ctx, gco2buf(o));
+
     case LUA_TPROTO:
         return enumproto(ctx, gco2p(o));
 
@@ -834,7 +880,7 @@ static bool enumgco(void* context, lua_Page* page, GCObject* gco)
     return false;
 }
 
-void luaC_enumheap(lua_State* L, void* context, void (*node)(void* context, void* ptr, uint8_t tt, uint8_t memcat, const char* name),
+void luaC_enumheap(lua_State* L, void* context, void (*node)(void* context, void* ptr, uint8_t tt, uint8_t memcat, size_t size, const char* name),
     void (*edge)(void* context, void* from, void* to, const char* name))
 {
     global_State* g = L->global;

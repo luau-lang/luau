@@ -2,8 +2,7 @@
 #pragma once
 
 #include "Luau/TypeArena.h"
-#include "Luau/TypePack.h"
-#include "Luau/Type.h"
+#include "Luau/TypeFwd.h"
 #include "Luau/DenseHash.h"
 
 // We provide an implementation of substitution on types,

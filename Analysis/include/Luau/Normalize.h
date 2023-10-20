@@ -2,10 +2,15 @@
 #pragma once
 
 #include "Luau/NotNull.h"
-#include "Luau/Type.h"
+#include "Luau/TypeFwd.h"
 #include "Luau/UnifierSharedState.h"
 
+#include <initializer_list>
+#include <map>
 #include <memory>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 namespace Luau
 {
@@ -13,7 +18,6 @@ namespace Luau
 struct InternalErrorReporter;
 struct Module;
 struct Scope;
-struct BuiltinTypes;
 
 using ModulePtr = std::shared_ptr<Module>;
 
@@ -33,10 +37,15 @@ public:
     using iterator = std::vector<TypeId>::iterator;
     using const_iterator = std::vector<TypeId>::const_iterator;
 
-    TypeIds(const TypeIds&) = default;
-    TypeIds(TypeIds&&) = default;
     TypeIds() = default;
     ~TypeIds() = default;
+
+    TypeIds(std::initializer_list<TypeId> tys);
+
+    TypeIds(const TypeIds&) = default;
+    TypeIds& operator=(const TypeIds&) = default;
+
+    TypeIds(TypeIds&&) = default;
     TypeIds& operator=(TypeIds&&) = default;
 
     void insert(TypeId ty);

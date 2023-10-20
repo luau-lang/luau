@@ -219,6 +219,14 @@ enum class IrCmd : uint8_t
     // E: block (if false)
     JUMP_CMP_NUM,
 
+    // Perform jump based on a numerical loop condition (step > 0 ? idx <= limit : limit <= idx)
+    // A: double (index)
+    // B: double (limit)
+    // C: double (step)
+    // D: block (if true)
+    // E: block (if false)
+    JUMP_FORN_LOOP_COND,
+
     // Perform a conditional jump based on cached table node slot matching the actual table node slot for a key
     // A: pointer (LuaNode)
     // B: Kn

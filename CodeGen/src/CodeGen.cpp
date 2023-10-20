@@ -42,6 +42,9 @@
 LUAU_FASTFLAGVARIABLE(DebugCodegenNoOpt, false)
 LUAU_FASTFLAGVARIABLE(DebugCodegenOptSize, false)
 LUAU_FASTFLAGVARIABLE(DebugCodegenSkipNumbering, false)
+LUAU_FASTINTVARIABLE(CodegenHeuristicsInstructionLimit, 1'048'576)   // 1 M
+LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockLimit, 65'536)            // 64 K
+LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockInstructionLimit, 65'536) // 64 K
 
 namespace Luau
 {

@@ -812,6 +812,30 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         jumpOrFallthrough(blockOp(inst.e), next);
         break;
     }
+    case IrCmd::JUMP_FORN_LOOP_COND:
+    {
+        RegisterA64 index = tempDouble(inst.a);
+        RegisterA64 limit = tempDouble(inst.b);
+
+        Label direct;
+
+        // step > 0
+        build.fcmpz(tempDouble(inst.c));
+        build.b(getConditionFP(IrCondition::Greater), direct);
+
+        // !(limit <= index)
+        build.fcmp(limit, index);
+        build.b(getConditionFP(IrCondition::NotLessEqual), labelOp(inst.e));
+        build.b(labelOp(inst.d));
+
+        // !(index <= limit)
+        build.setLabel(direct);
+
+        build.fcmp(index, limit);
+        build.b(getConditionFP(IrCondition::NotLessEqual), labelOp(inst.e));
+        jumpOrFallthrough(blockOp(inst.d), next);
+        break;
+    }
     // IrCmd::JUMP_SLOT_MATCH implemented below
     case IrCmd::TABLE_LEN:
     {
