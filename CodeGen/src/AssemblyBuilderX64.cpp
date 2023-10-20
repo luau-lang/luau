@@ -541,6 +541,19 @@ void AssemblyBuilderX64::bsf(RegisterX64 dst, OperandX64 src)
     commit();
 }
 
+void AssemblyBuilderX64::bswap(RegisterX64 dst)
+{
+    if (logText)
+        log("bswap", dst);
+
+    LUAU_ASSERT(dst.size == SizeX64::dword || dst.size == SizeX64::qword);
+
+    placeRex(dst);
+    place(0x0f);
+    place(OP_PLUS_REG(0xc8, dst.index));
+    commit();
+}
+
 void AssemblyBuilderX64::nop(uint32_t length)
 {
     while (length != 0)

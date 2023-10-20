@@ -19,14 +19,15 @@ struct NonStrictTypeCheckerFixture : Fixture
     {
         ScopedFastFlag flags[] = {
             {"LuauCheckedFunctionSyntax", true},
+            {"DebugLuauDeferredConstraintResolution", true},
         };
-
+        LoadDefinitionFileResult res = loadDefinition(definitions);
+        LUAU_ASSERT(res.success);
         return check(Mode::Nonstrict, code);
     }
 
     std::string definitions = R"BUILTIN_SRC(
 declare function @checked abs(n: number): number
-abs("hi")
 )BUILTIN_SRC";
 };
 
@@ -36,11 +37,13 @@ TEST_SUITE_BEGIN("NonStrictTypeCheckerTest");
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "simple_non_strict")
 {
     auto res = checkNonStrict(R"BUILTIN_SRC(
-declare function @checked abs(n: number): number
 abs("hi")
 )BUILTIN_SRC");
-
-    // LUAU_REQUIRE_ERRORS(res);
+    LUAU_REQUIRE_ERRORS(res);
+    REQUIRE(res.errors.size() == 1);
+    auto err = get<CheckedFunctionCallError>(res.errors[0]);
+    REQUIRE(err != nullptr);
+    REQUIRE(err->checkedFunctionName == "abs");
 }
 
 TEST_SUITE_END();

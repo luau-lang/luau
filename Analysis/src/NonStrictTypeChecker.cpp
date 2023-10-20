@@ -325,6 +325,7 @@ struct NonStrictTypeChecker
             return;
 
         TypeId fnTy = *originalCallTy;
+        // TODO: how should we link this to the passed in context here
         NonStrictContext fresh{};
         if (auto fn = get<FunctionType>(follow(fnTy)))
         {
@@ -351,28 +352,20 @@ struct NonStrictTypeChecker
                     // We will compare arg and ~number
                     AstExpr* arg = call->args.data[i];
                     TypeId expectedArgType = argTypes[i];
-                    NullableBreadcrumbId bc = dfg->getBreadcrumb(arg);
+                    DefId def = dfg->getDef(arg);
                     // TODO: Cache negations created here!!!
                     // See Jira Ticket: https://roblox.atlassian.net/browse/CLI-87539
-                    if (bc)
-                    {
-                        TypeId runTimeErrorTy = arena.addType(NegationType{expectedArgType});
-                        DefId def = bc->def;
-                        fresh.context[def.get()] = runTimeErrorTy;
-                    }
-                    else
-                    {
-                        std::cout << "bad" << std::endl;
-                    }
+                    TypeId runTimeErrorTy = arena.addType(NegationType{expectedArgType});
+                    fresh.context[def.get()] = runTimeErrorTy;
                 }
 
                 // Populate the context and now iterate through each of the arguments to the call to find out if we satisfy the types
+                AstName name = getIdentifier(call->func);
                 for (size_t i = 0; i < call->args.size; i++)
                 {
                     AstExpr* arg = call->args.data[i];
-                    // TODO: pipe in name of checked function to report Error
                     if (auto runTimeFailureType = willRunTimeError(arg, fresh))
-                        reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, "", i}, arg->location);
+                        reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, name.value, i}, arg->location);
                 }
             }
         }
@@ -401,25 +394,22 @@ struct NonStrictTypeChecker
     // If this fragment of the ast will run time error, return the type that causes this
     std::optional<TypeId> willRunTimeError(AstExpr* fragment, const NonStrictContext& context)
     {
-
-        if (NullableBreadcrumbId bc = dfg->getBreadcrumb(fragment))
+        DefId def = dfg->getDef(fragment);
+        if (std::optional<TypeId> contextTy = context.find(def))
         {
-            std::optional<TypeId> contextTy = context.find(bc->def);
-            if (contextTy)
-            {
 
-                TypeId actualType = lookupType(fragment);
-                SubtypingResult r = subtyping.isSubtype(actualType, *contextTy);
-                if (r.normalizationTooComplex)
-                    reportError(NormalizationTooComplex{}, fragment->location);
+            TypeId actualType = lookupType(fragment);
+            SubtypingResult r = subtyping.isSubtype(actualType, *contextTy);
+            if (r.normalizationTooComplex)
+                reportError(NormalizationTooComplex{}, fragment->location);
 
-                if (!r.isSubtype && !r.isErrorSuppressing)
-                    reportError(TypeMismatch{actualType, *contextTy}, fragment->location);
+            if (!r.isSubtype && !r.isErrorSuppressing)
+                reportError(TypeMismatch{actualType, *contextTy}, fragment->location);
 
-                if (r.isSubtype)
-                    return {actualType};
-            }
+            if (r.isSubtype)
+                return {actualType};
         }
+
         return {};
     }
 };

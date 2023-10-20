@@ -111,8 +111,6 @@ struct ConstraintSolver
     bool tryDispatch(const PackSubtypeConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const GeneralizationConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const InstantiationConstraint& c, NotNull<const Constraint> constraint, bool force);
-    bool tryDispatch(const UnaryConstraint& c, NotNull<const Constraint> constraint, bool force);
-    bool tryDispatch(const BinaryConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const NameConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const TypeAliasExpansionConstraint& c, NotNull<const Constraint> constraint);
@@ -124,6 +122,7 @@ struct ConstraintSolver
     bool tryDispatch(const SingletonOrTopTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const UnpackConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const RefineConstraint& c, NotNull<const Constraint> constraint, bool force);
+    bool tryDispatch(const SetOpConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const ReduceConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const ReducePackConstraint& c, NotNull<const Constraint> constraint, bool force);
 

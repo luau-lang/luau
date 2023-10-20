@@ -63,7 +63,7 @@ if not limitedstack then
 
 	function stackover() return pcall(stackover) end
 	local res = {pcall(stackover)}
-	assert(#res == 200)
+	assert(#res == 200) -- stack limit (MAXCCALLS) is 200
 end
 
 -- yield tests
@@ -167,5 +167,101 @@ checkresults({ false, "not enough memory" }, xpcall(function() table.create(1e6)
 checkresults({ false, "oops" }, xpcall(function() table.create(1e6) end, function(e) return "oops" end))
 checkresults({ false, "error in error handling" }, xpcall(function() error("oops") end, function(e) table.create(1e6) end))
 checkresults({ false, "not enough memory" }, xpcall(function() table.create(1e6) end, function(e) table.create(1e6) end))
+
+-- ensure that pcall and xpcall close upvalues when handling error
+local upclo
+local function uptest(y)
+	local a, b, c, d = 1, 2, 3, 4
+	upclo = function()
+		local t = table.pack("a", "b", "d", "e", "f", "g", "h", "i")
+		assert(a == 1)
+		assert(b == 2)
+		assert(c == 3)
+		assert(d == 4)
+		a, b, c, d = table.unpack(t)
+		return "ok"
+	end
+	if y then
+		y()
+	end
+	error("oops")
+end
+
+-- ensure that pcall and xpcall close upvalues when handling error (immediate)
+do
+	upclo = nil
+	pcall(uptest, nil)
+	assert(upclo() == "ok")
+end
+
+do
+	upclo = nil
+	xpcall(uptest, function(err) end, nil)
+	assert(upclo() == "ok")
+end
+
+do
+	upclo = nil
+	xpcall(uptest, function(err) return "e", "e", "e", "e", "e", "e", "e", "e" end, nil)
+	assert(upclo() == "ok")
+end
+
+-- ensure that pcall and xpcall close upvalues when handling error (deferred)
+do
+	upclo = nil
+	checkresults({"yield", "return", "ok"}, colog(function()
+		pcall(uptest, coroutine.yield)
+		return upclo()
+	end))
+end
+
+do
+	upclo = nil
+	checkresults({"yield", "return", "ok"}, colog(function()
+		xpcall(uptest, function(err) end, coroutine.yield)
+		return upclo()
+	end))
+end
+
+do
+	upclo = nil
+	checkresults({"yield", "return", "ok"}, colog(function()
+		xpcall(uptest, function(err) return "e", "e", "e", "e", "e", "e", "e", "e" end, coroutine.yield)
+		return upclo()
+	end))
+end
+
+-- also cover an edge case where xpcall's error handler may want access to the upvalues (immediate + deferred)
+do
+	local ur
+	upclo = nil
+	xpcall(uptest, function(err)
+		ur = upclo()
+	end, nil)
+	assert(ur == "ok")
+end
+
+do
+	local ur
+	upclo = nil
+	checkresults({"yield", "return"}, colog(function()
+		xpcall(uptest, function(err)
+			ur = upclo()
+		end, coroutine.yield)
+	end))
+	assert(ur == "ok")
+end
+
+-- test stack overflow from a thread that had an error, recovered, and subsequently called coroutine.resume again
+if not limitedstack then
+	local count = 0
+	local function foo()
+		count += 1
+		pcall(1)   -- create an error
+		coroutine.wrap(foo)()   -- call another coroutine
+	end
+	checkerror(pcall(foo)) -- triggers C stack overflow
+	assert(count + 1 == 200) -- stack limit (MAXCCALLS) is 200, -1 for first pcall
+end
 
 return 'OK'

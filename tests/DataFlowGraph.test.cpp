@@ -33,19 +33,11 @@ struct DataFlowGraphFixture
     }
 
     template<typename T, int N>
-    NullableBreadcrumbId getBreadcrumb(const std::vector<Nth>& nths = {nth<T>(N)})
+    DefId getDef(const std::vector<Nth>& nths = {nth<T>(N)})
     {
         T* node = query<T, N>(module, nths);
         REQUIRE(node);
-        return graph->getBreadcrumb(node);
-    }
-
-    template<typename T, int N>
-    BreadcrumbId requireBreadcrumb(const std::vector<Nth>& nths = {nth<T>(N)})
-    {
-        auto bc = getBreadcrumb<T, N>(nths);
-        REQUIRE(bc);
-        return NotNull{bc};
+        return graph->getDef(node);
     }
 };
 
@@ -58,7 +50,7 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "define_locals_in_local_stat")
         local y = x
     )");
 
-    REQUIRE(getBreadcrumb<AstExprLocal, 1>());
+    (void)getDef<AstExprLocal, 1>();
 }
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "define_parameters_in_functions")
@@ -69,7 +61,7 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "define_parameters_in_functions")
         end
     )");
 
-    REQUIRE(getBreadcrumb<AstExprLocal, 1>());
+    (void)getDef<AstExprLocal, 1>();
 }
 
 TEST_CASE_FIXTURE(DataFlowGraphFixture, "find_aliases")
@@ -80,8 +72,8 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "find_aliases")
         local z = y
     )");
 
-    BreadcrumbId x = requireBreadcrumb<AstExprLocal, 1>();
-    BreadcrumbId y = requireBreadcrumb<AstExprLocal, 2>();
+    DefId x = getDef<AstExprLocal, 1>();
+    DefId y = getDef<AstExprLocal, 2>();
     REQUIRE(x != y);
 }
 
@@ -95,8 +87,8 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "independent_locals")
         local b = y
     )");
 
-    BreadcrumbId x = requireBreadcrumb<AstExprLocal, 1>();
-    BreadcrumbId y = requireBreadcrumb<AstExprLocal, 2>();
+    DefId x = getDef<AstExprLocal, 1>();
+    DefId y = getDef<AstExprLocal, 2>();
     REQUIRE(x != y);
 }
 

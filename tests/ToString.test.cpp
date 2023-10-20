@@ -234,8 +234,41 @@ TEST_CASE_FIXTURE(Fixture, "functions_are_always_parenthesized_in_unions_or_inte
     CHECK_EQ(toString(&itv), "((number, string) -> (string, number)) & ((string, number) -> (number, string))");
 }
 
-TEST_CASE_FIXTURE(Fixture, "intersections_respects_use_line_breaks")
+TEST_CASE_FIXTURE(Fixture, "simple_intersections_printed_on_one_line")
 {
+    ScopedFastFlag sff{"LuauToStringSimpleCompositeTypesSingleLine", true};
+    CheckResult result = check(R"(
+        local a: string & number
+    )");
+
+    ToStringOptions opts;
+    opts.useLineBreaks = true;
+
+    CHECK_EQ("number & string", toString(requireType("a"), opts));
+}
+
+TEST_CASE_FIXTURE(Fixture, "complex_intersections_printed_on_multiple_lines")
+{
+    ScopedFastFlag sff{"LuauToStringSimpleCompositeTypesSingleLine", true};
+    CheckResult result = check(R"(
+        local a: string & number & boolean
+    )");
+
+    ToStringOptions opts;
+    opts.useLineBreaks = true;
+    opts.compositeTypesSingleLineLimit = 2;
+
+    //clang-format off
+    CHECK_EQ("boolean\n"
+             "& number\n"
+             "& string",
+        toString(requireType("a"), opts));
+    //clang-format on
+}
+
+TEST_CASE_FIXTURE(Fixture, "overloaded_functions_always_printed_on_multiple_lines")
+{
+    ScopedFastFlag sff{"LuauToStringSimpleCompositeTypesSingleLine", true};
     CheckResult result = check(R"(
         local a: ((string) -> string) & ((number) -> number)
     )");
@@ -250,13 +283,28 @@ TEST_CASE_FIXTURE(Fixture, "intersections_respects_use_line_breaks")
     //clang-format on
 }
 
-TEST_CASE_FIXTURE(Fixture, "unions_respects_use_line_breaks")
+TEST_CASE_FIXTURE(Fixture, "simple_unions_printed_on_one_line")
 {
+    ScopedFastFlag sff{"LuauToStringSimpleCompositeTypesSingleLine", true};
+    CheckResult result = check(R"(
+        local a: number | boolean
+    )");
+
+    ToStringOptions opts;
+    opts.useLineBreaks = true;
+
+    CHECK_EQ("boolean | number", toString(requireType("a"), opts));
+}
+
+TEST_CASE_FIXTURE(Fixture, "complex_unions_printed_on_multiple_lines")
+{
+    ScopedFastFlag sff{"LuauToStringSimpleCompositeTypesSingleLine", true};
     CheckResult result = check(R"(
         local a: string | number | boolean
     )");
 
     ToStringOptions opts;
+    opts.compositeTypesSingleLineLimit = 2;
     opts.useLineBreaks = true;
 
     //clang-format off
@@ -924,5 +972,26 @@ Type 'string' could not be converted into 'number' in an invariant context)";
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK(expected == actual);
+}
+
+TEST_CASE_FIXTURE(Fixture, "checked_fn_toString")
+{
+    ScopedFastFlag flags[] = {
+        {"LuauCheckedFunctionSyntax", true},
+        {"DebugLuauDeferredConstraintResolution", true},
+    };
+
+    auto _result = loadDefinition(R"(
+declare function @checked abs(n: number) : number
+)");
+
+    auto result = check(Mode::Nonstrict, R"(
+local f = abs
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    TypeId fn = requireType("f");
+    CHECK("@checked (number) -> number" == toString(fn));
 }
 TEST_SUITE_END();

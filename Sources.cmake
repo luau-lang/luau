@@ -152,7 +152,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/AstJsonEncoder.h
     Analysis/include/Luau/AstQuery.h
     Analysis/include/Luau/Autocomplete.h
-    Analysis/include/Luau/Breadcrumb.h
     Analysis/include/Luau/BuiltinDefinitions.h
     Analysis/include/Luau/Cancellation.h
     Analysis/include/Luau/Clone.h
@@ -196,15 +195,18 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Transpiler.h
     Analysis/include/Luau/TxnLog.h
     Analysis/include/Luau/Type.h
-    Analysis/include/Luau/TypePairHash.h
     Analysis/include/Luau/TypeArena.h
     Analysis/include/Luau/TypeAttach.h
     Analysis/include/Luau/TypeChecker2.h
     Analysis/include/Luau/TypeCheckLimits.h
     Analysis/include/Luau/TypedAllocator.h
     Analysis/include/Luau/TypeFamily.h
+    Analysis/include/Luau/TypeFwd.h
     Analysis/include/Luau/TypeInfer.h
+    Analysis/include/Luau/TypeOrPack.h
     Analysis/include/Luau/TypePack.h
+    Analysis/include/Luau/TypePairHash.h
+    Analysis/include/Luau/TypePath.h
     Analysis/include/Luau/TypeUtils.h
     Analysis/include/Luau/Unifiable.h
     Analysis/include/Luau/Unifier.h
@@ -259,7 +261,9 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/TypedAllocator.cpp
     Analysis/src/TypeFamily.cpp
     Analysis/src/TypeInfer.cpp
+    Analysis/src/TypeOrPack.cpp
     Analysis/src/TypePack.cpp
+    Analysis/src/TypePath.cpp
     Analysis/src/TypeUtils.cpp
     Analysis/src/Unifiable.cpp
     Analysis/src/Unifier.cpp
@@ -276,6 +280,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/laux.cpp
     VM/src/lbaselib.cpp
     VM/src/lbitlib.cpp
+    VM/src/lbuffer.cpp
     VM/src/lbuiltins.cpp
     VM/src/lcorolib.cpp
     VM/src/ldblib.cpp
@@ -304,6 +309,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/lvmutils.cpp
 
     VM/src/lapi.h
+    VM/src/lbuffer.h
     VM/src/lbuiltins.h
     VM/src/lbytecode.h
     VM/src/lcommon.h
@@ -371,8 +377,6 @@ if(TARGET Luau.UnitTest)
         tests/AstQueryDsl.cpp
         tests/AstQueryDsl.h
         tests/AstVisitor.test.cpp
-        tests/RegisterCallbacks.h
-        tests/RegisterCallbacks.cpp
         tests/Autocomplete.test.cpp
         tests/BuiltinDefinitions.test.cpp
         tests/ClassFixture.cpp
@@ -386,11 +390,14 @@ if(TARGET Luau.UnitTest)
         tests/CostModel.test.cpp
         tests/DataFlowGraph.test.cpp
         tests/DenseHash.test.cpp
+        tests/DiffAsserts.cpp
+        tests/DiffAsserts.h
         tests/Differ.test.cpp
         tests/Error.test.cpp
         tests/Fixture.cpp
         tests/Fixture.h
         tests/Frontend.test.cpp
+        tests/InsertionOrderedMap.test.cpp
         tests/IostreamOptional.h
         tests/IrBuilder.test.cpp
         tests/IrCallWrapperX64.test.cpp
@@ -405,6 +412,8 @@ if(TARGET Luau.UnitTest)
         tests/Normalize.test.cpp
         tests/NotNull.test.cpp
         tests/Parser.test.cpp
+        tests/RegisterCallbacks.cpp
+        tests/RegisterCallbacks.h
         tests/RequireTracer.test.cpp
         tests/RuntimeLimits.test.cpp
         tests/ScopedFlags.h
@@ -446,11 +455,11 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.unionTypes.test.cpp
         tests/TypeInfer.unknownnever.test.cpp
         tests/TypePack.test.cpp
+        tests/TypePath.test.cpp
         tests/TypeVar.test.cpp
         tests/Unifier2.test.cpp
         tests/Variant.test.cpp
         tests/VisitType.test.cpp
-        tests/InsertionOrderedMap.test.cpp
         tests/main.cpp)
 endif()
 

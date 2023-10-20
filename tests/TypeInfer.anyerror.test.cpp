@@ -171,7 +171,7 @@ TEST_CASE_FIXTURE(Fixture, "can_subscript_any")
 TEST_CASE_FIXTURE(Fixture, "can_get_length_of_any")
 {
     CheckResult result = check(R"(
-        local foo: any = {}
+        local foo = ({} :: any)
         local bar = #foo
     )");
 

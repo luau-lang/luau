@@ -2,7 +2,8 @@
 
 #pragma once
 
-#include "Luau/Type.h"
+#include "Luau/NotNull.h"
+#include "Luau/TypeFwd.h"
 
 #include <set>
 
@@ -10,7 +11,6 @@ namespace Luau
 {
 
 struct TypeArena;
-struct BuiltinTypes;
 
 struct SimplifyResult
 {

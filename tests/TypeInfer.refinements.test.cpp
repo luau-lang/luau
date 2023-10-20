@@ -289,7 +289,7 @@ TEST_CASE_FIXTURE(Fixture, "type_assertion_expr_carry_its_constraints")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_if_condition_position")
 {
-    CheckResult result1 = check(R"(
+    CheckResult result = check(R"(
         function f(s: any, t: unknown)
             if type(s) == "number" then
                 local n = s
@@ -300,7 +300,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_if_condition_position")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result1);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     // DCR changes refinements to preserve error suppression.
     if (FFlag::DebugLuauDeferredConstraintResolution)
@@ -1922,9 +1922,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // TODO: they should be `unknown`, not `nil`.
-    CHECK_EQ("nil", toString(requireType("idx")));
-    CHECK_EQ("nil", toString(requireType("val")));
+    CHECK_EQ("unknown", toString(requireType("idx")));
+    CHECK_EQ("unknown", toString(requireType("val")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "conditional_refinement_should_stay_error_suppressing")
@@ -1991,6 +1990,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "globals_can_be_narrowed_too")
     )");
 
     CHECK("never" == toString(requireTypeAtPosition(Position{2, 24})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "ex")
+{
+    CheckResult result = check(R"(
+local function f(x: string | number)
+    if typeof((x)) == "string" then
+        local y = x
+    end
+end
+)");
+    TypeId t = requireTypeAtPosition({3, 18});
+    CHECK("string" == toString(t));
 }
 
 TEST_SUITE_END();

@@ -7607,4 +7607,103 @@ L0: RETURN R0 2
 )");
 }
 
+TEST_CASE("IfThenElseAndOr")
+{
+    ScopedFastFlag sff("LuauCompileIfElseAndOr", true);
+
+    // if v then v else k can be optimized to ORK
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x = ...
+return if x then x else 0
+)"),
+        R"(
+GETVARARGS R0 1
+ORK R1 R0 K0 [0]
+RETURN R1 1
+)");
+
+    // if v then v else l can be optimized to OR
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x, y = ...
+return if x then x else y
+)"),
+        R"(
+GETVARARGS R0 2
+OR R2 R0 R1
+RETURN R2 1
+)");
+
+    // this also works in presence of type casts
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x, y = ...
+return if x then x :: number else 0
+)"),
+        R"(
+GETVARARGS R0 2
+ORK R2 R0 K0 [0]
+RETURN R2 1
+)");
+
+    // if v then k else v can be optimized to ANDK
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x = ...
+return if x then 0 else x
+)"),
+        R"(
+GETVARARGS R0 1
+ANDK R1 R0 K0 [0]
+RETURN R1 1
+)");
+
+    // if v then l else v can be optimized to AND
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x, y = ...
+return if x then y else x
+)"),
+        R"(
+GETVARARGS R0 2
+AND R2 R0 R1
+RETURN R2 1
+)");
+
+    // this also works in presence of type casts
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x, y = ...
+return if x then y else x :: number
+)"),
+        R"(
+GETVARARGS R0 2
+AND R2 R0 R1
+RETURN R2 1
+)");
+
+    // all of the above work when the target is a temporary register, which is safe because the value is only mutated once
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x, y = ...
+x = if x then x else y
+x = if x then y else x
+)"),
+        R"(
+GETVARARGS R0 2
+OR R0 R0 R1
+AND R0 R0 R1
+RETURN R0 0
+)");
+
+    // note that we can't do this transformation if the expression has possible side effects
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x = ...
+return if x.data then x.data else 0
+)"),
+        R"(
+GETVARARGS R0 1
+GETTABLEKS R2 R0 K0 ['data']
+JUMPIFNOT R2 L0
+GETTABLEKS R1 R0 K0 ['data']
+RETURN R1 1
+L0: LOADN R1 0
+RETURN R1 1
+)");
+}
+
 TEST_SUITE_END();

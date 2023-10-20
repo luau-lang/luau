@@ -44,6 +44,9 @@ private:
 public:
     using first_alternative = typename First<Ts...>::type;
 
+    template<typename T>
+    static constexpr bool is_part_of_v = std::disjunction_v<typename std::is_same<std::decay_t<Ts>, T>...>;
+
     Variant()
     {
         static_assert(std::is_default_constructible_v<first_alternative>, "first alternative type must be default constructible");

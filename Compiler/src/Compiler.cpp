@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauFloorDivision)
 LUAU_FASTFLAGVARIABLE(LuauCompileFixContinueValidation2, false)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileContinueCloseUpvals, false)
+LUAU_FASTFLAGVARIABLE(LuauCompileIfElseAndOr, false)
 
 namespace Luau
 {
@@ -1569,6 +1570,23 @@ struct Compiler
         }
     }
 
+    void compileExprIfElseAndOr(bool and_, uint8_t creg, AstExpr* other, uint8_t target)
+    {
+        int32_t cid = getConstantIndex(other);
+
+        if (cid >= 0 && cid <= 255)
+        {
+            bytecode.emitABC(and_ ? LOP_ANDK : LOP_ORK, target, creg, uint8_t(cid));
+        }
+        else
+        {
+            RegScope rs(this);
+            uint8_t oreg = compileExprAuto(other, rs);
+
+            bytecode.emitABC(and_ ? LOP_AND : LOP_OR, target, creg, oreg);
+        }
+    }
+
     void compileExprIfElse(AstExprIfElse* expr, uint8_t target, bool targetTemp)
     {
         if (isConstant(expr->condition))
@@ -1584,6 +1602,20 @@ struct Compiler
         }
         else
         {
+            if (FFlag::LuauCompileIfElseAndOr)
+            {
+                // Optimization: convert some if..then..else expressions into and/or when the other side has no side effects and is very cheap to compute
+                // if v then v else e => v or e
+                // if v then e else v => v and e
+                if (int creg = getExprLocalReg(expr->condition); creg >= 0)
+                {
+                    if (creg == getExprLocalReg(expr->trueExpr) && (getExprLocalReg(expr->falseExpr) >= 0 || isConstant(expr->falseExpr)))
+                        return compileExprIfElseAndOr(/* and_= */ false, uint8_t(creg), expr->falseExpr, target);
+                    else if (creg == getExprLocalReg(expr->falseExpr) && (getExprLocalReg(expr->trueExpr) >= 0 || isConstant(expr->trueExpr)))
+                        return compileExprIfElseAndOr(/* and_= */ true, uint8_t(creg), expr->trueExpr, target);
+                }
+            }
+
             std::vector<size_t> elseJump;
             compileConditionValue(expr->condition, nullptr, elseJump, false);
             compileExpr(expr->trueExpr, target, targetTemp);

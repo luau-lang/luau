@@ -198,7 +198,8 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected = "Type 'bad' could not be converted into 'T<number>'";
+    const std::string expected =
+        R"(Type 'bad' could not be converted into 'T<number>'; type bad["v"] (string) is not a subtype of T<number>["v"] (number))";
     CHECK(result.errors[0].location == Location{{4, 31}, {4, 44}});
     CHECK_EQ(expected, toString(result.errors[0]));
 }
@@ -217,7 +218,8 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected = "Type 'bad' could not be converted into 'U<number>'";
+    const std::string expected =
+        R"(Type 'bad' could not be converted into 'U<number>'; type bad["t"]["v"] (string) is not a subtype of U<number>["t"]["v"] (number))";
 
     CHECK(result.errors[0].location == Location{{4, 31}, {4, 52}});
     CHECK_EQ(expected, toString(result.errors[0]));

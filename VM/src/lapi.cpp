@@ -11,6 +11,7 @@
 #include "ludata.h"
 #include "lvm.h"
 #include "lnumutils.h"
+#include "lbuffer.h"
 
 #include <string.h>
 
@@ -483,6 +484,8 @@ int lua_objlen(lua_State* L, int idx)
         return tsvalue(o)->len;
     case LUA_TUSERDATA:
         return uvalue(o)->len;
+    case LUA_TBUFFER:
+        return bufvalue(o)->len;
     case LUA_TTABLE:
         return luaH_getn(hvalue(o));
     default:
@@ -533,25 +536,32 @@ lua_State* lua_tothread(lua_State* L, int idx)
     return (!ttisthread(o)) ? NULL : thvalue(o);
 }
 
+void* lua_tobuffer(lua_State* L, int idx, size_t* len)
+{
+    StkId o = index2addr(L, idx);
+
+    if (!ttisbuffer(o))
+        return NULL;
+
+    Buffer* b = bufvalue(o);
+
+    if (len)
+        *len = b->len;
+
+    return b->data;
+}
+
 const void* lua_topointer(lua_State* L, int idx)
 {
     StkId o = index2addr(L, idx);
     switch (ttype(o))
     {
-    case LUA_TSTRING:
-        return tsvalue(o);
-    case LUA_TTABLE:
-        return hvalue(o);
-    case LUA_TFUNCTION:
-        return clvalue(o);
-    case LUA_TTHREAD:
-        return thvalue(o);
     case LUA_TUSERDATA:
         return uvalue(o)->data;
     case LUA_TLIGHTUSERDATA:
         return pvalue(o);
     default:
-        return NULL;
+        return iscollectable(o) ? gcvalue(o) : NULL;
     }
 }
 
@@ -1271,6 +1281,16 @@ void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*))
     return u->data;
 }
 
+void* lua_newbuffer(lua_State* L, size_t sz)
+{
+    luaC_checkGC(L);
+    luaC_threadbarrier(L);
+    Buffer* b = luaB_newbuffer(L, sz);
+    setbufvalue(L, L->top, b);
+    api_incr_top(L);
+    return b->data;
+}
+
 static const char* aux_upvalue(StkId fi, int n, TValue** val)
 {
     Closure* f;
@@ -1431,4 +1451,12 @@ size_t lua_totalbytes(lua_State* L, int category)
 {
     api_check(L, category < LUA_MEMORY_CATEGORIES);
     return category < 0 ? L->global->totalbytes : L->global->memcatbytes[category];
+}
+
+lua_Alloc lua_getallocf(lua_State* L, void** ud)
+{
+    lua_Alloc f = L->global->frealloc;
+    if (ud)
+        *ud = L->global->ud;
+    return f;
 }

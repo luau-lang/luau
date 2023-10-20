@@ -9,7 +9,7 @@
 #include "Luau/TxnLog.h"
 #include "Luau/TypeArena.h"
 #include "Luau/UnifierSharedState.h"
-#include "Normalize.h"
+#include "Luau/Normalize.h"
 
 #include <unordered_set>
 

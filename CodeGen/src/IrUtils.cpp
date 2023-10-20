@@ -75,6 +75,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::JUMP_CMP_INT:
     case IrCmd::JUMP_EQ_POINTER:
     case IrCmd::JUMP_CMP_NUM:
+    case IrCmd::JUMP_FORN_LOOP_COND:
     case IrCmd::JUMP_SLOT_MATCH:
         return IrValueKind::None;
     case IrCmd::TABLE_LEN:

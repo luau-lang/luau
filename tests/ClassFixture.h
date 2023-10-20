@@ -9,6 +9,9 @@ namespace Luau
 struct ClassFixture : BuiltinsFixture
 {
     ClassFixture();
+
+    TypeId vector2Type;
+    TypeId vector2InstanceType;
 };
 
 } // namespace Luau

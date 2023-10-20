@@ -83,13 +83,13 @@ ClassFixture::ClassFixture()
 
     TypeId vector2MetaType = arena.addType(TableType{});
 
-    TypeId vector2InstanceType = arena.addType(ClassType{"Vector2", {}, nullopt, vector2MetaType, {}, {}, "Test"});
+    vector2InstanceType = arena.addType(ClassType{"Vector2", {}, nullopt, vector2MetaType, {}, {}, "Test"});
     getMutable<ClassType>(vector2InstanceType)->props = {
         {"X", {numberType}},
         {"Y", {numberType}},
     };
 
-    TypeId vector2Type = arena.addType(ClassType{"Vector2", {}, nullopt, nullopt, {}, {}, "Test"});
+    vector2Type = arena.addType(ClassType{"Vector2", {}, nullopt, nullopt, {}, {}, "Test"});
     getMutable<ClassType>(vector2Type)->props = {
         {"New", {makeFunction(arena, nullopt, {numberType, numberType}, {vector2InstanceType})}},
     };

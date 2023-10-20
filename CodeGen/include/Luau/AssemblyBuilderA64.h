@@ -72,6 +72,7 @@ public:
     void ror(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
     void clz(RegisterA64 dst, RegisterA64 src);
     void rbit(RegisterA64 dst, RegisterA64 src);
+    void rev(RegisterA64 dst, RegisterA64 src);
 
     // Shifts with immediates
     // Note: immediate value must be in [0, 31] or [0, 63] range based on register type

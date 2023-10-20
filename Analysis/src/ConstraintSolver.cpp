@@ -516,10 +516,6 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*gc, constraint, force);
     else if (auto ic = get<InstantiationConstraint>(*constraint))
         success = tryDispatch(*ic, constraint, force);
-    else if (auto uc = get<UnaryConstraint>(*constraint))
-        success = tryDispatch(*uc, constraint, force);
-    else if (auto bc = get<BinaryConstraint>(*constraint))
-        success = tryDispatch(*bc, constraint, force);
     else if (auto ic = get<IterableConstraint>(*constraint))
         success = tryDispatch(*ic, constraint, force);
     else if (auto nc = get<NameConstraint>(*constraint))
@@ -542,6 +538,8 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*uc, constraint);
     else if (auto rc = get<RefineConstraint>(*constraint))
         success = tryDispatch(*rc, constraint, force);
+    else if (auto soc = get<SetOpConstraint>(*constraint))
+        success = tryDispatch(*soc, constraint, force);
     else if (auto rc = get<ReduceConstraint>(*constraint))
         success = tryDispatch(*rc, constraint, force);
     else if (auto rpc = get<ReducePackConstraint>(*constraint))
@@ -648,335 +646,6 @@ bool ConstraintSolver::tryDispatch(const InstantiationConstraint& c, NotNull<con
     queuer.traverse(c.subType);
 
     unblock(c.subType, constraint->location);
-
-    return true;
-}
-
-bool ConstraintSolver::tryDispatch(const UnaryConstraint& c, NotNull<const Constraint> constraint, bool force)
-{
-    TypeId operandType = follow(c.operandType);
-
-    if (isBlocked(operandType))
-        return block(operandType, constraint);
-
-    if (!force && get<FreeType>(operandType))
-        return block(operandType, constraint);
-
-    LUAU_ASSERT(get<BlockedType>(c.resultType));
-
-    switch (c.op)
-    {
-    case AstExprUnary::Not:
-    {
-        asMutable(c.resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
-
-        unblock(c.resultType, constraint->location);
-        return true;
-    }
-    case AstExprUnary::Len:
-    {
-        // __len must return a number.
-        asMutable(c.resultType)->ty.emplace<BoundType>(builtinTypes->numberType);
-
-        unblock(c.resultType, constraint->location);
-        return true;
-    }
-    case AstExprUnary::Minus:
-    {
-        if (isNumber(operandType) || get<AnyType>(operandType) || get<ErrorType>(operandType) || get<NeverType>(operandType))
-        {
-            asMutable(c.resultType)->ty.emplace<BoundType>(c.operandType);
-        }
-        else if (std::optional<TypeId> mm = findMetatableEntry(builtinTypes, errors, operandType, "__unm", constraint->location))
-        {
-            TypeId mmTy = follow(*mm);
-
-            if (get<FreeType>(mmTy) && !force)
-                return block(mmTy, constraint);
-
-            TypePackId argPack = arena->addTypePack(TypePack{{operandType}, {}});
-            TypePackId retPack = arena->addTypePack(BlockedTypePack{});
-
-            TypeId res = freshType(arena, builtinTypes, constraint->scope);
-            asMutable(c.resultType)->ty.emplace<BoundType>(res);
-
-            pushConstraint(constraint->scope, constraint->location, PackSubtypeConstraint{retPack, arena->addTypePack(TypePack{{c.resultType}})});
-
-            pushConstraint(constraint->scope, constraint->location, FunctionCallConstraint{mmTy, argPack, retPack, nullptr});
-        }
-        else
-        {
-            asMutable(c.resultType)->ty.emplace<BoundType>(builtinTypes->errorRecoveryType());
-        }
-
-        unblock(c.resultType, constraint->location);
-        return true;
-    }
-    }
-
-    LUAU_ASSERT(false);
-    return false;
-}
-
-bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Constraint> constraint, bool force)
-{
-    TypeId leftType = follow(c.leftType);
-    TypeId rightType = follow(c.rightType);
-    TypeId resultType = follow(c.resultType);
-
-    LUAU_ASSERT(get<BlockedType>(resultType));
-
-    bool isLogical = c.op == AstExprBinary::Op::And || c.op == AstExprBinary::Op::Or;
-
-    /* Compound assignments create constraints of the form
-     *
-     *     A <: Binary<op, A, B>
-     *
-     * This constraint is the one that is meant to unblock A, so it doesn't
-     * make any sense to stop and wait for someone else to do it.
-     */
-
-    // If any is present, the expression must evaluate to any as well.
-    bool leftAny = get<AnyType>(leftType) || get<ErrorType>(leftType);
-    bool rightAny = get<AnyType>(rightType) || get<ErrorType>(rightType);
-    bool anyPresent = leftAny || rightAny;
-
-    if (isBlocked(leftType) && leftType != resultType)
-        return block(c.leftType, constraint);
-
-    if (isBlocked(rightType) && rightType != resultType)
-        return block(c.rightType, constraint);
-
-    if (!force)
-    {
-        // Logical expressions may proceed if the LHS is free.
-        if (hasTypeInIntersection<FreeType>(leftType) && !isLogical)
-            return block(leftType, constraint);
-    }
-
-    // Logical expressions may proceed if the LHS is free.
-    if (isBlocked(leftType) || (hasTypeInIntersection<FreeType>(leftType) && !isLogical))
-    {
-        asMutable(resultType)->ty.emplace<BoundType>(errorRecoveryType());
-        unblock(resultType, constraint->location);
-        return true;
-    }
-
-    // Metatables go first, even if there is primitive behavior.
-    if (auto it = kBinaryOpMetamethods.find(c.op); it != kBinaryOpMetamethods.end())
-    {
-        LUAU_ASSERT(FFlag::LuauFloorDivision || c.op != AstExprBinary::Op::FloorDiv);
-
-        // Metatables are not the same. The metamethod will not be invoked.
-        if ((c.op == AstExprBinary::Op::CompareEq || c.op == AstExprBinary::Op::CompareNe) &&
-            getMetatable(leftType, builtinTypes) != getMetatable(rightType, builtinTypes))
-        {
-            // TODO: Boolean singleton false? The result is _always_ boolean false.
-            asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
-            unblock(resultType, constraint->location);
-            return true;
-        }
-
-        std::optional<TypeId> mm;
-
-        // The LHS metatable takes priority over the RHS metatable, where
-        // present.
-        if (std::optional<TypeId> leftMm = findMetatableEntry(builtinTypes, errors, leftType, it->second, constraint->location))
-            mm = leftMm;
-        else if (std::optional<TypeId> rightMm = findMetatableEntry(builtinTypes, errors, rightType, it->second, constraint->location))
-            mm = rightMm;
-
-        if (mm)
-        {
-            std::optional<TypeId> instantiatedMm = instantiate(builtinTypes, arena, NotNull{&limits}, constraint->scope, *mm);
-            if (!instantiatedMm)
-            {
-                reportError(CodeTooComplex{}, constraint->location);
-                return true;
-            }
-
-            // TODO: Is a table with __call legal here?
-            // TODO: Overloads
-            if (const FunctionType* ftv = get<FunctionType>(follow(*instantiatedMm)))
-            {
-                TypePackId inferredArgs;
-                // For >= and > we invoke __lt and __le respectively with
-                // swapped argument ordering.
-                if (c.op == AstExprBinary::Op::CompareGe || c.op == AstExprBinary::Op::CompareGt)
-                {
-                    inferredArgs = arena->addTypePack({rightType, leftType});
-                }
-                else
-                {
-                    inferredArgs = arena->addTypePack({leftType, rightType});
-                }
-
-                unify(constraint->scope, constraint->location, inferredArgs, ftv->argTypes);
-
-                TypeId mmResult;
-
-                // Comparison operations always evaluate to a boolean,
-                // regardless of what the metamethod returns.
-                switch (c.op)
-                {
-                case AstExprBinary::Op::CompareEq:
-                case AstExprBinary::Op::CompareNe:
-                case AstExprBinary::Op::CompareGe:
-                case AstExprBinary::Op::CompareGt:
-                case AstExprBinary::Op::CompareLe:
-                case AstExprBinary::Op::CompareLt:
-                    mmResult = builtinTypes->booleanType;
-                    break;
-                default:
-                    if (get<NeverType>(leftType) || get<NeverType>(rightType))
-                        mmResult = builtinTypes->neverType;
-                    else
-                        mmResult = first(ftv->retTypes).value_or(errorRecoveryType());
-                }
-
-                asMutable(resultType)->ty.emplace<BoundType>(mmResult);
-                unblock(resultType, constraint->location);
-
-                (*c.astOriginalCallTypes)[c.astFragment] = *mm;
-                (*c.astOverloadResolvedTypes)[c.astFragment] = *instantiatedMm;
-                return true;
-            }
-        }
-
-        // If there's no metamethod available, fall back to primitive behavior.
-    }
-
-    switch (c.op)
-    {
-    // For arithmetic operators, if the LHS is a number, the RHS must be a
-    // number as well. The result will also be a number.
-    case AstExprBinary::Op::Add:
-    case AstExprBinary::Op::Sub:
-    case AstExprBinary::Op::Mul:
-    case AstExprBinary::Op::Div:
-    case AstExprBinary::Op::FloorDiv:
-    case AstExprBinary::Op::Pow:
-    case AstExprBinary::Op::Mod:
-    {
-        LUAU_ASSERT(FFlag::LuauFloorDivision || c.op != AstExprBinary::Op::FloorDiv);
-
-        const NormalizedType* normLeftTy = normalizer->normalize(leftType);
-        if (hasTypeInIntersection<FreeType>(leftType) && force)
-            asMutable(leftType)->ty.emplace<BoundType>(anyPresent ? builtinTypes->anyType : builtinTypes->numberType);
-        // We want to check if the left type has tops because `any` is a valid type for the lhs
-        if (normLeftTy && (normLeftTy->isExactlyNumber() || get<AnyType>(normLeftTy->tops)))
-        {
-            unify(constraint->scope, constraint->location, leftType, rightType);
-            asMutable(resultType)->ty.emplace<BoundType>(anyPresent ? builtinTypes->anyType : leftType);
-            unblock(resultType, constraint->location);
-            return true;
-        }
-        else if (get<NeverType>(leftType) || get<NeverType>(rightType))
-        {
-            unify(constraint->scope, constraint->location, leftType, rightType);
-            asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->neverType);
-            unblock(resultType, constraint->location);
-            return true;
-        }
-
-        break;
-    }
-    // For concatenation, if the LHS is a string, the RHS must be a string as
-    // well. The result will also be a string.
-    case AstExprBinary::Op::Concat:
-    {
-        if (hasTypeInIntersection<FreeType>(leftType) && force)
-            asMutable(leftType)->ty.emplace<BoundType>(anyPresent ? builtinTypes->anyType : builtinTypes->stringType);
-        const NormalizedType* leftNormTy = normalizer->normalize(leftType);
-        if (leftNormTy && leftNormTy->isSubtypeOfString())
-        {
-            unify(constraint->scope, constraint->location, leftType, rightType);
-            asMutable(resultType)->ty.emplace<BoundType>(anyPresent ? builtinTypes->anyType : leftType);
-            unblock(resultType, constraint->location);
-            return true;
-        }
-        else if (get<NeverType>(leftType) || get<NeverType>(rightType))
-        {
-            unify(constraint->scope, constraint->location, leftType, rightType);
-            asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->neverType);
-            unblock(resultType, constraint->location);
-            return true;
-        }
-
-        break;
-    }
-    // Inexact comparisons require that the types be both numbers or both
-    // strings, and evaluate to a boolean.
-    case AstExprBinary::Op::CompareGe:
-    case AstExprBinary::Op::CompareGt:
-    case AstExprBinary::Op::CompareLe:
-    case AstExprBinary::Op::CompareLt:
-    {
-        const NormalizedType* lt = normalizer->normalize(leftType);
-        const NormalizedType* rt = normalizer->normalize(rightType);
-        // If the lhs is any, comparisons should be valid.
-        if (lt && rt && (lt->isExactlyNumber() || get<AnyType>(lt->tops)) && rt->isExactlyNumber())
-        {
-            asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
-            unblock(resultType, constraint->location);
-            return true;
-        }
-
-        if (lt && rt && (lt->isSubtypeOfString() || get<AnyType>(lt->tops)) && rt->isSubtypeOfString())
-        {
-            asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
-            unblock(resultType, constraint->location);
-            return true;
-        }
-
-
-        if (get<NeverType>(leftType) || get<NeverType>(rightType))
-        {
-            asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
-            unblock(resultType, constraint->location);
-            return true;
-        }
-
-        break;
-    }
-
-    // == and ~= always evaluate to a boolean, and impose no other constraints
-    // on their parameters.
-    case AstExprBinary::Op::CompareEq:
-    case AstExprBinary::Op::CompareNe:
-        asMutable(resultType)->ty.emplace<BoundType>(builtinTypes->booleanType);
-        unblock(resultType, constraint->location);
-        return true;
-    // And evalutes to a boolean if the LHS is falsey, and the RHS type if LHS is
-    // truthy.
-    case AstExprBinary::Op::And:
-    {
-        TypeId leftFilteredTy = simplifyIntersection(builtinTypes, arena, leftType, builtinTypes->falsyType).result;
-
-        asMutable(resultType)->ty.emplace<BoundType>(simplifyUnion(builtinTypes, arena, rightType, leftFilteredTy).result);
-        unblock(resultType, constraint->location);
-        return true;
-    }
-    // Or evaluates to the LHS type if the LHS is truthy, and the RHS type if
-    // LHS is falsey.
-    case AstExprBinary::Op::Or:
-    {
-        TypeId leftFilteredTy = simplifyIntersection(builtinTypes, arena, leftType, builtinTypes->truthyType).result;
-
-        asMutable(resultType)->ty.emplace<BoundType>(simplifyUnion(builtinTypes, arena, rightType, leftFilteredTy).result);
-        unblock(resultType, constraint->location);
-        return true;
-    }
-    default:
-        iceReporter.ice("Unhandled AstExprBinary::Op for binary operation", constraint->location);
-        break;
-    }
-
-    // We failed to either evaluate a metamethod or invoke primitive behavior.
-    unify(constraint->scope, constraint->location, leftType, errorRecoveryType());
-    unify(constraint->scope, constraint->location, rightType, errorRecoveryType());
-    asMutable(resultType)->ty.emplace<BoundType>(errorRecoveryType());
-    unblock(resultType, constraint->location);
 
     return true;
 }
@@ -1942,6 +1611,32 @@ bool ConstraintSolver::tryDispatch(const RefineConstraint& c, NotNull<const Cons
     }
 
     unblock(c.resultType, constraint->location);
+
+    return true;
+}
+
+bool ConstraintSolver::tryDispatch(const SetOpConstraint& c, NotNull<const Constraint> constraint, bool force)
+{
+    bool blocked = false;
+    for (TypeId ty : c.types)
+    {
+        if (isBlocked(ty))
+        {
+            blocked = true;
+            block(ty, constraint);
+        }
+    }
+    if (blocked && !force)
+        return false;
+
+    LUAU_ASSERT(SetOpConstraint::Union == c.mode);
+
+    TypeId res = builtinTypes->neverType;
+
+    for (TypeId ty : c.types)
+        res = simplifyUnion(builtinTypes, arena, res, ty).result;
+
+    asMutable(c.resultType)->ty.emplace<BoundType>(res);
 
     return true;
 }

@@ -4,10 +4,10 @@
 
 #include "Luau/DenseHash.h"
 #include "Luau/NotNull.h"
-#include "Type.h"
-#include "TypePairHash.h"
-#include "TypeCheckLimits.h"
-#include "TypeChecker2.h"
+#include "Luau/TypePairHash.h"
+#include "Luau/TypeCheckLimits.h"
+#include "Luau/TypeChecker2.h"
+#include "Luau/TypeFwd.h"
 
 #include <optional>
 #include <vector>
@@ -16,10 +16,6 @@
 namespace Luau
 {
 
-using TypeId = const struct Type*;
-using TypePackId = const struct TypePackVar*;
-
-struct BuiltinTypes;
 struct InternalErrorReporter;
 struct Scope;
 struct TypeArena;

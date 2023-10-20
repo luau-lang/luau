@@ -23,6 +23,7 @@ using DefId = NotNull<const Def>;
  */
 struct Cell
 {
+    bool subscripted = false;
 };
 
 /**
@@ -71,11 +72,13 @@ const T* get(DefId def)
     return get_if<T>(&def->v);
 }
 
+bool containsSubscriptedDefinition(DefId def);
+
 struct DefArena
 {
     TypedAllocator<Def> allocator;
 
-    DefId freshCell();
+    DefId freshCell(bool subscripted = false);
     // TODO: implement once we have cases where we need to merge in definitions
     // DefId phi(const std::vector<DefId>& defs);
 };

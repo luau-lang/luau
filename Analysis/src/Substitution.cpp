@@ -75,6 +75,7 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
             clone.dcrMagicRefinement = a.dcrMagicRefinement;
             clone.tags = a.tags;
             clone.argNames = a.argNames;
+            clone.isCheckedFunction = a.isCheckedFunction;
             return dest.addType(std::move(clone));
         }
         else if constexpr (std::is_same_v<T, TableType>)

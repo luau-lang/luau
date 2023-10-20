@@ -1329,6 +1329,8 @@ TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "equal_metatable")
 
 TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "metatable_normal")
 {
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", false};
+
     CheckResult result = check(R"(
     local metaFoo = {
         metaBar = 5

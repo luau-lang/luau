@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/TypeFwd.h"
+
 #include "Luau/Ast.h"
 #include "Luau/Common.h"
 #include "Luau/Refinement.h"
@@ -9,6 +11,7 @@
 #include "Luau/Predicate.h"
 #include "Luau/Unifiable.h"
 #include "Luau/Variant.h"
+#include "Luau/TypeFwd.h"
 
 #include <atomic>
 #include <deque>
@@ -58,22 +61,6 @@ struct TypeFamily;
  * function<a>(x: { f: a }, y: a) x.f = y end
  * ```
  */
-
-// So... why `const T*` here rather than `T*`?
-// It's because we've had problems caused by the type graph being mutated
-// in ways it shouldn't be, for example mutating types from other modules.
-// To try to control this, we make the use of types immutable by default,
-// then provide explicit mutable access via getMutable and asMutable.
-// This means we can grep for all the places we're mutating the type graph,
-// and it makes it possible to provide other APIs (e.g. the txn log)
-// which control mutable access to the type graph.
-struct TypePackVar;
-using TypePackId = const TypePackVar*;
-
-struct Type;
-
-// Should never be null
-using TypeId = const Type*;
 
 using Name = std::string;
 
@@ -243,22 +230,6 @@ const T* get(const SingletonType* stv)
     else
         return nullptr;
 }
-
-struct GenericTypeDefinition
-{
-    TypeId ty;
-    std::optional<TypeId> defaultValue;
-
-    bool operator==(const GenericTypeDefinition& rhs) const;
-};
-
-struct GenericTypePackDefinition
-{
-    TypePackId tp;
-    std::optional<TypePackId> defaultValue;
-
-    bool operator==(const GenericTypePackDefinition& rhs) const;
-};
 
 struct FunctionArgument
 {
@@ -549,42 +520,6 @@ struct TypeFamilyInstanceType
     std::vector<TypePackId> packArguments;
 };
 
-struct TypeFun
-{
-    // These should all be generic
-    std::vector<GenericTypeDefinition> typeParams;
-    std::vector<GenericTypePackDefinition> typePackParams;
-
-    /** The underlying type.
-     *
-     * WARNING!  This is not safe to use as a type if typeParams is not empty!!
-     * You must first use TypeChecker::instantiateTypeFun to turn it into a real type.
-     */
-    TypeId type;
-
-    TypeFun() = default;
-
-    explicit TypeFun(TypeId ty)
-        : type(ty)
-    {
-    }
-
-    TypeFun(std::vector<GenericTypeDefinition> typeParams, TypeId type)
-        : typeParams(std::move(typeParams))
-        , type(type)
-    {
-    }
-
-    TypeFun(std::vector<GenericTypeDefinition> typeParams, std::vector<GenericTypePackDefinition> typePackParams, TypeId type)
-        : typeParams(std::move(typeParams))
-        , typePackParams(std::move(typePackParams))
-        , type(type)
-    {
-    }
-
-    bool operator==(const TypeFun& rhs) const;
-};
-
 /** Represents a pending type alias instantiation.
  *
  * In order to afford (co)recursive type aliases, we need to reason about a
@@ -727,6 +662,58 @@ struct Type final
     Type& operator=(TypeVariant&& rhs);
 
     Type& operator=(const Type& rhs);
+};
+
+struct GenericTypeDefinition
+{
+    TypeId ty;
+    std::optional<TypeId> defaultValue;
+
+    bool operator==(const GenericTypeDefinition& rhs) const;
+};
+
+struct GenericTypePackDefinition
+{
+    TypePackId tp;
+    std::optional<TypePackId> defaultValue;
+
+    bool operator==(const GenericTypePackDefinition& rhs) const;
+};
+
+struct TypeFun
+{
+    // These should all be generic
+    std::vector<GenericTypeDefinition> typeParams;
+    std::vector<GenericTypePackDefinition> typePackParams;
+
+    /** The underlying type.
+     *
+     * WARNING!  This is not safe to use as a type if typeParams is not empty!!
+     * You must first use TypeChecker::instantiateTypeFun to turn it into a real type.
+     */
+    TypeId type;
+
+    TypeFun() = default;
+
+    explicit TypeFun(TypeId ty)
+        : type(ty)
+    {
+    }
+
+    TypeFun(std::vector<GenericTypeDefinition> typeParams, TypeId type)
+        : typeParams(std::move(typeParams))
+        , type(type)
+    {
+    }
+
+    TypeFun(std::vector<GenericTypeDefinition> typeParams, std::vector<GenericTypePackDefinition> typePackParams, TypeId type)
+        : typeParams(std::move(typeParams))
+        , typePackParams(std::move(typePackParams))
+        , type(type)
+    {
+    }
+
+    bool operator==(const TypeFun& rhs) const;
 };
 
 using SeenSet = std::set<std::pair<const void*, const void*>>;

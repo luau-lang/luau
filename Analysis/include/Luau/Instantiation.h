@@ -3,13 +3,12 @@
 
 #include "Luau/NotNull.h"
 #include "Luau/Substitution.h"
-#include "Luau/Type.h"
+#include "Luau/TypeFwd.h"
 #include "Luau/Unifiable.h"
 
 namespace Luau
 {
 
-struct BuiltinTypes;
 struct TxnLog;
 struct TypeArena;
 struct TypeCheckLimits;

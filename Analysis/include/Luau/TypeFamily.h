@@ -1,13 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "ConstraintSolver.h"
-#include "Error.h"
+#include "Luau/ConstraintSolver.h"
 #include "Luau/Error.h"
 #include "Luau/NotNull.h"
+#include "Luau/TypeCheckLimits.h"
+#include "Luau/TypeFwd.h"
 #include "Luau/Variant.h"
-#include "NotNull.h"
-#include "TypeCheckLimits.h"
 
 #include <functional>
 #include <string>
@@ -16,14 +15,7 @@
 namespace Luau
 {
 
-struct Type;
-using TypeId = const Type*;
-
-struct TypePackVar;
-using TypePackId = const TypePackVar*;
-
 struct TypeArena;
-struct BuiltinTypes;
 struct TxnLog;
 class Normalizer;
 
@@ -150,6 +142,8 @@ struct BuiltinTypeFamilies
     BuiltinTypeFamilies();
 
     TypeFamily notFamily;
+    TypeFamily lenFamily;
+    TypeFamily unmFamily;
 
     TypeFamily addFamily;
     TypeFamily subFamily;

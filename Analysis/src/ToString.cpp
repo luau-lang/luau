@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/ToString.h"
 
+#include "Luau/Common.h"
 #include "Luau/Constraint.h"
 #include "Luau/Location.h"
 #include "Luau/Scope.h"
@@ -10,6 +11,7 @@
 #include "Luau/Type.h"
 #include "Luau/TypeFamily.h"
 #include "Luau/VisitType.h"
+#include "Luau/TypeOrPack.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -17,6 +19,7 @@
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAGVARIABLE(LuauToStringPrettifyLocation, false)
+LUAU_FASTFLAGVARIABLE(LuauToStringSimpleCompositeTypesSingleLine, false)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -619,6 +622,12 @@ struct TypeStringifier
             state.emit(">");
         }
 
+        if (FFlag::DebugLuauDeferredConstraintResolution)
+        {
+            if (ftv.isCheckedFunction)
+                state.emit("@checked ");
+        }
+
         state.emit("(");
 
         if (state.opts.functionTypeArguments)
@@ -878,11 +887,15 @@ struct TypeStringifier
             state.emit("(");
 
         bool first = true;
+        bool shouldPlaceOnNewlines = results.size() > state.opts.compositeTypesSingleLineLimit;
         for (std::string& ss : results)
         {
             if (!first)
             {
-                state.newline();
+                if (shouldPlaceOnNewlines)
+                    state.newline();
+                else
+                    state.emit(" ");
                 state.emit("| ");
             }
             state.emit(ss);
@@ -902,7 +915,7 @@ struct TypeStringifier
         }
     }
 
-    void operator()(TypeId, const IntersectionType& uv)
+    void operator()(TypeId ty, const IntersectionType& uv)
     {
         if (state.hasSeen(&uv))
         {
@@ -938,11 +951,15 @@ struct TypeStringifier
             std::sort(results.begin(), results.end());
 
         bool first = true;
+        bool shouldPlaceOnNewlines = results.size() > state.opts.compositeTypesSingleLineLimit || isOverloadedFunction(ty);
         for (std::string& ss : results)
         {
             if (!first)
             {
-                state.newline();
+                if (shouldPlaceOnNewlines)
+                    state.newline();
+                else
+                    state.emit(" ");
                 state.emit("& ");
             }
             state.emit(ss);
@@ -1677,21 +1694,6 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
             std::string superStr = tos(c.superType);
             return subStr + " ~ inst " + superStr;
         }
-        else if constexpr (std::is_same_v<T, UnaryConstraint>)
-        {
-            std::string resultStr = tos(c.resultType);
-            std::string operandStr = tos(c.operandType);
-
-            return resultStr + " ~ Unary<" + toString(c.op) + ", " + operandStr + ">";
-        }
-        else if constexpr (std::is_same_v<T, BinaryConstraint>)
-        {
-            std::string resultStr = tos(c.resultType);
-            std::string leftStr = tos(c.leftType);
-            std::string rightStr = tos(c.rightType);
-
-            return resultStr + " ~ Binary<" + toString(c.op) + ", " + leftStr + ", " + rightStr + ">";
-        }
         else if constexpr (std::is_same_v<T, IterableConstraint>)
         {
             std::string iteratorStr = tos(c.iterator);
@@ -1746,6 +1748,23 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         {
             const char* op = c.mode == RefineConstraint::Union ? "union" : "intersect";
             return tos(c.resultType) + " ~ refine " + tos(c.type) + " " + op + " " + tos(c.discriminant);
+        }
+        else if constexpr (std::is_same_v<T, SetOpConstraint>)
+        {
+            const char* op = c.mode == SetOpConstraint::Union ? " | " : " & ";
+            std::string res = tos(c.resultType) + " ~ ";
+            bool first = true;
+            for (TypeId t : c.types)
+            {
+                if (first)
+                    first = false;
+                else
+                    res += op;
+
+                res += tos(t);
+            }
+
+            return res;
         }
         else if constexpr (std::is_same_v<T, ReduceConstraint>)
             return "reduce " + tos(c.ty);
@@ -1823,6 +1842,26 @@ std::string toString(const Location& location, int offset, bool useBegin)
     {
         return "Location { " + toString(location.begin) + ", " + toString(location.end) + " }";
     }
+}
+
+std::string toString(const TypeOrPack& tyOrTp, ToStringOptions& opts)
+{
+    if (const TypeId* ty = get<TypeId>(tyOrTp))
+        return toString(*ty, opts);
+    else if (const TypePackId* tp = get<TypePackId>(tyOrTp))
+        return toString(*tp, opts);
+    else
+        LUAU_UNREACHABLE();
+}
+
+std::string dump(const TypeOrPack& tyOrTp)
+{
+    ToStringOptions opts;
+    opts.exhaustive = true;
+    opts.functionTypeArguments = true;
+    std::string s = toString(tyOrTp, opts);
+    printf("%s\n", s.c_str());
+    return s;
 }
 
 } // namespace Luau

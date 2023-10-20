@@ -699,6 +699,36 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         jumpOrFallthrough(blockOp(inst.e), next);
         break;
     }
+    case IrCmd::JUMP_FORN_LOOP_COND:
+    {
+        ScopedRegX64 tmp1{regs, SizeX64::xmmword};
+        ScopedRegX64 tmp2{regs, SizeX64::xmmword};
+        ScopedRegX64 tmp3{regs, SizeX64::xmmword};
+
+        RegisterX64 index = inst.a.kind == IrOpKind::Inst ? regOp(inst.a) : tmp1.reg;
+        RegisterX64 limit = inst.b.kind == IrOpKind::Inst ? regOp(inst.b) : tmp2.reg;
+
+        if (inst.a.kind != IrOpKind::Inst)
+            build.vmovsd(tmp1.reg, memRegDoubleOp(inst.a));
+
+        if (inst.b.kind != IrOpKind::Inst)
+            build.vmovsd(tmp2.reg, memRegDoubleOp(inst.b));
+
+        Label direct;
+
+        // step > 0
+        jumpOnNumberCmp(build, tmp3.reg, memRegDoubleOp(inst.c), build.f64(0.0), IrCondition::Greater, direct);
+
+        // !(limit <= index)
+        jumpOnNumberCmp(build, noreg, limit, index, IrCondition::NotLessEqual, labelOp(inst.e));
+        build.jmp(labelOp(inst.d));
+
+        // !(index <= limit)
+        build.setLabel(direct);
+        jumpOnNumberCmp(build, noreg, index, limit, IrCondition::NotLessEqual, labelOp(inst.e));
+        jumpOrFallthrough(blockOp(inst.d), next);
+        break;
+    }
     case IrCmd::TABLE_LEN:
     {
         IrCallWrapperX64 callWrap(regs, build, index);

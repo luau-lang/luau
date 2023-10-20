@@ -1,10 +1,10 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Type.h"
-#include "Luau/TypePack.h"
+#include "Luau/TypeFwd.h"
 #include "Luau/TypePairHash.h"
 #include "Luau/UnifierSharedState.h"
+#include "Luau/TypePath.h"
 
 #include <vector>
 #include <optional>
@@ -23,6 +23,13 @@ struct NormalizedClassType;
 struct NormalizedStringType;
 struct NormalizedFunctionType;
 
+struct SubtypingReasoning
+{
+    Path subPath;
+    Path superPath;
+
+    bool operator==(const SubtypingReasoning& other) const;
+};
 
 struct SubtypingResult
 {
@@ -31,8 +38,18 @@ struct SubtypingResult
     bool normalizationTooComplex = false;
     bool isCacheable = true;
 
+    /// The reason for isSubtype to be false. May not be present even if
+    /// isSubtype is false, depending on the input types.
+    std::optional<SubtypingReasoning> reasoning;
+
     SubtypingResult& andAlso(const SubtypingResult& other);
     SubtypingResult& orElse(const SubtypingResult& other);
+    SubtypingResult& withBothComponent(TypePath::Component component);
+    SubtypingResult& withSuperComponent(TypePath::Component component);
+    SubtypingResult& withSubComponent(TypePath::Component component);
+    SubtypingResult& withBothPath(TypePath::Path path);
+    SubtypingResult& withSubPath(TypePath::Path path);
+    SubtypingResult& withSuperPath(TypePath::Path path);
 
     // Only negates the `isSubtype`.
     static SubtypingResult negate(const SubtypingResult& result);
