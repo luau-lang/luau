@@ -169,6 +169,6 @@ assert(bit32.btest("1", 3) == true)
 assert(bit32.countlz("42") == 26)
 assert(bit32.countrz("42") == 1)
 assert(bit32.extract("42", 1, 3) == 5)
-assert(bit32.byteswap("0xa1b2c3d4") == 0xd4c3d2a1)
+assert(bit32.byteswap("0xa1b2c3d4") == 0xd4c3b2a1)
 
 return('OK')
