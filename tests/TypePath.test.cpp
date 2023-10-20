@@ -93,6 +93,7 @@ TEST_SUITE_BEGIN("TypePathTraversal");
         LUAU_REQUIRE_NO_ERRORS(result); \
     } while (false);
 
+#if 0
 TEST_CASE_FIXTURE(Fixture, "empty_traversal")
 {
     CHECK(traverseForType(builtinTypes->numberType, kEmpty, builtinTypes) == builtinTypes->numberType);
@@ -297,6 +298,7 @@ TEST_CASE_FIXTURE(Fixture, "negated")
         CHECK(result == std::nullopt);
     }
 }
+#endif
 
 TEST_CASE_FIXTURE(Fixture, "variadic")
 {

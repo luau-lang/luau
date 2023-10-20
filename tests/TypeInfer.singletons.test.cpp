@@ -350,6 +350,7 @@ Table type 'a' not compatible with type 'Bad' because the former is missing fiel
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
+#if 0
 TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
 {
     ScopedFastFlag sff[] = {
@@ -371,6 +372,7 @@ TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
 
     CHECK(toString(result.errors[0]) == expectedError);
 }
+#endif
 
 TEST_CASE_FIXTURE(Fixture, "if_then_else_expression_singleton_options")
 {

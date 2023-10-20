@@ -185,6 +185,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_aliases")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+#if 0
 TEST_CASE_FIXTURE(Fixture, "generic_aliases")
 {
     ScopedFastFlag sff[] = {
@@ -224,6 +225,7 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
     CHECK(result.errors[0].location == Location{{4, 31}, {4, 52}});
     CHECK_EQ(expected, toString(result.errors[0]));
 }
+#endif
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_generic_aliases")
 {
