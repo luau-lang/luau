@@ -218,7 +218,7 @@ static int b_swap(lua_State* L)
         luaL_error(L, "bit32.byteswap isn't enabled");
 
     b_uint n = luaL_checkunsigned(L, 1);
-    n = (n << 24) | ((n << 8) & 0xff0000) | (n >> 8 & 0xff00) | n >> 24;
+    n = (n << 24) | ((n << 8) & 0xff0000) | ((n >> 8) & 0xff00) | (n >> 24);
 
     lua_pushunsigned(L, n);
     return 1;
