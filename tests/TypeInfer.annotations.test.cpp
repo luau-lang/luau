@@ -7,6 +7,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 using namespace Luau;
 
 TEST_SUITE_BEGIN("AnnotationTests");
@@ -166,12 +168,24 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_of_value_a_via_typeof_with_assignment")
         a = "foo"
     )");
 
-    CHECK_EQ(*builtinTypes->numberType, *requireType("a"));
-    CHECK_EQ(*builtinTypes->numberType, *requireType("b"));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK("string?" == toString(requireType("a")));
+        CHECK("nil" == toString(requireType("b")));
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(
-        result.errors[0], (TypeError{Location{Position{4, 12}, Position{4, 17}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}}));
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(
+            result.errors[0] == (TypeError{Location{Position{2, 29}, Position{2, 30}}, TypeMismatch{builtinTypes->nilType, builtinTypes->numberType}}));
+    }
+    else
+    {
+        CHECK_EQ(*builtinTypes->numberType, *requireType("a"));
+        CHECK_EQ(*builtinTypes->numberType, *requireType("b"));
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ(
+            result.errors[0], (TypeError{Location{Position{4, 12}, Position{4, 17}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}}));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_annotation")

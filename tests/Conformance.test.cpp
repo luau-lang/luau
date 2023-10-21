@@ -313,6 +313,7 @@ TEST_CASE("Tables")
                 else
                 {
                     const void* p = lua_topointer(L, 1);
+                    LUAU_ASSERT(p); // we expect the test call to only pass GC values here
                     lua_pushlightuserdata(L, const_cast<void*>(p));
                 }
                 return 1;
@@ -431,6 +432,8 @@ static int cxxthrow(lua_State* L)
 
 TEST_CASE("PCall")
 {
+    ScopedFastFlag sff("LuauHandlerClose", true);
+
     runConformance(
         "pcall.lua",
         [](lua_State* L) {
@@ -1163,6 +1166,51 @@ TEST_CASE("ApiType")
     CHECK(lua_type(L, -1) == LUA_TUSERDATA);
 }
 
+TEST_CASE("ApiBuffer")
+{
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    lua_newbuffer(L, 1000);
+
+    REQUIRE(lua_type(L, -1) == LUA_TBUFFER);
+
+    CHECK(lua_isbuffer(L, -1));
+    CHECK(lua_objlen(L, -1) == 1000);
+
+    CHECK(strcmp(lua_typename(L, LUA_TBUFFER), "buffer") == 0);
+
+    CHECK(strcmp(luaL_typename(L, -1), "buffer") == 0);
+
+    void* p1 = lua_tobuffer(L, -1, nullptr);
+
+    size_t len = 0;
+    void* p2 = lua_tobuffer(L, -1, &len);
+    CHECK(len == 1000);
+    CHECK(p1 == p2);
+
+    void* p3 = luaL_checkbuffer(L, -1, nullptr);
+    CHECK(p1 == p3);
+
+    len = 0;
+    void* p4 = luaL_checkbuffer(L, -1, &len);
+    CHECK(len == 1000);
+    CHECK(p1 == p4);
+
+    memset(p1, 0xab, 1000);
+
+    CHECK(lua_topointer(L, -1) != nullptr);
+
+    lua_newbuffer(L, 0);
+
+    lua_pushvalue(L, -2);
+
+    CHECK(lua_equal(L, -3, -1));
+    CHECK(!lua_equal(L, -2, -1));
+
+    lua_pop(L, 1);
+}
+
 TEST_CASE("AllocApi")
 {
     int ud = 0;
@@ -1361,7 +1409,8 @@ TEST_CASE("GCDump")
 {
     // internal function, declared in lgc.h - not exposed via lua.h
     extern void luaC_dump(lua_State * L, void* file, const char* (*categoryName)(lua_State * L, uint8_t memcat));
-    extern void luaC_enumheap(lua_State * L, void* context, void (*node)(void* context, void* ptr, uint8_t tt, uint8_t memcat, const char* name),
+    extern void luaC_enumheap(lua_State * L, void* context,
+        void (*node)(void* context, void* ptr, uint8_t tt, uint8_t memcat, size_t size, const char* name),
         void (*edge)(void* context, void* from, void* to, const char* name));
 
     StateRef globalState(luaL_newstate(), lua_close);
@@ -1371,6 +1420,9 @@ TEST_CASE("GCDump")
     lua_createtable(L, 1, 2);
     lua_pushstring(L, "value");
     lua_setfield(L, -2, "key");
+
+    lua_pushstring(L, "u42");
+    lua_setfield(L, -2, "__type");
 
     lua_pushinteger(L, 42);
     lua_rawseti(L, -2, 1000);
@@ -1387,6 +1439,8 @@ TEST_CASE("GCDump")
 
     lua_pushinteger(L, 1);
     lua_pushcclosure(L, lua_silence, "test", 1);
+
+    lua_newbuffer(L, 100);
 
     lua_State* CL = lua_newthread(L);
 
@@ -1412,6 +1466,7 @@ TEST_CASE("GCDump")
         void* ptr;
         uint8_t tag;
         uint8_t memcat;
+        size_t size;
         std::string name;
     };
 
@@ -1429,9 +1484,13 @@ TEST_CASE("GCDump")
 
     luaC_enumheap(
         L, &ctx,
-        [](void* ctx, void* gco, uint8_t tt, uint8_t memcat, const char* name) {
+        [](void* ctx, void* gco, uint8_t tt, uint8_t memcat, size_t size, const char* name) {
             EnumContext& context = *(EnumContext*)ctx;
-            context.nodes[gco] = {gco, tt, memcat, name ? name : ""};
+
+            if (tt == LUA_TUSERDATA)
+                CHECK(strcmp(name, "u42") == 0);
+
+            context.nodes[gco] = {gco, tt, memcat, size, name ? name : ""};
         },
         [](void* ctx, void* s, void* t, const char*) {
             EnumContext& context = *(EnumContext*)ctx;
@@ -1819,6 +1878,8 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
+    ScopedFastFlag luauLowerAltLoopForn{"LuauLowerAltLoopForn", true};
+
     runConformance("native.lua");
 }
 

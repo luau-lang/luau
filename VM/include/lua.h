@@ -85,6 +85,7 @@ enum lua_Type
     LUA_TFUNCTION,
     LUA_TUSERDATA,
     LUA_TTHREAD,
+    LUA_TBUFFER,
 
     // values below this line are used in GCObject tags but may never show up in TValue type tags
     LUA_TPROTO,
@@ -162,6 +163,7 @@ LUA_API void* lua_touserdata(lua_State* L, int idx);
 LUA_API void* lua_touserdatatagged(lua_State* L, int idx, int tag);
 LUA_API int lua_userdatatag(lua_State* L, int idx);
 LUA_API lua_State* lua_tothread(lua_State* L, int idx);
+LUA_API void* lua_tobuffer(lua_State* L, int idx, size_t* len);
 LUA_API const void* lua_topointer(lua_State* L, int idx);
 
 /*
@@ -187,6 +189,8 @@ LUA_API int lua_pushthread(lua_State* L);
 LUA_API void lua_pushlightuserdata(lua_State* L, void* p);
 LUA_API void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag);
 LUA_API void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*));
+
+LUA_API void* lua_newbuffer(lua_State* L, size_t sz);
 
 /*
 ** get functions (Lua -> stack)
@@ -359,6 +363,7 @@ LUA_API void lua_unref(lua_State* L, int ref);
 #define lua_isboolean(L, n) (lua_type(L, (n)) == LUA_TBOOLEAN)
 #define lua_isvector(L, n) (lua_type(L, (n)) == LUA_TVECTOR)
 #define lua_isthread(L, n) (lua_type(L, (n)) == LUA_TTHREAD)
+#define lua_isbuffer(L, n) (lua_type(L, (n)) == LUA_TBUFFER)
 #define lua_isnone(L, n) (lua_type(L, (n)) == LUA_TNONE)
 #define lua_isnoneornil(L, n) (lua_type(L, (n)) <= LUA_TNIL)
 

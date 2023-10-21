@@ -3,6 +3,7 @@
 
 #include "Luau/Ast.h"
 #include "Luau/Documentation.h"
+#include "Luau/TypeFwd.h"
 
 #include <memory>
 
@@ -12,9 +13,6 @@ namespace Luau
 struct Binding;
 struct SourceModule;
 struct Module;
-
-struct Type;
-using TypeId = const Type*;
 
 using ScopePtr = std::shared_ptr<struct Scope>;
 

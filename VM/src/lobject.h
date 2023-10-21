@@ -58,6 +58,7 @@ typedef struct lua_TValue
 #define ttisboolean(o) (ttype(o) == LUA_TBOOLEAN)
 #define ttisuserdata(o) (ttype(o) == LUA_TUSERDATA)
 #define ttisthread(o) (ttype(o) == LUA_TTHREAD)
+#define ttisbuffer(o) (ttype(o) == LUA_TBUFFER)
 #define ttislightuserdata(o) (ttype(o) == LUA_TLIGHTUSERDATA)
 #define ttisvector(o) (ttype(o) == LUA_TVECTOR)
 #define ttisupval(o) (ttype(o) == LUA_TUPVAL)
@@ -74,6 +75,7 @@ typedef struct lua_TValue
 #define hvalue(o) check_exp(ttistable(o), &(o)->value.gc->h)
 #define bvalue(o) check_exp(ttisboolean(o), (o)->value.b)
 #define thvalue(o) check_exp(ttisthread(o), &(o)->value.gc->th)
+#define bufvalue(o) check_exp(ttisbuffer(o), &(o)->value.gc->buf)
 #define upvalue(o) check_exp(ttisupval(o), &(o)->value.gc->uv)
 
 #define l_isfalse(o) (ttisnil(o) || (ttisboolean(o) && bvalue(o) == 0))
@@ -153,6 +155,14 @@ typedef struct lua_TValue
         TValue* i_o = (obj); \
         i_o->value.gc = cast_to(GCObject*, (x)); \
         i_o->tt = LUA_TTHREAD; \
+        checkliveness(L->global, i_o); \
+    }
+
+#define setbufvalue(L, obj, x) \
+    { \
+        TValue* i_o = (obj); \
+        i_o->value.gc = cast_to(GCObject*, (x)); \
+        i_o->tt = LUA_TBUFFER; \
         checkliveness(L->global, i_o); \
     }
 
@@ -253,6 +263,19 @@ typedef struct Udata
         L_Umaxalign dummy; // ensures maximum alignment for data
     };
 } Udata;
+
+typedef struct Buffer
+{
+    CommonHeader;
+
+    unsigned int len;
+
+    union
+    {
+        char data[1];      // buffer is allocated right after the header
+        L_Umaxalign dummy; // ensures maximum alignment for data
+    };
+} Buffer;
 
 /*
 ** Function Prototypes

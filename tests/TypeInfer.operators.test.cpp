@@ -516,17 +516,26 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus")
         local c = -bar -- disallowed
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
     CHECK_EQ("string", toString(requireType("a")));
     CHECK_EQ("number", toString(requireType("b")));
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        CHECK(toString(result.errors[0]) == "Type 'bar' could not be converted into 'number'");
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+        UninhabitedTypeFamily* utf = get<UninhabitedTypeFamily>(result.errors[0]);
+        REQUIRE(utf);
+        CHECK_EQ(toString(utf->ty), "unm<bar>");
+
+        TypeMismatch* tm = get<TypeMismatch>(result.errors[1]);
+        REQUIRE(tm);
+        CHECK_EQ(toString(tm->givenType), "bar");
+        CHECK_EQ(*tm->wantedType, *builtinTypes->numberType);
     }
     else
     {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
         GenericError* gen = get<GenericError>(result.errors[0]);
         REQUIRE(gen);
         REQUIRE_EQ(gen->message, "Unary operator '-' not supported by type 'bar'");

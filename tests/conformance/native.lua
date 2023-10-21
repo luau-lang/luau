@@ -130,6 +130,29 @@ end
 
 assert(pcall(fuzzfail13) == true)
 
+local function fuzzfail14()
+  for l0=771751936,_ do
+    for l0=771751936,0 do
+      while 538970624 do
+      end
+    end
+  end
+end
+
+assert(pcall(fuzzfail14) == false)
+
+local function fuzzfail15()
+  local a
+  if a then
+    repeat until a
+  else
+    local b = `{a}`
+    a = nil
+  end
+end
+
+assert(pcall(fuzzfail15) == true)
+
 local function arraySizeInv1()
   local t = {1, 2, nil, nil, nil, nil, nil, nil, nil, true}
 

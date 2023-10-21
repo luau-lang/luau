@@ -1,12 +1,22 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Def.h"
+#include "Luau/Common.h"
 
 namespace Luau
 {
 
-DefId DefArena::freshCell()
+bool containsSubscriptedDefinition(DefId def)
 {
-    return NotNull{allocator.allocate(Def{Cell{}})};
+    if (auto cell = get<Cell>(def))
+        return cell->subscripted;
+
+    LUAU_ASSERT(!"Phi nodes not implemented yet");
+    return false;
+}
+
+DefId DefArena::freshCell(bool subscripted)
+{
+    return NotNull{allocator.allocate(Def{Cell{subscripted}})};
 }
 
 } // namespace Luau

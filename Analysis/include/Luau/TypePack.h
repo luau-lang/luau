@@ -1,12 +1,15 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Type.h"
 #include "Luau/Unifiable.h"
 #include "Luau/Variant.h"
+#include "Luau/TypeFwd.h"
+#include "Luau/NotNull.h"
+#include "Luau/Common.h"
 
 #include <optional>
 #include <set>
+#include <vector>
 
 namespace Luau
 {
@@ -19,9 +22,6 @@ struct TypePack;
 struct VariadicTypePack;
 struct BlockedTypePack;
 struct TypeFamilyInstanceTypePack;
-
-struct TypePackVar;
-using TypePackId = const TypePackVar*;
 
 struct FreeTypePack
 {

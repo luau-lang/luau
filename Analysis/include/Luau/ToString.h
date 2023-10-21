@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Common.h"
+#include "Luau/TypeFwd.h"
 
 #include <memory>
 #include <optional>
@@ -20,13 +21,6 @@ class AstExpr;
 
 struct Scope;
 
-struct Type;
-using TypeId = const Type*;
-
-struct TypePackVar;
-using TypePackId = const TypePackVar*;
-
-struct FunctionType;
 struct Constraint;
 
 struct Position;
@@ -148,5 +142,15 @@ std::string generateName(size_t n);
 
 std::string toString(const Position& position);
 std::string toString(const Location& location, int offset = 0, bool useBegin = true);
+
+std::string toString(const TypeOrPack& tyOrTp, ToStringOptions& opts);
+
+inline std::string toString(const TypeOrPack& tyOrTp)
+{
+    ToStringOptions opts{};
+    return toString(tyOrTp, opts);
+}
+
+std::string dump(const TypeOrPack& tyOrTp);
 
 } // namespace Luau

@@ -2,9 +2,13 @@
 #pragma once
 
 #include "Luau/Def.h"
+#include "Luau/LValue.h"
 #include "Luau/Location.h"
 #include "Luau/NotNull.h"
 #include "Luau/Type.h"
+#include "Luau/DenseHash.h"
+#include "Luau/Symbol.h"
+#include "Luau/Unifiable.h"
 
 #include <unordered_map>
 #include <optional>
@@ -54,6 +58,7 @@ struct Scope
     std::optional<TypeId> lookup(Symbol sym) const;
     std::optional<TypeId> lookupLValue(DefId def) const;
     std::optional<TypeId> lookup(DefId def) const;
+    std::optional<std::pair<TypeId, Scope*>> lookupEx(DefId def);
     std::optional<std::pair<Binding*, Scope*>> lookupEx(Symbol sym);
 
     std::optional<TypeFun> lookupType(const Name& name) const;

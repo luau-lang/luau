@@ -4,14 +4,12 @@
 #include "Luau/Location.h"
 #include "Luau/LValue.h"
 #include "Luau/Variant.h"
+#include "Luau/TypeFwd.h"
 
 #include <vector>
 
 namespace Luau
 {
-
-struct Type;
-using TypeId = const Type*;
 
 struct TruthyPredicate;
 struct IsAPredicate;

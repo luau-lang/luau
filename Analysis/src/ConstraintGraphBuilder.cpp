@@ -2,7 +2,7 @@
 #include "Luau/ConstraintGraphBuilder.h"
 
 #include "Luau/Ast.h"
-#include "Luau/Breadcrumb.h"
+#include "Luau/Def.h"
 #include "Luau/Common.h"
 #include "Luau/Constraint.h"
 #include "Luau/ControlFlow.h"
@@ -216,19 +216,7 @@ NotNull<Constraint> ConstraintGraphBuilder::addConstraint(const ScopePtr& scope,
     return NotNull{constraints.emplace_back(std::move(c)).get()};
 }
 
-struct RefinementPartition
-{
-    // Types that we want to intersect against the type of the expression.
-    std::vector<TypeId> discriminantTypes;
-
-    // Sometimes the type we're discriminating against is implicitly nil.
-    bool shouldAppendNilType = false;
-};
-
-using RefinementContext = InsertionOrderedMap<DefId, RefinementPartition>;
-
-static void unionRefinements(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, const RefinementContext& lhs, const RefinementContext& rhs,
-    RefinementContext& dest, std::vector<ConstraintV>* constraints)
+void ConstraintGraphBuilder::unionRefinements(const RefinementContext& lhs, const RefinementContext& rhs, RefinementContext& dest, std::vector<ConstraintV>* constraints)
 {
     const auto intersect = [&](const std::vector<TypeId>& types) {
         if (1 == types.size())
@@ -264,44 +252,43 @@ static void unionRefinements(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeAre
     }
 }
 
-static void computeRefinement(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, const ScopePtr& scope, RefinementId refinement,
-    RefinementContext* refis, bool sense, bool eq, std::vector<ConstraintV>* constraints)
+void ConstraintGraphBuilder::computeRefinement(const ScopePtr& scope, RefinementId refinement, RefinementContext* refis, bool sense, bool eq, std::vector<ConstraintV>* constraints)
 {
     if (!refinement)
         return;
     else if (auto variadic = get<Variadic>(refinement))
     {
         for (RefinementId refi : variadic->refinements)
-            computeRefinement(builtinTypes, arena, scope, refi, refis, sense, eq, constraints);
+            computeRefinement(scope, refi, refis, sense, eq, constraints);
     }
     else if (auto negation = get<Negation>(refinement))
-        return computeRefinement(builtinTypes, arena, scope, negation->refinement, refis, !sense, eq, constraints);
+        return computeRefinement(scope, negation->refinement, refis, !sense, eq, constraints);
     else if (auto conjunction = get<Conjunction>(refinement))
     {
         RefinementContext lhsRefis;
         RefinementContext rhsRefis;
 
-        computeRefinement(builtinTypes, arena, scope, conjunction->lhs, sense ? refis : &lhsRefis, sense, eq, constraints);
-        computeRefinement(builtinTypes, arena, scope, conjunction->rhs, sense ? refis : &rhsRefis, sense, eq, constraints);
+        computeRefinement(scope, conjunction->lhs, sense ? refis : &lhsRefis, sense, eq, constraints);
+        computeRefinement(scope, conjunction->rhs, sense ? refis : &rhsRefis, sense, eq, constraints);
 
         if (!sense)
-            unionRefinements(builtinTypes, arena, lhsRefis, rhsRefis, *refis, constraints);
+            unionRefinements(lhsRefis, rhsRefis, *refis, constraints);
     }
     else if (auto disjunction = get<Disjunction>(refinement))
     {
         RefinementContext lhsRefis;
         RefinementContext rhsRefis;
 
-        computeRefinement(builtinTypes, arena, scope, disjunction->lhs, sense ? &lhsRefis : refis, sense, eq, constraints);
-        computeRefinement(builtinTypes, arena, scope, disjunction->rhs, sense ? &rhsRefis : refis, sense, eq, constraints);
+        computeRefinement(scope, disjunction->lhs, sense ? &lhsRefis : refis, sense, eq, constraints);
+        computeRefinement(scope, disjunction->rhs, sense ? &rhsRefis : refis, sense, eq, constraints);
 
         if (sense)
-            unionRefinements(builtinTypes, arena, lhsRefis, rhsRefis, *refis, constraints);
+            unionRefinements(lhsRefis, rhsRefis, *refis, constraints);
     }
     else if (auto equivalence = get<Equivalence>(refinement))
     {
-        computeRefinement(builtinTypes, arena, scope, equivalence->lhs, refis, sense, true, constraints);
-        computeRefinement(builtinTypes, arena, scope, equivalence->rhs, refis, sense, true, constraints);
+        computeRefinement(scope, equivalence->lhs, refis, sense, true, constraints);
+        computeRefinement(scope, equivalence->rhs, refis, sense, true, constraints);
     }
     else if (auto proposition = get<Proposition>(refinement))
     {
@@ -314,40 +301,27 @@ static void computeRefinement(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeAr
             constraints->push_back(SingletonOrTopTypeConstraint{discriminantTy, proposition->discriminantTy, !sense});
         }
 
-        RefinementContext uncommittedRefis;
-        uncommittedRefis.insert(proposition->breadcrumb->def, {});
-        uncommittedRefis.get(proposition->breadcrumb->def)->discriminantTypes.push_back(discriminantTy);
+        for (const RefinementKey* key = proposition->key; key; key = key->parent)
+        {
+            refis->insert(key->def, {});
+            refis->get(key->def)->discriminantTypes.push_back(discriminantTy);
+
+            // Reached leaf node
+            if (!key->propName)
+                break;
+
+            TypeId nextDiscriminantTy = arena->addType(TableType{});
+            NotNull<TableType> table{getMutable<TableType>(nextDiscriminantTy)};
+            table->props[*key->propName] = {discriminantTy};
+            table->scope = scope.get();
+            table->state = TableState::Sealed;
+
+            discriminantTy = nextDiscriminantTy;
+        }
 
         // When the top-level expression is `t[x]`, we want to refine it into `nil`, not `never`.
-        if ((sense || !eq) && getMetadata<SubscriptMetadata>(proposition->breadcrumb))
-            uncommittedRefis.get(proposition->breadcrumb->def)->shouldAppendNilType = true;
-
-        for (NullableBreadcrumbId current = proposition->breadcrumb; current && current->previous; current = current->previous)
-        {
-            LUAU_ASSERT(get<Cell>(current->def));
-
-            // If this current breadcrumb has no metadata, it's no-op for the purpose of building a discriminant type.
-            if (!current->metadata)
-                continue;
-            else if (auto field = getMetadata<FieldMetadata>(current))
-            {
-                TableType::Props props{{field->prop, Property{discriminantTy}}};
-                discriminantTy = arena->addType(TableType{std::move(props), std::nullopt, TypeLevel{}, scope.get(), TableState::Sealed});
-                uncommittedRefis.insert(current->previous->def, {});
-                uncommittedRefis.get(current->previous->def)->discriminantTypes.push_back(discriminantTy);
-            }
-        }
-
-        // And now it's time to commit it.
-        for (auto& [def, partition] : uncommittedRefis)
-        {
-            (*refis).insert(def, {});
-
-            for (TypeId discriminantTy : partition.discriminantTypes)
-                (*refis).get(def)->discriminantTypes.push_back(discriminantTy);
-
-            (*refis).get(def)->shouldAppendNilType |= partition.shouldAppendNilType;
-        }
+        LUAU_ASSERT(refis->get(proposition->key->def));
+        refis->get(proposition->key->def)->shouldAppendNilType = (sense || !eq) && containsSubscriptedDefinition(proposition->key->def);
     }
 }
 
@@ -415,7 +389,7 @@ void ConstraintGraphBuilder::applyRefinements(const ScopePtr& scope, Location lo
 
     RefinementContext refinements;
     std::vector<ConstraintV> constraints;
-    computeRefinement(builtinTypes, arena, scope, refinement, &refinements, /*sense*/ true, /*eq*/ false, &constraints);
+    computeRefinement(scope, refinement, &refinements, /*sense*/ true, /*eq*/ false, &constraints);
 
     for (auto& [def, partition] : refinements)
     {
@@ -586,20 +560,22 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStat* stat)
     }
 }
 
-ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
+ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* statLocal)
 {
     std::vector<std::optional<TypeId>> varTypes;
-    varTypes.reserve(local->vars.size);
+    varTypes.reserve(statLocal->vars.size);
 
     std::vector<TypeId> assignees;
-    assignees.reserve(local->vars.size);
+    assignees.reserve(statLocal->vars.size);
 
     // Used to name the first value type, even if it's not placed in varTypes,
     // for the purpose of synthetic name attribution.
     std::optional<TypeId> firstValueType;
 
-    for (AstLocal* local : local->vars)
+    for (AstLocal* local : statLocal->vars)
     {
+        const Location location = local->location;
+
         TypeId assignee = arena->addType(BlockedType{});
         assignees.push_back(assignee);
 
@@ -612,21 +588,27 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* l
             varTypes.push_back(annotationTy);
 
             addConstraint(scope, local->location, SubtypeConstraint{assignee, annotationTy});
+
+            scope->bindings[local] = Binding{annotationTy, location};
         }
         else
+        {
             varTypes.push_back(std::nullopt);
 
-        BreadcrumbId bc = dfg->getBreadcrumb(local);
-        scope->lvalueTypes[bc->def] = assignee;
+            inferredBindings[local] = {scope.get(), location, {assignee}};
+        }
+
+        DefId def = dfg->getDef(local);
+        scope->lvalueTypes[def] = assignee;
     }
 
-    TypePackId resultPack = checkPack(scope, local->values, varTypes).tp;
-    addConstraint(scope, local->location, UnpackConstraint{arena->addTypePack(std::move(assignees)), resultPack});
+    TypePackId resultPack = checkPack(scope, statLocal->values, varTypes).tp;
+    addConstraint(scope, statLocal->location, UnpackConstraint{arena->addTypePack(std::move(assignees)), resultPack});
 
-    if (local->vars.size == 1 && local->values.size == 1 && firstValueType && scope.get() == rootScope)
+    if (statLocal->vars.size == 1 && statLocal->values.size == 1 && firstValueType && scope.get() == rootScope)
     {
-        AstLocal* var = local->vars.data[0];
-        AstExpr* value = local->values.data[0];
+        AstLocal* var = statLocal->vars.data[0];
+        AstExpr* value = statLocal->values.data[0];
 
         if (value->is<AstExprTable>())
             addConstraint(scope, value->location, NameConstraint{*firstValueType, var->name.value, /*synthetic*/ true});
@@ -639,29 +621,12 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* l
         }
     }
 
-    for (size_t i = 0; i < local->vars.size; ++i)
-    {
-        AstLocal* l = local->vars.data[i];
-        Location location = l->location;
-
-        std::optional<TypeId> annotation = varTypes[i];
-        BreadcrumbId bc = dfg->getBreadcrumb(l);
-
-        if (annotation)
-            scope->bindings[l] = Binding{*annotation, location};
-        else
-        {
-            scope->bindings[l] = Binding{builtinTypes->neverType, location};
-            inferredBindings.emplace_back(scope.get(), l, bc);
-        }
-    }
-
-    if (local->values.size > 0)
+    if (statLocal->values.size > 0)
     {
         // To correctly handle 'require', we need to import the exported type bindings into the variable 'namespace'.
-        for (size_t i = 0; i < local->values.size && i < local->vars.size; ++i)
+        for (size_t i = 0; i < statLocal->values.size && i < statLocal->vars.size; ++i)
         {
-            const AstExprCall* call = local->values.data[i]->as<AstExprCall>();
+            const AstExprCall* call = statLocal->values.data[i]->as<AstExprCall>();
             if (!call)
                 continue;
 
@@ -679,7 +644,7 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* l
             if (!module)
                 continue;
 
-            const Name name{local->vars.data[i]->name.value};
+            const Name name{statLocal->vars.data[i]->name.value};
             scope->importedTypeBindings[name] = module->exportedTypeBindings;
             scope->importedModules[name] = moduleInfo->name;
 
@@ -719,9 +684,9 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFor* for
     ScopePtr forScope = childScope(for_, scope);
     forScope->bindings[for_->var] = Binding{annotationTy, for_->var->location};
 
-    BreadcrumbId bc = dfg->getBreadcrumb(for_->var);
-    forScope->lvalueTypes[bc->def] = annotationTy;
-    forScope->rvalueRefinements[bc->def] = annotationTy;
+    DefId def = dfg->getDef(for_->var);
+    forScope->lvalueTypes[def] = annotationTy;
+    forScope->rvalueRefinements[def] = annotationTy;
 
     visit(forScope, for_->body);
 
@@ -750,8 +715,8 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatForIn* f
         TypeId assignee = arena->addType(BlockedType{});
         variableTypes.push_back(assignee);
 
-        BreadcrumbId bc = dfg->getBreadcrumb(var);
-        loopScope->lvalueTypes[bc->def] = assignee;
+        DefId def = dfg->getDef(var);
+        loopScope->lvalueTypes[def] = assignee;
     }
 
     TypePackId variablePack = arena->addTypePack(std::move(variableTypes));
@@ -803,11 +768,11 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocalFun
     FunctionSignature sig = checkFunctionSignature(scope, function->func, /* expectedType */ std::nullopt, function->name->location);
     sig.bodyScope->bindings[function->name] = Binding{sig.signature, function->func->location};
 
-    BreadcrumbId bc = dfg->getBreadcrumb(function->name);
-    scope->lvalueTypes[bc->def] = functionType;
-    scope->rvalueRefinements[bc->def] = functionType;
-    sig.bodyScope->lvalueTypes[bc->def] = sig.signature;
-    sig.bodyScope->rvalueRefinements[bc->def] = sig.signature;
+    DefId def = dfg->getDef(function->name);
+    scope->lvalueTypes[def] = functionType;
+    scope->rvalueRefinements[def] = functionType;
+    sig.bodyScope->lvalueTypes[def] = sig.signature;
+    sig.bodyScope->rvalueRefinements[def] = sig.signature;
 
     Checkpoint start = checkpoint(this);
     checkFunctionBody(sig.bodyScope, function->func);
@@ -848,11 +813,8 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction
 
     std::unordered_set<Constraint*> excludeList;
 
-    const NullableBreadcrumbId functionBreadcrumb = dfg->getBreadcrumb(function->name);
-
-    std::optional<TypeId> existingFunctionTy;
-    if (functionBreadcrumb)
-        existingFunctionTy = scope->lookupLValue(functionBreadcrumb->def);
+    DefId def = dfg->getDef(function->name);
+    std::optional<TypeId> existingFunctionTy = scope->lookupLValue(def);
 
     if (AstExprLocal* localName = function->name->as<AstExprLocal>())
     {
@@ -867,12 +829,8 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction
             scope->bindings[localName->local] = Binding{generalizedType, localName->location};
 
         sig.bodyScope->bindings[localName->local] = Binding{sig.signature, localName->location};
-
-        if (functionBreadcrumb)
-        {
-            sig.bodyScope->lvalueTypes[functionBreadcrumb->def] = sig.signature;
-            sig.bodyScope->rvalueRefinements[functionBreadcrumb->def] = sig.signature;
-        }
+        sig.bodyScope->lvalueTypes[def] = sig.signature;
+        sig.bodyScope->rvalueRefinements[def] = sig.signature;
     }
     else if (AstExprGlobal* globalName = function->name->as<AstExprGlobal>())
     {
@@ -882,17 +840,14 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction
         generalizedType = *existingFunctionTy;
 
         sig.bodyScope->bindings[globalName->name] = Binding{sig.signature, globalName->location};
-
-        if (functionBreadcrumb)
-        {
-            sig.bodyScope->lvalueTypes[functionBreadcrumb->def] = sig.signature;
-            sig.bodyScope->rvalueRefinements[functionBreadcrumb->def] = sig.signature;
-        }
+        sig.bodyScope->lvalueTypes[def] = sig.signature;
+        sig.bodyScope->rvalueRefinements[def] = sig.signature;
     }
     else if (AstExprIndexName* indexName = function->name->as<AstExprIndexName>())
     {
         Checkpoint check1 = checkpoint(this);
-        TypeId lvalueType = checkLValue(scope, indexName);
+        std::optional<TypeId> lvalueType = checkLValue(scope, indexName);
+        LUAU_ASSERT(lvalueType);
         Checkpoint check2 = checkpoint(this);
 
         forEachConstraint(check1, check2, this, [&excludeList](const ConstraintPtr& c) {
@@ -901,10 +856,13 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction
 
         // TODO figure out how to populate the location field of the table Property.
 
-        if (get<FreeType>(lvalueType))
-            asMutable(lvalueType)->ty.emplace<BoundType>(generalizedType);
-        else
-            addConstraint(scope, indexName->location, SubtypeConstraint{lvalueType, generalizedType});
+        if (lvalueType)
+        {
+            if (get<FreeType>(*lvalueType))
+                asMutable(*lvalueType)->ty.emplace<BoundType>(generalizedType);
+            else
+                addConstraint(scope, indexName->location, SubtypeConstraint{*lvalueType, generalizedType});
+        }
     }
     else if (AstExprError* err = function->name->as<AstExprError>())
     {
@@ -914,8 +872,7 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction
     if (generalizedType == nullptr)
         ice->ice("generalizedType == nullptr", function->location);
 
-    if (functionBreadcrumb)
-        scope->rvalueRefinements[functionBreadcrumb->def] = generalizedType;
+    scope->rvalueRefinements[def] = generalizedType;
 
     checkFunctionBody(sig.bodyScope, function->func);
     Checkpoint end = checkpoint(this);
@@ -997,18 +954,23 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatAssign* 
 
     for (AstExpr* lvalue : assign->vars)
     {
-        TypeId upperBound = follow(checkLValue(scope, lvalue));
-        if (get<FreeType>(upperBound))
-            expectedTypes.push_back(std::nullopt);
-        else
-            expectedTypes.push_back(upperBound);
-
         TypeId assignee = arena->addType(BlockedType{});
         assignees.push_back(assignee);
-        addConstraint(scope, lvalue->location, SubtypeConstraint{assignee, upperBound});
 
-        if (NullableBreadcrumbId bc = dfg->getBreadcrumb(lvalue))
-            scope->lvalueTypes[bc->def] = assignee;
+        std::optional<TypeId> upperBound = follow(checkLValue(scope, lvalue));
+        if (upperBound)
+        {
+            if (get<FreeType>(*upperBound))
+                expectedTypes.push_back(std::nullopt);
+            else
+                expectedTypes.push_back(*upperBound);
+
+            addConstraint(scope, lvalue->location, SubtypeConstraint{assignee, *upperBound});
+        }
+
+        DefId def = dfg->getDef(lvalue);
+        scope->lvalueTypes[def] = assignee;
+        updateLValueType(lvalue, assignee);
     }
 
     TypePackId resultPack = checkPack(scope, assign->values, expectedTypes).tp;
@@ -1019,15 +981,15 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatAssign* 
 
 ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatCompoundAssign* assign)
 {
-    // We need to tweak the BinaryConstraint that we emit, so we cannot use the
-    // strategy of falsifying an AST fragment.
-    TypeId varTy = checkLValue(scope, assign->var);
-    TypeId valueTy = check(scope, assign->value).ty;
+    std::optional<TypeId> varTy = checkLValue(scope, assign->var);
 
-    TypeId resultType = arena->addType(BlockedType{});
-    addConstraint(scope, assign->location,
-        BinaryConstraint{assign->op, varTy, valueTy, resultType, assign, &module->astOriginalCallTypes, &module->astOverloadResolvedTypes});
-    addConstraint(scope, assign->location, SubtypeConstraint{resultType, varTy});
+    AstExprBinary binop = AstExprBinary{assign->location, assign->op, assign->var, assign->value};
+    TypeId resultTy = check(scope, &binop).ty;
+    if (varTy)
+        addConstraint(scope, assign->location, SubtypeConstraint{resultTy, *varTy});
+
+    DefId def = dfg->getDef(assign->var);
+    scope->lvalueTypes[def] = resultTy;
 
     return ControlFlow::None;
 }
@@ -1138,9 +1100,9 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareG
     module->declaredGlobals[globalName] = globalTy;
     rootScope->bindings[global->name] = Binding{globalTy, global->location};
 
-    BreadcrumbId bc = dfg->getBreadcrumb(global);
-    rootScope->lvalueTypes[bc->def] = globalTy;
-    rootScope->rvalueRefinements[bc->def] = globalTy;
+    DefId def = dfg->getDef(global);
+    rootScope->lvalueTypes[def] = globalTy;
+    rootScope->rvalueRefinements[def] = globalTy;
 
     return ControlFlow::None;
 }
@@ -1310,9 +1272,9 @@ ControlFlow ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareF
     module->declaredGlobals[fnName] = fnType;
     scope->bindings[global->name] = Binding{fnType, global->location};
 
-    BreadcrumbId bc = dfg->getBreadcrumb(global);
-    rootScope->lvalueTypes[bc->def] = fnType;
-    rootScope->rvalueRefinements[bc->def] = fnType;
+    DefId def = dfg->getDef(global);
+    rootScope->lvalueTypes[def] = fnType;
+    rootScope->rvalueRefinements[def] = fnType;
 
     return ControlFlow::None;
 }
@@ -1409,10 +1371,10 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
 
         exprArgs.push_back(indexExpr->expr);
 
-        if (auto bc = dfg->getBreadcrumb(indexExpr->expr))
+        if (auto key = dfg->getRefinementKey(indexExpr->expr))
         {
             TypeId discriminantTy = arena->addType(BlockedType{});
-            returnRefinements.push_back(refinementArena.proposition(NotNull{bc}, discriminantTy));
+            returnRefinements.push_back(refinementArena.proposition(key, discriminantTy));
             discriminantTypes.push_back(discriminantTy);
         }
         else
@@ -1423,10 +1385,10 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
     {
         exprArgs.push_back(arg);
 
-        if (auto bc = dfg->getBreadcrumb(arg))
+        if (auto key = dfg->getRefinementKey(arg))
         {
             TypeId discriminantTy = arena->addType(BlockedType{});
-            returnRefinements.push_back(refinementArena.proposition(NotNull{bc}, discriminantTy));
+            returnRefinements.push_back(refinementArena.proposition(key, discriminantTy));
             discriminantTypes.push_back(discriminantTy);
         }
         else
@@ -1525,9 +1487,12 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
         {
             scope->bindings[targetLocal->local].typeId = resultTy;
 
-            BreadcrumbId bc = dfg->getBreadcrumb(targetLocal);
-            scope->lvalueTypes[bc->def] = resultTy; // TODO: typestates: track this as an assignment
-            scope->rvalueRefinements[bc->def] = resultTy; // TODO: typestates: track this as an assignment
+            DefId def = dfg->getDef(targetLocal);
+            scope->lvalueTypes[def] = resultTy;       // TODO: typestates: track this as an assignment
+            scope->rvalueRefinements[def] = resultTy; // TODO: typestates: track this as an assignment
+
+            if (auto it = inferredBindings.find(targetLocal->local); it != inferredBindings.end())
+                it->second.types.insert(resultTy);
         }
 
         return InferencePack{arena->addTypePack({resultTy}), {refinementArena.variadic(returnRefinements)}};
@@ -1686,27 +1651,51 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprConstantBo
 
 Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprLocal* local)
 {
-    BreadcrumbId bc = dfg->getBreadcrumb(local);
+    const RefinementKey* key = dfg->getRefinementKey(local);
+    std::optional<DefId> rvalueDef = dfg->getRValueDefForCompoundAssign(local);
+    LUAU_ASSERT(key || rvalueDef);
 
-    if (auto ty = scope->lookup(bc->def))
-        return Inference{*ty, refinementArena.proposition(bc, builtinTypes->truthyType)};
+    std::optional<TypeId> maybeTy;
+
+    // if we have a refinement key, we can look up its type.
+    if (key)
+        maybeTy = scope->lookup(key->def);
+
+    // if the current def doesn't have a type, we might be doing a compound assignment
+    // and therefore might need to look at the rvalue def instead.
+    if (!maybeTy && rvalueDef)
+        maybeTy = scope->lookup(*rvalueDef);
+
+    if (maybeTy)
+    {
+        TypeId ty = follow(*maybeTy);
+        if (auto it = inferredBindings.find(local->local); it != inferredBindings.end())
+            it->second.types.insert(ty);
+
+        return Inference{ty, refinementArena.proposition(key, builtinTypes->truthyType)};
+    }
     else
         ice->ice("CGB: AstExprLocal came before its declaration?");
 }
 
 Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprGlobal* global)
 {
-    BreadcrumbId bc = dfg->getBreadcrumb(global);
+    const RefinementKey* key = dfg->getRefinementKey(global);
+    std::optional<DefId> rvalueDef = dfg->getRValueDefForCompoundAssign(global);
+    LUAU_ASSERT(key || rvalueDef);
+
+    // we'll use whichever of the two definitions we have here.
+    DefId def = key ? key->def : *rvalueDef;
 
     /* prepopulateGlobalScope() has already added all global functions to the environment by this point, so any
      * global that is not already in-scope is definitely an unknown symbol.
      */
-    if (auto ty = scope->lookup(bc->def))
-        return Inference{*ty, refinementArena.proposition(bc, builtinTypes->truthyType)};
+    if (auto ty = scope->lookup(def))
+        return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
     else if (auto ty = scope->lookup(global->name))
     {
-        rootScope->rvalueRefinements[bc->def] = *ty;
-        return Inference{*ty, refinementArena.proposition(bc, builtinTypes->truthyType)};
+        rootScope->rvalueRefinements[key->def] = *ty;
+        return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
     }
     else
     {
@@ -1720,19 +1709,19 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexName*
     TypeId obj = check(scope, indexName->expr).ty;
     TypeId result = arena->addType(BlockedType{});
 
-    NullableBreadcrumbId bc = dfg->getBreadcrumb(indexName);
-    if (bc)
+    const RefinementKey* key = dfg->getRefinementKey(indexName);
+    if (key)
     {
-        if (auto ty = scope->lookup(bc->def))
-            return Inference{*ty, refinementArena.proposition(NotNull{bc}, builtinTypes->truthyType)};
+        if (auto ty = scope->lookup(key->def))
+            return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
 
-        scope->rvalueRefinements[bc->def] = result;
+        scope->rvalueRefinements[key->def] = result;
     }
 
     addConstraint(scope, indexName->expr->location, HasPropConstraint{result, obj, indexName->index.value});
 
-    if (bc)
-        return Inference{result, refinementArena.proposition(NotNull{bc}, builtinTypes->truthyType)};
+    if (key)
+        return Inference{result, refinementArena.proposition(key, builtinTypes->truthyType)};
     else
         return Inference{result};
 }
@@ -1743,13 +1732,13 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexExpr*
     TypeId indexType = check(scope, indexExpr->index).ty;
     TypeId result = freshType(scope);
 
-    NullableBreadcrumbId bc = dfg->getBreadcrumb(indexExpr);
-    if (bc)
+    const RefinementKey* key = dfg->getRefinementKey(indexExpr);
+    if (key)
     {
-        if (auto ty = scope->lookup(bc->def))
-            return Inference{*ty, refinementArena.proposition(NotNull{bc}, builtinTypes->truthyType)};
+        if (auto ty = scope->lookup(key->def))
+            return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
 
-        scope->rvalueRefinements[bc->def] = result;
+        scope->rvalueRefinements[key->def] = result;
     }
 
     TableIndexer indexer{indexType, result};
@@ -1757,8 +1746,8 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexExpr*
 
     addConstraint(scope, indexExpr->expr->location, SubtypeConstraint{obj, tableType});
 
-    if (bc)
-        return Inference{result, refinementArena.proposition(NotNull{bc}, builtinTypes->truthyType)};
+    if (key)
+        return Inference{result, refinementArena.proposition(key, builtinTypes->truthyType)};
     else
         return Inference{result};
 }
@@ -1812,12 +1801,28 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprUnary* una
         addConstraint(scope, unary->location, ReduceConstraint{resultType});
         return Inference{resultType, refinementArena.negation(refinement)};
     }
-    default:
+    case AstExprUnary::Op::Len:
     {
-        TypeId resultType = arena->addType(BlockedType{});
-        addConstraint(scope, unary->location, UnaryConstraint{unary->op, operandType, resultType});
-        return Inference{resultType};
+        TypeId resultType = arena->addType(TypeFamilyInstanceType{
+            NotNull{&kBuiltinTypeFamilies.lenFamily},
+            {operandType},
+            {},
+        });
+        addConstraint(scope, unary->location, ReduceConstraint{resultType});
+        return Inference{resultType, refinementArena.negation(refinement)};
     }
+    case AstExprUnary::Op::Minus:
+    {
+        TypeId resultType = arena->addType(TypeFamilyInstanceType{
+            NotNull{&kBuiltinTypeFamilies.unmFamily},
+            {operandType},
+            {},
+        });
+        addConstraint(scope, unary->location, ReduceConstraint{resultType});
+        return Inference{resultType, refinementArena.negation(refinement)};
+    }
+    default: // msvc can't prove that this is exhaustive.
+        LUAU_UNREACHABLE();
     }
 }
 
@@ -1978,13 +1983,10 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprBinary* bi
         addConstraint(scope, binary->location, ReduceConstraint{resultType});
         return Inference{resultType, std::move(refinement)};
     }
-    default:
-    {
-        TypeId resultType = arena->addType(BlockedType{});
-        addConstraint(scope, binary->location,
-            BinaryConstraint{binary->op, leftType, rightType, resultType, binary, &module->astOriginalCallTypes, &module->astOverloadResolvedTypes});
-        return Inference{resultType, std::move(refinement)};
-    }
+    case AstExprBinary::Op::Op__Count:
+        ice->ice("Op__Count should never be generated in an AST.");
+    default: // msvc can't prove that this is exhaustive.
+        LUAU_UNREACHABLE();
     }
 }
 
@@ -2056,9 +2058,10 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGraphBuilder::checkBinary(
         TypeId leftType = check(scope, binary->left).ty;
         TypeId rightType = check(scope, binary->right).ty;
 
-        NullableBreadcrumbId bc = dfg->getBreadcrumb(typeguard->target);
-        if (!bc)
+        const RefinementKey* key = dfg->getRefinementKey(typeguard->target);
+        if (!key)
             return {leftType, rightType, nullptr};
+
         auto augmentForErrorSupression = [&](TypeId ty) -> TypeId {
             return arena->addType(UnionType{{ty, builtinTypes->errorType}});
         };
@@ -2096,7 +2099,7 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGraphBuilder::checkBinary(
                 discriminantTy = ty;
         }
 
-        RefinementId proposition = refinementArena.proposition(NotNull{bc}, discriminantTy);
+        RefinementId proposition = refinementArena.proposition(key, discriminantTy);
         if (binary->op == AstExprBinary::CompareEq)
             return {leftType, rightType, proposition};
         else if (binary->op == AstExprBinary::CompareNe)
@@ -2111,13 +2114,8 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGraphBuilder::checkBinary(
         TypeId leftType = check(scope, binary->left, {}, true).ty;
         TypeId rightType = check(scope, binary->right, {}, true).ty;
 
-        RefinementId leftRefinement = nullptr;
-        if (auto bc = dfg->getBreadcrumb(binary->left))
-            leftRefinement = refinementArena.proposition(NotNull{bc}, rightType);
-
-        RefinementId rightRefinement = nullptr;
-        if (auto bc = dfg->getBreadcrumb(binary->right))
-            rightRefinement = refinementArena.proposition(NotNull{bc}, leftType);
+        RefinementId leftRefinement = refinementArena.proposition(dfg->getRefinementKey(binary->left), rightType);
+        RefinementId rightRefinement = refinementArena.proposition(dfg->getRefinementKey(binary->right), leftType);
 
         if (binary->op == AstExprBinary::CompareNe)
         {
@@ -2135,7 +2133,7 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGraphBuilder::checkBinary(
     }
 }
 
-TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
+std::optional<TypeId> ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
 {
     if (auto local = expr->as<AstExprLocal>())
         return checkLValue(scope, local);
@@ -2154,24 +2152,42 @@ TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
         ice->ice("checkLValue is inexhaustive");
 }
 
-TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExprLocal* local)
+std::optional<TypeId> ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExprLocal* local)
 {
-    std::optional<TypeId> upperBound = scope->lookup(Symbol{local->local});
-    LUAU_ASSERT(upperBound);
-    return *upperBound;
+    /*
+     * The caller of this method uses the returned type to emit the proper
+     * SubtypeConstraint.
+     *
+     * At this point during constraint generation, the binding table is only
+     * populated by symbols that have type annotations.
+     *
+     * If this local has an interesting type annotation, it is important that we
+     * return that.
+     */
+    std::optional<TypeId> annotatedTy = scope->lookup(local->local);
+    if (annotatedTy)
+        return annotatedTy;
+
+    /*
+     * As a safety measure, we'll assert that no type has yet been ascribed to
+     * the corresponding def.  We'll populate this when we generate
+     * constraints for assignment and compound assignment statements.
+     */
+    LUAU_ASSERT(!scope->lookupLValue(dfg->getDef(local)));
+    return std::nullopt;
 }
 
-TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExprGlobal* global)
+std::optional<TypeId> ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExprGlobal* global)
 {
-    return scope->lookup(Symbol{global->name}).value_or(builtinTypes->errorRecoveryType());
+    return scope->lookup(Symbol{global->name});
 }
 
-TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExprIndexName* indexName)
+std::optional<TypeId> ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExprIndexName* indexName)
 {
     return updateProperty(scope, indexName);
 }
 
-TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExprIndexExpr* indexExpr)
+std::optional<TypeId> ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExprIndexExpr* indexExpr)
 {
     return updateProperty(scope, indexExpr);
 }
@@ -2226,7 +2242,7 @@ TypeId ConstraintGraphBuilder::updateProperty(const ScopePtr& scope, AstExpr* ex
         return check(scope, expr).ty;
 
     Symbol sym;
-    NullableBreadcrumbId bc = nullptr;
+    const Def* def = nullptr;
     std::vector<std::string> segments;
     std::vector<AstExpr*> exprs;
 
@@ -2236,13 +2252,13 @@ TypeId ConstraintGraphBuilder::updateProperty(const ScopePtr& scope, AstExpr* ex
         if (auto global = e->as<AstExprGlobal>())
         {
             sym = global->name;
-            bc = dfg->getBreadcrumb(global);
+            def = dfg->getDef(global);
             break;
         }
         else if (auto local = e->as<AstExprLocal>())
         {
             sym = local->local;
-            bc = dfg->getBreadcrumb(local);
+            def = dfg->getDef(local);
             break;
         }
         else if (auto indexName = e->as<AstExprIndexName>())
@@ -2275,20 +2291,12 @@ TypeId ConstraintGraphBuilder::updateProperty(const ScopePtr& scope, AstExpr* ex
     std::reverse(begin(segments), end(segments));
     std::reverse(begin(exprs), end(exprs));
 
-    auto lookupResult = scope->lookupEx(sym);
+    LUAU_ASSERT(def);
+    std::optional<std::pair<TypeId, Scope*>> lookupResult = scope->lookupEx(NotNull{def});
     if (!lookupResult)
         return check(scope, expr).ty;
-    const auto [subjectBinding, symbolScope] = std::move(*lookupResult);
 
-    LUAU_ASSERT(bc);
-    std::optional<TypeId> subjectTy = scope->lookup(bc->def);
-
-    /* If we have a breadcrumb but no type, it can only mean that we're setting
-     * a property of some builtin table.  This isn't legal, but we still want to
-     * wire up the constraints properly so that we can report why it is not
-     * legal.
-     */
-    TypeId subjectType = subjectTy.value_or(subjectBinding->typeId);
+    const auto [subjectType, subjectScope] = *lookupResult;
 
     TypeId propTy = freshType(scope);
 
@@ -2311,18 +2319,27 @@ TypeId ConstraintGraphBuilder::updateProperty(const ScopePtr& scope, AstExpr* ex
 
     if (!subjectType->persistent)
     {
-        symbolScope->bindings[sym].typeId = updatedType;
+        subjectScope->bindings[sym].typeId = updatedType;
 
         // This can fail if the user is erroneously trying to augment a builtin
         // table like os or string.
-        if (auto bc = dfg->getBreadcrumb(e))
+        if (auto key = dfg->getRefinementKey(e))
         {
-            symbolScope->lvalueTypes[bc->def] = updatedType;
-            symbolScope->rvalueRefinements[bc->def] = updatedType;
+            subjectScope->lvalueTypes[key->def] = updatedType;
+            subjectScope->rvalueRefinements[key->def] = updatedType;
         }
     }
 
     return propTy;
+}
+
+void ConstraintGraphBuilder::updateLValueType(AstExpr* lvalue, TypeId ty)
+{
+    if (auto local = lvalue->as<AstExprLocal>())
+    {
+        if (auto it = inferredBindings.find(local->local); it != inferredBindings.end())
+            it->second.types.insert(ty);
+    }
 }
 
 Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType)
@@ -2525,9 +2542,9 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
         argNames.emplace_back(FunctionArgument{fn->self->name.value, fn->self->location});
         signatureScope->bindings[fn->self] = Binding{selfType, fn->self->location};
 
-        BreadcrumbId bc = dfg->getBreadcrumb(fn->self);
-        signatureScope->lvalueTypes[bc->def] = selfType;
-        signatureScope->rvalueRefinements[bc->def] = selfType;
+        DefId def = dfg->getDef(fn->self);
+        signatureScope->lvalueTypes[def] = selfType;
+        signatureScope->rvalueRefinements[def] = selfType;
     }
 
     for (size_t i = 0; i < fn->args.size; ++i)
@@ -2552,14 +2569,13 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
             signatureScope->bindings[local] = Binding{argTy, local->location};
         else
         {
-            BreadcrumbId bc = dfg->getBreadcrumb(local);
             signatureScope->bindings[local] = Binding{builtinTypes->neverType, local->location};
-            inferredBindings.emplace_back(signatureScope.get(), local, bc);
+            inferredBindings[local] = {signatureScope.get(), {}};
         }
 
-        BreadcrumbId bc = dfg->getBreadcrumb(local);
-        signatureScope->lvalueTypes[bc->def] = argTy;
-        signatureScope->rvalueRefinements[bc->def] = argTy;
+        DefId def = dfg->getDef(local);
+        signatureScope->lvalueTypes[def] = argTy;
+        signatureScope->rvalueRefinements[def] = argTy;
     }
 
     TypePackId varargPack = nullptr;
@@ -2854,7 +2870,10 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
     }
     else if (auto boolAnnotation = ty->as<AstTypeSingletonBool>())
     {
-        result = arena->addType(SingletonType(BooleanSingleton{boolAnnotation->value}));
+        if (boolAnnotation->value)
+            result = builtinTypes->trueType;
+        else
+            result = builtinTypes->falseType;
     }
     else if (auto stringAnnotation = ty->as<AstTypeSingletonString>())
     {
@@ -3042,10 +3061,8 @@ struct GlobalPrepopulator : AstVisitor
             TypeId bt = arena->addType(BlockedType{});
             globalScope->bindings[g->name] = Binding{bt};
 
-            NullableBreadcrumbId bc = dfg->getBreadcrumb(function->name);
-            LUAU_ASSERT(bc);
-
-            globalScope->lvalueTypes[bc->def] = bt;
+            DefId def = dfg->getDef(function->name);
+            globalScope->lvalueTypes[def] = bt;
         }
 
         return true;
@@ -3064,32 +3081,16 @@ void ConstraintGraphBuilder::prepopulateGlobalScope(const ScopePtr& globalScope,
 
 void ConstraintGraphBuilder::fillInInferredBindings(const ScopePtr& globalScope, AstStatBlock* block)
 {
-    std::deque<BreadcrumbId> queue;
-
-    for (const auto& [scope, symbol, breadcrumb] : inferredBindings)
+    for (const auto& [symbol, p] : inferredBindings)
     {
-        LUAU_ASSERT(queue.empty());
+        const auto& [scope, location, types] = p;
 
-        queue.push_back(breadcrumb);
+        std::vector<TypeId> tys(types.begin(), types.end());
 
-        TypeId ty = builtinTypes->neverType;
+        TypeId ty = arena->addType(BlockedType{});
+        addConstraint(globalScope, Location{}, SetOpConstraint{SetOpConstraint::Union, ty, std::move(tys)});
 
-        while (!queue.empty())
-        {
-            const BreadcrumbId bc = queue.front();
-            queue.pop_front();
-
-            TypeId* lvalueType = scope->lvalueTypes.find(bc->def);
-            if (!lvalueType)
-                continue;
-
-            ty = simplifyUnion(builtinTypes, arena, ty, *lvalueType).result;
-
-            for (BreadcrumbId child : bc->children)
-                queue.push_back(child);
-        }
-
-        scope->bindings[symbol].typeId = ty;
+        scope->bindings[symbol] = Binding{ty, location};
     }
 }
 

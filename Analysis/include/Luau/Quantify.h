@@ -1,10 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Type.h"
+#include "Luau/TypeFwd.h"
 #include "Luau/DenseHash.h"
+#include "Luau/Unifiable.h"
 
 #include <vector>
+#include <optional>
 
 namespace Luau
 {

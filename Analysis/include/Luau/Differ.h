@@ -2,11 +2,12 @@
 #pragma once
 
 #include "Luau/DenseHash.h"
-#include "Luau/Type.h"
+#include "Luau/TypeFwd.h"
 #include "Luau/UnifierSharedState.h"
+
 #include <optional>
 #include <string>
-#include <unordered_map>
+#include <unordered_set>
 
 namespace Luau
 {

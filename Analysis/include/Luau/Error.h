@@ -5,6 +5,9 @@
 #include "Luau/NotNull.h"
 #include "Luau/Type.h"
 #include "Luau/Variant.h"
+#include "Luau/Ast.h"
+
+#include <set>
 
 namespace Luau
 {

@@ -5,15 +5,17 @@
 #include "Luau/Constraint.h"
 #include "Luau/ControlFlow.h"
 #include "Luau/DataFlowGraph.h"
+#include "Luau/InsertionOrderedMap.h"
 #include "Luau/Module.h"
 #include "Luau/ModuleResolver.h"
+#include "Luau/Normalize.h"
 #include "Luau/NotNull.h"
 #include "Luau/Refinement.h"
 #include "Luau/Symbol.h"
-#include "Luau/Type.h"
+#include "Luau/TypeFwd.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Variant.h"
-#include "Normalize.h"
+#include "Luau/Normalize.h"
 
 #include <memory>
 #include <vector>
@@ -69,11 +71,18 @@ struct ConstraintGraphBuilder
     // This is null when the CGB is initially constructed.
     Scope* rootScope;
 
+    struct InferredBinding
+    {
+        Scope* scope;
+        Location location;
+        TypeIds types;
+    };
+
     // During constraint generation, we only populate the Scope::bindings
     // property for annotated symbols.  Unannotated symbols must be handled in a
-    // postprocessing step because we do not yet have the full breadcrumb graph.
-    // We queue them up here.
-    std::vector<std::tuple<Scope*, Symbol, BreadcrumbId>> inferredBindings;
+    // postprocessing step because we have not yet allocated the types that will
+    // be assigned to those unannotated symbols, so we queue them up here.
+    std::map<Symbol, InferredBinding> inferredBindings;
 
     // Constraints that go straight to the solver.
     std::vector<ConstraintPtr> constraints;
@@ -155,6 +164,18 @@ private:
      */
     NotNull<Constraint> addConstraint(const ScopePtr& scope, std::unique_ptr<Constraint> c);
 
+    struct RefinementPartition
+    {
+        // Types that we want to intersect against the type of the expression.
+        std::vector<TypeId> discriminantTypes;
+
+        // Sometimes the type we're discriminating against is implicitly nil.
+        bool shouldAppendNilType = false;
+    };
+
+    using RefinementContext = InsertionOrderedMap<DefId, RefinementPartition>;
+    void unionRefinements(const RefinementContext& lhs, const RefinementContext& rhs, RefinementContext& dest, std::vector<ConstraintV>* constraints);
+    void computeRefinement(const ScopePtr& scope, RefinementId refinement, RefinementContext* refis, bool sense, bool eq, std::vector<ConstraintV>* constraints);
     void applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement);
 
     ControlFlow visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block);
@@ -211,12 +232,14 @@ private:
     Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
     std::tuple<TypeId, TypeId, RefinementId> checkBinary(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
 
-    TypeId checkLValue(const ScopePtr& scope, AstExpr* expr);
-    TypeId checkLValue(const ScopePtr& scope, AstExprLocal* local);
-    TypeId checkLValue(const ScopePtr& scope, AstExprGlobal* global);
-    TypeId checkLValue(const ScopePtr& scope, AstExprIndexName* indexName);
-    TypeId checkLValue(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
+    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExpr* expr);
+    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprLocal* local);
+    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprGlobal* global);
+    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprIndexName* indexName);
+    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
     TypeId updateProperty(const ScopePtr& scope, AstExpr* expr);
+
+    void updateLValueType(AstExpr* lvalue, TypeId ty);
 
     struct FunctionSignature
     {

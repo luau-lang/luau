@@ -3,15 +3,13 @@
 
 #include "Luau/Variant.h"
 #include "Luau/Symbol.h"
+#include "Luau/TypeFwd.h"
 
 #include <memory>
 #include <unordered_map>
 
 namespace Luau
 {
-
-struct Type;
-using TypeId = const Type*;
 
 struct Field;
 

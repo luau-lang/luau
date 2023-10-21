@@ -756,8 +756,9 @@ TEST_CASE_FIXTURE(Fixture, "infer_indexer_from_its_variable_type_and_unifiable")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm != nullptr);
 
-    const TableType* tTy = get<TableType>(requireType("t2"));
-    REQUIRE(tTy != nullptr);
+    TypeId t2Ty = requireType("t2");
+    const TableType* tTy = get<TableType>(t2Ty);
+    REQUIRE_MESSAGE(tTy != nullptr, "Expected a table but got " << toString(t2Ty));
 
     REQUIRE(tTy->indexer);
     CHECK_EQ(*builtinTypes->numberType, *tTy->indexer->indexType);
@@ -954,8 +955,9 @@ TEST_CASE_FIXTURE(Fixture, "assigning_to_an_unsealed_table_with_string_literal_s
 
     CHECK("string" == toString(*builtinTypes->stringType));
 
-    TableType* tableType = getMutable<TableType>(requireType("t"));
-    REQUIRE(tableType != nullptr);
+    TypeId tType = requireType("t");
+    TableType* tableType = getMutable<TableType>(tType);
+    REQUIRE_MESSAGE(tableType != nullptr, "Expected a table but got " << toString(tType, {true}));
     REQUIRE(tableType->indexer == std::nullopt);
     REQUIRE(0 != tableType->props.count("a"));
 
@@ -1966,7 +1968,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "quantifying_a_bound_var_works")
     LUAU_REQUIRE_NO_ERRORS(result);
     TypeId ty = requireType("clazz");
     TableType* ttv = getMutable<TableType>(ty);
-    REQUIRE(ttv);
+    REQUIRE_MESSAGE(ttv, "Expected a table but got " << toString(ty, {true}));
     REQUIRE(ttv->props.count("new"));
     Property& prop = ttv->props["new"];
     REQUIRE(prop.type());
@@ -2389,7 +2391,10 @@ local x: {number} | number | string
 local y = #x
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_hang_when_trying_to_look_up_in_cyclic_metatable_index")

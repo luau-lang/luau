@@ -15,6 +15,7 @@
 LUAU_FASTFLAGVARIABLE(LuauImproveForN2, false)
 LUAU_FASTFLAG(LuauReduceStackSpills)
 LUAU_FASTFLAGVARIABLE(LuauInlineArrConstOffset, false)
+LUAU_FASTFLAGVARIABLE(LuauLowerAltLoopForn, false)
 
 namespace Luau
 {
@@ -680,26 +681,35 @@ void translateInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos)
             IrOp tagStep = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 1));
             build.inst(IrCmd::CHECK_TAG, tagStep, build.constTag(LUA_TNUMBER), build.vmExit(pcpos));
 
-            IrOp direct = build.block(IrBlockKind::Internal);
-            IrOp reverse = build.block(IrBlockKind::Internal);
+            if (FFlag::LuauLowerAltLoopForn)
+            {
+                IrOp step = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 1));
 
-            IrOp zero = build.constDouble(0.0);
-            IrOp step = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 1));
+                build.inst(IrCmd::JUMP_FORN_LOOP_COND, idx, limit, step, loopStart, loopExit);
+            }
+            else
+            {
+                IrOp direct = build.block(IrBlockKind::Internal);
+                IrOp reverse = build.block(IrBlockKind::Internal);
 
-            // step > 0
-            // note: equivalent to 0 < step, but lowers into one instruction on both X64 and A64
-            build.inst(IrCmd::JUMP_CMP_NUM, step, zero, build.cond(IrCondition::Greater), direct, reverse);
+                IrOp zero = build.constDouble(0.0);
+                IrOp step = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 1));
 
-            // Condition to start the loop: step > 0 ? idx <= limit : limit <= idx
-            // We invert the condition so that loopStart is the fallthrough (false) label
+                // step > 0
+                // note: equivalent to 0 < step, but lowers into one instruction on both X64 and A64
+                build.inst(IrCmd::JUMP_CMP_NUM, step, zero, build.cond(IrCondition::Greater), direct, reverse);
 
-            // step > 0 is false, check limit <= idx
-            build.beginBlock(reverse);
-            build.inst(IrCmd::JUMP_CMP_NUM, limit, idx, build.cond(IrCondition::NotLessEqual), loopExit, loopStart);
+                // Condition to start the loop: step > 0 ? idx <= limit : limit <= idx
+                // We invert the condition so that loopStart is the fallthrough (false) label
 
-            // step > 0 is true, check idx <= limit
-            build.beginBlock(direct);
-            build.inst(IrCmd::JUMP_CMP_NUM, idx, limit, build.cond(IrCondition::NotLessEqual), loopExit, loopStart);
+                // step > 0 is false, check limit <= idx
+                build.beginBlock(reverse);
+                build.inst(IrCmd::JUMP_CMP_NUM, limit, idx, build.cond(IrCondition::NotLessEqual), loopExit, loopStart);
+
+                // step > 0 is true, check idx <= limit
+                build.beginBlock(direct);
+                build.inst(IrCmd::JUMP_CMP_NUM, idx, limit, build.cond(IrCondition::NotLessEqual), loopExit, loopStart);
+            }
         }
         else
         {
@@ -712,6 +722,24 @@ void translateInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos)
             else
                 build.inst(IrCmd::JUMP_CMP_NUM, limit, idx, build.cond(IrCondition::NotLessEqual), loopExit, loopStart);
         }
+    }
+    else if (FFlag::LuauLowerAltLoopForn)
+    {
+        // When loop parameters are not numbers, VM tries to perform type coercion from string and raises an exception if that fails
+        // Performing that fallback in native code increases code size and complicates CFG, obscuring the values when they are constant
+        // To avoid that overhead for an extreemely rare case (that doesn't even typecheck), we exit to VM to handle it
+        IrOp tagLimit = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 0));
+        build.inst(IrCmd::CHECK_TAG, tagLimit, build.constTag(LUA_TNUMBER), build.vmExit(pcpos));
+        IrOp tagStep = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 1));
+        build.inst(IrCmd::CHECK_TAG, tagStep, build.constTag(LUA_TNUMBER), build.vmExit(pcpos));
+        IrOp tagIdx = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 2));
+        build.inst(IrCmd::CHECK_TAG, tagIdx, build.constTag(LUA_TNUMBER), build.vmExit(pcpos));
+
+        IrOp limit = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 0));
+        IrOp step = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 1));
+        IrOp idx = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 2));
+
+        build.inst(IrCmd::JUMP_FORN_LOOP_COND, idx, limit, step, loopStart, loopExit);
     }
     else
     {
@@ -770,7 +798,6 @@ void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos)
         LUAU_ASSERT(!build.loopStepStack.empty());
         IrOp stepK = build.loopStepStack.back();
 
-        IrOp zero = build.constDouble(0.0);
         IrOp limit = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 0));
         IrOp step = stepK.kind == IrOpKind::Undef ? build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 1)) : stepK;
 
@@ -780,22 +807,31 @@ void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos)
 
         if (stepK.kind == IrOpKind::Undef)
         {
-            IrOp direct = build.block(IrBlockKind::Internal);
-            IrOp reverse = build.block(IrBlockKind::Internal);
+            if (FFlag::LuauLowerAltLoopForn)
+            {
+                build.inst(IrCmd::JUMP_FORN_LOOP_COND, idx, limit, step, loopRepeat, loopExit);
+            }
+            else
+            {
+                IrOp direct = build.block(IrBlockKind::Internal);
+                IrOp reverse = build.block(IrBlockKind::Internal);
 
-            // step > 0
-            // note: equivalent to 0 < step, but lowers into one instruction on both X64 and A64
-            build.inst(IrCmd::JUMP_CMP_NUM, step, zero, build.cond(IrCondition::Greater), direct, reverse);
+                IrOp zero = build.constDouble(0.0);
 
-            // Condition to continue the loop: step > 0 ? idx <= limit : limit <= idx
+                // step > 0
+                // note: equivalent to 0 < step, but lowers into one instruction on both X64 and A64
+                build.inst(IrCmd::JUMP_CMP_NUM, step, zero, build.cond(IrCondition::Greater), direct, reverse);
 
-            // step > 0 is false, check limit <= idx
-            build.beginBlock(reverse);
-            build.inst(IrCmd::JUMP_CMP_NUM, limit, idx, build.cond(IrCondition::LessEqual), loopRepeat, loopExit);
+                // Condition to continue the loop: step > 0 ? idx <= limit : limit <= idx
 
-            // step > 0 is true, check idx <= limit
-            build.beginBlock(direct);
-            build.inst(IrCmd::JUMP_CMP_NUM, idx, limit, build.cond(IrCondition::LessEqual), loopRepeat, loopExit);
+                // step > 0 is false, check limit <= idx
+                build.beginBlock(reverse);
+                build.inst(IrCmd::JUMP_CMP_NUM, limit, idx, build.cond(IrCondition::LessEqual), loopRepeat, loopExit);
+
+                // step > 0 is true, check idx <= limit
+                build.beginBlock(direct);
+                build.inst(IrCmd::JUMP_CMP_NUM, idx, limit, build.cond(IrCondition::LessEqual), loopRepeat, loopExit);
+            }
         }
         else
         {
@@ -807,6 +843,19 @@ void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos)
             else
                 build.inst(IrCmd::JUMP_CMP_NUM, limit, idx, build.cond(IrCondition::LessEqual), loopRepeat, loopExit);
         }
+    }
+    else if (FFlag::LuauLowerAltLoopForn)
+    {
+        build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
+
+        IrOp limit = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 0));
+        IrOp step = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 1));
+
+        IrOp idx = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 2));
+        idx = build.inst(IrCmd::ADD_NUM, idx, step);
+        build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra + 2), idx);
+
+        build.inst(IrCmd::JUMP_FORN_LOOP_COND, idx, limit, step, loopRepeat, loopExit);
     }
     else
     {

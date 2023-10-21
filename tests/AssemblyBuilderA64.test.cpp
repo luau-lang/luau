@@ -76,6 +76,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Unary")
     SINGLE_COMPARE(clz(w0, w1), 0x5AC01020);
     SINGLE_COMPARE(rbit(x0, x1), 0xDAC00020);
     SINGLE_COMPARE(rbit(w0, w1), 0x5AC00020);
+    SINGLE_COMPARE(rev(w0, w1), 0x5AC00820);
+    SINGLE_COMPARE(rev(x0, x1), 0xDAC00C20);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Binary")

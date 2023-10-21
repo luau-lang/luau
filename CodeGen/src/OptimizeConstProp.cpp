@@ -19,6 +19,7 @@ LUAU_FASTFLAGVARIABLE(LuauReuseHashSlots2, false)
 LUAU_FASTFLAGVARIABLE(LuauKeepVmapLinear, false)
 LUAU_FASTFLAGVARIABLE(LuauMergeTagLoads, false)
 LUAU_FASTFLAGVARIABLE(LuauReuseArrSlots, false)
+LUAU_FASTFLAG(LuauLowerAltLoopForn)
 
 namespace Luau
 {
@@ -782,6 +783,46 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         }
         break;
     }
+    case IrCmd::JUMP_FORN_LOOP_COND:
+    {
+        std::optional<double> step = function.asDoubleOp(inst.c.kind == IrOpKind::Constant ? inst.c : state.tryGetValue(inst.c));
+
+        if (!step)
+            break;
+
+        std::optional<double> idx = function.asDoubleOp(inst.a.kind == IrOpKind::Constant ? inst.a : state.tryGetValue(inst.a));
+        std::optional<double> limit = function.asDoubleOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b));
+
+        if (*step > 0)
+        {
+            if (idx && limit)
+            {
+                if (compare(*idx, *limit, IrCondition::NotLessEqual))
+                    replace(function, block, index, {IrCmd::JUMP, inst.e});
+                else
+                    replace(function, block, index, {IrCmd::JUMP, inst.d});
+            }
+            else
+            {
+                replace(function, block, index, IrInst{IrCmd::JUMP_CMP_NUM, inst.a, inst.b, build.cond(IrCondition::NotLessEqual), inst.e, inst.d});
+            }
+        }
+        else
+        {
+            if (idx && limit)
+            {
+                if (compare(*limit, *idx, IrCondition::NotLessEqual))
+                    replace(function, block, index, {IrCmd::JUMP, inst.e});
+                else
+                    replace(function, block, index, {IrCmd::JUMP, inst.d});
+            }
+            else
+            {
+                replace(function, block, index, IrInst{IrCmd::JUMP_CMP_NUM, inst.b, inst.a, build.cond(IrCondition::NotLessEqual), inst.e, inst.d});
+            }
+        }
+        break;
+    }
     case IrCmd::GET_UPVALUE:
         state.invalidate(inst.a);
         break;
@@ -1282,6 +1323,9 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
 
             if (target.useCount == 1 && !visited[targetIdx] && target.kind != IrBlockKind::Fallback)
             {
+                if (FFlag::LuauLowerAltLoopForn && getLiveOutValueCount(function, target) != 0)
+                    break;
+
                 // Make sure block ordering guarantee is checked at lowering time
                 block->expectedNextBlock = function.getBlockIndex(target);
 

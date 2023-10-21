@@ -8,6 +8,7 @@
 #include "Luau/VisitType.h"
 
 #include "Fixture.h"
+#include "DiffAsserts.h"
 
 #include "doctest.h"
 
@@ -31,7 +32,7 @@ TEST_CASE_FIXTURE(Fixture, "string_length")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("number", toString(requireType("t")));
+    CHECK_EQ_DIFF(builtinTypes->numberType, requireType("t"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_index")

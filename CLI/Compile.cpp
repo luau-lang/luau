@@ -33,6 +33,13 @@ enum class CompileFormat
     Null
 };
 
+enum class RecordStats
+{
+    None,
+    Total,
+    Split
+};
+
 struct GlobalOptions
 {
     int optimizationLevel = 1;
@@ -122,6 +129,57 @@ struct CompileStats
     double codegenTime;
 
     Luau::CodeGen::LoweringStats lowerStats;
+
+    void serializeToJson(FILE* fp)
+    {
+        // use compact one-line formatting to reduce file length
+        fprintf(fp, "{\
+\"lines\": %zu, \
+\"bytecode\": %zu, \
+\"codegen\": %zu, \
+\"readTime\": %f, \
+\"miscTime\": %f, \
+\"parseTime\": %f, \
+\"compileTime\": %f, \
+\"codegenTime\": %f, \
+\"lowerStats\": {\
+\"totalFunctions\": %u, \
+\"skippedFunctions\": %u, \
+\"spillsToSlot\": %d, \
+\"spillsToRestore\": %d, \
+\"maxSpillSlotsUsed\": %u, \
+\"blocksPreOpt\": %u, \
+\"blocksPostOpt\": %u, \
+\"maxBlockInstructions\": %u, \
+\"regAllocErrors\": %d, \
+\"loweringErrors\": %d\
+}}",
+            lines, bytecode, codegen, readTime, miscTime, parseTime, compileTime, codegenTime, lowerStats.totalFunctions, lowerStats.skippedFunctions,
+            lowerStats.spillsToSlot, lowerStats.spillsToRestore, lowerStats.maxSpillSlotsUsed, lowerStats.blocksPreOpt, lowerStats.blocksPostOpt,
+            lowerStats.maxBlockInstructions, lowerStats.regAllocErrors, lowerStats.loweringErrors);
+    }
+
+    CompileStats& operator+=(const CompileStats& that)
+    {
+        this->lines += that.lines;
+        this->bytecode += that.bytecode;
+        this->codegen += that.codegen;
+        this->readTime += that.readTime;
+        this->miscTime += that.miscTime;
+        this->parseTime += that.parseTime;
+        this->compileTime += that.compileTime;
+        this->codegenTime += that.codegenTime;
+        this->lowerStats += that.lowerStats;
+
+        return *this;
+    }
+
+    CompileStats operator+(const CompileStats& other) const
+    {
+        CompileStats result(*this);
+        result += other;
+        return result;
+    }
 };
 
 static double recordDeltaTime(double& timer)
@@ -254,6 +312,7 @@ static void displayHelp(const char* argv0)
     printf("  -g<n>: compile with debug level n (default 1, n should be between 0 and 2).\n");
     printf("  --target=<target>: compile code for specific architecture (a64, x64, a64_nf, x64_ms).\n");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
+    printf("  --record-stats=<style>: records compilation stats in stats.json (total, split).\n");
 }
 
 static int assertionHandler(const char* expr, const char* file, int line, const char* function)
@@ -270,6 +329,7 @@ int main(int argc, char** argv)
 
     CompileFormat compileFormat = CompileFormat::Text;
     Luau::CodeGen::AssemblyOptions::Target assemblyTarget = Luau::CodeGen::AssemblyOptions::Host;
+    RecordStats recordStats = RecordStats::None;
 
     for (int i = 1; i < argc; i++)
     {
@@ -320,6 +380,20 @@ int main(int argc, char** argv)
         {
             FFlag::DebugLuauTimeTracing.value = true;
         }
+        else if (strncmp(argv[i], "--record-stats=", 15) == 0)
+        {
+            const char* value = argv[i] + 15;
+
+            if (strcmp(value, "total") == 0)
+                recordStats = RecordStats::Total;
+            else if (strcmp(value, "split") == 0)
+                recordStats = RecordStats::Split;
+            else
+            {
+                fprintf(stderr, "Error: unknown 'style' for '--record-stats'\n");
+                return 1;
+            }
+        }
         else if (strncmp(argv[i], "--fflags=", 9) == 0)
         {
             setLuauFlags(argv[i] + 9);
@@ -351,11 +425,23 @@ int main(int argc, char** argv)
         _setmode(_fileno(stdout), _O_BINARY);
 #endif
 
+    const size_t fileCount = files.size();
     CompileStats stats = {};
+
+    std::vector<CompileStats> fileStats;
+    if (recordStats == RecordStats::Split)
+        fileStats.reserve(fileCount);
+
     int failed = 0;
 
     for (const std::string& path : files)
-        failed += !compileFile(path.c_str(), compileFormat, assemblyTarget, stats);
+    {
+        CompileStats fileStat = {};
+        failed += !compileFile(path.c_str(), compileFormat, assemblyTarget, fileStat);
+        stats += fileStat;
+        if (recordStats == RecordStats::Split)
+            fileStats.push_back(fileStat);
+    }
 
     if (compileFormat == CompileFormat::Null)
     {
@@ -372,6 +458,36 @@ int main(int argc, char** argv)
         printf("Lowering: regalloc failed: %d, lowering failed %d; spills to stack: %d, spills to restore: %d, max spill slot %u\n",
             stats.lowerStats.regAllocErrors, stats.lowerStats.loweringErrors, stats.lowerStats.spillsToSlot, stats.lowerStats.spillsToRestore,
             stats.lowerStats.maxSpillSlotsUsed);
+    }
+
+    if (recordStats != RecordStats::None)
+    {
+
+        FILE* fp = fopen("stats.json", "w");
+
+        if (!fp)
+        {
+            fprintf(stderr, "Unable to open 'stats.json'\n");
+            return 1;
+        }
+
+        if (recordStats == RecordStats::Total)
+        {
+            stats.serializeToJson(fp);
+        }
+        else if (recordStats == RecordStats::Split)
+        {
+            fprintf(fp, "{\n");
+            for (size_t i = 0; i < fileCount; ++i)
+            {
+                fprintf(fp, "\"%s\": ", files[i].c_str());
+                fileStats[i].serializeToJson(fp);
+                fprintf(fp, i == (fileCount - 1) ? "\n" : ",\n");
+            }
+            fprintf(fp, "}");
+        }
+
+        fclose(fp);
     }
 
     return failed ? 1 : 0;

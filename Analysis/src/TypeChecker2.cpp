@@ -15,9 +15,11 @@
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
-#include "Luau/TypePack.h"
-#include "Luau/TypeUtils.h"
 #include "Luau/TypeFamily.h"
+#include "Luau/TypeFwd.h"
+#include "Luau/TypePack.h"
+#include "Luau/TypePath.h"
+#include "Luau/TypeUtils.h"
 #include "Luau/VisitType.h"
 
 #include <algorithm>
@@ -2395,7 +2397,27 @@ struct TypeChecker2
             reportError(NormalizationTooComplex{}, location);
 
         if (!r.isSubtype && !r.isErrorSuppressing)
-            reportError(TypeMismatch{superTy, subTy}, location);
+        {
+            if (r.reasoning)
+            {
+                std::optional<TypeOrPack> subLeaf = traverse(subTy, r.reasoning->subPath, builtinTypes);
+                std::optional<TypeOrPack> superLeaf = traverse(superTy, r.reasoning->superPath, builtinTypes);
+
+                if (!subLeaf || !superLeaf)
+                    ice->ice("Subtyping test returned a reasoning with an invalid path", location);
+
+                if (!get2<TypeId, TypeId>(*subLeaf, *superLeaf) && !get2<TypePackId, TypePackId>(*subLeaf, *superLeaf))
+                    ice->ice("Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack.", location);
+
+                std::string reason = "type " + toString(subTy) + toString(r.reasoning->subPath) + " (" + toString(*subLeaf) +
+                                     ") is not a subtype of " + toString(superTy) + toString(r.reasoning->superPath) + " (" + toString(*superLeaf) +
+                                     ")";
+
+                reportError(TypeMismatch{superTy, subTy, reason}, location);
+            }
+            else
+                reportError(TypeMismatch{superTy, subTy}, location);
+        }
 
         return r.isSubtype;
     }
