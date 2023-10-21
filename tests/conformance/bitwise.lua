@@ -137,7 +137,7 @@ assert(bit32.countrz(0x7fffffff) == 0)
 -- testing byteswap
 assert(bit32.byteswap(0x10203040) == 0x40302010)
 assert(bit32.byteswap(0) == 0)
-assert(bit32.byteswap(0xffffffff) == 0xffffffff)
+assert(bit32.byteswap(-1) == 0xffffffff)
 
 --[[
 This test verifies a fix in luauF_replace() where if the 4th
