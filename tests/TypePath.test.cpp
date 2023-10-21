@@ -317,7 +317,6 @@ TEST_CASE_FIXTURE(Fixture, "variadic")
         CHECK(result == std::nullopt);
     }
 }
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "arguments")
 {
@@ -476,6 +475,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "complex_chains")
         CHECK(*result == builtinTypes->falseType);
     }
 }
+#endif
 
 TEST_SUITE_END(); // TypePathTraversal
 
