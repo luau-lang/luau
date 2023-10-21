@@ -298,7 +298,6 @@ TEST_CASE_FIXTURE(Fixture, "negated")
         CHECK(result == std::nullopt);
     }
 }
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "variadic")
 {
@@ -318,6 +317,7 @@ TEST_CASE_FIXTURE(Fixture, "variadic")
         CHECK(result == std::nullopt);
     }
 }
+#endif
 
 TEST_CASE_FIXTURE(Fixture, "arguments")
 {
