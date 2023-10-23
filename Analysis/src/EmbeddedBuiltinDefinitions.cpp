@@ -21,6 +21,7 @@ declare bit32: {
     replace: (n: number, v: number, field: number, width: number?) -> number,
     countlz: (n: number) -> number,
     countrz: (n: number) -> number,
+    byteswap: (n: number) -> number,
 }
 
 declare math: {

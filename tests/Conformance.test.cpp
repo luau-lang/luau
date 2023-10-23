@@ -408,6 +408,7 @@ TEST_CASE("GC")
 
 TEST_CASE("Bitwise")
 {
+    ScopedFastFlag sffs{"LuauBit32Byteswap", true};
     runConformance("bitwise.lua");
 }
 
