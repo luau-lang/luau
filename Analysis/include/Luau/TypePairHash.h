@@ -3,6 +3,8 @@
 
 #include "Luau/TypeFwd.h"
 
+#include <stdint.h>
+
 #include <utility>
 
 namespace Luau
