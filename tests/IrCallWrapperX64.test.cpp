@@ -483,9 +483,9 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "ExtraCoverage")
     checkMatch(R"(
  vmovups     xmm2,xmmword ptr [r13]
  mov         rax,rcx
- lea         rcx,none ptr [r12+8]
+ lea         rcx,[r12+8]
  mov         rbx,rdx
- lea         rdx,none ptr [r12+010h]
+ lea         rdx,[r12+010h]
  call        qword ptr [rax+rbx]
 )");
 }
@@ -500,7 +500,7 @@ TEST_CASE_FIXTURE(IrCallWrapperX64Fixture, "AddressInStackArguments")
     callWrap.call(qword[r14]);
 
     checkMatch(R"(
- lea         rax,none ptr [r12+010h]
+ lea         rax,[r12+010h]
  mov         qword ptr [rsp+020h],rax
  mov         ecx,1
  mov         edx,2

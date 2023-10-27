@@ -3,6 +3,8 @@
 
 #include "Luau/BytecodeBuilder.h"
 
+LUAU_FASTFLAGVARIABLE(LuauCompileBufferAnnotation, false)
+
 namespace Luau
 {
 
@@ -27,6 +29,8 @@ static LuauBytecodeType getPrimitiveType(AstName name)
         return LBC_TYPE_STRING;
     else if (name == "thread")
         return LBC_TYPE_THREAD;
+    else if (FFlag::LuauCompileBufferAnnotation && name == "buffer")
+        return LBC_TYPE_BUFFER;
     else if (name == "any" || name == "unknown")
         return LBC_TYPE_ANY;
     else

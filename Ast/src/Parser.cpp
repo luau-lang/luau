@@ -9,15 +9,20 @@
 #include <errno.h>
 #include <limits.h>
 
+LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
+LUAU_FASTINTVARIABLE(LuauTypeLengthLimit, 1000)
+LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
+
 // Warning: If you are introducing new syntax, ensure that it is behind a separate
 // flag so that we don't break production games by reverting syntax changes.
 // See docs/SyntaxChanges.md for an explanation.
-LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
-LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauParseDeclareClassIndexer, false)
 LUAU_FASTFLAGVARIABLE(LuauClipExtraHasEndProps, false)
 LUAU_FASTFLAG(LuauFloorDivision)
 LUAU_FASTFLAG(LuauCheckedFunctionSyntax)
+
+LUAU_FASTFLAGVARIABLE(LuauBetterTypeUnionLimits, false)
+LUAU_FASTFLAGVARIABLE(LuauBetterTypeRecLimits, false)
 
 namespace Luau
 {
@@ -245,13 +250,13 @@ AstStatBlock* Parser::parseBlockNoScope()
 
     while (!blockFollow(lexer.current()))
     {
-        unsigned int recursionCounterOld = recursionCounter;
+        unsigned int oldRecursionCount = recursionCounter;
 
         incrementRecursionCounter("block");
 
         AstStat* stat = parseStat();
 
-        recursionCounter = recursionCounterOld;
+        recursionCounter = oldRecursionCount;
 
         if (lexer.current().type == ';')
         {
@@ -378,13 +383,13 @@ AstStat* Parser::parseIf()
     {
         if (FFlag::LuauClipExtraHasEndProps)
             thenbody->hasEnd = true;
-        unsigned int recursionCounterOld = recursionCounter;
+        unsigned int oldRecursionCount = recursionCounter;
         incrementRecursionCounter("elseif");
         elseLocation = lexer.current().location;
         elsebody = parseIf();
         end = elsebody->location;
         DEPRECATED_hasEnd = elsebody->as<AstStatIf>()->DEPRECATED_hasEnd;
-        recursionCounter = recursionCounterOld;
+        recursionCounter = oldRecursionCount;
     }
     else
     {
@@ -625,7 +630,7 @@ AstExpr* Parser::parseFunctionName(Location start, bool& hasself, AstName& debug
     // parse funcname into a chain of indexing operators
     AstExpr* expr = parseNameExpr("function name");
 
-    unsigned int recursionCounterOld = recursionCounter;
+    unsigned int oldRecursionCount = recursionCounter;
 
     while (lexer.current().type == '.')
     {
@@ -643,7 +648,7 @@ AstExpr* Parser::parseFunctionName(Location start, bool& hasself, AstName& debug
         incrementRecursionCounter("function name");
     }
 
-    recursionCounter = recursionCounterOld;
+    recursionCounter = oldRecursionCount;
 
     // finish with :
     if (lexer.current().type == ':')
@@ -1526,6 +1531,7 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
 
     bool isUnion = false;
     bool isIntersection = false;
+    bool hasOptional = false;
 
     Location location = begin;
 
@@ -1535,20 +1541,34 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
         if (c == '|')
         {
             nextLexeme();
+
+            unsigned int oldRecursionCount = recursionCounter;
             parts.push_back(parseSimpleType(/* allowPack= */ false).type);
+            if (FFlag::LuauBetterTypeUnionLimits)
+                recursionCounter = oldRecursionCount;
+
             isUnion = true;
         }
         else if (c == '?')
         {
             Location loc = lexer.current().location;
             nextLexeme();
-            parts.push_back(allocator.alloc<AstTypeReference>(loc, std::nullopt, nameNil, std::nullopt, loc));
+
+            if (!FFlag::LuauBetterTypeUnionLimits || !hasOptional)
+                parts.push_back(allocator.alloc<AstTypeReference>(loc, std::nullopt, nameNil, std::nullopt, loc));
+
             isUnion = true;
+            hasOptional = true;
         }
         else if (c == '&')
         {
             nextLexeme();
+
+            unsigned int oldRecursionCount = recursionCounter;
             parts.push_back(parseSimpleType(/* allowPack= */ false).type);
+            if (FFlag::LuauBetterTypeUnionLimits)
+                recursionCounter = oldRecursionCount;
+
             isIntersection = true;
         }
         else if (c == Lexeme::Dot3)
@@ -1558,6 +1578,9 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
         }
         else
             break;
+
+        if (FFlag::LuauBetterTypeUnionLimits && parts.size() > unsigned(FInt::LuauTypeLengthLimit) + hasOptional)
+            ParseError::raise(parts.back()->location, "Exceeded allowed type length; simplify your type annotation to make the code compile");
     }
 
     if (parts.size() == 1)
@@ -1584,7 +1607,10 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
 AstTypeOrPack Parser::parseTypeOrPack()
 {
     unsigned int oldRecursionCount = recursionCounter;
-    incrementRecursionCounter("type annotation");
+
+    // recursion counter is incremented in parseSimpleType
+    if (!FFlag::LuauBetterTypeRecLimits)
+        incrementRecursionCounter("type annotation");
 
     Location begin = lexer.current().location;
 
@@ -1604,7 +1630,10 @@ AstTypeOrPack Parser::parseTypeOrPack()
 AstType* Parser::parseType(bool inDeclarationContext)
 {
     unsigned int oldRecursionCount = recursionCounter;
-    incrementRecursionCounter("type annotation");
+
+    // recursion counter is incremented in parseSimpleType
+    if (!FFlag::LuauBetterTypeRecLimits)
+        incrementRecursionCounter("type annotation");
 
     Location begin = lexer.current().location;
 
@@ -1935,7 +1964,7 @@ AstExpr* Parser::parseExpr(unsigned int limit)
     };
     static_assert(sizeof(binaryPriority) / sizeof(binaryPriority[0]) == size_t(AstExprBinary::Op__Count), "binaryPriority needs an entry per op");
 
-    unsigned int recursionCounterOld = recursionCounter;
+    unsigned int oldRecursionCount = recursionCounter;
 
     // this handles recursive calls to parseSubExpr/parseExpr
     incrementRecursionCounter("expression");
@@ -1987,7 +2016,7 @@ AstExpr* Parser::parseExpr(unsigned int limit)
         incrementRecursionCounter("expression");
     }
 
-    recursionCounter = recursionCounterOld;
+    recursionCounter = oldRecursionCount;
 
     return expr;
 }
@@ -2054,7 +2083,7 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
 
     AstExpr* expr = parsePrefixExpr();
 
-    unsigned int recursionCounterOld = recursionCounter;
+    unsigned int oldRecursionCount = recursionCounter;
 
     while (true)
     {
@@ -2114,7 +2143,7 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
         incrementRecursionCounter("expression");
     }
 
-    recursionCounter = recursionCounterOld;
+    recursionCounter = oldRecursionCount;
 
     return expr;
 }

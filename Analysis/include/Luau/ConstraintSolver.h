@@ -75,6 +75,9 @@ struct ConstraintSolver
     // Memoized instantiations of type aliases.
     DenseHashMap<InstantiationSignature, TypeId, HashInstantiationSignature> instantiatedAliases{{}};
 
+    // A mapping from free types to the number of unresolved constraints that mention them.
+    DenseHashMap<TypeId, size_t> unresolvedConstraints{{}};
+
     // Recorded errors that take place within the solver.
     ErrorVec errors;
 

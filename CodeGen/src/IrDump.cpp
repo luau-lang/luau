@@ -61,6 +61,8 @@ static const char* getTagName(uint8_t tag)
         return "tuserdata";
     case LUA_TTHREAD:
         return "tthread";
+    case LUA_TBUFFER:
+        return "tbuffer";
     case LUA_TPROTO:
         return "tproto";
     case LUA_TUPVAL:

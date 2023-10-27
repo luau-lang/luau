@@ -4,6 +4,10 @@
 #include "Luau/Bytecode.h"
 #include "Luau/Compiler.h"
 
+LUAU_FASTFLAGVARIABLE(LuauBit32ByteswapBuiltin, false)
+
+LUAU_FASTFLAGVARIABLE(LuauBufferBuiltins, false)
+
 namespace Luau
 {
 namespace Compile
@@ -166,6 +170,8 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_BIT32_COUNTLZ;
         if (builtin.method == "countrz")
             return LBF_BIT32_COUNTRZ;
+        if (FFlag::LuauBit32ByteswapBuiltin && builtin.method == "byteswap")
+            return LBF_BIT32_BYTESWAP;
     }
 
     if (builtin.object == "string")
@@ -186,6 +192,36 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
             return LBF_TABLE_INSERT;
         if (builtin.method == "unpack")
             return LBF_TABLE_UNPACK;
+    }
+
+    if (FFlag::LuauBufferBuiltins && builtin.object == "buffer")
+    {
+        if (builtin.method == "readi8")
+            return LBF_BUFFER_READI8;
+        if (builtin.method == "readu8")
+            return LBF_BUFFER_READU8;
+        if (builtin.method == "writei8" || builtin.method == "writeu8")
+            return LBF_BUFFER_WRITEU8;
+        if (builtin.method == "readi16")
+            return LBF_BUFFER_READI16;
+        if (builtin.method == "readu16")
+            return LBF_BUFFER_READU16;
+        if (builtin.method == "writei16" || builtin.method == "writeu16")
+            return LBF_BUFFER_WRITEU16;
+        if (builtin.method == "readi32")
+            return LBF_BUFFER_READI32;
+        if (builtin.method == "readu32")
+            return LBF_BUFFER_READU32;
+        if (builtin.method == "writei32" || builtin.method == "writeu32")
+            return LBF_BUFFER_WRITEU32;
+        if (builtin.method == "readf32")
+            return LBF_BUFFER_READF32;
+        if (builtin.method == "writef32")
+            return LBF_BUFFER_WRITEF32;
+        if (builtin.method == "readf64")
+            return LBF_BUFFER_READF64;
+        if (builtin.method == "writef64")
+            return LBF_BUFFER_WRITEF64;
     }
 
     if (options.vectorCtor)
@@ -402,6 +438,26 @@ BuiltinInfo getBuiltinInfo(int bfid)
 
     case LBF_TOSTRING:
         return {1, 1};
+
+    case LBF_BIT32_BYTESWAP:
+        return {1, 1, BuiltinInfo::Flag_NoneSafe};
+
+    case LBF_BUFFER_READI8:
+    case LBF_BUFFER_READU8:
+    case LBF_BUFFER_READI16:
+    case LBF_BUFFER_READU16:
+    case LBF_BUFFER_READI32:
+    case LBF_BUFFER_READU32:
+    case LBF_BUFFER_READF32:
+    case LBF_BUFFER_READF64:
+        return {2, 1, BuiltinInfo::Flag_NoneSafe};
+
+    case LBF_BUFFER_WRITEU8:
+    case LBF_BUFFER_WRITEU16:
+    case LBF_BUFFER_WRITEU32:
+    case LBF_BUFFER_WRITEF32:
+    case LBF_BUFFER_WRITEF64:
+        return {3, 0, BuiltinInfo::Flag_NoneSafe};
     };
 
     LUAU_UNREACHABLE();

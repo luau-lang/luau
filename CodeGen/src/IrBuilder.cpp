@@ -85,6 +85,9 @@ static void buildArgumentTypeChecks(IrBuilder& build, Proto* proto)
         case LBC_TYPE_VECTOR:
             build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TVECTOR), build.vmExit(kVmExitEntryGuardPc));
             break;
+        case LBC_TYPE_BUFFER:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TBUFFER), build.vmExit(kVmExitEntryGuardPc));
+            break;
         }
 
         if (optional)
