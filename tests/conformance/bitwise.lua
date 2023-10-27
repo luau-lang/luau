@@ -134,6 +134,11 @@ assert(bit32.countrz(0x80000000) == 31)
 assert(bit32.countrz(0x40000000) == 30)
 assert(bit32.countrz(0x7fffffff) == 0)
 
+-- testing byteswap
+assert(bit32.byteswap(0x10203040) == 0x40302010)
+assert(bit32.byteswap(0) == 0)
+assert(bit32.byteswap(-1) == 0xffffffff)
+
 --[[
 This test verifies a fix in luauF_replace() where if the 4th
 parameter was not a number, but the first three are numbers, it will
@@ -164,5 +169,6 @@ assert(bit32.btest("1", 3) == true)
 assert(bit32.countlz("42") == 26)
 assert(bit32.countrz("42") == 1)
 assert(bit32.extract("42", 1, 3) == 5)
+assert(bit32.byteswap("0xa1b2c3d4") == 0xd4c3b2a1)
 
 return('OK')
