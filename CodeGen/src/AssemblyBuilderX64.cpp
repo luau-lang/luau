@@ -1564,11 +1564,16 @@ void AssemblyBuilderX64::log(OperandX64 op)
     case CategoryX64::mem:
         if (op.base == rip)
         {
-            logAppend("%s ptr [.start%+d]", getSizeName(op.memSize), op.imm);
+            if (op.memSize != SizeX64::none)
+                logAppend("%s ptr ", getSizeName(op.memSize));
+            logAppend("[.start%+d]", op.imm);
             return;
         }
 
-        logAppend("%s ptr [", getSizeName(op.memSize));
+        if (op.memSize != SizeX64::none)
+            logAppend("%s ptr ", getSizeName(op.memSize));
+
+        logAppend("[");
 
         if (op.base != noreg)
             logAppend("%s", getRegisterName(op.base));

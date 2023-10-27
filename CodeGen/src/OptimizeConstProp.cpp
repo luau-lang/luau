@@ -16,9 +16,8 @@ LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
 LUAU_FASTFLAGVARIABLE(LuauReuseHashSlots2, false)
-LUAU_FASTFLAGVARIABLE(LuauKeepVmapLinear, false)
 LUAU_FASTFLAGVARIABLE(LuauMergeTagLoads, false)
-LUAU_FASTFLAGVARIABLE(LuauReuseArrSlots, false)
+LUAU_FASTFLAGVARIABLE(LuauReuseArrSlots2, false)
 LUAU_FASTFLAG(LuauLowerAltLoopForn)
 
 namespace Luau
@@ -506,6 +505,19 @@ static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid
     case LBF_TONUMBER:
     case LBF_TOSTRING:
     case LBF_BIT32_BYTESWAP:
+    case LBF_BUFFER_READI8:
+    case LBF_BUFFER_READU8:
+    case LBF_BUFFER_WRITEU8:
+    case LBF_BUFFER_READI16:
+    case LBF_BUFFER_READU16:
+    case LBF_BUFFER_WRITEU16:
+    case LBF_BUFFER_READI32:
+    case LBF_BUFFER_READU32:
+    case LBF_BUFFER_WRITEU32:
+    case LBF_BUFFER_READF32:
+    case LBF_BUFFER_WRITEF32:
+    case LBF_BUFFER_READF64:
+    case LBF_BUFFER_WRITEF64:
         break;
     case LBF_TABLE_INSERT:
         state.invalidateHeap();
@@ -941,7 +953,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::LOAD_ENV:
         break;
     case IrCmd::GET_ARR_ADDR:
-        if (!FFlag::LuauReuseArrSlots)
+        if (!FFlag::LuauReuseArrSlots2)
             break;
 
         for (uint32_t prevIdx : state.getArrAddrCache)
@@ -1014,7 +1026,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::DUP_TABLE:
         break;
     case IrCmd::TRY_NUM_TO_INDEX:
-        if (!FFlag::LuauReuseArrSlots)
+        if (!FFlag::LuauReuseArrSlots2)
             break;
 
         for (uint32_t prevIdx : state.tryNumToIndexCache)
@@ -1053,6 +1065,13 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     {
         std::optional<int> arrayIndex = function.asIntOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b));
 
+        // Negative offsets will jump to fallback, no need to keep the check
+        if (FFlag::LuauReuseArrSlots2 && arrayIndex && *arrayIndex < 0)
+        {
+            replace(function, block, index, {IrCmd::JUMP, inst.c});
+            break;
+        }
+
         if (RegisterInfo* info = state.tryGetRegisterInfo(inst.a); info && arrayIndex)
         {
             if (info->knownTableArraySize >= 0)
@@ -1069,11 +1088,11 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                     replace(function, block, index, {IrCmd::JUMP, inst.c});
                 }
 
-                return; // Break out from both the loop and the switch
+                break;
             }
         }
 
-        if (!FFlag::LuauReuseArrSlots)
+        if (!FFlag::LuauReuseArrSlots2)
             break;
 
         for (uint32_t prevIdx : state.checkArraySizeCache)
@@ -1087,7 +1106,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
 
             // If arguments are different, in case they are both constant, we can check if a larger bound was already tested
             if (!sameBoundary && inst.b.kind == IrOpKind::Constant && prev.b.kind == IrOpKind::Constant &&
-                function.intOp(inst.b) < function.intOp(prev.b))
+                unsigned(function.intOp(inst.b)) < unsigned(function.intOp(prev.b)))
                 sameBoundary = true;
 
             if (sameBoundary)
@@ -1269,14 +1288,11 @@ static void constPropInBlock(IrBuilder& build, IrBlock& block, ConstPropState& s
         constPropInInst(state, build, function, block, inst, index);
     }
 
-    if (!FFlag::LuauKeepVmapLinear)
-    {
-        // Value numbering and load/store propagation is not performed between blocks
-        state.invalidateValuePropagation();
+    // Value numbering and load/store propagation is not performed between blocks
+    state.invalidateValuePropagation();
 
-        // Same for table slot data propagation
-        state.invalidateHeapTableData();
-    }
+    // Same for table slot data propagation
+    state.invalidateHeapTableData();
 }
 
 static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visited, IrBlock* block, ConstPropState& state)
@@ -1295,16 +1311,6 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
         visited[blockIdx] = true;
 
         constPropInBlock(build, *block, state);
-
-        if (FFlag::LuauKeepVmapLinear)
-        {
-            // Value numbering and load/store propagation is not performed between blocks right now
-            // This is because cross-block value uses limit creation of linear block (restriction in collectDirectBlockJumpPath)
-            state.invalidateValuePropagation();
-
-            // Same for table slot data propagation
-            state.invalidateHeapTableData();
-        }
 
         // Blocks in a chain are guaranteed to follow each other
         // We force that by giving all blocks the same sorting key, but consecutive chain keys

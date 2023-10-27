@@ -258,6 +258,8 @@ struct Constraint
     ConstraintV c;
 
     std::vector<NotNull<Constraint>> dependencies;
+
+    DenseHashSet<TypeId> getFreeTypes() const;
 };
 
 using ConstraintPtr = std::unique_ptr<Constraint>;

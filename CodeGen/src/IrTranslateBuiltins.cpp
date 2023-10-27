@@ -472,6 +472,9 @@ static BuiltinImplResult translateBuiltinBit32Extract(
     if (nparams < 2 || nresults > 1)
         return {BuiltinImplType::None, -1};
 
+    if (nparams == 2 && args.kind == IrOpKind::Constant && unsigned(int(build.function.doubleOp(args))) >= 32)
+        return {BuiltinImplType::None, -1};
+
     builtinCheckDouble(build, build.vmReg(arg), pcpos);
     builtinCheckDouble(build, args, pcpos);
 
@@ -486,15 +489,14 @@ static BuiltinImplResult translateBuiltinBit32Extract(
         if (vb.kind == IrOpKind::Constant)
         {
             int f = int(build.function.doubleOp(vb));
+            LUAU_ASSERT(unsigned(f) < 32); // checked above
 
-            if (unsigned(f) >= 32)
-                build.inst(IrCmd::JUMP, fallback);
+            value = n;
 
-            // TODO: this pair can be optimized using a bit-select instruction (bt on x86)
             if (f)
-                value = build.inst(IrCmd::BITRSHIFT_UINT, n, build.constInt(f));
+                value = build.inst(IrCmd::BITRSHIFT_UINT, value, build.constInt(f));
 
-            if ((f + 1) < 32)
+            if (f + 1 < 32)
                 value = build.inst(IrCmd::BITAND_UINT, value, build.constInt(1));
         }
         else
@@ -505,7 +507,6 @@ static BuiltinImplResult translateBuiltinBit32Extract(
             build.inst(IrCmd::JUMP_CMP_INT, f, build.constInt(32), build.cond(IrCondition::UnsignedGreaterEqual), fallback, block);
             build.beginBlock(block);
 
-            // TODO: this pair can be optimized using a bit-select instruction (bt on x86)
             IrOp shift = build.inst(IrCmd::BITRSHIFT_UINT, n, f);
             value = build.inst(IrCmd::BITAND_UINT, shift, build.constInt(1));
         }

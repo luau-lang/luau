@@ -153,6 +153,26 @@ end
 
 assert(pcall(fuzzfail15) == true)
 
+local function fuzzfail16()
+  _ = {[{[2]=77,_=_,[2]=_,}]=not _,}
+  _ = {77,[2]=11008,[2]=_,[0]=_,}
+end
+
+assert(pcall(fuzzfail16) == true)
+
+local function fuzzfail17()
+  return bit32.extract(1293942816,1293942816)
+end
+
+assert(pcall(fuzzfail17) == false)
+
+local function fuzzfail18()
+	return bit32.extract(7890276,0)
+end
+
+assert(pcall(fuzzfail18) == true)
+assert(fuzzfail18() == 0)
+
 local function arraySizeInv1()
   local t = {1, 2, nil, nil, nil, nil, nil, nil, nil, true}
 

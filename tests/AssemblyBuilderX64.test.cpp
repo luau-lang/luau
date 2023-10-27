@@ -588,6 +588,7 @@ TEST_CASE("LogTest")
     build.cmp(rsi, rdi);
     build.jcc(ConditionX64::Equal, start);
     build.lea(rcx, start);
+    build.lea(rcx, addr[rdx]);
 
     build.jmp(qword[rdx]);
     build.vaddps(ymm9, ymm12, ymmword[rbp + 0xc]);
@@ -634,6 +635,7 @@ TEST_CASE("LogTest")
  cmp         rsi,rdi
  je          .L1
  lea         rcx,.L1
+ lea         rcx,[rdx]
  jmp         qword ptr [rdx]
  vaddps      ymm9,ymm12,ymmword ptr [rbp+0Ch]
  vaddpd      ymm2,ymm7,qword ptr [.start-8]

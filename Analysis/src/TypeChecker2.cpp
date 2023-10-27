@@ -868,6 +868,22 @@ struct TypeChecker2
         }
     }
 
+    std::optional<TypeId> getBindingType(AstExpr* expr)
+    {
+        if (auto localExpr = expr->as<AstExprLocal>())
+        {
+            Scope* s = stack.back();
+            return s->lookup(localExpr->local);
+        }
+        else if (auto globalExpr = expr->as<AstExprGlobal>())
+        {
+            Scope* s = stack.back();
+            return s->lookup(globalExpr->name);
+        }
+        else
+            return std::nullopt;
+    }
+
     void visit(AstStatAssign* assign)
     {
         size_t count = std::min(assign->vars.size, assign->values.size);
@@ -885,7 +901,15 @@ struct TypeChecker2
             if (get<NeverType>(lhsType))
                 continue;
 
-            testIsSubtype(rhsType, lhsType, rhs->location);
+            bool ok = testIsSubtype(rhsType, lhsType, rhs->location);
+
+            // If rhsType </: lhsType, then it's not useful to also report that rhsType </: bindingType
+            if (ok)
+            {
+                std::optional<TypeId> bindingType = getBindingType(lhs);
+                if (bindingType)
+                    testIsSubtype(rhsType, *bindingType, rhs->location);
+            }
         }
     }
 

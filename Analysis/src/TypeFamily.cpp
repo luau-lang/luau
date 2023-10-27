@@ -347,6 +347,11 @@ TypeFamilyReductionResult<TypeId> lenFamilyFn(const std::vector<TypeId>& typePar
     }
 
     TypeId operandTy = follow(typeParams.at(0));
+
+    // check to see if the operand type is resolved enough, and wait to reduce if not
+    if (isPending(operandTy, ctx->solver))
+        return {std::nullopt, false, {operandTy}, {}};
+
     const NormalizedType* normTy = ctx->normalizer->normalize(operandTy);
 
     // if the type failed to normalize, we can't reduce, but know nothing about inhabitance.
@@ -369,10 +374,6 @@ TypeFamilyReductionResult<TypeId> lenFamilyFn(const std::vector<TypeId>& typePar
     TypeId normalizedOperand = ctx->normalizer->typeFromNormal(*normTy);
     if (normTy->hasTopTable() || get<TableType>(normalizedOperand))
         return {ctx->builtins->numberType, false, {}, {}};
-
-    // otherwise, we wait to see if the operand type is resolved
-    if (isPending(operandTy, ctx->solver))
-        return {std::nullopt, false, {operandTy}, {}};
 
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.
@@ -421,6 +422,11 @@ TypeFamilyReductionResult<TypeId> unmFamilyFn(
     }
 
     TypeId operandTy = follow(typeParams.at(0));
+
+    // check to see if the operand type is resolved enough, and wait to reduce if not
+    if (isPending(operandTy, ctx->solver))
+        return {std::nullopt, false, {operandTy}, {}};
+
     const NormalizedType* normTy = ctx->normalizer->normalize(operandTy);
 
     // if the operand failed to normalize, we can't reduce, but know nothing about inhabitance.
@@ -438,10 +444,6 @@ TypeFamilyReductionResult<TypeId> unmFamilyFn(
     // If the type is exactly `number`, we can reduce now.
     if (normTy->isExactlyNumber())
         return {ctx->builtins->numberType, false, {}, {}};
-
-    // otherwise, check if we need to wait on the type to be further resolved
-    if (isPending(operandTy, ctx->solver))
-        return {std::nullopt, false, {operandTy}, {}};
 
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.
@@ -493,6 +495,13 @@ TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(
 
     TypeId lhsTy = follow(typeParams.at(0));
     TypeId rhsTy = follow(typeParams.at(1));
+
+    // check to see if both operand types are resolved enough, and wait to reduce if not
+    if (isPending(lhsTy, ctx->solver))
+        return {std::nullopt, false, {lhsTy}, {}};
+    else if (isPending(rhsTy, ctx->solver))
+        return {std::nullopt, false, {rhsTy}, {}};
+
     const NormalizedType* normLhsTy = ctx->normalizer->normalize(lhsTy);
     const NormalizedType* normRhsTy = ctx->normalizer->normalize(rhsTy);
 
@@ -511,12 +520,6 @@ TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(
     // if we're adding two `number` types, the result is `number`.
     if (normLhsTy->isExactlyNumber() && normRhsTy->isExactlyNumber())
         return {ctx->builtins->numberType, false, {}, {}};
-
-    // otherwise, check if we need to wait on either type to be further resolved
-    if (isPending(lhsTy, ctx->solver))
-        return {std::nullopt, false, {lhsTy}, {}};
-    else if (isPending(rhsTy, ctx->solver))
-        return {std::nullopt, false, {rhsTy}, {}};
 
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.
@@ -653,6 +656,13 @@ TypeFamilyReductionResult<TypeId> concatFamilyFn(const std::vector<TypeId>& type
 
     TypeId lhsTy = follow(typeParams.at(0));
     TypeId rhsTy = follow(typeParams.at(1));
+
+    // check to see if both operand types are resolved enough, and wait to reduce if not
+    if (isPending(lhsTy, ctx->solver))
+        return {std::nullopt, false, {lhsTy}, {}};
+    else if (isPending(rhsTy, ctx->solver))
+        return {std::nullopt, false, {rhsTy}, {}};
+
     const NormalizedType* normLhsTy = ctx->normalizer->normalize(lhsTy);
     const NormalizedType* normRhsTy = ctx->normalizer->normalize(rhsTy);
 
@@ -671,12 +681,6 @@ TypeFamilyReductionResult<TypeId> concatFamilyFn(const std::vector<TypeId>& type
     // if we're concatenating two elements that are either strings or numbers, the result is `string`.
     if ((normLhsTy->isSubtypeOfString() || normLhsTy->isExactlyNumber()) && (normRhsTy->isSubtypeOfString() || normRhsTy->isExactlyNumber()))
         return {ctx->builtins->stringType, false, {}, {}};
-
-    // otherwise, check if we need to wait on either type to be further resolved
-    if (isPending(lhsTy, ctx->solver))
-        return {std::nullopt, false, {lhsTy}, {}};
-    else if (isPending(rhsTy, ctx->solver))
-        return {std::nullopt, false, {rhsTy}, {}};
 
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.
@@ -738,14 +742,11 @@ TypeFamilyReductionResult<TypeId> andFamilyFn(const std::vector<TypeId>& typePar
     TypeId lhsTy = follow(typeParams.at(0));
     TypeId rhsTy = follow(typeParams.at(1));
 
+    // check to see if both operand types are resolved enough, and wait to reduce if not
     if (isPending(lhsTy, ctx->solver))
-    {
         return {std::nullopt, false, {lhsTy}, {}};
-    }
     else if (isPending(rhsTy, ctx->solver))
-    {
         return {std::nullopt, false, {rhsTy}, {}};
-    }
 
     // And evalutes to a boolean if the LHS is falsey, and the RHS type if LHS is truthy.
     SimplifyResult filteredLhs = simplifyIntersection(ctx->builtins, ctx->arena, lhsTy, ctx->builtins->falsyType);
@@ -766,14 +767,11 @@ TypeFamilyReductionResult<TypeId> orFamilyFn(const std::vector<TypeId>& typePara
     TypeId lhsTy = follow(typeParams.at(0));
     TypeId rhsTy = follow(typeParams.at(1));
 
+    // check to see if both operand types are resolved enough, and wait to reduce if not
     if (isPending(lhsTy, ctx->solver))
-    {
         return {std::nullopt, false, {lhsTy}, {}};
-    }
     else if (isPending(rhsTy, ctx->solver))
-    {
         return {std::nullopt, false, {rhsTy}, {}};
-    }
 
     // Or evalutes to the LHS type if the LHS is truthy, and the RHS type if LHS is falsy.
     SimplifyResult filteredLhs = simplifyIntersection(ctx->builtins, ctx->arena, lhsTy, ctx->builtins->truthyType);
@@ -795,6 +793,13 @@ static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(
 
     TypeId lhsTy = follow(typeParams.at(0));
     TypeId rhsTy = follow(typeParams.at(1));
+
+    // check to see if both operand types are resolved enough, and wait to reduce if not
+    if (isPending(lhsTy, ctx->solver))
+        return {std::nullopt, false, {lhsTy}, {}};
+    else if (isPending(rhsTy, ctx->solver))
+        return {std::nullopt, false, {rhsTy}, {}};
+
     const NormalizedType* normLhsTy = ctx->normalizer->normalize(lhsTy);
     const NormalizedType* normRhsTy = ctx->normalizer->normalize(rhsTy);
 
@@ -817,12 +822,6 @@ static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(
     // If both types are exactly `number`, we can reduce now.
     if (normLhsTy->isExactlyNumber() && normRhsTy->isExactlyNumber())
         return {ctx->builtins->booleanType, false, {}, {}};
-
-    // otherwise, check if we need to wait on either type to be further resolved
-    if (isPending(lhsTy, ctx->solver))
-        return {std::nullopt, false, {lhsTy}, {}};
-    else if (isPending(rhsTy, ctx->solver))
-        return {std::nullopt, false, {rhsTy}, {}};
 
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.
@@ -895,6 +894,13 @@ TypeFamilyReductionResult<TypeId> eqFamilyFn(const std::vector<TypeId>& typePara
 
     TypeId lhsTy = follow(typeParams.at(0));
     TypeId rhsTy = follow(typeParams.at(1));
+
+    // check to see if both operand types are resolved enough, and wait to reduce if not
+    if (isPending(lhsTy, ctx->solver))
+        return {std::nullopt, false, {lhsTy}, {}};
+    else if (isPending(rhsTy, ctx->solver))
+        return {std::nullopt, false, {rhsTy}, {}};
+
     const NormalizedType* normLhsTy = ctx->normalizer->normalize(lhsTy);
     const NormalizedType* normRhsTy = ctx->normalizer->normalize(rhsTy);
 
@@ -909,12 +915,6 @@ TypeFamilyReductionResult<TypeId> eqFamilyFn(const std::vector<TypeId>& typePara
     // if we have a `never`, we can never observe that the comparison didn't work.
     if (is<NeverType>(lhsTy) || is<NeverType>(rhsTy))
         return {ctx->builtins->booleanType, false, {}, {}};
-
-    // otherwise, check if we need to wait on either type to be further resolved
-    if (isPending(lhsTy, ctx->solver))
-        return {std::nullopt, false, {lhsTy}, {}};
-    else if (isPending(rhsTy, ctx->solver))
-        return {std::nullopt, false, {rhsTy}, {}};
 
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.

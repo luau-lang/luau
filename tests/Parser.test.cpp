@@ -1317,16 +1317,53 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_type_group")
 {
-    ScopedFastInt sfis{"LuauRecursionLimit", 20};
+    ScopedFastInt sfis{"LuauRecursionLimit", 10};
 
     matchParseError(
-        "function f(): (((((((((Fail))))))))) end", "Exceeded allowed recursion depth; simplify your type annotation to make the code compile");
+        "function f(): ((((((((((Fail)))))))))) end", "Exceeded allowed recursion depth; simplify your type annotation to make the code compile");
 
     matchParseError("function f(): () -> () -> () -> () -> () -> () -> () -> () -> () -> () -> () end",
         "Exceeded allowed recursion depth; simplify your type annotation to make the code compile");
 
-    matchParseError(
-        "local t: {a: {b: {c: {d: {e: {f: {}}}}}}}", "Exceeded allowed recursion depth; simplify your type annotation to make the code compile");
+    matchParseError("local t: {a: {b: {c: {d: {e: {f: {g: {h: {i: {j: {}}}}}}}}}}}",
+        "Exceeded allowed recursion depth; simplify your type annotation to make the code compile");
+
+    matchParseError("local f: ((((((((((Fail))))))))))", "Exceeded allowed recursion depth; simplify your type annotation to make the code compile");
+
+    matchParseError("local t: a & (b & (c & (d & (e & (f & (g & (h & (i & (j & nil)))))))))",
+        "Exceeded allowed recursion depth; simplify your type annotation to make the code compile");
+}
+
+TEST_CASE_FIXTURE(Fixture, "can_parse_complex_unions_successfully")
+{
+    ScopedFastInt sfis[] = {{"LuauRecursionLimit", 10}, {"LuauTypeLengthLimit", 10}};
+    ScopedFastFlag sff{"LuauBetterTypeUnionLimits", true};
+
+    parse(R"(
+local f:
+() -> ()
+|
+() -> ()
+|
+{a: number}
+|
+{b: number}
+|
+((number))
+|
+((number))
+|
+(a & (b & nil))
+|
+(a & (b & nil))
+)");
+
+    parse(R"(
+local f: a? | b? | c? | d? | e? | f? | g? | h?
+)");
+
+    matchParseError("local t: a & b & c & d & e & f & g & h & i & j & nil",
+        "Exceeded allowed type length; simplify your type annotation to make the code compile");
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_if_statements")
