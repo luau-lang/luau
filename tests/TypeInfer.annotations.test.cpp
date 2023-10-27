@@ -13,23 +13,99 @@ using namespace Luau;
 
 TEST_SUITE_BEGIN("AnnotationTests");
 
-TEST_CASE_FIXTURE(Fixture, "check_against_annotations")
+TEST_CASE_FIXTURE(Fixture, "initializers_are_checked_against_annotations")
 {
     CheckResult result = check("local a: number = \"Hello Types!\"");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "check_multi_assign")
+TEST_CASE_FIXTURE(Fixture, "check_multi_initialize")
 {
-    CheckResult result = check("local a: number, b: string = \"994\", 888");
-    CHECK_EQ(2, result.errors.size());
+    CheckResult result = check(R"(
+        local a: number, b: string = "one", 2
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK(get<TypeMismatch>(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "successful_check")
 {
-    CheckResult result = check("local a: number, b: string = 994, \"eight eighty eight\"");
+    CheckResult result = check(R"(
+        local a: number, b: string = 1, "two"
+    )");
+
     LUAU_REQUIRE_NO_ERRORS(result);
-    dumpErrors(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "assignments_are_checked_against_annotations")
+{
+    CheckResult result = check(R"(
+        local x: number = 1
+        x = "two"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "multi_assign_checks_against_annotations")
+{
+    CheckResult result = check(R"(
+        local a: number, b: string = 1, "two"
+        a, b = "one", 2
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    CHECK(Location{{2, 15}, {2, 20}} == result.errors[0].location);
+    CHECK(Location{{2, 22}, {2, 23}} == result.errors[1].location);
+}
+
+TEST_CASE_FIXTURE(Fixture, "assignment_cannot_transform_a_table_property_type")
+{
+    CheckResult result = check(R"(
+        local a = {x=0}
+        a.x = "one"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(Location{{2, 14}, {2, 19}} == result.errors[0].location);
+}
+
+TEST_CASE_FIXTURE(Fixture, "assignments_to_unannotated_parameters_can_transform_the_type")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        function f(x)
+            x = 0
+            return x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("(unknown) -> number" == toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "assignments_to_annotated_parameters_are_checked")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        function f(x: string)
+            x = 0
+            return x
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(Location{{2, 16}, {2, 17}} == result.errors[0].location);
+
+    CHECK("(string) -> number" == toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "variable_type_is_supertype")
@@ -40,6 +116,22 @@ TEST_CASE_FIXTURE(Fixture, "variable_type_is_supertype")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "assignment_also_checks_subtyping")
+{
+    CheckResult result = check(R"(
+        function f(): number?
+            return nil
+        end
+        local x: number = 1
+        local y: number? = f()
+        x = y
+        y = x
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(Location{{6, 12}, {6, 13}} == result.errors[0].location);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_parameters_can_have_annotations")
@@ -191,7 +283,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_of_value_a_via_typeof_with_assignment")
 TEST_CASE_FIXTURE(Fixture, "table_annotation")
 {
     CheckResult result = check(R"(
-        local x: {a: number, b: string}
+        local x: {a: number, b: string} = {a=2, b="three"}
         local y = x.a
         local z = x.b
     )");
@@ -391,7 +483,7 @@ TEST_CASE_FIXTURE(Fixture, "two_type_params")
 {
     CheckResult result = check(R"(
         type Map<K, V> = {[K]: V}
-        local m: Map<string, number> = {};
+        local m: Map<string, number> = {}
         local a = m['foo']
         local b = m[9]                  -- error here
     )");
@@ -572,8 +664,8 @@ TEST_CASE_FIXTURE(Fixture, "cloned_interface_maintains_pointers_between_definiti
     CHECK(isInArena(aType, mod.interfaceTypes));
     CHECK(isInArena(bType, mod.interfaceTypes));
 
-    CHECK_EQ(recordType, aType);
-    CHECK_EQ(recordType, bType);
+    CHECK(toString(recordType, {true}) == toString(aType, {true}));
+    CHECK(toString(recordType, {true}) == toString(bType, {true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "use_type_required_from_another_file")

@@ -89,7 +89,7 @@ TEST_CASE("BytecodeIsStable")
 
     // Bytecode type encoding (serialized & in-memory)
     // Note: these *can* change retroactively *if* type version is bumped, but probably shouldn't
-    LUAU_ASSERT(LBC_TYPE_VECTOR == 8); // type version 1
+    LUAU_ASSERT(LBC_TYPE_BUFFER == 9); // type version 1
 }
 
 TEST_CASE("CompileToBytecode")
@@ -1772,8 +1772,6 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueUntil")
 {
-    ScopedFastFlag sff("LuauCompileContinueCloseUpvals", true);
-
     // it's valid to use locals defined inside the loop in until expression if they're defined before continue
     CHECK_EQ("\n" + compileFunction0("repeat local r = math.random() if r > 0.5 then continue end r = r + 0.3 until r < 0.5"), R"(
 L0: GETIMPORT R0 2 [math.random]
@@ -2026,8 +2024,6 @@ end
 
 TEST_CASE("LoopContinueUntilCapture")
 {
-    ScopedFastFlag sff("LuauCompileContinueCloseUpvals", true);
-
     // validate continue upvalue closing behavior: continue must close locals defined in the nested scopes
     // but can't close locals defined in the loop scope - these are visible to the condition and will be closed
     // when evaluating the condition instead.
@@ -7586,8 +7582,6 @@ RETURN R0 1
 
 TEST_CASE("NoBuiltinFoldFenv")
 {
-    ScopedFastFlag sff("LuauCompileFenvNoBuiltinFold", true);
-
     // builtin folding is disabled when getfenv/setfenv is used in the module
     CHECK_EQ("\n" + compileFunction(R"(
 getfenv()

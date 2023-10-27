@@ -124,6 +124,9 @@ LUALIB_API int luaopen_string(lua_State* L);
 #define LUA_BITLIBNAME "bit32"
 LUALIB_API int luaopen_bit32(lua_State* L);
 
+#define LUA_BUFFERLIBNAME "buffer"
+LUALIB_API int luaopen_buffer(lua_State* L);
+
 #define LUA_UTF8LIBNAME "utf8"
 LUALIB_API int luaopen_utf8(lua_State* L);
 

@@ -280,6 +280,13 @@ ConstraintSolver::ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope
     {
         unsolvedConstraints.push_back(c);
 
+        // initialize the reference counts for the free types in this constraint.
+        for (auto ty : c->getFreeTypes())
+        {
+            // increment the reference count for `ty`
+            unresolvedConstraints[ty] += 1;
+        }
+
         for (NotNull<const Constraint> dep : c->dependencies)
         {
             block(dep, c);
@@ -359,6 +366,10 @@ void ConstraintSolver::run()
             {
                 unblock(c);
                 unsolvedConstraints.erase(unsolvedConstraints.begin() + i);
+
+                // decrement the referenced free types for this constraint if we dispatched successfully!
+                for (auto ty : c->getFreeTypes())
+                    unresolvedConstraints[ty] -= 1;
 
                 if (logger)
                 {
@@ -2380,48 +2391,12 @@ void ConstraintSolver::reportError(TypeError e)
     errors.back().moduleName = currentModuleName;
 }
 
-struct ContainsType : TypeOnceVisitor
-{
-    TypeId needle;
-    bool found = false;
-
-    explicit ContainsType(TypeId needle)
-        : needle(needle)
-    {
-    }
-
-    bool visit(TypeId) override
-    {
-        return !found; // traverse into the type iff we have yet to find the needle
-    }
-
-    bool visit(TypeId ty, const FreeType&) override
-    {
-        found |= ty == needle;
-        return false;
-    }
-};
-
 bool ConstraintSolver::hasUnresolvedConstraints(TypeId ty)
 {
-    if (!get<FreeType>(ty) || unsolvedConstraints.empty())
-        return false; // if it's not free, it never has any unresolved constraints, maybe?
+    if (auto refCount = unresolvedConstraints.find(ty))
+        return *refCount > 0;
 
-    ContainsType containsTy{ty};
-
-    for (auto constraint : unsolvedConstraints)
-    {
-        if (auto sc = get<SubtypeConstraint>(*constraint))
-        {
-            containsTy.traverse(sc->subType);
-            containsTy.traverse(sc->superType);
-
-            if (containsTy.found)
-                return true;
-        }
-    }
-
-    return containsTy.found;
+    return false;
 }
 
 TypeId ConstraintSolver::errorRecoveryType() const

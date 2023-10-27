@@ -281,6 +281,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/lbaselib.cpp
     VM/src/lbitlib.cpp
     VM/src/lbuffer.cpp
+    VM/src/lbuflib.cpp
     VM/src/lbuiltins.cpp
     VM/src/lcorolib.cpp
     VM/src/ldblib.cpp

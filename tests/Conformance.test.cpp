@@ -289,9 +289,13 @@ TEST_CASE("Assert")
 TEST_CASE("Basic")
 {
     ScopedFastFlag sffs{"LuauFloorDivision", true};
-    ScopedFastFlag sfff{"LuauImproveForN2", true};
 
     runConformance("basic.lua");
+}
+
+TEST_CASE("Buffers")
+{
+    runConformance("buffers.lua");
 }
 
 TEST_CASE("Math")
@@ -381,8 +385,6 @@ TEST_CASE("Events")
 
 TEST_CASE("Constructs")
 {
-    ScopedFastFlag sff("LuauCompileContinueCloseUpvals", true);
-
     runConformance("constructs.lua");
 }
 
@@ -558,6 +560,8 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
+    ScopedFastFlag luauBufferDefinitions{"LuauBufferDefinitions", true};
+
     runConformance("types.lua", [](lua_State* L) {
         Luau::NullModuleResolver moduleResolver;
         Luau::NullFileResolver fileResolver;
@@ -1507,68 +1511,81 @@ TEST_CASE("Interrupt")
     lua_CompileOptions copts = defaultOptions();
     copts.optimizationLevel = 1; // disable loop unrolling to get fixed expected hit results
 
-    static const int expectedhits[] = {
-        2,
-        9,
-        5,
-        5,
-        5,
-        5,
-        5,
-        5,
-        5,
-        5,
-        5,
-        5,
-        5,
-        6,
-        18,
-        13,
-        13,
-        13,
-        13,
-        16,
-        23,
-        21,
-        25,
-    };
     static int index;
 
-    index = 0;
+    StateRef globalState = runConformance("interrupt.lua", nullptr, nullptr, nullptr, &copts);
 
-    runConformance(
-        "interrupt.lua",
-        [](lua_State* L) {
-            auto* cb = lua_callbacks(L);
+    lua_State* L = globalState.get();
 
-            // note: for simplicity here we setup the interrupt callback once
-            // however, this carries a noticeable performance cost. in a real application,
-            // it's advised to set interrupt callback on a timer from a different thread,
-            // and set it back to nullptr once the interrupt triggered.
-            cb->interrupt = [](lua_State* L, int gc) {
-                if (gc >= 0)
-                    return;
+    // note: for simplicity here we setup the interrupt callback when the test starts
+    // however, this carries a noticeable performance cost. in a real application,
+    // it's advised to set interrupt callback on a timer from a different thread,
+    // and set it back to nullptr once the interrupt triggered.
 
-                CHECK(index < int(std::size(expectedhits)));
+    // define the interrupt to check the expected hits
+    static const int expectedhits[] = {11, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 20, 15, 15, 15, 15, 18, 25, 23, 26};
 
-                lua_Debug ar = {};
-                lua_getinfo(L, 0, "l", &ar);
+    lua_callbacks(L)->interrupt = [](lua_State* L, int gc) {
+        if (gc >= 0)
+            return;
 
-                CHECK(ar.currentline == expectedhits[index]);
+        CHECK(index < int(std::size(expectedhits)));
 
-                index++;
+        lua_Debug ar = {};
+        lua_getinfo(L, 0, "l", &ar);
 
-                // check that we can yield inside an interrupt
-                if (index == 5)
-                    lua_yield(L, 0);
-            };
-        },
-        [](lua_State* L) {
-            CHECK(index == 5); // a single yield point
-        },
-        nullptr, &copts);
+        CHECK(ar.currentline == expectedhits[index]);
 
-    CHECK(index == int(std::size(expectedhits)));
+        index++;
+
+        // check that we can yield inside an interrupt
+        if (index == 4)
+            lua_yield(L, 0);
+    };
+
+    {
+        lua_State* T = lua_newthread(L);
+
+        lua_getglobal(T, "test");
+
+        index = 0;
+        int status = lua_resume(T, nullptr, 0);
+        CHECK(status == LUA_YIELD);
+        CHECK(index == 4);
+
+        status = lua_resume(T, nullptr, 0);
+        CHECK(status == LUA_OK);
+        CHECK(index == int(std::size(expectedhits)));
+
+        lua_pop(L, 1);
+    }
+
+    // redefine the interrupt to break after 10 iterations of a loop that would otherwise be infinite
+    // the test exposes a few global functions that we will call; the interrupt will force a yield
+    lua_callbacks(L)->interrupt = [](lua_State* L, int gc) {
+        if (gc >= 0)
+            return;
+
+        CHECK(index < 10);
+        if (++index == 10)
+            lua_yield(L, 0);
+    };
+
+    for (int test = 1; test <= 9; ++test)
+    {
+        lua_State* T = lua_newthread(L);
+
+        std::string name = "infloop" + std::to_string(test);
+        lua_getglobal(T, name.c_str());
+
+        index = 0;
+        int status = lua_resume(T, nullptr, 0);
+        CHECK(status == LUA_YIELD);
+        CHECK(index == 10);
+
+        // abandon the thread
+        lua_pop(L, 1);
+    }
 }
 
 TEST_CASE("UserdataApi")
@@ -1889,6 +1906,8 @@ TEST_CASE("NativeTypeAnnotations")
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;
+
+    ScopedFastFlag luauCompileBufferAnnotation{"LuauCompileBufferAnnotation", true};
 
     lua_CompileOptions copts = defaultOptions();
     copts.vectorCtor = "vector";
