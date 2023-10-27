@@ -53,9 +53,8 @@ LUAU_FASTMATH_END
 #if defined(_MSC_VER) && defined(_M_IX86)
 #define luai_num2unsigned(i, n) \
     { \
-        double v = (n); \
         __int64 l; \
-        __asm { __asm fld v __asm fistp l} \
+        __asm { __asm fld n __asm fistp l} \
         ; \
         i = (unsigned int)l; \
     }

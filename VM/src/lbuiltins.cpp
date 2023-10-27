@@ -1374,7 +1374,8 @@ static int luauF_writeinteger(lua_State* L, StkId res, TValue* arg0, int nresult
             return -1;
 
         unsigned value;
-        luai_num2unsigned(value, nvalue(args + 1));
+        double incoming = nvalue(args + 1);
+        luai_num2unsigned(value, incoming);
 
         T val = T(value);
         memcpy((char*)bufvalue(arg0)->data + offset, &val, sizeof(T));
