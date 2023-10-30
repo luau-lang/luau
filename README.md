@@ -5,9 +5,9 @@ Luau (lowercase u, /ˈlu.aʊ/) is a fast, small, safe, gradually typed embeddabl
 
 It is designed to be backwards compatible with Lua 5.1, as well as incorporating [some features](https://luau-lang.org/compatibility) from future Lua releases, but also expands the feature set (most notably with type annotations). Luau is largely implemented from scratch, with the language runtime being a very heavily modified version of Lua 5.1 runtime, with completely rewritten interpreter and other [performance innovations](https://luau-lang.org/performance). The runtime mostly preserves Lua 5.1 API, so existing bindings should be more or less compatible with a few caveats.
 
-Luau is used by Roblox game developers to write game code, as well as by Roblox engineers to implement large parts of the user-facing application code as well as portions of the editor (Roblox Studio) as plugins. Roblox chose to open-source Luau to foster collaboration within the Roblox community as well as to allow other companies and communities to benefit from the ongoing language and runtime innovation.
+Luau is used by Roblox game developers to write game code, as well as by Roblox engineers to implement large parts of the user-facing application code as well as portions of the editor (Roblox Studio) as plugins. Roblox chose to open-source Luau to foster collaboration within the Roblox community as well as to allow other companies and communities to benefit from the ongoing language and runtime innovation. As a consequence, Luau is now also used by games like Alan Wake 2 and Warframe.
 
-This repository hosts source code for the language implementation and associated tooling, documentation for the language as well as RFCs and other materials. The documentation portion of this repository can be viewed at https://luau-lang.org/
+This repository hosts source code for the language implementation and associated tooling. Documentation for the language is available at https://luau-lang.org/ and accepts contributions via [site repository](https://github.com/luau-lang/site); the language is evolved through RFCs that are located in [rfcs repository](https://github.com/luau-lang/rfcs).
 
 # Usage
 
