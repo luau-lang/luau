@@ -375,7 +375,7 @@ LUA_API void lua_unref(lua_State* L, int ref);
 #define lua_pushliteral(L, s) lua_pushlstring(L, "" s, (sizeof(s) / sizeof(char)) - 1)
 #define lua_pushcfunction(L, fn, debugname) lua_pushcclosurek(L, fn, debugname, 0, NULL)
 #define lua_pushcclosure(L, fn, debugname, nup) lua_pushcclosurek(L, fn, debugname, nup, NULL)
-#define lua_pushlightuserdata(L, p) lua_pushlightuserdatatagged(L, p, 0);
+#define lua_pushlightuserdata(L, p) lua_pushlightuserdatatagged(L, p, 0)
 
 #define lua_setglobal(L, s) lua_setfield(L, LUA_GLOBALSINDEX, (s))
 #define lua_getglobal(L, s) lua_getfield(L, LUA_GLOBALSINDEX, (s))
