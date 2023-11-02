@@ -159,6 +159,7 @@ LUA_API const char* lua_namecallatom(lua_State* L, int* atom);
 LUA_API int lua_objlen(lua_State* L, int idx);
 LUA_API lua_CFunction lua_tocfunction(lua_State* L, int idx);
 LUA_API void* lua_tolightuserdata(lua_State* L, int idx);
+LUA_API void* lua_tolightuserdatatagged(lua_State* L, int idx, int tag);
 LUA_API void* lua_touserdata(lua_State* L, int idx);
 LUA_API void* lua_touserdatatagged(lua_State* L, int idx, int tag);
 LUA_API int lua_userdatatag(lua_State* L, int idx);
@@ -186,7 +187,7 @@ LUA_API void lua_pushcclosurek(lua_State* L, lua_CFunction fn, const char* debug
 LUA_API void lua_pushboolean(lua_State* L, int b);
 LUA_API int lua_pushthread(lua_State* L);
 
-LUA_API void lua_pushlightuserdata(lua_State* L, void* p);
+LUA_API void lua_pushlightuserdatatagged(lua_State* L, void* p, int tag);
 LUA_API void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag);
 LUA_API void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*));
 
@@ -370,6 +371,7 @@ LUA_API void lua_unref(lua_State* L, int ref);
 #define lua_pushliteral(L, s) lua_pushlstring(L, "" s, (sizeof(s) / sizeof(char)) - 1)
 #define lua_pushcfunction(L, fn, debugname) lua_pushcclosurek(L, fn, debugname, 0, NULL)
 #define lua_pushcclosure(L, fn, debugname, nup) lua_pushcclosurek(L, fn, debugname, nup, NULL)
+#define lua_pushlightuserdata(L, p) lua_pushlightuserdatatagged(L, p, 0);
 
 #define lua_setglobal(L, s) lua_setfield(L, LUA_GLOBALSINDEX, (s))
 #define lua_getglobal(L, s) lua_getfield(L, LUA_GLOBALSINDEX, (s))

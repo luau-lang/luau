@@ -505,6 +505,12 @@ void* lua_tolightuserdata(lua_State* L, int idx)
     return (!ttislightuserdata(o)) ? NULL : pvalue(o);
 }
 
+void* lua_tolightuserdatatagged(lua_State* L, int idx, int tag)
+{
+    StkId o = index2addr(L, idx);
+    return (!ttislightuserdata(o) || o->extra[0] != tag) ? NULL : pvalue(o);
+}
+
 void* lua_touserdata(lua_State* L, int idx)
 {
     StkId o = index2addr(L, idx);
@@ -665,9 +671,10 @@ void lua_pushboolean(lua_State* L, int b)
     api_incr_top(L);
 }
 
-void lua_pushlightuserdata(lua_State* L, void* p)
+void lua_pushlightuserdatatagged(lua_State* L, void* p, int tag)
 {
     setpvalue(L->top, p);
+    L->top->extra[0] = tag;
     api_incr_top(L);
 }
 

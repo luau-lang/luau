@@ -1667,6 +1667,24 @@ TEST_CASE("UserdataApi")
     CHECK(dtorhits == 42);
 }
 
+TEST_CASE("LightuserdataApi")
+{
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    void* value = (void*)0x12345678;
+
+    lua_pushlightuserdata(L, value);
+    CHECK(lua_tolightuserdatatagged(L, -1, 0) == value);
+    CHECK(lua_tolightuserdatatagged(L, -1, 1) == nullptr);
+
+    lua_pushlightuserdatatagged(L, value, 1);
+    CHECK(lua_tolightuserdatatagged(L, -1, 0) == nullptr);
+    CHECK(lua_tolightuserdatatagged(L, -1, 1) == value);
+
+    globalState.reset();
+}
+
 TEST_CASE("Iter")
 {
     runConformance("iter.lua");
