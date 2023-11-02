@@ -536,6 +536,14 @@ int lua_userdatatag(lua_State* L, int idx)
     return -1;
 }
 
+int lua_lightuserdatatag(lua_State* L, int idx)
+{
+    StkId o = index2addr(L, idx);
+    if (ttislightuserdata(o))
+        return o->extra[0];
+    return -1;
+}
+
 lua_State* lua_tothread(lua_State* L, int idx)
 {
     StkId o = index2addr(L, idx);

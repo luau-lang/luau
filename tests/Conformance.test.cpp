@@ -1675,10 +1675,12 @@ TEST_CASE("LightuserdataApi")
     void* value = (void*)0x12345678;
 
     lua_pushlightuserdata(L, value);
+    CHECK(lua_lightuserdatatag(L, -1) == 0);
     CHECK(lua_tolightuserdatatagged(L, -1, 0) == value);
     CHECK(lua_tolightuserdatatagged(L, -1, 1) == nullptr);
 
     lua_pushlightuserdatatagged(L, value, 1);
+    CHECK(lua_lightuserdatatag(L, -1) == 1);
     CHECK(lua_tolightuserdatatagged(L, -1, 0) == nullptr);
     CHECK(lua_tolightuserdatatagged(L, -1, 1) == value);
 
