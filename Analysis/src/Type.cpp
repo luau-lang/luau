@@ -604,10 +604,11 @@ FunctionType::FunctionType(TypeLevel level, Scope* scope, std::vector<TypeId> ge
 Property::Property() {}
 
 Property::Property(TypeId readTy, bool deprecated, const std::string& deprecatedSuggestion, std::optional<Location> location, const Tags& tags,
-    const std::optional<std::string>& documentationSymbol)
+    const std::optional<std::string>& documentationSymbol, std::optional<Location> typeLocation)
     : deprecated(deprecated)
     , deprecatedSuggestion(deprecatedSuggestion)
     , location(location)
+    , typeLocation(typeLocation)
     , tags(tags)
     , documentationSymbol(documentationSymbol)
     , readTy(readTy)

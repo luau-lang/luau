@@ -5403,7 +5403,7 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
         std::optional<TableIndexer> tableIndexer;
 
         for (const auto& prop : table->props)
-            props[prop.name.value] = {resolveType(scope, *prop.type)};
+            props[prop.name.value] = {resolveType(scope, *prop.type), /* deprecated: */ false, {}, std::nullopt, {}, std::nullopt, prop.location};
 
         if (const auto& indexer = table->indexer)
             tableIndexer = TableIndexer(resolveType(scope, *indexer->indexType), resolveType(scope, *indexer->resultType));
