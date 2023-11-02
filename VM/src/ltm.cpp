@@ -129,6 +129,13 @@ const TString* luaT_objtypenamestr(lua_State* L, const TValue* o)
         if (ttisstring(type))
             return tsvalue(type);
     }
+    if (ttislightuserdata(o) && o->extra[0] != 0)
+    {
+        const TString* name = L->global->lightuserdataname[o->extra[0]];
+
+        if (name)
+            return name;
+    }
     else if (Table* mt = L->global->mt[ttype(o)])
     {
         const TValue* type = luaH_getstr(mt, L->global->tmname[TM_TYPE]);
