@@ -140,6 +140,11 @@ assert(bit32.byteswap(0x10203040) == 0x40302010)
 assert(bit32.byteswap(0) == 0)
 assert(bit32.byteswap(-1) == 0xffffffff)
 
+-- bit32.bor(n, 0) must clear top bits
+-- we check this obscuring the constant through a global to make sure this gets evaluated fully
+high32 = 0x42_1234_5678
+assert(bit32.bor(high32, 0) == 0x1234_5678)
+
 --[[
 This test verifies a fix in luauF_replace() where if the 4th
 parameter was not a number, but the first three are numbers, it will

@@ -34,7 +34,7 @@ DefId DataFlowGraph::getDef(const AstExpr* expr) const
 
 std::optional<DefId> DataFlowGraph::getRValueDefForCompoundAssign(const AstExpr* expr) const
 {
-    auto def = compoundAssignBreadcrumbs.find(expr);
+    auto def = compoundAssignDefs.find(expr);
     return def ? std::optional<DefId>(*def) : std::nullopt;
 }
 
@@ -628,11 +628,11 @@ void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExpr* e, DefId incomi
 
 void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprLocal* l, DefId incomingDef, bool isCompoundAssignment)
 {
-    // We need to keep the previous breadcrumb around for a compound assignment.
+    // We need to keep the previous def around for a compound assignment.
     if (isCompoundAssignment)
     {
         if (auto def = scope->lookup(l->local))
-            graph.compoundAssignBreadcrumbs[l] = *def;
+            graph.compoundAssignDefs[l] = *def;
     }
 
     // In order to avoid alias tracking, we need to clip the reference to the parent def.
@@ -643,11 +643,11 @@ void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprLocal* l, DefId i
 
 void DataFlowGraphBuilder::visitLValue(DfgScope* scope, AstExprGlobal* g, DefId incomingDef, bool isCompoundAssignment)
 {
-    // We need to keep the previous breadcrumb around for a compound assignment.
+    // We need to keep the previous def around for a compound assignment.
     if (isCompoundAssignment)
     {
         if (auto def = scope->lookup(g->name))
-            graph.compoundAssignBreadcrumbs[g] = *def;
+            graph.compoundAssignDefs[g] = *def;
     }
 
     // In order to avoid alias tracking, we need to clip the reference to the parent def.

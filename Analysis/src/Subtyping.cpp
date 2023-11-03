@@ -321,14 +321,26 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     if (auto subUnion = get<UnionType>(subTy))
         result = isCovariantWith(env, subUnion, superTy);
     else if (auto superUnion = get<UnionType>(superTy))
+    {
         result = isCovariantWith(env, subTy, superUnion);
+        if (!result.isSubtype && !result.isErrorSuppressing && !result.normalizationTooComplex)
+        {
+            SubtypingResult semantic = isCovariantWith(env, normalizer->normalize(subTy), normalizer->normalize(superTy));
+            if (semantic.isSubtype)
+                result = semantic;
+        }
+    }
     else if (auto superIntersection = get<IntersectionType>(superTy))
         result = isCovariantWith(env, subTy, superIntersection);
     else if (auto subIntersection = get<IntersectionType>(subTy))
     {
         result = isCovariantWith(env, subIntersection, superTy);
         if (!result.isSubtype && !result.isErrorSuppressing && !result.normalizationTooComplex)
-            result = isCovariantWith(env, normalizer->normalize(subTy), normalizer->normalize(superTy));
+        {
+            SubtypingResult semantic = isCovariantWith(env, normalizer->normalize(subTy), normalizer->normalize(superTy));
+            if (semantic.isSubtype)
+                result = semantic;
+        }
     }
     else if (get<AnyType>(superTy))
         result = {true};

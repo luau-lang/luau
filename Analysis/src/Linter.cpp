@@ -14,9 +14,6 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
-LUAU_FASTFLAGVARIABLE(LuauLintDeprecatedFenv, false)
-LUAU_FASTFLAGVARIABLE(LuauLintTableIndexer, false)
-
 namespace Luau
 {
 
@@ -2093,7 +2090,7 @@ private:
         // getfenv/setfenv are deprecated, however they are still used in some test frameworks and don't have a great general replacement
         // for now we warn about the deprecation only when they are used with a numeric first argument; this produces fewer warnings and makes use
         // of getfenv/setfenv a little more localized
-        if (FFlag::LuauLintDeprecatedFenv && !node->self && node->args.size >= 1)
+        if (!node->self && node->args.size >= 1)
         {
             if (AstExprGlobal* fenv = node->func->as<AstExprGlobal>(); fenv && (fenv->name == "getfenv" || fenv->name == "setfenv"))
             {
@@ -2185,7 +2182,7 @@ private:
 
     bool visit(AstExprUnary* node) override
     {
-        if (FFlag::LuauLintTableIndexer && node->op == AstExprUnary::Len)
+        if (node->op == AstExprUnary::Len)
             checkIndexer(node, node->expr, "#");
 
         return true;
@@ -2195,7 +2192,7 @@ private:
     {
         if (AstExprGlobal* func = node->func->as<AstExprGlobal>())
         {
-            if (FFlag::LuauLintTableIndexer && func->name == "ipairs" && node->args.size == 1)
+            if (func->name == "ipairs" && node->args.size == 1)
                 checkIndexer(node, node->args.data[0], "ipairs");
         }
         else if (AstExprIndexName* func = node->func->as<AstExprIndexName>())
@@ -2209,8 +2206,6 @@ private:
 
     void checkIndexer(AstExpr* node, AstExpr* expr, const char* op)
     {
-        LUAU_ASSERT(FFlag::LuauLintTableIndexer);
-
         std::optional<Luau::TypeId> ty = context->getType(expr);
         if (!ty)
             return;
@@ -2653,13 +2648,17 @@ private:
         case ConstantNumberParseResult::Ok:
         case ConstantNumberParseResult::Malformed:
             break;
+        case ConstantNumberParseResult::Imprecise:
+            emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
+                "Number literal exceeded available precision and was truncated to closest representable number");
+            break;
         case ConstantNumberParseResult::BinOverflow:
             emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
-                "Binary number literal exceeded available precision and has been truncated to 2^64");
+                "Binary number literal exceeded available precision and was truncated to 2^64");
             break;
         case ConstantNumberParseResult::HexOverflow:
             emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
-                "Hexadecimal number literal exceeded available precision and has been truncated to 2^64");
+                "Hexadecimal number literal exceeded available precision and was truncated to 2^64");
             break;
         }
 

@@ -120,6 +120,7 @@ struct CompileStats
 {
     size_t lines;
     size_t bytecode;
+    size_t bytecodeInstructionCount;
     size_t codegen;
 
     double readTime;
@@ -136,6 +137,7 @@ struct CompileStats
         fprintf(fp, "{\
 \"lines\": %zu, \
 \"bytecode\": %zu, \
+\"bytecodeInstructionCount\": %zu, \
 \"codegen\": %zu, \
 \"readTime\": %f, \
 \"miscTime\": %f, \
@@ -153,16 +155,22 @@ struct CompileStats
 \"maxBlockInstructions\": %u, \
 \"regAllocErrors\": %d, \
 \"loweringErrors\": %d\
+}, \
+\"blockLinearizationStats\": {\
+\"constPropInstructionCount\": %u, \
+\"timeSeconds\": %f\
 }}",
-            lines, bytecode, codegen, readTime, miscTime, parseTime, compileTime, codegenTime, lowerStats.totalFunctions, lowerStats.skippedFunctions,
-            lowerStats.spillsToSlot, lowerStats.spillsToRestore, lowerStats.maxSpillSlotsUsed, lowerStats.blocksPreOpt, lowerStats.blocksPostOpt,
-            lowerStats.maxBlockInstructions, lowerStats.regAllocErrors, lowerStats.loweringErrors);
+            lines, bytecode, bytecodeInstructionCount, codegen, readTime, miscTime, parseTime, compileTime, codegenTime, lowerStats.totalFunctions,
+            lowerStats.skippedFunctions, lowerStats.spillsToSlot, lowerStats.spillsToRestore, lowerStats.maxSpillSlotsUsed, lowerStats.blocksPreOpt,
+            lowerStats.blocksPostOpt, lowerStats.maxBlockInstructions, lowerStats.regAllocErrors, lowerStats.loweringErrors,
+            lowerStats.blockLinearizationStats.constPropInstructionCount, lowerStats.blockLinearizationStats.timeSeconds);
     }
 
     CompileStats& operator+=(const CompileStats& that)
     {
         this->lines += that.lines;
         this->bytecode += that.bytecode;
+        this->bytecodeInstructionCount += that.bytecodeInstructionCount;
         this->codegen += that.codegen;
         this->readTime += that.readTime;
         this->miscTime += that.miscTime;
@@ -257,6 +265,7 @@ static bool compileFile(const char* name, CompileFormat format, Luau::CodeGen::A
 
         Luau::compileOrThrow(bcb, result, names, copts());
         stats.bytecode += bcb.getBytecode().size();
+        stats.bytecodeInstructionCount = bcb.getTotalInstructionCount();
         stats.compileTime += recordDeltaTime(currts);
 
         switch (format)
@@ -321,6 +330,30 @@ static int assertionHandler(const char* expr, const char* file, int line, const 
     return 1;
 }
 
+std::string escapeFilename(const std::string& filename)
+{
+    std::string escaped;
+    escaped.reserve(filename.size());
+
+    for (const char ch : filename)
+    {
+        switch (ch)
+        {
+        case '\\':
+            escaped.push_back('/');
+            break;
+        case '"':
+            escaped.push_back('\\');
+            escaped.push_back(ch);
+            break;
+        default:
+            escaped.push_back(ch);
+        }
+    }
+
+    return escaped;
+}
+
 int main(int argc, char** argv)
 {
     Luau::assertHandler() = assertionHandler;
@@ -330,6 +363,7 @@ int main(int argc, char** argv)
     CompileFormat compileFormat = CompileFormat::Text;
     Luau::CodeGen::AssemblyOptions::Target assemblyTarget = Luau::CodeGen::AssemblyOptions::Host;
     RecordStats recordStats = RecordStats::None;
+    std::string statsFile("stats.json");
 
     for (int i = 1; i < argc; i++)
     {
@@ -391,6 +425,16 @@ int main(int argc, char** argv)
             else
             {
                 fprintf(stderr, "Error: unknown 'style' for '--record-stats'\n");
+                return 1;
+            }
+        }
+        else if (strncmp(argv[i], "--stats-file=", 13) == 0)
+        {
+            statsFile = argv[i] + 13;
+
+            if (statsFile.size() == 0)
+            {
+                fprintf(stderr, "Error: filename missing for '--stats-file'.\n\n");
                 return 1;
             }
         }
@@ -463,7 +507,7 @@ int main(int argc, char** argv)
     if (recordStats != RecordStats::None)
     {
 
-        FILE* fp = fopen("stats.json", "w");
+        FILE* fp = fopen(statsFile.c_str(), "w");
 
         if (!fp)
         {
@@ -480,7 +524,8 @@ int main(int argc, char** argv)
             fprintf(fp, "{\n");
             for (size_t i = 0; i < fileCount; ++i)
             {
-                fprintf(fp, "\"%s\": ", files[i].c_str());
+                std::string escaped(escapeFilename(files[i]));
+                fprintf(fp, "\"%s\": ", escaped.c_str());
                 fileStats[i].serializeToJson(fp);
                 fprintf(fp, i == (fileCount - 1) ? "\n" : ",\n");
             }

@@ -1353,7 +1353,7 @@ static int luauF_readinteger(lua_State* L, StkId res, TValue* arg0, int nresults
             return -1;
 
         T val;
-        memcpy(&val, (char*)bufvalue(arg0)->data + offset, sizeof(T));
+        memcpy(&val, (char*)bufvalue(arg0)->data + unsigned(offset), sizeof(T));
         setnvalue(res, double(val));
         return 1;
     }
@@ -1378,7 +1378,7 @@ static int luauF_writeinteger(lua_State* L, StkId res, TValue* arg0, int nresult
         luai_num2unsigned(value, incoming);
 
         T val = T(value);
-        memcpy((char*)bufvalue(arg0)->data + offset, &val, sizeof(T));
+        memcpy((char*)bufvalue(arg0)->data + unsigned(offset), &val, sizeof(T));
         return 0;
     }
 #endif
@@ -1398,7 +1398,12 @@ static int luauF_readfp(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
             return -1;
 
         T val;
-        memcpy(&val, (char*)bufvalue(arg0)->data + offset, sizeof(T));
+#ifdef _MSC_VER
+        // avoid memcpy path on MSVC because it results in integer stack copy + floating-point ops on stack
+        val = *(T*)((char*)bufvalue(arg0)->data + unsigned(offset));
+#else
+        memcpy(&val, (char*)bufvalue(arg0)->data + unsigned(offset), sizeof(T));
+#endif
         setnvalue(res, double(val));
         return 1;
     }
@@ -1419,7 +1424,12 @@ static int luauF_writefp(lua_State* L, StkId res, TValue* arg0, int nresults, St
             return -1;
 
         T val = T(nvalue(args + 1));
-        memcpy((char*)bufvalue(arg0)->data + offset, &val, sizeof(T));
+#ifdef _MSC_VER
+        // avoid memcpy path on MSVC because it results in integer stack copy + floating-point ops on stack
+        *(T*)((char*)bufvalue(arg0)->data + unsigned(offset)) = val;
+#else
+        memcpy((char*)bufvalue(arg0)->data + unsigned(offset), &val, sizeof(T));
+#endif
         return 0;
     }
 #endif

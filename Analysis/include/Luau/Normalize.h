@@ -29,7 +29,7 @@ bool isConsistentSubtype(TypePackId subTy, TypePackId superTy, NotNull<Scope> sc
 class TypeIds
 {
 private:
-    std::unordered_set<TypeId> types;
+    DenseHashMap<TypeId, bool> types{nullptr};
     std::vector<TypeId> order;
     std::size_t hash = 0;
 
@@ -277,6 +277,7 @@ struct NormalizedType
     NormalizedType& operator=(NormalizedType&&) = default;
 
     // IsType functions
+    bool isUnknown() const;
     /// Returns true if the type is exactly a number. Behaves like Type::isNumber()
     bool isExactlyNumber() const;
 

@@ -1912,6 +1912,13 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.clz(inst.regA64, inst.regA64);
         break;
     }
+    case IrCmd::BYTESWAP_UINT:
+    {
+        inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a});
+        RegisterA64 temp = tempUint(inst.a);
+        build.rev(inst.regA64, temp);
+        break;
+    }
     case IrCmd::INVOKE_LIBM:
     {
         if (inst.c.kind != IrOpKind::None)

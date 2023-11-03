@@ -132,7 +132,8 @@ function test()
 	local ts0 = os.clock()
 
 	for i = 1, 100 do
-		sha256(input)
+		local res = sha256(input)
+		assert(res == "45849646c50337988ccc877d23fcc0de50d1df7490fdc3b9333aed0de8ab492a")
 	end
 
 	local ts1 = os.clock()

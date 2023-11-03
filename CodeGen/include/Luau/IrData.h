@@ -600,6 +600,10 @@ enum class IrCmd : uint8_t
     BITCOUNTLZ_UINT,
     BITCOUNTRZ_UINT,
 
+    // Swap byte order in A
+    // A: int
+    BYTESWAP_UINT,
+
     // Calls native libm function with 1 or 2 arguments
     // A: builtin function ID
     // B: double

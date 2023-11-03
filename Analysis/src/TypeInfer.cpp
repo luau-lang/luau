@@ -35,11 +35,9 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauAllowIndexClassParameters, false)
 LUAU_FASTFLAG(LuauOccursIsntAlwaysFailure)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauLoopControlFlowAnalysis, false)
-LUAU_FASTFLAGVARIABLE(LuauVariadicOverloadFix, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAG(LuauParseDeclareClassIndexer)
 LUAU_FASTFLAG(LuauFloorDivision);
@@ -3412,15 +3410,12 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
             }
         }
 
-        if (FFlag::LuauAllowIndexClassParameters)
+        if (const ClassType* exprClass = get<ClassType>(exprType))
         {
-            if (const ClassType* exprClass = get<ClassType>(exprType))
-            {
-                if (isNonstrictMode())
-                    return unknownType;
-                reportError(TypeError{expr.location, DynamicPropertyLookupOnClassesUnsafe{exprType}});
-                return errorRecoveryType(scope);
-            }
+            if (isNonstrictMode())
+                return unknownType;
+            reportError(TypeError{expr.location, DynamicPropertyLookupOnClassesUnsafe{exprType}});
+            return errorRecoveryType(scope);
         }
     }
 
@@ -4026,13 +4021,9 @@ void TypeChecker::checkArgumentList(const ScopePtr& scope, const AstExpr& funNam
                     if (argIndex < argLocations.size())
                         location = argLocations[argIndex];
 
-                    if (FFlag::LuauVariadicOverloadFix)
-                    {
-                        state.location = location;
-                        state.tryUnify(*argIter, vtp->ty);
-                    }
-                    else
-                        unify(*argIter, vtp->ty, scope, location);
+                    state.location = location;
+                    state.tryUnify(*argIter, vtp->ty);
+
                     ++argIter;
                     ++argIndex;
                 }

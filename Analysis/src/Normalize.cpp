@@ -8,7 +8,9 @@
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/RecursionCounter.h"
+#include "Luau/Subtyping.h"
 #include "Luau/Type.h"
+#include "Luau/TypeFwd.h"
 #include "Luau/Unifier.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
@@ -19,6 +21,7 @@ LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCyclicUnions, false);
 LUAU_FASTFLAG(LuauTransitiveSubtyping)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 namespace Luau
 {
@@ -32,9 +35,14 @@ TypeIds::TypeIds(std::initializer_list<TypeId> tys)
 void TypeIds::insert(TypeId ty)
 {
     ty = follow(ty);
-    auto [_, fresh] = types.insert(ty);
-    if (fresh)
+
+    // get a reference to the slot for `ty` in `types`
+    bool& entry = types[ty];
+
+    // if `ty` is fresh, we can set it to `true`, add it to the order and hash and be done.
+    if (!entry)
     {
+        entry = true;
         order.push_back(ty);
         hash ^= std::hash<TypeId>{}(ty);
     }
@@ -75,25 +83,26 @@ TypeIds::const_iterator TypeIds::end() const
 TypeIds::iterator TypeIds::erase(TypeIds::const_iterator it)
 {
     TypeId ty = *it;
-    types.erase(ty);
+    types[ty] = false;
     hash ^= std::hash<TypeId>{}(ty);
     return order.erase(it);
 }
 
 size_t TypeIds::size() const
 {
-    return types.size();
+    return order.size();
 }
 
 bool TypeIds::empty() const
 {
-    return types.empty();
+    return order.empty();
 }
 
 size_t TypeIds::count(TypeId ty) const
 {
     ty = follow(ty);
-    return types.count(ty);
+    const bool* val = types.find(ty);
+    return (val && *val) ? 1 : 0;
 }
 
 void TypeIds::retain(const TypeIds& there)
@@ -122,7 +131,29 @@ bool TypeIds::isNever() const
 
 bool TypeIds::operator==(const TypeIds& there) const
 {
-    return hash == there.hash && types == there.types;
+    // we can early return if the hashes don't match.
+    if (hash != there.hash)
+        return false;
+
+    // we have to check equality of the sets themselves if not.
+
+    // if the sets are unequal sizes, then they cannot possibly be equal.
+    // it is important to use `order` here and not `types` since the mappings
+    // may have different sizes since removal is not possible, and so erase
+    // simply writes `false` into the map.
+    if (order.size() != there.order.size())
+        return false;
+
+    // otherwise, we'll need to check that every element we have here is in `there`.
+    for (auto ty : order)
+    {
+        // if it's not, we'll return `false`
+        if (there.count(ty) == 0)
+            return false;
+    }
+
+    // otherwise, we've proven the two equal!
+    return true;
 }
 
 NormalizedStringType::NormalizedStringType() {}
@@ -238,6 +269,42 @@ NormalizedType::NormalizedType(NotNull<BuiltinTypes> builtinTypes)
     , strings{NormalizedStringType::never}
     , threads(builtinTypes->neverType)
 {
+}
+
+bool NormalizedType::isUnknown() const
+{
+    if (get<UnknownType>(tops))
+        return true;
+
+    // Otherwise, we can still be unknown!
+    bool hasAllPrimitives = isPrim(booleans, PrimitiveType::Boolean) && isPrim(nils, PrimitiveType::NilType) && isNumber(numbers) &&
+                            strings.isString() && isPrim(threads, PrimitiveType::Thread) && isThread(threads);
+
+    // Check is class
+    bool isTopClass = false;
+    for (auto [t, disj] : classes.classes)
+    {
+        if (auto ct = get<ClassType>(t))
+        {
+            if (ct->name == "class" && disj.empty())
+            {
+                isTopClass = true;
+                break;
+            }
+        }
+    }
+    // Check is table
+    bool isTopTable = false;
+    for (auto t : tables)
+    {
+        if (isPrim(t, PrimitiveType::Table))
+        {
+            isTopTable = true;
+            break;
+        }
+    }
+    // any = unknown or error ==> we need to make sure we have all the unknown components, but not errors
+    return get<NeverType>(errors) && hasAllPrimitives && isTopClass && isTopTable && functions.isTop;
 }
 
 bool NormalizedType::isExactlyNumber() const
@@ -647,8 +714,7 @@ static bool areNormalizedClasses(const NormalizedClassType& tys)
 
 static bool isPlainTyvar(TypeId ty)
 {
-    return (get<FreeType>(ty) || get<GenericType>(ty) || get<BlockedType>(ty) ||
-            get<PendingExpansionType>(ty) || get<TypeFamilyInstanceType>(ty));
+    return (get<FreeType>(ty) || get<GenericType>(ty) || get<BlockedType>(ty) || get<PendingExpansionType>(ty) || get<TypeFamilyInstanceType>(ty));
 }
 
 static bool isNormalizedTyvar(const NormalizedTyvars& tyvars)
@@ -711,6 +777,11 @@ const NormalizedType* Normalizer::normalize(TypeId ty)
     std::unordered_set<TypeId> seenSetTypes;
     if (!unionNormalWithTy(norm, ty, seenSetTypes))
         return nullptr;
+    if (norm.isUnknown())
+    {
+        clearNormal(norm);
+        norm.tops = builtinTypes->unknownType;
+    }
     std::unique_ptr<NormalizedType> uniq = std::make_unique<NormalizedType>(std::move(norm));
     const NormalizedType* result = uniq.get();
     cachedNormals[ty] = std::move(uniq);
@@ -1520,8 +1591,8 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, std::unor
     }
     else if (FFlag::LuauTransitiveSubtyping && get<UnknownType>(here.tops))
         return true;
-    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) ||
-             get<PendingExpansionType>(there) || get<TypeFamilyInstanceType>(there))
+    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) ||
+             get<TypeFamilyInstanceType>(there))
     {
         if (tyvarIndex(there) <= ignoreSmallerTyvars)
             return true;
@@ -2661,8 +2732,8 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there, std::
                 return false;
         return true;
     }
-    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) ||
-             get<PendingExpansionType>(there) || get<TypeFamilyInstanceType>(there))
+    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) ||
+             get<TypeFamilyInstanceType>(there))
     {
         NormalizedType thereNorm{builtinTypes};
         NormalizedType topNorm{builtinTypes};
@@ -2915,32 +2986,58 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
 
 bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
-    if (!FFlag::LuauTransitiveSubtyping)
+    if (!FFlag::LuauTransitiveSubtyping && !FFlag::DebugLuauDeferredConstraintResolution)
         return isConsistentSubtype(subTy, superTy, scope, builtinTypes, ice);
+
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
 
-    u.tryUnify(subTy, superTy);
-    return !u.failure;
+    // Subtyping under DCR is not implemented using unification!
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&ice}, scope};
+
+        return subtyping.isSubtype(subTy, superTy).isSubtype;
+    }
+    else
+    {
+        Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+
+        u.tryUnify(subTy, superTy);
+        return !u.failure;
+    }
 }
 
 bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
-    if (!FFlag::LuauTransitiveSubtyping)
+    if (!FFlag::LuauTransitiveSubtyping && !FFlag::DebugLuauDeferredConstraintResolution)
         return isConsistentSubtype(subPack, superPack, scope, builtinTypes, ice);
+
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
 
-    u.tryUnify(subPack, superPack);
-    return !u.failure;
+    // Subtyping under DCR is not implemented using unification!
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&ice}, scope};
+
+        return subtyping.isSubtype(subPack, superPack).isSubtype;
+    }
+    else
+    {
+        Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+
+        u.tryUnify(subPack, superPack);
+        return !u.failure;
+    }
 }
 
 bool isConsistentSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
+    LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
+
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
@@ -2954,6 +3051,8 @@ bool isConsistentSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, Not
 bool isConsistentSubtype(
     TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
+    LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
+
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};

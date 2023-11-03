@@ -426,8 +426,6 @@ TEST_CASE_FIXTURE(ClassFixture, "unions_of_intersections_of_classes")
 
 TEST_CASE_FIXTURE(ClassFixture, "index_instance_property")
 {
-    ScopedFastFlag luauAllowIndexClassParameters{"LuauAllowIndexClassParameters", true};
-
     CheckResult result = check(R"(
         local function execute(object: BaseClass, name: string)
             print(object[name])
@@ -440,8 +438,6 @@ TEST_CASE_FIXTURE(ClassFixture, "index_instance_property")
 
 TEST_CASE_FIXTURE(ClassFixture, "index_instance_property_nonstrict")
 {
-    ScopedFastFlag luauAllowIndexClassParameters{"LuauAllowIndexClassParameters", true};
-
     CheckResult result = check(R"(
         --!nonstrict
 
