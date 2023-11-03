@@ -18,7 +18,6 @@
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
-LUAU_FASTFLAGVARIABLE(LuauMaintainScopesInUnifier, false)
 LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauOccursIsntAlwaysFailure, false)
 LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls)
@@ -1514,7 +1513,7 @@ struct WeirdIter
         auto freePack = log.getMutable<FreeTypePack>(packId);
 
         level = freePack->level;
-        if (FFlag::LuauMaintainScopesInUnifier && freePack->scope != nullptr)
+        if (freePack->scope != nullptr)
             scope = freePack->scope;
         log.replace(packId, BoundTypePack(newTail));
         packId = newTail;
@@ -1679,11 +1678,8 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
         auto superIter = WeirdIter(superTp, log);
         auto subIter = WeirdIter(subTp, log);
 
-        if (FFlag::LuauMaintainScopesInUnifier)
-        {
-            superIter.scope = scope.get();
-            subIter.scope = scope.get();
-        }
+        superIter.scope = scope.get();
+        subIter.scope = scope.get();
 
         auto mkFreshType = [this](Scope* scope, TypeLevel level) {
             if (FFlag::DebugLuauDeferredConstraintResolution)

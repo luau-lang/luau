@@ -244,6 +244,7 @@ void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uin
 
     currentFunction = ~0u;
 
+    totalInstructionCount += insns.size();
     insns.clear();
     lines.clear();
     constants.clear();
@@ -537,6 +538,11 @@ void BytecodeBuilder::pushDebugUpval(StringRef name)
 size_t BytecodeBuilder::getInstructionCount() const
 {
     return insns.size();
+}
+
+size_t BytecodeBuilder::getTotalInstructionCount() const
+{
+    return totalInstructionCount;
 }
 
 uint32_t BytecodeBuilder::getDebugPC() const

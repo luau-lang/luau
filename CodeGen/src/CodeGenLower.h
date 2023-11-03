@@ -50,6 +50,13 @@ inline void gatherFunctions(std::vector<Proto*>& results, Proto* proto, unsigned
         gatherFunctions(results, proto->p[i], flags);
 }
 
+inline unsigned getInstructionCount(const std::vector<IrInst>& instructions, IrCmd cmd)
+{
+    return unsigned(std::count_if(instructions.begin(), instructions.end(), [&cmd](const IrInst& inst) {
+        return inst.cmd == cmd;
+    }));
+}
+
 template<typename AssemblyBuilder, typename IrLowering>
 inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& function, const std::vector<uint32_t>& sortedBlocks, int bytecodeid,
     AssemblyOptions options)
@@ -269,7 +276,25 @@ inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& 
         constPropInBlockChains(ir, useValueNumbering);
 
         if (!FFlag::DebugCodegenOptSize)
+        {
+            double startTime = 0.0;
+            unsigned constPropInstructionCount = 0;
+
+            if (stats)
+            {
+                constPropInstructionCount = getInstructionCount(ir.function.instructions, IrCmd::SUBSTITUTE);
+                startTime = lua_clock();
+            }
+
             createLinearBlocks(ir, useValueNumbering);
+
+            if (stats)
+            {
+                stats->blockLinearizationStats.timeSeconds += lua_clock() - startTime;
+                constPropInstructionCount = getInstructionCount(ir.function.instructions, IrCmd::SUBSTITUTE) - constPropInstructionCount;
+                stats->blockLinearizationStats.constPropInstructionCount += constPropInstructionCount;
+            }
+        }
     }
 
     std::vector<uint32_t> sortedBlocks = getSortedBlockOrder(ir.function);

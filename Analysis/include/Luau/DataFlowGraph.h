@@ -34,7 +34,7 @@ struct DataFlowGraph
     DataFlowGraph& operator=(DataFlowGraph&&) = default;
 
     DefId getDef(const AstExpr* expr) const;
-    // Look up for the rvalue breadcrumb for a compound assignment.
+    // Look up for the rvalue def for a compound assignment.
     std::optional<DefId> getRValueDefForCompoundAssign(const AstExpr* expr) const;
 
     DefId getDef(const AstLocal* local) const;
@@ -64,7 +64,7 @@ private:
 
     // Compound assignments are in a weird situation where the local being assigned to is also being used at its
     // previous type implicitly in an rvalue position. This map provides the previous binding.
-    DenseHashMap<const AstExpr*, const Def*> compoundAssignBreadcrumbs{nullptr};
+    DenseHashMap<const AstExpr*, const Def*> compoundAssignDefs{nullptr};
 
     DenseHashMap<const AstExpr*, const RefinementKey*> astRefinementKeys{nullptr};
 

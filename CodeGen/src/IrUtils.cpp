@@ -163,6 +163,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::BITRROTATE_UINT:
     case IrCmd::BITCOUNTLZ_UINT:
     case IrCmd::BITCOUNTRZ_UINT:
+    case IrCmd::BYTESWAP_UINT:
         return IrValueKind::Int;
     case IrCmd::INVOKE_LIBM:
         return IrValueKind::Double;

@@ -3,7 +3,7 @@
 
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
-#include "Luau/ConstraintGraphBuilder.h"
+#include "Luau/ConstraintGenerator.h"
 #include "Luau/Normalize.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Scope.h"

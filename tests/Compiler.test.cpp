@@ -1909,8 +1909,6 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueIgnoresImplicitConstant")
 {
-    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation2", true};
-
     // this used to crash the compiler :(
     CHECK_EQ("\n" + compileFunction0(R"(
 local _
@@ -1926,8 +1924,6 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueIgnoresExplicitConstant")
 {
-    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation2", true};
-
     // Constants do not allocate locals and 'continue' validation should skip them if their lifetime already started
     CHECK_EQ("\n" + compileFunction0(R"(
 local c = true
@@ -1943,8 +1939,6 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueRespectsExplicitConstant")
 {
-    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation2", true};
-
     // If local lifetime hasn't started, even if it's a constant that will not receive an allocation, it cannot be jumped over
     try
     {
@@ -1969,8 +1963,6 @@ until c
 
 TEST_CASE("LoopContinueIgnoresImplicitConstantAfterInline")
 {
-    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation2", true};
-
     // Inlining might also replace some locals with constants instead of allocating them
     CHECK_EQ("\n" + compileFunction(R"(
 local function inline(f)
@@ -1994,7 +1986,6 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueCorrectlyHandlesImplicitConstantAfterUnroll")
 {
-    ScopedFastFlag sff{"LuauCompileFixContinueValidation2", true};
     ScopedFastInt sfi("LuauCompileLoopUnrollThreshold", 200);
 
     // access to implicit constant that depends on the unrolled loop constant is still invalid even though we can constant-propagate it

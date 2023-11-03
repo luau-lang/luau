@@ -2413,6 +2413,31 @@ struct TypeChecker2
         }
     }
 
+    void explainError(TypeId subTy, TypeId superTy, Location location, const SubtypingResult& r)
+    {
+        if (!r.reasoning)
+            return reportError(TypeMismatch{superTy, subTy}, location);
+
+        std::optional<TypeOrPack> subLeaf = traverse(subTy, r.reasoning->subPath, builtinTypes);
+        std::optional<TypeOrPack> superLeaf = traverse(superTy, r.reasoning->superPath, builtinTypes);
+
+        if (!subLeaf || !superLeaf)
+            ice->ice("Subtyping test returned a reasoning with an invalid path", location);
+
+        if (!get2<TypeId, TypeId>(*subLeaf, *superLeaf) && !get2<TypePackId, TypePackId>(*subLeaf, *superLeaf))
+            ice->ice("Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack.", location);
+
+        std::string reason;
+
+        if (r.reasoning->subPath == r.reasoning->superPath)
+            reason = "at " + toString(r.reasoning->subPath) + ", " + toString(*subLeaf) + " is not a subtype of " + toString(*superLeaf);
+        else
+            reason = "type " + toString(subTy) + toString(r.reasoning->subPath) + " (" + toString(*subLeaf) + ") is not a subtype of " +
+                     toString(superTy) + toString(r.reasoning->superPath) + " (" + toString(*superLeaf) + ")";
+
+        reportError(TypeMismatch{superTy, subTy, reason}, location);
+    }
+
     bool testIsSubtype(TypeId subTy, TypeId superTy, Location location)
     {
         SubtypingResult r = subtyping->isSubtype(subTy, superTy);
@@ -2421,27 +2446,7 @@ struct TypeChecker2
             reportError(NormalizationTooComplex{}, location);
 
         if (!r.isSubtype && !r.isErrorSuppressing)
-        {
-            if (r.reasoning)
-            {
-                std::optional<TypeOrPack> subLeaf = traverse(subTy, r.reasoning->subPath, builtinTypes);
-                std::optional<TypeOrPack> superLeaf = traverse(superTy, r.reasoning->superPath, builtinTypes);
-
-                if (!subLeaf || !superLeaf)
-                    ice->ice("Subtyping test returned a reasoning with an invalid path", location);
-
-                if (!get2<TypeId, TypeId>(*subLeaf, *superLeaf) && !get2<TypePackId, TypePackId>(*subLeaf, *superLeaf))
-                    ice->ice("Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack.", location);
-
-                std::string reason = "type " + toString(subTy) + toString(r.reasoning->subPath) + " (" + toString(*subLeaf) +
-                                     ") is not a subtype of " + toString(superTy) + toString(r.reasoning->superPath) + " (" + toString(*superLeaf) +
-                                     ")";
-
-                reportError(TypeMismatch{superTy, subTy, reason}, location);
-            }
-            else
-                reportError(TypeMismatch{superTy, subTy}, location);
-        }
+            explainError(subTy, superTy, location, r);
 
         return r.isSubtype;
     }

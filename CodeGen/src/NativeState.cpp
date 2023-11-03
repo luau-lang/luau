@@ -103,7 +103,6 @@ void initFunctions(NativeState& data)
     data.context.executeGETTABLEKS = executeGETTABLEKS;
     data.context.executeSETTABLEKS = executeSETTABLEKS;
 
-    data.context.executeNEWCLOSURE = executeNEWCLOSURE;
     data.context.executeNAMECALL = executeNAMECALL;
     data.context.executeFORGPREP = executeFORGPREP;
     data.context.executeGETVARARGSMultRet = executeGETVARARGSMultRet;

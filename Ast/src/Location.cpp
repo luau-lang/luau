@@ -1,15 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Location.h"
-#include <string>
 
 namespace Luau
 {
-
-Position::Position(unsigned int line, unsigned int column)
-    : line(line)
-    , column(column)
-{
-}
 
 bool Position::operator==(const Position& rhs) const
 {
@@ -59,30 +52,6 @@ void Position::shift(const Position& start, const Position& oldEnd, const Positi
             this->column += (newEnd.column - oldEnd.column);
         }
     }
-}
-
-Location::Location()
-    : begin(0, 0)
-    , end(0, 0)
-{
-}
-
-Location::Location(const Position& begin, const Position& end)
-    : begin(begin)
-    , end(end)
-{
-}
-
-Location::Location(const Position& begin, unsigned int length)
-    : begin(begin)
-    , end(begin.line, begin.column + length)
-{
-}
-
-Location::Location(const Location& begin, const Location& end)
-    : begin(begin.begin)
-    , end(end.end)
-{
 }
 
 bool Location::operator==(const Location& rhs) const

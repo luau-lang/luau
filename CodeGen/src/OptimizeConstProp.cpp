@@ -1168,6 +1168,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::BITLROTATE_UINT:
     case IrCmd::BITCOUNTLZ_UINT:
     case IrCmd::BITCOUNTRZ_UINT:
+    case IrCmd::BYTESWAP_UINT:
     case IrCmd::INVOKE_LIBM:
     case IrCmd::GET_TYPE:
     case IrCmd::GET_TYPEOF:
