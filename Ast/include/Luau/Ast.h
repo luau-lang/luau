@@ -249,6 +249,7 @@ public:
 enum class ConstantNumberParseResult
 {
     Ok,
+    Imprecise,
     Malformed,
     BinOverflow,
     HexOverflow,

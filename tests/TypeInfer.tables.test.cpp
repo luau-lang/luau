@@ -43,7 +43,10 @@ TEST_CASE_FIXTURE(Fixture, "basic")
 
 TEST_CASE_FIXTURE(Fixture, "augment_table")
 {
-    CheckResult result = check("local t = {}  t.foo = 'bar'");
+    CheckResult result = check(R"(
+        local t = {}
+        t.foo = 'bar'
+    )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
     const TableType* tType = get<TableType>(requireType("t"));
@@ -68,6 +71,35 @@ TEST_CASE_FIXTURE(Fixture, "augment_nested_table")
     REQUIRE(pType != nullptr);
 
     CHECK("{ p: { foo: string } }" == toString(requireType("t"), {true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "assign_key_at_index_expr")
+{
+    CheckResult result = check(R"(
+        function f(t: {[string]: number})
+            t["hello"] = 1
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // We had a bug where we forgot to record the astType of this particular node.
+    CHECK("string" == toString(requireTypeAtPosition({2, 19})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "index_expression_is_checked_against_the_indexer_type")
+{
+    CheckResult result = check(R"(
+        function f(t: {[boolean]: number})
+            t["hello"] = 15
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_MESSAGE(get<CannotExtendTable>(result.errors[0]), "Expected CannotExtendTable but got " << toString(result.errors[0]));
+    else
+        CHECK(get<TypeMismatch>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "cannot_augment_sealed_table")

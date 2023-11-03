@@ -83,6 +83,7 @@ public:
     void pushDebugUpval(StringRef name);
 
     size_t getInstructionCount() const;
+    size_t getTotalInstructionCount() const;
     uint32_t getDebugPC() const;
 
     void addDebugRemark(const char* format, ...) LUAU_PRINTF_ATTR(2, 3);
@@ -232,6 +233,7 @@ private:
     uint32_t currentFunction = ~0u;
     uint32_t mainFunction = ~0u;
 
+    size_t totalInstructionCount = 0;
     std::vector<uint32_t> insns;
     std::vector<int> lines;
     std::vector<Constant> constants;

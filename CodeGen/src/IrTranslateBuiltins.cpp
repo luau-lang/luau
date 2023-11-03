@@ -583,8 +583,8 @@ static BuiltinImplResult translateBuiltinBit32ExtractK(
     return {BuiltinImplType::Full, 1};
 }
 
-static BuiltinImplResult translateBuiltinBit32Countz(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
+static BuiltinImplResult translateBuiltinBit32Unary(
+    IrBuilder& build, IrCmd cmd, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
 {
     if (nparams < 1 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -594,7 +594,6 @@ static BuiltinImplResult translateBuiltinBit32Countz(
 
     IrOp vaui = build.inst(IrCmd::NUM_TO_UINT, va);
 
-    IrCmd cmd = (bfid == LBF_BIT32_COUNTLZ) ? IrCmd::BITCOUNTLZ_UINT : IrCmd::BITCOUNTRZ_UINT;
     IrOp bin = build.inst(cmd, vaui);
 
     IrOp value = build.inst(IrCmd::UINT_TO_NUM, bin);
@@ -816,8 +815,9 @@ BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, 
     case LBF_BIT32_EXTRACTK:
         return translateBuiltinBit32ExtractK(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_COUNTLZ:
+        return translateBuiltinBit32Unary(build, IrCmd::BITCOUNTLZ_UINT, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_COUNTRZ:
-        return translateBuiltinBit32Countz(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
+        return translateBuiltinBit32Unary(build, IrCmd::BITCOUNTRZ_UINT, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_REPLACE:
         return translateBuiltinBit32Replace(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, fallback, pcpos);
     case LBF_TYPE:
@@ -830,6 +830,8 @@ BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, 
         return translateBuiltinTableInsert(build, nparams, ra, arg, args, nresults, pcpos);
     case LBF_STRING_LEN:
         return translateBuiltinStringLen(build, nparams, ra, arg, args, nresults, pcpos);
+    case LBF_BIT32_BYTESWAP:
+        return translateBuiltinBit32Unary(build, IrCmd::BYTESWAP_UINT, nparams, ra, arg, args, nresults, pcpos);
     default:
         return {BuiltinImplType::None, -1};
     }

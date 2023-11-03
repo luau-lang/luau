@@ -93,7 +93,6 @@ TEST_SUITE_BEGIN("TypePathTraversal");
         LUAU_REQUIRE_NO_ERRORS(result); \
     } while (false);
 
-#if 0
 TEST_CASE_FIXTURE(Fixture, "empty_traversal")
 {
     CHECK(traverseForType(builtinTypes->numberType, kEmpty, builtinTypes) == builtinTypes->numberType);
@@ -475,7 +474,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "complex_chains")
         CHECK(*result == builtinTypes->falseType);
     }
 }
-#endif
 
 TEST_SUITE_END(); // TypePathTraversal
 

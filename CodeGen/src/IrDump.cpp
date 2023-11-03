@@ -309,6 +309,8 @@ const char* getCmdName(IrCmd cmd)
         return "BITCOUNTLZ_UINT";
     case IrCmd::BITCOUNTRZ_UINT:
         return "BITCOUNTRZ_UINT";
+    case IrCmd::BYTESWAP_UINT:
+        return "BYTESWAP_UINT";
     case IrCmd::INVOKE_LIBM:
         return "INVOKE_LIBM";
     case IrCmd::GET_TYPE:

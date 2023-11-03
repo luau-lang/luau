@@ -934,7 +934,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prototyping_and_visiting_alias_has_the_same_
 {
     ScopedFastFlag sff{"LuauTinyControlFlowAnalysis", true};
 
-    // In CGB, we walk the block to prototype aliases. We then visit the block in-order, which will resolve the prototype to a real type.
+    // In CG, we walk the block to prototype aliases. We then visit the block in-order, which will resolve the prototype to a real type.
     // That second walk assumes that the name occurs in the same `Scope` that the prototype walk had. If we arbitrarily change scope midway
     // through, we'd invoke UB.
     CheckResult result = check(R"(

@@ -857,6 +857,15 @@ TEST_CASE_FIXTURE(SubtypeFixture, "Child & ~GrandchildOne <!: number")
     CHECK_IS_NOT_SUBTYPE(meet(childClass, negate(grandchildOneClass)), builtinTypes->numberType);
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "semantic_subtyping_disj")
+{
+    TypeId subTy = builtinTypes->unknownType;
+    TypeId superTy = join(negate(builtinTypes->numberType), negate(builtinTypes->stringType));
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(result.isSubtype);
+}
+
+
 TEST_CASE_FIXTURE(SubtypeFixture, "t1 where t1 = {trim: (t1) -> string} <: t2 where t2 = {trim: (t2) -> string}")
 {
     TypeId t1 = cyclicTable([&](TypeId ty, TableType* tt) {

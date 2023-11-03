@@ -822,7 +822,19 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::UINT_TO_NUM:
         inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
 
-        build.vcvtsi2sd(inst.regX64, inst.regX64, qwordReg(regOp(inst.a)));
+        // AVX has no uint->double conversion; the source must come from UINT op and they all should clear top 32 bits so we can usually
+        // use 64-bit reg; the one exception is NUM_TO_UINT which doesn't clear top bits
+        if (IrCmd source = function.instOp(inst.a).cmd; source == IrCmd::NUM_TO_UINT)
+        {
+            ScopedRegX64 tmp{regs, SizeX64::dword};
+            build.mov(tmp.reg, regOp(inst.a));
+            build.vcvtsi2sd(inst.regX64, inst.regX64, qwordReg(tmp.reg));
+        }
+        else
+        {
+            LUAU_ASSERT(source != IrCmd::SUBSTITUTE); // we don't process substitutions
+            build.vcvtsi2sd(inst.regX64, inst.regX64, qwordReg(regOp(inst.a)));
+        }
         break;
     case IrCmd::NUM_TO_INT:
         inst.regX64 = regs.allocReg(SizeX64::dword, index);
@@ -1631,6 +1643,16 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.mov(inst.regX64, 32);
 
         build.setLabel(exit);
+        break;
+    }
+    case IrCmd::BYTESWAP_UINT:
+    {
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::dword, index, {inst.a});
+
+        if (inst.a.kind != IrOpKind::Inst || inst.regX64 != regOp(inst.a))
+            build.mov(inst.regX64, memRegUintOp(inst.a));
+
+        build.bswap(inst.regX64);
         break;
     }
     case IrCmd::INVOKE_LIBM:

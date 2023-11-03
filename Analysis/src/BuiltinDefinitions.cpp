@@ -7,7 +7,7 @@
 #include "Luau/Common.h"
 #include "Luau/ToString.h"
 #include "Luau/ConstraintSolver.h"
-#include "Luau/ConstraintGraphBuilder.h"
+#include "Luau/ConstraintGenerator.h"
 #include "Luau/NotNull.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeFamily.h"

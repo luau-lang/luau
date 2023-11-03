@@ -435,8 +435,6 @@ static int cxxthrow(lua_State* L)
 
 TEST_CASE("PCall")
 {
-    ScopedFastFlag sff("LuauHandlerClose", true);
-
     runConformance(
         "pcall.lua",
         [](lua_State* L) {

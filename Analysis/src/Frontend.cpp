@@ -5,7 +5,7 @@
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/Config.h"
-#include "Luau/ConstraintGraphBuilder.h"
+#include "Luau/ConstraintGenerator.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/DataFlowGraph.h"
 #include "Luau/DcrLogger.h"
@@ -1255,13 +1255,13 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
 
     Normalizer normalizer{&result->internalTypes, builtinTypes, NotNull{&unifierState}};
 
-    ConstraintGraphBuilder cgb{result, NotNull{&normalizer}, moduleResolver, builtinTypes, iceHandler, parentScope, std::move(prepareModuleScope),
+    ConstraintGenerator cg{result, NotNull{&normalizer}, moduleResolver, builtinTypes, iceHandler, parentScope, std::move(prepareModuleScope),
         logger.get(), NotNull{&dfg}, requireCycles};
 
-    cgb.visitModuleRoot(sourceModule.root);
-    result->errors = std::move(cgb.errors);
+    cg.visitModuleRoot(sourceModule.root);
+    result->errors = std::move(cg.errors);
 
-    ConstraintSolver cs{NotNull{&normalizer}, NotNull(cgb.rootScope), borrowConstraints(cgb.constraints), result->humanReadableName, moduleResolver,
+    ConstraintSolver cs{NotNull{&normalizer}, NotNull(cg.rootScope), borrowConstraints(cg.constraints), result->humanReadableName, moduleResolver,
         requireCycles, logger.get(), limits};
 
     if (options.randomizeConstraintResolutionSeed)
@@ -1283,7 +1283,7 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
     for (TypeError& e : cs.errors)
         result->errors.emplace_back(std::move(e));
 
-    result->scopes = std::move(cgb.scopes);
+    result->scopes = std::move(cg.scopes);
     result->type = sourceModule.type;
 
     result->clonePublicInterface(builtinTypes, *iceHandler);

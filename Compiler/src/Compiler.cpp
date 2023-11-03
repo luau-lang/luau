@@ -27,7 +27,6 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAG(LuauFloorDivision)
-LUAU_FASTFLAGVARIABLE(LuauCompileFixContinueValidation2, false)
 LUAU_FASTFLAGVARIABLE(LuauCompileIfElseAndOr, false)
 
 namespace Luau
@@ -2519,14 +2518,9 @@ struct Compiler
         // Optimization: body is a "continue" statement with no "else" => we can directly continue in "then" case
         if (!stat->elsebody && continueStatement != nullptr && !areLocalsCaptured(loops.back().localOffsetContinue))
         {
-            if (FFlag::LuauCompileFixContinueValidation2)
-            {
-                // track continue statement for repeat..until validation (validateContinueUntil)
-                if (!loops.back().continueUsed)
-                    loops.back().continueUsed = continueStatement;
-            }
-            else if (loops.back().untilCondition)
-                validateContinueUntil(continueStatement, loops.back().untilCondition);
+            // track continue statement for repeat..until validation (validateContinueUntil)
+            if (!loops.back().continueUsed)
+                loops.back().continueUsed = continueStatement;
 
             // fallthrough = proceed with the loop body as usual
             std::vector<size_t> elseJump;
@@ -2587,7 +2581,7 @@ struct Compiler
         size_t oldJumps = loopJumps.size();
         size_t oldLocals = localStack.size();
 
-        loops.push_back({oldLocals, oldLocals, nullptr, nullptr});
+        loops.push_back({oldLocals, oldLocals, nullptr});
         hasLoops = true;
 
         size_t loopLabel = bytecode.emitLabel();
@@ -2623,7 +2617,7 @@ struct Compiler
         size_t oldJumps = loopJumps.size();
         size_t oldLocals = localStack.size();
 
-        loops.push_back({oldLocals, oldLocals, stat->condition, nullptr});
+        loops.push_back({oldLocals, oldLocals, nullptr});
         hasLoops = true;
 
         size_t loopLabel = bytecode.emitLabel();
@@ -2648,7 +2642,7 @@ struct Compiler
 
             // if continue was called from this statement, then any local defined after this in the loop body should not be accessed by until condition
             // it is sufficient to check this condition once, as if this holds for the first continue, it must hold for all subsequent continues.
-            if (FFlag::LuauCompileFixContinueValidation2 && loops.back().continueUsed && !continueValidated)
+            if (loops.back().continueUsed && !continueValidated)
             {
                 validateContinueUntil(loops.back().continueUsed, stat->condition, body, i + 1);
                 continueValidated = true;
@@ -2870,7 +2864,7 @@ struct Compiler
         size_t oldLocals = localStack.size();
         size_t oldJumps = loopJumps.size();
 
-        loops.push_back({oldLocals, oldLocals, nullptr, nullptr});
+        loops.push_back({oldLocals, oldLocals, nullptr});
 
         for (int iv = 0; iv < tripCount; ++iv)
         {
@@ -2921,7 +2915,7 @@ struct Compiler
         size_t oldLocals = localStack.size();
         size_t oldJumps = loopJumps.size();
 
-        loops.push_back({oldLocals, oldLocals, nullptr, nullptr});
+        loops.push_back({oldLocals, oldLocals, nullptr});
         hasLoops = true;
 
         // register layout: limit, step, index
@@ -2986,7 +2980,7 @@ struct Compiler
         size_t oldLocals = localStack.size();
         size_t oldJumps = loopJumps.size();
 
-        loops.push_back({oldLocals, oldLocals, nullptr, nullptr});
+        loops.push_back({oldLocals, oldLocals, nullptr});
         hasLoops = true;
 
         // register layout: generator, state, index, variables...
@@ -3398,14 +3392,9 @@ struct Compiler
         {
             LUAU_ASSERT(!loops.empty());
 
-            if (FFlag::LuauCompileFixContinueValidation2)
-            {
-                // track continue statement for repeat..until validation (validateContinueUntil)
-                if (!loops.back().continueUsed)
-                    loops.back().continueUsed = stat;
-            }
-            else if (loops.back().untilCondition)
-                validateContinueUntil(stat, loops.back().untilCondition);
+            // track continue statement for repeat..until validation (validateContinueUntil)
+            if (!loops.back().continueUsed)
+                loops.back().continueUsed = stat;
 
             // before continuing, we need to close all local variables that were captured in closures since loop start
             // normally they are closed by the enclosing blocks, including the loop block, but we're skipping that here
@@ -3488,21 +3477,8 @@ struct Compiler
         }
     }
 
-    void validateContinueUntil(AstStat* cont, AstExpr* condition)
-    {
-        LUAU_ASSERT(!FFlag::LuauCompileFixContinueValidation2);
-        UndefinedLocalVisitor visitor(this);
-        condition->visit(&visitor);
-
-        if (visitor.undef)
-            CompileError::raise(condition->location,
-                "Local %s used in the repeat..until condition is undefined because continue statement on line %d jumps over it",
-                visitor.undef->name.value, cont->location.begin.line + 1);
-    }
-
     void validateContinueUntil(AstStat* cont, AstExpr* condition, AstStatBlock* body, size_t start)
     {
-        LUAU_ASSERT(FFlag::LuauCompileFixContinueValidation2);
         UndefinedLocalVisitor visitor(this);
 
         for (size_t i = start; i < body->body.size; ++i)
@@ -3748,18 +3724,8 @@ struct Compiler
 
         void check(AstLocal* local)
         {
-            if (FFlag::LuauCompileFixContinueValidation2)
-            {
-                if (!undef && locals.contains(local))
-                    undef = local;
-            }
-            else
-            {
-                Local& l = self->locals[local];
-
-                if (!l.allocated && !undef)
-                    undef = local;
-            }
+            if (!undef && locals.contains(local))
+                undef = local;
         }
 
         bool visit(AstExprLocal* node) override
@@ -3903,9 +3869,6 @@ struct Compiler
     {
         size_t localOffset;
         size_t localOffsetContinue;
-
-        // TODO: Remove with LuauCompileFixContinueValidation2
-        AstExpr* untilCondition;
 
         AstStatContinue* continueUsed;
     };

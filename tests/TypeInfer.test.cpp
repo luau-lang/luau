@@ -1453,8 +1453,6 @@ TEST_CASE_FIXTURE(Fixture, "promote_tail_type_packs")
  */
 TEST_CASE_FIXTURE(BuiltinsFixture, "be_sure_to_use_active_txnlog_when_evaluating_a_variadic_overload")
 {
-    ScopedFastFlag sff{"LuauVariadicOverloadFix", true};
-
     CheckResult result = check(R"(
         local function concat<T>(target: {T}, ...: {T} | T): {T}
             return (nil :: any) :: {T}
