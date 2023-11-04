@@ -129,7 +129,7 @@ const TString* luaT_objtypenamestr(lua_State* L, const TValue* o)
         if (ttisstring(type))
             return tsvalue(type);
     }
-    if (ttislightuserdata(o))
+    else if (ttislightuserdata(o))
     {
         const TString* name = L->global->lightuserdataname[o->extra[0]];
 
