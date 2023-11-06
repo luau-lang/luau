@@ -1684,6 +1684,10 @@ TEST_CASE("LightuserdataApi")
     CHECK(strcmp(lua_getlightuserdataname(L, 1), "id") == 0);
     CHECK(strcmp(luaL_typename(L, -1), "id") == 0);
 
+    lua_pushlightuserdatatagged(L, value, 0);
+    lua_pushlightuserdatatagged(L, value, 1);
+    CHECK(lua_rawequal(L, -1, -2) == 0);
+
     globalState.reset();
 }
 
