@@ -115,7 +115,7 @@ bool forgLoopNodeIter(lua_State* L, Table* h, int index, TValue* ra)
 
         if (!ttisnil(gval(n)))
         {
-            setpvaluefast(ra + 2, reinterpret_cast<void*>(uintptr_t(index + 1)), LU_TAG_ITERATOR);
+            setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(index + 1)), LU_TAG_ITERATOR);
             getnodekey(L, ra + 3, n);
             setobj(L, ra + 4, gval(n));
 
