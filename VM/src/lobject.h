@@ -84,7 +84,7 @@ typedef struct lua_TValue
 
 // Internal tags used by the VM
 #define LU_TAG_ITERATOR LUA_UTAG_LIMIT
-#define LU_TAG_COUNT (LUA_UTAG_LIMIT+1)
+#define LU_TAG_COUNT (LU_TAG_ITERATOR+1)
 
 /*
 ** for internal debug only
