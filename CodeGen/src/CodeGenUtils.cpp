@@ -71,7 +71,7 @@ bool forgLoopTableIter(lua_State* L, Table* h, int index, TValue* ra)
 
         if (!ttisnil(e))
         {
-            setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(index + 1)), LU_TAG_ITERATOR);
+            setpvaluefast(ra + 2, reinterpret_cast<void*>(uintptr_t(index + 1)), LU_TAG_ITERATOR);
             setnvalue(ra + 3, double(index + 1));
             setobj2s(L, ra + 4, e);
 
@@ -90,7 +90,7 @@ bool forgLoopTableIter(lua_State* L, Table* h, int index, TValue* ra)
 
         if (!ttisnil(gval(n)))
         {
-            setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(index + 1)), LU_TAG_ITERATOR);
+            setpvaluefast(ra + 2, reinterpret_cast<void*>(uintptr_t(index + 1)), LU_TAG_ITERATOR);
             getnodekey(L, ra + 3, n);
             setobj(L, ra + 4, gval(n));
 
@@ -115,7 +115,7 @@ bool forgLoopNodeIter(lua_State* L, Table* h, int index, TValue* ra)
 
         if (!ttisnil(gval(n)))
         {
-            setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(index + 1)), LU_TAG_ITERATOR);
+            setpvaluefast(ra + 2, reinterpret_cast<void*>(uintptr_t(index + 1)), LU_TAG_ITERATOR);
             getnodekey(L, ra + 3, n);
             setobj(L, ra + 4, gval(n));
 
