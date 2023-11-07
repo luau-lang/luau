@@ -508,7 +508,7 @@ void* lua_tolightuserdata(lua_State* L, int idx)
 void* lua_tolightuserdatatagged(lua_State* L, int idx, int tag)
 {
     StkId o = index2addr(L, idx);
-    return (!ttislightuserdata(o) || o->extra[0] != tag) ? NULL : pvalue(o);
+    return (!ttislightuserdata(o) || lightuserdatatag(o) != tag) ? NULL : pvalue(o);
 }
 
 void* lua_touserdata(lua_State* L, int idx)
@@ -540,7 +540,7 @@ int lua_lightuserdatatag(lua_State* L, int idx)
 {
     StkId o = index2addr(L, idx);
     if (ttislightuserdata(o))
-        return o->extra[0];
+        return lightuserdatatag(o);
     return -1;
 }
 

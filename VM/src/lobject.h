@@ -80,6 +80,8 @@ typedef struct lua_TValue
 
 #define l_isfalse(o) (ttisnil(o) || (ttisboolean(o) && bvalue(o) == 0))
 
+#define lightuserdatatag(o) check_exp(ttislightuserdata(o), (o)->extra[0])
+
 /*
 ** for internal debug only
 */
