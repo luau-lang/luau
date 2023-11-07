@@ -682,8 +682,7 @@ void lua_pushboolean(lua_State* L, int b)
 void lua_pushlightuserdatatagged(lua_State* L, void* p, int tag)
 {
     api_check(L, unsigned(tag) < LUA_LUTAG_LIMIT);
-    setpvalue(L->top, p);
-    L->top->extra[0] = tag;
+    setpvalue(L->top, p, tag);
     api_incr_top(L);
 }
 

@@ -82,6 +82,10 @@ typedef struct lua_TValue
 
 #define lightuserdatatag(o) check_exp(ttislightuserdata(o), (o)->extra[0])
 
+// Internal tags used by the VM
+#define LU_TAG_ITERATOR LUA_UTAG_LIMIT
+#define LU_TAG_COUNT (LUA_UTAG_LIMIT+1)
+
 /*
 ** for internal debug only
 */
@@ -122,10 +126,11 @@ typedef struct lua_TValue
     }
 #endif
 
-#define setpvalue(obj, x) \
+#define setpvalue(obj, x, tag) \
     { \
         TValue* i_o = (obj); \
         i_o->value.p = (x); \
+        i_o->extra[0] = (tag); \
         i_o->tt = LUA_TLIGHTUSERDATA; \
     }
 
