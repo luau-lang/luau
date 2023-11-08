@@ -134,13 +134,6 @@ typedef struct lua_TValue
         i_o->tt = LUA_TLIGHTUSERDATA; \
     }
 
-#define setpvaluefast(obj, x, tag) \
-    { \
-        TValue* i_o = (obj); \
-        LUAU_ASSERT(i_o->tt == LUA_TLIGHTUSERDATA && lightuserdatatag(i_o) == tag); \
-        i_o->value.p = (x); \
-    }
-
 #define setbvalue(obj, x) \
     { \
         TValue* i_o = (obj); \
