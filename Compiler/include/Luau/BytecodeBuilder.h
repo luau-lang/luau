@@ -54,6 +54,7 @@ public:
     int32_t addConstantNil();
     int32_t addConstantBoolean(bool value);
     int32_t addConstantNumber(double value);
+    int32_t addConstantVector(double x, double y, double z);
     int32_t addConstantString(StringRef value);
     int32_t addImport(uint32_t iid);
     int32_t addConstantTable(const TableShape& shape);
@@ -145,6 +146,7 @@ private:
             Type_Nil,
             Type_Boolean,
             Type_Number,
+            Type_Vector,
             Type_String,
             Type_Import,
             Type_Table,
@@ -156,6 +158,7 @@ private:
         {
             bool valueBoolean;
             double valueNumber;
+            float valueVector[ 3 ];
             unsigned int valueString; // index into string table
             uint32_t valueImport;     // 10-10-10-2 encoded import id
             uint32_t valueTable;      // index into tableShapes[]
@@ -166,12 +169,14 @@ private:
     struct ConstantKey
     {
         Constant::Type type;
-        // Note: this stores value* from Constant; when type is Number_Double, this stores the same bits as double does but in uint64_t.
+        // Note: this stores value* from Constant; when type is Type_Number, this stores the same bits as double does but in uint64_t.
+        // for Type_Vector, x and y are stored in value and z is stored in extra.
         uint64_t value;
+        uint32_t extra = 0;
 
         bool operator==(const ConstantKey& key) const
         {
-            return type == key.type && value == key.value;
+            return type == key.type && value == key.value && extra == key.extra;
         }
     };
 
