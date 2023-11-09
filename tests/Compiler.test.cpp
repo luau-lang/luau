@@ -4497,13 +4497,13 @@ L0: RETURN R0 -1
 TEST_CASE("VectorLiterals")
 {
     CHECK_EQ("\n" + compileFunction("return Vector3.new(1, 2, 3)", 0, 2, true), R"(
-LOADK R0 K0 []
+LOADK R0 K0 [1, 2, 3]
 RETURN R0 1
 )");
 
     CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3))", 0, 2, true), R"(
 GETIMPORT R0 1 [print]
-LOADK R1 K2 []
+LOADK R1 K2 [1, 2, 3]
 CALL R0 1 0
 RETURN R0 0
 )");

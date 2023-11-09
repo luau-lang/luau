@@ -70,7 +70,7 @@ enum LuauOpcode
     // D: value (-32768..32767)
     LOP_LOADN,
 
-    // LOADK: sets register to an entry from the constant table from the proto (number/string)
+    // LOADK: sets register to an entry from the constant table from the proto (number/vector/string)
     // A: target register
     // D: constant table index (0..32767)
     LOP_LOADK,

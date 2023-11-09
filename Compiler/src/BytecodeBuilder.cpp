@@ -1681,6 +1681,9 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
     case Constant::Type_Number:
         formatAppend(result, "%.17g", data.valueNumber);
         break;
+    case Constant::Type_Vector:
+        formatAppend(result, "%.17g, %.17g, %.17g", data.valueVector[0], data.valueVector[1], data.valueVector[2]);
+        break;
     case Constant::Type_String:
     {
         const StringRef& str = debugStrings[data.valueString - 1];
