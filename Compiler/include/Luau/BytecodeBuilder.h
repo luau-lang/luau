@@ -54,7 +54,7 @@ public:
     int32_t addConstantNil();
     int32_t addConstantBoolean(bool value);
     int32_t addConstantNumber(double value);
-    int32_t addConstantVector(double x, double y, double z);
+    int32_t addConstantVector(float x, float y, float z);
     int32_t addConstantString(StringRef value);
     int32_t addImport(uint32_t iid);
     int32_t addConstantTable(const TableShape& shape);

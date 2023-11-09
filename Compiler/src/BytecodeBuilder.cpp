@@ -354,22 +354,18 @@ int32_t BytecodeBuilder::addConstantNumber(double value)
     return addConstant(k, c);
 }
 
-int32_t BytecodeBuilder::addConstantVector(double x, double y, double z)
+int32_t BytecodeBuilder::addConstantVector(float x, float y, float z)
 {
-    float fx = (float)x;
-    float fy = (float)y;
-    float fz = (float)z;
-
     Constant c = {Constant::Type_Vector};
-    c.valueVector[0] = fx;
-    c.valueVector[1] = fy;
-    c.valueVector[2] = fz;
+    c.valueVector[0] = x;
+    c.valueVector[1] = y;
+    c.valueVector[2] = z;
 
     ConstantKey k = {Constant::Type_Vector};
-    static_assert(sizeof(k.value) == sizeof(fx) + sizeof(fy) && sizeof(k.extra) == sizeof(fz), "Expecting vector to have three 32-bit components");
-    memcpy(&k.value, &fx, sizeof(fx));
-    memcpy((char*)&k.value + sizeof(fx), &fy, sizeof(fy));
-    memcpy(&k.extra, &fz, sizeof(fz));
+    static_assert(sizeof(k.value) == sizeof(x) + sizeof(y) && sizeof(k.extra) == sizeof(z), "Expecting vector to have three 32-bit components");
+    memcpy(&k.value, &x, sizeof(x));
+    memcpy((char*)&k.value + sizeof(x), &y, sizeof(y));
+    memcpy(&k.extra, &z, sizeof(z));
 
     return addConstant(k, c);
 }

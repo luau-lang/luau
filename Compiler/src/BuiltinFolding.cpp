@@ -32,6 +32,15 @@ static Constant cnum(double v)
     return res;
 }
 
+static Constant cvector(double x, double y, double z)
+{
+    Constant res = {Constant::Type_Vector};
+    res.valueVector[0] = (float)x;
+    res.valueVector[1] = (float)y;
+    res.valueVector[2] = (float)z;
+    return res;
+}
+
 static Constant cstring(const char* v)
 {
     Constant res = {Constant::Type_String};
@@ -455,6 +464,11 @@ Constant foldBuiltin(int bfid, const Constant* args, size_t count)
     case LBF_MATH_ROUND:
         if (count == 1 && args[0].type == Constant::Type_Number)
             return cnum(round(args[0].valueNumber));
+        break;
+
+    case LBF_VECTOR:
+        if (count == 3 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number && args[2].type == Constant::Type_Number)
+            return cvector(args[0].valueNumber, args[1].valueNumber, args[2].valueNumber);
         break;
     }
 

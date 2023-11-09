@@ -816,28 +816,6 @@ struct Compiler
             }
         }
 
-        // Optimization: replace vector constructor calls with constant loads when all arguments are numbers
-        if (bfid == LBF_VECTOR && expr->args.size == 3 && targetCount == 1 && isConstant(expr->args.data[0]) && isConstant(expr->args.data[1]) && isConstant(expr->args.data[2]))
-        {
-            Constant cx = getConstant(expr->args.data[0]);
-            Constant cy = getConstant(expr->args.data[1]);
-            Constant cz = getConstant(expr->args.data[2]);
-
-            if (cx.type == Constant::Type_Number && cy.type == Constant::Type_Number && cz.type == Constant::Type_Number)
-            {
-                double x = cx.valueNumber;
-                double y = cy.valueNumber;
-                double z = cz.valueNumber;
-
-                int32_t cid = bytecode.addConstantVector(x, y, z);
-                if (cid < 0)
-                    CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
-
-                emitLoadK(target, cid);
-                return;
-            }
-        }
-
         if (expr->self)
         {
             AstExprIndexName* fi = expr->func->as<AstExprIndexName>();
@@ -2082,6 +2060,13 @@ struct Compiler
 
                 emitLoadK(target, cid);
             }
+        }
+        break;
+
+        case Constant::Type_Vector:
+        {
+            int32_t cid = bytecode.addConstantVector(cv->valueVector[0], cv->valueVector[1], cv->valueVector[2]);
+            emitLoadK(target, cid);
         }
         break;
 
