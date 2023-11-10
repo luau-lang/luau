@@ -1100,6 +1100,13 @@ struct Compiler
         return cv && cv->type != Constant::Type_Unknown && !cv->isTruthful();
     }
 
+    bool isConstantVector(AstExpr* node)
+    {
+        const Constant* cv = constants.find(node);
+
+        return cv && cv->type == Constant::Type_Vector;
+    }
+
     Constant getConstant(AstExpr* node)
     {
         const Constant* cv = constants.find(node);
@@ -1122,6 +1129,10 @@ struct Compiler
             if (operandIsConstant)
                 std::swap(left, right);
         }
+
+        // disable fast path for vectors because supporting it would require a new opcode
+        if (isConstantVector(right))
+            operandIsConstant = false;
 
         uint8_t rl = compileExprAuto(left, rs);
 
