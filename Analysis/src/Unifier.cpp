@@ -19,10 +19,10 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauTransitiveSubtyping, false)
-LUAU_FASTFLAGVARIABLE(LuauOccursIsntAlwaysFailure, false)
 LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering, false)
+LUAU_FASTFLAGVARIABLE(LuauUnifierShouldNotCopyError, false)
 
 namespace Luau
 {
@@ -2873,7 +2873,7 @@ bool Unifier::occursCheck(TypeId needle, TypeId haystack, bool reversed)
 
     bool occurs = occursCheck(sharedState.tempSeenTy, needle, haystack);
 
-    if (occurs && FFlag::LuauOccursIsntAlwaysFailure)
+    if (occurs)
     {
         Unifier innerState = makeChildUnifier();
         if (const UnionType* ut = get<UnionType>(haystack))
@@ -2931,15 +2931,7 @@ bool Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId hays
         ice("Expected needle to be free");
 
     if (needle == haystack)
-    {
-        if (!FFlag::LuauOccursIsntAlwaysFailure)
-        {
-            reportError(location, OccursCheckFailed{});
-            log.replace(needle, *builtinTypes->errorRecoveryType());
-        }
-
         return true;
-    }
 
     if (log.getMutable<FreeType>(haystack) || (hideousFixMeGenericsAreActuallyFree && log.is<GenericType>(haystack)))
         return false;
@@ -2963,10 +2955,13 @@ bool Unifier::occursCheck(TypePackId needle, TypePackId haystack, bool reversed)
 
     bool occurs = occursCheck(sharedState.tempSeenTp, needle, haystack);
 
-    if (occurs && FFlag::LuauOccursIsntAlwaysFailure)
+    if (occurs)
     {
         reportError(location, OccursCheckFailed{});
-        log.replace(needle, *builtinTypes->errorRecoveryTypePack());
+        if (FFlag::LuauUnifierShouldNotCopyError)
+            log.replace(needle, BoundTypePack{builtinTypes->errorRecoveryTypePack()});
+        else
+            log.replace(needle, *builtinTypes->errorRecoveryTypePack());
     }
 
     return occurs;
@@ -2993,15 +2988,7 @@ bool Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
     while (!log.getMutable<ErrorType>(haystack))
     {
         if (needle == haystack)
-        {
-            if (!FFlag::LuauOccursIsntAlwaysFailure)
-            {
-                reportError(location, OccursCheckFailed{});
-                log.replace(needle, *builtinTypes->errorRecoveryTypePack());
-            }
-
             return true;
-        }
 
         if (auto a = get<TypePack>(haystack); a && a->tail)
         {

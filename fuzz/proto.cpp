@@ -20,24 +20,31 @@
 #include "lualib.h"
 
 #include <chrono>
+#include <cstring>
+
+static bool getEnvParam(const char* name, bool def)
+{
+    char* val = getenv(name);
+    if (val == nullptr)
+        return def;
+    else
+        return strcmp(val, "0") != 0;
+}
 
 // Select components to fuzz
-const bool kFuzzCompiler = true;
-const bool kFuzzLinter = true;
-const bool kFuzzTypeck = true;
-const bool kFuzzVM = true;
-const bool kFuzzTranspile = true;
-const bool kFuzzCodegenVM = true;
-const bool kFuzzCodegenAssembly = true;
+const bool kFuzzCompiler = getEnvParam("LUAU_FUZZ_COMPILER", true);
+const bool kFuzzLinter = getEnvParam("LUAU_FUZZ_LINTER", true);
+const bool kFuzzTypeck = getEnvParam("LUAU_FUZZ_TYPE_CHECK", true);
+const bool kFuzzVM = getEnvParam("LUAU_FUZZ_VM", true);
+const bool kFuzzTranspile = getEnvParam("LUAU_FUZZ_TRANSPILE", true);
+const bool kFuzzCodegenVM = getEnvParam("LUAU_FUZZ_CODEGEN_VM", true);
+const bool kFuzzCodegenAssembly = getEnvParam("LUAU_FUZZ_CODEGEN_ASM", true);
+const bool kFuzzUseNewSolver = getEnvParam("LUAU_FUZZ_NEW_SOLVER", false);
 
 // Should we generate type annotations?
-const bool kFuzzTypes = true;
+const bool kFuzzTypes = getEnvParam("LUAU_FUZZ_GEN_TYPES", true);
 
 const Luau::CodeGen::AssemblyOptions::Target kFuzzCodegenTarget = Luau::CodeGen::AssemblyOptions::A64;
-
-static_assert(!(kFuzzVM && !kFuzzCompiler), "VM requires the compiler!");
-static_assert(!(kFuzzCodegenVM && !kFuzzCompiler), "Codegen requires the compiler!");
-static_assert(!(kFuzzCodegenAssembly && !kFuzzCompiler), "Codegen requires the compiler!");
 
 std::vector<std::string> protoprint(const luau::ModuleSet& stat, bool types);
 
@@ -49,6 +56,7 @@ LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 std::chrono::milliseconds kInterruptTimeout(10);
 std::chrono::time_point<std::chrono::system_clock> interruptDeadline;
@@ -218,6 +226,13 @@ static std::vector<std::string> debugsources;
 
 DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
 {
+    if (!kFuzzCompiler && (kFuzzCodegenAssembly || kFuzzCodegenVM || kFuzzVM))
+    {
+        printf("Compiler is required in order to fuzz codegen or the VM\n");
+        LUAU_ASSERT(false);
+        return;
+    }
+
     FInt::LuauTypeInferRecursionLimit.value = 100;
     FInt::LuauTypeInferTypePackLoopLimit.value = 100;
     FInt::LuauCheckRecursionLimit.value = 100;
@@ -231,6 +246,7 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
 
     FFlag::DebugLuauFreezeArena.value = true;
     FFlag::DebugLuauAbortingChecks.value = true;
+    FFlag::DebugLuauDeferredConstraintResolution.value = kFuzzUseNewSolver;
 
     std::vector<std::string> sources = protoprint(message, kFuzzTypes);
 

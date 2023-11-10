@@ -160,8 +160,8 @@ do
   -- surrogates
   assert(utf8.codepoint("\u{D7FF}") == 0xD800 - 1)
   assert(utf8.codepoint("\u{E000}") == 0xDFFF + 1)
-  assert(utf8.codepoint("\u{D800}", 1, 1) == 0xD800) -- TODO: this is an error in Lua 5.4
-  assert(utf8.codepoint("\u{DFFF}", 1, 1) == 0xDFFF) -- TODO: this is an error in Lua 5.4
+  assert(pcall(utf8.codepoint, "\u{D800}") == false) -- allowed in Luau 5.4 when called with lax=true
+  assert(pcall(utf8.codepoint, "\u{DFFF}") == false) -- allowed in Luau 5.4 when called with lax=true
   assert(pcall(utf8.codepoint, "\253\191\191\191\191\191") == false) -- 0x7FFFFFFF in Lua 5.4 when called with lax=true
 end
 
@@ -183,8 +183,8 @@ end
 invalid("\xF4\x9F\xBF\xBF")
 
 -- surrogates
--- invalid("\u{D800}") TODO: this is an error in Lua 5.4
--- invalid("\u{DFFF}") TODO: this is an error in Lua 5.4
+invalid("\u{D800}")
+invalid("\u{DFFF}")
 
 -- overlong sequences
 invalid("\xC0\x80")          -- zero

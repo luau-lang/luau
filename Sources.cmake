@@ -185,6 +185,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Refinement.h
     Analysis/include/Luau/RequireTracer.h
     Analysis/include/Luau/Scope.h
+    Analysis/include/Luau/Set.h
     Analysis/include/Luau/Simplify.h
     Analysis/include/Luau/Substitution.h
     Analysis/include/Luau/Subtyping.h
@@ -419,6 +420,7 @@ if(TARGET Luau.UnitTest)
         tests/RuntimeLimits.test.cpp
         tests/ScopedFlags.h
         tests/Simplify.test.cpp
+        tests/Set.test.cpp
         tests/StringUtils.test.cpp
         tests/Subtyping.test.cpp
         tests/Symbol.test.cpp

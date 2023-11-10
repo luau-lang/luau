@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <string.h>
 
-LUAU_FASTFLAG(LuauFloorDivision)
 
 namespace Luau
 {
@@ -1283,8 +1282,6 @@ void BytecodeBuilder::validateInstructions() const
         case LOP_IDIV:
         case LOP_MOD:
         case LOP_POW:
-            LUAU_ASSERT(FFlag::LuauFloorDivision || op != LOP_IDIV);
-
             VREG(LUAU_INSN_A(insn));
             VREG(LUAU_INSN_B(insn));
             VREG(LUAU_INSN_C(insn));
@@ -1297,8 +1294,6 @@ void BytecodeBuilder::validateInstructions() const
         case LOP_IDIVK:
         case LOP_MODK:
         case LOP_POWK:
-            LUAU_ASSERT(FFlag::LuauFloorDivision || op != LOP_IDIVK);
-
             VREG(LUAU_INSN_A(insn));
             VREG(LUAU_INSN_B(insn));
             VCONST(LUAU_INSN_C(insn), Number);
@@ -1866,8 +1861,6 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_IDIV:
-        LUAU_ASSERT(FFlag::LuauFloorDivision);
-
         formatAppend(result, "IDIV R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
         break;
 
@@ -1904,8 +1897,6 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_IDIVK:
-        LUAU_ASSERT(FFlag::LuauFloorDivision);
-
         formatAppend(result, "IDIVK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
         dumpConstant(result, LUAU_INSN_C(insn));
         result.append("]\n");

@@ -99,6 +99,8 @@ struct Fixture
 
     ScopedFastFlag sff_DebugLuauFreezeArena;
 
+    ScopedFastFlag luauBufferTypeck{"LuauBufferTypeck", true};
+
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;
     NullModuleResolver moduleResolver;
@@ -185,17 +187,9 @@ struct DifferFixtureGeneric : BaseFixture
     void compareNe(TypeId left, std::optional<std::string> symbolLeft, TypeId right, std::optional<std::string> symbolRight,
         const std::string& expectedMessage, bool multiLine)
     {
-        std::string diffMessage;
-        try
-        {
-            DifferResult diffRes = diffWithSymbols(left, right, symbolLeft, symbolRight);
-            REQUIRE_MESSAGE(diffRes.diffError.has_value(), "Differ did not report type error, even though types are unequal");
-            diffMessage = diffRes.diffError->toString(multiLine);
-        }
-        catch (const InternalCompilerError& e)
-        {
-            REQUIRE_MESSAGE(false, ("InternalCompilerError: " + e.message));
-        }
+        DifferResult diffRes = diffWithSymbols(left, right, symbolLeft, symbolRight);
+        REQUIRE_MESSAGE(diffRes.diffError.has_value(), "Differ did not report type error, even though types are unequal");
+        std::string diffMessage = diffRes.diffError->toString(multiLine);
         CHECK_EQ(expectedMessage, diffMessage);
     }
 
@@ -216,15 +210,10 @@ struct DifferFixtureGeneric : BaseFixture
 
     void compareEq(TypeId left, TypeId right)
     {
-        try
-        {
-            DifferResult diffRes = diff(left, right);
-            CHECK_MESSAGE(!diffRes.diffError.has_value(), diffRes.diffError->toString());
-        }
-        catch (const InternalCompilerError& e)
-        {
-            REQUIRE_MESSAGE(false, ("InternalCompilerError: " + e.message));
-        }
+        DifferResult diffRes = diff(left, right);
+        CHECK(!diffRes.diffError);
+        if (diffRes.diffError)
+            INFO(diffRes.diffError->toString());
     }
 
     void compareTypesEq(const std::string& leftSymbol, const std::string& rightSymbol)

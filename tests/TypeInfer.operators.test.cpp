@@ -17,6 +17,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauRemoveBadRelationalOperatorWarning)
 
 TEST_SUITE_BEGIN("TypeInferOperators");
 
@@ -147,8 +148,6 @@ TEST_CASE_FIXTURE(Fixture, "some_primitive_binary_ops")
 
 TEST_CASE_FIXTURE(Fixture, "floor_division_binary_op")
 {
-    ScopedFastFlag sffs{"LuauFloorDivision", true};
-
     CheckResult result = check(R"(
         local a = 4 // 8
         local b = -4 // 9 
@@ -768,6 +767,13 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
         local foo = a < b
     )");
 
+    // If DCR is off and the flag to remove this check in the old solver is on, the expected behavior is no errors.
+    if (!FFlag::DebugLuauDeferredConstraintResolution && FFlag::LuauRemoveBadRelationalOperatorWarning)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        return;
+    }
+
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
@@ -786,8 +792,6 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
 
 TEST_CASE_FIXTURE(Fixture, "cli_38355_recursive_union")
 {
-    ScopedFastFlag sff{"LuauOccursIsntAlwaysFailure", true};
-
     CheckResult result = check(R"(
         --!strict
         local _
@@ -1028,8 +1032,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_division")
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_for_generic_floor_division")
 {
-    ScopedFastFlag floorDiv{"LuauFloorDivision", true};
-
     CheckResult result = check(Mode::Strict, R"(
         local function f(x, y)
             return x // y
@@ -1450,6 +1452,26 @@ local function sortKeysForPrinting(a: any, b)
 end
 )");
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "compare_singleton_string_to_string")
+{
+    CheckResult result = check(R"(
+        local function test(a: string, b: string)
+            if a == "Pet" and b == "Pet" then
+                return true
+            elseif a ~= b then
+                return a < b
+            else
+                return false
+            end
+        end
+)");
+
+    if (FFlag::LuauRemoveBadRelationalOperatorWarning)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_SUITE_END();

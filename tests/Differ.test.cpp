@@ -154,7 +154,7 @@ TEST_CASE_FIXTURE(DifferFixture, "left_cyclic_table_right_table_property_wrong")
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = foo
@@ -172,7 +172,7 @@ TEST_CASE_FIXTURE(DifferFixture, "right_cyclic_table_left_table_missing_property
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = foo
@@ -190,7 +190,7 @@ TEST_CASE_FIXTURE(DifferFixture, "right_cyclic_table_left_table_property_wrong")
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = foo
@@ -208,7 +208,7 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_table_two_cyclic_tables_are_not_differen
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = foo
@@ -226,7 +226,7 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_table_two_shifted_circles_are_not_differ
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = id({})
@@ -254,7 +254,7 @@ TEST_CASE_FIXTURE(DifferFixture, "table_left_circle_right_measuring_tape")
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = id({})
@@ -281,7 +281,7 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_table_measuring_tapes")
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = id({})
@@ -305,7 +305,7 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_table_A_B_C")
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = id({})
@@ -774,7 +774,7 @@ TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "negation")
         if typeof(almostBar.x.y) ~= "number" then
             almostFoo = almostBar
         end
-            
+
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 

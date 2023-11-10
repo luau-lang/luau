@@ -1337,7 +1337,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_type_group")
 TEST_CASE_FIXTURE(Fixture, "can_parse_complex_unions_successfully")
 {
     ScopedFastInt sfis[] = {{"LuauRecursionLimit", 10}, {"LuauTypeLengthLimit", 10}};
-    ScopedFastFlag sff{"LuauBetterTypeUnionLimits", true};
 
     parse(R"(
 local f:
@@ -1959,8 +1958,6 @@ TEST_CASE_FIXTURE(Fixture, "class_method_properties")
 
 TEST_CASE_FIXTURE(Fixture, "class_indexer")
 {
-    ScopedFastFlag LuauParseDeclareClassIndexer("LuauParseDeclareClassIndexer", true);
-
     AstStatBlock* stat = parseEx(R"(
         declare class Foo
             prop: boolean

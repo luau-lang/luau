@@ -92,4 +92,229 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "independent_locals")
     REQUIRE(x != y);
 }
 
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "phi")
+{
+    dfg(R"(
+        local x
+
+        if a then
+            x = true
+        end
+
+        local y = x
+    )");
+
+    DefId y = getDef<AstExprLocal, 2>();
+
+    const Phi* phi = get<Phi>(y);
+    CHECK(phi);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_not_owned_by_while")
+{
+    dfg(R"(
+        local x
+
+        while cond() do
+            x = true
+        end
+
+        local y = x
+    )");
+
+    DefId x0 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId x1 = getDef<AstExprLocal, 1>(); // x = true
+    DefId x2 = getDef<AstExprLocal, 2>(); // local y = x
+
+    CHECK(x0 == x1);
+    CHECK(x1 == x2);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_owned_by_while")
+{
+    dfg(R"(
+        while cond() do
+            local x
+            x = true
+            x = 5
+        end
+    )");
+
+    DefId x0 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId x1 = getDef<AstExprLocal, 1>(); // x = true
+    DefId x2 = getDef<AstExprLocal, 2>(); // x = 5
+
+    CHECK(x0 != x1);
+    CHECK(x1 != x2);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_not_owned_by_repeat")
+{
+    dfg(R"(
+        local x
+
+        repeat
+            x = true
+        until cond()
+
+        local y = x
+    )");
+
+    DefId x0 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId x1 = getDef<AstExprLocal, 1>(); // x = true
+    DefId x2 = getDef<AstExprLocal, 2>(); // local y = x
+
+    CHECK(x0 == x1);
+    CHECK(x1 == x2);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_owned_by_repeat")
+{
+    dfg(R"(
+        repeat
+            local x
+            x = true
+            x = 5
+        until cond()
+    )");
+
+    DefId x0 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId x1 = getDef<AstExprLocal, 1>(); // x = true
+    DefId x2 = getDef<AstExprLocal, 2>(); // x = 5
+
+    CHECK(x0 != x1);
+    CHECK(x1 != x2);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_not_owned_by_for")
+{
+    dfg(R"(
+        local x
+
+        for i = 0, 5 do
+            x = true
+        end
+
+        local y = x
+    )");
+
+    DefId x0 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId x1 = getDef<AstExprLocal, 1>(); // x = true
+    DefId x2 = getDef<AstExprLocal, 2>(); // local y = x
+
+    CHECK(x0 == x1);
+    CHECK(x1 == x2);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_owned_by_for")
+{
+    dfg(R"(
+        for i = 0, 5 do
+            local x
+            x = true
+            x = 5
+        end
+    )");
+
+    DefId x0 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId x1 = getDef<AstExprLocal, 1>(); // x = true
+    DefId x2 = getDef<AstExprLocal, 2>(); // x = 5
+
+    CHECK(x0 != x1);
+    CHECK(x1 != x2);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_not_owned_by_for_in")
+{
+    dfg(R"(
+        local x
+
+        for i, v in t do
+            x = true
+        end
+
+        local y = x
+    )");
+
+    DefId x0 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId x1 = getDef<AstExprLocal, 1>(); // x = true
+    DefId x2 = getDef<AstExprLocal, 2>(); // local y = x
+
+    CHECK(x0 == x1);
+    CHECK(x1 == x2);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_local_owned_by_for_in")
+{
+    dfg(R"(
+        for i, v in t do
+            local x
+            x = true
+            x = 5
+        end
+    )");
+
+    DefId x0 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId x1 = getDef<AstExprLocal, 1>(); // x = true
+    DefId x2 = getDef<AstExprLocal, 2>(); // x = 5
+
+    CHECK(x0 != x1);
+    CHECK(x1 != x2);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_preexisting_property_not_owned_by_while")
+{
+    dfg(R"(
+        local t = {}
+        t.x = 5
+
+        while cond() do
+            t.x = true
+        end
+
+        local y = t.x
+    )");
+
+    DefId x1 = getDef<AstExprIndexName, 1>(); // t.x = 5
+    DefId x2 = getDef<AstExprIndexName, 2>(); // t.x = true
+    DefId x3 = getDef<AstExprIndexName, 3>(); // local y = t.x
+
+    CHECK(x1 == x2);
+    CHECK(x2 == x3);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_non_preexisting_property_not_owned_by_while")
+{
+    dfg(R"(
+        local t = {}
+
+        while cond() do
+            t.x = true
+        end
+
+        local y = t.x
+    )");
+
+    DefId x1 = getDef<AstExprIndexName, 1>(); // t.x = true
+    DefId x2 = getDef<AstExprIndexName, 2>(); // local y = t.x
+
+    CHECK(x1 == x2);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_property_of_table_owned_by_while")
+{
+    dfg(R"(
+        while cond() do
+            local t = {}
+            t.x = true
+            t.x = 5
+        end
+    )");
+
+    DefId x1 = getDef<AstExprIndexName, 1>(); // t.x = true
+    DefId x2 = getDef<AstExprIndexName, 2>(); // t.x = 5
+
+    CHECK(x1 != x2);
+}
+
 TEST_SUITE_END();

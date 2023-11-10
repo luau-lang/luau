@@ -9,8 +9,6 @@
 
 #define LUA_STRFTIMEOPTIONS "aAbBcdHIjmMpSUwWxXyYzZ%"
 
-LUAU_FASTFLAGVARIABLE(LuauOsTimegm, false)
-
 #if defined(_WIN32)
 static tm* gmtime_r(const time_t* timep, tm* result)
 {
@@ -21,19 +19,10 @@ static tm* localtime_r(const time_t* timep, tm* result)
 {
     return localtime_s(result, timep) == 0 ? result : NULL;
 }
-
-static time_t timegm(struct tm* timep)
-{
-    LUAU_ASSERT(!FFlag::LuauOsTimegm);
-
-    return _mkgmtime(timep);
-}
 #endif
 
 static time_t os_timegm(struct tm* timep)
 {
-    LUAU_ASSERT(FFlag::LuauOsTimegm);
-
     // Julian day number calculation
     int day = timep->tm_mday;
     int month = timep->tm_mon + 1;
@@ -206,10 +195,7 @@ static int os_time(lua_State* L)
         ts.tm_isdst = getboolfield(L, "isdst");
 
         // Note: upstream Lua uses mktime() here which assumes input is local time, but we prefer UTC for consistency
-        if (FFlag::LuauOsTimegm)
-            t = os_timegm(&ts);
-        else
-            t = timegm(&ts);
+        t = os_timegm(&ts);
     }
     if (t == (time_t)(-1))
         lua_pushnil(L);

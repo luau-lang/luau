@@ -3,6 +3,8 @@
 MAKEFLAGS+=-r -j8
 COMMA=,
 
+CMAKE_PATH=cmake
+
 config=debug
 protobuf=system
 
@@ -101,7 +103,6 @@ ifeq ($(config),analyze)
 endif
 
 ifeq ($(config),fuzz)
-	CXX=clang++ # our fuzzing infra relies on llvm fuzzer
 	CXXFLAGS+=-fsanitize=address,fuzzer -Ibuild/libprotobuf-mutator -O2
 	LDFLAGS+=-fsanitize=address,fuzzer
 	LPROTOBUF=-lprotobuf
@@ -252,12 +253,13 @@ fuzz/luau.pb.cpp: fuzz/luau.proto build/libprotobuf-mutator
 
 $(BUILD)/fuzz/proto.cpp.o: fuzz/luau.pb.cpp
 $(BUILD)/fuzz/protoprint.cpp.o: fuzz/luau.pb.cpp
+$(BUILD)/fuzz/prototest.cpp.o: fuzz/luau.pb.cpp
 
 build/libprotobuf-mutator:
 	git clone https://github.com/google/libprotobuf-mutator build/libprotobuf-mutator
 	git -C build/libprotobuf-mutator checkout 212a7be1eb08e7f9c79732d2aab9b2097085d936
-	CXX= cmake -S build/libprotobuf-mutator -B build/libprotobuf-mutator $(DPROTOBUF)
-	make -C build/libprotobuf-mutator -j8
+	$(CMAKE_PATH) -DCMAKE_CXX_COMPILER=$(CMAKE_CXX) -DCMAKE_C_COMPILER=$(CMAKE_CC) -DCMAKE_CXX_COMPILER_LAUNCHER=$(CMAKE_PROXY) -S build/libprotobuf-mutator -B build/libprotobuf-mutator $(DPROTOBUF)
+	$(MAKE) -C build/libprotobuf-mutator
 
 # picks up include dependencies for all object files
 -include $(OBJECTS:.o=.d)

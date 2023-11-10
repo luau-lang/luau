@@ -4,7 +4,6 @@
 #include "Luau/TypeFwd.h"
 #include "Luau/Variant.h"
 #include "Luau/NotNull.h"
-#include "Luau/TypeOrPack.h"
 
 #include <optional>
 #include <string>
@@ -153,6 +152,16 @@ struct Path
     }
 };
 
+struct PathHash
+{
+    size_t operator()(const Property& prop) const;
+    size_t operator()(const Index& idx) const;
+    size_t operator()(const TypeField& field) const;
+    size_t operator()(const PackField& field) const;
+    size_t operator()(const Component& component) const;
+    size_t operator()(const Path& path) const;
+};
+
 /// The canonical "empty" Path, meaning a Path with no components.
 static const Path kEmpty{};
 
@@ -184,7 +193,7 @@ using Path = TypePath::Path;
 
 /// Converts a Path to a string for debugging purposes. This output may not be
 /// terribly clear to end users of the Luau type system.
-std::string toString(const TypePath::Path& path);
+std::string toString(const TypePath::Path& path, bool prefixDot = false);
 
 std::optional<TypeOrPack> traverse(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes);
 std::optional<TypeOrPack> traverse(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes);

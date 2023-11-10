@@ -3,7 +3,9 @@
 
 #include "Luau/Ast.h"
 #include "Luau/Common.h"
+#include "Luau/Simplify.h"
 #include "Luau/Type.h"
+#include "Luau/Simplify.h"
 #include "Luau/Subtyping.h"
 #include "Luau/Normalize.h"
 #include "Luau/Error.h"
@@ -64,14 +66,43 @@ struct NonStrictContext
     NonStrictContext(NonStrictContext&&) = default;
     NonStrictContext& operator=(NonStrictContext&&) = default;
 
-    void unionContexts(const NonStrictContext& other)
+    static NonStrictContext disjunction(
+        NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, const NonStrictContext& left, const NonStrictContext& right)
     {
-        // TODO: unimplemented
+        // disjunction implements union over the domain of keys
+        // if the default value for a defId not in the map is `never`
+        // then never | T is T
+        NonStrictContext disj{};
+
+        for (auto [def, leftTy] : left.context)
+        {
+            if (std::optional<TypeId> rightTy = right.find(def))
+                disj.context[def] = simplifyUnion(builtinTypes, arena, leftTy, *rightTy).result;
+            else
+                disj.context[def] = leftTy;
+        }
+
+        for (auto [def, rightTy] : right.context)
+        {
+            if (!right.find(def).has_value())
+                disj.context[def] = rightTy;
+        }
+
+        return disj;
     }
 
-    void intersectContexts(const NonStrictContext& other)
+    static NonStrictContext conjunction(
+        NotNull<BuiltinTypes> builtins, NotNull<TypeArena> arena, const NonStrictContext& left, const NonStrictContext& right)
     {
-        // TODO: unimplemented
+        NonStrictContext conj{};
+
+        for (auto [def, leftTy] : left.context)
+        {
+            if (std::optional<TypeId> rightTy = right.find(def))
+                conj.context[def] = simplifyIntersection(builtins, arena, leftTy, *rightTy).result;
+        }
+
+        return conj;
     }
 
     void removeFromContext(const std::vector<DefId>& defs)
@@ -82,6 +113,12 @@ struct NonStrictContext
     std::optional<TypeId> find(const DefId& def) const
     {
         const Def* d = def.get();
+        return find(d);
+    }
+
+private:
+    std::optional<TypeId> find(const Def* d) const
+    {
         auto it = context.find(d);
         if (it != context.end())
             return {it->second};
@@ -180,153 +217,260 @@ struct NonStrictTypeChecker
         return builtinTypes->anyType;
     }
 
-
-    void visit(AstStat* stat)
-    {
-        NonStrictContext fresh{};
-        visit(stat, fresh);
-    }
-
-    void visit(AstStat* stat, NonStrictContext& context)
+    NonStrictContext visit(AstStat* stat)
     {
         auto pusher = pushStack(stat);
         if (auto s = stat->as<AstStatBlock>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatIf>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatWhile>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatRepeat>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatBreak>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatContinue>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatReturn>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatExpr>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatLocal>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatFor>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatForIn>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatAssign>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatCompoundAssign>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatFunction>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatLocalFunction>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatTypeAlias>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatDeclareFunction>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatDeclareGlobal>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatDeclareClass>())
-            return visit(s, context);
+            return visit(s);
         else if (auto s = stat->as<AstStatError>())
-            return visit(s, context);
+            return visit(s);
         else
-            LUAU_ASSERT(!"NonStrictTypeChecker  encountered an unknown node type");
+        {
+            LUAU_ASSERT(!"NonStrictTypeChecker encountered an unknown statement type");
+            ice->ice("NonStrictTypeChecker encountered an unknown statement type");
+        }
     }
 
-    void visit(AstStatBlock* block, NonStrictContext& context)
+    NonStrictContext visit(AstStatBlock* block)
     {
         auto StackPusher = pushStack(block);
         for (AstStat* statement : block->body)
-            visit(statement, context);
+            visit(statement);
+        return {};
     }
 
-    void visit(AstStatIf* ifStatement, NonStrictContext& context) {}
-    void visit(AstStatWhile* whileStatement, NonStrictContext& context) {}
-    void visit(AstStatRepeat* repeatStatement, NonStrictContext& context) {}
-    void visit(AstStatBreak* breakStatement, NonStrictContext& context) {}
-    void visit(AstStatContinue* continueStatement, NonStrictContext& context) {}
-    void visit(AstStatReturn* returnStatement, NonStrictContext& context) {}
-    void visit(AstStatExpr* expr, NonStrictContext& context)
+    NonStrictContext visit(AstStatIf* ifStatement)
     {
-        visit(expr->expr, context);
+        NonStrictContext condB = visit(ifStatement->condition);
+        NonStrictContext thenB = visit(ifStatement->thenbody);
+        NonStrictContext elseB = visit(ifStatement->elsebody);
+        return NonStrictContext::disjunction(
+            builtinTypes, NotNull{&arena}, condB, NonStrictContext::conjunction(builtinTypes, NotNull{&arena}, thenB, elseB));
     }
-    void visit(AstStatLocal* local, NonStrictContext& context) {}
-    void visit(AstStatFor* forStatement, NonStrictContext& context) {}
-    void visit(AstStatForIn* forInStatement, NonStrictContext& context) {}
-    void visit(AstStatAssign* assign, NonStrictContext& context) {}
-    void visit(AstStatCompoundAssign* compoundAssign, NonStrictContext& context) {}
-    void visit(AstStatFunction* statFn, NonStrictContext& context) {}
-    void visit(AstStatLocalFunction* localFn, NonStrictContext& context) {}
-    void visit(AstStatTypeAlias* typeAlias, NonStrictContext& context) {}
-    void visit(AstStatDeclareFunction* declFn, NonStrictContext& context) {}
-    void visit(AstStatDeclareGlobal* declGlobal, NonStrictContext& context) {}
-    void visit(AstStatDeclareClass* declClass, NonStrictContext& context) {}
-    void visit(AstStatError* error, NonStrictContext& context) {}
 
-    void visit(AstExpr* expr, NonStrictContext& context)
+    NonStrictContext visit(AstStatWhile* whileStatement)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatRepeat* repeatStatement)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatBreak* breakStatement)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatContinue* continueStatement)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatReturn* returnStatement)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatExpr* expr)
+    {
+        return visit(expr->expr);
+    }
+
+    NonStrictContext visit(AstStatLocal* local)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatFor* forStatement)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatForIn* forInStatement)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatAssign* assign)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatCompoundAssign* compoundAssign)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatFunction* statFn)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatLocalFunction* localFn)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatTypeAlias* typeAlias)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatDeclareFunction* declFn)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatDeclareGlobal* declGlobal)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatDeclareClass* declClass)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatError* error)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstExpr* expr)
     {
         auto pusher = pushStack(expr);
         if (auto e = expr->as<AstExprGroup>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprConstantNil>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprConstantBool>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprConstantNumber>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprConstantString>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprLocal>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprGlobal>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprVarargs>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprCall>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprIndexName>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprIndexExpr>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprFunction>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprTable>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprUnary>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprBinary>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprTypeAssertion>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprIfElse>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprInterpString>())
-            return visit(e, context);
+            return visit(e);
         else if (auto e = expr->as<AstExprError>())
-            return visit(e, context);
+            return visit(e);
         else
+        {
             LUAU_ASSERT(!"NonStrictTypeChecker encountered an unknown expression type");
+            ice->ice("NonStrictTypeChecker encountered an unknown expression type");
+        }
     }
 
-    void visit(AstExprGroup* group, NonStrictContext& context) {}
-    void visit(AstExprConstantNil* expr, NonStrictContext& context) {}
-    void visit(AstExprConstantBool* expr, NonStrictContext& context) {}
-    void visit(AstExprConstantNumber* expr, NonStrictContext& context) {}
-    void visit(AstExprConstantString* expr, NonStrictContext& context) {}
-    void visit(AstExprLocal* local, NonStrictContext& context) {}
-    void visit(AstExprGlobal* global, NonStrictContext& context) {}
-    void visit(AstExprVarargs* global, NonStrictContext& context) {}
-
-    void visit(AstExprCall* call, NonStrictContext& context)
+    NonStrictContext visit(AstExprGroup* group)
     {
+        return {};
+    }
+
+    NonStrictContext visit(AstExprConstantNil* expr)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstExprConstantBool* expr)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstExprConstantNumber* expr)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstExprConstantString* expr)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstExprLocal* local)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstExprGlobal* global)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstExprVarargs* global)
+    {
+        return {};
+    }
+
+
+    NonStrictContext visit(AstExprCall* call)
+    {
+        NonStrictContext fresh{};
         TypeId* originalCallTy = module->astOriginalCallTypes.find(call);
         if (!originalCallTy)
-            return;
+            return fresh;
 
         TypeId fnTy = *originalCallTy;
-        // TODO: how should we link this to the passed in context here
-        NonStrictContext fresh{};
         if (auto fn = get<FunctionType>(follow(fnTy)))
         {
             if (fn->isCheckedFunction)
@@ -369,21 +513,64 @@ struct NonStrictTypeChecker
                 }
             }
         }
+
+        return fresh;
     }
 
-    void visit(AstExprIndexName* indexName, NonStrictContext& context) {}
-    void visit(AstExprIndexExpr* indexExpr, NonStrictContext& context) {}
-    void visit(AstExprFunction* exprFn, NonStrictContext& context)
+    NonStrictContext visit(AstExprIndexName* indexName)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstExprIndexExpr* indexExpr)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstExprFunction* exprFn)
     {
         auto pusher = pushStack(exprFn);
+        return {};
     }
-    void visit(AstExprTable* table, NonStrictContext& context) {}
-    void visit(AstExprUnary* unary, NonStrictContext& context) {}
-    void visit(AstExprBinary* binary, NonStrictContext& context) {}
-    void visit(AstExprTypeAssertion* typeAssertion, NonStrictContext& context) {}
-    void visit(AstExprIfElse* ifElse, NonStrictContext& context) {}
-    void visit(AstExprInterpString* interpString, NonStrictContext& context) {}
-    void visit(AstExprError* error, NonStrictContext& context) {}
+
+    NonStrictContext visit(AstExprTable* table)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstExprUnary* unary)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstExprBinary* binary)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstExprTypeAssertion* typeAssertion)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstExprIfElse* ifElse)
+    {
+        NonStrictContext condB = visit(ifElse->condition);
+        NonStrictContext thenB = visit(ifElse->trueExpr);
+        NonStrictContext elseB = visit(ifElse->falseExpr);
+        return NonStrictContext::disjunction(
+            builtinTypes, NotNull{&arena}, condB, NonStrictContext::conjunction(builtinTypes, NotNull{&arena}, thenB, elseB));
+    }
+
+    NonStrictContext visit(AstExprInterpString* interpString)
+    {
+        return {};
+    }
+
+    NonStrictContext visit(AstExprError* error)
+    {
+        return {};
+    }
 
     void reportError(TypeErrorData data, const Location& location)
     {

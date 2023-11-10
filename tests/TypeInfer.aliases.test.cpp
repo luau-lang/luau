@@ -1048,7 +1048,7 @@ TEST_CASE_FIXTURE(Fixture, "table_types_record_the_property_locations")
     LUAU_REQUIRE_NO_ERRORS(result);
     auto ty = requireTypeAlias("Table");
 
-    auto ttv = Luau::get<Luau::TableType>(ty);
+    auto ttv = Luau::get<Luau::TableType>(follow(ty));
     REQUIRE(ttv);
 
     auto propIt = ttv->props.find("create");

@@ -10,7 +10,6 @@
 #include <limits>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauFloorDivision)
 
 namespace
 {
@@ -474,8 +473,6 @@ struct Printer
             case AstExprBinary::Pow:
             case AstExprBinary::CompareLt:
             case AstExprBinary::CompareGt:
-                LUAU_ASSERT(FFlag::LuauFloorDivision || a->op != AstExprBinary::FloorDiv);
-
                 writer.maybeSpace(a->right->location.begin, 2);
                 writer.symbol(toString(a->op));
                 break;
@@ -761,8 +758,6 @@ struct Printer
                 writer.symbol("/=");
                 break;
             case AstExprBinary::FloorDiv:
-                LUAU_ASSERT(FFlag::LuauFloorDivision);
-
                 writer.maybeSpace(a->value->location.begin, 2);
                 writer.symbol("//=");
                 break;
