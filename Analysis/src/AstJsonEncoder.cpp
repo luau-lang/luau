@@ -8,7 +8,6 @@
 
 #include <math.h>
 
-LUAU_FASTFLAG(LuauFloorDivision);
 LUAU_FASTFLAG(LuauClipExtraHasEndProps);
 
 namespace Luau
@@ -519,7 +518,6 @@ struct AstJsonEncoder : public AstVisitor
         case AstExprBinary::Div:
             return writeString("Div");
         case AstExprBinary::FloorDiv:
-            LUAU_ASSERT(FFlag::LuauFloorDivision);
             return writeString("FloorDiv");
         case AstExprBinary::Mod:
             return writeString("Mod");

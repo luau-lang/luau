@@ -2137,7 +2137,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "num_is_solved_before_num_or_str")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(toString(result.errors.at(0)) == "Type pack 'string' could not be converted into 'number'; at [0], string is not a subtype of number");
+    else
+        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+
     CHECK_EQ("() -> number", toString(requireType("num_or_str")));
 }
 
@@ -2158,7 +2162,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "num_is_solved_after_num_or_str")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(toString(result.errors.at(0)) == "Type pack 'string' could not be converted into 'number'; at [0], string is not a subtype of number");
+    else
+        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
     CHECK_EQ("() -> number", toString(requireType("num_or_str")));
 }
 

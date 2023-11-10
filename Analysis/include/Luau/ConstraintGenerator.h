@@ -148,6 +148,8 @@ private:
      */
     ScopePtr childScope(AstNode* node, const ScopePtr& parent);
 
+    std::optional<TypeId> lookup(Scope* scope, DefId def);
+
     /**
      * Adds a new constraint with no dependencies to a given scope.
      * @param scope the scope to add the constraint to.

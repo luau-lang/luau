@@ -1933,8 +1933,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateHashSlotChecks")
 {
-    ScopedFastFlag luauReuseHashSlots{"LuauReuseHashSlots2", true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
@@ -1991,8 +1989,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateHashSlotChecksAvoidNil")
 {
-    ScopedFastFlag luauReuseHashSlots{"LuauReuseHashSlots2", true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
@@ -3074,8 +3070,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "TagSelfEqualityCheckRemoval")
 {
-    ScopedFastFlag luauMergeTagLoads{"LuauMergeTagLoads", true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp trueBlock = build.block(IrBlockKind::Internal);
     IrOp falseBlock = build.block(IrBlockKind::Internal);
@@ -3133,7 +3127,7 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ToDot")
     updateUseCounts(build.function);
     computeCfgInfo(build.function);
 
-    // note: we don't validate the output of these to avoid test churn when dot formatting changes, but we run these to make sure they don't assert/crash
+    // note: we don't validate the output of these to avoid test churn when formatting changes; we run these to make sure they don't assert/crash
     toDot(build.function, /* includeInst= */ true);
     toDotCfg(build.function);
     toDotDjGraph(build.function);

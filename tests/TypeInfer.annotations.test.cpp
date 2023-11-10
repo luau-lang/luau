@@ -541,10 +541,6 @@ TEST_CASE_FIXTURE(Fixture, "typeof_expr")
 
 TEST_CASE_FIXTURE(Fixture, "corecursive_types_error_on_tight_loop")
 {
-    ScopedFastFlag flags[] = {
-        {"LuauOccursIsntAlwaysFailure", true},
-    };
-
     CheckResult result = check(R"(
         type A = B
         type B = A

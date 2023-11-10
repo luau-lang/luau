@@ -3,7 +3,6 @@
 
 #include "Luau/Common.h"
 
-LUAU_FASTFLAG(LuauFloorDivision);
 
 namespace Luau
 {
@@ -282,7 +281,6 @@ std::string toString(AstExprBinary::Op op)
     case AstExprBinary::Div:
         return "/";
     case AstExprBinary::FloorDiv:
-        LUAU_ASSERT(FFlag::LuauFloorDivision);
         return "//";
     case AstExprBinary::Mod:
         return "%";

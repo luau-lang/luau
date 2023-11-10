@@ -71,7 +71,7 @@ struct SourceNode
 
     ModuleName name;
     std::string humanReadableName;
-    std::unordered_set<ModuleName> requireSet;
+    DenseHashSet<ModuleName> requireSet{{}};
     std::vector<std::pair<ModuleName, Location>> requireLocations;
     bool dirtySourceModule = true;
     bool dirtyModule = true;
@@ -206,7 +206,7 @@ private:
         std::vector<ModuleName>& buildQueue, const ModuleName& root, bool forAutocomplete, std::function<bool(const ModuleName&)> canSkip = {});
 
     void addBuildQueueItems(std::vector<BuildQueueItem>& items, std::vector<ModuleName>& buildQueue, bool cycleDetected,
-        std::unordered_set<Luau::ModuleName>& seen, const FrontendOptions& frontendOptions);
+        DenseHashSet<Luau::ModuleName>& seen, const FrontendOptions& frontendOptions);
     void checkBuildQueueItem(BuildQueueItem& item);
     void checkBuildQueueItems(std::vector<BuildQueueItem>& items);
     void recordItemResult(const BuildQueueItem& item);

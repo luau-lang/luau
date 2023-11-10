@@ -7,6 +7,7 @@
 #include "Luau/Constraint.h"
 #include "Luau/ControlFlow.h"
 #include "Luau/DcrLogger.h"
+#include "Luau/DenseHash.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Refinement.h"
@@ -23,9 +24,7 @@
 LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
-LUAU_FASTFLAG(LuauParseDeclareClassIndexer);
 LUAU_FASTFLAG(LuauLoopControlFlowAnalysis);
-LUAU_FASTFLAG(LuauFloorDivision);
 
 namespace Luau
 {
@@ -204,6 +203,66 @@ ScopePtr ConstraintGenerator::childScope(AstNode* node, const ScopePtr& parent)
     module->astScopes[node] = scope.get();
 
     return scope;
+}
+
+static std::vector<DefId> flatten(const Phi* phi)
+{
+    std::vector<DefId> result;
+
+    std::deque<DefId> queue{phi->operands.begin(), phi->operands.end()};
+    DenseHashSet<const Def*> seen{nullptr};
+
+    while (!queue.empty())
+    {
+        DefId next = queue.front();
+        queue.pop_front();
+
+        // Phi nodes should never be cyclic.
+        LUAU_ASSERT(!seen.find(next));
+        if (seen.find(next))
+            continue;
+        seen.insert(next);
+
+        if (get<Cell>(next))
+            result.push_back(next);
+        else if (auto phi = get<Phi>(next))
+            queue.insert(queue.end(), phi->operands.begin(), phi->operands.end());
+    }
+
+    return result;
+}
+
+std::optional<TypeId> ConstraintGenerator::lookup(Scope* scope, DefId def)
+{
+    if (get<Cell>(def))
+        return scope->lookup(def);
+    if (auto phi = get<Phi>(def))
+    {
+        if (auto found = scope->lookup(def))
+            return *found;
+
+        TypeId res = builtinTypes->neverType;
+
+        for (DefId operand : flatten(phi))
+        {
+            // `scope->lookup(operand)` may return nothing because it could be a phi node of globals, but one of
+            // the operand of that global has never been assigned a type, and so it should be an error.
+            // e.g.
+            // ```
+            // if foo() then
+            //   g = 5
+            // end
+            // -- `g` here is a phi node of the assignment to `g`, or the original revision of `g` before the branch.
+            // ```
+            TypeId ty = scope->lookup(operand).value_or(builtinTypes->errorRecoveryType());
+            res = simplifyUnion(builtinTypes, arena, res, ty).result;
+        }
+
+        scope->lvalueTypes[def] = res;
+        return res;
+    }
+    else
+        ice->ice("ConstraintGenerator::lookup is inexhaustive?");
 }
 
 NotNull<Constraint> ConstraintGenerator::addConstraint(const ScopePtr& scope, const Location& location, ConstraintV cv)
@@ -393,7 +452,7 @@ void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location locat
 
     for (auto& [def, partition] : refinements)
     {
-        if (std::optional<TypeId> defTy = scope->lookup(def))
+        if (std::optional<TypeId> defTy = lookup(scope.get(), def))
         {
             TypeId ty = *defTy;
             if (partition.shouldAppendNilType)
@@ -811,10 +870,10 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
     Checkpoint start = checkpoint(this);
     FunctionSignature sig = checkFunctionSignature(scope, function->func, /* expectedType */ std::nullopt, function->name->location);
 
-    std::unordered_set<Constraint*> excludeList;
+    DenseHashSet<Constraint*> excludeList{nullptr};
 
     DefId def = dfg->getDef(function->name);
-    std::optional<TypeId> existingFunctionTy = scope->lookupLValue(def);
+    std::optional<TypeId> existingFunctionTy = scope->lookup(def);
 
     if (AstExprLocal* localName = function->name->as<AstExprLocal>())
     {
@@ -880,7 +939,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
 
     Constraint* previous = nullptr;
     forEachConstraint(start, end, this, [&c, &excludeList, &previous](const ConstraintPtr& constraint) {
-        if (!excludeList.count(constraint.get()))
+        if (!excludeList.contains(constraint.get()))
             c->dependencies.push_back(NotNull{constraint.get()});
 
         if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
@@ -918,7 +977,11 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatBlock* bloc
     ScopePtr innerScope = childScope(block, scope);
 
     ControlFlow flow = visitBlockWithoutChildScope(innerScope, block);
+
+    // An AstStatBlock has linear control flow, i.e. one entry and one exit, so we can inherit
+    // all the changes to the environment occurred by the statements in that block.
     scope->inheritRefinements(innerScope);
+    scope->inheritAssignments(innerScope);
 
     return flow;
 }
@@ -999,6 +1062,11 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatIf* ifState
         scope->inheritRefinements(elseScope);
     else if (thencf == ControlFlow::None && elsecf != ControlFlow::None)
         scope->inheritRefinements(thenScope);
+
+    if (thencf == ControlFlow::None)
+        scope->inheritAssignments(thenScope);
+    if (elsecf == ControlFlow::None)
+        scope->inheritAssignments(elseScope);
 
     if (FFlag::LuauLoopControlFlowAnalysis && thencf == elsecf)
         return thencf;
@@ -1098,7 +1166,7 @@ static bool isMetamethod(const Name& name)
     return name == "__index" || name == "__newindex" || name == "__call" || name == "__concat" || name == "__unm" || name == "__add" ||
            name == "__sub" || name == "__mul" || name == "__div" || name == "__mod" || name == "__pow" || name == "__tostring" ||
            name == "__metatable" || name == "__eq" || name == "__lt" || name == "__le" || name == "__mode" || name == "__iter" || name == "__len" ||
-           (FFlag::LuauFloorDivision && name == "__idiv");
+           name == "__idiv";
 }
 
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClass* declaredClass)
@@ -1140,7 +1208,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClas
 
     scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
 
-    if (FFlag::LuauParseDeclareClassIndexer && declaredClass->indexer)
+    if (declaredClass->indexer)
     {
         RecursionCounter counter{&recursionCount};
 
@@ -1645,12 +1713,12 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprLocal* local)
 
     // if we have a refinement key, we can look up its type.
     if (key)
-        maybeTy = scope->lookup(key->def);
+        maybeTy = lookup(scope.get(), key->def);
 
     // if the current def doesn't have a type, we might be doing a compound assignment
     // and therefore might need to look at the rvalue def instead.
     if (!maybeTy && rvalueDef)
-        maybeTy = scope->lookup(*rvalueDef);
+        maybeTy = lookup(scope.get(), *rvalueDef);
 
     if (maybeTy)
     {
@@ -1676,11 +1744,11 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprGlobal* globa
     /* prepopulateGlobalScope() has already added all global functions to the environment by this point, so any
      * global that is not already in-scope is definitely an unknown symbol.
      */
-    if (auto ty = scope->lookup(def))
+    if (auto ty = lookup(scope.get(), def))
         return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
     else if (auto ty = scope->lookup(global->name))
     {
-        rootScope->rvalueRefinements[key->def] = *ty;
+        rootScope->lvalueTypes[def] = *ty;
         return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
     }
     else
@@ -1698,7 +1766,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIndexName* in
     const RefinementKey* key = dfg->getRefinementKey(indexName);
     if (key)
     {
-        if (auto ty = scope->lookup(key->def))
+        if (auto ty = lookup(scope.get(), key->def))
             return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
 
         scope->rvalueRefinements[key->def] = result;
@@ -1721,7 +1789,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIndexExpr* in
     const RefinementKey* key = dfg->getRefinementKey(indexExpr);
     if (key)
     {
-        if (auto ty = scope->lookup(key->def))
+        if (auto ty = lookup(scope.get(), key->def))
             return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
 
         scope->rvalueRefinements[key->def] = result;
@@ -2063,6 +2131,8 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(
             discriminantTy = builtinTypes->booleanType;
         else if (typeguard->type == "thread")
             discriminantTy = builtinTypes->threadType;
+        else if (typeguard->type == "buffer")
+            discriminantTy = builtinTypes->bufferType;
         else if (typeguard->type == "table")
             discriminantTy = augmentForErrorSupression(builtinTypes->tableType);
         else if (typeguard->type == "function")
@@ -2152,18 +2222,11 @@ std::optional<TypeId> ConstraintGenerator::checkLValue(const ScopePtr& scope, As
      */
     std::optional<TypeId> annotatedTy = scope->lookup(local->local);
     if (annotatedTy)
-    {
         addConstraint(scope, local->location, SubtypeConstraint{assignedTy, *annotatedTy});
-        return annotatedTy;
-    }
+    else if (auto it = inferredBindings.find(local->local); it == inferredBindings.end())
+        ice->ice("Cannot find AstLocal* in either Scope::bindings or inferredBindings?");
 
-    /*
-     * As a safety measure, we'll assert that no type has yet been ascribed to
-     * the corresponding def.  We'll populate this when we generate
-     * constraints for assignment and compound assignment statements.
-     */
-    LUAU_ASSERT(!scope->lookupLValue(dfg->getDef(local)));
-    return std::nullopt;
+    return annotatedTy;
 }
 
 std::optional<TypeId> ConstraintGenerator::checkLValue(const ScopePtr& scope, AstExprGlobal* global, TypeId assignedTy)

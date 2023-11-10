@@ -3,8 +3,6 @@
 
 #include "Luau/IrUtils.h"
 
-LUAU_FASTFLAGVARIABLE(LuauReduceStackSpills, false)
-
 namespace Luau
 {
 namespace CodeGen
@@ -198,7 +196,7 @@ void IrValueLocationTracking::invalidateRestoreOp(IrOp location, bool skipValueI
             IrInst& inst = function.instructions[instIdx];
 
             // If we are only modifying the tag, we can avoid invalidating tracked location of values
-            if (FFlag::LuauReduceStackSpills && skipValueInvalidation)
+            if (skipValueInvalidation)
             {
                 switch (getCmdValueKind(inst.cmd))
                 {

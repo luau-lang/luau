@@ -367,7 +367,8 @@ TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     const std::string expectedError =
-        "Type 'a' could not be converted into 'Err<number> | Ok<string>'; type a (a) is not a subtype of Err<number> | Ok<string>[1] (Err<number>)";
+        "Type 'a' could not be converted into 'Err<number> | Ok<string>'; type a (a) is not a subtype of Err<number> | Ok<string>[1] (Err<number>)"
+        "\n\ttype a[\"success\"] (false) is not a subtype of Err<number> | Ok<string>[0][\"success\"] (true)";
 
     CHECK(toString(result.errors[0]) == expectedError);
 }

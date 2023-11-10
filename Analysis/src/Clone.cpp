@@ -12,7 +12,6 @@ LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
-LUAU_FASTFLAGVARIABLE(LuauCloneCyclicUnions, false)
 
 LUAU_FASTFLAGVARIABLE(LuauStacklessTypeClone3, false)
 LUAU_FASTINTVARIABLE(LuauTypeCloneIterationLimit, 100'000)
@@ -782,33 +781,19 @@ void TypeCloner::operator()(const AnyType& t)
 
 void TypeCloner::operator()(const UnionType& t)
 {
-    if (FFlag::LuauCloneCyclicUnions)
-    {
-        // We're just using this FreeType as a placeholder until we've finished
-        // cloning the parts of this union so it is okay that its bounds are
-        // nullptr.  We'll never indirect them.
-        TypeId result = dest.addType(FreeType{nullptr, /*lowerBound*/ nullptr, /*upperBound*/ nullptr});
-        seenTypes[typeId] = result;
+    // We're just using this FreeType as a placeholder until we've finished
+    // cloning the parts of this union so it is okay that its bounds are
+    // nullptr.  We'll never indirect them.
+    TypeId result = dest.addType(FreeType{nullptr, /*lowerBound*/ nullptr, /*upperBound*/ nullptr});
+    seenTypes[typeId] = result;
 
-        std::vector<TypeId> options;
-        options.reserve(t.options.size());
+    std::vector<TypeId> options;
+    options.reserve(t.options.size());
 
-        for (TypeId ty : t.options)
-            options.push_back(clone(ty, dest, cloneState));
+    for (TypeId ty : t.options)
+        options.push_back(clone(ty, dest, cloneState));
 
-        asMutable(result)->ty.emplace<UnionType>(std::move(options));
-    }
-    else
-    {
-        std::vector<TypeId> options;
-        options.reserve(t.options.size());
-
-        for (TypeId ty : t.options)
-            options.push_back(clone(ty, dest, cloneState));
-
-        TypeId result = dest.addType(UnionType{std::move(options)});
-        seenTypes[typeId] = result;
-    }
+    asMutable(result)->ty.emplace<UnionType>(std::move(options));
 }
 
 void TypeCloner::operator()(const IntersectionType& t)

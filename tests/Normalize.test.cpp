@@ -710,7 +710,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union_function_and_top_function")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negated_function_is_anything_except_a_function")
 {
-    CHECK("(boolean | class | number | string | table | thread)?" == toString(normal(R"(
+    CHECK("(boolean | buffer | class | number | string | table | thread)?" == toString(normal(R"(
         Not<fun>
     )")));
 }
@@ -735,8 +735,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "trivial_intersection_inhabited")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "bare_negated_boolean")
 {
-    // TODO: We don't yet have a way to say number | string | thread | nil | Class | Table | Function
-    CHECK("(class | function | number | string | table | thread)?" == toString(normal(R"(
+    CHECK("(buffer | class | function | number | string | table | thread)?" == toString(normal(R"(
         Not<boolean>
     )")));
 }
@@ -849,8 +848,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "recurring_intersection")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_union")
 {
-    ScopedFastFlag sff{"LuauNormalizeCyclicUnions", true};
-
     // T where T = any & (number | T)
     TypeId t = arena.addType(BlockedType{});
     TypeId u = arena.addType(UnionType{{builtinTypes->numberType, t}});
@@ -871,11 +868,11 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_classes")
 {
     createSomeClasses(&frontend);
     CHECK("(Parent & ~Child) | Unrelated" == toString(normal("(Parent & Not<Child>) | Unrelated")));
-    CHECK("((class & ~Child) | boolean | function | number | string | table | thread)?" == toString(normal("Not<Child>")));
+    CHECK("((class & ~Child) | boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<Child>")));
     CHECK("Child" == toString(normal("Not<Parent> & Child")));
-    CHECK("((class & ~Parent) | Child | boolean | function | number | string | table | thread)?" == toString(normal("Not<Parent> | Child")));
-    CHECK("(boolean | function | number | string | table | thread)?" == toString(normal("Not<cls>")));
-    CHECK("(Parent | Unrelated | boolean | function | number | string | table | thread)?" ==
+    CHECK("((class & ~Parent) | Child | boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<Parent> | Child")));
+    CHECK("(boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<cls>")));
+    CHECK("(Parent | Unrelated | boolean | buffer | function | number | string | table | thread)?" ==
           toString(normal("Not<cls & Not<Parent> & Not<Child> & Not<Unrelated>>")));
 }
 
@@ -904,7 +901,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "top_table_type")
 TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_tables")
 {
     CHECK(nullptr == toNormalizedType("Not<{}>"));
-    CHECK("(boolean | class | function | number | string | thread)?" == toString(normal("Not<tbl>")));
+    CHECK("(boolean | buffer | class | function | number | string | thread)?" == toString(normal("Not<tbl>")));
     CHECK("table" == toString(normal("Not<Not<tbl>>")));
 }
 
