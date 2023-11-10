@@ -4503,7 +4503,7 @@ LOADK R0 K0 [1, 2, 3]
 RETURN R0 1
 )");
 
-    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3))", 0, 2, true), R"(
+    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3))", 0, 2, /*enableVectors*/ true), R"(
 GETIMPORT R0 1 [print]
 LOADK R1 K2 [1, 2, 3]
 CALL R0 1 0
