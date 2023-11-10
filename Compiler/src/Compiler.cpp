@@ -1131,7 +1131,7 @@ struct Compiler
         }
 
         // disable fast path for vectors because supporting it would require a new opcode
-        if (isConstantVector(right))
+        if (operandIsConstant && isConstantVector(right))
             operandIsConstant = false;
 
         uint8_t rl = compileExprAuto(left, rs);
