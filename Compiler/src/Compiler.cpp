@@ -1232,6 +1232,10 @@ struct Compiler
             cid = bytecode.addConstantNumber(c->valueNumber);
             break;
 
+        case Constant::Type_Vector:
+            cid = bytecode.addConstantVector(c->valueVector[0], c->valueVector[1], c->valueVector[2]);
+            break;
+
         case Constant::Type_String:
             cid = bytecode.addConstantString(sref(c->getString()));
             break;

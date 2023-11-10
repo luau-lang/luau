@@ -64,6 +64,9 @@ static Constant ctype(const Constant& c)
     case Constant::Type_Number:
         return cstring("number");
 
+    case Constant::Type_Vector:
+        return cstring("vector");
+
     case Constant::Type_String:
         return cstring("string");
 
