@@ -4498,7 +4498,7 @@ TEST_CASE("VectorLiterals")
 {
     ScopedFastFlag sff("LuauVectorLiterals", true);
 
-    CHECK_EQ("\n" + compileFunction("return Vector3.new(1, 2, 3)", 0, 2, true), R"(
+    CHECK_EQ("\n" + compileFunction("return Vector3.new(1, 2, 3)", 0, 2, /*enableVectors*/ true), R"(
 LOADK R0 K0 [1, 2, 3]
 RETURN R0 1
 )");
