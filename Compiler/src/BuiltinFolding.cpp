@@ -5,6 +5,8 @@
 
 #include <math.h>
 
+LUAU_FASTFLAGVARIABLE(LuauVectorLiterals, false)
+
 namespace Luau
 {
 namespace Compile
@@ -470,7 +472,10 @@ Constant foldBuiltin(int bfid, const Constant* args, size_t count)
         break;
 
     case LBF_VECTOR:
-        if (count == 3 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number && args[2].type == Constant::Type_Number)
+        if (FFlag::LuauVectorLiterals && count == 3 &&
+            args[0].type == Constant::Type_Number &&
+            args[1].type == Constant::Type_Number &&
+            args[2].type == Constant::Type_Number)
             return cvector(args[0].valueNumber, args[1].valueNumber, args[2].valueNumber);
         break;
     }
