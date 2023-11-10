@@ -72,18 +72,6 @@ std::optional<std::pair<Binding*, Scope*>> Scope::lookupEx(Symbol sym)
     }
 }
 
-std::optional<TypeId> Scope::lookupLValue(DefId def) const
-{
-    for (const Scope* current = this; current; current = current->parent.get())
-    {
-        if (auto ty = current->lvalueTypes.find(def))
-            return *ty;
-    }
-
-    return std::nullopt;
-}
-
-// TODO: We might kill Scope::lookup(Symbol) once data flow is fully fleshed out with type states and control flow analysis.
 std::optional<TypeId> Scope::lookup(DefId def) const
 {
     for (const Scope* current = this; current; current = current->parent.get())
@@ -179,6 +167,16 @@ std::optional<Binding> Scope::linearSearchForBinding(const std::string& name, bo
     }
 
     return std::nullopt;
+}
+
+// Updates the `this` scope with the assignments from the `childScope` including ones that doesn't exist in `this`.
+void Scope::inheritAssignments(const ScopePtr& childScope)
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    for (const auto& [k, a] : childScope->lvalueTypes)
+        lvalueTypes[k] = a;
 }
 
 // Updates the `this` scope with the refinements from the `childScope` excluding ones that doesn't exist in `this`.

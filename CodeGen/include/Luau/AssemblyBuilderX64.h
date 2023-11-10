@@ -133,6 +133,7 @@ public:
     void vcvttsd2si(OperandX64 dst, OperandX64 src);
     void vcvtsi2sd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vcvtsd2ss(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vcvtss2sd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
     void vroundsd(OperandX64 dst, OperandX64 src1, OperandX64 src2, RoundingModeX64 roundingMode); // inexact
 
@@ -157,7 +158,6 @@ public:
     void vcmpltsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
     void vblendvpd(RegisterX64 dst, RegisterX64 src1, OperandX64 mask, RegisterX64 src3);
-
 
     // Run final checks
     bool finalize();
@@ -228,6 +228,7 @@ private:
     void placeVex(OperandX64 dst, OperandX64 src1, OperandX64 src2, bool setW, uint8_t mode, uint8_t prefix);
     void placeImm8Or32(int32_t imm);
     void placeImm8(int32_t imm);
+    void placeImm16(int16_t imm);
     void placeImm32(int32_t imm);
     void placeImm64(int64_t imm);
     void placeLabel(Label& label);

@@ -1035,4 +1035,27 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "alias_expands_to_bare_reference_to_imported_
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "table_types_record_the_property_locations")
+{
+    CheckResult result = check(R"(
+        type Table = {
+            create: () -> ()
+        }
+
+        local x: Table
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    auto ty = requireTypeAlias("Table");
+
+    auto ttv = Luau::get<Luau::TableType>(follow(ty));
+    REQUIRE(ttv);
+
+    auto propIt = ttv->props.find("create");
+    REQUIRE(propIt != ttv->props.end());
+
+    CHECK_EQ(propIt->second.location, std::nullopt);
+    CHECK_EQ(propIt->second.typeLocation, Location({2, 12}, {2, 18}));
+}
+
 TEST_SUITE_END();

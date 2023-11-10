@@ -1,10 +1,11 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Set.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePairHash.h"
-#include "Luau/UnifierSharedState.h"
 #include "Luau/TypePath.h"
+#include "Luau/DenseHash.h"
 
 #include <vector>
 #include <optional>
@@ -22,6 +23,9 @@ struct NormalizedType;
 struct NormalizedClassType;
 struct NormalizedStringType;
 struct NormalizedFunctionType;
+struct TypeArena;
+struct Scope;
+struct TableIndexer;
 
 struct SubtypingReasoning
 {
@@ -29,6 +33,11 @@ struct SubtypingReasoning
     Path superPath;
 
     bool operator==(const SubtypingReasoning& other) const;
+};
+
+struct SubtypingReasoningHash
+{
+    size_t operator()(const SubtypingReasoning& r) const;
 };
 
 struct SubtypingResult
@@ -40,7 +49,7 @@ struct SubtypingResult
 
     /// The reason for isSubtype to be false. May not be present even if
     /// isSubtype is false, depending on the input types.
-    std::optional<SubtypingReasoning> reasoning;
+    DenseHashSet<SubtypingReasoning, SubtypingReasoningHash> reasoning{SubtypingReasoning{}};
 
     SubtypingResult& andAlso(const SubtypingResult& other);
     SubtypingResult& orElse(const SubtypingResult& other);
@@ -92,9 +101,9 @@ struct Subtyping
 
     Variance variance = Variance::Covariant;
 
-    using SeenSet = std::unordered_set<std::pair<TypeId, TypeId>, TypeIdPairHash>;
+    using SeenSet = Set<std::pair<TypeId, TypeId>, TypePairHash>;
 
-    SeenSet seenTypes;
+    SeenSet seenTypes{{}};
 
     Subtyping(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> typeArena, NotNull<Normalizer> normalizer,
         NotNull<InternalErrorReporter> iceReporter, NotNull<Scope> scope);

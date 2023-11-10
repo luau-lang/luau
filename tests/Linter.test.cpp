@@ -1686,8 +1686,8 @@ TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsExpr")
     LintResult result = lint(R"(
 local correct, opaque = ...
 
-if correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls")}) then
-elseif correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls")}) then
+if correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls", `string {opaque}`)}) then
+elseif correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls", `string {opaque}`)}) then
 elseif correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls", false)}) then
 end
 )");
@@ -1880,7 +1880,7 @@ local _ = 0x20000000000000
 local _ = 0x20000000000002
 
 -- large powers of two should work as well (this is 2^63)
-local _ = -9223372036854775808
+local _ = 0x80000000000000
 )");
 
     REQUIRE(2 == result.warnings.size());

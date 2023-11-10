@@ -531,8 +531,6 @@ until c
 
 TEST_CASE_FIXTURE(Fixture, "transpile_compound_assignment")
 {
-    ScopedFastFlag sffs{"LuauFloorDivision", true};
-
     std::string code = R"(
 local a = 1
 a += 2

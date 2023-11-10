@@ -490,7 +490,12 @@ struct ErrorConverter
 
     std::string operator()(const TypePackMismatch& e) const
     {
-        return "Type pack '" + toString(e.givenTp) + "' could not be converted into '" + toString(e.wantedTp) + "'";
+        std::string ss = "Type pack '" + toString(e.givenTp) + "' could not be converted into '" + toString(e.wantedTp) + "'";
+
+        if (!e.reason.empty())
+            ss += "; " + e.reason;
+
+        return ss;
     }
 
     std::string operator()(const DynamicPropertyLookupOnClassesUnsafe& e) const

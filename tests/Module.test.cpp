@@ -390,8 +390,6 @@ TEST_CASE_FIXTURE(Fixture, "clone_iteration_limit")
 // they are.
 TEST_CASE_FIXTURE(Fixture, "clone_cyclic_union")
 {
-    ScopedFastFlag sff{"LuauCloneCyclicUnions", true};
-
     TypeArena src;
 
     TypeId u = src.addType(UnionType{{builtinTypes->numberType, builtinTypes->stringType}});
@@ -417,10 +415,6 @@ TEST_CASE_FIXTURE(Fixture, "clone_cyclic_union")
 
 TEST_CASE_FIXTURE(Fixture, "any_persistance_does_not_leak")
 {
-    ScopedFastFlag flags[] = {
-        {"LuauOccursIsntAlwaysFailure", true},
-    };
-
     fileResolver.source["Module/A"] = R"(
 export type A = B
 type B = A

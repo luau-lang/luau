@@ -7,7 +7,6 @@
 
 #include <limits.h>
 
-LUAU_FASTFLAGVARIABLE(LuauFloorDivision, false)
 LUAU_FASTFLAGVARIABLE(LuauLexerLookaheadRemembersBraceType, false)
 LUAU_FASTFLAGVARIABLE(LuauCheckedFunctionSyntax, false)
 
@@ -142,7 +141,7 @@ std::string Lexeme::toString() const
         return "'::'";
 
     case FloorDiv:
-        return FFlag::LuauFloorDivision ? "'//'" : "<unknown>";
+        return "'//'";
 
     case AddAssign:
         return "'+='";
@@ -157,7 +156,7 @@ std::string Lexeme::toString() const
         return "'/='";
 
     case FloorDivAssign:
-        return FFlag::LuauFloorDivision ? "'//='" : "<unknown>";
+        return "'//='";
 
     case ModAssign:
         return "'%='";
@@ -909,44 +908,29 @@ Lexeme Lexer::readNext()
 
     case '/':
     {
-        if (FFlag::LuauFloorDivision)
+        consume();
+
+        char ch = peekch();
+
+        if (ch == '=')
         {
             consume();
-
-            char ch = peekch();
-
-            if (ch == '=')
-            {
-                consume();
-                return Lexeme(Location(start, 2), Lexeme::DivAssign);
-            }
-            else if (ch == '/')
-            {
-                consume();
-
-                if (peekch() == '=')
-                {
-                    consume();
-                    return Lexeme(Location(start, 3), Lexeme::FloorDivAssign);
-                }
-                else
-                    return Lexeme(Location(start, 2), Lexeme::FloorDiv);
-            }
-            else
-                return Lexeme(Location(start, 1), '/');
+            return Lexeme(Location(start, 2), Lexeme::DivAssign);
         }
-        else
+        else if (ch == '/')
         {
             consume();
 
             if (peekch() == '=')
             {
                 consume();
-                return Lexeme(Location(start, 2), Lexeme::DivAssign);
+                return Lexeme(Location(start, 3), Lexeme::FloorDivAssign);
             }
             else
-                return Lexeme(Location(start, 1), '/');
+                return Lexeme(Location(start, 2), Lexeme::FloorDiv);
         }
+        else
+            return Lexeme(Location(start, 1), '/');
     }
 
     case '*':

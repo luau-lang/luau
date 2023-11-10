@@ -99,8 +99,6 @@ static int testAssertionHandler(const char* expr, const char* file, int line, co
     return 1;
 }
 
-
-
 struct BoostLikeReporter : doctest::IReporter
 {
     const doctest::TestCaseData* currentTest = nullptr;
@@ -338,8 +336,6 @@ int main(int argc, char** argv)
     initSystem();
 
     Luau::assertHandler() = testAssertionHandler;
-
-
 
     doctest::registerReporter<BoostLikeReporter>("boost", 0, true);
 

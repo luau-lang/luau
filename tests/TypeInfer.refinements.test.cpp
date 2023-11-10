@@ -1540,6 +1540,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_thread")
     CHECK_EQ("number", toString(requireTypeAtPosition({5, 28})));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_buffer")
+{
+    CheckResult result = check(R"(
+        local function f(x: number | buffer)
+            if typeof(x) == "buffer" then
+                local foo = x
+            else
+                local foo = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("buffer", toString(requireTypeAtPosition({3, 28})));
+    CHECK_EQ("number", toString(requireTypeAtPosition({5, 28})));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "falsiness_of_TruthyPredicate_narrows_into_nil")
 {
     CheckResult result = check(R"(

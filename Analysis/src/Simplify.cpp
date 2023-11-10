@@ -2,6 +2,7 @@
 
 #include "Luau/Simplify.h"
 
+#include "Luau/DenseHash.h"
 #include "Luau/Normalize.h" // TypeIds
 #include "Luau/RecursionCounter.h"
 #include "Luau/ToString.h"
@@ -21,7 +22,7 @@ struct TypeSimplifier
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<TypeArena> arena;
 
-    std::set<TypeId> blockedTypes;
+    DenseHashSet<TypeId> blockedTypes{nullptr};
 
     int recursionDepth = 0;
 

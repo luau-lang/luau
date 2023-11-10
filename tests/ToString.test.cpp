@@ -937,22 +937,10 @@ TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
 )");
     //clang-format off
     std::string expected =
-        (FFlag::DebugLuauDeferredConstraintResolution) ?
-R"(Type
-    '{| a: number, b: string, c: {| d: string |} |}'
-could not be converted into
-    '{ a: number, b: string, c: { d: number } }'
-caused by:
-  Property 'c' is not compatible.
-Type
-    '{| d: string |}'
-could not be converted into
-    '{ d: number }'
-caused by:
-  Property 'd' is not compatible.
-Type 'string' could not be converted into 'number' in an invariant context)"
-        :
-R"(Type
+        (FFlag::DebugLuauDeferredConstraintResolution)
+            ? R"(Type pack '{| a: number, b: string, c: {| d: string |} |}' could not be converted into '{ a: number, b: string, c: { d: number } }'; at [0]["c"]["d"], string is not a subtype of number)"
+            :
+            R"(Type
     '{ a: number, b: string, c: { d: string } }'
 could not be converted into
     '{| a: number, b: string, c: {| d: number |} |}'

@@ -14,6 +14,8 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
+LUAU_FASTFLAG(LuauBufferTypeck)
+
 namespace Luau
 {
 
@@ -1105,7 +1107,7 @@ private:
     TypeKind getTypeKind(const std::string& name)
     {
         if (name == "nil" || name == "boolean" || name == "userdata" || name == "number" || name == "string" || name == "table" ||
-            name == "function" || name == "thread")
+            name == "function" || name == "thread" || (FFlag::LuauBufferTypeck && name == "buffer"))
             return Kind_Primitive;
 
         if (name == "vector")
@@ -2215,7 +2217,8 @@ private:
             return;
 
         if (!tty->indexer && !tty->props.empty() && tty->state != TableState::Generic)
-            emitWarning(*context, LintWarning::Code_TableOperations, node->location, "Using '%s' on a table without an array part is likely a bug", op);
+            emitWarning(
+                *context, LintWarning::Code_TableOperations, node->location, "Using '%s' on a table without an array part is likely a bug", op);
         else if (tty->indexer && isString(tty->indexer->indexType)) // note: to avoid complexity of subtype tests we just check if the key is a string
             emitWarning(*context, LintWarning::Code_TableOperations, node->location, "Using '%s' on a table with string keys is likely a bug", op);
     }

@@ -751,8 +751,11 @@ TypeFamilyReductionResult<TypeId> andFamilyFn(const std::vector<TypeId>& typePar
     // And evalutes to a boolean if the LHS is falsey, and the RHS type if LHS is truthy.
     SimplifyResult filteredLhs = simplifyIntersection(ctx->builtins, ctx->arena, lhsTy, ctx->builtins->falsyType);
     SimplifyResult overallResult = simplifyUnion(ctx->builtins, ctx->arena, rhsTy, filteredLhs.result);
-    std::vector<TypeId> blockedTypes(filteredLhs.blockedTypes.begin(), filteredLhs.blockedTypes.end());
-    blockedTypes.insert(blockedTypes.end(), overallResult.blockedTypes.begin(), overallResult.blockedTypes.end());
+    std::vector<TypeId> blockedTypes{};
+    for (auto ty : filteredLhs.blockedTypes)
+        blockedTypes.push_back(ty);
+    for (auto ty : overallResult.blockedTypes)
+        blockedTypes.push_back(ty);
     return {overallResult.result, false, std::move(blockedTypes), {}};
 }
 
@@ -776,8 +779,11 @@ TypeFamilyReductionResult<TypeId> orFamilyFn(const std::vector<TypeId>& typePara
     // Or evalutes to the LHS type if the LHS is truthy, and the RHS type if LHS is falsy.
     SimplifyResult filteredLhs = simplifyIntersection(ctx->builtins, ctx->arena, lhsTy, ctx->builtins->truthyType);
     SimplifyResult overallResult = simplifyUnion(ctx->builtins, ctx->arena, rhsTy, filteredLhs.result);
-    std::vector<TypeId> blockedTypes(filteredLhs.blockedTypes.begin(), filteredLhs.blockedTypes.end());
-    blockedTypes.insert(blockedTypes.end(), overallResult.blockedTypes.begin(), overallResult.blockedTypes.end());
+    std::vector<TypeId> blockedTypes{};
+    for (auto ty : filteredLhs.blockedTypes)
+        blockedTypes.push_back(ty);
+    for (auto ty : overallResult.blockedTypes)
+        blockedTypes.push_back(ty);
     return {overallResult.result, false, std::move(blockedTypes), {}};
 }
 

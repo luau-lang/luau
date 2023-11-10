@@ -322,6 +322,7 @@ struct TypePackMismatch
 {
     TypePackId wantedTp;
     TypePackId givenTp;
+    std::string reason;
 
     bool operator==(const TypePackMismatch& rhs) const;
 };

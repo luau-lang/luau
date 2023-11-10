@@ -15,8 +15,6 @@
 LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
-LUAU_FASTFLAGVARIABLE(LuauReuseHashSlots2, false)
-LUAU_FASTFLAGVARIABLE(LuauMergeTagLoads, false)
 LUAU_FASTFLAGVARIABLE(LuauReuseArrSlots2, false)
 LUAU_FASTFLAG(LuauLowerAltLoopForn)
 
@@ -546,10 +544,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         }
         else if (inst.a.kind == IrOpKind::VmReg)
         {
-            if (FFlag::LuauMergeTagLoads)
-                state.substituteOrRecordVmRegLoad(inst);
-            else
-                state.createRegLink(index, inst.a);
+            state.substituteOrRecordVmRegLoad(inst);
         }
         break;
     case IrCmd::LOAD_POINTER:
@@ -762,7 +757,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             else
                 replace(function, block, index, {IrCmd::JUMP, inst.d});
         }
-        else if (FFlag::LuauMergeTagLoads && inst.a == inst.b)
+        else if (inst.a == inst.b)
         {
             replace(function, block, index, {IrCmd::JUMP, inst.c});
         }
@@ -920,6 +915,22 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.inSafeEnv = true;
         }
         break;
+    case IrCmd::CHECK_BUFFER_LEN:
+        // TODO: remove duplicate checks and extend earlier check bound when possible
+        break;
+    case IrCmd::BUFFER_READI8:
+    case IrCmd::BUFFER_READU8:
+    case IrCmd::BUFFER_WRITEI8:
+    case IrCmd::BUFFER_READI16:
+    case IrCmd::BUFFER_READU16:
+    case IrCmd::BUFFER_WRITEI16:
+    case IrCmd::BUFFER_READI32:
+    case IrCmd::BUFFER_WRITEI32:
+    case IrCmd::BUFFER_READF32:
+    case IrCmd::BUFFER_WRITEF32:
+    case IrCmd::BUFFER_READF64:
+    case IrCmd::BUFFER_WRITEF64:
+        break;
     case IrCmd::CHECK_GC:
         // It is enough to perform a GC check once in a block
         if (state.checkedGc)
@@ -971,9 +982,6 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.getArrAddrCache.push_back(index);
         break;
     case IrCmd::GET_SLOT_NODE_ADDR:
-        if (!FFlag::LuauReuseHashSlots2)
-            break;
-
         for (uint32_t prevIdx : state.getSlotNodeCache)
         {
             const IrInst& prev = function.instructions[prevIdx];
@@ -1126,9 +1134,6 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         break;
     }
     case IrCmd::CHECK_SLOT_MATCH:
-        if (!FFlag::LuauReuseHashSlots2)
-            break;
-
         for (uint32_t prevIdx : state.checkSlotMatchCache)
         {
             const IrInst& prev = function.instructions[prevIdx];

@@ -21,7 +21,6 @@
 #include <set>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
@@ -141,6 +140,7 @@ struct PrimitiveType
         Thread,
         Function,
         Table,
+        Buffer,
     };
 
     Type type;
@@ -373,7 +373,15 @@ struct Property
 
     bool deprecated = false;
     std::string deprecatedSuggestion;
+
+    // If this property was inferred from an expression, this field will be
+    // populated with the source location of the corresponding table property.
     std::optional<Location> location = std::nullopt;
+
+    // If this property was built from an explicit type annotation, this field
+    // will be populated with the source location of that table property.
+    std::optional<Location> typeLocation = std::nullopt;
+
     Tags tags;
     std::optional<std::string> documentationSymbol;
 
@@ -381,7 +389,7 @@ struct Property
     // TODO: Kill all constructors in favor of `Property::rw(TypeId read, TypeId write)` and friends.
     Property();
     Property(TypeId readTy, bool deprecated = false, const std::string& deprecatedSuggestion = "", std::optional<Location> location = std::nullopt,
-        const Tags& tags = {}, const std::optional<std::string>& documentationSymbol = std::nullopt);
+        const Tags& tags = {}, const std::optional<std::string>& documentationSymbol = std::nullopt, std::optional<Location> typeLocation = std::nullopt);
 
     // DEPRECATED: Should only be called in non-RWP! We assert that the `readTy` is not nullopt.
     // TODO: Kill once we don't have non-RWP.
@@ -739,6 +747,7 @@ bool isBoolean(TypeId ty);
 bool isNumber(TypeId ty);
 bool isString(TypeId ty);
 bool isThread(TypeId ty);
+bool isBuffer(TypeId ty);
 bool isOptional(TypeId ty);
 bool isTableIntersection(TypeId ty);
 bool isOverloadedFunction(TypeId ty);
@@ -797,6 +806,7 @@ public:
     const TypeId stringType;
     const TypeId booleanType;
     const TypeId threadType;
+    const TypeId bufferType;
     const TypeId functionType;
     const TypeId classType;
     const TypeId tableType;
@@ -965,7 +975,7 @@ private:
     using SavedIterInfo = std::pair<const T*, size_t>;
 
     std::deque<SavedIterInfo> stack;
-    std::unordered_set<const T*> seen; // Only needed to protect the iterator from hanging the thread.
+    DenseHashSet<const T*> seen{nullptr}; // Only needed to protect the iterator from hanging the thread.
 
     void advance()
     {
@@ -992,7 +1002,7 @@ private:
             {
                 // If we're about to descend into a cyclic type, we should skip over this.
                 // Ideally this should never happen, but alas it does from time to time. :(
-                if (seen.find(inner) != seen.end())
+                if (seen.contains(inner))
                     advance();
                 else
                 {

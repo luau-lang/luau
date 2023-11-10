@@ -5,9 +5,6 @@
 #include "Luau/Instantiation.h"
 #include "Luau/Scope.h"
 #include "Luau/Simplify.h"
-#include "Luau/Substitution.h"
-#include "Luau/ToString.h"
-#include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeCheckLimits.h"
@@ -16,7 +13,6 @@
 
 #include <algorithm>
 #include <optional>
-#include <unordered_set>
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
@@ -49,7 +45,10 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     FreeType* superFree = getMutable<FreeType>(superTy);
 
     if (subFree)
+    {
         subFree->upperBound = mkIntersection(subFree->upperBound, superTy);
+        expandedFreeTypes[subTy].push_back(superTy);
+    }
 
     if (superFree)
         superFree->lowerBound = mkUnion(superFree->lowerBound, subTy);

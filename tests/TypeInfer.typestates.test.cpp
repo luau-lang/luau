@@ -101,7 +101,6 @@ TEST_CASE_FIXTURE(TypeStateFixture, "refine_a_local_and_then_assign_it")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
-#endif
 
 TEST_CASE_FIXTURE(TypeStateFixture, "assign_a_local_and_then_refine_it")
 {
@@ -118,6 +117,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "assign_a_local_and_then_refine_it")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK("Type 'string' could not be converted into 'never'" == toString(result.errors[0]));
 }
+#endif
 
 TEST_CASE_FIXTURE(TypeStateFixture, "recursive_local_function")
 {
@@ -195,6 +195,83 @@ TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_was_constrained_by_two_types")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK("(nil) -> number?" == toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_is_some_type_or_optional_then_assigned_with_alternate_value")
+{
+    CheckResult result = check(R"(
+        local function f(x: number?)
+            x = x or 5
+            return x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("(number?) -> number" == toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(TypeStateFixture, "local_assigned_in_either_branches_that_falls_through")
+{
+    CheckResult result = check(R"(
+        local x = nil
+        if math.random() > 0.5 then
+            x = 5
+        else
+            x = "hello"
+        end
+        local y = x
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("number | string" == toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(TypeStateFixture, "local_assigned_in_only_one_branch_that_falls_through")
+{
+    CheckResult result = check(R"(
+        local x = nil
+        if math.random() > 0.5 then
+            x = 5
+        end
+        local y = x
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("number?" == toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(TypeStateFixture, "then_branch_assigns_and_else_branch_also_assigns_but_is_met_with_return")
+{
+    CheckResult result = check(R"(
+        local x = nil
+        if math.random() > 0.5 then
+            x = 5
+        else
+            x = "hello"
+            return
+        end
+        local y = x
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("number?" == toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(TypeStateFixture, "then_branch_assigns_but_is_met_with_return_and_else_branch_assigns")
+{
+    CheckResult result = check(R"(
+        local x = nil
+        if math.random() > 0.5 then
+            x = 5
+            return
+        else
+            x = "hello"
+        end
+        local y = x
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("string?" == toString(requireType("y")));
 }
 
 TEST_SUITE_END();
