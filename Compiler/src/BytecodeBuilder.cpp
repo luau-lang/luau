@@ -8,6 +8,7 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauFloorDivision)
+LUAU_FASTFLAG(LuauVectorLiterals)
 
 namespace Luau
 {
@@ -1113,7 +1114,7 @@ std::string BytecodeBuilder::getError(const std::string& message)
 uint8_t BytecodeBuilder::getVersion()
 {
     // This function usually returns LBC_VERSION_TARGET but may sometimes return a higher number (within LBC_VERSION_MIN/MAX) under fast flags
-    return LBC_VERSION_TARGET;
+    return (FFlag::LuauVectorLiterals ? 5 : LBC_VERSION_TARGET);
 }
 
 uint8_t BytecodeBuilder::getTypeEncodingVersion()
