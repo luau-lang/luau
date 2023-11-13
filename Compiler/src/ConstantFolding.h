@@ -27,7 +27,7 @@ struct Constant
     {
         bool valueBoolean;
         double valueNumber;
-        float valueVector[3];
+        float valueVector[4];
         const char* valueString = nullptr; // length stored in stringLength
     };
 

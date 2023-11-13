@@ -154,17 +154,18 @@ size_t BytecodeBuilder::ConstantKeyHash::operator()(const ConstantKey& key) cons
 {
     if (key.type == Constant::Type_Vector)
     {
-        uint32_t i[3];
-        static_assert(sizeof(key.value) + sizeof(key.extra) == sizeof(i), "Expecting vector to have three 32-bit components");
+        uint32_t i[4];
+        static_assert(sizeof(key.value) + sizeof(key.extra) == sizeof(i), "Expecting vector to have four 32-bit components");
         memcpy(i, &key.value, sizeof(i));
 
         // scramble bits to make sure that integer coordinates have entropy in lower bits
         i[0] ^= i[0] >> 17;
         i[1] ^= i[1] >> 17;
         i[2] ^= i[2] >> 17;
+        i[3] ^= i[3] >> 17;
 
         // Optimized Spatial Hashing for Collision Detection of Deformable Objects
-        uint32_t h = (i[0] * 73856093) ^ (i[1] * 19349663) ^ (i[2] * 83492791);
+        uint32_t h = (i[0] * 73856093) ^ (i[1] * 19349663) ^ (i[2] * 83492791) ^ (i[3] * 39916801);
 
         return size_t(h);
     }
@@ -355,18 +356,20 @@ int32_t BytecodeBuilder::addConstantNumber(double value)
     return addConstant(k, c);
 }
 
-int32_t BytecodeBuilder::addConstantVector(float x, float y, float z)
+int32_t BytecodeBuilder::addConstantVector(float x, float y, float z, float w)
 {
     Constant c = {Constant::Type_Vector};
     c.valueVector[0] = x;
     c.valueVector[1] = y;
     c.valueVector[2] = z;
+    c.valueVector[3] = w;
 
     ConstantKey k = {Constant::Type_Vector};
-    static_assert(sizeof(k.value) == sizeof(x) + sizeof(y) && sizeof(k.extra) == sizeof(z), "Expecting vector to have three 32-bit components");
+    static_assert(sizeof(k.value) == sizeof(x) + sizeof(y) && sizeof(k.extra) == sizeof(z) + sizeof(w), "Expecting vector to have four 32-bit components");
     memcpy(&k.value, &x, sizeof(x));
     memcpy((char*)&k.value + sizeof(x), &y, sizeof(y));
     memcpy(&k.extra, &z, sizeof(z));
+    memcpy((char*)&k.extra + sizeof(z), &w, sizeof(w));
 
     return addConstant(k, c);
 }
@@ -693,6 +696,7 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
             writeFloat(ss, c.valueVector[0]);
             writeFloat(ss, c.valueVector[1]);
             writeFloat(ss, c.valueVector[2]);
+            writeFloat(ss, c.valueVector[3]);
             break;
 
         case Constant::Type_String:
@@ -1684,7 +1688,11 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
         formatAppend(result, "%.17g", data.valueNumber);
         break;
     case Constant::Type_Vector:
-        formatAppend(result, "%.9g, %.9g, %.9g", data.valueVector[0], data.valueVector[1], data.valueVector[2]);
+        // 3-vectors is the most common configuration, so truncate to three components if possible
+        if (data.valueVector[3] == 0.0)
+            formatAppend(result, "%.9g, %.9g, %.9g", data.valueVector[0], data.valueVector[1], data.valueVector[2]);
+        else
+            formatAppend(result, "%.9g, %.9g, %.9g, %.9g", data.valueVector[0], data.valueVector[1], data.valueVector[2], data.valueVector[3]);
         break;
     case Constant::Type_String:
     {

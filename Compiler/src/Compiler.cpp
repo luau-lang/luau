@@ -1238,7 +1238,7 @@ struct Compiler
             break;
 
         case Constant::Type_Vector:
-            cid = bytecode.addConstantVector(c->valueVector[0], c->valueVector[1], c->valueVector[2]);
+            cid = bytecode.addConstantVector(c->valueVector[0], c->valueVector[1], c->valueVector[2], c->valueVector[3]);
             break;
 
         case Constant::Type_String:
@@ -2069,7 +2069,7 @@ struct Compiler
 
         case Constant::Type_Vector:
         {
-            int32_t cid = bytecode.addConstantVector(cv->valueVector[0], cv->valueVector[1], cv->valueVector[2]);
+            int32_t cid = bytecode.addConstantVector(cv->valueVector[0], cv->valueVector[1], cv->valueVector[2], cv->valueVector[3]);
             emitLoadK(target, cid);
         }
         break;
