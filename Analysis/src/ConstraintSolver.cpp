@@ -2,13 +2,11 @@
 
 #include "Luau/Anyification.h"
 #include "Luau/ApplyTypeFunction.h"
-#include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/Instantiation.h"
 #include "Luau/Location.h"
-#include "Luau/Metamethods.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Quantify.h"
 #include "Luau/Simplify.h"
@@ -17,12 +15,11 @@
 #include "Luau/Type.h"
 #include "Luau/TypeFamily.h"
 #include "Luau/TypeUtils.h"
-#include "Luau/Unifier.h"
 #include "Luau/Unifier2.h"
 #include "Luau/VisitType.h"
+#include <utility>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
-LUAU_FASTFLAG(LuauFloorDivision);
 
 namespace Luau
 {
@@ -1103,6 +1100,12 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
     const bool occursCheckPassed = u2.unify(fn, inferredTy);
 
+    for (const auto& [expanded, additions] : u2.expandedFreeTypes)
+    {
+        for (TypeId addition : additions)
+            upperBoundContributors[expanded].push_back(std::make_pair(constraint->location, addition));
+    }
+
     if (occursCheckPassed && c.callSite)
         (*c.astOverloadResolvedTypes)[c.callSite] = inferredTy;
 
@@ -1490,7 +1493,7 @@ namespace
  */
 struct FindRefineConstraintBlockers : TypeOnceVisitor
 {
-    std::unordered_set<TypeId> found;
+    DenseHashSet<TypeId> found{nullptr};
     bool visit(TypeId ty, const BlockedType&) override
     {
         found.insert(ty);
@@ -1905,15 +1908,16 @@ bool ConstraintSolver::tryDispatchIterableFunction(
 std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTableProp(
     TypeId subjectType, const std::string& propName, bool suppressSimplification)
 {
-    std::unordered_set<TypeId> seen;
+    DenseHashSet<TypeId> seen{nullptr};
     return lookupTableProp(subjectType, propName, suppressSimplification, seen);
 }
 
 std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTableProp(
-    TypeId subjectType, const std::string& propName, bool suppressSimplification, std::unordered_set<TypeId>& seen)
+    TypeId subjectType, const std::string& propName, bool suppressSimplification, DenseHashSet<TypeId>& seen)
 {
-    if (!seen.insert(subjectType).second)
+    if (seen.contains(subjectType))
         return {};
+    seen.insert(subjectType);
 
     subjectType = follow(subjectType);
 
@@ -2073,7 +2077,15 @@ bool ConstraintSolver::tryUnify(NotNull<const Constraint> constraint, TID subTy,
 
     bool success = u2.unify(subTy, superTy);
 
-    if (!success)
+    if (success)
+    {
+        for (const auto& [expanded, additions] : u2.expandedFreeTypes)
+        {
+            for (TypeId addition : additions)
+                upperBoundContributors[expanded].push_back(std::make_pair(constraint->location, addition));
+        }
+    }
+    else
     {
         // Unification only fails when doing so would fail the occurs check.
         // ie create a self-bound type or a cyclic type pack
@@ -2319,6 +2331,12 @@ ErrorVec ConstraintSolver::unify(NotNull<Scope> scope, Location location, TypePa
     Unifier2 u{arena, builtinTypes, scope, NotNull{&iceReporter}};
 
     u.unify(subPack, superPack);
+
+    for (const auto& [expanded, additions] : u.expandedFreeTypes)
+    {
+        for (TypeId addition : additions)
+            upperBoundContributors[expanded].push_back(std::make_pair(location, addition));
+    }
 
     unblock(subPack, Location{});
     unblock(superPack, Location{});

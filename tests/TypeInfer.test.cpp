@@ -2,6 +2,7 @@
 
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/Frontend.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Type.h"
@@ -1261,8 +1262,6 @@ local b = typeof(foo) ~= 'nil'
 
 TEST_CASE_FIXTURE(Fixture, "occurs_isnt_always_failure")
 {
-    ScopedFastFlag sff{"LuauOccursIsntAlwaysFailure", true};
-
     CheckResult result = check(R"(
 function f(x, c)                   -- x : X
     local y = if c then x else nil -- y : X?
@@ -1441,6 +1440,32 @@ TEST_CASE_FIXTURE(Fixture, "promote_tail_type_packs")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "lti_must_record_contributing_locations")
+{
+    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        local function f(a)
+            if math.random() > 0.5 then
+                math.abs(a)
+            else
+                string.len(a)
+            end
+        end
+    )");
+
+    // We inspect the actual errors in other tests; this test verifies that we
+    // actually recorded breadcrumbs for a.
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    TypeId fnTy = requireType("f");
+    const FunctionType* fn = get<FunctionType>(fnTy);
+    REQUIRE(fn);
+
+    TypeId argTy = *first(fn->argTypes);
+    std::vector<std::pair<Location, TypeId>> locations = getMainModule()->upperBoundContributors[argTy];
+    CHECK(locations.size() == 2);
+}
+
 /*
  * CLI-49876
  *
@@ -1453,8 +1478,6 @@ TEST_CASE_FIXTURE(Fixture, "promote_tail_type_packs")
  */
 TEST_CASE_FIXTURE(BuiltinsFixture, "be_sure_to_use_active_txnlog_when_evaluating_a_variadic_overload")
 {
-    ScopedFastFlag sff{"LuauVariadicOverloadFix", true};
-
     CheckResult result = check(R"(
         local function concat<T>(target: {T}, ...: {T} | T): {T}
             return (nil :: any) :: {T}

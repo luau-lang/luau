@@ -14,7 +14,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauStacklessTypeClone2)
+LUAU_FASTFLAG(LuauStacklessTypeClone3)
 
 TEST_SUITE_BEGIN("ModuleTests");
 
@@ -336,7 +336,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
     int limit = 400;
 #endif
 
-    ScopedFastFlag sff{"LuauStacklessTypeClone2", false};
+    ScopedFastFlag sff{"LuauStacklessTypeClone3", false};
     ScopedFastInt luauTypeCloneRecursionLimit{"LuauTypeCloneRecursionLimit", limit};
 
     TypeArena src;
@@ -360,7 +360,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
 
 TEST_CASE_FIXTURE(Fixture, "clone_iteration_limit")
 {
-    ScopedFastFlag sff{"LuauStacklessTypeClone2", true};
+    ScopedFastFlag sff{"LuauStacklessTypeClone3", true};
     ScopedFastInt sfi{"LuauTypeCloneIterationLimit", 500};
 
     TypeArena src;
@@ -390,8 +390,6 @@ TEST_CASE_FIXTURE(Fixture, "clone_iteration_limit")
 // they are.
 TEST_CASE_FIXTURE(Fixture, "clone_cyclic_union")
 {
-    ScopedFastFlag sff{"LuauCloneCyclicUnions", true};
-
     TypeArena src;
 
     TypeId u = src.addType(UnionType{{builtinTypes->numberType, builtinTypes->stringType}});
@@ -417,10 +415,6 @@ TEST_CASE_FIXTURE(Fixture, "clone_cyclic_union")
 
 TEST_CASE_FIXTURE(Fixture, "any_persistance_does_not_leak")
 {
-    ScopedFastFlag flags[] = {
-        {"LuauOccursIsntAlwaysFailure", true},
-    };
-
     fileResolver.source["Module/A"] = R"(
 export type A = B
 type B = A
@@ -532,6 +526,38 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "clone_table_bound_to_table_bound_to_table")
     REQUIRE_MESSAGE(tableA, "Expected table, got " << res);
     REQUIRE(tableA->name == "c");
     REQUIRE(!tableA->boundTo);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "clone_a_bound_type_to_a_persistent_type")
+{
+    ScopedFastFlag sff{"LuauStacklessTypeClone3", true};
+
+    TypeArena arena;
+
+    TypeId boundTo = arena.addType(BoundType{builtinTypes->numberType});
+    REQUIRE(builtinTypes->numberType->persistent);
+
+    TypeArena dest;
+    CloneState state{builtinTypes};
+    TypeId res = clone(boundTo, dest, state);
+
+    REQUIRE(res == follow(boundTo));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "clone_a_bound_typepack_to_a_persistent_typepack")
+{
+    ScopedFastFlag sff{"LuauStacklessTypeClone3", true};
+
+    TypeArena arena;
+
+    TypePackId boundTo = arena.addTypePack(BoundTypePack{builtinTypes->neverTypePack});
+    REQUIRE(builtinTypes->neverTypePack->persistent);
+
+    TypeArena dest;
+    CloneState state{builtinTypes};
+    TypePackId res = clone(boundTo, dest, state);
+
+    REQUIRE(res == follow(boundTo));
 }
 
 TEST_SUITE_END();

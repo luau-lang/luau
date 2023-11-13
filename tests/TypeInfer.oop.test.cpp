@@ -415,7 +415,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "promise_type_error_too_complex" * doctest::t
     // TODO: LTI changes to function call resolution have rendered this test impossibly slow
     // shared self should fix it, but there may be other mitigations possible as well
     REQUIRE(!FFlag::DebugLuauDeferredConstraintResolution);
-    ScopedFastFlag sff{"LuauStacklessTypeClone2", true};
+    ScopedFastFlag sff{"LuauStacklessTypeClone3", true};
 
     frontend.options.retainFullTypeGraphs = false;
 

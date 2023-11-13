@@ -12,9 +12,8 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAG(LuauReduceStackSpills)
-LUAU_FASTFLAGVARIABLE(LuauInlineArrConstOffset, false)
 LUAU_FASTFLAGVARIABLE(LuauLowerAltLoopForn, false)
+LUAU_FASTFLAG(LuauImproveInsertIr)
 
 namespace Luau
 {
@@ -562,9 +561,10 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
     IrOp builtinArgs = args;
 
-    if (customArgs.kind == IrOpKind::VmConst && bfid != LBF_TABLE_INSERT)
+    if (customArgs.kind == IrOpKind::VmConst && (FFlag::LuauImproveInsertIr || bfid != LBF_TABLE_INSERT))
     {
-        TValue protok = build.function.proto->k[customArgs.index];
+        LUAU_ASSERT(build.function.proto);
+        TValue protok = build.function.proto->k[vmConstOp(customArgs)];
 
         if (protok.tt == LUA_TNUMBER)
             builtinArgs = build.constDouble(protok.value.n);
@@ -921,20 +921,10 @@ void translateInstGetTableN(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::CHECK_ARRAY_SIZE, vb, build.constInt(c), fallback);
     build.inst(IrCmd::CHECK_NO_METATABLE, vb, fallback);
 
-    if (FFlag::LuauInlineArrConstOffset)
-    {
-        IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(0));
+    IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(0));
 
-        IrOp arrElTval = build.inst(IrCmd::LOAD_TVALUE, arrEl, build.constInt(c * sizeof(TValue)));
-        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), arrElTval);
-    }
-    else
-    {
-        IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(c));
-
-        IrOp arrElTval = build.inst(IrCmd::LOAD_TVALUE, arrEl);
-        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), arrElTval);
-    }
+    IrOp arrElTval = build.inst(IrCmd::LOAD_TVALUE, arrEl, build.constInt(c * sizeof(TValue)));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), arrElTval);
 
     IrOp next = build.blockAtInst(pcpos + 1);
     FallbackStreamScope scope(build, fallback, next);
@@ -961,20 +951,10 @@ void translateInstSetTableN(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::CHECK_NO_METATABLE, vb, fallback);
     build.inst(IrCmd::CHECK_READONLY, vb, fallback);
 
-    if (FFlag::LuauInlineArrConstOffset)
-    {
-        IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(0));
+    IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(0));
 
-        IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
-        build.inst(IrCmd::STORE_TVALUE, arrEl, tva, build.constInt(c * sizeof(TValue)));
-    }
-    else
-    {
-        IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(c));
-
-        IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
-        build.inst(IrCmd::STORE_TVALUE, arrEl, tva);
-    }
+    IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
+    build.inst(IrCmd::STORE_TVALUE, arrEl, tva, build.constInt(c * sizeof(TValue)));
 
     build.inst(IrCmd::BARRIER_TABLE_FORWARD, vb, build.vmReg(ra), build.undef());
 
@@ -1376,74 +1356,37 @@ void translateInstNewClosure(IrBuilder& build, const Instruction* pc, int pcpos)
         Instruction uinsn = pc[ui + 1];
         LUAU_ASSERT(LUAU_INSN_OP(uinsn) == LOP_CAPTURE);
 
-        if (FFlag::LuauReduceStackSpills)
+        switch (LUAU_INSN_A(uinsn))
         {
-            switch (LUAU_INSN_A(uinsn))
-            {
-            case LCT_VAL:
-            {
-                IrOp src = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(LUAU_INSN_B(uinsn)));
-                IrOp dst = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, ncl, build.vmUpvalue(ui));
-                build.inst(IrCmd::STORE_TVALUE, dst, src);
-                break;
-            }
-
-            case LCT_REF:
-            {
-                IrOp src = build.inst(IrCmd::FINDUPVAL, build.vmReg(LUAU_INSN_B(uinsn)));
-                IrOp dst = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, ncl, build.vmUpvalue(ui));
-                build.inst(IrCmd::STORE_POINTER, dst, src);
-                build.inst(IrCmd::STORE_TAG, dst, build.constTag(LUA_TUPVAL));
-                break;
-            }
-
-            case LCT_UPVAL:
-            {
-                IrOp src = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, build.undef(), build.vmUpvalue(LUAU_INSN_B(uinsn)));
-                IrOp dst = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, ncl, build.vmUpvalue(ui));
-                IrOp load = build.inst(IrCmd::LOAD_TVALUE, src);
-                build.inst(IrCmd::STORE_TVALUE, dst, load);
-                break;
-            }
-
-            default:
-                LUAU_ASSERT(!"Unknown upvalue capture type");
-                LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
-            }
-        }
-        else
+        case LCT_VAL:
         {
+            IrOp src = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(LUAU_INSN_B(uinsn)));
             IrOp dst = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, ncl, build.vmUpvalue(ui));
+            build.inst(IrCmd::STORE_TVALUE, dst, src);
+            break;
+        }
 
-            switch (LUAU_INSN_A(uinsn))
-            {
-            case LCT_VAL:
-            {
-                IrOp src = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(LUAU_INSN_B(uinsn)));
-                build.inst(IrCmd::STORE_TVALUE, dst, src);
-                break;
-            }
+        case LCT_REF:
+        {
+            IrOp src = build.inst(IrCmd::FINDUPVAL, build.vmReg(LUAU_INSN_B(uinsn)));
+            IrOp dst = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, ncl, build.vmUpvalue(ui));
+            build.inst(IrCmd::STORE_POINTER, dst, src);
+            build.inst(IrCmd::STORE_TAG, dst, build.constTag(LUA_TUPVAL));
+            break;
+        }
 
-            case LCT_REF:
-            {
-                IrOp src = build.inst(IrCmd::FINDUPVAL, build.vmReg(LUAU_INSN_B(uinsn)));
-                build.inst(IrCmd::STORE_POINTER, dst, src);
-                build.inst(IrCmd::STORE_TAG, dst, build.constTag(LUA_TUPVAL));
-                break;
-            }
+        case LCT_UPVAL:
+        {
+            IrOp src = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, build.undef(), build.vmUpvalue(LUAU_INSN_B(uinsn)));
+            IrOp dst = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, ncl, build.vmUpvalue(ui));
+            IrOp load = build.inst(IrCmd::LOAD_TVALUE, src);
+            build.inst(IrCmd::STORE_TVALUE, dst, load);
+            break;
+        }
 
-            case LCT_UPVAL:
-            {
-                IrOp src = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, build.undef(), build.vmUpvalue(LUAU_INSN_B(uinsn)));
-                IrOp load = build.inst(IrCmd::LOAD_TVALUE, src);
-                build.inst(IrCmd::STORE_TVALUE, dst, load);
-                break;
-            }
-
-            default:
-                LUAU_ASSERT(!"Unknown upvalue capture type");
-                LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
-            }
+        default:
+            LUAU_ASSERT(!"Unknown upvalue capture type");
+            LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
         }
     }
 

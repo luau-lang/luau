@@ -16,13 +16,10 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // Warning: If you are introducing new syntax, ensure that it is behind a separate
 // flag so that we don't break production games by reverting syntax changes.
 // See docs/SyntaxChanges.md for an explanation.
-LUAU_FASTFLAGVARIABLE(LuauParseDeclareClassIndexer, false)
 LUAU_FASTFLAGVARIABLE(LuauClipExtraHasEndProps, false)
-LUAU_FASTFLAG(LuauFloorDivision)
 LUAU_FASTFLAG(LuauCheckedFunctionSyntax)
 
-LUAU_FASTFLAGVARIABLE(LuauBetterTypeUnionLimits, false)
-LUAU_FASTFLAGVARIABLE(LuauBetterTypeRecLimits, false)
+LUAU_FASTFLAGVARIABLE(LuauParseImpreciseNumber, false)
 
 namespace Luau
 {
@@ -924,7 +921,7 @@ AstStat* Parser::parseDeclaration(const Location& start)
             {
                 props.push_back(parseDeclaredClassMethod());
             }
-            else if (lexer.current().type == '[' && (!FFlag::LuauParseDeclareClassIndexer || lexer.lookahead().type == Lexeme::RawString ||
+            else if (lexer.current().type == '[' && (lexer.lookahead().type == Lexeme::RawString ||
                                                         lexer.lookahead().type == Lexeme::QuotedString))
             {
                 const Lexeme begin = lexer.current();
@@ -944,7 +941,7 @@ AstStat* Parser::parseDeclaration(const Location& start)
                 else
                     report(begin.location, "String literal contains malformed escape sequence or \\0");
             }
-            else if (lexer.current().type == '[' && FFlag::LuauParseDeclareClassIndexer)
+            else if (lexer.current().type == '[')
             {
                 if (indexer)
                 {
@@ -1544,8 +1541,7 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
 
             unsigned int oldRecursionCount = recursionCounter;
             parts.push_back(parseSimpleType(/* allowPack= */ false).type);
-            if (FFlag::LuauBetterTypeUnionLimits)
-                recursionCounter = oldRecursionCount;
+            recursionCounter = oldRecursionCount;
 
             isUnion = true;
         }
@@ -1554,7 +1550,7 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
             Location loc = lexer.current().location;
             nextLexeme();
 
-            if (!FFlag::LuauBetterTypeUnionLimits || !hasOptional)
+            if (!hasOptional)
                 parts.push_back(allocator.alloc<AstTypeReference>(loc, std::nullopt, nameNil, std::nullopt, loc));
 
             isUnion = true;
@@ -1566,8 +1562,7 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
 
             unsigned int oldRecursionCount = recursionCounter;
             parts.push_back(parseSimpleType(/* allowPack= */ false).type);
-            if (FFlag::LuauBetterTypeUnionLimits)
-                recursionCounter = oldRecursionCount;
+            recursionCounter = oldRecursionCount;
 
             isIntersection = true;
         }
@@ -1579,7 +1574,7 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
         else
             break;
 
-        if (FFlag::LuauBetterTypeUnionLimits && parts.size() > unsigned(FInt::LuauTypeLengthLimit) + hasOptional)
+        if (parts.size() > unsigned(FInt::LuauTypeLengthLimit) + hasOptional)
             ParseError::raise(parts.back()->location, "Exceeded allowed type length; simplify your type annotation to make the code compile");
     }
 
@@ -1607,10 +1602,7 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
 AstTypeOrPack Parser::parseTypeOrPack()
 {
     unsigned int oldRecursionCount = recursionCounter;
-
     // recursion counter is incremented in parseSimpleType
-    if (!FFlag::LuauBetterTypeRecLimits)
-        incrementRecursionCounter("type annotation");
 
     Location begin = lexer.current().location;
 
@@ -1630,10 +1622,7 @@ AstTypeOrPack Parser::parseTypeOrPack()
 AstType* Parser::parseType(bool inDeclarationContext)
 {
     unsigned int oldRecursionCount = recursionCounter;
-
     // recursion counter is incremented in parseSimpleType
-    if (!FFlag::LuauBetterTypeRecLimits)
-        incrementRecursionCounter("type annotation");
 
     Location begin = lexer.current().location;
 
@@ -1839,11 +1828,7 @@ std::optional<AstExprBinary::Op> Parser::parseBinaryOp(const Lexeme& l)
     else if (l.type == '/')
         return AstExprBinary::Div;
     else if (l.type == Lexeme::FloorDiv)
-    {
-        LUAU_ASSERT(FFlag::LuauFloorDivision);
-
         return AstExprBinary::FloorDiv;
-    }
     else if (l.type == '%')
         return AstExprBinary::Mod;
     else if (l.type == '^')
@@ -1881,11 +1866,7 @@ std::optional<AstExprBinary::Op> Parser::parseCompoundOp(const Lexeme& l)
     else if (l.type == Lexeme::DivAssign)
         return AstExprBinary::Div;
     else if (l.type == Lexeme::FloorDivAssign)
-    {
-        LUAU_ASSERT(FFlag::LuauFloorDivision);
-
         return AstExprBinary::FloorDiv;
-    }
     else if (l.type == Lexeme::ModAssign)
         return AstExprBinary::Mod;
     else if (l.type == Lexeme::PowAssign)
@@ -2187,6 +2168,12 @@ static ConstantNumberParseResult parseInteger(double& result, const char* data, 
             return base == 2 ? ConstantNumberParseResult::BinOverflow : ConstantNumberParseResult::HexOverflow;
     }
 
+    if (FFlag::LuauParseImpreciseNumber)
+    {
+        if (value >= (1ull << 53) && static_cast<unsigned long long>(result) != value)
+            return ConstantNumberParseResult::Imprecise;
+    }
+
     return ConstantNumberParseResult::Ok;
 }
 
@@ -2203,8 +2190,32 @@ static ConstantNumberParseResult parseDouble(double& result, const char* data)
     char* end = nullptr;
     double value = strtod(data, &end);
 
-    result = value;
-    return *end == 0 ? ConstantNumberParseResult::Ok : ConstantNumberParseResult::Malformed;
+    if (FFlag::LuauParseImpreciseNumber)
+    {
+        // trailing non-numeric characters
+        if (*end != 0)
+            return ConstantNumberParseResult::Malformed;
+
+        result = value;
+
+        // for linting, we detect integer constants that are parsed imprecisely
+        // since the check is expensive we only perform it when the number is larger than the precise integer range
+        if (value >= double(1ull << 53) && strspn(data, "0123456789") == strlen(data))
+        {
+            char repr[512];
+            snprintf(repr, sizeof(repr), "%.0f", value);
+
+            if (strcmp(repr, data) != 0)
+                return ConstantNumberParseResult::Imprecise;
+        }
+
+        return ConstantNumberParseResult::Ok;
+    }
+    else
+    {
+        result = value;
+        return *end == 0 ? ConstantNumberParseResult::Ok : ConstantNumberParseResult::Malformed;
+    }
 }
 
 // simpleexp -> NUMBER | STRING | NIL | true | false | ... | constructor | FUNCTION body | primaryexp

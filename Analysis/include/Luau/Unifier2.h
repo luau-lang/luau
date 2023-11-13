@@ -6,7 +6,6 @@
 #include "Luau/NotNull.h"
 #include "Luau/TypePairHash.h"
 #include "Luau/TypeCheckLimits.h"
-#include "Luau/TypeChecker2.h"
 #include "Luau/TypeFwd.h"
 
 #include <optional>
@@ -36,6 +35,8 @@ struct Unifier2
 
     DenseHashSet<std::pair<TypeId, TypeId>, TypePairHash> seenTypePairings{{nullptr, nullptr}};
     DenseHashSet<std::pair<TypePackId, TypePackId>, TypePairHash> seenTypePackPairings{{nullptr, nullptr}};
+
+    DenseHashMap<TypeId, std::vector<TypeId>> expandedFreeTypes{nullptr};
 
     int recursionCount = 0;
     int recursionLimit = 0;

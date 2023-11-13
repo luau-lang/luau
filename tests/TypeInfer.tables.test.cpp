@@ -8,6 +8,7 @@
 
 #include "Fixture.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 #include <algorithm>
@@ -43,7 +44,10 @@ TEST_CASE_FIXTURE(Fixture, "basic")
 
 TEST_CASE_FIXTURE(Fixture, "augment_table")
 {
-    CheckResult result = check("local t = {}  t.foo = 'bar'");
+    CheckResult result = check(R"(
+        local t = {}
+        t.foo = 'bar'
+    )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
     const TableType* tType = get<TableType>(requireType("t"));
@@ -68,6 +72,35 @@ TEST_CASE_FIXTURE(Fixture, "augment_nested_table")
     REQUIRE(pType != nullptr);
 
     CHECK("{ p: { foo: string } }" == toString(requireType("t"), {true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "assign_key_at_index_expr")
+{
+    CheckResult result = check(R"(
+        function f(t: {[string]: number})
+            t["hello"] = 1
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // We had a bug where we forgot to record the astType of this particular node.
+    CHECK("string" == toString(requireTypeAtPosition({2, 19})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "index_expression_is_checked_against_the_indexer_type")
+{
+    CheckResult result = check(R"(
+        function f(t: {[boolean]: number})
+            t["hello"] = 15
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_MESSAGE(get<CannotExtendTable>(result.errors[0]), "Expected CannotExtendTable but got " << toString(result.errors[0]));
+    else
+        CHECK(get<TypeMismatch>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "cannot_augment_sealed_table")
@@ -3452,13 +3485,22 @@ TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_
         end
     )");
 
-    const std::string expected =
-        R"(Type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}' could not be converted into 'string'
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(toString(result.errors.at(0)) ==
+              "Type pack 't1 where t1 = { absolutely_no_scalar_has_this_method: (t1) -> (unknown, a...) }' could not be converted into 'string'; at "
+              "[0], t1 where t1 = { absolutely_no_scalar_has_this_method: (t1) -> (unknown, a...) } is not a subtype of string");
+    else
+    {
+        const std::string expected =
+            R"(Type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}' could not be converted into 'string'
 caused by:
   The former's metatable does not satisfy the requirements.
 Table type 'typeof(string)' not compatible with type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}' because the former is missing field 'absolutely_no_scalar_has_this_method')";
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(expected, toString(result.errors[0]));
+        CHECK_EQ(expected, toString(result.errors[0]));
+    }
+
     CHECK_EQ("<a, b...>(t1) -> string where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}", toString(requireType("f")));
 }
 
@@ -3881,6 +3923,32 @@ TEST_CASE_FIXTURE(Fixture, "simple_method_definition")
         CHECK_EQ("{ m: (unknown) -> number }", toString(getMainModule()->returnType, ToStringOptions{true}));
     else
         CHECK_EQ("{| m: <a>(a) -> number |}", toString(getMainModule()->returnType, ToStringOptions{true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "identify_all_problematic_table_fields")
+{
+    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        type T = {
+            a: number,
+            b: string,
+            c: boolean,
+        }
+
+        local a: T = {
+            a = "foo",
+            b = false,
+            c = 123,
+        }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    std::string expected = "Type 'a' could not be converted into 'T'; at [\"a\"], string is not a subtype of number"
+        "\n\tat [\"b\"], boolean is not a subtype of string"
+        "\n\tat [\"c\"], number is not a subtype of boolean";
+    CHECK(toString(result.errors[0]) == expected);
 }
 
 TEST_SUITE_END();

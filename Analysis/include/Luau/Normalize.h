@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/NotNull.h"
+#include "Luau/Set.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/UnifierSharedState.h"
 
@@ -9,7 +10,6 @@
 #include <map>
 #include <memory>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace Luau
@@ -29,7 +29,7 @@ bool isConsistentSubtype(TypePackId subTy, TypePackId superTy, NotNull<Scope> sc
 class TypeIds
 {
 private:
-    std::unordered_set<TypeId> types;
+    DenseHashMap<TypeId, bool> types{nullptr};
     std::vector<TypeId> order;
     std::size_t hash = 0;
 
@@ -254,6 +254,10 @@ struct NormalizedType
     // This type is either never or thread.
     TypeId threads;
 
+    // The buffer part of the type.
+    // This type is either never or buffer.
+    TypeId buffers;
+
     // The (meta)table part of the type.
     // Each element of this set is a (meta)table type, or the top `table` type.
     // An empty set denotes never.
@@ -277,6 +281,7 @@ struct NormalizedType
     NormalizedType& operator=(NormalizedType&&) = default;
 
     // IsType functions
+    bool isUnknown() const;
     /// Returns true if the type is exactly a number. Behaves like Type::isNumber()
     bool isExactlyNumber() const;
 
@@ -298,6 +303,7 @@ struct NormalizedType
     bool hasNumbers() const;
     bool hasStrings() const;
     bool hasThreads() const;
+    bool hasBuffers() const;
     bool hasTables() const;
     bool hasFunctions() const;
     bool hasTyvars() const;
@@ -358,7 +364,7 @@ public:
     void unionTablesWithTable(TypeIds& heres, TypeId there);
     void unionTables(TypeIds& heres, const TypeIds& theres);
     bool unionNormals(NormalizedType& here, const NormalizedType& there, int ignoreSmallerTyvars = -1);
-    bool unionNormalWithTy(NormalizedType& here, TypeId there, std::unordered_set<TypeId>& seenSetTypes, int ignoreSmallerTyvars = -1);
+    bool unionNormalWithTy(NormalizedType& here, TypeId there, Set<TypeId>& seenSetTypes, int ignoreSmallerTyvars = -1);
 
     // ------- Negations
     std::optional<NormalizedType> negateNormal(const NormalizedType& here);
@@ -380,15 +386,15 @@ public:
     std::optional<TypeId> intersectionOfFunctions(TypeId here, TypeId there);
     void intersectFunctionsWithFunction(NormalizedFunctionType& heress, TypeId there);
     void intersectFunctions(NormalizedFunctionType& heress, const NormalizedFunctionType& theress);
-    bool intersectTyvarsWithTy(NormalizedTyvars& here, TypeId there, std::unordered_set<TypeId>& seenSetTypes);
+    bool intersectTyvarsWithTy(NormalizedTyvars& here, TypeId there, Set<TypeId>& seenSetTypes);
     bool intersectNormals(NormalizedType& here, const NormalizedType& there, int ignoreSmallerTyvars = -1);
-    bool intersectNormalWithTy(NormalizedType& here, TypeId there, std::unordered_set<TypeId>& seenSetTypes);
+    bool intersectNormalWithTy(NormalizedType& here, TypeId there, Set<TypeId>& seenSetTypes);
     bool normalizeIntersections(const std::vector<TypeId>& intersections, NormalizedType& outType);
 
     // Check for inhabitance
     bool isInhabited(TypeId ty);
-    bool isInhabited(TypeId ty, std::unordered_set<TypeId> seen);
-    bool isInhabited(const NormalizedType* norm, std::unordered_set<TypeId> seen = {});
+    bool isInhabited(TypeId ty, Set<TypeId> seen);
+    bool isInhabited(const NormalizedType* norm, Set<TypeId> seen = {nullptr});
 
     // Check for intersections being inhabited
     bool isIntersectionInhabited(TypeId left, TypeId right);

@@ -1147,33 +1147,27 @@ L0: RETURN R1 1
 TEST_CASE("AndOrFoldLeft")
 {
     // constant folding and/or expression is possible even if just the left hand is constant
-    CHECK_EQ("\n" + compileFunction0("local a = false if a and b then b() end"), R"(
-RETURN R0 0
+    CHECK_EQ("\n" + compileFunction0("local a = false return a and b"), R"(
+LOADB R0 0
+RETURN R0 1
 )");
 
-    CHECK_EQ("\n" + compileFunction0("local a = true if a or b then b() end"), R"(
-GETIMPORT R0 1 [b]
-CALL R0 0 0
-RETURN R0 0
+    CHECK_EQ("\n" + compileFunction0("local a = true return a or b"), R"(
+LOADB R0 1
+RETURN R0 1
 )");
 
-    // however, if right hand side is constant we can't constant fold the entire expression
-    // (note that we don't need to evaluate the right hand side, but we do need a branch)
-    CHECK_EQ("\n" + compileFunction0("local a = false if b and a then b() end"), R"(
-GETIMPORT R0 1 [b]
-JUMPIFNOT R0 L0
-RETURN R0 0
-GETIMPORT R0 1 [b]
-CALL R0 0 0
-L0: RETURN R0 0
+    // if right hand side is constant we can't constant fold the entire expression
+    CHECK_EQ("\n" + compileFunction0("local a = false return b and a"), R"(
+GETIMPORT R1 2 [b]
+ANDK R0 R1 K0 [false]
+RETURN R0 1
 )");
 
-    CHECK_EQ("\n" + compileFunction0("local a = true if b or a then b() end"), R"(
-GETIMPORT R0 1 [b]
-JUMPIF R0 L0
-L0: GETIMPORT R0 1 [b]
-CALL R0 0 0
-RETURN R0 0
+    CHECK_EQ("\n" + compileFunction0("local a = true return b or a"), R"(
+GETIMPORT R1 2 [b]
+ORK R0 R1 K0 [true]
+RETURN R0 1
 )");
 }
 
@@ -1914,8 +1908,6 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueIgnoresImplicitConstant")
 {
-    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation2", true};
-
     // this used to crash the compiler :(
     CHECK_EQ("\n" + compileFunction0(R"(
 local _
@@ -1931,8 +1923,6 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueIgnoresExplicitConstant")
 {
-    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation2", true};
-
     // Constants do not allocate locals and 'continue' validation should skip them if their lifetime already started
     CHECK_EQ("\n" + compileFunction0(R"(
 local c = true
@@ -1948,8 +1938,6 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueRespectsExplicitConstant")
 {
-    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation2", true};
-
     // If local lifetime hasn't started, even if it's a constant that will not receive an allocation, it cannot be jumped over
     try
     {
@@ -1974,8 +1962,6 @@ until c
 
 TEST_CASE("LoopContinueIgnoresImplicitConstantAfterInline")
 {
-    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation2", true};
-
     // Inlining might also replace some locals with constants instead of allocating them
     CHECK_EQ("\n" + compileFunction(R"(
 local function inline(f)
@@ -1999,7 +1985,6 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueCorrectlyHandlesImplicitConstantAfterUnroll")
 {
-    ScopedFastFlag sff{"LuauCompileFixContinueValidation2", true};
     ScopedFastInt sfi("LuauCompileLoopUnrollThreshold", 200);
 
     // access to implicit constant that depends on the unrolled loop constant is still invalid even though we can constant-propagate it
@@ -2015,7 +2000,8 @@ for i = 1, 2 do
         local x = i == 1 or a
     until f(x)
 end
-)", 0, 2);
+)",
+            0, 2);
 
         CHECK(!"Expected CompileError");
     }
@@ -7625,8 +7611,6 @@ L0: RETURN R0 2
 
 TEST_CASE("IfThenElseAndOr")
 {
-    ScopedFastFlag sff("LuauCompileIfElseAndOr", true);
-
     // if v then v else k can be optimized to ORK
     CHECK_EQ("\n" + compileFunction0(R"(
 local x = ...
@@ -7719,6 +7703,129 @@ GETTABLEKS R1 R0 K0 ['data']
 RETURN R1 1
 L0: LOADN R1 0
 RETURN R1 1
+)");
+}
+
+TEST_CASE("SideEffects")
+{
+    ScopedFastFlag sff("LuauCompileSideEffects", true);
+
+    // we do not evaluate expressions in some cases when we know they can't carry side effects
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x = 5, print
+local y = 5, 42
+local z = 5, table.find -- considered side effecting because of metamethods
+)"),
+        R"(
+LOADN R0 5
+LOADN R1 5
+LOADN R2 5
+GETIMPORT R3 2 [table.find]
+RETURN R0 0
+)");
+
+    // this also applies to returns in cases where a function gets inlined
+    CHECK_EQ("\n" + compileFunction(R"(
+local function test1()
+    return 42
+end
+
+local function test2()
+    return print
+end
+
+local function test3()
+    return function() print(test3) end
+end
+
+local function test4()
+    return table.find -- considered side effecting because of metamethods
+end
+
+test1()
+test2()
+test3()
+test4()
+)",
+                        5, 2),
+        R"(
+DUPCLOSURE R0 K0 ['test1']
+DUPCLOSURE R1 K1 ['test2']
+DUPCLOSURE R2 K2 ['test3']
+CAPTURE VAL R2
+DUPCLOSURE R3 K3 ['test4']
+GETIMPORT R4 6 [table.find]
+RETURN R0 0
+)");
+}
+
+TEST_CASE("IfElimination")
+{
+    ScopedFastFlag sff1("LuauCompileDeadIf", true);
+    ScopedFastFlag sff2("LuauCompileSideEffects", true);
+
+    // if the left hand side of a condition is constant, it constant folds and we don't emit the branch
+    CHECK_EQ("\n" + compileFunction0("local a = false if a and b then b() end"), R"(
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0("local a = true if a or b then b() end"), R"(
+GETIMPORT R0 1 [b]
+CALL R0 0 0
+RETURN R0 0
+)");
+
+    // of course this keeps the other branch if present
+    CHECK_EQ("\n" + compileFunction0("local a = false if a and b then b() else return 42 end"), R"(
+LOADN R0 42
+RETURN R0 1
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0("local a = true if a or b then b() else return 42 end"), R"(
+GETIMPORT R0 1 [b]
+CALL R0 0 0
+RETURN R0 0
+)");
+
+    // if the right hand side is constant, the condition doesn't constant fold but we still could eliminate one of the branches for 'a and K'
+    CHECK_EQ("\n" + compileFunction0("local a = false if b and a then return 1 end"), R"(
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0("local a = false if b and a then return 1 else return 2 end"), R"(
+LOADN R0 2
+RETURN R0 1
+)");
+
+    // of course if the right hand side of 'and' is 'true', we still need to actually evaluate the left hand side
+    CHECK_EQ("\n" + compileFunction0("local a = true if b and a then return 1 end"), R"(
+GETIMPORT R0 1 [b]
+JUMPIFNOT R0 L0
+LOADN R0 1
+RETURN R0 1
+L0: RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0("local a = true if b and a then return 1 else return 2 end"), R"(
+GETIMPORT R0 1 [b]
+JUMPIFNOT R0 L0
+LOADN R0 1
+RETURN R0 1
+L0: LOADN R0 2
+RETURN R0 1
+)");
+
+    // also even if we eliminate the branch, we still need to compute side effects
+    CHECK_EQ("\n" + compileFunction0("local a = false if b.test and a then return 1 end"), R"(
+GETIMPORT R0 2 [b.test]
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0("local a = false if b.test and a then return 1 else return 2 end"), R"(
+GETIMPORT R0 2 [b.test]
+LOADN R0 2
+RETURN R0 1
 )");
 }
 

@@ -24,8 +24,6 @@ extern bool verbose;
 extern bool codegen;
 extern int optimizationLevel;
 
-LUAU_FASTFLAG(LuauFloorDivision);
-
 static lua_CompileOptions defaultOptions()
 {
     lua_CompileOptions copts = {};
@@ -288,13 +286,13 @@ TEST_CASE("Assert")
 
 TEST_CASE("Basic")
 {
-    ScopedFastFlag sffs{"LuauFloorDivision", true};
-
     runConformance("basic.lua");
 }
 
 TEST_CASE("Buffers")
 {
+    ScopedFastFlag luauBufferBetterMsg{"LuauBufferBetterMsg", true};
+
     runConformance("buffers.lua");
 }
 
@@ -379,7 +377,6 @@ TEST_CASE("Errors")
 
 TEST_CASE("Events")
 {
-    ScopedFastFlag sffs{"LuauFloorDivision", true};
     runConformance("events.lua");
 }
 
@@ -416,6 +413,7 @@ TEST_CASE("Bitwise")
 
 TEST_CASE("UTF8")
 {
+    ScopedFastFlag sff("LuauStricterUtf8", true);
     runConformance("utf8.lua");
 }
 
@@ -435,8 +433,6 @@ static int cxxthrow(lua_State* L)
 
 TEST_CASE("PCall")
 {
-    ScopedFastFlag sff("LuauHandlerClose", true);
-
     runConformance(
         "pcall.lua",
         [](lua_State* L) {
@@ -464,8 +460,6 @@ TEST_CASE("Pack")
 
 TEST_CASE("Vector")
 {
-    ScopedFastFlag sffs{"LuauFloorDivision", true};
-
     lua_CompileOptions copts = defaultOptions();
     copts.vectorCtor = "vector";
 
@@ -521,6 +515,10 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
         case Luau::PrimitiveType::Thread:
             lua_pushstring(L, "thread");
+            break;
+
+        case Luau::PrimitiveType::Buffer:
+            lua_pushstring(L, "buffer");
             break;
 
         default:
@@ -1698,9 +1696,6 @@ static void pushInt64(lua_State* L, int64_t value)
 
 TEST_CASE("Userdata")
 {
-
-    ScopedFastFlag sffs{"LuauFloorDivision", true};
-
     runConformance("userdata.lua", [](lua_State* L) {
         // create metatable with all the metamethods
         lua_newtable(L);

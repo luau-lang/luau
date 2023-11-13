@@ -175,6 +175,12 @@ void AssemblyBuilderX64::mov(OperandX64 lhs, OperandX64 rhs)
             place(OP_PLUS_REG(0xb0, lhs.base.index));
             placeImm8(rhs.imm);
         }
+        else if (size == SizeX64::word)
+        {
+            place(0x66);
+            place(OP_PLUS_REG(0xb8, lhs.base.index));
+            placeImm16(rhs.imm);
+        }
         else if (size == SizeX64::dword)
         {
             place(OP_PLUS_REG(0xb8, lhs.base.index));
@@ -199,6 +205,13 @@ void AssemblyBuilderX64::mov(OperandX64 lhs, OperandX64 rhs)
             place(0xc6);
             placeModRegMem(lhs, 0, /*extraCodeBytes=*/1);
             placeImm8(rhs.imm);
+        }
+        else if (size == SizeX64::word)
+        {
+            place(0x66);
+            place(0xc7);
+            placeModRegMem(lhs, 0, /*extraCodeBytes=*/2);
+            placeImm16(rhs.imm);
         }
         else
         {
@@ -780,6 +793,16 @@ void AssemblyBuilderX64::vcvtsd2ss(OperandX64 dst, OperandX64 src1, OperandX64 s
     placeAvx("vcvtsd2ss", dst, src1, src2, 0x5a, (src2.cat == CategoryX64::reg ? src2.base.size : src2.memSize) == SizeX64::qword, AVX_0F, AVX_F2);
 }
 
+void AssemblyBuilderX64::vcvtss2sd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    if (src2.cat == CategoryX64::reg)
+        LUAU_ASSERT(src2.base.size == SizeX64::xmmword);
+    else
+        LUAU_ASSERT(src2.memSize == SizeX64::dword);
+
+    placeAvx("vcvtsd2ss", dst, src1, src2, 0x5a, false, AVX_0F, AVX_F3);
+}
+
 void AssemblyBuilderX64::vroundsd(OperandX64 dst, OperandX64 src1, OperandX64 src2, RoundingModeX64 roundingMode)
 {
     placeAvx("vroundsd", dst, src1, src2, uint8_t(roundingMode) | kRoundingPrecisionInexact, 0x0b, false, AVX_0F3A, AVX_66);
@@ -1086,7 +1109,10 @@ void AssemblyBuilderX64::placeBinaryRegAndRegMem(OperandX64 lhs, OperandX64 rhs,
     LUAU_ASSERT(lhs.base.size == (rhs.cat == CategoryX64::reg ? rhs.base.size : rhs.memSize));
 
     SizeX64 size = lhs.base.size;
-    LUAU_ASSERT(size == SizeX64::byte || size == SizeX64::dword || size == SizeX64::qword);
+    LUAU_ASSERT(size == SizeX64::byte || size == SizeX64::word || size == SizeX64::dword || size == SizeX64::qword);
+
+    if (size == SizeX64::word)
+        place(0x66);
 
     placeRex(lhs.base, rhs);
     place(size == SizeX64::byte ? code8 : code);
@@ -1415,6 +1441,13 @@ void AssemblyBuilderX64::placeImm8(int32_t imm)
         place(imm8);
     else
         LUAU_ASSERT(!"Invalid immediate value");
+}
+
+void AssemblyBuilderX64::placeImm16(int16_t imm)
+{
+    uint8_t* pos = codePos;
+    LUAU_ASSERT(pos + sizeof(imm) < codeEnd);
+    codePos = writeu16(pos, imm);
 }
 
 void AssemblyBuilderX64::placeImm32(int32_t imm)

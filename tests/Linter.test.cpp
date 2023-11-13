@@ -1517,8 +1517,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiFenv")
 {
-    ScopedFastFlag sff("LuauLintDeprecatedFenv", true);
-
     LintResult result = lint(R"(
 local f, g, h = ...
 
@@ -1591,8 +1589,6 @@ table.create(42, {} :: {})
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "TableOperationsIndexer")
 {
-    ScopedFastFlag sff("LuauLintTableIndexer", true);
-
     LintResult result = lint(R"(
 local t1 = {} -- ok: empty
 local t2 = {1, 2} -- ok: array
@@ -1690,8 +1686,8 @@ TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsExpr")
     LintResult result = lint(R"(
 local correct, opaque = ...
 
-if correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls")}) then
-elseif correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls")}) then
+if correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls", `string {opaque}`)}) then
+elseif correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls", `string {opaque}`)}) then
 elseif correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls", false)}) then
 end
 )");
@@ -1827,8 +1823,71 @@ local _ = 0x10000000000000000
 )");
 
     REQUIRE(2 == result.warnings.size());
-    CHECK_EQ(result.warnings[0].text, "Binary number literal exceeded available precision and has been truncated to 2^64");
-    CHECK_EQ(result.warnings[1].text, "Hexadecimal number literal exceeded available precision and has been truncated to 2^64");
+    CHECK_EQ(result.warnings[0].text, "Binary number literal exceeded available precision and was truncated to 2^64");
+    CHECK_EQ(result.warnings[1].text, "Hexadecimal number literal exceeded available precision and was truncated to 2^64");
+}
+
+TEST_CASE_FIXTURE(Fixture, "IntegerParsingDecimalImprecise")
+{
+    ScopedFastFlag sff("LuauParseImpreciseNumber", true);
+
+    LintResult result = lint(R"(
+local _ = 10000000000000000000000000000000000000000000000000000000000000000
+local _ = 10000000000000001
+local _ = -10000000000000001
+
+-- 10^16 = 2^16 * 5^16, 5^16 only requires 38 bits
+local _ = 10000000000000000
+local _ = -10000000000000000
+
+-- smallest possible number that is parsed imprecisely
+local _ = 9007199254740993
+local _ = -9007199254740993
+
+-- note that numbers before and after parse precisely (number after is even => 1 more mantissa bit)
+local _ = 9007199254740992
+local _ = 9007199254740994
+
+-- large powers of two should work as well (this is 2^63)
+local _ = -9223372036854775808
+)");
+
+    REQUIRE(5 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[0].location.begin.line, 1);
+    CHECK_EQ(result.warnings[1].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[1].location.begin.line, 2);
+    CHECK_EQ(result.warnings[2].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[2].location.begin.line, 3);
+    CHECK_EQ(result.warnings[3].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[3].location.begin.line, 10);
+    CHECK_EQ(result.warnings[4].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[4].location.begin.line, 11);
+}
+
+TEST_CASE_FIXTURE(Fixture, "IntegerParsingHexImprecise")
+{
+    ScopedFastFlag sff("LuauParseImpreciseNumber", true);
+
+    LintResult result = lint(R"(
+local _ = 0x1234567812345678
+
+-- smallest possible number that is parsed imprecisely
+local _ = 0x20000000000001
+
+-- note that numbers before and after parse precisely (number after is even => 1 more mantissa bit)
+local _ = 0x20000000000000
+local _ = 0x20000000000002
+
+-- large powers of two should work as well (this is 2^63)
+local _ = 0x80000000000000
+)");
+
+    REQUIRE(2 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[0].location.begin.line, 1);
+    CHECK_EQ(result.warnings[1].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[1].location.begin.line, 4);
 }
 
 TEST_CASE_FIXTURE(Fixture, "ComparisonPrecedence")

@@ -14,8 +14,7 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
-LUAU_FASTFLAGVARIABLE(LuauLintDeprecatedFenv, false)
-LUAU_FASTFLAGVARIABLE(LuauLintTableIndexer, false)
+LUAU_FASTFLAG(LuauBufferTypeck)
 
 namespace Luau
 {
@@ -1108,7 +1107,7 @@ private:
     TypeKind getTypeKind(const std::string& name)
     {
         if (name == "nil" || name == "boolean" || name == "userdata" || name == "number" || name == "string" || name == "table" ||
-            name == "function" || name == "thread")
+            name == "function" || name == "thread" || (FFlag::LuauBufferTypeck && name == "buffer"))
             return Kind_Primitive;
 
         if (name == "vector")
@@ -2093,7 +2092,7 @@ private:
         // getfenv/setfenv are deprecated, however they are still used in some test frameworks and don't have a great general replacement
         // for now we warn about the deprecation only when they are used with a numeric first argument; this produces fewer warnings and makes use
         // of getfenv/setfenv a little more localized
-        if (FFlag::LuauLintDeprecatedFenv && !node->self && node->args.size >= 1)
+        if (!node->self && node->args.size >= 1)
         {
             if (AstExprGlobal* fenv = node->func->as<AstExprGlobal>(); fenv && (fenv->name == "getfenv" || fenv->name == "setfenv"))
             {
@@ -2185,7 +2184,7 @@ private:
 
     bool visit(AstExprUnary* node) override
     {
-        if (FFlag::LuauLintTableIndexer && node->op == AstExprUnary::Len)
+        if (node->op == AstExprUnary::Len)
             checkIndexer(node, node->expr, "#");
 
         return true;
@@ -2195,7 +2194,7 @@ private:
     {
         if (AstExprGlobal* func = node->func->as<AstExprGlobal>())
         {
-            if (FFlag::LuauLintTableIndexer && func->name == "ipairs" && node->args.size == 1)
+            if (func->name == "ipairs" && node->args.size == 1)
                 checkIndexer(node, node->args.data[0], "ipairs");
         }
         else if (AstExprIndexName* func = node->func->as<AstExprIndexName>())
@@ -2209,8 +2208,6 @@ private:
 
     void checkIndexer(AstExpr* node, AstExpr* expr, const char* op)
     {
-        LUAU_ASSERT(FFlag::LuauLintTableIndexer);
-
         std::optional<Luau::TypeId> ty = context->getType(expr);
         if (!ty)
             return;
@@ -2220,7 +2217,8 @@ private:
             return;
 
         if (!tty->indexer && !tty->props.empty() && tty->state != TableState::Generic)
-            emitWarning(*context, LintWarning::Code_TableOperations, node->location, "Using '%s' on a table without an array part is likely a bug", op);
+            emitWarning(
+                *context, LintWarning::Code_TableOperations, node->location, "Using '%s' on a table without an array part is likely a bug", op);
         else if (tty->indexer && isString(tty->indexer->indexType)) // note: to avoid complexity of subtype tests we just check if the key is a string
             emitWarning(*context, LintWarning::Code_TableOperations, node->location, "Using '%s' on a table with string keys is likely a bug", op);
     }
@@ -2653,13 +2651,17 @@ private:
         case ConstantNumberParseResult::Ok:
         case ConstantNumberParseResult::Malformed:
             break;
+        case ConstantNumberParseResult::Imprecise:
+            emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
+                "Number literal exceeded available precision and was truncated to closest representable number");
+            break;
         case ConstantNumberParseResult::BinOverflow:
             emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
-                "Binary number literal exceeded available precision and has been truncated to 2^64");
+                "Binary number literal exceeded available precision and was truncated to 2^64");
             break;
         case ConstantNumberParseResult::HexOverflow:
             emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
-                "Hexadecimal number literal exceeded available precision and has been truncated to 2^64");
+                "Hexadecimal number literal exceeded available precision and was truncated to 2^64");
             break;
         }
 

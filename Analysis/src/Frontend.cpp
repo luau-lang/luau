@@ -5,7 +5,7 @@
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/Config.h"
-#include "Luau/ConstraintGraphBuilder.h"
+#include "Luau/ConstraintGenerator.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/DataFlowGraph.h"
 #include "Luau/DcrLogger.h"
@@ -251,7 +251,7 @@ namespace
 static ErrorVec accumulateErrors(
     const std::unordered_map<ModuleName, std::shared_ptr<SourceNode>>& sourceNodes, ModuleResolver& moduleResolver, const ModuleName& name)
 {
-    std::unordered_set<ModuleName> seen;
+    DenseHashSet<ModuleName> seen{{}};
     std::vector<ModuleName> queue{name};
 
     ErrorVec result;
@@ -261,7 +261,7 @@ static ErrorVec accumulateErrors(
         ModuleName next = std::move(queue.back());
         queue.pop_back();
 
-        if (seen.count(next))
+        if (seen.contains(next))
             continue;
         seen.insert(next);
 
@@ -442,7 +442,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
     std::vector<ModuleName> buildQueue;
     bool cycleDetected = parseGraph(buildQueue, name, frontendOptions.forAutocomplete);
 
-    std::unordered_set<Luau::ModuleName> seen;
+    DenseHashSet<Luau::ModuleName> seen{{}};
     std::vector<BuildQueueItem> buildQueueItems;
     addBuildQueueItems(buildQueueItems, buildQueue, cycleDetected, seen, frontendOptions);
     LUAU_ASSERT(!buildQueueItems.empty());
@@ -495,12 +495,12 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
     std::vector<ModuleName> currModuleQueue;
     std::swap(currModuleQueue, moduleQueue);
 
-    std::unordered_set<Luau::ModuleName> seen;
+    DenseHashSet<Luau::ModuleName> seen{{}};
     std::vector<BuildQueueItem> buildQueueItems;
 
     for (const ModuleName& name : currModuleQueue)
     {
-        if (seen.count(name))
+        if (seen.contains(name))
             continue;
 
         if (!isDirty(name, frontendOptions.forAutocomplete))
@@ -511,7 +511,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
 
         std::vector<ModuleName> queue;
         bool cycleDetected = parseGraph(queue, name, frontendOptions.forAutocomplete, [&seen](const ModuleName& name) {
-            return seen.count(name);
+            return seen.contains(name);
         });
 
         addBuildQueueItems(buildQueueItems, queue, cycleDetected, seen, frontendOptions);
@@ -836,11 +836,11 @@ bool Frontend::parseGraph(
 }
 
 void Frontend::addBuildQueueItems(std::vector<BuildQueueItem>& items, std::vector<ModuleName>& buildQueue, bool cycleDetected,
-    std::unordered_set<Luau::ModuleName>& seen, const FrontendOptions& frontendOptions)
+    DenseHashSet<Luau::ModuleName>& seen, const FrontendOptions& frontendOptions)
 {
     for (const ModuleName& moduleName : buildQueue)
     {
-        if (seen.count(moduleName))
+        if (seen.contains(moduleName))
             continue;
         seen.insert(moduleName);
 
@@ -1048,6 +1048,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         module->astResolvedTypes.clear();
         module->astResolvedTypePacks.clear();
         module->astScopes.clear();
+        module->upperBoundContributors.clear();
 
         if (!FFlag::DebugLuauDeferredConstraintResolution)
             module->scopes.clear();
@@ -1255,13 +1256,13 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
 
     Normalizer normalizer{&result->internalTypes, builtinTypes, NotNull{&unifierState}};
 
-    ConstraintGraphBuilder cgb{result, NotNull{&normalizer}, moduleResolver, builtinTypes, iceHandler, parentScope, std::move(prepareModuleScope),
+    ConstraintGenerator cg{result, NotNull{&normalizer}, moduleResolver, builtinTypes, iceHandler, parentScope, std::move(prepareModuleScope),
         logger.get(), NotNull{&dfg}, requireCycles};
 
-    cgb.visitModuleRoot(sourceModule.root);
-    result->errors = std::move(cgb.errors);
+    cg.visitModuleRoot(sourceModule.root);
+    result->errors = std::move(cg.errors);
 
-    ConstraintSolver cs{NotNull{&normalizer}, NotNull(cgb.rootScope), borrowConstraints(cgb.constraints), result->humanReadableName, moduleResolver,
+    ConstraintSolver cs{NotNull{&normalizer}, NotNull(cg.rootScope), borrowConstraints(cg.constraints), result->humanReadableName, moduleResolver,
         requireCycles, logger.get(), limits};
 
     if (options.randomizeConstraintResolutionSeed)
@@ -1283,8 +1284,9 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
     for (TypeError& e : cs.errors)
         result->errors.emplace_back(std::move(e));
 
-    result->scopes = std::move(cgb.scopes);
+    result->scopes = std::move(cg.scopes);
     result->type = sourceModule.type;
+    result->upperBoundContributors = std::move(cs.upperBoundContributors);
 
     result->clonePublicInterface(builtinTypes, *iceHandler);
 

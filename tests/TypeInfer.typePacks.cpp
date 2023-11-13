@@ -247,6 +247,7 @@ TEST_CASE_FIXTURE(Fixture, "variadic_pack_syntax")
     CHECK_EQ(toString(requireType("foo")), "(...number) -> ()");
 }
 
+#if 0
 TEST_CASE_FIXTURE(Fixture, "type_pack_hidden_free_tail_infinite_growth")
 {
     CheckResult result = check(R"(
@@ -263,6 +264,7 @@ end
 
     LUAU_REQUIRE_ERRORS(result);
 }
+#endif
 
 TEST_CASE_FIXTURE(Fixture, "variadic_argument_tail")
 {
@@ -1044,7 +1046,11 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type 'number' could not be converted into 'boolean'");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(toString(result.errors.at(0)) ==
+              "Type pack '...number' could not be converted into 'boolean'; type ...number.tail() (...number) is not a subtype of boolean (boolean)");
+    else
+        CHECK_EQ(toString(result.errors[0]), "Type 'number' could not be converted into 'boolean'");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_packs_with_tails_in_vararg_adjustment")

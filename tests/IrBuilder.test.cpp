@@ -1933,8 +1933,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateHashSlotChecks")
 {
-    ScopedFastFlag luauReuseHashSlots{"LuauReuseHashSlots2", true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
@@ -1991,8 +1989,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateHashSlotChecksAvoidNil")
 {
-    ScopedFastFlag luauReuseHashSlots{"LuauReuseHashSlots2", true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
@@ -3074,8 +3070,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "TagSelfEqualityCheckRemoval")
 {
-    ScopedFastFlag luauMergeTagLoads{"LuauMergeTagLoads", true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
     IrOp trueBlock = build.block(IrBlockKind::Internal);
     IrOp falseBlock = build.block(IrBlockKind::Internal);
@@ -3103,6 +3097,40 @@ bb_1:
    RETURN 1u
 
 )");
+}
+
+TEST_SUITE_END();
+
+TEST_SUITE_BEGIN("Dump");
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "ToDot")
+{
+    IrOp entry = build.block(IrBlockKind::Internal);
+    IrOp a = build.block(IrBlockKind::Internal);
+    IrOp b = build.block(IrBlockKind::Internal);
+    IrOp exit = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    build.inst(IrCmd::JUMP_EQ_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(0)), build.constTag(tnumber), a, b);
+
+    build.beginBlock(a);
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(2), build.inst(IrCmd::LOAD_TVALUE, build.vmReg(1)));
+    build.inst(IrCmd::JUMP, exit);
+
+    build.beginBlock(b);
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(3), build.inst(IrCmd::LOAD_TVALUE, build.vmReg(1)));
+    build.inst(IrCmd::JUMP, exit);
+
+    build.beginBlock(exit);
+    build.inst(IrCmd::RETURN, build.vmReg(2), build.constInt(2));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+
+    // note: we don't validate the output of these to avoid test churn when formatting changes; we run these to make sure they don't assert/crash
+    toDot(build.function, /* includeInst= */ true);
+    toDotCfg(build.function);
+    toDotDjGraph(build.function);
 }
 
 TEST_SUITE_END();

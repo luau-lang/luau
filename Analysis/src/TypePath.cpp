@@ -6,8 +6,9 @@
 #include "Luau/Type.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePack.h"
-#include "Luau/TypeUtils.h"
+#include "Luau/TypeOrPack.h"
 
+#include <functional>
 #include <optional>
 #include <sstream>
 #include <type_traits>
@@ -102,6 +103,41 @@ bool Path::empty() const
 bool Path::operator==(const Path& other) const
 {
     return components == other.components;
+}
+
+size_t PathHash::operator()(const Property& prop) const
+{
+    return std::hash<std::string>()(prop.name) ^ static_cast<size_t>(prop.isRead);
+}
+
+size_t PathHash::operator()(const Index& idx) const
+{
+    return idx.index;
+}
+
+size_t PathHash::operator()(const TypeField& field) const
+{
+    return static_cast<size_t>(field);
+}
+
+size_t PathHash::operator()(const PackField& field) const
+{
+    return static_cast<size_t>(field);
+}
+
+size_t PathHash::operator()(const Component& component) const
+{
+    return visit(*this, component);
+}
+
+size_t PathHash::operator()(const Path& path) const
+{
+    size_t hash = 0;
+
+    for (const Component& component : path.components)
+        hash ^= (*this)(component);
+
+    return hash;
 }
 
 Path PathBuilder::build()
@@ -465,7 +501,7 @@ struct TraversalState
 
 } // namespace
 
-std::string toString(const TypePath::Path& path)
+std::string toString(const TypePath::Path& path, bool prefixDot)
 {
     std::stringstream result;
     bool first = true;
@@ -491,7 +527,7 @@ std::string toString(const TypePath::Path& path)
         }
         else if constexpr (std::is_same_v<T, TypePath::TypeField>)
         {
-            if (!first)
+            if (!first || prefixDot)
                 result << '.';
 
             switch (c)
@@ -523,7 +559,7 @@ std::string toString(const TypePath::Path& path)
         }
         else if constexpr (std::is_same_v<T, TypePath::PackField>)
         {
-            if (!first)
+            if (!first || prefixDot)
                 result << '.';
 
             switch (c)
@@ -580,7 +616,14 @@ std::optional<TypeOrPack> traverse(TypeId root, const Path& path, NotNull<Builti
         return std::nullopt;
 }
 
-std::optional<TypeOrPack> traverse(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes);
+std::optional<TypeOrPack> traverse(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes)
+{
+    TraversalState state(follow(root), builtinTypes);
+    if (traverse(state, path))
+        return state.current;
+    else
+        return std::nullopt;
+}
 
 std::optional<TypeId> traverseForType(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes)
 {

@@ -484,6 +484,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "thread_is_a_type")
     CHECK("thread" == toString(requireType("co")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "buffer_is_a_type")
+{
+    CheckResult result = check(R"(
+        local b = buffer.create(10)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("buffer" == toString(requireType("b")));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_resume_anything_goes")
 {
     CheckResult result = check(R"(

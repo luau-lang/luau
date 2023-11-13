@@ -531,50 +531,6 @@ const Instruction* executeSETTABLEKS(lua_State* L, const Instruction* pc, StkId 
     }
 }
 
-const Instruction* executeNEWCLOSURE(lua_State* L, const Instruction* pc, StkId base, TValue* k)
-{
-    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
-    Instruction insn = *pc++;
-    StkId ra = VM_REG(LUAU_INSN_A(insn));
-
-    Proto* pv = cl->l.p->p[LUAU_INSN_D(insn)];
-    LUAU_ASSERT(unsigned(LUAU_INSN_D(insn)) < unsigned(cl->l.p->sizep));
-
-    VM_PROTECT_PC(); // luaF_newLclosure may fail due to OOM
-
-    // note: we save closure to stack early in case the code below wants to capture it by value
-    Closure* ncl = luaF_newLclosure(L, pv->nups, cl->env, pv);
-    setclvalue(L, ra, ncl);
-
-    for (int ui = 0; ui < pv->nups; ++ui)
-    {
-        Instruction uinsn = *pc++;
-        LUAU_ASSERT(LUAU_INSN_OP(uinsn) == LOP_CAPTURE);
-
-        switch (LUAU_INSN_A(uinsn))
-        {
-        case LCT_VAL:
-            setobj(L, &ncl->l.uprefs[ui], VM_REG(LUAU_INSN_B(uinsn)));
-            break;
-
-        case LCT_REF:
-            setupvalue(L, &ncl->l.uprefs[ui], luaF_findupval(L, VM_REG(LUAU_INSN_B(uinsn))));
-            break;
-
-        case LCT_UPVAL:
-            setobj(L, &ncl->l.uprefs[ui], VM_UV(LUAU_INSN_B(uinsn)));
-            break;
-
-        default:
-            LUAU_ASSERT(!"Unknown upvalue capture type");
-            LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
-        }
-    }
-
-    VM_PROTECT(luaC_checkGC(L));
-    return pc;
-}
-
 const Instruction* executeNAMECALL(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
     [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
@@ -587,43 +543,19 @@ const Instruction* executeNAMECALL(lua_State* L, const Instruction* pc, StkId ba
 
     if (ttistable(rb))
     {
-        Table* h = hvalue(rb);
-        // note: we can't use nodemask8 here because we need to query the main position of the table, and 8-bit nodemask8 only works
-        // for predictive lookups
-        LuaNode* n = &h->node[tsvalue(kv)->hash & (sizenode(h) - 1)];
+        // note: lvmexecute.cpp version of NAMECALL has two fast paths, but both fast paths are inlined into IR
+        // as such, if we get here we can just use the generic path which makes the fallback path a little faster
 
-        const TValue* mt = 0;
-        const LuaNode* mtn = 0;
-
-        // fast-path: key is in the table in expected slot
-        if (ttisstring(gkey(n)) && tsvalue(gkey(n)) == tsvalue(kv) && !ttisnil(gval(n)))
-        {
-            // note: order of copies allows rb to alias ra+1 or ra
-            setobj2s(L, ra + 1, rb);
-            setobj2s(L, ra, gval(n));
-        }
-        // fast-path: key is absent from the base, table has an __index table, and it has the result in the expected slot
-        else if (gnext(n) == 0 && (mt = fasttm(L, hvalue(rb)->metatable, TM_INDEX)) && ttistable(mt) &&
-                 (mtn = &hvalue(mt)->node[LUAU_INSN_C(insn) & hvalue(mt)->nodemask8]) && ttisstring(gkey(mtn)) && tsvalue(gkey(mtn)) == tsvalue(kv) &&
-                 !ttisnil(gval(mtn)))
-        {
-            // note: order of copies allows rb to alias ra+1 or ra
-            setobj2s(L, ra + 1, rb);
-            setobj2s(L, ra, gval(mtn));
-        }
-        else
-        {
-            // slow-path: handles full table lookup
-            setobj2s(L, ra + 1, rb);
-            L->cachedslot = LUAU_INSN_C(insn);
-            VM_PROTECT(luaV_gettable(L, rb, kv, ra));
-            // save cachedslot to accelerate future lookups; patches currently executing instruction since pc-2 rolls back two pc++
-            VM_PATCH_C(pc - 2, L->cachedslot);
-            // recompute ra since stack might have been reallocated
-            ra = VM_REG(LUAU_INSN_A(insn));
-            if (ttisnil(ra))
-                luaG_methoderror(L, ra + 1, tsvalue(kv));
-        }
+        // slow-path: handles full table lookup
+        setobj2s(L, ra + 1, rb);
+        L->cachedslot = LUAU_INSN_C(insn);
+        VM_PROTECT(luaV_gettable(L, rb, kv, ra));
+        // save cachedslot to accelerate future lookups; patches currently executing instruction since pc-2 rolls back two pc++
+        VM_PATCH_C(pc - 2, L->cachedslot);
+        // recompute ra since stack might have been reallocated
+        ra = VM_REG(LUAU_INSN_A(insn));
+        if (ttisnil(ra))
+            luaG_methoderror(L, ra + 1, tsvalue(kv));
     }
     else
     {

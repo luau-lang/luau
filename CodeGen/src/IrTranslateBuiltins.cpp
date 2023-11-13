@@ -8,6 +8,9 @@
 
 #include <math.h>
 
+LUAU_FASTFLAGVARIABLE(LuauBufferTranslateIr, false)
+LUAU_FASTFLAGVARIABLE(LuauImproveInsertIr, false)
+
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
 static const int kMinMaxUnrolledParams = 5;
@@ -150,13 +153,12 @@ static BuiltinImplResult translateBuiltinMathDegRad(IrBuilder& build, IrCmd cmd,
     return {BuiltinImplType::Full, 1};
 }
 
-static BuiltinImplResult translateBuiltinMathLog(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
+static BuiltinImplResult translateBuiltinMathLog(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
 {
     if (nparams < 1 || nresults > 1)
         return {BuiltinImplType::None, -1};
 
-    int libmId = bfid;
+    int libmId = LBF_MATH_LOG;
     std::optional<double> denom;
 
     if (nparams != 1)
@@ -298,7 +300,7 @@ static BuiltinImplResult translateBuiltinTypeof(IrBuilder& build, int nparams, i
 }
 
 static BuiltinImplResult translateBuiltinBit32BinaryOp(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
+    IrBuilder& build, IrCmd cmd, bool btest, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
 {
     if (nparams < 2 || nparams > kBit32BinaryOpUnrolledParams || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -315,17 +317,6 @@ static BuiltinImplResult translateBuiltinBit32BinaryOp(
     IrOp vaui = build.inst(IrCmd::NUM_TO_UINT, va);
     IrOp vbui = build.inst(IrCmd::NUM_TO_UINT, vb);
 
-
-    IrCmd cmd = IrCmd::NOP;
-    if (bfid == LBF_BIT32_BAND || bfid == LBF_BIT32_BTEST)
-        cmd = IrCmd::BITAND_UINT;
-    else if (bfid == LBF_BIT32_BXOR)
-        cmd = IrCmd::BITXOR_UINT;
-    else if (bfid == LBF_BIT32_BOR)
-        cmd = IrCmd::BITOR_UINT;
-
-    LUAU_ASSERT(cmd != IrCmd::NOP);
-
     IrOp res = build.inst(cmd, vaui, vbui);
 
     for (int i = 3; i <= nparams; ++i)
@@ -336,7 +327,7 @@ static BuiltinImplResult translateBuiltinBit32BinaryOp(
         res = build.inst(cmd, res, arg);
     }
 
-    if (bfid == LBF_BIT32_BTEST)
+    if (btest)
     {
         IrOp falsey = build.block(IrBlockKind::Internal);
         IrOp truthy = build.block(IrBlockKind::Internal);
@@ -350,7 +341,6 @@ static BuiltinImplResult translateBuiltinBit32BinaryOp(
         build.beginBlock(truthy);
         build.inst(IrCmd::STORE_INT, build.vmReg(ra), build.constInt(1));
         build.inst(IrCmd::JUMP, exit);
-
 
         build.beginBlock(exit);
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TBOOLEAN));
@@ -367,8 +357,7 @@ static BuiltinImplResult translateBuiltinBit32BinaryOp(
     return {BuiltinImplType::Full, 1};
 }
 
-static BuiltinImplResult translateBuiltinBit32Bnot(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
+static BuiltinImplResult translateBuiltinBit32Bnot(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
 {
     if (nparams < 1 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -389,7 +378,7 @@ static BuiltinImplResult translateBuiltinBit32Bnot(
 }
 
 static BuiltinImplResult translateBuiltinBit32Shift(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, IrOp fallback, int pcpos)
+    IrBuilder& build, IrCmd cmd, int nparams, int ra, int arg, IrOp args, int nresults, IrOp fallback, int pcpos)
 {
     if (nparams < 2 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -418,16 +407,6 @@ static BuiltinImplResult translateBuiltinBit32Shift(
         build.beginBlock(block);
     }
 
-    IrCmd cmd = IrCmd::NOP;
-    if (bfid == LBF_BIT32_LSHIFT)
-        cmd = IrCmd::BITLSHIFT_UINT;
-    else if (bfid == LBF_BIT32_RSHIFT)
-        cmd = IrCmd::BITRSHIFT_UINT;
-    else if (bfid == LBF_BIT32_ARSHIFT)
-        cmd = IrCmd::BITARSHIFT_UINT;
-
-    LUAU_ASSERT(cmd != IrCmd::NOP);
-
     IrOp shift = build.inst(cmd, vaui, vbi);
 
     IrOp value = build.inst(IrCmd::UINT_TO_NUM, shift);
@@ -439,8 +418,7 @@ static BuiltinImplResult translateBuiltinBit32Shift(
     return {BuiltinImplType::UsesFallback, 1};
 }
 
-static BuiltinImplResult translateBuiltinBit32Rotate(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
+static BuiltinImplResult translateBuiltinBit32Rotate(IrBuilder& build, IrCmd cmd, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
 {
     if (nparams < 2 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -454,7 +432,6 @@ static BuiltinImplResult translateBuiltinBit32Rotate(
     IrOp vaui = build.inst(IrCmd::NUM_TO_UINT, va);
     IrOp vbi = build.inst(IrCmd::NUM_TO_INT, vb);
 
-    IrCmd cmd = (bfid == LBF_BIT32_LROTATE) ? IrCmd::BITLROTATE_UINT : IrCmd::BITRROTATE_UINT;
     IrOp shift = build.inst(cmd, vaui, vbi);
 
     IrOp value = build.inst(IrCmd::UINT_TO_NUM, shift);
@@ -467,7 +444,7 @@ static BuiltinImplResult translateBuiltinBit32Rotate(
 }
 
 static BuiltinImplResult translateBuiltinBit32Extract(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, IrOp fallback, int pcpos)
+    IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, IrOp fallback, int pcpos)
 {
     if (nparams < 2 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -547,8 +524,7 @@ static BuiltinImplResult translateBuiltinBit32Extract(
     return {BuiltinImplType::UsesFallback, 1};
 }
 
-static BuiltinImplResult translateBuiltinBit32ExtractK(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
+static BuiltinImplResult translateBuiltinBit32ExtractK(IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
 {
     if (nparams < 2 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -583,8 +559,7 @@ static BuiltinImplResult translateBuiltinBit32ExtractK(
     return {BuiltinImplType::Full, 1};
 }
 
-static BuiltinImplResult translateBuiltinBit32Countz(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
+static BuiltinImplResult translateBuiltinBit32Unary(IrBuilder& build, IrCmd cmd, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
 {
     if (nparams < 1 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -594,7 +569,6 @@ static BuiltinImplResult translateBuiltinBit32Countz(
 
     IrOp vaui = build.inst(IrCmd::NUM_TO_UINT, va);
 
-    IrCmd cmd = (bfid == LBF_BIT32_COUNTLZ) ? IrCmd::BITCOUNTLZ_UINT : IrCmd::BITCOUNTRZ_UINT;
     IrOp bin = build.inst(cmd, vaui);
 
     IrOp value = build.inst(IrCmd::UINT_TO_NUM, bin);
@@ -608,7 +582,7 @@ static BuiltinImplResult translateBuiltinBit32Countz(
 }
 
 static BuiltinImplResult translateBuiltinBit32Replace(
-    IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, IrOp fallback, int pcpos)
+    IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, IrOp fallback, int pcpos)
 {
     if (nparams < 3 || nresults > 1)
         return {BuiltinImplType::None, -1};
@@ -632,7 +606,6 @@ static BuiltinImplResult translateBuiltinBit32Replace(
         build.inst(IrCmd::JUMP_CMP_INT, f, build.constInt(32), build.cond(IrCondition::UnsignedGreaterEqual), fallback, block);
         build.beginBlock(block);
 
-        // TODO: this can be optimized using a bit-select instruction (btr on x86)
         IrOp m = build.constInt(1);
         IrOp shift = build.inst(IrCmd::BITLSHIFT_UINT, m, f);
         IrOp not_ = build.inst(IrCmd::BITNOT_UINT, shift);
@@ -718,10 +691,35 @@ static BuiltinImplResult translateBuiltinTableInsert(IrBuilder& build, int npara
 
     IrOp setnum = build.inst(IrCmd::TABLE_SETNUM, table, pos);
 
-    IrOp va = build.inst(IrCmd::LOAD_TVALUE, args);
-    build.inst(IrCmd::STORE_TVALUE, setnum, va);
+    if (FFlag::LuauImproveInsertIr)
+    {
+        if (args.kind == IrOpKind::Constant)
+        {
+            LUAU_ASSERT(build.function.constOp(args).kind == IrConstKind::Double);
 
-    build.inst(IrCmd::BARRIER_TABLE_FORWARD, table, args, build.undef());
+            // No barrier necessary since numbers aren't collectable
+            build.inst(IrCmd::STORE_DOUBLE, setnum, args);
+            build.inst(IrCmd::STORE_TAG, setnum, build.constTag(LUA_TNUMBER));
+        }
+        else
+        {
+            IrOp va = build.inst(IrCmd::LOAD_TVALUE, args);
+            build.inst(IrCmd::STORE_TVALUE, setnum, va);
+
+            // Compiler only generates FASTCALL*K for source-level constants, so dynamic imports are not affected
+            LUAU_ASSERT(build.function.proto);
+            IrOp argstag = args.kind == IrOpKind::VmConst ? build.constTag(build.function.proto->k[vmConstOp(args)].tt) : build.undef();
+
+            build.inst(IrCmd::BARRIER_TABLE_FORWARD, table, args, argstag);
+        }
+    }
+    else
+    {
+        IrOp va = build.inst(IrCmd::LOAD_TVALUE, args);
+        build.inst(IrCmd::STORE_TVALUE, setnum, va);
+
+        build.inst(IrCmd::BARRIER_TABLE_FORWARD, table, args, build.undef());
+    }
 
     return {BuiltinImplType::Full, 0};
 }
@@ -743,6 +741,59 @@ static BuiltinImplResult translateBuiltinStringLen(IrBuilder& build, int nparams
     return {BuiltinImplType::Full, 1};
 }
 
+static void translateBufferArgsAndCheckBounds(IrBuilder& build, int nparams, int arg, IrOp args, int size, int pcpos, IrOp& buf, IrOp& intIndex)
+{
+    build.loadAndCheckTag(build.vmReg(arg), LUA_TBUFFER, build.vmExit(pcpos));
+    builtinCheckDouble(build, args, pcpos);
+
+    if (nparams == 3)
+        builtinCheckDouble(build, build.vmReg(vmRegOp(args) + 1), pcpos);
+
+    buf = build.inst(IrCmd::LOAD_POINTER, build.vmReg(arg));
+
+    IrOp numIndex = builtinLoadDouble(build, args);
+    intIndex = build.inst(IrCmd::NUM_TO_INT, numIndex);
+
+    build.inst(IrCmd::CHECK_BUFFER_LEN, buf, intIndex, build.constInt(size), build.vmExit(pcpos));
+}
+
+static BuiltinImplResult translateBuiltinBufferRead(
+    IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos, IrCmd readCmd, int size, IrCmd convCmd)
+{
+    if (!FFlag::LuauBufferTranslateIr)
+        return {BuiltinImplType::None, -1};
+
+    if (nparams < 2 || nresults > 1)
+        return {BuiltinImplType::None, -1};
+
+    IrOp buf, intIndex;
+    translateBufferArgsAndCheckBounds(build, nparams, arg, args, size, pcpos, buf, intIndex);
+
+    IrOp result = build.inst(readCmd, buf, intIndex);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(ra), convCmd == IrCmd::NOP ? result : build.inst(convCmd, result));
+    build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+
+    return {BuiltinImplType::Full, 1};
+}
+
+static BuiltinImplResult translateBuiltinBufferWrite(
+    IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos, IrCmd writeCmd, int size, IrCmd convCmd)
+{
+    if (!FFlag::LuauBufferTranslateIr)
+        return {BuiltinImplType::None, -1};
+
+    if (nparams < 3 || nresults > 0)
+        return {BuiltinImplType::None, -1};
+
+    IrOp buf, intIndex;
+    translateBufferArgsAndCheckBounds(build, nparams, arg, args, size, pcpos, buf, intIndex);
+
+    IrOp numValue = builtinLoadDouble(build, build.vmReg(vmRegOp(args) + 1));
+    build.inst(writeCmd, buf, intIndex, convCmd == IrCmd::NOP ? numValue : build.inst(convCmd, numValue));
+
+    return {BuiltinImplType::Full, 0};
+}
+
 BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, IrOp args, int nparams, int nresults, IrOp fallback, int pcpos)
 {
     // Builtins are not allowed to handle variadic arguments
@@ -758,7 +809,7 @@ BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, 
     case LBF_MATH_RAD:
         return translateBuiltinMathDegRad(build, IrCmd::MUL_NUM, nparams, ra, arg, args, nresults, pcpos);
     case LBF_MATH_LOG:
-        return translateBuiltinMathLog(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
+        return translateBuiltinMathLog(build, nparams, ra, arg, args, nresults, pcpos);
     case LBF_MATH_MIN:
         return translateBuiltinMathMinMax(build, IrCmd::MIN_NUM, nparams, ra, arg, args, nresults, pcpos);
     case LBF_MATH_MAX:
@@ -798,28 +849,35 @@ BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, 
     case LBF_MATH_MODF:
         return translateBuiltinNumberTo2Number(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_BAND:
+        return translateBuiltinBit32BinaryOp(build, IrCmd::BITAND_UINT, /* btest= */ false, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_BOR:
+        return translateBuiltinBit32BinaryOp(build, IrCmd::BITOR_UINT, /* btest= */ false, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_BXOR:
+        return translateBuiltinBit32BinaryOp(build, IrCmd::BITXOR_UINT, /* btest= */ false, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_BTEST:
-        return translateBuiltinBit32BinaryOp(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
+        return translateBuiltinBit32BinaryOp(build, IrCmd::BITAND_UINT, /* btest= */ true, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_BNOT:
-        return translateBuiltinBit32Bnot(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
+        return translateBuiltinBit32Bnot(build, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_LSHIFT:
+        return translateBuiltinBit32Shift(build, IrCmd::BITLSHIFT_UINT, nparams, ra, arg, args, nresults, fallback, pcpos);
     case LBF_BIT32_RSHIFT:
+        return translateBuiltinBit32Shift(build, IrCmd::BITRSHIFT_UINT, nparams, ra, arg, args, nresults, fallback, pcpos);
     case LBF_BIT32_ARSHIFT:
-        return translateBuiltinBit32Shift(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, fallback, pcpos);
+        return translateBuiltinBit32Shift(build, IrCmd::BITARSHIFT_UINT, nparams, ra, arg, args, nresults, fallback, pcpos);
     case LBF_BIT32_LROTATE:
+        return translateBuiltinBit32Rotate(build, IrCmd::BITLROTATE_UINT, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_RROTATE:
-        return translateBuiltinBit32Rotate(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
+        return translateBuiltinBit32Rotate(build, IrCmd::BITRROTATE_UINT, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_EXTRACT:
-        return translateBuiltinBit32Extract(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, fallback, pcpos);
+        return translateBuiltinBit32Extract(build, nparams, ra, arg, args, nresults, fallback, pcpos);
     case LBF_BIT32_EXTRACTK:
-        return translateBuiltinBit32ExtractK(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
+        return translateBuiltinBit32ExtractK(build, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_COUNTLZ:
+        return translateBuiltinBit32Unary(build, IrCmd::BITCOUNTLZ_UINT, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_COUNTRZ:
-        return translateBuiltinBit32Countz(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
+        return translateBuiltinBit32Unary(build, IrCmd::BITCOUNTRZ_UINT, nparams, ra, arg, args, nresults, pcpos);
     case LBF_BIT32_REPLACE:
-        return translateBuiltinBit32Replace(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, fallback, pcpos);
+        return translateBuiltinBit32Replace(build, nparams, ra, arg, args, nresults, fallback, pcpos);
     case LBF_TYPE:
         return translateBuiltinType(build, nparams, ra, arg, args, nresults);
     case LBF_TYPEOF:
@@ -830,6 +888,34 @@ BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, 
         return translateBuiltinTableInsert(build, nparams, ra, arg, args, nresults, pcpos);
     case LBF_STRING_LEN:
         return translateBuiltinStringLen(build, nparams, ra, arg, args, nresults, pcpos);
+    case LBF_BIT32_BYTESWAP:
+        return translateBuiltinBit32Unary(build, IrCmd::BYTESWAP_UINT, nparams, ra, arg, args, nresults, pcpos);
+    case LBF_BUFFER_READI8:
+        return translateBuiltinBufferRead(build, nparams, ra, arg, args, nresults, pcpos, IrCmd::BUFFER_READI8, 1, IrCmd::INT_TO_NUM);
+    case LBF_BUFFER_READU8:
+        return translateBuiltinBufferRead(build, nparams, ra, arg, args, nresults, pcpos, IrCmd::BUFFER_READU8, 1, IrCmd::INT_TO_NUM);
+    case LBF_BUFFER_WRITEU8:
+        return translateBuiltinBufferWrite(build, nparams, ra, arg, args, nresults, pcpos, IrCmd::BUFFER_WRITEI8, 1, IrCmd::NUM_TO_UINT);
+    case LBF_BUFFER_READI16:
+        return translateBuiltinBufferRead(build, nparams, ra, arg, args, nresults, pcpos, IrCmd::BUFFER_READI16, 2, IrCmd::INT_TO_NUM);
+    case LBF_BUFFER_READU16:
+        return translateBuiltinBufferRead(build, nparams, ra, arg, args, nresults, pcpos, IrCmd::BUFFER_READU16, 2, IrCmd::INT_TO_NUM);
+    case LBF_BUFFER_WRITEU16:
+        return translateBuiltinBufferWrite(build, nparams, ra, arg, args, nresults, pcpos, IrCmd::BUFFER_WRITEI16, 2, IrCmd::NUM_TO_UINT);
+    case LBF_BUFFER_READI32:
+        return translateBuiltinBufferRead(build, nparams, ra, arg, args, nresults, pcpos, IrCmd::BUFFER_READI32, 4, IrCmd::INT_TO_NUM);
+    case LBF_BUFFER_READU32:
+        return translateBuiltinBufferRead(build, nparams, ra, arg, args, nresults, pcpos, IrCmd::BUFFER_READI32, 4, IrCmd::UINT_TO_NUM);
+    case LBF_BUFFER_WRITEU32:
+        return translateBuiltinBufferWrite(build, nparams, ra, arg, args, nresults, pcpos, IrCmd::BUFFER_WRITEI32, 4, IrCmd::NUM_TO_UINT);
+    case LBF_BUFFER_READF32:
+        return translateBuiltinBufferRead(build, nparams, ra, arg, args, nresults, pcpos, IrCmd::BUFFER_READF32, 4, IrCmd::NOP);
+    case LBF_BUFFER_WRITEF32:
+        return translateBuiltinBufferWrite(build, nparams, ra, arg, args, nresults, pcpos, IrCmd::BUFFER_WRITEF32, 4, IrCmd::NOP);
+    case LBF_BUFFER_READF64:
+        return translateBuiltinBufferRead(build, nparams, ra, arg, args, nresults, pcpos, IrCmd::BUFFER_READF64, 8, IrCmd::NOP);
+    case LBF_BUFFER_WRITEF64:
+        return translateBuiltinBufferWrite(build, nparams, ra, arg, args, nresults, pcpos, IrCmd::BUFFER_WRITEF64, 8, IrCmd::NOP);
     default:
         return {BuiltinImplType::None, -1};
     }

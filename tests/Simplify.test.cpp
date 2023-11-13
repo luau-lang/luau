@@ -32,7 +32,6 @@ struct SimplifyFixture : Fixture
     const TypeId stringTy = builtinTypes->stringType;
     const TypeId booleanTy = builtinTypes->booleanType;
     const TypeId nilTy = builtinTypes->nilType;
-    const TypeId threadTy = builtinTypes->threadType;
 
     const TypeId classTy = builtinTypes->classType;
 

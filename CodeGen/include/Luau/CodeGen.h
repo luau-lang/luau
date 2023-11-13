@@ -80,6 +80,27 @@ struct AssemblyOptions
     void* annotatorContext = nullptr;
 };
 
+struct BlockLinearizationStats
+{
+    unsigned int constPropInstructionCount = 0;
+    double timeSeconds = 0.0;
+
+    BlockLinearizationStats& operator+=(const BlockLinearizationStats& that)
+    {
+        this->constPropInstructionCount += that.constPropInstructionCount;
+        this->timeSeconds += that.timeSeconds;
+
+        return *this;
+    }
+
+    BlockLinearizationStats operator+(const BlockLinearizationStats& other) const
+    {
+        BlockLinearizationStats result(*this);
+        result += other;
+        return result;
+    }
+};
+
 struct LoweringStats
 {
     unsigned totalFunctions = 0;
@@ -93,6 +114,8 @@ struct LoweringStats
 
     int regAllocErrors = 0;
     int loweringErrors = 0;
+
+    BlockLinearizationStats blockLinearizationStats;
 
     LoweringStats operator+(const LoweringStats& other) const
     {
@@ -113,6 +136,7 @@ struct LoweringStats
         this->maxBlockInstructions = std::max(this->maxBlockInstructions, that.maxBlockInstructions);
         this->regAllocErrors += that.regAllocErrors;
         this->loweringErrors += that.loweringErrors;
+        this->blockLinearizationStats += that.blockLinearizationStats;
         return *this;
     }
 };

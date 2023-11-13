@@ -8,7 +8,10 @@
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/RecursionCounter.h"
+#include "Luau/Set.h"
+#include "Luau/Subtyping.h"
 #include "Luau/Type.h"
+#include "Luau/TypeFwd.h"
 #include "Luau/Unifier.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
@@ -16,9 +19,10 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
 // This could theoretically be 2000 on amd64, but x86 requires this.
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
-LUAU_FASTFLAGVARIABLE(LuauNormalizeCyclicUnions, false);
 LUAU_FASTFLAG(LuauTransitiveSubtyping)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauBufferTypeck)
 
 namespace Luau
 {
@@ -32,9 +36,14 @@ TypeIds::TypeIds(std::initializer_list<TypeId> tys)
 void TypeIds::insert(TypeId ty)
 {
     ty = follow(ty);
-    auto [_, fresh] = types.insert(ty);
-    if (fresh)
+
+    // get a reference to the slot for `ty` in `types`
+    bool& entry = types[ty];
+
+    // if `ty` is fresh, we can set it to `true`, add it to the order and hash and be done.
+    if (!entry)
     {
+        entry = true;
         order.push_back(ty);
         hash ^= std::hash<TypeId>{}(ty);
     }
@@ -75,25 +84,26 @@ TypeIds::const_iterator TypeIds::end() const
 TypeIds::iterator TypeIds::erase(TypeIds::const_iterator it)
 {
     TypeId ty = *it;
-    types.erase(ty);
+    types[ty] = false;
     hash ^= std::hash<TypeId>{}(ty);
     return order.erase(it);
 }
 
 size_t TypeIds::size() const
 {
-    return types.size();
+    return order.size();
 }
 
 bool TypeIds::empty() const
 {
-    return types.empty();
+    return order.empty();
 }
 
 size_t TypeIds::count(TypeId ty) const
 {
     ty = follow(ty);
-    return types.count(ty);
+    const bool* val = types.find(ty);
+    return (val && *val) ? 1 : 0;
 }
 
 void TypeIds::retain(const TypeIds& there)
@@ -122,7 +132,29 @@ bool TypeIds::isNever() const
 
 bool TypeIds::operator==(const TypeIds& there) const
 {
-    return hash == there.hash && types == there.types;
+    // we can early return if the hashes don't match.
+    if (hash != there.hash)
+        return false;
+
+    // we have to check equality of the sets themselves if not.
+
+    // if the sets are unequal sizes, then they cannot possibly be equal.
+    // it is important to use `order` here and not `types` since the mappings
+    // may have different sizes since removal is not possible, and so erase
+    // simply writes `false` into the map.
+    if (order.size() != there.order.size())
+        return false;
+
+    // otherwise, we'll need to check that every element we have here is in `there`.
+    for (auto ty : order)
+    {
+        // if it's not, we'll return `false`
+        if (there.count(ty) == 0)
+            return false;
+    }
+
+    // otherwise, we've proven the two equal!
+    return true;
 }
 
 NormalizedStringType::NormalizedStringType() {}
@@ -237,19 +269,56 @@ NormalizedType::NormalizedType(NotNull<BuiltinTypes> builtinTypes)
     , numbers(builtinTypes->neverType)
     , strings{NormalizedStringType::never}
     , threads(builtinTypes->neverType)
+    , buffers(builtinTypes->neverType)
 {
+}
+
+bool NormalizedType::isUnknown() const
+{
+    if (get<UnknownType>(tops))
+        return true;
+
+    // Otherwise, we can still be unknown!
+    bool hasAllPrimitives = isPrim(booleans, PrimitiveType::Boolean) && isPrim(nils, PrimitiveType::NilType) && isNumber(numbers) &&
+                            strings.isString() && isPrim(threads, PrimitiveType::Thread) && isThread(threads);
+
+    // Check is class
+    bool isTopClass = false;
+    for (auto [t, disj] : classes.classes)
+    {
+        if (auto ct = get<ClassType>(t))
+        {
+            if (ct->name == "class" && disj.empty())
+            {
+                isTopClass = true;
+                break;
+            }
+        }
+    }
+    // Check is table
+    bool isTopTable = false;
+    for (auto t : tables)
+    {
+        if (isPrim(t, PrimitiveType::Table))
+        {
+            isTopTable = true;
+            break;
+        }
+    }
+    // any = unknown or error ==> we need to make sure we have all the unknown components, but not errors
+    return get<NeverType>(errors) && hasAllPrimitives && isTopClass && isTopTable && functions.isTop;
 }
 
 bool NormalizedType::isExactlyNumber() const
 {
     return hasNumbers() && !hasTops() && !hasBooleans() && !hasClasses() && !hasErrors() && !hasNils() && !hasStrings() && !hasThreads() &&
-           !hasTables() && !hasFunctions() && !hasTyvars();
+           (!FFlag::LuauBufferTypeck || !hasBuffers()) && !hasTables() && !hasFunctions() && !hasTyvars();
 }
 
 bool NormalizedType::isSubtypeOfString() const
 {
     return hasStrings() && !hasTops() && !hasBooleans() && !hasClasses() && !hasErrors() && !hasNils() && !hasNumbers() && !hasThreads() &&
-           !hasTables() && !hasFunctions() && !hasTyvars();
+           (!FFlag::LuauBufferTypeck || !hasBuffers()) && !hasTables() && !hasFunctions() && !hasTyvars();
 }
 
 bool NormalizedType::shouldSuppressErrors() const
@@ -306,6 +375,12 @@ bool NormalizedType::hasThreads() const
     return !get<NeverType>(threads);
 }
 
+bool NormalizedType::hasBuffers() const
+{
+    LUAU_ASSERT(FFlag::LuauBufferTypeck);
+    return !get<NeverType>(buffers);
+}
+
 bool NormalizedType::hasTables() const
 {
     return !tables.isNever();
@@ -326,18 +401,18 @@ static bool isShallowInhabited(const NormalizedType& norm)
     // This test is just a shallow check, for example it returns `true` for `{ p : never }`
     return !get<NeverType>(norm.tops) || !get<NeverType>(norm.booleans) || !norm.classes.isNever() || !get<NeverType>(norm.errors) ||
            !get<NeverType>(norm.nils) || !get<NeverType>(norm.numbers) || !norm.strings.isNever() || !get<NeverType>(norm.threads) ||
-           !norm.functions.isNever() || !norm.tables.empty() || !norm.tyvars.empty();
+           (FFlag::LuauBufferTypeck && !get<NeverType>(norm.buffers)) || !norm.functions.isNever() || !norm.tables.empty() || !norm.tyvars.empty();
 }
 
-bool Normalizer::isInhabited(const NormalizedType* norm, std::unordered_set<TypeId> seen)
+bool Normalizer::isInhabited(const NormalizedType* norm, Set<TypeId> seen)
 {
     // If normalization failed, the type is complex, and so is more likely than not to be inhabited.
     if (!norm)
         return true;
 
     if (!get<NeverType>(norm->tops) || !get<NeverType>(norm->booleans) || !get<NeverType>(norm->errors) || !get<NeverType>(norm->nils) ||
-        !get<NeverType>(norm->numbers) || !get<NeverType>(norm->threads) || !norm->classes.isNever() || !norm->strings.isNever() ||
-        !norm->functions.isNever())
+        !get<NeverType>(norm->numbers) || !get<NeverType>(norm->threads) || (FFlag::LuauBufferTypeck && !get<NeverType>(norm->buffers)) ||
+        !norm->classes.isNever() || !norm->strings.isNever() || !norm->functions.isNever())
         return true;
 
     for (const auto& [_, intersect] : norm->tyvars)
@@ -363,7 +438,7 @@ bool Normalizer::isInhabited(TypeId ty)
             return *result;
     }
 
-    bool result = isInhabited(ty, {});
+    bool result = isInhabited(ty, {nullptr});
 
     if (cacheInhabitance)
         cachedIsInhabited[ty] = result;
@@ -371,7 +446,7 @@ bool Normalizer::isInhabited(TypeId ty)
     return result;
 }
 
-bool Normalizer::isInhabited(TypeId ty, std::unordered_set<TypeId> seen)
+bool Normalizer::isInhabited(TypeId ty, Set<TypeId> seen)
 {
     // TODO: use log.follow(ty), CLI-64291
     ty = follow(ty);
@@ -425,7 +500,7 @@ bool Normalizer::isIntersectionInhabited(TypeId left, TypeId right)
             return *result;
     }
 
-    std::unordered_set<TypeId> seen = {};
+    Set<TypeId> seen{nullptr};
     seen.insert(left);
     seen.insert(right);
 
@@ -561,6 +636,18 @@ static bool isNormalizedThread(TypeId ty)
         return false;
 }
 
+static bool isNormalizedBuffer(TypeId ty)
+{
+    LUAU_ASSERT(FFlag::LuauBufferTypeck);
+
+    if (get<NeverType>(ty))
+        return true;
+    else if (const PrimitiveType* ptv = get<PrimitiveType>(ty))
+        return ptv->type == PrimitiveType::Buffer;
+    else
+        return false;
+}
+
 static bool areNormalizedFunctions(const NormalizedFunctionType& tys)
 {
     for (TypeId ty : tys.parts)
@@ -647,8 +734,7 @@ static bool areNormalizedClasses(const NormalizedClassType& tys)
 
 static bool isPlainTyvar(TypeId ty)
 {
-    return (get<FreeType>(ty) || get<GenericType>(ty) || get<BlockedType>(ty) ||
-            get<PendingExpansionType>(ty) || get<TypeFamilyInstanceType>(ty));
+    return (get<FreeType>(ty) || get<GenericType>(ty) || get<BlockedType>(ty) || get<PendingExpansionType>(ty) || get<TypeFamilyInstanceType>(ty));
 }
 
 static bool isNormalizedTyvar(const NormalizedTyvars& tyvars)
@@ -682,6 +768,8 @@ static void assertInvariant(const NormalizedType& norm)
     LUAU_ASSERT(isNormalizedNumber(norm.numbers));
     LUAU_ASSERT(isNormalizedString(norm.strings));
     LUAU_ASSERT(isNormalizedThread(norm.threads));
+    if (FFlag::LuauBufferTypeck)
+        LUAU_ASSERT(isNormalizedBuffer(norm.buffers));
     LUAU_ASSERT(areNormalizedFunctions(norm.functions));
     LUAU_ASSERT(areNormalizedTables(norm.tables));
     LUAU_ASSERT(isNormalizedTyvar(norm.tyvars));
@@ -708,9 +796,14 @@ const NormalizedType* Normalizer::normalize(TypeId ty)
         return found->second.get();
 
     NormalizedType norm{builtinTypes};
-    std::unordered_set<TypeId> seenSetTypes;
+    Set<TypeId> seenSetTypes{nullptr};
     if (!unionNormalWithTy(norm, ty, seenSetTypes))
         return nullptr;
+    if (norm.isUnknown())
+    {
+        clearNormal(norm);
+        norm.tops = builtinTypes->unknownType;
+    }
     std::unique_ptr<NormalizedType> uniq = std::make_unique<NormalizedType>(std::move(norm));
     const NormalizedType* result = uniq.get();
     cachedNormals[ty] = std::move(uniq);
@@ -724,7 +817,7 @@ bool Normalizer::normalizeIntersections(const std::vector<TypeId>& intersections
     NormalizedType norm{builtinTypes};
     norm.tops = builtinTypes->anyType;
     // Now we need to intersect the two types
-    std::unordered_set<TypeId> seenSetTypes;
+    Set<TypeId> seenSetTypes{nullptr};
     for (auto ty : intersections)
     {
         if (!intersectNormalWithTy(norm, ty, seenSetTypes))
@@ -747,6 +840,8 @@ void Normalizer::clearNormal(NormalizedType& norm)
     norm.numbers = builtinTypes->neverType;
     norm.strings.resetToNever();
     norm.threads = builtinTypes->neverType;
+    if (FFlag::LuauBufferTypeck)
+        norm.buffers = builtinTypes->neverType;
     norm.tables.clear();
     norm.functions.resetToNever();
     norm.tyvars.clear();
@@ -1432,6 +1527,8 @@ bool Normalizer::unionNormals(NormalizedType& here, const NormalizedType& there,
     here.numbers = (get<NeverType>(there.numbers) ? here.numbers : there.numbers);
     unionStrings(here.strings, there.strings);
     here.threads = (get<NeverType>(there.threads) ? here.threads : there.threads);
+    if (FFlag::LuauBufferTypeck)
+        here.buffers = (get<NeverType>(there.buffers) ? here.buffers : there.buffers);
     unionFunctions(here.functions, there.functions);
     unionTables(here.tables, there.tables);
     return true;
@@ -1460,7 +1557,7 @@ bool Normalizer::withinResourceLimits()
 }
 
 // See above for an explaination of `ignoreSmallerTyvars`.
-bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, std::unordered_set<TypeId>& seenSetTypes, int ignoreSmallerTyvars)
+bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, Set<TypeId>& seenSetTypes, int ignoreSmallerTyvars)
 {
     RecursionCounter _rc(&sharedState->counters.recursionCount);
     if (!withinResourceLimits())
@@ -1488,12 +1585,9 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, std::unor
     }
     else if (const UnionType* utv = get<UnionType>(there))
     {
-        if (FFlag::LuauNormalizeCyclicUnions)
-        {
-            if (seenSetTypes.count(there))
-                return true;
-            seenSetTypes.insert(there);
-        }
+        if (seenSetTypes.count(there))
+            return true;
+        seenSetTypes.insert(there);
 
         for (UnionTypeIterator it = begin(utv); it != end(utv); ++it)
         {
@@ -1520,8 +1614,8 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, std::unor
     }
     else if (FFlag::LuauTransitiveSubtyping && get<UnknownType>(here.tops))
         return true;
-    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) ||
-             get<PendingExpansionType>(there) || get<TypeFamilyInstanceType>(there))
+    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) ||
+             get<TypeFamilyInstanceType>(there))
     {
         if (tyvarIndex(there) <= ignoreSmallerTyvars)
             return true;
@@ -1549,6 +1643,8 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, std::unor
             here.strings.resetToString();
         else if (ptv->type == PrimitiveType::Thread)
             here.threads = there;
+        else if (FFlag::LuauBufferTypeck && ptv->type == PrimitiveType::Buffer)
+            here.buffers = there;
         else if (ptv->type == PrimitiveType::Function)
         {
             here.functions.resetToTop();
@@ -1668,6 +1764,8 @@ std::optional<NormalizedType> Normalizer::negateNormal(const NormalizedType& her
     result.strings.isCofinite = !result.strings.isCofinite;
 
     result.threads = get<NeverType>(here.threads) ? builtinTypes->threadType : builtinTypes->neverType;
+    if (FFlag::LuauBufferTypeck)
+        result.buffers = get<NeverType>(here.buffers) ? builtinTypes->bufferType : builtinTypes->neverType;
 
     /*
      * Things get weird and so, so complicated if we allow negations of
@@ -1756,6 +1854,10 @@ void Normalizer::subtractPrimitive(NormalizedType& here, TypeId ty)
         break;
     case PrimitiveType::Thread:
         here.threads = builtinTypes->neverType;
+        break;
+    case PrimitiveType::Buffer:
+        if (FFlag::LuauBufferTypeck)
+            here.buffers = builtinTypes->neverType;
         break;
     case PrimitiveType::Function:
         here.functions.resetToNever();
@@ -2550,7 +2652,7 @@ void Normalizer::intersectFunctions(NormalizedFunctionType& heres, const Normali
     }
 }
 
-bool Normalizer::intersectTyvarsWithTy(NormalizedTyvars& here, TypeId there, std::unordered_set<TypeId>& seenSetTypes)
+bool Normalizer::intersectTyvarsWithTy(NormalizedTyvars& here, TypeId there, Set<TypeId>& seenSetTypes)
 {
     for (auto it = here.begin(); it != here.end();)
     {
@@ -2587,6 +2689,8 @@ bool Normalizer::intersectNormals(NormalizedType& here, const NormalizedType& th
     here.numbers = (get<NeverType>(there.numbers) ? there.numbers : here.numbers);
     intersectStrings(here.strings, there.strings);
     here.threads = (get<NeverType>(there.threads) ? there.threads : here.threads);
+    if (FFlag::LuauBufferTypeck)
+        here.buffers = (get<NeverType>(there.buffers) ? there.buffers : here.buffers);
     intersectFunctions(here.functions, there.functions);
     intersectTables(here.tables, there.tables);
 
@@ -2628,7 +2732,7 @@ bool Normalizer::intersectNormals(NormalizedType& here, const NormalizedType& th
     return true;
 }
 
-bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there, std::unordered_set<TypeId>& seenSetTypes)
+bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there, Set<TypeId>& seenSetTypes)
 {
     RecursionCounter _rc(&sharedState->counters.recursionCount);
     if (!withinResourceLimits())
@@ -2661,8 +2765,8 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there, std::
                 return false;
         return true;
     }
-    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) ||
-             get<PendingExpansionType>(there) || get<TypeFamilyInstanceType>(there))
+    else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) ||
+             get<TypeFamilyInstanceType>(there))
     {
         NormalizedType thereNorm{builtinTypes};
         NormalizedType topNorm{builtinTypes};
@@ -2708,6 +2812,7 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there, std::
         NormalizedStringType strings = std::move(here.strings);
         NormalizedFunctionType functions = std::move(here.functions);
         TypeId threads = here.threads;
+        TypeId buffers = here.buffers;
         TypeIds tables = std::move(here.tables);
 
         clearNormal(here);
@@ -2722,6 +2827,8 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there, std::
             here.strings = std::move(strings);
         else if (ptv->type == PrimitiveType::Thread)
             here.threads = threads;
+        else if (FFlag::LuauBufferTypeck && ptv->type == PrimitiveType::Buffer)
+            here.buffers = buffers;
         else if (ptv->type == PrimitiveType::Function)
             here.functions = std::move(functions);
         else if (ptv->type == PrimitiveType::Table)
@@ -2892,6 +2999,8 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
     }
     if (!get<NeverType>(norm.threads))
         result.push_back(builtinTypes->threadType);
+    if (FFlag::LuauBufferTypeck && !get<NeverType>(norm.buffers))
+        result.push_back(builtinTypes->bufferType);
 
     result.insert(result.end(), norm.tables.begin(), norm.tables.end());
     for (auto& [tyvar, intersect] : norm.tyvars)
@@ -2915,32 +3024,58 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
 
 bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
-    if (!FFlag::LuauTransitiveSubtyping)
+    if (!FFlag::LuauTransitiveSubtyping && !FFlag::DebugLuauDeferredConstraintResolution)
         return isConsistentSubtype(subTy, superTy, scope, builtinTypes, ice);
+
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
 
-    u.tryUnify(subTy, superTy);
-    return !u.failure;
+    // Subtyping under DCR is not implemented using unification!
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&ice}, scope};
+
+        return subtyping.isSubtype(subTy, superTy).isSubtype;
+    }
+    else
+    {
+        Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+
+        u.tryUnify(subTy, superTy);
+        return !u.failure;
+    }
 }
 
 bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
-    if (!FFlag::LuauTransitiveSubtyping)
+    if (!FFlag::LuauTransitiveSubtyping && !FFlag::DebugLuauDeferredConstraintResolution)
         return isConsistentSubtype(subPack, superPack, scope, builtinTypes, ice);
+
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
-    Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
 
-    u.tryUnify(subPack, superPack);
-    return !u.failure;
+    // Subtyping under DCR is not implemented using unification!
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        Subtyping subtyping{builtinTypes, NotNull{&arena}, NotNull{&normalizer}, NotNull{&ice}, scope};
+
+        return subtyping.isSubtype(subPack, superPack).isSubtype;
+    }
+    else
+    {
+        Unifier u{NotNull{&normalizer}, scope, Location{}, Covariant};
+
+        u.tryUnify(subPack, superPack);
+        return !u.failure;
+    }
 }
 
 bool isConsistentSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
+    LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
+
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
@@ -2954,6 +3089,8 @@ bool isConsistentSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, Not
 bool isConsistentSubtype(
     TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
+    LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
+
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};

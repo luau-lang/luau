@@ -12,32 +12,28 @@ namespace Luau
 
 const void* ptr(TypeOrPack ty);
 
-template<typename T>
-const T* get(TypeOrPack ty)
+template<typename T, typename std::enable_if_t<TypeOrPack::is_part_of_v<T>, bool> = true>
+const T* get(const TypeOrPack& tyOrTp)
 {
-    if constexpr (std::is_same_v<T, TypeId>)
-        return ty.get_if<TypeId>();
-    else if constexpr (std::is_same_v<T, TypePackId>)
-        return ty.get_if<TypePackId>();
-    else if constexpr (TypeVariant::is_part_of_v<T>)
-    {
-        if (auto innerTy = ty.get_if<TypeId>())
-            return get<T>(*innerTy);
-        else
-            return nullptr;
-    }
-    else if constexpr (TypePackVariant::is_part_of_v<T>)
-    {
-        if (auto innerTp = ty.get_if<TypePackId>())
-            return get<T>(*innerTp);
-        else
-            return nullptr;
-    }
+    return tyOrTp.get_if<T>();
+}
+
+template<typename T, typename std::enable_if_t<TypeVariant::is_part_of_v<T>, bool> = true>
+const T* get(const TypeOrPack& tyOrTp)
+{
+    if (const TypeId* ty = get<TypeId>(tyOrTp))
+        return get<T>(*ty);
     else
-    {
-        static_assert(always_false_v<T>, "invalid T to get from TypeOrPack");
-        LUAU_UNREACHABLE();
-    }
+        return nullptr;
+}
+
+template<typename T, typename std::enable_if_t<TypePackVariant::is_part_of_v<T>, bool> = true>
+const T* get(const TypeOrPack& tyOrTp)
+{
+    if (const TypePackId* tp = get<TypePackId>(tyOrTp))
+        return get<T>(*tp);
+    else
+        return nullptr;
 }
 
 TypeOrPack follow(TypeOrPack ty);

@@ -102,6 +102,8 @@ struct Module
     DenseHashMap<const AstType*, TypeId> astResolvedTypes{nullptr};
     DenseHashMap<const AstTypePack*, TypePackId> astResolvedTypePacks{nullptr};
 
+    DenseHashMap<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors{nullptr};
+
     // Map AST nodes to the scope they create.  Cannot be NotNull<Scope> because
     // we need a sentinel value for the map.
     DenseHashMap<const AstNode*, Scope*> astScopes{nullptr};

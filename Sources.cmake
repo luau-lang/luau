@@ -156,7 +156,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Cancellation.h
     Analysis/include/Luau/Clone.h
     Analysis/include/Luau/Constraint.h
-    Analysis/include/Luau/ConstraintGraphBuilder.h
+    Analysis/include/Luau/ConstraintGenerator.h
     Analysis/include/Luau/ConstraintSolver.h
     Analysis/include/Luau/ControlFlow.h
     Analysis/include/Luau/DataFlowGraph.h
@@ -185,6 +185,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Refinement.h
     Analysis/include/Luau/RequireTracer.h
     Analysis/include/Luau/Scope.h
+    Analysis/include/Luau/Set.h
     Analysis/include/Luau/Simplify.h
     Analysis/include/Luau/Substitution.h
     Analysis/include/Luau/Subtyping.h
@@ -223,7 +224,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/BuiltinDefinitions.cpp
     Analysis/src/Clone.cpp
     Analysis/src/Constraint.cpp
-    Analysis/src/ConstraintGraphBuilder.cpp
+    Analysis/src/ConstraintGenerator.cpp
     Analysis/src/ConstraintSolver.cpp
     Analysis/src/DataFlowGraph.cpp
     Analysis/src/DcrLogger.cpp
@@ -385,8 +386,8 @@ if(TARGET Luau.UnitTest)
         tests/CodeAllocator.test.cpp
         tests/Compiler.test.cpp
         tests/Config.test.cpp
-        tests/ConstraintGraphBuilderFixture.cpp
-        tests/ConstraintGraphBuilderFixture.h
+        tests/ConstraintGeneratorFixture.cpp
+        tests/ConstraintGeneratorFixture.h
         tests/ConstraintSolver.test.cpp
         tests/CostModel.test.cpp
         tests/DataFlowGraph.test.cpp
@@ -419,6 +420,7 @@ if(TARGET Luau.UnitTest)
         tests/RuntimeLimits.test.cpp
         tests/ScopedFlags.h
         tests/Simplify.test.cpp
+        tests/Set.test.cpp
         tests/StringUtils.test.cpp
         tests/Subtyping.test.cpp
         tests/Symbol.test.cpp

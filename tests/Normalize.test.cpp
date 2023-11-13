@@ -31,6 +31,9 @@ struct IsSubtypeFixture : Fixture
 
     bool isConsistentSubtype(TypeId a, TypeId b)
     {
+        // any test that is testing isConsistentSubtype is testing the old solver exclusively!
+        ScopedFastFlag noDcr{"DebugLuauDeferredConstraintResolution", false};
+
         Location location;
         ModulePtr module = getMainModule();
         REQUIRE(module);
@@ -169,7 +172,10 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_union_prop")
     TypeId a = requireType("a");
     TypeId b = requireType("b");
 
-    CHECK(isSubtype(a, b));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(!isSubtype(a, b)); // table properties are invariant
+    else
+        CHECK(isSubtype(a, b));
     CHECK(!isSubtype(b, a));
 }
 
@@ -187,7 +193,10 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_any_prop")
     TypeId a = requireType("a");
     TypeId b = requireType("b");
 
-    CHECK(isSubtype(a, b));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(!isSubtype(a, b)); // table properties are invariant
+    else
+        CHECK(isSubtype(a, b));
     CHECK(!isSubtype(b, a));
     CHECK(isConsistentSubtype(b, a));
 }
@@ -249,7 +258,10 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
     TypeId c = requireType("c");
     TypeId d = requireType("d");
 
-    CHECK(isSubtype(a, b));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(!isSubtype(a, b)); // table properties are invariant
+    else
+        CHECK(isSubtype(a, b));
     CHECK(!isSubtype(b, a));
     CHECK(isConsistentSubtype(b, a));
 
@@ -259,7 +271,10 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
     CHECK(isSubtype(d, a));
     CHECK(!isSubtype(a, d));
 
-    CHECK(isSubtype(d, b));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(!isSubtype(d, b)); // table properties are invariant
+    else
+        CHECK(isSubtype(d, b));
     CHECK(!isSubtype(b, d));
 }
 
@@ -695,7 +710,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union_function_and_top_function")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negated_function_is_anything_except_a_function")
 {
-    CHECK("(boolean | class | number | string | table | thread)?" == toString(normal(R"(
+    CHECK("(boolean | buffer | class | number | string | table | thread)?" == toString(normal(R"(
         Not<fun>
     )")));
 }
@@ -705,10 +720,22 @@ TEST_CASE_FIXTURE(NormalizeFixture, "specific_functions_cannot_be_negated")
     CHECK(nullptr == toNormalizedType("Not<(boolean) -> boolean>"));
 }
 
+TEST_CASE_FIXTURE(NormalizeFixture, "trivial_intersection_inhabited")
+{
+    // this test was used to fix a bug in normalization when working with intersections/unions of the same type.
+
+    TypeId a = arena.addType(FunctionType{builtinTypes->emptyTypePack, builtinTypes->anyTypePack, std::nullopt, false});
+    TypeId c = arena.addType(IntersectionType{{a, a}});
+
+    const NormalizedType* n = normalizer.normalize(c);
+    REQUIRE(n);
+
+    CHECK(normalizer.isInhabited(n));
+}
+
 TEST_CASE_FIXTURE(NormalizeFixture, "bare_negated_boolean")
 {
-    // TODO: We don't yet have a way to say number | string | thread | nil | Class | Table | Function
-    CHECK("(class | function | number | string | table | thread)?" == toString(normal(R"(
+    CHECK("(buffer | class | function | number | string | table | thread)?" == toString(normal(R"(
         Not<boolean>
     )")));
 }
@@ -821,8 +848,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "recurring_intersection")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_union")
 {
-    ScopedFastFlag sff{"LuauNormalizeCyclicUnions", true};
-
     // T where T = any & (number | T)
     TypeId t = arena.addType(BlockedType{});
     TypeId u = arena.addType(UnionType{{builtinTypes->numberType, t}});
@@ -843,11 +868,11 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_classes")
 {
     createSomeClasses(&frontend);
     CHECK("(Parent & ~Child) | Unrelated" == toString(normal("(Parent & Not<Child>) | Unrelated")));
-    CHECK("((class & ~Child) | boolean | function | number | string | table | thread)?" == toString(normal("Not<Child>")));
+    CHECK("((class & ~Child) | boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<Child>")));
     CHECK("Child" == toString(normal("Not<Parent> & Child")));
-    CHECK("((class & ~Parent) | Child | boolean | function | number | string | table | thread)?" == toString(normal("Not<Parent> | Child")));
-    CHECK("(boolean | function | number | string | table | thread)?" == toString(normal("Not<cls>")));
-    CHECK("(Parent | Unrelated | boolean | function | number | string | table | thread)?" ==
+    CHECK("((class & ~Parent) | Child | boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<Parent> | Child")));
+    CHECK("(boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<cls>")));
+    CHECK("(Parent | Unrelated | boolean | buffer | function | number | string | table | thread)?" ==
           toString(normal("Not<cls & Not<Parent> & Not<Child> & Not<Unrelated>>")));
 }
 
@@ -876,7 +901,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "top_table_type")
 TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_tables")
 {
     CHECK(nullptr == toNormalizedType("Not<{}>"));
-    CHECK("(boolean | class | function | number | string | thread)?" == toString(normal("Not<tbl>")));
+    CHECK("(boolean | buffer | class | function | number | string | thread)?" == toString(normal("Not<tbl>")));
     CHECK("table" == toString(normal("Not<Not<tbl>>")));
 }
 
@@ -904,6 +929,14 @@ TEST_CASE_FIXTURE(NormalizeFixture, "normalize_is_exactly_number")
     TypeId yoonion = arena.addType(UnionType{{builtinTypes->anyType, builtinTypes->numberType}});
     const NormalizedType* unionIntersection = normalizer.normalize(yoonion);
     CHECK(!unionIntersection->isExactlyNumber());
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "normalize_unknown")
+{
+    auto nt = toNormalizedType("Not<string> | Not<number>");
+    CHECK(nt);
+    CHECK(nt->isUnknown());
+    CHECK(toString(normalizer.typeFromNormal(*nt)) == "unknown");
 }
 
 TEST_SUITE_END();

@@ -28,6 +28,7 @@
 #endif
 
 #include <optional>
+#include <stdio.h>
 
 // Indicates if verbose output is enabled; can be overridden via --verbose
 // Currently, this enables output from 'print', but other verbose output could be enabled eventually.
@@ -97,8 +98,6 @@ static int testAssertionHandler(const char* expr, const char* file, int line, co
     ADD_FAIL_AT(file, line, "Assertion failed: ", std::string(expr));
     return 1;
 }
-
-
 
 struct BoostLikeReporter : doctest::IReporter
 {
@@ -179,6 +178,70 @@ struct BoostLikeReporter : doctest::IReporter
     // or isn't in the execution range (between first and last) (safe to cache a pointer to the input)
     void test_case_skipped(const doctest::TestCaseData&) override {}
 };
+
+struct TeamCityReporter : doctest::IReporter
+{
+    const doctest::TestCaseData* currentTest = nullptr;
+
+    TeamCityReporter(const doctest::ContextOptions& in) {}
+
+    void report_query(const doctest::QueryData&) override {}
+
+    void test_run_start() override {}
+
+    void test_run_end(const doctest::TestRunStats& /*in*/) override {}
+
+    void test_case_start(const doctest::TestCaseData& in) override
+    {
+        currentTest = &in;
+        printf("##teamcity[testStarted name='%s: %s' captureStandardOutput='true']\n", in.m_test_suite, in.m_name);
+    }
+
+    // called when a test case is reentered because of unfinished subcases
+    void test_case_reenter(const doctest::TestCaseData& /*in*/) override {}
+
+    void test_case_end(const doctest::CurrentTestCaseStats& in) override
+    {
+        printf("##teamcity[testMetadata testName='%s: %s' name='total_asserts' type='number' value='%d']\n", currentTest->m_test_suite, currentTest->m_name, in.numAssertsCurrentTest);
+        printf("##teamcity[testMetadata testName='%s: %s' name='failed_asserts' type='number' value='%d']\n", currentTest->m_test_suite, currentTest->m_name, in.numAssertsFailedCurrentTest);
+        printf("##teamcity[testMetadata testName='%s: %s' name='runtime' type='number' value='%f']\n", currentTest->m_test_suite, currentTest->m_name, in.seconds);
+
+        if (!in.testCaseSuccess)
+            printf("##teamcity[testFailed name='%s: %s']\n", currentTest->m_test_suite, currentTest->m_name);
+
+        printf("##teamcity[testFinished name='%s: %s']\n", currentTest->m_test_suite, currentTest->m_name);
+    }
+
+    void test_case_exception(const doctest::TestCaseException& in) override {
+        printf("##teamcity[testFailed name='%s: %s' message='Unhandled exception' details='%s']\n", currentTest->m_test_suite, currentTest->m_name, in.error_string.c_str());
+    }
+
+    void subcase_start(const doctest::SubcaseSignature& /*in*/) override {}
+    void subcase_end() override {}
+
+    void log_assert(const doctest::AssertData& ad) override {
+        if(!ad.m_failed)
+            return;
+
+        if (ad.m_decomp.size())
+            fprintf(stderr, "%s(%d): ERROR: %s (%s)\n", ad.m_file, ad.m_line, ad.m_expr, ad.m_decomp.c_str());
+        else
+            fprintf(stderr, "%s(%d): ERROR: %s\n", ad.m_file, ad.m_line, ad.m_expr);
+    }
+
+    void log_message(const doctest::MessageData& md) override {
+        const char* severity = (md.m_severity & doctest::assertType::is_warn) ? "WARNING" : "ERROR";
+        bool isError = md.m_severity & (doctest::assertType::is_require | doctest::assertType::is_check);
+        fprintf(isError ? stderr : stdout, "%s(%d): %s: %s\n", md.m_file, md.m_line, severity, md.m_string.c_str());
+    }
+
+    void test_case_skipped(const doctest::TestCaseData& in) override
+    {
+        printf("##teamcity[testIgnored name='%s: %s' captureStandardOutput='false']\n", in.m_test_suite, in.m_name);
+    }
+};
+
+REGISTER_REPORTER("teamcity", 1, TeamCityReporter);
 
 template<typename T>
 using FValueResult = std::pair<std::string, T>;
@@ -273,8 +336,6 @@ int main(int argc, char** argv)
     initSystem();
 
     Luau::assertHandler() = testAssertionHandler;
-
-
 
     doctest::registerReporter<BoostLikeReporter>("boost", 0, true);
 

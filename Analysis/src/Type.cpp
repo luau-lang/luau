@@ -27,6 +27,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 LUAU_FASTFLAGVARIABLE(LuauInitializeStringMetatableInGlobalTypes, false)
+LUAU_FASTFLAG(LuauBufferTypeck)
 
 namespace Luau
 {
@@ -212,6 +213,13 @@ bool maybeString(TypeId ty)
 bool isThread(TypeId ty)
 {
     return isPrim(ty, PrimitiveType::Thread);
+}
+
+bool isBuffer(TypeId ty)
+{
+    LUAU_ASSERT(FFlag::LuauBufferTypeck);
+
+    return isPrim(ty, PrimitiveType::Buffer);
 }
 
 bool isOptional(TypeId ty)
@@ -604,10 +612,11 @@ FunctionType::FunctionType(TypeLevel level, Scope* scope, std::vector<TypeId> ge
 Property::Property() {}
 
 Property::Property(TypeId readTy, bool deprecated, const std::string& deprecatedSuggestion, std::optional<Location> location, const Tags& tags,
-    const std::optional<std::string>& documentationSymbol)
+    const std::optional<std::string>& documentationSymbol, std::optional<Location> typeLocation)
     : deprecated(deprecated)
     , deprecatedSuggestion(deprecatedSuggestion)
     , location(location)
+    , typeLocation(typeLocation)
     , tags(tags)
     , documentationSymbol(documentationSymbol)
     , readTy(readTy)
@@ -925,6 +934,7 @@ BuiltinTypes::BuiltinTypes()
     , stringType(arena->addType(Type{PrimitiveType{PrimitiveType::String}, /*persistent*/ true}))
     , booleanType(arena->addType(Type{PrimitiveType{PrimitiveType::Boolean}, /*persistent*/ true}))
     , threadType(arena->addType(Type{PrimitiveType{PrimitiveType::Thread}, /*persistent*/ true}))
+    , bufferType(arena->addType(Type{PrimitiveType{PrimitiveType::Buffer}, /*persistent*/ true}))
     , functionType(arena->addType(Type{PrimitiveType{PrimitiveType::Function}, /*persistent*/ true}))
     , classType(arena->addType(Type{ClassType{"class", {}, std::nullopt, std::nullopt, {}, {}, {}}, /*persistent*/ true}))
     , tableType(arena->addType(Type{PrimitiveType{PrimitiveType::Table}, /*persistent*/ true}))

@@ -1238,7 +1238,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "parse_only")
     REQUIRE(frontend.sourceNodes.count("game/Gui/Modules/B"));
 
     auto node = frontend.sourceNodes["game/Gui/Modules/B"];
-    CHECK_EQ(node->requireSet.count("game/Gui/Modules/A"), 1);
+    CHECK(node->requireSet.contains("game/Gui/Modules/A"));
     REQUIRE_EQ(node->requireLocations.size(), 1);
     CHECK_EQ(node->requireLocations[0].second, Luau::Location(Position(2, 18), Position(2, 36)));
 
