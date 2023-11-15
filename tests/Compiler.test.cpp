@@ -4508,6 +4508,11 @@ LOADK R0 K0 [0, 0, 0]
 LOADK R1 K1 [-0, 0, 0]
 RETURN R0 2
 )");
+
+    CHECK_EQ("\n" + compileFunction("return type(Vector3.new(0, 0, 0))", 0, 2, /*enableVectors*/ true), R"(
+LOADK R0 K0 ['vector']
+RETURN R0 1
+)");
 }
 
 TEST_CASE("TypeAssertion")
