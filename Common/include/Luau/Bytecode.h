@@ -45,7 +45,7 @@
 // Version 2: Adds Proto::linedefined. Supported until 0.544.
 // Version 3: Adds FORGPREP/JUMPXEQK* and enhances AUX encoding for FORGLOOP. Removes FORGLOOP_NEXT/INEXT and JUMPIFEQK/JUMPIFNOTEQK. Currently supported.
 // Version 4: Adds Proto::flags, typeinfo, and floor division opcodes IDIV/IDIVK. Currently supported.
-// Version 5: Adds vector constants.  Currently supported.
+// Version 5: Adds vector constants. Currently supported.
 
 // Bytecode opcode, part of the instruction header
 enum LuauOpcode
