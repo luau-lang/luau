@@ -4502,6 +4502,12 @@ LOADK R1 K2 [1, 2, 3, 4]
 CALL R0 1 0
 RETURN R0 0
 )");
+
+    CHECK_EQ("\n" + compileFunction("return Vector3.new(0, 0, 0), Vector3.new(-0, 0, 0)", 0, 2, /*enableVectors*/ true), R"(
+LOADK R0 K0 [0, 0, 0]
+LOADK R1 K1 [-0, 0, 0]
+RETURN R0 2
+)");
 }
 
 TEST_CASE("TypeAssertion")
