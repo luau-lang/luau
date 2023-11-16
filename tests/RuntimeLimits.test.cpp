@@ -13,6 +13,8 @@
 
 #include "doctest.h"
 
+#include <algorithm>
+
 using namespace Luau;
 
 struct LimitFixture : BuiltinsFixture
