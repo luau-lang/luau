@@ -5,6 +5,8 @@
 
 #include <math.h>
 
+LUAU_FASTFLAGVARIABLE(LuauVectorLiterals, false)
+
 namespace Luau
 {
 namespace Compile
@@ -32,6 +34,16 @@ static Constant cnum(double v)
     return res;
 }
 
+static Constant cvector(double x, double y, double z, double w)
+{
+    Constant res = {Constant::Type_Vector};
+    res.valueVector[0] = (float)x;
+    res.valueVector[1] = (float)y;
+    res.valueVector[2] = (float)z;
+    res.valueVector[3] = (float)w;
+    return res;
+}
+
 static Constant cstring(const char* v)
 {
     Constant res = {Constant::Type_String};
@@ -54,6 +66,9 @@ static Constant ctype(const Constant& c)
 
     case Constant::Type_Number:
         return cstring("number");
+
+    case Constant::Type_Vector:
+        return cstring("vector");
 
     case Constant::Type_String:
         return cstring("string");
@@ -455,6 +470,19 @@ Constant foldBuiltin(int bfid, const Constant* args, size_t count)
     case LBF_MATH_ROUND:
         if (count == 1 && args[0].type == Constant::Type_Number)
             return cnum(round(args[0].valueNumber));
+        break;
+
+    case LBF_VECTOR:
+        if (FFlag::LuauVectorLiterals && count >= 3 &&
+            args[0].type == Constant::Type_Number &&
+            args[1].type == Constant::Type_Number &&
+            args[2].type == Constant::Type_Number)
+        {
+            if (count == 3)
+                return cvector(args[0].valueNumber, args[1].valueNumber, args[2].valueNumber, 0.0);
+            else if (count == 4 && args[3].type == Constant::Type_Number)
+                return cvector(args[0].valueNumber, args[1].valueNumber, args[2].valueNumber, args[3].valueNumber);
+        }
         break;
     }
 

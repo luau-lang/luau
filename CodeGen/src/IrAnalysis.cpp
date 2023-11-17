@@ -8,6 +8,7 @@
 
 #include "lobject.h"
 
+#include <algorithm>
 #include <bitset>
 
 #include <stddef.h>

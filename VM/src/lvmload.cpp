@@ -287,6 +287,17 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
                 break;
             }
 
+            case LBC_CONSTANT_VECTOR:
+            {
+                float x = read<float>(data, size, offset);
+                float y = read<float>(data, size, offset);
+                float z = read<float>(data, size, offset);
+                float w = read<float>(data, size, offset);
+                (void)w;
+                setvvalue(&p->k[j], x, y, z, w);
+                break;
+            }
+
             case LBC_CONSTANT_STRING:
             {
                 TString* v = readString(strings, data, size, offset);

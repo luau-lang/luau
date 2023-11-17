@@ -17,12 +17,17 @@ std::string rep(const std::string& s, size_t n);
 
 using namespace Luau;
 
-static std::string compileFunction(const char* source, uint32_t id, int optimizationLevel = 1)
+static std::string compileFunction(const char* source, uint32_t id, int optimizationLevel = 1, bool enableVectors = false)
 {
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
     Luau::CompileOptions options;
     options.optimizationLevel = optimizationLevel;
+    if (enableVectors)
+    {
+        options.vectorLib = "Vector3";
+        options.vectorCtor = "new";
+    }
     Luau::compileOrThrow(bcb, source, options);
 
     return bcb.dumpFunction(id);
@@ -4472,6 +4477,41 @@ FASTCALL 54 L0
 GETIMPORT R0 2 [Vector3.new]
 CALL R0 3 -1
 L0: RETURN R0 -1
+)");
+}
+
+TEST_CASE("VectorLiterals")
+{
+    ScopedFastFlag sff("LuauVectorLiterals", true);
+
+    CHECK_EQ("\n" + compileFunction("return Vector3.new(1, 2, 3)", 0, 2, /*enableVectors*/ true), R"(
+LOADK R0 K0 [1, 2, 3]
+RETURN R0 1
+)");
+
+    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3))", 0, 2, /*enableVectors*/ true), R"(
+GETIMPORT R0 1 [print]
+LOADK R1 K2 [1, 2, 3]
+CALL R0 1 0
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3, 4))", 0, 2, /*enableVectors*/ true), R"(
+GETIMPORT R0 1 [print]
+LOADK R1 K2 [1, 2, 3, 4]
+CALL R0 1 0
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction("return Vector3.new(0, 0, 0), Vector3.new(-0, 0, 0)", 0, 2, /*enableVectors*/ true), R"(
+LOADK R0 K0 [0, 0, 0]
+LOADK R1 K1 [-0, 0, 0]
+RETURN R0 2
+)");
+
+    CHECK_EQ("\n" + compileFunction("return type(Vector3.new(0, 0, 0))", 0, 2, /*enableVectors*/ true), R"(
+LOADK R0 K0 ['vector']
+RETURN R0 1
 )");
 }
 
