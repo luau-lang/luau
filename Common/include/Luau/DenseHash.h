@@ -540,7 +540,7 @@ public:
         return impl.end();
     }
 
-    bool operator==(const DenseHashSet<Key, Hash, Eq>& other)
+    bool operator==(const DenseHashSet<Key, Hash, Eq>& other) const
     {
         if (size() != other.size())
             return false;
@@ -554,7 +554,7 @@ public:
         return true;
     }
 
-    bool operator!=(const DenseHashSet<Key, Hash, Eq>& other)
+    bool operator!=(const DenseHashSet<Key, Hash, Eq>& other) const
     {
         return !(*this == other);
     }

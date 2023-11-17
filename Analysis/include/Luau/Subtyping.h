@@ -27,10 +27,19 @@ struct TypeArena;
 struct Scope;
 struct TableIndexer;
 
+enum class SubtypingVariance
+{
+    // Used for an empty key. Should never appear in actual code.
+    Invalid,
+    Covariant,
+    Invariant,
+};
+
 struct SubtypingReasoning
 {
     Path subPath;
     Path superPath;
+    SubtypingVariance variance = SubtypingVariance::Covariant;
 
     bool operator==(const SubtypingReasoning& other) const;
 };
@@ -49,7 +58,8 @@ struct SubtypingResult
 
     /// The reason for isSubtype to be false. May not be present even if
     /// isSubtype is false, depending on the input types.
-    DenseHashSet<SubtypingReasoning, SubtypingReasoningHash> reasoning{SubtypingReasoning{}};
+    DenseHashSet<SubtypingReasoning, SubtypingReasoningHash> reasoning{
+        SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Invalid}};
 
     SubtypingResult& andAlso(const SubtypingResult& other);
     SubtypingResult& orElse(const SubtypingResult& other);
@@ -59,6 +69,7 @@ struct SubtypingResult
     SubtypingResult& withBothPath(TypePath::Path path);
     SubtypingResult& withSubPath(TypePath::Path path);
     SubtypingResult& withSuperPath(TypePath::Path path);
+    SubtypingResult& withVariance(SubtypingVariance variance);
 
     // Only negates the `isSubtype`.
     static SubtypingResult negate(const SubtypingResult& result);

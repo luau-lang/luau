@@ -97,6 +97,10 @@ struct GenericTypeVisitor
     {
         return visit(ty);
     }
+    virtual bool visit(TypeId ty, const LocalType& ftv)
+    {
+        return visit(ty);
+    }
     virtual bool visit(TypeId ty, const GenericType& gtv)
     {
         return visit(ty);
@@ -240,6 +244,11 @@ struct GenericTypeVisitor
             }
             else
                 visit(ty, *ftv);
+        }
+        else if (auto lt = get<LocalType>(ty))
+        {
+            if (visit(ty, *lt))
+                traverse(lt->domain);
         }
         else if (auto gtv = get<GenericType>(ty))
             visit(ty, *gtv);

@@ -10,6 +10,7 @@
 #include "doctest.h"
 #include "Fixture.h"
 #include "RegisterCallbacks.h"
+
 #include <initializer_list>
 
 using namespace Luau;
@@ -17,9 +18,38 @@ using namespace Luau;
 namespace Luau
 {
 
+std::ostream& operator<<(std::ostream& lhs, const SubtypingVariance& variance)
+{
+    switch (variance)
+    {
+    case SubtypingVariance::Covariant:
+        return lhs << "covariant";
+    case SubtypingVariance::Invariant:
+        return lhs << "invariant";
+    case SubtypingVariance::Invalid:
+        return lhs << "*invalid*";
+    }
+
+    return lhs;
+}
+
 std::ostream& operator<<(std::ostream& lhs, const SubtypingReasoning& reasoning)
 {
-    return lhs << toString(reasoning.subPath) << " </: " << toString(reasoning.superPath);
+    return lhs << toString(reasoning.subPath) << " </: " << toString(reasoning.superPath) << " (" << reasoning.variance << ")";
+}
+
+bool operator==(const DenseHashSet<SubtypingReasoning, SubtypingReasoningHash>& set, const std::vector<SubtypingReasoning>& items)
+{
+    if (items.size() != set.size())
+        return false;
+
+    for (const SubtypingReasoning& r : items)
+    {
+        if (!set.contains(r))
+            return false;
+    }
+
+    return true;
 }
 
 }; // namespace Luau
@@ -1105,20 +1135,6 @@ TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("Subtyping.Subpaths");
 
-bool operator==(const DenseHashSet<SubtypingReasoning, SubtypingReasoningHash>& set, const std::vector<SubtypingReasoning>& items)
-{
-    if (items.size() != set.size())
-        return false;
-
-    for (const SubtypingReasoning& r : items)
-    {
-        if (!set.contains(r))
-            return false;
-    }
-
-    return true;
-}
-
 TEST_CASE_FIXTURE(SubtypeFixture, "table_property")
 {
     TypeId subTy = tbl({{"X", builtinTypes->numberType}});
@@ -1126,10 +1142,9 @@ TEST_CASE_FIXTURE(SubtypeFixture, "table_property")
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
-    CHECK(result.reasoning == std::vector{SubtypingReasoning{
-                                  /* subPath */ Path(TypePath::Property("X")),
+    CHECK(result.reasoning == std::vector{SubtypingReasoning{/* subPath */ Path(TypePath::Property("X")),
                                   /* superPath */ Path(TypePath::Property("X")),
-                              }});
+                                  /* variance */ SubtypingVariance::Invariant}});
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "table_indexers")
@@ -1142,10 +1157,12 @@ TEST_CASE_FIXTURE(SubtypeFixture, "table_indexers")
     CHECK(result.reasoning == std::vector{SubtypingReasoning{
                                               /* subPath */ Path(TypePath::TypeField::IndexLookup),
                                               /* superPath */ Path(TypePath::TypeField::IndexLookup),
+                                              /* variance */ SubtypingVariance::Invariant,
                                           },
                                   SubtypingReasoning{
                                       /* subPath */ Path(TypePath::TypeField::IndexResult),
                                       /* superPath */ Path(TypePath::TypeField::IndexResult),
+                                      /* variance */ SubtypingVariance::Invariant,
                                   }});
 }
 
@@ -1211,6 +1228,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "nested_table_properties")
     CHECK(result.reasoning == std::vector{SubtypingReasoning{
                                   /* subPath */ TypePath::PathBuilder().prop("X").prop("Y").prop("Z").build(),
                                   /* superPath */ TypePath::PathBuilder().prop("X").prop("Y").prop("Z").build(),
+                                  /* variance */ SubtypingVariance::Invariant,
                               }});
 }
 
@@ -1252,8 +1270,10 @@ TEST_CASE_FIXTURE(SubtypeFixture, "multiple_reasonings")
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
     CHECK(result.reasoning == std::vector{
-                                  SubtypingReasoning{/* subPath */ Path(TypePath::Property("X")), /* superPath */ Path(TypePath::Property("X"))},
-                                  SubtypingReasoning{/* subPath */ Path(TypePath::Property("Y")), /* superPath */ Path(TypePath::Property("Y"))},
+                                  SubtypingReasoning{/* subPath */ Path(TypePath::Property("X")), /* superPath */ Path(TypePath::Property("X")),
+                                      /* variance */ SubtypingVariance::Invariant},
+                                  SubtypingReasoning{/* subPath */ Path(TypePath::Property("Y")), /* superPath */ Path(TypePath::Property("Y")),
+                                      /* variance */ SubtypingVariance::Invariant},
                               });
 }
 

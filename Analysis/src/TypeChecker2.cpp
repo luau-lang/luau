@@ -2464,13 +2464,16 @@ struct TypeChecker2
             if (!get2<TypeId, TypeId>(*subLeaf, *superLeaf) && !get2<TypePackId, TypePackId>(*subLeaf, *superLeaf))
                 ice->ice("Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack.", location);
 
+            std::string relation = "a subtype of";
+            if (reasoning.variance == SubtypingVariance::Invariant)
+                relation = "exactly";
+
             std::string reason;
             if (reasoning.subPath == reasoning.superPath)
-                reason = "at " + toString(reasoning.subPath) + ", " + toString(*subLeaf) + " is not a subtype of " + toString(*superLeaf);
+                reason = "at " + toString(reasoning.subPath) + ", " + toString(*subLeaf) + " is not " + relation + " " + toString(*superLeaf);
             else
-                reason = "type " + toString(subTy) + toString(reasoning.subPath, /* prefixDot */ true) + " (" + toString(*subLeaf) +
-                         ") is not a subtype of " + toString(superTy) + toString(reasoning.superPath, /* prefixDot */ true) + " (" +
-                         toString(*superLeaf) + ")";
+                reason = "type " + toString(subTy) + toString(reasoning.subPath, /* prefixDot */ true) + " (" + toString(*subLeaf) + ") is not " +
+                         relation + " " + toString(superTy) + toString(reasoning.superPath, /* prefixDot */ true) + " (" + toString(*superLeaf) + ")";
 
             reasons.push_back(reason);
         }

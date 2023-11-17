@@ -1623,6 +1623,12 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, Set<TypeI
         inter.tops = builtinTypes->unknownType;
         here.tyvars.insert_or_assign(there, std::make_unique<NormalizedType>(std::move(inter)));
     }
+    else if (auto lt = get<LocalType>(there))
+    {
+        // FIXME?  This is somewhat questionable.
+        // Maybe we should assert because this should never happen?
+        unionNormalWithTy(here, lt->domain, seenSetTypes, ignoreSmallerTyvars);
+    }
     else if (get<FunctionType>(there))
         unionFunctionsWithFunction(here.functions, there);
     else if (get<TableType>(there) || get<MetatableType>(there))

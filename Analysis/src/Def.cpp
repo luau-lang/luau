@@ -1,8 +1,9 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Def.h"
-#include "Luau/Common.h"
-#include "Luau/DenseHash.h"
 
+#include "Luau/Common.h"
+
+#include <algorithm>
 #include <deque>
 
 namespace Luau
@@ -13,27 +14,9 @@ bool containsSubscriptedDefinition(DefId def)
     if (auto cell = get<Cell>(def))
         return cell->subscripted;
     else if (auto phi = get<Phi>(def))
-    {
-        std::deque<DefId> queue(begin(phi->operands), end(phi->operands));
-        DenseHashSet<const Def*> seen{nullptr};
-
-        while (!queue.empty())
-        {
-            DefId next = queue.front();
-            queue.pop_front();
-
-            LUAU_ASSERT(!seen.find(next));
-            if (seen.find(next))
-                continue;
-            seen.insert(next);
-
-            if (auto cell_ = get<Cell>(next); cell_ && cell_->subscripted)
-                return true;
-            else if (auto phi_ = get<Phi>(next))
-                queue.insert(queue.end(), phi_->operands.begin(), phi_->operands.end());
-        }
-    }
-    return false;
+        return std::any_of(phi->operands.begin(), phi->operands.end(), containsSubscriptedDefinition);
+    else
+        return false;
 }
 
 DefId DefArena::freshCell(bool subscripted)
@@ -41,12 +24,35 @@ DefId DefArena::freshCell(bool subscripted)
     return NotNull{allocator.allocate(Def{Cell{subscripted}})};
 }
 
+static void collectOperands(DefId def, std::vector<DefId>& operands)
+{
+    if (std::find(operands.begin(), operands.end(), def) != operands.end())
+        return;
+    else if (get<Cell>(def))
+        operands.push_back(def);
+    else if (auto phi = get<Phi>(def))
+    {
+        for (const Def* operand : phi->operands)
+            collectOperands(NotNull{operand}, operands);
+    }
+}
+
 DefId DefArena::phi(DefId a, DefId b)
 {
-    if (a == b)
-        return a;
+    return phi({a, b});
+}
+
+DefId DefArena::phi(const std::vector<DefId>& defs)
+{
+    std::vector<DefId> operands;
+    for (DefId operand : defs)
+        collectOperands(operand, operands);
+
+    // There's no need to allocate a Phi node for a singleton set.
+    if (operands.size() == 1)
+        return operands[0];
     else
-        return NotNull{allocator.allocate(Def{Phi{{a, b}}})};
+        return NotNull{allocator.allocate(Def{Phi{std::move(operands)}})};
 }
 
 } // namespace Luau

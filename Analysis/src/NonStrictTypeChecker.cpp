@@ -84,7 +84,7 @@ struct NonStrictContext
 
         for (auto [def, rightTy] : right.context)
         {
-            if (!right.find(def).has_value())
+            if (!left.find(def).has_value())
                 disj.context[def] = rightTy;
         }
 
@@ -270,18 +270,24 @@ struct NonStrictTypeChecker
     NonStrictContext visit(AstStatBlock* block)
     {
         auto StackPusher = pushStack(block);
+        NonStrictContext ctx;
         for (AstStat* statement : block->body)
-            visit(statement);
-        return {};
+            ctx = NonStrictContext::disjunction(builtinTypes, NotNull{&arena}, ctx, visit(statement));
+        return ctx;
     }
 
     NonStrictContext visit(AstStatIf* ifStatement)
     {
         NonStrictContext condB = visit(ifStatement->condition);
-        NonStrictContext thenB = visit(ifStatement->thenbody);
-        NonStrictContext elseB = visit(ifStatement->elsebody);
-        return NonStrictContext::disjunction(
-            builtinTypes, NotNull{&arena}, condB, NonStrictContext::conjunction(builtinTypes, NotNull{&arena}, thenB, elseB));
+        NonStrictContext branchContext;
+        // If there is no else branch, don't bother generating warnings for the then branch - we can't prove there is an error
+        if (ifStatement->elsebody)
+        {
+            NonStrictContext thenBody = visit(ifStatement->thenbody);
+            NonStrictContext elseBody = visit(ifStatement->elsebody);
+            branchContext = NonStrictContext::conjunction(builtinTypes, NotNull{&arena}, thenBody, elseBody);
+        }
+        return NonStrictContext::disjunction(builtinTypes, NotNull{&arena}, condB, branchContext);
     }
 
     NonStrictContext visit(AstStatWhile* whileStatement)
@@ -316,6 +322,8 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatLocal* local)
     {
+        for (AstExpr* rhs : local->values)
+            visit(rhs);
         return {};
     }
 
@@ -341,12 +349,12 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatFunction* statFn)
     {
-        return {};
+        return visit(statFn->func);
     }
 
     NonStrictContext visit(AstStatLocalFunction* localFn)
     {
-        return {};
+        return visit(localFn->func);
     }
 
     NonStrictContext visit(AstStatTypeAlias* typeAlias)
@@ -530,7 +538,7 @@ struct NonStrictTypeChecker
     NonStrictContext visit(AstExprFunction* exprFn)
     {
         auto pusher = pushStack(exprFn);
-        return {};
+        return visit(exprFn->body);
     }
 
     NonStrictContext visit(AstExprTable* table)
@@ -589,10 +597,6 @@ struct NonStrictTypeChecker
             SubtypingResult r = subtyping.isSubtype(actualType, *contextTy);
             if (r.normalizationTooComplex)
                 reportError(NormalizationTooComplex{}, fragment->location);
-
-            if (!r.isSubtype && !r.isErrorSuppressing)
-                reportError(TypeMismatch{actualType, *contextTy}, fragment->location);
-
             if (r.isSubtype)
                 return {actualType};
         }

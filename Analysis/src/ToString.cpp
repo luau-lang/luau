@@ -100,6 +100,16 @@ struct FindCyclicTypes final : TypeVisitor
         return false;
     }
 
+    bool visit(TypeId ty, const LocalType& lt) override
+    {
+        if (!visited.insert(ty).second)
+            return false;
+
+        traverse(lt.domain);
+
+        return false;
+    }
+
     bool visit(TypeId ty, const TableType& ttv) override
     {
         if (!visited.insert(ty).second)
@@ -498,6 +508,15 @@ struct TypeStringifier
             else
                 state.emit(ftv.level);
         }
+    }
+
+    void operator()(TypeId ty, const LocalType& lt)
+    {
+        state.emit("l-");
+        state.emit(lt.name);
+        state.emit("=[");
+        stringify(lt.domain);
+        state.emit("]");
     }
 
     void operator()(TypeId, const BoundType& btv)
