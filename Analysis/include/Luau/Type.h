@@ -86,6 +86,24 @@ struct FreeType
     TypeId upperBound = nullptr;
 };
 
+/** A type that tracks the domain of a local variable.
+ *
+ * We consider each local's domain to be the union of all types assigned to it.
+ * We accomplish this with LocalType.  Each time we dispatch an assignment to a
+ * local, we accumulate this union and decrement blockCount.
+ *
+ * When blockCount reaches 0, we can consider the LocalType to be "fully baked"
+ * and replace it with the union we've built.
+ */
+struct LocalType
+{
+    TypeId domain;
+    int blockCount = 0;
+
+    // Used for debugging
+    std::string name;
+};
+
 struct GenericType
 {
     // By default, generics are global, with a synthetic name
@@ -623,7 +641,7 @@ struct NegationType
 using ErrorType = Unifiable::Error;
 
 using TypeVariant =
-    Unifiable::Variant<TypeId, FreeType, GenericType, PrimitiveType, BlockedType, PendingExpansionType, SingletonType, FunctionType, TableType,
+    Unifiable::Variant<TypeId, FreeType, LocalType, GenericType, PrimitiveType, BlockedType, PendingExpansionType, SingletonType, FunctionType, TableType,
         MetatableType, ClassType, AnyType, UnionType, IntersectionType, LazyType, UnknownType, NeverType, NegationType, TypeFamilyInstanceType>;
 
 struct Type final

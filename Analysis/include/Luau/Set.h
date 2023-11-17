@@ -15,10 +15,14 @@ template<typename T, typename Hash = SetHashDefault<T>>
 class Set
 {
 private:
-    DenseHashMap<T, bool, Hash> mapping;
+    using Impl = DenseHashMap<T, bool, Hash>;
+    Impl mapping;
     size_t entryCount = 0;
 
 public:
+    class const_iterator;
+    using iterator = const_iterator;
+
     Set(const T& empty_key)
         : mapping{empty_key}
     {
@@ -83,6 +87,16 @@ public:
         return count(element) != 0;
     }
 
+    const_iterator begin() const
+    {
+        return const_iterator(mapping.begin(), mapping.end());
+    }
+
+    const_iterator end() const
+    {
+        return const_iterator(mapping.end(), mapping.end());
+    }
+
     bool operator==(const Set<T>& there) const
     {
         // if the sets are unequal sizes, then they cannot possibly be equal.
@@ -100,6 +114,58 @@ public:
         // otherwise, we've proven the two equal!
         return true;
     }
+
+    class const_iterator
+    {
+    public:
+        const_iterator(typename Impl::const_iterator impl, typename Impl::const_iterator end)
+            : impl(impl)
+            , end(end)
+        {}
+
+        const T& operator*() const
+        {
+            return impl->first;
+        }
+
+        const T* operator->() const
+        {
+            return &impl->first;
+        }
+
+
+        bool operator==(const const_iterator& other) const
+        {
+            return impl == other.impl;
+        }
+
+        bool operator!=(const const_iterator& other) const
+        {
+            return impl != other.impl;
+        }
+
+
+        const_iterator& operator++()
+        {
+            do
+            {
+                impl++;
+            } while (impl != end && impl->second == false);
+            // keep iterating past pairs where the value is `false`
+
+            return *this;
+        }
+
+        const_iterator operator++(int)
+        {
+            const_iterator res = *this;
+            ++*this;
+            return res;
+        }
+    private:
+        typename Impl::const_iterator impl;
+        typename Impl::const_iterator end;
+    };
 };
 
 } // namespace Luau

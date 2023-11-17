@@ -405,7 +405,15 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::STORE_POINTER:
     {
         AddressA64 addr = tempAddr(inst.a, offsetof(TValue, value));
-        build.str(regOp(inst.b), addr);
+        if (inst.b.kind == IrOpKind::Constant)
+        {
+            LUAU_ASSERT(intOp(inst.b) == 0);
+            build.str(xzr, addr);
+        }
+        else
+        {
+            build.str(regOp(inst.b), addr);
+        }
         break;
     }
     case IrCmd::STORE_DOUBLE:

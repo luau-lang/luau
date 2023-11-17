@@ -205,33 +205,6 @@ ScopePtr ConstraintGenerator::childScope(AstNode* node, const ScopePtr& parent)
     return scope;
 }
 
-static std::vector<DefId> flatten(const Phi* phi)
-{
-    std::vector<DefId> result;
-
-    std::deque<DefId> queue{phi->operands.begin(), phi->operands.end()};
-    DenseHashSet<const Def*> seen{nullptr};
-
-    while (!queue.empty())
-    {
-        DefId next = queue.front();
-        queue.pop_front();
-
-        // Phi nodes should never be cyclic.
-        LUAU_ASSERT(!seen.find(next));
-        if (seen.find(next))
-            continue;
-        seen.insert(next);
-
-        if (get<Cell>(next))
-            result.push_back(next);
-        else if (auto phi = get<Phi>(next))
-            queue.insert(queue.end(), phi->operands.begin(), phi->operands.end());
-    }
-
-    return result;
-}
-
 std::optional<TypeId> ConstraintGenerator::lookup(Scope* scope, DefId def)
 {
     if (get<Cell>(def))
@@ -243,7 +216,7 @@ std::optional<TypeId> ConstraintGenerator::lookup(Scope* scope, DefId def)
 
         TypeId res = builtinTypes->neverType;
 
-        for (DefId operand : flatten(phi))
+        for (DefId operand : phi->operands)
         {
             // `scope->lookup(operand)` may return nothing because it could be a phi node of globals, but one of
             // the operand of that global has never been assigned a type, and so it should be an error.
@@ -621,8 +594,12 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStat* stat)
 
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* statLocal)
 {
-    std::vector<std::optional<TypeId>> varTypes;
-    varTypes.reserve(statLocal->vars.size);
+    std::vector<TypeId> annotatedTypes;
+    annotatedTypes.reserve(statLocal->vars.size);
+    bool hasAnnotation = false;
+
+    std::vector<std::optional<TypeId>> expectedTypes;
+    expectedTypes.reserve(statLocal->vars.size);
 
     std::vector<TypeId> assignees;
     assignees.reserve(statLocal->vars.size);
@@ -635,7 +612,8 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
     {
         const Location location = local->location;
 
-        TypeId assignee = arena->addType(BlockedType{});
+        TypeId assignee = arena->addType(LocalType{builtinTypes->neverType, /* blockCount */ 1, local->name.value});
+
         assignees.push_back(assignee);
 
         if (!firstValueType)
@@ -643,16 +621,21 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
 
         if (local->annotation)
         {
+            hasAnnotation = true;
             TypeId annotationTy = resolveType(scope, local->annotation, /* inTypeArguments */ false);
-            varTypes.push_back(annotationTy);
-
-            addConstraint(scope, local->location, SubtypeConstraint{assignee, annotationTy});
+            annotatedTypes.push_back(annotationTy);
+            expectedTypes.push_back(annotationTy);
 
             scope->bindings[local] = Binding{annotationTy, location};
         }
         else
         {
-            varTypes.push_back(std::nullopt);
+            // annotatedTypes must contain one type per local.  If a particular
+            // local has no annotation at, assume the most conservative thing.
+            annotatedTypes.push_back(builtinTypes->unknownType);
+
+            expectedTypes.push_back(std::nullopt);
+            scope->bindings[local] = Binding{builtinTypes->unknownType, location};
 
             inferredBindings[local] = {scope.get(), location, {assignee}};
         }
@@ -661,8 +644,12 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
         scope->lvalueTypes[def] = assignee;
     }
 
-    TypePackId resultPack = checkPack(scope, statLocal->values, varTypes).tp;
-    addConstraint(scope, statLocal->location, UnpackConstraint{arena->addTypePack(std::move(assignees)), resultPack});
+    TypePackId resultPack = checkPack(scope, statLocal->values, expectedTypes).tp;
+    addConstraint(scope, statLocal->location, UnpackConstraint{arena->addTypePack(std::move(assignees)), resultPack, /*resultIsLValue*/ true});
+
+    // Types must flow between whatever annotations were provided and the rhs expression.
+    if (hasAnnotation)
+        addConstraint(scope, statLocal->location, PackSubtypeConstraint{resultPack, arena->addTypePack(std::move(annotatedTypes))});
 
     if (statLocal->vars.size == 1 && statLocal->values.size == 1 && firstValueType && scope.get() == rootScope)
     {
@@ -1006,26 +993,22 @@ static void bindFreeType(TypeId a, TypeId b)
 
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatAssign* assign)
 {
-    std::vector<std::optional<TypeId>> expectedTypes;
-    expectedTypes.reserve(assign->vars.size);
-
     std::vector<TypeId> assignees;
     assignees.reserve(assign->vars.size);
 
     for (AstExpr* lvalue : assign->vars)
     {
         TypeId assignee = arena->addType(BlockedType{});
-        assignees.push_back(assignee);
 
         checkLValue(scope, lvalue, assignee);
+        assignees.push_back(assignee);
 
         DefId def = dfg->getDef(lvalue);
         scope->lvalueTypes[def] = assignee;
-        updateLValueType(lvalue, assignee);
     }
 
-    TypePackId resultPack = checkPack(scope, assign->values, expectedTypes).tp;
-    addConstraint(scope, assign->location, UnpackConstraint{arena->addTypePack(std::move(assignees)), resultPack});
+    TypePackId resultPack = checkPack(scope, assign->values).tp;
+    addConstraint(scope, assign->location, UnpackConstraint{arena->addTypePack(std::move(assignees)), resultPack, /*resultIsLValue*/ true});
 
     return ControlFlow::None;
 }
@@ -1545,8 +1528,7 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
             scope->lvalueTypes[def] = resultTy;       // TODO: typestates: track this as an assignment
             scope->rvalueRefinements[def] = resultTy; // TODO: typestates: track this as an assignment
 
-            if (auto it = inferredBindings.find(targetLocal->local); it != inferredBindings.end())
-                it->second.types.insert(resultTy);
+            recordInferredBinding(targetLocal->local, resultTy);
         }
 
         return InferencePack{arena->addTypePack({resultTy}), {refinementArena.variadic(returnRefinements)}};
@@ -1723,8 +1705,8 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprLocal* local)
     if (maybeTy)
     {
         TypeId ty = follow(*maybeTy);
-        if (auto it = inferredBindings.find(local->local); it != inferredBindings.end())
-            it->second.types.insert(ty);
+
+        recordInferredBinding(local->local, ty);
 
         return Inference{ty, refinementArena.proposition(key, builtinTypes->truthyType)};
     }
@@ -2210,23 +2192,35 @@ std::optional<TypeId> ConstraintGenerator::checkLValue(const ScopePtr& scope, As
 
 std::optional<TypeId> ConstraintGenerator::checkLValue(const ScopePtr& scope, AstExprLocal* local, TypeId assignedTy)
 {
-    /*
-     * The caller of this method uses the returned type to emit the proper
-     * SubtypeConstraint.
-     *
-     * At this point during constraint generation, the binding table is only
-     * populated by symbols that have type annotations.
-     *
-     * If this local has an interesting type annotation, it is important that we
-     * return that and constrain the assigned type.
-     */
     std::optional<TypeId> annotatedTy = scope->lookup(local->local);
+    LUAU_ASSERT(annotatedTy);
     if (annotatedTy)
         addConstraint(scope, local->location, SubtypeConstraint{assignedTy, *annotatedTy});
-    else if (auto it = inferredBindings.find(local->local); it == inferredBindings.end())
-        ice->ice("Cannot find AstLocal* in either Scope::bindings or inferredBindings?");
 
-    return annotatedTy;
+    const DefId defId = dfg->getDef(local);
+    std::optional<TypeId> ty = scope->lookupUnrefinedType(defId);
+
+    if (ty)
+    {
+        if (auto lt = getMutable<LocalType>(*ty))
+            ++lt->blockCount;
+    }
+    else
+    {
+        ty = arena->addType(LocalType{builtinTypes->neverType, /* blockCount */ 1, local->local->name.value});
+
+        scope->lvalueTypes[defId] = *ty;
+    }
+
+    addConstraint(scope, local->location, UnpackConstraint{
+        arena->addTypePack({*ty}),
+        arena->addTypePack({assignedTy}),
+        /*resultIsLValue*/ true
+    });
+
+    recordInferredBinding(local->local, *ty);
+
+    return ty;
 }
 
 std::optional<TypeId> ConstraintGenerator::checkLValue(const ScopePtr& scope, AstExprGlobal* global, TypeId assignedTy)
@@ -2377,15 +2371,6 @@ TypeId ConstraintGenerator::updateProperty(const ScopePtr& scope, AstExpr* expr,
     }
 
     return assignedTy;
-}
-
-void ConstraintGenerator::updateLValueType(AstExpr* lvalue, TypeId ty)
-{
-    if (auto local = lvalue->as<AstExprLocal>())
-    {
-        if (auto it = inferredBindings.find(local->local); it != inferredBindings.end())
-            it->second.types.insert(ty);
-    }
 }
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType)
@@ -2611,13 +2596,7 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
         argTypes.push_back(argTy);
         argNames.emplace_back(FunctionArgument{local->name.value, local->location});
 
-        if (local->annotation)
-            signatureScope->bindings[local] = Binding{argTy, local->location};
-        else
-        {
-            signatureScope->bindings[local] = Binding{builtinTypes->neverType, local->location};
-            inferredBindings[local] = {signatureScope.get(), {}};
-        }
+        signatureScope->bindings[local] = Binding{argTy, local->location};
 
         DefId def = dfg->getDef(local);
         signatureScope->lvalueTypes[def] = argTy;
@@ -3123,6 +3102,12 @@ void ConstraintGenerator::prepopulateGlobalScope(const ScopePtr& globalScope, As
         prepareModuleScope(module->name, globalScope);
 
     program->visit(&gp);
+}
+
+void ConstraintGenerator::recordInferredBinding(AstLocal* local, TypeId ty)
+{
+    if (InferredBinding* ib = inferredBindings.find(local))
+        ib->types.insert(ty);
 }
 
 void ConstraintGenerator::fillInInferredBindings(const ScopePtr& globalScope, AstStatBlock* block)

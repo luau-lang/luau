@@ -77,8 +77,11 @@ struct DfgScope
     DfgScope* parent;
     bool isLoopScope;
 
-    DenseHashMap<Symbol, const Def*> bindings{Symbol{}};
-    DenseHashMap<const Def*, std::unordered_map<std::string, const Def*>> props{nullptr};
+    using Bindings = DenseHashMap<Symbol, const Def*>;
+    using Props = DenseHashMap<const Def*, std::unordered_map<std::string, const Def*>>;
+
+    Bindings bindings{Symbol{}};
+    Props props{nullptr};
 
     std::optional<DefId> lookup(Symbol symbol) const;
     std::optional<DefId> lookup(DefId def, const std::string& key) const;
@@ -115,7 +118,13 @@ private:
     std::vector<std::unique_ptr<DfgScope>> scopes;
 
     DfgScope* childScope(DfgScope* scope, bool isLoopScope = false);
-    void join(DfgScope* parent, DfgScope* a, DfgScope* b);
+
+    void join(DfgScope* p, DfgScope* a, DfgScope* b);
+    void joinBindings(DfgScope::Bindings& p, const DfgScope::Bindings& a, const DfgScope::Bindings& b);
+    void joinProps(DfgScope::Props& p, const DfgScope::Props& a, const DfgScope::Props& b);
+
+    DefId lookup(DfgScope* scope, Symbol symbol);
+    DefId lookup(DfgScope* scope, DefId def, const std::string& key);
 
     ControlFlow visit(DfgScope* scope, AstStatBlock* b);
     ControlFlow visitBlockWithoutChildScope(DfgScope* scope, AstStatBlock* b);

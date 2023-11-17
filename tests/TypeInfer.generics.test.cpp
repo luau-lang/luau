@@ -725,14 +725,21 @@ y.a.c = y
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    const std::string expected = R"(Type 'y' could not be converted into 'T<string>'
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(toString(result.errors.at(0)) ==
+              R"(Type 'x' could not be converted into 'T<number>'; type x["a"]["c"] (nil) is not exactly T<number>["a"]["c"][0] (T<number>))");
+    else
+    {
+        const std::string expected = R"(Type 'y' could not be converted into 'T<string>'
 caused by:
   Property 'a' is not compatible.
 Type '{ c: T<string>?, d: number }' could not be converted into 'U<string>'
 caused by:
   Property 'd' is not compatible.
 Type 'number' could not be converted into 'string' in an invariant context)";
-    CHECK_EQ(expected, toString(result.errors[0]));
+        CHECK_EQ(expected, toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification1")

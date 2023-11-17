@@ -329,9 +329,13 @@ public:
     {
         return Luau::visit(*this, bound.boundTo->ty);
     }
-    AstType* operator()(const FreeType& ftv)
+    AstType* operator()(const FreeType& ft)
     {
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("free"), std::nullopt, Location());
+    }
+    AstType* operator()(const LocalType& lt)
+    {
+        return Luau::visit(*this, lt.domain->ty);
     }
     AstType* operator()(const UnionType& uv)
     {

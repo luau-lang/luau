@@ -47,12 +47,12 @@ struct VarianceFlipper
 
 bool SubtypingReasoning::operator==(const SubtypingReasoning& other) const
 {
-    return subPath == other.subPath && superPath == other.superPath;
+    return subPath == other.subPath && superPath == other.superPath && variance == other.variance;
 }
 
 size_t SubtypingReasoningHash::operator()(const SubtypingReasoning& r) const
 {
-    return TypePath::PathHash()(r.subPath) ^ (TypePath::PathHash()(r.superPath) << 1);
+    return TypePath::PathHash()(r.subPath) ^ (TypePath::PathHash()(r.superPath) << 1) ^ (static_cast<size_t>(r.variance) << 1);
 }
 
 SubtypingResult& SubtypingResult::andAlso(const SubtypingResult& other)
@@ -157,6 +157,19 @@ SubtypingResult& SubtypingResult::withSuperPath(TypePath::Path path)
     {
         for (auto& r : reasoning)
             r.superPath = path.append(r.superPath);
+    }
+
+    return *this;
+}
+
+SubtypingResult& SubtypingResult::withVariance(SubtypingVariance variance)
+{
+    if (reasoning.empty())
+        reasoning.insert(SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, variance});
+    else
+    {
+        for (auto& r : reasoning)
+            r.variance = variance;
     }
 
     return *this;
@@ -671,7 +684,7 @@ SubtypingResult Subtyping::isContravariantWith(SubtypingEnvironment& env, SubTy&
 template<typename SubTy, typename SuperTy>
 SubtypingResult Subtyping::isInvariantWith(SubtypingEnvironment& env, SubTy&& subTy, SuperTy&& superTy)
 {
-    return isCovariantWith(env, subTy, superTy).andAlso(isContravariantWith(env, subTy, superTy));
+    return isCovariantWith(env, subTy, superTy).andAlso(isContravariantWith(env, subTy, superTy)).withVariance(SubtypingVariance::Invariant);
 }
 
 template<typename SubTy, typename SuperTy>
@@ -689,7 +702,7 @@ SubtypingResult Subtyping::isContravariantWith(SubtypingEnvironment& env, const 
 template<typename SubTy, typename SuperTy>
 SubtypingResult Subtyping::isInvariantWith(SubtypingEnvironment& env, const TryPair<const SubTy*, const SuperTy*>& pair)
 {
-    return isCovariantWith(env, pair).andAlso(isContravariantWith(pair));
+    return isCovariantWith(env, pair).andAlso(isContravariantWith(pair)).withVariance(SubtypingVariance::Invariant);
 }
 
 /*
@@ -1009,7 +1022,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Meta
 
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const MetatableType* subMt, const TableType* superTable)
 {
-    if (auto subTable = get<TableType>(subMt->table))
+    if (auto subTable = get<TableType>(follow(subMt->table)))
     {
         // Metatables cannot erase properties from the table they're attached to, so
         // the subtyping rule for this is just if the table component is a subtype

@@ -72,6 +72,17 @@ std::optional<std::pair<Binding*, Scope*>> Scope::lookupEx(Symbol sym)
     }
 }
 
+std::optional<TypeId> Scope::lookupUnrefinedType(DefId def) const
+{
+    for (const Scope* current = this; current; current = current->parent.get())
+    {
+        if (auto ty = current->lvalueTypes.find(def))
+            return *ty;
+    }
+
+    return std::nullopt;
+}
+
 std::optional<TypeId> Scope::lookup(DefId def) const
 {
     for (const Scope* current = this; current; current = current->parent.get())

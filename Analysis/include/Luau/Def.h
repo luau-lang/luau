@@ -80,6 +80,7 @@ struct DefArena
 
     DefId freshCell(bool subscripted = false);
     DefId phi(DefId a, DefId b);
+    DefId phi(const std::vector<DefId>& defs);
 };
 
 } // namespace Luau
