@@ -45,6 +45,7 @@
 // Version 2: Adds Proto::linedefined. Supported until 0.544.
 // Version 3: Adds FORGPREP/JUMPXEQK* and enhances AUX encoding for FORGLOOP. Removes FORGLOOP_NEXT/INEXT and JUMPIFEQK/JUMPIFNOTEQK. Currently supported.
 // Version 4: Adds Proto::flags, typeinfo, and floor division opcodes IDIV/IDIVK. Currently supported.
+// Version 5: Adds vector constants. Currently supported.
 
 // Bytecode opcode, part of the instruction header
 enum LuauOpcode
@@ -70,7 +71,7 @@ enum LuauOpcode
     // D: value (-32768..32767)
     LOP_LOADN,
 
-    // LOADK: sets register to an entry from the constant table from the proto (number/string)
+    // LOADK: sets register to an entry from the constant table from the proto (number/vector/string)
     // A: target register
     // D: constant table index (0..32767)
     LOP_LOADK,
@@ -426,7 +427,7 @@ enum LuauBytecodeTag
 {
     // Bytecode version; runtime supports [MIN, MAX], compiler emits TARGET by default but may emit a higher version when flags are enabled
     LBC_VERSION_MIN = 3,
-    LBC_VERSION_MAX = 4,
+    LBC_VERSION_MAX = 5,
     LBC_VERSION_TARGET = 4,
     // Type encoding version
     LBC_TYPE_VERSION = 1,
@@ -438,6 +439,7 @@ enum LuauBytecodeTag
     LBC_CONSTANT_IMPORT,
     LBC_CONSTANT_TABLE,
     LBC_CONSTANT_CLOSURE,
+    LBC_CONSTANT_VECTOR,
 };
 
 // Type table tags

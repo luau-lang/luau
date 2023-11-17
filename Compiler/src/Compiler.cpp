@@ -1094,6 +1094,13 @@ struct Compiler
         return cv && cv->type != Constant::Type_Unknown && !cv->isTruthful();
     }
 
+    bool isConstantVector(AstExpr* node)
+    {
+        const Constant* cv = constants.find(node);
+
+        return cv && cv->type == Constant::Type_Vector;
+    }
+
     Constant getConstant(AstExpr* node)
     {
         const Constant* cv = constants.find(node);
@@ -1116,6 +1123,10 @@ struct Compiler
             if (operandIsConstant)
                 std::swap(left, right);
         }
+
+        // disable fast path for vectors because supporting it would require a new opcode
+        if (operandIsConstant && isConstantVector(right))
+            operandIsConstant = false;
 
         uint8_t rl = compileExprAuto(left, rs);
 
@@ -1224,6 +1235,10 @@ struct Compiler
 
         case Constant::Type_Number:
             cid = bytecode.addConstantNumber(c->valueNumber);
+            break;
+
+        case Constant::Type_Vector:
+            cid = bytecode.addConstantVector(c->valueVector[0], c->valueVector[1], c->valueVector[2], c->valueVector[3]);
             break;
 
         case Constant::Type_String:
@@ -2049,6 +2064,13 @@ struct Compiler
 
                 emitLoadK(target, cid);
             }
+        }
+        break;
+
+        case Constant::Type_Vector:
+        {
+            int32_t cid = bytecode.addConstantVector(cv->valueVector[0], cv->valueVector[1], cv->valueVector[2], cv->valueVector[3]);
+            emitLoadK(target, cid);
         }
         break;
 

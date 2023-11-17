@@ -26,6 +26,13 @@ static bool constantsEqual(const Constant& la, const Constant& ra)
     case Constant::Type_Number:
         return ra.type == Constant::Type_Number && la.valueNumber == ra.valueNumber;
 
+    case Constant::Type_Vector:
+        return ra.type == Constant::Type_Vector &&
+            la.valueVector[0] == ra.valueVector[0] &&
+            la.valueVector[1] == ra.valueVector[1] &&
+            la.valueVector[2] == ra.valueVector[2] &&
+            la.valueVector[3] == ra.valueVector[3];
+
     case Constant::Type_String:
         return ra.type == Constant::Type_String && la.stringLength == ra.stringLength && memcmp(la.valueString, ra.valueString, la.stringLength) == 0;
 
