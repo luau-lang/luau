@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include <stdint.h>
+
 struct lua_State;
 struct Proto;
 
@@ -35,12 +37,12 @@ public:
         return line;
     }
 
-    const unsigned getNestingLimit() const
+    unsigned getNestingLimit() const
     {
         return nestingLimit;
     }
 
-    const unsigned getOpLimit() const
+    unsigned getOpLimit() const
     {
         return LOP__COUNT;
     }
