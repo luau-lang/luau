@@ -412,7 +412,7 @@ TypeId Fixture::requireTypeAlias(const std::string& name)
 {
     std::optional<TypeId> ty = lookupType(name);
     REQUIRE(ty);
-    return *ty;
+    return follow(*ty);
 }
 
 TypeId Fixture::requireExportedType(const ModuleName& moduleName, const std::string& name)

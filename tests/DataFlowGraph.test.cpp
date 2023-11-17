@@ -317,4 +317,97 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "mutate_property_of_table_owned_by_while
     CHECK(x1 != x2);
 }
 
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "property_lookup_on_a_phi_node")
+{
+    dfg(R"(
+        local t = {}
+        t.x = 5
+
+        if cond() then
+            t.x = 7
+        end
+
+        print(t.x)
+    )");
+
+    DefId x1 = getDef<AstExprIndexName, 1>(); // t.x = 5
+    DefId x2 = getDef<AstExprIndexName, 2>(); // t.x = 7
+    DefId x3 = getDef<AstExprIndexName, 3>(); // print(t.x)
+
+    CHECK(x1 != x2);
+    CHECK(x2 != x3);
+
+    const Phi* phi = get<Phi>(x3);
+    REQUIRE(phi);
+    CHECK(phi->operands.at(0) == x1);
+    CHECK(phi->operands.at(1) == x2);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "property_lookup_on_a_phi_node_2")
+{
+    dfg(R"(
+        local t = {}
+
+        if cond() then
+            t.x = 5
+        else
+            t.x = 7
+        end
+
+        print(t.x)
+    )");
+
+    DefId x1 = getDef<AstExprIndexName, 1>(); // t.x = 5
+    DefId x2 = getDef<AstExprIndexName, 2>(); // t.x = 7
+    DefId x3 = getDef<AstExprIndexName, 3>(); // print(t.x)
+
+    CHECK(x1 != x2);
+    CHECK(x2 != x3);
+
+    const Phi* phi = get<Phi>(x3);
+    REQUIRE(phi);
+    CHECK(phi->operands.at(0) == x2);
+    CHECK(phi->operands.at(1) == x1);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "property_lookup_on_a_phi_node_3")
+{
+    dfg(R"(
+        local t = {}
+        t.x = 3
+
+        if cond() then
+            t.x = 5
+            t.y = 7
+        else
+            t.z = 42
+        end
+
+        print(t.x)
+        print(t.y)
+        print(t.z)
+    )");
+
+    DefId x1 = getDef<AstExprIndexName, 1>(); // t.x = 3
+    DefId x2 = getDef<AstExprIndexName, 2>(); // t.x = 5
+
+    DefId y1 = getDef<AstExprIndexName, 3>(); // t.y = 7
+
+    DefId z1 = getDef<AstExprIndexName, 4>(); // t.z = 42
+
+    DefId x3 = getDef<AstExprIndexName, 5>(); // print(t.x)
+    DefId y2 = getDef<AstExprIndexName, 6>(); // print(t.y)
+    DefId z2 = getDef<AstExprIndexName, 7>(); // print(t.z)
+
+    CHECK(x1 != x2);
+    CHECK(x2 != x3);
+    CHECK(y1 == y2);
+    CHECK(z1 == z2);
+
+    const Phi* phi = get<Phi>(x3);
+    REQUIRE(phi);
+    CHECK(phi->operands.at(0) == x1);
+    CHECK(phi->operands.at(1) == x2);
+}
+
 TEST_SUITE_END();

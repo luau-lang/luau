@@ -261,6 +261,11 @@ private:
             t->upperBound = shallowClone(t->upperBound);
     }
 
+    void cloneChildren(LocalType* t)
+    {
+        t->domain = shallowClone(t->domain);
+    }
+
     void cloneChildren(GenericType* t)
     {
         // TOOD: clone upper bounds.
@@ -504,6 +509,7 @@ struct TypeCloner
     void defaultClone(const T& t);
 
     void operator()(const FreeType& t);
+    void operator()(const LocalType& t);
     void operator()(const GenericType& t);
     void operator()(const BoundType& t);
     void operator()(const ErrorType& t);
@@ -629,6 +635,11 @@ void TypeCloner::operator()(const FreeType& t)
     }
     else
         defaultClone(t);
+}
+
+void TypeCloner::operator()(const LocalType& t)
+{
+    defaultClone(t);
 }
 
 void TypeCloner::operator()(const GenericType& t)

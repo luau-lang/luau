@@ -14,6 +14,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauLowerAltLoopForn, false)
 LUAU_FASTFLAG(LuauImproveInsertIr)
+LUAU_FASTFLAGVARIABLE(LuauFullLoopLuserdata, false)
 
 namespace Luau
 {
@@ -808,7 +809,7 @@ void translateInstForGPrepNext(IrBuilder& build, const Instruction* pc, int pcpo
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNIL));
 
     // setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
-    build.inst(IrCmd::STORE_INT, build.vmReg(ra + 2), build.constInt(0));
+    build.inst(FFlag::LuauFullLoopLuserdata ? IrCmd::STORE_POINTER : IrCmd::STORE_INT, build.vmReg(ra + 2), build.constInt(0));
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra + 2), build.constTag(LUA_TLIGHTUSERDATA));
 
     build.inst(IrCmd::JUMP, target);
@@ -840,7 +841,7 @@ void translateInstForGPrepInext(IrBuilder& build, const Instruction* pc, int pcp
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNIL));
 
     // setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
-    build.inst(IrCmd::STORE_INT, build.vmReg(ra + 2), build.constInt(0));
+    build.inst(FFlag::LuauFullLoopLuserdata ? IrCmd::STORE_POINTER : IrCmd::STORE_INT, build.vmReg(ra + 2), build.constInt(0));
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra + 2), build.constTag(LUA_TLIGHTUSERDATA));
 
     build.inst(IrCmd::JUMP, target);

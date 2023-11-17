@@ -6,6 +6,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+LUAU_FASTFLAG(LuauCodeGenFixByteLower)
+
 namespace Luau
 {
 namespace CodeGen
@@ -1437,10 +1439,18 @@ void AssemblyBuilderX64::placeImm8(int32_t imm)
 {
     int8_t imm8 = int8_t(imm);
 
-    if (imm8 == imm)
+    if (FFlag::LuauCodeGenFixByteLower)
+    {
+        LUAU_ASSERT(imm8 == imm);
         place(imm8);
+    }
     else
-        LUAU_ASSERT(!"Invalid immediate value");
+    {
+        if (imm8 == imm)
+            place(imm8);
+        else
+            LUAU_ASSERT(!"Invalid immediate value");
+    }
 }
 
 void AssemblyBuilderX64::placeImm16(int16_t imm)

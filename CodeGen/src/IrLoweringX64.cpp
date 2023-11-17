@@ -15,6 +15,8 @@
 #include "lstate.h"
 #include "lgc.h"
 
+LUAU_FASTFLAG(LuauCodeGenFixByteLower)
+
 namespace Luau
 {
 namespace CodeGen
@@ -213,11 +215,24 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             LUAU_ASSERT(!"Unsupported instruction form");
         break;
     case IrCmd::STORE_POINTER:
-        if (inst.a.kind == IrOpKind::Inst)
-            build.mov(qword[regOp(inst.a) + offsetof(TValue, value)], regOp(inst.b));
+    {
+        OperandX64 valueLhs = inst.a.kind == IrOpKind::Inst ? qword[regOp(inst.a) + offsetof(TValue, value)] : luauRegValue(vmRegOp(inst.a));
+
+        if (inst.b.kind == IrOpKind::Constant)
+        {
+            LUAU_ASSERT(intOp(inst.b) == 0);
+            build.mov(valueLhs, 0);
+        }
+        else if (inst.b.kind == IrOpKind::Inst)
+        {
+            build.mov(valueLhs, regOp(inst.b));
+        }
         else
-            build.mov(luauRegValue(vmRegOp(inst.a)), regOp(inst.b));
+        {
+            LUAU_ASSERT(!"Unsupported instruction form");
+        }
         break;
+    }
     case IrCmd::STORE_DOUBLE:
     {
         OperandX64 valueLhs = inst.a.kind == IrOpKind::Inst ? qword[regOp(inst.a) + offsetof(TValue, value)] : luauRegValue(vmRegOp(inst.a));
@@ -1787,9 +1802,18 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
     case IrCmd::BUFFER_WRITEI8:
     {
-        OperandX64 value = inst.c.kind == IrOpKind::Inst ? byteReg(regOp(inst.c)) : OperandX64(intOp(inst.c));
+        if (FFlag::LuauCodeGenFixByteLower)
+        {
+            OperandX64 value = inst.c.kind == IrOpKind::Inst ? byteReg(regOp(inst.c)) : OperandX64(int8_t(intOp(inst.c)));
 
-        build.mov(byte[bufferAddrOp(inst.a, inst.b)], value);
+            build.mov(byte[bufferAddrOp(inst.a, inst.b)], value);
+        }
+        else
+        {
+            OperandX64 value = inst.c.kind == IrOpKind::Inst ? byteReg(regOp(inst.c)) : OperandX64(intOp(inst.c));
+
+            build.mov(byte[bufferAddrOp(inst.a, inst.b)], value);
+        }
         break;
     }
 
@@ -1807,9 +1831,18 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
     case IrCmd::BUFFER_WRITEI16:
     {
-        OperandX64 value = inst.c.kind == IrOpKind::Inst ? wordReg(regOp(inst.c)) : OperandX64(intOp(inst.c));
+        if (FFlag::LuauCodeGenFixByteLower)
+        {
+            OperandX64 value = inst.c.kind == IrOpKind::Inst ? wordReg(regOp(inst.c)) : OperandX64(int16_t(intOp(inst.c)));
 
-        build.mov(word[bufferAddrOp(inst.a, inst.b)], value);
+            build.mov(word[bufferAddrOp(inst.a, inst.b)], value);
+        }
+        else
+        {
+            OperandX64 value = inst.c.kind == IrOpKind::Inst ? wordReg(regOp(inst.c)) : OperandX64(intOp(inst.c));
+
+            build.mov(word[bufferAddrOp(inst.a, inst.b)], value);
+        }
         break;
     }
 

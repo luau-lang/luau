@@ -586,6 +586,15 @@ local function misc(t16)
 
   buffer.writei32(b, #t16, 10)
   assert(buffer.readi32(b, 16) == 10)
+
+  buffer.writeu8(b, 100, 0xff)
+  buffer.writeu8(b, 110, 0x80)
+  assert(buffer.readu32(b, 100) == 255)
+  assert(buffer.readu32(b, 110) == 128)
+  buffer.writeu16(b, 200, 0xffff)
+  buffer.writeu16(b, 210, 0x8000)
+  assert(buffer.readu32(b, 200) == 65535)
+  assert(buffer.readu32(b, 210) == 32768)
 end
 
 misc(table.create(16, 0))

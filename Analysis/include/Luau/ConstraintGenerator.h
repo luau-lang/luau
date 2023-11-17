@@ -78,11 +78,13 @@ struct ConstraintGenerator
         TypeIds types;
     };
 
-    // During constraint generation, we only populate the Scope::bindings
-    // property for annotated symbols.  Unannotated symbols must be handled in a
-    // postprocessing step because we have not yet allocated the types that will
-    // be assigned to those unannotated symbols, so we queue them up here.
-    std::map<Symbol, InferredBinding> inferredBindings;
+    // Some locals have multiple type states.  We wish for Scope::bindings to
+    // map each local name onto the union of every type that the local can have
+    // over its lifetime, so we use this map to accumulate the set of types it
+    // might have.
+    //
+    // See the functions recordInferredBinding and fillInInferredBindings.
+    DenseHashMap<Symbol, InferredBinding> inferredBindings{{}};
 
     // Constraints that go straight to the solver.
     std::vector<ConstraintPtr> constraints;
@@ -245,8 +247,6 @@ private:
     std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprIndexExpr* indexExpr, TypeId assignedTy);
     TypeId updateProperty(const ScopePtr& scope, AstExpr* expr, TypeId assignedTy);
 
-    void updateLValueType(AstExpr* lvalue, TypeId ty);
-
     struct FunctionSignature
     {
         // The type of the function.
@@ -335,6 +335,10 @@ private:
      * initial scan of the AST and note what globals are defined.
      */
     void prepopulateGlobalScope(const ScopePtr& globalScope, AstStatBlock* program);
+
+    // Record the fact that a particular local has a particular type in at least
+    // one of its states.
+    void recordInferredBinding(AstLocal* local, TypeId ty);
 
     void fillInInferredBindings(const ScopePtr& globalScope, AstStatBlock* block);
 

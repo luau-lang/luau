@@ -275,4 +275,22 @@ end
 
 assert(arrayIndexingSpecialNumbers1(1, 256, 65536) == 3456789)
 
+function loopIteratorProtocol(a, t)
+  local sum = 0
+
+  do
+    local a, b, c, d, e, f, g = {}, {}, {}, {}, {}, {}, {}
+  end
+
+  for k, v in ipairs(t) do
+    if k == 10 then sum += math.abs('-8') end
+
+    sum += k
+  end
+
+  return sum
+end
+
+assert(loopIteratorProtocol(0, table.create(100, 5)) == 5058)
+
 return('OK')

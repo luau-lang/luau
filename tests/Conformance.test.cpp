@@ -10,7 +10,9 @@
 #include "Luau/TypeInfer.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Frontend.h"
+#include "Luau/Compiler.h"
 #include "Luau/CodeGen.h"
+#include "Luau/BytecodeSummary.h"
 
 #include "doctest.h"
 #include "ScopedFlags.h"
@@ -271,6 +273,25 @@ static void* limitedRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
     }
 }
 
+static std::vector<Luau::CodeGen::FunctionBytecodeSummary> analyzeFile(const char* source, const unsigned nestingLimit)
+{
+    Luau::BytecodeBuilder bcb;
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = optimizationLevel;
+    options.debugLevel = 1;
+
+    compileOrThrow(bcb, source, options);
+
+    const std::string& bytecode = bcb.getBytecode();
+
+    std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    LUAU_ASSERT(luau_load(L, "source", bytecode.data(), bytecode.size(), 0) == 0);
+    return Luau::CodeGen::summarizeBytecode(L, -1, nestingLimit);
+}
+
 TEST_SUITE_BEGIN("Conformance");
 
 TEST_CASE("CodegenSupported")
@@ -292,6 +313,7 @@ TEST_CASE("Basic")
 TEST_CASE("Buffers")
 {
     ScopedFastFlag luauBufferBetterMsg{"LuauBufferBetterMsg", true};
+    ScopedFastFlag luauCodeGenFixByteLower{"LuauCodeGenFixByteLower", true};
 
     runConformance("buffers.lua");
 }
@@ -1986,6 +2008,53 @@ TEST_CASE("HugeFunction")
     REQUIRE(status == 0);
 
     CHECK(lua_tonumber(L, -1) == 42);
+}
+
+TEST_CASE("BytecodeDistributionPerFunctionTest")
+{
+    const char* source = R"(
+local function first(n, p)
+  local t = {}
+  for i=1,p do t[i] = i*10 end
+
+  local function inner(_,n)
+    if n > 0 then
+      n = n-1
+      return n, unpack(t)
+    end
+  end
+  return inner, nil, n
+end
+
+local function second(x)
+ return x[1]
+end
+)";
+
+    std::vector<Luau::CodeGen::FunctionBytecodeSummary> summaries(analyzeFile(source, 0));
+
+    CHECK_EQ(summaries[0].getName(), "inner");
+    CHECK_EQ(summaries[0].getLine(), 6);
+    CHECK_EQ(summaries[0].getCounts(0),
+        std::vector<unsigned>({1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+
+    CHECK_EQ(summaries[1].getName(), "first");
+    CHECK_EQ(summaries[1].getLine(), 2);
+    CHECK_EQ(summaries[1].getCounts(0),
+        std::vector<unsigned>({1, 0, 1, 0, 2, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+
+    CHECK_EQ(summaries[2].getName(), "second");
+    CHECK_EQ(summaries[2].getLine(), 15);
+    CHECK_EQ(summaries[2].getCounts(0),
+        std::vector<unsigned>({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+
+    CHECK_EQ(summaries[3].getName(), "");
+    CHECK_EQ(summaries[3].getLine(), 1);
+    CHECK_EQ(summaries[3].getCounts(0),
+        std::vector<unsigned>({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
 }
 
 TEST_SUITE_END();

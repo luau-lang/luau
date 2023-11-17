@@ -529,7 +529,7 @@ could not be converted into
 TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
 {
     CheckResult result = check(R"(
-        local x : { p : number?, q : any } & { p : unknown, q : string? }
+        local x : { p : number?, q : any } & { p : unknown, q : string? } = { p = 123, q = "foo" }
         local y : { p : number?, q : string? } = x -- OK
         local z : { p : string?, q : number? } = x -- Not OK
     )");

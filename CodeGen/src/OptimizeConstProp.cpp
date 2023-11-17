@@ -17,6 +17,7 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
 LUAU_FASTFLAGVARIABLE(LuauReuseArrSlots2, false)
 LUAU_FASTFLAG(LuauLowerAltLoopForn)
+LUAU_FASTFLAGVARIABLE(LuauCodeGenFixByteLower, false)
 
 namespace Luau
 {
@@ -618,15 +619,19 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         if (inst.a.kind == IrOpKind::VmReg)
         {
             state.invalidateValue(inst.a);
-            state.forwardVmRegStoreToLoad(inst, IrCmd::LOAD_POINTER);
 
-            if (IrInst* instOp = function.asInstOp(inst.b); instOp && instOp->cmd == IrCmd::NEW_TABLE)
+            if (inst.b.kind == IrOpKind::Inst)
             {
-                if (RegisterInfo* info = state.tryGetRegisterInfo(inst.a))
+                state.forwardVmRegStoreToLoad(inst, IrCmd::LOAD_POINTER);
+
+                if (IrInst* instOp = function.asInstOp(inst.b); instOp && instOp->cmd == IrCmd::NEW_TABLE)
                 {
-                    info->knownNotReadonly = true;
-                    info->knownNoMetatable = true;
-                    info->knownTableArraySize = function.uintOp(instOp->a);
+                    if (RegisterInfo* info = state.tryGetRegisterInfo(inst.a))
+                    {
+                        info->knownNotReadonly = true;
+                        info->knownNoMetatable = true;
+                        info->knownTableArraySize = function.uintOp(instOp->a);
+                    }
                 }
             }
         }

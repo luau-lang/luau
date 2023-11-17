@@ -92,6 +92,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/UnwindBuilder.h
     CodeGen/include/Luau/UnwindBuilderDwarf2.h
     CodeGen/include/Luau/UnwindBuilderWin.h
+    CodeGen/include/Luau/BytecodeSummary.h
     CodeGen/include/luacodegen.h
 
     CodeGen/src/AssemblyBuilderA64.cpp
@@ -124,6 +125,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/OptimizeFinalX64.cpp
     CodeGen/src/UnwindBuilderDwarf2.cpp
     CodeGen/src/UnwindBuilderWin.cpp
+    CodeGen/src/BytecodeSummary.cpp
 
     CodeGen/src/BitUtils.h
     CodeGen/src/ByteUtils.h
@@ -517,4 +519,14 @@ if(TARGET Luau.Compile.CLI)
         CLI/Flags.h
         CLI/Flags.cpp
         CLI/Compile.cpp)
+endif()
+
+if(TARGET Luau.Bytecode.CLI)
+    # Luau.Bytecode.CLI Sources
+    target_sources(Luau.Bytecode.CLI PRIVATE
+        CLI/FileUtils.h
+        CLI/FileUtils.cpp
+        CLI/Flags.h
+        CLI/Flags.cpp
+        CLI/Bytecode.cpp)
 endif()

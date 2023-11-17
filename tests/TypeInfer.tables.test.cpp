@@ -2147,16 +2147,22 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_prop")
 type A = { x: number, y: number }
 type B = { x: number, y: string }
 
-local a: A
+local a: A = { x = 123, y = 456 }
 local b: B = a
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    const std::string expected = R"(Type 'A' could not be converted into 'B'
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(toString(result.errors.at(0)) == R"(Type 'a' could not be converted into 'B'; at ["y"], number is not exactly string)");
+    else
+    {
+        const std::string expected = R"(Type 'A' could not be converted into 'B'
 caused by:
   Property 'y' is not compatible.
 Type 'number' could not be converted into 'string' in an invariant context)";
-    CHECK_EQ(expected, toString(result.errors[0]));
+        CHECK_EQ(expected, toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_prop_nested")
@@ -2168,19 +2174,25 @@ type BS = { x: number, y: string }
 type A = { a: boolean, b: AS }
 type B = { a: boolean, b: BS }
 
-local a: A
+local a: A = { a = false, b = { x = 123, y = 456 } }
 local b: B = a
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    const std::string expected = R"(Type 'A' could not be converted into 'B'
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(toString(result.errors.at(0)) == R"(Type 'a' could not be converted into 'B'; at ["b"]["y"], number is not exactly string)");
+    else
+    {
+        const std::string expected = R"(Type 'A' could not be converted into 'B'
 caused by:
   Property 'b' is not compatible.
 Type 'AS' could not be converted into 'BS'
 caused by:
   Property 'y' is not compatible.
 Type 'number' could not be converted into 'string' in an invariant context)";
-    CHECK_EQ(expected, toString(result.errors[0]));
+        CHECK_EQ(expected, toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "error_detailed_metatable_prop")
@@ -3945,9 +3957,9 @@ TEST_CASE_FIXTURE(Fixture, "identify_all_problematic_table_fields")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    std::string expected = "Type 'a' could not be converted into 'T'; at [\"a\"], string is not a subtype of number"
-        "\n\tat [\"b\"], boolean is not a subtype of string"
-        "\n\tat [\"c\"], number is not a subtype of boolean";
+    std::string expected = "Type 'a' could not be converted into 'T'; at [\"a\"], string is not exactly number"
+                           "\n\tat [\"b\"], boolean is not exactly string"
+                           "\n\tat [\"c\"], number is not exactly boolean";
     CHECK(toString(result.errors[0]) == expected);
 }
 
