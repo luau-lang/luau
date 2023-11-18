@@ -284,11 +284,9 @@ static ErrorVec accumulateErrors(
 
         Module& module = *modulePtr;
 
-        std::sort(module.errors.begin(), module.errors.end(),
-            [](const TypeError& e1, const TypeError& e2) -> bool
-            {
-                return e1.location.begin > e2.location.begin;
-            });
+        std::sort(module.errors.begin(), module.errors.end(), [](const TypeError& e1, const TypeError& e2) -> bool {
+            return e1.location.begin > e2.location.begin;
+        });
 
         result.insert(result.end(), module.errors.begin(), module.errors.end());
     }
@@ -515,11 +513,9 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
         }
 
         std::vector<ModuleName> queue;
-        bool cycleDetected = parseGraph(queue, name, frontendOptions.forAutocomplete,
-            [&seen](const ModuleName& name)
-            {
-                return seen.contains(name);
-            });
+        bool cycleDetected = parseGraph(queue, name, frontendOptions.forAutocomplete, [&seen](const ModuleName& name) {
+            return seen.contains(name);
+        });
 
         addBuildQueueItems(buildQueueItems, queue, cycleDetected, seen, frontendOptions);
     }
@@ -539,8 +535,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
     // Default task execution is single-threaded and immediate
     if (!executeTask)
     {
-        executeTask = [](std::function<void()> task)
-        {
+        executeTask = [](std::function<void()> task) {
             task();
         };
     }
@@ -552,8 +547,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
     size_t processing = 0;
     size_t remaining = buildQueueItems.size();
 
-    auto itemTask = [&](size_t i)
-    {
+    auto itemTask = [&](size_t i) {
         BuildQueueItem& item = buildQueueItems[i];
 
         try
@@ -573,22 +567,18 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
         cv.notify_one();
     };
 
-    auto sendItemTask = [&](size_t i)
-    {
+    auto sendItemTask = [&](size_t i) {
         BuildQueueItem& item = buildQueueItems[i];
 
         item.processing = true;
         processing++;
 
-        executeTask(
-            [&itemTask, i]()
-            {
-                itemTask(i);
-            });
+        executeTask([&itemTask, i]() {
+            itemTask(i);
+        });
     };
 
-    auto sendCycleItemTask = [&]
-    {
+    auto sendCycleItemTask = [&] {
         for (size_t i = 0; i < buildQueueItems.size(); i++)
         {
             BuildQueueItem& item = buildQueueItems[i];
@@ -637,11 +627,9 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
             std::unique_lock guard(mtx);
 
             // If nothing is ready yet, wait
-            cv.wait(guard,
-                [&readyQueueItems]
-                {
-                    return !readyQueueItems.empty();
-                });
+            cv.wait(guard, [&readyQueueItems] {
+                return !readyQueueItems.empty();
+            });
 
             // Handle checked items
             for (size_t i : readyQueueItems)
@@ -1354,8 +1342,7 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vect
 {
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        auto prepareModuleScopeWrap = [this, forAutocomplete](const ModuleName& name, const ScopePtr& scope)
-        {
+        auto prepareModuleScopeWrap = [this, forAutocomplete](const ModuleName& name, const ScopePtr& scope) {
             if (prepareModuleScope)
                 prepareModuleScope(name, scope, forAutocomplete);
         };
@@ -1381,8 +1368,7 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vect
 
         if (prepareModuleScope)
         {
-            typeChecker.prepareModuleScope = [this, forAutocomplete](const ModuleName& name, const ScopePtr& scope)
-            {
+            typeChecker.prepareModuleScope = [this, forAutocomplete](const ModuleName& name, const ScopePtr& scope) {
                 prepareModuleScope(name, scope, forAutocomplete);
             };
         }
