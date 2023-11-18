@@ -5,6 +5,8 @@
 #include "lcommon.h"
 #include "lnumutils.h"
 
+LUAU_FASTFLAGVARIABLE(LuauBit32Byteswap, false)
+
 #define ALLONES ~0u
 #define NBITS int(8 * sizeof(unsigned))
 
@@ -210,6 +212,18 @@ static int b_countrz(lua_State* L)
     return 1;
 }
 
+static int b_swap(lua_State* L)
+{
+    if (!FFlag::LuauBit32Byteswap)
+        luaL_error(L, "bit32.byteswap isn't enabled");
+
+    b_uint n = luaL_checkunsigned(L, 1);
+    n = (n << 24) | ((n << 8) & 0xff0000) | ((n >> 8) & 0xff00) | (n >> 24);
+
+    lua_pushunsigned(L, n);
+    return 1;
+}
+
 static const luaL_Reg bitlib[] = {
     {"arshift", b_arshift},
     {"band", b_and},
@@ -225,6 +239,7 @@ static const luaL_Reg bitlib[] = {
     {"rshift", b_rshift},
     {"countlz", b_countlz},
     {"countrz", b_countrz},
+    {"byteswap", b_swap},
     {NULL, NULL},
 };
 

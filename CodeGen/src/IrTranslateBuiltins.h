@@ -13,6 +13,7 @@ enum class BuiltinImplType
 {
     None,
     UsesFallback, // Uses fallback for unsupported cases
+    Full,         // Is either implemented in full, or exits to VM
 };
 
 struct BuiltinImplResult
@@ -21,7 +22,7 @@ struct BuiltinImplResult
     int actualResultCount;
 };
 
-BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, IrOp args, int nparams, int nresults, IrOp fallback);
+BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, IrOp args, int nparams, int nresults, IrOp fallback, int pcpos);
 
 } // namespace CodeGen
 } // namespace Luau

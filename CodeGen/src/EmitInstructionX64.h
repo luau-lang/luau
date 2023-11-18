@@ -3,11 +3,6 @@
 
 #include <stdint.h>
 
-#include "ltm.h"
-
-typedef uint32_t Instruction;
-typedef struct lua_TValue TValue;
-
 namespace Luau
 {
 namespace CodeGen
@@ -20,20 +15,12 @@ namespace X64
 {
 
 class AssemblyBuilderX64;
+struct IrRegAllocX64;
 
-void emitInstNameCall(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, const TValue* k, Label& next, Label& fallback);
-void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Instruction* pc, int pcpos);
-void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Instruction* pc, int pcpos);
-void emitInstSetList(AssemblyBuilderX64& build, const Instruction* pc, Label& next);
-void emitinstForGLoop(AssemblyBuilderX64& build, int ra, int aux, Label& loopRepeat, Label& loopExit);
-void emitinstForGLoopFallback(AssemblyBuilderX64& build, int pcpos, int ra, int aux, Label& loopRepeat);
-void emitInstForGPrepXnextFallback(AssemblyBuilderX64& build, int pcpos, int ra, Label& target);
-void emitInstAnd(AssemblyBuilderX64& build, const Instruction* pc);
-void emitInstAndK(AssemblyBuilderX64& build, const Instruction* pc);
-void emitInstOr(AssemblyBuilderX64& build, const Instruction* pc);
-void emitInstOrK(AssemblyBuilderX64& build, const Instruction* pc);
-void emitInstGetImportFallback(AssemblyBuilderX64& build, int ra, uint32_t aux);
-void emitInstCoverage(AssemblyBuilderX64& build, int pcpos);
+void emitInstCall(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int nparams, int nresults);
+void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, int ra, int actualResults, bool functionVariadic);
+void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, int count, uint32_t index, int knownSize);
+void emitInstForGLoop(AssemblyBuilderX64& build, int ra, int aux, Label& loopRepeat);
 
 } // namespace X64
 } // namespace CodeGen

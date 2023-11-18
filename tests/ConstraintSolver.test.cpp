@@ -1,8 +1,10 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "ConstraintGraphBuilderFixture.h"
+#include "ConstraintGeneratorFixture.h"
 #include "Fixture.h"
 #include "doctest.h"
+
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
 using namespace Luau;
 
@@ -15,7 +17,7 @@ static TypeId requireBinding(Scope* scope, const char* name)
 
 TEST_SUITE_BEGIN("ConstraintSolver");
 
-TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "hello")
+TEST_CASE_FIXTURE(ConstraintGeneratorFixture, "hello")
 {
     solve(R"(
         local a = 55
@@ -27,7 +29,7 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "hello")
     CHECK("number" == toString(bType));
 }
 
-TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "generic_function")
+TEST_CASE_FIXTURE(ConstraintGeneratorFixture, "generic_function")
 {
     solve(R"(
         local function id(a)
@@ -40,7 +42,7 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "generic_function")
     CHECK("<a>(a) -> a" == toString(idType));
 }
 
-TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "proper_let_generalization")
+TEST_CASE_FIXTURE(ConstraintGeneratorFixture, "proper_let_generalization")
 {
     solve(R"(
         local function a(c)
@@ -57,7 +59,11 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "proper_let_generalization")
     TypeId idType = requireBinding(rootScope, "b");
 
     ToStringOptions opts;
-    CHECK("<a>(a) -> number" == toString(idType, opts));
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("(unknown) -> number" == toString(idType, opts));
+    else
+        CHECK("<a>(a) -> number" == toString(idType, opts));
 }
 
 TEST_SUITE_END();

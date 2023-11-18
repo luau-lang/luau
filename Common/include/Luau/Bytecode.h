@@ -25,7 +25,7 @@
 // Additionally, in some specific instructions such as ANDK, the limit on the encoded value is smaller; this means that if a value is larger, a different instruction must be selected.
 //
 // Registers: 0-254. Registers refer to the values on the function's stack frame, including arguments.
-// Upvalues: 0-254. Upvalues refer to the values stored in the closure object.
+// Upvalues: 0-199. Upvalues refer to the values stored in the closure object.
 // Constants: 0-2^23-1. Constants are stored in a table allocated with each proto; to allow for future bytecode tweaks the encodable value is limited to 23 bits.
 // Closures: 0-2^15-1. Closures are created from child protos via a child index; the limit is for the number of closures immediately referenced in each function.
 // Jumps: -2^23..2^23. Jump offsets are specified in word increments, so jumping over an instruction may sometimes require an offset of 2 or more. Note that for jump instructions with AUX, the AUX word is included as part of the jump offset.
@@ -44,6 +44,8 @@
 // Version 1: Baseline version for the open-source release. Supported until 0.521.
 // Version 2: Adds Proto::linedefined. Supported until 0.544.
 // Version 3: Adds FORGPREP/JUMPXEQK* and enhances AUX encoding for FORGLOOP. Removes FORGLOOP_NEXT/INEXT and JUMPIFEQK/JUMPIFNOTEQK. Currently supported.
+// Version 4: Adds Proto::flags, typeinfo, and floor division opcodes IDIV/IDIVK. Currently supported.
+// Version 5: Adds vector constants. Currently supported.
 
 // Bytecode opcode, part of the instruction header
 enum LuauOpcode
@@ -69,7 +71,7 @@ enum LuauOpcode
     // D: value (-32768..32767)
     LOP_LOADN,
 
-    // LOADK: sets register to an entry from the constant table from the proto (number/string)
+    // LOADK: sets register to an entry from the constant table from the proto (number/vector/string)
     // A: target register
     // D: constant table index (0..32767)
     LOP_LOADK,
@@ -93,12 +95,12 @@ enum LuauOpcode
 
     // GETUPVAL: load upvalue from the upvalue table for the current function
     // A: target register
-    // B: upvalue index (0..255)
+    // B: upvalue index
     LOP_GETUPVAL,
 
     // SETUPVAL: store value into the upvalue table for the current function
     // A: target register
-    // B: upvalue index (0..255)
+    // B: upvalue index
     LOP_SETUPVAL,
 
     // CLOSEUPVALS: close (migrate to heap) all upvalues that were captured for registers >= target
@@ -300,8 +302,9 @@ enum LuauOpcode
     // A: target register (see FORGLOOP for register layout)
     LOP_FORGPREP_NEXT,
 
-    // removed in v3
-    LOP_DEP_FORGLOOP_NEXT,
+    // NATIVECALL: start executing new function in native code
+    // this is a pseudo-instruction that is never emitted by bytecode compiler, but can be constructed at runtime to accelerate native code dispatch
+    LOP_NATIVECALL,
 
     // GETVARARGS: copy variables into the target register from vararg storage for current function
     // A: target register
@@ -388,6 +391,18 @@ enum LuauOpcode
     LOP_JUMPXEQKN,
     LOP_JUMPXEQKS,
 
+    // IDIV: compute floor division between two source registers and put the result into target register
+    // A: target register
+    // B: source register 1
+    // C: source register 2
+    LOP_IDIV,
+
+    // IDIVK compute floor division between the source register and a constant and put the result into target register
+    // A: target register
+    // B: source register
+    // C: constant table index (0..255)
+    LOP_IDIVK,
+
     // Enum entry for number of opcodes, not a valid opcode by itself!
     LOP__COUNT
 };
@@ -412,8 +427,10 @@ enum LuauBytecodeTag
 {
     // Bytecode version; runtime supports [MIN, MAX], compiler emits TARGET by default but may emit a higher version when flags are enabled
     LBC_VERSION_MIN = 3,
-    LBC_VERSION_MAX = 3,
-    LBC_VERSION_TARGET = 3,
+    LBC_VERSION_MAX = 5,
+    LBC_VERSION_TARGET = 4,
+    // Type encoding version
+    LBC_TYPE_VERSION = 1,
     // Types of constant table entries
     LBC_CONSTANT_NIL = 0,
     LBC_CONSTANT_BOOLEAN,
@@ -422,6 +439,27 @@ enum LuauBytecodeTag
     LBC_CONSTANT_IMPORT,
     LBC_CONSTANT_TABLE,
     LBC_CONSTANT_CLOSURE,
+    LBC_CONSTANT_VECTOR,
+};
+
+// Type table tags
+enum LuauBytecodeType
+{
+    LBC_TYPE_NIL = 0,
+    LBC_TYPE_BOOLEAN,
+    LBC_TYPE_NUMBER,
+    LBC_TYPE_STRING,
+    LBC_TYPE_TABLE,
+    LBC_TYPE_FUNCTION,
+    LBC_TYPE_THREAD,
+    LBC_TYPE_USERDATA,
+    LBC_TYPE_VECTOR,
+    LBC_TYPE_BUFFER,
+
+    LBC_TYPE_ANY = 15,
+    LBC_TYPE_OPTIONAL_BIT = 1 << 7,
+
+    LBC_TYPE_INVALID = 256,
 };
 
 // Builtin function ids, used in LOP_FASTCALL
@@ -521,6 +559,28 @@ enum LuauBuiltinFunction
     // get/setmetatable
     LBF_GETMETATABLE,
     LBF_SETMETATABLE,
+
+    // tonumber/tostring
+    LBF_TONUMBER,
+    LBF_TOSTRING,
+
+    // bit32.byteswap(n)
+    LBF_BIT32_BYTESWAP,
+
+    // buffer.
+    LBF_BUFFER_READI8,
+    LBF_BUFFER_READU8,
+    LBF_BUFFER_WRITEU8,
+    LBF_BUFFER_READI16,
+    LBF_BUFFER_READU16,
+    LBF_BUFFER_WRITEU16,
+    LBF_BUFFER_READI32,
+    LBF_BUFFER_READU32,
+    LBF_BUFFER_WRITEU32,
+    LBF_BUFFER_READF32,
+    LBF_BUFFER_WRITEF32,
+    LBF_BUFFER_READF64,
+    LBF_BUFFER_WRITEF64,
 };
 
 // Capture type, used in LOP_CAPTURE
@@ -529,4 +589,13 @@ enum LuauCaptureType
     LCT_VAL = 0,
     LCT_REF,
     LCT_UPVAL,
+};
+
+// Proto flag bitmask, stored in Proto::flags
+enum LuauProtoFlag
+{
+    // used to tag main proto for modules with --!native
+    LPF_NATIVE_MODULE = 1 << 0,
+    // used to tag individual protos as not profitable to compile natively
+    LPF_NATIVE_COLD = 1 << 1,
 };

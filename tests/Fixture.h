@@ -2,6 +2,8 @@
 #pragma once
 
 #include "Luau/Config.h"
+#include "Luau/Differ.h"
+#include "Luau/Error.h"
 #include "Luau/FileResolver.h"
 #include "Luau/Frontend.h"
 #include "Luau/IostreamHelpers.h"
@@ -15,6 +17,7 @@
 #include "IostreamOptional.h"
 #include "ScopedFlags.h"
 
+#include "doctest.h"
 #include <string>
 #include <unordered_map>
 #include <optional>
@@ -62,11 +65,11 @@ struct Fixture
 
     // Throws Luau::ParseErrors if the parse fails.
     AstStatBlock* parse(const std::string& source, const ParseOptions& parseOptions = {});
-    CheckResult check(Mode mode, std::string source);
+    CheckResult check(Mode mode, const std::string& source);
     CheckResult check(const std::string& source);
 
     LintResult lint(const std::string& source, const std::optional<LintOptions>& lintOptions = {});
-    LintResult lintTyped(const std::string& source, const std::optional<LintOptions>& lintOptions = {});
+    LintResult lintModule(const ModuleName& moduleName, const std::optional<LintOptions>& lintOptions = {});
 
     /// Parse with all language extensions enabled
     ParseResult parseEx(const std::string& source, const ParseOptions& parseOptions = {});
@@ -92,8 +95,11 @@ struct Fixture
     std::optional<TypeId> lookupType(const std::string& name);
     std::optional<TypeId> lookupImportedType(const std::string& moduleAlias, const std::string& name);
     TypeId requireTypeAlias(const std::string& name);
+    TypeId requireExportedType(const ModuleName& moduleName, const std::string& name);
 
     ScopedFastFlag sff_DebugLuauFreezeArena;
+
+    ScopedFastFlag luauBufferTypeck{"LuauBufferTypeck", true};
 
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;
@@ -152,6 +158,71 @@ std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name);
 
 void registerHiddenTypes(Frontend* frontend);
 void createSomeClasses(Frontend* frontend);
+
+template<typename BaseFixture>
+struct DifferFixtureGeneric : BaseFixture
+{
+    std::string normalizeWhitespace(std::string msg)
+    {
+        std::string normalizedMsg = "";
+        bool wasWhitespace = true;
+        for (char c : msg)
+        {
+            bool isWhitespace = c == ' ' || c == '\n';
+            if (wasWhitespace && isWhitespace)
+                continue;
+            normalizedMsg += isWhitespace ? ' ' : c;
+            wasWhitespace = isWhitespace;
+        }
+        if (wasWhitespace)
+            normalizedMsg.pop_back();
+        return normalizedMsg;
+    }
+
+    void compareNe(TypeId left, TypeId right, const std::string& expectedMessage, bool multiLine)
+    {
+        compareNe(left, std::nullopt, right, std::nullopt, expectedMessage, multiLine);
+    }
+
+    void compareNe(TypeId left, std::optional<std::string> symbolLeft, TypeId right, std::optional<std::string> symbolRight,
+        const std::string& expectedMessage, bool multiLine)
+    {
+        DifferResult diffRes = diffWithSymbols(left, right, symbolLeft, symbolRight);
+        REQUIRE_MESSAGE(diffRes.diffError.has_value(), "Differ did not report type error, even though types are unequal");
+        std::string diffMessage = diffRes.diffError->toString(multiLine);
+        CHECK_EQ(expectedMessage, diffMessage);
+    }
+
+    void compareTypesNe(const std::string& leftSymbol, const std::string& rightSymbol, const std::string& expectedMessage, bool forwardSymbol = false,
+        bool multiLine = false)
+    {
+        if (forwardSymbol)
+        {
+            compareNe(
+                BaseFixture::requireType(leftSymbol), leftSymbol, BaseFixture::requireType(rightSymbol), rightSymbol, expectedMessage, multiLine);
+        }
+        else
+        {
+            compareNe(
+                BaseFixture::requireType(leftSymbol), std::nullopt, BaseFixture::requireType(rightSymbol), std::nullopt, expectedMessage, multiLine);
+        }
+    }
+
+    void compareEq(TypeId left, TypeId right)
+    {
+        DifferResult diffRes = diff(left, right);
+        CHECK(!diffRes.diffError);
+        if (diffRes.diffError)
+            INFO(diffRes.diffError->toString());
+    }
+
+    void compareTypesEq(const std::string& leftSymbol, const std::string& rightSymbol)
+    {
+        compareEq(BaseFixture::requireType(leftSymbol), BaseFixture::requireType(rightSymbol));
+    }
+};
+using DifferFixture = DifferFixtureGeneric<Fixture>;
+using DifferFixtureWithBuiltins = DifferFixtureGeneric<BuiltinsFixture>;
 
 } // namespace Luau
 

@@ -1,15 +1,16 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IrBuilder.h"
 
-#include "Luau/Common.h"
-#include "Luau/DenseHash.h"
-#include "Luau/IrAnalysis.h"
+#include "Luau/Bytecode.h"
+#include "Luau/BytecodeUtils.h"
+#include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
 
-#include "CustomExecUtils.h"
 #include "IrTranslation.h"
 
 #include "lapi.h"
+
+#include <string.h>
 
 namespace Luau
 {
@@ -18,14 +19,120 @@ namespace CodeGen
 
 constexpr unsigned kNoAssociatedBlockIndex = ~0u;
 
+IrBuilder::IrBuilder()
+    : constantMap({IrConstKind::Tag, ~0ull})
+{
+}
+
+static bool hasTypedParameters(Proto* proto)
+{
+    return proto->typeinfo && proto->numparams != 0;
+}
+
+static void buildArgumentTypeChecks(IrBuilder& build, Proto* proto)
+{
+    LUAU_ASSERT(hasTypedParameters(proto));
+
+    for (int i = 0; i < proto->numparams; ++i)
+    {
+        uint8_t et = proto->typeinfo[2 + i];
+
+        uint8_t tag = et & ~LBC_TYPE_OPTIONAL_BIT;
+        uint8_t optional = et & LBC_TYPE_OPTIONAL_BIT;
+
+        if (tag == LBC_TYPE_ANY)
+            continue;
+
+        IrOp load = build.inst(IrCmd::LOAD_TAG, build.vmReg(i));
+
+        IrOp nextCheck;
+        if (optional)
+        {
+            nextCheck = build.block(IrBlockKind::Internal);
+            IrOp fallbackCheck = build.block(IrBlockKind::Internal);
+
+            build.inst(IrCmd::JUMP_EQ_TAG, load, build.constTag(LUA_TNIL), nextCheck, fallbackCheck);
+
+            build.beginBlock(fallbackCheck);
+        }
+
+        switch (tag)
+        {
+        case LBC_TYPE_NIL:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TNIL), build.vmExit(kVmExitEntryGuardPc));
+            break;
+        case LBC_TYPE_BOOLEAN:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TBOOLEAN), build.vmExit(kVmExitEntryGuardPc));
+            break;
+        case LBC_TYPE_NUMBER:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TNUMBER), build.vmExit(kVmExitEntryGuardPc));
+            break;
+        case LBC_TYPE_STRING:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TSTRING), build.vmExit(kVmExitEntryGuardPc));
+            break;
+        case LBC_TYPE_TABLE:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TTABLE), build.vmExit(kVmExitEntryGuardPc));
+            break;
+        case LBC_TYPE_FUNCTION:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TFUNCTION), build.vmExit(kVmExitEntryGuardPc));
+            break;
+        case LBC_TYPE_THREAD:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TTHREAD), build.vmExit(kVmExitEntryGuardPc));
+            break;
+        case LBC_TYPE_USERDATA:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TUSERDATA), build.vmExit(kVmExitEntryGuardPc));
+            break;
+        case LBC_TYPE_VECTOR:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TVECTOR), build.vmExit(kVmExitEntryGuardPc));
+            break;
+        case LBC_TYPE_BUFFER:
+            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TBUFFER), build.vmExit(kVmExitEntryGuardPc));
+            break;
+        }
+
+        if (optional)
+        {
+            build.inst(IrCmd::JUMP, nextCheck);
+            build.beginBlock(nextCheck);
+        }
+    }
+
+    // If the last argument is optional, we can skip creating a new internal block since one will already have been created.
+    if (!(proto->typeinfo[2 + proto->numparams - 1] & LBC_TYPE_OPTIONAL_BIT))
+    {
+        IrOp next = build.block(IrBlockKind::Internal);
+        build.inst(IrCmd::JUMP, next);
+
+        build.beginBlock(next);
+    }
+}
+
 void IrBuilder::buildFunctionIr(Proto* proto)
 {
     function.proto = proto;
+    function.variadic = proto->is_vararg != 0;
+
+    // Reserve entry block
+    bool generateTypeChecks = hasTypedParameters(proto);
+    IrOp entry = generateTypeChecks ? block(IrBlockKind::Internal) : IrOp{};
 
     // Rebuild original control flow blocks
     rebuildBytecodeBasicBlocks(proto);
 
-    function.bcMapping.resize(proto->sizecode, {~0u, 0});
+    function.bcMapping.resize(proto->sizecode, {~0u, ~0u});
+
+    if (generateTypeChecks)
+    {
+        beginBlock(entry);
+        buildArgumentTypeChecks(*this, proto);
+        inst(IrCmd::JUMP, blockAtInst(0));
+    }
+    else
+    {
+        entry = blockAtInst(0);
+    }
+
+    function.entryBlock = entry.index;
 
     // Translate all instructions to IR inside blocks
     for (int i = 0; i < proto->sizecode;)
@@ -36,15 +143,38 @@ void IrBuilder::buildFunctionIr(Proto* proto)
         int nexti = i + getOpLength(op);
         LUAU_ASSERT(nexti <= proto->sizecode);
 
-        function.bcMapping[i] = {uint32_t(function.instructions.size()), 0};
+        function.bcMapping[i] = {uint32_t(function.instructions.size()), ~0u};
 
         // Begin new block at this instruction if it was in the bytecode or requested during translation
         if (instIndexToBlock[i] != kNoAssociatedBlockIndex)
             beginBlock(blockAtInst(i));
 
+        // Numeric for loops require additional processing to maintain loop stack
+        // Notably, this must be performed even when the block is dead so that we maintain the pairing FORNPREP-FORNLOOP
+        if (op == LOP_FORNPREP)
+            beforeInstForNPrep(*this, pc);
+
         // We skip dead bytecode instructions when they appear after block was already terminated
         if (!inTerminatedBlock)
+        {
+            if (interruptRequested)
+            {
+                interruptRequested = false;
+                inst(IrCmd::INTERRUPT, constUint(i));
+            }
+
             translateInst(op, pc, i);
+
+            if (fastcallSkipTarget != -1)
+            {
+                nexti = fastcallSkipTarget;
+                fastcallSkipTarget = -1;
+            }
+        }
+
+        // See above for FORNPREP..FORNLOOP processing
+        if (op == LOP_FORNLOOP)
+            afterInstForNLoop(*this, pc);
 
         i = nexti;
         LUAU_ASSERT(i <= proto->sizecode);
@@ -127,7 +257,10 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstSetGlobal(*this, pc, i);
         break;
     case LOP_CALL:
-        inst(IrCmd::LOP_CALL, constUint(i), vmReg(LUAU_INSN_A(*pc)), constInt(LUAU_INSN_B(*pc) - 1), constInt(LUAU_INSN_C(*pc) - 1));
+        inst(IrCmd::INTERRUPT, constUint(i));
+        inst(IrCmd::SET_SAVEDPC, constUint(i + 1));
+
+        inst(IrCmd::CALL, vmReg(LUAU_INSN_A(*pc)), constInt(LUAU_INSN_B(*pc) - 1), constInt(LUAU_INSN_C(*pc) - 1));
 
         if (activeFastcallFallback)
         {
@@ -139,7 +272,9 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         }
         break;
     case LOP_RETURN:
-        inst(IrCmd::LOP_RETURN, constUint(i), vmReg(LUAU_INSN_A(*pc)), constInt(LUAU_INSN_B(*pc) - 1));
+        inst(IrCmd::INTERRUPT, constUint(i));
+
+        inst(IrCmd::RETURN, vmReg(LUAU_INSN_A(*pc)), constInt(LUAU_INSN_B(*pc) - 1));
         break;
     case LOP_GETTABLE:
         translateInstGetTable(*this, pc, i);
@@ -216,6 +351,9 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
     case LOP_DIV:
         translateInstBinary(*this, pc, i, TM_DIV);
         break;
+    case LOP_IDIV:
+        translateInstBinary(*this, pc, i, TM_IDIV);
+        break;
     case LOP_MOD:
         translateInstBinary(*this, pc, i, TM_MOD);
         break;
@@ -233,6 +371,9 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         break;
     case LOP_DIVK:
         translateInstBinaryK(*this, pc, i, TM_DIV);
+        break;
+    case LOP_IDIVK:
+        translateInstBinaryK(*this, pc, i, TM_IDIV);
         break;
     case LOP_MODK:
         translateInstBinaryK(*this, pc, i, TM_MOD);
@@ -256,7 +397,8 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstDupTable(*this, pc, i);
         break;
     case LOP_SETLIST:
-        inst(IrCmd::LOP_SETLIST, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), constInt(LUAU_INSN_C(*pc) - 1), constUint(pc[1]));
+        inst(IrCmd::SETLIST, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), constInt(LUAU_INSN_C(*pc) - 1), constUint(pc[1]),
+            undef());
         break;
     case LOP_GETUPVAL:
         translateInstGetUpval(*this, pc, i);
@@ -268,49 +410,17 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstCloseUpvals(*this, pc);
         break;
     case LOP_FASTCALL:
-    {
-        int skip = LUAU_INSN_C(*pc);
-        IrOp next = blockAtInst(i + skip + 2);
-
-        translateFastCallN(*this, pc, i, false, 0, {}, next);
-
-        activeFastcallFallback = true;
-        fastcallFallbackReturn = next;
+        handleFastcallFallback(translateFastCallN(*this, pc, i, false, 0, {}), pc, i);
         break;
-    }
     case LOP_FASTCALL1:
-    {
-        int skip = LUAU_INSN_C(*pc);
-        IrOp next = blockAtInst(i + skip + 2);
-
-        translateFastCallN(*this, pc, i, true, 1, constBool(false), next);
-
-        activeFastcallFallback = true;
-        fastcallFallbackReturn = next;
+        handleFastcallFallback(translateFastCallN(*this, pc, i, true, 1, undef()), pc, i);
         break;
-    }
     case LOP_FASTCALL2:
-    {
-        int skip = LUAU_INSN_C(*pc);
-        IrOp next = blockAtInst(i + skip + 2);
-
-        translateFastCallN(*this, pc, i, true, 2, vmReg(pc[1]), next);
-
-        activeFastcallFallback = true;
-        fastcallFallbackReturn = next;
+        handleFastcallFallback(translateFastCallN(*this, pc, i, true, 2, vmReg(pc[1])), pc, i);
         break;
-    }
     case LOP_FASTCALL2K:
-    {
-        int skip = LUAU_INSN_C(*pc);
-        IrOp next = blockAtInst(i + skip + 2);
-
-        translateFastCallN(*this, pc, i, true, 2, vmConst(pc[1]), next);
-
-        activeFastcallFallback = true;
-        fastcallFallbackReturn = next;
+        handleFastcallFallback(translateFastCallN(*this, pc, i, true, 2, vmConst(pc[1])), pc, i);
         break;
-    }
     case LOP_FORNPREP:
         translateInstForNPrep(*this, pc, i);
         break;
@@ -337,10 +447,11 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
             inst(IrCmd::INTERRUPT, constUint(i));
             loadAndCheckTag(vmReg(ra), LUA_TNIL, fallback);
 
-            inst(IrCmd::LOP_FORGLOOP, vmReg(ra), constInt(aux), loopRepeat, loopExit);
+            inst(IrCmd::FORGLOOP, vmReg(ra), constInt(aux), loopRepeat, loopExit);
 
             beginBlock(fallback);
-            inst(IrCmd::LOP_FORGLOOP_FALLBACK, constUint(i), vmReg(ra), constInt(aux), loopRepeat, loopExit);
+            inst(IrCmd::SET_SAVEDPC, constUint(i + 1));
+            inst(IrCmd::FORGLOOP_FALLBACK, vmReg(ra), constInt(aux), loopRepeat, loopExit);
 
             beginBlock(loopExit);
         }
@@ -353,19 +464,19 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstForGPrepInext(*this, pc, i);
         break;
     case LOP_AND:
-        inst(IrCmd::LOP_AND, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), vmReg(LUAU_INSN_C(*pc)));
+        translateInstAndX(*this, pc, i, vmReg(LUAU_INSN_C(*pc)));
         break;
     case LOP_ANDK:
-        inst(IrCmd::LOP_ANDK, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), vmConst(LUAU_INSN_C(*pc)));
+        translateInstAndX(*this, pc, i, vmConst(LUAU_INSN_C(*pc)));
         break;
     case LOP_OR:
-        inst(IrCmd::LOP_OR, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), vmReg(LUAU_INSN_C(*pc)));
+        translateInstOrX(*this, pc, i, vmReg(LUAU_INSN_C(*pc)));
         break;
     case LOP_ORK:
-        inst(IrCmd::LOP_ORK, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), vmConst(LUAU_INSN_C(*pc)));
+        translateInstOrX(*this, pc, i, vmConst(LUAU_INSN_C(*pc)));
         break;
     case LOP_COVERAGE:
-        inst(IrCmd::LOP_COVERAGE, constUint(i));
+        inst(IrCmd::COVERAGE, constUint(i));
         break;
     case LOP_GETIMPORT:
         translateInstGetImport(*this, pc, i);
@@ -377,19 +488,8 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstCapture(*this, pc, i);
         break;
     case LOP_NAMECALL:
-    {
-        IrOp next = blockAtInst(i + getOpLength(LOP_NAMECALL));
-        IrOp fallback = block(IrBlockKind::Fallback);
-
-        inst(IrCmd::LOP_NAMECALL, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), next, fallback);
-
-        beginBlock(fallback);
-        inst(IrCmd::FALLBACK_NAMECALL, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmReg(LUAU_INSN_B(*pc)), vmConst(pc[1]));
-        inst(IrCmd::JUMP, next);
-
-        beginBlock(next);
+        translateInstNamecall(*this, pc, i);
         break;
-    }
     case LOP_PREPVARARGS:
         inst(IrCmd::FALLBACK_PREPVARARGS, constUint(i), constInt(LUAU_INSN_A(*pc)));
         break;
@@ -397,7 +497,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         inst(IrCmd::FALLBACK_GETVARARGS, constUint(i), vmReg(LUAU_INSN_A(*pc)), constInt(LUAU_INSN_B(*pc) - 1));
         break;
     case LOP_NEWCLOSURE:
-        inst(IrCmd::FALLBACK_NEWCLOSURE, constUint(i), vmReg(LUAU_INSN_A(*pc)), constUint(LUAU_INSN_D(*pc)));
+        translateInstNewClosure(*this, pc, i);
         break;
     case LOP_DUPCLOSURE:
         inst(IrCmd::FALLBACK_DUPCLOSURE, constUint(i), vmReg(LUAU_INSN_A(*pc)), vmConst(LUAU_INSN_D(*pc)));
@@ -410,8 +510,26 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         break;
     }
     default:
-        LUAU_ASSERT(!"unknown instruction");
-        break;
+        LUAU_ASSERT(!"Unknown instruction");
+    }
+}
+
+void IrBuilder::handleFastcallFallback(IrOp fallbackOrUndef, const Instruction* pc, int i)
+{
+    int skip = LUAU_INSN_C(*pc);
+
+    if (fallbackOrUndef.kind != IrOpKind::Undef)
+    {
+        IrOp next = blockAtInst(i + skip + 2);
+        inst(IrCmd::JUMP, next);
+        beginBlock(fallbackOrUndef);
+
+        activeFastcallFallback = true;
+        fastcallFallbackReturn = next;
+    }
+    else
+    {
+        fastcallSkipTarget = i + skip + 2;
     }
 }
 
@@ -430,6 +548,7 @@ void IrBuilder::beginBlock(IrOp block)
     LUAU_ASSERT(target.start == ~0u || target.start == uint32_t(function.instructions.size()));
 
     target.start = uint32_t(function.instructions.size());
+    target.sortkey = target.start;
 
     inTerminatedBlock = false;
 }
@@ -449,7 +568,7 @@ void IrBuilder::clone(const IrBlock& source, bool removeCurrentTerminator)
             if (const uint32_t* newIndex = instRedir.find(op.index))
                 op.index = *newIndex;
             else
-                LUAU_ASSERT(!"values can only be used if they are defined in the same block");
+                LUAU_ASSERT(!"Values can only be used if they are defined in the same block");
         }
     };
 
@@ -496,12 +615,9 @@ void IrBuilder::clone(const IrBlock& source, bool removeCurrentTerminator)
     }
 }
 
-IrOp IrBuilder::constBool(bool value)
+IrOp IrBuilder::undef()
 {
-    IrConst constant;
-    constant.kind = IrConstKind::Bool;
-    constant.valueBool = value;
-    return constAny(constant);
+    return {IrOpKind::Undef, 0};
 }
 
 IrOp IrBuilder::constInt(int value)
@@ -509,7 +625,7 @@ IrOp IrBuilder::constInt(int value)
     IrConst constant;
     constant.kind = IrConstKind::Int;
     constant.valueInt = value;
-    return constAny(constant);
+    return constAny(constant, uint64_t(value));
 }
 
 IrOp IrBuilder::constUint(unsigned value)
@@ -517,7 +633,7 @@ IrOp IrBuilder::constUint(unsigned value)
     IrConst constant;
     constant.kind = IrConstKind::Uint;
     constant.valueUint = value;
-    return constAny(constant);
+    return constAny(constant, uint64_t(value));
 }
 
 IrOp IrBuilder::constDouble(double value)
@@ -525,7 +641,12 @@ IrOp IrBuilder::constDouble(double value)
     IrConst constant;
     constant.kind = IrConstKind::Double;
     constant.valueDouble = value;
-    return constAny(constant);
+
+    uint64_t asCommonKey;
+    static_assert(sizeof(asCommonKey) == sizeof(value), "Expecting double to be 64-bit");
+    memcpy(&asCommonKey, &value, sizeof(value));
+
+    return constAny(constant, asCommonKey);
 }
 
 IrOp IrBuilder::constTag(uint8_t value)
@@ -533,13 +654,21 @@ IrOp IrBuilder::constTag(uint8_t value)
     IrConst constant;
     constant.kind = IrConstKind::Tag;
     constant.valueTag = value;
-    return constAny(constant);
+    return constAny(constant, uint64_t(value));
 }
 
-IrOp IrBuilder::constAny(IrConst constant)
+IrOp IrBuilder::constAny(IrConst constant, uint64_t asCommonKey)
 {
+    ConstantKey key{constant.kind, asCommonKey};
+
+    if (uint32_t* cache = constantMap.find(key))
+        return {IrOpKind::Constant, *cache};
+
     uint32_t index = uint32_t(function.constants.size());
     function.constants.push_back(constant);
+
+    constantMap[key] = index;
+
     return {IrOpKind::Constant, index};
 }
 
@@ -627,6 +756,11 @@ IrOp IrBuilder::vmConst(uint32_t index)
 IrOp IrBuilder::vmUpvalue(uint8_t index)
 {
     return {IrOpKind::VmUpvalue, index};
+}
+
+IrOp IrBuilder::vmExit(uint32_t pcpos)
+{
+    return {IrOpKind::VmExit, pcpos};
 }
 
 } // namespace CodeGen

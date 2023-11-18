@@ -302,12 +302,11 @@ struct CostVisitor : AstVisitor
         return false;
     }
 
-    bool visit(AstStat* node) override
+    bool visit(AstStatIf* node) override
     {
-        if (node->is<AstStatIf>())
-            result += 2;
-        else if (node->is<AstStatBreak>() || node->is<AstStatContinue>())
-            result += 1;
+        // unconditional 'else' may require a jump after the 'if' body
+        // note: this ignores cases when 'then' always terminates and also assumes comparison requires an extra instruction which may be false
+        result += 1 + (node->elsebody && !node->elsebody->is<AstStatIf>());
 
         return true;
     }
@@ -333,7 +332,18 @@ struct CostVisitor : AstVisitor
         for (size_t i = 0; i < node->vars.size; ++i)
             assign(node->vars.data[i]);
 
-        return true;
+        for (size_t i = 0; i < node->vars.size || i < node->values.size; ++i)
+        {
+            Cost ac;
+            if (i < node->vars.size)
+                ac += model(node->vars.data[i]);
+            if (i < node->values.size)
+                ac += model(node->values.data[i]);
+            // local->local or constant->local assignment is not free
+            result += ac.model == 0 ? Cost(1) : ac;
+        }
+
+        return false;
     }
 
     bool visit(AstStatCompoundAssign* node) override
@@ -344,6 +354,20 @@ struct CostVisitor : AstVisitor
         result += node->var->is<AstExprLocal>() ? 1 : 2;
 
         return true;
+    }
+
+    bool visit(AstStatBreak* node) override
+    {
+        result += 1;
+
+        return false;
+    }
+
+    bool visit(AstStatContinue* node) override
+    {
+        result += 1;
+
+        return false;
     }
 };
 

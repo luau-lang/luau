@@ -132,6 +132,14 @@ void* luaL_checkudata(lua_State* L, int ud, const char* tname)
     luaL_typeerrorL(L, ud, tname); // else error
 }
 
+void* luaL_checkbuffer(lua_State* L, int narg, size_t* len)
+{
+    void* b = lua_tobuffer(L, narg, len);
+    if (!b)
+        tag_error(L, narg, LUA_TBUFFER);
+    return b;
+}
+
 void luaL_checkstack(lua_State* L, int space, const char* mes)
 {
     if (!lua_checkstack(L, space))
@@ -336,7 +344,7 @@ const char* luaL_findtable(lua_State* L, int idx, const char* fname, int szhint)
 const char* luaL_typename(lua_State* L, int idx)
 {
     const TValue* obj = luaA_toobject(L, idx);
-    return luaT_objtypename(L, obj);
+    return obj ? luaT_objtypename(L, obj) : "no value";
 }
 
 /*
@@ -360,24 +368,7 @@ static size_t getnextbuffersize(lua_State* L, size_t currentsize, size_t desired
     return newsize;
 }
 
-void luaL_buffinit(lua_State* L, luaL_Buffer* B)
-{
-    // start with an internal buffer
-    B->p = B->buffer;
-    B->end = B->p + LUA_BUFFERSIZE;
-
-    B->L = L;
-    B->storage = nullptr;
-}
-
-char* luaL_buffinitsize(lua_State* L, luaL_Buffer* B, size_t size)
-{
-    luaL_buffinit(L, B);
-    luaL_reservebuffer(B, size, -1);
-    return B->p;
-}
-
-char* luaL_extendbuffer(luaL_Buffer* B, size_t additionalsize, int boxloc)
+static char* extendstrbuf(luaL_Strbuf* B, size_t additionalsize, int boxloc)
 {
     lua_State* L = B->L;
 
@@ -408,22 +399,39 @@ char* luaL_extendbuffer(luaL_Buffer* B, size_t additionalsize, int boxloc)
     return B->p;
 }
 
-void luaL_reservebuffer(luaL_Buffer* B, size_t size, int boxloc)
+void luaL_buffinit(lua_State* L, luaL_Strbuf* B)
 {
-    if (size_t(B->end - B->p) < size)
-        luaL_extendbuffer(B, size - (B->end - B->p), boxloc);
+    // start with an internal buffer
+    B->p = B->buffer;
+    B->end = B->p + LUA_BUFFERSIZE;
+
+    B->L = L;
+    B->storage = nullptr;
 }
 
-void luaL_addlstring(luaL_Buffer* B, const char* s, size_t len, int boxloc)
+char* luaL_buffinitsize(lua_State* L, luaL_Strbuf* B, size_t size)
+{
+    luaL_buffinit(L, B);
+    return luaL_prepbuffsize(B, size);
+}
+
+char* luaL_prepbuffsize(luaL_Strbuf* B, size_t size)
+{
+    if (size_t(B->end - B->p) < size)
+        return extendstrbuf(B, size - (B->end - B->p), -1);
+    return B->p;
+}
+
+void luaL_addlstring(luaL_Strbuf* B, const char* s, size_t len)
 {
     if (size_t(B->end - B->p) < len)
-        luaL_extendbuffer(B, len - (B->end - B->p), boxloc);
+        extendstrbuf(B, len - (B->end - B->p), -1);
 
     memcpy(B->p, s, len);
     B->p += len;
 }
 
-void luaL_addvalue(luaL_Buffer* B)
+void luaL_addvalue(luaL_Strbuf* B)
 {
     lua_State* L = B->L;
 
@@ -431,7 +439,7 @@ void luaL_addvalue(luaL_Buffer* B)
     if (const char* s = lua_tolstring(L, -1, &vl))
     {
         if (size_t(B->end - B->p) < vl)
-            luaL_extendbuffer(B, vl - (B->end - B->p), -2);
+            extendstrbuf(B, vl - (B->end - B->p), -2);
 
         memcpy(B->p, s, vl);
         B->p += vl;
@@ -440,7 +448,54 @@ void luaL_addvalue(luaL_Buffer* B)
     }
 }
 
-void luaL_pushresult(luaL_Buffer* B)
+void luaL_addvalueany(luaL_Strbuf* B, int idx)
+{
+    lua_State* L = B->L;
+
+    switch (lua_type(L, idx))
+    {
+    case LUA_TNONE:
+    {
+        LUAU_ASSERT(!"expected value");
+        break;
+    }
+    case LUA_TNIL:
+        luaL_addstring(B, "nil");
+        break;
+    case LUA_TBOOLEAN:
+        if (lua_toboolean(L, idx))
+            luaL_addstring(B, "true");
+        else
+            luaL_addstring(B, "false");
+        break;
+    case LUA_TNUMBER:
+    {
+        double n = lua_tonumber(L, idx);
+        char s[LUAI_MAXNUM2STR];
+        char* e = luai_num2str(s, n);
+        luaL_addlstring(B, s, e - s);
+        break;
+    }
+    case LUA_TSTRING:
+    {
+        size_t len;
+        const char* s = lua_tolstring(L, idx, &len);
+        luaL_addlstring(B, s, len);
+        break;
+    }
+    default:
+    {
+        size_t len;
+        luaL_tolstring(L, idx, &len);
+
+        // note: luaL_addlstring assumes box is stored at top of stack, so we can't call it here
+        // instead we use luaL_addvalue which will take the string from the top of the stack and add that
+        luaL_addvalue(B);
+    }
+    }
+}
+
+void luaL_pushresult(luaL_Strbuf* B)
 {
     lua_State* L = B->L;
 
@@ -464,7 +519,7 @@ void luaL_pushresult(luaL_Buffer* B)
     }
 }
 
-void luaL_pushresultsize(luaL_Buffer* B, size_t size)
+void luaL_pushresultsize(luaL_Strbuf* B, size_t size)
 {
     B->p += size;
     luaL_pushresult(B);
@@ -476,13 +531,20 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
 {
     if (luaL_callmeta(L, idx, "__tostring")) // is there a metafield?
     {
-        if (!lua_isstring(L, -1))
+        const char* s = lua_tolstring(L, -1, len);
+        if (!s)
             luaL_error(L, "'__tostring' must return a string");
-        return lua_tolstring(L, -1, len);
+        return s;
     }
 
     switch (lua_type(L, idx))
     {
+    case LUA_TNIL:
+        lua_pushliteral(L, "nil");
+        break;
+    case LUA_TBOOLEAN:
+        lua_pushstring(L, (lua_toboolean(L, idx) ? "true" : "false"));
+        break;
     case LUA_TNUMBER:
     {
         double n = lua_tonumber(L, idx);
@@ -491,15 +553,6 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
         lua_pushlstring(L, s, e - s);
         break;
     }
-    case LUA_TSTRING:
-        lua_pushvalue(L, idx);
-        break;
-    case LUA_TBOOLEAN:
-        lua_pushstring(L, (lua_toboolean(L, idx) ? "true" : "false"));
-        break;
-    case LUA_TNIL:
-        lua_pushliteral(L, "nil");
-        break;
     case LUA_TVECTOR:
     {
         const float* v = lua_tovector(L, idx);
@@ -518,6 +571,9 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
         lua_pushlstring(L, s, e - s);
         break;
     }
+    case LUA_TSTRING:
+        lua_pushvalue(L, idx);
+        break;
     default:
     {
         const void* ptr = lua_topointer(L, idx);

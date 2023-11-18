@@ -12,4 +12,30 @@ pcall(function()
 	testtable.missingmethod()
 end)
 
+--
+local testtable2 = {}
+setmetatable(testtable2, { __index = function() pcall(function() error("Error") end) end })
+
+local m2 = testtable2.missingmethod
+
+pcall(function()
+	testtable2.missingmethod()
+end)
+
+--
+local testtable3 = {}
+setmetatable(testtable3, { __index = function() pcall(error, "Error") end })
+
+local m3 = testtable3.missingmethod
+
+pcall(function()
+	testtable3.missingmethod()
+end)
+
+--
+local testtable4 = {}
+setmetatable(testtable4, { __index = function() pcall(error) end })
+
+local m4 = testtable4.missingmember
+
 return('OK')

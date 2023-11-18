@@ -8,6 +8,8 @@
 
 #define iscont(p) ((*(p)&0xC0) == 0x80)
 
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauStricterUtf8, false)
+
 // from strlib
 // translate a relative string position: negative means back from end
 static int u_posrelat(int pos, size_t len)
@@ -45,6 +47,8 @@ static const char* utf8_decode(const char* o, int* val)
         res |= ((c & 0x7F) << (count * 5)); // add first byte
         if (count > 3 || res > MAXUNICODE || res <= limits[count])
             return NULL; // invalid byte sequence
+        if (DFFlag::LuauStricterUtf8 && unsigned(res - 0xD800) < 0x800)
+            return NULL; // surrogate
         s += count;      // skip continuation bytes read
     }
     if (val)
@@ -170,12 +174,12 @@ static int utfchar(lua_State* L)
     }
     else
     {
-        luaL_Buffer b;
+        luaL_Strbuf b;
         luaL_buffinit(L, &b);
         for (int i = 1; i <= n; i++)
         {
             int l = buffutfchar(L, i, buff, &charstr);
-            luaL_addlstring(&b, charstr, l, -1);
+            luaL_addlstring(&b, charstr, l);
         }
         luaL_pushresult(&b);
     }

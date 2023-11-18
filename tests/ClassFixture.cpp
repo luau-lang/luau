@@ -14,6 +14,7 @@ ClassFixture::ClassFixture()
     GlobalTypes& globals = frontend.globals;
     TypeArena& arena = globals.globalTypes;
     TypeId numberType = builtinTypes->numberType;
+    TypeId stringType = builtinTypes->stringType;
 
     unfreeze(arena);
 
@@ -35,7 +36,7 @@ ClassFixture::ClassFixture()
     TypeId childClassInstanceType = arena.addType(ClassType{"ChildClass", {}, baseClassInstanceType, nullopt, {}, {}, "Test"});
 
     getMutable<ClassType>(childClassInstanceType)->props = {
-        {"Method", {makeFunction(arena, childClassInstanceType, {}, {builtinTypes->stringType})}},
+        {"Method", {makeFunction(arena, childClassInstanceType, {}, {stringType})}},
     };
 
     TypeId childClassType = arena.addType(ClassType{"ChildClass", {}, baseClassType, nullopt, {}, {}, "Test"});
@@ -48,7 +49,7 @@ ClassFixture::ClassFixture()
     TypeId grandChildInstanceType = arena.addType(ClassType{"GrandChild", {}, childClassInstanceType, nullopt, {}, {}, "Test"});
 
     getMutable<ClassType>(grandChildInstanceType)->props = {
-        {"Method", {makeFunction(arena, grandChildInstanceType, {}, {builtinTypes->stringType})}},
+        {"Method", {makeFunction(arena, grandChildInstanceType, {}, {stringType})}},
     };
 
     TypeId grandChildType = arena.addType(ClassType{"GrandChild", {}, baseClassType, nullopt, {}, {}, "Test"});
@@ -61,7 +62,7 @@ ClassFixture::ClassFixture()
     TypeId anotherChildInstanceType = arena.addType(ClassType{"AnotherChild", {}, baseClassInstanceType, nullopt, {}, {}, "Test"});
 
     getMutable<ClassType>(anotherChildInstanceType)->props = {
-        {"Method", {makeFunction(arena, anotherChildInstanceType, {}, {builtinTypes->stringType})}},
+        {"Method", {makeFunction(arena, anotherChildInstanceType, {}, {stringType})}},
     };
 
     TypeId anotherChildType = arena.addType(ClassType{"AnotherChild", {}, baseClassType, nullopt, {}, {}, "Test"});
@@ -82,13 +83,13 @@ ClassFixture::ClassFixture()
 
     TypeId vector2MetaType = arena.addType(TableType{});
 
-    TypeId vector2InstanceType = arena.addType(ClassType{"Vector2", {}, nullopt, vector2MetaType, {}, {}, "Test"});
+    vector2InstanceType = arena.addType(ClassType{"Vector2", {}, nullopt, vector2MetaType, {}, {}, "Test"});
     getMutable<ClassType>(vector2InstanceType)->props = {
         {"X", {numberType}},
         {"Y", {numberType}},
     };
 
-    TypeId vector2Type = arena.addType(ClassType{"Vector2", {}, nullopt, nullopt, {}, {}, "Test"});
+    vector2Type = arena.addType(ClassType{"Vector2", {}, nullopt, nullopt, {}, {}, "Test"});
     getMutable<ClassType>(vector2Type)->props = {
         {"New", {makeFunction(arena, nullopt, {numberType, numberType}, {vector2InstanceType})}},
     };
@@ -101,9 +102,21 @@ ClassFixture::ClassFixture()
     TypeId callableClassMetaType = arena.addType(TableType{});
     TypeId callableClassType = arena.addType(ClassType{"CallableClass", {}, nullopt, callableClassMetaType, {}, {}, "Test"});
     getMutable<TableType>(callableClassMetaType)->props = {
-        {"__call", {makeFunction(arena, nullopt, {callableClassType, builtinTypes->stringType}, {builtinTypes->numberType})}},
+        {"__call", {makeFunction(arena, nullopt, {callableClassType, stringType}, {numberType})}},
     };
     globals.globalScope->exportedTypeBindings["CallableClass"] = TypeFun{{}, callableClassType};
+
+    auto addIndexableClass = [&arena, &globals](const char* className, TypeId keyType, TypeId returnType) {
+        TypeId indexableClassMetaType = arena.addType(TableType{});
+        TypeId indexableClassType =
+            arena.addType(ClassType{className, {}, nullopt, indexableClassMetaType, {}, {}, "Test", TableIndexer{keyType, returnType}});
+        globals.globalScope->exportedTypeBindings[className] = TypeFun{{}, indexableClassType};
+    };
+
+    // IndexableClass has a table indexer with a key type of 'number | string' and a return type of 'number'
+    addIndexableClass("IndexableClass", arena.addType(Luau::UnionType{{stringType, numberType}}), numberType);
+    // IndexableNumericKeyClass has a table indexer with a key type of 'number' and a return type of 'number'
+    addIndexableClass("IndexableNumericKeyClass", numberType, numberType);
 
     for (const auto& [name, tf] : globals.globalScope->exportedTypeBindings)
         persist(tf.type);

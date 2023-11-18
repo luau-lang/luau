@@ -10,7 +10,8 @@ namespace CodeGen
 
 struct IrBuilder;
 
-void constPropInBlockChains(IrBuilder& build);
+void constPropInBlockChains(IrBuilder& build, bool useValueNumbering);
+void createLinearBlocks(IrBuilder& build, bool useValueNumbering);
 
 } // namespace CodeGen
 } // namespace Luau

@@ -107,6 +107,12 @@ assert(tostring(1234567890123) == '1234567890123')
 assert(#tostring('\0') == 1)
 assert(tostring(true) == "true")
 assert(tostring(false) == "false")
+
+function nothing() end
+
+assert(pcall(tostring) == false)
+assert(pcall(function() return tostring(nothing()) end) == false)
+
 print('+')
 
 x = '"ílo"\n\\'
@@ -218,6 +224,13 @@ do
   assert(eq(string.split("abc", "d"), {'abc'}))
   assert(eq(string.split("abc", "c"), {'ab', ''}))
 end
+
+-- validate that variadic string fast calls get correct number of arguments
+local function chr1(c)
+  return string.char(tonumber(c));
+end
+
+assert(chr1("0") == "\0")
 
 --[[
 local locales = { "ptb", "ISO-8859-1", "pt_BR" }

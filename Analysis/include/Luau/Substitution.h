@@ -2,8 +2,7 @@
 #pragma once
 
 #include "Luau/TypeArena.h"
-#include "Luau/TypePack.h"
-#include "Luau/Type.h"
+#include "Luau/TypeFwd.h"
 #include "Luau/DenseHash.h"
 
 // We provide an implementation of substitution on types,
@@ -69,6 +68,19 @@ struct TarjanWorklistVertex
     int lastEdge;
 };
 
+struct TarjanNode
+{
+    TypeId ty;
+    TypePackId tp;
+
+    bool onStack;
+    bool dirty;
+
+    // Tarjan calculates the lowlink for each vertex,
+    // which is the lowest ancestor index reachable from the vertex.
+    int lowlink;
+};
+
 // Tarjan's algorithm for finding the SCCs in a cyclic structure.
 // https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
 struct Tarjan
@@ -76,17 +88,12 @@ struct Tarjan
     // Vertices (types and type packs) are indexed, using pre-order traversal.
     DenseHashMap<TypeId, int> typeToIndex{nullptr};
     DenseHashMap<TypePackId, int> packToIndex{nullptr};
-    std::vector<TypeId> indexToType;
-    std::vector<TypePackId> indexToPack;
+
+    std::vector<TarjanNode> nodes;
 
     // Tarjan keeps a stack of vertices where we're still in the process
     // of finding their SCC.
     std::vector<int> stack;
-    std::vector<bool> onStack;
-
-    // Tarjan calculates the lowlink for each vertex,
-    // which is the lowest ancestor index reachable from the vertex.
-    std::vector<int> lowlink;
 
     int childCount = 0;
     int childLimit = 0;
@@ -98,6 +105,7 @@ struct Tarjan
     std::vector<TypeId> edgesTy;
     std::vector<TypePackId> edgesTp;
     std::vector<TarjanWorklistVertex> worklist;
+
     // This is hot code, so we optimize recursion to a stack.
     TarjanResult loop();
 
@@ -113,31 +121,16 @@ struct Tarjan
     void visitChild(TypeId ty);
     void visitChild(TypePackId ty);
 
+    template<typename Ty>
+    void visitChild(std::optional<Ty> ty)
+    {
+        if (ty)
+            visitChild(*ty);
+    }
+
     // Visit the root vertex.
     TarjanResult visitRoot(TypeId ty);
     TarjanResult visitRoot(TypePackId ty);
-
-    // Each subclass gets called back once for each edge,
-    // and once for each SCC.
-    virtual void visitEdge(int index, int parentIndex) {}
-    virtual void visitSCC(int index) {}
-
-    // Each subclass can decide to ignore some nodes.
-    virtual bool ignoreChildren(TypeId ty)
-    {
-        return false;
-    }
-    virtual bool ignoreChildren(TypePackId ty)
-    {
-        return false;
-    }
-};
-
-// We use Tarjan to calculate dirty bits. We set `dirty[i]` true
-// if the vertex with index `i` can reach a dirty vertex.
-struct FindDirty : Tarjan
-{
-    std::vector<bool> dirty;
 
     void clearTarjan();
 
@@ -150,8 +143,30 @@ struct FindDirty : Tarjan
     TarjanResult findDirty(TypePackId t);
 
     // We find dirty vertices using Tarjan
-    void visitEdge(int index, int parentIndex) override;
-    void visitSCC(int index) override;
+    void visitEdge(int index, int parentIndex);
+    void visitSCC(int index);
+
+    // Each subclass can decide to ignore some nodes.
+    virtual bool ignoreChildren(TypeId ty)
+    {
+        return false;
+    }
+
+    virtual bool ignoreChildren(TypePackId ty)
+    {
+        return false;
+    }
+
+    // Some subclasses might ignore children visit, but not other actions like replacing the children
+    virtual bool ignoreChildrenVisit(TypeId ty)
+    {
+        return ignoreChildren(ty);
+    }
+
+    virtual bool ignoreChildrenVisit(TypePackId ty)
+    {
+        return ignoreChildren(ty);
+    }
 
     // Subclasses should say which vertices are dirty,
     // and what to do with dirty vertices.
@@ -163,7 +178,7 @@ struct FindDirty : Tarjan
 
 // And finally substitution, which finds all the reachable dirty vertices
 // and replaces them with clean ones.
-struct Substitution : FindDirty
+struct Substitution : Tarjan
 {
 protected:
     Substitution(const TxnLog* log_, TypeArena* arena)
@@ -186,8 +201,10 @@ public:
 
     TypeId replace(TypeId ty);
     TypePackId replace(TypePackId tp);
+
     void replaceChildren(TypeId ty);
     void replaceChildren(TypePackId tp);
+
     TypeId clone(TypeId ty);
     TypePackId clone(TypePackId tp);
 
@@ -210,6 +227,16 @@ public:
     TypePackId addTypePack(const T& tp)
     {
         return arena->addTypePack(TypePackVar{tp});
+    }
+
+private:
+    template<typename Ty>
+    std::optional<Ty> replace(std::optional<Ty> ty)
+    {
+        if (ty)
+            return replace(*ty);
+        else
+            return std::nullopt;
     }
 };
 

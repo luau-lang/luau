@@ -9,9 +9,12 @@
 
 #include "Fixture.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 using namespace Luau;
+
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -27,7 +30,6 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_not_defi
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-
     REQUIRE(get<CountMismatch>(result.errors[0]));
 }
 
@@ -43,7 +45,6 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_it_wont_
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-
     REQUIRE(get<CountMismatch>(result.errors[0]));
 }
 
@@ -307,6 +308,197 @@ TEST_CASE_FIXTURE(Fixture, "dont_bind_free_tables_to_themselves")
             end
         end
     )");
+}
+
+// We should probably flag an error on this.  See CLI-68672
+TEST_CASE_FIXTURE(BuiltinsFixture, "flag_when_index_metamethod_returns_0_values")
+{
+    CheckResult result = check(R"(
+        local T = {}
+        function T.__index()
+        end
+
+        local a = setmetatable({}, T)
+        local p = a.prop
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("nil" == toString(requireType("p")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "augmenting_an_unsealed_table_with_a_metatable")
+{
+    CheckResult result = check(R"(
+        local A = {number = 8}
+
+        local B = setmetatable({}, A)
+
+        function B:method()
+            return "hello!!"
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("{ @metatable { number: number }, { method: (unknown) -> string } }" == toString(requireType("B"), {true}));
+    else
+        CHECK("{ @metatable { number: number }, { method: <a>(a) -> string } }" == toString(requireType("B"), {true}));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "react_style_oo")
+{
+    CheckResult result = check(R"(
+        local Prototype = {}
+
+        local ClassMetatable = {
+            __index = Prototype
+        }
+
+        local BaseClass = (setmetatable({}, ClassMetatable))
+
+        function BaseClass:extend(name)
+            local class = {
+                name=name
+            }
+
+            class.__index = class
+
+            function class.ctor(props)
+                return setmetatable({props=props}, class)
+            end
+
+            return setmetatable(class, getmetatable(self))
+        end
+
+        local C = BaseClass:extend('C')
+        local i = C.ctor({hello='world'})
+
+        local iName = i.name
+        local cName = C.name
+        local hello = i.props.hello
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("string" == toString(requireType("iName")));
+    CHECK("string" == toString(requireType("cName")));
+    CHECK("string" == toString(requireType("hello")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cycle_between_object_constructor_and_alias")
+{
+    CheckResult result = check(R"(
+        local T = {}
+        T.__index = T
+
+        function T.new(): T
+            return setmetatable({}, T)
+        end
+
+        export type T = typeof(T.new())
+
+        return T
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto module = getMainModule();
+
+    REQUIRE(module->exportedTypeBindings.count("T"));
+
+    TypeId aliasType = module->exportedTypeBindings["T"].type;
+    CHECK_MESSAGE(get<MetatableType>(follow(aliasType)), "Expected metatable type but got: " << toString(aliasType));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "promise_type_error_too_complex" * doctest::timeout(2))
+{
+    // TODO: LTI changes to function call resolution have rendered this test impossibly slow
+    // shared self should fix it, but there may be other mitigations possible as well
+    REQUIRE(!FFlag::DebugLuauDeferredConstraintResolution);
+    ScopedFastFlag sff{"LuauStacklessTypeClone3", true};
+
+    frontend.options.retainFullTypeGraphs = false;
+
+    // Used `luau-reduce` tool to extract a minimal reproduction.
+    // Credit: https://github.com/evaera/roblox-lua-promise/blob/v4.0.0/lib/init.lua
+    CheckResult result = check(R"(
+        --!strict
+
+        local Promise = {}
+        Promise.prototype = {}
+        Promise.__index = Promise.prototype
+
+        function Promise._new(traceback, callback, parent)
+            if parent ~= nil and not Promise.is(parent)then
+            end
+
+            local self = {
+                _parent = parent,
+            }
+
+            parent._consumers[self] = true
+            setmetatable(self, Promise)
+            self:_reject()
+
+            return self
+        end
+
+        function Promise.resolve(...)
+            return Promise._new(debug.traceback(nil, 2), function(resolve)
+            end)
+        end
+
+        function Promise.reject(...)
+            return Promise._new(debug.traceback(nil, 2), function(_, reject)
+            end)
+        end
+
+        function Promise._try(traceback, callback, ...)
+            return Promise._new(traceback, function(resolve)
+            end)
+        end
+
+        function Promise.try(callback, ...)
+            return Promise._try(debug.traceback(nil, 2), callback, ...)
+        end
+
+        function Promise._all(traceback, promises, amount)
+            if #promises == 0 or amount == 0 then
+                return Promise.resolve({})
+            end
+            return Promise._new(traceback, function(resolve, reject, onCancel)
+            end)
+        end
+
+        function Promise.all(promises)
+            return Promise._all(debug.traceback(nil, 2), promises)
+        end
+
+        function Promise.allSettled(promises)
+            return Promise.resolve({})
+        end
+
+        function Promise.race(promises)
+            return Promise._new(debug.traceback(nil, 2), function(resolve, reject, onCancel)
+            end)
+        end
+
+        function Promise.each(list, predicate)
+            return Promise._new(debug.traceback(nil, 2), function(resolve, reject, onCancel)
+                local predicatePromise = Promise.resolve(predicate(value, index))
+                local success, result = predicatePromise:await()
+            end)
+        end
+
+        function Promise.is(object)
+        end
+
+        function Promise.prototype:_reject(...)
+            self:_finalize()
+        end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -2,6 +2,7 @@
 
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/Frontend.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Type.h"
@@ -29,6 +30,82 @@ TEST_CASE_FIXTURE(Fixture, "for_loop")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(*builtinTypes->numberType, *requireType("q"));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_no_table_passed")
+{
+    // This test may block CI if forced to run outside of DCR.
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    CheckResult result = check(R"(
+
+type Iterable = typeof(setmetatable(
+    {},
+    {}::{
+        __iter: (self: Iterable) -> (any, number) -> (number, string)
+    }
+))
+
+local t: Iterable
+
+for a, b in t do end
+)");
+
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    GenericError* ge = get<GenericError>(result.errors[0]);
+    REQUIRE(ge);
+    CHECK_EQ("__iter metamethod must return (next[, table[, state]])", ge->message);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type Iterable = typeof(setmetatable(
+            {},
+            {}::{
+                __iter: (self: Iterable) -> () -> (number, string)
+            }
+        ))
+
+        local t: Iterable
+
+        for a, b in t do end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_regression_issue_69967_alt")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type Iterable = typeof(setmetatable(
+            {},
+            {}::{
+                __iter: (self: Iterable) -> () -> (number, string)
+            }
+        ))
+
+        local t: Iterable
+        local x, y
+
+        for a, b in t do
+            x = a
+            y = b
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("x")));
+    CHECK_EQ("string", toString(requireType("y")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
@@ -687,6 +764,174 @@ TEST_CASE_FIXTURE(Fixture, "for_loop_lower_bound_is_string_3")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_68448_iterators_need_not_accept_nil")
+{
+    CheckResult result = check(R"(
+        local function makeEnum(members)
+            local enum = {}
+            for _, memberName in ipairs(members) do
+                enum[memberName] = memberName
+            end
+            return enum
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    // HACK (CLI-68453): We name this inner table `enum`. For now, use the
+    // exhaustive switch to see past it.
+    CHECK(toString(requireType("makeEnum"), {true}) == "<a>({a}) -> {| [a]: a |}");
+}
+
+TEST_CASE_FIXTURE(Fixture, "iterate_over_free_table")
+{
+    CheckResult result = check(R"(
+        function print(x) end
+
+        function dump(tbl)
+            print(tbl.whatever)
+            for k, v in tbl do
+                print(k)
+                print(v)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    GenericError* ge = get<GenericError>(result.errors[0]);
+    REQUIRE(ge);
+
+    CHECK("Cannot iterate over a table without indexer" == ge->message);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_explore_raycast_minimization")
+{
+    CheckResult result = check(R"(
+        local testResults = {}
+        for _, testData in pairs(testResults) do
+        end
+
+        table.insert(testResults, {})
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_minimized_fragmented_keys_1")
+{
+    CheckResult result = check(R"(
+        local function rawpairs(t)
+            return next, t, nil
+        end
+
+        local function getFragmentedKeys(tbl)
+            local _ = rawget(tbl, 0)
+            for _ in rawpairs(tbl) do
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_minimized_fragmented_keys_2")
+{
+    CheckResult result = check(R"(
+        local function getFragmentedKeys(tbl)
+            local _ = rawget(tbl, 0)
+            for _ in next, tbl, nil do
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_minimized_fragmented_keys_3")
+{
+    CheckResult result = check(R"(
+        local function getFragmentedKeys(tbl)
+            local _ = rawget(tbl, 0)
+            for _ in pairs(tbl) do
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_fragmented_keys")
+{
+    CheckResult result = check(R"(
+        local function isIndexKey(k, contiguousLength)
+            return true
+        end
+
+        local function getTableLength(tbl)
+            local length = 1
+            local value = rawget(tbl, length)
+            while value ~= nil do
+                length += 1
+                value = rawget(tbl, length)
+            end
+            return length - 1
+        end
+
+        local function rawpairs(t)
+            return next, t, nil
+        end
+
+        local function getFragmentedKeys(tbl)
+            local keys = {}
+            local keysLength = 0
+            local tableLength = getTableLength(tbl)
+            for key, _ in rawpairs(tbl) do
+                if not isIndexKey(key, tableLength) then
+                    keysLength = keysLength + 1
+                    keys[keysLength] = key
+                end
+            end
+            return keys, keysLength, tableLength
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_xpath_candidates")
+{
+    CheckResult result = check(R"(
+        type Instance = {}
+        local function findCandidates(instances: { Instance },  path: { string })
+            for _, name in ipairs(path) do
+            end
+            return {}
+        end
+
+        local canditates = findCandidates({}, {})
+        for _, canditate in ipairs(canditates) do end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_on_never_gives_never")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local iter: never
+        local ans
+        for xs in iter do
+            ans = xs
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("ans")) == "never");
 }
 
 TEST_SUITE_END();

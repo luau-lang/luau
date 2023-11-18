@@ -9,6 +9,9 @@
 #include "Luau/Type.h"
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
+LUAU_FASTFLAG(LuauBoundLazyTypes2)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
 namespace Luau
 {
@@ -94,6 +97,10 @@ struct GenericTypeVisitor
     {
         return visit(ty);
     }
+    virtual bool visit(TypeId ty, const LocalType& ftv)
+    {
+        return visit(ty);
+    }
     virtual bool visit(TypeId ty, const GenericType& gtv)
     {
         return visit(ty);
@@ -158,6 +165,10 @@ struct GenericTypeVisitor
     {
         return visit(ty);
     }
+    virtual bool visit(TypeId ty, const TypeFamilyInstanceType& tfit)
+    {
+        return visit(ty);
+    }
 
     virtual bool visit(TypePackId tp)
     {
@@ -191,6 +202,10 @@ struct GenericTypeVisitor
     {
         return visit(tp);
     }
+    virtual bool visit(TypePackId tp, const TypeFamilyInstanceTypePack& tfitp)
+    {
+        return visit(tp);
+    }
 
     void traverse(TypeId ty)
     {
@@ -210,7 +225,31 @@ struct GenericTypeVisitor
                 traverse(btv->boundTo);
         }
         else if (auto ftv = get<FreeType>(ty))
-            visit(ty, *ftv);
+        {
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+            {
+                if (visit(ty, *ftv))
+                {
+                    // TODO: Replace these if statements with assert()s when we
+                    // delete FFlag::DebugLuauDeferredConstraintResolution.
+                    //
+                    // When the old solver is used, these pointers are always
+                    // unused. When the new solver is used, they are never null.
+                    if (ftv->lowerBound)
+                        traverse(ftv->lowerBound);
+
+                    if (ftv->upperBound)
+                        traverse(ftv->upperBound);
+                }
+            }
+            else
+                visit(ty, *ftv);
+        }
+        else if (auto lt = get<LocalType>(ty))
+        {
+            if (visit(ty, *lt))
+                traverse(lt->domain);
+        }
         else if (auto gtv = get<GenericType>(ty))
             visit(ty, *gtv);
         else if (auto etv = get<ErrorType>(ty))
@@ -241,7 +280,18 @@ struct GenericTypeVisitor
                 else
                 {
                     for (auto& [_name, prop] : ttv->props)
-                        traverse(prop.type);
+                    {
+                        if (FFlag::DebugLuauReadWriteProperties)
+                        {
+                            if (auto ty = prop.readType())
+                                traverse(*ty);
+
+                            if (auto ty = prop.writeType())
+                                traverse(*ty);
+                        }
+                        else
+                            traverse(prop.type());
+                    }
 
                     if (ttv->indexer)
                     {
@@ -264,13 +314,30 @@ struct GenericTypeVisitor
             if (visit(ty, *ctv))
             {
                 for (const auto& [name, prop] : ctv->props)
-                    traverse(prop.type);
+                {
+                    if (FFlag::DebugLuauReadWriteProperties)
+                    {
+                        if (auto ty = prop.readType())
+                            traverse(*ty);
+
+                        if (auto ty = prop.writeType())
+                            traverse(*ty);
+                    }
+                    else
+                        traverse(prop.type());
+                }
 
                 if (ctv->parent)
                     traverse(*ctv->parent);
 
                 if (ctv->metatable)
                     traverse(*ctv->metatable);
+
+                if (ctv->indexer)
+                {
+                    traverse(ctv->indexer->indexType);
+                    traverse(ctv->indexer->indexResultType);
+                }
             }
         }
         else if (auto atv = get<AnyType>(ty))
@@ -291,9 +358,12 @@ struct GenericTypeVisitor
                     traverse(partTy);
             }
         }
-        else if (get<LazyType>(ty))
+        else if (auto ltv = get<LazyType>(ty))
         {
-            // Visiting into LazyType may necessarily cause infinite expansion, so we don't do that on purpose.
+            if (TypeId unwrapped = ltv->unwrapped)
+                traverse(unwrapped);
+
+            // Visiting into LazyType that hasn't been unwrapped may necessarily cause infinite expansion, so we don't do that on purpose.
             // Asserting also makes no sense, because the type _will_ happen here, most likely as a property of some ClassType
             // that doesn't need to be expanded.
         }
@@ -321,6 +391,17 @@ struct GenericTypeVisitor
             if (visit(ty, *ntv))
                 traverse(ntv->ty);
         }
+        else if (auto tfit = get<TypeFamilyInstanceType>(ty))
+        {
+            if (visit(ty, *tfit))
+            {
+                for (TypeId p : tfit->typeArguments)
+                    traverse(p);
+
+                for (TypePackId p : tfit->packArguments)
+                    traverse(p);
+            }
+        }
         else
             LUAU_ASSERT(!"GenericTypeVisitor::traverse(TypeId) is not exhaustive!");
 
@@ -341,10 +422,10 @@ struct GenericTypeVisitor
                 traverse(btv->boundTo);
         }
 
-        else if (auto ftv = get<Unifiable::Free>(tp))
+        else if (auto ftv = get<FreeTypePack>(tp))
             visit(tp, *ftv);
 
-        else if (auto gtv = get<Unifiable::Generic>(tp))
+        else if (auto gtv = get<GenericTypePack>(tp))
             visit(tp, *gtv);
 
         else if (auto etv = get<Unifiable::Error>(tp))
@@ -370,6 +451,17 @@ struct GenericTypeVisitor
         }
         else if (auto btp = get<BlockedTypePack>(tp))
             visit(tp, *btp);
+        else if (auto tfitp = get<TypeFamilyInstanceTypePack>(tp))
+        {
+            if (visit(tp, *tfitp))
+            {
+                for (TypeId t : tfitp->typeArguments)
+                    traverse(t);
+
+                for (TypePackId t : tfitp->packArguments)
+                    traverse(t);
+            }
+        }
 
         else
             LUAU_ASSERT(!"GenericTypeVisitor::traverse(TypePackId) is not exhaustive!");

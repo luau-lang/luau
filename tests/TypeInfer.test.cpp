@@ -2,6 +2,7 @@
 
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/Frontend.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Type.h"
@@ -27,8 +28,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_hello_world")
     CheckResult result = check("local a = 7");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    TypeId aType = requireType("a");
-    CHECK_EQ(getPrimitiveType(aType), PrimitiveType::Number);
+    CHECK("number" == toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_propagation")
@@ -43,21 +43,39 @@ TEST_CASE_FIXTURE(Fixture, "tc_propagation")
 TEST_CASE_FIXTURE(Fixture, "tc_error")
 {
     CheckResult result = check("local a = 7   local b = 'hi'   a = b");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(
-        result.errors[0], (TypeError{Location{Position{0, 35}, Position{0, 36}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}}));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK("number | string" == toString(requireType("a")));
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        CHECK_EQ(
+            result.errors[0], (TypeError{Location{Position{0, 35}, Position{0, 36}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}}));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_error_2")
 {
     CheckResult result = check("local a = 7   a = 'hi'");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 18}, Position{0, 22}}, TypeMismatch{
-                                                                                          requireType("a"),
-                                                                                          builtinTypes->stringType,
-                                                                                      }}));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+        CHECK("number | string" == toString(requireType("a")));
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 18}, Position{0, 22}}, TypeMismatch{
+                                                                                            requireType("a"),
+                                                                                            builtinTypes->stringType,
+                                                                                        }}));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_locals_with_nil_value")
@@ -65,8 +83,27 @@ TEST_CASE_FIXTURE(Fixture, "infer_locals_with_nil_value")
     CheckResult result = check("local f = nil; f = 'hello world'");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    TypeId ty = requireType("f");
-    CHECK_EQ(getPrimitiveType(ty), PrimitiveType::String);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK("string?" == toString(requireType("f")));
+    }
+    else
+    {
+        TypeId ty = requireType("f");
+        CHECK_EQ(getPrimitiveType(ty), PrimitiveType::String);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "infer_locals_with_nil_value_2")
+{
+    CheckResult result = check(R"(
+        local a = 2
+        local b = a,nil
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("a")));
+    CHECK_EQ("number", toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_locals_via_assignment_from_its_call_site")
@@ -78,9 +115,19 @@ TEST_CASE_FIXTURE(Fixture, "infer_locals_via_assignment_from_its_call_site")
         f("foo")
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK("unknown" == toString(requireType("a")));
+        CHECK("(unknown) -> ()" == toString(requireType("f")));
 
-    CHECK_EQ("number", toString(requireType("a")));
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        CHECK_EQ("number", toString(requireType("a")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_in_nocheck_mode")
@@ -99,6 +146,16 @@ TEST_CASE_FIXTURE(Fixture, "infer_in_nocheck_mode")
     )");
 
     CHECK_EQ("(any) -> (...any)", toString(requireType("f")));
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "obvious_type_error_in_nocheck_mode")
+{
+    CheckResult result = check(R"(
+        --!nocheck
+        local x: string = 5
+    )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -124,8 +181,16 @@ TEST_CASE_FIXTURE(Fixture, "if_statement")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*builtinTypes->stringType, *requireType("a"));
-    CHECK_EQ(*builtinTypes->numberType, *requireType("b"));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK("string?" == toString(requireType("a")));
+        CHECK("number?" == toString(requireType("b")));
+    }
+    else
+    {
+        CHECK_EQ(*builtinTypes->stringType, *requireType("a"));
+        CHECK_EQ(*builtinTypes->numberType, *requireType("b"));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "statements_are_topologically_sorted")
@@ -214,7 +279,7 @@ TEST_CASE_FIXTURE(Fixture, "crazy_complexity")
         A:A():A():A():A():A():A():A():A():A():A():A()
     )");
 
-    std::cout << "OK!  Allocated " << typeChecker.types.size() << " types" << std::endl;
+    MESSAGE("OK!  Allocated ", typeChecker.types.size(), " types");
 }
 #endif
 
@@ -257,13 +322,7 @@ TEST_CASE_FIXTURE(Fixture, "should_be_able_to_infer_this_without_stack_overflowi
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK(get<NormalizationTooComplex>(result.errors[0]));
-    }
-    else
-        LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "exponential_blowup_from_copying_types")
@@ -480,8 +539,13 @@ struct FindFreeTypes
         return !foundOne;
     }
 
-    template<typename ID>
-    bool operator()(ID, Unifiable::Free)
+    bool operator()(TypeId, FreeType)
+    {
+        foundOne = true;
+        return false;
+    }
+
+    bool operator()(TypePackId, FreeTypePack)
     {
         foundOne = true;
         return false;
@@ -980,10 +1044,6 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
 
         function Policies:readField(options: ReadFieldOptions)
             local _ = self:getStoreFieldName(options)
-            --[[
-                Type error:
-                TypeError { "MainModule", Location { { line = 25, col = 16 }, { line = 25, col = 20 } }, TypeMismatch { Policies, {- getStoreFieldName: (tp1) -> (a, b...) -} } }
-            ]]
             foo(self)
         end
     )");
@@ -995,16 +1055,23 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
         // unsound.
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-        CHECK_EQ(
-            R"(Type 't1 where t1 = {+ getStoreFieldName: (t1, {| fieldName: string |} & {| from: number? |}) -> (a, b...) +}' could not be converted into 'Policies'
+        const std::string expected = R"(Type 'Policies' from 'MainModule' could not be converted into 'Policies' from 'MainModule'
 caused by:
-  Property 'getStoreFieldName' is not compatible. Type 't1 where t1 = ({+ getStoreFieldName: t1 +}, {| fieldName: string |} & {| from: number? |}) -> (a, b...)' could not be converted into '(Policies, FieldSpecifier) -> string'
+  Property 'getStoreFieldName' is not compatible.
+Type
+    '(Policies, FieldSpecifier & {| from: number? |}) -> (a, b...)'
+could not be converted into
+    '(Policies, FieldSpecifier) -> string'
 caused by:
-  Argument #2 type is not compatible. Type 'FieldSpecifier' could not be converted into 'FieldSpecifier & {| from: number? |}'
+  Argument #2 type is not compatible.
+Type
+    'FieldSpecifier'
+could not be converted into
+    'FieldSpecifier & {| from: number? |}'
 caused by:
-  Not all intersection parts are compatible. Table type 'FieldSpecifier' not compatible with type '{| from: number? |}' because the former has extra field 'fieldName')",
-            toString(result.errors[0]));
+  Not all intersection parts are compatible.
+Table type 'FieldSpecifier' not compatible with type '{| from: number? |}' because the former has extra field 'fieldName')";
+        CHECK_EQ(expected, toString(result.errors[0]));
     }
     else
     {
@@ -1041,8 +1108,12 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Internal error: Code is too complex to typecheck! Consider adding type annotations around this area", toString(result.errors[0]));
+    validateErrors(result.errors);
+    REQUIRE_MESSAGE(!result.errors.empty(), getErrors(result));
+
+    CHECK(1 == result.errors.size());
+    CHECK(Location{{3, 12}, {3, 46}} == result.errors[0].location);
+    CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_infer_cache_limit_normalizer")
@@ -1055,7 +1126,7 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_cache_limit_normalizer")
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ("Internal error: Code is too complex to typecheck! Consider adding type annotations around this area", toString(result.errors[0]));
+    CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "follow_on_new_types_in_substitution")
@@ -1121,6 +1192,28 @@ TEST_CASE_FIXTURE(Fixture, "bidirectional_checking_of_higher_order_function")
     CHECK(location.end.line == 4);
 }
 
+TEST_CASE_FIXTURE(Fixture, "bidirectional_checking_of_callback_property")
+{
+    CheckResult result = check(R"(
+        local print: (number) -> ()
+
+        type Point = {x: number, y: number}
+        local T : {callback: ((Point) -> ())?} = {}
+
+        T.callback = function(p) -- No error here
+            print(p.z)           -- error here.  Point has no property z
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK_MESSAGE(get<UnknownProperty>(result.errors[0]), "Expected UnknownProperty but got " << result.errors[0]);
+
+    Location location = result.errors[0].location;
+    CHECK(location.begin.line == 7);
+    CHECK(location.end.line == 7);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "it_is_ok_to_have_inconsistent_number_of_return_values_in_nonstrict")
 {
     CheckResult result = check(R"(
@@ -1168,8 +1261,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typechecking_in_type_guards")
 {
-    ScopedFastFlag sff{"LuauTypecheckTypeguards", true};
-
     CheckResult result = check(R"(
 local a = type(foo) == 'nil'
 local b = typeof(foo) ~= 'nil'
@@ -1180,11 +1271,26 @@ local b = typeof(foo) ~= 'nil'
     CHECK(toString(result.errors[1]) == "Unknown global 'foo'");
 }
 
+TEST_CASE_FIXTURE(Fixture, "occurs_isnt_always_failure")
+{
+    CheckResult result = check(R"(
+function f(x, c)                   -- x : X
+    local y = if c then x else nil -- y : X?
+    local z = if c then x else nil -- z : X?
+    y = z
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "dcr_delays_expansion_of_function_containing_blocked_parameter_type")
 {
     ScopedFastFlag sff[] = {
         {"DebugLuauDeferredConstraintResolution", true},
-        {"LuauTinyUnifyNormalsFix", true},
+        // If we run this with error-suppression, it triggers an assertion.
+        // FATAL ERROR: Assertion failed: !"Internal error: Trying to normalize a BlockedType"
+        {"LuauTransitiveSubtyping", false},
     };
 
     CheckResult result = check(R"(
@@ -1198,6 +1304,203 @@ TEST_CASE_FIXTURE(Fixture, "dcr_delays_expansion_of_function_containing_blocked_
             end
         end
     )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_function_that_invokes_itself_with_a_refinement_of_its_parameter")
+{
+    CheckResult result = check(R"(
+        local TRUE: true = true
+
+        local function matches(value, t: true)
+            if value then
+                return true
+            end
+        end
+
+        local function readValue(breakpoint)
+            if matches(breakpoint, TRUE) then
+                readValue(breakpoint)
+            end
+        end
+    )");
+
+    CHECK("<a>(a) -> ()" == toString(requireType("readValue")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_function_that_invokes_itself_with_a_refinement_of_its_parameter_2")
+{
+    CheckResult result = check(R"(
+        local function readValue(breakpoint)
+            if type(breakpoint) == 'number' then
+                readValue(breakpoint)
+            end
+        end
+    )");
+
+    CHECK("(number) -> ()" == toString(requireType("readValue")));
+}
+
+/*
+ * We got into a case where, as we unified two nearly identical unions with one
+ * another, where we had a concatenated TxnLog that created a cycle between two
+ * free types.
+ *
+ * This code used to crash the type checker.  See CLI-71190
+ */
+TEST_CASE_FIXTURE(BuiltinsFixture, "convoluted_case_where_two_TypeVars_were_bound_to_each_other")
+{
+    check(R"(
+        type React_Ref<ElementType> = { current: ElementType } | ((ElementType) -> ())
+
+        type React_AbstractComponent<Config, Instance> = {
+            render: ((ref: React_Ref<Instance>) -> nil)
+        }
+
+        local createElement : <P, T>(React_AbstractComponent<P, T>) -> ()
+
+        function ScrollView:render()
+            local one = table.unpack(
+                if true then a else b
+            )
+
+            createElement(one)
+            createElement(one)
+        end
+    )");
+
+    // If this code does not crash, we are in good shape.
+}
+
+/*
+ * Under DCR we had an issue where constraint resolution resulted in the
+ * following:
+ *
+ * *blocked-55* ~ hasProp {- name: *blocked-55* -}, "name"
+ *
+ * This is a perfectly reasonable constraint, but one that doesn't actually
+ * constrain anything.  When we encounter a constraint like this, we need to
+ * replace the result type by a free type that is scoped to the enclosing table.
+ *
+ * Conceptually, it's simplest to think of this constraint as one that is
+ * tautological.  It does not actually contribute any new information.
+ */
+TEST_CASE_FIXTURE(Fixture, "handle_self_referential_HasProp_constraints")
+{
+    CheckResult result = check(R"(
+        local function calculateTopBarHeight(props)
+        end
+        local function isTopPage(props)
+            local topMostOpaquePage
+            if props.avatarRoute then
+                topMostOpaquePage = props.avatarRoute.opaque.name
+            else
+                topMostOpaquePage = props.opaquePage
+            end
+        end
+
+        function TopBarContainer:updateTopBarHeight(prevProps, prevState)
+            calculateTopBarHeight(self.props)
+            isTopPage(self.props)
+            local topMostOpaquePage
+            if self.props.avatarRoute then
+                topMostOpaquePage = self.props.avatarRoute.opaque.name
+                --                  ^--------------------------------^
+            else
+                topMostOpaquePage = self.props.opaquePage
+            end
+        end
+    )");
+}
+
+/* We had an issue where we were unifying two type packs
+ *
+ * free-2-0... and (string, free-4-0...)
+ *
+ * The correct thing to do here is to promote everything on the right side to
+ * level 2-0 before binding the left pack to the right.  If we fail to do this,
+ * then the code fragment here fails to typecheck because the argument and
+ * return types of C are generalized before we ever get to checking the body of
+ * C.
+ */
+TEST_CASE_FIXTURE(Fixture, "promote_tail_type_packs")
+{
+    CheckResult result = check(R"(
+        --!strict
+
+        local A: any = nil
+
+        local C
+        local D = A(
+            A({}, {
+                __call = function(a): string
+                    local E: string = C(a)
+                    return E
+                end
+            }),
+            {
+                F = function(s: typeof(C))
+                end
+            }
+        )
+
+        function C(b: any): string
+            return ''
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "lti_must_record_contributing_locations")
+{
+    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        local function f(a)
+            if math.random() > 0.5 then
+                math.abs(a)
+            else
+                string.len(a)
+            end
+        end
+    )");
+
+    // We inspect the actual errors in other tests; this test verifies that we
+    // actually recorded breadcrumbs for a.
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    TypeId fnTy = requireType("f");
+    const FunctionType* fn = get<FunctionType>(fnTy);
+    REQUIRE(fn);
+
+    TypeId argTy = *first(fn->argTypes);
+    std::vector<std::pair<Location, TypeId>> locations = getMainModule()->upperBoundContributors[argTy];
+    CHECK(locations.size() == 2);
+}
+
+/*
+ * CLI-49876
+ *
+ * We had a bug where we would not use the correct TxnLog when evaluating a
+ * variadic overload. We could therefore get into a state where the TxnLog has
+ * logged that a generic matches to one type, but the variadic tail has already
+ * been bound to another type outside of that TxnLog.
+ *
+ * This caused type checking to succeed when it should have failed.
+ */
+TEST_CASE_FIXTURE(BuiltinsFixture, "be_sure_to_use_active_txnlog_when_evaluating_a_variadic_overload")
+{
+    CheckResult result = check(R"(
+        local function concat<T>(target: {T}, ...: {T} | T): {T}
+            return (nil :: any) :: {T}
+        end
+
+        local res = concat({"alic"}, 1, 2)
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+
+    for (const auto& e : result.errors)
+        CHECK(5 == e.location.begin.line);
 }
 
 TEST_SUITE_END();

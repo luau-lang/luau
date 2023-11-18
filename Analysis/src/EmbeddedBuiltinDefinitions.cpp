@@ -1,9 +1,76 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 
+LUAU_FASTFLAGVARIABLE(LuauBufferDefinitions, false)
+LUAU_FASTFLAGVARIABLE(LuauBufferTypeck, false)
+
 namespace Luau
 {
 
+static const std::string kBuiltinDefinitionBufferSrc_DEPRECATED = R"BUILTIN_SRC(
+
+-- TODO: this will be replaced with a built-in primitive type
+declare class buffer end
+
+declare buffer: {
+    create: (size: number) -> buffer,
+    fromstring: (str: string) -> buffer,
+    tostring: () -> string,
+    len: (b: buffer) -> number,
+    copy: (target: buffer, targetOffset: number, source: buffer, sourceOffset: number?, count: number?) -> (),
+    fill: (b: buffer, offset: number, value: number, count: number?) -> (),
+    readi8: (b: buffer, offset: number) -> number,
+    readu8: (b: buffer, offset: number) -> number,
+    readi16: (b: buffer, offset: number) -> number,
+    readu16: (b: buffer, offset: number) -> number,
+    readi32: (b: buffer, offset: number) -> number,
+    readu32: (b: buffer, offset: number) -> number,
+    readf32: (b: buffer, offset: number) -> number,
+    readf64: (b: buffer, offset: number) -> number,
+    writei8: (b: buffer, offset: number, value: number) -> (),
+    writeu8: (b: buffer, offset: number, value: number) -> (),
+    writei16: (b: buffer, offset: number, value: number) -> (),
+    writeu16: (b: buffer, offset: number, value: number) -> (),
+    writei32: (b: buffer, offset: number, value: number) -> (),
+    writeu32: (b: buffer, offset: number, value: number) -> (),
+    writef32: (b: buffer, offset: number, value: number) -> (),
+    writef64: (b: buffer, offset: number, value: number) -> (),
+    readstring: (b: buffer, offset: number, count: number) -> string,
+    writestring: (b: buffer, offset: number, value: string, count: number?) -> (),
+}
+
+)BUILTIN_SRC";
+
+static const std::string kBuiltinDefinitionBufferSrc = R"BUILTIN_SRC(
+
+declare buffer: {
+    create: (size: number) -> buffer,
+    fromstring: (str: string) -> buffer,
+    tostring: (b: buffer) -> string,
+    len: (b: buffer) -> number,
+    copy: (target: buffer, targetOffset: number, source: buffer, sourceOffset: number?, count: number?) -> (),
+    fill: (b: buffer, offset: number, value: number, count: number?) -> (),
+    readi8: (b: buffer, offset: number) -> number,
+    readu8: (b: buffer, offset: number) -> number,
+    readi16: (b: buffer, offset: number) -> number,
+    readu16: (b: buffer, offset: number) -> number,
+    readi32: (b: buffer, offset: number) -> number,
+    readu32: (b: buffer, offset: number) -> number,
+    readf32: (b: buffer, offset: number) -> number,
+    readf64: (b: buffer, offset: number) -> number,
+    writei8: (b: buffer, offset: number, value: number) -> (),
+    writeu8: (b: buffer, offset: number, value: number) -> (),
+    writei16: (b: buffer, offset: number, value: number) -> (),
+    writeu16: (b: buffer, offset: number, value: number) -> (),
+    writei32: (b: buffer, offset: number, value: number) -> (),
+    writeu32: (b: buffer, offset: number, value: number) -> (),
+    writef32: (b: buffer, offset: number, value: number) -> (),
+    writef64: (b: buffer, offset: number, value: number) -> (),
+    readstring: (b: buffer, offset: number, count: number) -> string,
+    writestring: (b: buffer, offset: number, value: string, count: number?) -> (),
+}
+
+)BUILTIN_SRC";
 static const std::string kBuiltinDefinitionLuaSrc = R"BUILTIN_SRC(
 
 declare bit32: {
@@ -21,6 +88,7 @@ declare bit32: {
     replace: (n: number, v: number, field: number, width: number?) -> number,
     countlz: (n: number) -> number,
     countrz: (n: number) -> number,
+    byteswap: (n: number) -> number,
 }
 
 declare math: {
@@ -92,7 +160,7 @@ type DateTypeResult = {
 
 declare os: {
     time: (time: DateTypeArg?) -> number,
-    date: (formatString: string?, time: number?) -> DateTypeResult | string,
+    date: ((formatString: "*t" | "!*t", time: number?) -> DateTypeResult) & ((formatString: string?, time: number?) -> string),
     difftime: (t2: DateTypeResult | number, t1: DateTypeResult | number) -> number,
     clock: () -> number,
 }
@@ -148,8 +216,7 @@ declare coroutine: {
     resume: <A..., R...>(co: thread, A...) -> (boolean, R...),
     running: () -> thread,
     status: (co: thread) -> "dead" | "running" | "normal" | "suspended",
-    -- FIXME: This technically returns a function, but we can't represent this yet.
-    wrap: <A..., R...>(f: (A...) -> R...) -> any,
+    wrap: <A..., R...>(f: (A...) -> R...) -> ((A...) -> R...),
     yield: <A..., R...>(A...) -> R...,
     isyieldable: () -> boolean,
     close: (co: thread) -> (boolean, any)
@@ -199,6 +266,12 @@ declare function unpack<V>(tab: {V}, i: number?, j: number?): ...V
 std::string getBuiltinDefinitionSource()
 {
     std::string result = kBuiltinDefinitionLuaSrc;
+
+    if (FFlag::LuauBufferTypeck)
+        result = kBuiltinDefinitionBufferSrc + result;
+    else if (FFlag::LuauBufferDefinitions)
+        result = kBuiltinDefinitionBufferSrc_DEPRECATED + result;
+
     return result;
 }
 

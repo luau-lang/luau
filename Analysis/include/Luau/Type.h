@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/TypeFwd.h"
+
 #include "Luau/Ast.h"
 #include "Luau/Common.h"
 #include "Luau/Refinement.h"
@@ -9,7 +11,9 @@
 #include "Luau/Predicate.h"
 #include "Luau/Unifiable.h"
 #include "Luau/Variant.h"
+#include "Luau/TypeFwd.h"
 
+#include <atomic>
 #include <deque>
 #include <map>
 #include <memory>
@@ -17,7 +21,6 @@
 #include <set>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
@@ -29,6 +32,8 @@ namespace Luau
 struct TypeArena;
 struct Scope;
 using ScopePtr = std::shared_ptr<Scope>;
+
+struct TypeFamily;
 
 /**
  * There are three kinds of type variables:
@@ -56,32 +61,71 @@ using ScopePtr = std::shared_ptr<Scope>;
  * ```
  */
 
-// So... why `const T*` here rather than `T*`?
-// It's because we've had problems caused by the type graph being mutated
-// in ways it shouldn't be, for example mutating types from other modules.
-// To try to control this, we make the use of types immutable by default,
-// then provide explicit mutable access via getMutable and asMutable.
-// This means we can grep for all the places we're mutating the type graph,
-// and it makes it possible to provide other APIs (e.g. the txn log)
-// which control mutable access to the type graph.
-struct TypePackVar;
-using TypePackId = const TypePackVar*;
-
-struct Type;
-
-// Should never be null
-using TypeId = const Type*;
-
 using Name = std::string;
 
-// A free type var is one whose exact shape has yet to be fully determined.
-using FreeType = Unifiable::Free;
+// A free type is one whose exact shape has yet to be fully determined.
+struct FreeType
+{
+    explicit FreeType(TypeLevel level);
+    explicit FreeType(Scope* scope);
+    FreeType(Scope* scope, TypeLevel level);
 
-// When a free type var is unified with any other, it is then "bound"
-// to that type var, indicating that the two types are actually the same type.
+    FreeType(Scope* scope, TypeId lowerBound, TypeId upperBound);
+
+    int index;
+    TypeLevel level;
+    Scope* scope = nullptr;
+
+    // True if this free type variable is part of a mutually
+    // recursive type alias whose definitions haven't been
+    // resolved yet.
+    bool forwardedTypeAlias = false;
+
+    // Only used under local type inference
+    TypeId lowerBound = nullptr;
+    TypeId upperBound = nullptr;
+};
+
+/** A type that tracks the domain of a local variable.
+ *
+ * We consider each local's domain to be the union of all types assigned to it.
+ * We accomplish this with LocalType.  Each time we dispatch an assignment to a
+ * local, we accumulate this union and decrement blockCount.
+ *
+ * When blockCount reaches 0, we can consider the LocalType to be "fully baked"
+ * and replace it with the union we've built.
+ */
+struct LocalType
+{
+    TypeId domain;
+    int blockCount = 0;
+
+    // Used for debugging
+    std::string name;
+};
+
+struct GenericType
+{
+    // By default, generics are global, with a synthetic name
+    GenericType();
+
+    explicit GenericType(TypeLevel level);
+    explicit GenericType(const Name& name);
+    explicit GenericType(Scope* scope);
+
+    GenericType(TypeLevel level, const Name& name);
+    GenericType(Scope* scope, const Name& name);
+
+    int index;
+    TypeLevel level;
+    Scope* scope = nullptr;
+    Name name;
+    bool explicitName = false;
+};
+
+// When an equality constraint is found, it is then "bound" to that type,
+// indicating that the two types are actually the same type.
 using BoundType = Unifiable::Bound<TypeId>;
-
-using GenericType = Unifiable::Generic;
 
 using Tags = std::vector<std::string>;
 
@@ -101,8 +145,6 @@ struct BlockedType
 {
     BlockedType();
     int index;
-
-    static int nextIndex;
 };
 
 struct PrimitiveType
@@ -116,6 +158,7 @@ struct PrimitiveType
         Thread,
         Function,
         Table,
+        Buffer,
     };
 
     Type type;
@@ -206,22 +249,6 @@ const T* get(const SingletonType* stv)
         return nullptr;
 }
 
-struct GenericTypeDefinition
-{
-    TypeId ty;
-    std::optional<TypeId> defaultValue;
-
-    bool operator==(const GenericTypeDefinition& rhs) const;
-};
-
-struct GenericTypePackDefinition
-{
-    TypePackId tp;
-    std::optional<TypePackId> defaultValue;
-
-    bool operator==(const GenericTypePackDefinition& rhs) const;
-};
-
 struct FunctionArgument
 {
     Name name;
@@ -269,7 +296,7 @@ struct MagicFunctionCallContext
     TypePackId result;
 };
 
-using DcrMagicFunction = bool (*)(MagicFunctionCallContext);
+using DcrMagicFunction = std::function<bool(MagicFunctionCallContext)>;
 
 struct MagicRefinementContext
 {
@@ -314,7 +341,10 @@ struct FunctionType
     DcrMagicFunction dcrMagicFunction = nullptr;
     DcrMagicRefinement dcrMagicRefinement = nullptr;
     bool hasSelf;
-    bool hasNoGenerics = false;
+    // `hasNoFreeOrGenericTypes` should be true if and only if the type does not have any free or generic types present inside it.
+    // this flag is used as an optimization to exit early from procedures that manipulate free or generic types.
+    bool hasNoFreeOrGenericTypes = false;
+    bool isCheckedFunction = false;
 };
 
 enum class TableState
@@ -347,12 +377,55 @@ struct TableIndexer
 
 struct Property
 {
-    TypeId type;
+    static Property readonly(TypeId ty);
+    static Property writeonly(TypeId ty);
+    static Property rw(TypeId ty);                 // Shared read-write type.
+    static Property rw(TypeId read, TypeId write); // Separate read-write type.
+
+    // Invariant: at least one of the two optionals are not nullopt!
+    // If the read type is not nullopt, but the write type is, then the property is readonly.
+    // If the read type is nullopt, but the write type is not, then the property is writeonly.
+    // If the read and write types are not nullopt, then the property is read and write.
+    // Otherwise, an assertion where read and write types are both nullopt will be tripped.
+    static Property create(std::optional<TypeId> read, std::optional<TypeId> write);
+
     bool deprecated = false;
     std::string deprecatedSuggestion;
+
+    // If this property was inferred from an expression, this field will be
+    // populated with the source location of the corresponding table property.
     std::optional<Location> location = std::nullopt;
+
+    // If this property was built from an explicit type annotation, this field
+    // will be populated with the source location of that table property.
+    std::optional<Location> typeLocation = std::nullopt;
+
     Tags tags;
     std::optional<std::string> documentationSymbol;
+
+    // DEPRECATED
+    // TODO: Kill all constructors in favor of `Property::rw(TypeId read, TypeId write)` and friends.
+    Property();
+    Property(TypeId readTy, bool deprecated = false, const std::string& deprecatedSuggestion = "", std::optional<Location> location = std::nullopt,
+        const Tags& tags = {}, const std::optional<std::string>& documentationSymbol = std::nullopt, std::optional<Location> typeLocation = std::nullopt);
+
+    // DEPRECATED: Should only be called in non-RWP! We assert that the `readTy` is not nullopt.
+    // TODO: Kill once we don't have non-RWP.
+    TypeId type() const;
+    void setType(TypeId ty);
+
+    // Should only be called in RWP!
+    // We do not assert that `readTy` nor `writeTy` are nullopt or not.
+    // The invariant is that at least one of them mustn't be nullopt, which we do assert here.
+    // TODO: Kill this in favor of exposing `readTy`/`writeTy` directly? If we do, we'll lose the asserts which will be useful while debugging.
+    std::optional<TypeId> readType() const;
+    std::optional<TypeId> writeType() const;
+
+    bool isShared() const;
+
+private:
+    std::optional<TypeId> readTy;
+    std::optional<TypeId> writeTy;
 };
 
 struct TableType
@@ -395,9 +468,11 @@ struct TableType
 // Represents a metatable attached to a table type. Somewhat analogous to a bound type.
 struct MetatableType
 {
-    // Always points to a TableType.
+    // Should always be a TableType.
     TypeId table;
-    // Always points to either a TableType or a MetatableType.
+    // Should almost always either be a TableType or another MetatableType,
+    // though it is possible for other types (like AnyType and ErrorType) to
+    // find their way here sometimes.
     TypeId metatable;
 
     std::optional<std::string> syntheticName;
@@ -428,6 +503,7 @@ struct ClassType
     Tags tags;
     std::shared_ptr<ClassUserData> userData;
     ModuleName definitionModuleName;
+    std::optional<TableIndexer> indexer;
 
     ClassType(Name name, Props props, std::optional<TypeId> parent, std::optional<TypeId> metatable, Tags tags,
         std::shared_ptr<ClassUserData> userData, ModuleName definitionModuleName)
@@ -440,42 +516,34 @@ struct ClassType
         , definitionModuleName(definitionModuleName)
     {
     }
+
+    ClassType(Name name, Props props, std::optional<TypeId> parent, std::optional<TypeId> metatable, Tags tags,
+        std::shared_ptr<ClassUserData> userData, ModuleName definitionModuleName, std::optional<TableIndexer> indexer)
+        : name(name)
+        , props(props)
+        , parent(parent)
+        , metatable(metatable)
+        , tags(tags)
+        , userData(userData)
+        , definitionModuleName(definitionModuleName)
+        , indexer(indexer)
+    {
+    }
 };
 
-struct TypeFun
+/**
+ * An instance of a type family that has not yet been reduced to a more concrete
+ * type. The constraint solver receives a constraint to reduce each
+ * TypeFamilyInstanceType to a concrete type. A design detail is important to
+ * note here: the parameters for this instantiation of the type family are
+ * contained within this type, so that they can be substituted.
+ */
+struct TypeFamilyInstanceType
 {
-    // These should all be generic
-    std::vector<GenericTypeDefinition> typeParams;
-    std::vector<GenericTypePackDefinition> typePackParams;
+    NotNull<const TypeFamily> family;
 
-    /** The underlying type.
-     *
-     * WARNING!  This is not safe to use as a type if typeParams is not empty!!
-     * You must first use TypeChecker::instantiateTypeFun to turn it into a real type.
-     */
-    TypeId type;
-
-    TypeFun() = default;
-
-    explicit TypeFun(TypeId ty)
-        : type(ty)
-    {
-    }
-
-    TypeFun(std::vector<GenericTypeDefinition> typeParams, TypeId type)
-        : typeParams(std::move(typeParams))
-        , type(type)
-    {
-    }
-
-    TypeFun(std::vector<GenericTypeDefinition> typeParams, std::vector<GenericTypePackDefinition> typePackParams, TypeId type)
-        : typeParams(std::move(typeParams))
-        , typePackParams(std::move(typePackParams))
-        , type(type)
-    {
-    }
-
-    bool operator==(const TypeFun& rhs) const;
+    std::vector<TypeId> typeArguments;
+    std::vector<TypePackId> packArguments;
 };
 
 /** Represents a pending type alias instantiation.
@@ -517,7 +585,43 @@ struct IntersectionType
 
 struct LazyType
 {
-    std::function<TypeId()> thunk;
+    LazyType() = default;
+    LazyType(std::function<void(LazyType&)> unwrap)
+        : unwrap(unwrap)
+    {
+    }
+
+    // std::atomic is sad and requires a manual copy
+    LazyType(const LazyType& rhs)
+        : unwrap(rhs.unwrap)
+        , unwrapped(rhs.unwrapped.load())
+    {
+    }
+
+    LazyType(LazyType&& rhs) noexcept
+        : unwrap(std::move(rhs.unwrap))
+        , unwrapped(rhs.unwrapped.load())
+    {
+    }
+
+    LazyType& operator=(const LazyType& rhs)
+    {
+        unwrap = rhs.unwrap;
+        unwrapped = rhs.unwrapped.load();
+
+        return *this;
+    }
+
+    LazyType& operator=(LazyType&& rhs) noexcept
+    {
+        unwrap = std::move(rhs.unwrap);
+        unwrapped = rhs.unwrapped.load();
+
+        return *this;
+    }
+
+    std::function<void(LazyType&)> unwrap;
+    std::atomic<TypeId> unwrapped = nullptr;
 };
 
 struct UnknownType
@@ -536,8 +640,9 @@ struct NegationType
 
 using ErrorType = Unifiable::Error;
 
-using TypeVariant = Unifiable::Variant<TypeId, PrimitiveType, BlockedType, PendingExpansionType, SingletonType, FunctionType, TableType,
-    MetatableType, ClassType, AnyType, UnionType, IntersectionType, LazyType, UnknownType, NeverType, NegationType>;
+using TypeVariant =
+    Unifiable::Variant<TypeId, FreeType, LocalType, GenericType, PrimitiveType, BlockedType, PendingExpansionType, SingletonType, FunctionType, TableType,
+        MetatableType, ClassType, AnyType, UnionType, IntersectionType, LazyType, UnknownType, NeverType, NegationType, TypeFamilyInstanceType>;
 
 struct Type final
 {
@@ -585,12 +690,72 @@ struct Type final
     Type& operator=(const Type& rhs);
 };
 
+struct GenericTypeDefinition
+{
+    TypeId ty;
+    std::optional<TypeId> defaultValue;
+
+    bool operator==(const GenericTypeDefinition& rhs) const;
+};
+
+struct GenericTypePackDefinition
+{
+    TypePackId tp;
+    std::optional<TypePackId> defaultValue;
+
+    bool operator==(const GenericTypePackDefinition& rhs) const;
+};
+
+struct TypeFun
+{
+    // These should all be generic
+    std::vector<GenericTypeDefinition> typeParams;
+    std::vector<GenericTypePackDefinition> typePackParams;
+
+    /** The underlying type.
+     *
+     * WARNING!  This is not safe to use as a type if typeParams is not empty!!
+     * You must first use TypeChecker::instantiateTypeFun to turn it into a real type.
+     */
+    TypeId type;
+
+    TypeFun() = default;
+
+    explicit TypeFun(TypeId ty)
+        : type(ty)
+    {
+    }
+
+    TypeFun(std::vector<GenericTypeDefinition> typeParams, TypeId type)
+        : typeParams(std::move(typeParams))
+        , type(type)
+    {
+    }
+
+    TypeFun(std::vector<GenericTypeDefinition> typeParams, std::vector<GenericTypePackDefinition> typePackParams, TypeId type)
+        : typeParams(std::move(typeParams))
+        , typePackParams(std::move(typePackParams))
+        , type(type)
+    {
+    }
+
+    bool operator==(const TypeFun& rhs) const;
+};
+
 using SeenSet = std::set<std::pair<const void*, const void*>>;
 bool areEqual(SeenSet& seen, const Type& lhs, const Type& rhs);
 
+enum class FollowOption
+{
+    Normal,
+    DisableLazyTypeThunks,
+};
+
 // Follow BoundTypes until we get to something real
 TypeId follow(TypeId t);
-TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper);
+TypeId follow(TypeId t, FollowOption followOption);
+TypeId follow(TypeId t, const void* context, TypeId (*mapper)(const void*, TypeId));
+TypeId follow(TypeId t, FollowOption followOption, const void* context, TypeId (*mapper)(const void*, TypeId));
 
 std::vector<TypeId> flattenIntersection(TypeId ty);
 
@@ -600,6 +765,7 @@ bool isBoolean(TypeId ty);
 bool isNumber(TypeId ty);
 bool isString(TypeId ty);
 bool isThread(TypeId ty);
+bool isBuffer(TypeId ty);
 bool isOptional(TypeId ty);
 bool isTableIntersection(TypeId ty);
 bool isOverloadedFunction(TypeId ty);
@@ -645,11 +811,12 @@ struct BuiltinTypes
     TypeId errorRecoveryType() const;
     TypePackId errorRecoveryTypePack() const;
 
+    friend TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes);
+    friend struct GlobalTypes;
+
 private:
     std::unique_ptr<struct TypeArena> arena;
     bool debugFreezeArena = false;
-
-    TypeId makeStringMetatable();
 
 public:
     const TypeId nilType;
@@ -657,6 +824,7 @@ public:
     const TypeId stringType;
     const TypeId booleanType;
     const TypeId threadType;
+    const TypeId bufferType;
     const TypeId functionType;
     const TypeId classType;
     const TypeId tableType;
@@ -673,6 +841,7 @@ public:
     const TypeId optionalNumberType;
     const TypeId optionalStringType;
 
+    const TypePackId emptyTypePack;
     const TypePackId anyTypePack;
     const TypePackId neverTypePack;
     const TypePackId uninhabitableTypePack;
@@ -694,6 +863,18 @@ bool isSubclass(const ClassType* cls, const ClassType* parent);
 
 Type* asMutable(TypeId ty);
 
+template<typename... Ts, typename T>
+bool is(T&& tv)
+{
+    if (!tv)
+        return false;
+
+    if constexpr (std::is_same_v<TypeId, T> && !(std::is_same_v<BoundType, Ts> || ...))
+        LUAU_ASSERT(get_if<BoundType>(&tv->ty) == nullptr);
+
+    return (get<Ts>(tv) || ...);
+}
+
 template<typename T>
 const T* get(TypeId tv)
 {
@@ -704,6 +885,7 @@ const T* get(TypeId tv)
 
     return get_if<T>(&tv->ty);
 }
+
 
 template<typename T>
 T* getMutable(TypeId tv)
@@ -764,7 +946,7 @@ struct TypeIterator
     TypeIterator<T> operator++(int)
     {
         TypeIterator<T> copy = *this;
-        ++copy;
+        ++*this;
         return copy;
     }
 
@@ -811,7 +993,7 @@ private:
     using SavedIterInfo = std::pair<const T*, size_t>;
 
     std::deque<SavedIterInfo> stack;
-    std::unordered_set<const T*> seen; // Only needed to protect the iterator from hanging the thread.
+    DenseHashSet<const T*> seen{nullptr}; // Only needed to protect the iterator from hanging the thread.
 
     void advance()
     {
@@ -838,7 +1020,7 @@ private:
             {
                 // If we're about to descend into a cyclic type, we should skip over this.
                 // Ideally this should never happen, but alas it does from time to time. :(
-                if (seen.find(inner) != seen.end())
+                if (seen.contains(inner))
                     advance();
                 else
                 {
@@ -854,6 +1036,8 @@ private:
     }
 };
 
+TypeId freshType(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, Scope* scope);
+
 using TypeIdPredicate = std::function<std::optional<TypeId>(TypeId)>;
 std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate);
 
@@ -864,6 +1048,19 @@ bool hasTag(TypeId ty, const std::string& tagName);
 bool hasTag(const Property& prop, const std::string& tagName);
 bool hasTag(const Tags& tags, const std::string& tagName); // Do not use in new work.
 
+template<typename T>
+bool hasTypeInIntersection(TypeId ty)
+{
+    TypeId tf = follow(ty);
+    if (get<T>(tf))
+        return true;
+    for (auto t : flattenIntersection(tf))
+        if (get<T>(follow(t)))
+            return true;
+    return false;
+}
+
+bool hasPrimitiveTypeInIntersection(TypeId ty, PrimitiveType::Type primTy);
 /*
  * Use this to change the kind of a particular type.
  *

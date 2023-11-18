@@ -40,30 +40,39 @@ struct TempBuffer
     }
 };
 
-void luaV_getimport(lua_State* L, Table* env, TValue* k, uint32_t id, bool propagatenil)
+void luaV_getimport(lua_State* L, Table* env, TValue* k, StkId res, uint32_t id, bool propagatenil)
 {
     int count = id >> 30;
-    int id0 = count > 0 ? int(id >> 20) & 1023 : -1;
-    int id1 = count > 1 ? int(id >> 10) & 1023 : -1;
-    int id2 = count > 2 ? int(id) & 1023 : -1;
+    LUAU_ASSERT(count > 0);
 
-    // allocate a stack slot so that we can do table lookups
-    luaD_checkstack(L, 1);
-    setnilvalue(L->top);
-    L->top++;
+    int id0 = int(id >> 20) & 1023;
+    int id1 = int(id >> 10) & 1023;
+    int id2 = int(id) & 1023;
 
-    // global lookup into L->top-1
+    // after the first call to luaV_gettable, res may be invalid, and env may (sometimes) be garbage collected
+    // we take care to not use env again and to restore res before every consecutive use
+    ptrdiff_t resp = savestack(L, res);
+
+    // global lookup for id0
     TValue g;
     sethvalue(L, &g, env);
-    luaV_gettable(L, &g, &k[id0], L->top - 1);
+    luaV_gettable(L, &g, &k[id0], res);
 
     // table lookup for id1
-    if (id1 >= 0 && (!propagatenil || !ttisnil(L->top - 1)))
-        luaV_gettable(L, L->top - 1, &k[id1], L->top - 1);
+    if (count < 2)
+        return;
+
+    res = restorestack(L, resp);
+    if (!propagatenil || !ttisnil(res))
+        luaV_gettable(L, res, &k[id1], res);
 
     // table lookup for id2
-    if (id2 >= 0 && (!propagatenil || !ttisnil(L->top - 1)))
-        luaV_gettable(L, L->top - 1, &k[id2], L->top - 1);
+    if (count < 3)
+        return;
+
+    res = restorestack(L, resp);
+    if (!propagatenil || !ttisnil(res))
+        luaV_gettable(L, res, &k[id2], res);
 }
 
 template<typename T>
@@ -114,7 +123,12 @@ static void resolveImportSafe(lua_State* L, Table* env, TValue* k, uint32_t id)
             // note: we call getimport with nil propagation which means that accesses to table chains like A.B.C will resolve in nil
             // this is technically not necessary but it reduces the number of exceptions when loading scripts that rely on getfenv/setfenv for global
             // injection
-            luaV_getimport(L, L->gt, self->k, self->id, /* propagatenil= */ true);
+            // allocate a stack slot so that we can do table lookups
+            luaD_checkstack(L, 1);
+            setnilvalue(L->top);
+            L->top++;
+
+            luaV_getimport(L, L->gt, self->k, L->top - 1, self->id, /* propagatenil= */ true);
         }
     };
 
@@ -145,6 +159,8 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
 
     uint8_t version = read<uint8_t>(data, size, offset);
 
+
+
     // 0 means the rest of the bytecode is the error message
     if (version == 0)
     {
@@ -162,6 +178,9 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
         return 1;
     }
 
+    // we will allocate a fair amount of memory so check GC before we do
+    luaC_checkGC(L);
+
     // pause GC for the duration of deserialization - some objects we're creating aren't rooted
     // TODO: if an allocation error happens mid-load, we do not unpause GC!
     size_t GCthreshold = L->global->GCthreshold;
@@ -171,6 +190,13 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     Table* envt = (env == 0) ? L->gt : hvalue(luaA_toobject(L, env));
 
     TString* source = luaS_new(L, chunkname);
+
+    uint8_t typesversion = 0;
+
+    if (version >= 4)
+    {
+        typesversion = read<uint8_t>(data, size, offset);
+    }
 
     // string table
     unsigned int stringCount = readVarInt(data, size, offset);
@@ -199,10 +225,33 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
         p->nups = read<uint8_t>(data, size, offset);
         p->is_vararg = read<uint8_t>(data, size, offset);
 
+        if (version >= 4)
+        {
+            p->flags = read<uint8_t>(data, size, offset);
+
+            uint32_t typesize = readVarInt(data, size, offset);
+
+            if (typesize && typesversion == LBC_TYPE_VERSION)
+            {
+                uint8_t* types = (uint8_t*)data + offset;
+
+                LUAU_ASSERT(typesize == unsigned(2 + p->numparams));
+                LUAU_ASSERT(types[0] == LBC_TYPE_FUNCTION);
+                LUAU_ASSERT(types[1] == p->numparams);
+
+                p->typeinfo = luaM_newarray(L, typesize, uint8_t, p->memcat);
+                memcpy(p->typeinfo, types, typesize);
+            }
+
+            offset += typesize;
+        }
+
         p->sizecode = readVarInt(data, size, offset);
         p->code = luaM_newarray(L, p->sizecode, Instruction, p->memcat);
         for (int j = 0; j < p->sizecode; ++j)
             p->code[j] = read<uint32_t>(data, size, offset);
+
+        p->codeentry = p->code;
 
         p->sizek = readVarInt(data, size, offset);
         p->k = luaM_newarray(L, p->sizek, TValue, p->memcat);
@@ -235,6 +284,17 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
             {
                 double v = read<double>(data, size, offset);
                 setnvalue(&p->k[j], v);
+                break;
+            }
+
+            case LBC_CONSTANT_VECTOR:
+            {
+                float x = read<float>(data, size, offset);
+                float y = read<float>(data, size, offset);
+                float z = read<float>(data, size, offset);
+                float w = read<float>(data, size, offset);
+                (void)w;
+                setvvalue(&p->k[j], x, y, z, w);
                 break;
             }
 

@@ -28,6 +28,21 @@ struct IsSubtypeFixture : Fixture
 
         return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, ice);
     }
+
+    bool isConsistentSubtype(TypeId a, TypeId b)
+    {
+        // any test that is testing isConsistentSubtype is testing the old solver exclusively!
+        ScopedFastFlag noDcr{"DebugLuauDeferredConstraintResolution", false};
+
+        Location location;
+        ModulePtr module = getMainModule();
+        REQUIRE(module);
+
+        if (!module->hasModuleScope())
+            FAIL("isSubtype: module scope data is not available");
+
+        return ::Luau::isConsistentSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, ice);
+    }
 };
 } // namespace
 
@@ -86,8 +101,8 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "functions_and_any")
 
     // any makes things work even when it makes no sense.
 
-    CHECK(isSubtype(b, a));
-    CHECK(isSubtype(a, b));
+    CHECK(isConsistentSubtype(b, a));
+    CHECK(isConsistentSubtype(a, b));
 }
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "variadic_functions_with_no_head")
@@ -157,12 +172,19 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_union_prop")
     TypeId a = requireType("a");
     TypeId b = requireType("b");
 
-    CHECK(isSubtype(a, b));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(!isSubtype(a, b)); // table properties are invariant
+    else
+        CHECK(isSubtype(a, b));
     CHECK(!isSubtype(b, a));
 }
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_any_prop")
 {
+    ScopedFastFlag sffs[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
     check(R"(
         local a: {x: number}
         local b: {x: any}
@@ -171,8 +193,12 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_any_prop")
     TypeId a = requireType("a");
     TypeId b = requireType("b");
 
-    CHECK(isSubtype(a, b));
-    CHECK(isSubtype(b, a));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(!isSubtype(a, b)); // table properties are invariant
+    else
+        CHECK(isSubtype(a, b));
+    CHECK(!isSubtype(b, a));
+    CHECK(isConsistentSubtype(b, a));
 }
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "intersection")
@@ -216,6 +242,10 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "union_and_intersection")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
 {
+    ScopedFastFlag sffs[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
     check(R"(
         local a: {x: number}
         local b: {x: any}
@@ -228,8 +258,12 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
     TypeId c = requireType("c");
     TypeId d = requireType("d");
 
-    CHECK(isSubtype(a, b));
-    CHECK(isSubtype(b, a));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(!isSubtype(a, b)); // table properties are invariant
+    else
+        CHECK(isSubtype(a, b));
+    CHECK(!isSubtype(b, a));
+    CHECK(isConsistentSubtype(b, a));
 
     CHECK(!isSubtype(c, a));
     CHECK(!isSubtype(a, c));
@@ -237,7 +271,10 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
     CHECK(isSubtype(d, a));
     CHECK(!isSubtype(a, d));
 
-    CHECK(isSubtype(d, b));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(!isSubtype(d, b)); // table properties are invariant
+    else
+        CHECK(isSubtype(d, b));
     CHECK(!isSubtype(b, d));
 }
 
@@ -358,13 +395,96 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "metatable" * doctest::expected_failures{1})
 }
 #endif
 
+TEST_CASE_FIXTURE(IsSubtypeFixture, "any_is_unknown_union_error")
+{
+    ScopedFastFlag sffs[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
+    check(R"(
+        local err = 5.nope.nope -- err is now an error type
+        local a : any
+        local b : (unknown | typeof(err))
+    )");
+
+    TypeId a = requireType("a");
+    TypeId b = requireType("b");
+
+    CHECK(isSubtype(a, b));
+    CHECK(isSubtype(b, a));
+    CHECK_EQ("*error-type*", toString(requireType("err")));
+}
+
+TEST_CASE_FIXTURE(IsSubtypeFixture, "any_intersect_T_is_T")
+{
+    ScopedFastFlag sffs[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
+    check(R"(
+        local a : (any & string)
+        local b : string
+        local c : number
+    )");
+
+    TypeId a = requireType("a");
+    TypeId b = requireType("b");
+    TypeId c = requireType("c");
+
+    CHECK(isSubtype(a, b));
+    CHECK(isSubtype(b, a));
+    CHECK(!isSubtype(a, c));
+    CHECK(!isSubtype(c, a));
+}
+
+TEST_CASE_FIXTURE(IsSubtypeFixture, "error_suppression")
+{
+    ScopedFastFlag sffs[] = {
+        {"LuauTransitiveSubtyping", true},
+    };
+
+    check("");
+
+    TypeId any = builtinTypes->anyType;
+    TypeId err = builtinTypes->errorType;
+    TypeId str = builtinTypes->stringType;
+    TypeId unk = builtinTypes->unknownType;
+
+    CHECK(!isSubtype(any, err));
+    CHECK(isSubtype(err, any));
+    CHECK(isConsistentSubtype(any, err));
+    CHECK(isConsistentSubtype(err, any));
+
+    CHECK(!isSubtype(any, str));
+    CHECK(isSubtype(str, any));
+    CHECK(isConsistentSubtype(any, str));
+    CHECK(isConsistentSubtype(str, any));
+
+    CHECK(!isSubtype(any, unk));
+    CHECK(isSubtype(unk, any));
+    CHECK(isConsistentSubtype(any, unk));
+    CHECK(isConsistentSubtype(unk, any));
+
+    CHECK(!isSubtype(err, str));
+    CHECK(!isSubtype(str, err));
+    CHECK(isConsistentSubtype(err, str));
+    CHECK(isConsistentSubtype(str, err));
+
+    CHECK(!isSubtype(err, unk));
+    CHECK(!isSubtype(unk, err));
+    CHECK(isConsistentSubtype(err, unk));
+    CHECK(isConsistentSubtype(unk, err));
+
+    CHECK(isSubtype(str, unk));
+    CHECK(!isSubtype(unk, str));
+    CHECK(isConsistentSubtype(str, unk));
+    CHECK(!isConsistentSubtype(unk, str));
+}
+
 TEST_SUITE_END();
 
 struct NormalizeFixture : Fixture
 {
-    ScopedFastFlag sff1{"LuauNegatedFunctionTypes", true};
-    ScopedFastFlag sff2{"LuauNegatedClassTypes", true};
-
     TypeArena arena;
     InternalErrorReporter iceHandler;
     UnifierSharedState unifierState{&iceHandler};
@@ -389,7 +509,7 @@ struct NormalizeFixture : Fixture
             REQUIRE(node);
             AstStatTypeAlias* alias = node->as<AstStatTypeAlias>();
             REQUIRE(alias);
-            TypeId* originalTy = getMainModule()->astOriginalResolvedTypes.find(alias->type);
+            TypeId* originalTy = getMainModule()->astResolvedTypes.find(alias->type);
             REQUIRE(originalTy);
             return normalizer.normalize(*originalTy);
         }
@@ -410,6 +530,71 @@ struct NormalizeFixture : Fixture
 };
 
 TEST_SUITE_BEGIN("Normalize");
+
+TEST_CASE_FIXTURE(NormalizeFixture, "string_intersection_is_commutative")
+{
+    auto c4 = toString(normal(R"(
+        string & (string & Not<"a"> & Not<"b">)
+)"));
+    auto c4Reverse = toString(normal(R"(
+        (string & Not<"a"> & Not<"b">) & string
+)"));
+    CHECK(c4 == c4Reverse);
+    CHECK_EQ("string & ~\"a\" & ~\"b\"", c4);
+
+    auto c5 = toString(normal(R"(
+        (string & Not<"a"> & Not<"b">) & (string & Not<"b"> & Not<"c">)
+)"));
+    auto c5Reverse = toString(normal(R"(
+        (string & Not<"b"> & Not<"c">) & (string & Not<"a"> & Not<"c">)
+)"));
+    CHECK(c5 == c5Reverse);
+    CHECK_EQ("string & ~\"a\" & ~\"b\" & ~\"c\"", c5);
+
+    auto c6 = toString(normal(R"(
+        ("a" | "b") & (string & Not<"b"> & Not<"c">)
+)"));
+    auto c6Reverse = toString(normal(R"(
+        (string & Not<"b"> & Not<"c">) & ("a" | "b")
+)"));
+    CHECK(c6 == c6Reverse);
+    CHECK_EQ("\"a\"", c6);
+
+    auto c7 = toString(normal(R"(
+        string & ("b" | "c")
+)"));
+    auto c7Reverse = toString(normal(R"(
+        ("b" | "c") & string
+)"));
+    CHECK(c7 == c7Reverse);
+    CHECK_EQ("\"b\" | \"c\"", c7);
+
+    auto c8 = toString(normal(R"(
+(string & Not<"a"> & Not<"b">) & ("b" | "c")
+)"));
+    auto c8Reverse = toString(normal(R"(
+        ("b" | "c") & (string & Not<"a"> & Not<"b">)
+)"));
+    CHECK(c8 == c8Reverse);
+    CHECK_EQ("\"c\"", c8);
+    auto c9 = toString(normal(R"(
+            ("a" | "b") & ("b" | "c")
+    )"));
+    auto c9Reverse = toString(normal(R"(
+            ("b" | "c") & ("a" | "b")
+    )"));
+    CHECK(c9 == c9Reverse);
+    CHECK_EQ("\"b\"", c9);
+
+    auto l = toString(normal(R"(
+         (string | number) & ("a" | true)
+    )"));
+    auto r = toString(normal(R"(
+         ("a" | true) & (string | number)
+    )"));
+    CHECK(l == r);
+    CHECK_EQ("\"a\"", l);
+}
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negate_string")
 {
@@ -525,12 +710,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union_function_and_top_function")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negated_function_is_anything_except_a_function")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauNegatedTableTypes", true},
-        {"LuauNegatedClassTypes", true},
-    };
-
-    CHECK("(boolean | class | number | string | table | thread)?" == toString(normal(R"(
+    CHECK("(boolean | buffer | class | number | string | table | thread)?" == toString(normal(R"(
         Not<fun>
     )")));
 }
@@ -540,15 +720,22 @@ TEST_CASE_FIXTURE(NormalizeFixture, "specific_functions_cannot_be_negated")
     CHECK(nullptr == toNormalizedType("Not<(boolean) -> boolean>"));
 }
 
+TEST_CASE_FIXTURE(NormalizeFixture, "trivial_intersection_inhabited")
+{
+    // this test was used to fix a bug in normalization when working with intersections/unions of the same type.
+
+    TypeId a = arena.addType(FunctionType{builtinTypes->emptyTypePack, builtinTypes->anyTypePack, std::nullopt, false});
+    TypeId c = arena.addType(IntersectionType{{a, a}});
+
+    const NormalizedType* n = normalizer.normalize(c);
+    REQUIRE(n);
+
+    CHECK(normalizer.isInhabited(n));
+}
+
 TEST_CASE_FIXTURE(NormalizeFixture, "bare_negated_boolean")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauNegatedTableTypes", true},
-        {"LuauNegatedClassTypes", true},
-    };
-
-    // TODO: We don't yet have a way to say number | string | thread | nil | Class | Table | Function
-    CHECK("(class | function | number | string | table | thread)?" == toString(normal(R"(
+    CHECK("(buffer | class | function | number | string | table | thread)?" == toString(normal(R"(
         Not<boolean>
     )")));
 }
@@ -616,8 +803,6 @@ export type t0 = (((any)&({_:l0.t0,n0:t0,_G:any,}))&({_:any,}))&(((any)&({_:l0.t
 
 TEST_CASE_FIXTURE(NormalizeFixture, "unions_of_classes")
 {
-    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
-
     createSomeClasses(&frontend);
     CHECK("Parent | Unrelated" == toString(normal("Parent | Unrelated")));
     CHECK("Parent" == toString(normal("Parent | Child")));
@@ -626,8 +811,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "unions_of_classes")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "intersections_of_classes")
 {
-    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
-
     createSomeClasses(&frontend);
     CHECK("Child" == toString(normal("Parent & Child")));
     CHECK("never" == toString(normal("Child & Unrelated")));
@@ -635,61 +818,125 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersections_of_classes")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "narrow_union_of_classes_with_intersection")
 {
-    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
-
     createSomeClasses(&frontend);
     CHECK("Child" == toString(normal("(Child | Unrelated) & Child")));
 }
 
+TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_metatables_where_the_metatable_is_top_or_bottom")
+{
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("{ @metatable *error-type*, {  } }" == toString(normal("Mt<{}, any> & Mt<{}, err>")));
+    else
+        CHECK("{ @metatable *error-type*, {|  |} }" == toString(normal("Mt<{}, any> & Mt<{}, err>")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "recurring_intersection")
+{
+    CheckResult result = check(R"(
+        type A = any?
+        type B = A & A
+    )");
+
+    std::optional<TypeId> t = lookupType("B");
+    REQUIRE(t);
+
+    const NormalizedType* nt = normalizer.normalize(*t);
+    REQUIRE(nt);
+
+    CHECK("any" == toString(normalizer.typeFromNormal(*nt)));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_union")
+{
+    // T where T = any & (number | T)
+    TypeId t = arena.addType(BlockedType{});
+    TypeId u = arena.addType(UnionType{{builtinTypes->numberType, t}});
+    asMutable(t)->ty.emplace<IntersectionType>(IntersectionType{{builtinTypes->anyType, u}});
+
+    const NormalizedType* nt = normalizer.normalize(t);
+    REQUIRE(nt);
+
+    CHECK("number" == toString(normalizer.typeFromNormal(*nt)));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "crazy_metatable")
+{
+    CHECK("never" == toString(normal("Mt<{}, number> & Mt<{}, string>")));
+}
+
 TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_classes")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauNegatedTableTypes", true},
-        {"LuauNegatedClassTypes", true},
-    };
-
     createSomeClasses(&frontend);
     CHECK("(Parent & ~Child) | Unrelated" == toString(normal("(Parent & Not<Child>) | Unrelated")));
-    CHECK("((class & ~Child) | boolean | function | number | string | table | thread)?" == toString(normal("Not<Child>")));
+    CHECK("((class & ~Child) | boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<Child>")));
     CHECK("Child" == toString(normal("Not<Parent> & Child")));
-    CHECK("((class & ~Parent) | Child | boolean | function | number | string | table | thread)?" == toString(normal("Not<Parent> | Child")));
-    CHECK("(boolean | function | number | string | table | thread)?" == toString(normal("Not<cls>")));
-    CHECK("(Parent | Unrelated | boolean | function | number | string | table | thread)?" ==
+    CHECK("((class & ~Parent) | Child | boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<Parent> | Child")));
+    CHECK("(boolean | buffer | function | number | string | table | thread)?" == toString(normal("Not<cls>")));
+    CHECK("(Parent | Unrelated | boolean | buffer | function | number | string | table | thread)?" ==
           toString(normal("Not<cls & Not<Parent> & Not<Child> & Not<Unrelated>>")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "classes_and_unknown")
 {
-    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
-
     createSomeClasses(&frontend);
     CHECK("Parent" == toString(normal("Parent & unknown")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "classes_and_never")
 {
-    ScopedFastFlag sff{"LuauNegatedClassTypes", true};
-
     createSomeClasses(&frontend);
     CHECK("never" == toString(normal("Parent & never")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "top_table_type")
 {
-    ScopedFastFlag sff{"LuauNegatedTableTypes", true};
-
     CHECK("table" == toString(normal("{} | tbl")));
-    CHECK("{|  |}" == toString(normal("{} & tbl")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("{  }" == toString(normal("{} & tbl")));
+    else
+        CHECK("{|  |}" == toString(normal("{} & tbl")));
     CHECK("never" == toString(normal("number & tbl")));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "negations_of_tables")
 {
-    ScopedFastFlag sff{"LuauNegatedTableTypes", true};
-
     CHECK(nullptr == toNormalizedType("Not<{}>"));
-    CHECK("(boolean | class | function | number | string | thread)?" == toString(normal("Not<tbl>")));
+    CHECK("(boolean | buffer | class | function | number | string | thread)?" == toString(normal("Not<tbl>")));
     CHECK("table" == toString(normal("Not<Not<tbl>>")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "normalize_blocked_types")
+{
+    Type blocked{BlockedType{}};
+
+    const NormalizedType* norm = normalizer.normalize(&blocked);
+
+    CHECK_EQ(normalizer.typeFromNormal(*norm), &blocked);
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "normalize_is_exactly_number")
+{
+    const NormalizedType* number = normalizer.normalize(builtinTypes->numberType);
+    // 1. all types for which Types::number say true for, NormalizedType::isExactlyNumber should say true as well
+    CHECK(Luau::isNumber(builtinTypes->numberType) == number->isExactlyNumber());
+    // 2. isExactlyNumber should handle cases like `number & number`
+    TypeId intersection = arena.addType(IntersectionType{{builtinTypes->numberType, builtinTypes->numberType}});
+    const NormalizedType* normIntersection = normalizer.normalize(intersection);
+    CHECK(normIntersection->isExactlyNumber());
+
+    // 3. isExactlyNumber should reject things that are definitely not precisely numbers `number | any`
+
+    TypeId yoonion = arena.addType(UnionType{{builtinTypes->anyType, builtinTypes->numberType}});
+    const NormalizedType* unionIntersection = normalizer.normalize(yoonion);
+    CHECK(!unionIntersection->isExactlyNumber());
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "normalize_unknown")
+{
+    auto nt = toNormalizedType("Not<string> | Not<number>");
+    CHECK(nt);
+    CHECK(nt->isUnknown());
+    CHECK(toString(normalizer.typeFromNormal(*nt)) == "unknown");
 }
 
 TEST_SUITE_END();

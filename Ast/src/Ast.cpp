@@ -3,6 +3,7 @@
 
 #include "Luau/Common.h"
 
+
 namespace Luau
 {
 
@@ -62,9 +63,10 @@ void AstExprConstantNumber::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
-AstExprConstantString::AstExprConstantString(const Location& location, const AstArray<char>& value)
+AstExprConstantString::AstExprConstantString(const Location& location, const AstArray<char>& value, QuoteStyle quoteStyle)
     : AstExpr(ClassIndex(), location)
     , value(value)
+    , quoteStyle(quoteStyle)
 {
 }
 
@@ -161,7 +163,7 @@ void AstExprIndexExpr::visit(AstVisitor* visitor)
 
 AstExprFunction::AstExprFunction(const Location& location, const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks,
     AstLocal* self, const AstArray<AstLocal*>& args, bool vararg, const Location& varargLocation, AstStatBlock* body, size_t functionDepth,
-    const AstName& debugname, const std::optional<AstTypeList>& returnAnnotation, AstTypePack* varargAnnotation, bool hasEnd,
+    const AstName& debugname, const std::optional<AstTypeList>& returnAnnotation, AstTypePack* varargAnnotation, bool DEPRECATED_hasEnd,
     const std::optional<Location>& argLocation)
     : AstExpr(ClassIndex(), location)
     , generics(generics)
@@ -175,7 +177,7 @@ AstExprFunction::AstExprFunction(const Location& location, const AstArray<AstGen
     , body(body)
     , functionDepth(functionDepth)
     , debugname(debugname)
-    , hasEnd(hasEnd)
+    , DEPRECATED_hasEnd(DEPRECATED_hasEnd)
     , argLocation(argLocation)
 {
 }
@@ -278,6 +280,8 @@ std::string toString(AstExprBinary::Op op)
         return "*";
     case AstExprBinary::Div:
         return "/";
+    case AstExprBinary::FloorDiv:
+        return "//";
     case AstExprBinary::Mod:
         return "%";
     case AstExprBinary::Pow:
@@ -374,9 +378,10 @@ void AstExprError::visit(AstVisitor* visitor)
     }
 }
 
-AstStatBlock::AstStatBlock(const Location& location, const AstArray<AstStat*>& body)
+AstStatBlock::AstStatBlock(const Location& location, const AstArray<AstStat*>& body, bool hasEnd)
     : AstStat(ClassIndex(), location)
     , body(body)
+    , hasEnd(hasEnd)
 {
 }
 
@@ -390,14 +395,14 @@ void AstStatBlock::visit(AstVisitor* visitor)
 }
 
 AstStatIf::AstStatIf(const Location& location, AstExpr* condition, AstStatBlock* thenbody, AstStat* elsebody,
-    const std::optional<Location>& thenLocation, const std::optional<Location>& elseLocation, bool hasEnd)
+    const std::optional<Location>& thenLocation, const std::optional<Location>& elseLocation, bool DEPRECATED_hasEnd)
     : AstStat(ClassIndex(), location)
     , condition(condition)
     , thenbody(thenbody)
     , elsebody(elsebody)
     , thenLocation(thenLocation)
     , elseLocation(elseLocation)
-    , hasEnd(hasEnd)
+    , DEPRECATED_hasEnd(DEPRECATED_hasEnd)
 {
 }
 
@@ -413,13 +418,13 @@ void AstStatIf::visit(AstVisitor* visitor)
     }
 }
 
-AstStatWhile::AstStatWhile(const Location& location, AstExpr* condition, AstStatBlock* body, bool hasDo, const Location& doLocation, bool hasEnd)
+AstStatWhile::AstStatWhile(const Location& location, AstExpr* condition, AstStatBlock* body, bool hasDo, const Location& doLocation, bool DEPRECATED_hasEnd)
     : AstStat(ClassIndex(), location)
     , condition(condition)
     , body(body)
     , hasDo(hasDo)
     , doLocation(doLocation)
-    , hasEnd(hasEnd)
+    , DEPRECATED_hasEnd(DEPRECATED_hasEnd)
 {
 }
 
@@ -432,11 +437,11 @@ void AstStatWhile::visit(AstVisitor* visitor)
     }
 }
 
-AstStatRepeat::AstStatRepeat(const Location& location, AstExpr* condition, AstStatBlock* body, bool hasUntil)
+AstStatRepeat::AstStatRepeat(const Location& location, AstExpr* condition, AstStatBlock* body, bool DEPRECATED_hasUntil)
     : AstStat(ClassIndex(), location)
     , condition(condition)
     , body(body)
-    , hasUntil(hasUntil)
+    , DEPRECATED_hasUntil(DEPRECATED_hasUntil)
 {
 }
 
@@ -521,7 +526,7 @@ void AstStatLocal::visit(AstVisitor* visitor)
 }
 
 AstStatFor::AstStatFor(const Location& location, AstLocal* var, AstExpr* from, AstExpr* to, AstExpr* step, AstStatBlock* body, bool hasDo,
-    const Location& doLocation, bool hasEnd)
+    const Location& doLocation, bool DEPRECATED_hasEnd)
     : AstStat(ClassIndex(), location)
     , var(var)
     , from(from)
@@ -530,7 +535,7 @@ AstStatFor::AstStatFor(const Location& location, AstLocal* var, AstExpr* from, A
     , body(body)
     , hasDo(hasDo)
     , doLocation(doLocation)
-    , hasEnd(hasEnd)
+    , DEPRECATED_hasEnd(DEPRECATED_hasEnd)
 {
 }
 
@@ -552,7 +557,7 @@ void AstStatFor::visit(AstVisitor* visitor)
 }
 
 AstStatForIn::AstStatForIn(const Location& location, const AstArray<AstLocal*>& vars, const AstArray<AstExpr*>& values, AstStatBlock* body,
-    bool hasIn, const Location& inLocation, bool hasDo, const Location& doLocation, bool hasEnd)
+    bool hasIn, const Location& inLocation, bool hasDo, const Location& doLocation, bool DEPRECATED_hasEnd)
     : AstStat(ClassIndex(), location)
     , vars(vars)
     , values(values)
@@ -561,7 +566,7 @@ AstStatForIn::AstStatForIn(const Location& location, const AstArray<AstLocal*>& 
     , inLocation(inLocation)
     , hasDo(hasDo)
     , doLocation(doLocation)
-    , hasEnd(hasEnd)
+    , DEPRECATED_hasEnd(DEPRECATED_hasEnd)
 {
 }
 
@@ -702,6 +707,21 @@ AstStatDeclareFunction::AstStatDeclareFunction(const Location& location, const A
     , params(params)
     , paramNames(paramNames)
     , retTypes(retTypes)
+    , checkedFunction(false)
+{
+}
+
+AstStatDeclareFunction::AstStatDeclareFunction(const Location& location, const AstName& name, const AstArray<AstGenericType>& generics,
+    const AstArray<AstGenericTypePack>& genericPacks, const AstTypeList& params, const AstArray<AstArgumentName>& paramNames,
+    const AstTypeList& retTypes, bool checkedFunction)
+    : AstStat(ClassIndex(), location)
+    , name(name)
+    , generics(generics)
+    , genericPacks(genericPacks)
+    , params(params)
+    , paramNames(paramNames)
+    , retTypes(retTypes)
+    , checkedFunction(checkedFunction)
 {
 }
 
@@ -714,12 +734,13 @@ void AstStatDeclareFunction::visit(AstVisitor* visitor)
     }
 }
 
-AstStatDeclareClass::AstStatDeclareClass(
-    const Location& location, const AstName& name, std::optional<AstName> superName, const AstArray<AstDeclaredClassProp>& props)
+AstStatDeclareClass::AstStatDeclareClass(const Location& location, const AstName& name, std::optional<AstName> superName,
+    const AstArray<AstDeclaredClassProp>& props, AstTableIndexer* indexer)
     : AstStat(ClassIndex(), location)
     , name(name)
     , superName(superName)
     , props(props)
+    , indexer(indexer)
 {
 }
 
@@ -753,12 +774,14 @@ void AstStatError::visit(AstVisitor* visitor)
     }
 }
 
-AstTypeReference::AstTypeReference(
-    const Location& location, std::optional<AstName> prefix, AstName name, bool hasParameterList, const AstArray<AstTypeOrPack>& parameters)
+AstTypeReference::AstTypeReference(const Location& location, std::optional<AstName> prefix, AstName name, std::optional<Location> prefixLocation,
+    const Location& nameLocation, bool hasParameterList, const AstArray<AstTypeOrPack>& parameters)
     : AstType(ClassIndex(), location)
     , hasParameterList(hasParameterList)
     , prefix(prefix)
+    , prefixLocation(prefixLocation)
     , name(name)
+    , nameLocation(nameLocation)
     , parameters(parameters)
 {
 }
@@ -807,6 +830,20 @@ AstTypeFunction::AstTypeFunction(const Location& location, const AstArray<AstGen
     , argTypes(argTypes)
     , argNames(argNames)
     , returnTypes(returnTypes)
+    , checkedFunction(false)
+{
+    LUAU_ASSERT(argNames.size == 0 || argNames.size == argTypes.types.size);
+}
+
+AstTypeFunction::AstTypeFunction(const Location& location, const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks,
+    const AstTypeList& argTypes, const AstArray<std::optional<AstArgumentName>>& argNames, const AstTypeList& returnTypes, bool checkedFunction)
+    : AstType(ClassIndex(), location)
+    , generics(generics)
+    , genericPacks(genericPacks)
+    , argTypes(argTypes)
+    , argNames(argNames)
+    , returnTypes(returnTypes)
+    , checkedFunction(checkedFunction)
 {
     LUAU_ASSERT(argNames.size == 0 || argNames.size == argTypes.types.size);
 }

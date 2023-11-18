@@ -9,8 +9,8 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError)
+LUAU_FASTFLAG(LuauInstantiateInSubtyping);
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
 using namespace Luau;
 
@@ -725,23 +725,20 @@ y.a.c = y
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    if (FFlag::LuauTypeMismatchInvarianceInError)
-    {
-        CHECK_EQ(toString(result.errors[0]),
-            R"(Type 'y' could not be converted into 'T<string>'
-caused by:
-  Property 'a' is not compatible. Type '{ c: T<string>?, d: number }' could not be converted into 'U<string>'
-caused by:
-  Property 'd' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
-    }
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(toString(result.errors.at(0)) ==
+              R"(Type 'x' could not be converted into 'T<number>'; type x["a"]["c"] (nil) is not exactly T<number>["a"]["c"][0] (T<number>))");
     else
     {
-        CHECK_EQ(toString(result.errors[0]),
-            R"(Type 'y' could not be converted into 'T<string>'
+        const std::string expected = R"(Type 'y' could not be converted into 'T<string>'
 caused by:
-  Property 'a' is not compatible. Type '{ c: T<string>?, d: number }' could not be converted into 'U<string>'
+  Property 'a' is not compatible.
+Type '{ c: T<string>?, d: number }' could not be converted into 'U<string>'
 caused by:
-  Property 'd' is not compatible. Type 'number' could not be converted into 'string')");
+  Property 'd' is not compatible.
+Type 'number' could not be converted into 'string' in an invariant context)";
+        CHECK_EQ(expected, toString(result.errors[0]));
     }
 }
 
@@ -865,7 +862,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_table_method")
     REQUIRE(tTable != nullptr);
 
     REQUIRE(tTable->props.count("bar"));
-    TypeId barType = tTable->props["bar"].type;
+    TypeId barType = tTable->props["bar"].type();
     REQUIRE(barType != nullptr);
 
     const FunctionType* ftv = get<FunctionType>(follow(barType));
@@ -874,7 +871,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_table_method")
     std::vector<TypeId> args = flatten(ftv->argTypes).first;
     TypeId argType = args.at(1);
 
-    CHECK_MESSAGE(get<Unifiable::Generic>(argType), "Should be generic: " << *barType);
+    CHECK_MESSAGE(get<GenericType>(argType), "Should be generic: " << *barType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "correctly_instantiate_polymorphic_member_functions")
@@ -900,7 +897,7 @@ TEST_CASE_FIXTURE(Fixture, "correctly_instantiate_polymorphic_member_functions")
     std::optional<Property> fooProp = get(t->props, "foo");
     REQUIRE(bool(fooProp));
 
-    const FunctionType* foo = get<FunctionType>(follow(fooProp->type));
+    const FunctionType* foo = get<FunctionType>(follow(fooProp->type()));
     REQUIRE(bool(foo));
 
     std::optional<TypeId> ret_ = first(foo->retTypes);
@@ -947,7 +944,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_cyclic_generic_function")
     std::optional<Property> methodProp = get(argTable->props, "method");
     REQUIRE(bool(methodProp));
 
-    const FunctionType* methodFunction = get<FunctionType>(methodProp->type);
+    const FunctionType* methodFunction = get<FunctionType>(follow(methodProp->type()));
     REQUIRE(methodFunction != nullptr);
 
     std::optional<TypeId> methodArg = first(methodFunction->argTypes);
@@ -1197,6 +1194,20 @@ end)
 local y = complex2.nested.getReturnValue(function()
 	return 3
 end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "apply_type_function_nested_generics3")
+{
+    // This minimization was useful for debugging a particular issue with
+    // cyclic types under local type inference.
+
+    CheckResult result = check(R"(
+        local getReturnValue: <V>(cb: () -> V) -> V = nil :: any
+
+        local y = getReturnValue(function() return nil :: any end)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);

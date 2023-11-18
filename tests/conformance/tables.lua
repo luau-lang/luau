@@ -578,6 +578,21 @@ do
   assert(#t2 == 6)
 end
 
+-- test boundary invariant in sparse arrays or various kinds
+do
+  local function obscuredalloc() return {} end
+
+  local bits = 16
+
+  for i = 1, 2^bits - 1 do
+      local t1 = obscuredalloc() -- to avoid NEWTABLE guessing correct size
+
+      for k = 1, bits do
+          t1[k] = if bit32.extract(i, k - 1) == 1 then true else nil
+      end
+  end
+end
+
 -- test table.unpack fastcall for rejecting large unpacks
 do
   local ok, res = pcall(function()
@@ -699,5 +714,12 @@ do
     assert(t:foo(i) == -i)
   end
 end
+
+-- check that fast path for table lookup can't be tricked into assuming a light user data with string pointer is a string
+assert((function ()
+  local t = {}
+  t[makelud("hi")] = "no"
+  return t.hi
+end)() == nil)
 
 return"OK"

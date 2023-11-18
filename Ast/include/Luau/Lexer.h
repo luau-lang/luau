@@ -62,6 +62,7 @@ struct Lexeme
         Dot3,
         SkinnyArrow,
         DoubleColon,
+        FloorDiv,
 
         InterpStringBegin,
         InterpStringMid,
@@ -73,6 +74,7 @@ struct Lexeme
         SubAssign,
         MulAssign,
         DivAssign,
+        FloorDivAssign,
         ModAssign,
         PowAssign,
         ConcatAssign,
@@ -89,7 +91,6 @@ struct Lexeme
         BrokenComment,
         BrokenUnicode,
         BrokenInterpDoubleBrace,
-
         Error,
 
         Reserved_BEGIN,
@@ -114,6 +115,7 @@ struct Lexeme
         ReservedTrue,
         ReservedUntil,
         ReservedWhile,
+        ReservedChecked,
         Reserved_END
     };
 
@@ -204,7 +206,9 @@ private:
 
     Position position() const;
 
+    // consume() assumes current character is not a newline for performance; when that is not known, consumeAny() should be used instead.
     void consume();
+    void consumeAny();
 
     Lexeme readCommentBody();
 

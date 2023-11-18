@@ -4,10 +4,19 @@
 #include "Luau/RegisterX64.h"
 #include "UnwindBuilder.h"
 
+#include <vector>
+
 namespace Luau
 {
 namespace CodeGen
 {
+
+struct UnwindFunctionDwarf2
+{
+    uint32_t beginOffset;
+    uint32_t endOffset;
+    uint32_t fdeEntryStartPos;
+};
 
 class UnwindBuilderDwarf2 : public UnwindBuilder
 {
@@ -15,27 +24,28 @@ public:
     void setBeginOffset(size_t beginOffset) override;
     size_t getBeginOffset() const override;
 
-    void start() override;
+    void startInfo(Arch arch) override;
+    void startFunction() override;
+    void finishFunction(uint32_t beginOffset, uint32_t endOffset) override;
+    void finishInfo() override;
 
-    void spill(int espOffset, X64::RegisterX64 reg) override;
-    void save(X64::RegisterX64 reg) override;
-    void allocStack(int size) override;
-    void setupFrameReg(X64::RegisterX64 reg, int espOffset) override;
-
-    void finish() override;
+    void prologueA64(uint32_t prologueSize, uint32_t stackSize, std::initializer_list<A64::RegisterA64> regs) override;
+    void prologueX64(uint32_t prologueSize, uint32_t stackSize, bool setupFrame, std::initializer_list<X64::RegisterX64> gpr,
+        const std::vector<X64::RegisterX64>& simd) override;
 
     size_t getSize() const override;
+    size_t getFunctionCount() const override;
 
-    void finalize(char* target, void* funcAddress, size_t funcSize) const override;
+    void finalize(char* target, size_t offset, void* funcAddress, size_t funcSize) const override;
 
 private:
     size_t beginOffset = 0;
 
-    static const unsigned kRawDataLimit = 128;
+    std::vector<UnwindFunctionDwarf2> unwindFunctions;
+
+    static const unsigned kRawDataLimit = 1024;
     uint8_t rawData[kRawDataLimit];
     uint8_t* pos = rawData;
-
-    uint32_t stackOffset = 0;
 
     // We will remember the FDE location to write some of the fields like entry length, function start and size later
     uint8_t* fdeEntryStart = nullptr;

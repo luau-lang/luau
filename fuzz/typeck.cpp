@@ -3,9 +3,9 @@
 
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Common.h"
+#include "Luau/Frontend.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Parser.h"
-#include "Luau/TypeInfer.h"
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)
@@ -23,22 +23,21 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size)
     Luau::ParseResult parseResult = Luau::Parser::parse(reinterpret_cast<const char*>(Data), Size, names, allocator, options);
 
     // "static" here is to accelerate fuzzing process by only creating and populating the type environment once
-    static Luau::NullModuleResolver moduleResolver;
-    static Luau::InternalErrorReporter iceHandler;
-    static Luau::TypeChecker sharedEnv(&moduleResolver, &iceHandler);
-    static int once = (Luau::registerBuiltinGlobals(sharedEnv), 1);
+    static Luau::NullFileResolver fileResolver;
+    static Luau::NullConfigResolver configResolver;
+    static Luau::Frontend frontend{&fileResolver, &configResolver};
+    static int once = (Luau::registerBuiltinGlobals(frontend, frontend.globals, false), 1);
     (void)once;
-    static int once2 = (Luau::freeze(sharedEnv.globalTypes), 1);
+    static int once2 = (Luau::freeze(frontend.globals.globalTypes), 1);
     (void)once2;
 
     if (parseResult.errors.empty())
     {
+        Luau::TypeChecker typeck(frontend.globals.globalScope, &frontend.moduleResolver, frontend.builtinTypes, &frontend.iceHandler);
+
         Luau::SourceModule module;
         module.root = parseResult.root;
         module.mode = Luau::Mode::Nonstrict;
-
-        Luau::TypeChecker typeck(&moduleResolver, &iceHandler);
-        typeck.globalScope = sharedEnv.globalScope;
 
         try
         {

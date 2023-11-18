@@ -10,6 +10,7 @@
 #include "ConstantFolding.h"
 #include "CostModel.h"
 #include "TableShape.h"
+#include "Types.h"
 #include "ValueTracking.h"
 
 #include <algorithm>
@@ -25,8 +26,8 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileTerminateBC, false)
-LUAU_FASTFLAGVARIABLE(LuauCompileBuiltinArity, false)
+LUAU_FASTFLAGVARIABLE(LuauCompileSideEffects, false)
+LUAU_FASTFLAGVARIABLE(LuauCompileDeadIf, false)
 
 namespace Luau
 {
@@ -36,6 +37,7 @@ using namespace Luau::Compile;
 static const uint32_t kMaxRegisterCount = 255;
 static const uint32_t kMaxUpvalueCount = 200;
 static const uint32_t kMaxLocalCount = 200;
+static const uint32_t kMaxInstructionCount = 1'000'000'000;
 
 static const uint8_t kInvalidReg = 255;
 
@@ -101,6 +103,7 @@ struct Compiler
         , locstants(nullptr)
         , tableShapes(nullptr)
         , builtins(nullptr)
+        , typeMap(nullptr)
     {
         // preallocate some buffers that are very likely to grow anyway; this works around std::vector's inefficient growth policy for small arrays
         localStack.reserve(16);
@@ -143,7 +146,7 @@ struct Compiler
             return stat->body.size > 0 && alwaysTerminates(stat->body.data[stat->body.size - 1]);
         else if (node->is<AstStatReturn>())
             return true;
-        else if (FFlag::LuauCompileTerminateBC && (node->is<AstStatBreak>() || node->is<AstStatContinue>()))
+        else if (node->is<AstStatBreak>() || node->is<AstStatContinue>())
             return true;
         else if (AstStatIf* stat = node->as<AstStatIf>())
             return stat->elsebody && alwaysTerminates(stat->thenbody) && alwaysTerminates(stat->elsebody);
@@ -185,7 +188,7 @@ struct Compiler
             return node->as<AstExprFunction>();
     }
 
-    uint32_t compileFunction(AstExprFunction* func)
+    uint32_t compileFunction(AstExprFunction* func, uint8_t protoflags)
     {
         LUAU_TIMETRACE_SCOPE("Compiler::compileFunction", "Compiler");
 
@@ -201,6 +204,10 @@ struct Compiler
         uint32_t fid = bytecode.beginFunction(uint8_t(self + func->args.size), func->vararg);
 
         setDebugLine(func);
+
+        // note: we move types out of typeMap which is safe because compileFunction is only called once per function
+        if (std::string* funcType = typeMap.find(func))
+            bytecode.setFunctionTypeInfo(std::move(*funcType));
 
         if (func->vararg)
             bytecode.emitABC(LOP_PREPVARARGS, uint8_t(self + func->args.size), 0, 0);
@@ -250,14 +257,21 @@ struct Compiler
 
         popLocals(0);
 
-        bytecode.endFunction(uint8_t(stackSize), uint8_t(upvals.size()));
+        if (bytecode.getInstructionCount() > kMaxInstructionCount)
+            CompileError::raise(func->location, "Exceeded function instruction limit; split the function into parts to compile");
+
+        // top-level code only executes once so it can be marked as cold if it has no loops; code with loops might be profitable to compile natively
+        if (func->functionDepth == 0 && !hasLoops)
+            protoflags |= LPF_NATIVE_COLD;
+
+        bytecode.endFunction(uint8_t(stackSize), uint8_t(upvals.size()), protoflags);
 
         Function& f = functions[func];
         f.id = fid;
         f.upvals = upvals;
 
         // record information for inlining
-        if (options.optimizationLevel >= 2 && !func->vararg && !getfenvUsed && !setfenvUsed)
+        if (options.optimizationLevel >= 2 && !func->vararg && !func->self && !getfenvUsed && !setfenvUsed)
         {
             f.canInline = true;
             f.stackSize = stackSize;
@@ -274,6 +288,7 @@ struct Compiler
 
         upvals.clear(); // note: instead of std::move above, we copy & clear to preserve capacity for future pushes
         stackSize = 0;
+        hasLoops = false;
 
         return fid;
     }
@@ -296,7 +311,7 @@ struct Compiler
 
         // handles builtin calls that can't be constant-folded but are known to return one value
         // note: optimizationLevel check is technically redundant but it's important that we never optimize based on builtins in O1
-        if (FFlag::LuauCompileBuiltinArity && options.optimizationLevel >= 2)
+        if (options.optimizationLevel >= 2)
             if (int* bfid = builtins.find(expr))
                 return getBuiltinInfo(*bfid).results != 1;
 
@@ -556,10 +571,11 @@ struct Compiler
 
         size_t oldLocals = localStack.size();
 
-        // note that we push the frame early; this is needed to block recursive inline attempts
-        inlineFrames.push_back({func, oldLocals, target, targetCount});
+        std::vector<InlineArg> args;
+        args.reserve(func->args.size);
 
         // evaluate all arguments; note that we don't emit code for constant arguments (relying on constant folding)
+        // note that compiler state (variable registers/values) does not change here - we defer that to a separate loop below to handle nested calls
         for (size_t i = 0; i < func->args.size; ++i)
         {
             AstLocal* var = func->args.data[i];
@@ -579,7 +595,7 @@ struct Compiler
                     LUAU_ASSERT(!"Unexpected expression type");
 
                 for (size_t j = i; j < func->args.size; ++j)
-                    pushLocal(func->args.data[j], uint8_t(reg + (j - i)));
+                    args.push_back({func->args.data[j], uint8_t(reg + (j - i))});
 
                 // all remaining function arguments have been allocated and assigned to
                 break;
@@ -594,17 +610,17 @@ struct Compiler
                 else
                     bytecode.emitABC(LOP_LOADNIL, reg, 0, 0);
 
-                pushLocal(var, reg);
+                args.push_back({var, reg});
             }
             else if (arg == nullptr)
             {
                 // since the argument is not mutated, we can simply fold the value into the expressions that need it
-                locstants[var] = {Constant::Type_Nil};
+                args.push_back({var, kInvalidReg, {Constant::Type_Nil}});
             }
             else if (const Constant* cv = constants.find(arg); cv && cv->type != Constant::Type_Unknown)
             {
                 // since the argument is not mutated, we can simply fold the value into the expressions that need it
-                locstants[var] = *cv;
+                args.push_back({var, kInvalidReg, *cv});
             }
             else
             {
@@ -614,26 +630,41 @@ struct Compiler
                 // if the argument is a local that isn't mutated, we will simply reuse the existing register
                 if (int reg = le ? getExprLocalReg(le) : -1; reg >= 0 && (!lv || !lv->written))
                 {
-                    pushLocal(var, uint8_t(reg));
+                    args.push_back({var, uint8_t(reg)});
                 }
                 else
                 {
                     uint8_t temp = allocReg(arg, 1);
                     compileExprTemp(arg, temp);
-                    pushLocal(var, temp);
+
+                    args.push_back({var, temp});
                 }
             }
         }
 
         // evaluate extra expressions for side effects
         for (size_t i = func->args.size; i < expr->args.size; ++i)
+            compileExprSide(expr->args.data[i]);
+
+        // apply all evaluated arguments to the compiler state
+        // note: locals use current startpc for debug info, although some of them have been computed earlier; this is similar to compileStatLocal
+        for (InlineArg& arg : args)
         {
-            RegScope rsi(this);
-            compileExprAuto(expr->args.data[i], rsi);
+            if (arg.value.type == Constant::Type_Unknown)
+            {
+                pushLocal(arg.local, arg.reg);
+            }
+            else
+            {
+                locstants[arg.local] = arg.value;
+            }
         }
 
+        // the inline frame will be used to compile return statements as well as to reject recursive inlining attempts
+        inlineFrames.push_back({func, oldLocals, target, targetCount});
+
         // fold constant values updated above into expressions in the function body
-        foldConstants(constants, variables, locstants, builtinsFold, func->body);
+        foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldMathK, func->body);
 
         bool usedFallthrough = false;
 
@@ -671,10 +702,14 @@ struct Compiler
 
         // clean up constant state for future inlining attempts
         for (size_t i = 0; i < func->args.size; ++i)
-            if (Constant* var = locstants.find(func->args.data[i]))
-                var->type = Constant::Type_Unknown;
+        {
+            AstLocal* local = func->args.data[i];
 
-        foldConstants(constants, variables, locstants, builtinsFold, func->body);
+            if (Constant* var = locstants.find(local))
+                var->type = Constant::Type_Unknown;
+        }
+
+        foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldMathK, func->body);
     }
 
     void compileExprCall(AstExprCall* expr, uint8_t target, uint8_t targetCount, bool targetTop = false, bool multRet = false)
@@ -767,8 +802,14 @@ struct Compiler
         {
             if (!isExprMultRet(expr->args.data[expr->args.size - 1]))
                 return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, bfid);
-            else if (FFlag::LuauCompileBuiltinArity && options.optimizationLevel >= 2 && int(expr->args.size) == getBuiltinInfo(bfid).params)
-                return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, bfid);
+            else if (options.optimizationLevel >= 2)
+            {
+                // when a builtin is none-safe with matching arity, even if the last expression returns 0 or >1 arguments,
+                // we can rely on the behavior of the function being the same (none-safe means nil and none are interchangeable)
+                BuiltinInfo info = getBuiltinInfo(bfid);
+                if (int(expr->args.size) == info.params && (info.flags & BuiltinInfo::Flag_NoneSafe) != 0)
+                    return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, bfid);
+            }
         }
 
         if (expr->self)
@@ -993,6 +1034,9 @@ struct Compiler
         case AstExprBinary::Div:
             return k ? LOP_DIVK : LOP_DIV;
 
+        case AstExprBinary::FloorDiv:
+            return k ? LOP_IDIVK : LOP_IDIV;
+
         case AstExprBinary::Mod:
             return k ? LOP_MODK : LOP_MOD;
 
@@ -1050,6 +1094,13 @@ struct Compiler
         return cv && cv->type != Constant::Type_Unknown && !cv->isTruthful();
     }
 
+    bool isConstantVector(AstExpr* node)
+    {
+        const Constant* cv = constants.find(node);
+
+        return cv && cv->type == Constant::Type_Vector;
+    }
+
     Constant getConstant(AstExpr* node)
     {
         const Constant* cv = constants.find(node);
@@ -1072,6 +1123,10 @@ struct Compiler
             if (operandIsConstant)
                 std::swap(left, right);
         }
+
+        // disable fast path for vectors because supporting it would require a new opcode
+        if (operandIsConstant && isConstantVector(right))
+            operandIsConstant = false;
 
         uint8_t rl = compileExprAuto(left, rs);
 
@@ -1180,6 +1235,10 @@ struct Compiler
 
         case Constant::Type_Number:
             cid = bytecode.addConstantNumber(c->valueNumber);
+            break;
+
+        case Constant::Type_Vector:
+            cid = bytecode.addConstantVector(c->valueVector[0], c->valueVector[1], c->valueVector[2], c->valueVector[3]);
             break;
 
         case Constant::Type_String:
@@ -1443,6 +1502,7 @@ struct Compiler
         case AstExprBinary::Sub:
         case AstExprBinary::Mul:
         case AstExprBinary::Div:
+        case AstExprBinary::FloorDiv:
         case AstExprBinary::Mod:
         case AstExprBinary::Pow:
         {
@@ -1512,6 +1572,23 @@ struct Compiler
         }
     }
 
+    void compileExprIfElseAndOr(bool and_, uint8_t creg, AstExpr* other, uint8_t target)
+    {
+        int32_t cid = getConstantIndex(other);
+
+        if (cid >= 0 && cid <= 255)
+        {
+            bytecode.emitABC(and_ ? LOP_ANDK : LOP_ORK, target, creg, uint8_t(cid));
+        }
+        else
+        {
+            RegScope rs(this);
+            uint8_t oreg = compileExprAuto(other, rs);
+
+            bytecode.emitABC(and_ ? LOP_AND : LOP_OR, target, creg, oreg);
+        }
+    }
+
     void compileExprIfElse(AstExprIfElse* expr, uint8_t target, bool targetTemp)
     {
         if (isConstant(expr->condition))
@@ -1527,6 +1604,17 @@ struct Compiler
         }
         else
         {
+            // Optimization: convert some if..then..else expressions into and/or when the other side has no side effects and is very cheap to compute
+            // if v then v else e => v or e
+            // if v then e else v => v and e
+            if (int creg = getExprLocalReg(expr->condition); creg >= 0)
+            {
+                if (creg == getExprLocalReg(expr->trueExpr) && (getExprLocalReg(expr->falseExpr) >= 0 || isConstant(expr->falseExpr)))
+                    return compileExprIfElseAndOr(/* and_= */ false, uint8_t(creg), expr->falseExpr, target);
+                else if (creg == getExprLocalReg(expr->falseExpr) && (getExprLocalReg(expr->trueExpr) >= 0 || isConstant(expr->trueExpr)))
+                    return compileExprIfElseAndOr(/* and_= */ true, uint8_t(creg), expr->trueExpr, target);
+            }
+
             std::vector<size_t> elseJump;
             compileConditionValue(expr->condition, nullptr, elseJump, false);
             compileExpr(expr->trueExpr, target, targetTemp);
@@ -1979,6 +2067,13 @@ struct Compiler
         }
         break;
 
+        case Constant::Type_Vector:
+        {
+            int32_t cid = bytecode.addConstantVector(cv->valueVector[0], cv->valueVector[1], cv->valueVector[2], cv->valueVector[3]);
+            emitLoadK(target, cid);
+        }
+        break;
+
         case Constant::Type_String:
         {
             int32_t cid = bytecode.addConstantString(sref(cv->getString()));
@@ -2132,6 +2227,23 @@ struct Compiler
         return reg;
     }
 
+    void compileExprSide(AstExpr* node)
+    {
+        if (FFlag::LuauCompileSideEffects)
+        {
+            // Optimization: some expressions never carry side effects so we don't need to emit any code
+            if (node->is<AstExprLocal>() || node->is<AstExprGlobal>() || node->is<AstExprVarargs>() || node->is<AstExprFunction>() || isConstant(node))
+                return;
+
+            // note: the remark is omitted for calls as it's fairly noisy due to inlining
+            if (!node->is<AstExprCall>())
+                bytecode.addDebugRemark("expression only compiled for side effects");
+        }
+
+        RegScope rsi(this);
+        compileExprAuto(node, rsi);
+    }
+
     // initializes target..target+targetCount-1 range using expression
     // if expression is a call/vararg, we assume it returns all values, otherwise we fill the rest with nil
     // assumes target register range can be clobbered and is at the top of the register space if targetTop = true
@@ -2180,10 +2292,7 @@ struct Compiler
 
             // evaluate extra expressions for side effects
             for (size_t i = targetCount; i < list.size; ++i)
-            {
-                RegScope rsi(this);
-                compileExprAuto(list.data[i], rsi);
-            }
+                compileExprSide(list.data[i]);
         }
         else if (list.size > 0)
         {
@@ -2418,6 +2527,18 @@ struct Compiler
             return;
         }
 
+        // Optimization: condition is always false but isn't a constant => we only need the else body and condition's side effects
+        if (FFlag::LuauCompileDeadIf)
+        {
+            if (AstExprBinary* cand = stat->condition->as<AstExprBinary>(); cand && cand->op == AstExprBinary::And && isConstantFalse(cand->right))
+            {
+                compileExprSide(cand->left);
+                if (stat->elsebody)
+                    compileStat(stat->elsebody);
+                return;
+            }
+        }
+
         // Optimization: body is a "break" statement with no "else" => we can directly break out of the loop in "then" case
         if (!stat->elsebody && isStatBreak(stat->thenbody) && !areLocalsCaptured(loops.back().localOffset))
         {
@@ -2430,13 +2551,14 @@ struct Compiler
             return;
         }
 
-        AstStat* continueStatement = extractStatContinue(stat->thenbody);
+        AstStatContinue* continueStatement = extractStatContinue(stat->thenbody);
 
         // Optimization: body is a "continue" statement with no "else" => we can directly continue in "then" case
-        if (!stat->elsebody && continueStatement != nullptr && !areLocalsCaptured(loops.back().localOffset))
+        if (!stat->elsebody && continueStatement != nullptr && !areLocalsCaptured(loops.back().localOffsetContinue))
         {
-            if (loops.back().untilCondition)
-                validateContinueUntil(continueStatement, loops.back().untilCondition);
+            // track continue statement for repeat..until validation (validateContinueUntil)
+            if (!loops.back().continueUsed)
+                loops.back().continueUsed = continueStatement;
 
             // fallthrough = proceed with the loop body as usual
             std::vector<size_t> elseJump;
@@ -2497,7 +2619,8 @@ struct Compiler
         size_t oldJumps = loopJumps.size();
         size_t oldLocals = localStack.size();
 
-        loops.push_back({oldLocals, nullptr});
+        loops.push_back({oldLocals, oldLocals, nullptr});
+        hasLoops = true;
 
         size_t loopLabel = bytecode.emitLabel();
 
@@ -2532,7 +2655,8 @@ struct Compiler
         size_t oldJumps = loopJumps.size();
         size_t oldLocals = localStack.size();
 
-        loops.push_back({oldLocals, stat->condition});
+        loops.push_back({oldLocals, oldLocals, nullptr});
+        hasLoops = true;
 
         size_t loopLabel = bytecode.emitLabel();
 
@@ -2542,8 +2666,26 @@ struct Compiler
 
         RegScope rs(this);
 
+        bool continueValidated = false;
+
         for (size_t i = 0; i < body->body.size; ++i)
+        {
             compileStat(body->body.data[i]);
+
+            // continue statement inside the repeat..until loop should not close upvalues defined directly in the loop body
+            // (but it must still close upvalues defined in more nested blocks)
+            // this is because the upvalues defined inside the loop body may be captured by a closure defined in the until
+            // expression that continue will jump to.
+            loops.back().localOffsetContinue = localStack.size();
+
+            // if continue was called from this statement, any local defined after this in the loop body should not be accessed by until condition
+            // it is sufficient to check this condition once, as if this holds for the first continue, it must hold for all subsequent continues.
+            if (loops.back().continueUsed && !continueValidated)
+            {
+                validateContinueUntil(loops.back().continueUsed, stat->condition, body, i + 1);
+                continueValidated = true;
+            }
+        }
 
         size_t contLabel = bytecode.emitLabel();
 
@@ -2760,7 +2902,7 @@ struct Compiler
         size_t oldLocals = localStack.size();
         size_t oldJumps = loopJumps.size();
 
-        loops.push_back({oldLocals, nullptr});
+        loops.push_back({oldLocals, oldLocals, nullptr});
 
         for (int iv = 0; iv < tripCount; ++iv)
         {
@@ -2768,7 +2910,7 @@ struct Compiler
             locstants[var].type = Constant::Type_Number;
             locstants[var].valueNumber = from + iv * step;
 
-            foldConstants(constants, variables, locstants, builtinsFold, stat);
+            foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldMathK, stat);
 
             size_t iterJumps = loopJumps.size();
 
@@ -2796,7 +2938,7 @@ struct Compiler
         // clean up fold state in case we need to recompile - normally we compile the loop body once, but due to inlining we may need to do it again
         locstants[var].type = Constant::Type_Unknown;
 
-        foldConstants(constants, variables, locstants, builtinsFold, stat);
+        foldConstants(constants, variables, locstants, builtinsFold, builtinsFoldMathK, stat);
     }
 
     void compileStatFor(AstStatFor* stat)
@@ -2811,7 +2953,8 @@ struct Compiler
         size_t oldLocals = localStack.size();
         size_t oldJumps = loopJumps.size();
 
-        loops.push_back({oldLocals, nullptr});
+        loops.push_back({oldLocals, oldLocals, nullptr});
+        hasLoops = true;
 
         // register layout: limit, step, index
         uint8_t regs = allocReg(stat, 3);
@@ -2875,7 +3018,8 @@ struct Compiler
         size_t oldLocals = localStack.size();
         size_t oldJumps = loopJumps.size();
 
-        loops.push_back({oldLocals, nullptr});
+        loops.push_back({oldLocals, oldLocals, nullptr});
+        hasLoops = true;
 
         // register layout: generator, state, index, variables...
         uint8_t regs = allocReg(stat, 3);
@@ -3122,12 +3266,9 @@ struct Compiler
             }
         }
 
-        // compute expressions with side effects for lulz
+        // compute expressions with side effects
         for (size_t i = stat->vars.size; i < stat->values.size; ++i)
-        {
-            RegScope rsi(this);
-            compileExprAuto(stat->values.data[i], rsi);
-        }
+            compileExprSide(stat->values.data[i]);
 
         // almost done... let's assign everything left to right, noting that locals were either written-to directly, or will be written-to in a
         // separate pass to avoid conflicts
@@ -3166,6 +3307,7 @@ struct Compiler
         case AstExprBinary::Sub:
         case AstExprBinary::Mul:
         case AstExprBinary::Div:
+        case AstExprBinary::FloorDiv:
         case AstExprBinary::Mod:
         case AstExprBinary::Pow:
         {
@@ -3283,12 +3425,13 @@ struct Compiler
         {
             LUAU_ASSERT(!loops.empty());
 
-            if (loops.back().untilCondition)
-                validateContinueUntil(stat, loops.back().untilCondition);
+            // track continue statement for repeat..until validation (validateContinueUntil)
+            if (!loops.back().continueUsed)
+                loops.back().continueUsed = stat;
 
             // before continuing, we need to close all local variables that were captured in closures since loop start
             // normally they are closed by the enclosing blocks, including the loop block, but we're skipping that here
-            closeLocals(loops.back().localOffset);
+            closeLocals(loops.back().localOffsetContinue);
 
             size_t label = bytecode.emitLabel();
 
@@ -3315,8 +3458,7 @@ struct Compiler
             }
             else
             {
-                RegScope rs(this);
-                compileExprAuto(stat->expr, rs);
+                compileExprSide(stat->expr);
             }
         }
         else if (AstStatLocal* stat = node->as<AstStatLocal>())
@@ -3367,9 +3509,23 @@ struct Compiler
         }
     }
 
-    void validateContinueUntil(AstStat* cont, AstExpr* condition)
+    void validateContinueUntil(AstStat* cont, AstExpr* condition, AstStatBlock* body, size_t start)
     {
         UndefinedLocalVisitor visitor(this);
+
+        for (size_t i = start; i < body->body.size; ++i)
+        {
+            if (AstStatLocal* stat = body->body.data[i]->as<AstStatLocal>())
+            {
+                for (AstLocal* local : stat->vars)
+                    visitor.locals.insert(local);
+            }
+            else if (AstStatLocalFunction* stat = body->body.data[i]->as<AstStatLocalFunction>())
+            {
+                visitor.locals.insert(stat->name);
+            }
+        }
+
         condition->visit(&visitor);
 
         if (visitor.undef)
@@ -3565,6 +3721,7 @@ struct Compiler
     {
         Compiler* self;
         std::vector<AstExprFunction*>& functions;
+        bool hasTypes = false;
 
         FunctionVisitor(Compiler* self, std::vector<AstExprFunction*>& functions)
             : self(self)
@@ -3578,6 +3735,9 @@ struct Compiler
         {
             node->body->visit(this);
 
+            for (AstLocal* arg : node->args)
+                hasTypes |= arg->annotation != nullptr;
+
             // this makes sure all functions that are used when compiling this one have been already added to the vector
             functions.push_back(node);
 
@@ -3590,14 +3750,13 @@ struct Compiler
         UndefinedLocalVisitor(Compiler* self)
             : self(self)
             , undef(nullptr)
+            , locals(nullptr)
         {
         }
 
         void check(AstLocal* local)
         {
-            Local& l = self->locals[local];
-
-            if (!l.allocated && !undef)
+            if (!undef && locals.contains(local))
                 undef = local;
         }
 
@@ -3627,6 +3786,7 @@ struct Compiler
 
         Compiler* self;
         AstLocal* undef;
+        DenseHashSet<AstLocal*> locals;
     };
 
     struct ConstUpvalueVisitor : AstVisitor
@@ -3740,8 +3900,17 @@ struct Compiler
     struct Loop
     {
         size_t localOffset;
+        size_t localOffsetContinue;
 
-        AstExpr* untilCondition;
+        AstStatContinue* continueUsed;
+    };
+
+    struct InlineArg
+    {
+        AstLocal* local;
+
+        uint8_t reg;
+        Constant value;
     };
 
     struct InlineFrame
@@ -3774,10 +3943,15 @@ struct Compiler
     DenseHashMap<AstLocal*, Constant> locstants;
     DenseHashMap<AstExprTable*, TableShape> tableShapes;
     DenseHashMap<AstExprCall*, int> builtins;
-    const DenseHashMap<AstExprCall*, int>* builtinsFold = nullptr;
+    DenseHashMap<AstExprFunction*, std::string> typeMap;
 
+    const DenseHashMap<AstExprCall*, int>* builtinsFold = nullptr;
+    bool builtinsFoldMathK = false;
+
+    // compileFunction state, gets reset for every function
     unsigned int regTop = 0;
     unsigned int stackSize = 0;
+    bool hasLoops = false;
 
     bool getfenvUsed = false;
     bool setfenvUsed = false;
@@ -3799,10 +3973,19 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     LUAU_ASSERT(parseResult.errors.empty());
 
     CompileOptions options = inputOptions;
+    uint8_t mainFlags = 0;
 
     for (const HotComment& hc : parseResult.hotcomments)
+    {
         if (hc.header && hc.content.compare(0, 9, "optimize ") == 0)
             options.optimizationLevel = std::max(0, std::min(2, atoi(hc.content.c_str() + 9)));
+
+        if (hc.header && hc.content == "native")
+        {
+            mainFlags |= LPF_NATIVE_MODULE;
+            options.optimizationLevel = 2; // note: this might be removed in the future in favor of --!optimize
+        }
+    }
 
     AstStatBlock* root = parseResult.root;
 
@@ -3814,9 +3997,21 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     // this pass analyzes mutability of locals/globals and associates locals with their initial values
     trackValues(compiler.globals, compiler.variables, root);
 
+    // this visitor tracks calls to getfenv/setfenv and disables some optimizations when they are found
+    if (options.optimizationLevel >= 1 && (names.get("getfenv").value || names.get("setfenv").value))
+    {
+        Compiler::FenvVisitor fenvVisitor(compiler.getfenvUsed, compiler.setfenvUsed);
+        root->visit(&fenvVisitor);
+    }
+
     // builtin folding is enabled on optimization level 2 since we can't deoptimize folding at runtime
-    if (options.optimizationLevel >= 2)
+    if (options.optimizationLevel >= 2 && (!compiler.getfenvUsed && !compiler.setfenvUsed))
+    {
         compiler.builtinsFold = &compiler.builtins;
+
+        if (AstName math = names.get("math"); math.value && getGlobalState(compiler.globals, math) == Global::Default)
+            compiler.builtinsFoldMathK = true;
+    }
 
     if (options.optimizationLevel >= 1)
     {
@@ -3824,17 +4019,10 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
         analyzeBuiltins(compiler.builtins, compiler.globals, compiler.variables, options, root);
 
         // this pass analyzes constantness of expressions
-        foldConstants(compiler.constants, compiler.variables, compiler.locstants, compiler.builtinsFold, root);
+        foldConstants(compiler.constants, compiler.variables, compiler.locstants, compiler.builtinsFold, compiler.builtinsFoldMathK, root);
 
         // this pass analyzes table assignments to estimate table shapes for initially empty tables
         predictTableShapes(compiler.tableShapes, root);
-    }
-
-    // this visitor tracks calls to getfenv/setfenv and disables some optimizations when they are found
-    if (options.optimizationLevel >= 1 && (names.get("getfenv").value || names.get("setfenv").value))
-    {
-        Compiler::FenvVisitor fenvVisitor(compiler.getfenvUsed, compiler.setfenvUsed);
-        root->visit(&fenvVisitor);
     }
 
     // gathers all functions with the invariant that all function references are to functions earlier in the list
@@ -3843,13 +4031,17 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     Compiler::FunctionVisitor functionVisitor(&compiler, functions);
     root->visit(&functionVisitor);
 
+    // computes type information for all functions based on type annotations
+    if (functionVisitor.hasTypes)
+        buildTypeMap(compiler.typeMap, root, options.vectorType);
+
     for (AstExprFunction* expr : functions)
-        compiler.compileFunction(expr);
+        compiler.compileFunction(expr, 0);
 
     AstExprFunction main(root->location, /*generics= */ AstArray<AstGenericType>(), /*genericPacks= */ AstArray<AstGenericTypePack>(),
         /* self= */ nullptr, AstArray<AstLocal*>(), /* vararg= */ true, /* varargLocation= */ Luau::Location(), root, /* functionDepth= */ 0,
         /* debugname= */ AstName());
-    uint32_t mainid = compiler.compileFunction(&main);
+    uint32_t mainid = compiler.compileFunction(&main, mainFlags);
 
     const Compiler::Function* mainf = compiler.functions.find(&main);
     LUAU_ASSERT(mainf && mainf->upvals.empty());

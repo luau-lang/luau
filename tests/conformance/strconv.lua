@@ -24,6 +24,8 @@ assert(tostring(-0.17) == "-0.17")
 assert(tostring(math.pi) == "3.141592653589793")
 
 -- fuzzing corpus
+-- Note: If the assert below fires it may indicate floating point denormalized values
+-- are not handled as expected.
 assert(tostring(5.4536123983019448e-311) == "5.453612398302e-311")
 assert(tostring(5.4834368411298348e-311) == "5.48343684113e-311")
 assert(tostring(4.4154895841930002e-305) == "4.415489584193e-305")

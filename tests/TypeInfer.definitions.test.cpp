@@ -78,7 +78,7 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_loading")
 TEST_CASE_FIXTURE(Fixture, "load_definition_file_errors_do_not_pollute_global_scope")
 {
     unfreeze(frontend.globals.globalTypes);
-    LoadDefinitionFileResult parseFailResult = loadDefinitionFile(frontend.typeChecker, frontend.globals, frontend.globals.globalScope, R"(
+    LoadDefinitionFileResult parseFailResult = frontend.loadDefinitionFile(frontend.globals, frontend.globals.globalScope, R"(
         declare foo
     )",
         "@test", /* captureComments */ false);
@@ -88,7 +88,7 @@ TEST_CASE_FIXTURE(Fixture, "load_definition_file_errors_do_not_pollute_global_sc
     std::optional<Binding> fooTy = tryGetGlobalBinding(frontend.globals, "foo");
     CHECK(!fooTy.has_value());
 
-    LoadDefinitionFileResult checkFailResult = loadDefinitionFile(frontend.typeChecker, frontend.globals, frontend.globals.globalScope, R"(
+    LoadDefinitionFileResult checkFailResult = frontend.loadDefinitionFile(frontend.globals, frontend.globals.globalScope, R"(
         local foo: string = 123
         declare bar: typeof(foo)
     )",
@@ -140,7 +140,7 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_classes")
 TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_overload_non_function")
 {
     unfreeze(frontend.globals.globalTypes);
-    LoadDefinitionFileResult result = loadDefinitionFile(frontend.typeChecker, frontend.globals, frontend.globals.globalScope, R"(
+    LoadDefinitionFileResult result = frontend.loadDefinitionFile(frontend.globals, frontend.globals.globalScope, R"(
         declare class A
             X: number
             X: string
@@ -161,7 +161,7 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_overload_non_function")
 TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_extend_non_class")
 {
     unfreeze(frontend.globals.globalTypes);
-    LoadDefinitionFileResult result = loadDefinitionFile(frontend.typeChecker, frontend.globals, frontend.globals.globalScope, R"(
+    LoadDefinitionFileResult result = frontend.loadDefinitionFile(frontend.globals, frontend.globals.globalScope, R"(
         type NotAClass = {}
 
         declare class Foo extends NotAClass
@@ -182,7 +182,7 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_extend_non_class")
 TEST_CASE_FIXTURE(Fixture, "no_cyclic_defined_classes")
 {
     unfreeze(frontend.globals.globalTypes);
-    LoadDefinitionFileResult result = loadDefinitionFile(frontend.typeChecker, frontend.globals, frontend.globals.globalScope, R"(
+    LoadDefinitionFileResult result = frontend.loadDefinitionFile(frontend.globals, frontend.globals.globalScope, R"(
         declare class Foo extends Bar
         end
 
@@ -394,10 +394,37 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_string_props")
     CHECK_EQ(toString(requireType("y")), "string");
 }
 
+
+TEST_CASE_FIXTURE(Fixture, "class_definition_indexer")
+{
+    loadDefinition(R"(
+        declare class Foo
+            [number]: string
+        end
+    )");
+
+    CheckResult result = check(R"(
+        local x: Foo
+        local y = x[1]
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    const ClassType* ctv = get<ClassType>(requireType("x"));
+    REQUIRE(ctv != nullptr);
+
+    REQUIRE(bool(ctv->indexer));
+
+    CHECK_EQ(*ctv->indexer->indexType, *builtinTypes->numberType);
+    CHECK_EQ(*ctv->indexer->indexResultType, *builtinTypes->stringType);
+
+    CHECK_EQ(toString(requireType("y")), "string");
+}
+
 TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
 {
     unfreeze(frontend.globals.globalTypes);
-    LoadDefinitionFileResult result = loadDefinitionFile(frontend.typeChecker, frontend.globals, frontend.globals.globalScope, R"(
+    LoadDefinitionFileResult result = frontend.loadDefinitionFile(frontend.globals, frontend.globals.globalScope, R"(
         declare class Channel
             Messages: { Message }
             OnMessage: (message: Message) -> ()

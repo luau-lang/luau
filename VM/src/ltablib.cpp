@@ -10,8 +10,6 @@
 #include "ldebug.h"
 #include "lvm.h"
 
-LUAU_FASTFLAGVARIABLE(LuauOptimizedSort, false)
-
 static int foreachi(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
@@ -219,17 +217,17 @@ static int tmove(lua_State* L)
     return 1;
 }
 
-static void addfield(lua_State* L, luaL_Buffer* b, int i)
+static void addfield(lua_State* L, luaL_Strbuf* b, int i)
 {
-    lua_rawgeti(L, 1, i);
-    if (!lua_isstring(L, -1))
+    int tt = lua_rawgeti(L, 1, i);
+    if (tt != LUA_TSTRING && tt != LUA_TNUMBER)
         luaL_error(L, "invalid value (%s) at index %d in table for 'concat'", luaL_typename(L, -1), i);
     luaL_addvalue(b);
 }
 
 static int tconcat(lua_State* L)
 {
-    luaL_Buffer b;
+    luaL_Strbuf b;
     size_t lsep;
     int i, last;
     const char* sep = luaL_optlstring(L, 2, "", &lsep);
@@ -240,7 +238,7 @@ static int tconcat(lua_State* L)
     for (; i < last; i++)
     {
         addfield(L, &b, i);
-        luaL_addlstring(&b, sep, lsep, -1);
+        luaL_addlstring(&b, sep, lsep);
     }
     if (i == last) // add last value (if interval was not empty)
         addfield(L, &b, i);
@@ -298,120 +296,6 @@ static int tunpack(lua_State* L)
     return (int)n;
 }
 
-/*
-** {======================================================
-** Quicksort
-** (based on `Algorithms in MODULA-3', Robert Sedgewick;
-**  Addison-Wesley, 1993.)
-*/
-
-static void set2(lua_State* L, int i, int j)
-{
-    LUAU_ASSERT(!FFlag::LuauOptimizedSort);
-    lua_rawseti(L, 1, i);
-    lua_rawseti(L, 1, j);
-}
-
-static int sort_comp(lua_State* L, int a, int b)
-{
-    LUAU_ASSERT(!FFlag::LuauOptimizedSort);
-    if (!lua_isnil(L, 2))
-    { // function?
-        int res;
-        lua_pushvalue(L, 2);
-        lua_pushvalue(L, a - 1); // -1 to compensate function
-        lua_pushvalue(L, b - 2); // -2 to compensate function and `a'
-        lua_call(L, 2, 1);
-        res = lua_toboolean(L, -1);
-        lua_pop(L, 1);
-        return res;
-    }
-    else // a < b?
-        return lua_lessthan(L, a, b);
-}
-
-static void auxsort(lua_State* L, int l, int u)
-{
-    LUAU_ASSERT(!FFlag::LuauOptimizedSort);
-    while (l < u)
-    { // for tail recursion
-        int i, j;
-        // sort elements a[l], a[(l+u)/2] and a[u]
-        lua_rawgeti(L, 1, l);
-        lua_rawgeti(L, 1, u);
-        if (sort_comp(L, -1, -2)) // a[u] < a[l]?
-            set2(L, l, u);        // swap a[l] - a[u]
-        else
-            lua_pop(L, 2);
-        if (u - l == 1)
-            break; // only 2 elements
-        i = (l + u) / 2;
-        lua_rawgeti(L, 1, i);
-        lua_rawgeti(L, 1, l);
-        if (sort_comp(L, -2, -1)) // a[i]<a[l]?
-            set2(L, i, l);
-        else
-        {
-            lua_pop(L, 1); // remove a[l]
-            lua_rawgeti(L, 1, u);
-            if (sort_comp(L, -1, -2)) // a[u]<a[i]?
-                set2(L, i, u);
-            else
-                lua_pop(L, 2);
-        }
-        if (u - l == 2)
-            break;            // only 3 elements
-        lua_rawgeti(L, 1, i); // Pivot
-        lua_pushvalue(L, -1);
-        lua_rawgeti(L, 1, u - 1);
-        set2(L, i, u - 1);
-        // a[l] <= P == a[u-1] <= a[u], only need to sort from l+1 to u-2
-        i = l;
-        j = u - 1;
-        for (;;)
-        { // invariant: a[l..i] <= P <= a[j..u]
-            // repeat ++i until a[i] >= P
-            while (lua_rawgeti(L, 1, ++i), sort_comp(L, -1, -2))
-            {
-                if (i >= u)
-                    luaL_error(L, "invalid order function for sorting");
-                lua_pop(L, 1); // remove a[i]
-            }
-            // repeat --j until a[j] <= P
-            while (lua_rawgeti(L, 1, --j), sort_comp(L, -3, -1))
-            {
-                if (j <= l)
-                    luaL_error(L, "invalid order function for sorting");
-                lua_pop(L, 1); // remove a[j]
-            }
-            if (j < i)
-            {
-                lua_pop(L, 3); // pop pivot, a[i], a[j]
-                break;
-            }
-            set2(L, i, j);
-        }
-        lua_rawgeti(L, 1, u - 1);
-        lua_rawgeti(L, 1, i);
-        set2(L, u - 1, i); // swap pivot (a[u-1]) with a[i]
-        // a[l..i-1] <= a[i] == P <= a[i+1..u]
-        // adjust so that smaller half is in [j..i] and larger one in [l..u]
-        if (i - l < u - i)
-        {
-            j = l;
-            i = i - 1;
-            l = i + 2;
-        }
-        else
-        {
-            j = i + 1;
-            i = u;
-            u = j - 2;
-        }
-        auxsort(L, j, i); // call recursively the smaller one
-    }                     // repeat the routine for the larger one
-}
-
 typedef int (*SortPredicate)(lua_State* L, const TValue* l, const TValue* r);
 
 static int sort_func(lua_State* L, const TValue* l, const TValue* r)
@@ -456,30 +340,77 @@ inline int sort_less(lua_State* L, Table* t, int i, int j, SortPredicate pred)
     return res;
 }
 
-static void sort_rec(lua_State* L, Table* t, int l, int u, SortPredicate pred)
+static void sort_siftheap(lua_State* L, Table* t, int l, int u, SortPredicate pred, int root)
+{
+    LUAU_ASSERT(l <= u);
+    int count = u - l + 1;
+
+    // process all elements with two children
+    while (root * 2 + 2 < count)
+    {
+        int left = root * 2 + 1, right = root * 2 + 2;
+        int next = root;
+        next = sort_less(L, t, l + next, l + left, pred) ? left : next;
+        next = sort_less(L, t, l + next, l + right, pred) ? right : next;
+
+        if (next == root)
+            break;
+
+        sort_swap(L, t, l + root, l + next);
+        root = next;
+    }
+
+    // process last element if it has just one child
+    int lastleft = root * 2 + 1;
+    if (lastleft == count - 1 && sort_less(L, t, l + root, l + lastleft, pred))
+        sort_swap(L, t, l + root, l + lastleft);
+}
+
+static void sort_heap(lua_State* L, Table* t, int l, int u, SortPredicate pred)
+{
+    LUAU_ASSERT(l <= u);
+    int count = u - l + 1;
+
+    for (int i = count / 2 - 1; i >= 0; --i)
+        sort_siftheap(L, t, l, u, pred, i);
+
+    for (int i = count - 1; i > 0; --i)
+    {
+        sort_swap(L, t, l, l + i);
+        sort_siftheap(L, t, l, l + i - 1, pred, 0);
+    }
+}
+
+static void sort_rec(lua_State* L, Table* t, int l, int u, int limit, SortPredicate pred)
 {
     // sort range [l..u] (inclusive, 0-based)
     while (l < u)
     {
-        int i, j;
+        // if the limit has been reached, quick sort is going over the permitted nlogn complexity, so we fall back to heap sort
+        if (limit == 0)
+            return sort_heap(L, t, l, u, pred);
+
         // sort elements a[l], a[(l+u)/2] and a[u]
+        // note: this simultaneously acts as a small sort and a median selector
         if (sort_less(L, t, u, l, pred)) // a[u] < a[l]?
             sort_swap(L, t, u, l);       // swap a[l] - a[u]
         if (u - l == 1)
             break;                       // only 2 elements
-        i = l + ((u - l) >> 1);          // midpoint
-        if (sort_less(L, t, i, l, pred)) // a[i]<a[l]?
-            sort_swap(L, t, i, l);
-        else if (sort_less(L, t, u, i, pred)) // a[u]<a[i]?
-            sort_swap(L, t, i, u);
+        int m = l + ((u - l) >> 1);      // midpoint
+        if (sort_less(L, t, m, l, pred)) // a[m]<a[l]?
+            sort_swap(L, t, m, l);
+        else if (sort_less(L, t, u, m, pred)) // a[u]<a[m]?
+            sort_swap(L, t, m, u);
         if (u - l == 2)
             break; // only 3 elements
-        // here l, i, u are ordered; i will become the new pivot
+
+        // here l, m, u are ordered; m will become the new pivot
         int p = u - 1;
-        sort_swap(L, t, i, u - 1); // pivot is now (and always) at u-1
+        sort_swap(L, t, m, u - 1); // pivot is now (and always) at u-1
+
         // a[l] <= P == a[u-1] <= a[u], only need to sort from l+1 to u-2
-        i = l;
-        j = u - 1;
+        int i = l;
+        int j = u - 1;
         for (;;)
         { // invariant: a[l..i] <= P <= a[j..u]
             // repeat ++i until a[i] >= P
@@ -498,62 +429,48 @@ static void sort_rec(lua_State* L, Table* t, int l, int u, SortPredicate pred)
                 break;
             sort_swap(L, t, i, j);
         }
-        // swap pivot (a[u-1]) with a[i], which is the new midpoint
-        sort_swap(L, t, u - 1, i);
+
+        // swap pivot a[p] with a[i], which is the new midpoint
+        sort_swap(L, t, p, i);
+
+        // adjust limit to allow 1.5 log2N recursive steps
+        limit = (limit >> 1) + (limit >> 2);
+
         // a[l..i-1] <= a[i] == P <= a[i+1..u]
-        // adjust so that smaller half is in [j..i] and larger one in [l..u]
+        // sort smaller half recursively; the larger half is sorted in the next loop iteration
         if (i - l < u - i)
         {
-            j = l;
-            i = i - 1;
-            l = i + 2;
+            sort_rec(L, t, l, i - 1, limit, pred);
+            l = i + 1;
         }
         else
         {
-            j = i + 1;
-            i = u;
-            u = j - 2;
+            sort_rec(L, t, i + 1, u, limit, pred);
+            u = i - 1;
         }
-        sort_rec(L, t, j, i, pred); // call recursively the smaller one
-    }                               // repeat the routine for the larger one
+    }
 }
 
 static int tsort(lua_State* L)
 {
-    if (FFlag::LuauOptimizedSort)
-    {
-        luaL_checktype(L, 1, LUA_TTABLE);
-        Table* t = hvalue(L->base);
-        int n = luaH_getn(t);
-        if (t->readonly)
-            luaG_readonlyerror(L);
+    luaL_checktype(L, 1, LUA_TTABLE);
+    Table* t = hvalue(L->base);
+    int n = luaH_getn(t);
+    if (t->readonly)
+        luaG_readonlyerror(L);
 
-        SortPredicate pred = luaV_lessthan;
-        if (!lua_isnoneornil(L, 2)) // is there a 2nd argument?
-        {
-            luaL_checktype(L, 2, LUA_TFUNCTION);
-            pred = sort_func;
-        }
-        lua_settop(L, 2); // make sure there are two arguments
-
-        if (n > 0)
-            sort_rec(L, t, 0, n - 1, pred);
-        return 0;
-    }
-    else
+    SortPredicate pred = luaV_lessthan;
+    if (!lua_isnoneornil(L, 2)) // is there a 2nd argument?
     {
-        luaL_checktype(L, 1, LUA_TTABLE);
-        int n = lua_objlen(L, 1);
-        luaL_checkstack(L, 40, ""); // assume array is smaller than 2^40
-        if (!lua_isnoneornil(L, 2)) // is there a 2nd argument?
-            luaL_checktype(L, 2, LUA_TFUNCTION);
-        lua_settop(L, 2); // make sure there is two arguments
-        auxsort(L, 1, n);
-        return 0;
+        luaL_checktype(L, 2, LUA_TFUNCTION);
+        pred = sort_func;
     }
+    lua_settop(L, 2); // make sure there are two arguments
+
+    if (n > 0)
+        sort_rec(L, t, 0, n - 1, n, pred);
+    return 0;
 }
-
-// }======================================================
 
 static int tcreate(lua_State* L)
 {

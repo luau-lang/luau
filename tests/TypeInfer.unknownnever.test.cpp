@@ -6,6 +6,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 TEST_SUITE_BEGIN("TypeInferUnknownNever");
 
 TEST_CASE_FIXTURE(Fixture, "string_subtype_and_unknown_supertype")
@@ -301,10 +303,6 @@ TEST_CASE_FIXTURE(Fixture, "length_of_never")
 
 TEST_CASE_FIXTURE(Fixture, "dont_unify_operands_if_one_of_the_operand_is_never_in_any_ordering_operators")
 {
-    ScopedFastFlag sff[]{
-        {"LuauTryhardAnd", true},
-    };
-
     CheckResult result = check(R"(
         local function ord(x: nil, y)
             return x ~= nil and x > y
@@ -314,12 +312,9 @@ TEST_CASE_FIXTURE(Fixture, "dont_unify_operands_if_one_of_the_operand_is_never_i
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("<a>(nil, a) -> boolean", toString(requireType("ord")));
+        CHECK_EQ("(nil, unknown) -> boolean", toString(requireType("ord")));
     else
-    {
-        // Widening doesn't normalize yet, so the result is a bit strange
-        CHECK_EQ("<a>(nil, a) -> boolean | boolean", toString(requireType("ord")));
-    }
+        CHECK_EQ("<a>(nil, a) -> boolean", toString(requireType("ord")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "math_operators_and_never")
@@ -332,6 +327,63 @@ TEST_CASE_FIXTURE(Fixture, "math_operators_and_never")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("<a>(nil, a) -> boolean", toString(requireType("mul")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "compare_never")
+{
+    CheckResult result = check(R"(
+        local function cmp(x: nil, y: number)
+            return x ~= nil and x > y and x < y -- infers boolean | never, which is normalized into boolean
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("(nil, number) -> boolean", toString(requireType("cmp")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "lti_error_at_declaration_for_never_normalizations")
+{
+    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        local function num(x: number) end
+        local function str(x: string) end
+        local function cond(): boolean return false end
+
+        local function f(a)
+            if cond() then
+                num(a)
+            else
+                str(a)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    CHECK(toString(result.errors[0]) == "Parameter 'a' has been reduced to never. This function is not callable with any possible value.");
+    CHECK(toString(result.errors[1]) == "Parameter 'a' is required to be a subtype of 'number' here.");
+    CHECK(toString(result.errors[2]) == "Parameter 'a' is required to be a subtype of 'string' here.");
+}
+
+TEST_CASE_FIXTURE(Fixture, "lti_permit_explicit_never_annotation")
+{
+    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        local function num(x: number) end
+        local function str(x: string) end
+        local function cond(): boolean return false end
+
+        local function f(a: never)
+            if cond() then
+                num(a)
+            else
+                str(a)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

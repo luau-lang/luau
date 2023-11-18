@@ -10,7 +10,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <Windows.h>
+#include <windows.h>
 #else
 #include <dirent.h>
 #include <fcntl.h>
@@ -165,11 +165,14 @@ static bool traverseDirectoryRec(const std::string& path, const std::function<vo
         {
             joinPaths(buf, path.c_str(), data.d_name);
 
-            int type = data.d_type;
-            int mode = -1;
+#if defined(DTTOIF)
+            mode_t mode = DTTOIF(data.d_type);
+#else
+            mode_t mode = 0;
+#endif
 
-            // we need to stat DT_UNKNOWN to be able to tell the type
-            if (type == DT_UNKNOWN)
+            // we need to stat an UNKNOWN to be able to tell the type
+            if ((mode & S_IFMT) == 0)
             {
                 struct stat st = {};
 #ifdef _ATFILE_SOURCE
@@ -181,15 +184,15 @@ static bool traverseDirectoryRec(const std::string& path, const std::function<vo
                 mode = st.st_mode;
             }
 
-            if (type == DT_DIR || mode == S_IFDIR)
+            if (mode == S_IFDIR)
             {
                 traverseDirectoryRec(buf, callback);
             }
-            else if (type == DT_REG || mode == S_IFREG)
+            else if (mode == S_IFREG)
             {
                 callback(buf);
             }
-            else if (type == DT_LNK || mode == S_IFLNK)
+            else if (mode == S_IFLNK)
             {
                 // Skip symbolic links to avoid handling cycles
             }

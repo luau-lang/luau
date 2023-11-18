@@ -15,7 +15,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <Windows.h>
+#include <windows.h>
 #endif
 
 #ifdef __APPLE__
@@ -90,17 +90,8 @@ namespace TimeTrace
 {
 struct GlobalContext
 {
-    GlobalContext() = default;
     ~GlobalContext()
     {
-        // Ideally we would want all ThreadContext destructors to run
-        // But in VS, not all thread_local object instances are destroyed
-        for (ThreadContext* context : threads)
-        {
-            if (!context->events.empty())
-                context->flushEvents();
-        }
-
         if (traceFile)
             fclose(traceFile);
     }
@@ -110,11 +101,15 @@ struct GlobalContext
     uint32_t nextThreadId = 0;
     std::vector<Token> tokens;
     FILE* traceFile = nullptr;
+
+private:
+    friend std::shared_ptr<GlobalContext> getGlobalContext();
+    GlobalContext() = default;
 };
 
-GlobalContext& getGlobalContext()
+std::shared_ptr<GlobalContext> getGlobalContext()
 {
-    static GlobalContext context;
+    static std::shared_ptr<GlobalContext> context = std::shared_ptr<GlobalContext>{new GlobalContext};
     return context;
 }
 
@@ -261,7 +256,7 @@ ThreadContext& getThreadContext()
 
 uint16_t createScopeData(const char* name, const char* category)
 {
-    return createToken(Luau::TimeTrace::getGlobalContext(), name, category);
+    return createToken(*Luau::TimeTrace::getGlobalContext(), name, category);
 }
 } // namespace TimeTrace
 } // namespace Luau

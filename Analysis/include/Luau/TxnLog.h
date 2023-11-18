@@ -19,6 +19,10 @@ struct PendingType
     // The pending Type state.
     Type pending;
 
+    // On very rare occasions, we need to delete an entry from the TxnLog.
+    // DenseHashMap does not afford that so we note its deadness here.
+    bool dead = false;
+
     explicit PendingType(Type state)
         : pending(std::move(state))
     {
@@ -61,10 +65,11 @@ T* getMutable(PendingTypePack* pending)
 // Log of what TypeIds we are rebinding, to be committed later.
 struct TxnLog
 {
-    TxnLog()
+    explicit TxnLog(bool useScopes = false)
         : typeVarChanges(nullptr)
         , typePackChanges(nullptr)
         , ownedSeen()
+        , useScopes(useScopes)
         , sharedSeen(&ownedSeen)
     {
     }
@@ -297,6 +302,18 @@ private:
     void popSeen(TypeOrPackId lhs, TypeOrPackId rhs);
 
 public:
+    // There is one spot in the code where TxnLog has to reconcile collisions
+    // between parallel logs. In that codepath, we have to work out which of two
+    // FreeTypes subsumes the other. If useScopes is false, the TypeLevel is
+    // used.  Else we use the embedded Scope*.
+    bool useScopes = false;
+
+    // It is sometimes the case under DCR that we speculatively rebind
+    // GenericTypes to other types as though they were free.  We mark logs that
+    // contain these kinds of substitutions as radioactive so that we know that
+    // we must never commit one.
+    bool radioactive = false;
+
     // Used to avoid infinite recursion when types are cyclic.
     // Shared with all the descendent TxnLogs.
     std::vector<std::pair<TypeOrPackId, TypeOrPackId>>* sharedSeen;

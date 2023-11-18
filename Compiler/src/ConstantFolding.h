@@ -16,6 +16,7 @@ struct Constant
         Type_Nil,
         Type_Boolean,
         Type_Number,
+        Type_Vector,
         Type_String,
     };
 
@@ -26,6 +27,7 @@ struct Constant
     {
         bool valueBoolean;
         double valueNumber;
+        float valueVector[4];
         const char* valueString = nullptr; // length stored in stringLength
     };
 
@@ -43,7 +45,7 @@ struct Constant
 };
 
 void foldConstants(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables,
-    DenseHashMap<AstLocal*, Constant>& locals, const DenseHashMap<AstExprCall*, int>* builtins, AstNode* root);
+    DenseHashMap<AstLocal*, Constant>& locals, const DenseHashMap<AstExprCall*, int>* builtins, bool foldMathK, AstNode* root);
 
 } // namespace Compile
 } // namespace Luau

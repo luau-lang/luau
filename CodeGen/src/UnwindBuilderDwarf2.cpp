@@ -36,27 +36,25 @@
 #define DW_CFA_lo_user 0x1c
 #define DW_CFA_hi_user 0x3f
 
-// Register numbers for x64 (System V ABI, page 57, ch. 3.7, figure 3.36)
-#define DW_REG_RAX 0
-#define DW_REG_RDX 1
-#define DW_REG_RCX 2
-#define DW_REG_RBX 3
-#define DW_REG_RSI 4
-#define DW_REG_RDI 5
-#define DW_REG_RBP 6
-#define DW_REG_RSP 7
-#define DW_REG_R8 8
-#define DW_REG_R9 9
-#define DW_REG_R10 10
-#define DW_REG_R11 11
-#define DW_REG_R12 12
-#define DW_REG_R13 13
-#define DW_REG_R14 14
-#define DW_REG_R15 15
-#define DW_REG_RA 16
+// Register numbers for X64 (System V ABI, page 57, ch. 3.7, figure 3.36)
+#define DW_REG_X64_RAX 0
+#define DW_REG_X64_RDX 1
+#define DW_REG_X64_RCX 2
+#define DW_REG_X64_RBX 3
+#define DW_REG_X64_RSI 4
+#define DW_REG_X64_RDI 5
+#define DW_REG_X64_RBP 6
+#define DW_REG_X64_RSP 7
+#define DW_REG_X64_RA 16
 
-const int regIndexToDwRegX64[16] = {DW_REG_RAX, DW_REG_RCX, DW_REG_RDX, DW_REG_RBX, DW_REG_RSP, DW_REG_RBP, DW_REG_RSI, DW_REG_RDI, DW_REG_R8,
-    DW_REG_R9, DW_REG_R10, DW_REG_R11, DW_REG_R12, DW_REG_R13, DW_REG_R14, DW_REG_R15};
+// Register numbers for A64 (DWARF for the Arm 64-bit Architecture, ch. 4.1)
+#define DW_REG_A64_FP 29
+#define DW_REG_A64_LR 30
+#define DW_REG_A64_SP 31
+
+// X64 register mapping from real register index to DWARF2 (r8..r15 are mapped 1-1, but named registers aren't)
+const int regIndexToDwRegX64[16] = {DW_REG_X64_RAX, DW_REG_X64_RCX, DW_REG_X64_RDX, DW_REG_X64_RBX, DW_REG_X64_RSP, DW_REG_X64_RBP, DW_REG_X64_RSI,
+    DW_REG_X64_RDI, 8, 9, 10, 11, 12, 13, 14, 15};
 
 const int kCodeAlignFactor = 1;
 const int kDataAlignFactor = 8;
@@ -85,7 +83,7 @@ static uint8_t* defineSavedRegisterLocation(uint8_t* pos, int dwReg, uint32_t st
 {
     LUAU_ASSERT(stackOffset % kDataAlignFactor == 0 && "stack offsets have to be measured in kDataAlignFactor units");
 
-    if (dwReg <= 15)
+    if (dwReg <= 0x3f)
     {
         pos = writeu8(pos, DW_CFA_offset + dwReg);
     }
@@ -99,8 +97,9 @@ static uint8_t* defineSavedRegisterLocation(uint8_t* pos, int dwReg, uint32_t st
     return pos;
 }
 
-static uint8_t* advanceLocation(uint8_t* pos, uint8_t offset)
+static uint8_t* advanceLocation(uint8_t* pos, unsigned int offset)
 {
+    LUAU_ASSERT(offset < 256);
     pos = writeu8(pos, DW_CFA_advance_loc1);
     pos = writeu8(pos, offset);
     return pos;
@@ -132,8 +131,10 @@ size_t UnwindBuilderDwarf2::getBeginOffset() const
     return beginOffset;
 }
 
-void UnwindBuilderDwarf2::start()
+void UnwindBuilderDwarf2::startInfo(Arch arch)
 {
+    LUAU_ASSERT(arch == A64 || arch == X64);
+
     uint8_t* cieLength = pos;
     pos = writeu32(pos, 0); // Length (to be filled later)
 
@@ -142,20 +143,37 @@ void UnwindBuilderDwarf2::start()
 
     pos = writeu8(pos, 0); // CIE augmentation String ""
 
+    int ra = arch == A64 ? DW_REG_A64_LR : DW_REG_X64_RA;
+
     pos = writeuleb128(pos, kCodeAlignFactor);         // Code align factor
     pos = writeuleb128(pos, -kDataAlignFactor & 0x7f); // Data align factor of (as signed LEB128)
-    pos = writeu8(pos, DW_REG_RA);                     // Return address register
+    pos = writeu8(pos, ra);                            // Return address register
 
     // Optional CIE augmentation section (not present)
 
-    // Call frame instructions (common for all FDEs, of which we have 1)
-    stackOffset = 8; // Return address was pushed by calling the function
-
-    pos = defineCfaExpression(pos, DW_REG_RSP, stackOffset); // Define CFA to be the rsp + 8
-    pos = defineSavedRegisterLocation(pos, DW_REG_RA, 8);    // Define return address register (RA) to be located at CFA - 8
+    // Call frame instructions (common for all FDEs)
+    if (arch == A64)
+    {
+        pos = defineCfaExpression(pos, DW_REG_A64_SP, 0); // Define CFA to be the sp
+    }
+    else
+    {
+        pos = defineCfaExpression(pos, DW_REG_X64_RSP, 8);        // Define CFA to be the rsp + 8
+        pos = defineSavedRegisterLocation(pos, DW_REG_X64_RA, 8); // Define return address register (RA) to be located at CFA - 8
+    }
 
     pos = alignPosition(cieLength, pos);
     writeu32(cieLength, unsigned(pos - cieLength - 4)); // Length field itself is excluded from length
+}
+
+void UnwindBuilderDwarf2::startFunction()
+{
+    // End offset is filled in later and everything gets adjusted at the end
+    UnwindFunctionDwarf2 func;
+    func.beginOffset = 0;
+    func.endOffset = 0;
+    func.fdeEntryStartPos = uint32_t(pos - rawData);
+    unwindFunctions.push_back(func);
 
     fdeEntryStart = pos;                          // Will be written at the end
     pos = writeu32(pos, 0);                       // Length (to be filled later)
@@ -168,47 +186,89 @@ void UnwindBuilderDwarf2::start()
     // Function call frame instructions to follow
 }
 
-void UnwindBuilderDwarf2::spill(int espOffset, X64::RegisterX64 reg)
+void UnwindBuilderDwarf2::finishFunction(uint32_t beginOffset, uint32_t endOffset)
 {
-    pos = advanceLocation(pos, 5); // REX.W mov [rsp + imm8], reg
-}
+    unwindFunctions.back().beginOffset = beginOffset;
+    unwindFunctions.back().endOffset = endOffset;
 
-void UnwindBuilderDwarf2::save(X64::RegisterX64 reg)
-{
-    stackOffset += 8;
-    pos = advanceLocation(pos, 2); // REX.W push reg
-    pos = defineCfaExpressionOffset(pos, stackOffset);
-    pos = defineSavedRegisterLocation(pos, regIndexToDwRegX64[reg.index], stackOffset);
-}
-
-void UnwindBuilderDwarf2::allocStack(int size)
-{
-    stackOffset += size;
-    pos = advanceLocation(pos, 4); // REX.W sub rsp, imm8
-    pos = defineCfaExpressionOffset(pos, stackOffset);
-}
-
-void UnwindBuilderDwarf2::setupFrameReg(X64::RegisterX64 reg, int espOffset)
-{
-    if (espOffset != 0)
-        pos = advanceLocation(pos, 5); // REX.W lea rbp, [rsp + imm8]
-    else
-        pos = advanceLocation(pos, 3); // REX.W mov rbp, rsp
-
-    // Cfa is based on rsp, so no additonal commands are required
-}
-
-void UnwindBuilderDwarf2::finish()
-{
-    LUAU_ASSERT(stackOffset % 16 == 0 && "stack has to be aligned to 16 bytes after prologue");
+    LUAU_ASSERT(fdeEntryStart != nullptr);
 
     pos = alignPosition(fdeEntryStart, pos);
     writeu32(fdeEntryStart, unsigned(pos - fdeEntryStart - 4)); // Length field itself is excluded from length
+}
 
+void UnwindBuilderDwarf2::finishInfo()
+{
     // Terminate section
     pos = writeu32(pos, 0);
 
     LUAU_ASSERT(getSize() <= kRawDataLimit);
+}
+
+void UnwindBuilderDwarf2::prologueA64(uint32_t prologueSize, uint32_t stackSize, std::initializer_list<A64::RegisterA64> regs)
+{
+    LUAU_ASSERT(stackSize % 16 == 0);
+    LUAU_ASSERT(regs.size() >= 2 && regs.begin()[0] == A64::x29 && regs.begin()[1] == A64::x30);
+    LUAU_ASSERT(regs.size() * 8 <= stackSize);
+
+    // sub sp, sp, stackSize
+    pos = advanceLocation(pos, 4);
+    pos = defineCfaExpressionOffset(pos, stackSize);
+
+    // stp/str to store each register to stack in order
+    pos = advanceLocation(pos, prologueSize - 4);
+
+    for (size_t i = 0; i < regs.size(); ++i)
+    {
+        LUAU_ASSERT(regs.begin()[i].kind == A64::KindA64::x);
+        pos = defineSavedRegisterLocation(pos, regs.begin()[i].index, stackSize - unsigned(i * 8));
+    }
+}
+
+void UnwindBuilderDwarf2::prologueX64(uint32_t prologueSize, uint32_t stackSize, bool setupFrame, std::initializer_list<X64::RegisterX64> gpr,
+    const std::vector<X64::RegisterX64>& simd)
+{
+    LUAU_ASSERT(stackSize > 0 && stackSize < 4096 && stackSize % 8 == 0);
+
+    unsigned int stackOffset = 8; // Return address was pushed by calling the function
+    unsigned int prologueOffset = 0;
+
+    if (setupFrame)
+    {
+        // push rbp
+        stackOffset += 8;
+        prologueOffset += 2;
+        pos = advanceLocation(pos, 2);
+        pos = defineCfaExpressionOffset(pos, stackOffset);
+        pos = defineSavedRegisterLocation(pos, DW_REG_X64_RBP, stackOffset);
+
+        // mov rbp, rsp
+        prologueOffset += 3;
+        pos = advanceLocation(pos, 3);
+    }
+
+    // push reg
+    for (X64::RegisterX64 reg : gpr)
+    {
+        LUAU_ASSERT(reg.size == X64::SizeX64::qword);
+
+        stackOffset += 8;
+        prologueOffset += 2;
+        pos = advanceLocation(pos, 2);
+        pos = defineCfaExpressionOffset(pos, stackOffset);
+        pos = defineSavedRegisterLocation(pos, regIndexToDwRegX64[reg.index], stackOffset);
+    }
+
+    LUAU_ASSERT(simd.empty());
+
+    // sub rsp, stackSize
+    stackOffset += stackSize;
+    prologueOffset += stackSize >= 128 ? 7 : 4;
+    pos = advanceLocation(pos, 4);
+    pos = defineCfaExpressionOffset(pos, stackOffset);
+
+    LUAU_ASSERT(stackOffset % 16 == 0);
+    LUAU_ASSERT(prologueOffset == prologueSize);
 }
 
 size_t UnwindBuilderDwarf2::getSize() const
@@ -216,13 +276,26 @@ size_t UnwindBuilderDwarf2::getSize() const
     return size_t(pos - rawData);
 }
 
-void UnwindBuilderDwarf2::finalize(char* target, void* funcAddress, size_t funcSize) const
+size_t UnwindBuilderDwarf2::getFunctionCount() const
+{
+    return unwindFunctions.size();
+}
+
+void UnwindBuilderDwarf2::finalize(char* target, size_t offset, void* funcAddress, size_t funcSize) const
 {
     memcpy(target, rawData, getSize());
 
-    unsigned fdeEntryStartPos = unsigned(fdeEntryStart - rawData);
-    writeu64((uint8_t*)target + fdeEntryStartPos + kFdeInitialLocationOffset, uintptr_t(funcAddress));
-    writeu64((uint8_t*)target + fdeEntryStartPos + kFdeAddressRangeOffset, funcSize);
+    for (const UnwindFunctionDwarf2& func : unwindFunctions)
+    {
+        uint8_t* fdeEntry = (uint8_t*)target + func.fdeEntryStartPos;
+
+        writeu64(fdeEntry + kFdeInitialLocationOffset, uintptr_t(funcAddress) + offset + func.beginOffset);
+
+        if (func.endOffset == kFullBlockFuncton)
+            writeu64(fdeEntry + kFdeAddressRangeOffset, funcSize - offset);
+        else
+            writeu64(fdeEntry + kFdeAddressRangeOffset, func.endOffset - func.beginOffset);
+    }
 }
 
 } // namespace CodeGen

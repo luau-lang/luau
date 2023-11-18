@@ -7,6 +7,7 @@
 #include "Luau/CodeGen.h"
 #include "Luau/Common.h"
 #include "Luau/Compiler.h"
+#include "Luau/Config.h"
 #include "Luau/Frontend.h"
 #include "Luau/Linter.h"
 #include "Luau/ModuleResolver.h"
@@ -19,20 +20,31 @@
 #include "lualib.h"
 
 #include <chrono>
+#include <cstring>
+
+static bool getEnvParam(const char* name, bool def)
+{
+    char* val = getenv(name);
+    if (val == nullptr)
+        return def;
+    else
+        return strcmp(val, "0") != 0;
+}
 
 // Select components to fuzz
-const bool kFuzzCompiler = true;
-const bool kFuzzLinter = true;
-const bool kFuzzTypeck = true;
-const bool kFuzzVM = true;
-const bool kFuzzTranspile = true;
-const bool kFuzzCodegen = true;
+const bool kFuzzCompiler = getEnvParam("LUAU_FUZZ_COMPILER", true);
+const bool kFuzzLinter = getEnvParam("LUAU_FUZZ_LINTER", true);
+const bool kFuzzTypeck = getEnvParam("LUAU_FUZZ_TYPE_CHECK", true);
+const bool kFuzzVM = getEnvParam("LUAU_FUZZ_VM", true);
+const bool kFuzzTranspile = getEnvParam("LUAU_FUZZ_TRANSPILE", true);
+const bool kFuzzCodegenVM = getEnvParam("LUAU_FUZZ_CODEGEN_VM", true);
+const bool kFuzzCodegenAssembly = getEnvParam("LUAU_FUZZ_CODEGEN_ASM", true);
+const bool kFuzzUseNewSolver = getEnvParam("LUAU_FUZZ_NEW_SOLVER", false);
 
 // Should we generate type annotations?
-const bool kFuzzTypes = true;
+const bool kFuzzTypes = getEnvParam("LUAU_FUZZ_GEN_TYPES", true);
 
-static_assert(!(kFuzzVM && !kFuzzCompiler), "VM requires the compiler!");
-static_assert(!(kFuzzCodegen && !kFuzzVM), "Codegen requires the VM!");
+const Luau::CodeGen::AssemblyOptions::Target kFuzzCodegenTarget = Luau::CodeGen::AssemblyOptions::A64;
 
 std::vector<std::string> protoprint(const luau::ModuleSet& stat, bool types);
 
@@ -43,6 +55,8 @@ LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(DebugLuauFreezeArena)
+LUAU_FASTFLAG(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 std::chrono::milliseconds kInterruptTimeout(10);
 std::chrono::time_point<std::chrono::system_clock> interruptDeadline;
@@ -86,7 +100,7 @@ lua_State* createGlobalState()
 {
     lua_State* L = lua_newstate(allocate, NULL);
 
-    if (kFuzzCodegen && Luau::CodeGen::isSupported())
+    if (kFuzzCodegenVM && Luau::CodeGen::isSupported())
         Luau::CodeGen::create(L);
 
     lua_callbacks(L)->interrupt = interrupt;
@@ -97,12 +111,12 @@ lua_State* createGlobalState()
     return L;
 }
 
-int registerTypes(Luau::TypeChecker& typeChecker, Luau::GlobalTypes& globals)
+int registerTypes(Luau::Frontend& frontend, Luau::GlobalTypes& globals, bool forAutocomplete)
 {
     using namespace Luau;
     using std::nullopt;
 
-    Luau::registerBuiltinGlobals(typeChecker, globals);
+    Luau::registerBuiltinGlobals(frontend, globals, forAutocomplete);
 
     TypeArena& arena = globals.globalTypes;
     BuiltinTypes& builtinTypes = *globals.builtinTypes;
@@ -147,10 +161,10 @@ int registerTypes(Luau::TypeChecker& typeChecker, Luau::GlobalTypes& globals)
 
 static void setupFrontend(Luau::Frontend& frontend)
 {
-    registerTypes(frontend.typeChecker, frontend.globals);
+    registerTypes(frontend, frontend.globals, false);
     Luau::freeze(frontend.globals.globalTypes);
 
-    registerTypes(frontend.typeCheckerForAutocomplete, frontend.globalsForAutocomplete);
+    registerTypes(frontend, frontend.globalsForAutocomplete, true);
     Luau::freeze(frontend.globalsForAutocomplete.globalTypes);
 
     frontend.iceHandler.onInternalError = [](const char* error) {
@@ -212,6 +226,13 @@ static std::vector<std::string> debugsources;
 
 DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
 {
+    if (!kFuzzCompiler && (kFuzzCodegenAssembly || kFuzzCodegenVM || kFuzzVM))
+    {
+        printf("Compiler is required in order to fuzz codegen or the VM\n");
+        LUAU_ASSERT(false);
+        return;
+    }
+
     FInt::LuauTypeInferRecursionLimit.value = 100;
     FInt::LuauTypeInferTypePackLoopLimit.value = 100;
     FInt::LuauCheckRecursionLimit.value = 100;
@@ -224,6 +245,8 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
             flag->value = true;
 
     FFlag::DebugLuauFreezeArena.value = true;
+    FFlag::DebugLuauAbortingChecks.value = true;
+    FFlag::DebugLuauDeferredConstraintResolution.value = kFuzzUseNewSolver;
 
     std::vector<std::string> sources = protoprint(message, kFuzzTypes);
 
@@ -261,8 +284,8 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     {
         static FuzzFileResolver fileResolver;
         static FuzzConfigResolver configResolver;
-        static Luau::FrontendOptions options{true, true};
-        static Luau::Frontend frontend(&fileResolver, &configResolver, options);
+        static Luau::FrontendOptions defaultOptions{/*retainFullTypeGraphs*/ true, /*forAutocomplete*/ false, /*runLintChecks*/ kFuzzLinter};
+        static Luau::Frontend frontend(&fileResolver, &configResolver, defaultOptions);
 
         static int once = (setupFrontend(frontend), 0);
         (void)once;
@@ -285,16 +308,12 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
 
             try
             {
-                Luau::CheckResult result = frontend.check(name, std::nullopt);
-
-                // lint (note that we need access to types so we need to do this with typeck in scope)
-                if (kFuzzLinter && result.errors.empty())
-                    frontend.lint(name, std::nullopt);
+                frontend.check(name);
 
                 // Second pass in strict mode (forced by auto-complete)
-                Luau::FrontendOptions opts;
-                opts.forAutocomplete = true;
-                frontend.check(name, opts);
+                Luau::FrontendOptions options = defaultOptions;
+                options.forAutocomplete = true;
+                frontend.check(name, options);
             }
             catch (std::exception&)
             {
@@ -352,8 +371,26 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
         }
     }
 
+    // run codegen on resulting bytecode (in separate state)
+    if (kFuzzCodegenAssembly && bytecode.size())
+    {
+        static lua_State* globalState = luaL_newstate();
+
+        if (luau_load(globalState, "=fuzz", bytecode.data(), bytecode.size(), 0) == 0)
+        {
+            Luau::CodeGen::AssemblyOptions options;
+            options.flags = Luau::CodeGen::CodeGen_ColdFunctions;
+            options.outputBinary = true;
+            options.target = kFuzzCodegenTarget;
+            Luau::CodeGen::getAssembly(globalState, -1, options);
+        }
+
+        lua_pop(globalState, 1);
+        lua_gc(globalState, LUA_GCCOLLECT, 0);
+    }
+
     // run resulting bytecode (from last successfully compiler module)
-    if (kFuzzVM && bytecode.size())
+    if ((kFuzzVM || kFuzzCodegenVM) && bytecode.size())
     {
         static lua_State* globalState = createGlobalState();
 
@@ -364,7 +401,7 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
             if (luau_load(L, "=fuzz", bytecode.data(), bytecode.size(), 0) == 0)
             {
                 if (useCodegen)
-                    Luau::CodeGen::compile(L, -1);
+                    Luau::CodeGen::compile(L, -1, Luau::CodeGen::CodeGen_ColdFunctions);
 
                 interruptDeadline = std::chrono::system_clock::now() + kInterruptTimeout;
 
@@ -378,9 +415,10 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
             LUAU_ASSERT(heapSize < 256 * 1024);
         };
 
-        runCode(bytecode, false);
+        if (kFuzzVM)
+            runCode(bytecode, false);
 
-        if (kFuzzCodegen && Luau::CodeGen::isSupported())
+        if (kFuzzCodegenVM && Luau::CodeGen::isSupported())
             runCode(bytecode, true);
     }
 }

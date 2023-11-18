@@ -28,6 +28,7 @@ const char* const luaT_typenames[] = {
     "function",
     "userdata",
     "thread",
+    "buffer",
 };
 
 const char* const luaT_eventname[] = {
@@ -48,6 +49,7 @@ const char* const luaT_eventname[] = {
     "__sub",
     "__mul",
     "__div",
+    "__idiv",
     "__mod",
     "__pow",
     "__unm",

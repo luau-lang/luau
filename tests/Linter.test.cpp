@@ -733,6 +733,7 @@ end
 TEST_CASE_FIXTURE(Fixture, "ImplicitReturn")
 {
     LintResult result = lint(R"(
+--!nonstrict
 function f1(a)
     if not a then
         return 5
@@ -789,20 +790,21 @@ return f1,f2,f3,f4,f5,f6,f7
 )");
 
     REQUIRE(3 == result.warnings.size());
-    CHECK_EQ(result.warnings[0].location.begin.line, 4);
+    CHECK_EQ(result.warnings[0].location.begin.line, 5);
     CHECK_EQ(result.warnings[0].text,
-        "Function 'f1' can implicitly return no values even though there's an explicit return at line 4; add explicit return to silence");
-    CHECK_EQ(result.warnings[1].location.begin.line, 28);
+        "Function 'f1' can implicitly return no values even though there's an explicit return at line 5; add explicit return to silence");
+    CHECK_EQ(result.warnings[1].location.begin.line, 29);
     CHECK_EQ(result.warnings[1].text,
-        "Function 'f4' can implicitly return no values even though there's an explicit return at line 25; add explicit return to silence");
-    CHECK_EQ(result.warnings[2].location.begin.line, 44);
+        "Function 'f4' can implicitly return no values even though there's an explicit return at line 26; add explicit return to silence");
+    CHECK_EQ(result.warnings[2].location.begin.line, 45);
     CHECK_EQ(result.warnings[2].text,
-        "Function can implicitly return no values even though there's an explicit return at line 44; add explicit return to silence");
+        "Function can implicitly return no values even though there's an explicit return at line 45; add explicit return to silence");
 }
 
 TEST_CASE_FIXTURE(Fixture, "ImplicitReturnInfiniteLoop")
 {
     LintResult result = lint(R"(
+--!nonstrict
 function f1(a)
     while true do
         if math.random() > 0.5 then
@@ -845,12 +847,12 @@ return f1,f2,f3,f4
 )");
 
     REQUIRE(2 == result.warnings.size());
-    CHECK_EQ(result.warnings[0].location.begin.line, 25);
+    CHECK_EQ(result.warnings[0].location.begin.line, 26);
     CHECK_EQ(result.warnings[0].text,
-        "Function 'f3' can implicitly return no values even though there's an explicit return at line 21; add explicit return to silence");
-    CHECK_EQ(result.warnings[1].location.begin.line, 36);
+        "Function 'f3' can implicitly return no values even though there's an explicit return at line 22; add explicit return to silence");
+    CHECK_EQ(result.warnings[1].location.begin.line, 37);
     CHECK_EQ(result.warnings[1].text,
-        "Function 'f4' can implicitly return no values even though there's an explicit return at line 32; add explicit return to silence");
+        "Function 'f4' can implicitly return no values even though there's an explicit return at line 33; add explicit return to silence");
 }
 
 TEST_CASE_FIXTURE(Fixture, "TypeAnnotationsShouldNotProduceWarnings")
@@ -1164,7 +1166,7 @@ os.date("!*t")
 
 TEST_CASE_FIXTURE(Fixture, "FormatStringTyped")
 {
-    LintResult result = lintTyped(R"~(
+    LintResult result = lint(R"~(
 local s: string, nons = ...
 
 string.match(s, "[]")
@@ -1271,7 +1273,7 @@ TEST_CASE_FIXTURE(Fixture, "use_all_parent_scopes_for_globals")
 {
     ScopePtr testScope = frontend.addEnvironment("Test");
     unfreeze(frontend.globals.globalTypes);
-    loadDefinitionFile(frontend.typeChecker, frontend.globals, testScope, R"(
+    frontend.loadDefinitionFile(frontend.globals, testScope, R"(
         declare Foo: number
     )",
         "@test", /* captureComments */ false);
@@ -1285,7 +1287,7 @@ TEST_CASE_FIXTURE(Fixture, "use_all_parent_scopes_for_globals")
         local _bar: typeof(os.clock) = os.clock
     )";
 
-    LintResult result = frontend.lint("A");
+    LintResult result = lintModule("A");
 
     REQUIRE(0 == result.warnings.size());
 }
@@ -1442,8 +1444,6 @@ TEST_CASE_FIXTURE(Fixture, "LintHygieneUAF")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiTyped")
 {
-    ScopedFastFlag sff("LuauImproveDeprecatedApiLint", true);
-
     unfreeze(frontend.globals.globalTypes);
     TypeId instanceType = frontend.globals.globalTypes.addType(ClassType{"Instance", {}, std::nullopt, std::nullopt, {}, {}, "Test"});
     persist(instanceType);
@@ -1471,7 +1471,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiTyped")
 
     freeze(frontend.globals.globalTypes);
 
-    LintResult result = lintTyped(R"(
+    LintResult result = lint(R"(
 return function (i: Instance)
     i:Wait(1.0)
     print(i.Name)
@@ -1494,8 +1494,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiUntyped")
 {
-    ScopedFastFlag sff("LuauImproveDeprecatedApiLint", true);
-
     if (TableType* ttv = getMutable<TableType>(getGlobalBinding(frontend.globals, "table")))
     {
         ttv->props["foreach"].deprecated = true;
@@ -1504,6 +1502,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiUntyped")
     }
 
     LintResult result = lint(R"(
+-- TODO
 return function ()
     print(table.getn({}))
     table.foreach({}, function() end)
@@ -1516,9 +1515,36 @@ end
     CHECK_EQ(result.warnings[1].text, "Member 'table.foreach' is deprecated");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiFenv")
+{
+    LintResult result = lint(R"(
+local f, g, h = ...
+
+getfenv(1)
+getfenv(f :: () -> ())
+getfenv(g :: number)
+getfenv(h :: any)
+
+setfenv(1, {})
+setfenv(f :: () -> (), {})
+setfenv(g :: number, {})
+setfenv(h :: any, {})
+)");
+
+    REQUIRE(4 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Function 'getfenv' is deprecated; consider using 'debug.info' instead");
+    CHECK_EQ(result.warnings[0].location.begin.line + 1, 4);
+    CHECK_EQ(result.warnings[1].text, "Function 'getfenv' is deprecated; consider using 'debug.info' instead");
+    CHECK_EQ(result.warnings[1].location.begin.line + 1, 6);
+    CHECK_EQ(result.warnings[2].text, "Function 'setfenv' is deprecated");
+    CHECK_EQ(result.warnings[2].location.begin.line + 1, 9);
+    CHECK_EQ(result.warnings[3].text, "Function 'setfenv' is deprecated");
+    CHECK_EQ(result.warnings[3].location.begin.line + 1, 11);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "TableOperations")
 {
-    LintResult result = lintTyped(R"(
+    LintResult result = lint(R"(
 local t = {}
 local tt = {}
 
@@ -1559,6 +1585,60 @@ table.create(42, {} :: {})
         result.warnings[8].text, "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
     CHECK_EQ(
         result.warnings[9].text, "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "TableOperationsIndexer")
+{
+    LintResult result = lint(R"(
+local t1 = {} -- ok: empty
+local t2 = {1, 2} -- ok: array
+local t3 = { a = 1, b = 2 } -- not ok: dictionary
+local t4: {[number]: number} = {} -- ok: array
+local t5: {[string]: number} = {} -- not ok: dictionary
+local t6: typeof(setmetatable({1, 2}, {})) = {} -- ok: table with metatable
+local t7: string = "hello" -- ok: string
+local t8: {number} | {n: number} = {} -- ok: union
+
+-- not ok
+print(#t3)
+print(#t5)
+ipairs(t5)
+
+-- disabled
+-- ipairs(t3) adds indexer to t3, silencing error on #t3
+
+-- ok
+print(#t1)
+print(#t2)
+print(#t4)
+print(#t6)
+print(#t7)
+print(#t8)
+
+ipairs(t1)
+ipairs(t2)
+ipairs(t4)
+ipairs(t6)
+ipairs(t7)
+ipairs(t8)
+
+-- ok, subtle: text is a string here implicitly, but the type annotation isn't available
+-- type checker assigns a type of generic table with the 'sub' member; we don't emit warnings on generic tables
+-- to avoid generating a false positive here
+function _impliedstring(element, text)
+        for i = 1, #text do
+                element:sendText(text:sub(i, i))
+        end
+end
+)");
+
+    REQUIRE(3 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].location.begin.line + 1, 12);
+    CHECK_EQ(result.warnings[0].text, "Using '#' on a table without an array part is likely a bug");
+    CHECK_EQ(result.warnings[1].location.begin.line + 1, 13);
+    CHECK_EQ(result.warnings[1].text, "Using '#' on a table with string keys is likely a bug");
+    CHECK_EQ(result.warnings[2].location.begin.line + 1, 14);
+    CHECK_EQ(result.warnings[2].text, "Using 'ipairs' on a table with string keys is likely a bug");
 }
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditions")
@@ -1606,8 +1686,8 @@ TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsExpr")
     LintResult result = lint(R"(
 local correct, opaque = ...
 
-if correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls")}) then
-elseif correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls")}) then
+if correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls", `string {opaque}`)}) then
+elseif correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls", `string {opaque}`)}) then
 elseif correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls", false)}) then
 end
 )");
@@ -1668,17 +1748,19 @@ TEST_CASE_FIXTURE(Fixture, "WrongComment")
 --!nolint UnknownGlobal
 --! no more lint
 --!strict here
+--!native on
 do end
 --!nolint
 )");
 
-    REQUIRE(6 == result.warnings.size());
+    REQUIRE(7 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Unknown comment directive 'struct'; did you mean 'strict'?");
     CHECK_EQ(result.warnings[1].text, "Unknown comment directive 'nolintGlobal'");
     CHECK_EQ(result.warnings[2].text, "nolint directive refers to unknown lint rule 'Global'");
     CHECK_EQ(result.warnings[3].text, "nolint directive refers to unknown lint rule 'KnownGlobal'; did you mean 'UnknownGlobal'?");
     CHECK_EQ(result.warnings[4].text, "Comment directive with the type checking mode has extra symbols at the end of the line");
-    CHECK_EQ(result.warnings[5].text, "Comment directive is ignored because it is placed after the first non-comment token");
+    CHECK_EQ(result.warnings[5].text, "native directive has extra symbols at the end of the line");
+    CHECK_EQ(result.warnings[6].text, "Comment directive is ignored because it is placed after the first non-comment token");
 }
 
 TEST_CASE_FIXTURE(Fixture, "WrongCommentMuteSelf")
@@ -1741,8 +1823,71 @@ local _ = 0x10000000000000000
 )");
 
     REQUIRE(2 == result.warnings.size());
-    CHECK_EQ(result.warnings[0].text, "Binary number literal exceeded available precision and has been truncated to 2^64");
-    CHECK_EQ(result.warnings[1].text, "Hexadecimal number literal exceeded available precision and has been truncated to 2^64");
+    CHECK_EQ(result.warnings[0].text, "Binary number literal exceeded available precision and was truncated to 2^64");
+    CHECK_EQ(result.warnings[1].text, "Hexadecimal number literal exceeded available precision and was truncated to 2^64");
+}
+
+TEST_CASE_FIXTURE(Fixture, "IntegerParsingDecimalImprecise")
+{
+    ScopedFastFlag sff("LuauParseImpreciseNumber", true);
+
+    LintResult result = lint(R"(
+local _ = 10000000000000000000000000000000000000000000000000000000000000000
+local _ = 10000000000000001
+local _ = -10000000000000001
+
+-- 10^16 = 2^16 * 5^16, 5^16 only requires 38 bits
+local _ = 10000000000000000
+local _ = -10000000000000000
+
+-- smallest possible number that is parsed imprecisely
+local _ = 9007199254740993
+local _ = -9007199254740993
+
+-- note that numbers before and after parse precisely (number after is even => 1 more mantissa bit)
+local _ = 9007199254740992
+local _ = 9007199254740994
+
+-- large powers of two should work as well (this is 2^63)
+local _ = -9223372036854775808
+)");
+
+    REQUIRE(5 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[0].location.begin.line, 1);
+    CHECK_EQ(result.warnings[1].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[1].location.begin.line, 2);
+    CHECK_EQ(result.warnings[2].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[2].location.begin.line, 3);
+    CHECK_EQ(result.warnings[3].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[3].location.begin.line, 10);
+    CHECK_EQ(result.warnings[4].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[4].location.begin.line, 11);
+}
+
+TEST_CASE_FIXTURE(Fixture, "IntegerParsingHexImprecise")
+{
+    ScopedFastFlag sff("LuauParseImpreciseNumber", true);
+
+    LintResult result = lint(R"(
+local _ = 0x1234567812345678
+
+-- smallest possible number that is parsed imprecisely
+local _ = 0x20000000000001
+
+-- note that numbers before and after parse precisely (number after is even => 1 more mantissa bit)
+local _ = 0x20000000000000
+local _ = 0x20000000000002
+
+-- large powers of two should work as well (this is 2^63)
+local _ = 0x80000000000000
+)");
+
+    REQUIRE(2 == result.warnings.size());
+    CHECK_EQ(result.warnings[0].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[0].location.begin.line, 1);
+    CHECK_EQ(result.warnings[1].text, "Number literal exceeded available precision and was truncated to closest representable number");
+    CHECK_EQ(result.warnings[1].location.begin.line, 4);
 }
 
 TEST_CASE_FIXTURE(Fixture, "ComparisonPrecedence")

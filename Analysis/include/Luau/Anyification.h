@@ -4,7 +4,7 @@
 
 #include "Luau/NotNull.h"
 #include "Luau/Substitution.h"
-#include "Luau/Type.h"
+#include "Luau/TypeFwd.h"
 
 #include <memory>
 

@@ -2,20 +2,20 @@ Thanks for deciding to contribute to Luau! These guidelines will try to help mak
 
 ## Questions
 
-If you have a question regarding the language usage/implementation, please [use GitHub discussions](https://github.com/Roblox/luau/discussions).
+If you have a question regarding the language usage/implementation, please [use GitHub discussions](https://github.com/luau-lang/luau/discussions).
 Some questions just need answers, but it's nice to keep them for future reference in case other people want to know the same thing.
 Some questions help improve the language, implementation or documentation by inspiring future changes.
 
 ## Documentation
 
-This repository hosts the language documentation in addition to implementation, which is accessible on https://luau-lang.org.
+A [separate site repository](https://github.com/luau-lang/site) hosts the language documentation, which is accessible on https://luau-lang.org.
 Changes to this documentation that improve clarity, fix grammatical issues, explain aspects that haven't been explained before and the like are warmly welcomed.
 
 Please feel free to [create a pull request](https://help.github.com/articles/about-pull-requests/) to improve our documentation. Note that at this point the documentation is English-only.
 
 ## Bugs
 
-If the language implementation doesn't compile on your system, compiles with warnings, doesn't seem to run correctly for your code or if anything else is amiss, please [open a GitHub issue](https://github.com/Roblox/luau/issues/new).
+If the language implementation doesn't compile on your system, compiles with warnings, doesn't seem to run correctly for your code or if anything else is amiss, please [open a GitHub issue](https://github.com/luau-lang/luau/issues/new).
 It helps if you note the Git revision issue happens in, the version of your compiler for compilation issues, and a reproduction case for runtime bugs.
 
 Of course, feel free to [create a pull request](https://help.github.com/articles/about-pull-requests/) to fix the bug yourself.
@@ -25,7 +25,7 @@ Of course, feel free to [create a pull request](https://help.github.com/articles
 If you're thinking of adding a new feature to the language, library, analysis tools, etc., please *don't* start by submitting a pull request.
 Luau team has internal priorities and a roadmap that may or may not align with specific features, so before starting to work on a feature please submit an issue describing the missing feature that you'd like to add.
 
-For features that result in observable change of language syntax or semantics, you'd need to [create an RFC](https://github.com/Roblox/luau/blob/master/rfcs/README.md) to make sure that the feature is needed and well designed.
+For features that result in observable change of language syntax or semantics, you'd need to [create an RFC](https://github.com/luau-lang/rfcs/blob/master/README.md) to make sure that the feature is needed and well designed.
 
 Finally, please note that Luau tries to carry a minimal feature set. All features must be evaluated not just for the benefits that they provide, but also for the downsides/costs in terms of language simplicity, maintainability, cross-feature interaction etc.
 As such, feature requests may not be accepted even if a comprehensive RFC is written - don't expect Luau to gain a feature just because another programming language has it.

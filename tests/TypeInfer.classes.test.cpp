@@ -12,7 +12,7 @@
 using namespace Luau;
 using std::nullopt;
 
-LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError);
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
 TEST_SUITE_BEGIN("TypeInferClasses");
 
@@ -111,7 +111,7 @@ TEST_CASE_FIXTURE(ClassFixture, "we_can_report_when_someone_is_trying_to_use_a_t
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors.at(0));
     REQUIRE(tm != nullptr);
 
     CHECK_EQ("Oopsies", toString(tm->givenType));
@@ -186,7 +186,7 @@ TEST_CASE_FIXTURE(ClassFixture, "warn_when_prop_almost_matches")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    auto err = get<UnknownPropButFoundLikeProp>(result.errors[0]);
+    auto err = get<UnknownPropButFoundLikeProp>(result.errors.at(0));
     REQUIRE(err != nullptr);
 
     REQUIRE_EQ(1, err->candidates.size());
@@ -290,7 +290,7 @@ TEST_CASE_FIXTURE(ClassFixture, "table_properties_are_invariant")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ(6, result.errors[0].location.begin.line);
+    CHECK_EQ(6, result.errors.at(0).location.begin.line);
     CHECK_EQ(13, result.errors[1].location.begin.line);
 }
 
@@ -313,7 +313,7 @@ TEST_CASE_FIXTURE(ClassFixture, "table_indexers_are_invariant")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ(6, result.errors[0].location.begin.line);
+    CHECK_EQ(6, result.errors.at(0).location.begin.line);
     CHECK_EQ(13, result.errors[1].location.begin.line);
 }
 
@@ -331,7 +331,7 @@ TEST_CASE_FIXTURE(ClassFixture, "table_class_unification_reports_sane_errors_for
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    REQUIRE_EQ("Key 'w' not found in class 'Vector2'", toString(result.errors[0]));
+    REQUIRE_EQ("Key 'w' not found in class 'Vector2'", toString(result.errors.at(0)));
     REQUIRE_EQ("Key 'x' not found in class 'Vector2'.  Did you mean 'X'?", toString(result.errors[1]));
 }
 
@@ -345,7 +345,7 @@ TEST_CASE_FIXTURE(ClassFixture, "class_unification_type_mismatch_is_correct_orde
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    REQUIRE_EQ("Type 'BaseClass' could not be converted into 'number'", toString(result.errors[0]));
+    REQUIRE_EQ("Type 'BaseClass' could not be converted into 'number'", toString(result.errors.at(0)));
     REQUIRE_EQ("Type 'number' could not be converted into 'BaseClass'", toString(result.errors[1]));
 }
 
@@ -359,7 +359,7 @@ b.X = 2 -- real Vector2.X is also read-only
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(4, result);
-    CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[0]));
+    CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors.at(0)));
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[1]));
     CHECK_EQ("Key 'Z' not found in class 'Vector2'", toString(result.errors[2]));
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[3]));
@@ -367,6 +367,9 @@ b.X = 2 -- real Vector2.X is also read-only
 
 TEST_CASE_FIXTURE(ClassFixture, "detailed_class_unification_error")
 {
+    ScopedFastFlag sff[] = {
+        {"LuauAlwaysCommitInferencesOfFunctionCalls", true},
+    };
     CheckResult result = check(R"(
 local function foo(v)
     return v.X :: number + string.len(v.Y)
@@ -378,10 +381,11 @@ b(a)
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(R"(Type 'Vector2' could not be converted into '{- X: a, Y: string -}'
+    const std::string expected = R"(Type 'Vector2' could not be converted into '{- X: number, Y: string -}'
 caused by:
-  Property 'Y' is not compatible. Type 'number' could not be converted into 'string')",
-        toString(result.errors[0]));
+  Property 'Y' is not compatible.
+Type 'number' could not be converted into 'string')";
+    CHECK_EQ(expected, toString(result.errors.at(0)));
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "class_type_mismatch_with_name_conflict")
@@ -393,7 +397,7 @@ local a: ChildClass = i
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Type 'ChildClass' from 'Test' could not be converted into 'ChildClass' from 'MainModule'", toString(result.errors[0]));
+    CHECK_EQ("Type 'ChildClass' from 'Test' could not be converted into 'ChildClass' from 'MainModule'", toString(result.errors.at(0)));
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "intersections_of_unions_of_classes")
@@ -422,8 +426,6 @@ TEST_CASE_FIXTURE(ClassFixture, "unions_of_intersections_of_classes")
 
 TEST_CASE_FIXTURE(ClassFixture, "index_instance_property")
 {
-    ScopedFastFlag luauAllowIndexClassParameters{"LuauAllowIndexClassParameters", true};
-
     CheckResult result = check(R"(
         local function execute(object: BaseClass, name: string)
             print(object[name])
@@ -431,13 +433,11 @@ TEST_CASE_FIXTURE(ClassFixture, "index_instance_property")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Attempting a dynamic property access on type 'BaseClass' is unsafe and may cause exceptions at runtime", toString(result.errors[0]));
+    CHECK_EQ("Attempting a dynamic property access on type 'BaseClass' is unsafe and may cause exceptions at runtime", toString(result.errors.at(0)));
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "index_instance_property_nonstrict")
 {
-    ScopedFastFlag luauAllowIndexClassParameters{"LuauAllowIndexClassParameters", true};
-
     CheckResult result = check(R"(
         --!nonstrict
 
@@ -455,19 +455,22 @@ TEST_CASE_FIXTURE(ClassFixture, "type_mismatch_invariance_required_for_error")
 type A = { x: ChildClass }
 type B = { x: BaseClass }
 
-local a: A
+local a: A = { x = ChildClass.New() }
 local b: B = a
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    if (FFlag::LuauTypeMismatchInvarianceInError)
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
-caused by:
-  Property 'x' is not compatible. Type 'ChildClass' could not be converted into 'BaseClass' in an invariant context)");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(toString(result.errors.at(0)) == "Type 'a' could not be converted into 'B'; at [\"x\"], ChildClass is not exactly BaseClass");
     else
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+    {
+        const std::string expected = R"(Type 'A' could not be converted into 'B'
 caused by:
-  Property 'x' is not compatible. Type 'ChildClass' could not be converted into 'BaseClass')");
+  Property 'x' is not compatible.
+Type 'ChildClass' could not be converted into 'BaseClass' in an invariant context)";
+        CHECK_EQ(expected, toString(result.errors.at(0)));
+    }
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "callable_classes")
@@ -479,6 +482,160 @@ TEST_CASE_FIXTURE(ClassFixture, "callable_classes")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("number", toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
+{
+    // Test reading from an index
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            local y = x.stringKey
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            local y = x["stringKey"]
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            local str : string
+            local y = x[str]            -- Index with a non-const string
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            local y = x[7]              -- Index with a numeric key
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+
+    // Test writing to an index
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            x.stringKey = 42
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            x["stringKey"] = 42
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            local str : string
+            x[str] = 42                 -- Index with a non-const string
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            x[1] = 42                   -- Index with a numeric key
+        )");
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+
+    // Try to index the class using an invalid type for the key (key type is 'number | string'.)
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            local y = x[true]
+        )");
+
+
+        CHECK_EQ(
+            toString(result.errors.at(0)), "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible");
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            x[true] = 42
+        )");
+
+        CHECK_EQ(
+            toString(result.errors.at(0)), "Type 'boolean' could not be converted into 'number | string'; none of the union options are compatible");
+    }
+
+    // Test type checking for the return type of the indexer (i.e. a number)
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            x.key = "string value"
+        )");
+        CHECK_EQ(toString(result.errors.at(0)), "Type 'string' could not be converted into 'number'");
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableClass
+            local str : string = x.key
+        )");
+        CHECK_EQ(toString(result.errors.at(0)), "Type 'number' could not be converted into 'string'");
+    }
+
+    // Check that we string key are rejected if the indexer's key type is not compatible with string
+    {
+        CheckResult result = check(R"(
+            local x : IndexableNumericKeyClass
+            x.key = 1
+        )");
+        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in class 'IndexableNumericKeyClass'");
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableNumericKeyClass
+            x["key"] = 1
+        )");
+        if (FFlag::DebugLuauDeferredConstraintResolution)
+            CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in class 'IndexableNumericKeyClass'");
+        else
+            CHECK_EQ(toString(result.errors.at(0)), "Type 'string' could not be converted into 'number'");
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableNumericKeyClass
+            local str : string
+            x[str] = 1                  -- Index with a non-const string
+        )");
+        CHECK_EQ(toString(result.errors.at(0)), "Type 'string' could not be converted into 'number'");
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableNumericKeyClass
+            local y = x.key
+        )");
+        CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in class 'IndexableNumericKeyClass'");
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableNumericKeyClass
+            local y = x["key"]
+        )");
+        if (FFlag::DebugLuauDeferredConstraintResolution)
+            CHECK_EQ(toString(result.errors.at(0)), "Key 'key' not found in class 'IndexableNumericKeyClass'");
+        else
+            CHECK_EQ(toString(result.errors.at(0)), "Type 'string' could not be converted into 'number'");
+    }
+    {
+        CheckResult result = check(R"(
+            local x : IndexableNumericKeyClass
+            local str : string
+            local y = x[str]            -- Index with a non-const string
+        )");
+        CHECK_EQ(toString(result.errors.at(0)), "Type 'string' could not be converted into 'number'");
+    }
 }
 
 TEST_SUITE_END();

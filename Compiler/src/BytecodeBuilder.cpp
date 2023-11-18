@@ -1,10 +1,13 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BytecodeBuilder.h"
 
+#include "Luau/BytecodeUtils.h"
 #include "Luau/StringUtils.h"
 
 #include <algorithm>
 #include <string.h>
+
+LUAU_FASTFLAG(LuauVectorLiterals)
 
 namespace Luau
 {
@@ -39,6 +42,11 @@ static void writeInt(std::string& ss, int value)
     ss.append(reinterpret_cast<const char*>(&value), sizeof(value));
 }
 
+static void writeFloat(std::string& ss, float value)
+{
+    ss.append(reinterpret_cast<const char*>(&value), sizeof(value));
+}
+
 static void writeDouble(std::string& ss, double value)
 {
     ss.append(reinterpret_cast<const char*>(&value), sizeof(value));
@@ -51,39 +59,6 @@ static void writeVarInt(std::string& ss, unsigned int value)
         writeByte(ss, (value & 127) | ((value > 127) << 7));
         value >>= 7;
     } while (value);
-}
-
-static int getOpLength(LuauOpcode op)
-{
-    switch (op)
-    {
-    case LOP_GETGLOBAL:
-    case LOP_SETGLOBAL:
-    case LOP_GETIMPORT:
-    case LOP_GETTABLEKS:
-    case LOP_SETTABLEKS:
-    case LOP_NAMECALL:
-    case LOP_JUMPIFEQ:
-    case LOP_JUMPIFLE:
-    case LOP_JUMPIFLT:
-    case LOP_JUMPIFNOTEQ:
-    case LOP_JUMPIFNOTLE:
-    case LOP_JUMPIFNOTLT:
-    case LOP_NEWTABLE:
-    case LOP_SETLIST:
-    case LOP_FORGLOOP:
-    case LOP_LOADKX:
-    case LOP_FASTCALL2:
-    case LOP_FASTCALL2K:
-    case LOP_JUMPXEQKNIL:
-    case LOP_JUMPXEQKB:
-    case LOP_JUMPXEQKN:
-    case LOP_JUMPXEQKS:
-        return 2;
-
-    default:
-        return 1;
-    }
 }
 
 inline bool isJumpD(LuauOpcode op)
@@ -177,23 +152,43 @@ size_t BytecodeBuilder::StringRefHash::operator()(const StringRef& v) const
 
 size_t BytecodeBuilder::ConstantKeyHash::operator()(const ConstantKey& key) const
 {
-    // finalizer from MurmurHash64B
-    const uint32_t m = 0x5bd1e995;
+    if (key.type == Constant::Type_Vector)
+    {
+        uint32_t i[4];
+        static_assert(sizeof(key.value) + sizeof(key.extra) == sizeof(i), "Expecting vector to have four 32-bit components");
+        memcpy(i, &key.value, sizeof(i));
 
-    uint32_t h1 = uint32_t(key.value);
-    uint32_t h2 = uint32_t(key.value >> 32) ^ (key.type * m);
+        // scramble bits to make sure that integer coordinates have entropy in lower bits
+        i[0] ^= i[0] >> 17;
+        i[1] ^= i[1] >> 17;
+        i[2] ^= i[2] >> 17;
+        i[3] ^= i[3] >> 17;
 
-    h1 ^= h2 >> 18;
-    h1 *= m;
-    h2 ^= h1 >> 22;
-    h2 *= m;
-    h1 ^= h2 >> 17;
-    h1 *= m;
-    h2 ^= h1 >> 19;
-    h2 *= m;
+        // Optimized Spatial Hashing for Collision Detection of Deformable Objects
+        uint32_t h = (i[0] * 73856093) ^ (i[1] * 19349663) ^ (i[2] * 83492791) ^ (i[3] * 39916801);
 
-    // ... truncated to 32-bit output (normally hash is equal to (uint64_t(h1) << 32) | h2, but we only really need the lower 32-bit half)
-    return size_t(h2);
+        return size_t(h);
+    }
+    else
+    {
+        // finalizer from MurmurHash64B
+        const uint32_t m = 0x5bd1e995;
+
+        uint32_t h1 = uint32_t(key.value);
+        uint32_t h2 = uint32_t(key.value >> 32) ^ (key.type * m);
+
+        h1 ^= h2 >> 18;
+        h1 *= m;
+        h2 ^= h1 >> 22;
+        h2 *= m;
+        h1 ^= h2 >> 17;
+        h1 *= m;
+        h2 ^= h1 >> 19;
+        h2 *= m;
+
+        // ... truncated to 32-bit output (normally hash is equal to (uint64_t(h1) << 32) | h2, but we only really need the lower 32-bit half)
+        return size_t(h2);
+    }
 }
 
 size_t BytecodeBuilder::TableShapeHash::operator()(const TableShape& v) const
@@ -247,7 +242,7 @@ uint32_t BytecodeBuilder::beginFunction(uint8_t numparams, bool isvararg)
     return id;
 }
 
-void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues)
+void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uint8_t flags)
 {
     LUAU_ASSERT(currentFunction != ~0u);
 
@@ -260,17 +255,21 @@ void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues)
     validate();
 #endif
 
-    // very approximate: 4 bytes per instruction for code, 1 byte for debug line, and 1-2 bytes for aux data like constants plus overhead
-    func.data.reserve(32 + insns.size() * 7);
-
-    writeFunction(func.data, currentFunction);
-
-    currentFunction = ~0u;
-
     // this call is indirect to make sure we only gain link time dependency on dumpCurrentFunction when needed
     if (dumpFunctionPtr)
         func.dump = (this->*dumpFunctionPtr)(func.dumpinstoffs);
 
+    // very approximate: 4 bytes per instruction for code, 1 byte for debug line, and 1-2 bytes for aux data like constants plus overhead
+    func.data.reserve(32 + insns.size() * 7);
+
+    if (encoder)
+        encoder->encode(insns.data(), insns.size());
+
+    writeFunction(func.data, currentFunction, flags);
+
+    currentFunction = ~0u;
+
+    totalInstructionCount += insns.size();
     insns.clear();
     lines.clear();
     constants.clear();
@@ -353,6 +352,24 @@ int32_t BytecodeBuilder::addConstantNumber(double value)
     ConstantKey k = {Constant::Type_Number};
     static_assert(sizeof(k.value) == sizeof(value), "Expecting double to be 64-bit");
     memcpy(&k.value, &value, sizeof(value));
+
+    return addConstant(k, c);
+}
+
+int32_t BytecodeBuilder::addConstantVector(float x, float y, float z, float w)
+{
+    Constant c = {Constant::Type_Vector};
+    c.valueVector[0] = x;
+    c.valueVector[1] = y;
+    c.valueVector[2] = z;
+    c.valueVector[3] = w;
+
+    ConstantKey k = {Constant::Type_Vector};
+    static_assert(sizeof(k.value) == sizeof(x) + sizeof(y) && sizeof(k.extra) == sizeof(z) + sizeof(w), "Expecting vector to have four 32-bit components");
+    memcpy(&k.value, &x, sizeof(x));
+    memcpy((char*)&k.value + sizeof(x), &y, sizeof(y));
+    memcpy(&k.extra, &z, sizeof(z));
+    memcpy((char*)&k.extra + sizeof(z), &w, sizeof(w));
 
     return addConstant(k, c);
 }
@@ -513,6 +530,11 @@ bool BytecodeBuilder::patchSkipC(size_t jumpLabel, size_t targetLabel)
     return true;
 }
 
+void BytecodeBuilder::setFunctionTypeInfo(std::string value)
+{
+    functions[currentFunction].typeinfo = std::move(value);
+}
+
 void BytecodeBuilder::setDebugFunctionName(StringRef name)
 {
     unsigned int index = addStringTableEntry(name);
@@ -554,6 +576,16 @@ void BytecodeBuilder::pushDebugUpval(StringRef name)
     upval.name = index;
 
     debugUpvals.push_back(upval);
+}
+
+size_t BytecodeBuilder::getInstructionCount() const
+{
+    return insns.size();
+}
+
+size_t BytecodeBuilder::getTotalInstructionCount() const
+{
+    return totalInstructionCount;
 }
 
 uint32_t BytecodeBuilder::getDebugPC() const
@@ -601,6 +633,10 @@ void BytecodeBuilder::finalize()
 
     bytecode = char(version);
 
+    uint8_t typesversion = getTypeEncodingVersion();
+    LUAU_ASSERT(typesversion == 1);
+    writeByte(bytecode, typesversion);
+
     writeStringTable(bytecode);
 
     writeVarInt(bytecode, uint32_t(functions.size()));
@@ -612,7 +648,7 @@ void BytecodeBuilder::finalize()
     writeVarInt(bytecode, mainFunction);
 }
 
-void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id) const
+void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags) const
 {
     LUAU_ASSERT(id < functions.size());
     const Function& func = functions[id];
@@ -623,24 +659,16 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id) const
     writeByte(ss, func.numupvalues);
     writeByte(ss, func.isvararg);
 
+    writeByte(ss, flags);
+
+    writeVarInt(ss, uint32_t(func.typeinfo.size()));
+    ss.append(func.typeinfo);
+
     // instructions
     writeVarInt(ss, uint32_t(insns.size()));
 
-    for (size_t i = 0; i < insns.size();)
-    {
-        uint8_t op = LUAU_INSN_OP(insns[i]);
-        LUAU_ASSERT(op < LOP__COUNT);
-
-        int oplen = getOpLength(LuauOpcode(op));
-        uint8_t openc = encoder ? encoder->encodeOp(op) : op;
-
-        writeInt(ss, openc | (insns[i] & ~0xff));
-
-        for (int j = 1; j < oplen; ++j)
-            writeInt(ss, insns[i + j]);
-
-        i += oplen;
-    }
+    for (uint32_t insn : insns)
+        writeInt(ss, insn);
 
     // constants
     writeVarInt(ss, uint32_t(constants.size()));
@@ -661,6 +689,14 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id) const
         case Constant::Type_Number:
             writeByte(ss, LBC_CONSTANT_NUMBER);
             writeDouble(ss, c.valueNumber);
+            break;
+
+        case Constant::Type_Vector:
+            writeByte(ss, LBC_CONSTANT_VECTOR);
+            writeFloat(ss, c.valueVector[0]);
+            writeFloat(ss, c.valueVector[1]);
+            writeFloat(ss, c.valueVector[2]);
+            writeFloat(ss, c.valueVector[3]);
             break;
 
         case Constant::Type_String:
@@ -1087,7 +1123,12 @@ std::string BytecodeBuilder::getError(const std::string& message)
 uint8_t BytecodeBuilder::getVersion()
 {
     // This function usually returns LBC_VERSION_TARGET but may sometimes return a higher number (within LBC_VERSION_MIN/MAX) under fast flags
-    return LBC_VERSION_TARGET;
+    return (FFlag::LuauVectorLiterals ? 5 : LBC_VERSION_TARGET);
+}
+
+uint8_t BytecodeBuilder::getTypeEncodingVersion()
+{
+    return LBC_TYPE_VERSION;
 }
 
 #ifdef LUAU_ASSERTENABLED
@@ -1177,10 +1218,15 @@ void BytecodeBuilder::validateInstructions() const
             break;
 
         case LOP_GETIMPORT:
+        {
             VREG(LUAU_INSN_A(insn));
             VCONST(LUAU_INSN_D(insn), Import);
-            // TODO: check insn[i + 1] for conformance with 10-bit import encoding
-            break;
+            uint32_t id = insns[i + 1];
+            LUAU_ASSERT((id >> 30) != 0); // import chain with length 1-3
+            for (unsigned int j = 0; j < (id >> 30); ++j)
+                VCONST((id >> (20 - 10 * j)) & 1023, String);
+        }
+        break;
 
         case LOP_GETTABLE:
         case LOP_SETTABLE:
@@ -1285,6 +1331,7 @@ void BytecodeBuilder::validateInstructions() const
         case LOP_SUB:
         case LOP_MUL:
         case LOP_DIV:
+        case LOP_IDIV:
         case LOP_MOD:
         case LOP_POW:
             VREG(LUAU_INSN_A(insn));
@@ -1296,6 +1343,7 @@ void BytecodeBuilder::validateInstructions() const
         case LOP_SUBK:
         case LOP_MULK:
         case LOP_DIVK:
+        case LOP_IDIVK:
         case LOP_MODK:
         case LOP_POWK:
             VREG(LUAU_INSN_A(insn));
@@ -1639,6 +1687,13 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
     case Constant::Type_Number:
         formatAppend(result, "%.17g", data.valueNumber);
         break;
+    case Constant::Type_Vector:
+        // 3-vectors is the most common configuration, so truncate to three components if possible
+        if (data.valueVector[3] == 0.0)
+            formatAppend(result, "%.9g, %.9g, %.9g", data.valueVector[0], data.valueVector[1], data.valueVector[2]);
+        else
+            formatAppend(result, "%.9g, %.9g, %.9g, %.9g", data.valueVector[0], data.valueVector[1], data.valueVector[2], data.valueVector[3]);
+        break;
     case Constant::Type_String:
     {
         const StringRef& str = debugStrings[data.valueString - 1];
@@ -1696,8 +1751,6 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
             formatAppend(result, "'%s'", func.dumpname.c_str());
         break;
     }
-    default:
-        LUAU_UNREACHABLE();
     }
 }
 
@@ -1866,6 +1919,10 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         formatAppend(result, "DIV R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
         break;
 
+    case LOP_IDIV:
+        formatAppend(result, "IDIV R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        break;
+
     case LOP_MOD:
         formatAppend(result, "MOD R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
         break;
@@ -1894,6 +1951,12 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
 
     case LOP_DIVK:
         formatAppend(result, "DIVK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        dumpConstant(result, LUAU_INSN_C(insn));
+        result.append("]\n");
+        break;
+
+    case LOP_IDIVK:
+        formatAppend(result, "IDIVK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
         dumpConstant(result, LUAU_INSN_C(insn));
         result.append("]\n");
         break;
@@ -2261,6 +2324,77 @@ std::string BytecodeBuilder::dumpSourceRemarks() const
 
         if (i + 1 < dumpSource.size())
             result += '\n';
+    }
+
+    return result;
+}
+
+static const char* getBaseTypeString(uint8_t type)
+{
+    uint8_t tag = type & ~LBC_TYPE_OPTIONAL_BIT;
+    switch (tag)
+    {
+    case LBC_TYPE_NIL:
+        return "nil";
+    case LBC_TYPE_BOOLEAN:
+        return "boolean";
+    case LBC_TYPE_NUMBER:
+        return "number";
+    case LBC_TYPE_STRING:
+        return "string";
+    case LBC_TYPE_TABLE:
+        return "table";
+    case LBC_TYPE_FUNCTION:
+        return "function";
+    case LBC_TYPE_THREAD:
+        return "thread";
+    case LBC_TYPE_USERDATA:
+        return "userdata";
+    case LBC_TYPE_VECTOR:
+        return "vector";
+    case LBC_TYPE_BUFFER:
+        return "buffer";
+    case LBC_TYPE_ANY:
+        return "any";
+    }
+
+    LUAU_ASSERT(!"Unhandled type in getBaseTypeString");
+    return nullptr;
+}
+
+std::string BytecodeBuilder::dumpTypeInfo() const
+{
+    std::string result;
+
+    for (size_t i = 0; i < functions.size(); ++i)
+    {
+        const std::string& typeinfo = functions[i].typeinfo;
+        if (typeinfo.empty())
+            continue;
+
+        uint8_t encodedType = typeinfo[0];
+
+        LUAU_ASSERT(encodedType == LBC_TYPE_FUNCTION);
+
+        formatAppend(result, "%zu: function(", i);
+
+        LUAU_ASSERT(typeinfo.size() >= 2);
+
+        uint8_t numparams = typeinfo[1];
+
+        LUAU_ASSERT(size_t(1 + numparams - 1) < typeinfo.size());
+
+        for (uint8_t i = 0; i < numparams; ++i)
+        {
+            uint8_t et = typeinfo[2 + i];
+            const char* optional = (et & LBC_TYPE_OPTIONAL_BIT) ? "?" : "";
+            formatAppend(result, "%s%s", getBaseTypeString(et), optional);
+
+            if (i + 1 != numparams)
+                formatAppend(result, ", ");
+        }
+
+        formatAppend(result, ")\n");
     }
 
     return result;

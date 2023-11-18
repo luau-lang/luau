@@ -363,45 +363,11 @@ local x = coroutine.create (function ()
           end)
 
 assert(not coroutine.resume(x))
+
 -- overwrite previous position of local `a'
 assert(not coroutine.resume(x, 1, 1, 1, 1, 1, 1, 1))
 assert(_G.f() == 11)
 assert(_G.f() == 12)
-
-
-if not T then
-  (Message or print)('\a\n >>> testC not active: skipping yield/hook tests <<<\n\a')
-else
-
-  local turn
-  
-  function fact (t, x)
-    assert(turn == t)
-    if x == 0 then return 1
-    else return x*fact(t, x-1)
-    end
-  end
-
-  local A,B,a,b = 0,0,0,0
-
-  local x = coroutine.create(function ()
-    T.setyhook("", 2)
-    A = fact("A", 10)
-  end)
-
-  local y = coroutine.create(function ()
-    T.setyhook("", 3)
-    B = fact("B", 11)
-  end)
-
-  while A==0 or B==0 do
-    if A==0 then turn = "A"; T.resume(x) end
-    if B==0 then turn = "B"; T.resume(y) end
-  end
-
-  assert(B/A == 11)
-end
-
 
 -- leaving a pending coroutine open
 _X = coroutine.wrap(function ()

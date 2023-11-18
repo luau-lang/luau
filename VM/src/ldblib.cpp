@@ -110,7 +110,7 @@ static int db_traceback(lua_State* L)
     int level = luaL_optinteger(L, arg + 2, (L == L1) ? 1 : 0);
     luaL_argcheck(L, level >= 0, arg + 2, "level can't be negative");
 
-    luaL_Buffer buf;
+    luaL_Strbuf buf;
     luaL_buffinit(L, &buf);
 
     if (msg)
@@ -137,7 +137,7 @@ static int db_traceback(lua_State* L)
                 *--lineptr = '0' + (r % 10);
 
             luaL_addchar(&buf, ':');
-            luaL_addlstring(&buf, lineptr, lineend - lineptr, -1);
+            luaL_addlstring(&buf, lineptr, lineend - lineptr);
         }
 
         if (ar.name)

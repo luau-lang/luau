@@ -43,7 +43,7 @@ void translateInstDupTable(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstGetUpval(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstSetUpval(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstCloseUpvals(IrBuilder& build, const Instruction* pc);
-void translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool customParams, int customParamCount, IrOp customArgs, IrOp next);
+IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool customParams, int customParamCount, IrOp customArgs);
 void translateInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstForGPrepNext(IrBuilder& build, const Instruction* pc, int pcpos);
@@ -60,6 +60,13 @@ void translateInstGetGlobal(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstSetGlobal(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstConcat(IrBuilder& build, const Instruction* pc, int pcpos);
 void translateInstCapture(IrBuilder& build, const Instruction* pc, int pcpos);
+void translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos);
+void translateInstAndX(IrBuilder& build, const Instruction* pc, int pcpos, IrOp c);
+void translateInstOrX(IrBuilder& build, const Instruction* pc, int pcpos, IrOp c);
+void translateInstNewClosure(IrBuilder& build, const Instruction* pc, int pcpos);
+
+void beforeInstForNPrep(IrBuilder& build, const Instruction* pc);
+void afterInstForNLoop(IrBuilder& build, const Instruction* pc);
 
 } // namespace CodeGen
 } // namespace Luau

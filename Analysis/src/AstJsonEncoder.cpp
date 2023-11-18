@@ -8,6 +8,8 @@
 
 #include <math.h>
 
+LUAU_FASTFLAG(LuauClipExtraHasEndProps);
+
 namespace Luau
 {
 
@@ -374,7 +376,8 @@ struct AstJsonEncoder : public AstVisitor
             PROP(body);
             PROP(functionDepth);
             PROP(debugname);
-            PROP(hasEnd);
+            if (!FFlag::LuauClipExtraHasEndProps)
+                write("hasEnd", node->DEPRECATED_hasEnd);
         });
     }
 
@@ -514,6 +517,8 @@ struct AstJsonEncoder : public AstVisitor
             return writeString("Mul");
         case AstExprBinary::Div:
             return writeString("Div");
+        case AstExprBinary::FloorDiv:
+            return writeString("FloorDiv");
         case AstExprBinary::Mod:
             return writeString("Mod");
         case AstExprBinary::Pow:
@@ -536,6 +541,8 @@ struct AstJsonEncoder : public AstVisitor
             return writeString("And");
         case AstExprBinary::Or:
             return writeString("Or");
+        default:
+            LUAU_ASSERT(!"Unknown Op");
         }
     }
 
@@ -567,6 +574,11 @@ struct AstJsonEncoder : public AstVisitor
     void write(class AstStatBlock* node)
     {
         writeNode(node, "AstStatBlock", [&]() {
+            if (FFlag::LuauClipExtraHasEndProps)
+            {
+                writeRaw(",\"hasEnd\":");
+                write(node->hasEnd);
+            }
             writeRaw(",\"body\":[");
             bool comma = false;
             for (AstStat* stat : node->body)
@@ -590,7 +602,8 @@ struct AstJsonEncoder : public AstVisitor
             if (node->elsebody)
                 PROP(elsebody);
             write("hasThen", node->thenLocation.has_value());
-            PROP(hasEnd);
+            if (!FFlag::LuauClipExtraHasEndProps)
+                write("hasEnd", node->DEPRECATED_hasEnd);
         });
     }
 
@@ -600,7 +613,8 @@ struct AstJsonEncoder : public AstVisitor
             PROP(condition);
             PROP(body);
             PROP(hasDo);
-            PROP(hasEnd);
+            if (!FFlag::LuauClipExtraHasEndProps)
+                write("hasEnd", node->DEPRECATED_hasEnd);
         });
     }
 
@@ -609,7 +623,8 @@ struct AstJsonEncoder : public AstVisitor
         writeNode(node, "AstStatRepeat", [&]() {
             PROP(condition);
             PROP(body);
-            PROP(hasUntil);
+            if (!FFlag::LuauClipExtraHasEndProps)
+                write("hasUntil", node->DEPRECATED_hasUntil);
         });
     }
 
@@ -655,7 +670,8 @@ struct AstJsonEncoder : public AstVisitor
                 PROP(step);
             PROP(body);
             PROP(hasDo);
-            PROP(hasEnd);
+            if (!FFlag::LuauClipExtraHasEndProps)
+                write("hasEnd", node->DEPRECATED_hasEnd);
         });
     }
 
@@ -667,7 +683,8 @@ struct AstJsonEncoder : public AstVisitor
             PROP(body);
             PROP(hasIn);
             PROP(hasDo);
-            PROP(hasEnd);
+            if (!FFlag::LuauClipExtraHasEndProps)
+                write("hasEnd", node->DEPRECATED_hasEnd);
         });
     }
 
@@ -752,6 +769,7 @@ struct AstJsonEncoder : public AstVisitor
             if (node->superName)
                 write("superName", *node->superName);
             PROP(props);
+            PROP(indexer);
         });
     }
 
@@ -776,7 +794,10 @@ struct AstJsonEncoder : public AstVisitor
         writeNode(node, "AstTypeReference", [&]() {
             if (node->prefix)
                 PROP(prefix);
+            if (node->prefixLocation)
+                write("prefixLocation", *node->prefixLocation);
             PROP(name);
+            PROP(nameLocation);
             PROP(parameters);
         });
     }

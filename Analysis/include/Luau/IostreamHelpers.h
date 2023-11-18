@@ -5,6 +5,7 @@
 #include "Luau/Location.h"
 #include "Luau/Type.h"
 #include "Luau/Ast.h"
+#include "Luau/TypePath.h"
 
 #include <ostream>
 
@@ -47,5 +48,15 @@ std::ostream& operator<<(std::ostream& lhs, const Type& tv);
 std::ostream& operator<<(std::ostream& lhs, const TypePackVar& tv);
 
 std::ostream& operator<<(std::ostream& lhs, const TypeErrorData& ted);
+
+std::ostream& operator<<(std::ostream& lhs, TypeId ty);
+std::ostream& operator<<(std::ostream& lhs, TypePackId tp);
+
+namespace TypePath
+{
+
+std::ostream& operator<<(std::ostream& lhs, const Path& path);
+
+}; // namespace TypePath
 
 } // namespace Luau

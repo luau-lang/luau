@@ -9,6 +9,13 @@
 #include "FileUtils.h"
 #include "Flags.h"
 
+#include <condition_variable>
+#include <functional>
+#include <mutex>
+#include <queue>
+#include <thread>
+#include <utility>
+
 #ifdef CALLGRIND
 #include <valgrind/callgrind.h>
 #endif
@@ -64,28 +71,29 @@ static void reportWarning(ReportFormat format, const char* name, const Luau::Lin
     report(format, name, warning.location, Luau::LintWarning::getName(warning.code), warning.text.c_str());
 }
 
-static bool analyzeFile(Luau::Frontend& frontend, const char* name, ReportFormat format, bool annotate)
+static bool reportModuleResult(Luau::Frontend& frontend, const Luau::ModuleName& name, ReportFormat format, bool annotate)
 {
-    Luau::CheckResult cr;
+    std::optional<Luau::CheckResult> cr = frontend.getCheckResult(name, false);
 
-    if (frontend.isDirty(name))
-        cr = frontend.check(name);
-
-    if (!frontend.getSourceModule(name))
+    if (!cr)
     {
-        fprintf(stderr, "Error opening %s\n", name);
+        fprintf(stderr, "Failed to find result for %s\n", name.c_str());
         return false;
     }
 
-    for (auto& error : cr.errors)
+    if (!frontend.getSourceModule(name))
+    {
+        fprintf(stderr, "Error opening %s\n", name.c_str());
+        return false;
+    }
+
+    for (auto& error : cr->errors)
         reportError(frontend, format, error);
 
-    Luau::LintResult lr = frontend.lint(name);
-
     std::string humanReadableName = frontend.fileResolver->getHumanReadableModuleName(name);
-    for (auto& error : lr.errors)
+    for (auto& error : cr->lintResult.errors)
         reportWarning(format, humanReadableName.c_str(), error);
-    for (auto& warning : lr.warnings)
+    for (auto& warning : cr->lintResult.warnings)
         reportWarning(format, humanReadableName.c_str(), warning);
 
     if (annotate)
@@ -100,7 +108,7 @@ static bool analyzeFile(Luau::Frontend& frontend, const char* name, ReportFormat
         printf("%s", annotated.c_str());
     }
 
-    return cr.errors.empty() && lr.errors.empty();
+    return cr->errors.empty() && cr->lintResult.errors.empty();
 }
 
 static void displayHelp(const char* argv0)
@@ -218,6 +226,70 @@ struct CliConfigResolver : Luau::ConfigResolver
     }
 };
 
+struct TaskScheduler
+{
+    TaskScheduler(unsigned threadCount)
+        : threadCount(threadCount)
+    {
+        for (unsigned i = 0; i < threadCount; i++)
+        {
+            workers.emplace_back([this] {
+                workerFunction();
+            });
+        }
+    }
+
+    ~TaskScheduler()
+    {
+        for (unsigned i = 0; i < threadCount; i++)
+            push({});
+
+        for (std::thread& worker : workers)
+            worker.join();
+    }
+
+    std::function<void()> pop()
+    {
+        std::unique_lock guard(mtx);
+
+        cv.wait(guard, [this] {
+            return !tasks.empty();
+        });
+
+        std::function<void()> task = tasks.front();
+        tasks.pop();
+        return task;
+    }
+
+    void push(std::function<void()> task)
+    {
+        {
+            std::unique_lock guard(mtx);
+            tasks.push(std::move(task));
+        }
+
+        cv.notify_one();
+    }
+
+    static unsigned getThreadCount()
+    {
+        return std::max(std::thread::hardware_concurrency(), 1u);
+    }
+
+private:
+    void workerFunction()
+    {
+        while (std::function<void()> task = pop())
+            task();
+    }
+
+    unsigned threadCount = 1;
+    std::mutex mtx;
+    std::condition_variable cv;
+    std::vector<std::thread> workers;
+    std::queue<std::function<void()>> tasks;
+};
+
 int main(int argc, char** argv)
 {
     Luau::assertHandler() = assertionHandler;
@@ -233,6 +305,7 @@ int main(int argc, char** argv)
     ReportFormat format = ReportFormat::Default;
     Luau::Mode mode = Luau::Mode::Nonstrict;
     bool annotate = false;
+    int threadCount = 0;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -251,6 +324,8 @@ int main(int argc, char** argv)
             FFlag::DebugLuauTimeTracing.value = true;
         else if (strncmp(argv[i], "--fflags=", 9) == 0)
             setLuauFlags(argv[i] + 9);
+        else if (strncmp(argv[i], "-j", 2) == 0)
+            threadCount = strtol(argv[i] + 2, nullptr, 10);
     }
 
 #if !defined(LUAU_ENABLE_TIME_TRACE)
@@ -263,12 +338,13 @@ int main(int argc, char** argv)
 
     Luau::FrontendOptions frontendOptions;
     frontendOptions.retainFullTypeGraphs = annotate;
+    frontendOptions.runLintChecks = true;
 
     CliFileResolver fileResolver;
     CliConfigResolver configResolver(mode);
     Luau::Frontend frontend(&fileResolver, &configResolver, frontendOptions);
 
-    Luau::registerBuiltinGlobals(frontend.typeChecker, frontend.globals);
+    Luau::registerBuiltinGlobals(frontend, frontend.globals);
     Luau::freeze(frontend.globals.globalTypes);
 
 #ifdef CALLGRIND
@@ -277,10 +353,28 @@ int main(int argc, char** argv)
 
     std::vector<std::string> files = getSourceFiles(argc, argv);
 
+    for (const std::string& path : files)
+        frontend.queueModuleCheck(path);
+
+    std::vector<Luau::ModuleName> checkedModules;
+
+    // If thread count is not set, try to use HW thread count, but with an upper limit
+    // When we improve scalability of typechecking, upper limit can be adjusted/removed
+    if (threadCount <= 0)
+        threadCount = std::min(TaskScheduler::getThreadCount(), 8u);
+
+    {
+        TaskScheduler scheduler(threadCount);
+
+        checkedModules = frontend.checkQueuedModules(std::nullopt, [&](std::function<void()> f) {
+            scheduler.push(std::move(f));
+        });
+    }
+
     int failed = 0;
 
-    for (const std::string& path : files)
-        failed += !analyzeFile(frontend, path.c_str(), format, annotate);
+    for (const Luau::ModuleName& name : checkedModules)
+        failed += !reportModuleResult(frontend, name, format, annotate);
 
     if (!configResolver.configErrors.empty())
     {

@@ -3,29 +3,47 @@
 
 // Do not include LValue. It should never be used here.
 #include "Luau/Ast.h"
-#include "Luau/Breadcrumb.h"
+#include "Luau/ControlFlow.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Def.h"
 #include "Luau/Symbol.h"
+#include "Luau/TypedAllocator.h"
 
 #include <unordered_map>
 
 namespace Luau
 {
 
+struct RefinementKey
+{
+    const RefinementKey* parent = nullptr;
+    DefId def;
+    std::optional<std::string> propName;
+};
+
+struct RefinementKeyArena
+{
+    TypedAllocator<RefinementKey> allocator;
+
+    const RefinementKey* leaf(DefId def);
+    const RefinementKey* node(const RefinementKey* parent, DefId def, const std::string& propName);
+};
+
 struct DataFlowGraph
 {
     DataFlowGraph(DataFlowGraph&&) = default;
     DataFlowGraph& operator=(DataFlowGraph&&) = default;
 
-    NullableBreadcrumbId getBreadcrumb(const AstExpr* expr) const;
+    DefId getDef(const AstExpr* expr) const;
+    // Look up for the rvalue def for a compound assignment.
+    std::optional<DefId> getRValueDefForCompoundAssign(const AstExpr* expr) const;
 
-    BreadcrumbId getBreadcrumb(const AstLocal* local) const;
-    BreadcrumbId getBreadcrumb(const AstExprLocal* local) const;
-    BreadcrumbId getBreadcrumb(const AstExprGlobal* global) const;
+    DefId getDef(const AstLocal* local) const;
 
-    BreadcrumbId getBreadcrumb(const AstStatDeclareGlobal* global) const;
-    BreadcrumbId getBreadcrumb(const AstStatDeclareFunction* func) const;
+    DefId getDef(const AstStatDeclareGlobal* global) const;
+    DefId getDef(const AstStatDeclareFunction* func) const;
+
+    const RefinementKey* getRefinementKey(const AstExpr* expr) const;
 
 private:
     DataFlowGraph() = default;
@@ -33,17 +51,23 @@ private:
     DataFlowGraph(const DataFlowGraph&) = delete;
     DataFlowGraph& operator=(const DataFlowGraph&) = delete;
 
-    DefArena defs;
-    BreadcrumbArena breadcrumbs;
+    DefArena defArena;
+    RefinementKeyArena keyArena;
 
-    DenseHashMap<const AstExpr*, NullableBreadcrumbId> astBreadcrumbs{nullptr};
+    DenseHashMap<const AstExpr*, const Def*> astDefs{nullptr};
 
     // Sometimes we don't have the AstExprLocal* but we have AstLocal*, and sometimes we need to extract that DefId.
-    DenseHashMap<const AstLocal*, NullableBreadcrumbId> localBreadcrumbs{nullptr};
+    DenseHashMap<const AstLocal*, const Def*> localDefs{nullptr};
 
     // There's no AstStatDeclaration, and it feels useless to introduce it just to enforce an invariant in one place.
     // All keys in this maps are really only statements that ambiently declares a symbol.
-    DenseHashMap<const AstStat*, NullableBreadcrumbId> declaredBreadcrumbs{nullptr};
+    DenseHashMap<const AstStat*, const Def*> declaredDefs{nullptr};
+
+    // Compound assignments are in a weird situation where the local being assigned to is also being used at its
+    // previous type implicitly in an rvalue position. This map provides the previous binding.
+    DenseHashMap<const AstExpr*, const Def*> compoundAssignDefs{nullptr};
+
+    DenseHashMap<const AstExpr*, const RefinementKey*> astRefinementKeys{nullptr};
 
     friend struct DataFlowGraphBuilder;
 };
@@ -51,15 +75,29 @@ private:
 struct DfgScope
 {
     DfgScope* parent;
-    DenseHashMap<Symbol, NullableBreadcrumbId> bindings{Symbol{}};
-    DenseHashMap<const Def*, std::unordered_map<std::string, NullableBreadcrumbId>> props{nullptr};
+    bool isLoopScope;
 
-    NullableBreadcrumbId lookup(Symbol symbol) const;
-    NullableBreadcrumbId lookup(DefId def, const std::string& key) const;
+    using Bindings = DenseHashMap<Symbol, const Def*>;
+    using Props = DenseHashMap<const Def*, std::unordered_map<std::string, const Def*>>;
+
+    Bindings bindings{Symbol{}};
+    Props props{nullptr};
+
+    std::optional<DefId> lookup(Symbol symbol) const;
+    std::optional<DefId> lookup(DefId def, const std::string& key) const;
+
+    void inherit(const DfgScope* childScope);
+
+    bool canUpdateDefinition(Symbol symbol) const;
+    bool canUpdateDefinition(DefId def, const std::string& key) const;
 };
 
-// Currently unsound. We do not presently track the control flow of the program.
-// Additionally, we do not presently track assignments.
+struct DataFlowResult
+{
+    DefId def;
+    const RefinementKey* parent = nullptr;
+};
+
 struct DataFlowGraphBuilder
 {
     static DataFlowGraph build(AstStatBlock* root, NotNull<struct InternalErrorReporter> handle);
@@ -71,61 +109,69 @@ private:
     DataFlowGraphBuilder& operator=(const DataFlowGraphBuilder&) = delete;
 
     DataFlowGraph graph;
-    NotNull<DefArena> defs{&graph.defs};
-    NotNull<BreadcrumbArena> breadcrumbs{&graph.breadcrumbs};
+    NotNull<DefArena> defArena{&graph.defArena};
+    NotNull<RefinementKeyArena> keyArena{&graph.keyArena};
 
     struct InternalErrorReporter* handle = nullptr;
     DfgScope* moduleScope = nullptr;
 
     std::vector<std::unique_ptr<DfgScope>> scopes;
 
-    DfgScope* childScope(DfgScope* scope);
+    DfgScope* childScope(DfgScope* scope, bool isLoopScope = false);
 
-    void visit(DfgScope* scope, AstStatBlock* b);
-    void visitBlockWithoutChildScope(DfgScope* scope, AstStatBlock* b);
+    void join(DfgScope* p, DfgScope* a, DfgScope* b);
+    void joinBindings(DfgScope::Bindings& p, const DfgScope::Bindings& a, const DfgScope::Bindings& b);
+    void joinProps(DfgScope::Props& p, const DfgScope::Props& a, const DfgScope::Props& b);
 
-    void visit(DfgScope* scope, AstStat* s);
-    void visit(DfgScope* scope, AstStatIf* i);
-    void visit(DfgScope* scope, AstStatWhile* w);
-    void visit(DfgScope* scope, AstStatRepeat* r);
-    void visit(DfgScope* scope, AstStatBreak* b);
-    void visit(DfgScope* scope, AstStatContinue* c);
-    void visit(DfgScope* scope, AstStatReturn* r);
-    void visit(DfgScope* scope, AstStatExpr* e);
-    void visit(DfgScope* scope, AstStatLocal* l);
-    void visit(DfgScope* scope, AstStatFor* f);
-    void visit(DfgScope* scope, AstStatForIn* f);
-    void visit(DfgScope* scope, AstStatAssign* a);
-    void visit(DfgScope* scope, AstStatCompoundAssign* c);
-    void visit(DfgScope* scope, AstStatFunction* f);
-    void visit(DfgScope* scope, AstStatLocalFunction* l);
-    void visit(DfgScope* scope, AstStatTypeAlias* t);
-    void visit(DfgScope* scope, AstStatDeclareGlobal* d);
-    void visit(DfgScope* scope, AstStatDeclareFunction* d);
-    void visit(DfgScope* scope, AstStatDeclareClass* d);
-    void visit(DfgScope* scope, AstStatError* error);
+    DefId lookup(DfgScope* scope, Symbol symbol);
+    DefId lookup(DfgScope* scope, DefId def, const std::string& key);
 
-    BreadcrumbId visitExpr(DfgScope* scope, AstExpr* e);
-    BreadcrumbId visitExpr(DfgScope* scope, AstExprLocal* l);
-    BreadcrumbId visitExpr(DfgScope* scope, AstExprGlobal* g);
-    BreadcrumbId visitExpr(DfgScope* scope, AstExprCall* c);
-    BreadcrumbId visitExpr(DfgScope* scope, AstExprIndexName* i);
-    BreadcrumbId visitExpr(DfgScope* scope, AstExprIndexExpr* i);
-    BreadcrumbId visitExpr(DfgScope* scope, AstExprFunction* f);
-    BreadcrumbId visitExpr(DfgScope* scope, AstExprTable* t);
-    BreadcrumbId visitExpr(DfgScope* scope, AstExprUnary* u);
-    BreadcrumbId visitExpr(DfgScope* scope, AstExprBinary* b);
-    BreadcrumbId visitExpr(DfgScope* scope, AstExprTypeAssertion* t);
-    BreadcrumbId visitExpr(DfgScope* scope, AstExprIfElse* i);
-    BreadcrumbId visitExpr(DfgScope* scope, AstExprInterpString* i);
-    BreadcrumbId visitExpr(DfgScope* scope, AstExprError* error);
+    ControlFlow visit(DfgScope* scope, AstStatBlock* b);
+    ControlFlow visitBlockWithoutChildScope(DfgScope* scope, AstStatBlock* b);
 
-    void visitLValue(DfgScope* scope, AstExpr* e);
-    void visitLValue(DfgScope* scope, AstExprLocal* l);
-    void visitLValue(DfgScope* scope, AstExprGlobal* g);
-    void visitLValue(DfgScope* scope, AstExprIndexName* i);
-    void visitLValue(DfgScope* scope, AstExprIndexExpr* i);
-    void visitLValue(DfgScope* scope, AstExprError* e);
+    ControlFlow visit(DfgScope* scope, AstStat* s);
+    ControlFlow visit(DfgScope* scope, AstStatIf* i);
+    ControlFlow visit(DfgScope* scope, AstStatWhile* w);
+    ControlFlow visit(DfgScope* scope, AstStatRepeat* r);
+    ControlFlow visit(DfgScope* scope, AstStatBreak* b);
+    ControlFlow visit(DfgScope* scope, AstStatContinue* c);
+    ControlFlow visit(DfgScope* scope, AstStatReturn* r);
+    ControlFlow visit(DfgScope* scope, AstStatExpr* e);
+    ControlFlow visit(DfgScope* scope, AstStatLocal* l);
+    ControlFlow visit(DfgScope* scope, AstStatFor* f);
+    ControlFlow visit(DfgScope* scope, AstStatForIn* f);
+    ControlFlow visit(DfgScope* scope, AstStatAssign* a);
+    ControlFlow visit(DfgScope* scope, AstStatCompoundAssign* c);
+    ControlFlow visit(DfgScope* scope, AstStatFunction* f);
+    ControlFlow visit(DfgScope* scope, AstStatLocalFunction* l);
+    ControlFlow visit(DfgScope* scope, AstStatTypeAlias* t);
+    ControlFlow visit(DfgScope* scope, AstStatDeclareGlobal* d);
+    ControlFlow visit(DfgScope* scope, AstStatDeclareFunction* d);
+    ControlFlow visit(DfgScope* scope, AstStatDeclareClass* d);
+    ControlFlow visit(DfgScope* scope, AstStatError* error);
+
+    DataFlowResult visitExpr(DfgScope* scope, AstExpr* e);
+    DataFlowResult visitExpr(DfgScope* scope, AstExprGroup* group);
+    DataFlowResult visitExpr(DfgScope* scope, AstExprLocal* l);
+    DataFlowResult visitExpr(DfgScope* scope, AstExprGlobal* g);
+    DataFlowResult visitExpr(DfgScope* scope, AstExprCall* c);
+    DataFlowResult visitExpr(DfgScope* scope, AstExprIndexName* i);
+    DataFlowResult visitExpr(DfgScope* scope, AstExprIndexExpr* i);
+    DataFlowResult visitExpr(DfgScope* scope, AstExprFunction* f);
+    DataFlowResult visitExpr(DfgScope* scope, AstExprTable* t);
+    DataFlowResult visitExpr(DfgScope* scope, AstExprUnary* u);
+    DataFlowResult visitExpr(DfgScope* scope, AstExprBinary* b);
+    DataFlowResult visitExpr(DfgScope* scope, AstExprTypeAssertion* t);
+    DataFlowResult visitExpr(DfgScope* scope, AstExprIfElse* i);
+    DataFlowResult visitExpr(DfgScope* scope, AstExprInterpString* i);
+    DataFlowResult visitExpr(DfgScope* scope, AstExprError* error);
+
+    void visitLValue(DfgScope* scope, AstExpr* e, DefId incomingDef, bool isCompoundAssignment = false);
+    void visitLValue(DfgScope* scope, AstExprLocal* l, DefId incomingDef, bool isCompoundAssignment);
+    void visitLValue(DfgScope* scope, AstExprGlobal* g, DefId incomingDef, bool isCompoundAssignment);
+    void visitLValue(DfgScope* scope, AstExprIndexName* i, DefId incomingDef);
+    void visitLValue(DfgScope* scope, AstExprIndexExpr* i, DefId incomingDef);
+    void visitLValue(DfgScope* scope, AstExprError* e, DefId incomingDef);
 
     void visitType(DfgScope* scope, AstType* t);
     void visitType(DfgScope* scope, AstTypeReference* r);

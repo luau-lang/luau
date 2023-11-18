@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Common.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Label.h"
 #include "Luau/ConditionX64.h"
 #include "Luau/OperandX64.h"
@@ -41,6 +42,7 @@ enum class ABIX64
 class AssemblyBuilderX64
 {
 public:
+    explicit AssemblyBuilderX64(bool logText, ABIX64 abi);
     explicit AssemblyBuilderX64(bool logText);
     ~AssemblyBuilderX64();
 
@@ -57,6 +59,8 @@ public:
     void sar(OperandX64 lhs, OperandX64 rhs);
     void shl(OperandX64 lhs, OperandX64 rhs);
     void shr(OperandX64 lhs, OperandX64 rhs);
+    void rol(OperandX64 lhs, OperandX64 rhs);
+    void ror(OperandX64 lhs, OperandX64 rhs);
 
     // Two operand mov instruction has additional specialized encodings
     void mov(OperandX64 lhs, OperandX64 rhs);
@@ -81,6 +85,7 @@ public:
     void test(OperandX64 lhs, OperandX64 rhs);
     void lea(OperandX64 lhs, OperandX64 rhs);
     void setcc(ConditionX64 cond, OperandX64 op);
+    void cmov(ConditionX64 cond, RegisterX64 lhs, OperandX64 rhs);
 
     void push(OperandX64 op);
     void pop(OperandX64 op);
@@ -94,7 +99,14 @@ public:
     void call(Label& label);
     void call(OperandX64 op);
 
+    void lea(RegisterX64 lhs, Label& label);
+
     void int3();
+    void ud2();
+
+    void bsr(RegisterX64 dst, OperandX64 src);
+    void bsf(RegisterX64 dst, OperandX64 src);
+    void bswap(RegisterX64 dst);
 
     // Code alignment
     void nop(uint32_t length = 1);
@@ -120,6 +132,8 @@ public:
 
     void vcvttsd2si(OperandX64 dst, OperandX64 src);
     void vcvtsi2sd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vcvtsd2ss(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vcvtss2sd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
     void vroundsd(OperandX64 dst, OperandX64 src1, OperandX64 src2, RoundingModeX64 roundingMode); // inexact
 
@@ -145,15 +159,21 @@ public:
 
     void vblendvpd(RegisterX64 dst, RegisterX64 src1, OperandX64 mask, RegisterX64 src3);
 
-
     // Run final checks
-    void finalize();
+    bool finalize();
 
     // Places a label at current location and returns it
     Label setLabel();
 
     // Assigns label position to the current location
     void setLabel(Label& label);
+
+    // Extracts code offset (in bytes) from label
+    uint32_t getLabelOffset(const Label& label)
+    {
+        LUAU_ASSERT(label.location != ~0u);
+        return label.location;
+    }
 
     // Constant allocation (uses rip-relative addressing)
     OperandX64 i64(int64_t value);
@@ -208,6 +228,7 @@ private:
     void placeVex(OperandX64 dst, OperandX64 src1, OperandX64 src2, bool setW, uint8_t mode, uint8_t prefix);
     void placeImm8Or32(int32_t imm);
     void placeImm8(int32_t imm);
+    void placeImm16(int16_t imm);
     void placeImm32(int32_t imm);
     void placeImm64(int64_t imm);
     void placeLabel(Label& label);
@@ -227,6 +248,7 @@ private:
     LUAU_NOINLINE void log(const char* opcode, OperandX64 op1, OperandX64 op2, OperandX64 op3, OperandX64 op4);
     LUAU_NOINLINE void log(Label label);
     LUAU_NOINLINE void log(const char* opcode, Label label);
+    LUAU_NOINLINE void log(const char* opcode, RegisterX64 reg, Label label);
     void log(OperandX64 op);
 
     const char* getSizeName(SizeX64 size) const;
@@ -235,6 +257,8 @@ private:
     uint32_t nextLabel = 1;
     std::vector<Label> pendingLabels;
     std::vector<uint32_t> labelLocations;
+
+    DenseHashMap<uint64_t, int32_t> constCache64;
 
     bool finalized = false;
 

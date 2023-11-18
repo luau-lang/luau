@@ -14,47 +14,10 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
-LUAU_FASTFLAGVARIABLE(LuauImproveDeprecatedApiLint, false)
+LUAU_FASTFLAG(LuauBufferTypeck)
 
 namespace Luau
 {
-
-// clang-format off
-static const char* kWarningNames[] = {
-    "Unknown",
-
-    "UnknownGlobal",
-    "DeprecatedGlobal",
-    "GlobalUsedAsLocal",
-    "LocalShadow",
-    "SameLineStatement",
-    "MultiLineStatement",
-    "LocalUnused",
-    "FunctionUnused",
-    "ImportUnused",
-    "BuiltinGlobalWrite",
-    "PlaceholderRead",
-    "UnreachableCode",
-    "UnknownType",
-    "ForRange",
-    "UnbalancedAssignment",
-    "ImplicitReturn",
-    "DuplicateLocal",
-    "FormatString",
-    "TableLiteral",
-    "UninitializedLocal",
-    "DuplicateFunction",
-    "DeprecatedApi",
-    "TableOperations",
-    "DuplicateCondition",
-    "MisleadingAndOr",
-    "CommentDirective",
-    "IntegerParsing",
-    "ComparisonPrecedence",
-};
-// clang-format on
-
-static_assert(std::size(kWarningNames) == unsigned(LintWarning::Code__Count), "did you forget to add warning to the list?");
 
 struct LintContext
 {
@@ -1144,7 +1107,7 @@ private:
     TypeKind getTypeKind(const std::string& name)
     {
         if (name == "nil" || name == "boolean" || name == "userdata" || name == "number" || name == "string" || name == "table" ||
-            name == "function" || name == "thread")
+            name == "function" || name == "thread" || (FFlag::LuauBufferTypeck && name == "buffer"))
             return Kind_Primitive;
 
         if (name == "vector")
@@ -2102,9 +2065,6 @@ class LintDeprecatedApi : AstVisitor
 public:
     LUAU_NOINLINE static void process(LintContext& context)
     {
-        if (!FFlag::LuauImproveDeprecatedApiLint && !context.module)
-            return;
-
         LintDeprecatedApi pass{&context};
         context.root->visit(&pass);
     }
@@ -2122,8 +2082,33 @@ private:
         if (std::optional<TypeId> ty = context->getType(node->expr))
             check(node, follow(*ty));
         else if (AstExprGlobal* global = node->expr->as<AstExprGlobal>())
-            if (FFlag::LuauImproveDeprecatedApiLint)
-                check(node->location, global->name, node->index);
+            check(node->location, global->name, node->index);
+
+        return true;
+    }
+
+    bool visit(AstExprCall* node) override
+    {
+        // getfenv/setfenv are deprecated, however they are still used in some test frameworks and don't have a great general replacement
+        // for now we warn about the deprecation only when they are used with a numeric first argument; this produces fewer warnings and makes use
+        // of getfenv/setfenv a little more localized
+        if (!node->self && node->args.size >= 1)
+        {
+            if (AstExprGlobal* fenv = node->func->as<AstExprGlobal>(); fenv && (fenv->name == "getfenv" || fenv->name == "setfenv"))
+            {
+                AstExpr* level = node->args.data[0];
+                std::optional<TypeId> ty = context->getType(level);
+
+                if ((ty && isNumber(*ty)) || level->is<AstExprConstantNumber>())
+                {
+                    // some common uses of getfenv(n) can be replaced by debug.info if the goal is to get the caller's identity
+                    const char* suggestion = (fenv->name == "getfenv") ? "; consider using 'debug.info' instead" : "";
+
+                    emitWarning(
+                        *context, LintWarning::Code_DeprecatedApi, node->location, "Function '%s' is deprecated%s", fenv->name.value, suggestion);
+                }
+            }
+        }
 
         return true;
     }
@@ -2144,7 +2129,7 @@ private:
             if (prop != tty->props.end() && prop->second.deprecated)
             {
                 // strip synthetic typeof() for builtin tables
-                if (FFlag::LuauImproveDeprecatedApiLint && tty->name && tty->name->compare(0, 7, "typeof(") == 0 && tty->name->back() == ')')
+                if (tty->name && tty->name->compare(0, 7, "typeof(") == 0 && tty->name->back() == ')')
                     report(node->location, prop->second, tty->name->substr(7, tty->name->length() - 8).c_str(), node->index.value);
                 else
                     report(node->location, prop->second, tty->name ? tty->name->c_str() : nullptr, node->index.value);
@@ -2197,16 +2182,49 @@ private:
     {
     }
 
+    bool visit(AstExprUnary* node) override
+    {
+        if (node->op == AstExprUnary::Len)
+            checkIndexer(node, node->expr, "#");
+
+        return true;
+    }
+
     bool visit(AstExprCall* node) override
     {
-        AstExprIndexName* func = node->func->as<AstExprIndexName>();
-        if (!func)
-            return true;
+        if (AstExprGlobal* func = node->func->as<AstExprGlobal>())
+        {
+            if (func->name == "ipairs" && node->args.size == 1)
+                checkIndexer(node, node->args.data[0], "ipairs");
+        }
+        else if (AstExprIndexName* func = node->func->as<AstExprIndexName>())
+        {
+            if (AstExprGlobal* tablib = func->expr->as<AstExprGlobal>(); tablib && tablib->name == "table")
+                checkTableCall(node, func);
+        }
 
-        AstExprGlobal* tablib = func->expr->as<AstExprGlobal>();
-        if (!tablib || tablib->name != "table")
-            return true;
+        return true;
+    }
 
+    void checkIndexer(AstExpr* node, AstExpr* expr, const char* op)
+    {
+        std::optional<Luau::TypeId> ty = context->getType(expr);
+        if (!ty)
+            return;
+
+        const TableType* tty = get<TableType>(follow(*ty));
+        if (!tty)
+            return;
+
+        if (!tty->indexer && !tty->props.empty() && tty->state != TableState::Generic)
+            emitWarning(
+                *context, LintWarning::Code_TableOperations, node->location, "Using '%s' on a table without an array part is likely a bug", op);
+        else if (tty->indexer && isString(tty->indexer->indexType)) // note: to avoid complexity of subtype tests we just check if the key is a string
+            emitWarning(*context, LintWarning::Code_TableOperations, node->location, "Using '%s' on a table with string keys is likely a bug", op);
+    }
+
+    void checkTableCall(AstExprCall* node, AstExprIndexName* func)
+    {
         AstExpr** args = node->args.data;
 
         if (func->index == "insert" && node->args.size == 2)
@@ -2288,8 +2306,6 @@ private:
                 emitWarning(*context, LintWarning::Code_TableOperations, as->expr->location,
                     "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
         }
-
-        return true;
     }
 
     bool isConstant(AstExpr* expr, double value)
@@ -2635,13 +2651,17 @@ private:
         case ConstantNumberParseResult::Ok:
         case ConstantNumberParseResult::Malformed:
             break;
+        case ConstantNumberParseResult::Imprecise:
+            emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
+                "Number literal exceeded available precision and was truncated to closest representable number");
+            break;
         case ConstantNumberParseResult::BinOverflow:
             emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
-                "Binary number literal exceeded available precision and has been truncated to 2^64");
+                "Binary number literal exceeded available precision and was truncated to 2^64");
             break;
         case ConstantNumberParseResult::HexOverflow:
             emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
-                "Hexadecimal number literal exceeded available precision and has been truncated to 2^64");
+                "Hexadecimal number literal exceeded available precision and was truncated to 2^64");
             break;
         }
 
@@ -2831,6 +2851,12 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
                             "optimize directive uses unknown optimization level '%s', 0..2 expected", level);
                 }
             }
+            else if (first == "native")
+            {
+                if (space != std::string::npos)
+                    emitWarning(
+                        context, LintWarning::Code_CommentDirective, hc.location, "native directive has extra symbols at the end of the line");
+            }
             else
             {
                 static const char* kHotComments[] = {
@@ -2839,6 +2865,7 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
                     "nonstrict",
                     "strict",
                     "optimize",
+                    "native",
                 };
 
                 if (const char* suggestion = fuzzyMatch(first, kHotComments, std::size(kHotComments)))
@@ -2850,12 +2877,6 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
             }
         }
     }
-}
-
-void LintOptions::setDefaults()
-{
-    // By default, we enable all warnings
-    warningMask = ~0ull;
 }
 
 std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const ScopePtr& env, const Module* module,
@@ -2947,54 +2968,6 @@ std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const Sc
     std::sort(context.result.begin(), context.result.end(), WarningComparator());
 
     return context.result;
-}
-
-const char* LintWarning::getName(Code code)
-{
-    LUAU_ASSERT(unsigned(code) < Code__Count);
-
-    return kWarningNames[code];
-}
-
-LintWarning::Code LintWarning::parseName(const char* name)
-{
-    for (int code = Code_Unknown; code < Code__Count; ++code)
-        if (strcmp(name, getName(Code(code))) == 0)
-            return Code(code);
-
-    return Code_Unknown;
-}
-
-uint64_t LintWarning::parseMask(const std::vector<HotComment>& hotcomments)
-{
-    uint64_t result = 0;
-
-    for (const HotComment& hc : hotcomments)
-    {
-        if (!hc.header)
-            continue;
-
-        if (hc.content.compare(0, 6, "nolint") != 0)
-            continue;
-
-        size_t name = hc.content.find_first_not_of(" \t", 6);
-
-        // --!nolint disables everything
-        if (name == std::string::npos)
-            return ~0ull;
-
-        // --!nolint needs to be followed by a whitespace character
-        if (name == 6)
-            continue;
-
-        // --!nolint name disables the specific lint
-        LintWarning::Code code = LintWarning::parseName(hc.content.c_str() + name);
-
-        if (code != LintWarning::Code_Unknown)
-            result |= 1ull << int(code);
-    }
-
-    return result;
 }
 
 std::vector<AstName> getDeprecatedGlobals(const AstNameTable& names)

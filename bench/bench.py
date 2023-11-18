@@ -73,7 +73,7 @@ def arrayRangeOffset(count, offset):
 
     return result
 
-def getCallgrindOutput(lines):
+def getCallgrindOutput(stdout, lines):
     result = []
     name = None
 
@@ -86,11 +86,35 @@ def getCallgrindOutput(lines):
             result += "|><|" + name + "|><|" + str(insn / CALLGRIND_INSN_PER_SEC * 1000.0) + "||_||"
             name = None
 
+    # If no results were found above, this may indicate the native executable running
+    # the benchmark doesn't have support for callgrind builtin.  In that case just
+    # report the "totals" from the output file.
+    if len(result) == 0:
+        elements = stdout.decode('utf8').split("|><|")
+        if len(elements) >= 2:
+            name = elements[1]
+
+            for l in lines:
+                if l.startswith("totals: "):
+                    insn = int(l[8:])
+                    # Note: we only run each bench once under callgrind so we only report a single time per run; callgrind instruction count variance is ~0.01% so it might as well be zero
+                    result += "|><|" + name + "|><|" + str(insn / CALLGRIND_INSN_PER_SEC * 1000.0) + "||_||"
+
     return "".join(result)
 
 def conditionallyShowCommand(cmd):
     if arguments.show_commands:
         print(f'{colored(Color.BLUE, "EXECUTING")}: {cmd}')
+
+def checkValgrindExecutable():
+    """Return true if valgrind can be successfully spawned"""
+    try:
+        subprocess.check_call("valgrind --version", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except:
+        print(f"{colored(Color.YELLOW, 'WARNING')}: Unable to spawn 'valgrind'.  Please ensure valgrind is installed when using '--callgrind'.")
+        return False
+    
+    return True
 
 def getVmOutput(cmd):
     if os.name == "nt":
@@ -103,17 +127,24 @@ def getVmOutput(cmd):
         except:
             return ""
     elif arguments.callgrind:
-        try:
-            fullCmd = "valgrind --tool=callgrind --callgrind-out-file=callgrind.out --combine-dumps=yes --dump-line=no " + cmd
-            conditionallyShowCommand(fullCmd)
-            subprocess.check_call(fullCmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=scriptdir)
-            path = os.path.join(scriptdir, "callgrind.out")
-            with open(path, "r") as file:
-                lines = file.readlines()
-            os.unlink(path)
-            return getCallgrindOutput(lines)
-        except:
+        if not checkValgrindExecutable():
             return ""
+        output_path = os.path.join(scriptdir, "callgrind.out")
+        try:
+            os.unlink(output_path)  # Remove stale output
+        except:
+            pass
+        fullCmd = "valgrind --tool=callgrind --callgrind-out-file=callgrind.out --combine-dumps=yes --dump-line=no " + cmd
+        conditionallyShowCommand(fullCmd)
+        try:
+            output = subprocess.check_output(fullCmd, shell=True, stderr=subprocess.DEVNULL, cwd=scriptdir)
+        except subprocess.CalledProcessError as e:
+            print(f"{colored(Color.YELLOW, 'WARNING')}: Valgrind returned error code {e.returncode}")
+            output = e.output
+        with open(output_path, "r") as file:
+            lines = file.readlines()
+        os.unlink(output_path)
+        return getCallgrindOutput(output, lines)
     else:
         conditionallyShowCommand(cmd)
         with subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=scriptdir) as p:
@@ -352,7 +383,7 @@ def analyzeResult(subdir, main, comparisons):
     if influxReporter != None:
         influxReporter.report_result(subdir, main.name, main.filename, "SUCCESS", main.min, main.avg, main.max, main.sampleConfidenceInterval, main.shortVm, main.vm)
 
-    print(colored(Color.YELLOW, 'SUCCESS') + ': {:<40}'.format(main.name) + ": " + '{:8.3f}'.format(main.avg) + "ms +/- " +
+    print(colored(Color.GREEN, 'SUCCESS') + ': {:<40}'.format(main.name) + ": " + '{:8.3f}'.format(main.avg) + "ms +/- " +
         '{:6.3f}'.format(main.sampleConfidenceInterval / main.avg * 100) + "% on " + main.shortVm)
 
     plotLabels.append(main.name)
@@ -449,7 +480,7 @@ def analyzeResult(subdir, main, comparisons):
             'P(T<=t)': '---' if pValue < 0 else '{:.0f}%'.format(pValue * 100)
         })
 
-        print(colored(Color.YELLOW, 'SUCCESS') + ': {:<40}'.format(main.name) + ": " + '{:8.3f}'.format(compare.avg) + "ms +/- " +
+        print(colored(Color.GREEN, 'SUCCESS') + ': {:<40}'.format(main.name) + ": " + '{:8.3f}'.format(compare.avg) + "ms +/- " +
             '{:6.3f}'.format(compare.sampleConfidenceInterval / compare.avg * 100) + "% on " + compare.shortVm +
             ' ({:+7.3f}%, '.format(speedup * 100) + verdict + ")")
 
@@ -726,6 +757,10 @@ def run(args, argsubcb):
     global arguments, resultPrinter, influxReporter, argumentSubstituionCallback, allResults
     arguments = args
     argumentSubstituionCallback = argsubcb
+
+    if os.name == "nt" and arguments.callgrind:
+        print(f"{colored(Color.RED, 'ERROR')}: --callgrind is not supported on Windows.  Please consider using this option on another OS, or Linux using WSL.")
+        sys.exit(1)
 
     if arguments.report_metrics or arguments.print_influx_debugging:
         import influxbench

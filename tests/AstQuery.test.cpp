@@ -295,4 +295,32 @@ TEST_CASE_FIXTURE(Fixture, "include_types_ancestry")
     CHECK(ancestryTypes.back()->asType());
 }
 
+TEST_CASE_FIXTURE(Fixture, "find_name_ancestry")
+{
+    check(R"(
+        local tbl = {}
+        function tbl:abc() end
+    )");
+    const Position pos(2, 18);
+
+    std::vector<AstNode*> ancestry = findAstAncestryOfPosition(*getMainSourceModule(), pos);
+
+    REQUIRE(!ancestry.empty());
+    CHECK(ancestry.back()->is<AstExprLocal>());
+}
+
+TEST_CASE_FIXTURE(Fixture, "find_expr_ancestry")
+{
+    check(R"(
+        local tbl = {}
+        function tbl:abc() end
+    )");
+    const Position pos(2, 29);
+
+    std::vector<AstNode*> ancestry = findAstAncestryOfPosition(*getMainSourceModule(), pos);
+
+    REQUIRE(!ancestry.empty());
+    CHECK(ancestry.back()->is<AstExprFunction>());
+}
+
 TEST_SUITE_END();

@@ -6,6 +6,8 @@
 #define DOCTEST_CONFIG_OPTIONS_PREFIX ""
 #include "doctest.h"
 
+#include "RegisterCallbacks.h"
+
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -13,7 +15,11 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <Windows.h> // IsDebuggerPresent
+#include <windows.h> // IsDebuggerPresent
+#endif
+
+#if defined(__x86_64__) || defined(_M_X64)
+#include <immintrin.h>
 #endif
 
 #ifdef __APPLE__
@@ -22,6 +28,7 @@
 #endif
 
 #include <optional>
+#include <stdio.h>
 
 // Indicates if verbose output is enabled; can be overridden via --verbose
 // Currently, this enables output from 'print', but other verbose output could be enabled eventually.
@@ -59,6 +66,25 @@ static bool debuggerPresent()
     int ret = sysctl(mib, sizeof(mib) / sizeof(*mib), &info, &size, nullptr, 0);
     // debugger is attached if the P_TRACED flag is set
     return ret == 0 && (info.kp_proc.p_flag & P_TRACED) != 0;
+#elif defined(__linux__)
+    FILE* st = fopen("/proc/self/status", "r");
+    if (!st)
+        return false; // assume no debugger is attached.
+
+    int tpid = 0;
+    char buf[256];
+
+    while (fgets(buf, sizeof(buf), st))
+    {
+        if (strncmp(buf, "TracerPid:\t", 11) == 0)
+        {
+            tpid = atoi(buf + 11);
+            break;
+        }
+    }
+
+    fclose(st);
+    return tpid != 0;
 #else
     return false; // assume no debugger is attached.
 #endif
@@ -67,7 +93,7 @@ static bool debuggerPresent()
 static int testAssertionHandler(const char* expr, const char* file, int line, const char* function)
 {
     if (debuggerPresent())
-        LUAU_DEBUGBREAK();
+        return 1; // LUAU_ASSERT will trigger LUAU_DEBUGBREAK for a more convenient debugging experience
 
     ADD_FAIL_AT(file, line, "Assertion failed: ", std::string(expr));
     return 1;
@@ -142,14 +168,80 @@ struct BoostLikeReporter : doctest::IReporter
     }
 
     void log_message(const doctest::MessageData& md) override
-    { //
-        printf("%s(%d): ERROR: %s\n", md.m_file, md.m_line, md.m_string.c_str());
+    {
+        const char* severity = (md.m_severity & doctest::assertType::is_warn) ? "WARNING" : "ERROR";
+
+        printf("%s(%d): %s: %s\n", md.m_file, md.m_line, severity, md.m_string.c_str());
     }
 
     // called when a test case is skipped either because it doesn't pass the filters, has a skip decorator
     // or isn't in the execution range (between first and last) (safe to cache a pointer to the input)
     void test_case_skipped(const doctest::TestCaseData&) override {}
 };
+
+struct TeamCityReporter : doctest::IReporter
+{
+    const doctest::TestCaseData* currentTest = nullptr;
+
+    TeamCityReporter(const doctest::ContextOptions& in) {}
+
+    void report_query(const doctest::QueryData&) override {}
+
+    void test_run_start() override {}
+
+    void test_run_end(const doctest::TestRunStats& /*in*/) override {}
+
+    void test_case_start(const doctest::TestCaseData& in) override
+    {
+        currentTest = &in;
+        printf("##teamcity[testStarted name='%s: %s' captureStandardOutput='true']\n", in.m_test_suite, in.m_name);
+    }
+
+    // called when a test case is reentered because of unfinished subcases
+    void test_case_reenter(const doctest::TestCaseData& /*in*/) override {}
+
+    void test_case_end(const doctest::CurrentTestCaseStats& in) override
+    {
+        printf("##teamcity[testMetadata testName='%s: %s' name='total_asserts' type='number' value='%d']\n", currentTest->m_test_suite, currentTest->m_name, in.numAssertsCurrentTest);
+        printf("##teamcity[testMetadata testName='%s: %s' name='failed_asserts' type='number' value='%d']\n", currentTest->m_test_suite, currentTest->m_name, in.numAssertsFailedCurrentTest);
+        printf("##teamcity[testMetadata testName='%s: %s' name='runtime' type='number' value='%f']\n", currentTest->m_test_suite, currentTest->m_name, in.seconds);
+
+        if (!in.testCaseSuccess)
+            printf("##teamcity[testFailed name='%s: %s']\n", currentTest->m_test_suite, currentTest->m_name);
+
+        printf("##teamcity[testFinished name='%s: %s']\n", currentTest->m_test_suite, currentTest->m_name);
+    }
+
+    void test_case_exception(const doctest::TestCaseException& in) override {
+        printf("##teamcity[testFailed name='%s: %s' message='Unhandled exception' details='%s']\n", currentTest->m_test_suite, currentTest->m_name, in.error_string.c_str());
+    }
+
+    void subcase_start(const doctest::SubcaseSignature& /*in*/) override {}
+    void subcase_end() override {}
+
+    void log_assert(const doctest::AssertData& ad) override {
+        if(!ad.m_failed)
+            return;
+
+        if (ad.m_decomp.size())
+            fprintf(stderr, "%s(%d): ERROR: %s (%s)\n", ad.m_file, ad.m_line, ad.m_expr, ad.m_decomp.c_str());
+        else
+            fprintf(stderr, "%s(%d): ERROR: %s\n", ad.m_file, ad.m_line, ad.m_expr);
+    }
+
+    void log_message(const doctest::MessageData& md) override {
+        const char* severity = (md.m_severity & doctest::assertType::is_warn) ? "WARNING" : "ERROR";
+        bool isError = md.m_severity & (doctest::assertType::is_require | doctest::assertType::is_check);
+        fprintf(isError ? stderr : stdout, "%s(%d): %s: %s\n", md.m_file, md.m_line, severity, md.m_string.c_str());
+    }
+
+    void test_case_skipped(const doctest::TestCaseData& in) override
+    {
+        printf("##teamcity[testIgnored name='%s: %s' captureStandardOutput='false']\n", in.m_test_suite, in.m_name);
+    }
+};
+
+REGISTER_REPORTER("teamcity", 1, TeamCityReporter);
 
 template<typename T>
 using FValueResult = std::pair<std::string, T>;
@@ -182,7 +274,7 @@ static FValueResult<bool> parseFFlag(std::string_view view)
     auto [name, value] = parseFValueHelper(view);
     bool state = value ? *value == "true" : true;
     if (value && value != "true" && value != "false")
-        std::cerr << "Ignored '" << name << "' because '" << *value << "' is not a valid FFlag state." << std::endl;
+        fprintf(stderr, "Ignored '%s' because '%s' is not a valid flag state\n", name.c_str(), value->c_str());
 
     return {name, state};
 }
@@ -228,8 +320,21 @@ static void setFastFlags(const std::vector<doctest::String>& flags)
     }
 }
 
+// This function performs system/architecture specific initialization prior to running tests.
+static void initSystem()
+{
+#if defined(__x86_64__) || defined(_M_X64)
+    // Some unit tests make use of denormalized numbers.  So flags to flush to zero or treat denormals as zero
+    // must be disabled for expected behavior.
+    _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_OFF);
+    _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_OFF);
+#endif
+}
+
 int main(int argc, char** argv)
 {
+    initSystem();
+
     Luau::assertHandler() = testAssertionHandler;
 
     doctest::registerReporter<BoostLikeReporter>("boost", 0, true);
@@ -245,9 +350,7 @@ int main(int argc, char** argv)
             if (skipFastFlag(flag->name))
                 continue;
 
-            if (flag->dynamic)
-                std::cout << 'D';
-            std::cout << "FFlag" << flag->name << std::endl;
+            printf("%sFFlag%s\n", flag->dynamic ? "D" : "", flag->name);
         }
 
         return 0;
@@ -267,7 +370,7 @@ int main(int argc, char** argv)
     if (doctest::parseIntOption(argc, argv, "-O", doctest::option_int, level))
     {
         if (level < 0 || level > 2)
-            std::cerr << "Optimization level must be between 0 and 2 inclusive." << std::endl;
+            fprintf(stderr, "Optimization level must be between 0 and 2 inclusive\n");
         else
             optimizationLevel = level;
     }
@@ -307,6 +410,14 @@ int main(int argc, char** argv)
             context.addFilter("test-suite", f);
         }
     }
+
+    // These callbacks register unit tests that need runtime support to be
+    // correctly set up. Running them here means that all command line flags
+    // have been parsed, fast flags have been set, and we've potentially already
+    // exited. Once doctest::Context::run is invoked, the test list will be
+    // picked up from global state.
+    for (Luau::RegisterCallback cb : Luau::getRegisterCallbacks())
+        cb();
 
     int result = context.run();
     if (doctest::parseFlag(argc, argv, "--help") || doctest::parseFlag(argc, argv, "-h"))

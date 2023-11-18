@@ -7,6 +7,7 @@
 #include <vector>
 #include <string>
 #include <string.h>
+#include <stdint.h>
 
 namespace Luau
 {
@@ -167,7 +168,9 @@ size_t editDistance(std::string_view a, std::string_view b)
 
         for (size_t y = 1; y <= b.size(); ++y)
         {
-            size_t x1 = seenCharToRow[b[y - 1]];
+            // The value of b[N] can be negative with unicode characters
+            unsigned char bSeenCharIndex = static_cast<unsigned char>(b[y - 1]);
+            size_t x1 = seenCharToRow[bSeenCharIndex];
             size_t y1 = lastMatchedY;
 
             size_t cost = 1;
@@ -187,7 +190,9 @@ size_t editDistance(std::string_view a, std::string_view b)
             distances[getPos(x + 1, y + 1)] = std::min(std::min(insertion, deletion), std::min(substitution, transposition));
         }
 
-        seenCharToRow[a[x - 1]] = x;
+        // The value of a[N] can be negative with unicode characters
+        unsigned char aSeenCharIndex = static_cast<unsigned char>(a[x - 1]);
+        seenCharToRow[aSeenCharIndex] = x;
     }
 
     return distances[getPos(a.size() + 1, b.size() + 1)];

@@ -81,23 +81,7 @@ namespace Luau::Unifiable
 
 using Name = std::string;
 
-struct Free
-{
-    explicit Free(TypeLevel level);
-    explicit Free(Scope* scope);
-    explicit Free(Scope* scope, TypeLevel level);
-
-    int index;
-    TypeLevel level;
-    Scope* scope = nullptr;
-    // True if this free type variable is part of a mutually
-    // recursive type alias whose definitions haven't been
-    // resolved yet.
-    bool forwardedTypeAlias = false;
-
-private:
-    static int DEPRECATED_nextIndex;
-};
+int freshIndex();
 
 template<typename Id>
 struct Bound
@@ -108,26 +92,6 @@ struct Bound
     }
 
     Id boundTo;
-};
-
-struct Generic
-{
-    // By default, generics are global, with a synthetic name
-    Generic();
-    explicit Generic(TypeLevel level);
-    explicit Generic(const Name& name);
-    explicit Generic(Scope* scope);
-    Generic(TypeLevel level, const Name& name);
-    Generic(Scope* scope, const Name& name);
-
-    int index;
-    TypeLevel level;
-    Scope* scope = nullptr;
-    Name name;
-    bool explicitName = false;
-
-private:
-    static int DEPRECATED_nextIndex;
 };
 
 struct Error
@@ -143,6 +107,6 @@ private:
 };
 
 template<typename Id, typename... Value>
-using Variant = Luau::Variant<Free, Bound<Id>, Generic, Error, Value...>;
+using Variant = Luau::Variant<Bound<Id>, Error, Value...>;
 
 } // namespace Luau::Unifiable

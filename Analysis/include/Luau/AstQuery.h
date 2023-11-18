@@ -3,6 +3,7 @@
 
 #include "Luau/Ast.h"
 #include "Luau/Documentation.h"
+#include "Luau/TypeFwd.h"
 
 #include <memory>
 
@@ -12,9 +13,6 @@ namespace Luau
 struct Binding;
 struct SourceModule;
 struct Module;
-
-struct Type;
-using TypeId = const Type*;
 
 using ScopePtr = std::shared_ptr<struct Scope>;
 
@@ -64,8 +62,11 @@ private:
 };
 
 std::vector<AstNode*> findAncestryAtPositionForAutocomplete(const SourceModule& source, Position pos);
+std::vector<AstNode*> findAncestryAtPositionForAutocomplete(AstStatBlock* root, Position pos);
 std::vector<AstNode*> findAstAncestryOfPosition(const SourceModule& source, Position pos, bool includeTypes = false);
+std::vector<AstNode*> findAstAncestryOfPosition(AstStatBlock* root, Position pos, bool includeTypes = false);
 AstNode* findNodeAtPosition(const SourceModule& source, Position pos);
+AstNode* findNodeAtPosition(AstStatBlock* root, Position pos);
 AstExpr* findExprAtPosition(const SourceModule& source, Position pos);
 ScopePtr findScopeAtPosition(const Module& module, Position pos);
 std::optional<Binding> findBindingAtPosition(const Module& module, const SourceModule& source, Position pos);

@@ -59,7 +59,7 @@ TEST_CASE("BenchmarkLevenshteinDistance")
     auto end = std::chrono::steady_clock::now();
     auto time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
-    std::cout << "Running levenshtein distance " << count << " times took " << time.count() << "ms" << std::endl;
+    MESSAGE("Running levenshtein distance ", count, " times took ", time.count(), "ms");
 }
 #endif
 
@@ -104,6 +104,24 @@ TEST_CASE("AreWeUsingDistanceWithAdjacentTranspositionsAndNotOptimalStringAlignm
 {
     size_t distance = Luau::editDistance("CA", "ABC");
     CHECK_EQ(distance, 2);
+}
+
+TEST_CASE("EditDistanceSupportsUnicode")
+{
+    // ASCII character
+    CHECK_EQ(Luau::editDistance("A block", "X block"), 1);
+
+    // UTF-8 2 byte character
+    CHECK_EQ(Luau::editDistance("A block", "À block"), 2);
+
+    // UTF-8 3 byte character
+    CHECK_EQ(Luau::editDistance("A block", "⪻ block"), 3);
+
+    // UTF-8 4 byte character
+    CHECK_EQ(Luau::editDistance("A block", "𒋄 block"), 4);
+
+    // UTF-8 extreme characters
+    CHECK_EQ(Luau::editDistance("A block", "R̴̨̢̟̚ŏ̶̳̳͚́ͅb̶̡̻̞̐̿ͅl̸̼͝ợ̷̜͓̒̏͜͝ẍ̴̝̦̟̰́̒́̌ block"), 85);
 }
 
 TEST_SUITE_END();

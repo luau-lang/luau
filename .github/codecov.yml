@@ -1,1 +1,7 @@
 comment: false
+coverage:
+  status:
+    patch: false
+    project:
+      default:
+        informational: true

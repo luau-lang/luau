@@ -15,7 +15,7 @@
 
 #define VERBOSE 0 // 1 - print out commandline invocations.  2 - print out stdout
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(__MINGW32__)
 
 const auto popen = &_popen;
 const auto pclose = &_pclose;
@@ -56,10 +56,9 @@ struct Reducer
     ParseResult parseResult;
     AstStatBlock* root;
 
-    std::string tempScriptName;
+    std::string scriptName;
 
-    std::string appName;
-    std::vector<std::string> appArgs;
+    std::string command;
     std::string_view searchText;
 
     Reducer()
@@ -99,10 +98,10 @@ struct Reducer
             } while (true);
         }
 
-        FILE* f = fopen(tempScriptName.c_str(), "w");
+        FILE* f = fopen(scriptName.c_str(), "w");
         if (!f)
         {
-            printf("Unable to open temp script to %s\n", tempScriptName.c_str());
+            printf("Unable to open temp script to %s\n", scriptName.c_str());
             exit(2);
         }
 
@@ -113,7 +112,7 @@ struct Reducer
         if (written != source.size())
         {
             printf("??? %zu %zu\n", written, source.size());
-            printf("Unable to write to temp script %s\n", tempScriptName.c_str());
+            printf("Unable to write to temp script %s\n", scriptName.c_str());
             exit(3);
         }
 
@@ -142,9 +141,15 @@ struct Reducer
     {
         writeTempScript();
 
-        std::string command = appName + " " + escape(tempScriptName);
-        for (const auto& arg : appArgs)
-            command += " " + escape(arg);
+        std::string cmd = command;
+        while (true)
+        {
+            auto pos = cmd.find("{}");
+            if (std::string::npos == pos)
+                break;
+
+            cmd = cmd.substr(0, pos) + escape(scriptName) + cmd.substr(pos + 2);
+        }
 
 #if VERBOSE >= 1
         printf("running %s\n", command.c_str());
@@ -424,30 +429,19 @@ struct Reducer
         }
     }
 
-    void run(const std::string scriptName, const std::string appName, const std::vector<std::string>& appArgs, std::string_view source,
-        std::string_view searchText)
+    void run(const std::string scriptName, const std::string command, std::string_view source, std::string_view searchText)
     {
-        tempScriptName = scriptName;
-        if (tempScriptName.substr(tempScriptName.size() - 4) == ".lua")
-        {
-            tempScriptName.erase(tempScriptName.size() - 4);
-            tempScriptName += "-reduced.lua";
-        }
-        else
-        {
-            this->tempScriptName = scriptName + "-reduced";
-        }
+        this->scriptName = scriptName;
 
 #if 0
         // Handy debugging trick: VS Code will update its view of the file in realtime as it is edited.
-        std::string wheee = "code " + tempScriptName;
+        std::string wheee = "code " + scriptName;
         system(wheee.c_str());
 #endif
 
-        printf("Temp script: %s\n", tempScriptName.c_str());
+        printf("Script: %s\n", scriptName.c_str());
 
-        this->appName = appName;
-        this->appArgs = appArgs;
+        this->command = command;
         this->searchText = searchText;
 
         parseResult = Parser::parse(source.data(), source.size(), nameTable, allocator, parseOptions);
@@ -470,13 +464,14 @@ struct Reducer
 
         writeTempScript(/* minify */ true);
 
-        printf("Done!  Check %s\n", tempScriptName.c_str());
+        printf("Done!  Check %s\n", scriptName.c_str());
     }
 };
 
 [[noreturn]] void help(const std::vector<std::string_view>& args)
 {
-    printf("Syntax: %s script application \"search text\" [arguments]\n", args[0].data());
+    printf("Syntax: %s script command \"search text\"\n", args[0].data());
+    printf("    Within command, use {} as a stand-in for the script being reduced\n");
     exit(1);
 }
 
@@ -484,7 +479,7 @@ int main(int argc, char** argv)
 {
     const std::vector<std::string_view> args(argv, argv + argc);
 
-    if (args.size() < 4)
+    if (args.size() != 4)
         help(args);
 
     for (size_t i = 1; i < args.size(); ++i)
@@ -496,7 +491,6 @@ int main(int argc, char** argv)
     const std::string scriptName = argv[1];
     const std::string appName = argv[2];
     const std::string searchText = argv[3];
-    const std::vector<std::string> appArgs(begin(args) + 4, end(args));
 
     std::optional<std::string> source = readFile(scriptName);
 
@@ -507,5 +501,5 @@ int main(int argc, char** argv)
     }
 
     Reducer reducer;
-    reducer.run(scriptName, appName, appArgs, *source, searchText);
+    reducer.run(scriptName, appName, *source, searchText);
 }

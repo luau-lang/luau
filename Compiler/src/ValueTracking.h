@@ -28,7 +28,7 @@ struct Variable
     bool constant = false;   // is the variable's value a compile-time constant? filled by constantFold
 };
 
-void assignMutable(DenseHashMap<AstName, Global>& globals, const AstNameTable& names, const char** mutableGlobals);
+void assignMutable(DenseHashMap<AstName, Global>& globals, const AstNameTable& names, const char* const* mutableGlobals);
 void trackValues(DenseHashMap<AstName, Global>& globals, DenseHashMap<AstLocal*, Variable>& variables, AstNode* root);
 
 inline Global getGlobalState(const DenseHashMap<AstName, Global>& globals, AstName name)
