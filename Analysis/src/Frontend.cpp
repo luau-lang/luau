@@ -167,7 +167,10 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(GlobalTypes& globals, Scop
 
     Luau::SourceModule sourceModule;
     if (FFlag::LuauDefinitionFileSetModuleName)
+    {
         sourceModule.name = packageName;
+        sourceModule.humanReadableName = packageName;
+    }
     Luau::ParseResult parseResult = parseSourceForModule(source, sourceModule, captureComments);
     if (parseResult.errors.size() > 0)
         return LoadDefinitionFileResult{false, parseResult, sourceModule, nullptr};
