@@ -38,6 +38,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauReadWriteProperties, false)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckLimitControls, false)
 LUAU_FASTFLAGVARIABLE(CorrectEarlyReturnInMarkDirty, false)
+LUAU_FASTFLAGVARIABLE(LuauDefinitionFileSetModuleName, false)
 
 namespace Luau
 {
@@ -165,6 +166,11 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(GlobalTypes& globals, Scop
     LUAU_TIMETRACE_SCOPE("loadDefinitionFile", "Frontend");
 
     Luau::SourceModule sourceModule;
+    if (FFlag::LuauDefinitionFileSetModuleName)
+    {
+        sourceModule.name = packageName;
+        sourceModule.humanReadableName = packageName;
+    }
     Luau::ParseResult parseResult = parseSourceForModule(source, sourceModule, captureComments);
     if (parseResult.errors.size() > 0)
         return LoadDefinitionFileResult{false, parseResult, sourceModule, nullptr};
