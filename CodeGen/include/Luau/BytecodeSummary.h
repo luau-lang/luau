@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include <stdint.h>
+
 struct lua_State;
 struct Proto;
 
