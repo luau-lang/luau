@@ -20,7 +20,7 @@ jobs:
   unix:
     strategy:
       matrix:
-        os: [{name: ubuntu, version: ubuntu-20.04}, {name: macos, version: macos-latest}]
+        os: [{name: ubuntu, version: ubuntu-latest}, {name: macos, version: macos-latest}]
     name: ${{matrix.os.name}}
     runs-on: ${{matrix.os.version}}
     steps:
@@ -83,7 +83,7 @@ jobs:
         Debug/luau-compile tests/conformance/assert.lua
 
   coverage:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-20.04 # needed for clang++-10 to avoid gcov compatibility issues
     steps:
     - uses: actions/checkout@v2
     - name: install
@@ -99,7 +99,7 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
 
   web:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
     - uses: actions/checkout@v2
