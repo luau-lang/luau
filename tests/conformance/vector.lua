@@ -64,6 +64,8 @@ end
 assert(vector(1, 2, 4) / 8 == vector(1/8, 1/4, 1/2));
 assert(vector(1, 2, 4) / (1 / val) == vector(1/8, 2/8, 4/8));
 assert(vector(1, 2, 4) / '8' == vector(1/8, 1/4, 1/2));
+assert(vector(1, 2, 4) / 8 == vector(1/8, 1/4, 1/2));
+assert(1 / vector(1, 2, 4) == vector(1, 1/2, 1/4));
 
 assert(-vector(1, 2, 4) == vector(-1, -2, -4));
 

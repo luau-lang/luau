@@ -1859,8 +1859,8 @@ reentry:
                 else if (ttisvector(rb))
                 {
                     const float* vb = rb->value.v;
-                    float vc = cast_to(float, nvalue(kv));
-                    setvvalue(ra, vb[0] / vc, vb[1] / vc, vb[2] / vc, vb[3] / vc);
+                    float nc = cast_to(float, nvalue(kv));
+                    setvvalue(ra, vb[0] / nc, vb[1] / nc, vb[2] / nc, vb[3] / nc);
                     VM_NEXT();
                 }
                 else
@@ -2733,9 +2733,9 @@ reentry:
                 }
                 else if (ttisvector(rc))
                 {
-                    float vb = cast_to(float, nvalue(kv));
+                    float nb = cast_to(float, nvalue(kv));
                     const float* vc = rc->value.v;
-                    setvvalue(ra, vb / vc[0], vb / vc[1], vb / vc[2], vb / vc[3]);
+                    setvvalue(ra, nb / vc[0], nb / vc[1], nb / vc[2], nb / vc[3]);
                     VM_NEXT();
                 }
                 else
