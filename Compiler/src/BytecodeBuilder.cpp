@@ -8,6 +8,7 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauVectorLiterals)
+LUAU_FASTFLAG(LuauCompileRevK)
 
 namespace Luau
 {
@@ -1123,7 +1124,7 @@ std::string BytecodeBuilder::getError(const std::string& message)
 uint8_t BytecodeBuilder::getVersion()
 {
     // This function usually returns LBC_VERSION_TARGET but may sometimes return a higher number (within LBC_VERSION_MIN/MAX) under fast flags
-    return (FFlag::LuauVectorLiterals ? 5 : LBC_VERSION_TARGET);
+    return (FFlag::LuauVectorLiterals || FFlag::LuauCompileRevK) ? 5 : LBC_VERSION_TARGET;
 }
 
 uint8_t BytecodeBuilder::getTypeEncodingVersion()
@@ -1349,6 +1350,13 @@ void BytecodeBuilder::validateInstructions() const
             VREG(LUAU_INSN_A(insn));
             VREG(LUAU_INSN_B(insn));
             VCONST(LUAU_INSN_C(insn), Number);
+            break;
+
+        case LOP_SUBRK:
+        case LOP_DIVRK:
+            VREG(LUAU_INSN_A(insn));
+            VCONST(LUAU_INSN_B(insn), Number);
+            VREG(LUAU_INSN_C(insn));
             break;
 
         case LOP_AND:
@@ -1971,6 +1979,18 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         formatAppend(result, "POWK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
         dumpConstant(result, LUAU_INSN_C(insn));
         result.append("]\n");
+        break;
+
+    case LOP_SUBRK:
+        formatAppend(result, "SUBRK R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+        dumpConstant(result, LUAU_INSN_B(insn));
+        formatAppend(result, "] R%d\n", LUAU_INSN_C(insn));
+        break;
+
+    case LOP_DIVRK:
+        formatAppend(result, "DIVRK R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+        dumpConstant(result, LUAU_INSN_B(insn));
+        formatAppend(result, "] R%d\n", LUAU_INSN_C(insn));
         break;
 
     case LOP_AND:

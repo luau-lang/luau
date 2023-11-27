@@ -1067,7 +1067,11 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         regs.spill(build, index);
         build.mov(x0, rState);
         build.add(x1, rBase, uint16_t(vmRegOp(inst.a) * sizeof(TValue)));
-        build.add(x2, rBase, uint16_t(vmRegOp(inst.b) * sizeof(TValue)));
+
+        if (inst.b.kind == IrOpKind::VmConst)
+            emitAddOffset(build, x2, rConstants, vmConstOp(inst.b) * sizeof(TValue));
+        else
+            build.add(x2, rBase, uint16_t(vmRegOp(inst.b) * sizeof(TValue)));
 
         if (inst.c.kind == IrOpKind::VmConst)
             emitAddOffset(build, x3, rConstants, vmConstOp(inst.c) * sizeof(TValue));
