@@ -7850,12 +7850,10 @@ TEST_CASE("ArithRevK")
 {
     ScopedFastFlag sff("LuauCompileRevK", true);
 
-    // - and / have special optimized form for reverse constants
-    // in the future, + and * will likely get compiled to ADDK/MULK
+    // - and / have special optimized form for reverse constants; in the future, + and * will likely get compiled to ADDK/MULK
     // other operators are not important enough to optimize reverse constant forms for
     CHECK_EQ("\n" + compileFunction0(R"(
 local x: number = unknown
-
 return 2 + x, 2 - x, 2 * x, 2 / x, 2 % x, 2 // x, 2 ^ x
 )"),
         R"(
