@@ -29,6 +29,8 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 LUAU_FASTFLAGVARIABLE(LuauCompileSideEffects, false)
 LUAU_FASTFLAGVARIABLE(LuauCompileDeadIf, false)
 
+LUAU_FASTFLAGVARIABLE(LuauCompileRevK, false)
+
 namespace Luau
 {
 
@@ -1516,6 +1518,20 @@ struct Compiler
             }
             else
             {
+                if (FFlag::LuauCompileRevK && (expr->op == AstExprBinary::Sub || expr->op == AstExprBinary::Div))
+                {
+                    int32_t lc = getConstantNumber(expr->left);
+
+                    if (lc >= 0 && lc <= 255)
+                    {
+                        uint8_t rr = compileExprAuto(expr->right, rs);
+                        LuauOpcode op = (expr->op == AstExprBinary::Sub) ? LOP_SUBRK : LOP_DIVRK;
+
+                        bytecode.emitABC(op, target, uint8_t(lc), uint8_t(rr));
+                        return;
+                    }
+                }
+
                 uint8_t rl = compileExprAuto(expr->left, rs);
                 uint8_t rr = compileExprAuto(expr->right, rs);
 

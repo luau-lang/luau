@@ -1173,6 +1173,8 @@ RETURN R0 1
 
 TEST_CASE("AndOrChainCodegen")
 {
+    ScopedFastFlag sff("LuauCompileRevK", true);
+
     const char* source = R"(
     return
         (1 - verticalGradientTurbulence < waterLevel + .015 and Enum.Material.Sand)
@@ -1181,23 +1183,22 @@ TEST_CASE("AndOrChainCodegen")
     )";
 
     CHECK_EQ("\n" + compileFunction0(source), R"(
-LOADN R2 1
-GETIMPORT R3 1 [verticalGradientTurbulence]
-SUB R1 R2 R3
-GETIMPORT R3 4 [waterLevel]
-ADDK R2 R3 K2 [0.014999999999999999]
+GETIMPORT R2 2 [verticalGradientTurbulence]
+SUBRK R1 K0 [1] R2
+GETIMPORT R3 5 [waterLevel]
+ADDK R2 R3 K3 [0.014999999999999999]
 JUMPIFNOTLT R1 R2 L0
-GETIMPORT R0 8 [Enum.Material.Sand]
+GETIMPORT R0 9 [Enum.Material.Sand]
 JUMPIF R0 L2
-L0: GETIMPORT R1 10 [sandbank]
+L0: GETIMPORT R1 11 [sandbank]
 LOADN R2 0
 JUMPIFNOTLT R2 R1 L1
-GETIMPORT R1 10 [sandbank]
+GETIMPORT R1 11 [sandbank]
 LOADN R2 1
 JUMPIFNOTLT R1 R2 L1
-GETIMPORT R0 8 [Enum.Material.Sand]
+GETIMPORT R0 9 [Enum.Material.Sand]
 JUMPIF R0 L2
-L1: GETIMPORT R0 12 [Enum.Material.Sandstone]
+L1: GETIMPORT R0 13 [Enum.Material.Sandstone]
 L2: RETURN R0 1
 )");
 }
@@ -2096,6 +2097,8 @@ RETURN R0 0
 
 TEST_CASE("AndOrOptimizations")
 {
+    ScopedFastFlag sff("LuauCompileRevK", true);
+
     // the OR/ORK optimization triggers for cutoff since lhs is simple
     CHECK_EQ("\n" + compileFunction(R"(
 local function advancedRidgedFilter(value, cutoff)
@@ -2108,17 +2111,15 @@ end
         R"(
 ORK R2 R1 K0 [0.5]
 SUB R0 R0 R2
-LOADN R4 1
-LOADN R8 0
-JUMPIFNOTLT R0 R8 L0
-MINUS R7 R0
-JUMPIF R7 L1
-L0: MOVE R7 R0
-L1: MULK R6 R7 K1 [1]
-LOADN R8 1
-SUB R7 R8 R2
-DIV R5 R6 R7
-SUB R3 R4 R5
+LOADN R7 0
+JUMPIFNOTLT R0 R7 L0
+MINUS R6 R0
+JUMPIF R6 L1
+L0: MOVE R6 R0
+L1: MULK R5 R6 K1 [1]
+SUBRK R6 K1 [1] R2
+DIV R4 R5 R6
+SUBRK R3 K1 [1] R4
 RETURN R3 1
 )");
 
@@ -2131,9 +2132,8 @@ end
                         0),
         R"(
 LOADB R2 0
-LOADK R4 K0 [0.5]
-MULK R5 R1 K1 [0.40000000000000002]
-SUB R3 R4 R5
+MULK R4 R1 K1 [0.40000000000000002]
+SUBRK R3 K0 [0.5] R4
 JUMPIFNOTLT R3 R0 L1
 LOADK R4 K0 [0.5]
 MULK R5 R1 K1 [0.40000000000000002]
@@ -2153,9 +2153,8 @@ end
                         0),
         R"(
 LOADB R2 1
-LOADK R4 K0 [0.5]
-MULK R5 R1 K1 [0.40000000000000002]
-SUB R3 R4 R5
+MULK R4 R1 K1 [0.40000000000000002]
+SUBRK R3 K0 [0.5] R4
 JUMPIFLT R0 R3 L1
 LOADK R4 K0 [0.5]
 MULK R5 R1 K1 [0.40000000000000002]
@@ -7844,6 +7843,34 @@ RETURN R0 0
 GETIMPORT R0 2 [b.test]
 LOADN R0 2
 RETURN R0 1
+)");
+}
+
+TEST_CASE("ArithRevK")
+{
+    ScopedFastFlag sff("LuauCompileRevK", true);
+
+    // - and / have special optimized form for reverse constants; in the future, + and * will likely get compiled to ADDK/MULK
+    // other operators are not important enough to optimize reverse constant forms for
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x: number = unknown
+return 2 + x, 2 - x, 2 * x, 2 / x, 2 % x, 2 // x, 2 ^ x
+)"),
+        R"(
+GETIMPORT R0 1 [unknown]
+LOADN R2 2
+ADD R1 R2 R0
+SUBRK R2 K2 [2] R0
+LOADN R4 2
+MUL R3 R4 R0
+DIVRK R4 K2 [2] R0
+LOADN R6 2
+MOD R5 R6 R0
+LOADN R7 2
+IDIV R6 R7 R0
+LOADN R8 2
+POW R7 R8 R0
+RETURN R1 7
 )");
 }
 

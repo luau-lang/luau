@@ -41,6 +41,11 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
         break;
         // A <- B, C
     case IrCmd::DO_ARITH:
+        visitor.maybeUse(inst.b); // Argument can also be a VmConst
+        visitor.maybeUse(inst.c); // Argument can also be a VmConst
+
+        visitor.def(inst.a);
+        break;
     case IrCmd::GET_TABLE:
         visitor.use(inst.b);
         visitor.maybeUse(inst.c); // Argument can also be a VmConst

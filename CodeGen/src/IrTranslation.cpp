@@ -327,13 +327,16 @@ void translateInstJumpxEqS(IrBuilder& build, const Instruction* pc, int pcpos)
         build.beginBlock(next);
 }
 
-static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc, IrOp opc, int pcpos, TMS tm)
+static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc, IrOp opb, IrOp opc, int pcpos, TMS tm)
 {
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
     // fast-path: number
-    IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TNUMBER), fallback);
+    if (rb != -1)
+    {
+        IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
+        build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TNUMBER), fallback);
+    }
 
     if (rc != -1 && rc != rb) // TODO: optimization should handle second check, but we'll test it later
     {
@@ -341,10 +344,22 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
         build.inst(IrCmd::CHECK_TAG, tc, build.constTag(LUA_TNUMBER), fallback);
     }
 
-    IrOp vb = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(rb));
-    IrOp vc;
-
+    IrOp vb, vc;
     IrOp result;
+
+    if (opb.kind == IrOpKind::VmConst)
+    {
+        LUAU_ASSERT(build.function.proto);
+        TValue protok = build.function.proto->k[vmConstOp(opb)];
+
+        LUAU_ASSERT(protok.tt == LUA_TNUMBER);
+
+        vb = build.constDouble(protok.value.n);
+    }
+    else
+    {
+        vb = build.inst(IrCmd::LOAD_DOUBLE, opb);
+    }
 
     if (opc.kind == IrOpKind::VmConst)
     {
@@ -409,18 +424,26 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
     FallbackStreamScope scope(build, fallback, next);
 
     build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
-    build.inst(IrCmd::DO_ARITH, build.vmReg(ra), build.vmReg(rb), opc, build.constInt(tm));
+    build.inst(IrCmd::DO_ARITH, build.vmReg(ra), opb, opc, build.constInt(tm));
     build.inst(IrCmd::JUMP, next);
 }
 
 void translateInstBinary(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm)
 {
-    translateInstBinaryNumeric(build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), LUAU_INSN_C(*pc), build.vmReg(LUAU_INSN_C(*pc)), pcpos, tm);
+    translateInstBinaryNumeric(
+        build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), LUAU_INSN_C(*pc), build.vmReg(LUAU_INSN_B(*pc)), build.vmReg(LUAU_INSN_C(*pc)), pcpos, tm);
 }
 
 void translateInstBinaryK(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm)
 {
-    translateInstBinaryNumeric(build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), -1, build.vmConst(LUAU_INSN_C(*pc)), pcpos, tm);
+    translateInstBinaryNumeric(
+        build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), -1, build.vmReg(LUAU_INSN_B(*pc)), build.vmConst(LUAU_INSN_C(*pc)), pcpos, tm);
+}
+
+void translateInstBinaryRK(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm)
+{
+    translateInstBinaryNumeric(
+        build, LUAU_INSN_A(*pc), -1, LUAU_INSN_C(*pc), build.vmConst(LUAU_INSN_B(*pc)), build.vmReg(LUAU_INSN_C(*pc)), pcpos, tm);
 }
 
 void translateInstNot(IrBuilder& build, const Instruction* pc)

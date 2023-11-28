@@ -45,7 +45,7 @@
 // Version 2: Adds Proto::linedefined. Supported until 0.544.
 // Version 3: Adds FORGPREP/JUMPXEQK* and enhances AUX encoding for FORGLOOP. Removes FORGLOOP_NEXT/INEXT and JUMPIFEQK/JUMPIFNOTEQK. Currently supported.
 // Version 4: Adds Proto::flags, typeinfo, and floor division opcodes IDIV/IDIVK. Currently supported.
-// Version 5: Adds vector constants. Currently supported.
+// Version 5: Adds SUBRK/DIVRK and vector constants. Currently supported.
 
 // Bytecode opcode, part of the instruction header
 enum LuauOpcode
@@ -219,7 +219,7 @@ enum LuauOpcode
     // ADDK, SUBK, MULK, DIVK, MODK, POWK: compute arithmetic operation between the source register and a constant and put the result into target register
     // A: target register
     // B: source register
-    // C: constant table index (0..255)
+    // C: constant table index (0..255); must refer to a number
     LOP_ADDK,
     LOP_SUBK,
     LOP_MULK,
@@ -348,9 +348,12 @@ enum LuauOpcode
     // B: source register (for VAL/REF) or upvalue index (for UPVAL/UPREF)
     LOP_CAPTURE,
 
-    // removed in v3
-    LOP_DEP_JUMPIFEQK,
-    LOP_DEP_JUMPIFNOTEQK,
+    // SUBRK, DIVRK: compute arithmetic operation between the constant and a source register and put the result into target register
+    // A: target register
+    // B: source register
+    // C: constant table index (0..255); must refer to a number
+    LOP_SUBRK,
+    LOP_DIVRK,
 
     // FASTCALL1: perform a fast call of a built-in function using 1 register argument
     // A: builtin function id (see LuauBuiltinFunction)
