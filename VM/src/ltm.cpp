@@ -131,10 +131,15 @@ const TString* luaT_objtypenamestr(lua_State* L, const TValue* o)
     }
     else if (ttislightuserdata(o))
     {
-        const TString* name = L->global->lightuserdataname[lightuserdatatag(o)];
+        int tag = lightuserdatatag(o);
 
-        if (name)
-            return name;
+        if (unsigned(tag) < LUA_LUTAG_LIMIT)
+        {
+            const TString* name = L->global->lightuserdataname[tag];
+
+            if (name)
+                return name;
+        }
     }
     else if (Table* mt = L->global->mt[ttype(o)])
     {
