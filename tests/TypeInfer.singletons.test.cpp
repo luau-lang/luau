@@ -353,7 +353,7 @@ Table type 'a' not compatible with type 'Bad' because the former is missing fiel
 TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", true},
+        {FFlag::DebugLuauDeferredConstraintResolution, true},
     };
     CheckResult result = check(R"(
         type Ok<T> = {success: true, result: T}

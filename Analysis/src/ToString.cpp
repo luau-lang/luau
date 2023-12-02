@@ -1721,7 +1721,7 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
             std::string iteratorStr = tos(c.iterator);
             std::string variableStr = tos(c.variables);
 
-            return variableStr + " ~ Iterate<" + iteratorStr + ">";
+            return variableStr + " ~ iterate " + iteratorStr;
         }
         else if constexpr (std::is_same_v<T, NameConstraint>)
         {

@@ -22,6 +22,8 @@
 #include <unordered_map>
 #include <optional>
 
+LUAU_FASTFLAG(LuauBufferTypeck);
+
 namespace Luau
 {
 
@@ -99,7 +101,7 @@ struct Fixture
 
     ScopedFastFlag sff_DebugLuauFreezeArena;
 
-    ScopedFastFlag luauBufferTypeck{"LuauBufferTypeck", true};
+    ScopedFastFlag luauBufferTypeck{FFlag::LuauBufferTypeck, true};
 
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;

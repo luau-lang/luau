@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Bytecode.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/Label.h"
 #include "Luau/RegisterX64.h"
@@ -11,6 +12,8 @@
 
 #include <stdint.h>
 #include <string.h>
+
+LUAU_FASTFLAG(LuauKeepVmapLinear2)
 
 struct Proto;
 
@@ -930,11 +933,29 @@ struct BytecodeMapping
     uint32_t asmLocation;
 };
 
+struct BytecodeBlock
+{
+    // 'start' and 'finish' define an inclusive range of instructions which belong to the block
+    int startpc = -1;
+    int finishpc = -1;
+};
+
+struct BytecodeTypes
+{
+    uint8_t result = LBC_TYPE_ANY;
+    uint8_t a = LBC_TYPE_ANY;
+    uint8_t b = LBC_TYPE_ANY;
+    uint8_t c = LBC_TYPE_ANY;
+};
+
 struct IrFunction
 {
     std::vector<IrBlock> blocks;
     std::vector<IrInst> instructions;
     std::vector<IrConst> constants;
+
+    std::vector<BytecodeBlock> bcBlocks;
+    std::vector<BytecodeTypes> bcTypes;
 
     std::vector<BytecodeMapping> bcMapping;
     uint32_t entryBlock = 0;
@@ -942,6 +963,7 @@ struct IrFunction
 
     // For each instruction, an operand that can be used to recompute the value
     std::vector<IrOp> valueRestoreOps;
+    std::vector<uint32_t> validRestoreOpBlocks;
     uint32_t validRestoreOpBlockIdx = 0;
 
     Proto* proto = nullptr;
@@ -1086,21 +1108,52 @@ struct IrFunction
         if (instIdx >= valueRestoreOps.size())
             return {};
 
-        const IrBlock& block = blocks[validRestoreOpBlockIdx];
-
-        // When spilled, values can only reference restore operands in the current block
-        if (limitToCurrentBlock)
+        if (FFlag::LuauKeepVmapLinear2)
         {
-            if (instIdx < block.start || instIdx > block.finish)
-                return {};
-        }
+            // When spilled, values can only reference restore operands in the current block chain
+            if (limitToCurrentBlock)
+            {
+                for (uint32_t blockIdx : validRestoreOpBlocks)
+                {
+                    const IrBlock& block = blocks[blockIdx];
 
-        return valueRestoreOps[instIdx];
+                    if (instIdx >= block.start && instIdx <= block.finish)
+                        return valueRestoreOps[instIdx];
+                }
+
+                return {};
+            }
+
+            return valueRestoreOps[instIdx];
+        }
+        else
+        {
+            const IrBlock& block = blocks[validRestoreOpBlockIdx];
+
+            // When spilled, values can only reference restore operands in the current block
+            if (limitToCurrentBlock)
+            {
+                if (instIdx < block.start || instIdx > block.finish)
+                    return {};
+            }
+
+            return valueRestoreOps[instIdx];
+        }
     }
 
     IrOp findRestoreOp(const IrInst& inst, bool limitToCurrentBlock) const
     {
         return findRestoreOp(getInstIndex(inst), limitToCurrentBlock);
+    }
+
+    BytecodeTypes getBytecodeTypesAt(int pcpos) const
+    {
+        LUAU_ASSERT(pcpos >= 0);
+
+        if (size_t(pcpos) < bcTypes.size())
+            return bcTypes[pcpos];
+
+        return BytecodeTypes();
     }
 };
 

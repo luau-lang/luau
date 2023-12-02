@@ -2,6 +2,7 @@
 #include "Luau/IrBuilder.h"
 
 #include "Luau/Bytecode.h"
+#include "Luau/BytecodeAnalysis.h"
 #include "Luau/BytecodeUtils.h"
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
@@ -11,6 +12,8 @@
 #include "lapi.h"
 
 #include <string.h>
+
+LUAU_FASTFLAGVARIABLE(LuauCodegenBytecodeInfer, false)
 
 namespace Luau
 {
@@ -119,6 +122,10 @@ void IrBuilder::buildFunctionIr(Proto* proto)
     // Rebuild original control flow blocks
     rebuildBytecodeBasicBlocks(proto);
 
+    // Infer register tags in bytecode
+    if (FFlag::LuauCodegenBytecodeInfer)
+        analyzeBytecodeTypes(function);
+
     function.bcMapping.resize(proto->sizecode, {~0u, ~0u});
 
     if (generateTypeChecks)
@@ -152,7 +159,7 @@ void IrBuilder::buildFunctionIr(Proto* proto)
         // Numeric for loops require additional processing to maintain loop stack
         // Notably, this must be performed even when the block is dead so that we maintain the pairing FORNPREP-FORNLOOP
         if (op == LOP_FORNPREP)
-            beforeInstForNPrep(*this, pc);
+            beforeInstForNPrep(*this, pc, i);
 
         // We skip dead bytecode instructions when they appear after block was already terminated
         if (!inTerminatedBlock)
@@ -212,7 +219,6 @@ void IrBuilder::rebuildBytecodeBasicBlocks(Proto* proto)
         LUAU_ASSERT(i <= proto->sizecode);
     }
 
-
     // Bytecode blocks are created at bytecode jump targets and the start of a function
     jumpTargets[0] = true;
 
@@ -224,6 +230,9 @@ void IrBuilder::rebuildBytecodeBasicBlocks(Proto* proto)
             instIndexToBlock[i] = b.index;
         }
     }
+
+    if (FFlag::LuauCodegenBytecodeInfer)
+        buildBytecodeBlocks(function, jumpTargets);
 }
 
 void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)

@@ -15,6 +15,15 @@ namespace Luau
 std::string rep(const std::string& s, size_t n);
 }
 
+LUAU_FASTFLAG(LuauVectorLiterals)
+LUAU_FASTFLAG(LuauCompileRevK)
+LUAU_FASTINT(LuauCompileInlineDepth)
+LUAU_FASTINT(LuauCompileInlineThreshold)
+LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
+LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
+LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
+LUAU_FASTINT(LuauRecursionLimit)
+
 using namespace Luau;
 
 static std::string compileFunction(const char* source, uint32_t id, int optimizationLevel = 1, bool enableVectors = false)
@@ -1173,7 +1182,7 @@ RETURN R0 1
 
 TEST_CASE("AndOrChainCodegen")
 {
-    ScopedFastFlag sff("LuauCompileRevK", true);
+    ScopedFastFlag sff(FFlag::LuauCompileRevK, true);
 
     const char* source = R"(
     return
@@ -1986,7 +1995,7 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueCorrectlyHandlesImplicitConstantAfterUnroll")
 {
-    ScopedFastInt sfi("LuauCompileLoopUnrollThreshold", 200);
+    ScopedFastInt sfi(FInt::LuauCompileLoopUnrollThreshold, 200);
 
     // access to implicit constant that depends on the unrolled loop constant is still invalid even though we can constant-propagate it
     try
@@ -2097,7 +2106,7 @@ RETURN R0 0
 
 TEST_CASE("AndOrOptimizations")
 {
-    ScopedFastFlag sff("LuauCompileRevK", true);
+    ScopedFastFlag sff(FFlag::LuauCompileRevK, true);
 
     // the OR/ORK optimization triggers for cutoff since lhs is simple
     CHECK_EQ("\n" + compileFunction(R"(
@@ -2297,9 +2306,9 @@ TEST_CASE("RecursionParse")
     // The test forcibly pushes the stack limit during compilation; in NoOpt, the stack consumption is much larger so we need to reduce the limit to
     // not overflow the C stack. When ASAN is enabled, stack consumption increases even more.
 #if defined(LUAU_ENABLE_ASAN)
-    ScopedFastInt flag("LuauRecursionLimit", 200);
+    ScopedFastInt flag(FInt::LuauRecursionLimit, 200);
 #elif defined(_NOOPT) || defined(_DEBUG)
-    ScopedFastInt flag("LuauRecursionLimit", 300);
+    ScopedFastInt flag(FInt::LuauRecursionLimit, 300);
 #endif
 
     Luau::BytecodeBuilder bcb;
@@ -4481,7 +4490,7 @@ L0: RETURN R0 -1
 
 TEST_CASE("VectorLiterals")
 {
-    ScopedFastFlag sff("LuauVectorLiterals", true);
+    ScopedFastFlag sff(FFlag::LuauVectorLiterals, true);
 
     CHECK_EQ("\n" + compileFunction("return Vector3.new(1, 2, 3)", 0, 2, /*enableVectors*/ true), R"(
 LOADK R0 K0 [1, 2, 3]
@@ -4793,8 +4802,8 @@ L1: RETURN R0 0
 TEST_CASE("LoopUnrollControlFlow")
 {
     ScopedFastInt sfis[] = {
-        {"LuauCompileLoopUnrollThreshold", 50},
-        {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
+        {FInt::LuauCompileLoopUnrollThreshold, 50},
+        {FInt::LuauCompileLoopUnrollThresholdMaxBoost, 300},
     };
 
     // break jumps to the end
@@ -4930,8 +4939,8 @@ RETURN R0 0
 TEST_CASE("LoopUnrollCost")
 {
     ScopedFastInt sfis[] = {
-        {"LuauCompileLoopUnrollThreshold", 25},
-        {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
+        {FInt::LuauCompileLoopUnrollThreshold, 25},
+        {FInt::LuauCompileLoopUnrollThresholdMaxBoost, 300},
     };
 
     // loops with short body
@@ -5108,8 +5117,8 @@ L1: RETURN R0 0
 TEST_CASE("LoopUnrollCostBuiltins")
 {
     ScopedFastInt sfis[] = {
-        {"LuauCompileLoopUnrollThreshold", 25},
-        {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
+        {FInt::LuauCompileLoopUnrollThreshold, 25},
+        {FInt::LuauCompileLoopUnrollThresholdMaxBoost, 300},
     };
 
     // this loop uses builtins and is close to the cost budget so it's important that we model builtins as cheaper than regular calls
@@ -5986,9 +5995,9 @@ RETURN R3 1
 TEST_CASE("InlineThresholds")
 {
     ScopedFastInt sfis[] = {
-        {"LuauCompileInlineThreshold", 25},
-        {"LuauCompileInlineThresholdMaxBoost", 300},
-        {"LuauCompileInlineDepth", 2},
+        {FInt::LuauCompileInlineThreshold, 25},
+        {FInt::LuauCompileInlineThresholdMaxBoost, 300},
+        {FInt::LuauCompileInlineDepth, 2},
     };
 
     // this function has enormous register pressure (50 regs) so we choose not to inline it
@@ -7725,8 +7734,6 @@ RETURN R1 1
 
 TEST_CASE("SideEffects")
 {
-    ScopedFastFlag sff("LuauCompileSideEffects", true);
-
     // we do not evaluate expressions in some cases when we know they can't carry side effects
     CHECK_EQ("\n" + compileFunction0(R"(
 local x = 5, print
@@ -7778,9 +7785,6 @@ RETURN R0 0
 
 TEST_CASE("IfElimination")
 {
-    ScopedFastFlag sff1("LuauCompileDeadIf", true);
-    ScopedFastFlag sff2("LuauCompileSideEffects", true);
-
     // if the left hand side of a condition is constant, it constant folds and we don't emit the branch
     CHECK_EQ("\n" + compileFunction0("local a = false if a and b then b() end"), R"(
 RETURN R0 0
@@ -7848,7 +7852,7 @@ RETURN R0 1
 
 TEST_CASE("ArithRevK")
 {
-    ScopedFastFlag sff("LuauCompileRevK", true);
+    ScopedFastFlag sff(FFlag::LuauCompileRevK, true);
 
     // - and / have special optimized form for reverse constants; in the future, + and * will likely get compiled to ADDK/MULK
     // other operators are not important enough to optimize reverse constant forms for

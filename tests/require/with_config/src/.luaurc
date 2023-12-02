@@ -1,0 +1,6 @@
+{
+    "paths": ["../ProjectLuauLibraries"],
+    "aliases": {
+        "dep": "dependency"
+    }
+}

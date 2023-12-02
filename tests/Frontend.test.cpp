@@ -13,6 +13,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(DebugLuauFreezeArena);
+LUAU_FASTFLAG(CorrectEarlyReturnInMarkDirty);
 
 namespace
 {
@@ -1112,7 +1114,7 @@ a:b() -- this should error, since A doesn't define a:b()
 TEST_CASE("no_use_after_free_with_type_fun_instantiation")
 {
     // This flag forces this test to crash if there's a UAF in this code.
-    ScopedFastFlag sff_DebugLuauFreezeArena("DebugLuauFreezeArena", true);
+    ScopedFastFlag sff_DebugLuauFreezeArena(FFlag::DebugLuauFreezeArena, true);
 
     FrontendFixture fix;
 
@@ -1252,7 +1254,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "parse_only")
 
 TEST_CASE_FIXTURE(FrontendFixture, "markdirty_early_return")
 {
-    ScopedFastFlag fflag("CorrectEarlyReturnInMarkDirty", true);
+    ScopedFastFlag fflag(FFlag::CorrectEarlyReturnInMarkDirty, true);
 
     constexpr char moduleName[] = "game/Gui/Modules/A";
     fileResolver.source[moduleName] = R"(

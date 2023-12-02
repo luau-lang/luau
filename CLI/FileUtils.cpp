@@ -10,6 +10,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#include <direct.h>
 #include <windows.h>
 #else
 #include <dirent.h>
@@ -43,6 +44,148 @@ static std::string toUtf8(const std::wstring& path)
     return buf;
 }
 #endif
+
+bool isAbsolutePath(std::string_view path)
+{
+#ifdef _WIN32
+    // Must either begin with "X:/", "X:\", "/", or "\", where X is a drive letter
+    return (path.size() >= 3 && isalpha(path[0]) && path[1] == ':' && (path[2] == '/' || path[2] == '\\')) ||
+           (path.size() >= 1 && (path[0] == '/' || path[0] == '\\'));
+#else
+    // Must begin with '/'
+    return path.size() >= 1 && path[0] == '/';
+#endif
+}
+
+bool isExplicitlyRelative(std::string_view path)
+{
+    return (path == ".") || (path == "..") || (path.size() >= 2 && path[0] == '.' && path[1] == '/') ||
+           (path.size() >= 3 && path[0] == '.' && path[1] == '.' && path[2] == '/');
+}
+
+std::optional<std::string> getCurrentWorkingDirectory()
+{
+    // 2^17 - derived from the Windows path length limit
+    constexpr size_t maxPathLength = 131072;
+    constexpr size_t initialPathLength = 260;
+
+    std::string directory(initialPathLength, '\0');
+    char* cstr = nullptr;
+
+    while (!cstr && directory.size() <= maxPathLength)
+    {
+#ifdef _WIN32
+        cstr = _getcwd(directory.data(), static_cast<int>(directory.size()));
+#else
+        cstr = getcwd(directory.data(), directory.size());
+#endif
+        if (cstr)
+        {
+            directory.resize(strlen(cstr));
+            return directory;
+        }
+        else if (errno != ERANGE || directory.size() * 2 > maxPathLength)
+        {
+            return std::nullopt;
+        }
+        else
+        {
+            directory.resize(directory.size() * 2);
+        }
+    }
+    return std::nullopt;
+}
+
+// Returns the normal/canonical form of a path (e.g. "../subfolder/../module.luau" -> "../module.luau")
+std::string normalizePath(std::string_view path)
+{
+    return resolvePath(path, "");
+}
+
+// Takes a path that is relative to the file at baseFilePath and returns the path explicitly rebased onto baseFilePath.
+// For absolute paths, baseFilePath will be ignored, and this function will resolve the path to a canonical path:
+// (e.g. "/Users/.././Users/johndoe" -> "/Users/johndoe").
+std::string resolvePath(std::string_view path, std::string_view baseFilePath)
+{
+    std::vector<std::string_view> pathComponents;
+    std::vector<std::string_view> baseFilePathComponents;
+
+    // Dependent on whether the final resolved path is absolute or relative
+    // - if relative (when path and baseFilePath are both relative), resolvedPathPrefix remains empty
+    // - if absolute (if either path or baseFilePath are absolute), resolvedPathPrefix is "C:\", "/", etc.
+    std::string resolvedPathPrefix;
+
+    if (isAbsolutePath(path))
+    {
+        // path is absolute, we use path's prefix and ignore baseFilePath
+        size_t afterPrefix = path.find_first_of("\\/") + 1;
+        resolvedPathPrefix = path.substr(0, afterPrefix);
+        pathComponents = splitPath(path.substr(afterPrefix));
+    }
+    else
+    {
+        pathComponents = splitPath(path);
+        if (isAbsolutePath(baseFilePath))
+        {
+            // path is relative and baseFilePath is absolute, we use baseFilePath's prefix
+            size_t afterPrefix = baseFilePath.find_first_of("\\/") + 1;
+            resolvedPathPrefix = baseFilePath.substr(0, afterPrefix);
+            baseFilePathComponents = splitPath(baseFilePath.substr(afterPrefix));
+        }
+        else
+        {
+            // path and baseFilePath are both relative, we do not set a prefix (resolved path will be relative)
+            baseFilePathComponents = splitPath(baseFilePath);
+        }
+    }
+
+    // Remove filename from components
+    if (!baseFilePathComponents.empty())
+        baseFilePathComponents.pop_back();
+
+    // Resolve the path by applying pathComponents to baseFilePathComponents
+    int numPrependedParents = 0;
+    for (std::string_view component : pathComponents)
+    {
+        if (component == "..")
+        {
+            if (baseFilePathComponents.empty())
+            {
+                if (resolvedPathPrefix.empty()) // only when final resolved path will be relative
+                    numPrependedParents++;      // "../" will later be added to the beginning of the resolved path
+            }
+            else if (baseFilePathComponents.back() != "..")
+            {
+                baseFilePathComponents.pop_back(); // Resolve cases like "folder/subfolder/../../file" to "file"
+            }
+        }
+        else if (component != "." && !component.empty())
+        {
+            baseFilePathComponents.push_back(component);
+        }
+    }
+
+    // Join baseFilePathComponents to form the resolved path
+    std::string resolvedPath = resolvedPathPrefix;
+    // Only when resolvedPath will be relative
+    for (int i = 0; i < numPrependedParents; i++)
+    {
+        resolvedPath += "../";
+    }
+    for (auto iter = baseFilePathComponents.begin(); iter != baseFilePathComponents.end(); ++iter)
+    {
+        if (iter != baseFilePathComponents.begin())
+            resolvedPath += "/";
+
+        resolvedPath += *iter;
+    }
+    if (resolvedPath.size() > resolvedPathPrefix.size() && resolvedPath.back() == '/')
+    {
+        // Remove trailing '/' if present
+        resolvedPath.pop_back();
+    }
+    return resolvedPath;
+}
 
 std::optional<std::string> readFile(const std::string& name)
 {
@@ -222,6 +365,24 @@ bool isDirectory(const std::string& path)
     lstat(path.c_str(), &st);
     return (st.st_mode & S_IFMT) == S_IFDIR;
 #endif
+}
+
+std::vector<std::string_view> splitPath(std::string_view path)
+{
+    std::vector<std::string_view> components;
+
+    size_t pos = 0;
+    size_t nextPos = path.find_first_of("\\/", pos);
+
+    while (nextPos != std::string::npos)
+    {
+        components.push_back(path.substr(pos, nextPos - pos));
+        pos = nextPos + 1;
+        nextPos = path.find_first_of("\\/", pos);
+    }
+    components.push_back(path.substr(pos));
+
+    return components;
 }
 
 std::string joinPaths(const std::string& lhs, const std::string& rhs)

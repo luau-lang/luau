@@ -3,6 +3,7 @@
 
 #include "Luau/Location.h"
 
+#include <iterator>
 #include <optional>
 #include <functional>
 #include <string>
@@ -91,9 +92,20 @@ struct AstArray
     {
         return data;
     }
+
     const T* end() const
     {
         return data + size;
+    }
+
+    std::reverse_iterator<const T*> rbegin() const
+    {
+        return std::make_reverse_iterator(end());
+    }
+
+    std::reverse_iterator<const T*> rend() const
+    {
+        return std::make_reverse_iterator(begin());
     }
 };
 

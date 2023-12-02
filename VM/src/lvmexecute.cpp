@@ -521,7 +521,7 @@ reentry:
 
                         if (unsigned(ic) < LUA_VECTOR_SIZE && name[1] == '\0')
                         {
-                            const float* v = rb->value.v; // silences ubsan when indexing v[]
+                            const float* v = vvalue(rb); // silences ubsan when indexing v[]
                             setnvalue(ra, v[ic]);
                             VM_NEXT();
                         }
@@ -1464,8 +1464,8 @@ reentry:
                 }
                 else if (ttisvector(rb) && ttisvector(rc))
                 {
-                    const float* vb = rb->value.v;
-                    const float* vc = rc->value.v;
+                    const float* vb = vvalue(rb);
+                    const float* vc = vvalue(rc);
                     setvvalue(ra, vb[0] + vc[0], vb[1] + vc[1], vb[2] + vc[2], vb[3] + vc[3]);
                     VM_NEXT();
                 }
@@ -1510,8 +1510,8 @@ reentry:
                 }
                 else if (ttisvector(rb) && ttisvector(rc))
                 {
-                    const float* vb = rb->value.v;
-                    const float* vc = rc->value.v;
+                    const float* vb = vvalue(rb);
+                    const float* vc = vvalue(rc);
                     setvvalue(ra, vb[0] - vc[0], vb[1] - vc[1], vb[2] - vc[2], vb[3] - vc[3]);
                     VM_NEXT();
                 }
@@ -1556,22 +1556,22 @@ reentry:
                 }
                 else if (ttisvector(rb) && ttisnumber(rc))
                 {
-                    const float* vb = rb->value.v;
+                    const float* vb = vvalue(rb);
                     float vc = cast_to(float, nvalue(rc));
                     setvvalue(ra, vb[0] * vc, vb[1] * vc, vb[2] * vc, vb[3] * vc);
                     VM_NEXT();
                 }
                 else if (ttisvector(rb) && ttisvector(rc))
                 {
-                    const float* vb = rb->value.v;
-                    const float* vc = rc->value.v;
+                    const float* vb = vvalue(rb);
+                    const float* vc = vvalue(rc);
                     setvvalue(ra, vb[0] * vc[0], vb[1] * vc[1], vb[2] * vc[2], vb[3] * vc[3]);
                     VM_NEXT();
                 }
                 else if (ttisnumber(rb) && ttisvector(rc))
                 {
                     float vb = cast_to(float, nvalue(rb));
-                    const float* vc = rc->value.v;
+                    const float* vc = vvalue(rc);
                     setvvalue(ra, vb * vc[0], vb * vc[1], vb * vc[2], vb * vc[3]);
                     VM_NEXT();
                 }
@@ -1617,22 +1617,22 @@ reentry:
                 }
                 else if (ttisvector(rb) && ttisnumber(rc))
                 {
-                    const float* vb = rb->value.v;
+                    const float* vb = vvalue(rb);
                     float vc = cast_to(float, nvalue(rc));
                     setvvalue(ra, vb[0] / vc, vb[1] / vc, vb[2] / vc, vb[3] / vc);
                     VM_NEXT();
                 }
                 else if (ttisvector(rb) && ttisvector(rc))
                 {
-                    const float* vb = rb->value.v;
-                    const float* vc = rc->value.v;
+                    const float* vb = vvalue(rb);
+                    const float* vc = vvalue(rc);
                     setvvalue(ra, vb[0] / vc[0], vb[1] / vc[1], vb[2] / vc[2], vb[3] / vc[3]);
                     VM_NEXT();
                 }
                 else if (ttisnumber(rb) && ttisvector(rc))
                 {
                     float vb = cast_to(float, nvalue(rb));
-                    const float* vc = rc->value.v;
+                    const float* vc = vvalue(rc);
                     setvvalue(ra, vb / vc[0], vb / vc[1], vb / vc[2], vb / vc[3]);
                     VM_NEXT();
                 }
@@ -1812,7 +1812,7 @@ reentry:
                 }
                 else if (ttisvector(rb))
                 {
-                    const float* vb = rb->value.v;
+                    const float* vb = vvalue(rb);
                     float vc = cast_to(float, nvalue(kv));
                     setvvalue(ra, vb[0] * vc, vb[1] * vc, vb[2] * vc, vb[3] * vc);
                     VM_NEXT();
@@ -2071,7 +2071,7 @@ reentry:
                 }
                 else if (ttisvector(rb))
                 {
-                    const float* vb = rb->value.v;
+                    const float* vb = vvalue(rb);
                     setvvalue(ra, -vb[0], -vb[1], -vb[2], -vb[3]);
                     VM_NEXT();
                 }

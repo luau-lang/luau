@@ -8,6 +8,8 @@
 
 #include "lua.h"
 
+#include <limits.h>
+
 #include <array>
 #include <utility>
 #include <vector>
@@ -15,9 +17,9 @@
 LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
-LUAU_FASTFLAGVARIABLE(LuauReuseArrSlots2, false)
-LUAU_FASTFLAG(LuauLowerAltLoopForn)
 LUAU_FASTFLAGVARIABLE(LuauCodeGenFixByteLower, false)
+LUAU_FASTFLAGVARIABLE(LuauKeepVmapLinear2, false)
+LUAU_FASTFLAGVARIABLE(LuauReuseBufferChecks, false)
 
 namespace Luau
 {
@@ -194,12 +196,19 @@ struct ConstPropState
         checkArraySizeCache.clear();
     }
 
+    void invalidateHeapBufferData()
+    {
+        checkBufferLenCache.clear();
+    }
+
     void invalidateHeap()
     {
         for (int i = 0; i <= maxReg; ++i)
             invalidateHeap(regs[i]);
 
         invalidateHeapTableData();
+
+        // Buffer length checks are not invalidated since buffer size is immutable
     }
 
     void invalidateHeap(RegisterInfo& reg)
@@ -408,6 +417,7 @@ struct ConstPropState
 
         invalidateValuePropagation();
         invalidateHeapTableData();
+        invalidateHeapBufferData();
     }
 
     IrFunction& function;
@@ -435,6 +445,8 @@ struct ConstPropState
 
     std::vector<uint32_t> getArrAddrCache;
     std::vector<uint32_t> checkArraySizeCache; // Additionally, fallback block argument might be different
+
+    std::vector<uint32_t> checkBufferLenCache; // Additionally, fallback block argument might be different
 };
 
 static void handleBuiltinEffects(ConstPropState& state, LuauBuiltinFunction bfid, uint32_t firstReturnReg, int nresults)
@@ -677,7 +689,21 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         if (inst.a.kind == IrOpKind::VmReg || inst.a.kind == IrOpKind::Inst)
         {
             if (inst.a.kind == IrOpKind::VmReg)
+            {
+                if (FFlag::LuauReuseBufferChecks && inst.b.kind == IrOpKind::Inst)
+                {
+                    if (uint32_t* prevIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_TVALUE, inst.a))
+                    {
+                        if (*prevIdx == inst.b.index)
+                        {
+                            kill(function, inst);
+                            break;
+                        }
+                    }
+                }
+
                 state.invalidate(inst.a);
+            }
 
             uint8_t tag = state.tryGetTag(inst.b);
             IrOp value = state.tryGetValue(inst.b);
@@ -921,8 +947,65 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         }
         break;
     case IrCmd::CHECK_BUFFER_LEN:
-        // TODO: remove duplicate checks and extend earlier check bound when possible
+    {
+        if (!FFlag::LuauReuseBufferChecks)
+            break;
+
+        std::optional<int> bufferOffset = function.asIntOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b));
+        int accessSize = function.intOp(inst.c);
+        LUAU_ASSERT(accessSize > 0);
+
+        if (bufferOffset)
+        {
+            // Negative offsets and offsets overflowing signed integer will jump to fallback, no need to keep the check
+            if (*bufferOffset < 0 || unsigned(*bufferOffset) + unsigned(accessSize) >= unsigned(INT_MAX))
+            {
+                replace(function, block, index, {IrCmd::JUMP, inst.d});
+                break;
+            }
+        }
+
+        for (uint32_t prevIdx : state.checkBufferLenCache)
+        {
+            IrInst& prev = function.instructions[prevIdx];
+
+            if (prev.a != inst.a || prev.c != inst.c)
+                continue;
+
+            if (prev.b == inst.b)
+            {
+                if (FFlag::DebugLuauAbortingChecks)
+                    replace(function, inst.d, build.undef());
+                else
+                    kill(function, inst);
+                return; // Break out from both the loop and the switch
+            }
+            else if (inst.b.kind == IrOpKind::Constant && prev.b.kind == IrOpKind::Constant)
+            {
+                // If arguments are different constants, we can check if a larger bound was already tested or if the previous bound can be raised
+                int currBound = function.intOp(inst.b);
+                int prevBound = function.intOp(prev.b);
+
+                // Negative and overflowing constant offsets should already be replaced with unconditional jumps to a fallback
+                LUAU_ASSERT(currBound >= 0);
+                LUAU_ASSERT(prevBound >= 0);
+
+                if (unsigned(currBound) >= unsigned(prevBound))
+                    replace(function, prev.b, inst.b);
+
+                if (FFlag::DebugLuauAbortingChecks)
+                    replace(function, inst.d, build.undef());
+                else
+                    kill(function, inst);
+
+                return; // Break out from both the loop and the switch
+            }
+        }
+
+        if (int(state.checkBufferLenCache.size()) < FInt::LuauCodeGenReuseSlotLimit)
+            state.checkBufferLenCache.push_back(index);
         break;
+    }
     case IrCmd::BUFFER_READI8:
     case IrCmd::BUFFER_READU8:
     case IrCmd::BUFFER_WRITEI8:
@@ -969,9 +1052,6 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::LOAD_ENV:
         break;
     case IrCmd::GET_ARR_ADDR:
-        if (!FFlag::LuauReuseArrSlots2)
-            break;
-
         for (uint32_t prevIdx : state.getArrAddrCache)
         {
             const IrInst& prev = function.instructions[prevIdx];
@@ -1039,9 +1119,6 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::DUP_TABLE:
         break;
     case IrCmd::TRY_NUM_TO_INDEX:
-        if (!FFlag::LuauReuseArrSlots2)
-            break;
-
         for (uint32_t prevIdx : state.tryNumToIndexCache)
         {
             const IrInst& prev = function.instructions[prevIdx];
@@ -1079,7 +1156,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         std::optional<int> arrayIndex = function.asIntOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b));
 
         // Negative offsets will jump to fallback, no need to keep the check
-        if (FFlag::LuauReuseArrSlots2 && arrayIndex && *arrayIndex < 0)
+        if (arrayIndex && *arrayIndex < 0)
         {
             replace(function, block, index, {IrCmd::JUMP, inst.c});
             break;
@@ -1104,9 +1181,6 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 break;
             }
         }
-
-        if (!FFlag::LuauReuseArrSlots2)
-            break;
 
         for (uint32_t prevIdx : state.checkArraySizeCache)
         {
@@ -1220,6 +1294,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         // TODO: this can be relaxed when x64 emitInstSetList becomes aware of register allocator
         state.invalidateValuePropagation();
         state.invalidateHeapTableData();
+        state.invalidateHeapBufferData();
         break;
     case IrCmd::CALL:
         state.invalidateRegistersFrom(vmRegOp(inst.a));
@@ -1236,6 +1311,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         // TODO: this can be relaxed when x64 emitInstForGLoop becomes aware of register allocator
         state.invalidateValuePropagation();
         state.invalidateHeapTableData();
+        state.invalidateHeapBufferData();
         break;
     case IrCmd::FORGLOOP_FALLBACK:
         state.invalidateRegistersFrom(vmRegOp(inst.a) + 2); // Rn and Rn+1 are not modified
@@ -1299,11 +1375,15 @@ static void constPropInBlock(IrBuilder& build, IrBlock& block, ConstPropState& s
         constPropInInst(state, build, function, block, inst, index);
     }
 
-    // Value numbering and load/store propagation is not performed between blocks
-    state.invalidateValuePropagation();
+    if (!FFlag::LuauKeepVmapLinear2)
+    {
+        // Value numbering and load/store propagation is not performed between blocks
+        state.invalidateValuePropagation();
 
-    // Same for table slot data propagation
-    state.invalidateHeapTableData();
+        // Same for table and buffer data propagation
+        state.invalidateHeapTableData();
+        state.invalidateHeapBufferData();
+    }
 }
 
 static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visited, IrBlock* block, ConstPropState& state)
@@ -1323,6 +1403,16 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
 
         constPropInBlock(build, *block, state);
 
+        if (FFlag::LuauKeepVmapLinear2)
+        {
+            // Value numbering and load/store propagation is not performed between blocks
+            state.invalidateValuePropagation();
+
+            // Same for table and buffer data propagation
+            state.invalidateHeapTableData();
+            state.invalidateHeapBufferData();
+        }
+
         // Blocks in a chain are guaranteed to follow each other
         // We force that by giving all blocks the same sorting key, but consecutive chain keys
         block->sortkey = startSortkey;
@@ -1341,7 +1431,7 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
 
             if (target.useCount == 1 && !visited[targetIdx] && target.kind != IrBlockKind::Fallback)
             {
-                if (FFlag::LuauLowerAltLoopForn && getLiveOutValueCount(function, target) != 0)
+                if (getLiveOutValueCount(function, target) != 0)
                     break;
 
                 // Make sure block ordering guarantee is checked at lowering time

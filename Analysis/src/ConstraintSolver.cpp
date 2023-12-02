@@ -1263,9 +1263,6 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
     if (isBlocked(subjectType))
         return block(subjectType, constraint);
 
-    if (!force && get<FreeType>(subjectType))
-        return block(subjectType, constraint);
-
     std::optional<TypeId> existingPropType = subjectType;
     for (const std::string& segment : c.path)
     {
@@ -1301,25 +1298,13 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
 
     if (get<FreeType>(subjectType))
     {
-        TypeId ty = freshType(arena, builtinTypes, constraint->scope);
-
-        // Mint a chain of free tables per c.path
-        for (auto it = rbegin(c.path); it != rend(c.path); ++it)
-        {
-            TableType t{TableState::Free, TypeLevel{}, constraint->scope};
-            t.props[*it] = {ty};
-
-            ty = arena->addType(std::move(t));
-        }
-
-        LUAU_ASSERT(ty);
-
-        bind(subjectType, ty);
-        if (follow(c.resultType) != follow(ty))
-            bind(c.resultType, ty);
-        unblock(subjectType, constraint->location);
-        unblock(c.resultType, constraint->location);
-        return true;
+        /*
+         * This should never occur because lookupTableProp() will add bounds to
+         * any free types it encounters.  There will always be an
+         * existingPropType if the subject is free.
+         */
+        LUAU_ASSERT(false);
+        return false;
     }
     else if (auto ttv = getMutable<TableType>(subjectType))
     {
@@ -1328,7 +1313,7 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
             LUAU_ASSERT(!subjectType->persistent);
 
             ttv->props[c.path[0]] = Property{c.propType};
-            bind(c.resultType, c.subjectType);
+            bind(c.resultType, subjectType);
             unblock(c.resultType, constraint->location);
             return true;
         }
@@ -1337,26 +1322,12 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
             LUAU_ASSERT(!subjectType->persistent);
 
             updateTheTableType(builtinTypes, NotNull{arena}, subjectType, c.path, c.propType);
-            bind(c.resultType, c.subjectType);
-            unblock(subjectType, constraint->location);
-            unblock(c.resultType, constraint->location);
-            return true;
-        }
-        else
-        {
-            bind(c.resultType, subjectType);
-            unblock(c.resultType, constraint->location);
-            return true;
         }
     }
-    else
-    {
-        // Other kinds of types don't change shape when properties are assigned
-        // to them. (if they allow properties at all!)
-        bind(c.resultType, subjectType);
-        unblock(c.resultType, constraint->location);
-        return true;
-    }
+
+    bind(c.resultType, subjectType);
+    unblock(c.resultType, constraint->location);
+    return true;
 }
 
 bool ConstraintSolver::tryDispatch(const SetIndexerConstraint& c, NotNull<const Constraint> constraint, bool force)
@@ -1908,6 +1879,7 @@ bool ConstraintSolver::tryDispatchIterableFunction(
     TypeId retIndex;
     if (isNil(firstIndexTy) || isOptional(firstIndexTy))
     {
+        // FIXME freshType is suspect here
         firstIndex = arena->addType(UnionType{{freshType(arena, builtinTypes, constraint->scope), builtinTypes->nilType}});
         retIndex = firstIndex;
     }
@@ -1949,7 +1921,7 @@ bool ConstraintSolver::tryDispatchIterableFunction(
         modifiedNextRetHead.push_back(*it);
 
     TypePackId modifiedNextRetPack = arena->addTypePack(std::move(modifiedNextRetHead), it.tail());
-    auto psc = pushConstraint(constraint->scope, constraint->location, PackSubtypeConstraint{c.variables, modifiedNextRetPack});
+    auto psc = pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, modifiedNextRetPack});
     inheritBlocks(constraint, psc);
 
     return true;

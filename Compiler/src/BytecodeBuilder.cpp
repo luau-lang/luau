@@ -366,7 +366,8 @@ int32_t BytecodeBuilder::addConstantVector(float x, float y, float z, float w)
     c.valueVector[3] = w;
 
     ConstantKey k = {Constant::Type_Vector};
-    static_assert(sizeof(k.value) == sizeof(x) + sizeof(y) && sizeof(k.extra) == sizeof(z) + sizeof(w), "Expecting vector to have four 32-bit components");
+    static_assert(
+        sizeof(k.value) == sizeof(x) + sizeof(y) && sizeof(k.extra) == sizeof(z) + sizeof(w), "Expecting vector to have four 32-bit components");
     memcpy(&k.value, &x, sizeof(x));
     memcpy((char*)&k.value + sizeof(x), &y, sizeof(y));
     memcpy(&k.extra, &z, sizeof(z));

@@ -12,6 +12,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauCheckedFunctionSyntax);
+LUAU_FASTFLAG(DebugLuauSharedSelf);
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -236,7 +238,7 @@ TEST_CASE_FIXTURE(Fixture, "functions_are_always_parenthesized_in_unions_or_inte
 
 TEST_CASE_FIXTURE(Fixture, "simple_intersections_printed_on_one_line")
 {
-    ScopedFastFlag sff{"LuauToStringSimpleCompositeTypesSingleLine", true};
+    ScopedFastFlag sff{FFlag::LuauToStringSimpleCompositeTypesSingleLine, true};
     CheckResult result = check(R"(
         local a: string & number
     )");
@@ -249,7 +251,7 @@ TEST_CASE_FIXTURE(Fixture, "simple_intersections_printed_on_one_line")
 
 TEST_CASE_FIXTURE(Fixture, "complex_intersections_printed_on_multiple_lines")
 {
-    ScopedFastFlag sff{"LuauToStringSimpleCompositeTypesSingleLine", true};
+    ScopedFastFlag sff{FFlag::LuauToStringSimpleCompositeTypesSingleLine, true};
     CheckResult result = check(R"(
         local a: string & number & boolean
     )");
@@ -268,7 +270,7 @@ TEST_CASE_FIXTURE(Fixture, "complex_intersections_printed_on_multiple_lines")
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_always_printed_on_multiple_lines")
 {
-    ScopedFastFlag sff{"LuauToStringSimpleCompositeTypesSingleLine", true};
+    ScopedFastFlag sff{FFlag::LuauToStringSimpleCompositeTypesSingleLine, true};
     CheckResult result = check(R"(
         local a: ((string) -> string) & ((number) -> number)
     )");
@@ -285,7 +287,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_always_printed_on_multiple_line
 
 TEST_CASE_FIXTURE(Fixture, "simple_unions_printed_on_one_line")
 {
-    ScopedFastFlag sff{"LuauToStringSimpleCompositeTypesSingleLine", true};
+    ScopedFastFlag sff{FFlag::LuauToStringSimpleCompositeTypesSingleLine, true};
     CheckResult result = check(R"(
         local a: number | boolean
     )");
@@ -298,7 +300,7 @@ TEST_CASE_FIXTURE(Fixture, "simple_unions_printed_on_one_line")
 
 TEST_CASE_FIXTURE(Fixture, "complex_unions_printed_on_multiple_lines")
 {
-    ScopedFastFlag sff{"LuauToStringSimpleCompositeTypesSingleLine", true};
+    ScopedFastFlag sff{FFlag::LuauToStringSimpleCompositeTypesSingleLine, true};
     CheckResult result = check(R"(
         local a: string | number | boolean
     )");
@@ -565,7 +567,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
 TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauSharedSelf", true},
+        {FFlag::DebugLuauSharedSelf, true},
     };
 
     CheckResult result = check(R"(
@@ -865,7 +867,7 @@ TEST_CASE_FIXTURE(Fixture, "pick_distinct_names_for_mixed_explicit_and_implicit_
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_include_self_param")
 {
     ScopedFastFlag sff[]{
-        {"DebugLuauSharedSelf", true},
+        {FFlag::DebugLuauSharedSelf, true},
     };
 
     CheckResult result = check(R"(
@@ -887,7 +889,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_include_self_param")
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_self_param")
 {
     ScopedFastFlag sff[]{
-        {"DebugLuauSharedSelf", true},
+        {FFlag::DebugLuauSharedSelf, true},
     };
 
     CheckResult result = check(R"(
@@ -965,8 +967,8 @@ Type 'string' could not be converted into 'number' in an invariant context)";
 TEST_CASE_FIXTURE(Fixture, "checked_fn_toString")
 {
     ScopedFastFlag flags[] = {
-        {"LuauCheckedFunctionSyntax", true},
-        {"DebugLuauDeferredConstraintResolution", true},
+        {FFlag::LuauCheckedFunctionSyntax, true},
+        {FFlag::DebugLuauDeferredConstraintResolution, true},
     };
 
     auto _result = loadDefinition(R"(

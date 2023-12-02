@@ -11,6 +11,7 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(DebugLuauSharedSelf);
 
 using namespace Luau;
 
@@ -274,7 +275,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_nested_generic_function")
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_methods")
 {
-    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+    ScopedFastFlag sff{FFlag::DebugLuauSharedSelf, true};
 
     CheckResult result = check(R"(
         local x = {}
@@ -1260,7 +1261,7 @@ end
 TEST_CASE_FIXTURE(BuiltinsFixture, "higher_rank_polymorphism_should_not_accept_instantiated_arguments")
 {
     ScopedFastFlag sffs[] = {
-        {"LuauInstantiateInSubtyping", true},
+        {FFlag::LuauInstantiateInSubtyping, true},
     };
 
     CheckResult result = check(R"(

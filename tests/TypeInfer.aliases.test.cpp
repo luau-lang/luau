@@ -8,6 +8,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(DebugLuauSharedSelf);
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -188,7 +189,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_aliases")
 TEST_CASE_FIXTURE(Fixture, "generic_aliases")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", true},
+        {FFlag::DebugLuauDeferredConstraintResolution, true},
     };
     CheckResult result = check(R"(
         type T<a> = { v: a }
@@ -206,7 +207,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases")
 TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", true},
+        {FFlag::DebugLuauDeferredConstraintResolution, true},
     };
 
     CheckResult result = check(R"(
@@ -334,7 +335,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
 TEST_CASE_FIXTURE(Fixture, "cli_38393_recursive_intersection_oom")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", false},
+        {FFlag::DebugLuauDeferredConstraintResolution, false},
     }; // FIXME
 
     CheckResult result = check(R"(
@@ -820,7 +821,7 @@ TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_uni
 TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_unification_with_any_2")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauSharedSelf", true},
+        {FFlag::DebugLuauSharedSelf, true},
     };
 
     CheckResult result = check(R"(

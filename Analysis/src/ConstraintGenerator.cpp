@@ -750,16 +750,17 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatForIn* forI
 
     for (AstLocal* var : forIn->vars)
     {
-        TypeId ty = nullptr;
-        if (var->annotation)
-            ty = resolveType(loopScope, var->annotation, /*inTypeArguments*/ false);
-        else
-            ty = freshType(loopScope);
-
-        loopScope->bindings[var] = Binding{ty, var->location};
-
         TypeId assignee = arena->addType(BlockedType{});
         variableTypes.push_back(assignee);
+
+        if (var->annotation)
+        {
+            TypeId annotationTy = resolveType(loopScope, var->annotation, /*inTypeArguments*/ false);
+            loopScope->bindings[var] = Binding{annotationTy, var->location};
+            addConstraint(scope, var->location, SubtypeConstraint{assignee, annotationTy});
+        }
+        else
+            loopScope->bindings[var] = Binding{assignee, var->location};
 
         DefId def = dfg->getDef(var);
         loopScope->lvalueTypes[def] = assignee;
@@ -1439,9 +1440,6 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
     module->astOriginalCallTypes[call->func] = fnType;
     module->astOriginalCallTypes[call] = fnType;
 
-    TypeId instantiatedFnType = arena->addType(BlockedType{});
-    addConstraint(scope, call->location, InstantiationConstraint{instantiatedFnType, fnType});
-
     Checkpoint argBeginCheckpoint = checkpoint(this);
 
     std::vector<TypeId> args;
@@ -1740,12 +1738,11 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprGlobal* globa
     }
 }
 
-Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIndexName* indexName)
+Inference ConstraintGenerator::checkIndexName(const ScopePtr& scope, const RefinementKey* key, AstExpr* indexee, std::string index)
 {
-    TypeId obj = check(scope, indexName->expr).ty;
+    TypeId obj = check(scope, indexee).ty;
     TypeId result = arena->addType(BlockedType{});
 
-    const RefinementKey* key = dfg->getRefinementKey(indexName);
     if (key)
     {
         if (auto ty = lookup(scope.get(), key->def))
@@ -1754,7 +1751,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIndexName* in
         scope->rvalueRefinements[key->def] = result;
     }
 
-    addConstraint(scope, indexName->expr->location, HasPropConstraint{result, obj, indexName->index.value});
+    addConstraint(scope, indexee->location, HasPropConstraint{result, obj, std::move(index)});
 
     if (key)
         return Inference{result, refinementArena.proposition(key, builtinTypes->truthyType)};
@@ -1762,10 +1759,23 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIndexName* in
         return Inference{result};
 }
 
+Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIndexName* indexName)
+{
+    const RefinementKey* key = dfg->getRefinementKey(indexName);
+    return checkIndexName(scope, key, indexName->expr, indexName->index.value);
+}
+
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIndexExpr* indexExpr)
 {
+    if (auto constantString = indexExpr->index->as<AstExprConstantString>())
+    {
+        const RefinementKey* key = dfg->getRefinementKey(indexExpr);
+        return checkIndexName(scope, key, indexExpr->expr, constantString->value.data);
+    }
+
     TypeId obj = check(scope, indexExpr->expr).ty;
     TypeId indexType = check(scope, indexExpr->index).ty;
+
     TypeId result = freshType(scope);
 
     const RefinementKey* key = dfg->getRefinementKey(indexExpr);
@@ -3079,15 +3089,23 @@ struct GlobalPrepopulator : AstVisitor
     {
     }
 
+    bool visit(AstExprGlobal* global) override
+    {
+        if (auto ty = globalScope->lookup(global->name))
+        {
+            DefId def = dfg->getDef(global);
+            globalScope->lvalueTypes[def] = *ty;
+        }
+
+        return true;
+    }
+
     bool visit(AstStatFunction* function) override
     {
         if (AstExprGlobal* g = function->name->as<AstExprGlobal>())
         {
             TypeId bt = arena->addType(BlockedType{});
             globalScope->bindings[g->name] = Binding{bt};
-
-            DefId def = dfg->getDef(function->name);
-            globalScope->lvalueTypes[def] = bt;
         }
 
         return true;
