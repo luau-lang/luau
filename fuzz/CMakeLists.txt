@@ -1,5 +1,8 @@
 # This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-cmake_minimum_required(VERSION 3.26)
+if(${CMAKE_VERSION} VERSION_LESS "3.26")
+    message(WARNING "Building the Luau fuzzer requires Clang version 3.26 of higher.")
+    return()
+endif()
 
 include(FetchContent)
 
