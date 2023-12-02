@@ -2,7 +2,7 @@
 -- http://www.speich.net/computer/moztesting/3d.htm
 -- Created by Simon Speich
 
-local bench = script and require(script.Parent.bench_support) or require("bench_support")
+local bench = script and require(script.Parent.bench_support) or pcall(require, "bench_support") or require("../../bench_support")
 
 function test()
 

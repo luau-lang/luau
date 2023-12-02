@@ -1,4 +1,4 @@
-local bench = script and require(script.Parent.bench_support) or require("bench_support")
+local bench = script and require(script.Parent.bench_support) or pcall(require, "bench_support") or require("../../bench_support")
 
 local PI = 3.141592653589793
 local SOLAR_MASS = 4 * PI * PI

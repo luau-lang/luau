@@ -1,5 +1,5 @@
 --!strict
-local bench = script and require(script.Parent.bench_support) or require("bench_support")
+local bench = script and require(script.Parent.bench_support) or pcall(require, "bench_support") or require("../bench_support")
 
 function test()
 

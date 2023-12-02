@@ -1,4 +1,4 @@
-local bench = script and require(script.Parent.bench_support) or require("bench_support")
+local bench = script and require(script.Parent.bench_support) or pcall(require, "bench_support") or require("../bench_support")
 
 local function mmul(matrix1, matrix2)
     local shapeRows = #matrix1
