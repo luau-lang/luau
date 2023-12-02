@@ -23,11 +23,7 @@ LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 struct LimitFixture : BuiltinsFixture
 {
 #if defined(_NOOPT) || defined(_DEBUG)
-<<<<<<< HEAD
-    ScopedFastInt LuauTypeInferRecursionLimit{"LuauTypeInferRecursionLimit", 90};
-=======
     ScopedFastInt LuauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 100};
->>>>>>> upstream
 #endif
 };
 
