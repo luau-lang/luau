@@ -1,4 +1,4 @@
-local bench = script and require(script.Parent.bench_support) or require("bench_support")
+local bench = script and require(script.Parent.bench_support) or pcall(require, "bench_support") or require("../bench_support")
 
 bench.runCode(function()
 	for outer=1,28,3 do

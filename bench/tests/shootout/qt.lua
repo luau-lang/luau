@@ -23,7 +23,7 @@ SOFTWARE.
 ]]
 -- Julia sets via interval cell-mapping (quadtree version)
 
-local bench = script and require(script.Parent.bench_support) or require("bench_support")
+local bench = script and require(script.Parent.bench_support) or pcall(require, "bench_support") or require("../../bench_support")
 
 function test()
 
