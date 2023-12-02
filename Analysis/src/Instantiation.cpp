@@ -7,6 +7,8 @@
 #include "Luau/TypeArena.h"
 #include "Luau/TypeCheckLimits.h"
 
+#include <algorithm>
+
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 namespace Luau

@@ -2772,13 +2772,17 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there, Set<T
         return true;
     }
     else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) ||
-             get<TypeFamilyInstanceType>(there))
+             get<TypeFamilyInstanceType>(there) || get<LocalType>(there))
     {
         NormalizedType thereNorm{builtinTypes};
         NormalizedType topNorm{builtinTypes};
         topNorm.tops = builtinTypes->unknownType;
         thereNorm.tyvars.insert_or_assign(there, std::make_unique<NormalizedType>(std::move(topNorm)));
         return intersectNormals(here, thereNorm);
+    }
+    else if (auto lt = get<LocalType>(there))
+    {
+        return intersectNormalWithTy(here, lt->domain, seenSetTypes);
     }
 
     NormalizedTyvars tyvars = std::move(here.tyvars);

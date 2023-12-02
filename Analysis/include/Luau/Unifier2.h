@@ -61,7 +61,7 @@ struct Unifier2
     bool unify(TypeId subTy, const UnionType* superUnion);
     bool unify(const IntersectionType* subIntersection, TypeId superTy);
     bool unify(TypeId subTy, const IntersectionType* superIntersection);
-    bool unify(const TableType* subTable, const TableType* superTable);
+    bool unify(TableType* subTable, const TableType* superTable);
     bool unify(const MetatableType* subMetatable, const MetatableType* superMetatable);
 
     // TODO think about this one carefully.  We don't do unions or intersections of type packs

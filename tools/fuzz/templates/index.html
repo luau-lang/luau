@@ -114,10 +114,12 @@
         <article id="{{ crash.id }}">
             <h2 class="mono">{{ crash.id }}</h2>
             <p><a href="{{ crash.artifact_link() }}">Download reproducer artifact</a></p>
+            {% if crash.trace() %}
             <dt>Trace</dt>
             <dl>
                 <pre>{{ crash.trace() }}</pre>
             </dl>
+            {% endif %}
             <dt>Module set</dt>
             <dl>
                 <pre>{{ crash.modules() }}</pre>

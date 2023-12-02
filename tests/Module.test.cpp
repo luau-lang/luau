@@ -15,6 +15,9 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauStacklessTypeClone3)
+LUAU_FASTFLAG(DebugLuauFreezeArena);
+LUAU_FASTINT(LuauTypeCloneIterationLimit);
+LUAU_FASTINT(LuauTypeCloneRecursionLimit);
 
 TEST_SUITE_BEGIN("ModuleTests");
 
@@ -112,7 +115,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
     // not, but it's tangental to the core purpose of this test.
 
     ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", false},
+        {FFlag::DebugLuauDeferredConstraintResolution, false},
     };
 
     CheckResult result = check(R"(
@@ -270,7 +273,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
 
 TEST_CASE_FIXTURE(Fixture, "clone_free_types")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", false};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
 
     TypeArena arena;
     TypeId freeTy = freshType(NotNull{&arena}, builtinTypes, nullptr);
@@ -336,8 +339,8 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
     int limit = 400;
 #endif
 
-    ScopedFastFlag sff{"LuauStacklessTypeClone3", false};
-    ScopedFastInt luauTypeCloneRecursionLimit{"LuauTypeCloneRecursionLimit", limit};
+    ScopedFastFlag sff{FFlag::LuauStacklessTypeClone3, false};
+    ScopedFastInt luauTypeCloneRecursionLimit{FInt::LuauTypeCloneRecursionLimit, limit};
 
     TypeArena src;
 
@@ -360,8 +363,8 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
 
 TEST_CASE_FIXTURE(Fixture, "clone_iteration_limit")
 {
-    ScopedFastFlag sff{"LuauStacklessTypeClone3", true};
-    ScopedFastInt sfi{"LuauTypeCloneIterationLimit", 500};
+    ScopedFastFlag sff{FFlag::LuauStacklessTypeClone3, true};
+    ScopedFastInt sfi{FInt::LuauTypeCloneIterationLimit, 500};
 
     TypeArena src;
 
@@ -530,7 +533,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "clone_table_bound_to_table_bound_to_table")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "clone_a_bound_type_to_a_persistent_type")
 {
-    ScopedFastFlag sff{"LuauStacklessTypeClone3", true};
+    ScopedFastFlag sff{FFlag::LuauStacklessTypeClone3, true};
 
     TypeArena arena;
 
@@ -546,7 +549,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "clone_a_bound_type_to_a_persistent_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "clone_a_bound_typepack_to_a_persistent_typepack")
 {
-    ScopedFastFlag sff{"LuauStacklessTypeClone3", true};
+    ScopedFastFlag sff{FFlag::LuauStacklessTypeClone3, true};
 
     TypeArena arena;
 

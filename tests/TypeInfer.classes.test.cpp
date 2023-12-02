@@ -13,6 +13,7 @@ using namespace Luau;
 using std::nullopt;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
 
 TEST_SUITE_BEGIN("TypeInferClasses");
 
@@ -368,7 +369,7 @@ b.X = 2 -- real Vector2.X is also read-only
 TEST_CASE_FIXTURE(ClassFixture, "detailed_class_unification_error")
 {
     ScopedFastFlag sff[] = {
-        {"LuauAlwaysCommitInferencesOfFunctionCalls", true},
+        {FFlag::LuauAlwaysCommitInferencesOfFunctionCalls, true},
     };
     CheckResult result = check(R"(
 local function foo(v)

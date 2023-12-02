@@ -2467,6 +2467,8 @@ struct TypeChecker2
             std::string relation = "a subtype of";
             if (reasoning.variance == SubtypingVariance::Invariant)
                 relation = "exactly";
+            else if (reasoning.variance == SubtypingVariance::Contravariant)
+                relation = "a supertype of";
 
             std::string reason;
             if (reasoning.subPath == reasoning.superPath)

@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <string.h>
 
+LUAU_FASTFLAG(LuauVectorLiterals)
+LUAU_FASTFLAG(LuauCompileRevK)
 
 namespace Luau
 {
@@ -37,6 +39,11 @@ static void writeByte(std::string& ss, unsigned char value)
 }
 
 static void writeInt(std::string& ss, int value)
+{
+    ss.append(reinterpret_cast<const char*>(&value), sizeof(value));
+}
+
+static void writeFloat(std::string& ss, float value)
 {
     ss.append(reinterpret_cast<const char*>(&value), sizeof(value));
 }
@@ -146,23 +153,43 @@ size_t BytecodeBuilder::StringRefHash::operator()(const StringRef& v) const
 
 size_t BytecodeBuilder::ConstantKeyHash::operator()(const ConstantKey& key) const
 {
-    // finalizer from MurmurHash64B
-    const uint32_t m = 0x5bd1e995;
+    if (key.type == Constant::Type_Vector)
+    {
+        uint32_t i[4];
+        static_assert(sizeof(key.value) + sizeof(key.extra) == sizeof(i), "Expecting vector to have four 32-bit components");
+        memcpy(i, &key.value, sizeof(i));
 
-    uint32_t h1 = uint32_t(key.value);
-    uint32_t h2 = uint32_t(key.value >> 32) ^ (key.type * m);
+        // scramble bits to make sure that integer coordinates have entropy in lower bits
+        i[0] ^= i[0] >> 17;
+        i[1] ^= i[1] >> 17;
+        i[2] ^= i[2] >> 17;
+        i[3] ^= i[3] >> 17;
 
-    h1 ^= h2 >> 18;
-    h1 *= m;
-    h2 ^= h1 >> 22;
-    h2 *= m;
-    h1 ^= h2 >> 17;
-    h1 *= m;
-    h2 ^= h1 >> 19;
-    h2 *= m;
+        // Optimized Spatial Hashing for Collision Detection of Deformable Objects
+        uint32_t h = (i[0] * 73856093) ^ (i[1] * 19349663) ^ (i[2] * 83492791) ^ (i[3] * 39916801);
 
-    // ... truncated to 32-bit output (normally hash is equal to (uint64_t(h1) << 32) | h2, but we only really need the lower 32-bit half)
-    return size_t(h2);
+        return size_t(h);
+    }
+    else
+    {
+        // finalizer from MurmurHash64B
+        const uint32_t m = 0x5bd1e995;
+
+        uint32_t h1 = uint32_t(key.value);
+        uint32_t h2 = uint32_t(key.value >> 32) ^ (key.type * m);
+
+        h1 ^= h2 >> 18;
+        h1 *= m;
+        h2 ^= h1 >> 22;
+        h2 *= m;
+        h1 ^= h2 >> 17;
+        h1 *= m;
+        h2 ^= h1 >> 19;
+        h2 *= m;
+
+        // ... truncated to 32-bit output (normally hash is equal to (uint64_t(h1) << 32) | h2, but we only really need the lower 32-bit half)
+        return size_t(h2);
+    }
 }
 
 size_t BytecodeBuilder::TableShapeHash::operator()(const TableShape& v) const
@@ -326,6 +353,25 @@ int32_t BytecodeBuilder::addConstantNumber(double value)
     ConstantKey k = {Constant::Type_Number};
     static_assert(sizeof(k.value) == sizeof(value), "Expecting double to be 64-bit");
     memcpy(&k.value, &value, sizeof(value));
+
+    return addConstant(k, c);
+}
+
+int32_t BytecodeBuilder::addConstantVector(float x, float y, float z, float w)
+{
+    Constant c = {Constant::Type_Vector};
+    c.valueVector[0] = x;
+    c.valueVector[1] = y;
+    c.valueVector[2] = z;
+    c.valueVector[3] = w;
+
+    ConstantKey k = {Constant::Type_Vector};
+    static_assert(
+        sizeof(k.value) == sizeof(x) + sizeof(y) && sizeof(k.extra) == sizeof(z) + sizeof(w), "Expecting vector to have four 32-bit components");
+    memcpy(&k.value, &x, sizeof(x));
+    memcpy((char*)&k.value + sizeof(x), &y, sizeof(y));
+    memcpy(&k.extra, &z, sizeof(z));
+    memcpy((char*)&k.extra + sizeof(z), &w, sizeof(w));
 
     return addConstant(k, c);
 }
@@ -645,6 +691,14 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
         case Constant::Type_Number:
             writeByte(ss, LBC_CONSTANT_NUMBER);
             writeDouble(ss, c.valueNumber);
+            break;
+
+        case Constant::Type_Vector:
+            writeByte(ss, LBC_CONSTANT_VECTOR);
+            writeFloat(ss, c.valueVector[0]);
+            writeFloat(ss, c.valueVector[1]);
+            writeFloat(ss, c.valueVector[2]);
+            writeFloat(ss, c.valueVector[3]);
             break;
 
         case Constant::Type_String:
@@ -1071,7 +1125,7 @@ std::string BytecodeBuilder::getError(const std::string& message)
 uint8_t BytecodeBuilder::getVersion()
 {
     // This function usually returns LBC_VERSION_TARGET but may sometimes return a higher number (within LBC_VERSION_MIN/MAX) under fast flags
-    return LBC_VERSION_TARGET;
+    return (FFlag::LuauVectorLiterals || FFlag::LuauCompileRevK) ? 5 : LBC_VERSION_TARGET;
 }
 
 uint8_t BytecodeBuilder::getTypeEncodingVersion()
@@ -1297,6 +1351,13 @@ void BytecodeBuilder::validateInstructions() const
             VREG(LUAU_INSN_A(insn));
             VREG(LUAU_INSN_B(insn));
             VCONST(LUAU_INSN_C(insn), Number);
+            break;
+
+        case LOP_SUBRK:
+        case LOP_DIVRK:
+            VREG(LUAU_INSN_A(insn));
+            VCONST(LUAU_INSN_B(insn), Number);
+            VREG(LUAU_INSN_C(insn));
             break;
 
         case LOP_AND:
@@ -1635,6 +1696,13 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
     case Constant::Type_Number:
         formatAppend(result, "%.17g", data.valueNumber);
         break;
+    case Constant::Type_Vector:
+        // 3-vectors is the most common configuration, so truncate to three components if possible
+        if (data.valueVector[3] == 0.0)
+            formatAppend(result, "%.9g, %.9g, %.9g", data.valueVector[0], data.valueVector[1], data.valueVector[2]);
+        else
+            formatAppend(result, "%.9g, %.9g, %.9g, %.9g", data.valueVector[0], data.valueVector[1], data.valueVector[2], data.valueVector[3]);
+        break;
     case Constant::Type_String:
     {
         const StringRef& str = debugStrings[data.valueString - 1];
@@ -1912,6 +1980,18 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         formatAppend(result, "POWK R%d R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
         dumpConstant(result, LUAU_INSN_C(insn));
         result.append("]\n");
+        break;
+
+    case LOP_SUBRK:
+        formatAppend(result, "SUBRK R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+        dumpConstant(result, LUAU_INSN_B(insn));
+        formatAppend(result, "] R%d\n", LUAU_INSN_C(insn));
+        break;
+
+    case LOP_DIVRK:
+        formatAppend(result, "DIVRK R%d K%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+        dumpConstant(result, LUAU_INSN_B(insn));
+        formatAppend(result, "] R%d\n", LUAU_INSN_C(insn));
         break;
 
     case LOP_AND:

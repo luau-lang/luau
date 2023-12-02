@@ -148,12 +148,12 @@ void convertNumberToIndexOrJump(AssemblyBuilderX64& build, RegisterX64 tmp, Regi
     build.jcc(ConditionX64::NotZero, label);
 }
 
-void callArithHelper(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int rb, OperandX64 c, TMS tm)
+void callArithHelper(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, OperandX64 b, OperandX64 c, TMS tm)
 {
     IrCallWrapperX64 callWrap(regs, build);
     callWrap.addArgument(SizeX64::qword, rState);
     callWrap.addArgument(SizeX64::qword, luauRegAddress(ra));
-    callWrap.addArgument(SizeX64::qword, luauRegAddress(rb));
+    callWrap.addArgument(SizeX64::qword, b);
     callWrap.addArgument(SizeX64::qword, c);
     callWrap.addArgument(SizeX64::dword, tm);
     callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarith)]);

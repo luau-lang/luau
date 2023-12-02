@@ -92,6 +92,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/UnwindBuilder.h
     CodeGen/include/Luau/UnwindBuilderDwarf2.h
     CodeGen/include/Luau/UnwindBuilderWin.h
+    CodeGen/include/Luau/BytecodeAnalysis.h
     CodeGen/include/Luau/BytecodeSummary.h
     CodeGen/include/luacodegen.h
 
@@ -125,6 +126,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/OptimizeFinalX64.cpp
     CodeGen/src/UnwindBuilderDwarf2.cpp
     CodeGen/src/UnwindBuilderWin.cpp
+    CodeGen/src/BytecodeAnalysis.cpp
     CodeGen/src/BytecodeSummary.cpp
 
     CodeGen/src/BitUtils.h
@@ -349,7 +351,8 @@ if(TARGET Luau.Repl.CLI)
         CLI/Profiler.h
         CLI/Profiler.cpp
         CLI/Repl.cpp
-        CLI/ReplEntry.cpp)
+        CLI/ReplEntry.cpp
+        CLI/Require.cpp)
 endif()
 
 if(TARGET Luau.Analyze.CLI)
@@ -455,7 +458,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.tables.test.cpp
         tests/TypeInfer.test.cpp
         tests/TypeInfer.tryUnify.test.cpp
-        tests/TypeInfer.typePacks.cpp
+        tests/TypeInfer.typePacks.test.cpp
         tests/TypeInfer.typestates.test.cpp
         tests/TypeInfer.unionTypes.test.cpp
         tests/TypeInfer.unknownnever.test.cpp
@@ -489,10 +492,12 @@ if(TARGET Luau.CLI.Test)
         CLI/Profiler.h
         CLI/Profiler.cpp
         CLI/Repl.cpp
+        CLI/Require.cpp
 
         tests/RegisterCallbacks.h
         tests/RegisterCallbacks.cpp
         tests/Repl.test.cpp
+        tests/RequireByString.test.cpp
         tests/main.cpp)
 endif()
 

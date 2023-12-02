@@ -18,6 +18,11 @@
 LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
+LUAU_FASTFLAG(LuauTransitiveSubtyping);
+LUAU_FASTINT(LuauCheckRecursionLimit);
+LUAU_FASTINT(LuauNormalizeCacheLimit);
+LUAU_FASTINT(LuauRecursionLimit);
+LUAU_FASTINT(LuauTypeInferRecursionLimit);
 
 using namespace Luau;
 
@@ -133,7 +138,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_locals_via_assignment_from_its_call_site")
 TEST_CASE_FIXTURE(Fixture, "infer_in_nocheck_mode")
 {
     ScopedFastFlag sff[]{
-        {"DebugLuauDeferredConstraintResolution", false},
+        {FFlag::DebugLuauDeferredConstraintResolution, false},
     };
 
     CheckResult result = check(R"(
@@ -375,7 +380,7 @@ TEST_CASE_FIXTURE(Fixture, "check_type_infer_recursion_count")
     int limit = 600;
 #endif
 
-    ScopedFastInt sfi{"LuauCheckRecursionLimit", limit};
+    ScopedFastInt sfi{FInt::LuauCheckRecursionLimit, limit};
 
     CheckResult result = check("function f() return " + rep("{a=", limit) + "'a'" + rep("}", limit) + " end");
 
@@ -393,8 +398,8 @@ TEST_CASE_FIXTURE(Fixture, "check_block_recursion_limit")
     int limit = 600;
 #endif
 
-    ScopedFastInt luauRecursionLimit{"LuauRecursionLimit", limit + 100};
-    ScopedFastInt luauCheckRecursionLimit{"LuauCheckRecursionLimit", limit - 100};
+    ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
+    ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit - 100};
 
     CheckResult result = check(rep("do ", limit) + "local a = 1" + rep(" end", limit));
 
@@ -411,8 +416,8 @@ TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
 #else
     int limit = 600;
 #endif
-    ScopedFastInt luauRecursionLimit{"LuauRecursionLimit", limit + 100};
-    ScopedFastInt luauCheckRecursionLimit{"LuauCheckRecursionLimit", limit - 100};
+    ScopedFastInt luauRecursionLimit{FInt::LuauRecursionLimit, limit + 100};
+    ScopedFastInt luauCheckRecursionLimit{FInt::LuauCheckRecursionLimit, limit - 100};
 
     CheckResult result = check(R"(("foo"))" + rep(":lower()", limit));
 
@@ -1081,7 +1086,7 @@ Table type 'FieldSpecifier' not compatible with type '{| from: number? |}' becau
 
 TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_no_ice")
 {
-    ScopedFastInt sfi("LuauTypeInferRecursionLimit", 2);
+    ScopedFastInt sfi(FInt::LuauTypeInferRecursionLimit, 2);
 
     CheckResult result = check(R"(
         function complex()
@@ -1099,7 +1104,7 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_no_ice")
 
 TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
 {
-    ScopedFastInt sfi("LuauTypeInferRecursionLimit", 10);
+    ScopedFastInt sfi(FInt::LuauTypeInferRecursionLimit, 10);
 
     CheckResult result = check(R"(
         function f<a,b,c,d,e,f,g,h,i,j>()
@@ -1118,7 +1123,7 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
 
 TEST_CASE_FIXTURE(Fixture, "type_infer_cache_limit_normalizer")
 {
-    ScopedFastInt sfi("LuauNormalizeCacheLimit", 10);
+    ScopedFastInt sfi(FInt::LuauNormalizeCacheLimit, 10);
 
     CheckResult result = check(R"(
         local x : ((number) -> number) & ((string) -> string) & ((nil) -> nil) & (({}) -> {})
@@ -1287,10 +1292,10 @@ end
 TEST_CASE_FIXTURE(Fixture, "dcr_delays_expansion_of_function_containing_blocked_parameter_type")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", true},
+        {FFlag::DebugLuauDeferredConstraintResolution, true},
         // If we run this with error-suppression, it triggers an assertion.
         // FATAL ERROR: Assertion failed: !"Internal error: Trying to normalize a BlockedType"
-        {"LuauTransitiveSubtyping", false},
+        {FFlag::LuauTransitiveSubtyping, false},
     };
 
     CheckResult result = check(R"(
@@ -1453,7 +1458,7 @@ TEST_CASE_FIXTURE(Fixture, "promote_tail_type_packs")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "lti_must_record_contributing_locations")
 {
-    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
         local function f(a)

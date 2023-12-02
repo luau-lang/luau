@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Repl.h"
 
+#include "Luau/Common.h"
 #include "lua.h"
 #include "lualib.h"
 
@@ -13,6 +14,7 @@
 #include "FileUtils.h"
 #include "Flags.h"
 #include "Profiler.h"
+#include "Require.h"
 
 #include "isocline.h"
 
@@ -38,6 +40,8 @@
 #include <signal.h>
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
+
+LUAU_FASTFLAGVARIABLE(LuauUpdatedRequireByStringSemantics, false)
 
 constexpr int MaxTraversalLimit = 50;
 
@@ -115,74 +119,129 @@ static int finishrequire(lua_State* L)
 
 static int lua_require(lua_State* L)
 {
-    std::string name = luaL_checkstring(L, 1);
-    std::string chunkname = "=" + name;
-
-    luaL_findtable(L, LUA_REGISTRYINDEX, "_MODULES", 1);
-
-    // return the module from the cache
-    lua_getfield(L, -1, name.c_str());
-    if (!lua_isnil(L, -1))
+    if (FFlag::LuauUpdatedRequireByStringSemantics)
     {
-        // L stack: _MODULES result
+        std::string name = luaL_checkstring(L, 1);
+
+        RequireResolver::ResolvedRequire resolvedRequire = RequireResolver::resolveRequire(L, std::move(name));
+
+        if (resolvedRequire.status == RequireResolver::ModuleStatus::Cached)
+            return finishrequire(L);
+        else if (resolvedRequire.status == RequireResolver::ModuleStatus::NotFound)
+            luaL_errorL(L, "error requiring module");
+
+        // module needs to run in a new thread, isolated from the rest
+        // note: we create ML on main thread so that it doesn't inherit environment of L
+        lua_State* GL = lua_mainthread(L);
+        lua_State* ML = lua_newthread(GL);
+        lua_xmove(GL, L, 1);
+
+        // new thread needs to have the globals sandboxed
+        luaL_sandboxthread(ML);
+
+        // now we can compile & run module on the new thread
+        std::string bytecode = Luau::compile(resolvedRequire.sourceCode, copts());
+        if (luau_load(ML, resolvedRequire.chunkName.c_str(), bytecode.data(), bytecode.size(), 0) == 0)
+        {
+            if (codegen)
+                Luau::CodeGen::compile(ML, -1);
+
+            if (coverageActive())
+                coverageTrack(ML, -1);
+
+            int status = lua_resume(ML, L, 0);
+
+            if (status == 0)
+            {
+                if (lua_gettop(ML) == 0)
+                    lua_pushstring(ML, "module must return a value");
+                else if (!lua_istable(ML, -1) && !lua_isfunction(ML, -1))
+                    lua_pushstring(ML, "module must return a table or function");
+            }
+            else if (status == LUA_YIELD)
+            {
+                lua_pushstring(ML, "module can not yield");
+            }
+            else if (!lua_isstring(ML, -1))
+            {
+                lua_pushstring(ML, "unknown error while running module");
+            }
+        }
+
+        // there's now a return value on top of ML; L stack: _MODULES ML
+        lua_xmove(ML, L, 1);
+        lua_pushvalue(L, -1);
+        lua_setfield(L, -4, resolvedRequire.absolutePath.c_str());
+
+        // L stack: _MODULES ML result
         return finishrequire(L);
     }
-
-    lua_pop(L, 1);
-
-    std::optional<std::string> source = readFile(name + ".luau");
-    if (!source)
+    else
     {
-        source = readFile(name + ".lua"); // try .lua if .luau doesn't exist
+        std::string name = luaL_checkstring(L, 1);
+        std::string chunkname = "=" + name;
+
+        luaL_findtable(L, LUA_REGISTRYINDEX, "_MODULES", 1);
+
+        // return the module from the cache
+        lua_getfield(L, -1, name.c_str());
+        if (!lua_isnil(L, -1))
+        {
+            // L stack: _MODULES result
+            return finishrequire(L);
+        }
+
+        lua_pop(L, 1);
+
+        std::optional<std::string> source = readFile(name + ".luau");
         if (!source)
-            luaL_argerrorL(L, 1, ("error loading " + name).c_str()); // if neither .luau nor .lua exist, we have an error
+        {
+            source = readFile(name + ".lua"); // try .lua if .luau doesn't exist
+            if (!source)
+                luaL_argerrorL(L, 1, ("error loading " + name).c_str()); // if neither .luau nor .lua exist, we have an error
+        }
+
+        // module needs to run in a new thread, isolated from the rest
+        // note: we create ML on main thread so that it doesn't inherit environment of L
+        lua_State* GL = lua_mainthread(L);
+        lua_State* ML = lua_newthread(GL);
+        lua_xmove(GL, L, 1);
+        // new thread needs to have the globals sandboxed
+        luaL_sandboxthread(ML);
+
+        // now we can compile & run module on the new thread
+        std::string bytecode = Luau::compile(*source, copts());
+        if (luau_load(ML, chunkname.c_str(), bytecode.data(), bytecode.size(), 0) == 0)
+        {
+            if (codegen)
+                Luau::CodeGen::compile(ML, -1);
+            if (coverageActive())
+                coverageTrack(ML, -1);
+            int status = lua_resume(ML, L, 0);
+            if (status == 0)
+            {
+                if (lua_gettop(ML) == 0)
+                    lua_pushstring(ML, "module must return a value");
+                else if (!lua_istable(ML, -1) && !lua_isfunction(ML, -1))
+                    lua_pushstring(ML, "module must return a table or function");
+            }
+            else if (status == LUA_YIELD)
+            {
+                lua_pushstring(ML, "module can not yield");
+            }
+            else if (!lua_isstring(ML, -1))
+            {
+                lua_pushstring(ML, "unknown error while running module");
+            }
+        }
+        // there's now a return value on top of ML; L stack: _MODULES ML
+        lua_xmove(ML, L, 1);
+        lua_pushvalue(L, -1);
+        lua_setfield(L, -4, name.c_str());
+
+        // L stack: _MODULES ML result
+        return finishrequire(L);
     }
-
-    // module needs to run in a new thread, isolated from the rest
-    // note: we create ML on main thread so that it doesn't inherit environment of L
-    lua_State* GL = lua_mainthread(L);
-    lua_State* ML = lua_newthread(GL);
-    lua_xmove(GL, L, 1);
-
-    // new thread needs to have the globals sandboxed
-    luaL_sandboxthread(ML);
-
-    // now we can compile & run module on the new thread
-    std::string bytecode = Luau::compile(*source, copts());
-    if (luau_load(ML, chunkname.c_str(), bytecode.data(), bytecode.size(), 0) == 0)
-    {
-        if (codegen)
-            Luau::CodeGen::compile(ML, -1);
-
-        if (coverageActive())
-            coverageTrack(ML, -1);
-
-        int status = lua_resume(ML, L, 0);
-
-        if (status == 0)
-        {
-            if (lua_gettop(ML) == 0)
-                lua_pushstring(ML, "module must return a value");
-            else if (!lua_istable(ML, -1) && !lua_isfunction(ML, -1))
-                lua_pushstring(ML, "module must return a table or function");
-        }
-        else if (status == LUA_YIELD)
-        {
-            lua_pushstring(ML, "module can not yield");
-        }
-        else if (!lua_isstring(ML, -1))
-        {
-            lua_pushstring(ML, "unknown error while running module");
-        }
-    }
-
-    // there's now a return value on top of ML; L stack: _MODULES ML
-    lua_xmove(ML, L, 1);
-    lua_pushvalue(L, -1);
-    lua_setfield(L, -4, name.c_str());
-
-    // L stack: _MODULES ML result
-    return finishrequire(L);
 }
 
 static int lua_collectgarbage(lua_State* L)

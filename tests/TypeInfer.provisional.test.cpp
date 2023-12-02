@@ -11,6 +11,13 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(DebugLuauSharedSelf);
+LUAU_FASTFLAG(LuauTransitiveSubtyping);
+LUAU_FASTINT(LuauNormalizeCacheLimit);
+LUAU_FASTINT(LuauTarjanChildLimit);
+LUAU_FASTINT(LuauTypeInferIterationLimit);
+LUAU_FASTINT(LuauTypeInferRecursionLimit);
+LUAU_FASTINT(LuauTypeInferTypePackLoopLimit);
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
@@ -119,7 +126,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "xpcall_returns_what_f_returns")
 TEST_CASE_FIXTURE(Fixture, "weirditer_should_not_loop_forever")
 {
     // this flag is intentionally here doing nothing to demonstrate that we exit early via case detection
-    ScopedFastInt sfis{"LuauTypeInferTypePackLoopLimit", 50};
+    ScopedFastInt sfis{FInt::LuauTypeInferTypePackLoopLimit, 50};
 
     CheckResult result = check(R"(
         local function toVertexList(vertices, x, y, ...)
@@ -271,8 +278,8 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(0.5))
 {
-    ScopedFastInt sffi{"LuauTarjanChildLimit", 1};
-    ScopedFastInt sffi2{"LuauTypeInferIterationLimit", 1};
+    ScopedFastInt sffi{FInt::LuauTarjanChildLimit, 1};
+    ScopedFastInt sffi2{FInt::LuauTypeInferIterationLimit, 1};
 
     CheckResult result = check(R"LUA(
         local Result
@@ -355,7 +362,7 @@ TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
     ScopedFastFlag sff[] = {
         // I'm not sure why this is broken without DCR, but it seems to be fixed
         // when DCR is enabled.
-        {"DebugLuauDeferredConstraintResolution", false},
+        {FFlag::DebugLuauDeferredConstraintResolution, false},
     };
 
     CheckResult result = check(R"(
@@ -438,7 +445,7 @@ TEST_CASE_FIXTURE(Fixture, "free_is_not_bound_to_any")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "greedy_inference_with_shared_self_triggers_function_with_no_returns")
 {
-    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+    ScopedFastFlag sff{FFlag::DebugLuauSharedSelf, true};
 
     CheckResult result = check(R"(
         local T = {}
@@ -461,7 +468,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "greedy_inference_with_shared_self_triggers_f
 TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", true},
+        {FFlag::DebugLuauDeferredConstraintResolution, true},
     };
 
     CheckResult result = check(R"(
@@ -502,7 +509,7 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
 TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 {
     ScopedFastFlag sff[] = {
-        {"LuauTransitiveSubtyping", true},
+        {FFlag::LuauTransitiveSubtyping, true},
     };
 
     TypeArena arena;
@@ -539,7 +546,7 @@ TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", false};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
 
     CheckResult result = check(R"(
         function no_iter() end
@@ -911,7 +918,7 @@ TEST_CASE_FIXTURE(Fixture, "floating_generics_should_not_be_allowed")
 TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
 {
     ScopedFastFlag sff[] = {
-        {"LuauTransitiveSubtyping", true},
+        {FFlag::LuauTransitiveSubtyping, true},
     };
 
     TypeArena arena;
@@ -1023,7 +1030,7 @@ end
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_unification_infinite_recursion")
 {
 #if defined(_NOOPT) || defined(_DEBUG)
-    ScopedFastInt LuauTypeInferRecursionLimit{"LuauTypeInferRecursionLimit", 100};
+    ScopedFastInt LuauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 100};
 #endif
 
     fileResolver.source["game/A"] = R"(
@@ -1065,12 +1072,12 @@ tbl:f3()
 TEST_CASE_FIXTURE(BuiltinsFixture, "normalization_limit_in_unify_with_any")
 {
     ScopedFastFlag sff[] = {
-        {"LuauTransitiveSubtyping", true},
-        {"DebugLuauDeferredConstraintResolution", true},
+        {FFlag::LuauTransitiveSubtyping, true},
+        {FFlag::DebugLuauDeferredConstraintResolution, true},
     };
 
     // With default limit, this test will take 10 seconds in NoOpt
-    ScopedFastInt luauNormalizeCacheLimit{"LuauNormalizeCacheLimit", 1000};
+    ScopedFastInt luauNormalizeCacheLimit{FInt::LuauNormalizeCacheLimit, 1000};
 
     // Build a function type with a large overload set
     const int parts = 100;

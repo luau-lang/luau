@@ -15,6 +15,8 @@
 
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
+LUAU_FASTFLAG(LuauAutocompleteStringLiteralBounds);
+LUAU_FASTFLAG(LuauAutocompleteDoEnd);
 
 using namespace Luau;
 
@@ -978,7 +980,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_end_with_lambda")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_end_of_do_block")
 {
-    ScopedFastFlag sff{"LuauAutocompleteDoEnd", true};
+    ScopedFastFlag sff{FFlag::LuauAutocompleteDoEnd, true};
 
     check("do @1");
 
@@ -3105,7 +3107,7 @@ TEST_CASE_FIXTURE(ACFixture, "string_singleton_as_table_key")
 // https://github.com/Roblox/luau/issues/858
 TEST_CASE_FIXTURE(ACFixture, "string_singleton_in_if_statement")
 {
-    ScopedFastFlag sff{"LuauAutocompleteStringLiteralBounds", true};
+    ScopedFastFlag sff{FFlag::LuauAutocompleteStringLiteralBounds, true};
 
     check(R"(
         --!strict
