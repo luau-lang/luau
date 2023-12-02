@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   create-release:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
@@ -29,7 +29,7 @@ jobs:
   build:
     needs: ["create-release"]
     strategy:
-      matrix:
+      matrix: # using ubuntu-20.04 to build a Linux binary targeting older glibc to improve compatibility
         os: [{name: ubuntu, version: ubuntu-20.04}, {name: macos, version: macos-latest}, {name: windows, version: windows-latest}]
     name: ${{matrix.os.name}}
     runs-on: ${{matrix.os.version}}
@@ -56,7 +56,7 @@ jobs:
 
   web:
     needs: ["create-release"]
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
     - uses: actions/checkout@v2

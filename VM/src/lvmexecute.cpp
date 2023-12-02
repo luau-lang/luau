@@ -101,7 +101,7 @@
         VM_DISPATCH_OP(LOP_FORGLOOP), VM_DISPATCH_OP(LOP_FORGPREP_INEXT), VM_DISPATCH_OP(LOP_DEP_FORGLOOP_INEXT), VM_DISPATCH_OP(LOP_FORGPREP_NEXT), \
         VM_DISPATCH_OP(LOP_NATIVECALL), VM_DISPATCH_OP(LOP_GETVARARGS), VM_DISPATCH_OP(LOP_DUPCLOSURE), VM_DISPATCH_OP(LOP_PREPVARARGS), \
         VM_DISPATCH_OP(LOP_LOADKX), VM_DISPATCH_OP(LOP_JUMPX), VM_DISPATCH_OP(LOP_FASTCALL), VM_DISPATCH_OP(LOP_COVERAGE), \
-        VM_DISPATCH_OP(LOP_CAPTURE), VM_DISPATCH_OP(LOP_DEP_JUMPIFEQK), VM_DISPATCH_OP(LOP_DEP_JUMPIFNOTEQK), VM_DISPATCH_OP(LOP_FASTCALL1), \
+        VM_DISPATCH_OP(LOP_CAPTURE), VM_DISPATCH_OP(LOP_SUBRK), VM_DISPATCH_OP(LOP_DIVRK), VM_DISPATCH_OP(LOP_FASTCALL1), \
         VM_DISPATCH_OP(LOP_FASTCALL2), VM_DISPATCH_OP(LOP_FASTCALL2K), VM_DISPATCH_OP(LOP_FORGPREP), VM_DISPATCH_OP(LOP_JUMPXEQKNIL), \
         VM_DISPATCH_OP(LOP_JUMPXEQKB), VM_DISPATCH_OP(LOP_JUMPXEQKN), VM_DISPATCH_OP(LOP_JUMPXEQKS), VM_DISPATCH_OP(LOP_IDIV), \
         VM_DISPATCH_OP(LOP_IDIVK),
@@ -1858,9 +1858,9 @@ reentry:
                 }
                 else if (ttisvector(rb))
                 {
-                    const float* vb = rb->value.v;
-                    float vc = cast_to(float, nvalue(kv));
-                    setvvalue(ra, vb[0] / vc, vb[1] / vc, vb[2] / vc, vb[3] / vc);
+                    const float* vb = vvalue(rb);
+                    float nc = cast_to(float, nvalue(kv));
+                    setvvalue(ra, vb[0] / nc, vb[1] / nc, vb[2] / nc, vb[3] / nc);
                     VM_NEXT();
                 }
                 else
@@ -2697,16 +2697,53 @@ reentry:
                 LUAU_UNREACHABLE();
             }
 
-            VM_CASE(LOP_DEP_JUMPIFEQK)
+            VM_CASE(LOP_SUBRK)
             {
-                LUAU_ASSERT(!"Unsupported deprecated opcode");
-                LUAU_UNREACHABLE();
+                Instruction insn = *pc++;
+                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                TValue* kv = VM_KV(LUAU_INSN_B(insn));
+                StkId rc = VM_REG(LUAU_INSN_C(insn));
+
+                // fast-path
+                if (ttisnumber(rc))
+                {
+                    setnvalue(ra, nvalue(kv) - nvalue(rc));
+                    VM_NEXT();
+                }
+                else
+                {
+                    // slow-path, may invoke C/Lua via metamethods
+                    VM_PROTECT(luaV_doarith(L, ra, kv, rc, TM_SUB));
+                    VM_NEXT();
+                }
             }
 
-            VM_CASE(LOP_DEP_JUMPIFNOTEQK)
+            VM_CASE(LOP_DIVRK)
             {
-                LUAU_ASSERT(!"Unsupported deprecated opcode");
-                LUAU_UNREACHABLE();
+                Instruction insn = *pc++;
+                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                TValue* kv = VM_KV(LUAU_INSN_B(insn));
+                StkId rc = VM_REG(LUAU_INSN_C(insn));
+
+                // fast-path
+                if (LUAU_LIKELY(ttisnumber(rc)))
+                {
+                    setnvalue(ra, nvalue(kv) / nvalue(rc));
+                    VM_NEXT();
+                }
+                else if (ttisvector(rc))
+                {
+                    float nb = cast_to(float, nvalue(kv));
+                    const float* vc = vvalue(rc);
+                    setvvalue(ra, nb / vc[0], nb / vc[1], nb / vc[2], nb / vc[3]);
+                    VM_NEXT();
+                }
+                else
+                {
+                    // slow-path, may invoke C/Lua via metamethods
+                    VM_PROTECT(luaV_doarith(L, ra, kv, rc, TM_DIV));
+                    VM_NEXT();
+                }
             }
 
             VM_CASE(LOP_FASTCALL1)
