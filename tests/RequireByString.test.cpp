@@ -389,6 +389,7 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithParentAlias")
     runProtectedRequire(path);
     assertOutputContainsAll({"true", "result from other_dependency"});
 }
-#end
+
+#endif
 
 TEST_SUITE_END();
