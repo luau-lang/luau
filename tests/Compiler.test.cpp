@@ -15,14 +15,28 @@ namespace Luau
 std::string rep(const std::string& s, size_t n);
 }
 
+LUAU_FASTFLAG(LuauVectorLiterals)
+LUAU_FASTFLAG(LuauCompileRevK)
+LUAU_FASTINT(LuauCompileInlineDepth)
+LUAU_FASTINT(LuauCompileInlineThreshold)
+LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
+LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
+LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
+LUAU_FASTINT(LuauRecursionLimit)
+
 using namespace Luau;
 
-static std::string compileFunction(const char* source, uint32_t id, int optimizationLevel = 1)
+static std::string compileFunction(const char* source, uint32_t id, int optimizationLevel = 1, bool enableVectors = false)
 {
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
     Luau::CompileOptions options;
     options.optimizationLevel = optimizationLevel;
+    if (enableVectors)
+    {
+        options.vectorLib = "Vector3";
+        options.vectorCtor = "new";
+    }
     Luau::compileOrThrow(bcb, source, options);
 
     return bcb.dumpFunction(id);
@@ -1168,6 +1182,8 @@ RETURN R0 1
 
 TEST_CASE("AndOrChainCodegen")
 {
+    ScopedFastFlag sff(FFlag::LuauCompileRevK, true);
+
     const char* source = R"(
     return
         (1 - verticalGradientTurbulence < waterLevel + .015 and Enum.Material.Sand)
@@ -1176,23 +1192,22 @@ TEST_CASE("AndOrChainCodegen")
     )";
 
     CHECK_EQ("\n" + compileFunction0(source), R"(
-LOADN R2 1
-GETIMPORT R3 1 [verticalGradientTurbulence]
-SUB R1 R2 R3
-GETIMPORT R3 4 [waterLevel]
-ADDK R2 R3 K2 [0.014999999999999999]
+GETIMPORT R2 2 [verticalGradientTurbulence]
+SUBRK R1 K0 [1] R2
+GETIMPORT R3 5 [waterLevel]
+ADDK R2 R3 K3 [0.014999999999999999]
 JUMPIFNOTLT R1 R2 L0
-GETIMPORT R0 8 [Enum.Material.Sand]
+GETIMPORT R0 9 [Enum.Material.Sand]
 JUMPIF R0 L2
-L0: GETIMPORT R1 10 [sandbank]
+L0: GETIMPORT R1 11 [sandbank]
 LOADN R2 0
 JUMPIFNOTLT R2 R1 L1
-GETIMPORT R1 10 [sandbank]
+GETIMPORT R1 11 [sandbank]
 LOADN R2 1
 JUMPIFNOTLT R1 R2 L1
-GETIMPORT R0 8 [Enum.Material.Sand]
+GETIMPORT R0 9 [Enum.Material.Sand]
 JUMPIF R0 L2
-L1: GETIMPORT R0 12 [Enum.Material.Sandstone]
+L1: GETIMPORT R0 13 [Enum.Material.Sandstone]
 L2: RETURN R0 1
 )");
 }
@@ -1980,7 +1995,7 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueCorrectlyHandlesImplicitConstantAfterUnroll")
 {
-    ScopedFastInt sfi("LuauCompileLoopUnrollThreshold", 200);
+    ScopedFastInt sfi(FInt::LuauCompileLoopUnrollThreshold, 200);
 
     // access to implicit constant that depends on the unrolled loop constant is still invalid even though we can constant-propagate it
     try
@@ -2091,6 +2106,8 @@ RETURN R0 0
 
 TEST_CASE("AndOrOptimizations")
 {
+    ScopedFastFlag sff(FFlag::LuauCompileRevK, true);
+
     // the OR/ORK optimization triggers for cutoff since lhs is simple
     CHECK_EQ("\n" + compileFunction(R"(
 local function advancedRidgedFilter(value, cutoff)
@@ -2103,17 +2120,15 @@ end
         R"(
 ORK R2 R1 K0 [0.5]
 SUB R0 R0 R2
-LOADN R4 1
-LOADN R8 0
-JUMPIFNOTLT R0 R8 L0
-MINUS R7 R0
-JUMPIF R7 L1
-L0: MOVE R7 R0
-L1: MULK R6 R7 K1 [1]
-LOADN R8 1
-SUB R7 R8 R2
-DIV R5 R6 R7
-SUB R3 R4 R5
+LOADN R7 0
+JUMPIFNOTLT R0 R7 L0
+MINUS R6 R0
+JUMPIF R6 L1
+L0: MOVE R6 R0
+L1: MULK R5 R6 K1 [1]
+SUBRK R6 K1 [1] R2
+DIV R4 R5 R6
+SUBRK R3 K1 [1] R4
 RETURN R3 1
 )");
 
@@ -2126,9 +2141,8 @@ end
                         0),
         R"(
 LOADB R2 0
-LOADK R4 K0 [0.5]
-MULK R5 R1 K1 [0.40000000000000002]
-SUB R3 R4 R5
+MULK R4 R1 K1 [0.40000000000000002]
+SUBRK R3 K0 [0.5] R4
 JUMPIFNOTLT R3 R0 L1
 LOADK R4 K0 [0.5]
 MULK R5 R1 K1 [0.40000000000000002]
@@ -2148,9 +2162,8 @@ end
                         0),
         R"(
 LOADB R2 1
-LOADK R4 K0 [0.5]
-MULK R5 R1 K1 [0.40000000000000002]
-SUB R3 R4 R5
+MULK R4 R1 K1 [0.40000000000000002]
+SUBRK R3 K0 [0.5] R4
 JUMPIFLT R0 R3 L1
 LOADK R4 K0 [0.5]
 MULK R5 R1 K1 [0.40000000000000002]
@@ -2293,9 +2306,9 @@ TEST_CASE("RecursionParse")
     // The test forcibly pushes the stack limit during compilation; in NoOpt, the stack consumption is much larger so we need to reduce the limit to
     // not overflow the C stack. When ASAN is enabled, stack consumption increases even more.
 #if defined(LUAU_ENABLE_ASAN)
-    ScopedFastInt flag("LuauRecursionLimit", 200);
+    ScopedFastInt flag(FInt::LuauRecursionLimit, 200);
 #elif defined(_NOOPT) || defined(_DEBUG)
-    ScopedFastInt flag("LuauRecursionLimit", 300);
+    ScopedFastInt flag(FInt::LuauRecursionLimit, 300);
 #endif
 
     Luau::BytecodeBuilder bcb;
@@ -4475,6 +4488,41 @@ L0: RETURN R0 -1
 )");
 }
 
+TEST_CASE("VectorLiterals")
+{
+    ScopedFastFlag sff(FFlag::LuauVectorLiterals, true);
+
+    CHECK_EQ("\n" + compileFunction("return Vector3.new(1, 2, 3)", 0, 2, /*enableVectors*/ true), R"(
+LOADK R0 K0 [1, 2, 3]
+RETURN R0 1
+)");
+
+    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3))", 0, 2, /*enableVectors*/ true), R"(
+GETIMPORT R0 1 [print]
+LOADK R1 K2 [1, 2, 3]
+CALL R0 1 0
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3, 4))", 0, 2, /*enableVectors*/ true), R"(
+GETIMPORT R0 1 [print]
+LOADK R1 K2 [1, 2, 3, 4]
+CALL R0 1 0
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction("return Vector3.new(0, 0, 0), Vector3.new(-0, 0, 0)", 0, 2, /*enableVectors*/ true), R"(
+LOADK R0 K0 [0, 0, 0]
+LOADK R1 K1 [-0, 0, 0]
+RETURN R0 2
+)");
+
+    CHECK_EQ("\n" + compileFunction("return type(Vector3.new(0, 0, 0))", 0, 2, /*enableVectors*/ true), R"(
+LOADK R0 K0 ['vector']
+RETURN R0 1
+)");
+}
+
 TEST_CASE("TypeAssertion")
 {
     // validate that type assertions work with the compiler and that the code inside type assertion isn't evaluated
@@ -4754,8 +4802,8 @@ L1: RETURN R0 0
 TEST_CASE("LoopUnrollControlFlow")
 {
     ScopedFastInt sfis[] = {
-        {"LuauCompileLoopUnrollThreshold", 50},
-        {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
+        {FInt::LuauCompileLoopUnrollThreshold, 50},
+        {FInt::LuauCompileLoopUnrollThresholdMaxBoost, 300},
     };
 
     // break jumps to the end
@@ -4891,8 +4939,8 @@ RETURN R0 0
 TEST_CASE("LoopUnrollCost")
 {
     ScopedFastInt sfis[] = {
-        {"LuauCompileLoopUnrollThreshold", 25},
-        {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
+        {FInt::LuauCompileLoopUnrollThreshold, 25},
+        {FInt::LuauCompileLoopUnrollThresholdMaxBoost, 300},
     };
 
     // loops with short body
@@ -5069,8 +5117,8 @@ L1: RETURN R0 0
 TEST_CASE("LoopUnrollCostBuiltins")
 {
     ScopedFastInt sfis[] = {
-        {"LuauCompileLoopUnrollThreshold", 25},
-        {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
+        {FInt::LuauCompileLoopUnrollThreshold, 25},
+        {FInt::LuauCompileLoopUnrollThresholdMaxBoost, 300},
     };
 
     // this loop uses builtins and is close to the cost budget so it's important that we model builtins as cheaper than regular calls
@@ -5947,9 +5995,9 @@ RETURN R3 1
 TEST_CASE("InlineThresholds")
 {
     ScopedFastInt sfis[] = {
-        {"LuauCompileInlineThreshold", 25},
-        {"LuauCompileInlineThresholdMaxBoost", 300},
-        {"LuauCompileInlineDepth", 2},
+        {FInt::LuauCompileInlineThreshold, 25},
+        {FInt::LuauCompileInlineThresholdMaxBoost, 300},
+        {FInt::LuauCompileInlineDepth, 2},
     };
 
     // this function has enormous register pressure (50 regs) so we choose not to inline it
@@ -7686,8 +7734,6 @@ RETURN R1 1
 
 TEST_CASE("SideEffects")
 {
-    ScopedFastFlag sff("LuauCompileSideEffects", true);
-
     // we do not evaluate expressions in some cases when we know they can't carry side effects
     CHECK_EQ("\n" + compileFunction0(R"(
 local x = 5, print
@@ -7739,9 +7785,6 @@ RETURN R0 0
 
 TEST_CASE("IfElimination")
 {
-    ScopedFastFlag sff1("LuauCompileDeadIf", true);
-    ScopedFastFlag sff2("LuauCompileSideEffects", true);
-
     // if the left hand side of a condition is constant, it constant folds and we don't emit the branch
     CHECK_EQ("\n" + compileFunction0("local a = false if a and b then b() end"), R"(
 RETURN R0 0
@@ -7804,6 +7847,34 @@ RETURN R0 0
 GETIMPORT R0 2 [b.test]
 LOADN R0 2
 RETURN R0 1
+)");
+}
+
+TEST_CASE("ArithRevK")
+{
+    ScopedFastFlag sff(FFlag::LuauCompileRevK, true);
+
+    // - and / have special optimized form for reverse constants; in the future, + and * will likely get compiled to ADDK/MULK
+    // other operators are not important enough to optimize reverse constant forms for
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x: number = unknown
+return 2 + x, 2 - x, 2 * x, 2 / x, 2 % x, 2 // x, 2 ^ x
+)"),
+        R"(
+GETIMPORT R0 1 [unknown]
+LOADN R2 2
+ADD R1 R2 R0
+SUBRK R2 K2 [2] R0
+LOADN R4 2
+MUL R3 R4 R0
+DIVRK R4 K2 [2] R0
+LOADN R6 2
+MOD R5 R6 R0
+LOADN R7 2
+IDIV R6 R7 R0
+LOADN R8 2
+POW R7 R8 R0
+RETURN R1 7
 )");
 }
 

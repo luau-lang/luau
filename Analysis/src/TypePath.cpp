@@ -12,7 +12,6 @@
 #include <optional>
 #include <sstream>
 #include <type_traits>
-#include <unordered_set>
 
 LUAU_FASTFLAG(DebugLuauReadWriteProperties);
 
@@ -252,8 +251,6 @@ struct TraversalState
 
     TypeOrPack current;
     NotNull<BuiltinTypes> builtinTypes;
-
-    DenseHashSet<const void*> seen{nullptr};
     int steps = 0;
 
     void updateCurrent(TypeId ty)
@@ -268,18 +265,6 @@ struct TraversalState
         current = follow(tp);
     }
 
-    bool haveCycle()
-    {
-        const void* currentPtr = ptr(current);
-
-        if (seen.contains(currentPtr))
-            return true;
-        else
-            seen.insert(currentPtr);
-
-        return false;
-    }
-
     bool tooLong()
     {
         return ++steps > DFInt::LuauTypePathMaximumTraverseSteps;
@@ -287,7 +272,7 @@ struct TraversalState
 
     bool checkInvariants()
     {
-        return haveCycle() || tooLong();
+        return tooLong();
     }
 
     bool traverse(const TypePath::Property& property)
@@ -313,18 +298,36 @@ struct TraversalState
         {
             prop = lookupClassProp(c, property.name);
         }
-        else if (auto m = getMetatable(*currentType, builtinTypes))
+        // For a metatable type, the table takes priority; check that before
+        // falling through to the metatable entry below.
+        else if (auto m = get<MetatableType>(*currentType))
         {
-            // Weird: rather than use findMetatableEntry, which requires a lot
-            // of stuff that we don't have and don't want to pull in, we use the
-            // path traversal logic to grab __index and then re-enter the lookup
-            // logic there.
-            updateCurrent(*m);
+            TypeOrPack pinned = current;
+            updateCurrent(m->table);
 
-            if (!traverse(TypePath::Property{"__index"}))
-                return false;
+            if (traverse(property))
+                return true;
 
-            return traverse(property);
+            // Restore the old current type if we didn't traverse the metatable
+            // successfully; we'll use the next branch to address this.
+            current = pinned;
+        }
+
+        if (!prop)
+        {
+            if (auto m = getMetatable(*currentType, builtinTypes))
+            {
+                // Weird: rather than use findMetatableEntry, which requires a lot
+                // of stuff that we don't have and don't want to pull in, we use the
+                // path traversal logic to grab __index and then re-enter the lookup
+                // logic there.
+                updateCurrent(*m);
+
+                if (!traverse(TypePath::Property{"__index"}))
+                    return false;
+
+                return traverse(property);
+            }
         }
 
         if (prop)

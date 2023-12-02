@@ -8,6 +8,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+
 TEST_SUITE_BEGIN("SymbolTests");
 
 TEST_CASE("equality_and_hashing_of_globals")
@@ -66,7 +68,7 @@ TEST_CASE("equality_and_hashing_of_locals")
 
 TEST_CASE("equality_of_empty_symbols")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     std::string s1 = "name";
     std::string s2 = "name";

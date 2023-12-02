@@ -426,7 +426,7 @@ const Instruction* executeGETTABLEKS(lua_State* L, const Instruction* pc, StkId 
 
             if (unsigned(ic) < LUA_VECTOR_SIZE && name[1] == '\0')
             {
-                const float* v = rb->value.v; // silences ubsan when indexing v[]
+                const float* v = vvalue(rb); // silences ubsan when indexing v[]
                 setnvalue(ra, v[ic]);
                 return pc;
             }

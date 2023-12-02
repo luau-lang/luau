@@ -1829,8 +1829,6 @@ local _ = 0x10000000000000000
 
 TEST_CASE_FIXTURE(Fixture, "IntegerParsingDecimalImprecise")
 {
-    ScopedFastFlag sff("LuauParseImpreciseNumber", true);
-
     LintResult result = lint(R"(
 local _ = 10000000000000000000000000000000000000000000000000000000000000000
 local _ = 10000000000000001
@@ -1867,8 +1865,6 @@ local _ = -9223372036854775808
 
 TEST_CASE_FIXTURE(Fixture, "IntegerParsingHexImprecise")
 {
-    ScopedFastFlag sff("LuauParseImpreciseNumber", true);
-
     LintResult result = lint(R"(
 local _ = 0x1234567812345678
 

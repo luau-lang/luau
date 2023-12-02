@@ -1855,7 +1855,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_annotations_arent_relevant_when_doing_d
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_call_with_colon_after_refining_not_to_be_nil")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -1921,7 +1921,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "many_refinements_on_val")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
     // this test is DCR-only as an instance of DCR fixing a bug in the old solver
 
     CheckResult result = check(R"(
@@ -1954,7 +1954,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "conditional_refinement_should_stay_error_suppressing")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
     // this test is DCR-only as an instance of DCR fixing a bug in the old solver
 
     CheckResult result = check(R"(

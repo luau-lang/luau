@@ -12,6 +12,7 @@
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauTinyControlFlowAnalysis);
 
 using namespace Luau;
 
@@ -491,7 +492,7 @@ return unpack(l0[_])
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "check_imported_module_names")
 {
-    ScopedFastFlag sff{"LuauTinyControlFlowAnalysis", true};
+    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
 
     fileResolver.source["game/A"] = R"(
 return function(...) end

@@ -11,6 +11,7 @@
 #include "Luau/BuiltinDefinitions.h"
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauTransitiveSubtyping);
 
 using namespace Luau;
 
@@ -32,7 +33,7 @@ struct IsSubtypeFixture : Fixture
     bool isConsistentSubtype(TypeId a, TypeId b)
     {
         // any test that is testing isConsistentSubtype is testing the old solver exclusively!
-        ScopedFastFlag noDcr{"DebugLuauDeferredConstraintResolution", false};
+        ScopedFastFlag noDcr{FFlag::DebugLuauDeferredConstraintResolution, false};
 
         Location location;
         ModulePtr module = getMainModule();
@@ -182,7 +183,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_union_prop")
 TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_any_prop")
 {
     ScopedFastFlag sffs[] = {
-        {"LuauTransitiveSubtyping", true},
+        {FFlag::LuauTransitiveSubtyping, true},
     };
 
     check(R"(
@@ -243,7 +244,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "union_and_intersection")
 TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
 {
     ScopedFastFlag sffs[] = {
-        {"LuauTransitiveSubtyping", true},
+        {FFlag::LuauTransitiveSubtyping, true},
     };
 
     check(R"(
@@ -398,7 +399,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "metatable" * doctest::expected_failures{1})
 TEST_CASE_FIXTURE(IsSubtypeFixture, "any_is_unknown_union_error")
 {
     ScopedFastFlag sffs[] = {
-        {"LuauTransitiveSubtyping", true},
+        {FFlag::LuauTransitiveSubtyping, true},
     };
 
     check(R"(
@@ -418,7 +419,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "any_is_unknown_union_error")
 TEST_CASE_FIXTURE(IsSubtypeFixture, "any_intersect_T_is_T")
 {
     ScopedFastFlag sffs[] = {
-        {"LuauTransitiveSubtyping", true},
+        {FFlag::LuauTransitiveSubtyping, true},
     };
 
     check(R"(
@@ -440,7 +441,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "any_intersect_T_is_T")
 TEST_CASE_FIXTURE(IsSubtypeFixture, "error_suppression")
 {
     ScopedFastFlag sffs[] = {
-        {"LuauTransitiveSubtyping", true},
+        {FFlag::LuauTransitiveSubtyping, true},
     };
 
     check("");

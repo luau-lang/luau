@@ -289,7 +289,7 @@ n3 [label="TableType 3"];
 TEST_CASE_FIXTURE(Fixture, "free")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", false},
+        {FFlag::DebugLuauDeferredConstraintResolution, false},
     };
 
     Type type{TypeVariant{FreeType{TypeLevel{0, 0}}}};
@@ -305,7 +305,7 @@ n1 [label="FreeType 1"];
 TEST_CASE_FIXTURE(Fixture, "free_with_constraints")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", true},
+        {FFlag::DebugLuauDeferredConstraintResolution, true},
     };
 
     Type type{TypeVariant{FreeType{nullptr, builtinTypes->numberType, builtinTypes->optionalNumberType}}};

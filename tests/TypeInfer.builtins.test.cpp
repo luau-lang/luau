@@ -9,6 +9,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -133,7 +134,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_predicate")
 TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
 {
     ScopedFastFlag sff[] = {
-        {"LuauAlwaysCommitInferencesOfFunctionCalls", true},
+        {FFlag::LuauAlwaysCommitInferencesOfFunctionCalls, true},
     };
 
     CheckResult result = check(R"(

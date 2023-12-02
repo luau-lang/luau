@@ -8,6 +8,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(DebugLuauMagicTypes);
 
 using namespace Luau;
 
@@ -77,7 +78,7 @@ TEST_CASE_FIXTURE(Fixture, "assignment_cannot_transform_a_table_property_type")
 
 TEST_CASE_FIXTURE(Fixture, "assignments_to_unannotated_parameters_can_transform_the_type")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
         function f(x)
@@ -93,7 +94,7 @@ TEST_CASE_FIXTURE(Fixture, "assignments_to_unannotated_parameters_can_transform_
 
 TEST_CASE_FIXTURE(Fixture, "assignments_to_annotated_parameters_are_checked")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
         function f(x: string)
@@ -768,7 +769,7 @@ int AssertionCatcher::tripped;
 
 TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag")
 {
-    ScopedFastFlag sffs{"DebugLuauMagicTypes", true};
+    ScopedFastFlag sffs{FFlag::DebugLuauMagicTypes, true};
 
     AssertionCatcher ac;
 
@@ -782,7 +783,7 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag")
 
 TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag_handler")
 {
-    ScopedFastFlag sffs{"DebugLuauMagicTypes", true};
+    ScopedFastFlag sffs{FFlag::DebugLuauMagicTypes, true};
 
     bool caught = false;
 
@@ -800,7 +801,7 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag_handler
 
 TEST_CASE_FIXTURE(Fixture, "luau_ice_is_not_special_without_the_flag")
 {
-    ScopedFastFlag sffs{"DebugLuauMagicTypes", false};
+    ScopedFastFlag sffs{FFlag::DebugLuauMagicTypes, false};
 
     // We only care that this does not throw
     check(R"(
@@ -816,7 +817,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_print_is_magic_if_the_flag_is_set")
         output.push_back(s);
     });
 
-    ScopedFastFlag sffs{"DebugLuauMagicTypes", true};
+    ScopedFastFlag sffs{FFlag::DebugLuauMagicTypes, true};
 
     CheckResult result = check(R"(
         local a: _luau_print<typeof(math.abs)>
@@ -829,7 +830,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_print_is_magic_if_the_flag_is_set")
 
 TEST_CASE_FIXTURE(Fixture, "luau_print_is_not_special_without_the_flag")
 {
-    ScopedFastFlag sffs{"DebugLuauMagicTypes", false};
+    ScopedFastFlag sffs{FFlag::DebugLuauMagicTypes, false};
 
     CheckResult result = check(R"(
         local a: _luau_print<number>
@@ -840,7 +841,7 @@ TEST_CASE_FIXTURE(Fixture, "luau_print_is_not_special_without_the_flag")
 
 TEST_CASE_FIXTURE(Fixture, "luau_print_incomplete")
 {
-    ScopedFastFlag sffs{"DebugLuauMagicTypes", true};
+    ScopedFastFlag sffs{FFlag::DebugLuauMagicTypes, true};
 
     CheckResult result = check(R"(
         local a: _luau_print

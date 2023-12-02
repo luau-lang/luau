@@ -1,5 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "ConstraintGeneratorFixture.h"
+#include "ScopedFlags.h"
+
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
 namespace Luau
 {
@@ -7,7 +10,7 @@ namespace Luau
 ConstraintGeneratorFixture::ConstraintGeneratorFixture()
     : Fixture()
     , mainModule(new Module)
-    , forceTheFlag{"DebugLuauDeferredConstraintResolution", true}
+    , forceTheFlag{FFlag::DebugLuauDeferredConstraintResolution, true}
 {
     mainModule->name = "MainModule";
     mainModule->humanReadableName = "MainModule";

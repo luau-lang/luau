@@ -18,6 +18,9 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls)
+LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
+LUAU_FASTFLAG(DebugLuauSharedSelf)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -320,34 +323,6 @@ TEST_CASE_FIXTURE(Fixture, "used_colon_instead_of_dot")
     });
     REQUIRE(it != result.errors.end());
 }
-
-#if 0
-TEST_CASE_FIXTURE(Fixture, "open_table_unification")
-{
-    CheckResult result = check(R"(
-        function foo(o)
-            print(o.foo)
-            print(o.bar)
-        end
-
-        local a = {}
-        a.foo = 9
-
-        local b = {}
-        b.foo = 0
-
-        if random() then
-            b = a
-        end
-
-        b.bar = '99'
-
-        foo(a)
-        foo(b)
-    )");
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "open_table_unification_2")
 {
@@ -1577,7 +1552,7 @@ TEST_CASE_FIXTURE(Fixture, "right_table_missing_key2")
 
 TEST_CASE_FIXTURE(Fixture, "casting_unsealed_tables_with_props_into_table_with_indexer")
 {
-    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+    ScopedFastFlag sff{FFlag::LuauAlwaysCommitInferencesOfFunctionCalls, true};
 
     CheckResult result = check(R"(
         type StringToStringMap = { [string]: string }
@@ -1632,7 +1607,7 @@ TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer2")
 
 TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer3")
 {
-    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+    ScopedFastFlag sff{FFlag::LuauAlwaysCommitInferencesOfFunctionCalls, true};
 
     CheckResult result = check(R"(
         local function foo(a: {[string]: number, a: string}) end
@@ -1740,7 +1715,7 @@ TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_extra_props_is_ok")
 
 TEST_CASE_FIXTURE(Fixture, "type_mismatch_on_massive_table_is_cut_short")
 {
-    ScopedFastInt sfis{"LuauTableTypeMaximumStringifierLength", 40};
+    ScopedFastInt sfis{FInt::LuauTableTypeMaximumStringifierLength, 40};
 
     CheckResult result = check(R"(
         local t
@@ -2019,7 +1994,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "quantifying_a_bound_var_works")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "less_exponential_blowup_please")
 {
-    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+    ScopedFastFlag sff{FFlag::DebugLuauSharedSelf, true};
 
     CheckResult result = check(R"(
         --!strict
@@ -2492,7 +2467,7 @@ TEST_CASE_FIXTURE(Fixture, "confusing_indexing")
 
 TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a_table")
 {
-    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+    ScopedFastFlag sff{FFlag::LuauAlwaysCommitInferencesOfFunctionCalls, true};
 
     CheckResult result = check(R"(
         local a: {x: number, y: number, [any]: any} | {y: number}
@@ -2515,7 +2490,7 @@ TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a
 
 TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a_table_2")
 {
-    ScopedFastFlag sff{"LuauAlwaysCommitInferencesOfFunctionCalls", true};
+    ScopedFastFlag sff{FFlag::LuauAlwaysCommitInferencesOfFunctionCalls, true};
 
     CheckResult result = check(R"(
         local a: {y: number} | {x: number, y: number, [any]: any}
@@ -3194,8 +3169,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_leak_free_table_props")
 TEST_CASE_FIXTURE(Fixture, "inferred_return_type_of_free_table")
 {
     ScopedFastFlag sff[] = {
-        // {"LuauLowerBoundsCalculation", true},
-        {"DebugLuauSharedSelf", true},
+        // {FFlag::LuauLowerBoundsCalculation, true},
+        {FFlag::DebugLuauSharedSelf, true},
     };
 
     check(R"(
@@ -3234,7 +3209,7 @@ TEST_CASE_FIXTURE(Fixture, "mixed_tables_with_implicit_numbered_keys")
 
 TEST_CASE_FIXTURE(Fixture, "shared_selfs")
 {
-    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+    ScopedFastFlag sff{FFlag::DebugLuauSharedSelf, true};
 
     CheckResult result = check(R"(
         local t = {}
@@ -3255,7 +3230,7 @@ TEST_CASE_FIXTURE(Fixture, "shared_selfs")
 
 TEST_CASE_FIXTURE(Fixture, "shared_selfs_from_free_param")
 {
-    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+    ScopedFastFlag sff{FFlag::DebugLuauSharedSelf, true};
 
     CheckResult result = check(R"(
         local function f(t)
@@ -3271,7 +3246,7 @@ TEST_CASE_FIXTURE(Fixture, "shared_selfs_from_free_param")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "shared_selfs_through_metatables")
 {
-    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+    ScopedFastFlag sff{FFlag::DebugLuauSharedSelf, true};
 
     CheckResult result = check(R"(
         local t = {}
@@ -3350,7 +3325,7 @@ TEST_CASE_FIXTURE(Fixture, "prop_access_on_unions_of_indexers_where_key_whose_ty
 TEST_CASE_FIXTURE(BuiltinsFixture, "quantify_metatables_of_metatables_of_table")
 {
     ScopedFastFlag sff[]{
-        {"DebugLuauSharedSelf", true},
+        {FFlag::DebugLuauSharedSelf, true},
     };
 
     CheckResult result = check(R"(
@@ -3380,7 +3355,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "quantify_metatables_of_metatables_of_table")
 
 TEST_CASE_FIXTURE(Fixture, "quantify_even_that_table_was_never_exported_at_all")
 {
-    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+    ScopedFastFlag sff{FFlag::DebugLuauSharedSelf, true};
 
     CheckResult result = check(R"(
         local T = {}
@@ -3431,7 +3406,7 @@ TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shap
 TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_shape_type")
 {
     ScopedFastFlag sff[] = {
-        {"LuauAlwaysCommitInferencesOfFunctionCalls", true},
+        {FFlag::LuauAlwaysCommitInferencesOfFunctionCalls, true},
     };
 
     CheckResult result = check(R"(
@@ -3536,7 +3511,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "a_free_shape_can_turn_into_a_scalar_directly
 TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_tables_in_call_is_unsound")
 {
     ScopedFastFlag sff[]{
-        {"LuauInstantiateInSubtyping", true},
+        {FFlag::LuauInstantiateInSubtyping, true},
     };
 
     CheckResult result = check(R"(
@@ -3657,7 +3632,7 @@ _ = _._
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_table_unify_instantiated_table")
 {
     ScopedFastFlag sff[]{
-        {"LuauInstantiateInSubtyping", true},
+        {FFlag::LuauInstantiateInSubtyping, true},
     };
 
     CheckResult result = check(R"(
@@ -3674,7 +3649,7 @@ return _[_()()[_]] <= _
 TEST_CASE_FIXTURE(Fixture, "fuzz_table_unify_instantiated_table_with_prop_realloc")
 {
     ScopedFastFlag sff[]{
-        {"LuauInstantiateInSubtyping", true},
+        {FFlag::LuauInstantiateInSubtyping, true},
     };
 
     CheckResult result = check(R"(
@@ -3884,7 +3859,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_shifted_tables")
 
 TEST_CASE_FIXTURE(Fixture, "cli_84607_missing_prop_in_array_or_dict")
 {
-    ScopedFastFlag sff{"LuauFixIndexerSubtypingOrdering", true};
+    ScopedFastFlag sff{FFlag::LuauFixIndexerSubtypingOrdering, true};
 
     CheckResult result = check(R"(
         type Thing = { name: string, prop: boolean }
@@ -3939,7 +3914,7 @@ TEST_CASE_FIXTURE(Fixture, "simple_method_definition")
 
 TEST_CASE_FIXTURE(Fixture, "identify_all_problematic_table_fields")
 {
-    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
         type T = {

@@ -26,6 +26,14 @@ extern bool verbose;
 extern bool codegen;
 extern int optimizationLevel;
 
+LUAU_FASTFLAG(LuauBit32Byteswap);
+LUAU_FASTFLAG(LuauBufferBetterMsg);
+LUAU_FASTFLAG(LuauBufferDefinitions);
+LUAU_FASTFLAG(LuauCodeGenFixByteLower);
+LUAU_FASTFLAG(LuauCompileBufferAnnotation);
+LUAU_FASTFLAG(LuauLoopInterruptFix);
+LUAU_DYNAMIC_FASTFLAG(LuauStricterUtf8);
+
 static lua_CompileOptions defaultOptions()
 {
     lua_CompileOptions copts = {};
@@ -288,7 +296,9 @@ static std::vector<Luau::CodeGen::FunctionBytecodeSummary> analyzeFile(const cha
     std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 
-    LUAU_ASSERT(luau_load(L, "source", bytecode.data(), bytecode.size(), 0) == 0);
+    int result = luau_load(L, "source", bytecode.data(), bytecode.size(), 0);
+    REQUIRE(result == 0);
+
     return Luau::CodeGen::summarizeBytecode(L, -1, nestingLimit);
 }
 
@@ -312,8 +322,8 @@ TEST_CASE("Basic")
 
 TEST_CASE("Buffers")
 {
-    ScopedFastFlag luauBufferBetterMsg{"LuauBufferBetterMsg", true};
-    ScopedFastFlag luauCodeGenFixByteLower{"LuauCodeGenFixByteLower", true};
+    ScopedFastFlag luauBufferBetterMsg{FFlag::LuauBufferBetterMsg, true};
+    ScopedFastFlag luauCodeGenFixByteLower{FFlag::LuauCodeGenFixByteLower, true};
 
     runConformance("buffers.lua");
 }
@@ -429,13 +439,13 @@ TEST_CASE("GC")
 
 TEST_CASE("Bitwise")
 {
-    ScopedFastFlag sffs{"LuauBit32Byteswap", true};
+    ScopedFastFlag sffs{FFlag::LuauBit32Byteswap, true};
     runConformance("bitwise.lua");
 }
 
 TEST_CASE("UTF8")
 {
-    ScopedFastFlag sff("LuauStricterUtf8", true);
+    ScopedFastFlag sff(DFFlag::LuauStricterUtf8, true);
     runConformance("utf8.lua");
 }
 
@@ -580,7 +590,7 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
-    ScopedFastFlag luauBufferDefinitions{"LuauBufferDefinitions", true};
+    ScopedFastFlag luauBufferDefinitions{FFlag::LuauBufferDefinitions, true};
 
     runConformance("types.lua", [](lua_State* L) {
         Luau::NullModuleResolver moduleResolver;
@@ -1528,6 +1538,8 @@ TEST_CASE("GCDump")
 
 TEST_CASE("Interrupt")
 {
+    ScopedFastFlag luauLoopInterruptFix{FFlag::LuauLoopInterruptFix, true};
+
     lua_CompileOptions copts = defaultOptions();
     copts.optimizationLevel = 1; // disable loop unrolling to get fixed expected hit results
 
@@ -1586,12 +1598,12 @@ TEST_CASE("Interrupt")
         if (gc >= 0)
             return;
 
-        CHECK(index < 10);
-        if (++index == 10)
+        CHECK(index < 11);
+        if (++index == 11)
             lua_yield(L, 0);
     };
 
-    for (int test = 1; test <= 9; ++test)
+    for (int test = 1; test <= 10; ++test)
     {
         lua_State* T = lua_newthread(L);
 
@@ -1601,7 +1613,7 @@ TEST_CASE("Interrupt")
         index = 0;
         int status = lua_resume(T, nullptr, 0);
         CHECK(status == LUA_YIELD);
-        CHECK(index == 10);
+        CHECK(index == 11);
 
         // abandon the thread
         lua_pop(L, 1);
@@ -1913,8 +1925,6 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
-    ScopedFastFlag luauLowerAltLoopForn{"LuauLowerAltLoopForn", true};
-
     runConformance("native.lua");
 }
 
@@ -1924,7 +1934,7 @@ TEST_CASE("NativeTypeAnnotations")
     if (!codegen || !luau_codegen_supported())
         return;
 
-    ScopedFastFlag luauCompileBufferAnnotation{"LuauCompileBufferAnnotation", true};
+    ScopedFastFlag luauCompileBufferAnnotation{FFlag::LuauCompileBufferAnnotation, true};
 
     lua_CompileOptions copts = defaultOptions();
     copts.vectorCtor = "vector";

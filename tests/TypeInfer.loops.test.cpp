@@ -38,7 +38,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_no_table_passed")
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
 
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
     CheckResult result = check(R"(
 
 type Iterable = typeof(setmetatable(
@@ -188,7 +188,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_just_one_iterator_is_ok")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators_dcr")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
         function no_iter() end

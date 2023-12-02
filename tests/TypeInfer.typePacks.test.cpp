@@ -10,6 +10,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauInstantiateInSubtyping);
 
 TEST_SUITE_BEGIN("TypePackTests");
 
@@ -1057,7 +1058,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_packs_with_tails_in_vararg_adjustment")
 {
     std::optional<ScopedFastFlag> sff;
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        sff = {"LuauInstantiateInSubtyping", true};
+        sff = {FFlag::LuauInstantiateInSubtyping, true};
 
     CheckResult result = check(R"(
         local function wrapReject<TArg, TResult>(fn: (self: any, ...TArg) -> ...TResult): (self: any, ...TArg) -> ...TResult
@@ -1077,8 +1078,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_packs_with_tails_in_vararg_adjustment")
 TEST_CASE_FIXTURE(BuiltinsFixture, "generalize_expectedTypes_with_proper_scope")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", true},
-        {"LuauInstantiateInSubtyping", true},
+        {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauInstantiateInSubtyping, true},
     };
 
     CheckResult result = check(R"(

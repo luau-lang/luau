@@ -343,7 +343,7 @@ TEST_CASE_FIXTURE(Fixture, "compare_never")
 
 TEST_CASE_FIXTURE(Fixture, "lti_error_at_declaration_for_never_normalizations")
 {
-    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
         local function num(x: number) end
@@ -367,7 +367,7 @@ TEST_CASE_FIXTURE(Fixture, "lti_error_at_declaration_for_never_normalizations")
 
 TEST_CASE_FIXTURE(Fixture, "lti_permit_explicit_never_annotation")
 {
-    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
         local function num(x: number) end
