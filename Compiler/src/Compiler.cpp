@@ -26,9 +26,6 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileSideEffects, false)
-LUAU_FASTFLAGVARIABLE(LuauCompileDeadIf, false)
-
 LUAU_FASTFLAGVARIABLE(LuauCompileRevK, false)
 
 namespace Luau
@@ -2245,16 +2242,13 @@ struct Compiler
 
     void compileExprSide(AstExpr* node)
     {
-        if (FFlag::LuauCompileSideEffects)
-        {
-            // Optimization: some expressions never carry side effects so we don't need to emit any code
-            if (node->is<AstExprLocal>() || node->is<AstExprGlobal>() || node->is<AstExprVarargs>() || node->is<AstExprFunction>() || isConstant(node))
-                return;
+        // Optimization: some expressions never carry side effects so we don't need to emit any code
+        if (node->is<AstExprLocal>() || node->is<AstExprGlobal>() || node->is<AstExprVarargs>() || node->is<AstExprFunction>() || isConstant(node))
+            return;
 
-            // note: the remark is omitted for calls as it's fairly noisy due to inlining
-            if (!node->is<AstExprCall>())
-                bytecode.addDebugRemark("expression only compiled for side effects");
-        }
+        // note: the remark is omitted for calls as it's fairly noisy due to inlining
+        if (!node->is<AstExprCall>())
+            bytecode.addDebugRemark("expression only compiled for side effects");
 
         RegScope rsi(this);
         compileExprAuto(node, rsi);
@@ -2544,15 +2538,12 @@ struct Compiler
         }
 
         // Optimization: condition is always false but isn't a constant => we only need the else body and condition's side effects
-        if (FFlag::LuauCompileDeadIf)
+        if (AstExprBinary* cand = stat->condition->as<AstExprBinary>(); cand && cand->op == AstExprBinary::And && isConstantFalse(cand->right))
         {
-            if (AstExprBinary* cand = stat->condition->as<AstExprBinary>(); cand && cand->op == AstExprBinary::And && isConstantFalse(cand->right))
-            {
-                compileExprSide(cand->left);
-                if (stat->elsebody)
-                    compileStat(stat->elsebody);
-                return;
-            }
+            compileExprSide(cand->left);
+            if (stat->elsebody)
+                compileStat(stat->elsebody);
+            return;
         }
 
         // Optimization: body is a "break" statement with no "else" => we can directly break out of the loop in "then" case

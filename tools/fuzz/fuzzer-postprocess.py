@@ -8,7 +8,10 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
+
+
+def is_crash(reproducer_name: str) -> bool:
+    return reproducer_name.startswith("crash-") or reproducer_name.startswith("oom-")
 
 
 class CrashReport:
@@ -18,8 +21,13 @@ class CrashReport:
         self.crash_root = os.path.join(args.output_directory, crash_id)
 
     def trace(self) -> str:
-        with open(os.path.join(self.crash_root, "trace.txt"), "r") as trace_file:
-            return trace_file.read()
+        trace_path = os.path.join(self.crash_root, "trace.txt")
+
+        if os.path.exists(trace_path):
+            with open(os.path.join(self.crash_root, "trace.txt"), "r") as trace_file:
+                return trace_file.read()
+        else:
+            return None
 
     def modules(self) -> str:
         with open(os.path.join(self.crash_root, "modules.txt"), "r") as modules_file:
@@ -36,30 +44,28 @@ class MetaValue:
         self.link = None
 
 
-def minimize_crash(args, reproducer):
+def minimize_crash(args, reproducer, workdir):
+    if not is_crash(os.path.basename(reproducer)):
+        # Not actually a crash, so no minimization is actually possible.
+        return
+
     print(
         f"Minimizing reproducer {os.path.basename(reproducer)} for {args.minimize_for} seconds.")
     
     reproducer_absolute = os.path.abspath(reproducer)
 
-    with tempfile.TemporaryDirectory(prefix="fuzzer_minimize") as workdir:
-        print(f"Working in temporary directory {workdir}.")
-        artifact = os.path.join(workdir, os.path.basename(reproducer))
-        minimize_result = subprocess.run([args.executable, "-detect_leaks=0", "-minimize_crash=1",
-                                         f"-exact_artifact_path={artifact}", f"-max_total_time={args.minimize_for}", reproducer_absolute], cwd=workdir, stdout=sys.stdout if args.verbose else subprocess.DEVNULL, stderr=sys.stderr if args.verbose else subprocess.DEVNULL)
-        if minimize_result.returncode != 0:
-            print(
-                f"Minimize process exited with code {minimize_result.returncode}; minimization failed.")
+    artifact = os.path.join(workdir, "minimized_reproducer")
+    minimize_result = subprocess.run([args.executable, "-detect_leaks=0", "-minimize_crash=1",
+                                        f"-exact_artifact_path={artifact}", f"-max_total_time={args.minimize_for}", reproducer_absolute], cwd=workdir, stdout=sys.stdout if args.verbose else subprocess.DEVNULL, stderr=sys.stderr if args.verbose else subprocess.DEVNULL)
 
-        if os.path.exists(artifact):
-            print(
-                f"Minimized {os.path.basename(reproducer)} from {os.path.getsize(reproducer)} bytes to {os.path.getsize(artifact)}.")
-            with open(artifact, "r") as handle:
-                return handle.read()
+    if minimize_result.returncode != 0:
+        print(
+            f"Minimize process exited with code {minimize_result.returncode}; minimization failed.")
+        return
 
-    print(f"Unable to minimize.")
-    with open(reproducer, "r") as handle:
-        return handle.read()
+    if os.path.exists(artifact):
+        print(
+            f"Minimized {os.path.basename(reproducer)} from {os.path.getsize(reproducer)} bytes to {os.path.getsize(artifact)}.")
 
 
 def process_crash(args, reproducer):
@@ -73,21 +79,22 @@ def process_crash(args, reproducer):
         shutil.rmtree(crash_output, ignore_errors=True)
 
     os.makedirs(crash_output)
+    shutil.copyfile(reproducer, os.path.join(crash_output, "original_reproducer"))
     shutil.copyfile(reproducer, os.path.join(
-        crash_output, "original_reproducer"))
-    minimized_reproducer = minimize_crash(args, reproducer)
-    with open(os.path.join(crash_output, "minimized_reproducer"), "w") as repro_file:
-        repro_file.write(minimized_reproducer)
+        crash_output, "minimized_reproducer"))
 
-    trace_result = subprocess.run([args.executable, os.path.join(
-        crash_output, "minimized_reproducer")], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    trace_text = trace_result.stdout
+    minimize_crash(args, reproducer, crash_output)
 
-    with open(os.path.join(crash_output, "trace.txt"), "w") as trace_file:
-        trace_file.write(trace_text)
+    if is_crash(crash_id):
+        trace_result = subprocess.run([args.executable, os.path.join(
+            crash_output, "minimized_reproducer")], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        trace_text = trace_result.stdout
+
+        with open(os.path.join(crash_output, "trace.txt"), "w") as trace_file:
+            trace_file.write(trace_text)
 
     modules_result = subprocess.run([args.prototest, os.path.join(
-        crash_output, "minimized_reproducer")], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        crash_output, "minimized_reproducer"), "-detect_leaks=0", "-verbosity=0"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     modules_text = modules_result.stdout
 
     module_index_of = modules_text.index("Module")
@@ -100,7 +107,7 @@ def process_crash(args, reproducer):
 
 
 def process_crashes(args):
-    crash_names = os.listdir(args.source_directory)
+    crash_names = sorted(os.listdir(args.source_directory))
     with multiprocessing.Pool(args.workers) as pool:
         crashes = [(args, os.path.join(args.source_directory, c)) for c in crash_names]
         crashes = pool.starmap(process_crash, crashes)

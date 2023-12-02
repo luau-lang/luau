@@ -11,7 +11,7 @@ namespace
 {
 struct TypeStateFixture : BuiltinsFixture
 {
-    ScopedFastFlag dcr{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag dcr{FFlag::DebugLuauDeferredConstraintResolution, true};
 };
 }
 

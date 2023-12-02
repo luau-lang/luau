@@ -14,6 +14,7 @@
 #include "Luau/Def.h"
 
 #include <iostream>
+#include <iterator>
 
 namespace Luau
 {
@@ -105,9 +106,10 @@ struct NonStrictContext
         return conj;
     }
 
-    void removeFromContext(const std::vector<DefId>& defs)
+    // Returns true if the removal was successful
+    bool remove(const DefId& def)
     {
-        // TODO: unimplemented
+        return context.erase(def.get()) == 1;
     }
 
     std::optional<TypeId> find(const DefId& def) const
@@ -138,6 +140,7 @@ struct NonStrictTypeChecker
     NotNull<const DataFlowGraph> dfg;
     DenseHashSet<TypeId> noTypeFamilyErrors{nullptr};
     std::vector<NotNull<Scope>> stack;
+    DenseHashMap<TypeId, TypeId> cachedNegations{nullptr};
 
     const NotNull<TypeCheckLimits> limits;
 
@@ -271,8 +274,22 @@ struct NonStrictTypeChecker
     {
         auto StackPusher = pushStack(block);
         NonStrictContext ctx;
-        for (AstStat* statement : block->body)
-            ctx = NonStrictContext::disjunction(builtinTypes, NotNull{&arena}, ctx, visit(statement));
+
+
+        for (auto it = block->body.rbegin(); it != block->body.rend(); it++)
+        {
+            AstStat* stat = *it;
+            if (AstStatLocal* local = stat->as<AstStatLocal>())
+            {
+                // Iterating in reverse order
+                // local x ; B generates the context of B without x
+                visit(local);
+                for (auto local : local->vars)
+                    ctx.remove(dfg->getDef(local));
+            }
+            else
+                ctx = NonStrictContext::disjunction(builtinTypes, NotNull{&arena}, visit(stat), ctx);
+        }
         return ctx;
     }
 
@@ -505,9 +522,7 @@ struct NonStrictTypeChecker
                     AstExpr* arg = call->args.data[i];
                     TypeId expectedArgType = argTypes[i];
                     DefId def = dfg->getDef(arg);
-                    // TODO: Cache negations created here!!!
-                    // See Jira Ticket: https://roblox.atlassian.net/browse/CLI-87539
-                    TypeId runTimeErrorTy = arena.addType(NegationType{expectedArgType});
+                    TypeId runTimeErrorTy = getOrCreateNegation(expectedArgType);
                     fresh.context[def.get()] = runTimeErrorTy;
                 }
 
@@ -537,8 +552,16 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstExprFunction* exprFn)
     {
+        // TODO: should a function being used as an expression generate a context without the arguments?
         auto pusher = pushStack(exprFn);
-        return visit(exprFn->body);
+        NonStrictContext remainder = visit(exprFn->body);
+        for (AstLocal* local : exprFn->args)
+        {
+            if (std::optional<TypeId> ty = willRunTimeErrorFunctionDefinition(local, remainder))
+                reportError(NonStrictFunctionDefinitionError{exprFn->debugname.value, local->name.value, *ty}, local->location);
+            remainder.remove(dfg->getDef(local));
+        }
+        return remainder;
     }
 
     NonStrictContext visit(AstExprTable* table)
@@ -603,6 +626,31 @@ struct NonStrictTypeChecker
 
         return {};
     }
+
+    std::optional<TypeId> willRunTimeErrorFunctionDefinition(AstLocal* fragment, const NonStrictContext& context)
+    {
+        DefId def = dfg->getDef(fragment);
+        if (std::optional<TypeId> contextTy = context.find(def))
+        {
+            SubtypingResult r1 = subtyping.isSubtype(builtinTypes->unknownType, *contextTy);
+            SubtypingResult r2 = subtyping.isSubtype(*contextTy, builtinTypes->unknownType);
+            if (r1.normalizationTooComplex || r2.normalizationTooComplex)
+                reportError(NormalizationTooComplex{}, fragment->location);
+            bool isUnknown = r1.isSubtype && r2.isSubtype;
+            if (isUnknown)
+                return {builtinTypes->unknownType};
+        }
+        return {};
+    }
+
+private:
+    TypeId getOrCreateNegation(TypeId baseType)
+    {
+        TypeId& cachedResult = cachedNegations[baseType];
+        if (!cachedResult)
+            cachedResult = arena.addType(NegationType{baseType});
+        return cachedResult;
+    };
 };
 
 void checkNonStrict(NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> ice, NotNull<UnifierSharedState> unifierState,

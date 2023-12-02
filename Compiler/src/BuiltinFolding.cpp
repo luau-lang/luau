@@ -473,9 +473,7 @@ Constant foldBuiltin(int bfid, const Constant* args, size_t count)
         break;
 
     case LBF_VECTOR:
-        if (FFlag::LuauVectorLiterals && count >= 3 &&
-            args[0].type == Constant::Type_Number &&
-            args[1].type == Constant::Type_Number &&
+        if (FFlag::LuauVectorLiterals && count >= 3 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number &&
             args[2].type == Constant::Type_Number)
         {
             if (count == 3)

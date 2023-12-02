@@ -12,6 +12,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+
 struct TxnLogFixture
 {
     TxnLog log{/*useScopes*/ true};
@@ -33,7 +35,7 @@ TEST_SUITE_BEGIN("TxnLog");
 
 TEST_CASE_FIXTURE(TxnLogFixture, "colliding_union_incoming_type_has_greater_scope")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     log.replace(c, BoundType{a});
     log2.replace(a, BoundType{c});
@@ -66,7 +68,7 @@ TEST_CASE_FIXTURE(TxnLogFixture, "colliding_union_incoming_type_has_greater_scop
 
 TEST_CASE_FIXTURE(TxnLogFixture, "colliding_union_incoming_type_has_lesser_scope")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     log.replace(a, BoundType{c});
     log2.replace(c, BoundType{a});
@@ -99,7 +101,7 @@ TEST_CASE_FIXTURE(TxnLogFixture, "colliding_union_incoming_type_has_lesser_scope
 
 TEST_CASE_FIXTURE(TxnLogFixture, "colliding_coincident_logs_do_not_create_degenerate_unions")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     log.replace(a, BoundType{b});
     log2.replace(a, BoundType{b});

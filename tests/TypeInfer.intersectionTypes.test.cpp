@@ -965,12 +965,12 @@ local y = x.Bar
 TEST_CASE_FIXTURE(BuiltinsFixture, "index_property_table_intersection_2")
 {
     CheckResult result = check(R"(
-type Foo = {
-	Bar: string,
-} & { Baz: number }
+        type Foo = {
+            Bar: string,
+        } & { Baz: number }
 
-local x: Foo = { Bar = "1", Baz = 2 }
-local y = x["Bar"]
+        local x: Foo = { Bar = "1", Baz = 2 }
+        local y = x["Bar"]
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -978,7 +978,7 @@ local y = x["Bar"]
 
 TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_degenerate_intersections")
 {
-    ScopedFastFlag dcr{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag dcr{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
         type A = {
@@ -1002,7 +1002,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_degenerate_intersections")
 
 TEST_CASE_FIXTURE(Fixture, "cli_80596_simplify_more_realistic_intersections")
 {
-    ScopedFastFlag dcr{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag dcr{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
         type A = {

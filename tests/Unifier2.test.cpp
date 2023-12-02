@@ -12,6 +12,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+
 struct Unifier2Fixture
 {
     TypeArena arena;
@@ -21,7 +23,7 @@ struct Unifier2Fixture
     Unifier2 u2{NotNull{&arena}, NotNull{&builtinTypes}, NotNull{&scope}, NotNull{&iceReporter}};
     ToStringOptions opts;
 
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     std::pair<TypeId, FreeType*> freshType()
     {

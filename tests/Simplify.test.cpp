@@ -8,6 +8,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+
 namespace
 {
 
@@ -59,7 +61,7 @@ struct SimplifyFixture : Fixture
     TypeId anotherChildClassTy = nullptr;
     TypeId unrelatedClassTy = nullptr;
 
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     SimplifyFixture()
     {

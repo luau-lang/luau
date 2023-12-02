@@ -193,7 +193,7 @@ if(LUAU_BUILD_CLI)
 
     target_include_directories(Luau.Repl.CLI PRIVATE extern extern/isocline/include)
 
-    target_link_libraries(Luau.Repl.CLI PRIVATE Luau.Compiler Luau.CodeGen Luau.VM isocline)
+    target_link_libraries(Luau.Repl.CLI PRIVATE Luau.Compiler Luau.Config Luau.CodeGen Luau.VM isocline)
 
     if(UNIX)
         find_library(LIBPTHREAD pthread)
@@ -230,7 +230,7 @@ if(LUAU_BUILD_TESTS)
 
     target_compile_options(Luau.CLI.Test PRIVATE ${LUAU_OPTIONS})
     target_include_directories(Luau.CLI.Test PRIVATE extern CLI)
-    target_link_libraries(Luau.CLI.Test PRIVATE Luau.Compiler Luau.CodeGen Luau.VM isocline)
+    target_link_libraries(Luau.CLI.Test PRIVATE Luau.Compiler Luau.Config Luau.CodeGen Luau.VM isocline)
     if(UNIX)
         find_library(LIBPTHREAD pthread)
         if (LIBPTHREAD)
@@ -253,6 +253,8 @@ if(LUAU_BUILD_WEB)
     # the output is a single .js file with an embedded wasm blob
     target_link_options(Luau.Web PRIVATE -sSINGLE_FILE=1)
 endif()
+
+add_subdirectory(fuzz)
 
 # validate dependencies for internal libraries
 foreach(LIB Luau.Ast Luau.Compiler Luau.Config Luau.Analysis Luau.CodeGen Luau.VM)

@@ -19,8 +19,6 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauClipExtraHasEndProps, false)
 LUAU_FASTFLAG(LuauCheckedFunctionSyntax)
 
-LUAU_FASTFLAGVARIABLE(LuauParseImpreciseNumber, false)
-
 namespace Luau
 {
 
@@ -2168,11 +2166,8 @@ static ConstantNumberParseResult parseInteger(double& result, const char* data, 
             return base == 2 ? ConstantNumberParseResult::BinOverflow : ConstantNumberParseResult::HexOverflow;
     }
 
-    if (FFlag::LuauParseImpreciseNumber)
-    {
-        if (value >= (1ull << 53) && static_cast<unsigned long long>(result) != value)
-            return ConstantNumberParseResult::Imprecise;
-    }
+    if (value >= (1ull << 53) && static_cast<unsigned long long>(result) != value)
+        return ConstantNumberParseResult::Imprecise;
 
     return ConstantNumberParseResult::Ok;
 }
@@ -2190,32 +2185,24 @@ static ConstantNumberParseResult parseDouble(double& result, const char* data)
     char* end = nullptr;
     double value = strtod(data, &end);
 
-    if (FFlag::LuauParseImpreciseNumber)
+    // trailing non-numeric characters
+    if (*end != 0)
+        return ConstantNumberParseResult::Malformed;
+
+    result = value;
+
+    // for linting, we detect integer constants that are parsed imprecisely
+    // since the check is expensive we only perform it when the number is larger than the precise integer range
+    if (value >= double(1ull << 53) && strspn(data, "0123456789") == strlen(data))
     {
-        // trailing non-numeric characters
-        if (*end != 0)
-            return ConstantNumberParseResult::Malformed;
+        char repr[512];
+        snprintf(repr, sizeof(repr), "%.0f", value);
 
-        result = value;
-
-        // for linting, we detect integer constants that are parsed imprecisely
-        // since the check is expensive we only perform it when the number is larger than the precise integer range
-        if (value >= double(1ull << 53) && strspn(data, "0123456789") == strlen(data))
-        {
-            char repr[512];
-            snprintf(repr, sizeof(repr), "%.0f", value);
-
-            if (strcmp(repr, data) != 0)
-                return ConstantNumberParseResult::Imprecise;
-        }
-
-        return ConstantNumberParseResult::Ok;
+        if (strcmp(repr, data) != 0)
+            return ConstantNumberParseResult::Imprecise;
     }
-    else
-    {
-        result = value;
-        return *end == 0 ? ConstantNumberParseResult::Ok : ConstantNumberParseResult::Malformed;
-    }
+
+    return ConstantNumberParseResult::Ok;
 }
 
 // simpleexp -> NUMBER | STRING | NIL | true | false | ... | constructor | FUNCTION body | primaryexp

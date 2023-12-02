@@ -11,6 +11,10 @@ import subprocess
 import sys
 
 
+def is_crash(reproducer_name: str) -> bool:
+    return reproducer_name.startswith("crash-") or reproducer_name.startswith("oom-")
+
+
 class Reproducer:
     def __init__(self, file, reason, fingerprint):
         self.file = file
@@ -39,7 +43,7 @@ def get_crash_reason(binary, file, remove_passing):
     if (pos := err.find("ERROR: libFuzzer:")) != -1:
         return err[pos:]
 
-    print(f"Warning: {binary} {file} returned unrecognized error {err}", file=sys.stderr)
+    print(f"Warning: {binary} {file} returned unrecognized error {err} with exit code {res.returncode}", file=sys.stderr)
     return None
 
 
@@ -72,32 +76,38 @@ filter_targets = []
 if len(args.files) == 1:
     for root, dirs, files in os.walk(args.files[0]):
         for file in files:
+            if not is_crash(file):
+                continue
+
             filter_targets.append(os.path.join(root, file))
 else:
     filter_targets = args.files
 
-with multiprocessing.Pool(processes = args.workers) as pool:
-    print(f"Processing {len(filter_targets)} reproducers across {args.workers} workers.")
-    reproducers = [r for r in pool.map(process_file, filter_targets) if r is not None]
+if __name__ == "__main__":
+    multiprocessing.freeze_support()
 
-    seen = set()
-    for index, reproducer in enumerate(reproducers):
-        if reproducer.fingerprint in seen:
-            if sys.stdout.isatty():
-                print("-\|/"[index % 4], end="\r")
+    with multiprocessing.Pool(processes = args.workers) as pool:
+        print(f"Processing {len(filter_targets)} reproducers across {args.workers} workers.")
+        reproducers = [r for r in pool.map(process_file, filter_targets) if r is not None]
 
-            if args.remove_duplicates:
-                if args.verbosity >= 1:
-                    print(f"Removing duplicate reducer {reproducer.file}.")
-                os.remove(reproducer.file)
+        seen = set()
+        for index, reproducer in enumerate(reproducers):
+            if reproducer.fingerprint in seen:
+                if sys.stdout.isatty():
+                    print("-\|/"[index % 4], end="\r")
 
-            continue
+                if args.remove_duplicates:
+                    if args.verbosity >= 1:
+                        print(f"Removing duplicate reducer {reproducer.file}.")
+                    os.remove(reproducer.file)
 
-        seen.add(reproducer.fingerprint)
-        if args.verbosity >= 2:
-            print(f"Reproducer: {args.binary} {reproducer.file}")
-            print(f"Output: {reproducer.reason}")
-    
-    print(f"Total unique crashes: {len(seen)}")
-    if args.remove_duplicates:
-        print(f"Duplicate reproducers have been removed.")
+                continue
+
+            seen.add(reproducer.fingerprint)
+            if args.verbosity >= 2:
+                print(f"Reproducer: {args.binary} {reproducer.file}")
+                print(f"Output: {reproducer.reason}")
+        
+        print(f"Total unique crashes: {len(seen)}")
+        if args.remove_duplicates:
+            print(f"Duplicate reproducers have been removed.")

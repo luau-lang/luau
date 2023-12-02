@@ -9,7 +9,6 @@
 #include <math.h>
 
 LUAU_FASTFLAGVARIABLE(LuauBufferTranslateIr, false)
-LUAU_FASTFLAGVARIABLE(LuauImproveInsertIr, false)
 
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
@@ -691,34 +690,24 @@ static BuiltinImplResult translateBuiltinTableInsert(IrBuilder& build, int npara
 
     IrOp setnum = build.inst(IrCmd::TABLE_SETNUM, table, pos);
 
-    if (FFlag::LuauImproveInsertIr)
+    if (args.kind == IrOpKind::Constant)
     {
-        if (args.kind == IrOpKind::Constant)
-        {
-            LUAU_ASSERT(build.function.constOp(args).kind == IrConstKind::Double);
+        LUAU_ASSERT(build.function.constOp(args).kind == IrConstKind::Double);
 
-            // No barrier necessary since numbers aren't collectable
-            build.inst(IrCmd::STORE_DOUBLE, setnum, args);
-            build.inst(IrCmd::STORE_TAG, setnum, build.constTag(LUA_TNUMBER));
-        }
-        else
-        {
-            IrOp va = build.inst(IrCmd::LOAD_TVALUE, args);
-            build.inst(IrCmd::STORE_TVALUE, setnum, va);
-
-            // Compiler only generates FASTCALL*K for source-level constants, so dynamic imports are not affected
-            LUAU_ASSERT(build.function.proto);
-            IrOp argstag = args.kind == IrOpKind::VmConst ? build.constTag(build.function.proto->k[vmConstOp(args)].tt) : build.undef();
-
-            build.inst(IrCmd::BARRIER_TABLE_FORWARD, table, args, argstag);
-        }
+        // No barrier necessary since numbers aren't collectable
+        build.inst(IrCmd::STORE_DOUBLE, setnum, args);
+        build.inst(IrCmd::STORE_TAG, setnum, build.constTag(LUA_TNUMBER));
     }
     else
     {
         IrOp va = build.inst(IrCmd::LOAD_TVALUE, args);
         build.inst(IrCmd::STORE_TVALUE, setnum, va);
 
-        build.inst(IrCmd::BARRIER_TABLE_FORWARD, table, args, build.undef());
+        // Compiler only generates FASTCALL*K for source-level constants, so dynamic imports are not affected
+        LUAU_ASSERT(build.function.proto);
+        IrOp argstag = args.kind == IrOpKind::VmConst ? build.constTag(build.function.proto->k[vmConstOp(args)].tt) : build.undef();
+
+        build.inst(IrCmd::BARRIER_TABLE_FORWARD, table, args, argstag);
     }
 
     return {BuiltinImplType::Full, 0};

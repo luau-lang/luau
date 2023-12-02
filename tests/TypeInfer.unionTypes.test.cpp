@@ -9,6 +9,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauTransitiveSubtyping);
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -803,7 +804,7 @@ TEST_CASE_FIXTURE(Fixture, "optional_any")
 TEST_CASE_FIXTURE(Fixture, "generic_function_with_optional_arg")
 {
     ScopedFastFlag sff[] = {
-        {"LuauTransitiveSubtyping", true},
+        {FFlag::LuauTransitiveSubtyping, true},
     };
 
     CheckResult result = check(R"(
@@ -838,7 +839,7 @@ TEST_CASE_FIXTURE(Fixture, "lookup_prop_of_intersection_containing_unions")
 
 TEST_CASE_FIXTURE(Fixture, "suppress_errors_for_prop_lookup_of_a_union_that_includes_error")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     registerHiddenTypes(&frontend);
 

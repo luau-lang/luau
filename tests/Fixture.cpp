@@ -22,6 +22,7 @@
 static const char* mainModuleName = "MainModule";
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(DebugLuauFreezeArena);
 
 extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
@@ -136,7 +137,7 @@ const Config& TestConfigResolver::getConfig(const ModuleName& name) const
 }
 
 Fixture::Fixture(bool freeze, bool prepareAutocomplete)
-    : sff_DebugLuauFreezeArena("DebugLuauFreezeArena", freeze)
+    : sff_DebugLuauFreezeArena(FFlag::DebugLuauFreezeArena, freeze)
     , frontend(&fileResolver, &configResolver,
           {/* retainFullTypeGraphs= */ true, /* forAutocomplete */ false, /* runLintChecks */ false, /* randomConstraintResolutionSeed */ randomSeed})
     , builtinTypes(frontend.builtinTypes)

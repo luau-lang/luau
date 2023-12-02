@@ -67,4 +67,12 @@ function infloop9()
 	boom()
 end
 
+function infloop10()
+	for l0=4096,0,0 do
+		repeat
+			continue
+		until function<t0>() end
+	end
+end
+
 return "OK"

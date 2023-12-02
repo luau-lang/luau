@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <string>
+#include <vector>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -101,6 +102,15 @@ struct BlockLinearizationStats
     }
 };
 
+struct FunctionStats
+{
+    std::string name;
+    int line = -1;
+    unsigned bcodeCount = 0;
+    unsigned irCount = 0;
+    unsigned asmCount = 0;
+};
+
 struct LoweringStats
 {
     unsigned totalFunctions = 0;
@@ -116,6 +126,9 @@ struct LoweringStats
     int loweringErrors = 0;
 
     BlockLinearizationStats blockLinearizationStats;
+
+    bool collectFunctionStats = false;
+    std::vector<FunctionStats> functions;
 
     LoweringStats operator+(const LoweringStats& other) const
     {
@@ -137,6 +150,8 @@ struct LoweringStats
         this->regAllocErrors += that.regAllocErrors;
         this->loweringErrors += that.loweringErrors;
         this->blockLinearizationStats += that.blockLinearizationStats;
+        if (this->collectFunctionStats)
+            this->functions.insert(this->functions.end(), that.functions.begin(), that.functions.end());
         return *this;
     }
 };

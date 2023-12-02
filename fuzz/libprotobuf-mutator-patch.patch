@@ -1,0 +1,12 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 4805c82..9f0df5c 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -149,7 +149,6 @@ add_subdirectory(src)
+ 
+ if (NOT "${LIB_PROTO_MUTATOR_FUZZER_LIBRARIES}" STREQUAL "" OR
+     NOT "${FUZZING_FLAGS}" STREQUAL "")
+-  add_subdirectory(examples EXCLUDE_FROM_ALL)
+ endif()
+ 
+ install(EXPORT libprotobuf-mutatorTargets FILE libprotobuf-mutatorTargets.cmake

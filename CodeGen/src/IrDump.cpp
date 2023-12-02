@@ -432,7 +432,10 @@ void toString(IrToStringContext& ctx, IrOp op)
         append(ctx.result, "U%d", vmUpvalueOp(op));
         break;
     case IrOpKind::VmExit:
-        append(ctx.result, "exit(%d)", vmExitOp(op));
+        if (vmExitOp(op) == kVmExitEntryGuardPc)
+            append(ctx.result, "exit(entry)");
+        else
+            append(ctx.result, "exit(%d)", vmExitOp(op));
         break;
     }
 }
@@ -457,6 +460,47 @@ void toString(std::string& result, IrConst constant)
         result.append(getTagName(constant.valueTag));
         break;
     }
+}
+
+const char* getBytecodeTypeName(uint8_t type)
+{
+    switch (type)
+    {
+    case LBC_TYPE_NIL:
+        return "nil";
+    case LBC_TYPE_BOOLEAN:
+        return "boolean";
+    case LBC_TYPE_NUMBER:
+        return "number";
+    case LBC_TYPE_STRING:
+        return "string";
+    case LBC_TYPE_TABLE:
+        return "table";
+    case LBC_TYPE_FUNCTION:
+        return "function";
+    case LBC_TYPE_THREAD:
+        return "thread";
+    case LBC_TYPE_USERDATA:
+        return "userdata";
+    case LBC_TYPE_VECTOR:
+        return "vector";
+    case LBC_TYPE_BUFFER:
+        return "buffer";
+    case LBC_TYPE_ANY:
+        return "any";
+    }
+
+    LUAU_ASSERT(!"Unhandled type in getBytecodeTypeName");
+    return nullptr;
+}
+
+void toString(std::string& result, const BytecodeTypes& bcTypes)
+{
+    if (bcTypes.c != LBC_TYPE_ANY)
+        append(result, "%s <- %s, %s, %s", getBytecodeTypeName(bcTypes.result), getBytecodeTypeName(bcTypes.a), getBytecodeTypeName(bcTypes.b),
+            getBytecodeTypeName(bcTypes.c));
+    else
+        append(result, "%s <- %s, %s", getBytecodeTypeName(bcTypes.result), getBytecodeTypeName(bcTypes.a), getBytecodeTypeName(bcTypes.b));
 }
 
 static void appendBlockSet(IrToStringContext& ctx, BlockIteratorWrapper blocks)

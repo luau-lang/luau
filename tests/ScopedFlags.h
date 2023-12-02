@@ -13,18 +13,11 @@ private:
     T oldValue = T();
 
 public:
-    ScopedFValue(const char* name, T newValue)
+    ScopedFValue(Luau::FValue<T>& fvalue, T newValue)
     {
-        for (Luau::FValue<T>* v = Luau::FValue<T>::list; v; v = v->next)
-            if (strcmp(v->name, name) == 0)
-            {
-                value = v;
-                oldValue = v->value;
-                v->value = newValue;
-                break;
-            }
-
-        LUAU_ASSERT(value);
+        value = &fvalue;
+        oldValue = fvalue.value;
+        fvalue.value = newValue;
     }
 
     ScopedFValue(const ScopedFValue&) = delete;

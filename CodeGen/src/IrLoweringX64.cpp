@@ -1912,7 +1912,7 @@ void IrLoweringX64::finishBlock(const IrBlock& curr, const IrBlock& next)
     {
         // If we have spills remaining, we have to immediately lower the successor block
         for (uint32_t predIdx : predecessors(function.cfg, function.getBlockIndex(next)))
-            LUAU_ASSERT(predIdx == function.getBlockIndex(curr));
+            LUAU_ASSERT(predIdx == function.getBlockIndex(curr) || function.blocks[predIdx].kind == IrBlockKind::Dead);
 
         // And the next block cannot be a join block in cfg
         LUAU_ASSERT(next.useCount == 1);

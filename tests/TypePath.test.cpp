@@ -15,6 +15,8 @@
 using namespace Luau;
 using namespace Luau::TypePath;
 
+LUAU_DYNAMIC_FASTINT(LuauTypePathMaximumTraverseSteps);
+
 TEST_SUITE_BEGIN("TypePathManipulation");
 
 TEST_CASE("append")
@@ -110,6 +112,33 @@ TEST_CASE_FIXTURE(Fixture, "table_property")
 TEST_CASE_FIXTURE(ClassFixture, "class_property")
 {
     CHECK(traverseForType(vector2InstanceType, Path(TypePath::Property{"X", true}), builtinTypes) == builtinTypes->numberType);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_property")
+{
+    SUBCASE("meta_does_not_contribute")
+    {
+        TYPESOLVE_CODE(R"(
+            local x = setmetatable({ x = 123 }, {})
+        )");
+    }
+
+    SUBCASE("meta_and_table_supply_property")
+    {
+        // since the table takes priority, the __index property won't matter
+        TYPESOLVE_CODE(R"(
+            local x = setmetatable({ x = 123 }, { __index = { x = 'foo' } })
+        )");
+    }
+
+    SUBCASE("only_meta_supplies_property")
+    {
+        TYPESOLVE_CODE(R"(
+            local x = setmetatable({}, { __index = { x = 123 } })
+        )");
+    }
+
+    CHECK(traverseForType(requireType("x"), Path(TypePath::Property("x")), builtinTypes) == builtinTypes->numberType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "index")
@@ -424,7 +453,7 @@ TEST_CASE_FIXTURE(Fixture, "cycles" * doctest::timeout(0.5))
 
 TEST_CASE_FIXTURE(Fixture, "step_limit")
 {
-    ScopedFastInt sfi("LuauTypePathMaximumTraverseSteps", 2);
+    ScopedFastInt sfi(DFInt::LuauTypePathMaximumTraverseSteps, 2);
 
     TYPESOLVE_CODE(R"(
         type T = {

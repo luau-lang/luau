@@ -46,7 +46,7 @@ int luaV_tostring(lua_State* L, StkId obj)
 const float* luaV_tovector(const TValue* obj)
 {
     if (ttisvector(obj))
-        return obj->value.v;
+        return vvalue(obj);
 
     return nullptr;
 }

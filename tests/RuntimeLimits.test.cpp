@@ -17,10 +17,17 @@
 
 using namespace Luau;
 
+LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+
 struct LimitFixture : BuiltinsFixture
 {
 #if defined(_NOOPT) || defined(_DEBUG)
+<<<<<<< HEAD
     ScopedFastInt LuauTypeInferRecursionLimit{"LuauTypeInferRecursionLimit", 90};
+=======
+    ScopedFastInt LuauTypeInferRecursionLimit{FInt::LuauTypeInferRecursionLimit, 100};
+>>>>>>> upstream
 #endif
 };
 
@@ -38,7 +45,7 @@ TEST_SUITE_BEGIN("RuntimeLimits");
 TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", false},
+        {FFlag::DebugLuauDeferredConstraintResolution, false},
     };
 
     constexpr const char* src = R"LUA(

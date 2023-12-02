@@ -78,7 +78,13 @@ struct IrBuilder
 
     std::vector<uint32_t> instIndexToBlock; // Block index at the bytecode instruction
 
-    std::vector<IrOp> loopStepStack;
+    struct LoopInfo
+    {
+        IrOp step;
+        int startpc = 0;
+    };
+
+    std::vector<LoopInfo> numericLoopStack;
 
     // Similar to BytecodeBuilder, duplicate constants are removed used the same method
     struct ConstantKey

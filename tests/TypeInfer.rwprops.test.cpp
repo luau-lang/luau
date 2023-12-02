@@ -4,6 +4,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
 using namespace Luau;
 
@@ -12,7 +13,7 @@ namespace
 
 struct ReadWriteFixture : Fixture
 {
-    ScopedFastFlag dcr{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag dcr{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     ReadWriteFixture()
         : Fixture()

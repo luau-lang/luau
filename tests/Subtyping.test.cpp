@@ -24,6 +24,8 @@ std::ostream& operator<<(std::ostream& lhs, const SubtypingVariance& variance)
     {
     case SubtypingVariance::Covariant:
         return lhs << "covariant";
+    case SubtypingVariance::Contravariant:
+        return lhs << "contravariant";
     case SubtypingVariance::Invariant:
         return lhs << "invariant";
     case SubtypingVariance::Invalid:
@@ -643,12 +645,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(number) -> () <!: <T>(T) -> ()")
 
 TEST_CASE_FIXTURE(SubtypeFixture, "<T>() -> (T, T) <!: () -> (string, number)")
 {
-    TypeId nothingToTwoTs = arena.addType(FunctionType{
-        {genericT},
-        {},
-        builtinTypes->emptyTypePack,
-        arena.addTypePack({genericT, genericT})
-    });
+    TypeId nothingToTwoTs = arena.addType(FunctionType{{genericT}, {}, builtinTypes->emptyTypePack, arena.addTypePack({genericT, genericT})});
 
     TypeId nothingToStringAndNumber = fn({}, {builtinTypes->stringType, builtinTypes->numberType});
 
@@ -790,7 +787,7 @@ TEST_IS_NOT_SUBTYPE(negate(builtinTypes->neverType), builtinTypes->stringType);
 TEST_IS_SUBTYPE(negate(builtinTypes->unknownType), builtinTypes->stringType);
 TEST_IS_NOT_SUBTYPE(negate(builtinTypes->anyType), builtinTypes->stringType);
 TEST_IS_SUBTYPE(negate(meet(builtinTypes->neverType, builtinTypes->unknownType)), builtinTypes->stringType);
-TEST_IS_NOT_SUBTYPE(negate(join(builtinTypes->neverType, builtinTypes->unknownType)), builtinTypes->stringType);
+TEST_IS_SUBTYPE(negate(join(builtinTypes->neverType, builtinTypes->unknownType)), builtinTypes->stringType);
 
 // Negated supertypes: never/unknown/any/error
 TEST_IS_SUBTYPE(builtinTypes->stringType, negate(builtinTypes->neverType));
@@ -812,7 +809,7 @@ TEST_IS_SUBTYPE(builtinTypes->booleanType, negate(meet(builtinTypes->stringType,
 TEST_IS_SUBTYPE(builtinTypes->trueType, negate(meet(builtinTypes->booleanType, builtinTypes->numberType)));
 TEST_IS_SUBTYPE(rootClass, negate(meet(builtinTypes->classType, childClass)));
 TEST_IS_SUBTYPE(childClass, negate(meet(builtinTypes->classType, builtinTypes->numberType)));
-TEST_IS_NOT_SUBTYPE(builtinTypes->unknownType, negate(meet(builtinTypes->classType, builtinTypes->numberType)));
+TEST_IS_SUBTYPE(builtinTypes->unknownType, negate(meet(builtinTypes->classType, builtinTypes->numberType)));
 TEST_IS_NOT_SUBTYPE(str("foo"), negate(meet(builtinTypes->stringType, negate(str("bar")))));
 
 // Negated supertypes: tables and metatables
@@ -1041,6 +1038,16 @@ TEST_CASE_FIXTURE(SubtypeFixture, "(string | number) & (\"a\" | true) <: { lower
     CHECK_IS_SUBTYPE(base, tableWithLower);
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "number <: ~~number")
+{
+    CHECK_IS_SUBTYPE(builtinTypes->numberType, negate(negate(builtinTypes->numberType)));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "~~number <: number")
+{
+    CHECK_IS_SUBTYPE(negate(negate(builtinTypes->numberType)), builtinTypes->numberType);
+}
+
 /*
  * Within the scope to which a generic belongs, that generic ought to be treated
  * as its bounds.
@@ -1075,11 +1082,15 @@ TEST_IS_NOT_SUBTYPE(tbl({}), idx(builtinTypes->numberType, builtinTypes->numberT
 TEST_IS_NOT_SUBTYPE(tbl({{"X", builtinTypes->numberType}}), idx(builtinTypes->numberType, builtinTypes->numberType));
 TEST_IS_NOT_SUBTYPE(idx(builtinTypes->numberType, builtinTypes->numberType), tbl({{"X", builtinTypes->numberType}}));
 
-TEST_IS_NOT_SUBTYPE(idx(join(builtinTypes->numberType, builtinTypes->stringType), builtinTypes->numberType), idx(builtinTypes->numberType, builtinTypes->numberType));
-TEST_IS_NOT_SUBTYPE(idx(builtinTypes->numberType, builtinTypes->numberType), idx(join(builtinTypes->numberType, builtinTypes->stringType), builtinTypes->numberType));
+TEST_IS_NOT_SUBTYPE(
+    idx(join(builtinTypes->numberType, builtinTypes->stringType), builtinTypes->numberType), idx(builtinTypes->numberType, builtinTypes->numberType));
+TEST_IS_NOT_SUBTYPE(
+    idx(builtinTypes->numberType, builtinTypes->numberType), idx(join(builtinTypes->numberType, builtinTypes->stringType), builtinTypes->numberType));
 
-TEST_IS_NOT_SUBTYPE(idx(builtinTypes->numberType, join(builtinTypes->stringType, builtinTypes->numberType)), idx(builtinTypes->numberType, builtinTypes->numberType));
-TEST_IS_NOT_SUBTYPE(idx(builtinTypes->numberType, builtinTypes->numberType), idx(builtinTypes->numberType, join(builtinTypes->stringType, builtinTypes->numberType)));
+TEST_IS_NOT_SUBTYPE(
+    idx(builtinTypes->numberType, join(builtinTypes->stringType, builtinTypes->numberType)), idx(builtinTypes->numberType, builtinTypes->numberType));
+TEST_IS_NOT_SUBTYPE(
+    idx(builtinTypes->numberType, builtinTypes->numberType), idx(builtinTypes->numberType, join(builtinTypes->stringType, builtinTypes->numberType)));
 
 TEST_IS_NOT_SUBTYPE(tbl({{"X", builtinTypes->numberType}}), idx(builtinTypes->stringType, builtinTypes->numberType));
 TEST_IS_SUBTYPE(idx(builtinTypes->stringType, builtinTypes->numberType), tbl({{"X", builtinTypes->numberType}}));
@@ -1176,6 +1187,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "fn_arguments")
     CHECK(result.reasoning == std::vector{SubtypingReasoning{
                                   /* subPath */ TypePath::PathBuilder().args().index(0).build(),
                                   /* superPath */ TypePath::PathBuilder().args().index(0).build(),
+                                  /* variance */ SubtypingVariance::Contravariant,
                               }});
 }
 
@@ -1189,6 +1201,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "fn_arguments_tail")
     CHECK(result.reasoning == std::vector{SubtypingReasoning{
                                   /* subPath */ TypePath::PathBuilder().args().tail().variadic().build(),
                                   /* superPath */ TypePath::PathBuilder().args().tail().variadic().build(),
+                                  /* variance */ SubtypingVariance::Contravariant,
                               }});
 }
 
