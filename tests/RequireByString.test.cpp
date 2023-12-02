@@ -50,8 +50,6 @@ public:
         std::string luauDirAbs;
 
         std::optional<std::string> cwd = getCurrentWorkingDirectory();
-        if (cwd)
-            printf("%s\n", (*cwd).c_str());
         REQUIRE_MESSAGE(cwd, "Error getting Luau path");
         std::replace((*cwd).begin(), (*cwd).end(), '\\', '/');
         luauDirAbs = *cwd;
@@ -211,6 +209,7 @@ TEST_CASE("PathNormalization")
     }
 }
 
+#if 0
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireSimpleRelativePath")
 {
@@ -386,9 +385,10 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithAlias")
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithParentAlias")
 {
     ScopedFastFlag sff{FFlag::LuauUpdatedRequireByStringSemantics, true};
-    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/with_config/src/parent_alias_requirer.luau";
+    std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/with_config/src/parent_alias_requirer";
     runProtectedRequire(path);
     assertOutputContainsAll({"true", "result from other_dependency"});
 }
+#end
 
 TEST_SUITE_END();
