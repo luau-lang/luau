@@ -57,18 +57,17 @@ public:
         for (int i = 0; i < 20; ++i)
         {
             printf("Luau dir abs >>> %s\n", luauDirAbs.c_str());
-            if (isDirectory(luauDirAbs + "/luau/tests") || isDirectory(luauDirAbs + "/client/luau/tests"))
+            if (isDirectory(luauDirAbs + "/luau/tests") || isDirectory(luauDirAbs + "/Client/Luau/tests"))
             {
 
                 printf("isDirectory /Luau/tests OR /Client/Luau/tests \n");
                 if (isDirectory(luauDirAbs + "/Client/Luau/tests"))
                 {
-                    printf("isDirectory /Client/Luau/tests \n");
-                    luauDirRel += "/client";
-                    luauDirAbs += "/client";
+                    luauDirRel += "/Client";
+                    luauDirAbs += "/Client";
                 }
-                luauDirRel += "/luau";
-                luauDirAbs += "lLuau";
+                luauDirRel += "/Luau";
+                luauDirAbs += "/Luau";
 
                 if (type == PathType::Relative)
                     return luauDirRel;
@@ -160,7 +159,7 @@ end
 };
 
 TEST_SUITE_BEGIN("RequireByStringTests");
-#if 0
+
 TEST_CASE("PathResolution")
 {
 #ifdef _WIN32
@@ -394,8 +393,6 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithAlias")
     runProtectedRequire(path);
     assertOutputContainsAll({"true", "result from dependency"});
 }
-
-#endif
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithParentAlias")
 {
