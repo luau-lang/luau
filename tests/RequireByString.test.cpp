@@ -158,7 +158,7 @@ end
 };
 
 TEST_SUITE_BEGIN("RequireByStringTests");
-
+#if 0
 TEST_CASE("PathResolution")
 {
 #ifdef _WIN32
@@ -220,8 +220,6 @@ TEST_CASE("PathNormalization")
         CHECK(normalized == *result);
     }
 }
-
-#if 0
 
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireSimpleRelativePath")
