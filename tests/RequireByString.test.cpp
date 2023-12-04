@@ -46,6 +46,7 @@ public:
 
     std::string getLuauDirectory(PathType type)
     {
+        printf("GetLuauDirectory invoked\n");
         std::string luauDirRel = ".";
         std::string luauDirAbs;
 
@@ -58,10 +59,10 @@ public:
         {
             if (isDirectory(luauDirAbs + "/Luau/tests") || isDirectory(luauDirAbs + "/Client/Luau/tests"))
             {
-                printf("isDirectory /Luau/tests OR /Client/Luau/tests\n");
+                printf("isDirectory /Luau/tests OR /Client/Luau/tests \n");
                 if (isDirectory(luauDirAbs + "/Client/Luau/tests"))
                 {
-                    printf("isDirectory /Client/Luau/tests\n");
+                    printf("isDirectory /Client/Luau/tests \n");
                     luauDirRel += "/Client";
                     luauDirAbs += "/Client";
                 }
