@@ -57,18 +57,18 @@ public:
         for (int i = 0; i < 20; ++i)
         {
             printf("Luau dir abs >>> %s\n", luauDirAbs.c_str());
-            if (isDirectory(luauDirAbs + "/Luau/tests") || isDirectory(luauDirAbs + "/Client/Luau/tests"))
+            if (isDirectory(luauDirAbs + "/luau/tests") || isDirectory(luauDirAbs + "/client/luau/tests"))
             {
 
                 printf("isDirectory /Luau/tests OR /Client/Luau/tests \n");
                 if (isDirectory(luauDirAbs + "/Client/Luau/tests"))
                 {
                     printf("isDirectory /Client/Luau/tests \n");
-                    luauDirRel += "/Client";
-                    luauDirAbs += "/Client";
+                    luauDirRel += "/client";
+                    luauDirAbs += "/client";
                 }
-                luauDirRel += "/Luau";
-                luauDirAbs += "/Luau";
+                luauDirRel += "/luau";
+                luauDirAbs += "lLuau";
 
                 if (type == PathType::Relative)
                     return luauDirRel;
