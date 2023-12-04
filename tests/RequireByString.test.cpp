@@ -86,6 +86,8 @@ public:
             luauDirAbs = *parentPath;
         }
 
+        
+
         // Could not find the directory
         REQUIRE_MESSAGE(false, "Error getting Luau path");
         return {};
