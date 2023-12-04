@@ -46,7 +46,6 @@ public:
 
     std::string getLuauDirectory(PathType type)
     {
-        printf("GetLuauDirectory invoked\n");
         std::string luauDirRel = ".";
         std::string luauDirAbs;
 
@@ -56,11 +55,9 @@ public:
         luauDirAbs = *cwd;
         for (int i = 0; i < 20; ++i)
         {
-            printf("Luau dir abs >>> %s\n", luauDirAbs.c_str());
             if (isDirectory(luauDirAbs + "/luau/tests") || isDirectory(luauDirAbs + "/Client/Luau/tests"))
             {
 
-                printf("isDirectory /Luau/tests OR /Client/Luau/tests \n");
                 if (isDirectory(luauDirAbs + "/Client/Luau/tests"))
                 {
                     luauDirRel += "/Client";
@@ -77,19 +74,9 @@ public:
 
             luauDirRel += "/..";
             std::optional<std::string> parentPath = getParentPath(luauDirAbs);
-            if (parentPath)
-            {
-                printf("%s\n", (*parentPath).c_str());
-            }
-            else
-            {
-                printf("Couldn't find parent path. LuauDirAbs: %s\n", luauDirAbs.c_str());
-            }
             REQUIRE_MESSAGE(parentPath, "Error getting Luau path");
             luauDirAbs = *parentPath;
         }
-
-        
 
         // Could not find the directory
         REQUIRE_MESSAGE(false, "Error getting Luau path");
