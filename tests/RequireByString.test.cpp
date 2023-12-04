@@ -74,6 +74,10 @@ public:
 
             luauDirRel += "/..";
             std::optional<std::string> parentPath = getParentPath(luauDirAbs);
+            if (parentPath)
+            {
+                printf("%s\n", (*parentPath).c_str());
+            }
             REQUIRE_MESSAGE(parentPath, "Error getting Luau path");
             luauDirAbs = *parentPath;
         }
@@ -209,7 +213,6 @@ TEST_CASE("PathNormalization")
     }
 }
 
-#if 0
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireSimpleRelativePath")
 {
@@ -389,7 +392,5 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithParentAlias")
     runProtectedRequire(path);
     assertOutputContainsAll({"true", "result from other_dependency"});
 }
-
-#endif
 
 TEST_SUITE_END();
