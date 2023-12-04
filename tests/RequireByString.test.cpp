@@ -80,7 +80,7 @@ public:
             }
             else
             {
-                printf("Couldn't find parent path. LuauDirAbs: %s\n". luauDirAbs.c_str());
+                printf("Couldn't find parent path. LuauDirAbs: %s\n", luauDirAbs.c_str());
             }
             REQUIRE_MESSAGE(parentPath, "Error getting Luau path");
             luauDirAbs = *parentPath;
