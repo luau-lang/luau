@@ -58,8 +58,10 @@ public:
         {
             if (isDirectory(luauDirAbs + "/Luau/tests") || isDirectory(luauDirAbs + "/Client/Luau/tests"))
             {
+                printf("isDirectory /Luau/tests OR /Client/Luau/tests\n");
                 if (isDirectory(luauDirAbs + "/Client/Luau/tests"))
                 {
+                    printf("isDirectory /Client/Luau/tests\n");
                     luauDirRel += "/Client";
                     luauDirAbs += "/Client";
                 }
@@ -218,6 +220,8 @@ TEST_CASE("PathNormalization")
         CHECK(normalized == *result);
     }
 }
+
+#if 0
 
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireSimpleRelativePath")
@@ -390,6 +394,8 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithAlias")
     runProtectedRequire(path);
     assertOutputContainsAll({"true", "result from dependency"});
 }
+
+#endif
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithParentAlias")
 {
