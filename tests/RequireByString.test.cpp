@@ -53,11 +53,11 @@ public:
         REQUIRE_MESSAGE(cwd, "Error getting Luau path");
         std::replace((*cwd).begin(), (*cwd).end(), '\\', '/');
         luauDirAbs = *cwd;
+
         for (int i = 0; i < 20; ++i)
         {
             if (isDirectory(luauDirAbs + "/luau/tests") || isDirectory(luauDirAbs + "/Client/Luau/tests"))
             {
-
                 if (isDirectory(luauDirAbs + "/Client/Luau/tests"))
                 {
                     luauDirRel += "/Client/Luau";
