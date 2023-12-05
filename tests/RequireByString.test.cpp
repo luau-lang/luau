@@ -63,7 +63,7 @@ public:
                     luauDirRel += "/Client";
                     luauDirAbs += "/Client";
                 }
-                luauDirRel += "/luau";
+                luauDirRel += "/Luau";
                 luauDirAbs += "/luau";
 
                 if (type == PathType::Relative)
