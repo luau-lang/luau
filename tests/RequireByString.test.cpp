@@ -60,11 +60,8 @@ public:
 
                 if (isDirectory(luauDirAbs + "/Client/Luau/tests"))
                 {
-                    printf("modifying dirrel and abs\n");
-                    luauDirRel += "/Client";
-                    luauDirAbs += "/Client";
-                    luauDirRel += "/Luau";
-                    luauDirAbs += "/Luau";
+                    luauDirRel += "/Client/Luau";
+                    luauDirAbs += "/Client/Luau";
                 }
                 else
                 {
