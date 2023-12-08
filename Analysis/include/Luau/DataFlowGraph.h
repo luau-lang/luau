@@ -74,8 +74,15 @@ private:
 
 struct DfgScope
 {
+    enum ScopeType
+    {
+        Linear,
+        Loop,
+        Function,
+    };
+
     DfgScope* parent;
-    bool isLoopScope;
+    ScopeType scopeType;
 
     using Bindings = DenseHashMap<Symbol, const Def*>;
     using Props = DenseHashMap<const Def*, std::unordered_map<std::string, const Def*>>;
@@ -117,7 +124,17 @@ private:
 
     std::vector<std::unique_ptr<DfgScope>> scopes;
 
-    DfgScope* childScope(DfgScope* scope, bool isLoopScope = false);
+    struct FunctionCapture
+    {
+        std::vector<DefId> captureDefs;
+        std::vector<DefId> allVersions;
+        size_t versionOffset = 0;
+    };
+
+    DenseHashMap<Symbol, FunctionCapture> captures{Symbol{}};
+    void resolveCaptures();
+
+    DfgScope* childScope(DfgScope* scope, DfgScope::ScopeType scopeType = DfgScope::Linear);
 
     void join(DfgScope* p, DfgScope* a, DfgScope* b);
     void joinBindings(DfgScope::Bindings& p, const DfgScope::Bindings& a, const DfgScope::Bindings& b);
@@ -167,11 +184,11 @@ private:
     DataFlowResult visitExpr(DfgScope* scope, AstExprError* error);
 
     void visitLValue(DfgScope* scope, AstExpr* e, DefId incomingDef, bool isCompoundAssignment = false);
-    void visitLValue(DfgScope* scope, AstExprLocal* l, DefId incomingDef, bool isCompoundAssignment);
-    void visitLValue(DfgScope* scope, AstExprGlobal* g, DefId incomingDef, bool isCompoundAssignment);
-    void visitLValue(DfgScope* scope, AstExprIndexName* i, DefId incomingDef);
-    void visitLValue(DfgScope* scope, AstExprIndexExpr* i, DefId incomingDef);
-    void visitLValue(DfgScope* scope, AstExprError* e, DefId incomingDef);
+    DefId visitLValue(DfgScope* scope, AstExprLocal* l, DefId incomingDef, bool isCompoundAssignment);
+    DefId visitLValue(DfgScope* scope, AstExprGlobal* g, DefId incomingDef, bool isCompoundAssignment);
+    DefId visitLValue(DfgScope* scope, AstExprIndexName* i, DefId incomingDef);
+    DefId visitLValue(DfgScope* scope, AstExprIndexExpr* i, DefId incomingDef);
+    DefId visitLValue(DfgScope* scope, AstExprError* e, DefId incomingDef);
 
     void visitType(DfgScope* scope, AstType* t);
     void visitType(DfgScope* scope, AstTypeReference* r);

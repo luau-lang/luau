@@ -71,6 +71,7 @@ public:
                     luauDirAbs += "/luau";
                 }
 
+
                 if (type == PathType::Relative)
                     return luauDirRel;
                 if (type == PathType::Absolute)
@@ -213,7 +214,6 @@ TEST_CASE("PathNormalization")
         CHECK(normalized == *result);
     }
 }
-
 
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireSimpleRelativePath")
 {
