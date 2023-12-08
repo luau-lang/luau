@@ -9,7 +9,8 @@
  *   returns byte-array encrypted value (16 bytes)
  */]]
 
-local bench = script and require(script.Parent.bench_support) or require("bench_support")
+local function prequire(name) local success, result = pcall(require, name); return if success then result else nil end
+local bench = script and require(script.Parent.bench_support) or prequire("bench_support") or require("../../bench_support")
 
 -- Sbox is pre-computed multiplicative inverse in GF(2^8) used in SubBytes and KeyExpansion [§5.1.1]
 local Sbox =  { 0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,

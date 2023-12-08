@@ -22,7 +22,8 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
 ]]
-local bench = script and require(script.Parent.bench_support) or require("bench_support")
+local function prequire(name) local success, result = pcall(require, name); return if success then result else nil end
+local bench = script and require(script.Parent.bench_support) or prequire("bench_support") or require("../bench_support")
 
 function test()
 
