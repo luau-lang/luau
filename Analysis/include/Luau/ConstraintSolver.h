@@ -3,14 +3,18 @@
 #pragma once
 
 #include "Luau/Constraint.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Error.h"
+#include "Luau/Location.h"
 #include "Luau/Module.h"
 #include "Luau/Normalize.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypeCheckLimits.h"
+#include "Luau/TypeFwd.h"
 #include "Luau/Variant.h"
 
+#include <utility>
 #include <vector>
 
 namespace Luau
@@ -74,6 +78,10 @@ struct ConstraintSolver
     std::unordered_map<BlockedConstraintId, std::vector<NotNull<const Constraint>>, HashBlockedConstraintId> blocked;
     // Memoized instantiations of type aliases.
     DenseHashMap<InstantiationSignature, TypeId, HashInstantiationSignature> instantiatedAliases{{}};
+    // Breadcrumbs for where a free type's upper bound was expanded. We use
+    // these to provide more helpful error messages when a free type is solved
+    // as never unexpectedly.
+    DenseHashMap<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors{nullptr};
 
     // A mapping from free types to the number of unresolved constraints that mention them.
     DenseHashMap<TypeId, size_t> unresolvedConstraints{{}};
@@ -140,7 +148,7 @@ struct ConstraintSolver
     std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(
         TypeId subjectType, const std::string& propName, bool suppressSimplification = false);
     std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(
-        TypeId subjectType, const std::string& propName, bool suppressSimplification, std::unordered_set<TypeId>& seen);
+        TypeId subjectType, const std::string& propName, bool suppressSimplification, DenseHashSet<TypeId>& seen);
 
     void block(NotNull<const Constraint> target, NotNull<const Constraint> constraint);
     /**

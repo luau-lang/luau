@@ -5,9 +5,6 @@
 #include "Luau/Instantiation.h"
 #include "Luau/Scope.h"
 #include "Luau/Simplify.h"
-#include "Luau/Substitution.h"
-#include "Luau/ToString.h"
-#include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeCheckLimits.h"
@@ -16,7 +13,6 @@
 
 #include <algorithm>
 #include <optional>
-#include <unordered_set>
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 
@@ -49,7 +45,10 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     FreeType* superFree = getMutable<FreeType>(superTy);
 
     if (subFree)
+    {
         subFree->upperBound = mkIntersection(subFree->upperBound, superTy);
+        expandedFreeTypes[subTy].push_back(superTy);
+    }
 
     if (superFree)
         superFree->lowerBound = mkUnion(superFree->lowerBound, subTy);
@@ -114,7 +113,7 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
         return argResult && retResult;
     }
 
-    auto subTable = get<TableType>(subTy);
+    auto subTable = getMutable<TableType>(subTy);
     auto superTable = get<TableType>(superTy);
     if (subTable && superTable)
     {
@@ -211,7 +210,7 @@ bool Unifier2::unify(TypeId subTy, const IntersectionType* superIntersection)
     return result;
 }
 
-bool Unifier2::unify(const TableType* subTable, const TableType* superTable)
+bool Unifier2::unify(TableType* subTable, const TableType* superTable)
 {
     bool result = true;
 
@@ -255,6 +254,21 @@ bool Unifier2::unify(const TableType* subTable, const TableType* superTable)
     {
         result &= unify(subTable->indexer->indexType, superTable->indexer->indexType);
         result &= unify(subTable->indexer->indexResultType, superTable->indexer->indexResultType);
+    }
+
+    if (!subTable->indexer && subTable->state == TableState::Unsealed && superTable->indexer)
+    {
+        /*
+         * Unsealed tables are always created from literal table expressions. We
+         * can't be completely certain whether such a table has an indexer just
+         * by the content of the expression itself, so we need to be a bit more
+         * flexible here.
+         *
+         * If we are trying to reconcile an unsealed table with a table that has
+         * an indexer, we therefore conclude that the unsealed table has the
+         * same indexer.
+         */
+        subTable->indexer = *superTable->indexer;
     }
 
     return result;

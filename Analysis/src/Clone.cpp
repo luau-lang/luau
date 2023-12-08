@@ -12,9 +12,8 @@ LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
-LUAU_FASTFLAGVARIABLE(LuauCloneCyclicUnions, false)
 
-LUAU_FASTFLAGVARIABLE(LuauStacklessTypeClone2, false)
+LUAU_FASTFLAGVARIABLE(LuauStacklessTypeClone3, false)
 LUAU_FASTINTVARIABLE(LuauTypeCloneIterationLimit, 100'000)
 
 namespace Luau
@@ -118,6 +117,8 @@ private:
         ty = follow(ty, FollowOption::DisableLazyTypeThunks);
         if (auto it = types->find(ty); it != types->end())
             return it->second;
+        else if (ty->persistent)
+            return ty;
         return std::nullopt;
     }
 
@@ -126,6 +127,8 @@ private:
         tp = follow(tp);
         if (auto it = packs->find(tp); it != packs->end())
             return it->second;
+        else if (tp->persistent)
+            return tp;
         return std::nullopt;
     }
 
@@ -256,6 +259,11 @@ private:
             t->lowerBound = shallowClone(t->lowerBound);
         if (t->upperBound)
             t->upperBound = shallowClone(t->upperBound);
+    }
+
+    void cloneChildren(LocalType* t)
+    {
+        t->domain = shallowClone(t->domain);
     }
 
     void cloneChildren(GenericType* t)
@@ -501,6 +509,7 @@ struct TypeCloner
     void defaultClone(const T& t);
 
     void operator()(const FreeType& t);
+    void operator()(const LocalType& t);
     void operator()(const GenericType& t);
     void operator()(const BoundType& t);
     void operator()(const ErrorType& t);
@@ -626,6 +635,11 @@ void TypeCloner::operator()(const FreeType& t)
     }
     else
         defaultClone(t);
+}
+
+void TypeCloner::operator()(const LocalType& t)
+{
+    defaultClone(t);
 }
 
 void TypeCloner::operator()(const GenericType& t)
@@ -778,33 +792,19 @@ void TypeCloner::operator()(const AnyType& t)
 
 void TypeCloner::operator()(const UnionType& t)
 {
-    if (FFlag::LuauCloneCyclicUnions)
-    {
-        // We're just using this FreeType as a placeholder until we've finished
-        // cloning the parts of this union so it is okay that its bounds are
-        // nullptr.  We'll never indirect them.
-        TypeId result = dest.addType(FreeType{nullptr, /*lowerBound*/ nullptr, /*upperBound*/ nullptr});
-        seenTypes[typeId] = result;
+    // We're just using this FreeType as a placeholder until we've finished
+    // cloning the parts of this union so it is okay that its bounds are
+    // nullptr.  We'll never indirect them.
+    TypeId result = dest.addType(FreeType{nullptr, /*lowerBound*/ nullptr, /*upperBound*/ nullptr});
+    seenTypes[typeId] = result;
 
-        std::vector<TypeId> options;
-        options.reserve(t.options.size());
+    std::vector<TypeId> options;
+    options.reserve(t.options.size());
 
-        for (TypeId ty : t.options)
-            options.push_back(clone(ty, dest, cloneState));
+    for (TypeId ty : t.options)
+        options.push_back(clone(ty, dest, cloneState));
 
-        asMutable(result)->ty.emplace<UnionType>(std::move(options));
-    }
-    else
-    {
-        std::vector<TypeId> options;
-        options.reserve(t.options.size());
-
-        for (TypeId ty : t.options)
-            options.push_back(clone(ty, dest, cloneState));
-
-        TypeId result = dest.addType(UnionType{std::move(options)});
-        seenTypes[typeId] = result;
-    }
+    asMutable(result)->ty.emplace<UnionType>(std::move(options));
 }
 
 void TypeCloner::operator()(const IntersectionType& t)
@@ -879,7 +879,7 @@ TypePackId clone(TypePackId tp, TypeArena& dest, CloneState& cloneState)
     if (tp->persistent)
         return tp;
 
-    if (FFlag::LuauStacklessTypeClone2)
+    if (FFlag::LuauStacklessTypeClone3)
     {
         TypeCloner2 cloner{NotNull{&dest}, cloneState.builtinTypes, NotNull{&cloneState.seenTypes}, NotNull{&cloneState.seenTypePacks}};
         return cloner.clone(tp);
@@ -905,7 +905,7 @@ TypeId clone(TypeId typeId, TypeArena& dest, CloneState& cloneState)
     if (typeId->persistent)
         return typeId;
 
-    if (FFlag::LuauStacklessTypeClone2)
+    if (FFlag::LuauStacklessTypeClone3)
     {
         TypeCloner2 cloner{NotNull{&dest}, cloneState.builtinTypes, NotNull{&cloneState.seenTypes}, NotNull{&cloneState.seenTypePacks}};
         return cloner.clone(typeId);
@@ -934,7 +934,7 @@ TypeId clone(TypeId typeId, TypeArena& dest, CloneState& cloneState)
 
 TypeFun clone(const TypeFun& typeFun, TypeArena& dest, CloneState& cloneState)
 {
-    if (FFlag::LuauStacklessTypeClone2)
+    if (FFlag::LuauStacklessTypeClone3)
     {
         TypeCloner2 cloner{NotNull{&dest}, cloneState.builtinTypes, NotNull{&cloneState.seenTypes}, NotNull{&cloneState.seenTypePacks}};
 

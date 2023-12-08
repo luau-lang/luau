@@ -8,6 +8,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(DebugLuauSharedSelf);
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -185,11 +186,10 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_aliases")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-#if 0
 TEST_CASE_FIXTURE(Fixture, "generic_aliases")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", true},
+        {FFlag::DebugLuauDeferredConstraintResolution, true},
     };
     CheckResult result = check(R"(
         type T<a> = { v: a }
@@ -199,8 +199,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected =
-        R"(Type 'bad' could not be converted into 'T<number>'; type bad["v"] (string) is not a subtype of T<number>["v"] (number))";
+    const std::string expected = R"(Type 'bad' could not be converted into 'T<number>'; at ["v"], string is not exactly number)";
     CHECK(result.errors[0].location == Location{{4, 31}, {4, 44}});
     CHECK_EQ(expected, toString(result.errors[0]));
 }
@@ -208,7 +207,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases")
 TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", true},
+        {FFlag::DebugLuauDeferredConstraintResolution, true},
     };
 
     CheckResult result = check(R"(
@@ -219,13 +218,11 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected =
-        R"(Type 'bad' could not be converted into 'U<number>'; type bad["t"]["v"] (string) is not a subtype of U<number>["t"]["v"] (number))";
+    const std::string expected = R"(Type 'bad' could not be converted into 'U<number>'; at ["t"]["v"], string is not exactly number)";
 
     CHECK(result.errors[0].location == Location{{4, 31}, {4, 52}});
     CHECK_EQ(expected, toString(result.errors[0]));
 }
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_generic_aliases")
 {
@@ -338,7 +335,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
 TEST_CASE_FIXTURE(Fixture, "cli_38393_recursive_intersection_oom")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", false},
+        {FFlag::DebugLuauDeferredConstraintResolution, false},
     }; // FIXME
 
     CheckResult result = check(R"(
@@ -824,7 +821,7 @@ TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_uni
 TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_unification_with_any_2")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauSharedSelf", true},
+        {FFlag::DebugLuauSharedSelf, true},
     };
 
     CheckResult result = check(R"(
@@ -1035,6 +1032,29 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "alias_expands_to_bare_reference_to_imported_
 
     CheckResult result = frontend.check("game/B");
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_types_record_the_property_locations")
+{
+    CheckResult result = check(R"(
+        type Table = {
+            create: () -> ()
+        }
+
+        local x: Table
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    auto ty = requireTypeAlias("Table");
+
+    auto ttv = Luau::get<Luau::TableType>(follow(ty));
+    REQUIRE(ttv);
+
+    auto propIt = ttv->props.find("create");
+    REQUIRE(propIt != ttv->props.end());
+
+    CHECK_EQ(propIt->second.location, std::nullopt);
+    CHECK_EQ(propIt->second.typeLocation, Location({2, 12}, {2, 18}));
 }
 
 TEST_SUITE_END();

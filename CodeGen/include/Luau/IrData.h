@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Bytecode.h"
 #include "Luau/IrAnalysis.h"
 #include "Luau/Label.h"
 #include "Luau/RegisterX64.h"
@@ -11,6 +12,8 @@
 
 #include <stdint.h>
 #include <string.h>
+
+LUAU_FASTFLAG(LuauKeepVmapLinear2)
 
 struct Proto;
 
@@ -251,7 +254,7 @@ enum class IrCmd : uint8_t
     // A: pointer (Table)
     DUP_TABLE,
 
-    // Insert an integer key into a table
+    // Insert an integer key into a table and return the pointer to inserted value (TValue)
     // A: pointer (Table)
     // B: int (key)
     TABLE_SETNUM,
@@ -281,7 +284,7 @@ enum class IrCmd : uint8_t
     NUM_TO_UINT,
 
     // Adjust stack top (L->top) to point at 'B' TValues *after* the specified register
-    // This is used to return muliple values
+    // This is used to return multiple values
     // A: Rn
     // B: int (offset)
     ADJUST_STACK_TO_REG,
@@ -419,6 +422,14 @@ enum class IrCmd : uint8_t
     // B: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_NODE_VALUE,
+
+    // Guard against access at specified offset/size overflowing the buffer length
+    // A: pointer (buffer)
+    // B: int (offset)
+    // C: int (size)
+    // D: block/vmexit/undef
+    // When undef is specified instead of a block, execution is aborted on check failure
+    CHECK_BUFFER_LEN,
 
     // Special operations
 
@@ -600,6 +611,10 @@ enum class IrCmd : uint8_t
     BITCOUNTLZ_UINT,
     BITCOUNTRZ_UINT,
 
+    // Swap byte order in A
+    // A: int
+    BYTESWAP_UINT,
+
     // Calls native libm function with 1 or 2 arguments
     // A: builtin function ID
     // B: double
@@ -617,6 +632,71 @@ enum class IrCmd : uint8_t
     // Find or create an upval at the given level
     // A: Rn (level)
     FINDUPVAL,
+
+    // Read i8 (sign-extended to int) from buffer storage at specified offset
+    // A: pointer (buffer)
+    // B: int (offset)
+    BUFFER_READI8,
+
+    // Read u8 (zero-extended to int) from buffer storage at specified offset
+    // A: pointer (buffer)
+    // B: int (offset)
+    BUFFER_READU8,
+
+    // Write i8/u8 value (int argument is truncated) to buffer storage at specified offset
+    // A: pointer (buffer)
+    // B: int (offset)
+    // C: int (value)
+    BUFFER_WRITEI8,
+
+    // Read i16 (sign-extended to int) from buffer storage at specified offset
+    // A: pointer (buffer)
+    // B: int (offset)
+    BUFFER_READI16,
+
+    // Read u16 (zero-extended to int) from buffer storage at specified offset
+    // A: pointer (buffer)
+    // B: int (offset)
+    BUFFER_READU16,
+
+    // Write i16/u16 value (int argument is truncated) to buffer storage at specified offset
+    // A: pointer (buffer)
+    // B: int (offset)
+    // C: int (value)
+    BUFFER_WRITEI16,
+
+    // Read i32 value from buffer storage at specified offset
+    // A: pointer (buffer)
+    // B: int (offset)
+    BUFFER_READI32,
+
+    // Write i32/u32 value to buffer storage at specified offset
+    // A: pointer (buffer)
+    // B: int (offset)
+    // C: int (value)
+    BUFFER_WRITEI32,
+
+    // Read float value (converted to double) from buffer storage at specified offset
+    // A: pointer (buffer)
+    // B: int (offset)
+    BUFFER_READF32,
+
+    // Write float value (converted from double) to buffer storage at specified offset
+    // A: pointer (buffer)
+    // B: int (offset)
+    // C: double (value)
+    BUFFER_WRITEF32,
+
+    // Read double value from buffer storage at specified offset
+    // A: pointer (buffer)
+    // B: int (offset)
+    BUFFER_READF64,
+
+    // Write double value to buffer storage at specified offset
+    // A: pointer (buffer)
+    // B: int (offset)
+    // C: double (value)
+    BUFFER_WRITEF64,
 };
 
 enum class IrConstKind : uint8_t
@@ -853,11 +933,29 @@ struct BytecodeMapping
     uint32_t asmLocation;
 };
 
+struct BytecodeBlock
+{
+    // 'start' and 'finish' define an inclusive range of instructions which belong to the block
+    int startpc = -1;
+    int finishpc = -1;
+};
+
+struct BytecodeTypes
+{
+    uint8_t result = LBC_TYPE_ANY;
+    uint8_t a = LBC_TYPE_ANY;
+    uint8_t b = LBC_TYPE_ANY;
+    uint8_t c = LBC_TYPE_ANY;
+};
+
 struct IrFunction
 {
     std::vector<IrBlock> blocks;
     std::vector<IrInst> instructions;
     std::vector<IrConst> constants;
+
+    std::vector<BytecodeBlock> bcBlocks;
+    std::vector<BytecodeTypes> bcTypes;
 
     std::vector<BytecodeMapping> bcMapping;
     uint32_t entryBlock = 0;
@@ -865,6 +963,7 @@ struct IrFunction
 
     // For each instruction, an operand that can be used to recompute the value
     std::vector<IrOp> valueRestoreOps;
+    std::vector<uint32_t> validRestoreOpBlocks;
     uint32_t validRestoreOpBlockIdx = 0;
 
     Proto* proto = nullptr;
@@ -1009,21 +1108,52 @@ struct IrFunction
         if (instIdx >= valueRestoreOps.size())
             return {};
 
-        const IrBlock& block = blocks[validRestoreOpBlockIdx];
-
-        // When spilled, values can only reference restore operands in the current block
-        if (limitToCurrentBlock)
+        if (FFlag::LuauKeepVmapLinear2)
         {
-            if (instIdx < block.start || instIdx > block.finish)
-                return {};
-        }
+            // When spilled, values can only reference restore operands in the current block chain
+            if (limitToCurrentBlock)
+            {
+                for (uint32_t blockIdx : validRestoreOpBlocks)
+                {
+                    const IrBlock& block = blocks[blockIdx];
 
-        return valueRestoreOps[instIdx];
+                    if (instIdx >= block.start && instIdx <= block.finish)
+                        return valueRestoreOps[instIdx];
+                }
+
+                return {};
+            }
+
+            return valueRestoreOps[instIdx];
+        }
+        else
+        {
+            const IrBlock& block = blocks[validRestoreOpBlockIdx];
+
+            // When spilled, values can only reference restore operands in the current block
+            if (limitToCurrentBlock)
+            {
+                if (instIdx < block.start || instIdx > block.finish)
+                    return {};
+            }
+
+            return valueRestoreOps[instIdx];
+        }
     }
 
     IrOp findRestoreOp(const IrInst& inst, bool limitToCurrentBlock) const
     {
         return findRestoreOp(getInstIndex(inst), limitToCurrentBlock);
+    }
+
+    BytecodeTypes getBytecodeTypesAt(int pcpos) const
+    {
+        LUAU_ASSERT(pcpos >= 0);
+
+        if (size_t(pcpos) < bcTypes.size())
+            return bcTypes[pcpos];
+
+        return BytecodeTypes();
     }
 };
 

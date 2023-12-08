@@ -8,6 +8,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+
 namespace
 {
 
@@ -32,7 +34,6 @@ struct SimplifyFixture : Fixture
     const TypeId stringTy = builtinTypes->stringType;
     const TypeId booleanTy = builtinTypes->booleanType;
     const TypeId nilTy = builtinTypes->nilType;
-    const TypeId threadTy = builtinTypes->threadType;
 
     const TypeId classTy = builtinTypes->classType;
 
@@ -60,7 +61,7 @@ struct SimplifyFixture : Fixture
     TypeId anotherChildClassTy = nullptr;
     TypeId unrelatedClassTy = nullptr;
 
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     SimplifyFixture()
     {

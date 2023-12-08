@@ -490,7 +490,12 @@ struct ErrorConverter
 
     std::string operator()(const TypePackMismatch& e) const
     {
-        return "Type pack '" + toString(e.givenTp) + "' could not be converted into '" + toString(e.wantedTp) + "'";
+        std::string ss = "Type pack '" + toString(e.givenTp) + "' could not be converted into '" + toString(e.wantedTp) + "'";
+
+        if (!e.reason.empty())
+            ss += "; " + e.reason;
+
+        return ss;
     }
 
     std::string operator()(const DynamicPropertyLookupOnClassesUnsafe& e) const
@@ -527,6 +532,12 @@ struct ErrorConverter
         // TODO: What happens if checkedFunctionName cannot be found??
         return "Function '" + e.checkedFunctionName + "' expects '" + toString(e.expected) + "' at argument #" + std::to_string(e.argumentIndex) +
                ", but got '" + Luau::toString(e.passed) + "'";
+    }
+
+    std::string operator()(const NonStrictFunctionDefinitionError& e) const
+    {
+        return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' in function '" + e.functionName +
+               "' is used in a way that will run time error";
     }
 };
 
@@ -856,6 +867,11 @@ bool CheckedFunctionCallError::operator==(const CheckedFunctionCallError& rhs) c
            argumentIndex == rhs.argumentIndex;
 }
 
+bool NonStrictFunctionDefinitionError::operator==(const NonStrictFunctionDefinitionError& rhs) const
+{
+    return functionName == rhs.functionName && argument == rhs.argument && argumentType == rhs.argumentType;
+}
+
 std::string toString(const TypeError& error)
 {
     return toString(error, TypeErrorToStringOptions{});
@@ -1026,6 +1042,10 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     {
         e.expected = clone(e.expected);
         e.passed = clone(e.passed);
+    }
+    else if constexpr (std::is_same_v<T, NonStrictFunctionDefinitionError>)
+    {
+        e.argumentType = clone(e.argumentType);
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

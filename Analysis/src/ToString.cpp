@@ -100,6 +100,16 @@ struct FindCyclicTypes final : TypeVisitor
         return false;
     }
 
+    bool visit(TypeId ty, const LocalType& lt) override
+    {
+        if (!visited.insert(ty).second)
+            return false;
+
+        traverse(lt.domain);
+
+        return false;
+    }
+
     bool visit(TypeId ty, const TableType& ttv) override
     {
         if (!visited.insert(ty).second)
@@ -500,6 +510,15 @@ struct TypeStringifier
         }
     }
 
+    void operator()(TypeId ty, const LocalType& lt)
+    {
+        state.emit("l-");
+        state.emit(lt.name);
+        state.emit("=[");
+        stringify(lt.domain);
+        state.emit("]");
+    }
+
     void operator()(TypeId, const BoundType& btv)
     {
         stringify(btv.boundTo);
@@ -561,6 +580,9 @@ struct TypeStringifier
             return;
         case PrimitiveType::Thread:
             state.emit("thread");
+            return;
+        case PrimitiveType::Buffer:
+            state.emit("buffer");
             return;
         case PrimitiveType::Function:
             state.emit("function");
@@ -1699,7 +1721,7 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
             std::string iteratorStr = tos(c.iterator);
             std::string variableStr = tos(c.variables);
 
-            return variableStr + " ~ Iterate<" + iteratorStr + ">";
+            return variableStr + " ~ iterate " + iteratorStr;
         }
         else if constexpr (std::is_same_v<T, NameConstraint>)
         {

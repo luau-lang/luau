@@ -3,8 +3,9 @@
 
 #include "Luau/Lexer.h"
 #include "Luau/StringUtils.h"
+#include <algorithm>
+#include <unordered_map>
 
-LUAU_FASTFLAG(LuauFloorDivision)
 namespace Luau
 {
 
@@ -108,29 +109,49 @@ Error parseLintRuleString(LintOptions& enabledLints, LintOptions& fatalLints, co
     return std::nullopt;
 }
 
+bool isValidAlias(const std::string& alias)
+{
+    if (alias.empty())
+        return false;
+
+    bool aliasIsNotAPath = alias != "." && alias != ".." && alias.find_first_of("\\/") == std::string::npos;
+
+    if (!aliasIsNotAPath)
+        return false;
+
+    for (char ch : alias)
+    {
+        bool isupper = 'A' <= ch && ch <= 'Z';
+        bool islower = 'a' <= ch && ch <= 'z';
+        bool isdigit = '0' <= ch && ch <= '9';
+        if (!isupper && !islower && !isdigit && ch != '-' && ch != '_' && ch != '.')
+            return false;
+    }
+
+    return true;
+}
+
+Error parseAlias(std::unordered_map<std::string, std::string>& aliases, std::string aliasKey, const std::string& aliasValue)
+{
+    if (!isValidAlias(aliasKey))
+        return Error{"Invalid alias " + aliasKey};
+
+    std::transform(aliasKey.begin(), aliasKey.end(), aliasKey.begin(), [](unsigned char c) {
+        return ('A' <= c && c <= 'Z') ? (c + ('a' - 'A')) : c;
+    });
+    if (!aliases.count(aliasKey))
+        aliases[std::move(aliasKey)] = aliasValue;
+
+    return std::nullopt;
+}
+
 static void next(Lexer& lexer)
 {
     lexer.next();
 
     // skip C-style comments as Lexer only understands Lua-style comments atm
-
-    if (FFlag::LuauFloorDivision)
-    {
-        while (lexer.current().type == Luau::Lexeme::FloorDiv)
-            lexer.nextline();
-    }
-    else
-    {
-        while (lexer.current().type == '/')
-        {
-            Lexeme peek = lexer.lookahead();
-
-            if (peek.type != '/' || peek.location.begin != lexer.current().location.end)
-                break;
-
-            lexer.nextline();
-        }
-    }
+    while (lexer.current().type == Luau::Lexeme::FloorDiv)
+        lexer.nextline();
 }
 
 static Error fail(Lexer& lexer, const char* message)
@@ -270,6 +291,13 @@ Error parseConfig(const std::string& contents, Config& config, bool compat)
             config.globals.push_back(value);
             return std::nullopt;
         }
+        else if (keys.size() == 1 && keys[0] == "paths")
+        {
+            config.paths.push_back(value);
+            return std::nullopt;
+        }
+        else if (keys.size() == 2 && keys[0] == "aliases")
+            return parseAlias(config.aliases, keys[1], value);
         else if (compat && keys.size() == 2 && keys[0] == "language" && keys[1] == "mode")
             return parseModeString(config.mode, value, compat);
         else

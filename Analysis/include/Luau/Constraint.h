@@ -49,8 +49,8 @@ struct InstantiationConstraint
     TypeId superType;
 };
 
-// iteratee is iterable
-// iterators is the iteration types.
+// variables ~ iterate iterator
+// Unpack the iterator, figure out what types it iterates over, and bind those types to variables.
 struct IterableConstraint
 {
     TypePackId iterator;
@@ -190,6 +190,11 @@ struct UnpackConstraint
 {
     TypePackId resultPack;
     TypePackId sourcePack;
+
+    // UnpackConstraint is sometimes used to resolve the types of assignments.
+    // When this is the case, any LocalTypes in resultPack can have their
+    // domains extended by the corresponding type from sourcePack.
+    bool resultIsLValue = false;
 };
 
 // resultType ~ refine type mode discriminant

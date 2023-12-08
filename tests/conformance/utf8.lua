@@ -15,20 +15,33 @@ end
 
 local justone = "^" .. utf8.charpattern .. "$"
 
+-- 't' is the list of codepoints of 's'
+local function checksyntax (s, t)
+  -- creates a string "return '\u{t[1]}...\u{t[n]}'"
+  local ts = {"return '"}
+  for i = 1, #t do ts[i + 1] = string.format("\\u{%x}", t[i]) end
+  ts[#t + 2] = "'"
+  ts = table.concat(ts)
+  -- its execution should result in 's'
+  assert(assert(loadstring(ts))() == s)
+end
+
 assert(not utf8.offset("alo", 5))
 assert(not utf8.offset("alo", -4))
 
 -- 'check' makes several tests over the validity of string 's'.
 -- 't' is the list of codepoints of 's'.
-local function check (s, t, nonstrict)
-  local l = utf8.len(s, 1, -1, nonstrict)
+local function check (s, t)
+  local l = utf8.len(s, 1, -1)
   assert(#t == l and len(s) == l)
   assert(utf8.char(table.unpack(t)) == s)   -- 't' and 's' are equivalent
 
   assert(utf8.offset(s, 0) == 1)
 
+  checksyntax(s, t)
+
   -- creates new table with all codepoints of 's'
-  local t1 = {utf8.codepoint(s, 1, -1, nonstrict)}
+  local t1 = {utf8.codepoint(s, 1, -1)}
   assert(#t == #t1)
   for i = 1, #t do assert(t[i] == t1[i]) end   -- 't' is equal to 't1'
 
@@ -38,25 +51,25 @@ local function check (s, t, nonstrict)
     assert(string.find(string.sub(s, pi, pi1 - 1), justone))
     assert(utf8.offset(s, -1, pi1) == pi)
     assert(utf8.offset(s, i - l - 1) == pi)
-    assert(pi1 - pi == #utf8.char(utf8.codepoint(s, pi, pi, nonstrict)))
+    assert(pi1 - pi == #utf8.char(utf8.codepoint(s, pi, pi)))
     for j = pi, pi1 - 1 do
       assert(utf8.offset(s, 0, j) == pi)
     end
     for j = pi + 1, pi1 - 1 do
       assert(not utf8.len(s, j))
     end
-   assert(utf8.len(s, pi, pi, nonstrict) == 1)
-   assert(utf8.len(s, pi, pi1 - 1, nonstrict) == 1)
-   assert(utf8.len(s, pi, -1, nonstrict) == l - i + 1)
-   assert(utf8.len(s, pi1, -1, nonstrict) == l - i)
-   assert(utf8.len(s, 1, pi, nonstrict) == i)
+   assert(utf8.len(s, pi, pi) == 1)
+   assert(utf8.len(s, pi, pi1 - 1) == 1)
+   assert(utf8.len(s, pi, -1) == l - i + 1)
+   assert(utf8.len(s, pi1, -1) == l - i)
+   assert(utf8.len(s, 1, pi) == i)
   end
 
   local i = 0
-  for p, c in utf8.codes(s, nonstrict) do
+  for p, c in utf8.codes(s) do
     i = i + 1
     assert(c == t[i] and p == utf8.offset(s, i))
-    assert(utf8.codepoint(s, p, p, nonstrict) == c)
+    assert(utf8.codepoint(s, p, p) == c)
   end
   assert(i == #t)
 
@@ -80,9 +93,15 @@ do    -- error indication in utf8.len
     assert(not a and b == p)
   end
   check("abc\xE3def", 4)
-  check("汉字\x80", #("汉字") + 1)
   check("\xF4\x9F\xBF", 1)
   check("\xF4\x9F\xBF\xBF", 1)
+  -- spurious continuation bytes
+  check("汉字\x80", #("汉字") + 1)
+  check("\x80hello", 1)
+  check("hel\x80lo", 4)
+  check("汉字\xBF", #("汉字") + 1)
+  check("\xBFhello", 1)
+  check("hel\xBFlo", 4)
 end
 
 -- errors in utf8.codes
@@ -94,7 +113,17 @@ do
       end)
   end
   errorcodes("ab\xff")
-  -- errorcodes("\u{110000}")
+  errorcodes("\244\144\128\128") -- "\u{110000}" in Lua 5.4
+  errorcodes("in\x80valid")
+  errorcodes("\xbfinvalid")
+  errorcodes("αλφ\xBFα")
+
+  -- calling interation function with invalid arguments
+  local f = utf8.codes("")
+  assert(f("", 2) == nil)
+  assert(f("", -1) == nil)
+  assert(f("", math.mininteger) == nil)
+
 end
 
 -- error in initial position for offset
@@ -131,16 +160,16 @@ do
   -- surrogates
   assert(utf8.codepoint("\u{D7FF}") == 0xD800 - 1)
   assert(utf8.codepoint("\u{E000}") == 0xDFFF + 1)
-  assert(utf8.codepoint("\u{D800}", 1, 1, true) == 0xD800)
-  assert(utf8.codepoint("\u{DFFF}", 1, 1, true) == 0xDFFF)
-  -- assert(utf8.codepoint("\u{7FFFFFFF}", 1, 1, true) == 0x7FFFFFFF)
+  assert(pcall(utf8.codepoint, "\u{D800}") == false) -- allowed in Luau 5.4 when called with lax=true
+  assert(pcall(utf8.codepoint, "\u{DFFF}") == false) -- allowed in Luau 5.4 when called with lax=true
+  assert(pcall(utf8.codepoint, "\253\191\191\191\191\191") == false) -- 0x7FFFFFFF in Lua 5.4 when called with lax=true
 end
 
 assert(utf8.char() == "")
 assert(utf8.char(0, 97, 98, 99, 1) == "\0abc\1")
 
 assert(utf8.codepoint(utf8.char(0x10FFFF)) == 0x10FFFF)
--- assert(utf8.codepoint(utf8.char(0x7FFFFFFF), 1, 1, true) == 2147483647)
+assert(pcall(utf8.char, 0x7FFFFFFF) == false) -- valid in Lua 5.4
 
 checkerror("value out of range", utf8.char, 0x7FFFFFFF + 1)
 checkerror("value out of range", utf8.char, -1)
@@ -154,8 +183,8 @@ end
 invalid("\xF4\x9F\xBF\xBF")
 
 -- surrogates
--- invalid("\u{D800}")
--- invalid("\u{DFFF}")
+invalid("\u{D800}")
+invalid("\u{DFFF}")
 
 -- overlong sequences
 invalid("\xC0\x80")          -- zero
@@ -182,7 +211,7 @@ s = "\0 \x7F\z
 s = string.gsub(s, " ", "")
 check(s, {0,0x7F, 0x80,0x7FF, 0x800,0xFFFF, 0x10000,0x10FFFF})
 
-x = "日本語a-4\0éó"
+local x = "日本語a-4\0éó"
 check(x, {26085, 26412, 35486, 97, 45, 52, 0, 233, 243})
 
 

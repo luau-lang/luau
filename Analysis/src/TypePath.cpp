@@ -6,12 +6,12 @@
 #include "Luau/Type.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePack.h"
-#include "Luau/TypeUtils.h"
+#include "Luau/TypeOrPack.h"
 
+#include <functional>
 #include <optional>
 #include <sstream>
 #include <type_traits>
-#include <unordered_set>
 
 LUAU_FASTFLAG(DebugLuauReadWriteProperties);
 
@@ -102,6 +102,41 @@ bool Path::empty() const
 bool Path::operator==(const Path& other) const
 {
     return components == other.components;
+}
+
+size_t PathHash::operator()(const Property& prop) const
+{
+    return std::hash<std::string>()(prop.name) ^ static_cast<size_t>(prop.isRead);
+}
+
+size_t PathHash::operator()(const Index& idx) const
+{
+    return idx.index;
+}
+
+size_t PathHash::operator()(const TypeField& field) const
+{
+    return static_cast<size_t>(field);
+}
+
+size_t PathHash::operator()(const PackField& field) const
+{
+    return static_cast<size_t>(field);
+}
+
+size_t PathHash::operator()(const Component& component) const
+{
+    return visit(*this, component);
+}
+
+size_t PathHash::operator()(const Path& path) const
+{
+    size_t hash = 0;
+
+    for (const Component& component : path.components)
+        hash ^= (*this)(component);
+
+    return hash;
 }
 
 Path PathBuilder::build()
@@ -216,8 +251,6 @@ struct TraversalState
 
     TypeOrPack current;
     NotNull<BuiltinTypes> builtinTypes;
-
-    DenseHashSet<const void*> seen{nullptr};
     int steps = 0;
 
     void updateCurrent(TypeId ty)
@@ -232,18 +265,6 @@ struct TraversalState
         current = follow(tp);
     }
 
-    bool haveCycle()
-    {
-        const void* currentPtr = ptr(current);
-
-        if (seen.contains(currentPtr))
-            return true;
-        else
-            seen.insert(currentPtr);
-
-        return false;
-    }
-
     bool tooLong()
     {
         return ++steps > DFInt::LuauTypePathMaximumTraverseSteps;
@@ -251,7 +272,7 @@ struct TraversalState
 
     bool checkInvariants()
     {
-        return haveCycle() || tooLong();
+        return tooLong();
     }
 
     bool traverse(const TypePath::Property& property)
@@ -277,18 +298,36 @@ struct TraversalState
         {
             prop = lookupClassProp(c, property.name);
         }
-        else if (auto m = getMetatable(*currentType, builtinTypes))
+        // For a metatable type, the table takes priority; check that before
+        // falling through to the metatable entry below.
+        else if (auto m = get<MetatableType>(*currentType))
         {
-            // Weird: rather than use findMetatableEntry, which requires a lot
-            // of stuff that we don't have and don't want to pull in, we use the
-            // path traversal logic to grab __index and then re-enter the lookup
-            // logic there.
-            updateCurrent(*m);
+            TypeOrPack pinned = current;
+            updateCurrent(m->table);
 
-            if (!traverse(TypePath::Property{"__index"}))
-                return false;
+            if (traverse(property))
+                return true;
 
-            return traverse(property);
+            // Restore the old current type if we didn't traverse the metatable
+            // successfully; we'll use the next branch to address this.
+            current = pinned;
+        }
+
+        if (!prop)
+        {
+            if (auto m = getMetatable(*currentType, builtinTypes))
+            {
+                // Weird: rather than use findMetatableEntry, which requires a lot
+                // of stuff that we don't have and don't want to pull in, we use the
+                // path traversal logic to grab __index and then re-enter the lookup
+                // logic there.
+                updateCurrent(*m);
+
+                if (!traverse(TypePath::Property{"__index"}))
+                    return false;
+
+                return traverse(property);
+            }
         }
 
         if (prop)
@@ -465,7 +504,7 @@ struct TraversalState
 
 } // namespace
 
-std::string toString(const TypePath::Path& path)
+std::string toString(const TypePath::Path& path, bool prefixDot)
 {
     std::stringstream result;
     bool first = true;
@@ -491,7 +530,7 @@ std::string toString(const TypePath::Path& path)
         }
         else if constexpr (std::is_same_v<T, TypePath::TypeField>)
         {
-            if (!first)
+            if (!first || prefixDot)
                 result << '.';
 
             switch (c)
@@ -523,7 +562,7 @@ std::string toString(const TypePath::Path& path)
         }
         else if constexpr (std::is_same_v<T, TypePath::PackField>)
         {
-            if (!first)
+            if (!first || prefixDot)
                 result << '.';
 
             switch (c)
@@ -580,7 +619,14 @@ std::optional<TypeOrPack> traverse(TypeId root, const Path& path, NotNull<Builti
         return std::nullopt;
 }
 
-std::optional<TypeOrPack> traverse(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes);
+std::optional<TypeOrPack> traverse(TypePackId root, const Path& path, NotNull<BuiltinTypes> builtinTypes)
+{
+    TraversalState state(follow(root), builtinTypes);
+    if (traverse(state, path))
+        return state.current;
+    else
+        return std::nullopt;
+}
 
 std::optional<TypeId> traverseForType(TypeId root, const Path& path, NotNull<BuiltinTypes> builtinTypes)
 {

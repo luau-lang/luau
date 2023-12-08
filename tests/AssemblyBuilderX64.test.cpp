@@ -208,6 +208,11 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfMov")
     SINGLE_COMPARE(mov(byte[rsi], al), 0x88, 0x06);
     SINGLE_COMPARE(mov(byte[rsi], dil), 0x48, 0x88, 0x3e);
     SINGLE_COMPARE(mov(byte[rsi], r10b), 0x4c, 0x88, 0x16);
+    SINGLE_COMPARE(mov(wordReg(ebx), 0x3a3d), 0x66, 0xbb, 0x3d, 0x3a);
+    SINGLE_COMPARE(mov(word[rsi], 0x3a3d), 0x66, 0xc7, 0x06, 0x3d, 0x3a);
+    SINGLE_COMPARE(mov(word[rsi], wordReg(eax)), 0x66, 0x89, 0x06);
+    SINGLE_COMPARE(mov(word[rsi], wordReg(edi)), 0x66, 0x89, 0x3e);
+    SINGLE_COMPARE(mov(word[rsi], wordReg(r10)), 0x66, 0x44, 0x89, 0x16);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfMovExtended")
@@ -531,6 +536,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXConversionInstructionForms")
     SINGLE_COMPARE(vcvtsi2sd(xmm6, xmm11, qword[rcx + rdx]), 0xc4, 0xe1, 0xa3, 0x2a, 0x34, 0x11);
     SINGLE_COMPARE(vcvtsd2ss(xmm5, xmm10, xmm11), 0xc4, 0xc1, 0x2b, 0x5a, 0xeb);
     SINGLE_COMPARE(vcvtsd2ss(xmm6, xmm11, qword[rcx + rdx]), 0xc4, 0xe1, 0xa3, 0x5a, 0x34, 0x11);
+    SINGLE_COMPARE(vcvtss2sd(xmm3, xmm8, xmm12), 0xc4, 0xc1, 0x3a, 0x5a, 0xdc);
+    SINGLE_COMPARE(vcvtss2sd(xmm4, xmm9, dword[rcx + rsi]), 0xc4, 0xe1, 0x32, 0x5a, 0x24, 0x31);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXTernaryInstructionForms")

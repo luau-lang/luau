@@ -1,10 +1,11 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Set.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePairHash.h"
-#include "Luau/UnifierSharedState.h"
 #include "Luau/TypePath.h"
+#include "Luau/DenseHash.h"
 
 #include <vector>
 #include <optional>
@@ -22,14 +23,39 @@ struct NormalizedType;
 struct NormalizedClassType;
 struct NormalizedStringType;
 struct NormalizedFunctionType;
+struct TypeArena;
+struct Scope;
+struct TableIndexer;
+
+enum class SubtypingVariance
+{
+    // Used for an empty key. Should never appear in actual code.
+    Invalid,
+    Covariant,
+    // This is used to identify cases where we have a covariant + a
+    // contravariant reason and we need to merge them.
+    Contravariant,
+    Invariant,
+};
 
 struct SubtypingReasoning
 {
+    // The path, relative to the _root subtype_, where subtyping failed.
     Path subPath;
+    // The path, relative to the _root supertype_, where subtyping failed.
     Path superPath;
+    SubtypingVariance variance = SubtypingVariance::Covariant;
 
     bool operator==(const SubtypingReasoning& other) const;
 };
+
+struct SubtypingReasoningHash
+{
+    size_t operator()(const SubtypingReasoning& r) const;
+};
+
+using SubtypingReasonings = DenseHashSet<SubtypingReasoning, SubtypingReasoningHash>;
+static const SubtypingReasoning kEmptyReasoning = SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Invalid};
 
 struct SubtypingResult
 {
@@ -40,7 +66,7 @@ struct SubtypingResult
 
     /// The reason for isSubtype to be false. May not be present even if
     /// isSubtype is false, depending on the input types.
-    std::optional<SubtypingReasoning> reasoning;
+    SubtypingReasonings reasoning{kEmptyReasoning};
 
     SubtypingResult& andAlso(const SubtypingResult& other);
     SubtypingResult& orElse(const SubtypingResult& other);
@@ -92,9 +118,9 @@ struct Subtyping
 
     Variance variance = Variance::Covariant;
 
-    using SeenSet = std::unordered_set<std::pair<TypeId, TypeId>, TypeIdPairHash>;
+    using SeenSet = Set<std::pair<TypeId, TypeId>, TypePairHash>;
 
-    SeenSet seenTypes;
+    SeenSet seenTypes{{}};
 
     Subtyping(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> typeArena, NotNull<Normalizer> normalizer,
         NotNull<InternalErrorReporter> iceReporter, NotNull<Scope> scope);

@@ -350,11 +350,10 @@ Table type 'a' not compatible with type 'Bad' because the former is missing fiel
     CHECK_EQ(expected, toString(result.errors[0]));
 }
 
-#if 0
 TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauDeferredConstraintResolution", true},
+        {FFlag::DebugLuauDeferredConstraintResolution, true},
     };
     CheckResult result = check(R"(
         type Ok<T> = {success: true, result: T}
@@ -368,11 +367,11 @@ TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     const std::string expectedError =
-        "Type 'a' could not be converted into 'Err<number> | Ok<string>'; type a (a) is not a subtype of Err<number> | Ok<string>[1] (Err<number>)";
+        "Type 'a' could not be converted into 'Err<number> | Ok<string>'; type a (a) is not a subtype of Err<number> | Ok<string>[1] (Err<number>)\n"
+        "\ttype a[\"success\"] (false) is not exactly Err<number> | Ok<string>[0][\"success\"] (true)";
 
     CHECK(toString(result.errors[0]) == expectedError);
 }
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "if_then_else_expression_singleton_options")
 {

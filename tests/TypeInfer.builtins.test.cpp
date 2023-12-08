@@ -9,6 +9,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -133,7 +134,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_predicate")
 TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
 {
     ScopedFastFlag sff[] = {
-        {"LuauAlwaysCommitInferencesOfFunctionCalls", true},
+        {FFlag::LuauAlwaysCommitInferencesOfFunctionCalls, true},
     };
 
     CheckResult result = check(R"(
@@ -482,6 +483,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "thread_is_a_type")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK("thread" == toString(requireType("co")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "buffer_is_a_type")
+{
+    CheckResult result = check(R"(
+        local b = buffer.create(10)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("buffer" == toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_resume_anything_goes")

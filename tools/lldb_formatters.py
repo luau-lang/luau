@@ -1,7 +1,11 @@
 # This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+import lldb
+
 # HACK: LLDB's python API doesn't afford anything helpful for getting at variadic template parameters.
 # We're forced to resort to parsing names as strings.
+
+
 def templateParams(s):
     depth = 0
     start = s.find("<") + 1
@@ -172,23 +176,21 @@ class DenseHashTableSyntheticChildrenProvider:
 
 class DenseHashMapSyntheticChildrenProvider:
     fixed_names = ["count", "capacity"]
+    max_expand_children = 100
+    max_expand_capacity = 1000
 
     def __init__(self, valobj, internal_dict):
         self.valobj = valobj
-        self.values = []
         self.count = 0
+        self.capacity = 0
 
     def num_children(self):
-        return self.count + len(self.fixed_names)
+        return min(self.max_expand_children, self.count) + len(self.fixed_names)
 
     def get_child_index(self, name):
         try:
             if name in self.fixed_names:
                 return self.fixed_names.index(name)
-
-            for index, (key, _) in enumerate(self.values):
-                if key == name:
-                    return index + len(self.fixed_names)
 
             return -1
         except Exception as e:
@@ -206,47 +208,51 @@ class DenseHashMapSyntheticChildrenProvider:
             else:
                 index -= len(self.fixed_names)
 
-            pair = self.items[index]
-            key = pair["key"]
-            value = pair["value"]
+            empty_key_valobj = self.valobj.GetValueForExpressionPath(
+                f".impl.empty_key")
+            key_type = empty_key_valobj.GetType().GetCanonicalType().GetName()
+            skipped = 0
 
-            return self.valobj.CreateValueFromData(
-                f"[{key}]",
-                value.data,
-                value.GetType(),
-            )
+            for slot in range(0, min(self.max_expand_capacity, self.capacity)):
+                slot_pair = self.valobj.GetValueForExpressionPath(
+                    f".impl.data[{slot}]")
+                slot_key_valobj = slot_pair.GetChildMemberWithName("first")
+
+                eq_test_valobj = self.valobj.EvaluateExpression(
+                    f"*(reinterpret_cast<const {key_type}*>({empty_key_valobj.AddressOf().GetValueAsUnsigned()})) == *(reinterpret_cast<const {key_type}*>({slot_key_valobj.AddressOf().GetValueAsUnsigned()}))")
+                if eq_test_valobj.GetValue() == "true":
+                    continue
+
+                # Skip over previous occupied slots.
+                if index > skipped:
+                    skipped += 1
+                    continue
+
+                slot_key = slot_key_valobj.GetSummary()
+                if slot_key is None:
+                    slot_key = slot_key_valobj.GetValue()
+
+                if slot_key is None:
+                    slot_key = slot_key_valobj.GetValueAsSigned()
+
+                if slot_key is None:
+                    slot_key = slot_key_valobj.GetValueAsUnsigned()
+
+                if slot_key is None:
+                    slot_key = str(index)
+
+                slot_value_valobj = slot_pair.GetChildMemberWithName("second")
+                return self.valobj.CreateValueFromData(f"[{slot_key}]", slot_value_valobj.GetData(), slot_value_valobj.GetType())
 
         except Exception as e:
             print("get_child_at_index error", e, index)
 
     def update(self):
         try:
-            capacity = self.valobj.GetChildMemberWithName("impl").GetChildMemberWithName(
-                "capacity"
-            ).GetValueAsUnsigned()
-
-            self.items = []
-            for index in range(0, capacity):
-                child_pair = self.valobj.GetValueForExpressionPath(
-                    f".impl.data[{index}]")
-                child_key_valobj = child_pair.GetChildMemberWithName("first")
-
-                if child_key_valobj.TypeIsPointerType() and child_key_valobj.GetValueAsUnsigned() == 0:
-                    continue
-
-                child_key = child_key_valobj.GetValue()
-
-                if child_key is None:
-                    child_key = child_key_valobj.GetSummary()
-
-                if child_key is None:
-                    child_key = f"<{index} ({child_key_valobj.GetTypeName()})>"
-
-                child_value = child_pair.GetChildMemberWithName("second")
-                self.items.append({"key": child_key, "value": child_value})
-
-            self.count = len(self.items)
-
+            self.capacity = self.count = self.valobj.GetValueForExpressionPath(
+                ".impl.capacity").GetValueAsUnsigned()
+            self.count = self.valobj.GetValueForExpressionPath(
+                ".impl.count").GetValueAsUnsigned()
         except Exception as e:
             print("update error", e)
 
@@ -256,22 +262,21 @@ class DenseHashMapSyntheticChildrenProvider:
 
 class DenseHashSetSyntheticChildrenProvider:
     fixed_names = ["count", "capacity"]
+    max_expand_children = 100
+    max_expand_capacity = 1000
 
     def __init__(self, valobj, internal_dict):
         self.valobj = valobj
-        self.values = []
         self.count = 0
+        self.capacity = 0
 
     def num_children(self):
-        return self.count + len(self.fixed_names)
+        return min(self.max_expand_children, self.count) + len(self.fixed_names)
 
     def get_child_index(self, name):
         try:
             if name in self.fixed_names:
                 return self.fixed_names.index(name)
-
-            if name.startswith("[") and name.endswith("]"):
-                return int(name[1:-1]) + len(self.fixed_names)
 
             return -1
         except Exception as e:
@@ -289,35 +294,36 @@ class DenseHashSetSyntheticChildrenProvider:
             else:
                 index -= len(self.fixed_names)
 
-            value = self.items[index]
+            empty_key_valobj = self.valobj.GetValueForExpressionPath(
+                f".impl.empty_key")
+            key_type = empty_key_valobj.GetType().GetCanonicalType().GetName()
+            skipped = 0
 
-            return self.valobj.CreateValueFromData(
-                f"[{index}]",
-                value.data,
-                value.GetType(),
-            )
+            for slot in range(0, min(self.max_expand_capacity, self.capacity)):
+                slot_valobj = self.valobj.GetValueForExpressionPath(
+                    f".impl.data[{slot}]")
+
+                eq_test_valobj = self.valobj.EvaluateExpression(
+                    f"*(reinterpret_cast<const {key_type}*>({empty_key_valobj.AddressOf().GetValueAsUnsigned()})) == *(reinterpret_cast<const {key_type}*>({slot_valobj.AddressOf().GetValueAsUnsigned()}))")
+                if eq_test_valobj.GetValue() == "true":
+                    continue
+
+                # Skip over previous occupied slots.
+                if index > skipped:
+                    skipped += 1
+                    continue
+
+                return self.valobj.CreateValueFromData(f"[{index}]", slot_valobj.GetData(), slot_valobj.GetType())
 
         except Exception as e:
             print("get_child_at_index error", e, index)
 
     def update(self):
         try:
-            capacity = self.valobj.GetChildMemberWithName("impl").GetChildMemberWithName(
-                "capacity"
-            ).GetValueAsUnsigned()
-
-            self.items = []
-            for index in range(0, capacity):
-                child_value = self.valobj.GetValueForExpressionPath(
-                    f".impl.data[{index}]")
-
-                if child_value.TypeIsPointerType() and child_value.GetValueAsUnsigned() == 0:
-                    continue
-
-                self.items.append(child_value)
-
-            self.count = len(self.items)
-
+            self.capacity = self.count = self.valobj.GetValueForExpressionPath(
+                ".impl.capacity").GetValueAsUnsigned()
+            self.count = self.valobj.GetValueForExpressionPath(
+                ".impl.count").GetValueAsUnsigned()
         except Exception as e:
             print("update error", e)
 

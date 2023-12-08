@@ -34,6 +34,8 @@ local function simple_byte_reads()
 
   local x = buffer.readi8(b, 14) + buffer.readi8(b, 13)
   assert(x == 7)
+
+  buffer.writei8(b, 16, x)
 end
 
 simple_byte_reads()
@@ -71,6 +73,11 @@ local function simple_float_reinterpret()
   buffer.writef32(b, 10, 2.75197)
   local magic = buffer.readi32(b, 10)
   assert(magic == 0x40302047)
+
+  buffer.writef32(b, 10, one)
+  local magic2 = buffer.readi32(b, 10)
+
+  assert(magic2 == 0x3f800000)
 end
 
 simple_float_reinterpret()
@@ -89,6 +96,13 @@ local function simple_double_reinterpret()
 
   assert(magic1 == 0x40302010)
   assert(magic2 == 0x3ff70050)
+
+  buffer.writef64(b, 10, one)
+  local magic3 = buffer.readi32(b, 10)
+  local magic4 = buffer.readi32(b, 14)
+
+  assert(magic3 == 0x00000000)
+  assert(magic4 == 0x3ff00000)
 end
 
 simple_double_reinterpret()
@@ -149,8 +163,8 @@ simple_copy_ops()
 -- bounds checking
 
 local function createchecks()
-  assert(ecall(function() buffer.create(-1) end) == "size cannot be negative")
-  assert(ecall(function() buffer.create(-1000000) end) == "size cannot be negative")
+  assert(ecall(function() buffer.create(-1) end) == "invalid argument #1 to 'create' (size)")
+  assert(ecall(function() buffer.create(-1000000) end) == "invalid argument #1 to 'create' (size)")
 end
 
 createchecks()
@@ -177,6 +191,7 @@ local function boundchecks()
   assert(ecall(function() buffer.readi16(b, 0x7ffffffe) end) == "buffer access out of bounds")
   assert(ecall(function() buffer.readi16(b, 0x7ffffffd) end) == "buffer access out of bounds")
   assert(ecall(function() buffer.readi16(b, 0x80000000) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readi16(b, 0x0fffffff) end) == "buffer access out of bounds")
 
   call(function() buffer.writei16(b, 1022, 0) end)
   assert(ecall(function() buffer.writei16(b, 1023, 0) end) == "buffer access out of bounds")
@@ -219,7 +234,7 @@ local function boundchecks()
   -- string
   assert(call(function() return buffer.readstring(b, 1016, 8) end) == "\0\0\0\0\0\0\0\0")
   assert(ecall(function() buffer.readstring(b, 1017, 8) end) == "buffer access out of bounds")
-  assert(ecall(function() buffer.readstring(b, -1, -8) end) == "size cannot be negative")
+  assert(ecall(function() buffer.readstring(b, -1, -8) end) == "invalid argument #3 to 'readstring' (size)")
   assert(ecall(function() buffer.readstring(b, -100000, 8) end) == "buffer access out of bounds")
   assert(ecall(function() buffer.readstring(b, -100000, 8) end) == "buffer access out of bounds")
 
@@ -227,7 +242,7 @@ local function boundchecks()
   assert(ecall(function() buffer.writestring(b, 1017, "abcdefgh") end) == "buffer access out of bounds")
   assert(ecall(function() buffer.writestring(b, -1, "abcdefgh") end) == "buffer access out of bounds")
   assert(ecall(function() buffer.writestring(b, -100000, "abcdefgh") end) == "buffer access out of bounds")
-  assert(ecall(function() buffer.writestring(b, 100, "abcd", -5) end) == "count cannot be negative")
+  assert(ecall(function() buffer.writestring(b, 100, "abcd", -5) end) == "invalid argument #4 to 'writestring' (count)")
   assert(ecall(function() buffer.writestring(b, 100, "abcd", 50) end) == "string length overflow")
 
   -- copy
@@ -374,6 +389,60 @@ end
 
 boundcheckssmall()
 
+local function boundcheckssmallnonconst(zero, one, minus1, minus2, minus4, minus7, minus8)
+  local b = buffer.create(1)
+
+  assert(call(function() return buffer.readi8(b, 0) end) == 0)
+  assert(ecall(function() buffer.readi8(b, one) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readi8(b, minus1) end) == "buffer access out of bounds")
+
+  call(function() buffer.writei8(b, 0, 0) end)
+  assert(ecall(function() buffer.writei8(b, one, 0) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writei8(b, minus1, 0) end) == "buffer access out of bounds")
+
+  -- i16
+  assert(ecall(function() buffer.readi16(b, zero) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readi16(b, minus1) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readi16(b, minus2) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writei16(b, zero, 0) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writei16(b, minus1, 0) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writei16(b, minus2, 0) end) == "buffer access out of bounds")
+
+  -- i32
+  assert(ecall(function() buffer.readi32(b, zero) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readi32(b, minus1) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readi32(b, minus4) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writei32(b, zero, 0) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writei32(b, minus1, 0) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writei32(b, minus4, 0) end) == "buffer access out of bounds")
+
+  -- f32
+  assert(ecall(function() buffer.readf32(b, zero) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readf32(b, minus1) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readf32(b, minus4) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writef32(b, zero, 0) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writef32(b, minus1, 0) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writef32(b, minus4, 0) end) == "buffer access out of bounds")
+
+  -- f64
+  assert(ecall(function() buffer.readf64(b, zero) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readf64(b, minus1) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readf64(b, minus8) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writef64(b, zero, 0) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writef64(b, minus1, 0) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writef64(b, minus7, 0) end) == "buffer access out of bounds")
+
+  -- string
+  assert(ecall(function() buffer.readstring(b, zero, 8) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readstring(b, minus1, 8) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.readstring(b, minus8, 8) end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writestring(b, zero, "abcdefgh") end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writestring(b, minus1, "abcdefgh") end) == "buffer access out of bounds")
+  assert(ecall(function() buffer.writestring(b, minus7, "abcdefgh") end) == "buffer access out of bounds")
+end
+
+boundcheckssmallnonconst(0, 1, -1, -2, -4, -7, -8)
+
 local function boundchecksempty()
   local b = buffer.create(0) -- useless, but probably more generic
 
@@ -505,14 +574,30 @@ end
 
 fill()
 
-local function misc()
+local function misc(t16)
   local b = buffer.create(1000)
 
   assert(select('#', buffer.writei32(b, 10, 40)) == 0)
   assert(select('#', buffer.writef32(b, 20, 40.0)) == 0)
+
+  -- some extra operation to place '#t16' into a linear block
+  t16[1] = 10
+  t16[15] = 20
+
+  buffer.writei32(b, #t16, 10)
+  assert(buffer.readi32(b, 16) == 10)
+
+  buffer.writeu8(b, 100, 0xff)
+  buffer.writeu8(b, 110, 0x80)
+  assert(buffer.readu32(b, 100) == 255)
+  assert(buffer.readu32(b, 110) == 128)
+  buffer.writeu16(b, 200, 0xffff)
+  buffer.writeu16(b, 210, 0x8000)
+  assert(buffer.readu32(b, 200) == 65535)
+  assert(buffer.readu32(b, 210) == 32768)
 end
 
-misc()
+misc(table.create(16, 0))
 
 local function testslowcalls()
   getfenv()
@@ -527,12 +612,13 @@ local function testslowcalls()
   boundchecks()
   boundchecksnonconst(1024, -1, -100000, 0x7fffffff)
   boundcheckssmall()
+  boundcheckssmallnonconst(0, 1, -1, -2, -4, -7, -8)
   boundchecksempty()
   intuint()
   intuinttricky()
   fromtostring()
   fill()
-  misc()
+  misc(table.create(16, 0))
 end
 
 testslowcalls()

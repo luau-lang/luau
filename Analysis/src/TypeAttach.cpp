@@ -13,8 +13,6 @@
 
 #include <string>
 
-LUAU_FASTFLAG(LuauParseDeclareClassIndexer);
-
 static char* allocateString(Luau::Allocator& allocator, std::string_view contents)
 {
     char* result = (char*)allocator.allocate(contents.size() + 1);
@@ -106,6 +104,8 @@ public:
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("string"), std::nullopt, Location());
         case PrimitiveType::Thread:
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("thread"), std::nullopt, Location());
+        case PrimitiveType::Buffer:
+            return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("buffer"), std::nullopt, Location());
         default:
             return nullptr;
         }
@@ -230,7 +230,7 @@ public:
         }
 
         AstTableIndexer* indexer = nullptr;
-        if (FFlag::LuauParseDeclareClassIndexer && ctv.indexer)
+        if (ctv.indexer)
         {
             RecursionCounter counter(&count);
 
@@ -329,9 +329,13 @@ public:
     {
         return Luau::visit(*this, bound.boundTo->ty);
     }
-    AstType* operator()(const FreeType& ftv)
+    AstType* operator()(const FreeType& ft)
     {
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("free"), std::nullopt, Location());
+    }
+    AstType* operator()(const LocalType& lt)
+    {
+        return Luau::visit(*this, lt.domain->ty);
     }
     AstType* operator()(const UnionType& uv)
     {

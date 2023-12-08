@@ -26,6 +26,7 @@ LUAU_FASTFLAG(DebugCodegenSkipNumbering)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockInstructionLimit)
+LUAU_FASTFLAG(LuauKeepVmapLinear2)
 
 namespace Luau
 {
@@ -48,6 +49,13 @@ inline void gatherFunctions(std::vector<Proto*>& results, Proto* proto, unsigned
     // Recursively traverse child protos even if we aren't compiling this one
     for (int i = 0; i < proto->sizep; i++)
         gatherFunctions(results, proto->p[i], flags);
+}
+
+inline unsigned getInstructionCount(const std::vector<IrInst>& instructions, IrCmd cmd)
+{
+    return unsigned(std::count_if(instructions.begin(), instructions.end(), [&cmd](const IrInst& inst) {
+        return inst.cmd == cmd;
+    }));
 }
 
 template<typename AssemblyBuilder, typename IrLowering>
@@ -105,8 +113,16 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
             toStringDetailed(ctx, block, blockIndex, /* includeUseInfo */ true);
         }
 
-        // Values can only reference restore operands in the current block
-        function.validRestoreOpBlockIdx = blockIndex;
+        if (FFlag::LuauKeepVmapLinear2)
+        {
+            // Values can only reference restore operands in the current block chain
+            function.validRestoreOpBlocks.push_back(blockIndex);
+        }
+        else
+        {
+            // Values can only reference restore operands in the current block
+            function.validRestoreOpBlockIdx = blockIndex;
+        }
 
         build.setLabel(block.label);
 
@@ -132,6 +148,15 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
             if (outputEnabled && options.annotator && bcLocation != ~0u)
             {
                 options.annotator(options.annotatorContext, build.text, bytecodeid, bcLocation);
+
+                // If available, report inferred register tags
+                BytecodeTypes bcTypes = function.getBytecodeTypesAt(bcLocation);
+
+                if (bcTypes.result != LBC_TYPE_ANY || bcTypes.a != LBC_TYPE_ANY || bcTypes.b != LBC_TYPE_ANY || bcTypes.c != LBC_TYPE_ANY)
+                {
+                    toString(ctx.result, bcTypes);
+                    build.logAppend("\n");
+                }
             }
 
             // If bytecode needs the location of this instruction for jumps, record it
@@ -183,6 +208,9 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 
         if (options.includeIr)
             build.logAppend("#\n");
+
+        if (FFlag::LuauKeepVmapLinear2 && block.expectedNextBlock == ~0u)
+            function.validRestoreOpBlocks.clear();
     }
 
     if (!seenFallback)
@@ -269,7 +297,25 @@ inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& 
         constPropInBlockChains(ir, useValueNumbering);
 
         if (!FFlag::DebugCodegenOptSize)
+        {
+            double startTime = 0.0;
+            unsigned constPropInstructionCount = 0;
+
+            if (stats)
+            {
+                constPropInstructionCount = getInstructionCount(ir.function.instructions, IrCmd::SUBSTITUTE);
+                startTime = lua_clock();
+            }
+
             createLinearBlocks(ir, useValueNumbering);
+
+            if (stats)
+            {
+                stats->blockLinearizationStats.timeSeconds += lua_clock() - startTime;
+                constPropInstructionCount = getInstructionCount(ir.function.instructions, IrCmd::SUBSTITUTE) - constPropInstructionCount;
+                stats->blockLinearizationStats.constPropInstructionCount += constPropInstructionCount;
+            }
+        }
     }
 
     std::vector<uint32_t> sortedBlocks = getSortedBlockOrder(ir.function);

@@ -54,6 +54,7 @@ public:
     int32_t addConstantNil();
     int32_t addConstantBoolean(bool value);
     int32_t addConstantNumber(double value);
+    int32_t addConstantVector(float x, float y, float z, float w);
     int32_t addConstantString(StringRef value);
     int32_t addImport(uint32_t iid);
     int32_t addConstantTable(const TableShape& shape);
@@ -83,6 +84,7 @@ public:
     void pushDebugUpval(StringRef name);
 
     size_t getInstructionCount() const;
+    size_t getTotalInstructionCount() const;
     uint32_t getDebugPC() const;
 
     void addDebugRemark(const char* format, ...) LUAU_PRINTF_ATTR(2, 3);
@@ -145,6 +147,7 @@ private:
             Type_Nil,
             Type_Boolean,
             Type_Number,
+            Type_Vector,
             Type_String,
             Type_Import,
             Type_Table,
@@ -156,6 +159,7 @@ private:
         {
             bool valueBoolean;
             double valueNumber;
+            float valueVector[4];
             unsigned int valueString; // index into string table
             uint32_t valueImport;     // 10-10-10-2 encoded import id
             uint32_t valueTable;      // index into tableShapes[]
@@ -166,12 +170,14 @@ private:
     struct ConstantKey
     {
         Constant::Type type;
-        // Note: this stores value* from Constant; when type is Number_Double, this stores the same bits as double does but in uint64_t.
+        // Note: this stores value* from Constant; when type is Type_Number, this stores the same bits as double does but in uint64_t.
+        // For Type_Vector, x and y are stored in 'value' and z and w are stored in 'extra'.
         uint64_t value;
+        uint64_t extra = 0;
 
         bool operator==(const ConstantKey& key) const
         {
-            return type == key.type && value == key.value;
+            return type == key.type && value == key.value && extra == key.extra;
         }
     };
 
@@ -232,6 +238,7 @@ private:
     uint32_t currentFunction = ~0u;
     uint32_t mainFunction = ~0u;
 
+    size_t totalInstructionCount = 0;
     std::vector<uint32_t> insns;
     std::vector<int> lines;
     std::vector<Constant> constants;

@@ -56,7 +56,7 @@ struct Scope
     void addBuiltinTypeBinding(const Name& name, const TypeFun& tyFun);
 
     std::optional<TypeId> lookup(Symbol sym) const;
-    std::optional<TypeId> lookupLValue(DefId def) const;
+    std::optional<TypeId> lookupUnrefinedType(DefId def) const;
     std::optional<TypeId> lookup(DefId def) const;
     std::optional<std::pair<TypeId, Scope*>> lookupEx(DefId def);
     std::optional<std::pair<Binding*, Scope*>> lookupEx(Symbol sym);
@@ -80,6 +80,7 @@ struct Scope
     // types here.
     DenseHashMap<const Def*, TypeId> rvalueRefinements{nullptr};
 
+    void inheritAssignments(const ScopePtr& childScope);
     void inheritRefinements(const ScopePtr& childScope);
 
     // For mutually recursive type aliases, it's important that

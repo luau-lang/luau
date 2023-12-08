@@ -57,7 +57,7 @@ struct InferencePack
     }
 };
 
-struct ConstraintGraphBuilder
+struct ConstraintGenerator
 {
     // A list of all the scopes in the module. This vector holds ownership of the
     // scope pointers; the scopes themselves borrow pointers to other scopes to
@@ -68,7 +68,7 @@ struct ConstraintGraphBuilder
     NotNull<BuiltinTypes> builtinTypes;
     const NotNull<TypeArena> arena;
     // The root scope of the module we're generating constraints for.
-    // This is null when the CGB is initially constructed.
+    // This is null when the CG is initially constructed.
     Scope* rootScope;
 
     struct InferredBinding
@@ -78,11 +78,13 @@ struct ConstraintGraphBuilder
         TypeIds types;
     };
 
-    // During constraint generation, we only populate the Scope::bindings
-    // property for annotated symbols.  Unannotated symbols must be handled in a
-    // postprocessing step because we have not yet allocated the types that will
-    // be assigned to those unannotated symbols, so we queue them up here.
-    std::map<Symbol, InferredBinding> inferredBindings;
+    // Some locals have multiple type states.  We wish for Scope::bindings to
+    // map each local name onto the union of every type that the local can have
+    // over its lifetime, so we use this map to accumulate the set of types it
+    // might have.
+    //
+    // See the functions recordInferredBinding and fillInInferredBindings.
+    DenseHashMap<Symbol, InferredBinding> inferredBindings{{}};
 
     // Constraints that go straight to the solver.
     std::vector<ConstraintPtr> constraints;
@@ -116,13 +118,13 @@ struct ConstraintGraphBuilder
 
     DcrLogger* logger;
 
-    ConstraintGraphBuilder(ModulePtr module, NotNull<Normalizer> normalizer, NotNull<ModuleResolver> moduleResolver,
+    ConstraintGenerator(ModulePtr module, NotNull<Normalizer> normalizer, NotNull<ModuleResolver> moduleResolver,
         NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope,
         std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope, DcrLogger* logger, NotNull<DataFlowGraph> dfg,
         std::vector<RequireCycle> requireCycles);
 
     /**
-     * The entry point to the ConstraintGraphBuilder. This will construct a set
+     * The entry point to the ConstraintGenerator. This will construct a set
      * of scopes, constraints, and free types that can be solved later.
      * @param block the root block to generate constraints for.
      */
@@ -147,6 +149,8 @@ private:
      * @param parent the parent scope of the new scope. Must not be null.
      */
     ScopePtr childScope(AstNode* node, const ScopePtr& parent);
+
+    std::optional<TypeId> lookup(Scope* scope, DefId def);
 
     /**
      * Adds a new constraint with no dependencies to a given scope.
@@ -221,6 +225,7 @@ private:
     Inference check(const ScopePtr& scope, AstExprConstantBool* bool_, std::optional<TypeId> expectedType, bool forceSingleton);
     Inference check(const ScopePtr& scope, AstExprLocal* local);
     Inference check(const ScopePtr& scope, AstExprGlobal* global);
+    Inference checkIndexName(const ScopePtr& scope, const RefinementKey* key, AstExpr* indexee, std::string index);
     Inference check(const ScopePtr& scope, AstExprIndexName* indexName);
     Inference check(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
     Inference check(const ScopePtr& scope, AstExprFunction* func, std::optional<TypeId> expectedType, bool generalize);
@@ -232,14 +237,16 @@ private:
     Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
     std::tuple<TypeId, TypeId, RefinementId> checkBinary(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
 
-    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExpr* expr);
-    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprLocal* local);
-    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprGlobal* global);
-    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprIndexName* indexName);
-    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
-    TypeId updateProperty(const ScopePtr& scope, AstExpr* expr);
-
-    void updateLValueType(AstExpr* lvalue, TypeId ty);
+    /**
+     * Generate constraints to assign assignedTy to the expression expr
+     * @returns the type of the expression.  This may or may not be assignedTy itself.
+     */
+    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExpr* expr, TypeId assignedTy);
+    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprLocal* local, TypeId assignedTy);
+    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprGlobal* global, TypeId assignedTy);
+    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprIndexName* indexName, TypeId assignedTy);
+    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprIndexExpr* indexExpr, TypeId assignedTy);
+    TypeId updateProperty(const ScopePtr& scope, AstExpr* expr, TypeId assignedTy);
 
     struct FunctionSignature
     {
@@ -324,11 +331,15 @@ private:
 
     /** Scan the program for global definitions.
      *
-     * ConstraintGraphBuilder needs to differentiate between globals and accesses to undefined symbols. Doing this "for
+     * ConstraintGenerator needs to differentiate between globals and accesses to undefined symbols. Doing this "for
      * real" in a general way is going to be pretty hard, so we are choosing not to tackle that yet. For now, we do an
      * initial scan of the AST and note what globals are defined.
      */
     void prepopulateGlobalScope(const ScopePtr& globalScope, AstStatBlock* program);
+
+    // Record the fact that a particular local has a particular type in at least
+    // one of its states.
+    void recordInferredBinding(AstLocal* local, TypeId ty);
 
     void fillInInferredBindings(const ScopePtr& globalScope, AstStatBlock* block);
 

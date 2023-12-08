@@ -12,9 +12,8 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAG(LuauReduceStackSpills)
-LUAU_FASTFLAGVARIABLE(LuauInlineArrConstOffset, false)
-LUAU_FASTFLAGVARIABLE(LuauLowerAltLoopForn, false)
+LUAU_FASTFLAGVARIABLE(LuauFullLoopLuserdata, false)
+LUAU_FASTFLAGVARIABLE(LuauLoopInterruptFix, false)
 
 namespace Luau
 {
@@ -43,6 +42,14 @@ struct FallbackStreamScope
     IrBuilder& build;
     IrOp next;
 };
+
+static IrOp getInitializedFallback(IrBuilder& build, IrOp& fallback)
+{
+    if (fallback.kind == IrOpKind::None)
+        fallback = build.block(IrBlockKind::Fallback);
+
+    return fallback;
+}
 
 void translateInstLoadNil(IrBuilder& build, const Instruction* pc)
 {
@@ -327,24 +334,42 @@ void translateInstJumpxEqS(IrBuilder& build, const Instruction* pc, int pcpos)
         build.beginBlock(next);
 }
 
-static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc, IrOp opc, int pcpos, TMS tm)
+static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc, IrOp opb, IrOp opc, int pcpos, TMS tm)
 {
-    IrOp fallback = build.block(IrBlockKind::Fallback);
+    IrOp fallback;
+    BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
     // fast-path: number
-    IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TNUMBER), fallback);
-
-    if (rc != -1 && rc != rb) // TODO: optimization should handle second check, but we'll test it later
+    if (rb != -1)
     {
-        IrOp tc = build.inst(IrCmd::LOAD_TAG, build.vmReg(rc));
-        build.inst(IrCmd::CHECK_TAG, tc, build.constTag(LUA_TNUMBER), fallback);
+        IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
+        build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TNUMBER),
+            bcTypes.a == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback));
     }
 
-    IrOp vb = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(rb));
-    IrOp vc;
+    if (rc != -1 && rc != rb)
+    {
+        IrOp tc = build.inst(IrCmd::LOAD_TAG, build.vmReg(rc));
+        build.inst(IrCmd::CHECK_TAG, tc, build.constTag(LUA_TNUMBER),
+            bcTypes.b == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback));
+    }
 
+    IrOp vb, vc;
     IrOp result;
+
+    if (opb.kind == IrOpKind::VmConst)
+    {
+        LUAU_ASSERT(build.function.proto);
+        TValue protok = build.function.proto->k[vmConstOp(opb)];
+
+        LUAU_ASSERT(protok.tt == LUA_TNUMBER);
+
+        vb = build.constDouble(protok.value.n);
+    }
+    else
+    {
+        vb = build.inst(IrCmd::LOAD_DOUBLE, opb);
+    }
 
     if (opc.kind == IrOpKind::VmConst)
     {
@@ -405,22 +430,33 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
     if (ra != rb && ra != rc) // TODO: optimization should handle second check, but we'll test this later
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
 
-    IrOp next = build.blockAtInst(pcpos + 1);
-    FallbackStreamScope scope(build, fallback, next);
+    if (fallback.kind != IrOpKind::None)
+    {
+        IrOp next = build.blockAtInst(pcpos + 1);
+        FallbackStreamScope scope(build, fallback, next);
 
-    build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
-    build.inst(IrCmd::DO_ARITH, build.vmReg(ra), build.vmReg(rb), opc, build.constInt(tm));
-    build.inst(IrCmd::JUMP, next);
+        build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
+        build.inst(IrCmd::DO_ARITH, build.vmReg(ra), opb, opc, build.constInt(tm));
+        build.inst(IrCmd::JUMP, next);
+    }
 }
 
 void translateInstBinary(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm)
 {
-    translateInstBinaryNumeric(build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), LUAU_INSN_C(*pc), build.vmReg(LUAU_INSN_C(*pc)), pcpos, tm);
+    translateInstBinaryNumeric(
+        build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), LUAU_INSN_C(*pc), build.vmReg(LUAU_INSN_B(*pc)), build.vmReg(LUAU_INSN_C(*pc)), pcpos, tm);
 }
 
 void translateInstBinaryK(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm)
 {
-    translateInstBinaryNumeric(build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), -1, build.vmConst(LUAU_INSN_C(*pc)), pcpos, tm);
+    translateInstBinaryNumeric(
+        build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), -1, build.vmReg(LUAU_INSN_B(*pc)), build.vmConst(LUAU_INSN_C(*pc)), pcpos, tm);
+}
+
+void translateInstBinaryRK(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm)
+{
+    translateInstBinaryNumeric(
+        build, LUAU_INSN_A(*pc), -1, LUAU_INSN_C(*pc), build.vmConst(LUAU_INSN_B(*pc)), build.vmReg(LUAU_INSN_C(*pc)), pcpos, tm);
 }
 
 void translateInstNot(IrBuilder& build, const Instruction* pc)
@@ -439,13 +475,15 @@ void translateInstNot(IrBuilder& build, const Instruction* pc)
 
 void translateInstMinus(IrBuilder& build, const Instruction* pc, int pcpos)
 {
+    IrOp fallback;
+    BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
+
     int ra = LUAU_INSN_A(*pc);
     int rb = LUAU_INSN_B(*pc);
 
-    IrOp fallback = build.block(IrBlockKind::Fallback);
-
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TNUMBER), fallback);
+    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TNUMBER),
+        bcTypes.a == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback));
 
     // fast-path: number
     IrOp vb = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(rb));
@@ -456,23 +494,29 @@ void translateInstMinus(IrBuilder& build, const Instruction* pc, int pcpos)
     if (ra != rb)
         build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
 
-    IrOp next = build.blockAtInst(pcpos + 1);
-    FallbackStreamScope scope(build, fallback, next);
+    if (fallback.kind != IrOpKind::None)
+    {
+        IrOp next = build.blockAtInst(pcpos + 1);
+        FallbackStreamScope scope(build, fallback, next);
 
-    build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
-    build.inst(IrCmd::DO_ARITH, build.vmReg(LUAU_INSN_A(*pc)), build.vmReg(LUAU_INSN_B(*pc)), build.vmReg(LUAU_INSN_B(*pc)), build.constInt(TM_UNM));
-    build.inst(IrCmd::JUMP, next);
+        build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
+        build.inst(
+            IrCmd::DO_ARITH, build.vmReg(LUAU_INSN_A(*pc)), build.vmReg(LUAU_INSN_B(*pc)), build.vmReg(LUAU_INSN_B(*pc)), build.constInt(TM_UNM));
+        build.inst(IrCmd::JUMP, next);
+    }
 }
 
 void translateInstLength(IrBuilder& build, const Instruction* pc, int pcpos)
 {
+    BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
+
     int ra = LUAU_INSN_A(*pc);
     int rb = LUAU_INSN_B(*pc);
 
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), fallback);
+    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
 
     // fast-path: table without __len
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
@@ -562,9 +606,10 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
     IrOp builtinArgs = args;
 
-    if (customArgs.kind == IrOpKind::VmConst && bfid != LBF_TABLE_INSERT)
+    if (customArgs.kind == IrOpKind::VmConst)
     {
-        TValue protok = build.function.proto->k[customArgs.index];
+        LUAU_ASSERT(build.function.proto);
+        TValue protok = build.function.proto->k[vmConstOp(customArgs)];
 
         if (protok.tt == LUA_TNUMBER)
             builtinArgs = build.constDouble(protok.value.n);
@@ -632,18 +677,18 @@ static IrOp getLoopStepK(IrBuilder& build, int ra)
     return build.undef();
 }
 
-void beforeInstForNPrep(IrBuilder& build, const Instruction* pc)
+void beforeInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
 
     IrOp stepK = getLoopStepK(build, ra);
-    build.loopStepStack.push_back(stepK);
+    build.numericLoopStack.push_back({stepK, pcpos + 1});
 }
 
 void afterInstForNLoop(IrBuilder& build, const Instruction* pc)
 {
-    LUAU_ASSERT(!build.loopStepStack.empty());
-    build.loopStepStack.pop_back();
+    LUAU_ASSERT(!build.numericLoopStack.empty());
+    build.numericLoopStack.pop_back();
 }
 
 void translateInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos)
@@ -653,8 +698,8 @@ void translateInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp loopStart = build.blockAtInst(pcpos + getOpLength(LuauOpcode(LUAU_INSN_OP(*pc))));
     IrOp loopExit = build.blockAtInst(getJumpTarget(*pc, pcpos));
 
-    LUAU_ASSERT(!build.loopStepStack.empty());
-    IrOp stepK = build.loopStepStack.back();
+    LUAU_ASSERT(!build.numericLoopStack.empty());
+    IrOp stepK = build.numericLoopStack.back().step;
 
     // When loop parameters are not numbers, VM tries to perform type coercion from string and raises an exception if that fails
     // Performing that fallback in native code increases code size and complicates CFG, obscuring the values when they are constant
@@ -672,35 +717,9 @@ void translateInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos)
         IrOp tagStep = build.inst(IrCmd::LOAD_TAG, build.vmReg(ra + 1));
         build.inst(IrCmd::CHECK_TAG, tagStep, build.constTag(LUA_TNUMBER), build.vmExit(pcpos));
 
-        if (FFlag::LuauLowerAltLoopForn)
-        {
-            IrOp step = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 1));
+        IrOp step = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 1));
 
-            build.inst(IrCmd::JUMP_FORN_LOOP_COND, idx, limit, step, loopStart, loopExit);
-        }
-        else
-        {
-            IrOp direct = build.block(IrBlockKind::Internal);
-            IrOp reverse = build.block(IrBlockKind::Internal);
-
-            IrOp zero = build.constDouble(0.0);
-            IrOp step = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 1));
-
-            // step > 0
-            // note: equivalent to 0 < step, but lowers into one instruction on both X64 and A64
-            build.inst(IrCmd::JUMP_CMP_NUM, step, zero, build.cond(IrCondition::Greater), direct, reverse);
-
-            // Condition to start the loop: step > 0 ? idx <= limit : limit <= idx
-            // We invert the condition so that loopStart is the fallthrough (false) label
-
-            // step > 0 is false, check limit <= idx
-            build.beginBlock(reverse);
-            build.inst(IrCmd::JUMP_CMP_NUM, limit, idx, build.cond(IrCondition::NotLessEqual), loopExit, loopStart);
-
-            // step > 0 is true, check idx <= limit
-            build.beginBlock(direct);
-            build.inst(IrCmd::JUMP_CMP_NUM, idx, limit, build.cond(IrCondition::NotLessEqual), loopExit, loopStart);
-        }
+        build.inst(IrCmd::JUMP_FORN_LOOP_COND, idx, limit, step, loopStart, loopExit);
     }
     else
     {
@@ -728,17 +747,32 @@ void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
 
-    IrOp loopRepeat = build.blockAtInst(getJumpTarget(*pc, pcpos));
+    int repeatJumpTarget = getJumpTarget(*pc, pcpos);
+    IrOp loopRepeat = build.blockAtInst(repeatJumpTarget);
     IrOp loopExit = build.blockAtInst(pcpos + getOpLength(LuauOpcode(LUAU_INSN_OP(*pc))));
 
-    // normally, the interrupt is placed at the beginning of the loop body by FORNPREP translation
-    // however, there are rare contrived cases where FORNLOOP ends up jumping to itself without an interrupt placed
-    // we detect this by checking if loopRepeat has any instructions (it should normally start with INTERRUPT) and emit a failsafe INTERRUPT if not
-    if (build.function.blockOp(loopRepeat).start == build.function.instructions.size())
-        build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
+    LUAU_ASSERT(!build.numericLoopStack.empty());
+    IrBuilder::LoopInfo loopInfo = build.numericLoopStack.back();
 
-    LUAU_ASSERT(!build.loopStepStack.empty());
-    IrOp stepK = build.loopStepStack.back();
+    if (FFlag::LuauLoopInterruptFix)
+    {
+        // normally, the interrupt is placed at the beginning of the loop body by FORNPREP translation
+        // however, there are rare cases where FORNLOOP might not jump directly to the first loop instruction
+        // we detect this by checking the starting instruction of the loop body from loop information stack
+        if (repeatJumpTarget != loopInfo.startpc)
+            build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
+    }
+    else
+    {
+        // normally, the interrupt is placed at the beginning of the loop body by FORNPREP translation
+        // however, there are rare contrived cases where FORNLOOP ends up jumping to itself without an interrupt placed
+        // we detect this by checking if loopRepeat has any instructions (it should normally start with INTERRUPT) and emit a failsafe INTERRUPT if
+        // not
+        if (build.function.blockOp(loopRepeat).start == build.function.instructions.size())
+            build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
+    }
+
+    IrOp stepK = loopInfo.step;
 
     IrOp limit = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 0));
     IrOp step = stepK.kind == IrOpKind::Undef ? build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra + 1)) : stepK;
@@ -749,31 +783,7 @@ void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos)
 
     if (stepK.kind == IrOpKind::Undef)
     {
-        if (FFlag::LuauLowerAltLoopForn)
-        {
-            build.inst(IrCmd::JUMP_FORN_LOOP_COND, idx, limit, step, loopRepeat, loopExit);
-        }
-        else
-        {
-            IrOp direct = build.block(IrBlockKind::Internal);
-            IrOp reverse = build.block(IrBlockKind::Internal);
-
-            IrOp zero = build.constDouble(0.0);
-
-            // step > 0
-            // note: equivalent to 0 < step, but lowers into one instruction on both X64 and A64
-            build.inst(IrCmd::JUMP_CMP_NUM, step, zero, build.cond(IrCondition::Greater), direct, reverse);
-
-            // Condition to continue the loop: step > 0 ? idx <= limit : limit <= idx
-
-            // step > 0 is false, check limit <= idx
-            build.beginBlock(reverse);
-            build.inst(IrCmd::JUMP_CMP_NUM, limit, idx, build.cond(IrCondition::LessEqual), loopRepeat, loopExit);
-
-            // step > 0 is true, check idx <= limit
-            build.beginBlock(direct);
-            build.inst(IrCmd::JUMP_CMP_NUM, idx, limit, build.cond(IrCondition::LessEqual), loopRepeat, loopExit);
-        }
+        build.inst(IrCmd::JUMP_FORN_LOOP_COND, idx, limit, step, loopRepeat, loopExit);
     }
     else
     {
@@ -808,7 +818,7 @@ void translateInstForGPrepNext(IrBuilder& build, const Instruction* pc, int pcpo
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNIL));
 
     // setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
-    build.inst(IrCmd::STORE_INT, build.vmReg(ra + 2), build.constInt(0));
+    build.inst(FFlag::LuauFullLoopLuserdata ? IrCmd::STORE_POINTER : IrCmd::STORE_INT, build.vmReg(ra + 2), build.constInt(0));
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra + 2), build.constTag(LUA_TLIGHTUSERDATA));
 
     build.inst(IrCmd::JUMP, target);
@@ -840,7 +850,7 @@ void translateInstForGPrepInext(IrBuilder& build, const Instruction* pc, int pcp
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNIL));
 
     // setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
-    build.inst(IrCmd::STORE_INT, build.vmReg(ra + 2), build.constInt(0));
+    build.inst(FFlag::LuauFullLoopLuserdata ? IrCmd::STORE_POINTER : IrCmd::STORE_INT, build.vmReg(ra + 2), build.constInt(0));
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra + 2), build.constTag(LUA_TLIGHTUSERDATA));
 
     build.inst(IrCmd::JUMP, target);
@@ -912,29 +922,20 @@ void translateInstGetTableN(IrBuilder& build, const Instruction* pc, int pcpos)
     int c = LUAU_INSN_C(*pc);
 
     IrOp fallback = build.block(IrBlockKind::Fallback);
+    BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), fallback);
+    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
 
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
 
     build.inst(IrCmd::CHECK_ARRAY_SIZE, vb, build.constInt(c), fallback);
     build.inst(IrCmd::CHECK_NO_METATABLE, vb, fallback);
 
-    if (FFlag::LuauInlineArrConstOffset)
-    {
-        IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(0));
+    IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(0));
 
-        IrOp arrElTval = build.inst(IrCmd::LOAD_TVALUE, arrEl, build.constInt(c * sizeof(TValue)));
-        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), arrElTval);
-    }
-    else
-    {
-        IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(c));
-
-        IrOp arrElTval = build.inst(IrCmd::LOAD_TVALUE, arrEl);
-        build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), arrElTval);
-    }
+    IrOp arrElTval = build.inst(IrCmd::LOAD_TVALUE, arrEl, build.constInt(c * sizeof(TValue)));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), arrElTval);
 
     IrOp next = build.blockAtInst(pcpos + 1);
     FallbackStreamScope scope(build, fallback, next);
@@ -951,9 +952,10 @@ void translateInstSetTableN(IrBuilder& build, const Instruction* pc, int pcpos)
     int c = LUAU_INSN_C(*pc);
 
     IrOp fallback = build.block(IrBlockKind::Fallback);
+    BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), fallback);
+    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
 
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
 
@@ -961,20 +963,10 @@ void translateInstSetTableN(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::CHECK_NO_METATABLE, vb, fallback);
     build.inst(IrCmd::CHECK_READONLY, vb, fallback);
 
-    if (FFlag::LuauInlineArrConstOffset)
-    {
-        IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(0));
+    IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(0));
 
-        IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
-        build.inst(IrCmd::STORE_TVALUE, arrEl, tva, build.constInt(c * sizeof(TValue)));
-    }
-    else
-    {
-        IrOp arrEl = build.inst(IrCmd::GET_ARR_ADDR, vb, build.constInt(c));
-
-        IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
-        build.inst(IrCmd::STORE_TVALUE, arrEl, tva);
-    }
+    IrOp tva = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(ra));
+    build.inst(IrCmd::STORE_TVALUE, arrEl, tva, build.constInt(c * sizeof(TValue)));
 
     build.inst(IrCmd::BARRIER_TABLE_FORWARD, vb, build.vmReg(ra), build.undef());
 
@@ -993,11 +985,12 @@ void translateInstGetTable(IrBuilder& build, const Instruction* pc, int pcpos)
     int rc = LUAU_INSN_C(*pc);
 
     IrOp fallback = build.block(IrBlockKind::Fallback);
+    BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), fallback);
+    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
     IrOp tc = build.inst(IrCmd::LOAD_TAG, build.vmReg(rc));
-    build.inst(IrCmd::CHECK_TAG, tc, build.constTag(LUA_TNUMBER), fallback);
+    build.inst(IrCmd::CHECK_TAG, tc, build.constTag(LUA_TNUMBER), bcTypes.b == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : fallback);
 
     // fast-path: table with a number index
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
@@ -1030,11 +1023,12 @@ void translateInstSetTable(IrBuilder& build, const Instruction* pc, int pcpos)
     int rc = LUAU_INSN_C(*pc);
 
     IrOp fallback = build.block(IrBlockKind::Fallback);
+    BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), fallback);
+    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
     IrOp tc = build.inst(IrCmd::LOAD_TAG, build.vmReg(rc));
-    build.inst(IrCmd::CHECK_TAG, tc, build.constTag(LUA_TNUMBER), fallback);
+    build.inst(IrCmd::CHECK_TAG, tc, build.constTag(LUA_TNUMBER), bcTypes.b == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : fallback);
 
     // fast-path: table with a number index
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
@@ -1099,9 +1093,10 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
     uint32_t aux = pc[1];
 
     IrOp fallback = build.block(IrBlockKind::Fallback);
+    BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), fallback);
+    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
 
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
 
@@ -1126,9 +1121,10 @@ void translateInstSetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
     uint32_t aux = pc[1];
 
     IrOp fallback = build.block(IrBlockKind::Fallback);
+    BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), fallback);
+    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
 
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
 
@@ -1376,74 +1372,37 @@ void translateInstNewClosure(IrBuilder& build, const Instruction* pc, int pcpos)
         Instruction uinsn = pc[ui + 1];
         LUAU_ASSERT(LUAU_INSN_OP(uinsn) == LOP_CAPTURE);
 
-        if (FFlag::LuauReduceStackSpills)
+        switch (LUAU_INSN_A(uinsn))
         {
-            switch (LUAU_INSN_A(uinsn))
-            {
-            case LCT_VAL:
-            {
-                IrOp src = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(LUAU_INSN_B(uinsn)));
-                IrOp dst = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, ncl, build.vmUpvalue(ui));
-                build.inst(IrCmd::STORE_TVALUE, dst, src);
-                break;
-            }
-
-            case LCT_REF:
-            {
-                IrOp src = build.inst(IrCmd::FINDUPVAL, build.vmReg(LUAU_INSN_B(uinsn)));
-                IrOp dst = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, ncl, build.vmUpvalue(ui));
-                build.inst(IrCmd::STORE_POINTER, dst, src);
-                build.inst(IrCmd::STORE_TAG, dst, build.constTag(LUA_TUPVAL));
-                break;
-            }
-
-            case LCT_UPVAL:
-            {
-                IrOp src = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, build.undef(), build.vmUpvalue(LUAU_INSN_B(uinsn)));
-                IrOp dst = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, ncl, build.vmUpvalue(ui));
-                IrOp load = build.inst(IrCmd::LOAD_TVALUE, src);
-                build.inst(IrCmd::STORE_TVALUE, dst, load);
-                break;
-            }
-
-            default:
-                LUAU_ASSERT(!"Unknown upvalue capture type");
-                LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
-            }
-        }
-        else
+        case LCT_VAL:
         {
+            IrOp src = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(LUAU_INSN_B(uinsn)));
             IrOp dst = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, ncl, build.vmUpvalue(ui));
+            build.inst(IrCmd::STORE_TVALUE, dst, src);
+            break;
+        }
 
-            switch (LUAU_INSN_A(uinsn))
-            {
-            case LCT_VAL:
-            {
-                IrOp src = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(LUAU_INSN_B(uinsn)));
-                build.inst(IrCmd::STORE_TVALUE, dst, src);
-                break;
-            }
+        case LCT_REF:
+        {
+            IrOp src = build.inst(IrCmd::FINDUPVAL, build.vmReg(LUAU_INSN_B(uinsn)));
+            IrOp dst = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, ncl, build.vmUpvalue(ui));
+            build.inst(IrCmd::STORE_POINTER, dst, src);
+            build.inst(IrCmd::STORE_TAG, dst, build.constTag(LUA_TUPVAL));
+            break;
+        }
 
-            case LCT_REF:
-            {
-                IrOp src = build.inst(IrCmd::FINDUPVAL, build.vmReg(LUAU_INSN_B(uinsn)));
-                build.inst(IrCmd::STORE_POINTER, dst, src);
-                build.inst(IrCmd::STORE_TAG, dst, build.constTag(LUA_TUPVAL));
-                break;
-            }
+        case LCT_UPVAL:
+        {
+            IrOp src = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, build.undef(), build.vmUpvalue(LUAU_INSN_B(uinsn)));
+            IrOp dst = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, ncl, build.vmUpvalue(ui));
+            IrOp load = build.inst(IrCmd::LOAD_TVALUE, src);
+            build.inst(IrCmd::STORE_TVALUE, dst, load);
+            break;
+        }
 
-            case LCT_UPVAL:
-            {
-                IrOp src = build.inst(IrCmd::GET_CLOSURE_UPVAL_ADDR, build.undef(), build.vmUpvalue(LUAU_INSN_B(uinsn)));
-                IrOp load = build.inst(IrCmd::LOAD_TVALUE, src);
-                build.inst(IrCmd::STORE_TVALUE, dst, load);
-                break;
-            }
-
-            default:
-                LUAU_ASSERT(!"Unknown upvalue capture type");
-                LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
-            }
+        default:
+            LUAU_ASSERT(!"Unknown upvalue capture type");
+            LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
         }
     }
 

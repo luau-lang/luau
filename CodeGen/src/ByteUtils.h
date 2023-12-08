@@ -15,6 +15,16 @@ inline uint8_t* writeu8(uint8_t* target, uint8_t value)
     return target + sizeof(value);
 }
 
+inline uint8_t* writeu16(uint8_t* target, uint16_t value)
+{
+#if defined(LUAU_BIG_ENDIAN)
+    value = htole16(value);
+#endif
+
+    memcpy(target, &value, sizeof(value));
+    return target + sizeof(value);
+}
+
 inline uint8_t* writeu32(uint8_t* target, uint32_t value)
 {
 #if defined(LUAU_BIG_ENDIAN)

@@ -10,7 +10,9 @@
 #include "Luau/TypeInfer.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Frontend.h"
+#include "Luau/Compiler.h"
 #include "Luau/CodeGen.h"
+#include "Luau/BytecodeSummary.h"
 
 #include "doctest.h"
 #include "ScopedFlags.h"
@@ -24,7 +26,13 @@ extern bool verbose;
 extern bool codegen;
 extern int optimizationLevel;
 
-LUAU_FASTFLAG(LuauFloorDivision);
+LUAU_FASTFLAG(LuauBit32Byteswap);
+LUAU_FASTFLAG(LuauBufferBetterMsg);
+LUAU_FASTFLAG(LuauBufferDefinitions);
+LUAU_FASTFLAG(LuauCodeGenFixByteLower);
+LUAU_FASTFLAG(LuauCompileBufferAnnotation);
+LUAU_FASTFLAG(LuauLoopInterruptFix);
+LUAU_DYNAMIC_FASTFLAG(LuauStricterUtf8);
 
 static lua_CompileOptions defaultOptions()
 {
@@ -273,6 +281,27 @@ static void* limitedRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
     }
 }
 
+static std::vector<Luau::CodeGen::FunctionBytecodeSummary> analyzeFile(const char* source, const unsigned nestingLimit)
+{
+    Luau::BytecodeBuilder bcb;
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = optimizationLevel;
+    options.debugLevel = 1;
+
+    compileOrThrow(bcb, source, options);
+
+    const std::string& bytecode = bcb.getBytecode();
+
+    std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    int result = luau_load(L, "source", bytecode.data(), bytecode.size(), 0);
+    REQUIRE(result == 0);
+
+    return Luau::CodeGen::summarizeBytecode(L, -1, nestingLimit);
+}
+
 TEST_SUITE_BEGIN("Conformance");
 
 TEST_CASE("CodegenSupported")
@@ -288,13 +317,14 @@ TEST_CASE("Assert")
 
 TEST_CASE("Basic")
 {
-    ScopedFastFlag sffs{"LuauFloorDivision", true};
-
     runConformance("basic.lua");
 }
 
 TEST_CASE("Buffers")
 {
+    ScopedFastFlag luauBufferBetterMsg{FFlag::LuauBufferBetterMsg, true};
+    ScopedFastFlag luauCodeGenFixByteLower{FFlag::LuauCodeGenFixByteLower, true};
+
     runConformance("buffers.lua");
 }
 
@@ -379,7 +409,6 @@ TEST_CASE("Errors")
 
 TEST_CASE("Events")
 {
-    ScopedFastFlag sffs{"LuauFloorDivision", true};
     runConformance("events.lua");
 }
 
@@ -410,12 +439,13 @@ TEST_CASE("GC")
 
 TEST_CASE("Bitwise")
 {
-    ScopedFastFlag sffs{"LuauBit32Byteswap", true};
+    ScopedFastFlag sffs{FFlag::LuauBit32Byteswap, true};
     runConformance("bitwise.lua");
 }
 
 TEST_CASE("UTF8")
 {
+    ScopedFastFlag sff(DFFlag::LuauStricterUtf8, true);
     runConformance("utf8.lua");
 }
 
@@ -435,8 +465,6 @@ static int cxxthrow(lua_State* L)
 
 TEST_CASE("PCall")
 {
-    ScopedFastFlag sff("LuauHandlerClose", true);
-
     runConformance(
         "pcall.lua",
         [](lua_State* L) {
@@ -464,8 +492,6 @@ TEST_CASE("Pack")
 
 TEST_CASE("Vector")
 {
-    ScopedFastFlag sffs{"LuauFloorDivision", true};
-
     lua_CompileOptions copts = defaultOptions();
     copts.vectorCtor = "vector";
 
@@ -523,6 +549,10 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
             lua_pushstring(L, "thread");
             break;
 
+        case Luau::PrimitiveType::Buffer:
+            lua_pushstring(L, "buffer");
+            break;
+
         default:
             LUAU_ASSERT(!"Unknown primitive type");
         }
@@ -560,7 +590,7 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
-    ScopedFastFlag luauBufferDefinitions{"LuauBufferDefinitions", true};
+    ScopedFastFlag luauBufferDefinitions{FFlag::LuauBufferDefinitions, true};
 
     runConformance("types.lua", [](lua_State* L) {
         Luau::NullModuleResolver moduleResolver;
@@ -1508,6 +1538,8 @@ TEST_CASE("GCDump")
 
 TEST_CASE("Interrupt")
 {
+    ScopedFastFlag luauLoopInterruptFix{FFlag::LuauLoopInterruptFix, true};
+
     lua_CompileOptions copts = defaultOptions();
     copts.optimizationLevel = 1; // disable loop unrolling to get fixed expected hit results
 
@@ -1566,12 +1598,12 @@ TEST_CASE("Interrupt")
         if (gc >= 0)
             return;
 
-        CHECK(index < 10);
-        if (++index == 10)
+        CHECK(index < 11);
+        if (++index == 11)
             lua_yield(L, 0);
     };
 
-    for (int test = 1; test <= 9; ++test)
+    for (int test = 1; test <= 10; ++test)
     {
         lua_State* T = lua_newthread(L);
 
@@ -1581,7 +1613,7 @@ TEST_CASE("Interrupt")
         index = 0;
         int status = lua_resume(T, nullptr, 0);
         CHECK(status == LUA_YIELD);
-        CHECK(index == 10);
+        CHECK(index == 11);
 
         // abandon the thread
         lua_pop(L, 1);
@@ -1722,9 +1754,6 @@ static void pushInt64(lua_State* L, int64_t value)
 
 TEST_CASE("Userdata")
 {
-
-    ScopedFastFlag sffs{"LuauFloorDivision", true};
-
     runConformance("userdata.lua", [](lua_State* L) {
         // create metatable with all the metamethods
         lua_newtable(L);
@@ -1920,8 +1949,6 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
-    ScopedFastFlag luauLowerAltLoopForn{"LuauLowerAltLoopForn", true};
-
     runConformance("native.lua");
 }
 
@@ -1931,7 +1958,7 @@ TEST_CASE("NativeTypeAnnotations")
     if (!codegen || !luau_codegen_supported())
         return;
 
-    ScopedFastFlag luauCompileBufferAnnotation{"LuauCompileBufferAnnotation", true};
+    ScopedFastFlag luauCompileBufferAnnotation{FFlag::LuauCompileBufferAnnotation, true};
 
     lua_CompileOptions copts = defaultOptions();
     copts.vectorCtor = "vector";
@@ -2015,6 +2042,53 @@ TEST_CASE("HugeFunction")
     REQUIRE(status == 0);
 
     CHECK(lua_tonumber(L, -1) == 42);
+}
+
+TEST_CASE("BytecodeDistributionPerFunctionTest")
+{
+    const char* source = R"(
+local function first(n, p)
+  local t = {}
+  for i=1,p do t[i] = i*10 end
+
+  local function inner(_,n)
+    if n > 0 then
+      n = n-1
+      return n, unpack(t)
+    end
+  end
+  return inner, nil, n
+end
+
+local function second(x)
+ return x[1]
+end
+)";
+
+    std::vector<Luau::CodeGen::FunctionBytecodeSummary> summaries(analyzeFile(source, 0));
+
+    CHECK_EQ(summaries[0].getName(), "inner");
+    CHECK_EQ(summaries[0].getLine(), 6);
+    CHECK_EQ(summaries[0].getCounts(0),
+        std::vector<unsigned>({1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+
+    CHECK_EQ(summaries[1].getName(), "first");
+    CHECK_EQ(summaries[1].getLine(), 2);
+    CHECK_EQ(summaries[1].getCounts(0),
+        std::vector<unsigned>({1, 0, 1, 0, 2, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+
+    CHECK_EQ(summaries[2].getName(), "second");
+    CHECK_EQ(summaries[2].getLine(), 15);
+    CHECK_EQ(summaries[2].getCounts(0),
+        std::vector<unsigned>({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+
+    CHECK_EQ(summaries[3].getName(), "");
+    CHECK_EQ(summaries[3].getLine(), 1);
+    CHECK_EQ(summaries[3].getCounts(0),
+        std::vector<unsigned>({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
 }
 
 TEST_SUITE_END();

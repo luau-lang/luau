@@ -539,6 +539,25 @@ public:
     {
         return impl.end();
     }
+
+    bool operator==(const DenseHashSet<Key, Hash, Eq>& other) const
+    {
+        if (size() != other.size())
+            return false;
+
+        for (const Key& k : *this)
+        {
+            if (!other.contains(k))
+                return false;
+        }
+
+        return true;
+    }
+
+    bool operator!=(const DenseHashSet<Key, Hash, Eq>& other) const
+    {
+        return !(*this == other);
+    }
 };
 
 // This is a faster alternative of unordered_map, but it does not implement the same interface (i.e. it does not support erasing and has

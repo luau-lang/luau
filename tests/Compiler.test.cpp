@@ -15,14 +15,28 @@ namespace Luau
 std::string rep(const std::string& s, size_t n);
 }
 
+LUAU_FASTFLAG(LuauVectorLiterals)
+LUAU_FASTFLAG(LuauCompileRevK)
+LUAU_FASTINT(LuauCompileInlineDepth)
+LUAU_FASTINT(LuauCompileInlineThreshold)
+LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
+LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
+LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
+LUAU_FASTINT(LuauRecursionLimit)
+
 using namespace Luau;
 
-static std::string compileFunction(const char* source, uint32_t id, int optimizationLevel = 1)
+static std::string compileFunction(const char* source, uint32_t id, int optimizationLevel = 1, bool enableVectors = false)
 {
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
     Luau::CompileOptions options;
     options.optimizationLevel = optimizationLevel;
+    if (enableVectors)
+    {
+        options.vectorLib = "Vector3";
+        options.vectorCtor = "new";
+    }
     Luau::compileOrThrow(bcb, source, options);
 
     return bcb.dumpFunction(id);
@@ -1142,38 +1156,34 @@ L0: RETURN R1 1
 TEST_CASE("AndOrFoldLeft")
 {
     // constant folding and/or expression is possible even if just the left hand is constant
-    CHECK_EQ("\n" + compileFunction0("local a = false if a and b then b() end"), R"(
-RETURN R0 0
+    CHECK_EQ("\n" + compileFunction0("local a = false return a and b"), R"(
+LOADB R0 0
+RETURN R0 1
 )");
 
-    CHECK_EQ("\n" + compileFunction0("local a = true if a or b then b() end"), R"(
-GETIMPORT R0 1 [b]
-CALL R0 0 0
-RETURN R0 0
+    CHECK_EQ("\n" + compileFunction0("local a = true return a or b"), R"(
+LOADB R0 1
+RETURN R0 1
 )");
 
-    // however, if right hand side is constant we can't constant fold the entire expression
-    // (note that we don't need to evaluate the right hand side, but we do need a branch)
-    CHECK_EQ("\n" + compileFunction0("local a = false if b and a then b() end"), R"(
-GETIMPORT R0 1 [b]
-JUMPIFNOT R0 L0
-RETURN R0 0
-GETIMPORT R0 1 [b]
-CALL R0 0 0
-L0: RETURN R0 0
+    // if right hand side is constant we can't constant fold the entire expression
+    CHECK_EQ("\n" + compileFunction0("local a = false return b and a"), R"(
+GETIMPORT R1 2 [b]
+ANDK R0 R1 K0 [false]
+RETURN R0 1
 )");
 
-    CHECK_EQ("\n" + compileFunction0("local a = true if b or a then b() end"), R"(
-GETIMPORT R0 1 [b]
-JUMPIF R0 L0
-L0: GETIMPORT R0 1 [b]
-CALL R0 0 0
-RETURN R0 0
+    CHECK_EQ("\n" + compileFunction0("local a = true return b or a"), R"(
+GETIMPORT R1 2 [b]
+ORK R0 R1 K0 [true]
+RETURN R0 1
 )");
 }
 
 TEST_CASE("AndOrChainCodegen")
 {
+    ScopedFastFlag sff(FFlag::LuauCompileRevK, true);
+
     const char* source = R"(
     return
         (1 - verticalGradientTurbulence < waterLevel + .015 and Enum.Material.Sand)
@@ -1182,23 +1192,22 @@ TEST_CASE("AndOrChainCodegen")
     )";
 
     CHECK_EQ("\n" + compileFunction0(source), R"(
-LOADN R2 1
-GETIMPORT R3 1 [verticalGradientTurbulence]
-SUB R1 R2 R3
-GETIMPORT R3 4 [waterLevel]
-ADDK R2 R3 K2 [0.014999999999999999]
+GETIMPORT R2 2 [verticalGradientTurbulence]
+SUBRK R1 K0 [1] R2
+GETIMPORT R3 5 [waterLevel]
+ADDK R2 R3 K3 [0.014999999999999999]
 JUMPIFNOTLT R1 R2 L0
-GETIMPORT R0 8 [Enum.Material.Sand]
+GETIMPORT R0 9 [Enum.Material.Sand]
 JUMPIF R0 L2
-L0: GETIMPORT R1 10 [sandbank]
+L0: GETIMPORT R1 11 [sandbank]
 LOADN R2 0
 JUMPIFNOTLT R2 R1 L1
-GETIMPORT R1 10 [sandbank]
+GETIMPORT R1 11 [sandbank]
 LOADN R2 1
 JUMPIFNOTLT R1 R2 L1
-GETIMPORT R0 8 [Enum.Material.Sand]
+GETIMPORT R0 9 [Enum.Material.Sand]
 JUMPIF R0 L2
-L1: GETIMPORT R0 12 [Enum.Material.Sandstone]
+L1: GETIMPORT R0 13 [Enum.Material.Sandstone]
 L2: RETURN R0 1
 )");
 }
@@ -1909,8 +1918,6 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueIgnoresImplicitConstant")
 {
-    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation2", true};
-
     // this used to crash the compiler :(
     CHECK_EQ("\n" + compileFunction0(R"(
 local _
@@ -1926,8 +1933,6 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueIgnoresExplicitConstant")
 {
-    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation2", true};
-
     // Constants do not allocate locals and 'continue' validation should skip them if their lifetime already started
     CHECK_EQ("\n" + compileFunction0(R"(
 local c = true
@@ -1943,8 +1948,6 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueRespectsExplicitConstant")
 {
-    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation2", true};
-
     // If local lifetime hasn't started, even if it's a constant that will not receive an allocation, it cannot be jumped over
     try
     {
@@ -1969,8 +1972,6 @@ until c
 
 TEST_CASE("LoopContinueIgnoresImplicitConstantAfterInline")
 {
-    ScopedFastFlag luauCompileFixContinueValidation{"LuauCompileFixContinueValidation2", true};
-
     // Inlining might also replace some locals with constants instead of allocating them
     CHECK_EQ("\n" + compileFunction(R"(
 local function inline(f)
@@ -1994,8 +1995,7 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueCorrectlyHandlesImplicitConstantAfterUnroll")
 {
-    ScopedFastFlag sff{"LuauCompileFixContinueValidation2", true};
-    ScopedFastInt sfi("LuauCompileLoopUnrollThreshold", 200);
+    ScopedFastInt sfi(FInt::LuauCompileLoopUnrollThreshold, 200);
 
     // access to implicit constant that depends on the unrolled loop constant is still invalid even though we can constant-propagate it
     try
@@ -2010,7 +2010,8 @@ for i = 1, 2 do
         local x = i == 1 or a
     until f(x)
 end
-)", 0, 2);
+)",
+            0, 2);
 
         CHECK(!"Expected CompileError");
     }
@@ -2105,6 +2106,8 @@ RETURN R0 0
 
 TEST_CASE("AndOrOptimizations")
 {
+    ScopedFastFlag sff(FFlag::LuauCompileRevK, true);
+
     // the OR/ORK optimization triggers for cutoff since lhs is simple
     CHECK_EQ("\n" + compileFunction(R"(
 local function advancedRidgedFilter(value, cutoff)
@@ -2117,17 +2120,15 @@ end
         R"(
 ORK R2 R1 K0 [0.5]
 SUB R0 R0 R2
-LOADN R4 1
-LOADN R8 0
-JUMPIFNOTLT R0 R8 L0
-MINUS R7 R0
-JUMPIF R7 L1
-L0: MOVE R7 R0
-L1: MULK R6 R7 K1 [1]
-LOADN R8 1
-SUB R7 R8 R2
-DIV R5 R6 R7
-SUB R3 R4 R5
+LOADN R7 0
+JUMPIFNOTLT R0 R7 L0
+MINUS R6 R0
+JUMPIF R6 L1
+L0: MOVE R6 R0
+L1: MULK R5 R6 K1 [1]
+SUBRK R6 K1 [1] R2
+DIV R4 R5 R6
+SUBRK R3 K1 [1] R4
 RETURN R3 1
 )");
 
@@ -2140,9 +2141,8 @@ end
                         0),
         R"(
 LOADB R2 0
-LOADK R4 K0 [0.5]
-MULK R5 R1 K1 [0.40000000000000002]
-SUB R3 R4 R5
+MULK R4 R1 K1 [0.40000000000000002]
+SUBRK R3 K0 [0.5] R4
 JUMPIFNOTLT R3 R0 L1
 LOADK R4 K0 [0.5]
 MULK R5 R1 K1 [0.40000000000000002]
@@ -2162,9 +2162,8 @@ end
                         0),
         R"(
 LOADB R2 1
-LOADK R4 K0 [0.5]
-MULK R5 R1 K1 [0.40000000000000002]
-SUB R3 R4 R5
+MULK R4 R1 K1 [0.40000000000000002]
+SUBRK R3 K0 [0.5] R4
 JUMPIFLT R0 R3 L1
 LOADK R4 K0 [0.5]
 MULK R5 R1 K1 [0.40000000000000002]
@@ -2307,9 +2306,9 @@ TEST_CASE("RecursionParse")
     // The test forcibly pushes the stack limit during compilation; in NoOpt, the stack consumption is much larger so we need to reduce the limit to
     // not overflow the C stack. When ASAN is enabled, stack consumption increases even more.
 #if defined(LUAU_ENABLE_ASAN)
-    ScopedFastInt flag("LuauRecursionLimit", 200);
+    ScopedFastInt flag(FInt::LuauRecursionLimit, 200);
 #elif defined(_NOOPT) || defined(_DEBUG)
-    ScopedFastInt flag("LuauRecursionLimit", 300);
+    ScopedFastInt flag(FInt::LuauRecursionLimit, 300);
 #endif
 
     Luau::BytecodeBuilder bcb;
@@ -4489,6 +4488,41 @@ L0: RETURN R0 -1
 )");
 }
 
+TEST_CASE("VectorLiterals")
+{
+    ScopedFastFlag sff(FFlag::LuauVectorLiterals, true);
+
+    CHECK_EQ("\n" + compileFunction("return Vector3.new(1, 2, 3)", 0, 2, /*enableVectors*/ true), R"(
+LOADK R0 K0 [1, 2, 3]
+RETURN R0 1
+)");
+
+    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3))", 0, 2, /*enableVectors*/ true), R"(
+GETIMPORT R0 1 [print]
+LOADK R1 K2 [1, 2, 3]
+CALL R0 1 0
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction("print(Vector3.new(1, 2, 3, 4))", 0, 2, /*enableVectors*/ true), R"(
+GETIMPORT R0 1 [print]
+LOADK R1 K2 [1, 2, 3, 4]
+CALL R0 1 0
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction("return Vector3.new(0, 0, 0), Vector3.new(-0, 0, 0)", 0, 2, /*enableVectors*/ true), R"(
+LOADK R0 K0 [0, 0, 0]
+LOADK R1 K1 [-0, 0, 0]
+RETURN R0 2
+)");
+
+    CHECK_EQ("\n" + compileFunction("return type(Vector3.new(0, 0, 0))", 0, 2, /*enableVectors*/ true), R"(
+LOADK R0 K0 ['vector']
+RETURN R0 1
+)");
+}
+
 TEST_CASE("TypeAssertion")
 {
     // validate that type assertions work with the compiler and that the code inside type assertion isn't evaluated
@@ -4768,8 +4802,8 @@ L1: RETURN R0 0
 TEST_CASE("LoopUnrollControlFlow")
 {
     ScopedFastInt sfis[] = {
-        {"LuauCompileLoopUnrollThreshold", 50},
-        {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
+        {FInt::LuauCompileLoopUnrollThreshold, 50},
+        {FInt::LuauCompileLoopUnrollThresholdMaxBoost, 300},
     };
 
     // break jumps to the end
@@ -4905,8 +4939,8 @@ RETURN R0 0
 TEST_CASE("LoopUnrollCost")
 {
     ScopedFastInt sfis[] = {
-        {"LuauCompileLoopUnrollThreshold", 25},
-        {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
+        {FInt::LuauCompileLoopUnrollThreshold, 25},
+        {FInt::LuauCompileLoopUnrollThresholdMaxBoost, 300},
     };
 
     // loops with short body
@@ -5083,8 +5117,8 @@ L1: RETURN R0 0
 TEST_CASE("LoopUnrollCostBuiltins")
 {
     ScopedFastInt sfis[] = {
-        {"LuauCompileLoopUnrollThreshold", 25},
-        {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
+        {FInt::LuauCompileLoopUnrollThreshold, 25},
+        {FInt::LuauCompileLoopUnrollThresholdMaxBoost, 300},
     };
 
     // this loop uses builtins and is close to the cost budget so it's important that we model builtins as cheaper than regular calls
@@ -5961,9 +5995,9 @@ RETURN R3 1
 TEST_CASE("InlineThresholds")
 {
     ScopedFastInt sfis[] = {
-        {"LuauCompileInlineThreshold", 25},
-        {"LuauCompileInlineThresholdMaxBoost", 300},
-        {"LuauCompileInlineDepth", 2},
+        {FInt::LuauCompileInlineThreshold, 25},
+        {FInt::LuauCompileInlineThresholdMaxBoost, 300},
+        {FInt::LuauCompileInlineDepth, 2},
     };
 
     // this function has enormous register pressure (50 regs) so we choose not to inline it
@@ -7603,8 +7637,6 @@ L0: RETURN R0 2
 
 TEST_CASE("IfThenElseAndOr")
 {
-    ScopedFastFlag sff("LuauCompileIfElseAndOr", true);
-
     // if v then v else k can be optimized to ORK
     CHECK_EQ("\n" + compileFunction0(R"(
 local x = ...
@@ -7697,6 +7729,152 @@ GETTABLEKS R1 R0 K0 ['data']
 RETURN R1 1
 L0: LOADN R1 0
 RETURN R1 1
+)");
+}
+
+TEST_CASE("SideEffects")
+{
+    // we do not evaluate expressions in some cases when we know they can't carry side effects
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x = 5, print
+local y = 5, 42
+local z = 5, table.find -- considered side effecting because of metamethods
+)"),
+        R"(
+LOADN R0 5
+LOADN R1 5
+LOADN R2 5
+GETIMPORT R3 2 [table.find]
+RETURN R0 0
+)");
+
+    // this also applies to returns in cases where a function gets inlined
+    CHECK_EQ("\n" + compileFunction(R"(
+local function test1()
+    return 42
+end
+
+local function test2()
+    return print
+end
+
+local function test3()
+    return function() print(test3) end
+end
+
+local function test4()
+    return table.find -- considered side effecting because of metamethods
+end
+
+test1()
+test2()
+test3()
+test4()
+)",
+                        5, 2),
+        R"(
+DUPCLOSURE R0 K0 ['test1']
+DUPCLOSURE R1 K1 ['test2']
+DUPCLOSURE R2 K2 ['test3']
+CAPTURE VAL R2
+DUPCLOSURE R3 K3 ['test4']
+GETIMPORT R4 6 [table.find]
+RETURN R0 0
+)");
+}
+
+TEST_CASE("IfElimination")
+{
+    // if the left hand side of a condition is constant, it constant folds and we don't emit the branch
+    CHECK_EQ("\n" + compileFunction0("local a = false if a and b then b() end"), R"(
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0("local a = true if a or b then b() end"), R"(
+GETIMPORT R0 1 [b]
+CALL R0 0 0
+RETURN R0 0
+)");
+
+    // of course this keeps the other branch if present
+    CHECK_EQ("\n" + compileFunction0("local a = false if a and b then b() else return 42 end"), R"(
+LOADN R0 42
+RETURN R0 1
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0("local a = true if a or b then b() else return 42 end"), R"(
+GETIMPORT R0 1 [b]
+CALL R0 0 0
+RETURN R0 0
+)");
+
+    // if the right hand side is constant, the condition doesn't constant fold but we still could eliminate one of the branches for 'a and K'
+    CHECK_EQ("\n" + compileFunction0("local a = false if b and a then return 1 end"), R"(
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0("local a = false if b and a then return 1 else return 2 end"), R"(
+LOADN R0 2
+RETURN R0 1
+)");
+
+    // of course if the right hand side of 'and' is 'true', we still need to actually evaluate the left hand side
+    CHECK_EQ("\n" + compileFunction0("local a = true if b and a then return 1 end"), R"(
+GETIMPORT R0 1 [b]
+JUMPIFNOT R0 L0
+LOADN R0 1
+RETURN R0 1
+L0: RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0("local a = true if b and a then return 1 else return 2 end"), R"(
+GETIMPORT R0 1 [b]
+JUMPIFNOT R0 L0
+LOADN R0 1
+RETURN R0 1
+L0: LOADN R0 2
+RETURN R0 1
+)");
+
+    // also even if we eliminate the branch, we still need to compute side effects
+    CHECK_EQ("\n" + compileFunction0("local a = false if b.test and a then return 1 end"), R"(
+GETIMPORT R0 2 [b.test]
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0("local a = false if b.test and a then return 1 else return 2 end"), R"(
+GETIMPORT R0 2 [b.test]
+LOADN R0 2
+RETURN R0 1
+)");
+}
+
+TEST_CASE("ArithRevK")
+{
+    ScopedFastFlag sff(FFlag::LuauCompileRevK, true);
+
+    // - and / have special optimized form for reverse constants; in the future, + and * will likely get compiled to ADDK/MULK
+    // other operators are not important enough to optimize reverse constant forms for
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x: number = unknown
+return 2 + x, 2 - x, 2 * x, 2 / x, 2 % x, 2 // x, 2 ^ x
+)"),
+        R"(
+GETIMPORT R0 1 [unknown]
+LOADN R2 2
+ADD R1 R2 R0
+SUBRK R2 K2 [2] R0
+LOADN R4 2
+MUL R3 R4 R0
+DIVRK R4 K2 [2] R0
+LOADN R6 2
+MOD R5 R6 R0
+LOADN R7 2
+IDIV R6 R7 R0
+LOADN R8 2
+POW R7 R8 R0
+RETURN R1 7
 )");
 }
 

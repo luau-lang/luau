@@ -154,7 +154,7 @@ TEST_CASE_FIXTURE(DifferFixture, "left_cyclic_table_right_table_property_wrong")
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = foo
@@ -172,7 +172,7 @@ TEST_CASE_FIXTURE(DifferFixture, "right_cyclic_table_left_table_missing_property
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = foo
@@ -190,7 +190,7 @@ TEST_CASE_FIXTURE(DifferFixture, "right_cyclic_table_left_table_property_wrong")
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = foo
@@ -208,7 +208,7 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_table_two_cyclic_tables_are_not_differen
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = foo
@@ -226,7 +226,7 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_table_two_shifted_circles_are_not_differ
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = id({})
@@ -254,7 +254,7 @@ TEST_CASE_FIXTURE(DifferFixture, "table_left_circle_right_measuring_tape")
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = id({})
@@ -281,7 +281,7 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_table_measuring_tapes")
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = id({})
@@ -305,7 +305,7 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_table_A_B_C")
     local function id<a>(x: a): a
       return x
     end
-    
+
     -- Remove name from cyclic table
     local foo = id({})
     foo.foo = id({})
@@ -590,7 +590,7 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_table_cyclic_diamonds_unraveled")
 TEST_CASE_FIXTURE(DifferFixture, "equal_function_cyclic")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
         function foo()
@@ -611,7 +611,7 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_function_cyclic")
 TEST_CASE_FIXTURE(DifferFixture, "equal_function_table_cyclic")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
         function foo()
@@ -638,7 +638,7 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_function_table_cyclic")
 TEST_CASE_FIXTURE(DifferFixture, "function_table_self_referential_cyclic")
 {
     // Old solver does not correctly infer function typepacks
-    // ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    // ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
         function foo()
@@ -685,7 +685,7 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_union_cyclic")
 TEST_CASE_FIXTURE(DifferFixture, "equal_intersection_cyclic")
 {
     // Old solver does not correctly refine test types
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo1(x: number)
@@ -774,7 +774,7 @@ TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "negation")
         if typeof(almostBar.x.y) ~= "number" then
             almostFoo = almostBar
         end
-            
+
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -883,7 +883,7 @@ TEST_CASE_FIXTURE(DifferFixture, "intersection_tables_missing_left")
 TEST_CASE_FIXTURE(DifferFixture, "equal_function")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo(x: number)
@@ -901,7 +901,7 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_function")
 TEST_CASE_FIXTURE(DifferFixture, "equal_function_inferred_ret_length")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function bar(x: number, y: string)
@@ -925,7 +925,7 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_function_inferred_ret_length")
 TEST_CASE_FIXTURE(DifferFixture, "equal_function_inferred_ret_length_2")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function bar(x: number, y: string)
@@ -946,7 +946,7 @@ TEST_CASE_FIXTURE(DifferFixture, "equal_function_inferred_ret_length_2")
 TEST_CASE_FIXTURE(DifferFixture, "function_arg_normal")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo(x: number, y: number, z: number)
@@ -965,7 +965,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_arg_normal")
 TEST_CASE_FIXTURE(DifferFixture, "function_arg_normal_2")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo(x: number, y: number, z: string)
@@ -984,7 +984,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_arg_normal_2")
 TEST_CASE_FIXTURE(DifferFixture, "function_ret_normal")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo(x: number, y: number, z: string)
@@ -1003,7 +1003,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_ret_normal")
 TEST_CASE_FIXTURE(DifferFixture, "function_arg_length")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo(x: number, y: number)
@@ -1022,7 +1022,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_arg_length")
 TEST_CASE_FIXTURE(DifferFixture, "function_arg_length_2")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo(x: number, y: string, z: number)
@@ -1041,7 +1041,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_arg_length_2")
 TEST_CASE_FIXTURE(DifferFixture, "function_arg_length_none")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo()
@@ -1060,7 +1060,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_arg_length_none")
 TEST_CASE_FIXTURE(DifferFixture, "function_arg_length_none_2")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo(x: number)
@@ -1079,7 +1079,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_arg_length_none_2")
 TEST_CASE_FIXTURE(DifferFixture, "function_ret_length")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo(x: number, y: number)
@@ -1098,7 +1098,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_ret_length")
 TEST_CASE_FIXTURE(DifferFixture, "function_ret_length_2")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo(x: number, y: string, z: number)
@@ -1117,7 +1117,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_ret_length_2")
 TEST_CASE_FIXTURE(DifferFixture, "function_ret_length_none")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo(x: number, y: string)
@@ -1136,7 +1136,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_ret_length_none")
 TEST_CASE_FIXTURE(DifferFixture, "function_ret_length_none_2")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo()
@@ -1155,7 +1155,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_ret_length_none_2")
 TEST_CASE_FIXTURE(DifferFixture, "function_variadic_arg_normal")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo(x: number, y: string, ...: number)
@@ -1174,7 +1174,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_variadic_arg_normal")
 TEST_CASE_FIXTURE(DifferFixture, "function_variadic_arg_missing")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo(x: number, y: string, ...: number)
@@ -1193,7 +1193,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_variadic_arg_missing")
 TEST_CASE_FIXTURE(DifferFixture, "function_variadic_arg_missing_2")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo(x: number, y: string)
@@ -1212,7 +1212,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_variadic_arg_missing_2")
 TEST_CASE_FIXTURE(DifferFixture, "function_variadic_oversaturation")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     -- allowed to be oversaturated
@@ -1231,7 +1231,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_variadic_oversaturation")
 TEST_CASE_FIXTURE(DifferFixture, "function_variadic_oversaturation_2")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     -- must not be oversaturated
@@ -1250,7 +1250,7 @@ TEST_CASE_FIXTURE(DifferFixture, "function_variadic_oversaturation_2")
 TEST_CASE_FIXTURE(DifferFixture, "generic")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo(x, y)
@@ -1269,7 +1269,7 @@ TEST_CASE_FIXTURE(DifferFixture, "generic")
 TEST_CASE_FIXTURE(DifferFixture, "generic_one_vs_two")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo<X>(x: X, y: X)
@@ -1288,7 +1288,7 @@ TEST_CASE_FIXTURE(DifferFixture, "generic_one_vs_two")
 TEST_CASE_FIXTURE(DifferFixture, "generic_three_or_three")
 {
     // Old solver does not correctly infer function typepacks
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
     function foo<X, Y>(x: X, y: X, z: Y)
@@ -1329,7 +1329,7 @@ TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "equal_metatable")
 
 TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "metatable_normal")
 {
-    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", false};
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
 
     CheckResult result = check(R"(
     local metaFoo = {

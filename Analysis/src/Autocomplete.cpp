@@ -5,6 +5,7 @@
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Frontend.h"
 #include "Luau/ToString.h"
+#include "Luau/Subtyping.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
 
@@ -12,6 +13,7 @@
 #include <unordered_set>
 #include <utility>
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(DebugLuauReadWriteProperties);
 LUAU_FASTFLAG(LuauClipExtraHasEndProps);
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteDoEnd, false);
@@ -143,13 +145,24 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
     InternalErrorReporter iceReporter;
     UnifierSharedState unifierState(&iceReporter);
     Normalizer normalizer{typeArena, builtinTypes, NotNull{&unifierState}};
-    Unifier unifier(NotNull<Normalizer>{&normalizer}, scope, Location(), Variance::Covariant);
 
-    // Cost of normalization can be too high for autocomplete response time requirements
-    unifier.normalize = false;
-    unifier.checkInhabited = false;
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        Subtyping subtyping{builtinTypes, NotNull{typeArena}, NotNull{&normalizer}, NotNull{&iceReporter}, scope};
 
-    return unifier.canUnify(subTy, superTy).empty();
+        return subtyping.isSubtype(subTy, superTy).isSubtype;
+    }
+    else
+    {
+        Unifier unifier(NotNull<Normalizer>{&normalizer}, scope, Location(), Variance::Covariant);
+
+        // Cost of normalization can be too high for autocomplete response time requirements
+        unifier.normalize = false;
+        unifier.checkInhabited = false;
+
+        return unifier.canUnify(subTy, superTy).empty();
+    }
+
 }
 
 static TypeCorrectKind checkTypeCorrectKind(

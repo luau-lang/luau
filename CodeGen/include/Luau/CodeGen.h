@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <string>
+#include <vector>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -80,6 +81,36 @@ struct AssemblyOptions
     void* annotatorContext = nullptr;
 };
 
+struct BlockLinearizationStats
+{
+    unsigned int constPropInstructionCount = 0;
+    double timeSeconds = 0.0;
+
+    BlockLinearizationStats& operator+=(const BlockLinearizationStats& that)
+    {
+        this->constPropInstructionCount += that.constPropInstructionCount;
+        this->timeSeconds += that.timeSeconds;
+
+        return *this;
+    }
+
+    BlockLinearizationStats operator+(const BlockLinearizationStats& other) const
+    {
+        BlockLinearizationStats result(*this);
+        result += other;
+        return result;
+    }
+};
+
+struct FunctionStats
+{
+    std::string name;
+    int line = -1;
+    unsigned bcodeCount = 0;
+    unsigned irCount = 0;
+    unsigned asmCount = 0;
+};
+
 struct LoweringStats
 {
     unsigned totalFunctions = 0;
@@ -93,6 +124,11 @@ struct LoweringStats
 
     int regAllocErrors = 0;
     int loweringErrors = 0;
+
+    BlockLinearizationStats blockLinearizationStats;
+
+    bool collectFunctionStats = false;
+    std::vector<FunctionStats> functions;
 
     LoweringStats operator+(const LoweringStats& other) const
     {
@@ -113,6 +149,9 @@ struct LoweringStats
         this->maxBlockInstructions = std::max(this->maxBlockInstructions, that.maxBlockInstructions);
         this->regAllocErrors += that.regAllocErrors;
         this->loweringErrors += that.loweringErrors;
+        this->blockLinearizationStats += that.blockLinearizationStats;
+        if (this->collectFunctionStats)
+            this->functions.insert(this->functions.end(), that.functions.begin(), that.functions.end());
         return *this;
     }
 };

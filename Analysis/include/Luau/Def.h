@@ -79,8 +79,8 @@ struct DefArena
     TypedAllocator<Def> allocator;
 
     DefId freshCell(bool subscripted = false);
-    // TODO: implement once we have cases where we need to merge in definitions
-    // DefId phi(const std::vector<DefId>& defs);
+    DefId phi(DefId a, DefId b);
+    DefId phi(const std::vector<DefId>& defs);
 };
 
 } // namespace Luau
