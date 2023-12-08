@@ -215,7 +215,6 @@ TEST_CASE("PathNormalization")
     }
 }
 
-
 TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireSimpleRelativePath")
 {
     ScopedFastFlag sff{FFlag::LuauUpdatedRequireByStringSemantics, true};
