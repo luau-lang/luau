@@ -56,15 +56,21 @@ public:
 
         for (int i = 0; i < 20; ++i)
         {
-            if (isDirectory(luauDirAbs + "/Luau/tests") || isDirectory(luauDirAbs + "/Client/Luau/tests"))
+            bool engineTestDir = isDirectory(luauDirAbs + "/Client/Luau/tests");
+            bool luauTestDir = isDirectory(luauDirAbs + "/luau/tests");
+            if (engineTestDir || luauTestDir)
             {
-                if (isDirectory(luauDirAbs + "/Client/Luau/tests"))
+                if (engineTestDir)
                 {
-                    luauDirRel += "/Client";
-                    luauDirAbs += "/Client";
+                    luauDirRel += "/Client/Luau";
+                    luauDirAbs += "/Client/Luau";
                 }
-                luauDirRel += "/Luau";
-                luauDirAbs += "/Luau";
+                else
+                {
+                    luauDirRel += "/luau";
+                    luauDirAbs += "/luau";
+                }
+
 
                 if (type == PathType::Relative)
                     return luauDirRel;

@@ -31,9 +31,6 @@ struct ModuleHelpers
 
     // A64
     Label continueCall; // x0: closure
-
-    unsigned bytecodeInstructionCount = 0;
-    unsigned preOptBlockCount = 0;
 };
 
 } // namespace CodeGen

@@ -736,7 +736,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "mutual_recursion")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    dumpErrors(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "toposort_doesnt_break_mutual_recursion")

@@ -21,7 +21,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ]]
-local bench = script and require(script.Parent.bench_support) or require("bench_support")
+local function prequire(name) local success, result = pcall(require, name); return if success then result else nil end
+local bench = script and require(script.Parent.bench_support) or prequire("bench_support") or require("../../bench_support")
 
 function test()
 
