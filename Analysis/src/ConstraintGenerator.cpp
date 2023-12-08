@@ -205,7 +205,7 @@ ScopePtr ConstraintGenerator::childScope(AstNode* node, const ScopePtr& parent)
     return scope;
 }
 
-std::optional<TypeId> ConstraintGenerator::lookup(Scope* scope, DefId def)
+std::optional<TypeId> ConstraintGenerator::lookup(Scope* scope, DefId def, bool prototype)
 {
     if (get<Cell>(def))
         return scope->lookup(def);
@@ -213,22 +213,24 @@ std::optional<TypeId> ConstraintGenerator::lookup(Scope* scope, DefId def)
     {
         if (auto found = scope->lookup(def))
             return *found;
+        else if (!prototype)
+            return std::nullopt;
 
         TypeId res = builtinTypes->neverType;
 
         for (DefId operand : phi->operands)
         {
-            // `scope->lookup(operand)` may return nothing because it could be a phi node of globals, but one of
-            // the operand of that global has never been assigned a type, and so it should be an error.
-            // e.g.
-            // ```
-            // if foo() then
-            //   g = 5
-            // end
-            // -- `g` here is a phi node of the assignment to `g`, or the original revision of `g` before the branch.
-            // ```
-            TypeId ty = scope->lookup(operand).value_or(builtinTypes->errorRecoveryType());
-            res = simplifyUnion(builtinTypes, arena, res, ty).result;
+            // `scope->lookup(operand)` may return nothing because we only bind a type to that operand
+            // once we've seen that particular `DefId`. In this case, we need to prototype those types
+            // and use those at a later time.
+            std::optional<TypeId> ty = lookup(scope, operand, /*prototype*/false);
+            if (!ty)
+            {
+                ty = arena->addType(BlockedType{});
+                rootScope->lvalueTypes[operand] = *ty;
+            }
+
+            res = simplifyUnion(builtinTypes, arena, res, *ty).result;
         }
 
         scope->lvalueTypes[def] = res;
@@ -861,7 +863,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
     DenseHashSet<Constraint*> excludeList{nullptr};
 
     DefId def = dfg->getDef(function->name);
-    std::optional<TypeId> existingFunctionTy = scope->lookup(def);
+    std::optional<TypeId> existingFunctionTy = lookup(scope.get(), def);
 
     if (AstExprLocal* localName = function->name->as<AstExprLocal>())
     {
@@ -1724,16 +1726,14 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprGlobal* globa
     /* prepopulateGlobalScope() has already added all global functions to the environment by this point, so any
      * global that is not already in-scope is definitely an unknown symbol.
      */
-    if (auto ty = lookup(scope.get(), def))
-        return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
-    else if (auto ty = scope->lookup(global->name))
+    if (auto ty = lookup(scope.get(), def, /*prototype=*/false))
     {
         rootScope->lvalueTypes[def] = *ty;
         return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
     }
     else
     {
-        reportError(global->location, UnknownSymbol{global->name.value});
+        reportError(global->location, UnknownSymbol{global->name.value, UnknownSymbol::Binding});
         return Inference{builtinTypes->errorRecoveryType()};
     }
 }
@@ -3108,6 +3108,16 @@ struct GlobalPrepopulator : AstVisitor
             globalScope->bindings[g->name] = Binding{bt};
         }
 
+        return true;
+    }
+
+    bool visit(AstType*) override
+    {
+        return true;
+    }
+
+    bool visit(class AstTypePack* node) override
+    {
         return true;
     }
 };

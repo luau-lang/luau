@@ -42,8 +42,18 @@
 LUAU_FASTFLAGVARIABLE(DebugCodegenNoOpt, false)
 LUAU_FASTFLAGVARIABLE(DebugCodegenOptSize, false)
 LUAU_FASTFLAGVARIABLE(DebugCodegenSkipNumbering, false)
+
+// Per-module IR instruction count limit
 LUAU_FASTINTVARIABLE(CodegenHeuristicsInstructionLimit, 1'048'576)   // 1 M
-LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockLimit, 65'536)            // 64 K
+
+// Per-function IR block limit
+// Current value is based on some member variables being limited to 16 bits
+// Because block check is made before optimization passes and optimization can generate new blocks, limit is lowered 2x
+// The limit will probably be adjusted in the future to avoid performance issues with analysis that's more complex than O(n)
+LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockLimit, 32'768)            // 32 K
+
+// Per-function IR instruction limit
+// Current value is based on some member variables being limited to 16 bits
 LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockInstructionLimit, 65'536) // 64 K
 
 namespace Luau
@@ -104,10 +114,17 @@ static void logPerfFunction(Proto* p, uintptr_t addr, unsigned size)
 }
 
 template<typename AssemblyBuilder>
-static std::optional<NativeProto> createNativeFunction(AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto)
+static std::optional<NativeProto> createNativeFunction(AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto, uint32_t& totalIrInstCount)
 {
     IrBuilder ir;
     ir.buildFunctionIr(proto);
+
+    unsigned instCount = unsigned(ir.function.instructions.size());
+
+    if (totalIrInstCount + instCount >= unsigned(FInt::CodegenHeuristicsInstructionLimit.value))
+        return std::nullopt;
+
+    totalIrInstCount += instCount;
 
     if (!lowerFunction(ir, build, helpers, proto, {}, /* stats */ nullptr))
         return std::nullopt;
@@ -291,9 +308,13 @@ CodeGenCompilationResult compile(lua_State* L, int idx, unsigned int flags, Comp
     std::vector<NativeProto> results;
     results.reserve(protos.size());
 
+    uint32_t totalIrInstCount = 0;
+
     for (Proto* p : protos)
-        if (std::optional<NativeProto> np = createNativeFunction(build, helpers, p))
+    {
+        if (std::optional<NativeProto> np = createNativeFunction(build, helpers, p, totalIrInstCount))
             results.push_back(*np);
+    }
 
     // Very large modules might result in overflowing a jump offset; in this case we currently abandon the entire module
     if (!build.finalize())

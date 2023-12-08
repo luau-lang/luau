@@ -73,6 +73,7 @@ const T* get(DefId def)
 }
 
 bool containsSubscriptedDefinition(DefId def);
+void collectOperands(DefId def, std::vector<DefId>* operands);
 
 struct DefArena
 {

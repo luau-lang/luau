@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauCodeGenFixByteLower);
 LUAU_FASTFLAG(LuauCompileBufferAnnotation);
 LUAU_FASTFLAG(LuauLoopInterruptFix);
 LUAU_DYNAMIC_FASTFLAG(LuauStricterUtf8);
+LUAU_FASTINT(CodegenHeuristicsInstructionLimit);
 
 static lua_CompileOptions defaultOptions()
 {
@@ -2018,6 +2019,64 @@ TEST_CASE("HugeFunction")
     REQUIRE(status == 0);
 
     CHECK(lua_tonumber(L, -1) == 42);
+}
+
+TEST_CASE("IrInstructionLimit")
+{
+    if (!codegen || !luau_codegen_supported())
+        return;
+
+    ScopedFastInt codegenHeuristicsInstructionLimit{FInt::CodegenHeuristicsInstructionLimit, 50'000};
+
+    std::string source;
+
+    // Generate a hundred fat functions
+    for (int fn = 0; fn < 100; fn++)
+    {
+        source += "local function fn" + std::to_string(fn) + "(...)\n";
+        source += "if ... then\n";
+        source += "local p1, p2 = ...\n";
+        source += "local _ = {\n";
+
+        for (int i = 0; i < 100; ++i)
+        {
+            source += "p1*0." + std::to_string(i) + ",";
+            source += "p2+0." + std::to_string(i) + ",";
+        }
+
+        source += "}\n";
+        source += "return _\n";
+        source += "end\n";
+        source += "end\n";
+    }
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    luau_codegen_create(L);
+
+    luaL_openlibs(L);
+    luaL_sandbox(L);
+    luaL_sandboxthread(L);
+
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source.data(), source.size(), nullptr, &bytecodeSize);
+    int result = luau_load(L, "=HugeFunction", bytecode, bytecodeSize, 0);
+    free(bytecode);
+
+    REQUIRE(result == 0);
+
+    Luau::CodeGen::CompilationStats nativeStats = {};
+    Luau::CodeGen::CodeGenCompilationResult nativeResult = Luau::CodeGen::compile(L, -1, Luau::CodeGen::CodeGen_ColdFunctions, &nativeStats);
+
+    // Limit is not hit immediately, so with some functions compiled it should be a success
+    CHECK(nativeResult != Luau::CodeGen::CodeGenCompilationResult::CodeGenFailed);
+
+    // We should be able to compile at least one of our functions
+    CHECK(nativeStats.functionsCompiled > 0);
+
+    // But because of the limit, not all of them (101 because there's an extra global function)
+    CHECK(nativeStats.functionsCompiled < 101);
 }
 
 TEST_CASE("BytecodeDistributionPerFunctionTest")

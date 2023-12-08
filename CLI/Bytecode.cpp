@@ -124,7 +124,7 @@ static bool analyzeFile(const char* name, const unsigned nestingLimit, std::vect
     {
         Luau::BytecodeBuilder bcb;
 
-        compileOrThrow(bcb, source.value(), copts());
+        compileOrThrow(bcb, *source, copts());
 
         const std::string& bytecode = bcb.getBytecode();
 

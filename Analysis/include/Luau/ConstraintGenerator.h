@@ -150,7 +150,7 @@ private:
      */
     ScopePtr childScope(AstNode* node, const ScopePtr& parent);
 
-    std::optional<TypeId> lookup(Scope* scope, DefId def);
+    std::optional<TypeId> lookup(Scope* scope, DefId def, bool prototype = true);
 
     /**
      * Adds a new constraint with no dependencies to a given scope.
