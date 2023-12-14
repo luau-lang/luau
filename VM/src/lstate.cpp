@@ -210,6 +210,8 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
         g->mt[i] = NULL;
     for (i = 0; i < LUA_UTAG_LIMIT; i++)
         g->udatagc[i] = NULL;
+    for (i = 0; i < LUA_LUTAG_LIMIT; i++)
+        g->lightuserdataname[i] = NULL;
     for (i = 0; i < LUA_MEMORY_CATEGORIES; i++)
         g->memcatbytes[i] = 0;
 

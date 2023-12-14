@@ -214,6 +214,8 @@ typedef struct global_State
 
     void (*udatagc[LUA_UTAG_LIMIT])(lua_State*, void*); // for each userdata tag, a gc callback to be called immediately before freeing memory
 
+    TString* lightuserdataname[LUA_LUTAG_LIMIT]; // names for tagged lightuserdata
+
     GCStats gcstats;
 
 #ifdef LUAI_GCMETRICS

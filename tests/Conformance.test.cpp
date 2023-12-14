@@ -32,6 +32,7 @@ LUAU_FASTFLAG(LuauBufferDefinitions);
 LUAU_FASTFLAG(LuauCodeGenFixByteLower);
 LUAU_FASTFLAG(LuauCompileBufferAnnotation);
 LUAU_FASTFLAG(LuauLoopInterruptFix);
+LUAU_FASTFLAG(TaggedLuData);
 LUAU_DYNAMIC_FASTFLAG(LuauStricterUtf8);
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit);
 
@@ -1698,6 +1699,32 @@ TEST_CASE("UserdataApi")
     globalState.reset();
 
     CHECK(dtorhits == 42);
+}
+
+TEST_CASE("LightuserdataApi")
+{
+    ScopedFastFlag taggedLuData{FFlag::TaggedLuData, true};
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    void* value = (void*)0x12345678;
+
+    lua_pushlightuserdatatagged(L, value, 1);
+    CHECK(lua_lightuserdatatag(L, -1) == 1);
+    CHECK(lua_tolightuserdatatagged(L, -1, 0) == nullptr);
+    CHECK(lua_tolightuserdatatagged(L, -1, 1) == value);
+
+    lua_setlightuserdataname(L, 1, "id");
+    CHECK(!lua_getlightuserdataname(L, 0));
+    CHECK(strcmp(lua_getlightuserdataname(L, 1), "id") == 0);
+    CHECK(strcmp(luaL_typename(L, -1), "id") == 0);
+
+    lua_pushlightuserdatatagged(L, value, 0);
+    lua_pushlightuserdatatagged(L, value, 1);
+    CHECK(lua_rawequal(L, -1, -2) == 0);
+
+    globalState.reset();
 }
 
 TEST_CASE("Iter")
