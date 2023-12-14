@@ -32,6 +32,7 @@ LUAU_FASTFLAG(LuauBufferDefinitions);
 LUAU_FASTFLAG(LuauCodeGenFixByteLower);
 LUAU_FASTFLAG(LuauCompileBufferAnnotation);
 LUAU_FASTFLAG(LuauLoopInterruptFix);
+LUAU_FASTFLAG(TaggedLuData);
 LUAU_DYNAMIC_FASTFLAG(LuauStricterUtf8);
 
 static lua_CompileOptions defaultOptions()
@@ -1701,6 +1702,8 @@ TEST_CASE("UserdataApi")
 
 TEST_CASE("LightuserdataApi")
 {
+    ScopedFastFlag taggedLuData{FFlag::TaggedLuData, true};
+
     StateRef globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 
