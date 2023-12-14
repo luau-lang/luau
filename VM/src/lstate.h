@@ -197,7 +197,6 @@ typedef struct global_State
     struct Table* mt[LUA_T_COUNT];                   // metatables for basic types
     TString* ttname[LUA_T_COUNT];       // names for basic types
     TString* tmname[TM_N];             // array with tag-method names
-    TString* lightuserdataname[LUA_LUTAG_LIMIT]; // names for tagged lightuserdata
 
     TValue pseudotemp; // storage for temporary values used in pseudo2addr
 
@@ -214,6 +213,8 @@ typedef struct global_State
     lua_ExecutionCallbacks ecb;
 
     void (*udatagc[LUA_UTAG_LIMIT])(lua_State*, void*); // for each userdata tag, a gc callback to be called immediately before freeing memory
+
+    TString* lightuserdataname[LUA_LUTAG_LIMIT]; // names for tagged lightuserdata
 
     GCStats gcstats;
 
