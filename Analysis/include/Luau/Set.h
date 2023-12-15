@@ -118,6 +118,12 @@ public:
     class const_iterator
     {
     public:
+        using value_type = T;
+        using reference = T&;
+        using pointer = T*;
+        using difference_type = ptrdiff_t;
+        using iterator_category = std::forward_iterator_tag;
+
         const_iterator(typename Impl::const_iterator impl, typename Impl::const_iterator end)
             : impl(impl)
             , end(end)

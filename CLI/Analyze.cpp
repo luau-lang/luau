@@ -325,7 +325,7 @@ int main(int argc, char** argv)
         else if (strncmp(argv[i], "--fflags=", 9) == 0)
             setLuauFlags(argv[i] + 9);
         else if (strncmp(argv[i], "-j", 2) == 0)
-            threadCount = strtol(argv[i] + 2, nullptr, 10);
+            threadCount = int(strtol(argv[i] + 2, nullptr, 10));
     }
 
 #if !defined(LUAU_ENABLE_TIME_TRACE)
@@ -363,12 +363,26 @@ int main(int argc, char** argv)
     if (threadCount <= 0)
         threadCount = std::min(TaskScheduler::getThreadCount(), 8u);
 
+    try
     {
         TaskScheduler scheduler(threadCount);
 
         checkedModules = frontend.checkQueuedModules(std::nullopt, [&](std::function<void()> f) {
             scheduler.push(std::move(f));
         });
+    }
+    catch (const Luau::InternalCompilerError& ice)
+    {
+        Luau::Location location = ice.location ? *ice.location : Luau::Location();
+
+        std::string moduleName = ice.moduleName ? *ice.moduleName : "<unknown module>";
+        std::string humanReadableName = frontend.fileResolver->getHumanReadableModuleName(moduleName);
+
+        Luau::TypeError error(location, moduleName, Luau::InternalError{ice.message});
+
+        report(format, humanReadableName.c_str(), location, "InternalCompilerError",
+            Luau::toString(error, Luau::TypeErrorToStringOptions{frontend.fileResolver}).c_str());
+        return 1;
     }
 
     int failed = 0;

@@ -137,8 +137,8 @@ private:
     DfgScope* childScope(DfgScope* scope, DfgScope::ScopeType scopeType = DfgScope::Linear);
 
     void join(DfgScope* p, DfgScope* a, DfgScope* b);
-    void joinBindings(DfgScope::Bindings& p, const DfgScope::Bindings& a, const DfgScope::Bindings& b);
-    void joinProps(DfgScope::Props& p, const DfgScope::Props& a, const DfgScope::Props& b);
+    void joinBindings(DfgScope* p, const DfgScope& a, const DfgScope& b);
+    void joinProps(DfgScope* p, const DfgScope& a, const DfgScope& b);
 
     DefId lookup(DfgScope* scope, Symbol symbol);
     DefId lookup(DfgScope* scope, DefId def, const std::string& key);

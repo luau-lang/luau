@@ -1855,7 +1855,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_annotations_arent_relevant_when_doing_d
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_call_with_colon_after_refining_not_to_be_nil")
 {
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+    // don't run this test at all without DCR
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
 
     CheckResult result = check(R"(
         --!strict

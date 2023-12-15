@@ -394,4 +394,39 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithParentAlias")
     assertOutputContainsAll({"true", "result from other_dependency"});
 }
 
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireAliasThatDoesNotExist")
+{
+    ScopedFastFlag sff{FFlag::LuauUpdatedRequireByStringSemantics, true};
+    std::string nonExistentAlias = "@this.alias.does.not.exist";
+
+    runProtectedRequire(nonExistentAlias);
+    assertOutputContainsAll({"false", "@this.alias.does.not.exist is not a valid alias"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "AliasHasIllegalFormat")
+{
+    ScopedFastFlag sff{FFlag::LuauUpdatedRequireByStringSemantics, true};
+    std::string illegalCharacter = "@@";
+
+    runProtectedRequire(illegalCharacter);
+    assertOutputContainsAll({"false", "@@ is not a valid alias"});
+
+    std::string pathAlias1 = "@.";
+
+    runProtectedRequire(pathAlias1);
+    assertOutputContainsAll({"false", ". is not a valid alias"});
+
+
+    std::string pathAlias2 = "@..";
+
+    runProtectedRequire(pathAlias2);
+    assertOutputContainsAll({"false", ".. is not a valid alias"});
+
+    std::string emptyAlias = "@";
+
+    runProtectedRequire(emptyAlias);
+    assertOutputContainsAll({"false", " is not a valid alias"});
+}
+
 TEST_SUITE_END();
