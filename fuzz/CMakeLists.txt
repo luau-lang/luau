@@ -17,7 +17,7 @@ if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     return()
 endif()
 
-if(NOT CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64")
+if(APPLE AND NOT CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64")
     message(WARNING "Building the Luau fuzzer for ARM64 is currently unsupported.")
     return()
 endif()
