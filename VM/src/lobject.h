@@ -80,6 +80,11 @@ typedef struct lua_TValue
 
 #define l_isfalse(o) (ttisnil(o) || (ttisboolean(o) && bvalue(o) == 0))
 
+#define lightuserdatatag(o) check_exp(ttislightuserdata(o), (o)->extra[0])
+
+// Internal tags used by the VM
+#define LU_TAG_ITERATOR LUA_UTAG_LIMIT
+
 /*
 ** for internal debug only
 */
@@ -120,10 +125,11 @@ typedef struct lua_TValue
     }
 #endif
 
-#define setpvalue(obj, x) \
+#define setpvalue(obj, x, tag) \
     { \
         TValue* i_o = (obj); \
         i_o->value.p = (x); \
+        i_o->extra[0] = (tag); \
         i_o->tt = LUA_TLIGHTUSERDATA; \
     }
 
@@ -492,3 +498,5 @@ LUAI_FUNC int luaO_str2d(const char* s, double* result);
 LUAI_FUNC const char* luaO_pushvfstring(lua_State* L, const char* fmt, va_list argp);
 LUAI_FUNC const char* luaO_pushfstring(lua_State* L, const char* fmt, ...);
 LUAI_FUNC const char* luaO_chunkid(char* buf, size_t buflen, const char* source, size_t srclen);
+
+LUAU_FASTFLAG(TaggedLuData)
