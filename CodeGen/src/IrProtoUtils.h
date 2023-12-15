@@ -2,7 +2,6 @@
 #pragma once
 
 #include "lobject.h"
-#include <stdint.h>
 
 namespace Luau
 {
