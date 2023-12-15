@@ -2183,4 +2183,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "apply_of_lambda_with_inferred_and_explicit_t
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "regex_benchmark_string_format_minimization")
+{
+    CheckResult result = check(R"(
+        (nil :: any)(function(n)
+            if tonumber(n) then
+                n = tonumber(n)
+            elseif n ~= nil then
+                string.format("invalid argument #4 to 'sub': number expected, got %s", typeof(n))
+            end
+        end);
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

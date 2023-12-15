@@ -545,8 +545,6 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*sottc, constraint);
     else if (auto uc = get<UnpackConstraint>(*constraint))
         success = tryDispatch(*uc, constraint);
-    else if (auto rc = get<RefineConstraint>(*constraint))
-        success = tryDispatch(*rc, constraint, force);
     else if (auto soc = get<SetOpConstraint>(*constraint))
         success = tryDispatch(*soc, constraint, force);
     else if (auto rc = get<ReduceConstraint>(*constraint))
@@ -887,9 +885,9 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     // In order to prevent infinite types from being expanded and causing us to
     // cycle infinitely, we need to scan the type function for cases where we
     // expand the same alias with different type saturatedTypeArguments. See
-    // https://github.com/Roblox/luau/pull/68 for the RFC responsible for this.
-    // This is a little nicer than using a recursion limit because we can catch
-    // the infinite expansion before actually trying to expand it.
+    // https://github.com/luau-lang/luau/pull/68 for the RFC responsible for
+    // this. This is a little nicer than using a recursion limit because we can
+    // catch the infinite expansion before actually trying to expand it.
     InfiniteTypeFinder itf{this, signature, constraint->scope};
     itf.traverse(tf->type);
 
@@ -1501,151 +1499,6 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
 
         ++resultIter;
     }
-
-    return true;
-}
-
-namespace
-{
-
-/*
- * Search for types that prevent us from being ready to dispatch a particular
- * RefineConstraint.
- */
-struct FindRefineConstraintBlockers : TypeOnceVisitor
-{
-    DenseHashSet<TypeId> found{nullptr};
-    bool visit(TypeId ty, const BlockedType&) override
-    {
-        found.insert(ty);
-        return false;
-    }
-
-    bool visit(TypeId ty, const PendingExpansionType&) override
-    {
-        found.insert(ty);
-        return false;
-    }
-
-    bool visit(TypeId ty, const ClassType&) override
-    {
-        return false;
-    }
-};
-
-} // namespace
-
-static bool isNegatedAny(TypeId ty)
-{
-    ty = follow(ty);
-    const NegationType* nt = get<NegationType>(ty);
-    if (!nt)
-        return false;
-    TypeId negatedTy = follow(nt->ty);
-    return bool(get<AnyType>(negatedTy));
-}
-
-bool ConstraintSolver::tryDispatch(const RefineConstraint& c, NotNull<const Constraint> constraint, bool force)
-{
-    if (isBlocked(c.discriminant))
-        return block(c.discriminant, constraint);
-
-    FindRefineConstraintBlockers fbt;
-    fbt.traverse(c.discriminant);
-
-    if (!fbt.found.empty())
-    {
-        bool foundOne = false;
-
-        for (TypeId blocked : fbt.found)
-        {
-            if (blocked == c.type)
-                continue;
-
-            block(blocked, constraint);
-            foundOne = true;
-        }
-
-        if (foundOne)
-            return false;
-    }
-
-    /* HACK: Refinements sometimes produce a type T & ~any under the assumption
-     * that ~any is the same as any.  This is so so weird, but refinements needs
-     * some way to say "I may refine this, but I'm not sure."
-     *
-     * It does this by refining on a blocked type and deferring the decision
-     * until it is unblocked.
-     *
-     * Refinements also get negated, so we wind up with types like T & ~*blocked*
-     *
-     * We need to treat T & ~any as T in this case.
-     */
-
-    if (c.mode == RefineConstraint::Intersection && isNegatedAny(c.discriminant))
-    {
-        asMutable(c.resultType)->ty.emplace<BoundType>(c.type);
-        unblock(c.resultType, constraint->location);
-        return true;
-    }
-
-    const TypeId type = follow(c.type);
-
-    if (hasUnresolvedConstraints(type))
-        return block(type, constraint);
-
-    LUAU_ASSERT(get<BlockedType>(c.resultType));
-
-    if (type == c.resultType)
-    {
-        /*
-         * Sometimes, we get a constraint of the form
-         *
-         * *blocked-N* ~ refine *blocked-N* & U
-         *
-         * The constraint essentially states that a particular type is a
-         * refinement of itself. This is weird and I think vacuous.
-         *
-         * I *believe* it is safe to replace the result with a fresh type that
-         * is constrained by U.  We effect this by minting a fresh type for the
-         * result when U = any, else we bind the result to whatever discriminant
-         * was offered.
-         */
-        if (get<AnyType>(follow(c.discriminant)))
-        {
-            TypeId f = freshType(arena, builtinTypes, constraint->scope);
-            asMutable(c.resultType)->ty.emplace<BoundType>(f);
-        }
-        else
-            asMutable(c.resultType)->ty.emplace<BoundType>(c.discriminant);
-
-        unblock(c.resultType, constraint->location);
-        return true;
-    }
-
-    auto [result, blockedTypes] = c.mode == RefineConstraint::Intersection ? simplifyIntersection(builtinTypes, NotNull{arena}, type, c.discriminant)
-                                                                           : simplifyUnion(builtinTypes, NotNull{arena}, type, c.discriminant);
-
-    if (!force && !blockedTypes.empty())
-        return block(blockedTypes, constraint);
-
-    switch (shouldSuppressErrors(normalizer, c.type))
-    {
-    case ErrorSuppression::Suppress:
-    {
-        auto resultOrError = simplifyUnion(builtinTypes, arena, result, builtinTypes->errorType).result;
-        asMutable(c.resultType)->ty.emplace<BoundType>(resultOrError);
-        break;
-    }
-    case ErrorSuppression::DoNotSuppress:
-        asMutable(c.resultType)->ty.emplace<BoundType>(result);
-        break;
-    case ErrorSuppression::NormalizationFailed:
-        reportError(NormalizationTooComplex{}, constraint->location);
-        break;
-    }
-
-    unblock(c.resultType, constraint->location);
 
     return true;
 }

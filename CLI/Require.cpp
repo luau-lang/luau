@@ -22,16 +22,9 @@ RequireResolver::RequireResolver(lua_State* L, std::string path)
     if (isAbsolutePath(pathToResolve))
         luaL_argerrorL(L, 1, "cannot require an absolute path");
 
-    bool isAlias = !pathToResolve.empty() && pathToResolve[0] == '@';
-    if (!isAlias && !isExplicitlyRelative(pathToResolve))
-        luaL_argerrorL(L, 1, "must require an alias prepended with '@' or an explicitly relative path");
-
     std::replace(pathToResolve.begin(), pathToResolve.end(), '\\', '/');
-    if (isAlias)
-    {
-        pathToResolve = pathToResolve.substr(1);
-        substituteAliasIfPresent(pathToResolve);
-    }
+
+    substituteAliasIfPresent(pathToResolve);
 }
 
 [[nodiscard]] RequireResolver::ResolvedRequire RequireResolver::resolveRequire(lua_State* L, std::string path)
@@ -209,16 +202,22 @@ std::string RequireResolver::getRequiringContextRelative()
 
 void RequireResolver::substituteAliasIfPresent(std::string& path)
 {
-    std::string potentialAlias = path.substr(0, path.find_first_of("\\/"));
+    if (path.size() < 1 || path[0] != '@')
+        return;
+    std::string potentialAlias = path.substr(1, path.find_first_of("\\/"));
 
     // Not worth searching when potentialAlias cannot be an alias
     if (!Luau::isValidAlias(potentialAlias))
-        return;
+        luaL_errorL(L, "@%s is not a valid alias", potentialAlias.c_str());
 
     std::optional<std::string> alias = getAlias(potentialAlias);
     if (alias)
     {
-        path = *alias + path.substr(potentialAlias.size());
+        path = *alias + path.substr(potentialAlias.size() + 1);
+    }
+    else
+    {
+        luaL_errorL(L, "@%s is not a valid alias", potentialAlias.c_str());
     }
 }
 

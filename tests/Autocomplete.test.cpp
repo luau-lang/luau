@@ -3265,8 +3265,9 @@ end
 
     {
         check(R"(
-local t: Foo
-t:@1
+local function f(t: Foo)
+    t:@1
+end
         )");
 
         auto ac = autocomplete('1');
@@ -3281,8 +3282,9 @@ t:@1
 
     {
         check(R"(
-local t: Foo
-t.@1
+local function f(t: Foo)
+    t.@1
+end
         )");
 
         auto ac = autocomplete('1');
