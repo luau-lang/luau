@@ -257,7 +257,7 @@ void ConstraintGenerator::unionRefinements(const RefinementContext& lhs, const R
             return types[0];
         else if (2 == types.size())
         {
-            // TODO: It may be advantageous to create a RefineConstraint here when there are blockedTypes.
+            // TODO: It may be advantageous to introduce a refine type family here when there are blockedTypes.
             SimplifyResult sr = simplifyIntersection(builtinTypes, arena, types[0], types[1]);
             if (sr.blockedTypes.empty())
                 return sr.result;
@@ -441,10 +441,14 @@ void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location locat
             {
                 if (mustDeferIntersection(ty) || mustDeferIntersection(dt))
                 {
-                    TypeId r = arena->addType(BlockedType{});
-                    addConstraint(scope, location, RefineConstraint{RefineConstraint::Intersection, r, ty, dt});
+                    TypeId resultType = arena->addType(TypeFamilyInstanceType{
+                        NotNull{&kBuiltinTypeFamilies.refineFamily},
+                        {ty, dt},
+                        {},
+                    });
+                    addConstraint(scope, location, ReduceConstraint{resultType});
 
-                    ty = r;
+                    ty = resultType;
                 }
                 else
                 {
@@ -1005,9 +1009,6 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatAssign* ass
 
         checkLValue(scope, lvalue, assignee);
         assignees.push_back(assignee);
-
-        DefId def = dfg->getDef(lvalue);
-        scope->lvalueTypes[def] = assignee;
     }
 
     TypePackId resultPack = checkPack(scope, assign->values).tp;

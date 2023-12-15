@@ -200,6 +200,23 @@ struct AstJsonEncoder : public AstVisitor
     {
         writeString(name.value ? name.value : "");
     }
+    void write(std::optional<AstArgumentName> name)
+    {
+        if (name)
+            write(*name);
+        else
+            writeRaw("null");
+    }
+    void write(AstArgumentName name)
+    {
+        writeRaw("{");
+        bool c = pushComma();
+        writeType("AstArgumentName");
+        write("name", name.first);
+        write("location", name.second);
+        popComma(c);
+        writeRaw("}");
+    }
 
     void write(const Position& position)
     {
@@ -848,6 +865,7 @@ struct AstJsonEncoder : public AstVisitor
             PROP(generics);
             PROP(genericPacks);
             PROP(argTypes);
+            PROP(argNames);
             PROP(returnTypes);
         });
     }
@@ -900,6 +918,22 @@ struct AstJsonEncoder : public AstVisitor
         writeNode(node, "AstTypePackGeneric", [&]() {
             PROP(genericName);
         });
+    }
+
+    bool visit(class AstTypeSingletonBool* node) override
+    {
+        writeNode(node, "AstTypeSingletonBool", [&]() {
+            write("value", node->value);
+        });
+        return false;
+    }
+
+    bool visit(class AstTypeSingletonString* node) override
+    {
+        writeNode(node, "AstTypeSingletonString", [&]() {
+            write("value", node->value);
+        });
+        return false;
     }
 
     bool visit(class AstExprGroup* node) override

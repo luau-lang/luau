@@ -230,10 +230,14 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_function_prop")
         declare class Foo
             X: (number) -> string
         end
+
+        declare Foo: {
+            new: () -> Foo
+        }
     )");
 
     CheckResult result = check(R"(
-        local x: Foo
+        local x: Foo = Foo.new()
         local prop = x.X
     )");
 
@@ -250,10 +254,14 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_class_function_args")
 
             y: (a: number, b: string) -> string
         end
+
+        declare Foo: {
+            new: () -> Foo
+        }
     )");
 
     CheckResult result = check(R"(
-        local x: Foo
+        local x: Foo = Foo.new()
         local methodRef1 = x.foo1
         local methodRef2 = x.foo2
         local prop = x.y

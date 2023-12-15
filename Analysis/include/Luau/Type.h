@@ -176,7 +176,7 @@ struct PrimitiveType
     }
 };
 
-// Singleton types https://github.com/Roblox/luau/blob/master/rfcs/syntax-singleton-types.md
+// Singleton types https://github.com/luau-lang/rfcs/blob/master/docs/syntax-singleton-types.md
 // Types for true and false
 struct BooleanSingleton
 {

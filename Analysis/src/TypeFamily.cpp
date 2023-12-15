@@ -349,7 +349,8 @@ TypeFamilyReductionResult<TypeId> lenFamilyFn(const std::vector<TypeId>& typePar
     TypeId operandTy = follow(typeParams.at(0));
 
     // check to see if the operand type is resolved enough, and wait to reduce if not
-    if (isPending(operandTy, ctx->solver))
+    // the use of `typeFromNormal` later necessitates blocking on local types.
+    if (isPending(operandTy, ctx->solver) || get<LocalType>(operandTy))
         return {std::nullopt, false, {operandTy}, {}};
 
     const NormalizedType* normTy = ctx->normalizer->normalize(operandTy);
@@ -964,6 +965,92 @@ TypeFamilyReductionResult<TypeId> eqFamilyFn(const std::vector<TypeId>& typePara
     return {ctx->builtins->booleanType, false, {}, {}};
 }
 
+// Collect types that prevent us from reducing a particular refinement.
+struct FindRefinementBlockers : TypeOnceVisitor
+{
+    DenseHashSet<TypeId> found{nullptr};
+    bool visit(TypeId ty, const BlockedType&) override
+    {
+        found.insert(ty);
+        return false;
+    }
+
+    bool visit(TypeId ty, const PendingExpansionType&) override
+    {
+        found.insert(ty);
+        return false;
+    }
+
+    bool visit(TypeId ty, const LocalType&) override
+    {
+        found.insert(ty);
+        return false;
+    }
+
+    bool visit(TypeId ty, const ClassType&) override
+    {
+        return false;
+    }
+};
+
+
+TypeFamilyReductionResult<TypeId> refineFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+{
+    if (typeParams.size() != 2 || !packParams.empty())
+    {
+        ctx->ice->ice("refine type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId targetTy = follow(typeParams.at(0));
+    TypeId discriminantTy = follow(typeParams.at(1));
+
+    // check to see if both operand types are resolved enough, and wait to reduce if not
+    if (isPending(targetTy, ctx->solver))
+        return {std::nullopt, false, {targetTy}, {}};
+    else if (isPending(discriminantTy, ctx->solver))
+        return {std::nullopt, false, {discriminantTy}, {}};
+
+    // we need a more complex check for blocking on the discriminant in particular
+    FindRefinementBlockers frb;
+    frb.traverse(discriminantTy);
+
+    if (!frb.found.empty())
+        return {std::nullopt, false, {frb.found.begin(), frb.found.end()}, {}};
+
+    /* HACK: Refinements sometimes produce a type T & ~any under the assumption
+     * that ~any is the same as any.  This is so so weird, but refinements needs
+     * some way to say "I may refine this, but I'm not sure."
+     *
+     * It does this by refining on a blocked type and deferring the decision
+     * until it is unblocked.
+     *
+     * Refinements also get negated, so we wind up with types like T & ~*blocked*
+     *
+     * We need to treat T & ~any as T in this case.
+     */
+
+    if (auto nt = get<NegationType>(discriminantTy))
+        if (get<AnyType>(follow(nt->ty)))
+            return {targetTy, false, {}, {}};
+
+    TypeId intersection = ctx->arena->addType(IntersectionType{{targetTy, discriminantTy}});
+    const NormalizedType* normIntersection = ctx->normalizer->normalize(intersection);
+    const NormalizedType* normType = ctx->normalizer->normalize(targetTy);
+
+    // if the intersection failed to normalize, we can't reduce, but know nothing about inhabitance.
+    if (!normIntersection || !normType)
+        return {std::nullopt, false, {}, {}};
+
+    TypeId resultTy = ctx->normalizer->typeFromNormal(*normIntersection);
+
+    // include the error type if the target type is error-suppressing and the intersection we computed is not
+    if (normType->shouldSuppressErrors() && !normIntersection->shouldSuppressErrors())
+        resultTy = ctx->arena->addType(UnionType{{resultTy, ctx->builtins->errorType}});
+
+    return {resultTy, false, {}, {}};
+}
+
 BuiltinTypeFamilies::BuiltinTypeFamilies()
     : notFamily{"not", notFamilyFn}
     , lenFamily{"len", lenFamilyFn}
@@ -981,6 +1068,7 @@ BuiltinTypeFamilies::BuiltinTypeFamilies()
     , ltFamily{"lt", ltFamilyFn}
     , leFamily{"le", leFamilyFn}
     , eqFamily{"eq", eqFamilyFn}
+    , refineFamily{"refine", refineFamilyFn}
 {
 }
 

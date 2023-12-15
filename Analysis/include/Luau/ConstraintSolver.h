@@ -132,7 +132,6 @@ struct ConstraintSolver
     bool tryDispatch(const SetIndexerConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const SingletonOrTopTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const UnpackConstraint& c, NotNull<const Constraint> constraint);
-    bool tryDispatch(const RefineConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const SetOpConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const ReduceConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const ReducePackConstraint& c, NotNull<const Constraint> constraint, bool force);

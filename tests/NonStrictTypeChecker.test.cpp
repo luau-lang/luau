@@ -81,11 +81,40 @@ declare function @checked abs(n: number): number
 declare function @checked lower(s: string): string
 declare function cond() : boolean
 declare function @checked contrived(n : Not<number>) : number
+
+-- interesting types of things that we would like to mark as checked
+declare function @checked onlyNums(...: number) : number
+declare function @checked mixedArgs(x: string, ...: number) : number
+declare function @checked optionalArg(x: string?) : number
 )BUILTIN_SRC";
 };
 
-
 TEST_SUITE_BEGIN("NonStrictTypeCheckerTest");
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "interesting_checked_functions")
+{
+    CheckResult result = checkNonStrict(R"(
+onlyNums(1,1,1)
+onlyNums(1, "a")
+
+mixedArgs("a", 1, 2)
+mixedArgs(1, 1, 1)
+mixedArgs("a", true)
+
+optionalArg(nil)
+optionalArg("a")
+optionalArg(3)
+)");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 12), "onlyNums", result); // onlyNums(1, "a")
+
+    NONSTRICT_REQUIRE_CHECKED_ERR(Position(5, 10), "mixedArgs", result); // mixedArgs(1, 1, 1)
+    NONSTRICT_REQUIRE_CHECKED_ERR(Position(6, 15), "mixedArgs", result); // mixedArgs("a", true)
+
+    NONSTRICT_REQUIRE_CHECKED_ERR(Position(10, 12), "optionalArg", result); // optionalArg(3)
+}
+
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "simple_negation_caching_example")
 {
@@ -385,6 +414,37 @@ lower(x)
 )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     NONSTRICT_REQUIRE_CHECKED_ERR(Position(2, 6), "lower", result);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "phi_node_assignment")
+{
+    CheckResult result = checkNonStrict(R"(
+local x = "a" -- x1
+if cond() then
+    x = 3 -- x2
+end
+lower(x) -- phi {x1, x2}
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "phi_node_assignment_err")
+{
+    CheckResult result = checkNonStrict(R"(
+local x = nil
+if cond() then
+    if cond() then
+        x = 5
+    end
+    abs(x)
+else
+    lower(x)
+end
+)");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    NONSTRICT_REQUIRE_CHECKED_ERR(Position(8, 10), "lower", result);
 }
 
 TEST_SUITE_END();
