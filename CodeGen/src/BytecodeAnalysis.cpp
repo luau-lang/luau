@@ -5,17 +5,12 @@
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
 
-#include "lobject.h"
+#include "IrProtoUtils.h"
 
 namespace Luau
 {
 namespace CodeGen
 {
-
-static bool hasTypedParameters(Proto* proto)
-{
-    return proto->typeinfo && proto->numparams != 0;
-}
 
 static uint8_t getBytecodeConstantTag(Proto* proto, unsigned ki)
 {

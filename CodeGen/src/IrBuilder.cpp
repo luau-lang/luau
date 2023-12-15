@@ -8,6 +8,7 @@
 #include "Luau/IrUtils.h"
 
 #include "IrTranslation.h"
+#include "IrProtoUtils.h"
 
 #include "lapi.h"
 
@@ -25,11 +26,6 @@ constexpr unsigned kNoAssociatedBlockIndex = ~0u;
 IrBuilder::IrBuilder()
     : constantMap({IrConstKind::Tag, ~0ull})
 {
-}
-
-static bool hasTypedParameters(Proto* proto)
-{
-    return proto->typeinfo && proto->numparams != 0;
 }
 
 static void buildArgumentTypeChecks(IrBuilder& build, Proto* proto)
