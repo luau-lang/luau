@@ -5,8 +5,6 @@
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
 
-#include "IrProtoUtils.h"
-
 namespace Luau
 {
 namespace CodeGen

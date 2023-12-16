@@ -8,7 +8,6 @@
 #include "Luau/IrUtils.h"
 
 #include "IrTranslation.h"
-#include "IrProtoUtils.h"
 
 #include "lapi.h"
 
