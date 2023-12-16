@@ -37,6 +37,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauReadWriteProperties, false)
 LUAU_FASTFLAGVARIABLE(CorrectEarlyReturnInMarkDirty, false)
 LUAU_FASTFLAGVARIABLE(LuauDefinitionFileSetModuleName, false)
+LUAU_FASTFLAGVARIABLE(LuauRethrowSingleModuleIce, false)
 
 namespace Luau
 {
@@ -679,8 +680,7 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
             sendItemTask(i);
         nextItems.clear();
 
-        // If we aren't done, but don't have anything processing, we hit a cycle
-        if (remaining != 0 && processing == 0)
+        if (FFlag::LuauRethrowSingleModuleIce && processing == 0)
         {
             // Typechecking might have been cancelled by user, don't return partial results
             if (cancelled)
@@ -688,9 +688,24 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
 
             // We might have stopped because of a pending exception
             if (itemWithException)
-            {
                 recordItemResult(buildQueueItems[*itemWithException]);
-                break;
+        }
+
+        // If we aren't done, but don't have anything processing, we hit a cycle
+        if (remaining != 0 && processing == 0)
+        {
+            if (!FFlag::LuauRethrowSingleModuleIce)
+            {
+                // Typechecking might have been cancelled by user, don't return partial results
+                if (cancelled)
+                    return {};
+
+                // We might have stopped because of a pending exception
+                if (itemWithException)
+                {
+                    recordItemResult(buildQueueItems[*itemWithException]);
+                    break;
+                }
             }
 
             sendCycleItemTask();

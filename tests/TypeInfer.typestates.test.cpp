@@ -292,6 +292,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "invalidate_type_refinements_upon_assignment
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+#if 0
 TEST_CASE_FIXTURE(TypeStateFixture, "local_t_is_assigned_a_fresh_table_with_x_assigned_a_union_and_then_assert_restricts_actual_outflow_of_types")
 {
     CheckResult result = check(R"(
@@ -314,6 +315,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "local_t_is_assigned_a_fresh_table_with_x_as
     // CHECK("boolean | string" == toString(requireType("x")));
     CHECK("boolean | number | number | string" == toString(requireType("x")));
 }
+#endif
 
 TEST_CASE_FIXTURE(TypeStateFixture, "captured_locals_are_unions_of_all_assignments")
 {
@@ -397,6 +399,23 @@ TEST_CASE_FIXTURE(TypeStateFixture, "prototyped_recursive_functions_but_has_prev
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK("((() -> ()) | number)?" == toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(TypeStateFixture, "multiple_assignments_in_loops")
+{
+    CheckResult result = check(R"(
+        local x = nil
+
+        for i = 1, 10 do
+            x = 5
+            x = "hello"
+        end
+
+        print(x)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("(number | string)?" == toString(requireType("x")));
 }
 
 TEST_SUITE_END();

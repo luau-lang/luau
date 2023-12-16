@@ -3,8 +3,10 @@
 
 #include "Luau/Common.h"
 #include "Luau/Constraint.h"
+#include "Luau/DenseHash.h"
 #include "Luau/Location.h"
 #include "Luau/Scope.h"
+#include "Luau/Set.h"
 #include "Luau/TxnLog.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
@@ -53,8 +55,8 @@ struct FindCyclicTypes final : TypeVisitor
     FindCyclicTypes& operator=(const FindCyclicTypes&) = delete;
 
     bool exhaustive = false;
-    std::unordered_set<TypeId> visited;
-    std::unordered_set<TypePackId> visitedPacks;
+    Luau::Set<TypeId> visited{{}};
+    Luau::Set<TypePackId> visitedPacks{{}};
     std::set<TypeId> cycles;
     std::set<TypePackId> cycleTPs;
 
@@ -70,17 +72,17 @@ struct FindCyclicTypes final : TypeVisitor
 
     bool visit(TypeId ty) override
     {
-        return visited.insert(ty).second;
+        return visited.insert(ty);
     }
 
     bool visit(TypePackId tp) override
     {
-        return visitedPacks.insert(tp).second;
+        return visitedPacks.insert(tp);
     }
 
     bool visit(TypeId ty, const FreeType& ft) override
     {
-        if (!visited.insert(ty).second)
+        if (!visited.insert(ty))
             return false;
 
         if (FFlag::DebugLuauDeferredConstraintResolution)
@@ -102,7 +104,7 @@ struct FindCyclicTypes final : TypeVisitor
 
     bool visit(TypeId ty, const LocalType& lt) override
     {
-        if (!visited.insert(ty).second)
+        if (!visited.insert(ty))
             return false;
 
         traverse(lt.domain);
@@ -112,7 +114,7 @@ struct FindCyclicTypes final : TypeVisitor
 
     bool visit(TypeId ty, const TableType& ttv) override
     {
-        if (!visited.insert(ty).second)
+        if (!visited.insert(ty))
             return false;
 
         if (ttv.name || ttv.syntheticName)
@@ -175,10 +177,11 @@ struct StringifierState
     ToStringOptions& opts;
     ToStringResult& result;
 
-    std::unordered_map<TypeId, std::string> cycleNames;
-    std::unordered_map<TypePackId, std::string> cycleTpNames;
-    std::unordered_set<void*> seen;
-    std::unordered_set<std::string> usedNames;
+    DenseHashMap<TypeId, std::string> cycleNames{{}};
+    DenseHashMap<TypePackId, std::string> cycleTpNames{{}};
+    Set<void*> seen{{}};
+    // `$$$` was chosen as the tombstone for `usedNames` since it is not a valid name syntactically and is relatively short for string comparison reasons.
+    DenseHashSet<std::string> usedNames{"$$$"};
     size_t indentation = 0;
 
     bool exhaustive;
@@ -197,7 +200,7 @@ struct StringifierState
     bool hasSeen(const void* tv)
     {
         void* ttv = const_cast<void*>(tv);
-        if (seen.find(ttv) != seen.end())
+        if (seen.contains(ttv))
             return true;
 
         seen.insert(ttv);
@@ -207,9 +210,9 @@ struct StringifierState
     void unsee(const void* tv)
     {
         void* ttv = const_cast<void*>(tv);
-        auto iter = seen.find(ttv);
-        if (iter != seen.end())
-            seen.erase(iter);
+
+        if (seen.contains(ttv))
+            seen.erase(ttv);
     }
 
     std::string getName(TypeId ty)
@@ -222,7 +225,7 @@ struct StringifierState
         for (int count = 0; count < 256; ++count)
         {
             std::string candidate = generateName(usedNames.size() + count);
-            if (!usedNames.count(candidate))
+            if (!usedNames.contains(candidate))
             {
                 usedNames.insert(candidate);
                 n = candidate;
@@ -245,7 +248,7 @@ struct StringifierState
         for (int count = 0; count < 256; ++count)
         {
             std::string candidate = generateName(previousNameIndex + count);
-            if (!usedNames.count(candidate))
+            if (!usedNames.contains(candidate))
             {
                 previousNameIndex += count;
                 usedNames.insert(candidate);
@@ -358,10 +361,9 @@ struct TypeStringifier
             return;
         }
 
-        auto it = state.cycleNames.find(tv);
-        if (it != state.cycleNames.end())
+        if (auto p = state.cycleNames.find(tv))
         {
-            state.emit(it->second);
+            state.emit(*p);
             return;
         }
 
@@ -886,7 +888,7 @@ struct TypeStringifier
 
             std::string saved = std::move(state.result.name);
 
-            bool needParens = !state.cycleNames.count(el) && (get<IntersectionType>(el) || get<FunctionType>(el));
+            bool needParens = !state.cycleNames.contains(el) && (get<IntersectionType>(el) || get<FunctionType>(el));
 
             if (needParens)
                 state.emit("(");
@@ -953,7 +955,7 @@ struct TypeStringifier
 
             std::string saved = std::move(state.result.name);
 
-            bool needParens = !state.cycleNames.count(el) && (get<UnionType>(el) || get<FunctionType>(el));
+            bool needParens = !state.cycleNames.contains(el) && (get<UnionType>(el) || get<FunctionType>(el));
 
             if (needParens)
                 state.emit("(");
@@ -1101,10 +1103,9 @@ struct TypePackStringifier
             return;
         }
 
-        auto it = state.cycleTpNames.find(tp);
-        if (it != state.cycleTpNames.end())
+        if (auto p = state.cycleTpNames.find(tp))
         {
-            state.emit(it->second);
+            state.emit(*p);
             return;
         }
 
@@ -1278,7 +1279,7 @@ void TypeStringifier::stringify(TypePackId tpid, const std::vector<std::optional
 }
 
 static void assignCycleNames(const std::set<TypeId>& cycles, const std::set<TypePackId>& cycleTPs,
-    std::unordered_map<TypeId, std::string>& cycleNames, std::unordered_map<TypePackId, std::string>& cycleTpNames, bool exhaustive)
+    DenseHashMap<TypeId, std::string>& cycleNames, DenseHashMap<TypePackId, std::string>& cycleTpNames, bool exhaustive)
 {
     int nextIndex = 1;
 
@@ -1372,9 +1373,8 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
      *
      * t1 where t1 = the_whole_root_type
      */
-    auto it = state.cycleNames.find(ty);
-    if (it != state.cycleNames.end())
-        state.emit(it->second);
+    if (auto p = state.cycleNames.find(ty))
+        state.emit(*p);
     else
         tvs.stringify(ty);
 
@@ -1466,9 +1466,8 @@ ToStringResult toStringDetailed(TypePackId tp, ToStringOptions& opts)
      *
      * t1 where t1 = the_whole_root_type
      */
-    auto it = state.cycleTpNames.find(tp);
-    if (it != state.cycleTpNames.end())
-        state.emit(it->second);
+    if (auto p = state.cycleTpNames.find(tp))
+        state.emit(*p);
     else
         tvs.stringify(tp);
 
@@ -1766,11 +1765,6 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         }
         else if constexpr (std::is_same_v<T, UnpackConstraint>)
             return tos(c.resultPack) + " ~ unpack " + tos(c.sourcePack);
-        else if constexpr (std::is_same_v<T, RefineConstraint>)
-        {
-            const char* op = c.mode == RefineConstraint::Union ? "union" : "intersect";
-            return tos(c.resultType) + " ~ refine " + tos(c.type) + " " + op + " " + tos(c.discriminant);
-        }
         else if constexpr (std::is_same_v<T, SetOpConstraint>)
         {
             const char* op = c.mode == SetOpConstraint::Union ? " | " : " & ";

@@ -78,10 +78,14 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "class_method")
         declare class Foo
             function bar(self, x: string): number
         end
+
+        declare Foo: {
+            new: () -> Foo
+        }
     )");
 
     std::optional<DocumentationSymbol> symbol = getDocSymbol(R"(
-        local x: Foo
+        local x: Foo = Foo.new()
         x:bar("asdf")
     )",
         Position(2, 11));
@@ -96,10 +100,14 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "overloaded_class_method")
             function bar(self, x: string): number
             function bar(self, x: number): string
         end
+
+        declare Foo: {
+            new: () -> Foo
+        }
     )");
 
     std::optional<DocumentationSymbol> symbol = getDocSymbol(R"(
-        local x: Foo
+        local x: Foo = Foo.new()
         x:bar("asdf")
     )",
         Position(2, 11));

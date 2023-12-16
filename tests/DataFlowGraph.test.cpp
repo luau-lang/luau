@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/DataFlowGraph.h"
+#include "Fixture.h"
 #include "Luau/Error.h"
 #include "Luau/Parser.h"
 
@@ -558,6 +559,76 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "local_f_which_is_prototyped_enclosed_by
     REQUIRE(phi->operands.size() == 2);
     CHECK(phi->operands.at(0) == f2);
     CHECK(phi->operands.at(1) == f4);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "phi_node_if_case_binding")
+{
+    dfg(R"(
+local x = nil
+if true then
+    if true then
+        x = 5
+    end
+    print(x)
+else
+    print(x)
+end
+)");
+    DefId x1 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId x2 = getDef<AstExprLocal, 1>(); // x = 5
+    DefId x3 = getDef<AstExprLocal, 2>(); // print(x)
+
+    const Phi* phi = get<Phi>(x3);
+    REQUIRE(phi);
+    CHECK(phi->operands.at(0) == x2);
+    CHECK(phi->operands.at(1) == x1);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "phi_node_if_case_table_prop")
+{
+    dfg(R"(
+local t = {}
+t.x = true
+if true then
+    if true then
+        t.x = 5
+    end
+    print(t.x)
+else
+    print(t.x)
+end
+)");
+
+    DefId x1 = getDef<AstExprIndexName, 1>(); // t.x = true
+    DefId x2 = getDef<AstExprIndexName, 2>(); // t.x = 5
+
+    DefId x3 = getDef<AstExprIndexName, 3>(); // print(t.x)
+    const Phi* phi = get<Phi>(x3);
+    REQUIRE(phi);
+    CHECK(phi->operands.size() == 2);
+    CHECK(phi->operands.at(0) == x1);
+    CHECK(phi->operands.at(1) == x2);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "phi_node_if_case_table_prop_literal")
+{
+    dfg(R"(
+local t = { x = true }
+if true then
+    t.x = 5
+end
+print(t.x)
+
+)");
+
+    DefId x1 = getDef<AstExprConstantBool, 1>(); // {x = true <- }
+    DefId x2 = getDef<AstExprIndexName, 1>();    // t.x = 5
+    DefId x3 = getDef<AstExprIndexName, 2>();    // print(t.x)
+    const Phi* phi = get<Phi>(x3);
+    REQUIRE(phi);
+    CHECK(phi->operands.size() == 2);
+    CHECK(phi->operands.at(0) == x1);
+    CHECK(phi->operands.at(1) == x2);
 }
 
 TEST_SUITE_END();

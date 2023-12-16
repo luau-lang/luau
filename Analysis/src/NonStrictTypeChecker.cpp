@@ -12,6 +12,7 @@
 #include "Luau/TypeArena.h"
 #include "Luau/TypeFamily.h"
 #include "Luau/Def.h"
+#include "Luau/TypeFwd.h"
 
 #include <iostream>
 #include <iterator>
@@ -57,8 +58,6 @@ struct StackPusher
 
 struct NonStrictContext
 {
-    std::unordered_map<const Def*, TypeId> context;
-
     NonStrictContext() = default;
 
     NonStrictContext(const NonStrictContext&) = delete;
@@ -109,13 +108,26 @@ struct NonStrictContext
     // Returns true if the removal was successful
     bool remove(const DefId& def)
     {
-        return context.erase(def.get()) == 1;
+        std::vector<DefId> defs;
+        collectOperands(def, &defs);
+        bool result = true;
+        for (DefId def : defs)
+            result = result && context.erase(def.get()) == 1;
+        return result;
     }
 
     std::optional<TypeId> find(const DefId& def) const
     {
         const Def* d = def.get();
         return find(d);
+    }
+
+    void addContext(const DefId& def, TypeId ty)
+    {
+        std::vector<DefId> defs;
+        collectOperands(def, &defs);
+        for (DefId def : defs)
+            context[def.get()] = ty;
     }
 
 private:
@@ -126,6 +138,9 @@ private:
             return {it->second};
         return {};
     }
+
+    std::unordered_map<const Def*, TypeId> context;
+
 };
 
 struct NonStrictTypeChecker
@@ -508,8 +523,25 @@ struct NonStrictTypeChecker
                 // ...
                 // (unknown^N-1, ~S_N) -> error
                 std::vector<TypeId> argTypes;
-                for (TypeId ty : fn->argTypes)
-                    argTypes.push_back(ty);
+                argTypes.reserve(call->args.size);
+                // Pad out the arg types array with the types you would expect to see
+                TypePackIterator curr = begin(fn->argTypes);
+                TypePackIterator fin = end(fn->argTypes);
+                while (curr != fin)
+                {
+                    argTypes.push_back(*curr);
+                    ++curr;
+                }
+                if (auto argTail = curr.tail())
+                {
+                    if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*argTail)))
+                    {
+                        while (argTypes.size() < call->args.size)
+                        {
+                            argTypes.push_back(vtp->ty);
+                        }
+                    }
+                }
                 // For a checked function, these gotta be the same size
                 LUAU_ASSERT(call->args.size == argTypes.size());
                 for (size_t i = 0; i < call->args.size; i++)
@@ -523,7 +555,7 @@ struct NonStrictTypeChecker
                     TypeId expectedArgType = argTypes[i];
                     DefId def = dfg->getDef(arg);
                     TypeId runTimeErrorTy = getOrCreateNegation(expectedArgType);
-                    fresh.context[def.get()] = runTimeErrorTy;
+                    fresh.addContext(def, runTimeErrorTy);
                 }
 
                 // Populate the context and now iterate through each of the arguments to the call to find out if we satisfy the types
@@ -613,15 +645,20 @@ struct NonStrictTypeChecker
     std::optional<TypeId> willRunTimeError(AstExpr* fragment, const NonStrictContext& context)
     {
         DefId def = dfg->getDef(fragment);
-        if (std::optional<TypeId> contextTy = context.find(def))
+        std::vector<DefId> defs;
+        collectOperands(def, &defs);
+        for (DefId def : defs)
         {
+            if (std::optional<TypeId> contextTy = context.find(def))
+            {
 
-            TypeId actualType = lookupType(fragment);
-            SubtypingResult r = subtyping.isSubtype(actualType, *contextTy);
-            if (r.normalizationTooComplex)
-                reportError(NormalizationTooComplex{}, fragment->location);
-            if (r.isSubtype)
-                return {actualType};
+                TypeId actualType = lookupType(fragment);
+                SubtypingResult r = subtyping.isSubtype(actualType, *contextTy);
+                if (r.normalizationTooComplex)
+                    reportError(NormalizationTooComplex{}, fragment->location);
+                if (r.isSubtype)
+                    return {actualType};
+            }
         }
 
         return {};
@@ -630,15 +667,20 @@ struct NonStrictTypeChecker
     std::optional<TypeId> willRunTimeErrorFunctionDefinition(AstLocal* fragment, const NonStrictContext& context)
     {
         DefId def = dfg->getDef(fragment);
-        if (std::optional<TypeId> contextTy = context.find(def))
+        std::vector<DefId> defs;
+        collectOperands(def, &defs);
+        for (DefId def : defs)
         {
-            SubtypingResult r1 = subtyping.isSubtype(builtinTypes->unknownType, *contextTy);
-            SubtypingResult r2 = subtyping.isSubtype(*contextTy, builtinTypes->unknownType);
-            if (r1.normalizationTooComplex || r2.normalizationTooComplex)
-                reportError(NormalizationTooComplex{}, fragment->location);
-            bool isUnknown = r1.isSubtype && r2.isSubtype;
-            if (isUnknown)
-                return {builtinTypes->unknownType};
+            if (std::optional<TypeId> contextTy = context.find(def))
+            {
+                SubtypingResult r1 = subtyping.isSubtype(builtinTypes->unknownType, *contextTy);
+                SubtypingResult r2 = subtyping.isSubtype(*contextTy, builtinTypes->unknownType);
+                if (r1.normalizationTooComplex || r2.normalizationTooComplex)
+                    reportError(NormalizationTooComplex{}, fragment->location);
+                bool isUnknown = r1.isSubtype && r2.isSubtype;
+                if (isUnknown)
+                    return {builtinTypes->unknownType};
+            }
         }
         return {};
     }
