@@ -1991,6 +1991,46 @@ struct Compiler
         }
         else if (AstExprConstantString* string = expr->index->as<AstExprConstantString>())
         {
+            AstExprGlobal* importRoot = 0;
+            AstExprIndexExpr* import1 = 0;
+            AstExprIndexExpr* import2 = 0;
+
+            if (AstExprIndexExpr* index = expr->expr->as<AstExprIndexExpr>())
+            {
+                importRoot = index->expr->as<AstExprGlobal>();
+                import1 = index;
+                import2 = expr;
+            }
+            else
+            {
+                importRoot = expr->expr->as<AstExprGlobal>();
+                import1 = expr;
+            }
+
+            if (importRoot && canImportChain(importRoot))
+            {
+                int32_t id0 = bytecode.addConstantString(sref(importRoot->name));
+                int32_t id1 = bytecode.addConstantString(sref(import1->index->as<AstExprConstantString>()->value));
+                int32_t id2 = import2 ? bytecode.addConstantString(sref(import1->index->as<AstExprConstantString>()->value)) : -1;
+
+                if (id0 < 0 || id1 < 0 || (import2 && id2 < 0))
+                    CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
+                // Note: GETIMPORT encoding is limited to 10 bits per object id component
+                if (id0 < 1024 && id1 < 1024 && id2 < 1024)
+                {
+                    uint32_t iid = import2 ? BytecodeBuilder::getImportId(id0, id1, id2) : BytecodeBuilder::getImportId(id0, id1);
+                    int32_t cid = bytecode.addImport(iid);
+
+                    if (cid >= 0 && cid < 32768)
+                    {
+                        bytecode.emitAD(LOP_GETIMPORT, target, int16_t(cid));
+                        bytecode.emitAux(iid);
+                        return;
+                    }
+                }
+            }
+
             BytecodeBuilder::StringRef iname = sref(string->value);
             int32_t cid = bytecode.addConstantString(iname);
             if (cid < 0)
