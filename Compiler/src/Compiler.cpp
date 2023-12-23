@@ -1978,11 +1978,10 @@ struct Compiler
     {
         RegScope rs(this);
 
-        Constant cv = getConstant(expr->index);
-
-        if (cv.type == Constant::Type_Number && cv.valueNumber >= 1 && cv.valueNumber <= 256 && double(int(cv.valueNumber)) == cv.valueNumber)
+        if (AstExprConstantNumber* number = expr->index->as<AstExprConstantNumber>();
+            number && number->value >= 1 && number->value <= 256 && double(int(number->value)) == number->value)
         {
-            uint8_t i = uint8_t(int(cv.valueNumber) - 1);
+            uint8_t i = uint8_t(int(number->value) - 1);
 
             uint8_t rt = compileExprAuto(expr->expr, rs);
 
@@ -1990,9 +1989,9 @@ struct Compiler
 
             bytecode.emitABC(LOP_GETTABLEN, target, rt, i);
         }
-        else if (cv.type == Constant::Type_String)
+        else if (AstExprConstantString* string = expr->index->as<AstExprConstantString>())
         {
-            BytecodeBuilder::StringRef iname = sref(cv.getString());
+            BytecodeBuilder::StringRef iname = sref(string->value);
             int32_t cid = bytecode.addConstantString(iname);
             if (cid < 0)
                 CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
