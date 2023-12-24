@@ -1735,7 +1735,16 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
                 LUAU_ASSERT(id.type == Constant::Type_String && id.valueString <= debugStrings.size());
 
                 const StringRef& str = debugStrings[id.valueString - 1];
-                formatAppend(result, ".%.*s", int(str.length), str.data);
+
+                /* check if index contains whitespace */
+                if (strchr(str.data, ' '))
+                {
+                    formatAppend(result, "[\"%.*s\"]", int(str.length), str.data);
+                }
+                else
+                {
+                    formatAppend(result, ".%.*s", int(str.length), str.data);
+                }
             }
 
             if (count > 2)
@@ -1744,7 +1753,16 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
                 LUAU_ASSERT(id.type == Constant::Type_String && id.valueString <= debugStrings.size());
 
                 const StringRef& str = debugStrings[id.valueString - 1];
-                formatAppend(result, ".%.*s", int(str.length), str.data);
+
+                /* check if index contains whitespace */
+                if (strchr(str.data, ' '))
+                {
+                    formatAppend(result, "[\".%.*s\"]", int(str.length), str.data);
+                }
+                else
+                {
+                    formatAppend(result, ".%.*s", int(str.length), str.data);
+                }
             }
         }
         break;
