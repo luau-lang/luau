@@ -199,6 +199,7 @@ private:
             cloned->location = p.location;
             cloned->tags = p.tags;
             cloned->documentationSymbol = p.documentationSymbol;
+            cloned->typeLocation = p.typeLocation;
             return *cloned;
         }
         else
@@ -209,8 +210,7 @@ private:
                 p.deprecatedSuggestion,
                 p.location,
                 p.tags,
-                p.documentationSymbol,
-            };
+                p.documentationSymbol, p.typeLocation};
         }
     }
 
@@ -461,6 +461,7 @@ Property clone(const Property& prop, TypeArena& dest, CloneState& cloneState)
         cloned->location = prop.location;
         cloned->tags = prop.tags;
         cloned->documentationSymbol = prop.documentationSymbol;
+        cloned->typeLocation = prop.typeLocation;
         return *cloned;
     }
     else
@@ -472,6 +473,7 @@ Property clone(const Property& prop, TypeArena& dest, CloneState& cloneState)
             prop.location,
             prop.tags,
             prop.documentationSymbol,
+            prop.typeLocation,
         };
     }
 }
