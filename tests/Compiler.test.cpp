@@ -7878,4 +7878,54 @@ RETURN R1 7
 )");
 }
 
+TEST_CASE("IndexExprConditions")
+{
+    // An issue with compileExprIndexExpr meant that GETTABLEKS and GETTABLEN were never generated and would always default to a GETTABLE.
+
+    // string indexing, no optimisations
+    CHECK_EQ("\n" + compileFunction(R"(
+local _ = foo["bar"]
+)",
+                        0, 0),
+        R"(
+GETGLOBAL R1 K1 ['foo']
+GETTABLEKS R0 R1 K0 ['bar']
+RETURN R0 0
+)");
+
+    // number indexing, no optimisations
+    CHECK_EQ("\n" + compileFunction(R"(
+local _ = foo[1]
+)",
+                        0, 0),
+        R"(
+GETGLOBAL R1 K0 ['foo']
+GETTABLEN R0 R1 1
+RETURN R0 0
+)");
+}
+
+TEST_CASE("IndexExprImport")
+{
+    // Optimisations O1 and above should generate GETIMPORT for compileExprIndexExpr when a string index is provided
+
+    // index with no whitespace
+    CHECK_EQ("\n" + compileFunction0(R"(
+local _ = foo["bar"]
+)"),
+        R"(
+GETIMPORT R0 2 [foo.bar]
+RETURN R0 0
+)");
+
+    // index with whitespace
+    CHECK_EQ("\n" + compileFunction0(R"(
+local _ = foo["bar baz buz"]
+)"),
+        R"(
+GETIMPORT R0 2 [foo["bar baz buz"]]
+RETURN R0 0
+)");
+}
+
 TEST_SUITE_END();
