@@ -210,7 +210,9 @@ private:
                 p.deprecatedSuggestion,
                 p.location,
                 p.tags,
-                p.documentationSymbol, p.typeLocation};
+                p.documentationSymbol,
+                p.typeLocation,
+            };
         }
     }
 
