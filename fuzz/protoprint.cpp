@@ -104,6 +104,7 @@ static const std::string kNames[] = {
     "min",
     "modf",
     "move",
+    "mwait",
     "newproxy",
     "next",
     "nil",

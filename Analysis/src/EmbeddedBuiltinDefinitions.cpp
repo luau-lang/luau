@@ -193,6 +193,8 @@ declare function rawlen<K, V>(obj: {[K]: V} | string): number
 
 declare function setfenv<T..., R...>(target: number | (T...) -> R..., env: {[string]: any}): ((T...) -> R...)?
 
+declare function mwait<T..., R...>(ms: number)?
+
 declare function ipairs<V>(tab: {V}): (({V}, number) -> (number?, V), {V}, number)
 
 declare function pcall<A..., R...>(f: (A...) -> R..., ...: A...): (boolean, R...)
