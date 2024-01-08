@@ -10,6 +10,11 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 static void writestring(const char* s, size_t l)
 {
@@ -29,6 +34,19 @@ static int luaB_print(lua_State* L)
         lua_pop(L, 1); // pop result
     }
     writestring("\n", 1);
+    return 0;
+}
+
+static int luaB_mwait(lua_State* L)
+{
+    int milliseconds = lua_gettop(L); 
+    luaL_checkinteger(L, milliseconds);
+    #ifdef _WIN32
+    Sleep(milliseconds);
+    #else
+    usleep(milliseconds * 1000);
+    #endif
+
     return 0;
 }
 
@@ -434,6 +452,7 @@ static const luaL_Reg base_funcs[] = {
     {"next", luaB_next},
     {"newproxy", luaB_newproxy},
     {"print", luaB_print},
+    {"mwait", luaB_mwait},
     {"rawequal", luaB_rawequal},
     {"rawget", luaB_rawget},
     {"rawset", luaB_rawset},
