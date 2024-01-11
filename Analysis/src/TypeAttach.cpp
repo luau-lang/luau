@@ -106,7 +106,12 @@ public:
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("thread"), std::nullopt, Location());
         case PrimitiveType::Buffer:
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("buffer"), std::nullopt, Location());
+        case PrimitiveType::Function:
+            return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("function"), std::nullopt, Location());
+        case PrimitiveType::Table:
+            return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("table"), std::nullopt, Location());
         default:
+            LUAU_ASSERT(false); // this should be unreachable.
             return nullptr;
         }
     }

@@ -253,11 +253,6 @@ inline bool lowerIr(A64::AssemblyBuilderA64& build, IrBuilder& ir, const std::ve
 template<typename AssemblyBuilder>
 inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options, LoweringStats* stats)
 {
-    helpers.bytecodeInstructionCount += unsigned(ir.function.instructions.size());
-
-    if (helpers.bytecodeInstructionCount >= unsigned(FInt::CodegenHeuristicsInstructionLimit.value))
-        return false;
-
     killUnusedBlocks(ir.function);
 
     unsigned preOptBlockCount = 0;
@@ -268,9 +263,7 @@ inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& 
         preOptBlockCount += (block.kind != IrBlockKind::Dead);
         unsigned blockInstructions = block.finish - block.start;
         maxBlockInstructions = std::max(maxBlockInstructions, blockInstructions);
-    };
-
-    helpers.preOptBlockCount += preOptBlockCount;
+    }
 
     // we update stats before checking the heuristic so that even if we bail out
     // our stats include information about the limit that was exceeded.
@@ -280,9 +273,7 @@ inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& 
         stats->maxBlockInstructions = maxBlockInstructions;
     }
 
-    // we use helpers.blocksPreOpt instead of stats.blocksPreOpt since
-    // stats can be null across some code paths.
-    if (helpers.preOptBlockCount >= unsigned(FInt::CodegenHeuristicsBlockLimit.value))
+    if (preOptBlockCount >= unsigned(FInt::CodegenHeuristicsBlockLimit.value))
         return false;
 
     if (maxBlockInstructions >= unsigned(FInt::CodegenHeuristicsBlockInstructionLimit.value))

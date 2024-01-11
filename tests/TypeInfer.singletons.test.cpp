@@ -3,7 +3,6 @@
 #include "Fixture.h"
 
 #include "doctest.h"
-#include "Luau/BuiltinDefinitions.h"
 
 using namespace Luau;
 
@@ -141,9 +140,9 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons")
 TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons_mismatch")
 {
     CheckResult result = check(R"(
-        function f(a, b) end
-        local g : ((true, string) -> ()) & ((false, number) -> ()) = (f::any)
-        g(true, 37)
+        function f(g: ((true, string) -> ()) & ((false, number) -> ()))
+            g(true, 37)
+        end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
@@ -429,7 +428,11 @@ TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("string", toString(requireType("copy")));
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(R"("foo")", toString(requireType("copy")));
+    else
+        CHECK_EQ("string", toString(requireType("copy")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere_except_for_tables")

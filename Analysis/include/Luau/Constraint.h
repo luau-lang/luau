@@ -197,24 +197,6 @@ struct UnpackConstraint
     bool resultIsLValue = false;
 };
 
-// resultType ~ refine type mode discriminant
-//
-// Compute type & discriminant (or type | discriminant) as soon as possible (but
-// no sooner), simplify, and bind resultType to that type.
-struct RefineConstraint
-{
-    enum
-    {
-        Intersection,
-        Union
-    } mode;
-
-    TypeId resultType;
-
-    TypeId type;
-    TypeId discriminant;
-};
-
 // resultType ~ T0 op T1 op ... op TN
 //
 // op is either union or intersection.  If any of the input types are blocked,
@@ -249,7 +231,7 @@ struct ReducePackConstraint
 
 using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, IterableConstraint,
     NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, PrimitiveTypeConstraint, HasPropConstraint, SetPropConstraint,
-    SetIndexerConstraint, SingletonOrTopTypeConstraint, UnpackConstraint, RefineConstraint, SetOpConstraint, ReduceConstraint, ReducePackConstraint>;
+    SetIndexerConstraint, SingletonOrTopTypeConstraint, UnpackConstraint, SetOpConstraint, ReduceConstraint, ReducePackConstraint>;
 
 struct Constraint
 {

@@ -5,6 +5,7 @@
 #include "Luau/UnwindBuilder.h"
 
 #include <string.h>
+#include <stdlib.h>
 
 #if defined(_WIN32) && defined(_M_X64)
 

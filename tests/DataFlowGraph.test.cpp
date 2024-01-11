@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/DataFlowGraph.h"
+#include "Fixture.h"
 #include "Luau/Error.h"
 #include "Luau/Parser.h"
 
@@ -341,6 +342,7 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "property_lookup_on_a_phi_node")
 
     const Phi* phi = get<Phi>(x3);
     REQUIRE(phi);
+    REQUIRE(phi->operands.size() == 2);
     CHECK(phi->operands.at(0) == x1);
     CHECK(phi->operands.at(1) == x2);
 }
@@ -368,6 +370,7 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "property_lookup_on_a_phi_node_2")
 
     const Phi* phi = get<Phi>(x3);
     REQUIRE(phi);
+    REQUIRE(phi->operands.size() == 2);
     CHECK(phi->operands.at(0) == x2);
     CHECK(phi->operands.at(1) == x1);
 }
@@ -408,6 +411,222 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "property_lookup_on_a_phi_node_3")
 
     const Phi* phi = get<Phi>(x3);
     REQUIRE(phi);
+    REQUIRE(phi->operands.size() == 2);
+    CHECK(phi->operands.at(0) == x1);
+    CHECK(phi->operands.at(1) == x2);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "function_captures_are_phi_nodes_of_all_versions")
+{
+    dfg(R"(
+        local x = 5
+
+        function f()
+            print(x)
+            x = nil
+        end
+
+        f()
+        x = "five"
+    )");
+
+    DefId x1 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId x2 = getDef<AstExprLocal, 1>(); // print(x)
+    DefId x3 = getDef<AstExprLocal, 2>(); // x = nil
+    DefId x4 = getDef<AstExprLocal, 3>(); // x = "five"
+
+    CHECK(x1 != x2);
+    CHECK(x2 != x3);
+    CHECK(x3 != x4);
+
+    const Phi* phi = get<Phi>(x2);
+    REQUIRE(phi);
+    REQUIRE(phi->operands.size() == 3);
+    CHECK(phi->operands.at(0) == x1);
+    CHECK(phi->operands.at(1) == x3);
+    CHECK(phi->operands.at(2) == x4);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "function_captures_are_phi_nodes_of_all_versions_properties")
+{
+    dfg(R"(
+        local t = {}
+        t.x = 5
+
+        function f()
+            print(t.x)
+            t.x = nil
+        end
+
+        f()
+        t.x = "five"
+    )");
+
+    DefId x1 = getDef<AstExprIndexName, 1>(); // t.x = 5
+    DefId x2 = getDef<AstExprIndexName, 2>(); // print(t.x)
+    DefId x3 = getDef<AstExprIndexName, 3>(); // t.x = nil
+    DefId x4 = getDef<AstExprIndexName, 4>(); // t.x = "five"
+
+    CHECK(x1 != x2);
+    CHECK(x2 != x3);
+    CHECK(x3 != x4);
+
+    // When a local is referenced within a function, it is not pointer identical.
+    // Instead, it's a phi node of all possible versions, including just one version.
+    DefId t1 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId t2 = getDef<AstExprLocal, 2>(); // print(t.x)
+
+    const Phi* phi = get<Phi>(t2);
+    REQUIRE(phi);
+    REQUIRE(phi->operands.size() == 1);
+    CHECK(phi->operands.at(0) == t1);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "local_f_which_is_prototyped_enclosed_by_function")
+{
+    dfg(R"(
+        local f
+        function f()
+            if cond() then
+                f()
+            end
+        end
+    )");
+
+    DefId f1 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId f2 = getDef<AstExprLocal, 1>(); // function f()
+    DefId f3 = getDef<AstExprLocal, 2>(); // f()
+
+    CHECK(f1 != f2);
+    CHECK(f2 != f3);
+
+    const Phi* phi = get<Phi>(f3);
+    REQUIRE(phi);
+    REQUIRE(phi->operands.size() == 1);
+    CHECK(phi->operands.at(0) == f2);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "local_f_which_is_prototyped_enclosed_by_function_has_some_prior_versions")
+{
+    dfg(R"(
+        local f
+        f = 5
+        function f()
+            if cond() then
+                f()
+            end
+        end
+    )");
+
+    DefId f1 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId f2 = getDef<AstExprLocal, 1>(); // f = 5
+    DefId f3 = getDef<AstExprLocal, 2>(); // function f()
+    DefId f4 = getDef<AstExprLocal, 3>(); // f()
+
+    CHECK(f1 != f2);
+    CHECK(f2 != f3);
+    CHECK(f3 != f4);
+
+    const Phi* phi = get<Phi>(f4);
+    REQUIRE(phi);
+    REQUIRE(phi->operands.size() == 1);
+    CHECK(phi->operands.at(0) == f3);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "local_f_which_is_prototyped_enclosed_by_function_has_some_future_versions")
+{
+    dfg(R"(
+        local f
+        function f()
+            if cond() then
+                f()
+            end
+        end
+        f = 5
+    )");
+
+    DefId f1 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId f2 = getDef<AstExprLocal, 1>(); // function f()
+    DefId f3 = getDef<AstExprLocal, 2>(); // f()
+    DefId f4 = getDef<AstExprLocal, 3>(); // f = 5
+
+    CHECK(f1 != f2);
+    CHECK(f2 != f3);
+    CHECK(f3 != f4);
+
+    const Phi* phi = get<Phi>(f3);
+    REQUIRE(phi);
+    REQUIRE(phi->operands.size() == 2);
+    CHECK(phi->operands.at(0) == f2);
+    CHECK(phi->operands.at(1) == f4);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "phi_node_if_case_binding")
+{
+    dfg(R"(
+local x = nil
+if true then
+    if true then
+        x = 5
+    end
+    print(x)
+else
+    print(x)
+end
+)");
+    DefId x1 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId x2 = getDef<AstExprLocal, 1>(); // x = 5
+    DefId x3 = getDef<AstExprLocal, 2>(); // print(x)
+
+    const Phi* phi = get<Phi>(x3);
+    REQUIRE(phi);
+    CHECK(phi->operands.at(0) == x2);
+    CHECK(phi->operands.at(1) == x1);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "phi_node_if_case_table_prop")
+{
+    dfg(R"(
+local t = {}
+t.x = true
+if true then
+    if true then
+        t.x = 5
+    end
+    print(t.x)
+else
+    print(t.x)
+end
+)");
+
+    DefId x1 = getDef<AstExprIndexName, 1>(); // t.x = true
+    DefId x2 = getDef<AstExprIndexName, 2>(); // t.x = 5
+
+    DefId x3 = getDef<AstExprIndexName, 3>(); // print(t.x)
+    const Phi* phi = get<Phi>(x3);
+    REQUIRE(phi);
+    CHECK(phi->operands.size() == 2);
+    CHECK(phi->operands.at(0) == x1);
+    CHECK(phi->operands.at(1) == x2);
+}
+
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "phi_node_if_case_table_prop_literal")
+{
+    dfg(R"(
+local t = { x = true }
+if true then
+    t.x = 5
+end
+print(t.x)
+
+)");
+
+    DefId x1 = getDef<AstExprConstantBool, 1>(); // {x = true <- }
+    DefId x2 = getDef<AstExprIndexName, 1>();    // t.x = 5
+    DefId x3 = getDef<AstExprIndexName, 2>();    // print(t.x)
+    const Phi* phi = get<Phi>(x3);
+    REQUIRE(phi);
+    CHECK(phi->operands.size() == 2);
     CHECK(phi->operands.at(0) == x1);
     CHECK(phi->operands.at(1) == x2);
 }

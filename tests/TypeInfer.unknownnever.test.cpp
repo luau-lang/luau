@@ -215,8 +215,9 @@ TEST_CASE_FIXTURE(Fixture, "assign_to_global_which_is_never")
 TEST_CASE_FIXTURE(Fixture, "assign_to_prop_which_is_never")
 {
     CheckResult result = check(R"(
-        local t: never
-        t.x = 5
+        local function f(t: never)
+            t.x = 5
+        end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -225,8 +226,9 @@ TEST_CASE_FIXTURE(Fixture, "assign_to_prop_which_is_never")
 TEST_CASE_FIXTURE(Fixture, "assign_to_subscript_which_is_never")
 {
     CheckResult result = check(R"(
-        local t: never
-        t[5] = 7
+        local function f(t: never)
+            t[5] = 7
+        end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -257,8 +259,12 @@ TEST_CASE_FIXTURE(Fixture, "index_on_union_of_tables_for_properties_that_is_neve
 {
     CheckResult result = check(R"(
         type Disjoint = {foo: never, bar: unknown, tag: "ok"} | {foo: never, baz: unknown, tag: "err"}
-        local disjoint: Disjoint = {foo = 5 :: never, bar = true, tag = "ok"}
-        local foo = disjoint.foo
+
+        function f(disjoint: Disjoint)
+            return disjoint.foo
+        end
+
+        local foo = f({foo = 5 :: never, bar = true, tag = "ok"})
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -270,8 +276,12 @@ TEST_CASE_FIXTURE(Fixture, "index_on_union_of_tables_for_properties_that_is_sort
 {
     CheckResult result = check(R"(
         type Disjoint = {foo: string, bar: unknown, tag: "ok"} | {foo: never, baz: unknown, tag: "err"}
-        local disjoint: Disjoint = {foo = 5 :: never, bar = true, tag = "ok"}
-        local foo = disjoint.foo
+
+        function f(disjoint: Disjoint)
+            return disjoint.foo
+        end
+
+        local foo = f({foo = 5 :: never, bar = true, tag = "ok"})
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);

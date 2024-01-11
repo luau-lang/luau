@@ -56,15 +56,20 @@ public:
 
         for (int i = 0; i < 20; ++i)
         {
-            if (isDirectory(luauDirAbs + "/Luau/tests") || isDirectory(luauDirAbs + "/Client/Luau/tests"))
+            bool engineTestDir = isDirectory(luauDirAbs + "/Client/Luau/tests");
+            bool luauTestDir = isDirectory(luauDirAbs + "/luau/tests");
+            if (engineTestDir || luauTestDir)
             {
-                if (isDirectory(luauDirAbs + "/Client/Luau/tests"))
+                if (engineTestDir)
                 {
-                    luauDirRel += "/Client";
-                    luauDirAbs += "/Client";
+                    luauDirRel += "/Client/Luau";
+                    luauDirAbs += "/Client/Luau";
                 }
-                luauDirRel += "/Luau";
-                luauDirAbs += "/Luau";
+                else
+                {
+                    luauDirRel += "/luau";
+                    luauDirAbs += "/luau";
+                }
 
                 if (type == PathType::Relative)
                     return luauDirRel;
@@ -386,6 +391,41 @@ TEST_CASE_FIXTURE(ReplWithPathFixture, "RequirePathWithParentAlias")
     std::string path = getLuauDirectory(PathType::Relative) + "/tests/require/with_config/src/parent_alias_requirer";
     runProtectedRequire(path);
     assertOutputContainsAll({"true", "result from other_dependency"});
+}
+
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "RequireAliasThatDoesNotExist")
+{
+    ScopedFastFlag sff{FFlag::LuauUpdatedRequireByStringSemantics, true};
+    std::string nonExistentAlias = "@this.alias.does.not.exist";
+
+    runProtectedRequire(nonExistentAlias);
+    assertOutputContainsAll({"false", "@this.alias.does.not.exist is not a valid alias"});
+}
+
+TEST_CASE_FIXTURE(ReplWithPathFixture, "AliasHasIllegalFormat")
+{
+    ScopedFastFlag sff{FFlag::LuauUpdatedRequireByStringSemantics, true};
+    std::string illegalCharacter = "@@";
+
+    runProtectedRequire(illegalCharacter);
+    assertOutputContainsAll({"false", "@@ is not a valid alias"});
+
+    std::string pathAlias1 = "@.";
+
+    runProtectedRequire(pathAlias1);
+    assertOutputContainsAll({"false", ". is not a valid alias"});
+
+
+    std::string pathAlias2 = "@..";
+
+    runProtectedRequire(pathAlias2);
+    assertOutputContainsAll({"false", ".. is not a valid alias"});
+
+    std::string emptyAlias = "@";
+
+    runProtectedRequire(emptyAlias);
+    assertOutputContainsAll({"false", " is not a valid alias"});
 }
 
 TEST_SUITE_END();

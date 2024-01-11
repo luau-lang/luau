@@ -1603,8 +1603,8 @@ struct TypeChecker2
         visit(indexExpr->expr, ValueContext::RValue);
         visit(indexExpr->index, ValueContext::RValue);
 
-        TypeId exprType = lookupType(indexExpr->expr);
-        TypeId indexType = lookupType(indexExpr->index);
+        TypeId exprType = follow(lookupType(indexExpr->expr));
+        TypeId indexType = follow(lookupType(indexExpr->index));
 
         if (auto tt = get<TableType>(exprType))
         {
