@@ -345,7 +345,7 @@ TEST_CASE("always_emit_a_space_after_local_keyword")
 TEST_CASE_FIXTURE(Fixture, "types_should_not_be_considered_cyclic_if_they_are_not_recursive")
 {
     std::string code = R"(
-        local common: {foo:string}
+        local common: {foo:string} = {foo = 'foo'}
 
         local t = {}
         t.x = common
@@ -353,7 +353,7 @@ TEST_CASE_FIXTURE(Fixture, "types_should_not_be_considered_cyclic_if_they_are_no
     )";
 
     std::string expected = R"(
-        local common: {foo:string}
+        local common: {foo:string} = {foo = 'foo'}
 
         local t:{x:{foo:string},y:{foo:string}}={}
         t.x = common

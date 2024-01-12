@@ -5,6 +5,8 @@
 #include "lua.h"
 #include "lcommon.h"
 
+LUAU_FASTFLAG(LuauTaggedLuData)
+
 /*
 ** Union of all collectible objects
 */
@@ -80,6 +82,11 @@ typedef struct lua_TValue
 
 #define l_isfalse(o) (ttisnil(o) || (ttisboolean(o) && bvalue(o) == 0))
 
+#define lightuserdatatag(o) check_exp(ttislightuserdata(o), (o)->extra[0])
+
+// Internal tags used by the VM
+#define LU_TAG_ITERATOR LUA_UTAG_LIMIT
+
 /*
 ** for internal debug only
 */
@@ -120,10 +127,11 @@ typedef struct lua_TValue
     }
 #endif
 
-#define setpvalue(obj, x) \
+#define setpvalue(obj, x, tag) \
     { \
         TValue* i_o = (obj); \
         i_o->value.p = (x); \
+        i_o->extra[0] = (tag); \
         i_o->tt = LUA_TLIGHTUSERDATA; \
     }
 
@@ -234,7 +242,10 @@ typedef struct TString
     // 1 byte padding
 
     int16_t atom;
+
+
     // 2 byte padding
+
 
     TString* next; // next string in the hash table bucket
 
@@ -243,6 +254,8 @@ typedef struct TString
 
     char data[1]; // string data is allocated right after the header
 } TString;
+
+
 
 #define getstr(ts) (ts)->data
 #define svalue(o) getstr(tsvalue(o))

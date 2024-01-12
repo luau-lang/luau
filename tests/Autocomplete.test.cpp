@@ -16,7 +16,6 @@
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTFLAG(LuauAutocompleteStringLiteralBounds);
-LUAU_FASTFLAG(LuauAutocompleteDoEnd);
 
 using namespace Luau;
 
@@ -980,8 +979,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_end_with_lambda")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_end_of_do_block")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteDoEnd, true};
-
     check("do @1");
 
     auto ac = autocomplete('1');
@@ -3107,7 +3104,10 @@ TEST_CASE_FIXTURE(ACFixture, "string_singleton_as_table_key")
 // https://github.com/Roblox/luau/issues/858
 TEST_CASE_FIXTURE(ACFixture, "string_singleton_in_if_statement")
 {
-    ScopedFastFlag sff{FFlag::LuauAutocompleteStringLiteralBounds, true};
+    ScopedFastFlag sff[]{
+        {FFlag::LuauAutocompleteStringLiteralBounds, true},
+        {FFlag::DebugLuauDeferredConstraintResolution, true},
+    };
 
     check(R"(
         --!strict
@@ -3131,7 +3131,7 @@ TEST_CASE_FIXTURE(ACFixture, "string_singleton_in_if_statement")
     ac = autocomplete('2');
 
     CHECK(ac.entryMap.count("left"));
-    CHECK(ac.entryMap.count("right"));
+    CHECK(!ac.entryMap.count("right"));
 
     ac = autocomplete('3');
 
@@ -3161,7 +3161,7 @@ TEST_CASE_FIXTURE(ACFixture, "string_singleton_in_if_statement")
     ac = autocomplete('8');
 
     CHECK(ac.entryMap.count("left"));
-    CHECK(ac.entryMap.count("right"));
+    CHECK(!ac.entryMap.count("right"));
 
     ac = autocomplete('9');
 

@@ -10,6 +10,7 @@
 #include "ldo.h"
 #include "ldebug.h"
 
+
 /*
 ** Main thread combines a thread state and the global state
 */
@@ -180,6 +181,7 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
     g->uvhead.u.open.next = &g->uvhead;
     g->GCthreshold = 0; // mark it as unfinished state
     g->registryfree = 0;
+
     g->errorjmp = NULL;
     g->rngstate = 0;
     g->ptrenckey[0] = 1;
@@ -210,6 +212,8 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
         g->mt[i] = NULL;
     for (i = 0; i < LUA_UTAG_LIMIT; i++)
         g->udatagc[i] = NULL;
+    for (i = 0; i < LUA_LUTAG_LIMIT; i++)
+        g->lightuserdataname[i] = NULL;
     for (i = 0; i < LUA_MEMORY_CATEGORIES; i++)
         g->memcatbytes[i] = 0;
 

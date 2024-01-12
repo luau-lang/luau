@@ -7,8 +7,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauDefinitionFileSetModuleName)
-
 using namespace Luau;
 
 TEST_SUITE_BEGIN("DefinitionTests");
@@ -453,8 +451,6 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
 
 TEST_CASE_FIXTURE(Fixture, "definition_file_has_source_module_name_set")
 {
-    ScopedFastFlag sff{FFlag::LuauDefinitionFileSetModuleName, true};
-
     LoadDefinitionFileResult result = loadDefinition(R"(
         declare class Foo
         end

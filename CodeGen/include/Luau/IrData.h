@@ -13,8 +13,6 @@
 #include <stdint.h>
 #include <string.h>
 
-LUAU_FASTFLAG(LuauKeepVmapLinear2)
-
 struct Proto;
 
 namespace Luau
@@ -88,6 +86,11 @@ enum class IrCmd : uint8_t
     // A: Rn
     // B: tag
     STORE_TAG,
+
+    // Store an integer into the extra field of the TValue
+    // A: Rn
+    // B: int
+    STORE_EXTRA,
 
     // Store a pointer (*) into TValue
     // A: Rn
@@ -964,7 +967,6 @@ struct IrFunction
     // For each instruction, an operand that can be used to recompute the value
     std::vector<IrOp> valueRestoreOps;
     std::vector<uint32_t> validRestoreOpBlocks;
-    uint32_t validRestoreOpBlockIdx = 0;
 
     Proto* proto = nullptr;
     bool variadic = false;
@@ -1108,37 +1110,21 @@ struct IrFunction
         if (instIdx >= valueRestoreOps.size())
             return {};
 
-        if (FFlag::LuauKeepVmapLinear2)
+        // When spilled, values can only reference restore operands in the current block chain
+        if (limitToCurrentBlock)
         {
-            // When spilled, values can only reference restore operands in the current block chain
-            if (limitToCurrentBlock)
+            for (uint32_t blockIdx : validRestoreOpBlocks)
             {
-                for (uint32_t blockIdx : validRestoreOpBlocks)
-                {
-                    const IrBlock& block = blocks[blockIdx];
+                const IrBlock& block = blocks[blockIdx];
 
-                    if (instIdx >= block.start && instIdx <= block.finish)
-                        return valueRestoreOps[instIdx];
-                }
-
-                return {};
+                if (instIdx >= block.start && instIdx <= block.finish)
+                    return valueRestoreOps[instIdx];
             }
 
-            return valueRestoreOps[instIdx];
+            return {};
         }
-        else
-        {
-            const IrBlock& block = blocks[validRestoreOpBlockIdx];
 
-            // When spilled, values can only reference restore operands in the current block
-            if (limitToCurrentBlock)
-            {
-                if (instIdx < block.start || instIdx > block.finish)
-                    return {};
-            }
-
-            return valueRestoreOps[instIdx];
-        }
+        return valueRestoreOps[instIdx];
     }
 
     IrOp findRestoreOp(const IrInst& inst, bool limitToCurrentBlock) const

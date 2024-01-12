@@ -180,6 +180,8 @@ public:
 
     uint32_t getCodeSize() const;
 
+    unsigned getInstructionCount() const;
+
     // Resulting data and code that need to be copied over one after the other
     // The *end* of 'data' has to be aligned to 16 bytes, this will also align 'code'
     std::vector<uint8_t> data;

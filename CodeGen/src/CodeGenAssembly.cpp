@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/CodeGen.h"
 #include "Luau/BytecodeUtils.h"
+#include "Luau/BytecodeSummary.h"
 
 #include "CodeGenLower.h"
 
@@ -93,7 +94,8 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
     {
         IrBuilder ir;
         ir.buildFunctionIr(p);
-        unsigned asmCount = build.getCodeSize();
+        unsigned asmSize = build.getCodeSize();
+        unsigned asmCount = build.getInstructionCount();
 
         if (options.includeAssembly || options.includeIr)
             logFunctionHeader(build, p);
@@ -103,6 +105,7 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
             if (build.logText)
                 build.logAppend("; skipping (can't lower)\n");
 
+            asmSize = 0;
             asmCount = 0;
 
             if (stats)
@@ -110,16 +113,25 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
         }
         else
         {
-            asmCount = build.getCodeSize() - asmCount;
+            asmSize = build.getCodeSize() - asmSize;
+            asmCount = build.getInstructionCount() - asmCount;
         }
 
-        if (stats && stats->collectFunctionStats)
+        if (stats && (stats->functionStatsFlags & FunctionStats_Enable))
         {
-            const char* name = p->debugname ? getstr(p->debugname) : "";
-            int line = p->linedefined;
-            unsigned bcodeCount = getInstructionCount(p->code, p->sizecode);
-            unsigned irCount = unsigned(ir.function.instructions.size());
-            stats->functions.push_back({name, line, bcodeCount, irCount, asmCount});
+            FunctionStats functionStat;
+            functionStat.name = p->debugname ? getstr(p->debugname) : "";
+            functionStat.line = p->linedefined;
+            functionStat.bcodeCount = getInstructionCount(p->code, p->sizecode);
+            functionStat.irCount = unsigned(ir.function.instructions.size());
+            functionStat.asmSize = asmSize;
+            functionStat.asmCount = asmCount;
+            if (stats->functionStatsFlags & FunctionStats_BytecodeSummary)
+            {
+                FunctionBytecodeSummary summary(FunctionBytecodeSummary::fromProto(p, 0));
+                functionStat.bytecodeSummary.push_back(summary.getCounts(0));
+            }
+            stats->functions.push_back(std::move(functionStat));
         }
 
         if (build.logText)

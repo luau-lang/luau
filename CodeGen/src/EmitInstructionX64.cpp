@@ -400,8 +400,9 @@ void emitInstForGLoop(AssemblyBuilderX64& build, int ra, int aux, Label& loopRep
     build.cmp(dword[elemPtr + offsetof(TValue, tt)], LUA_TNIL);
     build.jcc(ConditionX64::Equal, skipArrayNil);
 
-    // setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(index + 1)));
+    // setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(index + 1)), LU_TAG_ITERATOR);
     build.mov(luauRegValue(ra + 2), index);
+    // Extra should already be set to LU_TAG_ITERATOR
     // Tag should already be set to lightuserdata
 
     // setnvalue(ra + 3, double(index + 1));

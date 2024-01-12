@@ -8,8 +8,6 @@
 
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauBufferTranslateIr, false)
-
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
 static const int kMinMaxUnrolledParams = 5;
@@ -749,9 +747,6 @@ static void translateBufferArgsAndCheckBounds(IrBuilder& build, int nparams, int
 static BuiltinImplResult translateBuiltinBufferRead(
     IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos, IrCmd readCmd, int size, IrCmd convCmd)
 {
-    if (!FFlag::LuauBufferTranslateIr)
-        return {BuiltinImplType::None, -1};
-
     if (nparams < 2 || nresults > 1)
         return {BuiltinImplType::None, -1};
 
@@ -768,9 +763,6 @@ static BuiltinImplResult translateBuiltinBufferRead(
 static BuiltinImplResult translateBuiltinBufferWrite(
     IrBuilder& build, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos, IrCmd writeCmd, int size, IrCmd convCmd)
 {
-    if (!FFlag::LuauBufferTranslateIr)
-        return {BuiltinImplType::None, -1};
-
     if (nparams < 3 || nresults > 0)
         return {BuiltinImplType::None, -1};
 

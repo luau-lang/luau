@@ -10,8 +10,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauBufferBetterMsg, false)
-
 // while C API returns 'size_t' for binary compatibility in case of future extensions,
 // in the current implementation, length and offset are limited to 31 bits
 // because offset is limited to an integer, a single 64bit comparison can be used and will not overflow
@@ -38,15 +36,7 @@ static int buffer_create(lua_State* L)
 {
     int size = luaL_checkinteger(L, 1);
 
-    if (FFlag::LuauBufferBetterMsg)
-    {
-        luaL_argcheck(L, size >= 0, 1, "size");
-    }
-    else
-    {
-        if (size < 0)
-            luaL_error(L, "invalid size");
-    }
+    luaL_argcheck(L, size >= 0, 1, "size");
 
     lua_newbuffer(L, size);
     return 1;
@@ -174,15 +164,7 @@ static int buffer_readstring(lua_State* L)
     int offset = luaL_checkinteger(L, 2);
     int size = luaL_checkinteger(L, 3);
 
-    if (FFlag::LuauBufferBetterMsg)
-    {
-        luaL_argcheck(L, size >= 0, 3, "size");
-    }
-    else
-    {
-        if (size < 0)
-            luaL_error(L, "invalid size");
-    }
+    luaL_argcheck(L, size >= 0, 3, "size");
 
     if (isoutofbounds(offset, len, unsigned(size)))
         luaL_error(L, "buffer access out of bounds");
@@ -200,15 +182,7 @@ static int buffer_writestring(lua_State* L)
     const char* val = luaL_checklstring(L, 3, &size);
     int count = luaL_optinteger(L, 4, int(size));
 
-    if (FFlag::LuauBufferBetterMsg)
-    {
-        luaL_argcheck(L, count >= 0, 4, "count");
-    }
-    else
-    {
-        if (count < 0)
-            luaL_error(L, "invalid count");
-    }
+    luaL_argcheck(L, count >= 0, 4, "count");
 
     if (size_t(count) > size)
         luaL_error(L, "string length overflow");

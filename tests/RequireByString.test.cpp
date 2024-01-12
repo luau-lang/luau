@@ -71,6 +71,7 @@ public:
                     luauDirAbs += "/luau";
                 }
 
+
                 if (type == PathType::Relative)
                     return luauDirRel;
                 if (type == PathType::Absolute)

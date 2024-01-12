@@ -7,6 +7,7 @@ if(NOT ${CMAKE_VERSION} VERSION_LESS "3.19")
         Common/include/Luau/BytecodeUtils.h
         Common/include/Luau/DenseHash.h
         Common/include/Luau/ExperimentalFlags.h
+        Common/include/Luau/VecDeque.h
     )
 endif()
 
@@ -467,6 +468,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeVar.test.cpp
         tests/Unifier2.test.cpp
         tests/Variant.test.cpp
+        tests/VecDeque.test.cpp
         tests/VisitType.test.cpp
         tests/main.cpp)
 endif()
