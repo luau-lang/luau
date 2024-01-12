@@ -26,7 +26,6 @@ extern bool verbose;
 extern bool codegen;
 extern int optimizationLevel;
 
-
 LUAU_FASTFLAG(LuauTaggedLuData);
 LUAU_FASTFLAG(LuauSciNumberSkipTrailDot);
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit);
