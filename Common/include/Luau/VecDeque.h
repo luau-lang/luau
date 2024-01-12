@@ -54,7 +54,7 @@ private:
         size_t tail_size = queue_size - head_size;   // how many elements are in the tail portion (i.e. any portion that wrapped to the front)
 
         // we have to destroy every element in the head portion
-        for (size_t index = head; index < head_size; index++)
+        for (size_t index = head; index < head + head_size; index++)
             buffer[index].~T();
 
         // and any in the tail portion, if one exists
