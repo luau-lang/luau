@@ -226,6 +226,9 @@ TEST_CASE_FIXTURE(Fixture, "variadic_packs")
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
+    CHECK(Location{Position{3, 21}, Position{3, 26}} == result.errors[0].location);
+    CHECK(Location{Position{4, 29}, Position{4, 30}} == result.errors[1].location);
+
     CHECK_EQ(
         result.errors[0], (TypeError{Location(Position{3, 21}, Position{3, 26}), TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}}));
 
@@ -1015,7 +1018,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks2")
         end
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    CHECK("Unknown type 't0'" == toString(result.errors[0]));
+    CHECK(get<FunctionExitsWithoutReturning>(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments")

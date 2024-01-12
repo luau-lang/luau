@@ -6,8 +6,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-LUAU_FASTFLAG(LuauCodeGenFixByteLower)
-
 namespace Luau
 {
 namespace CodeGen
@@ -1052,6 +1050,11 @@ uint32_t AssemblyBuilderX64::getCodeSize() const
     return uint32_t(codePos - code.data());
 }
 
+unsigned AssemblyBuilderX64::getInstructionCount() const
+{
+    return instructionCount;
+}
+
 void AssemblyBuilderX64::placeBinary(const char* name, OperandX64 lhs, OperandX64 rhs, uint8_t codeimm8, uint8_t codeimm, uint8_t codeimmImm8,
     uint8_t code8rev, uint8_t coderev, uint8_t code8, uint8_t code, uint8_t opreg)
 {
@@ -1439,18 +1442,8 @@ void AssemblyBuilderX64::placeImm8(int32_t imm)
 {
     int8_t imm8 = int8_t(imm);
 
-    if (FFlag::LuauCodeGenFixByteLower)
-    {
-        LUAU_ASSERT(imm8 == imm);
-        place(imm8);
-    }
-    else
-    {
-        if (imm8 == imm)
-            place(imm8);
-        else
-            LUAU_ASSERT(!"Invalid immediate value");
-    }
+    LUAU_ASSERT(imm8 == imm);
+    place(imm8);
 }
 
 void AssemblyBuilderX64::placeImm16(int16_t imm)
@@ -1502,6 +1495,8 @@ void AssemblyBuilderX64::place(uint8_t byte)
 void AssemblyBuilderX64::commit()
 {
     LUAU_ASSERT(codePos <= codeEnd);
+
+    ++instructionCount;
 
     if (unsigned(codeEnd - codePos) < kMaxInstructionLength)
         extend();

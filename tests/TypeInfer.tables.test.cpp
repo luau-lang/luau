@@ -250,7 +250,14 @@ TEST_CASE_FIXTURE(Fixture, "tc_member_function_2")
 
 TEST_CASE_FIXTURE(Fixture, "call_method")
 {
-    CheckResult result = check("local T = {}    T.x = 0    function T:method() return self.x end    local a = T:method()");
+    CheckResult result = check(R"(
+        local T = {}
+        T.x = 0
+        function T:method()
+            return self.x
+        end
+        local a = T:method()
+    )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(*builtinTypes->numberType, *requireType("a"));
@@ -258,7 +265,17 @@ TEST_CASE_FIXTURE(Fixture, "call_method")
 
 TEST_CASE_FIXTURE(Fixture, "call_method_with_explicit_self_argument")
 {
-    CheckResult result = check("local T = {}    T.x = 0    function T:method() return self.x end    local a = T.method(T)");
+    CheckResult result = check(R"(
+        local T = {}
+        T.x = 0
+
+        function T:method()
+            return self.x
+        end
+
+        local a = T.method(T)
+    )");
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
@@ -843,10 +860,9 @@ TEST_CASE_FIXTURE(Fixture, "array_factory_function")
 TEST_CASE_FIXTURE(Fixture, "sealed_table_indexers_must_unify")
 {
     CheckResult result = check(R"(
-        local A = { 5, 7, 8 }
-        local B = { "one", "two", "three" }
-
-        B = A
+        function f(a: {number}): {string}
+            return a
+        end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -857,10 +873,9 @@ TEST_CASE_FIXTURE(Fixture, "sealed_table_indexers_must_unify")
 TEST_CASE_FIXTURE(Fixture, "indexer_on_sealed_table_must_unify_with_free_table")
 {
     CheckResult result = check(R"(
-        local A = { 1, 2, 3 }
-        function F(t)
+        function F(t): {number}
             t[4] = "hi"
-            A = t
+            return t
         end
     )");
 
@@ -870,8 +885,11 @@ TEST_CASE_FIXTURE(Fixture, "indexer_on_sealed_table_must_unify_with_free_table")
 TEST_CASE_FIXTURE(Fixture, "infer_type_when_indexing_from_a_table_indexer")
 {
     CheckResult result = check(R"(
-        local t: { [number]: string }
-        local s = t[1]
+        function f(t: {string})
+            return t[1]
+        end
+
+        local s = f({})
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -879,10 +897,15 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_when_indexing_from_a_table_indexer")
     CHECK_EQ(*builtinTypes->stringType, *requireType("s"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "indexing_from_a_table_should_prefer_properties_when_possible")
+TEST_CASE_FIXTURE(BuiltinsFixture, "indexing_from_a_table_should_prefer_properties_when_possible")
 {
     CheckResult result = check(R"(
-        local t: { a: string, [string]: number }
+        function f(): { a: string, [string]: number }
+            error("e")
+        end
+
+        local t = f()
+
         local a1 = t.a
         local a2 = t["a"]
 
@@ -1143,7 +1166,7 @@ TEST_CASE_FIXTURE(Fixture, "user_defined_table_types_are_named")
     CheckResult result = check(R"(
         type Vector3 = {x: number, y: number}
 
-        local v: Vector3
+        local v: Vector3 = {x = 5, y = 7}
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -1185,8 +1208,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "result_is_always_any_if_lhs_is_any")
 TEST_CASE_FIXTURE(Fixture, "result_is_bool_for_equality_operators_if_lhs_is_any")
 {
     CheckResult result = check(R"(
-        local a: any
-        local b: number
+        function f(): (any, number)
+            return 5, 7
+        end
+
+        local a: any, b: number = f()
 
         local c = a < b
     )");
@@ -1290,13 +1316,14 @@ TEST_CASE_FIXTURE(Fixture, "pass_incompatible_union_to_a_generic_table_without_c
     CheckResult result = check(R"(
         -- must be in this specific order, and with (roughly) those exact properties!
         type A = {x: number, [any]: any} | {}
-        local a: A
 
         function f(t)
             t.y = 1
         end
 
-        f(a)
+        function g(a: A)
+            f(a)
+        end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -1313,7 +1340,9 @@ TEST_CASE_FIXTURE(Fixture, "passing_compatible_unions_to_a_generic_table_without
             t.y = 1
         end
 
-        f({y = 5} :: A)
+        function g(a: A)
+            f(a)
+        end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -1532,10 +1561,9 @@ TEST_CASE_FIXTURE(Fixture, "right_table_missing_key")
 TEST_CASE_FIXTURE(Fixture, "right_table_missing_key2")
 {
     CheckResult result = check(R"(
-        local lt: { [string]: string, a: string }
-        local rt: {}
-
-        lt = rt
+        function f(t: {}): { [string]: string, a: string }
+            return t
+        end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -1647,22 +1675,31 @@ TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer4")
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_missing_props_dont_report_multiple_errors")
 {
     CheckResult result = check(R"(
-        local vec3 = {x = 1, y = 2, z = 3}
-        local vec1 = {x = 1}
-
-        vec3 = vec1
+        function f(vec1: {x: number}): {x: number, y: number, z: number}
+            return vec1
+        end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    MissingProperties* mp = get<MissingProperties>(result.errors[0]);
-    REQUIRE(mp);
-    CHECK_EQ(mp->context, MissingProperties::Missing);
-    REQUIRE_EQ(2, mp->properties.size());
-    CHECK_EQ(mp->properties[0], "y");
-    CHECK_EQ(mp->properties[1], "z");
-    CHECK_EQ("vec3", toString(mp->superType));
-    CHECK_EQ("vec1", toString(mp->subType));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("Type pack '{ x: number }' could not be converted into '{ x: number, y: number, z: number }'"
+                 " at [0], { x: number } is not a subtype of { x: number, y: number, z: number }",
+            toString(result.errors[0]));
+    }
+    else
+    {
+        MissingProperties* mp = get<MissingProperties>(result.errors[0]);
+        REQUIRE_MESSAGE(mp, result.errors[0]);
+        CHECK_EQ(mp->context, MissingProperties::Missing);
+        REQUIRE_EQ(2, mp->properties.size());
+        CHECK_EQ(mp->properties[0], "y");
+        CHECK_EQ(mp->properties[1], "z");
+
+        CHECK_EQ("{| x: number, y: number, z: number |}", toString(mp->superType));
+        CHECK_EQ("{| x: number |}", toString(mp->subType));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_missing_props_dont_report_multiple_errors2")
@@ -1687,8 +1724,8 @@ TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_extra_props_dont_report_multipl
         function mkvec3() return {x = 1, y = 2, z = 3} end
         function mkvec1() return {x = 1} end
 
-        local vec3 = {mkvec3()}
-        local vec1 = {mkvec1()}
+        local vec3: {{x: number, y: number, z: number}} = {mkvec3()}
+        local vec1: {{x: number}} = {mkvec1()}
 
         vec1 = vec3
     )");
@@ -1697,8 +1734,17 @@ TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_extra_props_dont_report_multipl
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ("vec1", toString(tm->wantedType));
-    CHECK_EQ("vec3", toString(tm->givenType));
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("vec1", toString(tm->wantedType));
+        CHECK_EQ("vec3", toString(tm->givenType));
+    }
+    else
+    {
+        CHECK_EQ("{{| x: number |}}", toString(tm->wantedType));
+        CHECK_EQ("{{| x: number, y: number, z: number |}}", toString(tm->givenType));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_extra_props_is_ok")

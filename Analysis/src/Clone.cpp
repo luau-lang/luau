@@ -159,6 +159,15 @@ private:
         TypeId target = arena->addType(ty->ty);
         asMutable(target)->documentationSymbol = ty->documentationSymbol;
 
+        if (auto generic = getMutable<GenericType>(target))
+            generic->scope = nullptr;
+        else if (auto free = getMutable<FreeType>(target))
+            free->scope = nullptr;
+        else if (auto fn = getMutable<FunctionType>(target))
+            fn->scope = nullptr;
+        else if (auto table = getMutable<TableType>(target))
+            table->scope = nullptr;
+
         (*types)[ty] = target;
         queue.push_back(target);
         return target;
@@ -174,6 +183,11 @@ private:
             return tp;
 
         TypePackId target = arena->addTypePack(tp->ty);
+
+        if (auto generic = getMutable<GenericTypePack>(target))
+            generic->scope = nullptr;
+        else if (auto free = getMutable<FreeTypePack>(target))
+            free->scope = nullptr;
 
         (*packs)[tp] = target;
         queue.push_back(target);
@@ -563,10 +577,12 @@ struct TypePackCloner
     {
         defaultClone(t);
     }
+
     void operator()(const GenericTypePack& t)
     {
         defaultClone(t);
     }
+
     void operator()(const ErrorTypePack& t)
     {
         defaultClone(t);
@@ -633,7 +649,7 @@ void TypeCloner::operator()(const FreeType& t)
 {
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        FreeType ft{t.scope, clone(t.lowerBound, dest, cloneState), clone(t.upperBound, dest, cloneState)};
+        FreeType ft{nullptr, clone(t.lowerBound, dest, cloneState), clone(t.upperBound, dest, cloneState)};
         TypeId res = dest.addType(ft);
         seenTypes[typeId] = res;
     }

@@ -13,8 +13,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenBytecodeInfer, false)
-
 namespace Luau
 {
 namespace CodeGen
@@ -123,8 +121,7 @@ void IrBuilder::buildFunctionIr(Proto* proto)
     rebuildBytecodeBasicBlocks(proto);
 
     // Infer register tags in bytecode
-    if (FFlag::LuauCodegenBytecodeInfer)
-        analyzeBytecodeTypes(function);
+    analyzeBytecodeTypes(function);
 
     function.bcMapping.resize(proto->sizecode, {~0u, ~0u});
 
@@ -231,8 +228,7 @@ void IrBuilder::rebuildBytecodeBasicBlocks(Proto* proto)
         }
     }
 
-    if (FFlag::LuauCodegenBytecodeInfer)
-        buildBytecodeBlocks(function, jumpTargets);
+    buildBytecodeBlocks(function, jumpTargets);
 }
 
 void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)

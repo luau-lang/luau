@@ -10,6 +10,8 @@
 
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
+LUAU_FASTFLAGVARIABLE(LuauPreallocateTarjanVectors, false);
+LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256);
 
 namespace Luau
 {
@@ -144,6 +146,18 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
         asMutable(resTy)->documentationSymbol = ty->documentationSymbol;
 
     return resTy;
+}
+
+Tarjan::Tarjan()
+{
+    if (FFlag::LuauPreallocateTarjanVectors)
+    {
+        nodes.reserve(FInt::LuauTarjanPreallocationSize);
+        stack.reserve(FInt::LuauTarjanPreallocationSize);
+        edgesTy.reserve(FInt::LuauTarjanPreallocationSize);
+        edgesTp.reserve(FInt::LuauTarjanPreallocationSize);
+        worklist.reserve(FInt::LuauTarjanPreallocationSize);
+    }
 }
 
 void Tarjan::visitChildren(TypeId ty, int index)

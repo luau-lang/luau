@@ -6,6 +6,7 @@
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 
+#include "ClassFixture.h"
 #include "Fixture.h"
 
 #include "doctest.h"
@@ -232,6 +233,31 @@ TEST_CASE_FIXTURE(Fixture, "internal_families_raise_errors")
                                         "signature; this construct cannot be type-checked at this time");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_families_can_be_shadowed")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type add<T> = string -- shadow add
+
+        -- this should be ok
+        function hi(f: add<unknown>)
+            return string.format("hi %s", f)
+        end
+
+        -- this should still work totally fine (and use the real type family)
+        function plus(a, b)
+            return a + b
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(toString(requireType("hi")) == "(string) -> string");
+    CHECK(toString(requireType("plus")) == "<a, b>(a, b) -> add<a, b>");
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_families_inhabited_with_normalization")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
@@ -248,6 +274,289 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_families_inhabited_with_normalization")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_works")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = { x: number, y: number, z: number }
+        type KeysOfMyObject = keyof<MyObject>
+
+        local function ok(idx: KeysOfMyObject): "x" | "y" | "z" return idx end
+        local function err(idx: KeysOfMyObject): "x" | "y" return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
+    REQUIRE(tpm);
+    CHECK_EQ("\"x\" | \"y\"", toString(tpm->wantedTp));
+    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tpm->givenTp));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_works_with_metatables")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local metatable = { __index = {w = 1} }
+        local obj = setmetatable({x = 1, y = 2, z = 3}, metatable)
+        type MyObject = typeof(obj)
+        type KeysOfMyObject = keyof<MyObject>
+
+        local function ok(idx: KeysOfMyObject): "w" | "x" | "y" | "z" return idx end
+        local function err(idx: KeysOfMyObject): "x" | "y" | "z" return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
+    REQUIRE(tpm);
+    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tpm->wantedTp));
+    CHECK_EQ("\"w\" | \"x\" | \"y\" | \"z\"", toString(tpm->givenTp));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_errors_if_it_has_nontable_part")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = { x: number, y: number, z: number }
+        type KeysOfMyObject = keyof<MyObject | boolean>
+
+        local function err(idx: KeysOfMyObject): "x" | "y" | "z" return idx end
+    )");
+
+    // FIXME: we should actually only report the type family being uninhabited error at its first use, I think?
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    CHECK(toString(result.errors[0]) == "Type family instance keyof<MyObject | boolean> is uninhabited");
+    CHECK(toString(result.errors[1]) == "Type family instance keyof<MyObject | boolean> is uninhabited");
+    CHECK(toString(result.errors[2]) == "Type family instance keyof<MyObject | boolean> is uninhabited");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_errors_if_union_of_differing_tables")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = { x: number, y: number, z: number }
+        type MyOtherObject = { w: number, y: number, z: number }
+        type KeysOfMyObject = keyof<MyObject | MyOtherObject>
+
+        local function err(idx: KeysOfMyObject): "x" | "y" | "z" return idx end
+    )");
+
+    // FIXME: we should actually only report the type family being uninhabited error at its first use, I think?
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    CHECK(toString(result.errors[0]) == "Type family instance keyof<MyObject | MyOtherObject> is uninhabited");
+    CHECK(toString(result.errors[1]) == "Type family instance keyof<MyObject | MyOtherObject> is uninhabited");
+    CHECK(toString(result.errors[2]) == "Type family instance keyof<MyObject | MyOtherObject> is uninhabited");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_never_for_empty_table")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type KeyofEmpty = keyof<{}>
+
+        local foo = ((nil :: any) :: KeyofEmpty)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("foo")) == "never");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_works")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = { x: number, y: number, z: number }
+        type KeysOfMyObject = rawkeyof<MyObject>
+
+        local function ok(idx: KeysOfMyObject): "x" | "y" | "z" return idx end
+        local function err(idx: KeysOfMyObject): "x" | "y" return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
+    REQUIRE(tpm);
+    CHECK_EQ("\"x\" | \"y\"", toString(tpm->wantedTp));
+    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tpm->givenTp));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_ignores_metatables")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local metatable = { __index = {w = 1} }
+        local obj = setmetatable({x = 1, y = 2, z = 3}, metatable)
+        type MyObject = typeof(obj)
+        type KeysOfMyObject = rawkeyof<MyObject>
+
+        local function ok(idx: KeysOfMyObject): "x" | "y" | "z" return idx end
+        local function err(idx: KeysOfMyObject): "x" | "y" return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
+    REQUIRE(tpm);
+    CHECK_EQ("\"x\" | \"y\"", toString(tpm->wantedTp));
+    CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tpm->givenTp));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_errors_if_it_has_nontable_part")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = { x: number, y: number, z: number }
+        type KeysOfMyObject = rawkeyof<MyObject | boolean>
+
+        local function err(idx: KeysOfMyObject): "x" | "y" | "z" return idx end
+    )");
+
+    // FIXME: we should actually only report the type family being uninhabited error at its first use, I think?
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    CHECK(toString(result.errors[0]) == "Type family instance rawkeyof<MyObject | boolean> is uninhabited");
+    CHECK(toString(result.errors[1]) == "Type family instance rawkeyof<MyObject | boolean> is uninhabited");
+    CHECK(toString(result.errors[2]) == "Type family instance rawkeyof<MyObject | boolean> is uninhabited");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_errors_if_union_of_differing_tables")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = { x: number, y: number, z: number }
+        type MyOtherObject = { w: number, y: number, z: number }
+        type KeysOfMyObject = rawkeyof<MyObject | MyOtherObject>
+
+        local function err(idx: KeysOfMyObject): "x" | "y" | "z" return idx end
+    )");
+
+    // FIXME: we should actually only report the type family being uninhabited error at its first use, I think?
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    CHECK(toString(result.errors[0]) == "Type family instance rawkeyof<MyObject | MyOtherObject> is uninhabited");
+    CHECK(toString(result.errors[1]) == "Type family instance rawkeyof<MyObject | MyOtherObject> is uninhabited");
+    CHECK(toString(result.errors[2]) == "Type family instance rawkeyof<MyObject | MyOtherObject> is uninhabited");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_never_for_empty_table")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type RawkeyofEmpty = rawkeyof<{}>
+
+        local foo = ((nil :: any) :: RawkeyofEmpty)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("foo")) == "never");
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_works_on_classes")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type KeysOfMyObject = keyof<BaseClass>
+
+        local function ok(idx: KeysOfMyObject): "BaseMethod" | "BaseField" return idx end
+        local function err(idx: KeysOfMyObject): "BaseMethod" return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
+    REQUIRE(tpm);
+    CHECK_EQ("\"BaseMethod\"", toString(tpm->wantedTp));
+    CHECK_EQ("\"BaseField\" | \"BaseMethod\"", toString(tpm->givenTp));
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_errors_if_it_has_nonclass_part")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type KeysOfMyObject = keyof<BaseClass | boolean>
+
+        local function err(idx: KeysOfMyObject): "BaseMethod" | "BaseField" return idx end
+    )");
+
+    // FIXME: we should actually only report the type family being uninhabited error at its first use, I think?
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    CHECK(toString(result.errors[0]) == "Type family instance keyof<BaseClass | boolean> is uninhabited");
+    CHECK(toString(result.errors[1]) == "Type family instance keyof<BaseClass | boolean> is uninhabited");
+    CHECK(toString(result.errors[2]) == "Type family instance keyof<BaseClass | boolean> is uninhabited");
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_errors_if_union_of_differing_classes")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type KeysOfMyObject = keyof<BaseClass | Vector2>
+
+        local function err(idx: KeysOfMyObject): "BaseMethod" | "BaseField" return idx end
+    )");
+
+    // FIXME: we should actually only report the type family being uninhabited error at its first use, I think?
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    CHECK(toString(result.errors[0]) == "Type family instance keyof<BaseClass | Vector2> is uninhabited");
+    CHECK(toString(result.errors[1]) == "Type family instance keyof<BaseClass | Vector2> is uninhabited");
+    CHECK(toString(result.errors[2]) == "Type family instance keyof<BaseClass | Vector2> is uninhabited");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_rfc_example")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local animals = {
+            cat = { speak = function() print "meow" end },
+            dog = { speak = function() print "woof woof" end },
+            monkey = { speak = function() print "oo oo" end },
+            fox = { speak = function() print "gekk gekk" end }
+        }
+
+        type AnimalType = keyof<typeof(animals)>
+
+        function speakByType(animal: AnimalType)
+            animals[animal].speak()
+        end
+
+        speakByType("dog") -- ok
+        speakByType("cactus") -- errors
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
+    REQUIRE(tpm);
+    CHECK_EQ("\"cat\" | \"dog\" | \"monkey\" | \"fox\"", toString(tpm->wantedTp));
+    CHECK_EQ("\"cactus\"", toString(tpm->givenTp));
 }
 
 TEST_SUITE_END();

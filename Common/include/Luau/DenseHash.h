@@ -3,7 +3,7 @@
 
 #include "Luau/Common.h"
 
-#include <cstddef>
+#include <stddef.h>
 #include <functional>
 #include <utility>
 #include <type_traits>

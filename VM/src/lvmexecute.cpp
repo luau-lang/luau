@@ -778,6 +778,7 @@ reentry:
                         break;
 
                     case LCT_REF:
+
                         setupvalue(L, &ncl->l.uprefs[ui], luaF_findupval(L, VM_REG(LUAU_INSN_B(uinsn))));
                         break;
 
@@ -1112,7 +1113,9 @@ reentry:
                         VM_NEXT();
 
                     case LUA_TLIGHTUSERDATA:
-                        pc += (pvalue(ra) == pvalue(rb) && (!FFlag::LuauTaggedLuData || lightuserdatatag(ra) == lightuserdatatag(rb))) ? LUAU_INSN_D(insn) : 1;
+                        pc += (pvalue(ra) == pvalue(rb) && (!FFlag::LuauTaggedLuData || lightuserdatatag(ra) == lightuserdatatag(rb)))
+                                  ? LUAU_INSN_D(insn)
+                                  : 1;
                         LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
@@ -1227,7 +1230,9 @@ reentry:
                         VM_NEXT();
 
                     case LUA_TLIGHTUSERDATA:
-                        pc += (pvalue(ra) != pvalue(rb) || (FFlag::LuauTaggedLuData && lightuserdatatag(ra) != lightuserdatatag(rb))) ? LUAU_INSN_D(insn) : 1;
+                        pc += (pvalue(ra) != pvalue(rb) || (FFlag::LuauTaggedLuData && lightuserdatatag(ra) != lightuserdatatag(rb)))
+                                  ? LUAU_INSN_D(insn)
+                                  : 1;
                         LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 

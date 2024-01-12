@@ -242,7 +242,10 @@ typedef struct TString
     // 1 byte padding
 
     int16_t atom;
+
+
     // 2 byte padding
+
 
     TString* next; // next string in the hash table bucket
 
@@ -251,6 +254,8 @@ typedef struct TString
 
     char data[1]; // string data is allocated right after the header
 } TString;
+
+
 
 #define getstr(ts) (ts)->data
 #define svalue(o) getstr(tsvalue(o))

@@ -11,10 +11,9 @@
 #include "Luau/Predicate.h"
 #include "Luau/Unifiable.h"
 #include "Luau/Variant.h"
-#include "Luau/TypeFwd.h"
+#include "Luau/VecDeque.h"
 
 #include <atomic>
-#include <deque>
 #include <map>
 #include <memory>
 #include <optional>
@@ -768,6 +767,7 @@ bool isThread(TypeId ty);
 bool isBuffer(TypeId ty);
 bool isOptional(TypeId ty);
 bool isTableIntersection(TypeId ty);
+bool isTableUnion(TypeId ty);
 bool isOverloadedFunction(TypeId ty);
 
 // True when string is a subtype of ty
@@ -992,7 +992,7 @@ private:
     // (T* t, size_t currentIndex)
     using SavedIterInfo = std::pair<const T*, size_t>;
 
-    std::deque<SavedIterInfo> stack;
+    VecDeque<SavedIterInfo> stack;
     DenseHashSet<const T*> seen{nullptr}; // Only needed to protect the iterator from hanging the thread.
 
     void advance()

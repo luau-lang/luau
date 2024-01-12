@@ -28,6 +28,10 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
         // Tag update is a bit tricky, restore operations of values are not affected
         invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ true);
         break;
+    case IrCmd::STORE_EXTRA:
+        // While extra field update doesn't invalidate some of the values, it can invalidate a vector type field
+        invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ false);
+        break;
     case IrCmd::STORE_POINTER:
     case IrCmd::STORE_DOUBLE:
     case IrCmd::STORE_INT:

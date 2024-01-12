@@ -4,7 +4,7 @@
   <Type Name="::lua_TValue">
     <DisplayString Condition="tt == lua_Type::LUA_TNIL">nil</DisplayString>
     <DisplayString Condition="tt == lua_Type::LUA_TBOOLEAN">{(bool)value.b}</DisplayString>
-    <DisplayString Condition="tt == lua_Type::LUA_TLIGHTUSERDATA">lightuserdata {value.p}</DisplayString>
+    <DisplayString Condition="tt == lua_Type::LUA_TLIGHTUSERDATA">lightuserdata {(uintptr_t)value.p,h} tag: {extra[0]}</DisplayString>
     <DisplayString Condition="tt == lua_Type::LUA_TNUMBER">number = {value.n}</DisplayString>
     <DisplayString Condition="tt == lua_Type::LUA_TVECTOR">vector = {value.v[0]}, {value.v[1]}, {*(float*)&amp;extra}</DisplayString>
     <DisplayString Condition="tt == lua_Type::LUA_TSTRING">{value.gc->ts}</DisplayString>
@@ -28,6 +28,7 @@
       <Item Name="[buffer]" Condition="tt == lua_Type::LUA_TBUFFER">value.gc->buf</Item>
       <Item Name="[proto]" Condition="tt == lua_Type::LUA_TPROTO">value.gc->p</Item>
       <Item Name="[upvalue]" Condition="tt == lua_Type::LUA_TUPVAL">value.gc->uv</Item>
+      <Item Name="[tag]" Condition="tt == lua_Type::LUA_TLIGHTUSERDATA">extra[0]</Item>
       <Synthetic Name="[gc]" Condition="tt >= lua_Type::LUA_TSTRING">
         <DisplayString Condition="value.gc-&gt;gch.marked &amp; 8">fixed ({(int)value.gc-&gt;gch.marked})</DisplayString>
         <DisplayString Condition="value.gc-&gt;gch.marked &amp; 4">black ({(int)value.gc-&gt;gch.marked})</DisplayString>
@@ -41,7 +42,7 @@
   <Type Name="::TKey">
     <DisplayString Condition="tt == lua_Type::LUA_TNIL">nil</DisplayString>
     <DisplayString Condition="tt == lua_Type::LUA_TBOOLEAN">{(bool)value.b}</DisplayString>
-    <DisplayString Condition="tt == lua_Type::LUA_TLIGHTUSERDATA">lightuserdata {value.p}</DisplayString>
+    <DisplayString Condition="tt == lua_Type::LUA_TLIGHTUSERDATA">lightuserdata {(uintptr_t)value.p,h} tag: {extra[0]}</DisplayString>
     <DisplayString Condition="tt == lua_Type::LUA_TNUMBER">number = {value.n}</DisplayString>
     <DisplayString Condition="tt == lua_Type::LUA_TVECTOR">vector = {value.v[0]}, {value.v[1]}, {*(float*)&amp;extra}</DisplayString>
     <DisplayString Condition="tt == lua_Type::LUA_TSTRING">{value.gc->ts}</DisplayString>
@@ -66,6 +67,7 @@
       <Item Name="[proto]" Condition="tt == lua_Type::LUA_TPROTO">value.gc->p</Item>
       <Item Name="[upvalue]" Condition="tt == lua_Type::LUA_TUPVAL">value.gc->uv</Item>
 
+      <Item Name="[tag]" Condition="tt == lua_Type::LUA_TLIGHTUSERDATA">extra[0]</Item>
       <Item Name="[next]">next</Item>
     </Expand>
   </Type>
