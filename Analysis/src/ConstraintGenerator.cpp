@@ -504,6 +504,11 @@ ControlFlow ConstraintGenerator::visitBlockWithoutChildScope(const ScopePtr& sco
                 continue;
             }
 
+            // A type alias might have no name if the code is syntactically
+            // illegal. We mustn't prepopulate anything in this case.
+            if (alias->name == kParseNameError || alias->name == "typeof")
+                continue;
+
             ScopePtr defnScope = childScope(alias, scope);
 
             TypeId initialType = arena->addType(BlockedType{});
@@ -1084,6 +1089,15 @@ static bool occursCheck(TypeId needle, TypeId haystack)
 
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeAlias* alias)
 {
+    if (alias->name == kParseNameError)
+        return ControlFlow::None;
+
+    if (alias->name == "typeof")
+    {
+        reportError(alias->location, GenericError{"Type aliases cannot be named typeof"});
+        return ControlFlow::None;
+    }
+
     ScopePtr* defnScope = astTypeAliasDefiningScopes.find(alias);
 
     std::unordered_map<Name, TypeFun>* typeBindings;
@@ -1516,10 +1530,24 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
         LUAU_ASSERT(target);
         LUAU_ASSERT(mt);
 
+        target = follow(target);
+
         AstExpr* targetExpr = call->args.data[0];
 
-        MetatableType mtv{target, mt};
-        TypeId resultTy = arena->addType(mtv);
+        TypeId resultTy = nullptr;
+
+        if (isTableUnion(target))
+        {
+            const UnionType* targetUnion = get<UnionType>(target);
+            std::vector<TypeId> newParts;
+
+            for (TypeId ty : targetUnion)
+                newParts.push_back(arena->addType(MetatableType{ty, mt}));
+
+            resultTy = arena->addType(UnionType{std::move(newParts)});
+        }
+        else
+            resultTy = arena->addType(MetatableType{target, mt});
 
         if (AstExprLocal* targetLocal = targetExpr->as<AstExprLocal>())
         {

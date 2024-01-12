@@ -16,6 +16,7 @@
 #include "Luau/TypeFamily.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
+#include "Luau/VecDeque.h"
 #include "Luau/VisitType.h"
 #include <algorithm>
 #include <utility>
@@ -450,10 +451,10 @@ struct TypeAndLocation
 
 struct FreeTypeSearcher : TypeOnceVisitor
 {
-    std::deque<TypeAndLocation>* result;
+    VecDeque<TypeAndLocation>* result;
     Location location;
 
-    FreeTypeSearcher(std::deque<TypeAndLocation>* result, Location location)
+    FreeTypeSearcher(VecDeque<TypeAndLocation>* result, Location location)
         : result(result)
         , location(location)
     {
@@ -484,7 +485,7 @@ void ConstraintSolver::finalizeModule()
 
     Unifier2 u2{NotNull{arena}, builtinTypes, rootScope, NotNull{&iceReporter}};
 
-    std::deque<TypeAndLocation> queue;
+    VecDeque<TypeAndLocation> queue;
     for (auto& [name, binding] : rootScope->bindings)
         queue.push_back({binding.typeId, binding.location});
 

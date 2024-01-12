@@ -26,13 +26,8 @@ extern bool verbose;
 extern bool codegen;
 extern int optimizationLevel;
 
-LUAU_FASTFLAG(LuauBit32Byteswap);
-LUAU_FASTFLAG(LuauBufferBetterMsg);
-LUAU_FASTFLAG(LuauBufferDefinitions);
-LUAU_FASTFLAG(LuauCodeGenFixByteLower);
-LUAU_FASTFLAG(LuauCompileBufferAnnotation);
-LUAU_FASTFLAG(LuauLoopInterruptFix);
-LUAU_DYNAMIC_FASTFLAG(LuauStricterUtf8);
+LUAU_FASTFLAG(LuauTaggedLuData);
+LUAU_FASTFLAG(LuauSciNumberSkipTrailDot);
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit);
 
 static lua_CompileOptions defaultOptions()
@@ -323,9 +318,6 @@ TEST_CASE("Basic")
 
 TEST_CASE("Buffers")
 {
-    ScopedFastFlag luauBufferBetterMsg{FFlag::LuauBufferBetterMsg, true};
-    ScopedFastFlag luauCodeGenFixByteLower{FFlag::LuauCodeGenFixByteLower, true};
-
     runConformance("buffers.lua");
 }
 
@@ -440,13 +432,11 @@ TEST_CASE("GC")
 
 TEST_CASE("Bitwise")
 {
-    ScopedFastFlag sffs{FFlag::LuauBit32Byteswap, true};
     runConformance("bitwise.lua");
 }
 
 TEST_CASE("UTF8")
 {
-    ScopedFastFlag sff(DFFlag::LuauStricterUtf8, true);
     runConformance("utf8.lua");
 }
 
@@ -591,8 +581,6 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
-    ScopedFastFlag luauBufferDefinitions{FFlag::LuauBufferDefinitions, true};
-
     runConformance("types.lua", [](lua_State* L) {
         Luau::NullModuleResolver moduleResolver;
         Luau::NullFileResolver fileResolver;
@@ -1438,6 +1426,8 @@ TEST_CASE("Coverage")
 
 TEST_CASE("StringConversion")
 {
+    ScopedFastFlag luauSciNumberSkipTrailDot{FFlag::LuauSciNumberSkipTrailDot, true};
+
     runConformance("strconv.lua");
 }
 
@@ -1539,8 +1529,6 @@ TEST_CASE("GCDump")
 
 TEST_CASE("Interrupt")
 {
-    ScopedFastFlag luauLoopInterruptFix{FFlag::LuauLoopInterruptFix, true};
-
     lua_CompileOptions copts = defaultOptions();
     copts.optimizationLevel = 1; // disable loop unrolling to get fixed expected hit results
 
@@ -1698,6 +1686,58 @@ TEST_CASE("UserdataApi")
     globalState.reset();
 
     CHECK(dtorhits == 42);
+}
+
+TEST_CASE("LightuserdataApi")
+{
+    ScopedFastFlag luauTaggedLuData{FFlag::LuauTaggedLuData, true};
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    void* value = (void*)0x12345678;
+
+    lua_pushlightuserdatatagged(L, value, 1);
+    CHECK(lua_lightuserdatatag(L, -1) == 1);
+    CHECK(lua_tolightuserdatatagged(L, -1, 0) == nullptr);
+    CHECK(lua_tolightuserdatatagged(L, -1, 1) == value);
+
+    lua_setlightuserdataname(L, 1, "id");
+    CHECK(!lua_getlightuserdataname(L, 0));
+    CHECK(strcmp(lua_getlightuserdataname(L, 1), "id") == 0);
+    CHECK(strcmp(luaL_typename(L, -1), "id") == 0);
+    lua_pop(L, 1);
+
+    lua_pushlightuserdatatagged(L, value, 0);
+    lua_pushlightuserdatatagged(L, value, 1);
+    CHECK(lua_rawequal(L, -1, -2) == 0);
+    lua_pop(L, 2);
+
+    // Check lightuserdata table key uniqueness
+    lua_newtable(L);
+
+    lua_pushlightuserdatatagged(L, value, 2);
+    lua_pushinteger(L, 20);
+    lua_settable(L, -3);
+    lua_pushlightuserdatatagged(L, value, 3);
+    lua_pushinteger(L, 30);
+    lua_settable(L, -3);
+
+    lua_pushlightuserdatatagged(L, value, 2);
+    lua_gettable(L, -2);
+    lua_pushinteger(L, 20);
+    CHECK(lua_rawequal(L, -1, -2) == 1);
+    lua_pop(L, 2);
+
+    lua_pushlightuserdatatagged(L, value, 3);
+    lua_gettable(L, -2);
+    lua_pushinteger(L, 30);
+    CHECK(lua_rawequal(L, -1, -2) == 1);
+    lua_pop(L, 2);
+
+    lua_pop(L, 1);
+
+    globalState.reset();
 }
 
 TEST_CASE("Iter")
@@ -1935,8 +1975,6 @@ TEST_CASE("NativeTypeAnnotations")
     if (!codegen || !luau_codegen_supported())
         return;
 
-    ScopedFastFlag luauCompileBufferAnnotation{FFlag::LuauCompileBufferAnnotation, true};
-
     lua_CompileOptions copts = defaultOptions();
     copts.vectorCtor = "vector";
     copts.vectorType = "vector";
@@ -2105,13 +2143,15 @@ end
     CHECK_EQ(summaries[0].getName(), "inner");
     CHECK_EQ(summaries[0].getLine(), 6);
     CHECK_EQ(summaries[0].getCounts(0),
-        std::vector<unsigned>({1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+        std::vector<unsigned>({0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
 
     CHECK_EQ(summaries[1].getName(), "first");
     CHECK_EQ(summaries[1].getLine(), 2);
     CHECK_EQ(summaries[1].getCounts(0),
-        std::vector<unsigned>({1, 0, 1, 0, 2, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        std::vector<unsigned>({0, 0, 1, 0, 2, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+
 
     CHECK_EQ(summaries[2].getName(), "second");
     CHECK_EQ(summaries[2].getLine(), 15);

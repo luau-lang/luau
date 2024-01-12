@@ -14,6 +14,7 @@
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
+#include "Luau/VecDeque.h"
 #include "Luau/VisitType.h"
 
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyGraphReductionMaximumSteps, 1'000'000);
@@ -23,8 +24,8 @@ namespace Luau
 
 struct InstanceCollector : TypeOnceVisitor
 {
-    std::deque<TypeId> tys;
-    std::deque<TypePackId> tps;
+    VecDeque<TypeId> tys;
+    VecDeque<TypePackId> tps;
 
     bool visit(TypeId ty, const TypeFamilyInstanceType&) override
     {
@@ -60,8 +61,8 @@ struct FamilyReducer
 {
     TypeFamilyContext ctx;
 
-    std::deque<TypeId> queuedTys;
-    std::deque<TypePackId> queuedTps;
+    VecDeque<TypeId> queuedTys;
+    VecDeque<TypePackId> queuedTps;
     DenseHashSet<const void*> irreducible{nullptr};
     FamilyGraphReductionResult result;
     bool force = false;
@@ -69,7 +70,7 @@ struct FamilyReducer
     // Local to the constraint being reduced.
     Location location;
 
-    FamilyReducer(std::deque<TypeId> queuedTys, std::deque<TypePackId> queuedTps, Location location, TypeFamilyContext ctx, bool force = false)
+    FamilyReducer(VecDeque<TypeId> queuedTys, VecDeque<TypePackId> queuedTps, Location location, TypeFamilyContext ctx, bool force = false)
         : ctx(ctx)
         , queuedTys(std::move(queuedTys))
         , queuedTps(std::move(queuedTps))
@@ -258,7 +259,7 @@ struct FamilyReducer
 };
 
 static FamilyGraphReductionResult reduceFamiliesInternal(
-    std::deque<TypeId> queuedTys, std::deque<TypePackId> queuedTps, Location location, TypeFamilyContext ctx, bool force)
+    VecDeque<TypeId> queuedTys, VecDeque<TypePackId> queuedTps, Location location, TypeFamilyContext ctx, bool force)
 {
     FamilyReducer reducer{std::move(queuedTys), std::move(queuedTps), location, ctx, force};
     int iterationCount = 0;
@@ -1051,6 +1052,188 @@ TypeFamilyReductionResult<TypeId> refineFamilyFn(const std::vector<TypeId>& type
     return {resultTy, false, {}, {}};
 }
 
+// computes the keys of `ty` into `result`
+// `isRaw` parameter indicates whether or not we should follow __index metamethods
+// returns `false` if `result` should be ignored because the answer is "all strings"
+bool computeKeysOf(TypeId ty, DenseHashSet<std::string>& result, DenseHashSet<TypeId>& seen, bool isRaw, NotNull<TypeFamilyContext> ctx)
+{
+    // if the type is the top table type, the answer is just "all strings"
+    if (get<PrimitiveType>(ty))
+        return false;
+
+    // if we've already seen this type, we can do nothing
+    if (seen.contains(ty))
+        return true;
+    seen.insert(ty);
+
+    // if we have a particular table type, we can insert the keys
+    if (auto tableTy = get<TableType>(ty))
+    {
+        for (auto [key, _] : tableTy->props)
+            result.insert(key);
+        return true;
+    }
+
+    // otherwise, we have a metatable to deal with
+    if (auto metatableTy = get<MetatableType>(ty))
+    {
+        bool res = true;
+
+        if (!isRaw)
+        {
+            // findMetatableEntry demands the ability to emit errors, so we must give it
+            // the necessary state to do that, even if we intend to just eat the errors.
+            ErrorVec dummy;
+
+            std::optional<TypeId> mmType = findMetatableEntry(ctx->builtins, dummy, ty, "__index", Location{});
+            if (mmType)
+                res = res && computeKeysOf(*mmType, result, seen, isRaw, ctx);
+        }
+
+        res = res && computeKeysOf(metatableTy->table, result, seen, isRaw, ctx);
+
+        return res;
+    }
+
+    // this should not be reachable since the type should be a valid tables part from normalization.
+    LUAU_ASSERT(false);
+    return false;
+}
+
+TypeFamilyReductionResult<TypeId> keyofFamilyImpl(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx, bool isRaw)
+{
+    if (typeParams.size() != 1 || !packParams.empty())
+    {
+        ctx->ice->ice("keyof type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId operandTy = follow(typeParams.at(0));
+
+    const NormalizedType* normTy = ctx->normalizer->normalize(operandTy);
+
+    // if the operand failed to normalize, we can't reduce, but know nothing about inhabitance.
+    if (!normTy)
+        return {std::nullopt, false, {}, {}};
+
+    // if we don't have either just tables or just classes, we've got nothing to get keys of (at least until a future version perhaps adds classes as well)
+    if (normTy->hasTables() == normTy->hasClasses())
+        return {std::nullopt, true, {}, {}};
+
+    // this is sort of atrocious, but we're trying to reject any type that has not normalized to a table or a union of tables.
+    if (normTy->hasTops() || normTy->hasBooleans() || normTy->hasErrors() || normTy->hasNils() || normTy->hasNumbers() || normTy->hasStrings() ||
+        normTy->hasThreads() || normTy->hasBuffers() || normTy->hasFunctions() || normTy->hasTyvars())
+        return {std::nullopt, true, {}, {}};
+
+    // we're going to collect the keys in here
+    DenseHashSet<std::string> keys{{}};
+
+    // computing the keys for classes
+    if (normTy->hasClasses())
+    {
+        LUAU_ASSERT(!normTy->hasTables());
+
+        auto classesIter = normTy->classes.ordering.begin();
+        auto classesIterEnd = normTy->classes.ordering.end();
+        LUAU_ASSERT(classesIter != classesIterEnd); // should be guaranteed by the `hasClasses` check
+
+        auto classTy = get<ClassType>(*classesIter);
+        if (!classTy)
+        {
+            LUAU_ASSERT(false); // this should not be possible according to normalization's spec
+            return {std::nullopt, true, {}, {}};
+        }
+
+        for (auto [key, _] : classTy->props)
+            keys.insert(key);
+
+        // we need to check that if there are multiple classes, they have the same set of keys
+        while (++classesIter != classesIterEnd)
+        {
+            auto classTy = get<ClassType>(*classesIter);
+            if (!classTy)
+            {
+                LUAU_ASSERT(false); // this should not be possible according to normalization's spec
+                return {std::nullopt, true, {}, {}};
+            }
+
+            for (auto [key, _] : classTy->props)
+            {
+                // we will refuse to reduce if the keys are not exactly the same
+                if (!keys.contains(key))
+                    return {std::nullopt, true, {}, {}};
+            }
+        }
+    }
+
+    // computing the keys for tables
+    if (normTy->hasTables())
+    {
+        LUAU_ASSERT(!normTy->hasClasses());
+
+        // seen set for key computation for tables
+        DenseHashSet<TypeId> seen{{}};
+
+        auto tablesIter = normTy->tables.begin();
+        LUAU_ASSERT(tablesIter != normTy->tables.end()); // should be guaranteed by the `hasTables` check earlier
+
+        // collect all the properties from the first table type
+        if (!computeKeysOf(*tablesIter, keys, seen, isRaw, ctx))
+            return {ctx->builtins->stringType, false, {}, {}}; // if it failed, we have the top table type!
+
+        // we need to check that if there are multiple tables, they have the same set of keys
+        while (++tablesIter != normTy->tables.end())
+        {
+            seen.clear(); // we'll reuse the same seen set
+
+            DenseHashSet<std::string> localKeys{{}};
+
+            // the type family is irreducible if there's _also_ the top table type in here
+            if (!computeKeysOf(*tablesIter, localKeys, seen, isRaw, ctx))
+                return {std::nullopt, true, {}, {}};
+
+            // the type family is irreducible if the key sets are not equal.
+            if (localKeys != keys)
+                return {std::nullopt, true, {}, {}};
+        }
+    }
+
+    // if the set of keys is empty, `keyof<T>` is `never`
+    if (keys.empty())
+        return {ctx->builtins->neverType, false, {}, {}};
+
+    // everything is validated, we need only construct our big union of singletons now!
+    std::vector<TypeId> singletons;
+    singletons.reserve(keys.size());
+
+    for (std::string key : keys)
+        singletons.push_back(ctx->arena->addType(SingletonType{StringSingleton{key}}));
+
+    return {ctx->arena->addType(UnionType{singletons}), false, {}, {}};
+}
+
+TypeFamilyReductionResult<TypeId> keyofFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+{
+    if (typeParams.size() != 1 || !packParams.empty())
+    {
+        ctx->ice->ice("keyof type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    return keyofFamilyImpl(typeParams, packParams, ctx, /* isRaw */ false);
+}
+
+TypeFamilyReductionResult<TypeId> rawkeyofFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+{
+    if (typeParams.size() != 1 || !packParams.empty())
+    {
+        ctx->ice->ice("rawkeyof type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    return keyofFamilyImpl(typeParams, packParams, ctx, /* isRaw */ true);
+}
+
 BuiltinTypeFamilies::BuiltinTypeFamilies()
     : notFamily{"not", notFamilyFn}
     , lenFamily{"len", lenFamilyFn}
@@ -1069,6 +1252,8 @@ BuiltinTypeFamilies::BuiltinTypeFamilies()
     , leFamily{"le", leFamilyFn}
     , eqFamily{"eq", eqFamilyFn}
     , refineFamily{"refine", refineFamilyFn}
+    , keyofFamily{"keyof", keyofFamilyFn}
+    , rawkeyofFamily{"rawkeyof", rawkeyofFamilyFn}
 {
 }
 
@@ -1107,6 +1292,9 @@ void BuiltinTypeFamilies::addToScope(NotNull<TypeArena> arena, NotNull<Scope> sc
     scope->exportedTypeBindings[ltFamily.name] = mkBinaryTypeFamily(&ltFamily);
     scope->exportedTypeBindings[leFamily.name] = mkBinaryTypeFamily(&leFamily);
     scope->exportedTypeBindings[eqFamily.name] = mkBinaryTypeFamily(&eqFamily);
+
+    scope->exportedTypeBindings[keyofFamily.name] = mkUnaryTypeFamily(&keyofFamily);
+    scope->exportedTypeBindings[rawkeyofFamily.name] = mkUnaryTypeFamily(&rawkeyofFamily);
 }
 
 } // namespace Luau

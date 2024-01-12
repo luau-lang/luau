@@ -11,6 +11,7 @@
 #include "Luau/ToString.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
+#include "Luau/VecDeque.h"
 #include "Luau/VisitType.h"
 
 #include <algorithm>
@@ -26,7 +27,6 @@ LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
-LUAU_FASTFLAGVARIABLE(LuauInitializeStringMetatableInGlobalTypes, false)
 LUAU_FASTFLAG(LuauBufferTypeck)
 
 namespace Luau
@@ -129,7 +129,7 @@ std::vector<TypeId> flattenIntersection(TypeId ty)
         return {ty};
 
     std::unordered_set<TypeId> seen;
-    std::deque<TypeId> queue{ty};
+    VecDeque<TypeId> queue{ty};
 
     std::vector<TypeId> result;
 
@@ -246,6 +246,15 @@ bool isTableIntersection(TypeId ty)
 
     std::vector<TypeId> parts = flattenIntersection(ty);
     return std::all_of(parts.begin(), parts.end(), getTableType);
+}
+
+bool isTableUnion(TypeId ty)
+{
+    const UnionType* ut = get<UnionType>(follow(ty));
+    if (!ut)
+        return false;
+
+    return std::all_of(begin(ut), end(ut), getTableType);
 }
 
 bool isOverloadedFunction(TypeId ty)
@@ -955,13 +964,6 @@ BuiltinTypes::BuiltinTypes()
     , uninhabitableTypePack(arena->addTypePack(TypePackVar{TypePack{{neverType}, neverTypePack}, /*persistent*/ true}))
     , errorTypePack(arena->addTypePack(TypePackVar{Unifiable::Error{}, /*persistent*/ true}))
 {
-    if (!FFlag::LuauInitializeStringMetatableInGlobalTypes)
-    {
-        TypeId stringMetatable = makeStringMetatable(NotNull{this});
-        asMutable(stringType)->ty = PrimitiveType{PrimitiveType::String, stringMetatable};
-        persist(stringMetatable);
-    }
-
     freeze(*arena);
 }
 
@@ -999,7 +1001,7 @@ TypePackId BuiltinTypes::errorRecoveryTypePack(TypePackId guess) const
 
 void persist(TypeId ty)
 {
-    std::deque<TypeId> queue{ty};
+    VecDeque<TypeId> queue{ty};
 
     while (!queue.empty())
     {

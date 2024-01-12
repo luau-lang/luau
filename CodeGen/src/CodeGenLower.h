@@ -26,7 +26,6 @@ LUAU_FASTFLAG(DebugCodegenSkipNumbering)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockInstructionLimit)
-LUAU_FASTFLAG(LuauKeepVmapLinear2)
 
 namespace Luau
 {
@@ -113,16 +112,8 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
             toStringDetailed(ctx, block, blockIndex, /* includeUseInfo */ true);
         }
 
-        if (FFlag::LuauKeepVmapLinear2)
-        {
-            // Values can only reference restore operands in the current block chain
-            function.validRestoreOpBlocks.push_back(blockIndex);
-        }
-        else
-        {
-            // Values can only reference restore operands in the current block
-            function.validRestoreOpBlockIdx = blockIndex;
-        }
+        // Values can only reference restore operands in the current block chain
+        function.validRestoreOpBlocks.push_back(blockIndex);
 
         build.setLabel(block.label);
 
@@ -209,7 +200,7 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
         if (options.includeIr)
             build.logAppend("#\n");
 
-        if (FFlag::LuauKeepVmapLinear2 && block.expectedNextBlock == ~0u)
+        if (block.expectedNextBlock == ~0u)
             function.validRestoreOpBlocks.clear();
     }
 

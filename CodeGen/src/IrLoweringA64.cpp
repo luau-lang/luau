@@ -416,6 +416,21 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
         break;
     }
+    case IrCmd::STORE_EXTRA:
+    {
+        AddressA64 addr = tempAddr(inst.a, offsetof(TValue, extra));
+        if (intOp(inst.b) == 0)
+        {
+            build.str(wzr, addr);
+        }
+        else
+        {
+            RegisterA64 temp = regs.allocTemp(KindA64::w);
+            build.mov(temp, intOp(inst.b));
+            build.str(temp, addr);
+        }
+        break;
+    }
     case IrCmd::STORE_DOUBLE:
     {
         AddressA64 addr = tempAddr(inst.a, offsetof(TValue, value));

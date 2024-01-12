@@ -4,7 +4,6 @@
 #include "Luau/Common.h"
 
 #include <algorithm>
-#include <deque>
 
 namespace Luau
 {

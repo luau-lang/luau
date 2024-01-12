@@ -60,29 +60,35 @@ def getDuration(nodes, nid):
     node = nodes[nid - 1]
     total = node['TotalDuration']
 
-    for cid in node['NodeIds']:
-        total -= nodes[cid - 1]['TotalDuration']
+    if 'NodeIds' in node:
+        for cid in node['NodeIds']:
+            total -= nodes[cid - 1]['TotalDuration']
 
     return total
 
 def getFunctionKey(fn):
-    return fn['Source'] + "," + fn['Name'] + "," + str(fn['Line'])
+    source = fn['Source'] if 'Source' in fn else ''
+    name = fn['Name'] if 'Name' in fn else ''
+    line = str(fn['Line']) if 'Line' in fn else '-1'
+
+    return source + "," + name + "," + line
 
 def recursivelyBuildNodeTree(nodes, functions, parent, fid, nid):
     ninfo = nodes[nid - 1]
     finfo = functions[fid - 1]
 
     child = parent.child(getFunctionKey(finfo))
-    child.source = finfo['Source']
-    child.function = finfo['Name']
-    child.line = int(finfo['Line']) if finfo['Line'] > 0 else 0
+    child.source = finfo['Source'] if 'Source' in finfo else ''
+    child.function = finfo['Name'] if 'Name' in finfo else ''
+    child.line = int(finfo['Line']) if 'Line' in finfo and finfo['Line'] > 0 else 0
 
     child.ticks = getDuration(nodes, nid)
 
-    assert(len(ninfo['FunctionIds']) == len(ninfo['NodeIds']))
+    if 'FunctionIds' in ninfo:
+        assert(len(ninfo['FunctionIds']) == len(ninfo['NodeIds']))
 
-    for i in range(0, len(ninfo['FunctionIds'])):
-        recursivelyBuildNodeTree(nodes, functions, child, ninfo['FunctionIds'][i], ninfo['NodeIds'][i])
+        for i in range(0, len(ninfo['FunctionIds'])):
+            recursivelyBuildNodeTree(nodes, functions, child, ninfo['FunctionIds'][i], ninfo['NodeIds'][i])
 
     return
 
@@ -104,10 +110,11 @@ def nodeFromJSONV2(dump):
         child.function = name
         child.ticks = getDuration(nodes, nid)
 
-        assert(len(node['FunctionIds']) == len(node['NodeIds']))
+        if 'FunctionIds' in node:
+            assert(len(node['FunctionIds']) == len(node['NodeIds']))
 
-        for i in range(0, len(node['FunctionIds'])):
-            recursivelyBuildNodeTree(nodes, functions, child, node['FunctionIds'][i], node['NodeIds'][i])
+            for i in range(0, len(node['FunctionIds'])):
+                recursivelyBuildNodeTree(nodes, functions, child, node['FunctionIds'][i], node['NodeIds'][i])
 
     return root
 

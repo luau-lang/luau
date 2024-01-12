@@ -1351,111 +1351,131 @@ struct TypeChecker2
 
             ErrorVec argumentErrors;
 
-            // Reminder: Functions have parameters. You provide arguments.
-            auto paramIter = begin(fn->argTypes);
-            size_t argOffset = 0;
+            TypeId prospectiveFunction = arena->addType(FunctionType{arena->addTypePack(*args), builtinTypes->anyTypePack});
+            SubtypingResult sr = subtyping->isSubtype(fnTy, prospectiveFunction);
 
-            while (paramIter != end(fn->argTypes))
+            if (sr.isSubtype)
+                return {Analysis::Ok, {}};
+
+            if (1 == sr.reasoning.size())
             {
-                if (argOffset >= args->head.size())
-                    break;
+                const SubtypingReasoning& reason = *sr.reasoning.begin();
 
-                TypeId paramTy = *paramIter;
-                TypeId argTy = args->head[argOffset];
-                AstExpr* argLoc = argExprs->at(argOffset >= argExprs->size() ? argExprs->size() - 1 : argOffset);
+                const TypePath::Path justArguments{TypePath::PackField::Arguments};
 
-                if (auto errors = testIsSubtype(argLoc->location, argTy, paramTy))
+                if (reason.subPath == justArguments && reason.superPath == justArguments)
                 {
-                    // Since we're stopping right here, we need to decide if this is a nonviable overload or if there is an arity mismatch.
-                    // If it's a nonviable overload, then we need to keep going to get all type errors.
-                    auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
-                    if (args->head.size() < minParams)
-                        return {ArityMismatch, *errors};
-                    else
-                        argumentErrors.insert(argumentErrors.end(), errors->begin(), errors->end());
-                }
+                    // If the subtype test failed only due to an arity mismatch,
+                    // it is still possible that this function call is okay.
+                    // Subtype testing does not know anything about optional
+                    // function arguments.
+                    //
+                    // This can only happen if the actual function call has a
+                    // finite set of arguments which is too short for the
+                    // function being called.  If all of those unsatisfied
+                    // function arguments are options, then this function call
+                    // is ok.
 
-                ++paramIter;
-                ++argOffset;
-            }
+                    const size_t firstUnsatisfiedArgument = argExprs->size();
+                    const auto [requiredHead, _requiredTail] = flatten(fn->argTypes);
 
-            while (argOffset < args->head.size())
-            {
-                // If we can iterate over the head of arguments, then we have exhausted the head of the parameters.
-                LUAU_ASSERT(paramIter == end(fn->argTypes));
+                    // If too many arguments were supplied, this overload
+                    // definitely does not match.
+                    if (args->head.size() > requiredHead.size())
+                    {
+                        auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
+                        TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, false}};
 
-                AstExpr* argExpr = argExprs->at(argOffset >= argExprs->size() ? argExprs->size() - 1 : argOffset);
+                        return {Analysis::ArityMismatch, {error}};
+                    }
 
-                if (!paramIter.tail())
-                {
-                    auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
-                    TypeError error{argExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, false}};
-                    return {ArityMismatch, {error}};
-                }
-                else if (auto vtp = get<VariadicTypePack>(follow(paramIter.tail())))
-                {
-                    if (auto errors = testIsSubtype(argExpr->location, args->head[argOffset], vtp->ty))
-                        argumentErrors.insert(argumentErrors.end(), errors->begin(), errors->end());
-                }
-                else if (get<GenericTypePack>(follow(paramIter.tail())))
-                    argumentErrors.push_back(TypeError{argExpr->location, TypePackMismatch{fn->argTypes, arena->addTypePack(*args)}});
+                    // If any of the unsatisfied arguments are not supertypes of
+                    // nil, then this overload does not match.
+                    for (size_t i = firstUnsatisfiedArgument; i < requiredHead.size(); ++i)
+                    {
+                        if (!subtyping->isSubtype(builtinTypes->nilType, requiredHead[i]).isSubtype)
+                        {
+                            auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
+                            TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, false}};
 
-                ++argOffset;
-            }
+                            return {Analysis::ArityMismatch, {error}};
+                        }
+                    }
 
-            while (paramIter != end(fn->argTypes))
-            {
-                // If we can iterate over parameters, then we have exhausted the head of the arguments.
-                LUAU_ASSERT(argOffset == args->head.size());
-
-                // It may have a tail, however, so check that.
-                if (auto vtp = get<VariadicTypePack>(follow(args->tail)))
-                {
-                    AstExpr* argExpr = argExprs->at(argExprs->size() - 1);
-
-                    if (auto errors = testIsSubtype(argExpr->location, vtp->ty, *paramIter))
-                        argumentErrors.insert(argumentErrors.end(), errors->begin(), errors->end());
-                }
-                else if (!isOptional(*paramIter))
-                {
-                    AstExpr* argExpr = argExprs->empty() ? fnExpr : argExprs->at(argExprs->size() - 1);
-
-                    // It is ok to have excess parameters as long as they are all optional.
-                    auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
-                    TypeError error{argExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, false}};
-                    return {ArityMismatch, {error}};
-                }
-
-                ++paramIter;
-            }
-
-            // We hit the end of the heads for both parameters and arguments, so check their tails.
-            LUAU_ASSERT(paramIter == end(fn->argTypes));
-            LUAU_ASSERT(argOffset == args->head.size());
-
-            const Location argLoc = argExprs->empty() ? Location{} // TODO
-                                                      : argExprs->at(argExprs->size() - 1)->location;
-
-            if (paramIter.tail() && args->tail)
-            {
-                if (auto errors = testIsSubtype(argLoc, *args->tail, *paramIter.tail()))
-                    argumentErrors.insert(argumentErrors.end(), errors->begin(), errors->end());
-            }
-            else if (paramIter.tail())
-            {
-                const TypePackId paramTail = follow(*paramIter.tail());
-
-                if (get<GenericTypePack>(paramTail))
-                {
-                    argumentErrors.push_back(TypeError{argLoc, TypePackMismatch{fn->argTypes, arena->addTypePack(*args)}});
-                }
-                else if (get<VariadicTypePack>(paramTail))
-                {
-                    // Nothing.  This is ok.
+                    return {Analysis::Ok, {}};
                 }
             }
 
-            return {argumentErrors.empty() ? Ok : OverloadIsNonviable, argumentErrors};
+            ErrorVec errors;
+
+            if (!sr.isErrorSuppressing)
+            {
+                for (const SubtypingReasoning& reason : sr.reasoning)
+                {
+                    /* The return type of our prospective function is always
+                    * any... so any subtype failures here can only arise from
+                    * argument type mismatches.
+                    */
+
+                    Location argLocation;
+
+                    if (const Luau::TypePath::Index* pathIndexComponent = get_if<Luau::TypePath::Index>(&reason.superPath.components.at(1)))
+                    {
+                        size_t nthArgument = pathIndexComponent->index;
+                        argLocation = argExprs->at(nthArgument)->location;
+
+                        std::optional<TypeId> failedSubTy = traverseForType(fnTy, reason.subPath, builtinTypes);
+                        std::optional<TypeId> failedSuperTy = traverseForType(prospectiveFunction, reason.superPath, builtinTypes);
+
+                        if (failedSubTy && failedSuperTy)
+                        {
+                            // TODO extract location from the SubtypingResult path and argExprs
+                            switch (reason.variance)
+                            {
+                                case SubtypingVariance::Covariant:
+                                case SubtypingVariance::Contravariant:
+                                    errors.emplace_back(argLocation, TypeMismatch{*failedSubTy, *failedSuperTy, TypeMismatch::CovariantContext});
+                                    break;
+                                case SubtypingVariance::Invariant:
+                                    errors.emplace_back(argLocation, TypeMismatch{*failedSubTy, *failedSuperTy, TypeMismatch::InvariantContext});
+                                    break;
+                                default:
+                                    LUAU_ASSERT(0);
+                                    break;
+                            }
+                        }
+                    }
+
+                    std::optional<TypePackId> failedSubPack = traverseForPack(fnTy, reason.subPath, builtinTypes);
+                    std::optional<TypePackId> failedSuperPack = traverseForPack(prospectiveFunction, reason.superPath, builtinTypes);
+
+                    if (failedSubPack && failedSuperPack)
+                    {
+                        LUAU_ASSERT(!argExprs->empty());
+                        argLocation = argExprs->at(argExprs->size() - 1)->location;
+
+                        // TODO extract location from the SubtypingResult path and argExprs
+                        switch (reason.variance)
+                        {
+                            case SubtypingVariance::Covariant:
+                                errors.emplace_back(argLocation, TypePackMismatch{*failedSubPack, *failedSuperPack});
+                                break;
+                            case SubtypingVariance::Contravariant:
+                                errors.emplace_back(argLocation, TypePackMismatch{*failedSuperPack, *failedSubPack});
+                                break;
+                            case SubtypingVariance::Invariant:
+                                errors.emplace_back(argLocation, TypePackMismatch{*failedSubPack, *failedSuperPack});
+                                break;
+                            default:
+                                LUAU_ASSERT(0);
+                                break;
+                        }
+                    }
+
+                }
+            }
+
+            return {Analysis::OverloadIsNonviable, std::move(errors)};
         }
 
         size_t indexof(Analysis analysis)
@@ -1494,7 +1514,6 @@ struct TypeChecker2
                 arityMismatches.emplace_back(ty, std::move(errors));
                 break;
             case OverloadIsNonviable:
-                LUAU_ASSERT(!errors.empty());
                 nonviableOverloads.emplace_back(ty, std::move(errors));
                 break;
             }

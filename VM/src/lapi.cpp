@@ -505,6 +505,12 @@ void* lua_tolightuserdata(lua_State* L, int idx)
     return (!ttislightuserdata(o)) ? NULL : pvalue(o);
 }
 
+void* lua_tolightuserdatatagged(lua_State* L, int idx, int tag)
+{
+    StkId o = index2addr(L, idx);
+    return (!ttislightuserdata(o) || lightuserdatatag(o) != tag) ? NULL : pvalue(o);
+}
+
 void* lua_touserdata(lua_State* L, int idx)
 {
     StkId o = index2addr(L, idx);
@@ -527,6 +533,14 @@ int lua_userdatatag(lua_State* L, int idx)
     StkId o = index2addr(L, idx);
     if (ttisuserdata(o))
         return uvalue(o)->tag;
+    return -1;
+}
+
+int lua_lightuserdatatag(lua_State* L, int idx)
+{
+    StkId o = index2addr(L, idx);
+    if (ttislightuserdata(o))
+        return lightuserdatatag(o);
     return -1;
 }
 
@@ -665,9 +679,10 @@ void lua_pushboolean(lua_State* L, int b)
     api_incr_top(L);
 }
 
-void lua_pushlightuserdata(lua_State* L, void* p)
+void lua_pushlightuserdatatagged(lua_State* L, void* p, int tag)
 {
-    setpvalue(L->top, p);
+    api_check(L, unsigned(tag) < LUA_LUTAG_LIMIT);
+    setpvalue(L->top, p, tag);
     api_incr_top(L);
 }
 
@@ -1410,6 +1425,24 @@ lua_Destructor lua_getuserdatadtor(lua_State* L, int tag)
 {
     api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
     return L->global->udatagc[tag];
+}
+
+void lua_setlightuserdataname(lua_State* L, int tag, const char* name)
+{
+    api_check(L, unsigned(tag) < LUA_LUTAG_LIMIT);
+    api_check(L, !L->global->lightuserdataname[tag]); // renaming not supported
+    if (!L->global->lightuserdataname[tag])
+    {
+        L->global->lightuserdataname[tag] = luaS_new(L, name);
+        luaS_fix(L->global->lightuserdataname[tag]); // never collect these names
+    }
+}
+
+const char* lua_getlightuserdataname(lua_State* L, int tag)
+{
+    api_check(L, unsigned(tag) < LUA_LUTAG_LIMIT);
+    const TString* name = L->global->lightuserdataname[tag];
+    return name ? getstr(name) : nullptr;
 }
 
 void lua_clonefunction(lua_State* L, int idx)

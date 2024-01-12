@@ -201,7 +201,9 @@ typedef struct global_State
     TValue pseudotemp; // storage for temporary values used in pseudo2addr
 
     TValue registry; // registry table, used by lua_ref and LUA_REGISTRYINDEX
+
     int registryfree; // next free slot in registry
+
 
     struct lua_jmpbuf* errorjmp; // jump buffer data for longjmp-style error handling
 
@@ -213,6 +215,8 @@ typedef struct global_State
     lua_ExecutionCallbacks ecb;
 
     void (*udatagc[LUA_UTAG_LIMIT])(lua_State*, void*); // for each userdata tag, a gc callback to be called immediately before freeing memory
+
+    TString* lightuserdataname[LUA_LUTAG_LIMIT]; // names for tagged lightuserdata
 
     GCStats gcstats;
 
