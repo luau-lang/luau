@@ -129,7 +129,7 @@ const TString* luaT_objtypenamestr(lua_State* L, const TValue* o)
         if (ttisstring(type))
             return tsvalue(type);
     }
-    else if (FFlag::TaggedLuData && ttislightuserdata(o))
+    else if (FFlag::LuauTaggedLuData && ttislightuserdata(o))
     {
         int tag = lightuserdatatag(o);
 
