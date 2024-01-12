@@ -776,6 +776,11 @@ uint32_t AssemblyBuilderA64::getCodeSize() const
     return uint32_t(codePos - code.data());
 }
 
+unsigned AssemblyBuilderA64::getInstructionCount() const
+{
+    return unsigned(getCodeSize()) / 4;
+}
+
 bool AssemblyBuilderA64::isMaskSupported(uint32_t mask)
 {
     int lz = countlz(mask);

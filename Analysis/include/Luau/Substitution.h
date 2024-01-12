@@ -85,6 +85,8 @@ struct TarjanNode
 // https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
 struct Tarjan
 {
+    Tarjan();
+
     // Vertices (types and type packs) are indexed, using pre-order traversal.
     DenseHashMap<TypeId, int> typeToIndex{nullptr};
     DenseHashMap<TypePackId, int> packToIndex{nullptr};

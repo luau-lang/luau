@@ -112,6 +112,11 @@ inline OperandX64 luauRegTag(int ri)
     return dword[rBase + ri * sizeof(TValue) + offsetof(TValue, tt)];
 }
 
+inline OperandX64 luauRegExtra(int ri)
+{
+    return dword[rBase + ri * sizeof(TValue) + offsetof(TValue, extra)];
+}
+
 inline OperandX64 luauRegValueInt(int ri)
 {
     return dword[rBase + ri * sizeof(TValue) + offsetof(TValue, value)];

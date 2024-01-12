@@ -23,6 +23,10 @@ assert(tostring(0.1) == "0.1")
 assert(tostring(-0.17) == "-0.17")
 assert(tostring(math.pi) == "3.141592653589793")
 
+-- scientific
+assert(tostring(1e+30) == "1e+30")
+assert(tostring(-1e+24) == "-1e+24")
+
 -- fuzzing corpus
 -- Note: If the assert below fires it may indicate floating point denormalized values
 -- are not handled as expected.
@@ -32,7 +36,7 @@ assert(tostring(4.4154895841930002e-305) == "4.415489584193e-305")
 assert(tostring(1125968630513728) == "1125968630513728")
 assert(tostring(3.3951932655938423e-313) == "3.3951932656e-313")
 assert(tostring(1.625) == "1.625")
-assert(tostring(4.9406564584124654e-324) == "5.e-324")
+assert(tostring(4.9406564584124654e-324) == "5e-324")
 assert(tostring(2.0049288280105384) == "2.0049288280105384")
 assert(tostring(3.0517578125e-05) == "0.000030517578125")
 assert(tostring(1.383544921875) == "1.383544921875")

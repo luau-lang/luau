@@ -12,8 +12,7 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAGVARIABLE(LuauFullLoopLuserdata, false)
-LUAU_FASTFLAGVARIABLE(LuauLoopInterruptFix, false)
+LUAU_FASTFLAGVARIABLE(LuauCodegenLuData, false)
 
 namespace Luau
 {
@@ -754,23 +753,11 @@ void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos)
     LUAU_ASSERT(!build.numericLoopStack.empty());
     IrBuilder::LoopInfo loopInfo = build.numericLoopStack.back();
 
-    if (FFlag::LuauLoopInterruptFix)
-    {
-        // normally, the interrupt is placed at the beginning of the loop body by FORNPREP translation
-        // however, there are rare cases where FORNLOOP might not jump directly to the first loop instruction
-        // we detect this by checking the starting instruction of the loop body from loop information stack
-        if (repeatJumpTarget != loopInfo.startpc)
-            build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
-    }
-    else
-    {
-        // normally, the interrupt is placed at the beginning of the loop body by FORNPREP translation
-        // however, there are rare contrived cases where FORNLOOP ends up jumping to itself without an interrupt placed
-        // we detect this by checking if loopRepeat has any instructions (it should normally start with INTERRUPT) and emit a failsafe INTERRUPT if
-        // not
-        if (build.function.blockOp(loopRepeat).start == build.function.instructions.size())
-            build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
-    }
+    // normally, the interrupt is placed at the beginning of the loop body by FORNPREP translation
+    // however, there are rare cases where FORNLOOP might not jump directly to the first loop instruction
+    // we detect this by checking the starting instruction of the loop body from loop information stack
+    if (repeatJumpTarget != loopInfo.startpc)
+        build.inst(IrCmd::INTERRUPT, build.constUint(pcpos));
 
     IrOp stepK = loopInfo.step;
 
@@ -817,8 +804,12 @@ void translateInstForGPrepNext(IrBuilder& build, const Instruction* pc, int pcpo
 
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNIL));
 
-    // setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
-    build.inst(FFlag::LuauFullLoopLuserdata ? IrCmd::STORE_POINTER : IrCmd::STORE_INT, build.vmReg(ra + 2), build.constInt(0));
+    // setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)), LU_TAG_ITERATOR);
+    build.inst(IrCmd::STORE_POINTER, build.vmReg(ra + 2), build.constInt(0));
+
+    if (FFlag::LuauCodegenLuData)
+        build.inst(IrCmd::STORE_EXTRA, build.vmReg(ra + 2), build.constInt(LU_TAG_ITERATOR));
+
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra + 2), build.constTag(LUA_TLIGHTUSERDATA));
 
     build.inst(IrCmd::JUMP, target);
@@ -849,8 +840,12 @@ void translateInstForGPrepInext(IrBuilder& build, const Instruction* pc, int pcp
 
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNIL));
 
-    // setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
-    build.inst(FFlag::LuauFullLoopLuserdata ? IrCmd::STORE_POINTER : IrCmd::STORE_INT, build.vmReg(ra + 2), build.constInt(0));
+    // setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)), LU_TAG_ITERATOR);
+    build.inst(IrCmd::STORE_POINTER, build.vmReg(ra + 2), build.constInt(0));
+
+    if (FFlag::LuauCodegenLuData)
+        build.inst(IrCmd::STORE_EXTRA, build.vmReg(ra + 2), build.constInt(LU_TAG_ITERATOR));
+
     build.inst(IrCmd::STORE_TAG, build.vmReg(ra + 2), build.constTag(LUA_TLIGHTUSERDATA));
 
     build.inst(IrCmd::JUMP, target);

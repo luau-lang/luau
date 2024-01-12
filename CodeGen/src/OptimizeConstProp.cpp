@@ -17,8 +17,6 @@
 LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
-LUAU_FASTFLAGVARIABLE(LuauCodeGenFixByteLower, false)
-LUAU_FASTFLAGVARIABLE(LuauKeepVmapLinear2, false)
 LUAU_FASTFLAGVARIABLE(LuauReuseBufferChecks, false)
 
 namespace Luau
@@ -626,6 +624,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             if (activeLoadValue != kInvalidInstIdx)
                 state.valueMap[state.versionedVmRegLoad(activeLoadCmd, source)] = activeLoadValue;
         }
+        break;
+    case IrCmd::STORE_EXTRA:
         break;
     case IrCmd::STORE_POINTER:
         if (inst.a.kind == IrOpKind::VmReg)
@@ -1374,16 +1374,6 @@ static void constPropInBlock(IrBuilder& build, IrBlock& block, ConstPropState& s
 
         constPropInInst(state, build, function, block, inst, index);
     }
-
-    if (!FFlag::LuauKeepVmapLinear2)
-    {
-        // Value numbering and load/store propagation is not performed between blocks
-        state.invalidateValuePropagation();
-
-        // Same for table and buffer data propagation
-        state.invalidateHeapTableData();
-        state.invalidateHeapBufferData();
-    }
 }
 
 static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visited, IrBlock* block, ConstPropState& state)
@@ -1403,15 +1393,12 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
 
         constPropInBlock(build, *block, state);
 
-        if (FFlag::LuauKeepVmapLinear2)
-        {
-            // Value numbering and load/store propagation is not performed between blocks
-            state.invalidateValuePropagation();
+        // Value numbering and load/store propagation is not performed between blocks
+        state.invalidateValuePropagation();
 
-            // Same for table and buffer data propagation
-            state.invalidateHeapTableData();
-            state.invalidateHeapBufferData();
-        }
+        // Same for table and buffer data propagation
+        state.invalidateHeapTableData();
+        state.invalidateHeapBufferData();
 
         // Blocks in a chain are guaranteed to follow each other
         // We force that by giving all blocks the same sorting key, but consecutive chain keys

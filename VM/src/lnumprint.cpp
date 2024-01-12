@@ -11,6 +11,8 @@
 #include <intrin.h>
 #endif
 
+LUAU_FASTFLAGVARIABLE(LuauSciNumberSkipTrailDot, false)
+
 // This work is based on:
 // Raffaello Giulietti. The Schubfach way to render doubles. 2021
 // https://drive.google.com/file/d/1IEeATSVnEE6TkrHlCYNY2GjaraBjOT4f/edit
@@ -360,6 +362,9 @@ char* luai_num2str(char* buf, double n)
         fastmemcpy(buf + 2, dec + 1, declen - 1, 16);
 
         char* exp = trimzero(buf + declen + 1);
+
+        if (FFlag::LuauSciNumberSkipTrailDot && exp[-1] == '.')
+            exp--;
 
         return printexp(exp, dot - 1);
     }

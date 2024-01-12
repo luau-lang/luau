@@ -23,6 +23,7 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
         visitor.maybeUse(inst.a); // Argument can also be a VmConst
         break;
     case IrCmd::STORE_TAG:
+    case IrCmd::STORE_EXTRA:
     case IrCmd::STORE_POINTER:
     case IrCmd::STORE_DOUBLE:
     case IrCmd::STORE_INT:

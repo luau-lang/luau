@@ -545,11 +545,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
     // Match head types pairwise
 
     for (size_t i = 0; i < headSize; ++i)
-    {
         results.push_back(isCovariantWith(env, subHead[i], superHead[i]).withBothComponent(TypePath::Index{i}));
-        if (!results.back().isSubtype)
-            return results.back();
-    }
 
     // Handle mismatched head sizes
 
@@ -599,7 +595,10 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                 unexpected(*subTail);
         }
         else
-            return {false};
+        {
+            results.push_back({false});
+            return SubtypingResult::all(results);
+        }
     }
     else if (subHead.size() > superHead.size())
     {
@@ -664,7 +663,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
             bool ok = bindGeneric(env, *subTail, *superTail);
             results.push_back(SubtypingResult{ok}.withBothComponent(TypePath::PackField::Tail));
         }
-        else if (get2<VariadicTypePack, GenericTypePack>(*subTail, *superTail))
+        else if (auto p = get2<VariadicTypePack, GenericTypePack>(*subTail, *superTail))
         {
             if (variance == Variance::Contravariant)
             {
@@ -678,9 +677,17 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                 results.push_back(SubtypingResult{false}.withBothComponent(TypePath::PackField::Tail));
             }
         }
-        else if (get2<GenericTypePack, VariadicTypePack>(*subTail, *superTail))
+        else if (auto p = get2<GenericTypePack, VariadicTypePack>(*subTail, *superTail))
         {
-            if (variance == Variance::Contravariant)
+            if (TypeId t = follow(p.second->ty); get<AnyType>(t) || get<UnknownType>(t))
+            {
+                // Extra magic rule:
+                // T... <: ...any
+                // T... <: ...unknown
+                //
+                // See https://github.com/luau-lang/luau/issues/767
+            }
+            else if (variance == Variance::Contravariant)
             {
                 // (...number) -> number </: <A...>(A...) -> number
                 results.push_back(SubtypingResult{false}.withBothComponent(TypePath::PackField::Tail));
@@ -747,6 +754,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
 template<typename SubTy, typename SuperTy>
 SubtypingResult Subtyping::isContravariantWith(SubtypingEnvironment& env, SubTy&& subTy, SuperTy&& superTy)
 {
+    VarianceFlipper vf{&variance};
+
     SubtypingResult result = isCovariantWith(env, superTy, subTy);
     if (result.reasoning.empty())
         result.reasoning.insert(SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Contravariant});
@@ -778,6 +787,7 @@ template<typename SubTy, typename SuperTy>
 SubtypingResult Subtyping::isInvariantWith(SubtypingEnvironment& env, SubTy&& subTy, SuperTy&& superTy)
 {
     SubtypingResult result = isCovariantWith(env, subTy, superTy).andAlso(isContravariantWith(env, subTy, superTy));
+
     if (result.reasoning.empty())
         result.reasoning.insert(SubtypingReasoning{TypePath::kEmpty, TypePath::kEmpty, SubtypingVariance::Invariant});
     else
@@ -842,11 +852,20 @@ SubtypingResult Subtyping::isInvariantWith(SubtypingEnvironment& env, const TryP
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId subTy, const UnionType* superUnion)
 {
     // As per TAPL: T <: A | B iff T <: A || T <: B
-    std::vector<SubtypingResult> subtypings;
-    size_t i = 0;
+
     for (TypeId ty : superUnion)
-        subtypings.push_back(isCovariantWith(env, subTy, ty).withSuperComponent(TypePath::Index{i++}));
-    return SubtypingResult::any(subtypings);
+    {
+        SubtypingResult next = isCovariantWith(env, subTy, ty);
+        if (next.isSubtype)
+            return SubtypingResult{true};
+    }
+
+    /*
+     * TODO: Is it possible here to use the context produced by the above
+     * isCovariantWith() calls to produce a richer, more helpful result in the
+     * case that the subtyping relation does not hold?
+     */
+    return SubtypingResult{false};
 }
 
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const UnionType* subUnion, TypeId superTy)
@@ -1173,7 +1192,6 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Func
 {
     SubtypingResult result;
     {
-        VarianceFlipper vf{&variance};
         result.orElse(isContravariantWith(env, subFunction->argTypes, superFunction->argTypes).withBothComponent(TypePath::PackField::Arguments));
     }
 

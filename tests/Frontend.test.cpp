@@ -14,7 +14,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(DebugLuauFreezeArena);
-LUAU_FASTFLAG(CorrectEarlyReturnInMarkDirty);
 
 namespace
 {
@@ -1254,8 +1253,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "parse_only")
 
 TEST_CASE_FIXTURE(FrontendFixture, "markdirty_early_return")
 {
-    ScopedFastFlag fflag(FFlag::CorrectEarlyReturnInMarkDirty, true);
-
     constexpr char moduleName[] = "game/Gui/Modules/A";
     fileResolver.source[moduleName] = R"(
         return 1

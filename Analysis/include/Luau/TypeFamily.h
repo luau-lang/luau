@@ -163,6 +163,8 @@ struct BuiltinTypeFamilies
     TypeFamily eqFamily;
 
     TypeFamily refineFamily;
+    TypeFamily keyofFamily;
+    TypeFamily rawkeyofFamily;
 
     void addToScope(NotNull<TypeArena> arena, NotNull<Scope> scope) const;
 };

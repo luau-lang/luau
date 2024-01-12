@@ -35,8 +35,6 @@ LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauReadWriteProperties, false)
-LUAU_FASTFLAGVARIABLE(CorrectEarlyReturnInMarkDirty, false)
-LUAU_FASTFLAGVARIABLE(LuauDefinitionFileSetModuleName, false)
 LUAU_FASTFLAGVARIABLE(LuauRethrowSingleModuleIce, false)
 
 namespace Luau
@@ -165,11 +163,9 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(GlobalTypes& globals, Scop
     LUAU_TIMETRACE_SCOPE("loadDefinitionFile", "Frontend");
 
     Luau::SourceModule sourceModule;
-    if (FFlag::LuauDefinitionFileSetModuleName)
-    {
-        sourceModule.name = packageName;
-        sourceModule.humanReadableName = packageName;
-    }
+    sourceModule.name = packageName;
+    sourceModule.humanReadableName = packageName;
+
     Luau::ParseResult parseResult = parseSourceForModule(source, sourceModule, captureComments);
     if (parseResult.errors.size() > 0)
         return LoadDefinitionFileResult{false, parseResult, sourceModule, nullptr};
@@ -1116,16 +1112,8 @@ bool Frontend::isDirty(const ModuleName& name, bool forAutocomplete) const
  */
 void Frontend::markDirty(const ModuleName& name, std::vector<ModuleName>* markedDirty)
 {
-    if (FFlag::CorrectEarlyReturnInMarkDirty)
-    {
-        if (sourceNodes.count(name) == 0)
-            return;
-    }
-    else
-    {
-        if (!moduleResolver.getModule(name) && !moduleResolverForAutocomplete.getModule(name))
-            return;
-    }
+    if (sourceNodes.count(name) == 0)
+        return;
 
     std::unordered_map<ModuleName, std::vector<ModuleName>> reverseDeps;
     for (const auto& module : sourceNodes)

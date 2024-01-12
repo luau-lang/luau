@@ -1286,7 +1286,7 @@ TEST_CASE_FIXTURE(Fixture, "variadic_any_is_compatible_with_a_generic_TypePack")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-// https://github.com/Roblox/luau/issues/767
+// https://github.com/luau-lang/luau/issues/767
 TEST_CASE_FIXTURE(BuiltinsFixture, "variadic_any_is_compatible_with_a_generic_TypePack_2")
 {
     CheckResult result = check(R"(

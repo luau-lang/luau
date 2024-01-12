@@ -201,7 +201,9 @@ typedef struct global_State
     TValue pseudotemp; // storage for temporary values used in pseudo2addr
 
     TValue registry; // registry table, used by lua_ref and LUA_REGISTRYINDEX
+
     int registryfree; // next free slot in registry
+
 
     struct lua_jmpbuf* errorjmp; // jump buffer data for longjmp-style error handling
 

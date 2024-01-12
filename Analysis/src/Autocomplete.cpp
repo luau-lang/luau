@@ -16,7 +16,6 @@
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(DebugLuauReadWriteProperties);
 LUAU_FASTFLAG(LuauClipExtraHasEndProps);
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteDoEnd, false);
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteStringLiteralBounds, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
@@ -1093,11 +1092,8 @@ static AutocompleteEntryMap autocompleteStatement(
                 result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
             else if (AstExprFunction* exprFunction = (*it)->as<AstExprFunction>(); exprFunction && !exprFunction->body->hasEnd)
                 result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-            if (FFlag::LuauAutocompleteDoEnd)
-            {
-                if (AstStatBlock* exprBlock = (*it)->as<AstStatBlock>(); exprBlock && !exprBlock->hasEnd)
-                    result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-            }
+            if (AstStatBlock* exprBlock = (*it)->as<AstStatBlock>(); exprBlock && !exprBlock->hasEnd)
+                result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
         }
     }
     else
@@ -1114,11 +1110,8 @@ static AutocompleteEntryMap autocompleteStatement(
                 result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
             else if (AstExprFunction* exprFunction = (*it)->as<AstExprFunction>(); exprFunction && !exprFunction->DEPRECATED_hasEnd)
                 result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-            if (FFlag::LuauAutocompleteDoEnd)
-            {
-                if (AstStatBlock* exprBlock = (*it)->as<AstStatBlock>(); exprBlock && !exprBlock->hasEnd)
-                    result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-            }
+            if (AstStatBlock* exprBlock = (*it)->as<AstStatBlock>(); exprBlock && !exprBlock->hasEnd)
+                result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
         }
     }
 

@@ -40,6 +40,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::GET_CLOSURE_UPVAL_ADDR:
         return IrValueKind::Pointer;
     case IrCmd::STORE_TAG:
+    case IrCmd::STORE_EXTRA:
     case IrCmd::STORE_POINTER:
     case IrCmd::STORE_DOUBLE:
     case IrCmd::STORE_INT:

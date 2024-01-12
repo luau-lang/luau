@@ -23,7 +23,8 @@
  * about a function that takes any number of values, but where each value must have some specific type.
  */
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAGVARIABLE(LuauSetMetatableOnUnionsOfTables, false);
 
 namespace Luau
 {
@@ -962,6 +963,18 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
     }
     else if (get<AnyType>(target) || get<ErrorType>(target) || isTableIntersection(target))
     {
+    }
+    else if (FFlag::LuauSetMetatableOnUnionsOfTables && isTableUnion(target))
+    {
+        const UnionType* ut = get<UnionType>(target);
+        LUAU_ASSERT(ut);
+
+        std::vector<TypeId> resultParts;
+
+        for (TypeId ty : ut)
+            resultParts.push_back(arena.addType(MetatableType{ty, mt}));
+
+        return WithPredicate<TypePackId>{arena.addTypePack({arena.addType(UnionType{std::move(resultParts)})})};
     }
     else
     {

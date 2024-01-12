@@ -1048,6 +1048,24 @@ TEST_CASE_FIXTURE(SubtypeFixture, "~~number <: number")
     CHECK_IS_SUBTYPE(negate(negate(builtinTypes->numberType)), builtinTypes->numberType);
 }
 
+// See https://github.com/luau-lang/luau/issues/767
+TEST_CASE_FIXTURE(SubtypeFixture, "(...any) -> () <: <T>(T...) -> ()")
+{
+    TypeId anysToNothing = arena.addType(FunctionType{builtinTypes->anyTypePack, builtinTypes->emptyTypePack});
+    TypeId genericTToAnys = arena.addType(FunctionType{genericAs, builtinTypes->emptyTypePack});
+
+    CHECK_MESSAGE(subtyping.isSubtype(anysToNothing, genericTToAnys).isSubtype, "(...any) -> () <: <T>(T...) -> ()");
+}
+
+// See https://github.com/luau-lang/luau/issues/767
+TEST_CASE_FIXTURE(SubtypeFixture, "(...unknown) -> () <: <T>(T...) -> ()")
+{
+    TypeId anysToNothing = arena.addType(FunctionType{arena.addTypePack(VariadicTypePack{builtinTypes->unknownType}), builtinTypes->emptyTypePack});
+    TypeId genericTToAnys = arena.addType(FunctionType{genericAs, builtinTypes->emptyTypePack});
+
+    CHECK_MESSAGE(subtyping.isSubtype(anysToNothing, genericTToAnys).isSubtype, "(...unknown) -> () <: <T>(T...) -> ()");
+}
+
 /*
  * Within the scope to which a generic belongs, that generic ought to be treated
  * as its bounds.
@@ -1187,6 +1205,20 @@ TEST_CASE_FIXTURE(SubtypeFixture, "fn_arguments")
     CHECK(result.reasoning == std::vector{SubtypingReasoning{
                                   /* subPath */ TypePath::PathBuilder().args().index(0).build(),
                                   /* superPath */ TypePath::PathBuilder().args().index(0).build(),
+                                  /* variance */ SubtypingVariance::Contravariant,
+                              }});
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "arity_mismatch")
+{
+    TypeId subTy = fn({builtinTypes->numberType}, {});
+    TypeId superTy = fn({}, {});
+
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+    CHECK(result.reasoning == std::vector{SubtypingReasoning{
+                                  /* subPath */ TypePath::PathBuilder().args().build(),
+                                  /* superPath */ TypePath::PathBuilder().args().build(),
                                   /* variance */ SubtypingVariance::Contravariant,
                               }});
 }

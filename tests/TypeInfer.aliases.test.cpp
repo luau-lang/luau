@@ -9,6 +9,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(DebugLuauSharedSelf);
+LUAU_FASTFLAG(LuauForbidAliasNamedTypeof);
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -159,14 +160,16 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_types_of_named_table_fields_do_not_expand_whe
     CheckResult result = check(R"(
         --!strict
         type Node = { Parent: Node?; }
-        local node: Node;
-        node.Parent = 1
+
+        function f(node: Node)
+            node.Parent = 1
+        end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE(tm);
+    REQUIRE_MESSAGE(tm, result.errors[0]);
     CHECK_EQ("Node?", toString(tm->wantedType));
     CHECK_EQ(builtinTypes->numberType, tm->givenType);
 }
@@ -361,15 +364,19 @@ TEST_CASE_FIXTURE(Fixture, "corecursive_types_generic")
     const std::string code = R"(
         type A<T> = {v:T, b:B<T>}
         type B<T> = {v:T, a:A<T>}
-        local aa:A<number>
-        local bb = aa
+
+        function f(a: A<number>)
+            return a
+        end
     )";
 
     const std::string expected = R"(
         type A<T> = {v:T, b:B<T>}
         type B<T> = {v:T, a:A<T>}
-        local aa:A<number>
-        local bb:A<number>=aa
+
+        function f(a: A<number>): A<number>
+            return a
+        end
     )";
 
     CHECK_EQ(expected, decorateWithTypes(code));
@@ -383,14 +390,12 @@ TEST_CASE_FIXTURE(Fixture, "corecursive_function_types")
     CheckResult result = check(R"(
         type A = () -> (number, B)
         type B = () -> (string, A)
-        local a: A
-        local b: B
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("t1 where t1 = () -> (number, () -> (string, t1))", toString(requireType("a")));
-    CHECK_EQ("t1 where t1 = () -> (string, () -> (number, t1))", toString(requireType("b")));
+    CHECK_EQ("t1 where t1 = () -> (number, () -> (string, t1))", toString(requireTypeAlias("A")));
+    CHECK_EQ("t1 where t1 = () -> (string, () -> (number, t1))", toString(requireTypeAlias("B")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_param_remap")
@@ -1055,6 +1060,19 @@ TEST_CASE_FIXTURE(Fixture, "table_types_record_the_property_locations")
 
     CHECK_EQ(propIt->second.location, std::nullopt);
     CHECK_EQ(propIt->second.typeLocation, Location({2, 12}, {2, 18}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "typeof_is_not_a_valid_alias_name")
+{
+    ScopedFastFlag sff{FFlag::LuauForbidAliasNamedTypeof, true};
+
+    CheckResult result = check(R"(
+        type typeof = number
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK("Type aliases cannot be named typeof" == toString(result.errors[0]));
 }
 
 TEST_SUITE_END();

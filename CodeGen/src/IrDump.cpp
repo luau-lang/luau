@@ -103,6 +103,8 @@ const char* getCmdName(IrCmd cmd)
         return "GET_CLOSURE_UPVAL_ADDR";
     case IrCmd::STORE_TAG:
         return "STORE_TAG";
+    case IrCmd::STORE_EXTRA:
+        return "STORE_EXTRA";
     case IrCmd::STORE_POINTER:
         return "STORE_POINTER";
     case IrCmd::STORE_DOUBLE:
