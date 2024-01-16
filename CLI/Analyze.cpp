@@ -20,6 +20,7 @@
 #include <valgrind/callgrind.h>
 #endif
 
+
 LUAU_FASTFLAG(DebugLuauTimeTracing)
 
 enum class ReportFormat
@@ -124,6 +125,7 @@ static void displayHelp(const char* argv0)
     printf("  --formatter=gnu: report analysis errors in GNU-compatible format\n");
     printf("  --mode=strict: default to strict mode when typechecking\n");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
+    printf("  --definitions=<file>: load type definition file (specify multiple times for many files)\n");
 }
 
 static int assertionHandler(const char* expr, const char* file, int line, const char* function)
@@ -290,6 +292,57 @@ private:
     std::queue<std::function<void()>> tasks;
 };
 
+struct DefinitionsResolver
+{
+    bool success = true;
+    std::vector<std::pair<std::string, std::string>> loadErrors;
+    std::vector<std::pair<std::string, Luau::ParseError>> parseErrors;
+    std::vector<std::pair<std::string, Luau::TypeError>> typeErrors;
+
+    static DefinitionsResolver loadAndRegister(Luau::Frontend& frontend, const std::vector<std::string>& definitionsFiles)
+    {
+        DefinitionsResolver loadResult;
+
+        for (const auto& defFile : definitionsFiles)
+        {
+            auto contents = readFile(defFile);
+            if (contents == std::nullopt)
+            {
+                loadResult.success = false;
+                loadResult.loadErrors.push_back({defFile, "definition file not found"});
+            }
+            else
+            {
+                auto res = frontend.loadDefinitionFile(frontend.globals, frontend.globals.globalScope, contents.value(), "@user",
+                    /* captureComments = */ false, /*typeCheckForAutocomplete*/ false);
+                if (!res.success)
+                {
+                    loadResult.success = false;
+                    for (auto& error : res.parseResult.errors)
+                        loadResult.parseErrors.push_back({defFile, error});
+                    if (res.module)
+                    {
+                        for (auto& error : res.module->errors)
+                            loadResult.typeErrors.push_back({defFile, error});
+                    }
+                }
+            }
+        }
+        return loadResult;
+    }
+
+    bool reportErrors(ReportFormat format)
+    {
+        for (const auto& err : loadErrors)
+            report(format, err.first.c_str(), Luau::Location(), "CLI", err.second.c_str());
+        for (const auto& err : parseErrors)
+            report(format, err.first.c_str(), err.second.getLocation(), "SyntaxError", err.second.getMessage().c_str());
+        for (const auto& err : typeErrors)
+            report(format, err.first.c_str(), err.second.location, "TypeError", Luau::toString(err.second).c_str());
+        return success;
+    }
+};
+
 int main(int argc, char** argv)
 {
     Luau::assertHandler() = assertionHandler;
@@ -306,6 +359,8 @@ int main(int argc, char** argv)
     Luau::Mode mode = Luau::Mode::Nonstrict;
     bool annotate = false;
     int threadCount = 0;
+
+    std::vector<std::string> definitionsFiles;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -326,6 +381,10 @@ int main(int argc, char** argv)
             setLuauFlags(argv[i] + 9);
         else if (strncmp(argv[i], "-j", 2) == 0)
             threadCount = int(strtol(argv[i] + 2, nullptr, 10));
+        else if (strncmp(argv[i], "--definitions=", 11) == 0)
+        {
+            definitionsFiles.push_back(argv[i] + 14);
+        }
     }
 
 #if !defined(LUAU_ENABLE_TIME_TRACE)
@@ -345,6 +404,7 @@ int main(int argc, char** argv)
     Luau::Frontend frontend(&fileResolver, &configResolver, frontendOptions);
 
     Luau::registerBuiltinGlobals(frontend, frontend.globals);
+    DefinitionsResolver defFilesRes = DefinitionsResolver::loadAndRegister(frontend, definitionsFiles);
     Luau::freeze(frontend.globals.globalTypes);
 
 #ifdef CALLGRIND
@@ -386,6 +446,8 @@ int main(int argc, char** argv)
     }
 
     int failed = 0;
+
+    failed += !defFilesRes.reportErrors(format);
 
     for (const Luau::ModuleName& name : checkedModules)
         failed += !reportModuleResult(frontend, name, format, annotate);
