@@ -36,6 +36,9 @@ static lua_CompileOptions defaultOptions()
     copts.optimizationLevel = optimizationLevel;
     copts.debugLevel = 1;
 
+    copts.vectorCtor = "vector";
+    copts.vectorType = "vector";
+
     return copts;
 }
 
@@ -483,9 +486,6 @@ TEST_CASE("Pack")
 
 TEST_CASE("Vector")
 {
-    lua_CompileOptions copts = defaultOptions();
-    copts.vectorCtor = "vector";
-
     runConformance(
         "vector.lua",
         [](lua_State* L) {
@@ -511,7 +511,7 @@ TEST_CASE("Vector")
             lua_setmetatable(L, -2);
             lua_pop(L, 1);
         },
-        nullptr, nullptr, &copts);
+        nullptr, nullptr, nullptr);
 }
 
 static void populateRTTI(lua_State* L, Luau::TypeId type)
@@ -1975,10 +1975,6 @@ TEST_CASE("NativeTypeAnnotations")
     if (!codegen || !luau_codegen_supported())
         return;
 
-    lua_CompileOptions copts = defaultOptions();
-    copts.vectorCtor = "vector";
-    copts.vectorType = "vector";
-
     runConformance(
         "native_types.lua",
         [](lua_State* L) {
@@ -2009,7 +2005,7 @@ TEST_CASE("NativeTypeAnnotations")
             lua_setmetatable(L, -2);
             lua_pop(L, 1);
         },
-        nullptr, nullptr, &copts);
+        nullptr, nullptr, nullptr);
 }
 
 TEST_CASE("HugeFunction")

@@ -235,6 +235,7 @@ public:
     FrontendOptions options;
     InternalErrorReporter iceHandler;
     std::function<void(const ModuleName& name, const ScopePtr& scope, bool forAutocomplete)> prepareModuleScope;
+    std::function<void(const ModuleName& name, std::string log)> writeJsonLog = {};
 
     std::unordered_map<ModuleName, std::shared_ptr<SourceNode>> sourceNodes;
     std::unordered_map<ModuleName, std::shared_ptr<SourceModule>> sourceModules;
@@ -253,6 +254,6 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
 ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<RequireCycle>& requireCycles, NotNull<BuiltinTypes> builtinTypes,
     NotNull<InternalErrorReporter> iceHandler, NotNull<ModuleResolver> moduleResolver, NotNull<FileResolver> fileResolver,
     const ScopePtr& globalScope, std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope, FrontendOptions options,
-    TypeCheckLimits limits, bool recordJsonLog);
+    TypeCheckLimits limits, bool recordJsonLog, std::function<void(const ModuleName&, std::string)> writeJsonLog);
 
 } // namespace Luau

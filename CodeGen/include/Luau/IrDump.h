@@ -32,7 +32,8 @@ void toString(std::string& result, IrConst constant);
 void toString(std::string& result, const BytecodeTypes& bcTypes);
 
 void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, const IrInst& inst, uint32_t instIdx, bool includeUseInfo);
-void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t index, bool includeUseInfo); // Block title
+void toStringDetailed(
+    IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, bool includeUseInfo, bool includeCfgInfo, bool includeRegFlowInfo);
 
 std::string toString(const IrFunction& function, bool includeUseInfo);
 

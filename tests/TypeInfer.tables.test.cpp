@@ -17,10 +17,11 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls)
-LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering)
-LUAU_FASTFLAG(DebugLuauSharedSelf)
+LUAU_FASTFLAG(LuauInstantiateInSubtyping);
+LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
+LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering);
+LUAU_FASTFLAG(DebugLuauSharedSelf);
+LUAU_FASTFLAG(LuauReadWritePropertySyntax);
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -3982,6 +3983,47 @@ TEST_CASE_FIXTURE(Fixture, "identify_all_problematic_table_fields")
                            "\n\tat [\"b\"], boolean is not exactly string"
                            "\n\tat [\"c\"], number is not exactly boolean";
     CHECK(toString(result.errors[0]) == expected);
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported")
+{
+    ScopedFastFlag sff{FFlag::LuauReadWritePropertySyntax, true};
+
+    CheckResult result = check(R"(
+        type W = {read x: number}
+        type X = {write x: boolean}
+
+        type Y = {read ["prop"]: boolean}
+        type Z = {write ["prop"]: string}
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+
+    CHECK("read keyword is illegal here" == toString(result.errors[0]));
+    CHECK(Location{{1, 18}, {1, 22}} == result.errors[0].location);
+    CHECK("write keyword is illegal here" == toString(result.errors[1]));
+    CHECK(Location{{2, 18}, {2, 23}} == result.errors[1].location);
+    CHECK("read keyword is illegal here" == toString(result.errors[2]));
+    CHECK(Location{{4, 18}, {4, 22}} == result.errors[2].location);
+    CHECK("write keyword is illegal here" == toString(result.errors[3]));
+    CHECK(Location{{5, 18}, {5, 23}} == result.errors[3].location);
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_ond_write_only_indexers_are_unsupported")
+{
+    ScopedFastFlag sff{FFlag::LuauReadWritePropertySyntax, true};
+
+    CheckResult result = check(R"(
+        type T = {read [string]: number}
+        type U = {write [string]: boolean}
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    CHECK("read keyword is illegal here" == toString(result.errors[0]));
+    CHECK(Location{{1, 18}, {1, 22}} == result.errors[0].location);
+    CHECK("write keyword is illegal here" == toString(result.errors[1]));
+    CHECK(Location{{2, 18}, {2, 23}} == result.errors[1].location);
 }
 
 TEST_SUITE_END();

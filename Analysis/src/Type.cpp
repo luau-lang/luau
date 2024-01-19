@@ -27,7 +27,6 @@ LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
-LUAU_FASTFLAG(LuauBufferTypeck)
 
 namespace Luau
 {
@@ -217,8 +216,6 @@ bool isThread(TypeId ty)
 
 bool isBuffer(TypeId ty)
 {
-    LUAU_ASSERT(FFlag::LuauBufferTypeck);
-
     return isPrim(ty, PrimitiveType::Buffer);
 }
 

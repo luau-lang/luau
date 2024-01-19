@@ -2,8 +2,6 @@
 
 #include "Luau/GlobalTypes.h"
 
-LUAU_FASTFLAG(LuauBufferTypeck)
-
 namespace Luau
 {
 
@@ -18,8 +16,7 @@ GlobalTypes::GlobalTypes(NotNull<BuiltinTypes> builtinTypes)
     globalScope->addBuiltinTypeBinding("string", TypeFun{{}, builtinTypes->stringType});
     globalScope->addBuiltinTypeBinding("boolean", TypeFun{{}, builtinTypes->booleanType});
     globalScope->addBuiltinTypeBinding("thread", TypeFun{{}, builtinTypes->threadType});
-    if (FFlag::LuauBufferTypeck)
-        globalScope->addBuiltinTypeBinding("buffer", TypeFun{{}, builtinTypes->bufferType});
+    globalScope->addBuiltinTypeBinding("buffer", TypeFun{{}, builtinTypes->bufferType});
     globalScope->addBuiltinTypeBinding("unknown", TypeFun{{}, builtinTypes->unknownType});
     globalScope->addBuiltinTypeBinding("never", TypeFun{{}, builtinTypes->neverType});
 

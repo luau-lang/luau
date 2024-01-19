@@ -241,8 +241,8 @@ private:
      * Generate constraints to assign assignedTy to the expression expr
      * @returns the type of the expression.  This may or may not be assignedTy itself.
      */
-    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExpr* expr, TypeId assignedTy);
-    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprLocal* local, TypeId assignedTy);
+    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExpr* expr, TypeId assignedTy, bool transform);
+    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprLocal* local, TypeId assignedTy, bool transform);
     std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprGlobal* global, TypeId assignedTy);
     std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprIndexName* indexName, TypeId assignedTy);
     std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprIndexExpr* indexExpr, TypeId assignedTy);

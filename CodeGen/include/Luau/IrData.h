@@ -132,7 +132,7 @@ enum class IrCmd : uint8_t
     ADD_INT,
     SUB_INT,
 
-    // Add/Sub/Mul/Div/Mod two double numbers
+    // Add/Sub/Mul/Div/Idiv/Mod two double numbers
     // A, B: double
     // In final x64 lowering, B can also be Rn or Kn
     ADD_NUM,

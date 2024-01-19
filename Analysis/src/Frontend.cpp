@@ -36,6 +36,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauReadWriteProperties, false)
 LUAU_FASTFLAGVARIABLE(LuauRethrowSingleModuleIce, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile, false)
 
 namespace Luau
 {
@@ -872,6 +873,7 @@ void Frontend::addBuildQueueItems(std::vector<BuildQueueItem>& items, std::vecto
 
         data.config = configResolver->getConfig(moduleName);
         data.environmentScope = getModuleEnvironment(*sourceModule, data.config, frontendOptions.forAutocomplete);
+        data.recordJsonLog = FFlag::DebugLuauLogSolverToJson;
 
         Mode mode = sourceModule->mode.value_or(data.config.mode);
 
@@ -1169,17 +1171,17 @@ const SourceModule* Frontend::getSourceModule(const ModuleName& moduleName) cons
 ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<RequireCycle>& requireCycles, NotNull<BuiltinTypes> builtinTypes,
     NotNull<InternalErrorReporter> iceHandler, NotNull<ModuleResolver> moduleResolver, NotNull<FileResolver> fileResolver,
     const ScopePtr& parentScope, std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope, FrontendOptions options,
-    TypeCheckLimits limits)
+    TypeCheckLimits limits, std::function<void(const ModuleName&, std::string)> writeJsonLog)
 {
     const bool recordJsonLog = FFlag::DebugLuauLogSolverToJson;
     return check(sourceModule, mode, requireCycles, builtinTypes, iceHandler, moduleResolver, fileResolver, parentScope,
-        std::move(prepareModuleScope), options, limits, recordJsonLog);
+        std::move(prepareModuleScope), options, limits, recordJsonLog, writeJsonLog);
 }
 
 ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<RequireCycle>& requireCycles, NotNull<BuiltinTypes> builtinTypes,
     NotNull<InternalErrorReporter> iceHandler, NotNull<ModuleResolver> moduleResolver, NotNull<FileResolver> fileResolver,
     const ScopePtr& parentScope, std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope, FrontendOptions options,
-    TypeCheckLimits limits, bool recordJsonLog)
+    TypeCheckLimits limits, bool recordJsonLog, std::function<void(const ModuleName&, std::string)> writeJsonLog)
 {
     ModulePtr result = std::make_shared<Module>();
     result->name = sourceModule.name;
@@ -1281,7 +1283,10 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
     if (recordJsonLog)
     {
         std::string output = logger->compileOutput();
-        printf("%s\n", output.c_str());
+        if (FFlag::DebugLuauLogSolverToJsonFile && writeJsonLog)
+            writeJsonLog(sourceModule.name, std::move(output));
+        else
+            printf("%s\n", output.c_str());
     }
 
     return result;
@@ -1301,7 +1306,7 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vect
         {
             return Luau::check(sourceModule, mode, requireCycles, builtinTypes, NotNull{&iceHandler},
                 NotNull{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver}, NotNull{fileResolver},
-                environmentScope ? *environmentScope : globals.globalScope, prepareModuleScopeWrap, options, typeCheckLimits, recordJsonLog);
+                environmentScope ? *environmentScope : globals.globalScope, prepareModuleScopeWrap, options, typeCheckLimits, recordJsonLog, writeJsonLog);
         }
         catch (const InternalCompilerError& err)
         {
