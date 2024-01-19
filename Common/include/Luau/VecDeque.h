@@ -1,7 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Common.h"
 #include "Luau/Common.h"
 
 #include <algorithm>
@@ -9,6 +8,8 @@
 #include <memory>
 #include <new>
 #include <stdexcept>
+#include <type_traits>
+#include <utility>
 
 namespace Luau
 {
@@ -54,7 +55,7 @@ private:
         size_t tail_size = queue_size - head_size;   // how many elements are in the tail portion (i.e. any portion that wrapped to the front)
 
         // we have to destroy every element in the head portion
-        for (size_t index = head; index < head_size; index++)
+        for (size_t index = head; index < head + head_size; index++)
             buffer[index].~T();
 
         // and any in the tail portion, if one exists

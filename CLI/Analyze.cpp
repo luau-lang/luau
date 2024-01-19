@@ -15,12 +15,14 @@
 #include <queue>
 #include <thread>
 #include <utility>
+#include <fstream>
 
 #ifdef CALLGRIND
 #include <valgrind/callgrind.h>
 #endif
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
+LUAU_FASTFLAG(DebugLuauLogSolverToJsonFile)
 
 enum class ReportFormat
 {
@@ -306,6 +308,7 @@ int main(int argc, char** argv)
     Luau::Mode mode = Luau::Mode::Nonstrict;
     bool annotate = false;
     int threadCount = 0;
+    std::string basePath = "";
 
     for (int i = 1; i < argc; ++i)
     {
@@ -326,6 +329,8 @@ int main(int argc, char** argv)
             setLuauFlags(argv[i] + 9);
         else if (strncmp(argv[i], "-j", 2) == 0)
             threadCount = int(strtol(argv[i] + 2, nullptr, 10));
+        else if (strncmp(argv[i], "--logbase=", 10) == 0)
+            basePath = std::string{argv[i] + 10};
     }
 
 #if !defined(LUAU_ENABLE_TIME_TRACE)
@@ -343,6 +348,24 @@ int main(int argc, char** argv)
     CliFileResolver fileResolver;
     CliConfigResolver configResolver(mode);
     Luau::Frontend frontend(&fileResolver, &configResolver, frontendOptions);
+
+    if (FFlag::DebugLuauLogSolverToJsonFile)
+    {
+        frontend.writeJsonLog = [&basePath](const Luau::ModuleName& moduleName, std::string log) {
+            std::string path = moduleName + ".log.json";
+            size_t pos = moduleName.find_last_of('/');
+            if (pos != std::string::npos)
+                path = moduleName.substr(pos + 1);
+
+            if (!basePath.empty())
+                path = joinPaths(basePath, path);
+
+            std::ofstream os(path);
+
+            os << log << std::endl;
+            printf("Wrote JSON log to %s\n", path.c_str());
+        };
+    }
 
     Luau::registerBuiltinGlobals(frontend, frontend.globals);
     Luau::freeze(frontend.globals.globalTypes);

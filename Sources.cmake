@@ -479,6 +479,7 @@ if(TARGET Luau.Conformance)
         tests/RegisterCallbacks.h
         tests/RegisterCallbacks.cpp
         tests/Conformance.test.cpp
+        tests/IrLowering.test.cpp
         tests/main.cpp)
 endif()
 

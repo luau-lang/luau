@@ -18,6 +18,7 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTFLAGVARIABLE(LuauClipExtraHasEndProps, false)
 LUAU_FASTFLAG(LuauCheckedFunctionSyntax)
+LUAU_FASTFLAGVARIABLE(LuauReadWritePropertySyntax, false)
 
 namespace Luau
 {
@@ -945,14 +946,14 @@ AstStat* Parser::parseDeclaration(const Location& start)
                 {
                     // maybe we don't need to parse the entire badIndexer...
                     // however, we either have { or [ to lint, not the entire table type or the bad indexer.
-                    AstTableIndexer* badIndexer = parseTableIndexer();
+                    AstTableIndexer* badIndexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt);
 
                     // we lose all additional indexer expressions from the AST after error recovery here
                     report(badIndexer->location, "Cannot have more than one class indexer");
                 }
                 else
                 {
-                    indexer = parseTableIndexer();
+                    indexer = parseTableIndexer(AstTableAccess::ReadWrite, std::nullopt);
                 }
             }
             else
@@ -1317,7 +1318,7 @@ std::pair<Location, AstTypeList> Parser::parseReturnType()
 }
 
 // TableIndexer ::= `[' Type `]' `:' Type
-AstTableIndexer* Parser::parseTableIndexer()
+AstTableIndexer* Parser::parseTableIndexer(AstTableAccess access, std::optional<Location> accessLocation)
 {
     const Lexeme begin = lexer.current();
     nextLexeme(); // [
@@ -1330,7 +1331,7 @@ AstTableIndexer* Parser::parseTableIndexer()
 
     AstType* result = parseType();
 
-    return allocator.alloc<AstTableIndexer>(AstTableIndexer{index, result, Location(begin.location, result->location)});
+    return allocator.alloc<AstTableIndexer>(AstTableIndexer{index, result, Location(begin.location, result->location), access, accessLocation});
 }
 
 // TableProp ::= Name `:' Type
@@ -1351,6 +1352,28 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
 
     while (lexer.current().type != '}')
     {
+        AstTableAccess access = AstTableAccess::ReadWrite;
+        std::optional<Location> accessLocation;
+
+        if (FFlag::LuauReadWritePropertySyntax)
+        {
+            if (lexer.current().type == Lexeme::Name && lexer.lookahead().type != ':')
+            {
+                if (AstName(lexer.current().name) == "read")
+                {
+                    accessLocation = lexer.current().location;
+                    access = AstTableAccess::Read;
+                    lexer.next();
+                }
+                else if (AstName(lexer.current().name) == "write")
+                {
+                    accessLocation = lexer.current().location;
+                    access = AstTableAccess::Write;
+                    lexer.next();
+                }
+            }
+        }
+
         if (lexer.current().type == '[' && (lexer.lookahead().type == Lexeme::RawString || lexer.lookahead().type == Lexeme::QuotedString))
         {
             const Lexeme begin = lexer.current();
@@ -1366,7 +1389,7 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
             bool containsNull = chars && (strnlen(chars->data, chars->size) < chars->size);
 
             if (chars && !containsNull)
-                props.push_back({AstName(chars->data), begin.location, type});
+                props.push_back(AstTableProp{AstName(chars->data), begin.location, type, access, accessLocation});
             else
                 report(begin.location, "String literal contains malformed escape sequence or \\0");
         }
@@ -1376,14 +1399,14 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
             {
                 // maybe we don't need to parse the entire badIndexer...
                 // however, we either have { or [ to lint, not the entire table type or the bad indexer.
-                AstTableIndexer* badIndexer = parseTableIndexer();
+                AstTableIndexer* badIndexer = parseTableIndexer(access, accessLocation);
 
                 // we lose all additional indexer expressions from the AST after error recovery here
                 report(badIndexer->location, "Cannot have more than one table indexer");
             }
             else
             {
-                indexer = parseTableIndexer();
+                indexer = parseTableIndexer(access, accessLocation);
             }
         }
         else if (props.empty() && !indexer && !(lexer.current().type == Lexeme::Name && lexer.lookahead().type == ':'))
@@ -1392,7 +1415,7 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
 
             // array-like table type: {T} desugars into {[number]: T}
             AstType* index = allocator.alloc<AstTypeReference>(type->location, std::nullopt, nameNumber, std::nullopt, type->location);
-            indexer = allocator.alloc<AstTableIndexer>(AstTableIndexer{index, type, type->location});
+            indexer = allocator.alloc<AstTableIndexer>(AstTableIndexer{index, type, type->location, access, accessLocation});
 
             break;
         }
@@ -1407,7 +1430,7 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
 
             AstType* type = parseType(inDeclarationContext);
 
-            props.push_back({name->name, name->location, type});
+            props.push_back(AstTableProp{name->name, name->location, type, access, accessLocation});
         }
 
         if (lexer.current().type == ',' || lexer.current().type == ';')

@@ -108,8 +108,10 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 
         if (options.includeIr)
         {
-            build.logAppend("# ");
-            toStringDetailed(ctx, block, blockIndex, /* includeUseInfo */ true);
+            if (options.includeIrPrefix)
+                build.logAppend("# ");
+
+            toStringDetailed(ctx, block, blockIndex, options.includeUseInfo, options.includeCfgInfo, options.includeRegFlowInfo);
         }
 
         // Values can only reference restore operands in the current block chain
@@ -172,8 +174,10 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 
             if (options.includeIr)
             {
-                build.logAppend("# ");
-                toStringDetailed(ctx, block, blockIndex, inst, index, /* includeUseInfo */ true);
+                if (options.includeIrPrefix)
+                    build.logAppend("# ");
+
+                toStringDetailed(ctx, block, blockIndex, inst, index, options.includeUseInfo);
             }
 
             lowering.lowerInst(inst, index, nextBlock);
@@ -197,7 +201,7 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 
         lowering.finishBlock(block, nextBlock);
 
-        if (options.includeIr)
+        if (options.includeIr && options.includeIrPrefix)
             build.logAppend("#\n");
 
         if (block.expectedNextBlock == ~0u)

@@ -33,7 +33,7 @@ LUAU_FASTFLAGVARIABLE(LuauToStringSimpleCompositeTypesSingleLine, false)
  * 0: Disabled, no changes.
  *
  * 1: Prefix free/generic types with free- and gen-, respectively. Also reveal
- * hidden variadic tails.
+ * hidden variadic tails. Display block count for local types.
  *
  * 2: Suffix free/generic types with their scope depth.
  *
@@ -516,6 +516,12 @@ struct TypeStringifier
     {
         state.emit("l-");
         state.emit(lt.name);
+        if (FInt::DebugLuauVerboseTypeNames >= 1)
+        {
+            state.emit("[");
+            state.emit(lt.blockCount);
+            state.emit("]");
+        }
         state.emit("=[");
         stringify(lt.domain);
         state.emit("]");

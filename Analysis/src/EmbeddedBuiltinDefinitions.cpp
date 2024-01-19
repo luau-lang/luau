@@ -1,47 +1,13 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 
-LUAU_FASTFLAGVARIABLE(LuauBufferTypeck, false)
-LUAU_FASTFLAGVARIABLE(LuauCheckedEmbeddedDefinitions, false);
+LUAU_FASTFLAGVARIABLE(LuauCheckedEmbeddedDefinitions2, false);
+LUAU_FASTFLAG(LuauCheckedFunctionSyntax);
 
 namespace Luau
 {
 
-static const std::string kBuiltinDefinitionBufferSrc_DEPRECATED = R"BUILTIN_SRC(
-
--- TODO: this will be replaced with a built-in primitive type
-declare class buffer end
-
-declare buffer: {
-    create: (size: number) -> buffer,
-    fromstring: (str: string) -> buffer,
-    tostring: () -> string,
-    len: (b: buffer) -> number,
-    copy: (target: buffer, targetOffset: number, source: buffer, sourceOffset: number?, count: number?) -> (),
-    fill: (b: buffer, offset: number, value: number, count: number?) -> (),
-    readi8: (b: buffer, offset: number) -> number,
-    readu8: (b: buffer, offset: number) -> number,
-    readi16: (b: buffer, offset: number) -> number,
-    readu16: (b: buffer, offset: number) -> number,
-    readi32: (b: buffer, offset: number) -> number,
-    readu32: (b: buffer, offset: number) -> number,
-    readf32: (b: buffer, offset: number) -> number,
-    readf64: (b: buffer, offset: number) -> number,
-    writei8: (b: buffer, offset: number, value: number) -> (),
-    writeu8: (b: buffer, offset: number, value: number) -> (),
-    writei16: (b: buffer, offset: number, value: number) -> (),
-    writeu16: (b: buffer, offset: number, value: number) -> (),
-    writei32: (b: buffer, offset: number, value: number) -> (),
-    writeu32: (b: buffer, offset: number, value: number) -> (),
-    writef32: (b: buffer, offset: number, value: number) -> (),
-    writef64: (b: buffer, offset: number, value: number) -> (),
-    readstring: (b: buffer, offset: number, count: number) -> string,
-    writestring: (b: buffer, offset: number, value: string, count: number?) -> (),
-}
-
-)BUILTIN_SRC";
-
-static const std::string kBuiltinDefinitionBufferSrc = R"BUILTIN_SRC(
+static const std::string kBuiltinDefinitionLuaSrc = R"BUILTIN_SRC(
 
 declare buffer: {
     create: (size: number) -> buffer,
@@ -69,9 +35,6 @@ declare buffer: {
     readstring: (b: buffer, offset: number, count: number) -> string,
     writestring: (b: buffer, offset: number, value: string, count: number?) -> (),
 }
-
-)BUILTIN_SRC";
-static const std::string kBuiltinDefinitionLuaSrc = R"BUILTIN_SRC(
 
 declare bit32: {
     band: (...number) -> number,
@@ -488,12 +451,8 @@ std::string getBuiltinDefinitionSource()
 {
     std::string result = kBuiltinDefinitionLuaSrc;
 
-    if (FFlag::LuauBufferTypeck)
-        result = kBuiltinDefinitionBufferSrc + result;
-    else
-        result = kBuiltinDefinitionBufferSrc_DEPRECATED + result;
     // Annotates each non generic function as checked
-    if (FFlag::LuauCheckedEmbeddedDefinitions)
+    if (FFlag::LuauCheckedEmbeddedDefinitions2 && FFlag::LuauCheckedFunctionSyntax)
         result = kBuiltinDefinitionLuaSrcChecked;
 
     return result;

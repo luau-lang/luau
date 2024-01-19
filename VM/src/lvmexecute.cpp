@@ -80,9 +80,7 @@
         } \
     }
 
-
 #define VM_DISPATCH_OP(op) &&CASE_##op
-
 
 #define VM_DISPATCH_TABLE() \
     VM_DISPATCH_OP(LOP_NOP), VM_DISPATCH_OP(LOP_BREAK), VM_DISPATCH_OP(LOP_LOADNIL), VM_DISPATCH_OP(LOP_LOADB), VM_DISPATCH_OP(LOP_LOADN), \
@@ -136,7 +134,6 @@
 #define VM_HAS_NATIVE 1
 
 LUAU_FASTFLAGVARIABLE(LuauTaggedLuData, false)
-
 
 LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
 {
@@ -779,7 +776,6 @@ reentry:
                         break;
 
                     case LCT_REF:
-
                         setupvalue(L, &ncl->l.uprefs[ui], luaF_findupval(L, VM_REG(LUAU_INSN_B(uinsn))));
                         break;
 

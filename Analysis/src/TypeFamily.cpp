@@ -1055,7 +1055,7 @@ TypeFamilyReductionResult<TypeId> refineFamilyFn(const std::vector<TypeId>& type
 // computes the keys of `ty` into `result`
 // `isRaw` parameter indicates whether or not we should follow __index metamethods
 // returns `false` if `result` should be ignored because the answer is "all strings"
-bool computeKeysOf(TypeId ty, DenseHashSet<std::string>& result, DenseHashSet<TypeId>& seen, bool isRaw, NotNull<TypeFamilyContext> ctx)
+bool computeKeysOf(TypeId ty, Set<std::string>& result, DenseHashSet<TypeId>& seen, bool isRaw, NotNull<TypeFamilyContext> ctx)
 {
     // if the type is the top table type, the answer is just "all strings"
     if (get<PrimitiveType>(ty))
@@ -1069,6 +1069,13 @@ bool computeKeysOf(TypeId ty, DenseHashSet<std::string>& result, DenseHashSet<Ty
     // if we have a particular table type, we can insert the keys
     if (auto tableTy = get<TableType>(ty))
     {
+        if (tableTy->indexer)
+        {
+            // if we have a string indexer, the answer is, again, "all strings"
+            if (isString(tableTy->indexer->indexType))
+                return false;
+        }
+
         for (auto [key, _] : tableTy->props)
             result.insert(key);
         return true;
@@ -1126,7 +1133,7 @@ TypeFamilyReductionResult<TypeId> keyofFamilyImpl(const std::vector<TypeId>& typ
         return {std::nullopt, true, {}, {}};
 
     // we're going to collect the keys in here
-    DenseHashSet<std::string> keys{{}};
+    Set<std::string> keys{{}};
 
     // computing the keys for classes
     if (normTy->hasClasses())
@@ -1147,7 +1154,7 @@ TypeFamilyReductionResult<TypeId> keyofFamilyImpl(const std::vector<TypeId>& typ
         for (auto [key, _] : classTy->props)
             keys.insert(key);
 
-        // we need to check that if there are multiple classes, they have the same set of keys
+        // we need to look at each class to remove any keys that are not common amongst them all
         while (++classesIter != classesIterEnd)
         {
             auto classTy = get<ClassType>(*classesIter);
@@ -1157,11 +1164,11 @@ TypeFamilyReductionResult<TypeId> keyofFamilyImpl(const std::vector<TypeId>& typ
                 return {std::nullopt, true, {}, {}};
             }
 
-            for (auto [key, _] : classTy->props)
+            for (auto key : keys)
             {
-                // we will refuse to reduce if the keys are not exactly the same
-                if (!keys.contains(key))
-                    return {std::nullopt, true, {}, {}};
+                // remove any keys that are not present in each class
+                if (classTy->props.find(key) == classTy->props.end())
+                    keys.erase(key);
             }
         }
     }
@@ -1181,20 +1188,23 @@ TypeFamilyReductionResult<TypeId> keyofFamilyImpl(const std::vector<TypeId>& typ
         if (!computeKeysOf(*tablesIter, keys, seen, isRaw, ctx))
             return {ctx->builtins->stringType, false, {}, {}}; // if it failed, we have the top table type!
 
-        // we need to check that if there are multiple tables, they have the same set of keys
+        // we need to look at each tables to remove any keys that are not common amongst them all
         while (++tablesIter != normTy->tables.end())
         {
             seen.clear(); // we'll reuse the same seen set
 
-            DenseHashSet<std::string> localKeys{{}};
+            Set<std::string> localKeys{{}};
 
-            // the type family is irreducible if there's _also_ the top table type in here
+            // we can skip to the next table if this one is the top table type
             if (!computeKeysOf(*tablesIter, localKeys, seen, isRaw, ctx))
-                return {std::nullopt, true, {}, {}};
+                continue;
 
-            // the type family is irreducible if the key sets are not equal.
-            if (localKeys != keys)
-                return {std::nullopt, true, {}, {}};
+            for (auto key : keys)
+            {
+                // remove any keys that are not present in each table
+                if (!localKeys.contains(key))
+                    keys.erase(key);
+            }
         }
     }
 

@@ -1008,12 +1008,54 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatAssign* ass
     std::vector<TypeId> assignees;
     assignees.reserve(assign->vars.size);
 
+    size_t i = 0;
     for (AstExpr* lvalue : assign->vars)
     {
         TypeId assignee = arena->addType(BlockedType{});
 
-        checkLValue(scope, lvalue, assignee);
+        // This is a really weird thing to do, but it's critically important for some kinds of
+        // assignments with the current type state behavior. Consider this code:
+        // local function f(l, r)
+        //     local i = l
+        //     for _ = l, r do
+        //         i = i + 1
+        //     end
+        // end
+        //
+        // With type states now, we will not create a new state for `i` within the loop. This means
+        // that, in the absence of the analysis below, we would infer a too-broad bound for i: the
+        // cyclic type t1 where t1 = add<t1 | number, number>. In order to stop this, we say that
+        // assignments to a definition with a self-referential binary expression do not transform
+        // the type of the definition. This will only apply for loops, where the definition is
+        // shared in more places; for non-loops, there will be a separate DefId for the lvalue in
+        // the assignment, so we will deem the expression to be transformative.
+        //
+        // Deeming the addition in the code sample above as non-transformative means that i is known
+        // to be exactly number further on, ensuring the type family reduces down to number, as is
+        // expected for this code snippet.
+        //
+        // There is a potential for spurious errors here if the expression is more complex than a
+        // simple binary expression, e.g. i = (i + 1) * 2. At the time of writing, this case hasn't
+        // materialized.
+        bool transform = true;
+
+        if (assign->values.size > i)
+        {
+            AstExpr* value = assign->values.data[i];
+            if (auto bexp = value->as<AstExprBinary>())
+            {
+                DefId lvalueDef = dfg->getDef(lvalue);
+                DefId lDef = dfg->getDef(bexp->left);
+                DefId rDef = dfg->getDef(bexp->right);
+
+                if (lvalueDef == lDef || lvalueDef == rDef)
+                    transform = false;
+            }
+        }
+
+        checkLValue(scope, lvalue, assignee, transform);
         assignees.push_back(assignee);
+        ++i;
     }
 
     TypePackId resultPack = checkPack(scope, assign->values).tp;
@@ -1027,7 +1069,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatCompoundAss
     AstExprBinary binop = AstExprBinary{assign->location, assign->op, assign->var, assign->value};
     TypeId resultTy = check(scope, &binop).ty;
 
-    checkLValue(scope, assign->var, resultTy);
+    checkLValue(scope, assign->var, resultTy, true);
 
     DefId def = dfg->getDef(assign->var);
     scope->lvalueTypes[def] = resultTy;
@@ -2210,10 +2252,10 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(
     }
 }
 
-std::optional<TypeId> ConstraintGenerator::checkLValue(const ScopePtr& scope, AstExpr* expr, TypeId assignedTy)
+std::optional<TypeId> ConstraintGenerator::checkLValue(const ScopePtr& scope, AstExpr* expr, TypeId assignedTy, bool transform)
 {
     if (auto local = expr->as<AstExprLocal>())
-        return checkLValue(scope, local, assignedTy);
+        return checkLValue(scope, local, assignedTy, transform);
     else if (auto global = expr->as<AstExprGlobal>())
         return checkLValue(scope, global, assignedTy);
     else if (auto indexName = expr->as<AstExprIndexName>())
@@ -2229,7 +2271,7 @@ std::optional<TypeId> ConstraintGenerator::checkLValue(const ScopePtr& scope, As
         ice->ice("checkLValue is inexhaustive");
 }
 
-std::optional<TypeId> ConstraintGenerator::checkLValue(const ScopePtr& scope, AstExprLocal* local, TypeId assignedTy)
+std::optional<TypeId> ConstraintGenerator::checkLValue(const ScopePtr& scope, AstExprLocal* local, TypeId assignedTy, bool transform)
 {
     std::optional<TypeId> annotatedTy = scope->lookup(local->local);
     LUAU_ASSERT(annotatedTy);
@@ -2241,8 +2283,11 @@ std::optional<TypeId> ConstraintGenerator::checkLValue(const ScopePtr& scope, As
 
     if (ty)
     {
-        if (auto lt = getMutable<LocalType>(*ty))
-            ++lt->blockCount;
+        if (transform)
+        {
+            if (auto lt = getMutable<LocalType>(*ty))
+                ++lt->blockCount;
+        }
     }
     else
     {
@@ -2251,13 +2296,17 @@ std::optional<TypeId> ConstraintGenerator::checkLValue(const ScopePtr& scope, As
         scope->lvalueTypes[defId] = *ty;
     }
 
-    addConstraint(scope, local->location, UnpackConstraint{
-        arena->addTypePack({*ty}),
-        arena->addTypePack({assignedTy}),
-        /*resultIsLValue*/ true
-    });
+    if (transform)
+    {
+        addConstraint(scope, local->location, UnpackConstraint{
+            arena->addTypePack({*ty}),
+            arena->addTypePack({assignedTy}),
+            /*resultIsLValue*/ true
+        });
 
-    recordInferredBinding(local->local, *ty);
+        recordInferredBinding(local->local, *ty);
+    }
+
 
     return ty;
 }
@@ -2821,20 +2870,38 @@ TypeId ConstraintGenerator::resolveType(const ScopePtr& scope, AstType* ty, bool
 
         for (const AstTableProp& prop : tab->props)
         {
-            std::string name = prop.name.value;
-            // TODO: Recursion limit.
-            TypeId propTy = resolveType(scope, prop.type, inTypeArguments);
-            // TODO: Fill in location.
-            props[name] = {propTy};
+            if (prop.access == AstTableAccess::Read)
+                reportError(prop.accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
+            else if (prop.access == AstTableAccess::Write)
+                reportError(prop.accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
+            else if (prop.access == AstTableAccess::ReadWrite)
+            {
+                std::string name = prop.name.value;
+                // TODO: Recursion limit.
+                TypeId propTy = resolveType(scope, prop.type, inTypeArguments);
+                props[name] = {propTy};
+                props[name].typeLocation = prop.location;
+            }
+            else
+                ice->ice("Unexpected property access " + std::to_string(int(prop.access)));
         }
 
-        if (tab->indexer)
+        if (AstTableIndexer* astIndexer = tab->indexer)
         {
-            // TODO: Recursion limit.
-            indexer = TableIndexer{
-                resolveType(scope, tab->indexer->indexType, inTypeArguments),
-                resolveType(scope, tab->indexer->resultType, inTypeArguments),
-            };
+            if (astIndexer->access == AstTableAccess::Read)
+                reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
+            else if (astIndexer->access == AstTableAccess::Write)
+                reportError(astIndexer->accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
+            else if (astIndexer->access == AstTableAccess::ReadWrite)
+            {
+                // TODO: Recursion limit.
+                indexer = TableIndexer{
+                    resolveType(scope, astIndexer->indexType, inTypeArguments),
+                    resolveType(scope, astIndexer->resultType, inTypeArguments),
+                };
+            }
+            else
+                ice->ice("Unexpected property access " + std::to_string(int(astIndexer->access)));
         }
 
         result = arena->addType(TableType{props, indexer, scope->level, scope.get(), TableState::Sealed});
@@ -3174,11 +3241,16 @@ void ConstraintGenerator::fillInInferredBindings(const ScopePtr& globalScope, As
         const auto& [scope, location, types] = p;
 
         std::vector<TypeId> tys(types.begin(), types.end());
+        if (tys.size() == 1)
+            scope->bindings[symbol] = Binding{tys.front(), location};
+        else
+        {
+            TypeId ty = arena->addType(BlockedType{});
+            addConstraint(globalScope, Location{}, SetOpConstraint{SetOpConstraint::Union, ty, std::move(tys)});
 
-        TypeId ty = arena->addType(BlockedType{});
-        addConstraint(globalScope, Location{}, SetOpConstraint{SetOpConstraint::Union, ty, std::move(tys)});
+            scope->bindings[symbol] = Binding{ty, location};
+        }
 
-        scope->bindings[symbol] = Binding{ty, location};
     }
 }
 

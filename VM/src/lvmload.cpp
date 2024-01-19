@@ -160,7 +160,6 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     uint8_t version = read<uint8_t>(data, size, offset);
 
 
-
     // 0 means the rest of the bytecode is the error message
     if (version == 0)
     {
