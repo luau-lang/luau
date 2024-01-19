@@ -2,6 +2,7 @@
 #include "Luau/VecDeque.h"
 
 #include "doctest.h"
+#include <memory>
 
 TEST_SUITE_BEGIN("VecDequeTests");
 
@@ -591,6 +592,28 @@ TEST_CASE("shrink_to_fit_works_with_strings")
     // checking that it is still sequential integers from 0 to 9
     for (int j = 0; j < 10; j++)
         CHECK_EQ(queue[j], testStrings[j]);
+}
+
+struct TestStruct
+{
+};
+
+// Verify that elements pushed to the front of the queue are properly destroyed when the queue is destroyed.
+TEST_CASE("push_front_elements_are_destroyed_correctly")
+{
+    std::shared_ptr<TestStruct> t = std::make_shared<TestStruct>();
+    {
+        Luau::VecDeque<std::shared_ptr<TestStruct>> queue{};
+        REQUIRE(queue.empty());
+        queue.reserve(10);
+        queue.push_front(t);
+        queue.push_front(t);
+        REQUIRE(t.use_count() == 3); // Num of references to the TestStruct instance is now 3
+        // <-- call destructor here
+    }
+
+    // At this point the destructor should be called and we should be back down to one instance of TestStruct
+    REQUIRE(t.use_count() == 1);
 }
 
 TEST_SUITE_END();

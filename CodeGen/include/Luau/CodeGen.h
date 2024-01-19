@@ -76,6 +76,11 @@ struct AssemblyOptions
     bool includeIr = false;
     bool includeOutlinedCode = false;
 
+    bool includeIrPrefix = true; // "#" before IR blocks and instructions
+    bool includeUseInfo = true;
+    bool includeCfgInfo = true;
+    bool includeRegFlowInfo = true;
+
     // Optional annotator function can be provided to describe each instruction, it takes function id and sequential instruction id
     AnnotatorFn annotator = nullptr;
     void* annotatorContext = nullptr;

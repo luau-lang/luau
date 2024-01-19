@@ -8,7 +8,6 @@
 #include <string.h>
 
 
-
 unsigned int luaS_hash(const char* str, size_t len)
 {
     // Note that this hashing algorithm is replicated in BytecodeBuilder.cpp, BytecodeBuilder::getStringHash
@@ -78,7 +77,6 @@ static TString* newlstr(lua_State* L, const char* str, size_t l, unsigned int h)
     TString* ts = luaM_newgco(L, TString, sizestring(l), L->activememcat);
     luaC_init(L, ts, LUA_TSTRING);
     ts->atom = ATOM_UNDEF;
-
     ts->hash = h;
     ts->len = unsigned(l);
 
@@ -105,7 +103,6 @@ TString* luaS_bufstart(lua_State* L, size_t size)
     TString* ts = luaM_newgco(L, TString, sizestring(size), L->activememcat);
     luaC_init(L, ts, LUA_TSTRING);
     ts->atom = ATOM_UNDEF;
-
     ts->hash = 0; // computed in luaS_buffinish
     ts->len = unsigned(size);
 
@@ -192,7 +189,6 @@ void luaS_free(lua_State* L, TString* ts, lua_Page* page)
         L->global->strt.nuse--;
     else
         LUAU_ASSERT(ts->next == NULL); // orphaned string buffer
-
 
     luaM_freegco(L, ts, sizestring(ts->len), ts->memcat, page);
 }

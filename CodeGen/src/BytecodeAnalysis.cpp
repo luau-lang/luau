@@ -7,6 +7,8 @@
 
 #include "lobject.h"
 
+LUAU_FASTFLAGVARIABLE(LuauFixDivrkInference, false)
+
 namespace Luau
 {
 namespace CodeGen
@@ -680,11 +682,23 @@ void analyzeBytecodeTypes(IrFunction& function)
             case LOP_DIVRK:
             {
                 int ra = LUAU_INSN_A(*pc);
-                int rb = LUAU_INSN_B(*pc);
-                int kc = LUAU_INSN_C(*pc);
 
-                bcType.a = regTags[rb];
-                bcType.b = getBytecodeConstantTag(proto, kc);
+                if (FFlag::LuauFixDivrkInference)
+                {
+                    int kb = LUAU_INSN_B(*pc);
+                    int rc = LUAU_INSN_C(*pc);
+
+                    bcType.a = getBytecodeConstantTag(proto, kb);
+                    bcType.b = regTags[rc];
+                }
+                else
+                {
+                    int rb = LUAU_INSN_B(*pc);
+                    int kc = LUAU_INSN_C(*pc);
+
+                    bcType.a = regTags[rb];
+                    bcType.b = getBytecodeConstantTag(proto, kc);
+                }
 
                 regTags[ra] = LBC_TYPE_ANY;
 

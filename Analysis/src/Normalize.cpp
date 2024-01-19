@@ -22,7 +22,6 @@ LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAG(LuauTransitiveSubtyping)
 LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAG(LuauBufferTypeck)
 
 namespace Luau
 {
@@ -312,13 +311,13 @@ bool NormalizedType::isUnknown() const
 bool NormalizedType::isExactlyNumber() const
 {
     return hasNumbers() && !hasTops() && !hasBooleans() && !hasClasses() && !hasErrors() && !hasNils() && !hasStrings() && !hasThreads() &&
-           (!FFlag::LuauBufferTypeck || !hasBuffers()) && !hasTables() && !hasFunctions() && !hasTyvars();
+           !hasBuffers() && !hasTables() && !hasFunctions() && !hasTyvars();
 }
 
 bool NormalizedType::isSubtypeOfString() const
 {
     return hasStrings() && !hasTops() && !hasBooleans() && !hasClasses() && !hasErrors() && !hasNils() && !hasNumbers() && !hasThreads() &&
-           (!FFlag::LuauBufferTypeck || !hasBuffers()) && !hasTables() && !hasFunctions() && !hasTyvars();
+           !hasBuffers() && !hasTables() && !hasFunctions() && !hasTyvars();
 }
 
 bool NormalizedType::shouldSuppressErrors() const
@@ -377,7 +376,6 @@ bool NormalizedType::hasThreads() const
 
 bool NormalizedType::hasBuffers() const
 {
-    LUAU_ASSERT(FFlag::LuauBufferTypeck);
     return !get<NeverType>(buffers);
 }
 
@@ -401,7 +399,7 @@ static bool isShallowInhabited(const NormalizedType& norm)
     // This test is just a shallow check, for example it returns `true` for `{ p : never }`
     return !get<NeverType>(norm.tops) || !get<NeverType>(norm.booleans) || !norm.classes.isNever() || !get<NeverType>(norm.errors) ||
            !get<NeverType>(norm.nils) || !get<NeverType>(norm.numbers) || !norm.strings.isNever() || !get<NeverType>(norm.threads) ||
-           (FFlag::LuauBufferTypeck && !get<NeverType>(norm.buffers)) || !norm.functions.isNever() || !norm.tables.empty() || !norm.tyvars.empty();
+           !get<NeverType>(norm.buffers) || !norm.functions.isNever() || !norm.tables.empty() || !norm.tyvars.empty();
 }
 
 bool Normalizer::isInhabited(const NormalizedType* norm, Set<TypeId> seen)
@@ -411,8 +409,8 @@ bool Normalizer::isInhabited(const NormalizedType* norm, Set<TypeId> seen)
         return true;
 
     if (!get<NeverType>(norm->tops) || !get<NeverType>(norm->booleans) || !get<NeverType>(norm->errors) || !get<NeverType>(norm->nils) ||
-        !get<NeverType>(norm->numbers) || !get<NeverType>(norm->threads) || (FFlag::LuauBufferTypeck && !get<NeverType>(norm->buffers)) ||
-        !norm->classes.isNever() || !norm->strings.isNever() || !norm->functions.isNever())
+        !get<NeverType>(norm->numbers) || !get<NeverType>(norm->threads) || !get<NeverType>(norm->buffers) || !norm->classes.isNever() ||
+        !norm->strings.isNever() || !norm->functions.isNever())
         return true;
 
     for (const auto& [_, intersect] : norm->tyvars)
@@ -638,8 +636,6 @@ static bool isNormalizedThread(TypeId ty)
 
 static bool isNormalizedBuffer(TypeId ty)
 {
-    LUAU_ASSERT(FFlag::LuauBufferTypeck);
-
     if (get<NeverType>(ty))
         return true;
     else if (const PrimitiveType* ptv = get<PrimitiveType>(ty))
@@ -768,8 +764,7 @@ static void assertInvariant(const NormalizedType& norm)
     LUAU_ASSERT(isNormalizedNumber(norm.numbers));
     LUAU_ASSERT(isNormalizedString(norm.strings));
     LUAU_ASSERT(isNormalizedThread(norm.threads));
-    if (FFlag::LuauBufferTypeck)
-        LUAU_ASSERT(isNormalizedBuffer(norm.buffers));
+    LUAU_ASSERT(isNormalizedBuffer(norm.buffers));
     LUAU_ASSERT(areNormalizedFunctions(norm.functions));
     LUAU_ASSERT(areNormalizedTables(norm.tables));
     LUAU_ASSERT(isNormalizedTyvar(norm.tyvars));
@@ -840,8 +835,7 @@ void Normalizer::clearNormal(NormalizedType& norm)
     norm.numbers = builtinTypes->neverType;
     norm.strings.resetToNever();
     norm.threads = builtinTypes->neverType;
-    if (FFlag::LuauBufferTypeck)
-        norm.buffers = builtinTypes->neverType;
+    norm.buffers = builtinTypes->neverType;
     norm.tables.clear();
     norm.functions.resetToNever();
     norm.tyvars.clear();
@@ -1527,8 +1521,7 @@ bool Normalizer::unionNormals(NormalizedType& here, const NormalizedType& there,
     here.numbers = (get<NeverType>(there.numbers) ? here.numbers : there.numbers);
     unionStrings(here.strings, there.strings);
     here.threads = (get<NeverType>(there.threads) ? here.threads : there.threads);
-    if (FFlag::LuauBufferTypeck)
-        here.buffers = (get<NeverType>(there.buffers) ? here.buffers : there.buffers);
+    here.buffers = (get<NeverType>(there.buffers) ? here.buffers : there.buffers);
     unionFunctions(here.functions, there.functions);
     unionTables(here.tables, there.tables);
     return true;
@@ -1649,7 +1642,7 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, Set<TypeI
             here.strings.resetToString();
         else if (ptv->type == PrimitiveType::Thread)
             here.threads = there;
-        else if (FFlag::LuauBufferTypeck && ptv->type == PrimitiveType::Buffer)
+        else if (ptv->type == PrimitiveType::Buffer)
             here.buffers = there;
         else if (ptv->type == PrimitiveType::Function)
         {
@@ -1770,8 +1763,7 @@ std::optional<NormalizedType> Normalizer::negateNormal(const NormalizedType& her
     result.strings.isCofinite = !result.strings.isCofinite;
 
     result.threads = get<NeverType>(here.threads) ? builtinTypes->threadType : builtinTypes->neverType;
-    if (FFlag::LuauBufferTypeck)
-        result.buffers = get<NeverType>(here.buffers) ? builtinTypes->bufferType : builtinTypes->neverType;
+    result.buffers = get<NeverType>(here.buffers) ? builtinTypes->bufferType : builtinTypes->neverType;
 
     /*
      * Things get weird and so, so complicated if we allow negations of
@@ -1862,8 +1854,7 @@ void Normalizer::subtractPrimitive(NormalizedType& here, TypeId ty)
         here.threads = builtinTypes->neverType;
         break;
     case PrimitiveType::Buffer:
-        if (FFlag::LuauBufferTypeck)
-            here.buffers = builtinTypes->neverType;
+        here.buffers = builtinTypes->neverType;
         break;
     case PrimitiveType::Function:
         here.functions.resetToNever();
@@ -2695,8 +2686,7 @@ bool Normalizer::intersectNormals(NormalizedType& here, const NormalizedType& th
     here.numbers = (get<NeverType>(there.numbers) ? there.numbers : here.numbers);
     intersectStrings(here.strings, there.strings);
     here.threads = (get<NeverType>(there.threads) ? there.threads : here.threads);
-    if (FFlag::LuauBufferTypeck)
-        here.buffers = (get<NeverType>(there.buffers) ? there.buffers : here.buffers);
+    here.buffers = (get<NeverType>(there.buffers) ? there.buffers : here.buffers);
     intersectFunctions(here.functions, there.functions);
     intersectTables(here.tables, there.tables);
 
@@ -2837,7 +2827,7 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there, Set<T
             here.strings = std::move(strings);
         else if (ptv->type == PrimitiveType::Thread)
             here.threads = threads;
-        else if (FFlag::LuauBufferTypeck && ptv->type == PrimitiveType::Buffer)
+        else if (ptv->type == PrimitiveType::Buffer)
             here.buffers = buffers;
         else if (ptv->type == PrimitiveType::Function)
             here.functions = std::move(functions);
@@ -3009,7 +2999,7 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
     }
     if (!get<NeverType>(norm.threads))
         result.push_back(builtinTypes->threadType);
-    if (FFlag::LuauBufferTypeck && !get<NeverType>(norm.buffers))
+    if (!get<NeverType>(norm.buffers))
         result.push_back(builtinTypes->bufferType);
 
     result.insert(result.end(), norm.tables.begin(), norm.tables.end());

@@ -174,7 +174,7 @@ private:
     std::optional<AstTypeList> parseOptionalReturnType();
     std::pair<Location, AstTypeList> parseReturnType();
 
-    AstTableIndexer* parseTableIndexer();
+    AstTableIndexer* parseTableIndexer(AstTableAccess access, std::optional<Location> accessLocation);
 
     AstTypeOrPack parseFunctionType(bool allowPack, bool isCheckedFunction = false);
     AstType* parseFunctionTypeTail(const Lexeme& begin, AstArray<AstGenericType> generics, AstArray<AstGenericTypePack> genericPacks,

@@ -624,10 +624,11 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blo
     }
 }
 
-void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t index, bool includeUseInfo)
+void toStringDetailed(
+    IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, bool includeUseInfo, bool includeCfgInfo, bool includeRegFlowInfo)
 {
     // Report captured registers for entry block
-    if (block.useCount == 0 && block.kind != IrBlockKind::Dead && ctx.cfg.captured.regs.any())
+    if (includeRegFlowInfo && block.useCount == 0 && block.kind != IrBlockKind::Dead && ctx.cfg.captured.regs.any())
     {
         append(ctx.result, "; captured regs: ");
         appendRegisterSet(ctx, ctx.cfg.captured, ", ");
@@ -636,7 +637,7 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t ind
 
     size_t start = ctx.result.size();
 
-    toString(ctx, block, index);
+    toString(ctx, block, blockIdx);
     append(ctx.result, ":");
 
     if (includeUseInfo)
@@ -651,9 +652,9 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t ind
     }
 
     // Predecessor list
-    if (index < ctx.cfg.predecessorsOffsets.size())
+    if (includeCfgInfo && blockIdx < ctx.cfg.predecessorsOffsets.size())
     {
-        BlockIteratorWrapper pred = predecessors(ctx.cfg, index);
+        BlockIteratorWrapper pred = predecessors(ctx.cfg, blockIdx);
 
         if (!pred.empty())
         {
@@ -665,9 +666,9 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t ind
     }
 
     // Successor list
-    if (index < ctx.cfg.successorsOffsets.size())
+    if (includeCfgInfo && blockIdx < ctx.cfg.successorsOffsets.size())
     {
-        BlockIteratorWrapper succ = successors(ctx.cfg, index);
+        BlockIteratorWrapper succ = successors(ctx.cfg, blockIdx);
 
         if (!succ.empty())
         {
@@ -679,9 +680,9 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t ind
     }
 
     // Live-in VM regs
-    if (index < ctx.cfg.in.size())
+    if (includeRegFlowInfo && blockIdx < ctx.cfg.in.size())
     {
-        const RegisterSet& in = ctx.cfg.in[index];
+        const RegisterSet& in = ctx.cfg.in[blockIdx];
 
         if (in.regs.any() || in.varargSeq)
         {
@@ -692,9 +693,9 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t ind
     }
 
     // Live-out VM regs
-    if (index < ctx.cfg.out.size())
+    if (includeRegFlowInfo && blockIdx < ctx.cfg.out.size())
     {
-        const RegisterSet& out = ctx.cfg.out[index];
+        const RegisterSet& out = ctx.cfg.out[blockIdx];
 
         if (out.regs.any() || out.varargSeq)
         {
@@ -717,7 +718,7 @@ std::string toString(const IrFunction& function, bool includeUseInfo)
         if (block.kind == IrBlockKind::Dead)
             continue;
 
-        toStringDetailed(ctx, block, uint32_t(i), includeUseInfo);
+        toStringDetailed(ctx, block, uint32_t(i), includeUseInfo, /*includeCfgInfo*/ true, /*includeRegFlowInfo*/ true);
 
         if (block.start == ~0u)
         {

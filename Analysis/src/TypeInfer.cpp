@@ -38,7 +38,6 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauLoopControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
-LUAU_FASTFLAG(LuauBufferTypeck)
 LUAU_FASTFLAGVARIABLE(LuauRemoveBadRelationalOperatorWarning, false)
 LUAU_FASTFLAGVARIABLE(LuauForbidAliasNamedTypeof, false)
 
@@ -5409,10 +5408,28 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
         std::optional<TableIndexer> tableIndexer;
 
         for (const auto& prop : table->props)
-            props[prop.name.value] = {resolveType(scope, *prop.type), /* deprecated: */ false, {}, std::nullopt, {}, std::nullopt, prop.location};
+        {
+            if (prop.access == AstTableAccess::Read)
+                reportError(prop.accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
+            else if (prop.access == AstTableAccess::Write)
+                reportError(prop.accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
+            else if (prop.access == AstTableAccess::ReadWrite)
+                props[prop.name.value] = {resolveType(scope, *prop.type), /* deprecated: */ false, {}, std::nullopt, {}, std::nullopt, prop.location};
+            else
+                ice("Unexpected property access " + std::to_string(int(prop.access)));
+        }
 
         if (const auto& indexer = table->indexer)
-            tableIndexer = TableIndexer(resolveType(scope, *indexer->indexType), resolveType(scope, *indexer->resultType));
+        {
+            if (indexer->access == AstTableAccess::Read)
+                reportError(indexer->accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
+            else if (indexer->access == AstTableAccess::Write)
+                reportError(indexer->accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
+            else if (indexer->access == AstTableAccess::ReadWrite)
+                tableIndexer = TableIndexer(resolveType(scope, *indexer->indexType), resolveType(scope, *indexer->resultType));
+            else
+                ice("Unexpected property access " + std::to_string(int(indexer->access)));
+        }
 
         TableType ttv{props, tableIndexer, scope->level, TableState::Sealed};
         ttv.definitionModuleName = currentModule->name;
@@ -6031,7 +6048,7 @@ void TypeChecker::resolve(const TypeGuardPredicate& typeguardP, RefinementMap& r
         return refine(isBoolean, booleanType);
     else if (typeguardP.kind == "thread")
         return refine(isThread, threadType);
-    else if (FFlag::LuauBufferTypeck && typeguardP.kind == "buffer")
+    else if (typeguardP.kind == "buffer")
         return refine(isBuffer, bufferType);
     else if (typeguardP.kind == "table")
     {

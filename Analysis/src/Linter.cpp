@@ -14,8 +14,6 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
-LUAU_FASTFLAG(LuauBufferTypeck)
-
 namespace Luau
 {
 
@@ -1107,7 +1105,7 @@ private:
     TypeKind getTypeKind(const std::string& name)
     {
         if (name == "nil" || name == "boolean" || name == "userdata" || name == "number" || name == "string" || name == "table" ||
-            name == "function" || name == "thread" || (FFlag::LuauBufferTypeck && name == "buffer"))
+            name == "function" || name == "thread" || name == "buffer")
             return Kind_Primitive;
 
         if (name == "vector")

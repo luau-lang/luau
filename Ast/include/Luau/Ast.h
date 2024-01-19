@@ -847,11 +847,21 @@ struct AstDeclaredClassProp
     bool isMethod = false;
 };
 
+enum class AstTableAccess
+{
+    Read = 0b01,
+    Write = 0b10,
+    ReadWrite = 0b11,
+};
+
 struct AstTableIndexer
 {
     AstType* indexType;
     AstType* resultType;
     Location location;
+
+    AstTableAccess access = AstTableAccess::ReadWrite;
+    std::optional<Location> accessLocation;
 };
 
 class AstStatDeclareClass : public AstStat
@@ -915,6 +925,8 @@ struct AstTableProp
     AstName name;
     Location location;
     AstType* type;
+    AstTableAccess access = AstTableAccess::ReadWrite;
+    std::optional<Location> accessLocation;
 };
 
 class AstTypeTable : public AstType

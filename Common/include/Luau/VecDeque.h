@@ -1,7 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Common.h"
 #include "Luau/Common.h"
 
 #include <algorithm>
@@ -9,6 +8,7 @@
 #include <memory>
 #include <new>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 namespace Luau

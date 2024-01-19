@@ -1160,6 +1160,25 @@ TEST_CASE_FIXTURE(SubtypeFixture, "dont_cache_tests_involving_cycles")
     CHECK(!subtyping.peekCache().find({tableA, tableB}));
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "<T>({ x: T }) -> T <: ({ method: <T>({ x: T }) -> T, x: number }) -> number")
+{
+    // <T>({ x: T }) -> T
+    TypeId tableToPropType = arena.addType(FunctionType{
+        {genericT},
+        {},
+        arena.addTypePack({tbl({{"x", genericT}})}),
+        arena.addTypePack({genericT})
+    });
+
+    // ({ method: <T>({ x: T }) -> T, x: number }) -> number
+    TypeId otherType = fn(
+        {tbl({{"method", tableToPropType}, {"x", builtinTypes->numberType}})},
+        {builtinTypes->numberType}
+    );
+
+    CHECK_IS_SUBTYPE(tableToPropType, otherType);
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("Subtyping.Subpaths");
