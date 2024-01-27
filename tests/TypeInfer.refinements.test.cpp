@@ -1933,6 +1933,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table")
                     return i, v
                 end
             end
+
+            error("")
         end
     )");
 

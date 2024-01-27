@@ -3,8 +3,11 @@
 #include "Luau/StringUtils.h"
 
 #include "doctest.h"
+#include "ScopedFlags.h"
 
 #include <string.h>
+
+LUAU_FASTFLAG(LuauCache32BitAsmConsts)
 
 using namespace Luau::CodeGen;
 using namespace Luau::CodeGen::X64;
@@ -469,8 +472,13 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXBinaryInstructionForms")
     SINGLE_COMPARE(vmulsd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x2b, 0x59, 0xc6);
     SINGLE_COMPARE(vdivsd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x2b, 0x5e, 0xc6);
 
+    SINGLE_COMPARE(vsubps(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x28, 0x5c, 0xc6);
+    SINGLE_COMPARE(vmulps(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x28, 0x59, 0xc6);
+    SINGLE_COMPARE(vdivps(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x28, 0x5e, 0xc6);
+
     SINGLE_COMPARE(vorpd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x29, 0x56, 0xc6);
     SINGLE_COMPARE(vxorpd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x29, 0x57, 0xc6);
+    SINGLE_COMPARE(vorps(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x28, 0x56, 0xc6);
 
     SINGLE_COMPARE(vandpd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x29, 0x54, 0xc6);
     SINGLE_COMPARE(vandnpd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0x29, 0x55, 0xc6);
@@ -547,6 +555,9 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXTernaryInstructionForms")
         vroundsd(xmm8, xmm13, xmmword[r13 + rdx], RoundingModeX64::RoundToPositiveInfinity), 0xc4, 0x43, 0x11, 0x0b, 0x44, 0x15, 0x00, 0x0a);
     SINGLE_COMPARE(vroundsd(xmm9, xmm14, xmmword[rcx + r10], RoundingModeX64::RoundToZero), 0xc4, 0x23, 0x09, 0x0b, 0x0c, 0x11, 0x0b);
     SINGLE_COMPARE(vblendvpd(xmm7, xmm12, xmmword[rcx + r10], xmm5), 0xc4, 0xa3, 0x19, 0x4b, 0x3c, 0x11, 0x50);
+
+    SINGLE_COMPARE(vpshufps(xmm7, xmm12, xmmword[rcx + r10], 0b11010100), 0xc4, 0xa1, 0x18, 0xc6, 0x3c, 0x11, 0xd4);
+    SINGLE_COMPARE(vpinsrd(xmm7, xmm12, xmmword[rcx + r10], 2), 0xc4, 0xa3, 0x19, 0x22, 0x3c, 0x11, 0x02);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "MiscInstructions")
@@ -720,7 +731,7 @@ TEST_CASE("ConstantStorage")
     AssemblyBuilderX64 build(/* logText= */ false);
 
     for (int i = 0; i <= 3000; i++)
-        build.vaddss(xmm0, xmm0, build.f32(1.0f));
+        build.vaddss(xmm0, xmm0, build.i32(i));
 
     build.finalize();
 
@@ -728,11 +739,29 @@ TEST_CASE("ConstantStorage")
 
     for (int i = 0; i <= 3000; i++)
     {
-        CHECK(build.data[i * 4 + 0] == 0x00);
-        CHECK(build.data[i * 4 + 1] == 0x00);
-        CHECK(build.data[i * 4 + 2] == 0x80);
-        CHECK(build.data[i * 4 + 3] == 0x3f);
+        CHECK(build.data[i * 4 + 0] == ((3000 - i) & 0xff));
+        CHECK(build.data[i * 4 + 1] == ((3000 - i) >> 8));
+        CHECK(build.data[i * 4 + 2] == 0x00);
+        CHECK(build.data[i * 4 + 3] == 0x00);
     }
+}
+
+TEST_CASE("ConstantStorageDedup")
+{
+    ScopedFastFlag luauCache32BitAsmConsts{FFlag::LuauCache32BitAsmConsts, true};
+    AssemblyBuilderX64 build(/* logText= */ false);
+
+    for (int i = 0; i <= 3000; i++)
+        build.vaddss(xmm0, xmm0, build.f32(1.0f));
+
+    build.finalize();
+
+    CHECK(build.data.size() == 4);
+
+    CHECK(build.data[0] == 0x00);
+    CHECK(build.data[1] == 0x00);
+    CHECK(build.data[2] == 0x80);
+    CHECK(build.data[3] == 0x3f);
 }
 
 TEST_CASE("ConstantCaching")

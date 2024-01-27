@@ -163,6 +163,9 @@ struct BuiltinTypeFamilies
     TypeFamily eqFamily;
 
     TypeFamily refineFamily;
+    TypeFamily unionFamily;
+    TypeFamily intersectFamily;
+
     TypeFamily keyofFamily;
     TypeFamily rawkeyofFamily;
 

@@ -31,6 +31,8 @@ IrValueKind getCmdValueKind(IrCmd cmd)
         return IrValueKind::Double;
     case IrCmd::LOAD_INT:
         return IrValueKind::Int;
+    case IrCmd::LOAD_FLOAT:
+        return IrValueKind::Double;
     case IrCmd::LOAD_TVALUE:
         return IrValueKind::Tvalue;
     case IrCmd::LOAD_ENV:
@@ -66,6 +68,12 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::SQRT_NUM:
     case IrCmd::ABS_NUM:
         return IrValueKind::Double;
+    case IrCmd::ADD_VEC:
+    case IrCmd::SUB_VEC:
+    case IrCmd::MUL_VEC:
+    case IrCmd::DIV_VEC:
+    case IrCmd::UNM_VEC:
+        return IrValueKind::Tvalue;
     case IrCmd::NOT_ANY:
     case IrCmd::CMP_ANY:
         return IrValueKind::Int;
@@ -98,6 +106,8 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::NUM_TO_INT:
     case IrCmd::NUM_TO_UINT:
         return IrValueKind::Int;
+    case IrCmd::NUM_TO_VECTOR:
+        return IrValueKind::Tvalue;
     case IrCmd::ADJUST_STACK_TO_REG:
     case IrCmd::ADJUST_STACK_TO_TOP:
         return IrValueKind::None;

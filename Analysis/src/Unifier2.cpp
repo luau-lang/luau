@@ -56,6 +56,12 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     if (subFree || superFree)
         return true;
 
+    if (auto subLocal = getMutable<LocalType>(subTy))
+    {
+        subLocal->domain = mkUnion(subLocal->domain, superTy);
+        expandedFreeTypes[subTy].push_back(superTy);
+    }
+
     auto subFn = get<FunctionType>(subTy);
     auto superFn = get<FunctionType>(superTy);
     if (subFn && superFn)

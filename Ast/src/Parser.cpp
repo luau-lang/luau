@@ -16,7 +16,6 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // Warning: If you are introducing new syntax, ensure that it is behind a separate
 // flag so that we don't break production games by reverting syntax changes.
 // See docs/SyntaxChanges.md for an explanation.
-LUAU_FASTFLAGVARIABLE(LuauClipExtraHasEndProps, false)
 LUAU_FASTFLAG(LuauCheckedFunctionSyntax)
 LUAU_FASTFLAGVARIABLE(LuauReadWritePropertySyntax, false)
 
@@ -373,18 +372,15 @@ AstStat* Parser::parseIf()
     AstStat* elsebody = nullptr;
     Location end = start;
     std::optional<Location> elseLocation;
-    bool DEPRECATED_hasEnd = false;
 
     if (lexer.current().type == Lexeme::ReservedElseif)
     {
-        if (FFlag::LuauClipExtraHasEndProps)
-            thenbody->hasEnd = true;
+        thenbody->hasEnd = true;
         unsigned int oldRecursionCount = recursionCounter;
         incrementRecursionCounter("elseif");
         elseLocation = lexer.current().location;
         elsebody = parseIf();
         end = elsebody->location;
-        DEPRECATED_hasEnd = elsebody->as<AstStatIf>()->DEPRECATED_hasEnd;
         recursionCounter = oldRecursionCount;
     }
     else
@@ -393,8 +389,7 @@ AstStat* Parser::parseIf()
 
         if (lexer.current().type == Lexeme::ReservedElse)
         {
-            if (FFlag::LuauClipExtraHasEndProps)
-                thenbody->hasEnd = true;
+            thenbody->hasEnd = true;
             elseLocation = lexer.current().location;
             matchThenElse = lexer.current();
             nextLexeme();
@@ -406,21 +401,17 @@ AstStat* Parser::parseIf()
         end = lexer.current().location;
 
         bool hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchThenElse);
-        DEPRECATED_hasEnd = hasEnd;
 
-        if (FFlag::LuauClipExtraHasEndProps)
+        if (elsebody)
         {
-            if (elsebody)
-            {
-                if (AstStatBlock* elseBlock = elsebody->as<AstStatBlock>())
-                    elseBlock->hasEnd = hasEnd;
-            }
-            else
-                thenbody->hasEnd = hasEnd;
+            if (AstStatBlock* elseBlock = elsebody->as<AstStatBlock>())
+                elseBlock->hasEnd = hasEnd;
         }
+        else
+            thenbody->hasEnd = hasEnd;
     }
 
-    return allocator.alloc<AstStatIf>(Location(start, end), cond, thenbody, elsebody, thenLocation, elseLocation, DEPRECATED_hasEnd);
+    return allocator.alloc<AstStatIf>(Location(start, end), cond, thenbody, elsebody, thenLocation, elseLocation);
 }
 
 // while exp do block end
@@ -444,10 +435,9 @@ AstStat* Parser::parseWhile()
     Location end = lexer.current().location;
 
     bool hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchDo);
-    if (FFlag::LuauClipExtraHasEndProps)
-        body->hasEnd = hasEnd;
+    body->hasEnd = hasEnd;
 
-    return allocator.alloc<AstStatWhile>(Location(start, end), cond, body, hasDo, matchDo.location, hasEnd);
+    return allocator.alloc<AstStatWhile>(Location(start, end), cond, body, hasDo, matchDo.location);
 }
 
 // repeat block until exp
@@ -467,8 +457,7 @@ AstStat* Parser::parseRepeat()
     functionStack.back().loopDepth--;
 
     bool hasUntil = expectMatchEndAndConsume(Lexeme::ReservedUntil, matchRepeat);
-    if (FFlag::LuauClipExtraHasEndProps)
-        body->hasEnd = hasUntil;
+    body->hasEnd = hasUntil;
 
     AstExpr* cond = parseExpr();
 
@@ -565,10 +554,9 @@ AstStat* Parser::parseFor()
         Location end = lexer.current().location;
 
         bool hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchDo);
-        if (FFlag::LuauClipExtraHasEndProps)
-            body->hasEnd = hasEnd;
+        body->hasEnd = hasEnd;
 
-        return allocator.alloc<AstStatFor>(Location(start, end), var, from, to, step, body, hasDo, matchDo.location, hasEnd);
+        return allocator.alloc<AstStatFor>(Location(start, end), var, from, to, step, body, hasDo, matchDo.location);
     }
     else
     {
@@ -609,11 +597,10 @@ AstStat* Parser::parseFor()
         Location end = lexer.current().location;
 
         bool hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchDo);
-        if (FFlag::LuauClipExtraHasEndProps)
-            body->hasEnd = hasEnd;
+        body->hasEnd = hasEnd;
 
         return allocator.alloc<AstStatForIn>(
-            Location(start, end), copy(vars), copy(values), body, hasIn, inLocation, hasDo, matchDo.location, hasEnd);
+            Location(start, end), copy(vars), copy(values), body, hasIn, inLocation, hasDo, matchDo.location);
     }
 }
 
@@ -1100,11 +1087,10 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
     Location end = lexer.current().location;
 
     bool hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchFunction);
-    if (FFlag::LuauClipExtraHasEndProps)
-        body->hasEnd = hasEnd;
+    body->hasEnd = hasEnd;
 
     return {allocator.alloc<AstExprFunction>(Location(start, end), generics, genericPacks, self, vars, vararg, varargLocation, body,
-                functionStack.size(), debugname, typelist, varargAnnotation, hasEnd, argLocation),
+                functionStack.size(), debugname, typelist, varargAnnotation, argLocation),
         funLocal};
 }
 

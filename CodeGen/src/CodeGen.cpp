@@ -21,6 +21,7 @@
 #include "CodeGenX64.h"
 
 #include "lapi.h"
+#include "lmem.h"
 
 #include <memory>
 #include <optional>
@@ -55,6 +56,8 @@ LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockLimit, 32'768)            // 32 K
 // Per-function IR instruction limit
 // Current value is based on some member variables being limited to 16 bits
 LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockInstructionLimit, 65'536) // 64 K
+
+LUAU_FASTFLAGVARIABLE(DisableNativeCodegenIfBreakpointIsSet, false)
 
 namespace Luau
 {
@@ -164,6 +167,45 @@ static int onEnter(lua_State* L, Proto* proto)
     return GateFn(data->context.gateEntry)(L, proto, target, &data->context);
 }
 
+void onDisable(lua_State* L, Proto* proto)
+{
+    // do nothing if proto already uses bytecode
+    if (proto->codeentry == proto->code)
+        return;
+
+    // ensure that VM does not call native code for this proto
+    proto->codeentry = proto->code;
+
+    // prevent native code from entering proto with breakpoints
+    proto->exectarget = 0;
+
+    // walk all thread call stacks and clear the LUA_CALLINFO_NATIVE flag from any
+    // entries pointing to the current proto that has native code enabled.
+    luaM_visitgco(L, proto, [](void* context, lua_Page* page, GCObject* gco) {
+        Proto* proto = (Proto*)context;
+
+        if (gco->gch.tt != LUA_TTHREAD)
+            return false;
+
+        lua_State* th = gco2th(gco);
+
+        for (CallInfo* ci = th->ci; ci > th->base_ci; ci--)
+        {
+            if (isLua(ci))
+            {
+                Proto* p = clvalue(ci->func)->l.p;
+
+                if (p == proto)
+                {
+                    ci->flags &= ~LUA_CALLINFO_NATIVE;
+                }
+            }
+        }
+
+        return false;
+    });
+}
+
 #if defined(__aarch64__)
 unsigned int getCpuFeaturesA64()
 {
@@ -257,6 +299,7 @@ void create(lua_State* L, AllocationCallback* allocationCallback, void* allocati
     ecb->close = onCloseState;
     ecb->destroy = onDestroyFunction;
     ecb->enter = onEnter;
+    ecb->disable = FFlag::DisableNativeCodegenIfBreakpointIsSet ? onDisable : nullptr;
 }
 
 void create(lua_State* L)

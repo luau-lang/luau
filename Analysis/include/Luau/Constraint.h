@@ -90,18 +90,42 @@ struct FunctionCallConstraint
     DenseHashMap<const AstNode*, TypeId>* astOverloadResolvedTypes = nullptr;
 };
 
-// result ~ prim ExpectedType SomeSingletonType MultitonType
+// function_check fn argsPack
 //
-// If ExpectedType is potentially a singleton (an actual singleton or a union
-// that contains a singleton), then result ~ SomeSingletonType
+// If fn is a function type and argsPack is a partially solved
+// pack of arguments to be supplied to the function, propagate the argument
+// types of fn into the types of argsPack. This is used to implement
+// bidirectional inference of lambda arguments.
+struct FunctionCheckConstraint
+{
+    TypeId fn;
+    TypePackId argsPack;
+
+    class AstExprCall* callSite = nullptr;
+};
+
+// prim FreeType ExpectedType PrimitiveType
 //
-// else result ~ MultitonType
+// FreeType is bounded below by the singleton type and above by PrimitiveType
+// initially. When this constraint is resolved, it will check that the bounds
+// of the free type are well-formed by subtyping.
+//
+// If they are not well-formed, then FreeType is replaced by its lower bound
+//
+// If they are well-formed and ExpectedType is potentially a singleton (an
+// actual singleton or a union that contains a singleton),
+// then FreeType is replaced by its lower bound
+//
+// else FreeType is replaced by PrimitiveType
 struct PrimitiveTypeConstraint
 {
-    TypeId resultType;
-    TypeId expectedType;
-    TypeId singletonType;
-    TypeId multitonType;
+    TypeId freeType;
+
+    // potentially gets used to force the lower bound?
+    std::optional<TypeId> expectedType;
+
+    // the primitive type to check against
+    TypeId primitiveType;
 };
 
 // result ~ hasProp type "prop_name"
@@ -230,7 +254,7 @@ struct ReducePackConstraint
 };
 
 using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, IterableConstraint,
-    NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, PrimitiveTypeConstraint, HasPropConstraint, SetPropConstraint,
+    NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, FunctionCheckConstraint, PrimitiveTypeConstraint, HasPropConstraint, SetPropConstraint,
     SetIndexerConstraint, SingletonOrTopTypeConstraint, UnpackConstraint, SetOpConstraint, ReduceConstraint, ReducePackConstraint>;
 
 struct Constraint

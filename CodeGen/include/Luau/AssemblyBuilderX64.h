@@ -119,13 +119,18 @@ public:
     void vaddss(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
     void vsubsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vsubps(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vmulsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vmulps(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vdivsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vdivps(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
+    void vandps(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vandpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vandnpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
     void vxorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vorps(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
     void vucomisd(OperandX64 src1, OperandX64 src2);
@@ -159,6 +164,9 @@ public:
 
     void vblendvpd(RegisterX64 dst, RegisterX64 src1, OperandX64 mask, RegisterX64 src3);
 
+    void vpshufps(RegisterX64 dst, RegisterX64 src1, OperandX64 src2, uint8_t shuffle);
+    void vpinsrd(RegisterX64 dst, RegisterX64 src1, OperandX64 src2, uint8_t offset);
+
     // Run final checks
     bool finalize();
 
@@ -176,9 +184,11 @@ public:
     }
 
     // Constant allocation (uses rip-relative addressing)
+    OperandX64 i32(int32_t value);
     OperandX64 i64(int64_t value);
     OperandX64 f32(float value);
     OperandX64 f64(double value);
+    OperandX64 u32x4(uint32_t x, uint32_t y, uint32_t z, uint32_t w);
     OperandX64 f32x4(float x, float y, float z, float w);
     OperandX64 f64x2(double x, double y);
     OperandX64 bytes(const void* ptr, size_t size, size_t align = 8);
@@ -260,6 +270,7 @@ private:
     std::vector<Label> pendingLabels;
     std::vector<uint32_t> labelLocations;
 
+    DenseHashMap<uint32_t, int32_t> constCache32;
     DenseHashMap<uint64_t, int32_t> constCache64;
 
     bool finalized = false;

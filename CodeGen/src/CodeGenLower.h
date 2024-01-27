@@ -108,7 +108,7 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 
         if (options.includeIr)
         {
-            if (options.includeIrPrefix)
+            if (options.includeIrPrefix == IncludeIrPrefix::Yes)
                 build.logAppend("# ");
 
             toStringDetailed(ctx, block, blockIndex, options.includeUseInfo, options.includeCfgInfo, options.includeRegFlowInfo);
@@ -174,7 +174,7 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 
             if (options.includeIr)
             {
-                if (options.includeIrPrefix)
+                if (options.includeIrPrefix == IncludeIrPrefix::Yes)
                     build.logAppend("# ");
 
                 toStringDetailed(ctx, block, blockIndex, inst, index, options.includeUseInfo);
@@ -201,7 +201,7 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 
         lowering.finishBlock(block, nextBlock);
 
-        if (options.includeIr && options.includeIrPrefix)
+        if (options.includeIr && options.includeIrPrefix == IncludeIrPrefix::Yes)
             build.logAppend("#\n");
 
         if (block.expectedNextBlock == ~0u)

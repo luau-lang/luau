@@ -419,6 +419,10 @@ bool maybeSingleton(TypeId ty)
         for (TypeId option : utv)
             if (get<SingletonType>(follow(option)))
                 return true;
+    if (const IntersectionType* itv = get<IntersectionType>(ty))
+        for (TypeId part : itv)
+            if (maybeSingleton(part)) // will i regret this?
+                return true;
     return false;
 }
 

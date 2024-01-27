@@ -283,7 +283,8 @@ ConstraintSolver::ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope
         for (auto ty : c->getFreeTypes())
         {
             // increment the reference count for `ty`
-            unresolvedConstraints[ty] += 1;
+            auto [refCount, _] = unresolvedConstraints.try_insert(ty, 0);
+            refCount += 1;
         }
 
         for (NotNull<const Constraint> dep : c->dependencies)
@@ -368,7 +369,13 @@ void ConstraintSolver::run()
 
                 // decrement the referenced free types for this constraint if we dispatched successfully!
                 for (auto ty : c->getFreeTypes())
-                    unresolvedConstraints[ty] -= 1;
+                {
+                    // this is a little weird, but because we're only counting free types in subtyping constraints,
+                    // some constraints (like unpack) might actually produce _more_ references to a free type.
+                    size_t& refCount = unresolvedConstraints[ty];
+                    if (refCount > 0)
+                        refCount -= 1;
+                }
 
                 if (logger)
                 {
@@ -533,6 +540,8 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
     else if (auto taec = get<TypeAliasExpansionConstraint>(*constraint))
         success = tryDispatch(*taec, constraint);
     else if (auto fcc = get<FunctionCallConstraint>(*constraint))
+        success = tryDispatch(*fcc, constraint);
+    else if (auto fcc = get<FunctionCheckConstraint>(*constraint))
         success = tryDispatch(*fcc, constraint);
     else if (auto fcc = get<PrimitiveTypeConstraint>(*constraint))
         success = tryDispatch(*fcc, constraint);
@@ -992,6 +1001,15 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         return block(c.fn, constraint);
     }
 
+    // if we're calling an error type, the result is an error type, and that's that.
+    if (get<ErrorType>(fn))
+    {
+        asMutable(c.result)->ty.emplace<BoundTypePack>(builtinTypes->errorTypePack);
+        unblock(c.result, constraint->location);
+
+        return true;
+    }
+
     auto [argsHead, argsTail] = flatten(argsPack);
 
     bool blocked = false;
@@ -1080,44 +1098,6 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         *asMutable(follow(*ty)) = BoundType{builtinTypes->anyType};
     }
 
-    // We know the type of the function and the arguments it expects to receive.
-    // We also know the TypeIds of the actual arguments that will be passed.
-    //
-    // Bidirectional type checking: Force those TypeIds to be the expected
-    // arguments. If something is incoherent, we'll spot it in type checking.
-    //
-    // Most important detail: If a function argument is a lambda, we also want
-    // to force unannotated argument types of that lambda to be the expected
-    // types.
-
-    // FIXME: Bidirectional type checking of overloaded functions is not yet supported.
-    if (auto ftv = get<FunctionType>(fn))
-    {
-        const std::vector<TypeId> expectedArgs = flatten(ftv->argTypes).first;
-        const std::vector<TypeId> argPackHead = flatten(argsPack).first;
-
-        for (size_t i = 0; i < c.callSite->args.size && i < expectedArgs.size() && i < argPackHead.size(); ++i)
-        {
-            const FunctionType* expectedLambdaTy = get<FunctionType>(follow(expectedArgs[i]));
-            const FunctionType* lambdaTy = get<FunctionType>(follow(argPackHead[i]));
-            const AstExprFunction* lambdaExpr = c.callSite->args.data[i]->as<AstExprFunction>();
-
-            if (expectedLambdaTy && lambdaTy && lambdaExpr)
-            {
-                const std::vector<TypeId> expectedLambdaArgTys = flatten(expectedLambdaTy->argTypes).first;
-                const std::vector<TypeId> lambdaArgTys = flatten(lambdaTy->argTypes).first;
-
-                for (size_t j = 0; j < expectedLambdaArgTys.size() && j < lambdaArgTys.size() && j < lambdaExpr->args.size; ++j)
-                {
-                    if (!lambdaExpr->args.data[j]->annotation && get<FreeType>(follow(lambdaArgTys[j])))
-                    {
-                        asMutable(lambdaArgTys[j])->ty.emplace<BoundType>(expectedLambdaArgTys[j]);
-                    }
-                }
-            }
-        }
-    }
-
     TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, constraint->scope.get(), argsPack, c.result});
     Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}};
 
@@ -1141,17 +1121,94 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     return true;
 }
 
+bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint)
+{
+    const TypeId fn = follow(c.fn);
+    const TypePackId argsPack = follow(c.argsPack);
+
+    if (isBlocked(fn))
+        return block(fn, constraint);
+
+    if (isBlocked(argsPack))
+        return block(argsPack, constraint);
+
+    // We know the type of the function and the arguments it expects to receive.
+    // We also know the TypeIds of the actual arguments that will be passed.
+    //
+    // Bidirectional type checking: Force those TypeIds to be the expected
+    // arguments. If something is incoherent, we'll spot it in type checking.
+    //
+    // Most important detail: If a function argument is a lambda, we also want
+    // to force unannotated argument types of that lambda to be the expected
+    // types.
+
+    // FIXME: Bidirectional type checking of overloaded functions is not yet supported.
+    if (auto ftv = get<FunctionType>(fn))
+    {
+        const std::vector<TypeId> expectedArgs = flatten(ftv->argTypes).first;
+        const std::vector<TypeId> argPackHead = flatten(argsPack).first;
+
+        for (size_t i = 0; i < c.callSite->args.size && i < expectedArgs.size() && i < argPackHead.size(); ++i)
+        {
+            const TypeId expectedArgTy = follow(expectedArgs[i]);
+            const TypeId actualArgTy = follow(argPackHead[i]);
+
+            const FunctionType* expectedLambdaTy = get<FunctionType>(expectedArgTy);
+            const FunctionType* lambdaTy = get<FunctionType>(actualArgTy);
+            const AstExprFunction* lambdaExpr = c.callSite->args.data[i]->as<AstExprFunction>();
+
+            if (expectedLambdaTy && lambdaTy && lambdaExpr)
+            {
+                const std::vector<TypeId> expectedLambdaArgTys = flatten(expectedLambdaTy->argTypes).first;
+                const std::vector<TypeId> lambdaArgTys = flatten(lambdaTy->argTypes).first;
+
+                for (size_t j = 0; j < expectedLambdaArgTys.size() && j < lambdaArgTys.size() && j < lambdaExpr->args.size; ++j)
+                {
+                    if (!lambdaExpr->args.data[j]->annotation && get<FreeType>(follow(lambdaArgTys[j])))
+                    {
+                        asMutable(lambdaArgTys[j])->ty.emplace<BoundType>(expectedLambdaArgTys[j]);
+                    }
+                }
+            }
+            else
+            {
+                Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
+                u2.unify(actualArgTy, expectedArgTy);
+            }
+        }
+    }
+
+    return true;
+}
+
 bool ConstraintSolver::tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint)
 {
-    TypeId expectedType = follow(c.expectedType);
-    if (isBlocked(expectedType) || get<PendingExpansionType>(expectedType))
-        return block(expectedType, constraint);
+    std::optional<TypeId> expectedType = c.expectedType ? std::make_optional<TypeId>(follow(*c.expectedType)) : std::nullopt;
+    if (expectedType && (isBlocked(*expectedType) || get<PendingExpansionType>(*expectedType)))
+        return block(*expectedType, constraint);
 
-    LUAU_ASSERT(get<BlockedType>(c.resultType));
+    const FreeType* freeType = get<FreeType>(follow(c.freeType));
 
-    TypeId bindTo = maybeSingleton(expectedType) ? c.singletonType : c.multitonType;
-    asMutable(c.resultType)->ty.emplace<BoundType>(bindTo);
-    unblock(c.resultType, constraint->location);
+    // if this is no longer a free type, then we're done.
+    if (!freeType)
+        return true;
+
+    // We will wait if there are any other references to the free type mentioned here.
+    // This is probably the only thing that makes this not insane to do.
+    if (auto refCount = unresolvedConstraints.find(c.freeType); refCount && *refCount > 1)
+    {
+        block(c.freeType, constraint);
+        return false;
+    }
+
+    TypeId bindTo = c.primitiveType;
+
+    if (freeType->upperBound != c.primitiveType && maybeSingleton(freeType->upperBound))
+        bindTo = freeType->lowerBound;
+    else if (expectedType && maybeSingleton(*expectedType))
+        bindTo = freeType->lowerBound;
+
+    asMutable(c.freeType)->ty.emplace<BoundType>(bindTo);
 
     return true;
 }
@@ -1163,7 +1220,7 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
 
     LUAU_ASSERT(get<BlockedType>(resultType));
 
-    if (isBlocked(subjectType) || get<PendingExpansionType>(subjectType))
+    if (isBlocked(subjectType) || get<PendingExpansionType>(subjectType) || get<TypeFamilyInstanceType>(subjectType))
         return block(subjectType, constraint);
 
     auto [blocked, result] = lookupTableProp(subjectType, c.prop, c.suppressSimplification);
@@ -1599,7 +1656,7 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
 
     auto unpack = [&](TypeId ty) {
         TypePackId variadic = arena->addTypePack(VariadicTypePack{ty});
-        pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, variadic});
+        pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, variadic, /* resultIsLValue */ true});
     };
 
     if (get<AnyType>(iteratorTy))
@@ -1639,6 +1696,23 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
         {
             TypePackId expectedVariablePack = arena->addTypePack({iteratorTable->indexer->indexType, iteratorTable->indexer->indexResultType});
             unify(constraint->scope, constraint->location, c.variables, expectedVariablePack);
+
+            auto [variableTys, variablesTail] = flatten(c.variables);
+
+            // the local types for the indexer _should_ be all set after unification
+            for (TypeId ty : variableTys)
+            {
+                if (auto lt = getMutable<LocalType>(ty))
+                {
+                    LUAU_ASSERT(lt->blockCount > 0);
+                    --lt->blockCount;
+
+                    LUAU_ASSERT(0 <= lt->blockCount);
+
+                    if (0 == lt->blockCount)
+                        asMutable(ty)->ty.emplace<BoundType>(lt->domain);
+                }
+            }
         }
         else
             unpack(builtinTypes->errorType);
@@ -1775,7 +1849,7 @@ bool ConstraintSolver::tryDispatchIterableFunction(
         modifiedNextRetHead.push_back(*it);
 
     TypePackId modifiedNextRetPack = arena->addTypePack(std::move(modifiedNextRetHead), it.tail());
-    auto psc = pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, modifiedNextRetPack});
+    auto psc = pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, modifiedNextRetPack, /* resultIsLValue */ true});
     inheritBlocks(constraint, psc);
 
     return true;
@@ -1876,7 +1950,7 @@ std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTa
     {
         const TypeId upperBound = follow(ft->upperBound);
 
-        if (get<TableType>(upperBound))
+        if (get<TableType>(upperBound) || get<PrimitiveType>(upperBound))
             return lookupTableProp(upperBound, propName, suppressSimplification, seen);
 
         // TODO: The upper bound could be an intersection that contains suitable tables or classes.
@@ -2008,46 +2082,63 @@ void ConstraintSolver::bindBlockedType(TypeId blockedTy, TypeId resultTy, TypeId
         asMutable(blockedTy)->ty.emplace<BoundType>(resultTy);
 }
 
-void ConstraintSolver::block_(BlockedConstraintId target, NotNull<const Constraint> constraint)
+bool ConstraintSolver::block_(BlockedConstraintId target, NotNull<const Constraint> constraint)
 {
-    blocked[target].push_back(constraint);
+    // If a set is not present for the target, construct a new DenseHashSet for it,
+    // else grab the address of the existing set.
+    NotNull<DenseHashSet<const Constraint*>> blockVec{&blocked.try_emplace(target, nullptr).first->second};
+
+    if (blockVec->find(constraint))
+        return false;
+
+    blockVec->insert(constraint);
 
     auto& count = blockedConstraints[constraint];
     count += 1;
+
+    return true;
 }
 
 void ConstraintSolver::block(NotNull<const Constraint> target, NotNull<const Constraint> constraint)
 {
-    if (logger)
-        logger->pushBlock(constraint, target);
+    const bool newBlock = block_(target.get(), constraint);
+    if (newBlock)
+    {
+        if (logger)
+            logger->pushBlock(constraint, target);
 
-    if (FFlag::DebugLuauLogSolver)
-        printf("block Constraint %s on\t%s\n", toString(*target, opts).c_str(), toString(*constraint, opts).c_str());
-
-    block_(target.get(), constraint);
+        if (FFlag::DebugLuauLogSolver)
+            printf("block Constraint %s on\t%s\n", toString(*target, opts).c_str(), toString(*constraint, opts).c_str());
+    }
 }
 
 bool ConstraintSolver::block(TypeId target, NotNull<const Constraint> constraint)
 {
-    if (logger)
-        logger->pushBlock(constraint, target);
+    const bool newBlock = block_(follow(target), constraint);
+    if (newBlock)
+    {
+        if (logger)
+            logger->pushBlock(constraint, target);
 
-    if (FFlag::DebugLuauLogSolver)
-        printf("block TypeId %s on\t%s\n", toString(target, opts).c_str(), toString(*constraint, opts).c_str());
+        if (FFlag::DebugLuauLogSolver)
+            printf("block TypeId %s on\t%s\n", toString(target, opts).c_str(), toString(*constraint, opts).c_str());
+    }
 
-    block_(follow(target), constraint);
     return false;
 }
 
 bool ConstraintSolver::block(TypePackId target, NotNull<const Constraint> constraint)
 {
-    if (logger)
-        logger->pushBlock(constraint, target);
+    const bool newBlock = block_(target, constraint);
+    if (newBlock)
+    {
+        if (logger)
+            logger->pushBlock(constraint, target);
 
-    if (FFlag::DebugLuauLogSolver)
-        printf("block TypeId %s on\t%s\n", toString(target, opts).c_str(), toString(*constraint, opts).c_str());
+        if (FFlag::DebugLuauLogSolver)
+            printf("block TypeId %s on\t%s\n", toString(target, opts).c_str(), toString(*constraint, opts).c_str());
+    }
 
-    block_(target, constraint);
     return false;
 }
 
@@ -2058,9 +2149,9 @@ void ConstraintSolver::inheritBlocks(NotNull<const Constraint> source, NotNull<c
     auto blockedIt = blocked.find(source.get());
     if (blockedIt != blocked.end())
     {
-        for (const auto& blockedConstraint : blockedIt->second)
+        for (const Constraint* blockedConstraint : blockedIt->second)
         {
-            block(addition, blockedConstraint);
+            block(addition, NotNull{blockedConstraint});
         }
     }
 }
@@ -2112,9 +2203,9 @@ void ConstraintSolver::unblock_(BlockedConstraintId progressed)
         return;
 
     // unblocked should contain a value always, because of the above check
-    for (NotNull<const Constraint> unblockedConstraint : it->second)
+    for (const Constraint* unblockedConstraint : it->second)
     {
-        auto& count = blockedConstraints[unblockedConstraint];
+        auto& count = blockedConstraints[NotNull{unblockedConstraint}];
         if (FFlag::DebugLuauLogSolver)
             printf("Unblocking count=%d\t%s\n", int(count), toString(*unblockedConstraint, opts).c_str());
 

@@ -45,6 +45,12 @@ DenseHashSet<TypeId> Constraint::getFreeTypes() const
         ftc.traverse(psc->subPack);
         ftc.traverse(psc->superPack);
     }
+    else if (auto ptc = get<PrimitiveTypeConstraint>(*this))
+    {
+        // we need to take into account primitive type constraints to prevent type families from reducing on
+        // primitive whose types we have not yet selected to be singleton or not.
+        ftc.traverse(ptc->freeType);
+    }
 
     return types;
 }

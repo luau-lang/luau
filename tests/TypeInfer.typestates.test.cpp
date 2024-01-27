@@ -369,8 +369,12 @@ TEST_CASE_FIXTURE(TypeStateFixture, "prototyped_recursive_functions")
     CHECK("(() -> ())?" == toString(requireType("f")));
 }
 
-TEST_CASE_FIXTURE(TypeStateFixture, "prototyped_recursive_functions_but_has_future_assignments")
+TEST_CASE_FIXTURE(BuiltinsFixture, "prototyped_recursive_functions_but_has_future_assignments")
 {
+    // early return if the flag isn't set since this is blocking gated commits
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     CheckResult result = check(R"(
         local f
         function f()

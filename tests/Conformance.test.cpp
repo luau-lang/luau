@@ -26,9 +26,10 @@ extern bool verbose;
 extern bool codegen;
 extern int optimizationLevel;
 
-LUAU_FASTFLAG(LuauTaggedLuData);
-LUAU_FASTFLAG(LuauSciNumberSkipTrailDot);
-LUAU_FASTINT(CodegenHeuristicsInstructionLimit);
+LUAU_FASTFLAG(LuauTaggedLuData)
+LUAU_FASTFLAG(LuauSciNumberSkipTrailDot)
+LUAU_DYNAMIC_FASTFLAG(LuauInterruptablePatternMatch)
+LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -1605,6 +1606,47 @@ TEST_CASE("Interrupt")
         CHECK(index == 11);
 
         // abandon the thread
+        lua_pop(L, 1);
+    }
+
+    lua_callbacks(L)->interrupt = [](lua_State* L, int gc) {
+        if (gc >= 0)
+            return;
+
+        index++;
+
+        if (index == 1'000)
+        {
+            index = 0;
+            luaL_error(L, "timeout");
+        }
+    };
+
+    ScopedFastFlag luauInterruptablePatternMatch{DFFlag::LuauInterruptablePatternMatch, true};
+
+    for (int test = 1; test <= 5; ++test)
+    {
+        lua_State* T = lua_newthread(L);
+
+        std::string name = "strhang" + std::to_string(test);
+        lua_getglobal(T, name.c_str());
+
+        index = 0;
+        int status = lua_resume(T, nullptr, 0);
+        CHECK(status == LUA_ERRRUN);
+
+        lua_pop(L, 1);
+    }
+
+    {
+        lua_State* T = lua_newthread(L);
+
+        lua_getglobal(T, "strhangpcall");
+
+        index = 0;
+        int status = lua_resume(T, nullptr, 0);
+        CHECK(status == LUA_OK);
+
         lua_pop(L, 1);
     }
 }

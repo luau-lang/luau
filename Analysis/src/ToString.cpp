@@ -1742,9 +1742,16 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         {
             return "call " + tos(c.fn) + "( " + tos(c.argsPack) + " )" + " with { result = " + tos(c.result) + " }";
         }
+        else if constexpr (std::is_same_v<T, FunctionCheckConstraint>)
+        {
+            return "function_check " + tos(c.fn) + " " + tos(c.argsPack);
+        }
         else if constexpr (std::is_same_v<T, PrimitiveTypeConstraint>)
         {
-            return tos(c.resultType) + " ~ prim " + tos(c.expectedType) + ", " + tos(c.singletonType) + ", " + tos(c.multitonType);
+            if (c.expectedType)
+                return "prim " + tos(c.freeType) + "[expected: " + tos(*c.expectedType) + "] as " + tos(c.primitiveType);
+            else
+                return "prim " + tos(c.freeType) + " as " + tos(c.primitiveType);
         }
         else if constexpr (std::is_same_v<T, HasPropConstraint>)
         {
