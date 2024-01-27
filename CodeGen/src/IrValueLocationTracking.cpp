@@ -94,6 +94,7 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::LOAD_POINTER:
     case IrCmd::LOAD_DOUBLE:
     case IrCmd::LOAD_INT:
+    case IrCmd::LOAD_FLOAT:
     case IrCmd::LOAD_TVALUE:
     case IrCmd::CMP_ANY:
     case IrCmd::JUMP_IF_TRUTHY:
@@ -130,6 +131,11 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
     case IrCmd::MAX_NUM:
     case IrCmd::JUMP_EQ_TAG:
     case IrCmd::JUMP_CMP_NUM:
+    case IrCmd::FLOOR_NUM:
+    case IrCmd::CEIL_NUM:
+    case IrCmd::ROUND_NUM:
+    case IrCmd::SQRT_NUM:
+    case IrCmd::ABS_NUM:
         break;
 
     default:

@@ -108,6 +108,17 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         build.mov(inst.regX64, luauRegValueInt(vmRegOp(inst.a)));
         break;
+    case IrCmd::LOAD_FLOAT:
+        inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
+
+        if (inst.a.kind == IrOpKind::VmReg)
+            build.vcvtss2sd(inst.regX64, inst.regX64, dword[rBase + vmRegOp(inst.a) * sizeof(TValue) + offsetof(TValue, value) + intOp(inst.b)]);
+        else if (inst.a.kind == IrOpKind::VmConst)
+            build.vcvtss2sd(
+                inst.regX64, inst.regX64, dword[rConstants + vmConstOp(inst.a) * sizeof(TValue) + offsetof(TValue, value) + intOp(inst.b)]);
+        else
+            LUAU_ASSERT(!"Unsupported instruction form");
+        break;
     case IrCmd::LOAD_TVALUE:
     {
         inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
@@ -586,6 +597,81 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         build.vandpd(inst.regX64, inst.regX64, build.i64(~(1LL << 63)));
         break;
+    case IrCmd::ADD_VEC:
+    {
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});
+
+        ScopedRegX64 tmp1{regs, SizeX64::xmmword};
+        ScopedRegX64 tmp2{regs, SizeX64::xmmword};
+
+        // Fourth component is the tag number which is interpreted as a denormal and has to be filtered out
+        build.vandps(tmp1.reg, regOp(inst.a), vectorAndMaskOp());
+        build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
+        build.vaddps(inst.regX64, tmp1.reg, tmp2.reg);
+        build.vorps(inst.regX64, inst.regX64, vectorOrMaskOp());
+        break;
+    }
+    case IrCmd::SUB_VEC:
+    {
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});
+
+        ScopedRegX64 tmp1{regs, SizeX64::xmmword};
+        ScopedRegX64 tmp2{regs, SizeX64::xmmword};
+
+        // Fourth component is the tag number which is interpreted as a denormal and has to be filtered out
+        build.vandps(tmp1.reg, regOp(inst.a), vectorAndMaskOp());
+        build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
+        build.vsubps(inst.regX64, tmp1.reg, tmp2.reg);
+        build.vorps(inst.regX64, inst.regX64, vectorOrMaskOp());
+        break;
+    }
+    case IrCmd::MUL_VEC:
+    {
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});
+
+        ScopedRegX64 tmp1{regs, SizeX64::xmmword};
+        ScopedRegX64 tmp2{regs, SizeX64::xmmword};
+
+        // Fourth component is the tag number which is interpreted as a denormal and has to be filtered out
+        build.vandps(tmp1.reg, regOp(inst.a), vectorAndMaskOp());
+        build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
+        build.vmulps(inst.regX64, tmp1.reg, tmp2.reg);
+        build.vorps(inst.regX64, inst.regX64, vectorOrMaskOp());
+        break;
+    }
+    case IrCmd::DIV_VEC:
+    {
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});
+
+        ScopedRegX64 tmp1{regs, SizeX64::xmmword};
+        ScopedRegX64 tmp2{regs, SizeX64::xmmword};
+
+        // Fourth component is the tag number which is interpreted as a denormal and has to be filtered out
+        build.vandps(tmp1.reg, regOp(inst.a), vectorAndMaskOp());
+        build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
+        build.vdivps(inst.regX64, tmp1.reg, tmp2.reg);
+        build.vpinsrd(inst.regX64, inst.regX64, build.i32(LUA_TVECTOR), 3);
+        break;
+    }
+    case IrCmd::UNM_VEC:
+    {
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a});
+
+        RegisterX64 src = regOp(inst.a);
+
+        if (inst.regX64 == src)
+        {
+            build.vxorpd(inst.regX64, inst.regX64, build.f32x4(-0.0, -0.0, -0.0, -0.0));
+        }
+        else
+        {
+            build.vmovsd(inst.regX64, src, src);
+            build.vxorpd(inst.regX64, inst.regX64, build.f32x4(-0.0, -0.0, -0.0, -0.0));
+        }
+
+        build.vpinsrd(inst.regX64, inst.regX64, build.i32(LUA_TVECTOR), 3);
+        break;
+    }
     case IrCmd::NOT_ANY:
     {
         // TODO: if we have a single user which is a STORE_INT, we are missing the opportunity to write directly to target
@@ -877,6 +963,25 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         inst.regX64 = regs.allocReg(SizeX64::dword, index);
 
         build.vcvttsd2si(qwordReg(inst.regX64), memRegDoubleOp(inst.a));
+        break;
+    case IrCmd::NUM_TO_VECTOR:
+        inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
+
+        if (inst.a.kind == IrOpKind::Constant)
+        {
+            float value = float(doubleOp(inst.a));
+            uint32_t asU32;
+            static_assert(sizeof(asU32) == sizeof(value), "Expecting float to be 32-bit");
+            memcpy(&asU32, &value, sizeof(value));
+
+            build.vmovaps(inst.regX64, build.u32x4(asU32, asU32, asU32, LUA_TVECTOR));
+        }
+        else
+        {
+            build.vcvtsd2ss(inst.regX64, inst.regX64, memRegDoubleOp(inst.a));
+            build.vpshufps(inst.regX64, inst.regX64, inst.regX64, 0b00'00'00'00);
+            build.vpinsrd(inst.regX64, inst.regX64, build.i32(LUA_TVECTOR), 3);
+        }
         break;
     case IrCmd::ADJUST_STACK_TO_REG:
     {
@@ -2144,6 +2249,22 @@ IrBlock& IrLoweringX64::blockOp(IrOp op) const
 Label& IrLoweringX64::labelOp(IrOp op) const
 {
     return blockOp(op).label;
+}
+
+OperandX64 IrLoweringX64::vectorAndMaskOp()
+{
+    if (vectorAndMask.base == noreg)
+        vectorAndMask = build.u32x4(~0u, ~0u, ~0u, 0);
+
+    return vectorAndMask;
+}
+
+OperandX64 IrLoweringX64::vectorOrMaskOp()
+{
+    if (vectorOrMask.base == noreg)
+        vectorOrMask = build.u32x4(0, 0, 0, LUA_TVECTOR);
+
+    return vectorOrMask;
 }
 
 } // namespace X64

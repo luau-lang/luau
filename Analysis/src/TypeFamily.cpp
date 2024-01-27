@@ -1052,6 +1052,73 @@ TypeFamilyReductionResult<TypeId> refineFamilyFn(const std::vector<TypeId>& type
     return {resultTy, false, {}, {}};
 }
 
+TypeFamilyReductionResult<TypeId> unionFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+{
+    if (typeParams.size() != 2 || !packParams.empty())
+    {
+        ctx->ice->ice("union type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId lhsTy = follow(typeParams.at(0));
+    TypeId rhsTy = follow(typeParams.at(1));
+
+    // check to see if both operand types are resolved enough, and wait to reduce if not
+    if (isPending(lhsTy, ctx->solver))
+        return {std::nullopt, false, {lhsTy}, {}};
+    else if (get<NeverType>(lhsTy)) // if the lhs is never, we don't need this family anymore
+        return {rhsTy, false, {}, {}};
+    else if (isPending(rhsTy, ctx->solver))
+        return {std::nullopt, false, {rhsTy}, {}};
+    else if (get<NeverType>(rhsTy)) // if the rhs is never, we don't need this family anymore
+        return {lhsTy, false, {}, {}};
+
+
+    SimplifyResult result = simplifyUnion(ctx->builtins, ctx->arena, lhsTy, rhsTy);
+    if (!result.blockedTypes.empty())
+        return {std::nullopt, false, {result.blockedTypes.begin(), result.blockedTypes.end()}, {}};
+
+    return {result.result, false, {}, {}};
+}
+
+
+TypeFamilyReductionResult<TypeId> intersectFamilyFn(const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+{
+    if (typeParams.size() != 2 || !packParams.empty())
+    {
+        ctx->ice->ice("intersect type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId lhsTy = follow(typeParams.at(0));
+    TypeId rhsTy = follow(typeParams.at(1));
+
+    // check to see if both operand types are resolved enough, and wait to reduce if not
+    if (isPending(lhsTy, ctx->solver))
+        return {std::nullopt, false, {lhsTy}, {}};
+    else if (get<NeverType>(lhsTy)) // if the lhs is never, we don't need this family anymore
+        return {ctx->builtins->neverType, false, {}, {}};
+    else if (isPending(rhsTy, ctx->solver))
+        return {std::nullopt, false, {rhsTy}, {}};
+    else if (get<NeverType>(rhsTy)) // if the rhs is never, we don't need this family anymore
+        return {ctx->builtins->neverType, false, {}, {}};
+
+    SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, lhsTy, rhsTy);
+    if (!result.blockedTypes.empty())
+        return {std::nullopt, false, {result.blockedTypes.begin(), result.blockedTypes.end()}, {}};
+
+    // if the intersection simplifies to `never`, this gives us bad autocomplete.
+    // we'll just produce the intersection plainly instead, but this might be revisitable
+    // if we ever give `never` some kind of "explanation" trail.
+    if (get<NeverType>(result.result))
+    {
+        TypeId intersection = ctx->arena->addType(IntersectionType{{lhsTy, rhsTy}});
+        return {intersection, false, {}, {}};
+    }
+
+    return {result.result, false, {}, {}};
+}
+
 // computes the keys of `ty` into `result`
 // `isRaw` parameter indicates whether or not we should follow __index metamethods
 // returns `false` if `result` should be ignored because the answer is "all strings"
@@ -1262,6 +1329,8 @@ BuiltinTypeFamilies::BuiltinTypeFamilies()
     , leFamily{"le", leFamilyFn}
     , eqFamily{"eq", eqFamilyFn}
     , refineFamily{"refine", refineFamilyFn}
+    , unionFamily{"union", unionFamilyFn}
+    , intersectFamily{"intersect", intersectFamilyFn}
     , keyofFamily{"keyof", keyofFamilyFn}
     , rawkeyofFamily{"rawkeyof", rawkeyofFamilyFn}
 {

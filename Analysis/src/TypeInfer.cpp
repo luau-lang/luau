@@ -40,6 +40,7 @@ LUAU_FASTFLAGVARIABLE(LuauLoopControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAGVARIABLE(LuauRemoveBadRelationalOperatorWarning, false)
 LUAU_FASTFLAGVARIABLE(LuauForbidAliasNamedTypeof, false)
+LUAU_FASTFLAGVARIABLE(LuauOkWithIteratingOverTableProperties, false)
 
 namespace Luau
 {
@@ -1335,10 +1336,10 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
             for (size_t i = 2; i < varTypes.size(); ++i)
                 unify(nilType, varTypes[i], scope, forin.location);
         }
-        else if (isNonstrictMode())
+        else if (isNonstrictMode() || FFlag::LuauOkWithIteratingOverTableProperties)
         {
             for (TypeId var : varTypes)
-                unify(anyType, var, scope, forin.location);
+                unify(unknownType, var, scope, forin.location);
         }
         else
         {

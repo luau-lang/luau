@@ -699,6 +699,9 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                 results.push_back(SubtypingResult{ok}.withBothComponent(TypePath::PackField::Tail));
             }
         }
+        else if (get<ErrorTypePack>(*subTail) || get<ErrorTypePack>(*superTail))
+            // error type is fine on either side
+            results.push_back(SubtypingResult{true}.withBothComponent(TypePath::PackField::Tail));
         else
             iceReporter->ice(
                 format("Subtyping::isSubtype got unexpected type packs %s and %s", toString(*subTail).c_str(), toString(*superTail).c_str()));

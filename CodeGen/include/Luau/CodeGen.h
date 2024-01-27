@@ -55,6 +55,34 @@ CodeGenCompilationResult compile(lua_State* L, int idx, unsigned int flags = 0, 
 
 using AnnotatorFn = void (*)(void* context, std::string& result, int fid, int instpos);
 
+// Output "#" before IR blocks and instructions
+enum class IncludeIrPrefix
+{
+    No,
+    Yes
+};
+
+// Output user count and last use information of blocks and instructions
+enum class IncludeUseInfo
+{
+    No,
+    Yes
+};
+
+// Output CFG informations like block predecessors, successors and etc
+enum class IncludeCfgInfo
+{
+    No,
+    Yes
+};
+
+// Output VM register live in/out information for blocks
+enum class IncludeRegFlowInfo
+{
+    No,
+    Yes
+};
+
 struct AssemblyOptions
 {
     enum Target
@@ -76,10 +104,10 @@ struct AssemblyOptions
     bool includeIr = false;
     bool includeOutlinedCode = false;
 
-    bool includeIrPrefix = true; // "#" before IR blocks and instructions
-    bool includeUseInfo = true;
-    bool includeCfgInfo = true;
-    bool includeRegFlowInfo = true;
+    IncludeIrPrefix includeIrPrefix = IncludeIrPrefix::Yes;
+    IncludeUseInfo includeUseInfo = IncludeUseInfo::Yes;
+    IncludeCfgInfo includeCfgInfo = IncludeCfgInfo::Yes;
+    IncludeRegFlowInfo includeRegFlowInfo = IncludeRegFlowInfo::Yes;
 
     // Optional annotator function can be provided to describe each instruction, it takes function id and sequential instruction id
     AnnotatorFn annotator = nullptr;

@@ -75,7 +75,7 @@ struct ConstraintSolver
     // anything.
     std::unordered_map<NotNull<const Constraint>, size_t> blockedConstraints;
     // A mapping of type/pack pointers to the constraints they block.
-    std::unordered_map<BlockedConstraintId, std::vector<NotNull<const Constraint>>, HashBlockedConstraintId> blocked;
+    std::unordered_map<BlockedConstraintId, DenseHashSet<const Constraint*>, HashBlockedConstraintId> blocked;
     // Memoized instantiations of type aliases.
     DenseHashMap<InstantiationSignature, TypeId, HashInstantiationSignature> instantiatedAliases{{}};
     // Breadcrumbs for where a free type's upper bound was expanded. We use
@@ -126,6 +126,7 @@ struct ConstraintSolver
     bool tryDispatch(const NameConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const TypeAliasExpansionConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const SetPropConstraint& c, NotNull<const Constraint> constraint, bool force);
@@ -285,7 +286,7 @@ private:
      * @param target the type or type pack pointer that the constraint is blocked on.
      * @param constraint the constraint to block.
      **/
-    void block_(BlockedConstraintId target, NotNull<const Constraint> constraint);
+    bool block_(BlockedConstraintId target, NotNull<const Constraint> constraint);
 
     /**
      * Informs the solver that progress has been made on a type or type pack. The

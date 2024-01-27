@@ -3033,7 +3033,7 @@ int luau_precall(lua_State* L, StkId func, int nresults)
         ci->savedpc = p->code;
 
 #if VM_HAS_NATIVE
-        if (p->execdata)
+        if (p->exectarget != 0 && p->execdata)
             ci->flags = LUA_CALLINFO_NATIVE;
 #endif
 

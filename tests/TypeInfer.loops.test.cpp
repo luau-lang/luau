@@ -15,6 +15,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauOkWithIteratingOverTableProperties)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -575,6 +576,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_typecheck_crash_on_empty_optional")
 {
+    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
+
     CheckResult result = check(R"(
         local t = {}
         for _ in t do
@@ -583,7 +586,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_typecheck_crash_on_empty_optional")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_fail_missing_instantitation_follow")
@@ -624,7 +627,22 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*builtinTypes->numberType, *requireType("key"));
+
+    // The old solver just infers the wrong type here.
+    // The right type for `key` is `number?`
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        TypeId keyTy = requireType("key");
+
+        const UnionType* ut = get<UnionType>(keyTy);
+        REQUIRE(ut);
+
+        REQUIRE(ut->options.size() == 2);
+        CHECK_EQ(builtinTypes->nilType, ut->options[0]);
+        CHECK_EQ(*builtinTypes->numberType, *ut->options[1]);
+    }
+    else
+        CHECK_EQ(*builtinTypes->numberType, *requireType("key"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
@@ -643,17 +661,15 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_strict")
 {
+    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
+
     CheckResult result = check(R"(
         local t = {}
         for k, v in t do
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    GenericError* ge = get<GenericError>(result.errors[0]);
-    REQUIRE(ge);
-    CHECK_EQ("Cannot iterate over a table without indexer", ge->message);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_nonstrict")
@@ -786,6 +802,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_68448_iterators_need_not_accept_nil")
 
 TEST_CASE_FIXTURE(Fixture, "iterate_over_free_table")
 {
+    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
+
     CheckResult result = check(R"(
         function print(x) end
 
@@ -798,12 +816,7 @@ TEST_CASE_FIXTURE(Fixture, "iterate_over_free_table")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    GenericError* ge = get<GenericError>(result.errors[0]);
-    REQUIRE(ge);
-
-    CHECK("Cannot iterate over a table without indexer" == ge->message);
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_explore_raycast_minimization")
@@ -932,6 +945,61 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_iteration_on_never_gives_never")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK(toString(requireType("ans")) == "never");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties")
+{
+    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
+
+    CheckResult result = check(R"(
+        local function f()
+            local t = { p = 5, q = "hello" }
+            for k, v in t do
+                return k, v
+            end
+
+            error("")
+        end
+
+        local k, v = f()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("unknown", toString(requireType("k")));
+    CHECK_EQ("unknown", toString(requireType("v")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties_nonstrict")
+{
+    ScopedFastFlag sff{FFlag::LuauOkWithIteratingOverTableProperties, true};
+
+    CheckResult result = check(R"(
+        --!nonstrict
+        local function f()
+            local t = { p = 5, q = "hello" }
+            for k, v in t do
+                return k, v
+            end
+
+            error("")
+        end
+
+        local k, v = f()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "lti_fuzzer_uninitialized_loop_crash")
+{
+    CheckResult result = check(R"(
+        for l0=_,_ do
+            return _()
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
 }
 
 TEST_SUITE_END();

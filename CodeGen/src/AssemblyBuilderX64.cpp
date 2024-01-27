@@ -6,6 +6,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+LUAU_FASTFLAGVARIABLE(LuauCache32BitAsmConsts, false)
+
 namespace Luau
 {
 namespace CodeGen
@@ -79,6 +81,7 @@ static ABIX64 getCurrentX64ABI()
 AssemblyBuilderX64::AssemblyBuilderX64(bool logText, ABIX64 abi)
     : logText(logText)
     , abi(abi)
+    , constCache32(~0u)
     , constCache64(~0ull)
 {
     data.resize(4096);
@@ -738,14 +741,34 @@ void AssemblyBuilderX64::vsubsd(OperandX64 dst, OperandX64 src1, OperandX64 src2
     placeAvx("vsubsd", dst, src1, src2, 0x5c, false, AVX_0F, AVX_F2);
 }
 
+void AssemblyBuilderX64::vsubps(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vsubps", dst, src1, src2, 0x5c, false, AVX_0F, AVX_NP);
+}
+
 void AssemblyBuilderX64::vmulsd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
     placeAvx("vmulsd", dst, src1, src2, 0x59, false, AVX_0F, AVX_F2);
 }
 
+void AssemblyBuilderX64::vmulps(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vmulps", dst, src1, src2, 0x59, false, AVX_0F, AVX_NP);
+}
+
 void AssemblyBuilderX64::vdivsd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
     placeAvx("vdivsd", dst, src1, src2, 0x5e, false, AVX_0F, AVX_F2);
+}
+
+void AssemblyBuilderX64::vdivps(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vdivps", dst, src1, src2, 0x5e, false, AVX_0F, AVX_NP);
+}
+
+void AssemblyBuilderX64::vandps(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vandps", dst, src1, src2, 0x54, false, AVX_0F, AVX_NP);
 }
 
 void AssemblyBuilderX64::vandpd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
@@ -761,6 +784,11 @@ void AssemblyBuilderX64::vandnpd(OperandX64 dst, OperandX64 src1, OperandX64 src
 void AssemblyBuilderX64::vxorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
     placeAvx("vxorpd", dst, src1, src2, 0x57, false, AVX_0F, AVX_66);
+}
+
+void AssemblyBuilderX64::vorps(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vorps", dst, src1, src2, 0x56, false, AVX_0F, AVX_NP);
 }
 
 void AssemblyBuilderX64::vorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
@@ -909,6 +937,16 @@ void AssemblyBuilderX64::vblendvpd(RegisterX64 dst, RegisterX64 src1, OperandX64
     placeAvx("vblendvpd", dst, src1, mask, src3.index << 4, 0x4b, false, AVX_0F3A, AVX_66);
 }
 
+void AssemblyBuilderX64::vpshufps(RegisterX64 dst, RegisterX64 src1, OperandX64 src2, uint8_t shuffle)
+{
+    placeAvx("vpshufps", dst, src1, src2, shuffle, 0xc6, false, AVX_0F, AVX_NP);
+}
+
+void AssemblyBuilderX64::vpinsrd(RegisterX64 dst, RegisterX64 src1, OperandX64 src2, uint8_t offset)
+{
+    placeAvx("vpinsrd", dst, src1, src2, offset, 0x22, false, AVX_0F3A, AVX_66);
+}
+
 bool AssemblyBuilderX64::finalize()
 {
     code.resize(codePos - code.data());
@@ -961,6 +999,26 @@ void AssemblyBuilderX64::setLabel(Label& label)
         log(label);
 }
 
+OperandX64 AssemblyBuilderX64::i32(int32_t value)
+{
+    uint32_t as32BitKey = value;
+
+    if (as32BitKey != ~0u)
+    {
+        if (int32_t* prev = constCache32.find(as32BitKey))
+            return OperandX64(SizeX64::dword, noreg, 1, rip, *prev);
+    }
+
+    size_t pos = allocateData(4, 4);
+    writeu32(&data[pos], value);
+    int32_t offset = int32_t(pos - data.size());
+
+    if (as32BitKey != ~0u)
+        constCache32[as32BitKey] = offset;
+
+    return OperandX64(SizeX64::dword, noreg, 1, rip, offset);
+}
+
 OperandX64 AssemblyBuilderX64::i64(int64_t value)
 {
     uint64_t as64BitKey = value;
@@ -983,9 +1041,33 @@ OperandX64 AssemblyBuilderX64::i64(int64_t value)
 
 OperandX64 AssemblyBuilderX64::f32(float value)
 {
-    size_t pos = allocateData(4, 4);
-    writef32(&data[pos], value);
-    return OperandX64(SizeX64::dword, noreg, 1, rip, int32_t(pos - data.size()));
+    if (FFlag::LuauCache32BitAsmConsts)
+    {
+        uint32_t as32BitKey;
+        static_assert(sizeof(as32BitKey) == sizeof(value), "Expecting float to be 32-bit");
+        memcpy(&as32BitKey, &value, sizeof(value));
+
+        if (as32BitKey != ~0u)
+        {
+            if (int32_t* prev = constCache32.find(as32BitKey))
+                return OperandX64(SizeX64::dword, noreg, 1, rip, *prev);
+        }
+
+        size_t pos = allocateData(4, 4);
+        writef32(&data[pos], value);
+        int32_t offset = int32_t(pos - data.size());
+
+        if (as32BitKey != ~0u)
+            constCache32[as32BitKey] = offset;
+
+        return OperandX64(SizeX64::dword, noreg, 1, rip, offset);
+    }
+    else
+    {
+        size_t pos = allocateData(4, 4);
+        writef32(&data[pos], value);
+        return OperandX64(SizeX64::dword, noreg, 1, rip, int32_t(pos - data.size()));
+    }
 }
 
 OperandX64 AssemblyBuilderX64::f64(double value)
@@ -1008,6 +1090,16 @@ OperandX64 AssemblyBuilderX64::f64(double value)
         constCache64[as64BitKey] = offset;
 
     return OperandX64(SizeX64::qword, noreg, 1, rip, offset);
+}
+
+OperandX64 AssemblyBuilderX64::u32x4(uint32_t x, uint32_t y, uint32_t z, uint32_t w)
+{
+    size_t pos = allocateData(16, 16);
+    writeu32(&data[pos], x);
+    writeu32(&data[pos + 4], y);
+    writeu32(&data[pos + 8], z);
+    writeu32(&data[pos + 12], w);
+    return OperandX64(SizeX64::xmmword, noreg, 1, rip, int32_t(pos - data.size()));
 }
 
 OperandX64 AssemblyBuilderX64::f32x4(float x, float y, float z, float w)
@@ -1442,7 +1534,6 @@ void AssemblyBuilderX64::placeImm8(int32_t imm)
 {
     int8_t imm8 = int8_t(imm);
 
-    LUAU_ASSERT(imm8 == imm);
     place(imm8);
 }
 
