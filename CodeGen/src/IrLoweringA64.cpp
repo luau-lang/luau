@@ -290,6 +290,16 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.ldr(inst.regA64, addr);
         break;
     }
+    case IrCmd::LOAD_FLOAT:
+    {
+        inst.regA64 = regs.allocReg(KindA64::d, index);
+        RegisterA64 temp = castReg(KindA64::s, inst.regA64); // safe to alias a fresh register
+        AddressA64 addr = tempAddr(inst.a, intOp(inst.b));
+
+        build.ldr(temp, addr);
+        build.fcvt(inst.regA64, temp);
+        break;
+    }
     case IrCmd::LOAD_TVALUE:
     {
         inst.regA64 = regs.allocReg(KindA64::q, index);
@@ -657,6 +667,84 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.fabs(inst.regA64, temp);
         break;
     }
+    case IrCmd::ADD_VEC:
+    {
+        inst.regA64 = regs.allocReuse(KindA64::q, index, {inst.a, inst.b});
+
+        RegisterA64 tempa = regs.allocTemp(KindA64::s);
+        RegisterA64 tempb = regs.allocTemp(KindA64::s);
+
+        for (uint8_t i = 0; i < 3; i++)
+        {
+            build.dup_4s(tempa, regOp(inst.a), i);
+            build.dup_4s(tempb, regOp(inst.b), i);
+            build.fadd(tempa, tempa, tempb);
+            build.ins_4s(inst.regA64, i, castReg(KindA64::q, tempa), 0);
+        }
+        break;
+    }
+    case IrCmd::SUB_VEC:
+    {
+        inst.regA64 = regs.allocReuse(KindA64::q, index, {inst.a, inst.b});
+
+        RegisterA64 tempa = regs.allocTemp(KindA64::s);
+        RegisterA64 tempb = regs.allocTemp(KindA64::s);
+
+        for (uint8_t i = 0; i < 3; i++)
+        {
+            build.dup_4s(tempa, regOp(inst.a), i);
+            build.dup_4s(tempb, regOp(inst.b), i);
+            build.fsub(tempa, tempa, tempb);
+            build.ins_4s(inst.regA64, i, castReg(KindA64::q, tempa), 0);
+        }
+        break;
+    }
+    case IrCmd::MUL_VEC:
+    {
+        inst.regA64 = regs.allocReuse(KindA64::q, index, {inst.a, inst.b});
+
+        RegisterA64 tempa = regs.allocTemp(KindA64::s);
+        RegisterA64 tempb = regs.allocTemp(KindA64::s);
+
+        for (uint8_t i = 0; i < 3; i++)
+        {
+            build.dup_4s(tempa, regOp(inst.a), i);
+            build.dup_4s(tempb, regOp(inst.b), i);
+            build.fmul(tempa, tempa, tempb);
+            build.ins_4s(inst.regA64, i, castReg(KindA64::q, tempa), 0);
+        }
+        break;
+    }
+    case IrCmd::DIV_VEC:
+    {
+        inst.regA64 = regs.allocReuse(KindA64::q, index, {inst.a, inst.b});
+
+        RegisterA64 tempa = regs.allocTemp(KindA64::s);
+        RegisterA64 tempb = regs.allocTemp(KindA64::s);
+
+        for (uint8_t i = 0; i < 3; i++)
+        {
+            build.dup_4s(tempa, regOp(inst.a), i);
+            build.dup_4s(tempb, regOp(inst.b), i);
+            build.fdiv(tempa, tempa, tempb);
+            build.ins_4s(inst.regA64, i, castReg(KindA64::q, tempa), 0);
+        }
+        break;
+    }
+    case IrCmd::UNM_VEC:
+    {
+        inst.regA64 = regs.allocReuse(KindA64::q, index, {inst.a});
+
+        RegisterA64 tempa = regs.allocTemp(KindA64::s);
+
+        for (uint8_t i = 0; i < 3; i++)
+        {
+            build.dup_4s(tempa, regOp(inst.a), i);
+            build.fneg(tempa, tempa);
+            build.ins_4s(inst.regA64, i, castReg(KindA64::q, tempa), 0);
+        }
+        break;
+    }
     case IrCmd::NOT_ANY:
     {
         inst.regA64 = regs.allocReuse(KindA64::w, index, {inst.a, inst.b});
@@ -1008,6 +1096,21 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         RegisterA64 temp = tempDouble(inst.a);
         // note: we don't use fcvtzu for consistency with C++ code
         build.fcvtzs(castReg(KindA64::x, inst.regA64), temp);
+        break;
+    }
+    case IrCmd::NUM_TO_VECTOR:
+    {
+        inst.regA64 = regs.allocReg(KindA64::q, index);
+
+        RegisterA64 tempd = tempDouble(inst.a);
+        RegisterA64 temps = castReg(KindA64::s, tempd);
+        RegisterA64 tempw = regs.allocTemp(KindA64::w);
+
+        build.fcvt(temps, tempd);
+        build.dup_4s(inst.regA64, castReg(KindA64::q, temps), 0);
+
+        build.mov(tempw, LUA_TVECTOR);
+        build.ins_4s(inst.regA64, tempw, 3);
         break;
     }
     case IrCmd::ADJUST_STACK_TO_REG:

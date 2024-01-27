@@ -18,6 +18,7 @@ LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
 LUAU_FASTFLAGVARIABLE(LuauReuseBufferChecks, false)
+LUAU_FASTFLAG(LuauCodegenVector)
 
 namespace Luau
 {
@@ -582,6 +583,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             state.substituteOrRecordVmRegLoad(inst);
         break;
     }
+    case IrCmd::LOAD_FLOAT:
+        break;
     case IrCmd::LOAD_TVALUE:
         if (inst.a.kind == IrOpKind::VmReg)
             state.substituteOrRecordVmRegLoad(inst);
@@ -706,6 +709,18 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             }
 
             uint8_t tag = state.tryGetTag(inst.b);
+
+            // We know the tag of some instructions that result in TValue
+            if (FFlag::LuauCodegenVector && tag == 0xff)
+            {
+                if (IrInst* arg = function.asInstOp(inst.b))
+                {
+                    if (arg->cmd == IrCmd::ADD_VEC || arg->cmd == IrCmd::SUB_VEC || arg->cmd == IrCmd::MUL_VEC || arg->cmd == IrCmd::DIV_VEC ||
+                        arg->cmd == IrCmd::UNM_VEC)
+                        tag = LUA_TVECTOR;
+                }
+            }
+
             IrOp value = state.tryGetValue(inst.b);
 
             if (inst.a.kind == IrOpKind::VmReg)
@@ -1244,7 +1259,6 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::BITXOR_UINT:
     case IrCmd::BITOR_UINT:
     case IrCmd::BITNOT_UINT:
-        break;
     case IrCmd::BITLSHIFT_UINT:
     case IrCmd::BITRSHIFT_UINT:
     case IrCmd::BITARSHIFT_UINT:
@@ -1257,6 +1271,12 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::GET_TYPE:
     case IrCmd::GET_TYPEOF:
     case IrCmd::FINDUPVAL:
+    case IrCmd::ADD_VEC:
+    case IrCmd::SUB_VEC:
+    case IrCmd::MUL_VEC:
+    case IrCmd::DIV_VEC:
+    case IrCmd::UNM_VEC:
+    case IrCmd::NUM_TO_VECTOR:
         break;
 
     case IrCmd::DO_ARITH:

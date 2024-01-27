@@ -569,30 +569,66 @@ void AssemblyBuilderA64::fabs(RegisterA64 dst, RegisterA64 src)
 
 void AssemblyBuilderA64::fadd(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
 {
-    LUAU_ASSERT(dst.kind == KindA64::d && src1.kind == KindA64::d && src2.kind == KindA64::d);
+    if (dst.kind == KindA64::d)
+    {
+        LUAU_ASSERT(src1.kind == KindA64::d && src2.kind == KindA64::d);
 
-    placeR3("fadd", dst, src1, src2, 0b11110'01'1, 0b0010'10);
+        placeR3("fadd", dst, src1, src2, 0b11110'01'1, 0b0010'10);
+    }
+    else
+    {
+        LUAU_ASSERT(dst.kind == KindA64::s && src1.kind == KindA64::s && src2.kind == KindA64::s);
+
+        placeR3("fadd", dst, src1, src2, 0b11110'00'1, 0b0010'10);
+    }
 }
 
 void AssemblyBuilderA64::fdiv(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
 {
-    LUAU_ASSERT(dst.kind == KindA64::d && src1.kind == KindA64::d && src2.kind == KindA64::d);
+    if (dst.kind == KindA64::d)
+    {
+        LUAU_ASSERT(src1.kind == KindA64::d && src2.kind == KindA64::d);
 
-    placeR3("fdiv", dst, src1, src2, 0b11110'01'1, 0b0001'10);
+        placeR3("fdiv", dst, src1, src2, 0b11110'01'1, 0b0001'10);
+    }
+    else
+    {
+        LUAU_ASSERT(dst.kind == KindA64::s && src1.kind == KindA64::s && src2.kind == KindA64::s);
+
+        placeR3("fdiv", dst, src1, src2, 0b11110'00'1, 0b0001'10);
+    }
 }
 
 void AssemblyBuilderA64::fmul(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
 {
-    LUAU_ASSERT(dst.kind == KindA64::d && src1.kind == KindA64::d && src2.kind == KindA64::d);
+    if (dst.kind == KindA64::d)
+    {
+        LUAU_ASSERT(src1.kind == KindA64::d && src2.kind == KindA64::d);
 
-    placeR3("fmul", dst, src1, src2, 0b11110'01'1, 0b0000'10);
+        placeR3("fmul", dst, src1, src2, 0b11110'01'1, 0b0000'10);
+    }
+    else
+    {
+        LUAU_ASSERT(dst.kind == KindA64::s && src1.kind == KindA64::s && src2.kind == KindA64::s);
+
+        placeR3("fmul", dst, src1, src2, 0b11110'00'1, 0b0000'10);
+    }
 }
 
 void AssemblyBuilderA64::fneg(RegisterA64 dst, RegisterA64 src)
 {
-    LUAU_ASSERT(dst.kind == KindA64::d && src.kind == KindA64::d);
+    if (dst.kind == KindA64::d)
+    {
+        LUAU_ASSERT(src.kind == KindA64::d);
 
-    placeR1("fneg", dst, src, 0b000'11110'01'1'0000'10'10000);
+        placeR1("fneg", dst, src, 0b000'11110'01'1'0000'10'10000);
+    }
+    else
+    {
+        LUAU_ASSERT(dst.kind == KindA64::s && src.kind == KindA64::s);
+
+        placeR1("fneg", dst, src, 0b000'11110'00'1'0000'10'10000);
+    }
 }
 
 void AssemblyBuilderA64::fsqrt(RegisterA64 dst, RegisterA64 src)
@@ -604,9 +640,77 @@ void AssemblyBuilderA64::fsqrt(RegisterA64 dst, RegisterA64 src)
 
 void AssemblyBuilderA64::fsub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2)
 {
-    LUAU_ASSERT(dst.kind == KindA64::d && src1.kind == KindA64::d && src2.kind == KindA64::d);
+    if (dst.kind == KindA64::d)
+    {
+        LUAU_ASSERT(src1.kind == KindA64::d && src2.kind == KindA64::d);
 
-    placeR3("fsub", dst, src1, src2, 0b11110'01'1, 0b0011'10);
+        placeR3("fsub", dst, src1, src2, 0b11110'01'1, 0b0011'10);
+    }
+    else
+    {
+        LUAU_ASSERT(dst.kind == KindA64::s && src1.kind == KindA64::s && src2.kind == KindA64::s);
+
+        placeR3("fsub", dst, src1, src2, 0b11110'00'1, 0b0011'10);
+    }
+}
+
+void AssemblyBuilderA64::ins_4s(RegisterA64 dst, RegisterA64 src, uint8_t index)
+{
+    LUAU_ASSERT(dst.kind == KindA64::q && src.kind == KindA64::w);
+    LUAU_ASSERT(index < 4);
+
+    if (logText)
+        logAppend(" %-12sv%d.s[%d],w%d\n", "ins", dst.index, index, src.index);
+
+    uint32_t op = 0b0'1'0'01110000'00100'0'0011'1;
+
+    place(dst.index | (src.index << 5) | (op << 10) | (index << 19));
+    commit();
+}
+
+void AssemblyBuilderA64::ins_4s(RegisterA64 dst, uint8_t dstIndex, RegisterA64 src, uint8_t srcIndex)
+{
+    LUAU_ASSERT(dst.kind == KindA64::q && src.kind == KindA64::q);
+    LUAU_ASSERT(dstIndex < 4);
+    LUAU_ASSERT(srcIndex < 4);
+
+    if (logText)
+        logAppend(" %-12sv%d.s[%d],v%d.s[%d]\n", "ins", dst.index, dstIndex, src.index, srcIndex);
+
+    uint32_t op = 0b0'1'1'01110000'00100'0'0000'1;
+
+    place(dst.index | (src.index << 5) | (op << 10) | (dstIndex << 19) | (srcIndex << 13));
+    commit();
+}
+
+void AssemblyBuilderA64::dup_4s(RegisterA64 dst, RegisterA64 src, uint8_t index)
+{
+    if (dst.kind == KindA64::s)
+    {
+        LUAU_ASSERT(src.kind == KindA64::q);
+        LUAU_ASSERT(index < 4);
+
+        if (logText)
+            logAppend(" %-12ss%d,v%d.s[%d]\n", "dup", dst.index, src.index, index);
+
+        uint32_t op = 0b01'0'11110000'00100'0'0000'1;
+
+        place(dst.index | (src.index << 5) | (op << 10) | (index << 19));
+    }
+    else
+    {
+        LUAU_ASSERT(src.kind == KindA64::q);
+        LUAU_ASSERT(index < 4);
+
+        if (logText)
+            logAppend(" %-12sv%d.4s,v%d.s[%d]\n", "dup", dst.index, src.index, index);
+
+        uint32_t op = 0b010'01110000'00100'0'0000'1;
+
+        place(dst.index | (src.index << 5) | (op << 10) | (index << 19));
+    }
+
+    commit();
 }
 
 void AssemblyBuilderA64::frinta(RegisterA64 dst, RegisterA64 src)
@@ -839,12 +943,24 @@ void AssemblyBuilderA64::placeR3(const char* name, RegisterA64 dst, RegisterA64 
     if (logText)
         log(name, dst, src1, src2);
 
-    LUAU_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x || dst.kind == KindA64::d);
+    LUAU_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x || dst.kind == KindA64::d || dst.kind == KindA64::s);
     LUAU_ASSERT(dst.kind == src1.kind && dst.kind == src2.kind);
 
     uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
 
     place(dst.index | (src1.index << 5) | (op2 << 10) | (src2.index << 16) | (op << 21) | sf);
+    commit();
+}
+
+void AssemblyBuilderA64::placeR3(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t sizes, uint8_t op, uint8_t op2)
+{
+    if (logText)
+        log(name, dst, src1, src2);
+
+    LUAU_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x || dst.kind == KindA64::d || dst.kind == KindA64::q);
+    LUAU_ASSERT(dst.kind == src1.kind && dst.kind == src2.kind);
+
+    place(dst.index | (src1.index << 5) | (op2 << 10) | (src2.index << 16) | (op << 21) | (sizes << 29));
     commit();
 }
 

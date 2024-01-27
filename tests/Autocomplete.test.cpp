@@ -107,6 +107,15 @@ struct ACFixtureImpl : BaseType
             globals, globals.globalScope, source, "@test", /* captureComments */ false, /* typeCheckForAutocomplete */ true);
         freeze(globals.globalTypes);
 
+        if (FFlag::DebugLuauDeferredConstraintResolution)
+        {
+            GlobalTypes& globals = this->frontend.globals;
+            unfreeze(globals.globalTypes);
+            LoadDefinitionFileResult result = this->frontend.loadDefinitionFile(
+                globals, globals.globalScope, source, "@test", /* captureComments */ false, /* typeCheckForAutocomplete */ true);
+            freeze(globals.globalTypes);
+        }
+
         REQUIRE_MESSAGE(result.success, "loadDefinition: unable to load definition file");
         return result;
     }

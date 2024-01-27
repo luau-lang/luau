@@ -19,6 +19,7 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
     case IrCmd::LOAD_POINTER:
     case IrCmd::LOAD_DOUBLE:
     case IrCmd::LOAD_INT:
+    case IrCmd::LOAD_FLOAT:
     case IrCmd::LOAD_TVALUE:
         visitor.maybeUse(inst.a); // Argument can also be a VmConst
         break;

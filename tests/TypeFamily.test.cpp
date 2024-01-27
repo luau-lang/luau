@@ -579,10 +579,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_rfc_example")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
-    REQUIRE(tpm);
-    CHECK_EQ("\"cat\" | \"dog\" | \"monkey\" | \"fox\"", toString(tpm->wantedTp));
-    CHECK_EQ("\"cactus\"", toString(tpm->givenTp));
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("\"cat\" | \"dog\" | \"fox\" | \"monkey\"", toString(tm->wantedType));
+    CHECK_EQ("\"cactus\"", toString(tm->givenType));
 }
 
 TEST_SUITE_END();

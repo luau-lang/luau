@@ -261,6 +261,155 @@ struct TypeChecker2
     {
     }
 
+    static bool allowsNoReturnValues(const TypePackId tp)
+    {
+        for (TypeId ty : tp)
+        {
+            if (!get<ErrorType>(follow(ty)))
+                return false;
+        }
+
+        return true;
+    }
+
+    static Location getEndLocation(const AstExprFunction* function)
+    {
+        Location loc = function->location;
+        if (loc.begin.line != loc.end.line)
+        {
+            Position begin = loc.end;
+            begin.column = std::max(0u, begin.column - 3);
+            loc = Location(begin, 3);
+        }
+
+        return loc;
+    }
+
+    bool isErrorCall(const AstExprCall* call)
+    {
+        const AstExprGlobal* global = call->func->as<AstExprGlobal>();
+        if (!global)
+            return false;
+
+        if (global->name == "error")
+            return true;
+        else if (global->name == "assert")
+        {
+            // assert() will error because it is missing the first argument
+            if (call->args.size == 0)
+                return true;
+
+            if (AstExprConstantBool* expr = call->args.data[0]->as<AstExprConstantBool>())
+                if (!expr->value)
+                    return true;
+        }
+
+        return false;
+    }
+
+    bool hasBreak(AstStat* node)
+    {
+        if (AstStatBlock* stat = node->as<AstStatBlock>())
+        {
+            for (size_t i = 0; i < stat->body.size; ++i)
+            {
+                if (hasBreak(stat->body.data[i]))
+                    return true;
+            }
+
+            return false;
+        }
+
+        if (node->is<AstStatBreak>())
+            return true;
+
+        if (AstStatIf* stat = node->as<AstStatIf>())
+        {
+            if (hasBreak(stat->thenbody))
+                return true;
+
+            if (stat->elsebody && hasBreak(stat->elsebody))
+                return true;
+
+            return false;
+        }
+
+        return false;
+    }
+
+    // returns the last statement before the block implicitly exits, or nullptr if the block does not implicitly exit
+    // i.e. returns nullptr if the block returns properly or never returns
+    const AstStat* getFallthrough(const AstStat* node)
+    {
+        if (const AstStatBlock* stat = node->as<AstStatBlock>())
+        {
+            if (stat->body.size == 0)
+                return stat;
+
+            for (size_t i = 0; i < stat->body.size - 1; ++i)
+            {
+                if (getFallthrough(stat->body.data[i]) == nullptr)
+                    return nullptr;
+            }
+
+            return getFallthrough(stat->body.data[stat->body.size - 1]);
+        }
+
+        if (const AstStatIf* stat = node->as<AstStatIf>())
+        {
+            if (const AstStat* thenf = getFallthrough(stat->thenbody))
+                return thenf;
+
+            if (stat->elsebody)
+            {
+                if (const AstStat* elsef = getFallthrough(stat->elsebody))
+                    return elsef;
+
+                return nullptr;
+            }
+            else
+                return stat;
+        }
+
+        if (node->is<AstStatReturn>())
+            return nullptr;
+
+        if (const AstStatExpr* stat = node->as<AstStatExpr>())
+        {
+            if (AstExprCall* call = stat->expr->as<AstExprCall>(); call && isErrorCall(call))
+                    return nullptr;
+
+            return stat;
+        }
+
+        if (const AstStatWhile* stat = node->as<AstStatWhile>())
+        {
+            if (AstExprConstantBool* expr = stat->condition->as<AstExprConstantBool>())
+            {
+                if (expr->value && !hasBreak(stat->body))
+                    return nullptr;
+            }
+
+            return node;
+        }
+
+        if (const AstStatRepeat* stat = node->as<AstStatRepeat>())
+        {
+            if (AstExprConstantBool* expr = stat->condition->as<AstExprConstantBool>())
+            {
+                if (!expr->value && !hasBreak(stat->body))
+                    return nullptr;
+            }
+
+            if (getFallthrough(stat->body) == nullptr)
+                return nullptr;
+
+            return node;
+        }
+
+        return node;
+    }
+
     std::optional<StackPusher> pushStack(AstNode* node)
     {
         if (Scope** scope = module->astScopes.find(node))
@@ -1723,6 +1872,10 @@ struct TypeChecker2
 
                 ++argIt;
             }
+
+            bool reachesImplicitReturn = getFallthrough(fn->body) != nullptr;
+            if (reachesImplicitReturn && !allowsNoReturnValues(follow(inferredFtv->retTypes)))
+                reportError(FunctionExitsWithoutReturning{inferredFtv->retTypes}, getEndLocation(fn));
         }
 
         visit(fn->body);

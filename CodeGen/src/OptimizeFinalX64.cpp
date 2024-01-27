@@ -5,6 +5,8 @@
 
 #include <utility>
 
+LUAU_FASTFLAGVARIABLE(LuauCodegenMathMemArgs, false)
+
 namespace Luau
 {
 namespace CodeGen
@@ -105,6 +107,21 @@ static void optimizeMemoryOperandsX64(IrFunction& function, IrBlock& block)
 
                 if (num.useCount == 1 && num.cmd == IrCmd::LOAD_DOUBLE)
                     replace(function, inst.a, num.a);
+            }
+            break;
+        }
+        case IrCmd::FLOOR_NUM:
+        case IrCmd::CEIL_NUM:
+        case IrCmd::ROUND_NUM:
+        case IrCmd::SQRT_NUM:
+        case IrCmd::ABS_NUM:
+        {
+            if (FFlag::LuauCodegenMathMemArgs && inst.a.kind == IrOpKind::Inst)
+            {
+                IrInst& arg = function.instOp(inst.a);
+
+                if (arg.useCount == 1 && arg.cmd == IrCmd::LOAD_DOUBLE && (arg.a.kind == IrOpKind::VmReg || arg.a.kind == IrOpKind::VmConst))
+                    replace(function, inst.a, arg.a);
             }
             break;
         }

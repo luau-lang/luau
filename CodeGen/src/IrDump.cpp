@@ -89,6 +89,8 @@ const char* getCmdName(IrCmd cmd)
         return "LOAD_DOUBLE";
     case IrCmd::LOAD_INT:
         return "LOAD_INT";
+    case IrCmd::LOAD_FLOAT:
+        return "LOAD_FLOAT";
     case IrCmd::LOAD_TVALUE:
         return "LOAD_TVALUE";
     case IrCmd::LOAD_ENV:
@@ -149,6 +151,16 @@ const char* getCmdName(IrCmd cmd)
         return "SQRT_NUM";
     case IrCmd::ABS_NUM:
         return "ABS_NUM";
+    case IrCmd::ADD_VEC:
+        return "ADD_VEC";
+    case IrCmd::SUB_VEC:
+        return "SUB_VEC";
+    case IrCmd::MUL_VEC:
+        return "MUL_VEC";
+    case IrCmd::DIV_VEC:
+        return "DIV_VEC";
+    case IrCmd::UNM_VEC:
+        return "UNM_VEC";
     case IrCmd::NOT_ANY:
         return "NOT_ANY";
     case IrCmd::CMP_ANY:
@@ -193,6 +205,8 @@ const char* getCmdName(IrCmd cmd)
         return "NUM_TO_INT";
     case IrCmd::NUM_TO_UINT:
         return "NUM_TO_UINT";
+    case IrCmd::NUM_TO_VECTOR:
+        return "NUM_TO_VECTOR";
     case IrCmd::ADJUST_STACK_TO_REG:
         return "ADJUST_STACK_TO_REG";
     case IrCmd::ADJUST_STACK_TO_TOP:
@@ -581,13 +595,14 @@ static RegisterSet getJumpTargetExtraLiveIn(IrToStringContext& ctx, const IrBloc
     return extraRs;
 }
 
-void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, const IrInst& inst, uint32_t instIdx, bool includeUseInfo)
+void toStringDetailed(
+    IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, const IrInst& inst, uint32_t instIdx, IncludeUseInfo includeUseInfo)
 {
     size_t start = ctx.result.size();
 
     toString(ctx, inst, instIdx);
 
-    if (includeUseInfo)
+    if (includeUseInfo == IncludeUseInfo::Yes)
     {
         padToDetailColumn(ctx.result, start);
 
@@ -624,11 +639,11 @@ void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blo
     }
 }
 
-void toStringDetailed(
-    IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, bool includeUseInfo, bool includeCfgInfo, bool includeRegFlowInfo)
+void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, IncludeUseInfo includeUseInfo, IncludeCfgInfo includeCfgInfo,
+    IncludeRegFlowInfo includeRegFlowInfo)
 {
     // Report captured registers for entry block
-    if (includeRegFlowInfo && block.useCount == 0 && block.kind != IrBlockKind::Dead && ctx.cfg.captured.regs.any())
+    if (includeRegFlowInfo == IncludeRegFlowInfo::Yes && block.useCount == 0 && block.kind != IrBlockKind::Dead && ctx.cfg.captured.regs.any())
     {
         append(ctx.result, "; captured regs: ");
         appendRegisterSet(ctx, ctx.cfg.captured, ", ");
@@ -640,7 +655,7 @@ void toStringDetailed(
     toString(ctx, block, blockIdx);
     append(ctx.result, ":");
 
-    if (includeUseInfo)
+    if (includeUseInfo == IncludeUseInfo::Yes)
     {
         padToDetailColumn(ctx.result, start);
 
@@ -652,7 +667,7 @@ void toStringDetailed(
     }
 
     // Predecessor list
-    if (includeCfgInfo && blockIdx < ctx.cfg.predecessorsOffsets.size())
+    if (includeCfgInfo == IncludeCfgInfo::Yes && blockIdx < ctx.cfg.predecessorsOffsets.size())
     {
         BlockIteratorWrapper pred = predecessors(ctx.cfg, blockIdx);
 
@@ -666,7 +681,7 @@ void toStringDetailed(
     }
 
     // Successor list
-    if (includeCfgInfo && blockIdx < ctx.cfg.successorsOffsets.size())
+    if (includeCfgInfo == IncludeCfgInfo::Yes && blockIdx < ctx.cfg.successorsOffsets.size())
     {
         BlockIteratorWrapper succ = successors(ctx.cfg, blockIdx);
 
@@ -680,7 +695,7 @@ void toStringDetailed(
     }
 
     // Live-in VM regs
-    if (includeRegFlowInfo && blockIdx < ctx.cfg.in.size())
+    if (includeRegFlowInfo == IncludeRegFlowInfo::Yes && blockIdx < ctx.cfg.in.size())
     {
         const RegisterSet& in = ctx.cfg.in[blockIdx];
 
@@ -693,7 +708,7 @@ void toStringDetailed(
     }
 
     // Live-out VM regs
-    if (includeRegFlowInfo && blockIdx < ctx.cfg.out.size())
+    if (includeRegFlowInfo == IncludeRegFlowInfo::Yes && blockIdx < ctx.cfg.out.size())
     {
         const RegisterSet& out = ctx.cfg.out[blockIdx];
 
@@ -706,7 +721,7 @@ void toStringDetailed(
     }
 }
 
-std::string toString(const IrFunction& function, bool includeUseInfo)
+std::string toString(const IrFunction& function, IncludeUseInfo includeUseInfo)
 {
     std::string result;
     IrToStringContext ctx{result, function.blocks, function.constants, function.cfg};
@@ -718,7 +733,7 @@ std::string toString(const IrFunction& function, bool includeUseInfo)
         if (block.kind == IrBlockKind::Dead)
             continue;
 
-        toStringDetailed(ctx, block, uint32_t(i), includeUseInfo, /*includeCfgInfo*/ true, /*includeRegFlowInfo*/ true);
+        toStringDetailed(ctx, block, uint32_t(i), includeUseInfo, IncludeCfgInfo::Yes, IncludeRegFlowInfo::Yes);
 
         if (block.start == ~0u)
         {
@@ -747,7 +762,7 @@ std::string toString(const IrFunction& function, bool includeUseInfo)
 
 std::string dump(const IrFunction& function)
 {
-    std::string result = toString(function, /* includeUseInfo */ true);
+    std::string result = toString(function, IncludeUseInfo::Yes);
 
     printf("%s\n", result.c_str());
 

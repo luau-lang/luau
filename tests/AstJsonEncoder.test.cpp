@@ -11,14 +11,10 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauClipExtraHasEndProps);
-
 struct JsonEncoderFixture
 {
     Allocator allocator;
     AstNameTable names{allocator};
-
-    ScopedFastFlag sff{FFlag::LuauClipExtraHasEndProps, true};
 
     ParseResult parse(std::string_view src)
     {
@@ -95,8 +91,6 @@ TEST_CASE("basic_escaping")
 
 TEST_CASE("encode_AstStatBlock")
 {
-    ScopedFastFlag sff{FFlag::LuauClipExtraHasEndProps, true};
-
     AstLocal astlocal{AstName{"a_local"}, Location(), nullptr, 0, 0, nullptr};
     AstLocal* astlocalarray[] = {&astlocal};
 

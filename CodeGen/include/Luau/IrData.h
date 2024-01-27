@@ -52,6 +52,11 @@ enum class IrCmd : uint8_t
     // A: Rn
     LOAD_INT,
 
+    // Load a float field from vector as a double number
+    // A: Rn or Kn
+    // B: int (offset from the start of TValue)
+    LOAD_FLOAT,
+
     // Load a TValue from memory
     // A: Rn or Kn or pointer (TValue)
     // B: int (optional 'A' pointer offset)
@@ -173,6 +178,17 @@ enum class IrCmd : uint8_t
     // A: double
     ABS_NUM,
 
+    // Add/Sub/Mul/Div/Idiv two vectors
+    // A, B: TValue
+    ADD_VEC,
+    SUB_VEC,
+    MUL_VEC,
+    DIV_VEC,
+
+    // Negate a vector
+    // A: TValue
+    UNM_VEC,
+
     // Compute Luau 'not' operation on destructured TValue
     // A: tag
     // B: int (value)
@@ -285,6 +301,10 @@ enum class IrCmd : uint8_t
     // Converts a double number to an unsigned integer. For out-of-range values of 'A', the result is arch-specific.
     // A: double
     NUM_TO_UINT,
+
+    // Converts a double number to a vector with the value in X/Y/Z
+    // A: double
+    NUM_TO_VECTOR,
 
     // Adjust stack top (L->top) to point at 'B' TValues *after* the specified register
     // This is used to return multiple values

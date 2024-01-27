@@ -15,7 +15,6 @@
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(DebugLuauReadWriteProperties);
-LUAU_FASTFLAG(LuauClipExtraHasEndProps);
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteStringLiteralBounds, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
@@ -1068,51 +1067,30 @@ static AutocompleteEntryMap autocompleteStatement(
     for (const auto& kw : kStatementStartingKeywords)
         result.emplace(kw, AutocompleteEntry{AutocompleteEntryKind::Keyword});
 
-    if (FFlag::LuauClipExtraHasEndProps)
+    for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it)
     {
-        for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it)
+        if (AstStatForIn* statForIn = (*it)->as<AstStatForIn>(); statForIn && !statForIn->body->hasEnd)
+            result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        else if (AstStatFor* statFor = (*it)->as<AstStatFor>(); statFor && !statFor->body->hasEnd)
+            result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        else if (AstStatIf* statIf = (*it)->as<AstStatIf>())
         {
-            if (AstStatForIn* statForIn = (*it)->as<AstStatForIn>(); statForIn && !statForIn->body->hasEnd)
-                result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-            else if (AstStatFor* statFor = (*it)->as<AstStatFor>(); statFor && !statFor->body->hasEnd)
-                result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-            else if (AstStatIf* statIf = (*it)->as<AstStatIf>())
+            bool hasEnd = statIf->thenbody->hasEnd;
+            if (statIf->elsebody)
             {
-                bool hasEnd = statIf->thenbody->hasEnd;
-                if (statIf->elsebody)
-                {
-                    if (AstStatBlock* elseBlock = statIf->elsebody->as<AstStatBlock>())
-                        hasEnd = elseBlock->hasEnd;
-                }
-
-                if (!hasEnd)
-                    result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+                if (AstStatBlock* elseBlock = statIf->elsebody->as<AstStatBlock>())
+                    hasEnd = elseBlock->hasEnd;
             }
-            else if (AstStatWhile* statWhile = (*it)->as<AstStatWhile>(); statWhile && !statWhile->body->hasEnd)
-                result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-            else if (AstExprFunction* exprFunction = (*it)->as<AstExprFunction>(); exprFunction && !exprFunction->body->hasEnd)
-                result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-            if (AstStatBlock* exprBlock = (*it)->as<AstStatBlock>(); exprBlock && !exprBlock->hasEnd)
+
+            if (!hasEnd)
                 result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
         }
-    }
-    else
-    {
-        for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it)
-        {
-            if (AstStatForIn* statForIn = (*it)->as<AstStatForIn>(); statForIn && !statForIn->DEPRECATED_hasEnd)
-                result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-            else if (AstStatFor* statFor = (*it)->as<AstStatFor>(); statFor && !statFor->DEPRECATED_hasEnd)
-                result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-            else if (AstStatIf* statIf = (*it)->as<AstStatIf>(); statIf && !statIf->DEPRECATED_hasEnd)
-                result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-            else if (AstStatWhile* statWhile = (*it)->as<AstStatWhile>(); statWhile && !statWhile->DEPRECATED_hasEnd)
-                result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-            else if (AstExprFunction* exprFunction = (*it)->as<AstExprFunction>(); exprFunction && !exprFunction->DEPRECATED_hasEnd)
-                result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-            if (AstStatBlock* exprBlock = (*it)->as<AstStatBlock>(); exprBlock && !exprBlock->hasEnd)
-                result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-        }
+        else if (AstStatWhile* statWhile = (*it)->as<AstStatWhile>(); statWhile && !statWhile->body->hasEnd)
+            result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        else if (AstExprFunction* exprFunction = (*it)->as<AstExprFunction>(); exprFunction && !exprFunction->body->hasEnd)
+            result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
+        if (AstStatBlock* exprBlock = (*it)->as<AstStatBlock>(); exprBlock && !exprBlock->hasEnd)
+            result.emplace("end", AutocompleteEntry{AutocompleteEntryKind::Keyword});
     }
 
     if (ancestry.size() >= 2)
@@ -1127,16 +1105,8 @@ static AutocompleteEntryMap autocompleteStatement(
             }
         }
 
-        if (FFlag::LuauClipExtraHasEndProps)
-        {
-            if (AstStatRepeat* statRepeat = parent->as<AstStatRepeat>(); statRepeat && !statRepeat->body->hasEnd)
-                result.emplace("until", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-        }
-        else
-        {
-            if (AstStatRepeat* statRepeat = parent->as<AstStatRepeat>(); statRepeat && !statRepeat->DEPRECATED_hasUntil)
-                result.emplace("until", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-        }
+        if (AstStatRepeat* statRepeat = parent->as<AstStatRepeat>(); statRepeat && !statRepeat->body->hasEnd)
+            result.emplace("until", AutocompleteEntry{AutocompleteEntryKind::Keyword});
     }
 
     if (ancestry.size() >= 4)
@@ -1150,16 +1120,8 @@ static AutocompleteEntryMap autocompleteStatement(
         }
     }
 
-    if (FFlag::LuauClipExtraHasEndProps)
-    {
-        if (AstStatRepeat* statRepeat = extractStat<AstStatRepeat>(ancestry); statRepeat && !statRepeat->body->hasEnd)
-            result.emplace("until", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-    }
-    else
-    {
-        if (AstStatRepeat* statRepeat = extractStat<AstStatRepeat>(ancestry); statRepeat && !statRepeat->DEPRECATED_hasUntil)
-            result.emplace("until", AutocompleteEntry{AutocompleteEntryKind::Keyword});
-    }
+    if (AstStatRepeat* statRepeat = extractStat<AstStatRepeat>(ancestry); statRepeat && !statRepeat->body->hasEnd)
+        result.emplace("until", AutocompleteEntry{AutocompleteEntryKind::Keyword});
 
     return result;
 }

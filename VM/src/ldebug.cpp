@@ -333,8 +333,10 @@ void luaG_pusherror(lua_State* L, const char* error)
 
 void luaG_breakpoint(lua_State* L, Proto* p, int line, bool enable)
 {
+    void (*ondisable)(lua_State*, Proto*) = L->global->ecb.disable;
+
     // since native code doesn't support breakpoints, we would need to update all call frames with LUAU_CALLINFO_NATIVE that refer to p
-    if (p->lineinfo && !p->execdata)
+    if (p->lineinfo && (ondisable || !p->execdata))
     {
         for (int i = 0; i < p->sizecode; ++i)
         {
@@ -359,6 +361,11 @@ void luaG_breakpoint(lua_State* L, Proto* p, int line, bool enable)
             p->code[i] &= ~0xff;
             p->code[i] |= op;
             LUAU_ASSERT(LUAU_INSN_OP(p->code[i]) == op);
+
+            // currently we don't restore native code when breakpoint is disabled.
+            // this will be addressed in the future.
+            if (enable && p->execdata && ondisable)
+                ondisable(L, p);
 
             // note: this is important!
             // we only patch the *first* instruction in each proto that's attributed to a given line

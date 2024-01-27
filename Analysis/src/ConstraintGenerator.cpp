@@ -20,6 +20,7 @@
 #include "Luau/InsertionOrderedMap.h"
 
 #include <algorithm>
+#include <memory>
 
 LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
@@ -205,7 +206,7 @@ ScopePtr ConstraintGenerator::childScope(AstNode* node, const ScopePtr& parent)
     return scope;
 }
 
-std::optional<TypeId> ConstraintGenerator::lookup(Scope* scope, DefId def, bool prototype)
+std::optional<TypeId> ConstraintGenerator::lookup(const ScopePtr& scope, DefId def, bool prototype)
 {
     if (get<Cell>(def))
         return scope->lookup(def);
@@ -230,7 +231,7 @@ std::optional<TypeId> ConstraintGenerator::lookup(Scope* scope, DefId def, bool 
                 rootScope->lvalueTypes[operand] = *ty;
             }
 
-            res = simplifyUnion(builtinTypes, arena, res, *ty).result;
+            res = makeUnion(scope, Location{} /* TODO: can we provide a real location here? */, res, *ty);
         }
 
         scope->lvalueTypes[def] = res;
@@ -250,18 +251,13 @@ NotNull<Constraint> ConstraintGenerator::addConstraint(const ScopePtr& scope, st
     return NotNull{constraints.emplace_back(std::move(c)).get()};
 }
 
-void ConstraintGenerator::unionRefinements(const RefinementContext& lhs, const RefinementContext& rhs, RefinementContext& dest, std::vector<ConstraintV>* constraints)
+void ConstraintGenerator::unionRefinements(const ScopePtr& scope, Location location, const RefinementContext& lhs, const RefinementContext& rhs, RefinementContext& dest, std::vector<ConstraintV>* constraints)
 {
     const auto intersect = [&](const std::vector<TypeId>& types) {
         if (1 == types.size())
             return types[0];
         else if (2 == types.size())
-        {
-            // TODO: It may be advantageous to introduce a refine type family here when there are blockedTypes.
-            SimplifyResult sr = simplifyIntersection(builtinTypes, arena, types[0], types[1]);
-            if (sr.blockedTypes.empty())
-                return sr.result;
-        }
+            return makeIntersect(scope, location, types[0], types[1]);
 
         return arena->addType(IntersectionType{types});
     };
@@ -281,48 +277,48 @@ void ConstraintGenerator::unionRefinements(const RefinementContext& lhs, const R
             rhsIt->second.discriminantTypes.size() == 1 ? rhsIt->second.discriminantTypes[0] : intersect(rhsIt->second.discriminantTypes);
 
         dest.insert(def, {});
-        dest.get(def)->discriminantTypes.push_back(simplifyUnion(builtinTypes, arena, leftDiscriminantTy, rightDiscriminantTy).result);
+        dest.get(def)->discriminantTypes.push_back(makeUnion(scope, location, leftDiscriminantTy, rightDiscriminantTy));
         dest.get(def)->shouldAppendNilType |= partition.shouldAppendNilType || rhsIt->second.shouldAppendNilType;
     }
 }
 
-void ConstraintGenerator::computeRefinement(const ScopePtr& scope, RefinementId refinement, RefinementContext* refis, bool sense, bool eq, std::vector<ConstraintV>* constraints)
+void ConstraintGenerator::computeRefinement(const ScopePtr& scope, Location location, RefinementId refinement, RefinementContext* refis, bool sense, bool eq, std::vector<ConstraintV>* constraints)
 {
     if (!refinement)
         return;
     else if (auto variadic = get<Variadic>(refinement))
     {
         for (RefinementId refi : variadic->refinements)
-            computeRefinement(scope, refi, refis, sense, eq, constraints);
+            computeRefinement(scope, location, refi, refis, sense, eq, constraints);
     }
     else if (auto negation = get<Negation>(refinement))
-        return computeRefinement(scope, negation->refinement, refis, !sense, eq, constraints);
+        return computeRefinement(scope, location, negation->refinement, refis, !sense, eq, constraints);
     else if (auto conjunction = get<Conjunction>(refinement))
     {
         RefinementContext lhsRefis;
         RefinementContext rhsRefis;
 
-        computeRefinement(scope, conjunction->lhs, sense ? refis : &lhsRefis, sense, eq, constraints);
-        computeRefinement(scope, conjunction->rhs, sense ? refis : &rhsRefis, sense, eq, constraints);
+        computeRefinement(scope, location, conjunction->lhs, sense ? refis : &lhsRefis, sense, eq, constraints);
+        computeRefinement(scope, location, conjunction->rhs, sense ? refis : &rhsRefis, sense, eq, constraints);
 
         if (!sense)
-            unionRefinements(lhsRefis, rhsRefis, *refis, constraints);
+            unionRefinements(scope, location, lhsRefis, rhsRefis, *refis, constraints);
     }
     else if (auto disjunction = get<Disjunction>(refinement))
     {
         RefinementContext lhsRefis;
         RefinementContext rhsRefis;
 
-        computeRefinement(scope, disjunction->lhs, sense ? &lhsRefis : refis, sense, eq, constraints);
-        computeRefinement(scope, disjunction->rhs, sense ? &rhsRefis : refis, sense, eq, constraints);
+        computeRefinement(scope, location, disjunction->lhs, sense ? &lhsRefis : refis, sense, eq, constraints);
+        computeRefinement(scope, location, disjunction->rhs, sense ? &rhsRefis : refis, sense, eq, constraints);
 
         if (sense)
-            unionRefinements(lhsRefis, rhsRefis, *refis, constraints);
+            unionRefinements(scope, location, lhsRefis, rhsRefis, *refis, constraints);
     }
     else if (auto equivalence = get<Equivalence>(refinement))
     {
-        computeRefinement(scope, equivalence->lhs, refis, sense, true, constraints);
-        computeRefinement(scope, equivalence->rhs, refis, sense, true, constraints);
+        computeRefinement(scope, location, equivalence->lhs, refis, sense, true, constraints);
+        computeRefinement(scope, location, equivalence->rhs, refis, sense, true, constraints);
     }
     else if (auto proposition = get<Proposition>(refinement))
     {
@@ -423,11 +419,11 @@ void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location locat
 
     RefinementContext refinements;
     std::vector<ConstraintV> constraints;
-    computeRefinement(scope, refinement, &refinements, /*sense*/ true, /*eq*/ false, &constraints);
+    computeRefinement(scope, location, refinement, &refinements, /*sense*/ true, /*eq*/ false, &constraints);
 
     for (auto& [def, partition] : refinements)
     {
-        if (std::optional<TypeId> defTy = lookup(scope.get(), def))
+        if (std::optional<TypeId> defTy = lookup(scope, def))
         {
             TypeId ty = *defTy;
             if (partition.shouldAppendNilType)
@@ -455,15 +451,15 @@ void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location locat
                     switch (shouldSuppressErrors(normalizer, ty))
                     {
                     case ErrorSuppression::DoNotSuppress:
-                        ty = simplifyIntersection(builtinTypes, arena, ty, dt).result;
+                        ty = makeIntersect(scope, location, ty, dt);
                         break;
                     case ErrorSuppression::Suppress:
-                        ty = simplifyIntersection(builtinTypes, arena, ty, dt).result;
-                        ty = simplifyUnion(builtinTypes, arena, ty, builtinTypes->errorType).result;
+                        ty = makeIntersect(scope, location, ty, dt);
+                        ty = makeUnion(scope, location, ty, builtinTypes->errorType);
                         break;
                     case ErrorSuppression::NormalizationFailed:
                         reportError(location, NormalizationTooComplex{});
-                        ty = simplifyIntersection(builtinTypes, arena, ty, dt).result;
+                        ty = makeIntersect(scope, location, ty, dt);
                         break;
                     }
                 }
@@ -761,7 +757,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatForIn* forI
 
     for (AstLocal* var : forIn->vars)
     {
-        TypeId assignee = arena->addType(BlockedType{});
+        TypeId assignee = arena->addType(LocalType{builtinTypes->neverType, /* blockCount */ 1, var->name.value});
         variableTypes.push_back(assignee);
 
         if (var->annotation)
@@ -872,7 +868,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
     DenseHashSet<Constraint*> excludeList{nullptr};
 
     DefId def = dfg->getDef(function->name);
-    std::optional<TypeId> existingFunctionTy = lookup(scope.get(), def);
+    std::optional<TypeId> existingFunctionTy = lookup(scope, def);
 
     if (AstExprLocal* localName = function->name->as<AstExprLocal>())
     {
@@ -1492,7 +1488,11 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
             discriminantTypes.push_back(std::nullopt);
     }
 
+    Checkpoint funcBeginCheckpoint = checkpoint(this);
+
     TypeId fnType = check(scope, call->func).ty;
+
+    Checkpoint funcEndCheckpoint = checkpoint(this);
 
     std::vector<std::optional<TypeId>> expectedTypesForCall = getExpectedCallTypesForFunctionOverloads(fnType);
 
@@ -1624,13 +1624,31 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
                 &module->astOverloadResolvedTypes,
             });
 
-        // We force constraints produced by checking function arguments to wait
-        // until after we have resolved the constraint on the function itself.
-        // This ensures, for instance, that we start inferring the contents of
-        // lambdas under the assumption that their arguments and return types
-        // will be compatible with the enclosing function call.
-        forEachConstraint(argBeginCheckpoint, argEndCheckpoint, this, [fcc](const ConstraintPtr& constraint) {
-            constraint->dependencies.emplace_back(fcc);
+        NotNull<Constraint> foo = addConstraint(scope, call->func->location,
+            FunctionCheckConstraint{
+                fnType,
+                argPack,
+                call
+            }
+        );
+
+        /*
+         * To make bidirectional type checking work, we need to solve these constraints in a particular order:
+         *
+         * 1. Solve the function type
+         * 2. Propagate type information from the function type to the argument types
+         * 3. Solve the argument types
+         * 4. Solve the call
+         */
+
+        forEachConstraint(funcBeginCheckpoint, funcEndCheckpoint, this, [foo](const ConstraintPtr& constraint) {
+            foo->dependencies.emplace_back(constraint.get());
+        });
+
+        forEachConstraint(argBeginCheckpoint, argEndCheckpoint, this, [foo, fcc](const ConstraintPtr& constraint) {
+            constraint->dependencies.emplace_back(foo);
+
+            fcc->dependencies.emplace_back(constraint.get());
         });
 
         return InferencePack{rets, {refinementArena.variadic(returnRefinements)}};
@@ -1712,23 +1730,12 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantStrin
     if (forceSingleton)
         return Inference{arena->addType(SingletonType{StringSingleton{std::string{string->value.data, string->value.size}}})};
 
-    if (expectedType)
-    {
-        const TypeId expectedTy = follow(*expectedType);
-        if (get<BlockedType>(expectedTy) || get<PendingExpansionType>(expectedTy) || get<FreeType>(expectedTy))
-        {
-            TypeId ty = arena->addType(BlockedType{});
-            TypeId singletonType = arena->addType(SingletonType(StringSingleton{std::string(string->value.data, string->value.size)}));
-            addConstraint(scope, string->location, PrimitiveTypeConstraint{ty, expectedTy, singletonType, builtinTypes->stringType});
-            return Inference{ty};
-        }
-        else if (maybeSingleton(expectedTy))
-            return Inference{arena->addType(SingletonType{StringSingleton{std::string{string->value.data, string->value.size}}})};
-
-        return Inference{builtinTypes->stringType};
-    }
-
-    return Inference{builtinTypes->stringType};
+    FreeType ft = FreeType{scope.get()};
+    ft.lowerBound = arena->addType(SingletonType{StringSingleton{std::string{string->value.data, string->value.size}}});
+    ft.upperBound = builtinTypes->stringType;
+    const TypeId freeTy = arena->addType(ft);
+    addConstraint(scope, string->location, PrimitiveTypeConstraint{freeTy, expectedType, builtinTypes->stringType});
+    return Inference{freeTy};
 }
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantBool* boolExpr, std::optional<TypeId> expectedType, bool forceSingleton)
@@ -1737,23 +1744,12 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprConstantBool*
     if (forceSingleton)
         return Inference{singletonType};
 
-    if (expectedType)
-    {
-        const TypeId expectedTy = follow(*expectedType);
-
-        if (get<BlockedType>(expectedTy) || get<PendingExpansionType>(expectedTy))
-        {
-            TypeId ty = arena->addType(BlockedType{});
-            addConstraint(scope, boolExpr->location, PrimitiveTypeConstraint{ty, expectedTy, singletonType, builtinTypes->booleanType});
-            return Inference{ty};
-        }
-        else if (maybeSingleton(expectedTy))
-            return Inference{singletonType};
-
-        return Inference{builtinTypes->booleanType};
-    }
-
-    return Inference{builtinTypes->booleanType};
+    FreeType ft = FreeType{scope.get()};
+    ft.lowerBound = singletonType;
+    ft.upperBound = builtinTypes->booleanType;
+    const TypeId freeTy = arena->addType(ft);
+    addConstraint(scope, boolExpr->location, PrimitiveTypeConstraint{freeTy, expectedType, builtinTypes->booleanType});
+    return Inference{freeTy};
 }
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprLocal* local)
@@ -1766,12 +1762,12 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprLocal* local)
 
     // if we have a refinement key, we can look up its type.
     if (key)
-        maybeTy = lookup(scope.get(), key->def);
+        maybeTy = lookup(scope, key->def);
 
     // if the current def doesn't have a type, we might be doing a compound assignment
     // and therefore might need to look at the rvalue def instead.
     if (!maybeTy && rvalueDef)
-        maybeTy = lookup(scope.get(), *rvalueDef);
+        maybeTy = lookup(scope, *rvalueDef);
 
     if (maybeTy)
     {
@@ -1797,7 +1793,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprGlobal* globa
     /* prepopulateGlobalScope() has already added all global functions to the environment by this point, so any
      * global that is not already in-scope is definitely an unknown symbol.
      */
-    if (auto ty = lookup(scope.get(), def, /*prototype=*/false))
+    if (auto ty = lookup(scope, def, /*prototype=*/false))
     {
         rootScope->lvalueTypes[def] = *ty;
         return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
@@ -1816,7 +1812,7 @@ Inference ConstraintGenerator::checkIndexName(const ScopePtr& scope, const Refin
 
     if (key)
     {
-        if (auto ty = lookup(scope.get(), key->def))
+        if (auto ty = lookup(scope, key->def))
             return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
 
         scope->rvalueRefinements[key->def] = result;
@@ -1852,7 +1848,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIndexExpr* in
     const RefinementKey* key = dfg->getRefinementKey(indexExpr);
     if (key)
     {
-        if (auto ty = lookup(scope.get(), key->def))
+        if (auto ty = lookup(scope, key->def))
             return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
 
         scope->rvalueRefinements[key->def] = result;
@@ -2120,7 +2116,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIfElse* ifEls
     applyRefinements(elseScope, ifElse->falseExpr->location, refinementArena.negation(refinement));
     TypeId elseType = check(elseScope, ifElse->falseExpr, expectedType).ty;
 
-    return Inference{expectedType ? *expectedType : simplifyUnion(builtinTypes, arena, thenType, elseType).result};
+    return Inference{expectedType ? *expectedType : makeUnion(scope, ifElse->location, thenType, elseType)};
 }
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert)
@@ -3170,6 +3166,30 @@ void ConstraintGenerator::reportCodeTooComplex(Location location)
 
     if (logger)
         logger->captureGenerationError(errors.back());
+}
+
+TypeId ConstraintGenerator::makeUnion(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs)
+{
+    TypeId resultType = arena->addType(TypeFamilyInstanceType{
+        NotNull{&kBuiltinTypeFamilies.unionFamily},
+        {lhs, rhs},
+        {},
+    });
+    addConstraint(scope, location, ReduceConstraint{resultType});
+
+    return resultType;
+}
+
+TypeId ConstraintGenerator::makeIntersect(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs)
+{
+    TypeId resultType = arena->addType(TypeFamilyInstanceType{
+        NotNull{&kBuiltinTypeFamilies.intersectFamily},
+        {lhs, rhs},
+        {},
+    });
+    addConstraint(scope, location, ReduceConstraint{resultType});
+
+    return resultType;
 }
 
 struct GlobalPrepopulator : AstVisitor

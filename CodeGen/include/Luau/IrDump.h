@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/IrData.h"
+#include "Luau/CodeGen.h"
 
 #include <string>
 #include <vector>
@@ -31,11 +32,12 @@ void toString(IrToStringContext& ctx, IrOp op);
 void toString(std::string& result, IrConst constant);
 void toString(std::string& result, const BytecodeTypes& bcTypes);
 
-void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, const IrInst& inst, uint32_t instIdx, bool includeUseInfo);
 void toStringDetailed(
-    IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, bool includeUseInfo, bool includeCfgInfo, bool includeRegFlowInfo);
+    IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, const IrInst& inst, uint32_t instIdx, IncludeUseInfo includeUseInfo);
+void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, IncludeUseInfo includeUseInfo, IncludeCfgInfo includeCfgInfo,
+    IncludeRegFlowInfo includeRegFlowInfo);
 
-std::string toString(const IrFunction& function, bool includeUseInfo);
+std::string toString(const IrFunction& function, IncludeUseInfo includeUseInfo);
 
 std::string dump(const IrFunction& function);
 

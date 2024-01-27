@@ -150,7 +150,7 @@ private:
      */
     ScopePtr childScope(AstNode* node, const ScopePtr& parent);
 
-    std::optional<TypeId> lookup(Scope* scope, DefId def, bool prototype = true);
+    std::optional<TypeId> lookup(const ScopePtr& scope, DefId def, bool prototype = true);
 
     /**
      * Adds a new constraint with no dependencies to a given scope.
@@ -178,8 +178,8 @@ private:
     };
 
     using RefinementContext = InsertionOrderedMap<DefId, RefinementPartition>;
-    void unionRefinements(const RefinementContext& lhs, const RefinementContext& rhs, RefinementContext& dest, std::vector<ConstraintV>* constraints);
-    void computeRefinement(const ScopePtr& scope, RefinementId refinement, RefinementContext* refis, bool sense, bool eq, std::vector<ConstraintV>* constraints);
+    void unionRefinements(const ScopePtr& scope, Location location, const RefinementContext& lhs, const RefinementContext& rhs, RefinementContext& dest, std::vector<ConstraintV>* constraints);
+    void computeRefinement(const ScopePtr& scope, Location location, RefinementId refinement, RefinementContext* refis, bool sense, bool eq, std::vector<ConstraintV>* constraints);
     void applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement);
 
     ControlFlow visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block);
@@ -328,6 +328,11 @@ private:
 
     void reportError(Location location, TypeErrorData err);
     void reportCodeTooComplex(Location location);
+
+    // make a union type family of these two types
+    TypeId makeUnion(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs);
+    // make an intersect type family of these two types
+    TypeId makeIntersect(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs);
 
     /** Scan the program for global definitions.
      *
