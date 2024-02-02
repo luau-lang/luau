@@ -1307,4 +1307,16 @@ TEST_CASE_FIXTURE(Fixture, "bidirectional_checking_and_generalization_play_nice"
     CHECK("string" == toString(requireType("b")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "missing_generic_type_parameter")
+{
+    CheckResult result = check(R"(
+        function f(x: T): T return x end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    REQUIRE(get<UnknownSymbol>(result.errors[0]));
+    REQUIRE(get<UnknownSymbol>(result.errors[1]));
+}
+
 TEST_SUITE_END();

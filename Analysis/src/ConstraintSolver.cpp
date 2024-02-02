@@ -8,6 +8,7 @@
 #include "Luau/Instantiation.h"
 #include "Luau/Location.h"
 #include "Luau/ModuleResolver.h"
+#include "Luau/OverloadResolution.h"
 #include "Luau/Quantify.h"
 #include "Luau/Simplify.h"
 #include "Luau/TimeTrace.h"
@@ -1098,10 +1099,18 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         *asMutable(follow(*ty)) = BoundType{builtinTypes->anyType};
     }
 
+    OverloadResolver resolver{
+        builtinTypes, NotNull{arena}, normalizer, constraint->scope, NotNull{&iceReporter}, NotNull{&limits}, c.callSite->location};
+    auto [status, overload] = resolver.selectOverload(fn, argsPack);
+    TypeId overloadToUse = fn;
+    if (status == OverloadResolver::Analysis::Ok)
+        overloadToUse = overload;
+
+
     TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, constraint->scope.get(), argsPack, c.result});
     Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}};
 
-    const bool occursCheckPassed = u2.unify(fn, inferredTy);
+    const bool occursCheckPassed = u2.unify(overloadToUse, inferredTy);
 
     for (const auto& [expanded, additions] : u2.expandedFreeTypes)
     {
@@ -1115,7 +1124,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     unblock(c.result, constraint->location);
 
     InstantiationQueuer queuer{constraint->scope, constraint->location, this};
-    queuer.traverse(fn);
+    queuer.traverse(overloadToUse);
     queuer.traverse(inferredTy);
 
     return true;
@@ -1482,6 +1491,41 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
     auto resultIter = begin(resultPack);
     auto resultEnd = end(resultPack);
 
+    auto apply = [&](TypeId resultTy, TypeId srcTy) {
+        if (auto lt = getMutable<LocalType>(resultTy); c.resultIsLValue && lt)
+        {
+            lt->domain = simplifyUnion(builtinTypes, arena, lt->domain, srcTy).result;
+            LUAU_ASSERT(lt->blockCount > 0);
+            --lt->blockCount;
+
+            LUAU_ASSERT(0 <= lt->blockCount);
+
+            if (0 == lt->blockCount)
+                asMutable(resultTy)->ty.emplace<BoundType>(lt->domain);
+        }
+        else if (get<BlockedType>(resultTy))
+        {
+            if (follow(srcTy) == resultTy)
+            {
+                // It is sometimes the case that we find that a blocked type
+                // is only blocked on itself. This doesn't actually
+                // constitute any meaningful constraint, so we replace it
+                // with a free type.
+                TypeId f = freshType(arena, builtinTypes, constraint->scope);
+                asMutable(resultTy)->ty.emplace<BoundType>(f);
+            }
+            else
+                asMutable(resultTy)->ty.emplace<BoundType>(srcTy);
+        }
+        else
+        {
+            LUAU_ASSERT(c.resultIsLValue);
+            unify(constraint->scope, constraint->location, resultTy, srcTy);
+        }
+
+        unblock(resultTy, constraint->location);
+    };
+
     size_t i = 0;
     while (resultIter != resultEnd)
     {
@@ -1493,38 +1537,15 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
 
         if (resultTy)
         {
-            if (auto lt = getMutable<LocalType>(resultTy); c.resultIsLValue && lt)
+            // when we preserve the error-suppression of types through typestate,
+            // we introduce a union with the error type, so we need to find the local type in those options to update.
+            if (auto ut = getMutable<UnionType>(resultTy))
             {
-                lt->domain = simplifyUnion(builtinTypes, arena, lt->domain, srcTy).result;
-                LUAU_ASSERT(lt->blockCount > 0);
-                --lt->blockCount;
-
-                LUAU_ASSERT(0 <= lt->blockCount);
-
-                if (0 == lt->blockCount)
-                    asMutable(resultTy)->ty.emplace<BoundType>(lt->domain);
-            }
-            else if (get<BlockedType>(resultTy))
-            {
-                if (follow(srcTy) == resultTy)
-                {
-                    // It is sometimes the case that we find that a blocked type
-                    // is only blocked on itself. This doesn't actually
-                    // constitute any meaningful constraint, so we replace it
-                    // with a free type.
-                    TypeId f = freshType(arena, builtinTypes, constraint->scope);
-                    asMutable(resultTy)->ty.emplace<BoundType>(f);
-                }
-                else
-                    asMutable(resultTy)->ty.emplace<BoundType>(srcTy);
+                for (auto opt : ut->options)
+                    apply(opt, srcTy);
             }
             else
-            {
-                LUAU_ASSERT(c.resultIsLValue);
-                unify(constraint->scope, constraint->location, resultTy, srcTy);
-            }
-
-            unblock(resultTy, constraint->location);
+                apply(resultTy, srcTy);
         }
         else
             unify(constraint->scope, constraint->location, resultTy, srcTy);

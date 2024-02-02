@@ -21,6 +21,24 @@ LUAU_FASTINT(LuauTarjanChildLimit);
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
+TEST_CASE_FIXTURE(Fixture, "overload_resolution")
+{
+    CheckResult result = check(R"(
+        type A = (number) -> string
+        type B = (string) -> number
+
+        local function foo(f: A & B)
+            return f(1), f("five")
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+    TypeId t = requireType("foo");
+    const FunctionType* fooType = get<FunctionType>(requireType("foo"));
+    REQUIRE(fooType != nullptr);
+
+    CHECK(toString(t) == "(((number) -> string) & ((string) -> number)) -> (string, number)");
+}
+
 TEST_CASE_FIXTURE(Fixture, "tc_function")
 {
     CheckResult result = check("function five() return 5 end");
@@ -2194,6 +2212,17 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "regex_benchmark_string_format_minimization")
             end
         end);
     )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "subgeneric_typefamily_super_monomorphic")
+{
+    CheckResult result = check(R"(
+local a: (number, number) -> number = function(a, b) return a - b end
+
+a = function(a, b) return a + b end
+)");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }

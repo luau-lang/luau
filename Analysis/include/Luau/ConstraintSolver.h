@@ -254,7 +254,6 @@ struct ConstraintSolver
     bool hasUnresolvedConstraints(TypeId ty);
 
 private:
-
     /** Helper used by tryDispatch(SubtypeConstraint) and
      * tryDispatch(PackSubtypeConstraint)
      *
@@ -265,7 +264,7 @@ private:
      *
      * If unification succeeds, unblock every type changed by the unification.
      */
-    template <typename TID>
+    template<typename TID>
     bool tryUnify(NotNull<const Constraint> constraint, TID subTy, TID superTy);
 
     /**

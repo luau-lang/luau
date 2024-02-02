@@ -56,11 +56,33 @@ std::vector<TypeId> reduceUnion(const std::vector<TypeId>& types);
  */
 TypeId stripNil(NotNull<BuiltinTypes> builtinTypes, TypeArena& arena, TypeId ty);
 
-enum class ErrorSuppression
+struct ErrorSuppression
 {
-    Suppress,
-    DoNotSuppress,
-    NormalizationFailed
+    enum Value
+    {
+        Suppress,
+        DoNotSuppress,
+        NormalizationFailed,
+    };
+
+    ErrorSuppression() = default;
+    constexpr ErrorSuppression(Value enumValue) : value(enumValue) { }
+
+    constexpr operator Value() const { return value; }
+    explicit operator bool() const = delete;
+
+    ErrorSuppression orElse(const ErrorSuppression& other) const
+    {
+        switch (value)
+        {
+        case DoNotSuppress:
+            return other;
+        default:
+            return *this;
+        }
+    }
+private:
+    Value value;
 };
 
 /**
@@ -118,6 +140,8 @@ struct TryPair
 template<typename A, typename B, typename Ty>
 TryPair<const A*, const B*> get2(Ty one, Ty two)
 {
+    static_assert(std::is_pointer_v<Ty>, "argument must be a pointer type");
+
     const A* a = get<A>(one);
     const B* b = get<B>(two);
     if (a && b)

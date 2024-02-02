@@ -167,7 +167,7 @@ end
 assert(pcall(fuzzfail17) == false)
 
 local function fuzzfail18()
-	return bit32.extract(7890276,0)
+  return bit32.extract(7890276,0)
 end
 
 assert(pcall(fuzzfail18) == true)
@@ -316,5 +316,77 @@ local function vec3mulconst(a: vector) return a * 4 end
 
 assert(vec3mulnum(vector(10, 20, 40), 4) == vector(40, 80, 160))
 assert(vec3mulconst(vector(10, 20, 40), 4) == vector(40, 80, 160))
+
+local function bufferbounds(zero)
+  local b1 = buffer.create(1)
+  local b2 = buffer.create(2)
+  local b4 = buffer.create(4)
+  local b8 = buffer.create(8)
+  local b10 = buffer.create(10)
+
+  -- only one valid position and size for a 1 byte buffer
+  buffer.writei8(b1, zero + 0, buffer.readi8(b1, zero + 0))
+  buffer.writeu8(b1, zero + 0, buffer.readu8(b1, zero + 0))
+
+  -- 2 byte buffer
+  buffer.writei8(b2, zero + 0, buffer.readi8(b2, zero + 0))
+  buffer.writeu8(b2, zero + 0, buffer.readu8(b2, zero + 0))
+  buffer.writei8(b2, zero + 1, buffer.readi8(b2, zero + 1))
+  buffer.writeu8(b2, zero + 1, buffer.readu8(b2, zero + 1))
+  buffer.writei16(b2, zero + 0, buffer.readi16(b2, zero + 0))
+  buffer.writeu16(b2, zero + 0, buffer.readu16(b2, zero + 0))
+
+  -- 4 byte buffer
+  buffer.writei8(b4, zero + 0, buffer.readi8(b4, zero + 0))
+  buffer.writeu8(b4, zero + 0, buffer.readu8(b4, zero + 0))
+  buffer.writei8(b4, zero + 3, buffer.readi8(b4, zero + 3))
+  buffer.writeu8(b4, zero + 3, buffer.readu8(b4, zero + 3))
+  buffer.writei16(b4, zero + 0, buffer.readi16(b4, zero + 0))
+  buffer.writeu16(b4, zero + 0, buffer.readu16(b4, zero + 0))
+  buffer.writei16(b4, zero + 2, buffer.readi16(b4, zero + 2))
+  buffer.writeu16(b4, zero + 2, buffer.readu16(b4, zero + 2))
+  buffer.writei32(b4, zero + 0, buffer.readi32(b4, zero + 0))
+  buffer.writeu32(b4, zero + 0, buffer.readu32(b4, zero + 0))
+  buffer.writef32(b4, zero + 0, buffer.readf32(b4, zero + 0))
+
+  -- 8 byte buffer
+  buffer.writei8(b8, zero + 0, buffer.readi8(b8, zero + 0))
+  buffer.writeu8(b8, zero + 0, buffer.readu8(b8, zero + 0))
+  buffer.writei8(b8, zero + 7, buffer.readi8(b8, zero + 7))
+  buffer.writeu8(b8, zero + 7, buffer.readu8(b8, zero + 7))
+  buffer.writei16(b8, zero + 0, buffer.readi16(b8, zero + 0))
+  buffer.writeu16(b8, zero + 0, buffer.readu16(b8, zero + 0))
+  buffer.writei16(b8, zero + 6, buffer.readi16(b8, zero + 6))
+  buffer.writeu16(b8, zero + 6, buffer.readu16(b8, zero + 6))
+  buffer.writei32(b8, zero + 0, buffer.readi32(b8, zero + 0))
+  buffer.writeu32(b8, zero + 0, buffer.readu32(b8, zero + 0))
+  buffer.writef32(b8, zero + 0, buffer.readf32(b8, zero + 0))
+  buffer.writei32(b8, zero + 4, buffer.readi32(b8, zero + 4))
+  buffer.writeu32(b8, zero + 4, buffer.readu32(b8, zero + 4))
+  buffer.writef32(b8, zero + 4, buffer.readf32(b8, zero + 4))
+  buffer.writef64(b8, zero + 0, buffer.readf64(b8, zero + 0))
+
+  -- 'any' size buffer
+  buffer.writei8(b10, zero + 0, buffer.readi8(b10, zero + 0))
+  buffer.writeu8(b10, zero + 0, buffer.readu8(b10, zero + 0))
+  buffer.writei8(b10, zero + 9, buffer.readi8(b10, zero + 9))
+  buffer.writeu8(b10, zero + 9, buffer.readu8(b10, zero + 9))
+  buffer.writei16(b10, zero + 0, buffer.readi16(b10, zero + 0))
+  buffer.writeu16(b10, zero + 0, buffer.readu16(b10, zero + 0))
+  buffer.writei16(b10, zero + 8, buffer.readi16(b10, zero + 8))
+  buffer.writeu16(b10, zero + 8, buffer.readu16(b10, zero + 8))
+  buffer.writei32(b10, zero + 0, buffer.readi32(b10, zero + 0))
+  buffer.writeu32(b10, zero + 0, buffer.readu32(b10, zero + 0))
+  buffer.writef32(b10, zero + 0, buffer.readf32(b10, zero + 0))
+  buffer.writei32(b10, zero + 6, buffer.readi32(b10, zero + 6))
+  buffer.writeu32(b10, zero + 6, buffer.readu32(b10, zero + 6))
+  buffer.writef32(b10, zero + 6, buffer.readf32(b10, zero + 6))
+  buffer.writef64(b10, zero + 0, buffer.readf64(b10, zero + 0))
+  buffer.writef64(b10, zero + 2, buffer.readf64(b10, zero + 2))
+
+  assert(is_native())
+end
+
+bufferbounds(0)
 
 return('OK')

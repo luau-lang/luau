@@ -11,6 +11,7 @@
 #include "Luau/Instantiation.h"
 #include "Luau/Metamethods.h"
 #include "Luau/Normalize.h"
+#include "Luau/OverloadResolution.h"
 #include "Luau/Subtyping.h"
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
@@ -240,7 +241,7 @@ struct TypeChecker2
     std::vector<NotNull<Scope>> stack;
     std::vector<TypeId> functionDeclStack;
 
-    DenseHashSet<TypeId> noTypeFamilyErrors{nullptr};
+    DenseHashSet<TypeId> seenTypeFamilyInstances{nullptr};
 
     Normalizer normalizer;
     Subtyping _subtyping;
@@ -377,7 +378,7 @@ struct TypeChecker2
         if (const AstStatExpr* stat = node->as<AstStatExpr>())
         {
             if (AstExprCall* call = stat->expr->as<AstExprCall>(); call && isErrorCall(call))
-                    return nullptr;
+                return nullptr;
 
             return stat;
         }
@@ -432,18 +433,16 @@ struct TypeChecker2
 
     TypeId checkForFamilyInhabitance(TypeId instance, Location location)
     {
-        if (noTypeFamilyErrors.find(instance))
+        if (seenTypeFamilyInstances.find(instance))
             return instance;
+        seenTypeFamilyInstances.insert(instance);
 
         ErrorVec errors = reduceFamilies(
             instance, location, TypeFamilyContext{NotNull{&testArena}, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits}, true)
                               .errors;
-
-        if (errors.empty())
-            noTypeFamilyErrors.insert(instance);
-
         if (!isErrorSuppressing(location, instance))
             reportErrors(std::move(errors));
+
         return instance;
     }
 
@@ -538,20 +537,21 @@ struct TypeChecker2
     Scope* findInnermostScope(Location location)
     {
         Scope* bestScope = module->getModuleScope().get();
-        Location bestLocation = module->scopes[0].first;
 
-        for (size_t i = 0; i < module->scopes.size(); ++i)
+        bool didNarrow;
+        do
         {
-            auto& [scopeBounds, scope] = module->scopes[i];
-            if (scopeBounds.encloses(location))
+            didNarrow = false;
+            for (auto scope : bestScope->children)
             {
-                if (scopeBounds.begin > bestLocation.begin || scopeBounds.end < bestLocation.end)
+                if (scope->location.encloses(location))
                 {
                     bestScope = scope.get();
-                    bestLocation = scopeBounds;
+                    didNarrow = true;
+                    break;
                 }
             }
-        }
+        } while (didNarrow && bestScope->children.size() > 0);
 
         return bestScope;
     }
@@ -1192,7 +1192,7 @@ struct TypeChecker2
         TypeId expectedType = builtinTypes->nilType;
 
         SubtypingResult r = subtyping->isSubtype(actualType, expectedType);
-        LUAU_ASSERT(r.isSubtype || r.isErrorSuppressing);
+        LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, actualType));
     }
 
     void visit(AstExprConstantBool* expr)
@@ -1201,7 +1201,7 @@ struct TypeChecker2
         TypeId expectedType = builtinTypes->booleanType;
 
         SubtypingResult r = subtyping->isSubtype(actualType, expectedType);
-        LUAU_ASSERT(r.isSubtype || r.isErrorSuppressing);
+        LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, actualType));
     }
 
     void visit(AstExprConstantNumber* expr)
@@ -1210,7 +1210,7 @@ struct TypeChecker2
         TypeId expectedType = builtinTypes->numberType;
 
         SubtypingResult r = subtyping->isSubtype(actualType, expectedType);
-        LUAU_ASSERT(r.isSubtype || r.isErrorSuppressing);
+        LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, actualType));
     }
 
     void visit(AstExprConstantString* expr)
@@ -1219,7 +1219,7 @@ struct TypeChecker2
         TypeId expectedType = builtinTypes->stringType;
 
         SubtypingResult r = subtyping->isSubtype(actualType, expectedType);
-        LUAU_ASSERT(r.isSubtype || r.isErrorSuppressing);
+        LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, actualType));
     }
 
     void visit(AstExprLocal* expr)
@@ -1309,14 +1309,13 @@ struct TypeChecker2
                 args.head.push_back(builtinTypes->anyType);
         }
 
-        FunctionCallResolver resolver{
+        OverloadResolver resolver{
             builtinTypes,
             NotNull{&testArena},
             NotNull{&normalizer},
             NotNull{stack.back()},
             ice,
             limits,
-            subtyping,
             call->location,
         };
 
@@ -1369,7 +1368,7 @@ struct TypeChecker2
             {
                 for (const auto& [ty, p] : resolver.resolution)
                 {
-                    if (p.first == FunctionCallResolver::TypeIsNotAFunction)
+                    if (p.first == OverloadResolver::TypeIsNotAFunction)
                         continue;
 
                     overloads.push_back(ty);
@@ -1392,305 +1391,6 @@ struct TypeChecker2
             reportError(ExtraInformation{std::move(s)}, call->func->location);
         }
     }
-
-    struct FunctionCallResolver
-    {
-        enum Analysis
-        {
-            Ok,
-            TypeIsNotAFunction,
-            ArityMismatch,
-            OverloadIsNonviable, // Arguments were incompatible with the overload's parameters, but were otherwise compatible by arity.
-        };
-
-        NotNull<BuiltinTypes> builtinTypes;
-        NotNull<TypeArena> arena;
-        NotNull<Normalizer> normalizer;
-        NotNull<Scope> scope;
-        NotNull<InternalErrorReporter> ice;
-        NotNull<TypeCheckLimits> limits;
-        NotNull<Subtyping> subtyping;
-        Location callLoc;
-
-        std::vector<TypeId> ok;
-        std::vector<TypeId> nonFunctions;
-        std::vector<std::pair<TypeId, ErrorVec>> arityMismatches;
-        std::vector<std::pair<TypeId, ErrorVec>> nonviableOverloads;
-        InsertionOrderedMap<TypeId, std::pair<Analysis, size_t>> resolution;
-
-    private:
-        std::optional<ErrorVec> testIsSubtype(const Location& location, TypeId subTy, TypeId superTy)
-        {
-            auto r = subtyping->isSubtype(subTy, superTy);
-            ErrorVec errors;
-
-            if (r.normalizationTooComplex)
-                errors.push_back(TypeError{location, NormalizationTooComplex{}});
-
-            if (!r.isSubtype && !r.isErrorSuppressing)
-                errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
-
-            if (errors.empty())
-                return std::nullopt;
-
-            return errors;
-        }
-
-        std::optional<ErrorVec> testIsSubtype(const Location& location, TypePackId subTy, TypePackId superTy)
-        {
-            auto r = subtyping->isSubtype(subTy, superTy);
-            ErrorVec errors;
-
-            if (r.normalizationTooComplex)
-                errors.push_back(TypeError{location, NormalizationTooComplex{}});
-
-            if (!r.isSubtype && !r.isErrorSuppressing)
-                errors.push_back(TypeError{location, TypePackMismatch{superTy, subTy}});
-
-            if (errors.empty())
-                return std::nullopt;
-
-            return errors;
-        }
-
-        std::pair<Analysis, ErrorVec> checkOverload(
-            TypeId fnTy, const TypePack* args, AstExpr* fnLoc, const std::vector<AstExpr*>* argExprs, bool callMetamethodOk = true)
-        {
-            fnTy = follow(fnTy);
-
-            ErrorVec discard;
-            if (get<AnyType>(fnTy) || get<ErrorType>(fnTy) || get<NeverType>(fnTy))
-                return {Ok, {}};
-            else if (auto fn = get<FunctionType>(fnTy))
-                return checkOverload_(fnTy, fn, args, fnLoc, argExprs); // Intentionally split to reduce the stack pressure of this function.
-            else if (auto callMm = findMetatableEntry(builtinTypes, discard, fnTy, "__call", callLoc); callMm && callMetamethodOk)
-            {
-                // Calling a metamethod forwards the `fnTy` as self.
-                TypePack withSelf = *args;
-                withSelf.head.insert(withSelf.head.begin(), fnTy);
-
-                std::vector<AstExpr*> withSelfExprs = *argExprs;
-                withSelfExprs.insert(withSelfExprs.begin(), fnLoc);
-
-                return checkOverload(*callMm, &withSelf, fnLoc, &withSelfExprs, /*callMetamethodOk=*/false);
-            }
-            else
-                return {TypeIsNotAFunction, {}}; // Intentionally empty. We can just fabricate the type error later on.
-        }
-
-        static bool isLiteral(AstExpr* expr)
-        {
-            if (auto group = expr->as<AstExprGroup>())
-                return isLiteral(group->expr);
-            else if (auto assertion = expr->as<AstExprTypeAssertion>())
-                return isLiteral(assertion->expr);
-
-            return expr->is<AstExprConstantNil>() || expr->is<AstExprConstantBool>() || expr->is<AstExprConstantNumber>() ||
-                   expr->is<AstExprConstantString>() || expr->is<AstExprFunction>() || expr->is<AstExprTable>();
-        }
-
-        LUAU_NOINLINE
-        std::pair<Analysis, ErrorVec> checkOverload_(
-            TypeId fnTy, const FunctionType* fn, const TypePack* args, AstExpr* fnExpr, const std::vector<AstExpr*>* argExprs)
-        {
-            FamilyGraphReductionResult result =
-                reduceFamilies(fnTy, callLoc, TypeFamilyContext{arena, builtinTypes, scope, normalizer, ice, limits}, /*force=*/true);
-            if (!result.errors.empty())
-                return {OverloadIsNonviable, result.errors};
-
-            ErrorVec argumentErrors;
-
-            TypeId prospectiveFunction = arena->addType(FunctionType{arena->addTypePack(*args), builtinTypes->anyTypePack});
-            SubtypingResult sr = subtyping->isSubtype(fnTy, prospectiveFunction);
-
-            if (sr.isSubtype)
-                return {Analysis::Ok, {}};
-
-            if (1 == sr.reasoning.size())
-            {
-                const SubtypingReasoning& reason = *sr.reasoning.begin();
-
-                const TypePath::Path justArguments{TypePath::PackField::Arguments};
-
-                if (reason.subPath == justArguments && reason.superPath == justArguments)
-                {
-                    // If the subtype test failed only due to an arity mismatch,
-                    // it is still possible that this function call is okay.
-                    // Subtype testing does not know anything about optional
-                    // function arguments.
-                    //
-                    // This can only happen if the actual function call has a
-                    // finite set of arguments which is too short for the
-                    // function being called.  If all of those unsatisfied
-                    // function arguments are options, then this function call
-                    // is ok.
-
-                    const size_t firstUnsatisfiedArgument = argExprs->size();
-                    const auto [requiredHead, _requiredTail] = flatten(fn->argTypes);
-
-                    // If too many arguments were supplied, this overload
-                    // definitely does not match.
-                    if (args->head.size() > requiredHead.size())
-                    {
-                        auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
-                        TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, false}};
-
-                        return {Analysis::ArityMismatch, {error}};
-                    }
-
-                    // If any of the unsatisfied arguments are not supertypes of
-                    // nil, then this overload does not match.
-                    for (size_t i = firstUnsatisfiedArgument; i < requiredHead.size(); ++i)
-                    {
-                        if (!subtyping->isSubtype(builtinTypes->nilType, requiredHead[i]).isSubtype)
-                        {
-                            auto [minParams, optMaxParams] = getParameterExtents(TxnLog::empty(), fn->argTypes);
-                            TypeError error{fnExpr->location, CountMismatch{minParams, optMaxParams, args->head.size(), CountMismatch::Arg, false}};
-
-                            return {Analysis::ArityMismatch, {error}};
-                        }
-                    }
-
-                    return {Analysis::Ok, {}};
-                }
-            }
-
-            ErrorVec errors;
-
-            if (!sr.isErrorSuppressing)
-            {
-                for (const SubtypingReasoning& reason : sr.reasoning)
-                {
-                    /* The return type of our prospective function is always
-                    * any... so any subtype failures here can only arise from
-                    * argument type mismatches.
-                    */
-
-                    Location argLocation;
-
-                    if (const Luau::TypePath::Index* pathIndexComponent = get_if<Luau::TypePath::Index>(&reason.superPath.components.at(1)))
-                    {
-                        size_t nthArgument = pathIndexComponent->index;
-                        argLocation = argExprs->at(nthArgument)->location;
-
-                        std::optional<TypeId> failedSubTy = traverseForType(fnTy, reason.subPath, builtinTypes);
-                        std::optional<TypeId> failedSuperTy = traverseForType(prospectiveFunction, reason.superPath, builtinTypes);
-
-                        if (failedSubTy && failedSuperTy)
-                        {
-                            // TODO extract location from the SubtypingResult path and argExprs
-                            switch (reason.variance)
-                            {
-                                case SubtypingVariance::Covariant:
-                                case SubtypingVariance::Contravariant:
-                                    errors.emplace_back(argLocation, TypeMismatch{*failedSubTy, *failedSuperTy, TypeMismatch::CovariantContext});
-                                    break;
-                                case SubtypingVariance::Invariant:
-                                    errors.emplace_back(argLocation, TypeMismatch{*failedSubTy, *failedSuperTy, TypeMismatch::InvariantContext});
-                                    break;
-                                default:
-                                    LUAU_ASSERT(0);
-                                    break;
-                            }
-                        }
-                    }
-
-                    std::optional<TypePackId> failedSubPack = traverseForPack(fnTy, reason.subPath, builtinTypes);
-                    std::optional<TypePackId> failedSuperPack = traverseForPack(prospectiveFunction, reason.superPath, builtinTypes);
-
-                    if (failedSubPack && failedSuperPack)
-                    {
-                        LUAU_ASSERT(!argExprs->empty());
-                        argLocation = argExprs->at(argExprs->size() - 1)->location;
-
-                        // TODO extract location from the SubtypingResult path and argExprs
-                        switch (reason.variance)
-                        {
-                            case SubtypingVariance::Covariant:
-                                errors.emplace_back(argLocation, TypePackMismatch{*failedSubPack, *failedSuperPack});
-                                break;
-                            case SubtypingVariance::Contravariant:
-                                errors.emplace_back(argLocation, TypePackMismatch{*failedSuperPack, *failedSubPack});
-                                break;
-                            case SubtypingVariance::Invariant:
-                                errors.emplace_back(argLocation, TypePackMismatch{*failedSubPack, *failedSuperPack});
-                                break;
-                            default:
-                                LUAU_ASSERT(0);
-                                break;
-                        }
-                    }
-
-                }
-            }
-
-            return {Analysis::OverloadIsNonviable, std::move(errors)};
-        }
-
-        size_t indexof(Analysis analysis)
-        {
-            switch (analysis)
-            {
-            case Ok:
-                return ok.size();
-            case TypeIsNotAFunction:
-                return nonFunctions.size();
-            case ArityMismatch:
-                return arityMismatches.size();
-            case OverloadIsNonviable:
-                return nonviableOverloads.size();
-            }
-
-            ice->ice("Inexhaustive switch in FunctionCallResolver::indexof");
-        }
-
-        void add(Analysis analysis, TypeId ty, ErrorVec&& errors)
-        {
-            resolution.insert(ty, {analysis, indexof(analysis)});
-
-            switch (analysis)
-            {
-            case Ok:
-                LUAU_ASSERT(errors.empty());
-                ok.push_back(ty);
-                break;
-            case TypeIsNotAFunction:
-                LUAU_ASSERT(errors.empty());
-                nonFunctions.push_back(ty);
-                break;
-            case ArityMismatch:
-                LUAU_ASSERT(!errors.empty());
-                arityMismatches.emplace_back(ty, std::move(errors));
-                break;
-            case OverloadIsNonviable:
-                nonviableOverloads.emplace_back(ty, std::move(errors));
-                break;
-            }
-        }
-
-    public:
-        void resolve(TypeId fnTy, const TypePack* args, AstExpr* selfExpr, const std::vector<AstExpr*>* argExprs)
-        {
-            fnTy = follow(fnTy);
-
-            auto it = get<IntersectionType>(fnTy);
-            if (!it)
-            {
-                auto [analysis, errors] = checkOverload(fnTy, args, selfExpr, argExprs);
-                add(analysis, fnTy, std::move(errors));
-                return;
-            }
-
-            for (TypeId ty : it)
-            {
-                if (resolution.find(ty) != resolution.end())
-                    continue;
-
-                auto [analysis, errors] = checkOverload(ty, args, selfExpr, argExprs);
-                add(analysis, ty, std::move(errors));
-            }
-        }
-    };
 
     void visit(AstExprCall* call)
     {
@@ -1738,7 +1438,17 @@ struct TypeChecker2
 
         if (std::optional<TypeId> strippedUnion = tryStripUnionFromNil(ty))
         {
-            reportError(OptionalValueAccess{ty}, location);
+            switch (shouldSuppressErrors(NotNull{&normalizer}, ty))
+            {
+            case ErrorSuppression::Suppress:
+                break;
+            case ErrorSuppression::NormalizationFailed:
+                reportError(NormalizationTooComplex{}, location);
+                // fallthrough intentional
+            case ErrorSuppression::DoNotSuppress:
+                reportError(OptionalValueAccess{ty}, location);
+            }
+
             return follow(*strippedUnion);
         }
 
@@ -1784,7 +1494,18 @@ struct TypeChecker2
         else if (auto cls = get<ClassType>(exprType); cls && cls->indexer)
             testIsSubtype(indexType, cls->indexer->indexType, indexExpr->index->location);
         else if (get<UnionType>(exprType) && isOptional(exprType))
-            reportError(OptionalValueAccess{exprType}, indexExpr->location);
+        {
+            switch (shouldSuppressErrors(NotNull{&normalizer}, exprType))
+            {
+            case ErrorSuppression::Suppress:
+                break;
+            case ErrorSuppression::NormalizationFailed:
+                reportError(NormalizationTooComplex{}, indexExpr->location);
+                // fallthrough intentional
+            case ErrorSuppression::DoNotSuppress:
+                reportError(OptionalValueAccess{exprType}, indexExpr->location);
+            }
+        }
     }
 
     void visit(AstExprFunction* fn)
@@ -1832,6 +1553,9 @@ struct TypeChecker2
 
                 if (arg->annotation)
                 {
+                    // we need to typecheck any argument annotations themselves.
+                    visit(arg->annotation);
+
                     TypeId annotatedArgTy = lookupAnnotation(arg->annotation);
 
                     testIsSubtype(inferredArgTy, annotatedArgTy, arg->location);
@@ -1873,12 +1597,20 @@ struct TypeChecker2
                 ++argIt;
             }
 
+            // we need to typecheck the vararg annotation, if it exists.
+            if (fn->vararg && fn->varargAnnotation)
+                visit(fn->varargAnnotation);
+
             bool reachesImplicitReturn = getFallthrough(fn->body) != nullptr;
             if (reachesImplicitReturn && !allowsNoReturnValues(follow(inferredFtv->retTypes)))
                 reportError(FunctionExitsWithoutReturning{inferredFtv->retTypes}, getEndLocation(fn));
         }
 
         visit(fn->body);
+
+        // we need to typecheck the return annotation itself, if it exists.
+        if (fn->returnAnnotation)
+            visit(*fn->returnAnnotation);
 
         functionDeclStack.pop_back();
     }
@@ -2272,11 +2004,21 @@ struct TypeChecker2
         TypeId computedType = lookupType(expr->expr);
 
         // Note: As an optimization, we try 'number <: number | string' first, as that is the more likely case.
-        if (auto r = subtyping->isSubtype(annotationType, computedType); r.isSubtype || r.isErrorSuppressing)
+        if (subtyping->isSubtype(annotationType, computedType).isSubtype)
             return;
 
-        if (auto r = subtyping->isSubtype(computedType, annotationType); r.isSubtype || r.isErrorSuppressing)
+        if (subtyping->isSubtype(computedType, annotationType).isSubtype)
             return;
+
+        switch (shouldSuppressErrors(NotNull{&normalizer}, computedType).orElse(shouldSuppressErrors(NotNull{&normalizer}, annotationType)))
+        {
+        case ErrorSuppression::Suppress:
+            return;
+        case ErrorSuppression::NormalizationFailed:
+            reportError(NormalizationTooComplex{}, expr->location);
+        case ErrorSuppression::DoNotSuppress:
+            break;
+        }
 
         reportError(TypesAreUnrelated{computedType, annotationType}, expr->location);
     }
@@ -2615,25 +2357,65 @@ struct TypeChecker2
         }
     }
 
+    struct Reasonings
+    {
+        // the list of reasons
+        std::vector<std::string> reasons;
+
+        // this should be true if _all_ of the reasons have an error suppressing type, and false otherwise.
+        bool suppressed;
+
+        std::string toString()
+        {
+            // DenseHashSet ordering is entirely undefined, so we want to
+            // sort the reasons here to achieve a stable error
+            // stringification.
+            std::sort(reasons.begin(), reasons.end());
+            std::string allReasons;
+            bool first = true;
+            for (const std::string& reason : reasons)
+            {
+                if (first)
+                    first = false;
+                else
+                    allReasons += "\n\t";
+
+                allReasons += reason;
+            }
+
+            return allReasons;
+        }
+    };
+
     template<typename TID>
-    std::optional<std::string> explainReasonings(TID subTy, TID superTy, Location location, const SubtypingResult& r)
+    Reasonings explainReasonings(TID subTy, TID superTy, Location location, const SubtypingResult& r)
     {
         if (r.reasoning.empty())
-            return std::nullopt;
+            return {};
 
         std::vector<std::string> reasons;
+        bool suppressed = true;
         for (const SubtypingReasoning& reasoning : r.reasoning)
         {
             if (reasoning.subPath.empty() && reasoning.superPath.empty())
                 continue;
 
-            std::optional<TypeOrPack> subLeaf = traverse(subTy, reasoning.subPath, builtinTypes);
-            std::optional<TypeOrPack> superLeaf = traverse(superTy, reasoning.superPath, builtinTypes);
+            std::optional<TypeOrPack> optSubLeaf = traverse(subTy, reasoning.subPath, builtinTypes);
+            std::optional<TypeOrPack> optSuperLeaf = traverse(superTy, reasoning.superPath, builtinTypes);
 
-            if (!subLeaf || !superLeaf)
+            if (!optSubLeaf || !optSuperLeaf)
                 ice->ice("Subtyping test returned a reasoning with an invalid path", location);
 
-            if (!get2<TypeId, TypeId>(*subLeaf, *superLeaf) && !get2<TypePackId, TypePackId>(*subLeaf, *superLeaf))
+            const TypeOrPack& subLeaf = *optSubLeaf;
+            const TypeOrPack& superLeaf = *optSuperLeaf;
+
+            auto subLeafTy = get<TypeId>(subLeaf);
+            auto superLeafTy = get<TypeId>(superLeaf);
+
+            auto subLeafTp = get<TypePackId>(subLeaf);
+            auto superLeafTp = get<TypePackId>(superLeaf);
+
+            if (!subLeafTy && !superLeafTy && !subLeafTp && !superLeafTp)
                 ice->ice("Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack.", location);
 
             std::string relation = "a subtype of";
@@ -2644,41 +2426,61 @@ struct TypeChecker2
 
             std::string reason;
             if (reasoning.subPath == reasoning.superPath)
-                reason = "at " + toString(reasoning.subPath) + ", " + toString(*subLeaf) + " is not " + relation + " " + toString(*superLeaf);
+                reason = "at " + toString(reasoning.subPath) + ", " + toString(subLeaf) + " is not " + relation + " " + toString(superLeaf);
             else
-                reason = "type " + toString(subTy) + toString(reasoning.subPath, /* prefixDot */ true) + " (" + toString(*subLeaf) + ") is not " +
-                         relation + " " + toString(superTy) + toString(reasoning.superPath, /* prefixDot */ true) + " (" + toString(*superLeaf) + ")";
+                reason = "type " + toString(subTy) + toString(reasoning.subPath, /* prefixDot */ true) + " (" + toString(subLeaf) + ") is not " +
+                         relation + " " + toString(superTy) + toString(reasoning.superPath, /* prefixDot */ true) + " (" + toString(superLeaf) + ")";
 
             reasons.push_back(reason);
+
+            // if we haven't already proved this isn't suppressing, we have to keep checking.
+            if (suppressed)
+            {
+                if (subLeafTy && superLeafTy)
+                    suppressed &= isErrorSuppressing(location, *subLeafTy) || isErrorSuppressing(location, *superLeafTy);
+                else
+                    suppressed &= isErrorSuppressing(location, *subLeafTp) || isErrorSuppressing(location, *superLeafTp);
+            }
         }
 
-        // DenseHashSet ordering is entirely undefined, so we want to
-        // sort the reasons here to achieve a stable error
-        // stringification.
-        std::sort(reasons.begin(), reasons.end());
-        std::string allReasons;
-        bool first = true;
-        for (const std::string& reason : reasons)
-        {
-            if (first)
-                first = false;
-            else
-                allReasons += "\n\t";
-
-            allReasons += reason;
-        }
-
-        return allReasons;
+        return {std::move(reasons), suppressed};
     }
+
 
     void explainError(TypeId subTy, TypeId superTy, Location location, const SubtypingResult& result)
     {
-        reportError(TypeMismatch{superTy, subTy, explainReasonings(subTy, superTy, location, result).value_or("")}, location);
+        switch (shouldSuppressErrors(NotNull{&normalizer}, subTy).orElse(shouldSuppressErrors(NotNull{&normalizer}, superTy)))
+        {
+        case ErrorSuppression::Suppress:
+            return;
+        case ErrorSuppression::NormalizationFailed:
+            reportError(NormalizationTooComplex{}, location);
+        case ErrorSuppression::DoNotSuppress:
+            break;
+        }
+
+        Reasonings reasonings = explainReasonings(subTy, superTy, location, result);
+
+        if (!reasonings.suppressed)
+            reportError(TypeMismatch{superTy, subTy, reasonings.toString()}, location);
     }
 
     void explainError(TypePackId subTy, TypePackId superTy, Location location, const SubtypingResult& result)
     {
-        reportError(TypePackMismatch{superTy, subTy, explainReasonings(subTy, superTy, location, result).value_or("")}, location);
+        switch (shouldSuppressErrors(NotNull{&normalizer}, subTy).orElse(shouldSuppressErrors(NotNull{&normalizer}, superTy)))
+        {
+        case ErrorSuppression::Suppress:
+            return;
+        case ErrorSuppression::NormalizationFailed:
+            reportError(NormalizationTooComplex{}, location);
+        case ErrorSuppression::DoNotSuppress:
+            break;
+        }
+
+        Reasonings reasonings = explainReasonings(subTy, superTy, location, result);
+
+        if (!reasonings.suppressed)
+            reportError(TypePackMismatch{superTy, subTy, reasonings.toString()}, location);
     }
 
     bool testIsSubtype(TypeId subTy, TypeId superTy, Location location)
@@ -2688,7 +2490,7 @@ struct TypeChecker2
         if (r.normalizationTooComplex)
             reportError(NormalizationTooComplex{}, location);
 
-        if (!r.isSubtype && !r.isErrorSuppressing)
+        if (!r.isSubtype)
             explainError(subTy, superTy, location, r);
 
         return r.isSubtype;
@@ -2701,7 +2503,7 @@ struct TypeChecker2
         if (r.normalizationTooComplex)
             reportError(NormalizationTooComplex{}, location);
 
-        if (!r.isSubtype && !r.isErrorSuppressing)
+        if (!r.isSubtype)
             explainError(subTy, superTy, location, r);
 
         return r.isSubtype;

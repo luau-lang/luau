@@ -6,6 +6,10 @@
 
 #include <stdexcept>
 
+LUAU_FASTFLAGVARIABLE(LuauFollowEmptyTypePacks, false);
+
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 namespace Luau
 {
 
@@ -267,6 +271,8 @@ TypePackId follow(TypePackId tp, const void* context, TypePackId (*mapper)(const
 
         if (const Unifiable::Bound<TypePackId>* btv = get<Unifiable::Bound<TypePackId>>(mapped))
             return btv->boundTo;
+        else if (const TypePack* tp = get<TypePack>(mapped); (FFlag::DebugLuauDeferredConstraintResolution || FFlag::LuauFollowEmptyTypePacks) && tp && tp->head.empty())
+            return tp->tail;
         else
             return std::nullopt;
     };
