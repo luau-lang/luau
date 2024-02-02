@@ -11,6 +11,8 @@
 #include "lstate.h"
 #include "lgc.h"
 
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCodeGenFixBufferLenCheckA64, false)
+
 namespace Luau
 {
 namespace CodeGen
@@ -1533,11 +1535,15 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             }
             else
             {
-                // fails if offset + size >= len; we compute it as len - offset <= size
+                // fails if offset + size > len; we compute it as len - offset < size
                 RegisterA64 tempx = castReg(KindA64::x, temp);
                 build.sub(tempx, tempx, regOp(inst.b)); // implicit uxtw
                 build.cmp(tempx, uint16_t(accessSize));
-                build.b(ConditionA64::LessEqual, target); // note: this is a signed 64-bit comparison so that out of bounds offset fails
+
+                if (DFFlag::LuauCodeGenFixBufferLenCheckA64)
+                    build.b(ConditionA64::Less, target); // note: this is a signed 64-bit comparison so that out of bounds offset fails
+                else
+                    build.b(ConditionA64::LessEqual, target); // note: this is a signed 64-bit comparison so that out of bounds offset fails
             }
         }
         else if (inst.b.kind == IrOpKind::Constant)

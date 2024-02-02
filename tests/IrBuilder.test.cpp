@@ -13,7 +13,8 @@
 
 using namespace Luau::CodeGen;
 
-LUAU_FASTFLAG(LuauReuseBufferChecks);
+LUAU_FASTFLAG(LuauReuseBufferChecks)
+LUAU_DYNAMIC_FASTFLAG(LuauCodeGenCheckGcEffectFix)
 
 class IrBuilderFixture
 {
@@ -2054,6 +2055,68 @@ bb_0:
 
 bb_fallback_1:
    RETURN R1, 2u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateHashSlotChecksInvalidation")
+{
+    ScopedFastFlag luauCodeGenCheckGcEffectFix{DFFlag::LuauCodeGenCheckGcEffectFix, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp fallback = build.block(IrBlockKind::Fallback);
+
+    build.beginBlock(block);
+
+    // This roughly corresponds to 'return t.a + t.a' with a stange GC assist in the middle
+    IrOp table1 = build.inst(IrCmd::LOAD_POINTER, build.vmReg(1));
+    IrOp slot1 = build.inst(IrCmd::GET_SLOT_NODE_ADDR, table1, build.constUint(3), build.vmConst(1));
+    build.inst(IrCmd::CHECK_SLOT_MATCH, slot1, build.vmConst(1), fallback);
+    IrOp value1 = build.inst(IrCmd::LOAD_TVALUE, slot1, build.constInt(0));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(3), value1);
+
+    build.inst(IrCmd::CHECK_GC);
+
+    IrOp slot1b = build.inst(IrCmd::GET_SLOT_NODE_ADDR, table1, build.constUint(8), build.vmConst(1));
+    build.inst(IrCmd::CHECK_SLOT_MATCH, slot1b, build.vmConst(1), fallback);
+    IrOp value1b = build.inst(IrCmd::LOAD_TVALUE, slot1b, build.constInt(0));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(4), value1b);
+
+    IrOp a = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(3));
+    IrOp b = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(4));
+    IrOp sum = build.inst(IrCmd::ADD_NUM, a, b);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(2), sum);
+
+    build.inst(IrCmd::RETURN, build.vmReg(2), build.constUint(1));
+
+    build.beginBlock(fallback);
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constUint(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build, true);
+
+    // In the future, we might even see duplicate identical TValue loads go away
+    // In the future, we might even see loads of different VM regs with the same value go away
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   %0 = LOAD_POINTER R1
+   %1 = GET_SLOT_NODE_ADDR %0, 3u, K1
+   CHECK_SLOT_MATCH %1, K1, bb_fallback_1
+   %3 = LOAD_TVALUE %1, 0i
+   STORE_TVALUE R3, %3
+   CHECK_GC
+   %6 = GET_SLOT_NODE_ADDR %0, 8u, K1
+   CHECK_SLOT_MATCH %6, K1, bb_fallback_1
+   %8 = LOAD_TVALUE %6, 0i
+   STORE_TVALUE R4, %8
+   %10 = LOAD_DOUBLE R3
+   %11 = LOAD_DOUBLE R4
+   %12 = ADD_NUM %10, %11
+   STORE_DOUBLE R2, %12
+   RETURN R2, 1u
+
+bb_fallback_1:
+   RETURN R0, 1u
 
 )");
 }

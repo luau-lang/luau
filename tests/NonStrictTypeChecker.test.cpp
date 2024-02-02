@@ -86,6 +86,9 @@ declare function @checked contrived(n : Not<number>) : number
 declare function @checked onlyNums(...: number) : number
 declare function @checked mixedArgs(x: string, ...: number) : number
 declare function @checked optionalArg(x: string?) : number
+declare foo: {
+    bar: @checked (number) -> number,
+}
 )BUILTIN_SRC";
 };
 
@@ -427,7 +430,7 @@ lower(x) -- phi {x1, x2}
 )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-}
+} //
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "phi_node_assignment_err")
 {
@@ -445,6 +448,30 @@ end
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     NONSTRICT_REQUIRE_CHECKED_ERR(Position(8, 10), "lower", result);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "tblprop_is_checked")
+{
+    CheckResult result = checkNonStrict(R"(
+foo.bar("hi")
+)");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    NONSTRICT_REQUIRE_CHECKED_ERR(Position(1, 8), "foo.bar", result);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "incorrect_arg_count")
+{
+    CheckResult result = checkNonStrict(R"(
+foo.bar(1,2,3)
+abs(3, "hi");
+)");
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    auto r1 = get<CheckedFunctionIncorrectArgs>(result.errors[0]);
+    auto r2 = get<CheckedFunctionIncorrectArgs>(result.errors[1]);
+    LUAU_ASSERT(r1);
+    LUAU_ASSERT(r2);
+    CHECK_EQ("abs", r1->functionName);
+    CHECK_EQ("foo.bar", r2->functionName);
 }
 
 TEST_SUITE_END();

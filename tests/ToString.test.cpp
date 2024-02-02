@@ -956,10 +956,10 @@ caused by:
   Property 'd' is not compatible.
 Type 'string' could not be converted into 'number' in an invariant context)";
     //clang-format on
-    //
-    std::string actual = toString(result.errors[0]);
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    std::string actual = toString(result.errors[0]);
 
     CHECK(expected == actual);
 }

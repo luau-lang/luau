@@ -10,6 +10,7 @@
 
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
@@ -539,6 +540,12 @@ struct ErrorConverter
         return "Argument " + e.argument + " with type '" + toString(e.argumentType) + "' in function '" + e.functionName +
                "' is used in a way that will run time error";
     }
+
+    std::string operator()(const CheckedFunctionIncorrectArgs& e) const
+    {
+        return "Checked Function " + e.functionName + " expects " + std::to_string(e.expected) + " arguments, but received " +
+               std::to_string(e.actual);
+    }
 };
 
 struct InvalidNameChecker
@@ -872,6 +879,11 @@ bool NonStrictFunctionDefinitionError::operator==(const NonStrictFunctionDefinit
     return functionName == rhs.functionName && argument == rhs.argument && argumentType == rhs.argumentType;
 }
 
+bool CheckedFunctionIncorrectArgs::operator==(const CheckedFunctionIncorrectArgs& rhs) const
+{
+    return functionName == rhs.functionName && expected == rhs.expected && actual == rhs.actual;
+}
+
 std::string toString(const TypeError& error)
 {
     return toString(error, TypeErrorToStringOptions{});
@@ -1046,6 +1058,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     else if constexpr (std::is_same_v<T, NonStrictFunctionDefinitionError>)
     {
         e.argumentType = clone(e.argumentType);
+    }
+    else if constexpr (std::is_same_v<T, CheckedFunctionIncorrectArgs>)
+    {
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

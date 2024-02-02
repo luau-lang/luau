@@ -144,6 +144,18 @@ private:
     TypePackId freshTypePack(const ScopePtr& scope);
 
     /**
+     * Allocate a new TypePack with the given head and tail.
+     *
+     * Avoids allocating 0-length type packs:
+     *
+     * If the head is non-empty, allocate and return a type pack with the given
+     * head and tail.
+     * If the head is empty and tail is non-empty, return *tail.
+     * If both the head and tail are empty, return an empty type pack.
+     */
+    TypePackId addTypePack(std::vector<TypeId> head, std::optional<TypePackId> tail);
+
+    /**
      * Fabricates a scope that is a child of another scope.
      * @param node the lexical node that the scope belongs to.
      * @param parent the parent scope of the new scope. Must not be null.

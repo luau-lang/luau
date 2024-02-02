@@ -1,11 +1,13 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+#include "Luau/TypeFwd.h"
 #include "Luau/TypePath.h"
 
 #include "Luau/Normalize.h"
 #include "Luau/Subtyping.h"
 #include "Luau/Type.h"
 #include "Luau/TypePack.h"
+#include "Luau/TypeFamily.h"
 
 #include "doctest.h"
 #include "Fixture.h"
@@ -67,6 +69,7 @@ struct SubtypeFixture : Fixture
     ScopePtr moduleScope{new Scope(rootScope)};
 
     Subtyping subtyping = mkSubtyping(rootScope);
+    BuiltinTypeFamilies builtinTypeFamilies{};
 
     Subtyping mkSubtyping(const ScopePtr& scope)
     {
@@ -319,24 +322,6 @@ struct SubtypeFixture : Fixture
         CHECK_MESSAGE(!result.isSubtype, "Expected " << leftTy << " </: " << rightTy); \
     } while (0)
 
-#define CHECK_IS_ERROR_SUPPRESSING(left, right) \
-    do \
-    { \
-        const auto& leftTy = (left); \
-        const auto& rightTy = (right); \
-        SubtypingResult result = isSubtype(leftTy, rightTy); \
-        CHECK_MESSAGE(result.isErrorSuppressing, "Expected " << leftTy << " to error-suppress " << rightTy); \
-    } while (0)
-
-#define CHECK_IS_NOT_ERROR_SUPPRESSING(left, right) \
-    do \
-    { \
-        const auto& leftTy = (left); \
-        const auto& rightTy = (right); \
-        SubtypingResult result = isSubtype(leftTy, rightTy); \
-        CHECK_MESSAGE(!result.isErrorSuppressing, "Expected " << leftTy << " to error-suppress " << rightTy); \
-    } while (0)
-
 /// Internal macro for registering a generated test case.
 ///
 /// @param der the name of the derived fixture struct
@@ -404,11 +389,61 @@ TEST_SUITE_BEGIN("Subtyping");
 TEST_IS_SUBTYPE(builtinTypes->numberType, builtinTypes->anyType);
 TEST_IS_NOT_SUBTYPE(builtinTypes->numberType, builtinTypes->stringType);
 
+TEST_CASE_FIXTURE(SubtypeFixture, "basic_reducible_sub_typefamily")
+{
+    // add<number, number> <: number
+    TypeId typeFamilyNum =
+        arena.addType(TypeFamilyInstanceType{NotNull{&builtinTypeFamilies.addFamily}, {builtinTypes->numberType, builtinTypes->numberType}, {}});
+    TypeId superTy = builtinTypes->numberType;
+    SubtypingResult result = isSubtype(typeFamilyNum, superTy);
+    CHECK(result.isSubtype);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "basic_reducible_super_typefamily")
+{
+    // number <: add<number, number> ~ number
+    TypeId typeFamilyNum =
+        arena.addType(TypeFamilyInstanceType{NotNull{&builtinTypeFamilies.addFamily}, {builtinTypes->numberType, builtinTypes->numberType}, {}});
+    TypeId subTy = builtinTypes->numberType;
+    SubtypingResult result = isSubtype(subTy, typeFamilyNum);
+    CHECK(result.isSubtype);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "basic_irreducible_sub_typefamily")
+{
+    // add<string, boolean> ~ never <: number
+    TypeId typeFamilyNum =
+        arena.addType(TypeFamilyInstanceType{NotNull{&builtinTypeFamilies.addFamily}, {builtinTypes->stringType, builtinTypes->booleanType}, {}});
+    TypeId superTy = builtinTypes->numberType;
+    SubtypingResult result = isSubtype(typeFamilyNum, superTy);
+    CHECK(result.isSubtype);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "basic_irreducible_super_typefamily")
+{
+    // number <\: add<string, boolean> ~ irreducible/never
+    TypeId typeFamilyNum =
+        arena.addType(TypeFamilyInstanceType{NotNull{&builtinTypeFamilies.addFamily}, {builtinTypes->stringType, builtinTypes->booleanType}, {}});
+    TypeId subTy = builtinTypes->numberType;
+    SubtypingResult result = isSubtype(subTy, typeFamilyNum);
+    CHECK(!result.isSubtype);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "basic_typefamily_with_generics")
+{
+    // <T,U>(x: T, x: U) -> add<T,U> <: (number, number) -> number
+    TypeId addFamily = arena.addType(TypeFamilyInstanceType{NotNull{&builtinTypeFamilies.addFamily}, {genericT, genericU}, {}});
+    FunctionType ft{{genericT, genericU}, {}, arena.addTypePack({genericT, genericU}), arena.addTypePack({addFamily})};
+    TypeId functionType = arena.addType(std::move(ft));
+    FunctionType superFt{arena.addTypePack({builtinTypes->numberType, builtinTypes->numberType}), arena.addTypePack({builtinTypes->numberType})};
+    TypeId superFunction = arena.addType(std::move(superFt));
+    SubtypingResult result = isSubtype(functionType, superFunction);
+    CHECK(result.isSubtype);
+}
+
 TEST_CASE_FIXTURE(SubtypeFixture, "any <!: unknown")
 {
-    SubtypingResult result = isSubtype(builtinTypes->anyType, builtinTypes->unknownType);
-    CHECK(!result.isSubtype);
-    CHECK(result.isErrorSuppressing);
+    CHECK_IS_NOT_SUBTYPE(builtinTypes->anyType, builtinTypes->unknownType);
 }
 
 TEST_CASE_FIXTURE(SubtypeFixture, "number? <: unknown")
@@ -785,7 +820,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { x: number } } <!: { x: number 
 // Negated subtypes
 TEST_IS_NOT_SUBTYPE(negate(builtinTypes->neverType), builtinTypes->stringType);
 TEST_IS_SUBTYPE(negate(builtinTypes->unknownType), builtinTypes->stringType);
-TEST_IS_NOT_SUBTYPE(negate(builtinTypes->anyType), builtinTypes->stringType);
+TEST_IS_SUBTYPE(negate(builtinTypes->anyType), builtinTypes->stringType);
 TEST_IS_SUBTYPE(negate(meet(builtinTypes->neverType, builtinTypes->unknownType)), builtinTypes->stringType);
 TEST_IS_SUBTYPE(negate(join(builtinTypes->neverType, builtinTypes->unknownType)), builtinTypes->stringType);
 
@@ -1163,18 +1198,10 @@ TEST_CASE_FIXTURE(SubtypeFixture, "dont_cache_tests_involving_cycles")
 TEST_CASE_FIXTURE(SubtypeFixture, "<T>({ x: T }) -> T <: ({ method: <T>({ x: T }) -> T, x: number }) -> number")
 {
     // <T>({ x: T }) -> T
-    TypeId tableToPropType = arena.addType(FunctionType{
-        {genericT},
-        {},
-        arena.addTypePack({tbl({{"x", genericT}})}),
-        arena.addTypePack({genericT})
-    });
+    TypeId tableToPropType = arena.addType(FunctionType{{genericT}, {}, arena.addTypePack({tbl({{"x", genericT}})}), arena.addTypePack({genericT})});
 
     // ({ method: <T>({ x: T }) -> T, x: number }) -> number
-    TypeId otherType = fn(
-        {tbl({{"method", tableToPropType}, {"x", builtinTypes->numberType}})},
-        {builtinTypes->numberType}
-    );
+    TypeId otherType = fn({tbl({{"method", tableToPropType}, {"x", builtinTypes->numberType}})}, {builtinTypes->numberType});
 
     CHECK_IS_SUBTYPE(tableToPropType, otherType);
 }

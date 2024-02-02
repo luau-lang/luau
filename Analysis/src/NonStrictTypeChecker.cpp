@@ -12,6 +12,7 @@
 #include "Luau/TypeArena.h"
 #include "Luau/TypeFamily.h"
 #include "Luau/Def.h"
+#include "Luau/ToString.h"
 #include "Luau/TypeFwd.h"
 
 #include <iostream>
@@ -140,7 +141,6 @@ private:
     }
 
     std::unordered_map<const Def*, TypeId> context;
-
 };
 
 struct NonStrictTypeChecker
@@ -543,7 +543,14 @@ struct NonStrictTypeChecker
                     }
                 }
                 // For a checked function, these gotta be the same size
-                LUAU_ASSERT(call->args.size == argTypes.size());
+
+                std::string functionName = getFunctionNameAsString(*call->func).value_or("");
+                if (call->args.size != argTypes.size())
+                {
+                    reportError(CheckedFunctionIncorrectArgs{functionName, argTypes.size(), call->args.size}, call->location);
+                    return fresh;
+                }
+
                 for (size_t i = 0; i < call->args.size; i++)
                 {
                     // For example, if the arg is "hi"
@@ -559,12 +566,11 @@ struct NonStrictTypeChecker
                 }
 
                 // Populate the context and now iterate through each of the arguments to the call to find out if we satisfy the types
-                AstName name = getIdentifier(call->func);
                 for (size_t i = 0; i < call->args.size; i++)
                 {
                     AstExpr* arg = call->args.data[i];
                     if (auto runTimeFailureType = willRunTimeError(arg, fresh))
-                        reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, name.value, i}, arg->location);
+                        reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
                 }
             }
         }

@@ -19,6 +19,7 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
 LUAU_FASTFLAGVARIABLE(LuauReuseBufferChecks, false)
 LUAU_FASTFLAG(LuauCodegenVector)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCodeGenCheckGcEffectFix, false)
 
 namespace Luau
 {
@@ -1037,9 +1038,19 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::CHECK_GC:
         // It is enough to perform a GC check once in a block
         if (state.checkedGc)
+        {
             kill(function, inst);
+        }
         else
+        {
             state.checkedGc = true;
+
+            if (DFFlag::LuauCodeGenCheckGcEffectFix)
+            {
+                // GC assist might modify table data (hash part)
+                state.invalidateHeapTableData();
+            }
+        }
         break;
     case IrCmd::BARRIER_OBJ:
     case IrCmd::BARRIER_TABLE_FORWARD:
