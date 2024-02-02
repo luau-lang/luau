@@ -167,6 +167,7 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
     ScopePtr scope = std::make_shared<Scope>(globalScope);
     rootScope = scope.get();
     scopes.emplace_back(block->location, scope);
+    rootScope->location = block->location;
     module->astScopes[block] = NotNull{scope.get()};
 
     rootScope->returnType = freshTypePack(scope);
@@ -192,10 +193,24 @@ TypePackId ConstraintGenerator::freshTypePack(const ScopePtr& scope)
     return arena->addTypePack(TypePackVar{std::move(f)});
 }
 
+TypePackId ConstraintGenerator::addTypePack(std::vector<TypeId> head, std::optional<TypePackId> tail)
+{
+    if (head.empty())
+    {
+        if (tail)
+            return *tail;
+        else
+            return builtinTypes->emptyTypePack;
+    }
+    else
+        return arena->addTypePack(TypePack{std::move(head), tail});
+}
+
 ScopePtr ConstraintGenerator::childScope(AstNode* node, const ScopePtr& parent)
 {
     auto scope = std::make_shared<Scope>(parent);
     scopes.emplace_back(node->location, scope);
+    scope->location = node->location;
 
     scope->returnType = parent->returnType;
     scope->varargPack = parent->varargPack;
@@ -1278,7 +1293,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClas
             if (FunctionType* ftv = getMutable<FunctionType>(propTy))
             {
                 ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
-                ftv->argTypes = arena->addTypePack(TypePack{{classTy}, ftv->argTypes});
+                ftv->argTypes = addTypePack({classTy}, ftv->argTypes);
 
                 ftv->hasSelf = true;
             }
@@ -1407,10 +1422,7 @@ InferencePack ConstraintGenerator::checkPack(
         }
     }
 
-    if (head.empty() && tail)
-        return InferencePack{*tail};
-    else
-        return InferencePack{arena->addTypePack(TypePack{std::move(head), tail})};
+    return InferencePack{addTypePack(std::move(head), tail)};
 }
 
 InferencePack ConstraintGenerator::checkPack(
@@ -1611,7 +1623,7 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
 
         // TODO: How do expectedTypes play into this?  Do they?
         TypePackId rets = arena->addTypePack(BlockedTypePack{});
-        TypePackId argPack = arena->addTypePack(TypePack{args, argTail});
+        TypePackId argPack = addTypePack(std::move(args), argTail);
         FunctionType ftv(TypeLevel{}, scope.get(), argPack, rets, std::nullopt, call->self);
 
         NotNull<Constraint> fcc = addConstraint(scope, call->func->location,
@@ -2283,11 +2295,32 @@ std::optional<TypeId> ConstraintGenerator::checkLValue(const ScopePtr& scope, As
         {
             if (auto lt = getMutable<LocalType>(*ty))
                 ++lt->blockCount;
+            else if (auto ut = getMutable<UnionType>(*ty))
+            {
+                for (TypeId optTy : ut->options)
+                    if (auto lt = getMutable<LocalType>(optTy))
+                        ++lt->blockCount;
+            }
         }
     }
     else
     {
         ty = arena->addType(LocalType{builtinTypes->neverType, /* blockCount */ 1, local->local->name.value});
+
+        if (annotatedTy)
+        {
+            switch (shouldSuppressErrors(normalizer, *annotatedTy))
+            {
+            case ErrorSuppression::DoNotSuppress:
+                break;
+            case ErrorSuppression::Suppress:
+                ty = simplifyUnion(builtinTypes, arena, *ty, builtinTypes->errorType).result;
+                break;
+            case ErrorSuppression::NormalizationFailed:
+                reportError(local->local->annotation->location, NormalizationTooComplex{});
+                break;
+            }
+        }
 
         scope->lvalueTypes[defId] = *ty;
     }
@@ -2545,6 +2578,22 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
         }
 
         TypeId itemTy = check(scope, item.value, checkExpectedIndexResultType).ty;
+
+        // we should preserve error-suppressingness from the expected value type if we have one
+        if (expectedValueType)
+        {
+            switch (shouldSuppressErrors(normalizer, *expectedValueType))
+            {
+            case ErrorSuppression::DoNotSuppress:
+                break;
+            case ErrorSuppression::Suppress:
+                itemTy = simplifyUnion(builtinTypes, arena, itemTy, builtinTypes->errorType).result;
+                break;
+            case ErrorSuppression::NormalizationFailed:
+                reportError(item.value->location, NormalizationTooComplex{});
+                break;
+            }
+        }
 
         if (isIndexedResultType && !pinnedIndexResultType)
             pinnedIndexResultType = itemTy;
@@ -3071,7 +3120,7 @@ TypePackId ConstraintGenerator::resolveTypePack(const ScopePtr& scope, const Ast
         tail = resolveTypePack(scope, list.tailType, inTypeArguments, replaceErrorWithFresh);
     }
 
-    return arena->addTypePack(TypePack{head, tail});
+    return addTypePack(std::move(head), tail);
 }
 
 std::vector<std::pair<Name, GenericTypeDefinition>> ConstraintGenerator::createGenerics(

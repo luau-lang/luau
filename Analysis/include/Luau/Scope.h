@@ -45,6 +45,8 @@ struct Scope
 
     TypeLevel level;
 
+    Location location; // the spanning location associated with this scope
+
     std::unordered_map<Name, TypeFun> exportedTypeBindings;
     std::unordered_map<Name, TypeFun> privateTypeBindings;
     std::unordered_map<Name, Location> typeAliasLocations;

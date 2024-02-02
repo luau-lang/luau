@@ -5,6 +5,8 @@
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePairHash.h"
 #include "Luau/TypePath.h"
+#include "Luau/TypeFamily.h"
+#include "Luau/TypeCheckLimits.h"
 #include "Luau/DenseHash.h"
 
 #include <vector>
@@ -24,6 +26,7 @@ struct NormalizedClassType;
 struct NormalizedStringType;
 struct NormalizedFunctionType;
 struct TypeArena;
+struct TypeCheckLimits;
 struct Scope;
 struct TableIndexer;
 
@@ -60,7 +63,6 @@ static const SubtypingReasoning kEmptyReasoning = SubtypingReasoning{TypePath::k
 struct SubtypingResult
 {
     bool isSubtype = false;
-    bool isErrorSuppressing = false;
     bool normalizationTooComplex = false;
     bool isCacheable = true;
 
@@ -109,6 +111,7 @@ struct Subtyping
     NotNull<InternalErrorReporter> iceReporter;
 
     NotNull<Scope> scope;
+    TypeCheckLimits limits;
 
     enum class Variance
     {
@@ -199,6 +202,8 @@ private:
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TypeIds& subTypes, const TypeIds& superTypes);
 
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const VariadicTypePack* subVariadic, const VariadicTypePack* superVariadic);
+    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TypeFamilyInstanceType* subFamilyInstance, const TypeId superTy);
+    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TypeId subTy, const TypeFamilyInstanceType* superFamilyInstance);
 
     bool bindGeneric(SubtypingEnvironment& env, TypeId subTp, TypeId superTp);
     bool bindGeneric(SubtypingEnvironment& env, TypePackId subTp, TypePackId superTp);
@@ -206,6 +211,21 @@ private:
     template<typename T, typename Container>
     TypeId makeAggregateType(const Container& container, TypeId orElse);
 
+    template<typename T>
+    T handleTypeFamilyReductionResult(const TypeFamilyInstanceType* tf)
+    {
+        TypeFamilyContext context{arena, builtinTypes, scope, normalizer, iceReporter, NotNull{&limits}};
+        TypeFamilyReductionResult<TypeId> result = tf->family->reducer(tf->typeArguments, tf->packArguments, NotNull{&context});
+        if (!result.blockedTypes.empty())
+            unexpected(result.blockedTypes[0]);
+        else if (!result.blockedPacks.empty())
+            unexpected(result.blockedPacks[0]);
+        else if (result.uninhabited || result.result == std::nullopt)
+            return builtinTypes->neverType;
+        return *result.result;
+    }
+
+    [[noreturn]] void unexpected(TypeId ty);
     [[noreturn]] void unexpected(TypePackId tp);
 };
 

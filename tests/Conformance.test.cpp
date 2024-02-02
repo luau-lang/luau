@@ -30,6 +30,7 @@ LUAU_FASTFLAG(LuauTaggedLuData)
 LUAU_FASTFLAG(LuauSciNumberSkipTrailDot)
 LUAU_DYNAMIC_FASTFLAG(LuauInterruptablePatternMatch)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
+LUAU_DYNAMIC_FASTFLAG(LuauCodeGenFixBufferLenCheckA64)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -281,6 +282,45 @@ static void* limitedRealloc(void* ud, void* ptr, size_t osize, size_t nsize)
     }
 }
 
+void setupVectorHelpers(lua_State* L)
+{
+    lua_pushcfunction(L, lua_vector, "vector");
+    lua_setglobal(L, "vector");
+
+#if LUA_VECTOR_SIZE == 4
+    lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
+#else
+    lua_pushvector(L, 0.0f, 0.0f, 0.0f);
+#endif
+    luaL_newmetatable(L, "vector");
+
+    lua_pushstring(L, "__index");
+    lua_pushcfunction(L, lua_vector_index, nullptr);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "__namecall");
+    lua_pushcfunction(L, lua_vector_namecall, nullptr);
+    lua_settable(L, -3);
+
+    lua_setreadonly(L, -1, true);
+    lua_setmetatable(L, -2);
+    lua_pop(L, 1);
+}
+
+static void setupNativeHelpers(lua_State* L)
+{
+    lua_pushcclosurek(
+        L,
+        [](lua_State* L) -> int {
+            extern int luaG_isnative(lua_State * L, int level);
+
+            lua_pushboolean(L, luaG_isnative(L, 1));
+            return 1;
+        },
+        "is_native", 0, nullptr);
+    lua_setglobal(L, "is_native");
+}
+
 static std::vector<Luau::CodeGen::FunctionBytecodeSummary> analyzeFile(const char* source, const unsigned nestingLimit)
 {
     Luau::BytecodeBuilder bcb;
@@ -490,27 +530,7 @@ TEST_CASE("Vector")
     runConformance(
         "vector.lua",
         [](lua_State* L) {
-            lua_pushcfunction(L, lua_vector, "vector");
-            lua_setglobal(L, "vector");
-
-#if LUA_VECTOR_SIZE == 4
-            lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
-#else
-            lua_pushvector(L, 0.0f, 0.0f, 0.0f);
-#endif
-            luaL_newmetatable(L, "vector");
-
-            lua_pushstring(L, "__index");
-            lua_pushcfunction(L, lua_vector_index, nullptr);
-            lua_settable(L, -3);
-
-            lua_pushstring(L, "__namecall");
-            lua_pushcfunction(L, lua_vector_namecall, nullptr);
-            lua_settable(L, -3);
-
-            lua_setreadonly(L, -1, true);
-            lua_setmetatable(L, -2);
-            lua_pop(L, 1);
+            setupVectorHelpers(L);
         },
         nullptr, nullptr, nullptr);
 }
@@ -2019,7 +2039,15 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
-    runConformance("native.lua");
+    ScopedFastFlag luauCodeGenFixBufferLenCheckA64{DFFlag::LuauCodeGenFixBufferLenCheckA64, true};
+
+    // This tests requires code to run natively, otherwise all 'is_native' checks will fail
+    if (!codegen || !luau_codegen_supported())
+        return;
+
+    runConformance("native.lua", [](lua_State* L) {
+        setupNativeHelpers(L);
+    });
 }
 
 TEST_CASE("NativeTypeAnnotations")
@@ -2028,37 +2056,10 @@ TEST_CASE("NativeTypeAnnotations")
     if (!codegen || !luau_codegen_supported())
         return;
 
-    runConformance(
-        "native_types.lua",
-        [](lua_State* L) {
-            // add is_native() function
-            lua_pushcclosurek(
-                L,
-                [](lua_State* L) -> int {
-                    extern int luaG_isnative(lua_State * L, int level);
-
-                    lua_pushboolean(L, luaG_isnative(L, 1));
-                    return 1;
-                },
-                "is_native", 0, nullptr);
-            lua_setglobal(L, "is_native");
-
-            // for vector tests
-            lua_pushcfunction(L, lua_vector, "vector");
-            lua_setglobal(L, "vector");
-
-#if LUA_VECTOR_SIZE == 4
-            lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
-#else
-            lua_pushvector(L, 0.0f, 0.0f, 0.0f);
-#endif
-            luaL_newmetatable(L, "vector");
-
-            lua_setreadonly(L, -1, true);
-            lua_setmetatable(L, -2);
-            lua_pop(L, 1);
-        },
-        nullptr, nullptr, nullptr);
+    runConformance("native_types.lua", [](lua_State* L) {
+        setupNativeHelpers(L);
+        setupVectorHelpers(L);
+    });
 }
 
 TEST_CASE("HugeFunction")

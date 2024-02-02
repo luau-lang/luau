@@ -422,4 +422,34 @@ TEST_CASE_FIXTURE(TypeStateFixture, "multiple_assignments_in_loops")
     CHECK("(number | string)?" == toString(requireType("x")));
 }
 
+TEST_CASE_FIXTURE(TypeStateFixture, "typestates_preserve_error_suppression")
+{
+    CheckResult result = check(R"(
+        local a: any = 51
+        a = "pickles" -- We'll have a new DefId for this iteration of `a`.  Its type must also be error-suppressing
+        print(a)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("*error-type* | string" == toString(requireTypeAtPosition({3, 14}), {true}));
+}
+
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "typestates_preserve_error_suppression_properties")
+{
+    // early return if the flag isn't set since this is blocking gated commits
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local a: {x: any} = {x = 51}
+        a.x = "pickles" -- We'll have a new DefId for this iteration of `a.x`.  Its type must also be error-suppressing
+        print(a.x)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("*error-type* | string" == toString(requireTypeAtPosition({3, 16}), {true}));
+}
+
+
 TEST_SUITE_END();

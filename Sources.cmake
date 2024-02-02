@@ -184,6 +184,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/ModuleResolver.h
     Analysis/include/Luau/NonStrictTypeChecker.h
     Analysis/include/Luau/Normalize.h
+    Analysis/include/Luau/OverloadResolution.h
     Analysis/include/Luau/Predicate.h
     Analysis/include/Luau/Quantify.h
     Analysis/include/Luau/RecursionCounter.h
@@ -247,6 +248,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Module.cpp
     Analysis/src/NonStrictTypeChecker.cpp
     Analysis/src/Normalize.cpp
+    Analysis/src/OverloadResolution.cpp
     Analysis/src/Quantify.cpp
     Analysis/src/Refinement.cpp
     Analysis/src/RequireTracer.cpp

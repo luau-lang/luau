@@ -4026,4 +4026,37 @@ TEST_CASE_FIXTURE(Fixture, "read_ond_write_only_indexers_are_unsupported")
     CHECK(Location{{2, 18}, {2, 23}} == result.errors[1].location);
 }
 
+TEST_CASE_FIXTURE(Fixture, "table_subtyping_error_suppression")
+{
+    CheckResult result = check(R"(
+        function one(tbl: {x: any}) end
+        function two(tbl: {x: string}) one(tbl) end -- ok, string <: any and any <: string
+
+        function three(tbl: {x: any, y: string}) end
+        function four(tbl: {x: string, y: string}) three(tbl) end -- ok, string <: any, any <: string, string <: string
+        function five(tbl: {x: string, y: number}) three(tbl) end -- error, string <: any, any <: string, but number </: string
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+
+
+    // the new solver reports specifically the inner mismatch, rather than the whole table
+    // honestly not sure which of these is a better developer experience.
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ(*tm->wantedType, *builtinTypes->stringType);
+        CHECK_EQ(*tm->givenType, *builtinTypes->numberType);
+    }
+    else
+    {
+        CHECK_EQ("{| x: any, y: string |}", toString(tm->wantedType));
+        CHECK_EQ("{| x: string, y: number |}", toString(tm->givenType));
+
+    }
+
+}
+
 TEST_SUITE_END();
