@@ -884,6 +884,17 @@ TEST_CASE("NewUserdataOverflow")
     CHECK(strcmp(lua_tostring(L, -1), "memory allocation error: block too big") == 0);
 }
 
+TEST_CASE("SandboxWithoutLibs")
+{
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    luaopen_base(L); // Load only base library
+    luaL_sandbox(L);
+
+    CHECK(lua_getreadonly(L, LUA_GLOBALSINDEX));
+}
+
 TEST_CASE("ApiTables")
 {
     StateRef globalState(luaL_newstate(), lua_close);
