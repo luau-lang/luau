@@ -582,4 +582,28 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_rfc_example")
     CHECK_EQ("\"cactus\"", toString(tm->givenType));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_oss_crash_gh1161")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local EnumVariants = {
+            ["a"] = 1, ["b"] = 2, ["c"] = 3
+        }
+
+        type EnumKey = keyof<typeof(EnumVariants)>
+
+        function fnA<T>(i: T): keyof<T> end
+
+        function fnB(i: EnumKey) end
+
+        local result = fnA(EnumVariants)
+        fnB(result)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<FunctionExitsWithoutReturning>(result.errors[0]));
+}
+
 TEST_SUITE_END();

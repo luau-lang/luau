@@ -16,6 +16,7 @@
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(DebugLuauReadWriteProperties);
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteStringLiteralBounds, false);
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteTableKeysNoInitialCharacter, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -1741,6 +1742,37 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
                 break;
             }
         }
+    }
+    else if (AstExprTable* exprTable = node->as<AstExprTable>(); exprTable && FFlag::LuauAutocompleteTableKeysNoInitialCharacter)
+    {
+        AutocompleteEntryMap result;
+
+        if (auto it = module->astExpectedTypes.find(exprTable))
+        {
+            result = autocompleteProps(*module, typeArena, builtinTypes, *it, PropIndexType::Key, ancestry);
+
+            // If the key type is a union of singleton strings,
+            // suggest those too.
+            if (auto ttv = get<TableType>(follow(*it)); ttv && ttv->indexer)
+            {
+                autocompleteStringSingleton(ttv->indexer->indexType, false, node, position, result);
+            }
+
+            // Remove keys that are already completed
+            for (const auto& item : exprTable->items)
+            {
+                if (!item.key)
+                    continue;
+
+                if (auto stringKey = item.key->as<AstExprConstantString>())
+                    result.erase(std::string(stringKey->value.data, stringKey->value.size));
+            }
+        }
+
+        // Also offer general expression suggestions
+        autocompleteExpression(sourceModule, *module, builtinTypes, typeArena, ancestry, position, result);
+
+        return {result, ancestry, AutocompleteContext::Property};
     }
     else if (isIdentifier(node) && (parent->is<AstStatExpr>() || parent->is<AstStatError>()))
         return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};

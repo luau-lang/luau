@@ -495,11 +495,12 @@ struct TypeChecker2
         return checkForFamilyInhabitance(follow(*ty), annotation->location);
     }
 
-    TypePackId lookupPackAnnotation(AstTypePack* annotation)
+    std::optional<TypePackId> lookupPackAnnotation(AstTypePack* annotation)
     {
         TypePackId* tp = module->astResolvedTypePacks.find(annotation);
-        LUAU_ASSERT(tp);
-        return follow(*tp);
+        if (tp != nullptr)
+            return {follow(*tp)};
+        return {};
     }
 
     TypeId lookupExpectedType(AstExpr* expr)
@@ -2187,9 +2188,11 @@ struct TypeChecker2
                 }
                 else if (p.typePack)
                 {
-                    TypePackId tp = lookupPackAnnotation(p.typePack);
+                    std::optional<TypePackId> tp = lookupPackAnnotation(p.typePack);
+                    if (!tp.has_value())
+                        continue;
 
-                    if (typesProvided < typesRequired && size(tp) == 1 && finite(tp) && first(tp))
+                    if (typesProvided < typesRequired && size(*tp) == 1 && finite(*tp) && first(*tp))
                     {
                         typesProvided += 1;
                     }
@@ -2400,14 +2403,20 @@ struct TypeChecker2
             if (reasoning.subPath.empty() && reasoning.superPath.empty())
                 continue;
 
-            std::optional<TypeOrPack> subLeaf = traverse(subTy, reasoning.subPath, builtinTypes);
-            std::optional<TypeOrPack> superLeaf = traverse(superTy, reasoning.superPath, builtinTypes);
+            std::optional<TypeOrPack> optSubLeaf = traverse(subTy, reasoning.subPath, builtinTypes);
+            std::optional<TypeOrPack> optSuperLeaf = traverse(superTy, reasoning.superPath, builtinTypes);
 
-            if (!subLeaf || !superLeaf)
+            if (!optSubLeaf || !optSuperLeaf)
                 ice->ice("Subtyping test returned a reasoning with an invalid path", location);
 
-            auto [subLeafTy, superLeafTy] = get2<TypeId, TypeId>(*subLeaf, *superLeaf);
-            auto [subLeafTp, superLeafTp] = get2<TypePackId, TypePackId>(*subLeaf, *superLeaf);
+            const TypeOrPack& subLeaf = *optSubLeaf;
+            const TypeOrPack& superLeaf = *optSuperLeaf;
+
+            auto subLeafTy = get<TypeId>(subLeaf);
+            auto superLeafTy = get<TypeId>(superLeaf);
+
+            auto subLeafTp = get<TypePackId>(subLeaf);
+            auto superLeafTp = get<TypePackId>(superLeaf);
 
             if (!subLeafTy && !superLeafTy && !subLeafTp && !superLeafTp)
                 ice->ice("Subtyping test returned a reasoning where one path ends at a type and the other ends at a pack.", location);
@@ -2420,10 +2429,10 @@ struct TypeChecker2
 
             std::string reason;
             if (reasoning.subPath == reasoning.superPath)
-                reason = "at " + toString(reasoning.subPath) + ", " + toString(*subLeaf) + " is not " + relation + " " + toString(*superLeaf);
+                reason = "at " + toString(reasoning.subPath) + ", " + toString(subLeaf) + " is not " + relation + " " + toString(superLeaf);
             else
-                reason = "type " + toString(subTy) + toString(reasoning.subPath, /* prefixDot */ true) + " (" + toString(*subLeaf) + ") is not " +
-                         relation + " " + toString(superTy) + toString(reasoning.superPath, /* prefixDot */ true) + " (" + toString(*superLeaf) + ")";
+                reason = "type " + toString(subTy) + toString(reasoning.subPath, /* prefixDot */ true) + " (" + toString(subLeaf) + ") is not " +
+                         relation + " " + toString(superTy) + toString(reasoning.superPath, /* prefixDot */ true) + " (" + toString(superLeaf) + ")";
 
             reasons.push_back(reason);
 
@@ -2601,7 +2610,12 @@ struct TypeChecker2
             // shape. We instead want to report the unknown property error of
             // the `else` branch.
             else if (context == ValueContext::LValue && !get<ClassType>(tableTy))
-                reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
+            {
+                if (get<PrimitiveType>(tableTy) || get<FunctionType>(tableTy))
+                    reportError(NotATable{tableTy}, location);
+                else
+                    reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
+            }
             else
                 reportError(UnknownProperty{tableTy, prop}, location);
         }

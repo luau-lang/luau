@@ -144,12 +144,12 @@ TEST_CASE_FIXTURE(Fixture, "check_recursive_generic_function")
 TEST_CASE_FIXTURE(Fixture, "check_mutual_generic_functions")
 {
     CheckResult result = check(R"(
-        local id2
-        local function id1<a>(x:a):a
+        function id1<a>(x:a):a
             local y: string = id2("hi")
             local z: number = id2(37)
             return x
         end
+
         function id2<a>(x:a):a
             local y: string = id1("hi")
             local z: number = id1(37)
@@ -157,6 +157,68 @@ TEST_CASE_FIXTURE(Fixture, "check_mutual_generic_functions")
         end
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "check_mutual_generic_functions_unannotated")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        function id1(x)
+            local y: string = id2("hi")
+            local z: number = id2(37)
+            return x
+        end
+
+        function id2(x)
+            local y: string = id1("hi")
+            local z: number = id1(37)
+            return x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "check_mutual_generic_functions_errors")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        function id1(x)
+            local y: string = id2(37) -- odd
+            local z: number = id2("hi") -- even
+            return x
+        end
+
+        function id2(x)
+            local y: string = id1(37) -- odd
+            local z: number = id1("hi") -- even
+            return x
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+
+    // odd errors
+    for (int i = 0; i < 4; i += 2)
+    {
+        TypeMismatch* tm = get<TypeMismatch>(result.errors[i]);
+        REQUIRE(tm);
+        CHECK_EQ("string", toString(tm->wantedType));
+        CHECK_EQ("number", toString(tm->givenType));
+    }
+
+    // even errors
+    for (int i = 1; i < 4; i += 2)
+    {
+        TypeMismatch* tm = get<TypeMismatch>(result.errors[i]);
+        REQUIRE(tm);
+        CHECK_EQ("number", toString(tm->wantedType));
+        CHECK_EQ("string", toString(tm->givenType));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_functions_in_types")
@@ -947,7 +1009,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_cyclic_generic_function")
 
     TypeId arg = follow(*optionArg);
     const TableType* argTable = get<TableType>(arg);
-    REQUIRE(argTable != nullptr);
+    REQUIRE_MESSAGE(argTable != nullptr, "Expected table but got " << toString(arg));
 
     std::optional<Property> methodProp = get(argTable->props, "method");
     REQUIRE(bool(methodProp));

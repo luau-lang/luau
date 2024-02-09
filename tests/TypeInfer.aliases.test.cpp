@@ -1075,4 +1075,11 @@ TEST_CASE_FIXTURE(Fixture, "typeof_is_not_a_valid_alias_name")
     CHECK("Type aliases cannot be named typeof" == toString(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(Fixture, "fuzzer_bug_doesnt_crash")
+{
+    CheckResult result = check(R"(
+type t0 = (t0<t0...>)
+)");
+    LUAU_REQUIRE_ERRORS(result);
+}
 TEST_SUITE_END();

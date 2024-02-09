@@ -140,6 +140,8 @@ struct TryPair
 template<typename A, typename B, typename Ty>
 TryPair<const A*, const B*> get2(Ty one, Ty two)
 {
+    static_assert(std::is_pointer_v<Ty>, "argument must be a pointer type");
+
     const A* a = get<A>(one);
     const B* b = get<B>(two);
     if (a && b)
