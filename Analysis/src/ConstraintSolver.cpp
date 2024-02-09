@@ -1139,7 +1139,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
         return block(fn, constraint);
 
     if (isBlocked(argsPack))
-        return block(argsPack, constraint);
+        return true;
 
     // We know the type of the function and the arguments it expects to receive.
     // We also know the TypeIds of the actual arguments that will be passed.
@@ -1152,38 +1152,42 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     // types.
 
     // FIXME: Bidirectional type checking of overloaded functions is not yet supported.
-    if (auto ftv = get<FunctionType>(fn))
+    const FunctionType* ftv = get<FunctionType>(fn);
+    if (!ftv)
+        return true;
+
+    const std::vector<TypeId> expectedArgs = flatten(ftv->argTypes).first;
+    const std::vector<TypeId> argPackHead = flatten(argsPack).first;
+
+    for (size_t i = 0; i < c.callSite->args.size && i < expectedArgs.size() && i < argPackHead.size(); ++i)
     {
-        const std::vector<TypeId> expectedArgs = flatten(ftv->argTypes).first;
-        const std::vector<TypeId> argPackHead = flatten(argsPack).first;
+        const TypeId expectedArgTy = follow(expectedArgs[i]);
+        const TypeId actualArgTy = follow(argPackHead[i]);
+        const AstExpr* expr = c.callSite->args.data[i];
 
-        for (size_t i = 0; i < c.callSite->args.size && i < expectedArgs.size() && i < argPackHead.size(); ++i)
+        (*c.astExpectedTypes)[expr] = expectedArgTy;
+
+        const FunctionType* expectedLambdaTy = get<FunctionType>(expectedArgTy);
+        const FunctionType* lambdaTy = get<FunctionType>(actualArgTy);
+        const AstExprFunction* lambdaExpr = expr->as<AstExprFunction>();
+
+        if (expectedLambdaTy && lambdaTy && lambdaExpr)
         {
-            const TypeId expectedArgTy = follow(expectedArgs[i]);
-            const TypeId actualArgTy = follow(argPackHead[i]);
+            const std::vector<TypeId> expectedLambdaArgTys = flatten(expectedLambdaTy->argTypes).first;
+            const std::vector<TypeId> lambdaArgTys = flatten(lambdaTy->argTypes).first;
 
-            const FunctionType* expectedLambdaTy = get<FunctionType>(expectedArgTy);
-            const FunctionType* lambdaTy = get<FunctionType>(actualArgTy);
-            const AstExprFunction* lambdaExpr = c.callSite->args.data[i]->as<AstExprFunction>();
-
-            if (expectedLambdaTy && lambdaTy && lambdaExpr)
+            for (size_t j = 0; j < expectedLambdaArgTys.size() && j < lambdaArgTys.size() && j < lambdaExpr->args.size; ++j)
             {
-                const std::vector<TypeId> expectedLambdaArgTys = flatten(expectedLambdaTy->argTypes).first;
-                const std::vector<TypeId> lambdaArgTys = flatten(lambdaTy->argTypes).first;
-
-                for (size_t j = 0; j < expectedLambdaArgTys.size() && j < lambdaArgTys.size() && j < lambdaExpr->args.size; ++j)
+                if (!lambdaExpr->args.data[j]->annotation && get<FreeType>(follow(lambdaArgTys[j])))
                 {
-                    if (!lambdaExpr->args.data[j]->annotation && get<FreeType>(follow(lambdaArgTys[j])))
-                    {
-                        asMutable(lambdaArgTys[j])->ty.emplace<BoundType>(expectedLambdaArgTys[j]);
-                    }
+                    asMutable(lambdaArgTys[j])->ty.emplace<BoundType>(expectedLambdaArgTys[j]);
                 }
             }
-            else
-            {
-                Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
-                u2.unify(actualArgTy, expectedArgTy);
-            }
+        }
+        else if (expr->is<AstExprConstantBool>() || expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantNil>() || expr->is<AstExprTable>())
+        {
+            Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
+            u2.unify(actualArgTy, expectedArgTy);
         }
     }
 

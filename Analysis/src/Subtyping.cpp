@@ -593,6 +593,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                     return SubtypingResult{false}.withSubComponent(TypePath::PackField::Tail);
                 }
             }
+            else if (get<ErrorTypePack>(*subTail))
+                return SubtypingResult{true}.withSubComponent(TypePath::PackField::Tail);
             else
                 unexpected(*subTail);
         }
@@ -643,6 +645,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
                     return SubtypingResult{false}.withSuperComponent(TypePath::PackField::Tail);
                 }
             }
+            else if (get<ErrorTypePack>(*superTail))
+                return SubtypingResult{true}.withSuperComponent(TypePath::PackField::Tail);
             else
                 unexpected(*superTail);
         }

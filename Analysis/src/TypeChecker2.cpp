@@ -495,11 +495,12 @@ struct TypeChecker2
         return checkForFamilyInhabitance(follow(*ty), annotation->location);
     }
 
-    TypePackId lookupPackAnnotation(AstTypePack* annotation)
+    std::optional<TypePackId> lookupPackAnnotation(AstTypePack* annotation)
     {
         TypePackId* tp = module->astResolvedTypePacks.find(annotation);
-        LUAU_ASSERT(tp);
-        return follow(*tp);
+        if (tp != nullptr)
+            return {follow(*tp)};
+        return {};
     }
 
     TypeId lookupExpectedType(AstExpr* expr)
@@ -2187,9 +2188,11 @@ struct TypeChecker2
                 }
                 else if (p.typePack)
                 {
-                    TypePackId tp = lookupPackAnnotation(p.typePack);
+                    std::optional<TypePackId> tp = lookupPackAnnotation(p.typePack);
+                    if (!tp.has_value())
+                        continue;
 
-                    if (typesProvided < typesRequired && size(tp) == 1 && finite(tp) && first(tp))
+                    if (typesProvided < typesRequired && size(*tp) == 1 && finite(*tp) && first(*tp))
                     {
                         typesProvided += 1;
                     }
@@ -2607,7 +2610,12 @@ struct TypeChecker2
             // shape. We instead want to report the unknown property error of
             // the `else` branch.
             else if (context == ValueContext::LValue && !get<ClassType>(tableTy))
-                reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
+            {
+                if (get<PrimitiveType>(tableTy) || get<FunctionType>(tableTy))
+                    reportError(NotATable{tableTy}, location);
+                else
+                    reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
+            }
             else
                 reportError(UnknownProperty{tableTy, prop}, location);
         }

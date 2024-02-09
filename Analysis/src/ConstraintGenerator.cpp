@@ -138,6 +138,53 @@ void forEachConstraint(const Checkpoint& start, const Checkpoint& end, const Con
         f(cg->constraints[i]);
 }
 
+struct HasFreeType : TypeOnceVisitor
+{
+    bool result = false;
+
+    HasFreeType()
+    {
+    }
+
+    bool visit(TypeId ty) override
+    {
+        if (result || ty->persistent)
+            return false;
+        return true;
+    }
+
+    bool visit(TypePackId tp) override
+    {
+        if (result)
+            return false;
+        return true;
+    }
+
+    bool visit(TypeId ty, const ClassType&) override
+    {
+        return false;
+    }
+
+    bool visit(TypeId ty, const FreeType&) override
+    {
+        result = true;
+        return false;
+    }
+
+    bool visit(TypePackId ty, const FreeTypePack&) override
+    {
+        result = true;
+        return false;
+    }
+};
+
+bool hasFreeType(TypeId ty)
+{
+    HasFreeType hft{};
+    hft.traverse(ty);
+    return hft.result;
+}
+
 } // namespace
 
 ConstraintGenerator::ConstraintGenerator(ModulePtr module, NotNull<Normalizer> normalizer, NotNull<ModuleResolver> moduleResolver,
@@ -229,6 +276,8 @@ std::optional<TypeId> ConstraintGenerator::lookup(const ScopePtr& scope, DefId d
     {
         if (auto found = scope->lookup(def))
             return *found;
+        else if (phi->operands.size() == 1)
+            return lookup(scope, phi->operands[0], prototype);
         else if (!prototype)
             return std::nullopt;
 
@@ -837,6 +886,10 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocalFuncti
     FunctionSignature sig = checkFunctionSignature(scope, function->func, /* expectedType */ std::nullopt, function->name->location);
     sig.bodyScope->bindings[function->name] = Binding{sig.signature, function->func->location};
 
+    bool sigFullyDefined = !hasFreeType(sig.signature);
+    if (sigFullyDefined)
+        asMutable(functionType)->ty.emplace<BoundType>(sig.signature);
+
     DefId def = dfg->getDef(function->name);
     scope->lvalueTypes[def] = functionType;
     scope->rvalueRefinements[def] = functionType;
@@ -847,25 +900,32 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocalFuncti
     checkFunctionBody(sig.bodyScope, function->func);
     Checkpoint end = checkpoint(this);
 
-    NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
-    std::unique_ptr<Constraint> c =
-        std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{functionType, sig.signature});
+    if (!sigFullyDefined)
+    {
+        NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
+        std::unique_ptr<Constraint> c =
+            std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{functionType, sig.signature});
 
-    Constraint* previous = nullptr;
-    forEachConstraint(start, end, this, [&c, &previous](const ConstraintPtr& constraint) {
-        c->dependencies.push_back(NotNull{constraint.get()});
+        Constraint* previous = nullptr;
+        forEachConstraint(start, end, this,
+            [&c, &previous](const ConstraintPtr& constraint)
+            {
+                c->dependencies.push_back(NotNull{constraint.get()});
 
-        if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
-        {
-            if (previous)
-                constraint->dependencies.push_back(NotNull{previous});
+                if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+                {
+                    if (previous)
+                        constraint->dependencies.push_back(NotNull{previous});
 
-            previous = constraint.get();
-        }
-    });
+                    previous = constraint.get();
+                }
+            });
 
-    addConstraint(scope, std::move(c));
-    module->astTypes[function->func] = functionType;
+        addConstraint(scope, std::move(c));
+        module->astTypes[function->func] = functionType;
+    }
+    else
+        module->astTypes[function->func] = sig.signature;
 
     return ControlFlow::None;
 }
@@ -879,11 +939,18 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
 
     Checkpoint start = checkpoint(this);
     FunctionSignature sig = checkFunctionSignature(scope, function->func, /* expectedType */ std::nullopt, function->name->location);
+    bool sigFullyDefined = !hasFreeType(sig.signature);
+
+    if (sigFullyDefined)
+        asMutable(generalizedType)->ty.emplace<BoundType>(sig.signature);
 
     DenseHashSet<Constraint*> excludeList{nullptr};
 
     DefId def = dfg->getDef(function->name);
     std::optional<TypeId> existingFunctionTy = lookup(scope, def);
+
+    if (sigFullyDefined && existingFunctionTy && get<BlockedType>(*existingFunctionTy))
+        asMutable(*existingFunctionTy)->ty.emplace<BoundType>(sig.signature);
 
     if (AstExprLocal* localName = function->name->as<AstExprLocal>())
     {
@@ -906,7 +973,8 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
         if (!existingFunctionTy)
             ice->ice("prepopulateGlobalScope did not populate a global name", globalName->location);
 
-        generalizedType = *existingFunctionTy;
+        if (!sigFullyDefined)
+            generalizedType = *existingFunctionTy;
 
         sig.bodyScope->bindings[globalName->name] = Binding{sig.signature, globalName->location};
         sig.bodyScope->lvalueTypes[def] = sig.signature;
@@ -943,25 +1011,30 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
     checkFunctionBody(sig.bodyScope, function->func);
     Checkpoint end = checkpoint(this);
 
-    NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
-    std::unique_ptr<Constraint> c =
-        std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{generalizedType, sig.signature});
+    if (!sigFullyDefined)
+    {
+        NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
+        std::unique_ptr<Constraint> c =
+            std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{generalizedType, sig.signature});
 
-    Constraint* previous = nullptr;
-    forEachConstraint(start, end, this, [&c, &excludeList, &previous](const ConstraintPtr& constraint) {
-        if (!excludeList.contains(constraint.get()))
-            c->dependencies.push_back(NotNull{constraint.get()});
+        Constraint* previous = nullptr;
+        forEachConstraint(start, end, this,
+            [&c, &excludeList, &previous](const ConstraintPtr& constraint)
+            {
+                if (!excludeList.contains(constraint.get()))
+                    c->dependencies.push_back(NotNull{constraint.get()});
 
-        if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
-        {
-            if (previous)
-                constraint->dependencies.push_back(NotNull{previous});
+                if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+                {
+                    if (previous)
+                        constraint->dependencies.push_back(NotNull{previous});
 
-            previous = constraint.get();
-        }
-    });
+                    previous = constraint.get();
+                }
+            });
 
-    addConstraint(scope, std::move(c));
+        addConstraint(scope, std::move(c));
+    }
 
     return ControlFlow::None;
 }
@@ -1626,24 +1699,6 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
         TypePackId argPack = addTypePack(std::move(args), argTail);
         FunctionType ftv(TypeLevel{}, scope.get(), argPack, rets, std::nullopt, call->self);
 
-        NotNull<Constraint> fcc = addConstraint(scope, call->func->location,
-            FunctionCallConstraint{
-                fnType,
-                argPack,
-                rets,
-                call,
-                std::move(discriminantTypes),
-                &module->astOverloadResolvedTypes,
-            });
-
-        NotNull<Constraint> foo = addConstraint(scope, call->func->location,
-            FunctionCheckConstraint{
-                fnType,
-                argPack,
-                call
-            }
-        );
-
         /*
          * To make bidirectional type checking work, we need to solve these constraints in a particular order:
          *
@@ -1653,14 +1708,35 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
          * 4. Solve the call
          */
 
-        forEachConstraint(funcBeginCheckpoint, funcEndCheckpoint, this, [foo](const ConstraintPtr& constraint) {
-            foo->dependencies.emplace_back(constraint.get());
+        NotNull<Constraint> checkConstraint = addConstraint(scope, call->func->location,
+            FunctionCheckConstraint{
+                fnType,
+                argPack,
+                call,
+                NotNull{&module->astExpectedTypes}
+            }
+        );
+
+        forEachConstraint(funcBeginCheckpoint, funcEndCheckpoint, this, [checkConstraint](const ConstraintPtr& constraint) {
+            checkConstraint->dependencies.emplace_back(constraint.get());
         });
 
-        forEachConstraint(argBeginCheckpoint, argEndCheckpoint, this, [foo, fcc](const ConstraintPtr& constraint) {
-            constraint->dependencies.emplace_back(foo);
+        NotNull<Constraint> callConstraint = addConstraint(scope, call->func->location,
+            FunctionCallConstraint{
+                fnType,
+                argPack,
+                rets,
+                call,
+                std::move(discriminantTypes),
+                &module->astOverloadResolvedTypes,
+            });
 
-            fcc->dependencies.emplace_back(constraint.get());
+        callConstraint->dependencies.push_back(checkConstraint);
+
+        forEachConstraint(argBeginCheckpoint, argEndCheckpoint, this, [checkConstraint, callConstraint](const ConstraintPtr& constraint) {
+            constraint->dependencies.emplace_back(checkConstraint);
+
+            callConstraint->dependencies.emplace_back(constraint.get());
         });
 
         return InferencePack{rets, {refinementArena.variadic(returnRefinements)}};
@@ -1884,7 +1960,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprFunction* fun
     checkFunctionBody(sig.bodyScope, func);
     Checkpoint endCheckpoint = checkpoint(this);
 
-    if (generalize)
+    if (generalize && hasFreeType(sig.signature))
     {
         TypeId generalizedTy = arena->addType(BlockedType{});
         NotNull<Constraint> gc = addConstraint(sig.signatureScope, func->location, GeneralizationConstraint{generalizedTy, sig.signature});
