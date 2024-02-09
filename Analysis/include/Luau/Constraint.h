@@ -102,6 +102,7 @@ struct FunctionCheckConstraint
     TypePackId argsPack;
 
     class AstExprCall* callSite = nullptr;
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes;
 };
 
 // prim FreeType ExpectedType PrimitiveType

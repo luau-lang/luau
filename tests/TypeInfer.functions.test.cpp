@@ -50,13 +50,30 @@ TEST_CASE_FIXTURE(Fixture, "tc_function")
 
 TEST_CASE_FIXTURE(Fixture, "check_function_bodies")
 {
-    CheckResult result = check("function myFunction()    local a = 0    a = true    end");
+    CheckResult result = check(R"(
+        function myFunction(): number
+            local a = 0
+            a = true
+            return a
+        end
+    )");
+
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 44}, Position{0, 48}}, TypeMismatch{
-                                                                                          builtinTypes->numberType,
-                                                                                          builtinTypes->booleanType,
-                                                                                      }}));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        const TypePackMismatch* tm = get<TypePackMismatch>(result.errors[0]);
+        REQUIRE(tm);
+        CHECK(toString(tm->wantedTp) == "number");
+        CHECK(toString(tm->givenTp) == "boolean");
+    }
+    else
+    {
+        CHECK_EQ(result.errors[0], (TypeError{Location{Position{3, 16}, Position{3, 20}}, TypeMismatch{
+                                                                                              builtinTypes->numberType,
+                                                                                              builtinTypes->booleanType,
+                                                                                          }}));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "cannot_hoist_interior_defns_into_signature")
@@ -2225,6 +2242,71 @@ a = function(a, b) return a + b end
 )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "simple_unannotated_mutual_recursion")
+{
+    CheckResult result = check(R"(
+function even(n)
+    if n == 0 then
+        return true
+    else
+        return odd(n - 1)
+    end
+end
+
+function odd(n)
+    if n == 0 then
+        return false
+    elseif n == 1 then
+        return true
+    else
+        return even(n - 1)
+    end
+end
+)");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
+        CHECK(toString(result.errors[0]) == "Type family instance sub<unknown, number> is uninhabited");
+        CHECK(toString(result.errors[1]) == "Type family instance sub<unknown, number> is uninhabited");
+        CHECK(toString(result.errors[2]) == "Type family instance sub<unknown, number> is uninhabited");
+        CHECK(toString(result.errors[3]) == "Type family instance sub<unknown, number> is uninhabited");
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(toString(result.errors[0]) == "Unknown type used in - operation; consider adding a type annotation to 'n'");
+    }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "simple_lightly_annotated_mutual_recursion")
+{
+    CheckResult result = check(R"(
+function even(n: number)
+    if n == 0 then
+        return true
+    else
+        return odd(n - 1)
+    end
+end
+
+function odd(n: number)
+    if n == 0 then
+        return false
+    elseif n == 1 then
+        return true
+    else
+        return even(n - 1)
+    end
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("(number) -> boolean", toString(requireType("even")));
+    CHECK_EQ("(number) -> boolean", toString(requireType("odd")));
 }
 
 TEST_SUITE_END();

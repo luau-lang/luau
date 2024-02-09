@@ -2707,16 +2707,26 @@ local t: Test = { @1 }
     CHECK(ac.entryMap.count("first"));
     CHECK(ac.entryMap.count("second"));
     CHECK_EQ(ac.context, AutocompleteContext::Property);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "suggest_table_keys_no_initial_character_2")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteTableKeysNoInitialCharacter, true};
 
     check(R"(
 type Test = { first: number, second: number }
 local t: Test = { first = 1, @1 }
     )");
 
-    ac = autocomplete('1');
+    auto ac = autocomplete('1');
     CHECK_EQ(ac.entryMap.count("first"), 0);
     CHECK(ac.entryMap.count("second"));
     CHECK_EQ(ac.context, AutocompleteContext::Property);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "suggest_table_keys_no_initial_character_3")
+{
+    ScopedFastFlag sff{FFlag::LuauAutocompleteTableKeysNoInitialCharacter, true};
 
     check(R"(
 type Properties = { TextScaled: boolean, Text: string }
@@ -2725,7 +2735,8 @@ local function create(props: Properties) end
 create({ @1 })
     )");
 
-    ac = autocomplete('1');
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.size() > 0);
     CHECK(ac.entryMap.count("TextScaled"));
     CHECK(ac.entryMap.count("Text"));
     CHECK_EQ(ac.context, AutocompleteContext::Property);
