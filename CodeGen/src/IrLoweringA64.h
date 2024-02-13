@@ -45,6 +45,7 @@ struct IrLoweringA64
     RegisterA64 tempUint(IrOp op);
     AddressA64 tempAddr(IrOp op, int offset);
     AddressA64 tempAddrBuffer(IrOp bufferOp, IrOp indexOp);
+    RegisterA64 tempVectorPure(IrOp op, uint32_t index);
 
     // May emit restore instructions
     RegisterA64 regOp(IrOp op);
