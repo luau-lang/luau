@@ -676,10 +676,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         if (FFlag::LuauCodeGenVectorA64)
         {
-            RegisterA64 tempa = tempVectorPure(inst.a, index);
-            RegisterA64 tempb = tempVectorPure(inst.b, index);
-
-            build.fadd(inst.regA64, tempa, tempb);
+            build.fadd(inst.regA64, regOp(inst.a), regOp(inst.b));
 
             RegisterA64 tempw = regs.allocTemp(KindA64::w);
             build.mov(tempw, LUA_TVECTOR);
@@ -706,10 +703,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         if (FFlag::LuauCodeGenVectorA64)
         {
-            RegisterA64 tempa = tempVectorPure(inst.a, index);
-            RegisterA64 tempb = tempVectorPure(inst.b, index);
-
-            build.fsub(inst.regA64, tempa, tempb);
+            build.fsub(inst.regA64, regOp(inst.a), regOp(inst.b));
 
             RegisterA64 tempw = regs.allocTemp(KindA64::w);
             build.mov(tempw, LUA_TVECTOR);
@@ -736,10 +730,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         if (FFlag::LuauCodeGenVectorA64)
         {
-            RegisterA64 tempa = tempVectorPure(inst.a, index);
-            RegisterA64 tempb = tempVectorPure(inst.b, index);
-
-            build.fmul(inst.regA64, tempa, tempb);
+            build.fmul(inst.regA64, regOp(inst.a), regOp(inst.b));
 
             RegisterA64 tempw = regs.allocTemp(KindA64::w);
             build.mov(tempw, LUA_TVECTOR);
@@ -766,10 +757,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         if (FFlag::LuauCodeGenVectorA64)
         {
-            RegisterA64 tempa = tempVectorPure(inst.a, index);
-            RegisterA64 tempb = tempVectorPure(inst.b, index);
-
-            build.fdiv(inst.regA64, tempa, tempb);
+            build.fdiv(inst.regA64, regOp(inst.a), regOp(inst.b));
 
             RegisterA64 tempw = regs.allocTemp(KindA64::w);
             build.mov(tempw, LUA_TVECTOR);
@@ -796,8 +784,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         if (FFlag::LuauCodeGenVectorA64)
         {
-            RegisterA64 temp = tempVectorPure(inst.a, index);
-            build.fneg(inst.regA64, temp);
+            build.fneg(inst.regA64, regOp(inst.a));
 
             RegisterA64 tempw = regs.allocTemp(KindA64::w);
             build.mov(tempw, LUA_TVECTOR);
@@ -2632,27 +2619,6 @@ AddressA64 IrLoweringA64::tempAddrBuffer(IrOp bufferOp, IrOp indexOp)
     {
         LUAU_ASSERT(!"Unsupported instruction form");
         return noreg;
-    }
-}
-
-RegisterA64 IrLoweringA64::tempVectorPure(IrOp op, uint32_t index)
-{
-    RegisterA64 reg = regOp(op);
-
-    IrInst& source = function.instructions[op.index];
-    LUAU_ASSERT(source.regA64 == reg);
-
-    if (source.lastUse == index)
-    {
-        build.ins_4s(reg, wzr, 3);
-        return reg;
-    }
-    else
-    {
-        RegisterA64 temp = regs.allocTemp(KindA64::q);
-        build.mov(temp, reg);
-        build.ins_4s(temp, wzr, 3);
-        return temp;
     }
 }
 
