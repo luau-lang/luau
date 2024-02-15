@@ -586,7 +586,7 @@ void AssemblyBuilderA64::fadd(RegisterA64 dst, RegisterA64 src1, RegisterA64 src
     }
     else if (dst.kind == KindA64::s)
     {
-        LUAU_ASSERT(dst.kind == KindA64::s && src1.kind == KindA64::s && src2.kind == KindA64::s);
+        LUAU_ASSERT(src1.kind == KindA64::s && src2.kind == KindA64::s);
 
         placeR3("fadd", dst, src1, src2, 0b11110'00'1, 0b0010'10);
     }
@@ -608,7 +608,7 @@ void AssemblyBuilderA64::fdiv(RegisterA64 dst, RegisterA64 src1, RegisterA64 src
     }
     else if (dst.kind == KindA64::s)
     {
-        LUAU_ASSERT(dst.kind == KindA64::s && src1.kind == KindA64::s && src2.kind == KindA64::s);
+        LUAU_ASSERT(src1.kind == KindA64::s && src2.kind == KindA64::s);
 
         placeR3("fdiv", dst, src1, src2, 0b11110'00'1, 0b0001'10);
     }
@@ -630,7 +630,7 @@ void AssemblyBuilderA64::fmul(RegisterA64 dst, RegisterA64 src1, RegisterA64 src
     }
     else if (dst.kind == KindA64::s)
     {
-        LUAU_ASSERT(dst.kind == KindA64::s && src1.kind == KindA64::s && src2.kind == KindA64::s);
+        LUAU_ASSERT(src1.kind == KindA64::s && src2.kind == KindA64::s);
 
         placeR3("fmul", dst, src1, src2, 0b11110'00'1, 0b0000'10);
     }
@@ -652,7 +652,7 @@ void AssemblyBuilderA64::fneg(RegisterA64 dst, RegisterA64 src)
     }
     else if (dst.kind == KindA64::s)
     {
-        LUAU_ASSERT(dst.kind == KindA64::s && src.kind == KindA64::s);
+        LUAU_ASSERT(src.kind == KindA64::s);
 
         placeR1("fneg", dst, src, 0b000'11110'00'1'0000'10'10000);
     }
@@ -681,7 +681,7 @@ void AssemblyBuilderA64::fsub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src
     }
     else if (dst.kind == KindA64::s)
     {
-        LUAU_ASSERT(dst.kind == KindA64::s && src1.kind == KindA64::s && src2.kind == KindA64::s);
+        LUAU_ASSERT(src1.kind == KindA64::s && src2.kind == KindA64::s);
 
         placeR3("fsub", dst, src1, src2, 0b11110'00'1, 0b0011'10);
     }
