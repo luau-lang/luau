@@ -541,13 +541,13 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected =
-        (FFlag::DebugLuauDeferredConstraintResolution) ?
-        "Type "
-        "'{ p: number?, q: number?, r: number? } & { p: number?, q: string? }'"
-        " could not be converted into "
-        "'{ p: nil }'; none of the intersection parts are compatible" :
-        R"(Type
+    const std::string expected = (FFlag::DebugLuauDeferredConstraintResolution)
+                                     ? "Type "
+                                       "'{ p: number?, q: number?, r: number? } & { p: number?, q: string? }'"
+                                       " could not be converted into "
+                                       "'{ p: nil }'; none of the intersection parts are compatible"
+                                     :
+                                     R"(Type
     '{| p: number?, q: number?, r: number? |} & {| p: number?, q: string? |}'
 could not be converted into
     '{| p: nil |}'; none of the intersection parts are compatible)";
@@ -618,13 +618,13 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected =
-        (FFlag::DebugLuauDeferredConstraintResolution) ?
-        R"(Type
+    const std::string expected = (FFlag::DebugLuauDeferredConstraintResolution) ?
+                                                                                R"(Type
     '((number?) -> { p: number } & { q: number }) & ((string?) -> { p: number } & { r: number })'
 could not be converted into
-    '(number?) -> { p: number, q: number, r: number }'; none of the intersection parts are compatible)" :
-        R"(Type
+    '(number?) -> { p: number, q: number, r: number }'; none of the intersection parts are compatible)"
+                                                                                :
+                                                                                R"(Type
     '((number?) -> {| p: number |} & {| q: number |}) & ((string?) -> {| p: number |} & {| r: number |})'
 could not be converted into
     '(number?) -> {| p: number, q: number, r: number |}'; none of the intersection parts are compatible)";

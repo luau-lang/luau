@@ -1284,8 +1284,8 @@ void TypeStringifier::stringify(TypePackId tpid, const std::vector<std::optional
     tps.stringify(tpid);
 }
 
-static void assignCycleNames(const std::set<TypeId>& cycles, const std::set<TypePackId>& cycleTPs,
-    DenseHashMap<TypeId, std::string>& cycleNames, DenseHashMap<TypePackId, std::string>& cycleTpNames, bool exhaustive)
+static void assignCycleNames(const std::set<TypeId>& cycles, const std::set<TypePackId>& cycleTPs, DenseHashMap<TypeId, std::string>& cycleNames,
+    DenseHashMap<TypePackId, std::string>& cycleTpNames, bool exhaustive)
 {
     int nextIndex = 1;
 

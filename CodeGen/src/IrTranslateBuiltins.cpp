@@ -21,7 +21,7 @@ namespace CodeGen
 static void builtinCheckDouble(IrBuilder& build, IrOp arg, int pcpos)
 {
     if (arg.kind == IrOpKind::Constant)
-        LUAU_ASSERT(build.function.constOp(arg).kind == IrConstKind::Double);
+        CODEGEN_ASSERT(build.function.constOp(arg).kind == IrConstKind::Double);
     else
         build.loadAndCheckTag(arg, LUA_TNUMBER, build.vmExit(pcpos));
 }
@@ -227,7 +227,7 @@ static BuiltinImplResult translateBuiltinMathClamp(IrBuilder& build, int nparams
 
     IrOp block = build.block(IrBlockKind::Internal);
 
-    LUAU_ASSERT(args.kind == IrOpKind::VmReg);
+    CODEGEN_ASSERT(args.kind == IrOpKind::VmReg);
 
     builtinCheckDouble(build, build.vmReg(arg), pcpos);
     builtinCheckDouble(build, args, pcpos);
@@ -463,7 +463,7 @@ static BuiltinImplResult translateBuiltinBit32Extract(
         if (vb.kind == IrOpKind::Constant)
         {
             int f = int(build.function.doubleOp(vb));
-            LUAU_ASSERT(unsigned(f) < 32); // checked above
+            CODEGEN_ASSERT(unsigned(f) < 32); // checked above
 
             value = n;
 
@@ -658,7 +658,7 @@ static BuiltinImplResult translateBuiltinVector(IrBuilder& build, int nparams, i
     if (nparams < 3 || nresults > 1)
         return {BuiltinImplType::None, -1};
 
-    LUAU_ASSERT(LUA_VECTOR_SIZE == 3);
+    CODEGEN_ASSERT(LUA_VECTOR_SIZE == 3);
 
     builtinCheckDouble(build, build.vmReg(arg), pcpos);
     builtinCheckDouble(build, args, pcpos);
@@ -690,7 +690,7 @@ static BuiltinImplResult translateBuiltinTableInsert(IrBuilder& build, int npara
 
     if (args.kind == IrOpKind::Constant)
     {
-        LUAU_ASSERT(build.function.constOp(args).kind == IrConstKind::Double);
+        CODEGEN_ASSERT(build.function.constOp(args).kind == IrConstKind::Double);
 
         // No barrier necessary since numbers aren't collectable
         build.inst(IrCmd::STORE_DOUBLE, setnum, args);
@@ -702,7 +702,7 @@ static BuiltinImplResult translateBuiltinTableInsert(IrBuilder& build, int npara
         build.inst(IrCmd::STORE_TVALUE, setnum, va);
 
         // Compiler only generates FASTCALL*K for source-level constants, so dynamic imports are not affected
-        LUAU_ASSERT(build.function.proto);
+        CODEGEN_ASSERT(build.function.proto);
         IrOp argstag = args.kind == IrOpKind::VmConst ? build.constTag(build.function.proto->k[vmConstOp(args)].tt) : build.undef();
 
         build.inst(IrCmd::BARRIER_TABLE_FORWARD, table, args, argstag);

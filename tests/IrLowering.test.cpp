@@ -12,8 +12,6 @@
 
 #include <memory>
 
-LUAU_FASTFLAG(LuauFixDivrkInference)
-LUAU_FASTFLAG(LuauCompileRevK)
 LUAU_FASTFLAG(LuauCodegenVector)
 LUAU_FASTFLAG(LuauCodegenMathMemArgs)
 
@@ -66,8 +64,6 @@ TEST_SUITE_BEGIN("IrLowering");
 
 TEST_CASE("VectorReciprocal")
 {
-    ScopedFastFlag luauFixDivrkInference{FFlag::LuauFixDivrkInference, true};
-    ScopedFastFlag luauCompileRevK{FFlag::LuauCompileRevK, true};
     ScopedFastFlag luauCodegenVector{FFlag::LuauCodegenVector, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
@@ -218,8 +214,6 @@ bb_bytecode_1:
 TEST_CASE("VectorMulDivMixed")
 {
     ScopedFastFlag luauCodegenVector{FFlag::LuauCodegenVector, true};
-    ScopedFastFlag luauFixDivrkInference{FFlag::LuauFixDivrkInference, true};
-    ScopedFastFlag luauCompileRevK{FFlag::LuauCompileRevK, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3combo(a: vector, b: vector, c: vector, d: vector)

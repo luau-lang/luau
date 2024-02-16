@@ -76,6 +76,10 @@ struct TypeFamilyReductionResult
     std::vector<TypePackId> blockedPacks;
 };
 
+template<typename T>
+using ReducerFunction =
+    std::function<TypeFamilyReductionResult<T>(T, const std::vector<TypeId>&, const std::vector<TypePackId>&, NotNull<TypeFamilyContext>)>;
+
 /// Represents a type function that may be applied to map a series of types and
 /// type packs to a single output type.
 struct TypeFamily
@@ -85,7 +89,7 @@ struct TypeFamily
     std::string name;
 
     /// The reducer function for the type family.
-    std::function<TypeFamilyReductionResult<TypeId>(const std::vector<TypeId>&, const std::vector<TypePackId>&, NotNull<TypeFamilyContext>)> reducer;
+    ReducerFunction<TypeId> reducer;
 };
 
 /// Represents a type function that may be applied to map a series of types and
@@ -97,7 +101,7 @@ struct TypePackFamily
     std::string name;
 
     /// The reducer function for the type pack family.
-    std::function<TypeFamilyReductionResult<TypePackId>(const std::vector<TypeId>&, const std::vector<TypePackId>&, NotNull<TypeFamilyContext>)> reducer;
+    ReducerFunction<TypePackId> reducer;
 };
 
 struct FamilyGraphReductionResult

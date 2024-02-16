@@ -18,7 +18,18 @@ function fib(n)
     return n < 2 and 1 or fib(n-1) + fib(n-2)
 end
 
-return math.max(fib(5), 1)
+)");
+
+    REQUIRE(0 == result.warnings.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_family_fully_reduces")
+{
+    LintResult result = lint(R"(
+function fib(n)
+    return n < 2 or  fib(n-2)
+end
+
 )");
 
     REQUIRE(0 == result.warnings.size());

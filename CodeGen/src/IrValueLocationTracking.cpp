@@ -140,12 +140,12 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
 
     default:
         // All instructions which reference registers have to be handled explicitly
-        LUAU_ASSERT(inst.a.kind != IrOpKind::VmReg);
-        LUAU_ASSERT(inst.b.kind != IrOpKind::VmReg);
-        LUAU_ASSERT(inst.c.kind != IrOpKind::VmReg);
-        LUAU_ASSERT(inst.d.kind != IrOpKind::VmReg);
-        LUAU_ASSERT(inst.e.kind != IrOpKind::VmReg);
-        LUAU_ASSERT(inst.f.kind != IrOpKind::VmReg);
+        CODEGEN_ASSERT(inst.a.kind != IrOpKind::VmReg);
+        CODEGEN_ASSERT(inst.b.kind != IrOpKind::VmReg);
+        CODEGEN_ASSERT(inst.c.kind != IrOpKind::VmReg);
+        CODEGEN_ASSERT(inst.d.kind != IrOpKind::VmReg);
+        CODEGEN_ASSERT(inst.e.kind != IrOpKind::VmReg);
+        CODEGEN_ASSERT(inst.f.kind != IrOpKind::VmReg);
         break;
     }
 }
@@ -232,7 +232,7 @@ void IrValueLocationTracking::invalidateRestoreOp(IrOp location, bool skipValueI
     }
     else if (location.kind == IrOpKind::VmConst)
     {
-        LUAU_ASSERT(!"VM constants are immutable");
+        CODEGEN_ASSERT(!"VM constants are immutable");
     }
 }
 

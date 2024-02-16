@@ -64,7 +64,7 @@ RegisterX64 IrRegAllocX64::allocReg(SizeX64 size, uint32_t instIdx)
         return takeReg(reg, instIdx);
     }
 
-    LUAU_ASSERT(!"Out of registers to allocate");
+    CODEGEN_ASSERT(!"Out of registers to allocate");
     return noreg;
 }
 
@@ -83,7 +83,7 @@ RegisterX64 IrRegAllocX64::allocRegOrReuse(SizeX64 size, uint32_t instIdx, std::
             if ((size == SizeX64::xmmword) != (source.regX64.size == SizeX64::xmmword))
                 continue;
 
-            LUAU_ASSERT(source.regX64 != noreg);
+            CODEGEN_ASSERT(source.regX64 != noreg);
 
             source.reusedReg = true;
 
@@ -105,11 +105,11 @@ RegisterX64 IrRegAllocX64::takeReg(RegisterX64 reg, uint32_t instIdx)
     {
         if (!freeXmmMap[reg.index])
         {
-            LUAU_ASSERT(xmmInstUsers[reg.index] != kInvalidInstIdx);
+            CODEGEN_ASSERT(xmmInstUsers[reg.index] != kInvalidInstIdx);
             preserve(function.instructions[xmmInstUsers[reg.index]]);
         }
 
-        LUAU_ASSERT(freeXmmMap[reg.index]);
+        CODEGEN_ASSERT(freeXmmMap[reg.index]);
         freeXmmMap[reg.index] = false;
         xmmInstUsers[reg.index] = instIdx;
     }
@@ -117,11 +117,11 @@ RegisterX64 IrRegAllocX64::takeReg(RegisterX64 reg, uint32_t instIdx)
     {
         if (!freeGprMap[reg.index])
         {
-            LUAU_ASSERT(gprInstUsers[reg.index] != kInvalidInstIdx);
+            CODEGEN_ASSERT(gprInstUsers[reg.index] != kInvalidInstIdx);
             preserve(function.instructions[gprInstUsers[reg.index]]);
         }
 
-        LUAU_ASSERT(freeGprMap[reg.index]);
+        CODEGEN_ASSERT(freeGprMap[reg.index]);
         freeGprMap[reg.index] = false;
         gprInstUsers[reg.index] = instIdx;
     }
@@ -141,13 +141,13 @@ void IrRegAllocX64::freeReg(RegisterX64 reg)
 {
     if (reg.size == SizeX64::xmmword)
     {
-        LUAU_ASSERT(!freeXmmMap[reg.index]);
+        CODEGEN_ASSERT(!freeXmmMap[reg.index]);
         freeXmmMap[reg.index] = true;
         xmmInstUsers[reg.index] = kInvalidInstIdx;
     }
     else
     {
-        LUAU_ASSERT(!freeGprMap[reg.index]);
+        CODEGEN_ASSERT(!freeGprMap[reg.index]);
         freeGprMap[reg.index] = true;
         gprInstUsers[reg.index] = kInvalidInstIdx;
     }
@@ -157,7 +157,7 @@ void IrRegAllocX64::freeLastUseReg(IrInst& target, uint32_t instIdx)
 {
     if (isLastUseReg(target, instIdx))
     {
-        LUAU_ASSERT(!target.spilled && !target.needsReload);
+        CODEGEN_ASSERT(!target.spilled && !target.needsReload);
 
         // Register might have already been freed if it had multiple uses inside a single instruction
         if (target.regX64 == noreg)
@@ -210,7 +210,7 @@ void IrRegAllocX64::preserve(IrInst& inst)
         else if (spill.valueKind == IrValueKind::Tag || spill.valueKind == IrValueKind::Int)
             build.mov(dword[sSpillArea + i * 8], inst.regX64);
         else
-            LUAU_ASSERT(!"Unsupported value kind");
+            CODEGEN_ASSERT(!"Unsupported value kind");
 
         usedSpillSlots.set(i);
 
@@ -312,7 +312,7 @@ bool IrRegAllocX64::shouldFreeGpr(RegisterX64 reg) const
     if (reg == noreg)
         return false;
 
-    LUAU_ASSERT(reg.size != SizeX64::xmmword);
+    CODEGEN_ASSERT(reg.size != SizeX64::xmmword);
 
     for (RegisterX64 gpr : kGprAllocOrder)
     {
@@ -340,7 +340,7 @@ unsigned IrRegAllocX64::findSpillStackSlot(IrValueKind valueKind)
         return i;
     }
 
-    LUAU_ASSERT(!"Nowhere to spill");
+    CODEGEN_ASSERT(!"Nowhere to spill");
     return ~0u;
 }
 
@@ -364,18 +364,18 @@ bool IrRegAllocX64::hasRestoreOp(const IrInst& inst) const
 
 OperandX64 IrRegAllocX64::getRestoreAddress(const IrInst& inst, IrOp restoreOp)
 {
-    LUAU_ASSERT(restoreOp.kind != IrOpKind::None);
+    CODEGEN_ASSERT(restoreOp.kind != IrOpKind::None);
 
     switch (getCmdValueKind(inst.cmd))
     {
     case IrValueKind::Unknown:
     case IrValueKind::None:
-        LUAU_ASSERT(!"Invalid operand restore value kind");
+        CODEGEN_ASSERT(!"Invalid operand restore value kind");
         break;
     case IrValueKind::Tag:
         return restoreOp.kind == IrOpKind::VmReg ? luauRegTag(vmRegOp(restoreOp)) : luauConstantTag(vmConstOp(restoreOp));
     case IrValueKind::Int:
-        LUAU_ASSERT(restoreOp.kind == IrOpKind::VmReg);
+        CODEGEN_ASSERT(restoreOp.kind == IrOpKind::VmReg);
         return luauRegValueInt(vmRegOp(restoreOp));
     case IrValueKind::Pointer:
         return restoreOp.kind == IrOpKind::VmReg ? luauRegValue(vmRegOp(restoreOp)) : luauConstantValue(vmConstOp(restoreOp));
@@ -385,7 +385,7 @@ OperandX64 IrRegAllocX64::getRestoreAddress(const IrInst& inst, IrOp restoreOp)
         return restoreOp.kind == IrOpKind::VmReg ? luauReg(vmRegOp(restoreOp)) : luauConstant(vmConstOp(restoreOp));
     }
 
-    LUAU_ASSERT(!"Failed to find restore operand location");
+    CODEGEN_ASSERT(!"Failed to find restore operand location");
     return noreg;
 }
 
@@ -419,23 +419,23 @@ uint32_t IrRegAllocX64::findInstructionWithFurthestNextUse(const std::array<uint
 void IrRegAllocX64::assertFree(RegisterX64 reg) const
 {
     if (reg.size == SizeX64::xmmword)
-        LUAU_ASSERT(freeXmmMap[reg.index]);
+        CODEGEN_ASSERT(freeXmmMap[reg.index]);
     else
-        LUAU_ASSERT(freeGprMap[reg.index]);
+        CODEGEN_ASSERT(freeGprMap[reg.index]);
 }
 
 void IrRegAllocX64::assertAllFree() const
 {
     for (RegisterX64 reg : kGprAllocOrder)
-        LUAU_ASSERT(freeGprMap[reg.index]);
+        CODEGEN_ASSERT(freeGprMap[reg.index]);
 
     for (bool free : freeXmmMap)
-        LUAU_ASSERT(free);
+        CODEGEN_ASSERT(free);
 }
 
 void IrRegAllocX64::assertNoSpills() const
 {
-    LUAU_ASSERT(spills.empty());
+    CODEGEN_ASSERT(spills.empty());
 }
 
 ScopedRegX64::ScopedRegX64(IrRegAllocX64& owner)
@@ -465,19 +465,19 @@ ScopedRegX64::~ScopedRegX64()
 
 void ScopedRegX64::take(RegisterX64 reg)
 {
-    LUAU_ASSERT(this->reg == noreg);
+    CODEGEN_ASSERT(this->reg == noreg);
     this->reg = owner.takeReg(reg, kInvalidInstIdx);
 }
 
 void ScopedRegX64::alloc(SizeX64 size)
 {
-    LUAU_ASSERT(reg == noreg);
+    CODEGEN_ASSERT(reg == noreg);
     reg = owner.allocReg(size, kInvalidInstIdx);
 }
 
 void ScopedRegX64::free()
 {
-    LUAU_ASSERT(reg != noreg);
+    CODEGEN_ASSERT(reg != noreg);
     owner.freeReg(reg);
     reg = noreg;
 }
@@ -504,7 +504,7 @@ ScopedSpills::~ScopedSpills()
         IrSpillX64& spill = owner.spills[i];
 
         // Restoring spills inside this scope cannot create new spills
-        LUAU_ASSERT(spill.spillId < endSpillId);
+        CODEGEN_ASSERT(spill.spillId < endSpillId);
 
         // If spill was created inside current scope, it has to be restored
         if (spill.spillId >= startSpillId)

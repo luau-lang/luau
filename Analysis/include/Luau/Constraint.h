@@ -255,8 +255,8 @@ struct ReducePackConstraint
 };
 
 using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, IterableConstraint,
-    NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, FunctionCheckConstraint, PrimitiveTypeConstraint, HasPropConstraint, SetPropConstraint,
-    SetIndexerConstraint, SingletonOrTopTypeConstraint, UnpackConstraint, SetOpConstraint, ReduceConstraint, ReducePackConstraint>;
+    NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, FunctionCheckConstraint, PrimitiveTypeConstraint, HasPropConstraint,
+    SetPropConstraint, SetIndexerConstraint, SingletonOrTopTypeConstraint, UnpackConstraint, SetOpConstraint, ReduceConstraint, ReducePackConstraint>;
 
 struct Constraint
 {

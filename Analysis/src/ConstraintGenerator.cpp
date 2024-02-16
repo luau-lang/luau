@@ -142,9 +142,7 @@ struct HasFreeType : TypeOnceVisitor
 {
     bool result = false;
 
-    HasFreeType()
-    {
-    }
+    HasFreeType() {}
 
     bool visit(TypeId ty) override
     {
@@ -288,7 +286,7 @@ std::optional<TypeId> ConstraintGenerator::lookup(const ScopePtr& scope, DefId d
             // `scope->lookup(operand)` may return nothing because we only bind a type to that operand
             // once we've seen that particular `DefId`. In this case, we need to prototype those types
             // and use those at a later time.
-            std::optional<TypeId> ty = lookup(scope, operand, /*prototype*/false);
+            std::optional<TypeId> ty = lookup(scope, operand, /*prototype*/ false);
             if (!ty)
             {
                 ty = arena->addType(BlockedType{});
@@ -315,7 +313,8 @@ NotNull<Constraint> ConstraintGenerator::addConstraint(const ScopePtr& scope, st
     return NotNull{constraints.emplace_back(std::move(c)).get()};
 }
 
-void ConstraintGenerator::unionRefinements(const ScopePtr& scope, Location location, const RefinementContext& lhs, const RefinementContext& rhs, RefinementContext& dest, std::vector<ConstraintV>* constraints)
+void ConstraintGenerator::unionRefinements(const ScopePtr& scope, Location location, const RefinementContext& lhs, const RefinementContext& rhs,
+    RefinementContext& dest, std::vector<ConstraintV>* constraints)
 {
     const auto intersect = [&](const std::vector<TypeId>& types) {
         if (1 == types.size())
@@ -346,7 +345,8 @@ void ConstraintGenerator::unionRefinements(const ScopePtr& scope, Location locat
     }
 }
 
-void ConstraintGenerator::computeRefinement(const ScopePtr& scope, Location location, RefinementId refinement, RefinementContext* refis, bool sense, bool eq, std::vector<ConstraintV>* constraints)
+void ConstraintGenerator::computeRefinement(const ScopePtr& scope, Location location, RefinementId refinement, RefinementContext* refis, bool sense,
+    bool eq, std::vector<ConstraintV>* constraints)
 {
     if (!refinement)
         return;
@@ -907,19 +907,17 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocalFuncti
             std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{functionType, sig.signature});
 
         Constraint* previous = nullptr;
-        forEachConstraint(start, end, this,
-            [&c, &previous](const ConstraintPtr& constraint)
+        forEachConstraint(start, end, this, [&c, &previous](const ConstraintPtr& constraint) {
+            c->dependencies.push_back(NotNull{constraint.get()});
+
+            if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
             {
-                c->dependencies.push_back(NotNull{constraint.get()});
+                if (previous)
+                    constraint->dependencies.push_back(NotNull{previous});
 
-                if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
-                {
-                    if (previous)
-                        constraint->dependencies.push_back(NotNull{previous});
-
-                    previous = constraint.get();
-                }
-            });
+                previous = constraint.get();
+            }
+        });
 
         addConstraint(scope, std::move(c));
         module->astTypes[function->func] = functionType;
@@ -1018,20 +1016,18 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
             std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{generalizedType, sig.signature});
 
         Constraint* previous = nullptr;
-        forEachConstraint(start, end, this,
-            [&c, &excludeList, &previous](const ConstraintPtr& constraint)
+        forEachConstraint(start, end, this, [&c, &excludeList, &previous](const ConstraintPtr& constraint) {
+            if (!excludeList.contains(constraint.get()))
+                c->dependencies.push_back(NotNull{constraint.get()});
+
+            if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
             {
-                if (!excludeList.contains(constraint.get()))
-                    c->dependencies.push_back(NotNull{constraint.get()});
+                if (previous)
+                    constraint->dependencies.push_back(NotNull{previous});
 
-                if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
-                {
-                    if (previous)
-                        constraint->dependencies.push_back(NotNull{previous});
-
-                    previous = constraint.get();
-                }
-            });
+                previous = constraint.get();
+            }
+        });
 
         addConstraint(scope, std::move(c));
     }
@@ -1470,8 +1466,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatError* erro
     return ControlFlow::None;
 }
 
-InferencePack ConstraintGenerator::checkPack(
-    const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes)
+InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes)
 {
     std::vector<TypeId> head;
     std::optional<TypePackId> tail;
@@ -1708,14 +1703,8 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
          * 4. Solve the call
          */
 
-        NotNull<Constraint> checkConstraint = addConstraint(scope, call->func->location,
-            FunctionCheckConstraint{
-                fnType,
-                argPack,
-                call,
-                NotNull{&module->astExpectedTypes}
-            }
-        );
+        NotNull<Constraint> checkConstraint =
+            addConstraint(scope, call->func->location, FunctionCheckConstraint{fnType, argPack, call, NotNull{&module->astExpectedTypes}});
 
         forEachConstraint(funcBeginCheckpoint, funcEndCheckpoint, this, [checkConstraint](const ConstraintPtr& constraint) {
             checkConstraint->dependencies.emplace_back(constraint.get());
@@ -1743,8 +1732,7 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
     }
 }
 
-Inference ConstraintGenerator::check(
-    const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType, bool forceSingleton, bool generalize)
+Inference ConstraintGenerator::check(const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType, bool forceSingleton, bool generalize)
 {
     RecursionCounter counter{&recursionCount};
 
@@ -2403,11 +2391,9 @@ std::optional<TypeId> ConstraintGenerator::checkLValue(const ScopePtr& scope, As
 
     if (transform)
     {
-        addConstraint(scope, local->location, UnpackConstraint{
-            arena->addTypePack({*ty}),
-            arena->addTypePack({assignedTy}),
-            /*resultIsLValue*/ true
-        });
+        addConstraint(scope, local->location,
+            UnpackConstraint{arena->addTypePack({*ty}), arena->addTypePack({assignedTy}),
+                /*resultIsLValue*/ true});
 
         recordInferredBinding(local->local, *ty);
     }
@@ -3395,7 +3381,6 @@ void ConstraintGenerator::fillInInferredBindings(const ScopePtr& globalScope, As
 
             scope->bindings[symbol] = Binding{ty, location};
         }
-
     }
 }
 

@@ -179,7 +179,7 @@ public:
     // Extracts code offset (in bytes) from label
     uint32_t getLabelOffset(const Label& label)
     {
-        LUAU_ASSERT(label.location != ~0u);
+        CODEGEN_ASSERT(label.location != ~0u);
         return label.location;
     }
 

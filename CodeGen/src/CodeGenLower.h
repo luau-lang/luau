@@ -85,7 +85,7 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
     dummy.start = ~0u;
 
     // Make sure entry block is first
-    LUAU_ASSERT(sortedBlocks[0] == 0);
+    CODEGEN_ASSERT(sortedBlocks[0] == 0);
 
     for (size_t i = 0; i < sortedBlocks.size(); ++i)
     {
@@ -95,8 +95,8 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
         if (block.kind == IrBlockKind::Dead)
             continue;
 
-        LUAU_ASSERT(block.start != ~0u);
-        LUAU_ASSERT(block.finish != ~0u);
+        CODEGEN_ASSERT(block.start != ~0u);
+        CODEGEN_ASSERT(block.finish != ~0u);
 
         // If we want to skip fallback code IR/asm, we'll record when those blocks start once we see them
         if (block.kind == IrBlockKind::Fallback && !seenFallback)
@@ -129,11 +129,11 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
         // Optimizations often propagate information between blocks
         // To make sure the register and spill state is correct when blocks are lowered, we check that sorted block order matches the expected one
         if (block.expectedNextBlock != ~0u)
-            LUAU_ASSERT(function.getBlockIndex(nextBlock) == block.expectedNextBlock);
+            CODEGEN_ASSERT(function.getBlockIndex(nextBlock) == block.expectedNextBlock);
 
         for (uint32_t index = block.start; index <= block.finish; index++)
         {
-            LUAU_ASSERT(index < function.instructions.size());
+            CODEGEN_ASSERT(index < function.instructions.size());
 
             uint32_t bcLocation = bcLocations[index];
 
@@ -165,12 +165,12 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
             // This also prevents them from getting into text output when that's enabled
             if (isPseudo(inst.cmd))
             {
-                LUAU_ASSERT(inst.useCount == 0);
+                CODEGEN_ASSERT(inst.useCount == 0);
                 continue;
             }
 
             // Either instruction result value is not referenced or the use count is not zero
-            LUAU_ASSERT(inst.lastUse == 0 || inst.useCount != 0);
+            CODEGEN_ASSERT(inst.lastUse == 0 || inst.useCount != 0);
 
             if (options.includeIr)
             {
@@ -246,7 +246,8 @@ inline bool lowerIr(A64::AssemblyBuilderA64& build, IrBuilder& ir, const std::ve
 }
 
 template<typename AssemblyBuilder>
-inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options, LoweringStats* stats)
+inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options, LoweringStats* stats,
+    CodeGenCompilationResult& codeGenCompilationResult)
 {
     killUnusedBlocks(ir.function);
 
@@ -269,10 +270,16 @@ inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& 
     }
 
     if (preOptBlockCount >= unsigned(FInt::CodegenHeuristicsBlockLimit.value))
+    {
+        codeGenCompilationResult = CodeGenCompilationResult::CodeGenOverflowBlockLimit;
         return false;
+    }
 
     if (maxBlockInstructions >= unsigned(FInt::CodegenHeuristicsBlockInstructionLimit.value))
+    {
+        codeGenCompilationResult = CodeGenCompilationResult::CodeGenOverflowBlockInstructionLimit;
         return false;
+    }
 
     computeCfgInfo(ir.function);
 
@@ -318,7 +325,12 @@ inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& 
         }
     }
 
-    return lowerIr(build, ir, sortedBlocks, helpers, proto, options, stats);
+    bool result = lowerIr(build, ir, sortedBlocks, helpers, proto, options, stats);
+
+    if (!result)
+        codeGenCompilationResult = CodeGenCompilationResult::CodeGenLoweringFailure;
+
+    return result;
 }
 
 } // namespace CodeGen

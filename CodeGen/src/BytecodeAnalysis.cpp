@@ -7,8 +7,6 @@
 
 #include "lobject.h"
 
-LUAU_FASTFLAGVARIABLE(LuauFixDivrkInference, false)
-
 namespace Luau
 {
 namespace CodeGen
@@ -338,7 +336,7 @@ static void applyBuiltinCall(int bfid, BytecodeTypes& types)
 void buildBytecodeBlocks(IrFunction& function, const std::vector<uint8_t>& jumpTargets)
 {
     Proto* proto = function.proto;
-    LUAU_ASSERT(proto);
+    CODEGEN_ASSERT(proto);
 
     std::vector<BytecodeBlock>& bcBlocks = function.bcBlocks;
 
@@ -380,14 +378,14 @@ void buildBytecodeBlocks(IrFunction& function, const std::vector<uint8_t>& jumpT
 
         previ = i;
         i = nexti;
-        LUAU_ASSERT(i <= proto->sizecode);
+        CODEGEN_ASSERT(i <= proto->sizecode);
     }
 }
 
 void analyzeBytecodeTypes(IrFunction& function)
 {
     Proto* proto = function.proto;
-    LUAU_ASSERT(proto);
+    CODEGEN_ASSERT(proto);
 
     // Setup our current knowledge of type tags based on arguments
     uint8_t regTags[256];
@@ -398,8 +396,8 @@ void analyzeBytecodeTypes(IrFunction& function)
     // Now that we have VM basic blocks, we can attempt to track register type tags locally
     for (const BytecodeBlock& block : function.bcBlocks)
     {
-        LUAU_ASSERT(block.startpc != -1);
-        LUAU_ASSERT(block.finishpc != -1);
+        CODEGEN_ASSERT(block.startpc != -1);
+        CODEGEN_ASSERT(block.finishpc != -1);
 
         // At the block start, reset or knowledge to the starting state
         // In the future we might be able to propagate some info between the blocks as well
@@ -682,23 +680,11 @@ void analyzeBytecodeTypes(IrFunction& function)
             case LOP_DIVRK:
             {
                 int ra = LUAU_INSN_A(*pc);
+                int kb = LUAU_INSN_B(*pc);
+                int rc = LUAU_INSN_C(*pc);
 
-                if (FFlag::LuauFixDivrkInference)
-                {
-                    int kb = LUAU_INSN_B(*pc);
-                    int rc = LUAU_INSN_C(*pc);
-
-                    bcType.a = getBytecodeConstantTag(proto, kb);
-                    bcType.b = regTags[rc];
-                }
-                else
-                {
-                    int rb = LUAU_INSN_B(*pc);
-                    int kc = LUAU_INSN_C(*pc);
-
-                    bcType.a = regTags[rb];
-                    bcType.b = getBytecodeConstantTag(proto, kc);
-                }
+                bcType.a = getBytecodeConstantTag(proto, kb);
+                bcType.b = regTags[rc];
 
                 regTags[ra] = LBC_TYPE_ANY;
 
@@ -771,7 +757,7 @@ void analyzeBytecodeTypes(IrFunction& function)
                 int skip = LUAU_INSN_C(*pc);
 
                 Instruction call = pc[skip + 1];
-                LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+                CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
                 int ra = LUAU_INSN_A(call);
 
                 applyBuiltinCall(bfid, bcType);
@@ -788,7 +774,7 @@ void analyzeBytecodeTypes(IrFunction& function)
                 int skip = LUAU_INSN_C(*pc);
 
                 Instruction call = pc[skip + 1];
-                LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+                CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
                 int ra = LUAU_INSN_A(call);
 
                 applyBuiltinCall(bfid, bcType);
@@ -803,7 +789,7 @@ void analyzeBytecodeTypes(IrFunction& function)
                 int skip = LUAU_INSN_C(*pc);
 
                 Instruction call = pc[skip + 1];
-                LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+                CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
                 int ra = LUAU_INSN_A(call);
 
                 applyBuiltinCall(bfid, bcType);
@@ -886,7 +872,7 @@ void analyzeBytecodeTypes(IrFunction& function)
             case LOP_FORGPREP:
                 break;
             default:
-                LUAU_ASSERT(!"Unknown instruction");
+                CODEGEN_ASSERT(!"Unknown instruction");
             }
 
             i += getOpLength(op);

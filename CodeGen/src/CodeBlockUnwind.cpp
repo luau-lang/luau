@@ -20,8 +20,8 @@
 #elif defined(__linux__) || defined(__APPLE__)
 
 // Defined in unwind.h which may not be easily discoverable on various platforms
-extern "C" void __register_frame(const void*);
-extern "C" void __deregister_frame(const void*);
+extern "C" void __register_frame(const void*) __attribute__((weak));
+extern "C" void __deregister_frame(const void*) __attribute__((weak));
 
 extern "C" void __unw_add_dynamic_fde() __attribute__((weak));
 #endif
@@ -104,7 +104,7 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
     // All unwinding related data is placed together at the start of the block
     size_t unwindSize = unwind->getSize();
     unwindSize = (unwindSize + (kCodeAlignment - 1)) & ~(kCodeAlignment - 1); // Match code allocator alignment
-    LUAU_ASSERT(blockSize >= unwindSize);
+    CODEGEN_ASSERT(blockSize >= unwindSize);
 
     char* unwindData = (char*)block;
     unwind->finalize(unwindData, unwindSize, block, blockSize);
@@ -112,10 +112,13 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
 #if defined(_WIN32) && defined(_M_X64)
     if (!RtlAddFunctionTable((RUNTIME_FUNCTION*)block, uint32_t(unwind->getFunctionCount()), uintptr_t(block)))
     {
-        LUAU_ASSERT(!"Failed to allocate function table");
+        CODEGEN_ASSERT(!"Failed to allocate function table");
         return nullptr;
     }
 #elif defined(__linux__) || defined(__APPLE__)
+    if (!__register_frame)
+        return nullptr;
+
     visitFdeEntries(unwindData, __register_frame);
 #endif
 
@@ -125,7 +128,7 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
     static unw_add_find_dynamic_unwind_sections_t unw_add_find_dynamic_unwind_sections =
         unw_add_find_dynamic_unwind_sections_t(dlsym(RTLD_DEFAULT, "__unw_add_find_dynamic_unwind_sections"));
     static int regonce = unw_add_find_dynamic_unwind_sections ? unw_add_find_dynamic_unwind_sections(findDynamicUnwindSections) : 0;
-    LUAU_ASSERT(regonce == 0);
+    CODEGEN_ASSERT(regonce == 0);
 #endif
 
     beginOffset = unwindSize + unwind->getBeginOffset();
@@ -136,8 +139,14 @@ void destroyBlockUnwindInfo(void* context, void* unwindData)
 {
 #if defined(_WIN32) && defined(_M_X64)
     if (!RtlDeleteFunctionTable((RUNTIME_FUNCTION*)unwindData))
-        LUAU_ASSERT(!"Failed to deallocate function table");
+        CODEGEN_ASSERT(!"Failed to deallocate function table");
 #elif defined(__linux__) || defined(__APPLE__)
+    if (!__deregister_frame)
+    {
+        CODEGEN_ASSERT(!"Cannot deregister unwind information");
+        return;
+    }
+
     visitFdeEntries((char*)unwindData, __deregister_frame);
 #endif
 }

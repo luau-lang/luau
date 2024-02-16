@@ -23,14 +23,21 @@ enum CodeGenFlags
     CodeGen_ColdFunctions = 1 << 1,
 };
 
+// These enum values can be reported through telemetry.
+// To ensure consistency, changes should be additive.
 enum class CodeGenCompilationResult
 {
-    Success,          // Successfully generated code for at least one function
-    NothingToCompile, // There were no new functions to compile
+    Success = 0,          // Successfully generated code for at least one function
+    NothingToCompile = 1, // There were no new functions to compile
+    NotNativeModule = 2,  // Module does not have `--!native` comment
 
-    CodeGenNotInitialized, // Native codegen system is not initialized
-    CodeGenFailed,         // Native codegen failed due to an internal compiler error
-    AllocationFailed,      // Native codegen failed due to an allocation error
+    CodeGenNotInitialized = 3,                // Native codegen system is not initialized
+    CodeGenOverflowInstructionLimit = 4,      // Instruction limit overflow
+    CodeGenOverflowBlockLimit = 5,            // Block limit overflow
+    CodeGenOverflowBlockInstructionLimit = 6, // Block instruction limit overflow
+    CodeGenAssemblerFinalizationFailure = 7,  // Failure during assembler finalization
+    CodeGenLoweringFailure = 8,               // Lowering failed
+    AllocationFailed = 9,                     // Native codegen failed due to an allocation error
 };
 
 struct CompilationStats
@@ -40,6 +47,7 @@ struct CompilationStats
     size_t nativeDataSizeBytes = 0;
     size_t nativeMetadataSizeBytes = 0;
 
+    uint32_t functionsTotal = 0;
     uint32_t functionsCompiled = 0;
 };
 
