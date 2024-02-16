@@ -402,7 +402,14 @@ static bool isShallowInhabited(const NormalizedType& norm)
            !get<NeverType>(norm.buffers) || !norm.functions.isNever() || !norm.tables.empty() || !norm.tyvars.empty();
 }
 
-bool Normalizer::isInhabited(const NormalizedType* norm, Set<TypeId> seen)
+bool Normalizer::isInhabited(const NormalizedType* norm)
+{
+    Set<TypeId> seen{nullptr};
+
+    return isInhabited(norm, seen);
+}
+
+bool Normalizer::isInhabited(const NormalizedType* norm, Set<TypeId>& seen)
 {
     // If normalization failed, the type is complex, and so is more likely than not to be inhabited.
     if (!norm)
@@ -436,7 +443,8 @@ bool Normalizer::isInhabited(TypeId ty)
             return *result;
     }
 
-    bool result = isInhabited(ty, {nullptr});
+    Set<TypeId> seen{nullptr};
+    bool result = isInhabited(ty, seen);
 
     if (cacheInhabitance)
         cachedIsInhabited[ty] = result;
@@ -444,7 +452,7 @@ bool Normalizer::isInhabited(TypeId ty)
     return result;
 }
 
-bool Normalizer::isInhabited(TypeId ty, Set<TypeId> seen)
+bool Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
 {
     // TODO: use log.follow(ty), CLI-64291
     ty = follow(ty);

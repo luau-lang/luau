@@ -33,13 +33,13 @@ void updateUseCounts(IrFunction& function)
         if (op.kind == IrOpKind::Inst)
         {
             IrInst& target = instructions[op.index];
-            LUAU_ASSERT(target.useCount < 0xffff);
+            CODEGEN_ASSERT(target.useCount < 0xffff);
             target.useCount++;
         }
         else if (op.kind == IrOpKind::Block)
         {
             IrBlock& target = blocks[op.index];
-            LUAU_ASSERT(target.useCount < 0xffff);
+            CODEGEN_ASSERT(target.useCount < 0xffff);
             target.useCount++;
         }
     };
@@ -59,10 +59,10 @@ void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& s
 {
     std::vector<IrInst>& instructions = function.instructions;
 
-#if defined(LUAU_ASSERTENABLED)
+#if defined(CODEGEN_ASSERTENABLED)
     // Last use assignements should be called only once
     for (IrInst& inst : instructions)
-        LUAU_ASSERT(inst.lastUse == 0);
+        CODEGEN_ASSERT(inst.lastUse == 0);
 #endif
 
     for (size_t i = 0; i < sortedBlocks.size(); ++i)
@@ -73,12 +73,12 @@ void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& s
         if (block.kind == IrBlockKind::Dead)
             continue;
 
-        LUAU_ASSERT(block.start != ~0u);
-        LUAU_ASSERT(block.finish != ~0u);
+        CODEGEN_ASSERT(block.start != ~0u);
+        CODEGEN_ASSERT(block.finish != ~0u);
 
         for (uint32_t instIdx = block.start; instIdx <= block.finish; instIdx++)
         {
-            LUAU_ASSERT(instIdx < function.instructions.size());
+            CODEGEN_ASSERT(instIdx < function.instructions.size());
             IrInst& inst = instructions[instIdx];
 
             auto checkOp = [&](IrOp op) {
@@ -101,7 +101,7 @@ void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& s
 
 uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t startInstIdx)
 {
-    LUAU_ASSERT(startInstIdx < function.instructions.size());
+    CODEGEN_ASSERT(startInstIdx < function.instructions.size());
     IrInst& targetInst = function.instructions[targetInstIdx];
 
     for (uint32_t i = startInstIdx; i <= targetInst.lastUse; i++)
@@ -131,7 +131,7 @@ uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t s
     }
 
     // There must be a next use since there is the last use location
-    LUAU_ASSERT(!"Failed to find next use");
+    CODEGEN_ASSERT(!"Failed to find next use");
     return targetInst.lastUse;
 }
 
@@ -188,7 +188,7 @@ void requireVariadicSequence(RegisterSet& sourceRs, const RegisterSet& defRs, ui
         while (defRs.regs.test(varargStart))
             varargStart++;
 
-        LUAU_ASSERT(!sourceRs.varargSeq || sourceRs.varargStart == varargStart);
+        CODEGEN_ASSERT(!sourceRs.varargSeq || sourceRs.varargStart == varargStart);
 
         sourceRs.varargSeq = true;
         sourceRs.varargStart = varargStart;
@@ -381,7 +381,7 @@ static void computeCfgLiveInOutRegSets(IrFunction& function)
             if (curr.kind != IrBlockKind::Fallback && succ.kind == IrBlockKind::Fallback)
             {
                 // If this is the only successor, this skip will not be valid
-                LUAU_ASSERT(successorsIt.size() != 1);
+                CODEGEN_ASSERT(successorsIt.size() != 1);
                 continue;
             }
 
@@ -391,7 +391,7 @@ static void computeCfgLiveInOutRegSets(IrFunction& function)
 
             if (succRs.varargSeq)
             {
-                LUAU_ASSERT(!outRs.varargSeq || outRs.varargStart == succRs.varargStart);
+                CODEGEN_ASSERT(!outRs.varargSeq || outRs.varargStart == succRs.varargStart);
 
                 outRs.varargSeq = true;
                 outRs.varargStart = succRs.varargStart;
@@ -426,10 +426,10 @@ static void computeCfgLiveInOutRegSets(IrFunction& function)
     {
         RegisterSet& entryIn = info.in[0];
 
-        LUAU_ASSERT(!entryIn.varargSeq);
+        CODEGEN_ASSERT(!entryIn.varargSeq);
 
         for (size_t i = 0; i < entryIn.regs.size(); i++)
-            LUAU_ASSERT(!entryIn.regs.test(i) || i < function.proto->numparams);
+            CODEGEN_ASSERT(!entryIn.regs.test(i) || i < function.proto->numparams);
     }
 }
 
@@ -509,7 +509,7 @@ void computeBlockOrdering(
 {
     CfgInfo& info = function.cfg;
 
-    LUAU_ASSERT(info.idoms.size() == function.blocks.size());
+    CODEGEN_ASSERT(info.idoms.size() == function.blocks.size());
 
     ordering.clear();
     ordering.resize(function.blocks.size());
@@ -582,13 +582,13 @@ static uint32_t findCommonDominator(const std::vector<uint32_t>& idoms, const st
         while (data[a].postOrder < data[b].postOrder)
         {
             a = idoms[a];
-            LUAU_ASSERT(a != ~0u);
+            CODEGEN_ASSERT(a != ~0u);
         }
 
         while (data[b].postOrder < data[a].postOrder)
         {
             b = idoms[b];
-            LUAU_ASSERT(b != ~0u);
+            CODEGEN_ASSERT(b != ~0u);
         }
     }
 
@@ -707,10 +707,10 @@ void computeCfgDominanceTreeChildren(IrFunction& function)
 void computeIteratedDominanceFrontierForDefs(
     IdfContext& ctx, const IrFunction& function, const std::vector<uint32_t>& defBlocks, const std::vector<uint32_t>& liveInBlocks)
 {
-    LUAU_ASSERT(!function.cfg.domOrdering.empty());
+    CODEGEN_ASSERT(!function.cfg.domOrdering.empty());
 
-    LUAU_ASSERT(ctx.queue.empty());
-    LUAU_ASSERT(ctx.worklist.empty());
+    CODEGEN_ASSERT(ctx.queue.empty());
+    CODEGEN_ASSERT(ctx.worklist.empty());
 
     ctx.idf.clear();
 
@@ -728,7 +728,7 @@ void computeIteratedDominanceFrontierForDefs(
         IdfContext::BlockAndOrdering root = ctx.queue.top();
         ctx.queue.pop();
 
-        LUAU_ASSERT(ctx.worklist.empty());
+        CODEGEN_ASSERT(ctx.worklist.empty());
         ctx.worklist.push_back(root.blockIdx);
         ctx.visits[root.blockIdx].seenInWorklist = true;
 
@@ -785,7 +785,7 @@ void computeCfgInfo(IrFunction& function)
 
 BlockIteratorWrapper predecessors(const CfgInfo& cfg, uint32_t blockIdx)
 {
-    LUAU_ASSERT(blockIdx < cfg.predecessorsOffsets.size());
+    CODEGEN_ASSERT(blockIdx < cfg.predecessorsOffsets.size());
 
     uint32_t start = cfg.predecessorsOffsets[blockIdx];
     uint32_t end = blockIdx + 1 < cfg.predecessorsOffsets.size() ? cfg.predecessorsOffsets[blockIdx + 1] : uint32_t(cfg.predecessors.size());
@@ -795,7 +795,7 @@ BlockIteratorWrapper predecessors(const CfgInfo& cfg, uint32_t blockIdx)
 
 BlockIteratorWrapper successors(const CfgInfo& cfg, uint32_t blockIdx)
 {
-    LUAU_ASSERT(blockIdx < cfg.successorsOffsets.size());
+    CODEGEN_ASSERT(blockIdx < cfg.successorsOffsets.size());
 
     uint32_t start = cfg.successorsOffsets[blockIdx];
     uint32_t end = blockIdx + 1 < cfg.successorsOffsets.size() ? cfg.successorsOffsets[blockIdx + 1] : uint32_t(cfg.successors.size());
@@ -805,7 +805,7 @@ BlockIteratorWrapper successors(const CfgInfo& cfg, uint32_t blockIdx)
 
 BlockIteratorWrapper domChildren(const CfgInfo& cfg, uint32_t blockIdx)
 {
-    LUAU_ASSERT(blockIdx < cfg.domChildrenOffsets.size());
+    CODEGEN_ASSERT(blockIdx < cfg.domChildrenOffsets.size());
 
     uint32_t start = cfg.domChildrenOffsets[blockIdx];
     uint32_t end = blockIdx + 1 < cfg.domChildrenOffsets.size() ? cfg.domChildrenOffsets[blockIdx + 1] : uint32_t(cfg.domChildren.size());

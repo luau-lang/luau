@@ -13,7 +13,7 @@ struct TypeStateFixture : BuiltinsFixture
 {
     ScopedFastFlag dcr{FFlag::DebugLuauDeferredConstraintResolution, true};
 };
-}
+} // namespace
 
 TEST_SUITE_BEGIN("TypeStatesTest");
 

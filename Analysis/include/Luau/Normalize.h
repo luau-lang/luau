@@ -393,8 +393,9 @@ public:
 
     // Check for inhabitance
     bool isInhabited(TypeId ty);
-    bool isInhabited(TypeId ty, Set<TypeId> seen);
-    bool isInhabited(const NormalizedType* norm, Set<TypeId> seen = {nullptr});
+    bool isInhabited(TypeId ty, Set<TypeId>& seen);
+    bool isInhabited(const NormalizedType* norm);
+    bool isInhabited(const NormalizedType* norm, Set<TypeId>& seen);
 
     // Check for intersections being inhabited
     bool isIntersectionInhabited(TypeId left, TypeId right);

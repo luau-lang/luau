@@ -406,7 +406,8 @@ struct Property
     // TODO: Kill all constructors in favor of `Property::rw(TypeId read, TypeId write)` and friends.
     Property();
     Property(TypeId readTy, bool deprecated = false, const std::string& deprecatedSuggestion = "", std::optional<Location> location = std::nullopt,
-        const Tags& tags = {}, const std::optional<std::string>& documentationSymbol = std::nullopt, std::optional<Location> typeLocation = std::nullopt);
+        const Tags& tags = {}, const std::optional<std::string>& documentationSymbol = std::nullopt,
+        std::optional<Location> typeLocation = std::nullopt);
 
     // DEPRECATED: Should only be called in non-RWP! We assert that the `readTy` is not nullopt.
     // TODO: Kill once we don't have non-RWP.
@@ -639,9 +640,9 @@ struct NegationType
 
 using ErrorType = Unifiable::Error;
 
-using TypeVariant =
-    Unifiable::Variant<TypeId, FreeType, LocalType, GenericType, PrimitiveType, BlockedType, PendingExpansionType, SingletonType, FunctionType, TableType,
-        MetatableType, ClassType, AnyType, UnionType, IntersectionType, LazyType, UnknownType, NeverType, NegationType, TypeFamilyInstanceType>;
+using TypeVariant = Unifiable::Variant<TypeId, FreeType, LocalType, GenericType, PrimitiveType, BlockedType, PendingExpansionType, SingletonType,
+    FunctionType, TableType, MetatableType, ClassType, AnyType, UnionType, IntersectionType, LazyType, UnknownType, NeverType, NegationType,
+    TypeFamilyInstanceType>;
 
 struct Type final
 {

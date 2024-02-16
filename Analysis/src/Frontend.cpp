@@ -1289,7 +1289,8 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vect
         {
             return Luau::check(sourceModule, mode, requireCycles, builtinTypes, NotNull{&iceHandler},
                 NotNull{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver}, NotNull{fileResolver},
-                environmentScope ? *environmentScope : globals.globalScope, prepareModuleScopeWrap, options, typeCheckLimits, recordJsonLog, writeJsonLog);
+                environmentScope ? *environmentScope : globals.globalScope, prepareModuleScopeWrap, options, typeCheckLimits, recordJsonLog,
+                writeJsonLog);
         }
         catch (const InternalCompilerError& err)
         {

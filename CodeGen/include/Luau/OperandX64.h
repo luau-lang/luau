@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Common.h"
+#include "Luau/CodeGenCommon.h"
 #include "Luau/RegisterX64.h"
 
 #include <stdint.h>
@@ -62,9 +62,9 @@ struct OperandX64
 
     constexpr OperandX64 operator[](OperandX64&& addr) const
     {
-        LUAU_ASSERT(cat == CategoryX64::mem);
-        LUAU_ASSERT(index == noreg && scale == 1 && base == noreg && imm == 0);
-        LUAU_ASSERT(addr.memSize == SizeX64::none);
+        CODEGEN_ASSERT(cat == CategoryX64::mem);
+        CODEGEN_ASSERT(index == noreg && scale == 1 && base == noreg && imm == 0);
+        CODEGEN_ASSERT(addr.memSize == SizeX64::none);
 
         addr.cat = CategoryX64::mem;
         addr.memSize = memSize;
@@ -85,8 +85,8 @@ constexpr OperandX64 operator*(RegisterX64 reg, uint8_t scale)
     if (scale == 1)
         return OperandX64(reg);
 
-    LUAU_ASSERT(scale == 1 || scale == 2 || scale == 4 || scale == 8);
-    LUAU_ASSERT(reg.index != 0b100 && "can't scale SP");
+    CODEGEN_ASSERT(scale == 1 || scale == 2 || scale == 4 || scale == 8);
+    CODEGEN_ASSERT(reg.index != 0b100 && "can't scale SP");
 
     return OperandX64(SizeX64::none, reg, scale, noreg, 0);
 }
@@ -103,16 +103,16 @@ constexpr OperandX64 operator-(RegisterX64 reg, int32_t disp)
 
 constexpr OperandX64 operator+(RegisterX64 base, RegisterX64 index)
 {
-    LUAU_ASSERT(index.index != 4 && "sp cannot be used as index");
-    LUAU_ASSERT(base.size == index.size);
+    CODEGEN_ASSERT(index.index != 4 && "sp cannot be used as index");
+    CODEGEN_ASSERT(base.size == index.size);
 
     return OperandX64(SizeX64::none, index, 1, base, 0);
 }
 
 constexpr OperandX64 operator+(OperandX64 op, int32_t disp)
 {
-    LUAU_ASSERT(op.cat == CategoryX64::mem);
-    LUAU_ASSERT(op.memSize == SizeX64::none);
+    CODEGEN_ASSERT(op.cat == CategoryX64::mem);
+    CODEGEN_ASSERT(op.memSize == SizeX64::none);
 
     op.imm += disp;
     return op;
@@ -120,10 +120,10 @@ constexpr OperandX64 operator+(OperandX64 op, int32_t disp)
 
 constexpr OperandX64 operator+(OperandX64 op, RegisterX64 base)
 {
-    LUAU_ASSERT(op.cat == CategoryX64::mem);
-    LUAU_ASSERT(op.memSize == SizeX64::none);
-    LUAU_ASSERT(op.base == noreg);
-    LUAU_ASSERT(op.index == noreg || op.index.size == base.size);
+    CODEGEN_ASSERT(op.cat == CategoryX64::mem);
+    CODEGEN_ASSERT(op.memSize == SizeX64::none);
+    CODEGEN_ASSERT(op.base == noreg);
+    CODEGEN_ASSERT(op.index == noreg || op.index.size == base.size);
 
     op.base = base;
     return op;
@@ -131,10 +131,10 @@ constexpr OperandX64 operator+(OperandX64 op, RegisterX64 base)
 
 constexpr OperandX64 operator+(RegisterX64 base, OperandX64 op)
 {
-    LUAU_ASSERT(op.cat == CategoryX64::mem);
-    LUAU_ASSERT(op.memSize == SizeX64::none);
-    LUAU_ASSERT(op.base == noreg);
-    LUAU_ASSERT(op.index == noreg || op.index.size == base.size);
+    CODEGEN_ASSERT(op.cat == CategoryX64::mem);
+    CODEGEN_ASSERT(op.memSize == SizeX64::none);
+    CODEGEN_ASSERT(op.base == noreg);
+    CODEGEN_ASSERT(op.index == noreg || op.index.size == base.size);
 
     op.base = base;
     return op;

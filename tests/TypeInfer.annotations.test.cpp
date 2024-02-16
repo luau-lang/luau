@@ -267,8 +267,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_of_value_a_via_typeof_with_assignment")
         CHECK("nil" == toString(requireType("b")));
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK(
-            result.errors[0] == (TypeError{Location{Position{2, 29}, Position{2, 30}}, TypeMismatch{builtinTypes->nilType, builtinTypes->numberType}}));
+        CHECK(result.errors[0] ==
+              (TypeError{Location{Position{2, 29}, Position{2, 30}}, TypeMismatch{builtinTypes->nilType, builtinTypes->numberType}}));
     }
     else
     {
@@ -276,8 +276,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_of_value_a_via_typeof_with_assignment")
         CHECK_EQ(*builtinTypes->numberType, *requireType("b"));
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK_EQ(
-            result.errors[0], (TypeError{Location{Position{4, 12}, Position{4, 17}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}}));
+        CHECK_EQ(result.errors[0],
+            (TypeError{Location{Position{4, 12}, Position{4, 17}}, TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}}));
     }
 }
 

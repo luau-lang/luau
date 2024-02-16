@@ -522,8 +522,8 @@ void AstStatLocal::visit(AstVisitor* visitor)
     }
 }
 
-AstStatFor::AstStatFor(const Location& location, AstLocal* var, AstExpr* from, AstExpr* to, AstExpr* step, AstStatBlock* body, bool hasDo,
-    const Location& doLocation)
+AstStatFor::AstStatFor(
+    const Location& location, AstLocal* var, AstExpr* from, AstExpr* to, AstExpr* step, AstStatBlock* body, bool hasDo, const Location& doLocation)
     : AstStat(ClassIndex(), location)
     , var(var)
     , from(from)

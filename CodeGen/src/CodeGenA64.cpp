@@ -103,7 +103,7 @@ static void emitContinueCall(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 
     // If the fallback yielded, we need to do this right away
     // note: it's slightly cheaper to check x0 LSB; a valid Closure pointer must be aligned to 8 bytes
-    LUAU_ASSERT(CALL_FALLBACK_YIELD == 1);
+    CODEGEN_ASSERT(CALL_FALLBACK_YIELD == 1);
     build.tbnz(x0, 0, helpers.exitNoContinueVm);
 
     // Need to update state of the current function before we jump away
@@ -114,7 +114,7 @@ static void emitContinueCall(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 
     build.mov(rClosure, x0);
 
-    LUAU_ASSERT(offsetof(Proto, code) == offsetof(Proto, k) + 8);
+    CODEGEN_ASSERT(offsetof(Proto, code) == offsetof(Proto, k) + 8);
     build.ldp(rConstants, rCode, mem(x1, offsetof(Proto, k))); // proto->k, proto->code
 
     build.br(x2);
@@ -178,7 +178,7 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
 
     build.ldr(x1, mem(rClosure, offsetof(Closure, l.p))); // cl->l.p aka proto
 
-    LUAU_ASSERT(offsetof(Proto, code) == offsetof(Proto, k) + 8);
+    CODEGEN_ASSERT(offsetof(Proto, code) == offsetof(Proto, k) + 8);
     build.ldp(rConstants, rCode, mem(x1, offsetof(Proto, k))); // proto->k, proto->code
 
     // Get instruction index from instruction pointer
@@ -188,7 +188,7 @@ void emitReturn(AssemblyBuilderA64& build, ModuleHelpers& helpers)
     build.sub(x2, x2, rCode);
 
     // Get new instruction location and jump to it
-    LUAU_ASSERT(offsetof(Proto, exectarget) == offsetof(Proto, execdata) + 8);
+    CODEGEN_ASSERT(offsetof(Proto, exectarget) == offsetof(Proto, execdata) + 8);
     build.ldp(x3, x4, mem(x1, offsetof(Proto, execdata)));
     build.ldr(w2, mem(x3, x2));
     build.add(x4, x4, x2);
@@ -226,7 +226,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
 
     build.ldr(rBase, mem(x0, offsetof(lua_State, base))); // L->base
 
-    LUAU_ASSERT(offsetof(Proto, code) == offsetof(Proto, k) + 8);
+    CODEGEN_ASSERT(offsetof(Proto, code) == offsetof(Proto, k) + 8);
     build.ldp(rConstants, rCode, mem(x1, offsetof(Proto, k))); // proto->k, proto->code
 
     build.ldr(x9, mem(x0, offsetof(lua_State, ci)));          // L->ci
@@ -270,13 +270,13 @@ bool initHeaderFunctions(NativeState& data)
 
     unwind.finishInfo();
 
-    LUAU_ASSERT(build.data.empty());
+    CODEGEN_ASSERT(build.data.empty());
 
     uint8_t* codeStart = nullptr;
     if (!data.codeAllocator.allocate(build.data.data(), int(build.data.size()), reinterpret_cast<const uint8_t*>(build.code.data()),
             int(build.code.size() * sizeof(build.code[0])), data.gateData, data.gateDataSize, codeStart))
     {
-        LUAU_ASSERT(!"Failed to create entry function");
+        CODEGEN_ASSERT(!"Failed to create entry function");
         return false;
     }
 

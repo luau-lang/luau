@@ -26,8 +26,6 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileRevK, false)
-
 namespace Luau
 {
 
@@ -1517,7 +1515,7 @@ struct Compiler
             }
             else
             {
-                if (FFlag::LuauCompileRevK && (expr->op == AstExprBinary::Sub || expr->op == AstExprBinary::Div))
+                if (expr->op == AstExprBinary::Sub || expr->op == AstExprBinary::Div)
                 {
                     int32_t lc = getConstantNumber(expr->left);
 

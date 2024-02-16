@@ -1184,7 +1184,8 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
                 }
             }
         }
-        else if (expr->is<AstExprConstantBool>() || expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantNil>() || expr->is<AstExprTable>())
+        else if (expr->is<AstExprConstantBool>() || expr->is<AstExprConstantString>() || expr->is<AstExprConstantNumber>() ||
+                 expr->is<AstExprConstantNil>() || expr->is<AstExprTable>())
         {
             Unifier2 u2{arena, builtinTypes, constraint->scope, NotNull{&iceReporter}};
             u2.unify(actualArgTy, expectedArgTy);

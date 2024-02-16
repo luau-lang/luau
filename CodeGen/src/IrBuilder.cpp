@@ -32,7 +32,7 @@ static bool hasTypedParameters(Proto* proto)
 
 static void buildArgumentTypeChecks(IrBuilder& build, Proto* proto)
 {
-    LUAU_ASSERT(hasTypedParameters(proto));
+    CODEGEN_ASSERT(hasTypedParameters(proto));
 
     for (int i = 0; i < proto->numparams; ++i)
     {
@@ -145,7 +145,7 @@ void IrBuilder::buildFunctionIr(Proto* proto)
         LuauOpcode op = LuauOpcode(LUAU_INSN_OP(*pc));
 
         int nexti = i + getOpLength(op);
-        LUAU_ASSERT(nexti <= proto->sizecode);
+        CODEGEN_ASSERT(nexti <= proto->sizecode);
 
         function.bcMapping[i] = {uint32_t(function.instructions.size()), ~0u};
 
@@ -181,7 +181,7 @@ void IrBuilder::buildFunctionIr(Proto* proto)
             afterInstForNLoop(*this, pc);
 
         i = nexti;
-        LUAU_ASSERT(i <= proto->sizecode);
+        CODEGEN_ASSERT(i <= proto->sizecode);
 
         // If we are going into a new block at the next instruction and it's a fallthrough, jump has to be placed to mark block termination
         if (i < int(instIndexToBlock.size()) && instIndexToBlock[i] != kNoAssociatedBlockIndex)
@@ -213,7 +213,7 @@ void IrBuilder::rebuildBytecodeBasicBlocks(Proto* proto)
             jumpTargets[target] = true;
 
         i += getOpLength(op);
-        LUAU_ASSERT(i <= proto->sizecode);
+        CODEGEN_ASSERT(i <= proto->sizecode);
     }
 
     // Bytecode blocks are created at bytecode jump targets and the start of a function
@@ -521,7 +521,7 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         break;
     }
     default:
-        LUAU_ASSERT(!"Unknown instruction");
+        CODEGEN_ASSERT(!"Unknown instruction");
     }
 }
 
@@ -556,7 +556,7 @@ void IrBuilder::beginBlock(IrOp block)
     IrBlock& target = function.blocks[block.index];
     activeBlockIdx = block.index;
 
-    LUAU_ASSERT(target.start == ~0u || target.start == uint32_t(function.instructions.size()));
+    CODEGEN_ASSERT(target.start == ~0u || target.start == uint32_t(function.instructions.size()));
 
     target.start = uint32_t(function.instructions.size());
     target.sortkey = target.start;
@@ -579,7 +579,7 @@ void IrBuilder::clone(const IrBlock& source, bool removeCurrentTerminator)
             if (const uint32_t* newIndex = instRedir.find(op.index))
                 op.index = *newIndex;
             else
-                LUAU_ASSERT(!"Values can only be used if they are defined in the same block");
+                CODEGEN_ASSERT(!"Values can only be used if they are defined in the same block");
         }
     };
 
@@ -594,13 +594,13 @@ void IrBuilder::clone(const IrBlock& source, bool removeCurrentTerminator)
 
     for (uint32_t index = source.start; index <= source.finish; index++)
     {
-        LUAU_ASSERT(index < function.instructions.size());
+        CODEGEN_ASSERT(index < function.instructions.size());
         IrInst clone = function.instructions[index];
 
         // Skip pseudo instructions to make clone more compact, but validate that they have no users
         if (isPseudo(clone.cmd))
         {
-            LUAU_ASSERT(clone.useCount == 0);
+            CODEGEN_ASSERT(clone.useCount == 0);
             continue;
         }
 
@@ -723,7 +723,7 @@ IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d, IrOp e, IrOp f)
     uint32_t index = uint32_t(function.instructions.size());
     function.instructions.push_back({cmd, a, b, c, d, e, f});
 
-    LUAU_ASSERT(!inTerminatedBlock);
+    CODEGEN_ASSERT(!inTerminatedBlock);
 
     if (isBlockTerminator(cmd))
     {

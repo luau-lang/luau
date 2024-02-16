@@ -23,7 +23,7 @@ static const int8_t kInvalidSpill = 64;
 
 static int allocSpill(uint32_t& free, KindA64 kind)
 {
-    LUAU_ASSERT(kStackSize <= 256); // to support larger stack frames, we need to ensure qN is allocated at 16b boundary to fit in ldr/str encoding
+    CODEGEN_ASSERT(kStackSize <= 256); // to support larger stack frames, we need to ensure qN is allocated at 16b boundary to fit in ldr/str encoding
 
     // qN registers use two consecutive slots
     int slot = countrz(kind == KindA64::q ? free & (free >> 1) : free);
@@ -32,7 +32,7 @@ static int allocSpill(uint32_t& free, KindA64 kind)
 
     uint32_t mask = (kind == KindA64::q ? 3u : 1u) << slot;
 
-    LUAU_ASSERT((free & mask) == mask);
+    CODEGEN_ASSERT((free & mask) == mask);
     free &= ~mask;
 
     return slot;
@@ -43,7 +43,7 @@ static void freeSpill(uint32_t& free, KindA64 kind, uint8_t slot)
     // qN registers use two consecutive slots
     uint32_t mask = (kind == KindA64::q ? 3u : 1u) << slot;
 
-    LUAU_ASSERT((free & mask) == 0);
+    CODEGEN_ASSERT((free & mask) == 0);
     free |= mask;
 }
 
@@ -53,7 +53,7 @@ static int getReloadOffset(IrCmd cmd)
     {
     case IrValueKind::Unknown:
     case IrValueKind::None:
-        LUAU_ASSERT(!"Invalid operand restore value kind");
+        CODEGEN_ASSERT(!"Invalid operand restore value kind");
         break;
     case IrValueKind::Tag:
         return offsetof(TValue, tt);
@@ -67,7 +67,7 @@ static int getReloadOffset(IrCmd cmd)
         return 0;
     }
 
-    LUAU_ASSERT(!"Invalid operand restore value kind");
+    CODEGEN_ASSERT(!"Invalid operand restore value kind");
     LUAU_UNREACHABLE();
 }
 
@@ -88,7 +88,7 @@ static AddressA64 getReloadAddress(const IrFunction& function, const IrInst& ins
 static void restoreInst(AssemblyBuilderA64& build, uint32_t& freeSpillSlots, IrFunction& function, const IrRegAllocA64::Spill& s, RegisterA64 reg)
 {
     IrInst& inst = function.instructions[s.inst];
-    LUAU_ASSERT(inst.regA64 == noreg);
+    CODEGEN_ASSERT(inst.regA64 == noreg);
 
     if (s.slot >= 0)
     {
@@ -99,9 +99,9 @@ static void restoreInst(AssemblyBuilderA64& build, uint32_t& freeSpillSlots, IrF
     }
     else
     {
-        LUAU_ASSERT(!inst.spilled && inst.needsReload);
+        CODEGEN_ASSERT(!inst.spilled && inst.needsReload);
         AddressA64 addr = getReloadAddress(function, function.instructions[s.inst], /*limitToCurrentBlock*/ false);
-        LUAU_ASSERT(addr.base != xzr);
+        CODEGEN_ASSERT(addr.base != xzr);
         build.ldr(reg, addr);
     }
 
@@ -116,7 +116,7 @@ IrRegAllocA64::IrRegAllocA64(IrFunction& function, LoweringStats* stats, std::in
 {
     for (auto& p : regs)
     {
-        LUAU_ASSERT(p.first.kind == p.second.kind && p.first.index <= p.second.index);
+        CODEGEN_ASSERT(p.first.kind == p.second.kind && p.first.index <= p.second.index);
 
         Set& set = getSet(p.first.kind);
 
@@ -130,7 +130,7 @@ IrRegAllocA64::IrRegAllocA64(IrFunction& function, LoweringStats* stats, std::in
     memset(gpr.defs, -1, sizeof(gpr.defs));
     memset(simd.defs, -1, sizeof(simd.defs));
 
-    LUAU_ASSERT(kSpillSlots <= 32);
+    CODEGEN_ASSERT(kSpillSlots <= 32);
     freeSpillSlots = (kSpillSlots == 32) ? ~0u : (1u << kSpillSlots) - 1;
 }
 
@@ -172,7 +172,7 @@ RegisterA64 IrRegAllocA64::allocTemp(KindA64 kind)
 
     set.free &= ~(1u << reg);
     set.temp |= 1u << reg;
-    LUAU_ASSERT(set.defs[reg] == kInvalidInstIdx);
+    CODEGEN_ASSERT(set.defs[reg] == kInvalidInstIdx);
 
     return RegisterA64{kind, uint8_t(reg)};
 }
@@ -188,11 +188,11 @@ RegisterA64 IrRegAllocA64::allocReuse(KindA64 kind, uint32_t index, std::initial
 
         if (source.lastUse == index && !source.reusedReg && source.regA64 != noreg)
         {
-            LUAU_ASSERT(!source.spilled && !source.needsReload);
-            LUAU_ASSERT(source.regA64.kind == kind);
+            CODEGEN_ASSERT(!source.spilled && !source.needsReload);
+            CODEGEN_ASSERT(source.regA64.kind == kind);
 
             Set& set = getSet(kind);
-            LUAU_ASSERT(set.defs[source.regA64.index] == op.index);
+            CODEGEN_ASSERT(set.defs[source.regA64.index] == op.index);
             set.defs[source.regA64.index] = index;
 
             source.reusedReg = true;
@@ -207,8 +207,8 @@ RegisterA64 IrRegAllocA64::takeReg(RegisterA64 reg, uint32_t index)
 {
     Set& set = getSet(reg.kind);
 
-    LUAU_ASSERT(set.free & (1u << reg.index));
-    LUAU_ASSERT(set.defs[reg.index] == kInvalidInstIdx);
+    CODEGEN_ASSERT(set.free & (1u << reg.index));
+    CODEGEN_ASSERT(set.defs[reg.index] == kInvalidInstIdx);
 
     set.free &= ~(1u << reg.index);
     set.defs[reg.index] = index;
@@ -220,9 +220,9 @@ void IrRegAllocA64::freeReg(RegisterA64 reg)
 {
     Set& set = getSet(reg.kind);
 
-    LUAU_ASSERT((set.base & (1u << reg.index)) != 0);
-    LUAU_ASSERT((set.free & (1u << reg.index)) == 0);
-    LUAU_ASSERT((set.temp & (1u << reg.index)) == 0);
+    CODEGEN_ASSERT((set.base & (1u << reg.index)) != 0);
+    CODEGEN_ASSERT((set.free & (1u << reg.index)) == 0);
+    CODEGEN_ASSERT((set.temp & (1u << reg.index)) == 0);
 
     set.free |= 1u << reg.index;
     set.defs[reg.index] = kInvalidInstIdx;
@@ -232,7 +232,7 @@ void IrRegAllocA64::freeLastUseReg(IrInst& target, uint32_t index)
 {
     if (target.lastUse == index && !target.reusedReg)
     {
-        LUAU_ASSERT(!target.spilled && !target.needsReload);
+        CODEGEN_ASSERT(!target.spilled && !target.needsReload);
 
         // Register might have already been freed if it had multiple uses inside a single instruction
         if (target.regA64 == noreg)
@@ -260,11 +260,11 @@ void IrRegAllocA64::freeLastUseRegs(const IrInst& inst, uint32_t index)
 
 void IrRegAllocA64::freeTempRegs()
 {
-    LUAU_ASSERT((gpr.free & gpr.temp) == 0);
+    CODEGEN_ASSERT((gpr.free & gpr.temp) == 0);
     gpr.free |= gpr.temp;
     gpr.temp = 0;
 
-    LUAU_ASSERT((simd.free & simd.temp) == 0);
+    CODEGEN_ASSERT((simd.free & simd.temp) == 0);
     simd.free |= simd.temp;
     simd.temp = 0;
 }
@@ -299,7 +299,7 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
             continue;
 
         // free all temp registers
-        LUAU_ASSERT((set.free & set.temp) == 0);
+        CODEGEN_ASSERT((set.free & set.temp) == 0);
         set.free |= set.temp;
         set.temp = 0;
 
@@ -311,13 +311,13 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
             int reg = 31 - countlz(regs);
 
             uint32_t inst = set.defs[reg];
-            LUAU_ASSERT(inst != kInvalidInstIdx);
+            CODEGEN_ASSERT(inst != kInvalidInstIdx);
 
             IrInst& def = function.instructions[inst];
-            LUAU_ASSERT(def.regA64.index == reg);
-            LUAU_ASSERT(!def.reusedReg);
-            LUAU_ASSERT(!def.spilled);
-            LUAU_ASSERT(!def.needsReload);
+            CODEGEN_ASSERT(def.regA64.index == reg);
+            CODEGEN_ASSERT(!def.reusedReg);
+            CODEGEN_ASSERT(!def.spilled);
+            CODEGEN_ASSERT(!def.needsReload);
 
             if (def.lastUse == index)
             {
@@ -367,7 +367,7 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
             set.defs[reg] = kInvalidInstIdx;
         }
 
-        LUAU_ASSERT(set.free == set.base);
+        CODEGEN_ASSERT(set.free == set.base);
     }
 
     if (FFlag::DebugCodegenChaosA64)
@@ -386,7 +386,7 @@ size_t IrRegAllocA64::spill(AssemblyBuilderA64& build, uint32_t index, std::init
 
 void IrRegAllocA64::restore(AssemblyBuilderA64& build, size_t start)
 {
-    LUAU_ASSERT(start <= spills.size());
+    CODEGEN_ASSERT(start <= spills.size());
 
     if (start < spills.size())
     {
@@ -421,7 +421,7 @@ void IrRegAllocA64::restoreReg(AssemblyBuilderA64& build, IrInst& inst)
         }
     }
 
-    LUAU_ASSERT(!"Expected to find a spill record");
+    CODEGEN_ASSERT(!"Expected to find a spill record");
 }
 
 IrRegAllocA64::Set& IrRegAllocA64::getSet(KindA64 kind)
@@ -438,7 +438,7 @@ IrRegAllocA64::Set& IrRegAllocA64::getSet(KindA64 kind)
         return simd;
 
     default:
-        LUAU_ASSERT(!"Unexpected register kind");
+        CODEGEN_ASSERT(!"Unexpected register kind");
         LUAU_UNREACHABLE();
     }
 }

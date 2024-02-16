@@ -599,8 +599,7 @@ AstStat* Parser::parseFor()
         bool hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchDo);
         body->hasEnd = hasEnd;
 
-        return allocator.alloc<AstStatForIn>(
-            Location(start, end), copy(vars), copy(values), body, hasIn, inLocation, hasDo, matchDo.location);
+        return allocator.alloc<AstStatForIn>(Location(start, end), copy(vars), copy(values), body, hasIn, inLocation, hasDo, matchDo.location);
     }
 }
 
@@ -907,8 +906,7 @@ AstStat* Parser::parseDeclaration(const Location& start)
             {
                 props.push_back(parseDeclaredClassMethod());
             }
-            else if (lexer.current().type == '[' && (lexer.lookahead().type == Lexeme::RawString ||
-                                                        lexer.lookahead().type == Lexeme::QuotedString))
+            else if (lexer.current().type == '[' && (lexer.lookahead().type == Lexeme::RawString || lexer.lookahead().type == Lexeme::QuotedString))
             {
                 const Lexeme begin = lexer.current();
                 nextLexeme(); // [

@@ -65,7 +65,7 @@ struct SubtypingResult
     bool isSubtype = false;
     bool normalizationTooComplex = false;
     bool isCacheable = true;
-
+    ErrorVec errors;
     /// The reason for isSubtype to be false. May not be present even if
     /// isSubtype is false, depending on the input types.
     SubtypingReasonings reasoning{kEmptyReasoning};
@@ -78,6 +78,7 @@ struct SubtypingResult
     SubtypingResult& withBothPath(TypePath::Path path);
     SubtypingResult& withSubPath(TypePath::Path path);
     SubtypingResult& withSuperPath(TypePath::Path path);
+    SubtypingResult& withErrors(ErrorVec& err);
 
     // Only negates the `isSubtype`.
     static SubtypingResult negate(const SubtypingResult& result);
@@ -211,18 +212,22 @@ private:
     template<typename T, typename Container>
     TypeId makeAggregateType(const Container& container, TypeId orElse);
 
-    template<typename T>
-    T handleTypeFamilyReductionResult(const TypeFamilyInstanceType* tf)
+
+    std::pair<TypeId, ErrorVec> handleTypeFamilyReductionResult(const TypeFamilyInstanceType* familyInstance)
     {
         TypeFamilyContext context{arena, builtinTypes, scope, normalizer, iceReporter, NotNull{&limits}};
-        TypeFamilyReductionResult<TypeId> result = tf->family->reducer(tf->typeArguments, tf->packArguments, NotNull{&context});
-        if (!result.blockedTypes.empty())
-            unexpected(result.blockedTypes[0]);
-        else if (!result.blockedPacks.empty())
-            unexpected(result.blockedPacks[0]);
-        else if (result.uninhabited || result.result == std::nullopt)
-            return builtinTypes->neverType;
-        return *result.result;
+        TypeId family = arena->addType(*familyInstance);
+        std::string familyString = toString(family);
+        FamilyGraphReductionResult result = reduceFamilies(family, {}, context, true);
+        ErrorVec errors;
+        if (result.blockedTypes.size() != 0 || result.blockedPacks.size() != 0)
+        {
+            errors.push_back(TypeError{{}, UninhabitedTypeFamily{family}});
+            return {builtinTypes->neverType, errors};
+        }
+        if (result.reducedTypes.contains(family))
+            return {family, errors};
+        return {builtinTypes->neverType, errors};
     }
 
     [[noreturn]] void unexpected(TypeId ty);

@@ -161,7 +161,6 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
 
         return unifier.canUnify(subTy, superTy).empty();
     }
-
 }
 
 static TypeCorrectKind checkTypeCorrectKind(

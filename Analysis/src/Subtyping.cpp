@@ -126,6 +126,7 @@ SubtypingResult& SubtypingResult::andAlso(const SubtypingResult& other)
     isSubtype &= other.isSubtype;
     normalizationTooComplex |= other.normalizationTooComplex;
     isCacheable &= other.isCacheable;
+    errors.insert(errors.end(), other.errors.begin(), other.errors.end());
 
     return *this;
 }
@@ -147,6 +148,7 @@ SubtypingResult& SubtypingResult::orElse(const SubtypingResult& other)
     isSubtype |= other.isSubtype;
     normalizationTooComplex |= other.normalizationTooComplex;
     isCacheable &= other.isCacheable;
+    errors.insert(errors.end(), other.errors.begin(), other.errors.end());
 
     return *this;
 }
@@ -210,6 +212,12 @@ SubtypingResult& SubtypingResult::withSuperPath(TypePath::Path path)
             r.superPath = path.append(r.superPath);
     }
 
+    return *this;
+}
+
+SubtypingResult& SubtypingResult::withErrors(ErrorVec& err)
+{
+    errors = std::move(err);
     return *this;
 }
 
@@ -1421,15 +1429,16 @@ bool Subtyping::bindGeneric(SubtypingEnvironment& env, TypeId subTy, TypeId supe
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const TypeFamilyInstanceType* subFamilyInstance, const TypeId superTy)
 {
     // Reduce the typefamily instance
-    TypeId reduced = handleTypeFamilyReductionResult<TypeId>(subFamilyInstance);
-    return isCovariantWith(env, reduced, superTy);
+    auto [ty, errors] = handleTypeFamilyReductionResult(subFamilyInstance);
+    // If we return optional, that means the type family was irreducible - we can reduce that to never
+    return isCovariantWith(env, ty, superTy).withErrors(errors);
 }
 
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const TypeId subTy, const TypeFamilyInstanceType* superFamilyInstance)
 {
     // Reduce the typefamily instance
-    TypeId reduced = handleTypeFamilyReductionResult<TypeId>(superFamilyInstance);
-    return isCovariantWith(env, subTy, reduced);
+    auto [ty, errors] = handleTypeFamilyReductionResult(superFamilyInstance);
+    return isCovariantWith(env, subTy, ty).withErrors(errors);
 }
 
 /*

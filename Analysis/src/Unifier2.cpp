@@ -150,7 +150,8 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     return true;
 }
 
-bool Unifier2::unify(TypeId subTy, const FunctionType* superFn) {
+bool Unifier2::unify(TypeId subTy, const FunctionType* superFn)
+{
     const FunctionType* subFn = get<FunctionType>(subTy);
 
     bool shouldInstantiate =
@@ -465,8 +466,8 @@ struct MutatingGeneralizer : TypeOnceVisitor
 
     bool isWithinFunction = false;
 
-    MutatingGeneralizer(
-        NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, DenseHashMap<TypeId, size_t> positiveTypes, DenseHashMap<TypeId, size_t> negativeTypes)
+    MutatingGeneralizer(NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, DenseHashMap<TypeId, size_t> positiveTypes,
+        DenseHashMap<TypeId, size_t> negativeTypes)
         : TypeOnceVisitor(/* skipBoundTypes */ true)
         , builtinTypes(builtinTypes)
         , scope(scope)

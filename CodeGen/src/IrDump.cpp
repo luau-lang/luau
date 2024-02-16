@@ -70,7 +70,7 @@ static const char* getTagName(uint8_t tag)
     case LUA_TDEADKEY:
         return "tdeadkey";
     default:
-        LUAU_ASSERT(!"Unknown type tag");
+        CODEGEN_ASSERT(!"Unknown type tag");
         LUAU_UNREACHABLE();
     }
 }
@@ -429,7 +429,7 @@ void toString(IrToStringContext& ctx, IrOp op)
         toString(ctx.result, ctx.constants[op.index]);
         break;
     case IrOpKind::Condition:
-        LUAU_ASSERT(op.index < uint32_t(IrCondition::Count));
+        CODEGEN_ASSERT(op.index < uint32_t(IrCondition::Count));
         ctx.result.append(textForCondition[op.index]);
         break;
     case IrOpKind::Inst:
@@ -506,7 +506,7 @@ const char* getBytecodeTypeName(uint8_t type)
         return "any";
     }
 
-    LUAU_ASSERT(!"Unhandled type in getBytecodeTypeName");
+    CODEGEN_ASSERT(!"Unhandled type in getBytecodeTypeName");
     return nullptr;
 }
 
@@ -568,7 +568,7 @@ static RegisterSet getJumpTargetExtraLiveIn(IrToStringContext& ctx, const IrBloc
     const RegisterSet& defRs = ctx.cfg.in[blockIdx];
 
     // Find first block argument, for guard instructions (isNonTerminatingJump), that's the first and only one
-    LUAU_ASSERT(isNonTerminatingJump(inst.cmd));
+    CODEGEN_ASSERT(isNonTerminatingJump(inst.cmd));
     IrOp op = inst.a;
 
     if (inst.b.kind == IrOpKind::Block)

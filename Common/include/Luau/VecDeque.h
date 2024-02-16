@@ -284,26 +284,30 @@ public:
         return buffer[logicalToPhysical(pos)];
     }
 
-    T& front() {
+    T& front()
+    {
         LUAU_ASSERT(!empty());
 
         return buffer[head];
     }
 
-    const T& front() const {
+    const T& front() const
+    {
         LUAU_ASSERT(!empty());
 
         return buffer[head];
     }
 
-    T& back() {
+    T& back()
+    {
         LUAU_ASSERT(!empty());
 
         size_t back = logicalToPhysical(queue_size - 1);
         return buffer[back];
     }
 
-    const T& back() const {
+    const T& back() const
+    {
         LUAU_ASSERT(!empty());
 
         size_t back = logicalToPhysical(queue_size - 1);
@@ -427,7 +431,7 @@ public:
             grow();
 
         size_t next_back = logicalToPhysical(queue_size);
-        new (buffer + next_back)T(value);
+        new (buffer + next_back) T(value);
         queue_size++;
     }
 
@@ -446,7 +450,7 @@ public:
             grow();
 
         head = (head == 0) ? capacity() - 1 : head - 1;
-        new (buffer + head)T(value);
+        new (buffer + head) T(value);
         queue_size++;
     }
 

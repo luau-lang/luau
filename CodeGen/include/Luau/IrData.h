@@ -995,13 +995,13 @@ struct IrFunction
 
     IrBlock& blockOp(IrOp op)
     {
-        LUAU_ASSERT(op.kind == IrOpKind::Block);
+        CODEGEN_ASSERT(op.kind == IrOpKind::Block);
         return blocks[op.index];
     }
 
     IrInst& instOp(IrOp op)
     {
-        LUAU_ASSERT(op.kind == IrOpKind::Inst);
+        CODEGEN_ASSERT(op.kind == IrOpKind::Inst);
         return instructions[op.index];
     }
 
@@ -1015,7 +1015,7 @@ struct IrFunction
 
     IrConst& constOp(IrOp op)
     {
-        LUAU_ASSERT(op.kind == IrOpKind::Constant);
+        CODEGEN_ASSERT(op.kind == IrOpKind::Constant);
         return constants[op.index];
     }
 
@@ -1023,7 +1023,7 @@ struct IrFunction
     {
         IrConst& value = constOp(op);
 
-        LUAU_ASSERT(value.kind == IrConstKind::Tag);
+        CODEGEN_ASSERT(value.kind == IrConstKind::Tag);
         return value.valueTag;
     }
 
@@ -1044,7 +1044,7 @@ struct IrFunction
     {
         IrConst& value = constOp(op);
 
-        LUAU_ASSERT(value.kind == IrConstKind::Int);
+        CODEGEN_ASSERT(value.kind == IrConstKind::Int);
         return value.valueInt;
     }
 
@@ -1065,7 +1065,7 @@ struct IrFunction
     {
         IrConst& value = constOp(op);
 
-        LUAU_ASSERT(value.kind == IrConstKind::Uint);
+        CODEGEN_ASSERT(value.kind == IrConstKind::Uint);
         return value.valueUint;
     }
 
@@ -1086,7 +1086,7 @@ struct IrFunction
     {
         IrConst& value = constOp(op);
 
-        LUAU_ASSERT(value.kind == IrConstKind::Double);
+        CODEGEN_ASSERT(value.kind == IrConstKind::Double);
         return value.valueDouble;
     }
 
@@ -1106,14 +1106,14 @@ struct IrFunction
     uint32_t getBlockIndex(const IrBlock& block) const
     {
         // Can only be called with blocks from our vector
-        LUAU_ASSERT(&block >= blocks.data() && &block <= blocks.data() + blocks.size());
+        CODEGEN_ASSERT(&block >= blocks.data() && &block <= blocks.data() + blocks.size());
         return uint32_t(&block - blocks.data());
     }
 
     uint32_t getInstIndex(const IrInst& inst) const
     {
         // Can only be called with instructions from our vector
-        LUAU_ASSERT(&inst >= instructions.data() && &inst <= instructions.data() + instructions.size());
+        CODEGEN_ASSERT(&inst >= instructions.data() && &inst <= instructions.data() + instructions.size());
         return uint32_t(&inst - instructions.data());
     }
 
@@ -1154,7 +1154,7 @@ struct IrFunction
 
     BytecodeTypes getBytecodeTypesAt(int pcpos) const
     {
-        LUAU_ASSERT(pcpos >= 0);
+        CODEGEN_ASSERT(pcpos >= 0);
 
         if (size_t(pcpos) < bcTypes.size())
             return bcTypes[pcpos];
@@ -1165,31 +1165,31 @@ struct IrFunction
 
 inline IrCondition conditionOp(IrOp op)
 {
-    LUAU_ASSERT(op.kind == IrOpKind::Condition);
+    CODEGEN_ASSERT(op.kind == IrOpKind::Condition);
     return IrCondition(op.index);
 }
 
 inline int vmRegOp(IrOp op)
 {
-    LUAU_ASSERT(op.kind == IrOpKind::VmReg);
+    CODEGEN_ASSERT(op.kind == IrOpKind::VmReg);
     return op.index;
 }
 
 inline int vmConstOp(IrOp op)
 {
-    LUAU_ASSERT(op.kind == IrOpKind::VmConst);
+    CODEGEN_ASSERT(op.kind == IrOpKind::VmConst);
     return op.index;
 }
 
 inline int vmUpvalueOp(IrOp op)
 {
-    LUAU_ASSERT(op.kind == IrOpKind::VmUpvalue);
+    CODEGEN_ASSERT(op.kind == IrOpKind::VmUpvalue);
     return op.index;
 }
 
 inline uint32_t vmExitOp(IrOp op)
 {
-    LUAU_ASSERT(op.kind == IrOpKind::VmExit);
+    CODEGEN_ASSERT(op.kind == IrOpKind::VmExit);
     return op.index;
 }
 

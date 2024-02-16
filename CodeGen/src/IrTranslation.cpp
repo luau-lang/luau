@@ -27,8 +27,8 @@ struct FallbackStreamScope
         : build(build)
         , next(next)
     {
-        LUAU_ASSERT(fallback.kind == IrOpKind::Block);
-        LUAU_ASSERT(next.kind == IrOpKind::Block);
+        CODEGEN_ASSERT(fallback.kind == IrOpKind::Block);
+        CODEGEN_ASSERT(next.kind == IrOpKind::Block);
 
         build.inst(IrCmd::JUMP, next);
         build.beginBlock(fallback);
@@ -55,10 +55,10 @@ static IrOp loadDoubleOrConstant(IrBuilder& build, IrOp arg)
 {
     if (arg.kind == IrOpKind::VmConst)
     {
-        LUAU_ASSERT(build.function.proto);
+        CODEGEN_ASSERT(build.function.proto);
         TValue protok = build.function.proto->k[vmConstOp(arg)];
 
-        LUAU_ASSERT(protok.tt == LUA_TNUMBER);
+        CODEGEN_ASSERT(protok.tt == LUA_TNUMBER);
 
         return build.constDouble(protok.value.n);
     }
@@ -312,10 +312,10 @@ void translateInstJumpxEqN(IrBuilder& build, const Instruction* pc, int pcpos)
     build.beginBlock(checkValue);
     IrOp va = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(ra));
 
-    LUAU_ASSERT(build.function.proto);
+    CODEGEN_ASSERT(build.function.proto);
     TValue protok = build.function.proto->k[aux & 0xffffff];
 
-    LUAU_ASSERT(protok.tt == LUA_TNUMBER);
+    CODEGEN_ASSERT(protok.tt == LUA_TNUMBER);
     IrOp vb = build.constDouble(protok.value.n);
 
     build.inst(IrCmd::JUMP_CMP_NUM, va, vb, build.cond(IrCondition::NotEqual), not_ ? target : next, not_ ? next : target);
@@ -468,10 +468,10 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
     {
         if (opb.kind == IrOpKind::VmConst)
         {
-            LUAU_ASSERT(build.function.proto);
+            CODEGEN_ASSERT(build.function.proto);
             TValue protok = build.function.proto->k[vmConstOp(opb)];
 
-            LUAU_ASSERT(protok.tt == LUA_TNUMBER);
+            CODEGEN_ASSERT(protok.tt == LUA_TNUMBER);
 
             vb = build.constDouble(protok.value.n);
         }
@@ -483,10 +483,10 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
 
     if (opc.kind == IrOpKind::VmConst)
     {
-        LUAU_ASSERT(build.function.proto);
+        CODEGEN_ASSERT(build.function.proto);
         TValue protok = build.function.proto->k[vmConstOp(opc)];
 
-        LUAU_ASSERT(protok.tt == LUA_TNUMBER);
+        CODEGEN_ASSERT(protok.tt == LUA_TNUMBER);
 
         // VM has special cases for exponentiation with constants
         if (tm == TM_POW && protok.value.n == 0.5)
@@ -505,7 +505,7 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
 
     if (result.kind == IrOpKind::None)
     {
-        LUAU_ASSERT(vc.kind != IrOpKind::None);
+        CODEGEN_ASSERT(vc.kind != IrOpKind::None);
 
         switch (tm)
         {
@@ -531,7 +531,7 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
             result = build.inst(IrCmd::INVOKE_LIBM, build.constUint(LBF_MATH_POW), vb, vc);
             break;
         default:
-            LUAU_ASSERT(!"Unsupported binary op");
+            CODEGEN_ASSERT(!"Unsupported binary op");
         }
     }
 
@@ -717,7 +717,7 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
     int skip = LUAU_INSN_C(*pc);
 
     Instruction call = pc[skip + 1];
-    LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+    CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
     int ra = LUAU_INSN_A(call);
 
     int nparams = customParams ? customParamCount : LUAU_INSN_B(call) - 1;
@@ -729,7 +729,7 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
     if (customArgs.kind == IrOpKind::VmConst)
     {
-        LUAU_ASSERT(build.function.proto);
+        CODEGEN_ASSERT(build.function.proto);
         TValue protok = build.function.proto->k[vmConstOp(customArgs)];
 
         if (protok.tt == LUA_TNUMBER)
@@ -746,7 +746,7 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
     if (br.type != BuiltinImplType::None)
     {
-        LUAU_ASSERT(nparams != LUA_MULTRET && "builtins are not allowed to handle variadic arguments");
+        CODEGEN_ASSERT(nparams != LUA_MULTRET && "builtins are not allowed to handle variadic arguments");
 
         if (nresults == LUA_MULTRET)
             build.inst(IrCmd::ADJUST_STACK_TO_REG, build.vmReg(ra), build.constInt(br.actualResultCount));
@@ -808,7 +808,7 @@ void beforeInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos)
 
 void afterInstForNLoop(IrBuilder& build, const Instruction* pc)
 {
-    LUAU_ASSERT(!build.numericLoopStack.empty());
+    CODEGEN_ASSERT(!build.numericLoopStack.empty());
     build.numericLoopStack.pop_back();
 }
 
@@ -819,7 +819,7 @@ void translateInstForNPrep(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp loopStart = build.blockAtInst(pcpos + getOpLength(LuauOpcode(LUAU_INSN_OP(*pc))));
     IrOp loopExit = build.blockAtInst(getJumpTarget(*pc, pcpos));
 
-    LUAU_ASSERT(!build.numericLoopStack.empty());
+    CODEGEN_ASSERT(!build.numericLoopStack.empty());
     IrOp stepK = build.numericLoopStack.back().step;
 
     // When loop parameters are not numbers, VM tries to perform type coercion from string and raises an exception if that fails
@@ -872,7 +872,7 @@ void translateInstForNLoop(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp loopRepeat = build.blockAtInst(repeatJumpTarget);
     IrOp loopExit = build.blockAtInst(pcpos + getOpLength(LuauOpcode(LUAU_INSN_OP(*pc))));
 
-    LUAU_ASSERT(!build.numericLoopStack.empty());
+    CODEGEN_ASSERT(!build.numericLoopStack.empty());
     IrBuilder::LoopInfo loopInfo = build.numericLoopStack.back();
 
     // normally, the interrupt is placed at the beginning of the loop body by FORNPREP translation
@@ -979,7 +979,7 @@ void translateInstForGPrepInext(IrBuilder& build, const Instruction* pc, int pcp
 void translateInstForGLoopIpairs(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
-    LUAU_ASSERT(int(pc[1]) < 0);
+    CODEGEN_ASSERT(int(pc[1]) < 0);
 
     IrOp loopRepeat = build.blockAtInst(getJumpTarget(*pc, pcpos));
     IrOp loopExit = build.blockAtInst(pcpos + getOpLength(LuauOpcode(LUAU_INSN_OP(*pc))));
@@ -1376,7 +1376,7 @@ void translateInstCapture(IrBuilder& build, const Instruction* pc, int pcpos)
         build.inst(IrCmd::CAPTURE, build.vmUpvalue(index), build.constUint(0));
         break;
     default:
-        LUAU_ASSERT(!"Unknown upvalue capture type");
+        CODEGEN_ASSERT(!"Unknown upvalue capture type");
     }
 }
 
@@ -1394,7 +1394,7 @@ void translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
     build.loadAndCheckTag(build.vmReg(rb), LUA_TTABLE, fallback);
     IrOp table = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
 
-    LUAU_ASSERT(build.function.proto);
+    CODEGEN_ASSERT(build.function.proto);
     IrOp addrNodeEl = build.inst(IrCmd::GET_HASH_NODE_ADDR, table, build.constUint(tsvalue(&build.function.proto->k[aux])->hash));
 
     // We use 'jump' version instead of 'check' guard because we are jumping away into a non-fallback block
@@ -1506,7 +1506,7 @@ void translateInstOrX(IrBuilder& build, const Instruction* pc, int pcpos, IrOp c
 
 void translateInstNewClosure(IrBuilder& build, const Instruction* pc, int pcpos)
 {
-    LUAU_ASSERT(unsigned(LUAU_INSN_D(*pc)) < unsigned(build.function.proto->sizep));
+    CODEGEN_ASSERT(unsigned(LUAU_INSN_D(*pc)) < unsigned(build.function.proto->sizep));
 
     int ra = LUAU_INSN_A(*pc);
     Proto* pv = build.function.proto->p[LUAU_INSN_D(*pc)];
@@ -1522,7 +1522,7 @@ void translateInstNewClosure(IrBuilder& build, const Instruction* pc, int pcpos)
     for (int ui = 0; ui < pv->nups; ++ui)
     {
         Instruction uinsn = pc[ui + 1];
-        LUAU_ASSERT(LUAU_INSN_OP(uinsn) == LOP_CAPTURE);
+        CODEGEN_ASSERT(LUAU_INSN_OP(uinsn) == LOP_CAPTURE);
 
         switch (LUAU_INSN_A(uinsn))
         {
@@ -1553,7 +1553,7 @@ void translateInstNewClosure(IrBuilder& build, const Instruction* pc, int pcpos)
         }
 
         default:
-            LUAU_ASSERT(!"Unknown upvalue capture type");
+            CODEGEN_ASSERT(!"Unknown upvalue capture type");
             LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
         }
     }

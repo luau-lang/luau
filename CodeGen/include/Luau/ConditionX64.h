@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Common.h"
+#include "Luau/CodeGenCommon.h"
 
 namespace Luau
 {
@@ -102,7 +102,7 @@ inline ConditionX64 getReverseCondition(ConditionX64 cond)
     case ConditionX64::NotParity:
         return ConditionX64::Parity;
     case ConditionX64::Count:
-        LUAU_ASSERT(!"invalid ConditionX64 value");
+        CODEGEN_ASSERT(!"invalid ConditionX64 value");
     }
 
     return ConditionX64::Count;

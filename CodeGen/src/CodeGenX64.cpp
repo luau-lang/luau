@@ -198,13 +198,13 @@ bool initHeaderFunctions(NativeState& data)
 
     unwind.finishInfo();
 
-    LUAU_ASSERT(build.data.empty());
+    CODEGEN_ASSERT(build.data.empty());
 
     uint8_t* codeStart = nullptr;
     if (!data.codeAllocator.allocate(
             build.data.data(), int(build.data.size()), build.code.data(), int(build.code.size()), data.gateData, data.gateDataSize, codeStart))
     {
-        LUAU_ASSERT(!"Failed to create entry function");
+        CODEGEN_ASSERT(!"Failed to create entry function");
         return false;
     }
 

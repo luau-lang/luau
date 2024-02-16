@@ -24,7 +24,8 @@ struct FamilyFixture : Fixture
     {
         swapFamily = TypeFamily{/* name */ "Swap",
             /* reducer */
-            [](std::vector<TypeId> tys, std::vector<TypePackId> tps, NotNull<TypeFamilyContext> ctx) -> TypeFamilyReductionResult<TypeId> {
+            [](TypeId instance, std::vector<TypeId> tys, std::vector<TypePackId> tps,
+                NotNull<TypeFamilyContext> ctx) -> TypeFamilyReductionResult<TypeId> {
                 LUAU_ASSERT(tys.size() == 1);
                 TypeId param = follow(tys.at(0));
 

@@ -17,7 +17,6 @@
 LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
-LUAU_FASTFLAGVARIABLE(LuauReuseBufferChecks, false)
 LUAU_FASTFLAG(LuauCodegenVector)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCodeGenCheckGcEffectFix, false)
 
@@ -94,7 +93,7 @@ struct ConstPropState
 
     void saveValue(IrOp op, IrOp value)
     {
-        LUAU_ASSERT(value.kind == IrOpKind::Constant);
+        CODEGEN_ASSERT(value.kind == IrOpKind::Constant);
 
         if (RegisterInfo* info = tryGetRegisterInfo(op))
         {
@@ -240,7 +239,7 @@ struct ConstPropState
 
     void createRegLink(uint32_t instIdx, IrOp regOp)
     {
-        LUAU_ASSERT(!instLink.contains(instIdx));
+        CODEGEN_ASSERT(!instLink.contains(instIdx));
         instLink[instIdx] = RegisterLink{uint8_t(vmRegOp(regOp)), regs[vmRegOp(regOp)].version};
     }
 
@@ -282,16 +281,16 @@ struct ConstPropState
     // This is used to allow instructions with register references to be compared for equality
     IrInst versionedVmRegLoad(IrCmd loadCmd, IrOp op)
     {
-        LUAU_ASSERT(op.kind == IrOpKind::VmReg);
+        CODEGEN_ASSERT(op.kind == IrOpKind::VmReg);
         uint32_t version = regs[vmRegOp(op)].version;
-        LUAU_ASSERT(version <= 0xffffff);
+        CODEGEN_ASSERT(version <= 0xffffff);
         op.index = vmRegOp(op) | (version << 8);
         return IrInst{loadCmd, op};
     }
 
     uint32_t* getPreviousInstIndex(const IrInst& inst)
     {
-        LUAU_ASSERT(useValueNumbering);
+        CODEGEN_ASSERT(useValueNumbering);
 
         if (uint32_t* prevIdx = valueMap.find(inst))
         {
@@ -305,7 +304,7 @@ struct ConstPropState
 
     uint32_t* getPreviousVersionedLoadIndex(IrCmd cmd, IrOp vmReg)
     {
-        LUAU_ASSERT(vmReg.kind == IrOpKind::VmReg);
+        CODEGEN_ASSERT(vmReg.kind == IrOpKind::VmReg);
         return getPreviousInstIndex(versionedVmRegLoad(cmd, vmReg));
     }
 
@@ -352,7 +351,7 @@ struct ConstPropState
     // If there is no previous load, we record the current one for future lookups
     void substituteOrRecordVmRegLoad(IrInst& loadInst)
     {
-        LUAU_ASSERT(loadInst.a.kind == IrOpKind::VmReg);
+        CODEGEN_ASSERT(loadInst.a.kind == IrOpKind::VmReg);
 
         if (!useValueNumbering)
             return;
@@ -388,8 +387,8 @@ struct ConstPropState
     // VM register loads can use the value that was stored in the same Vm register earlier
     void forwardVmRegStoreToLoad(const IrInst& storeInst, IrCmd loadCmd)
     {
-        LUAU_ASSERT(storeInst.a.kind == IrOpKind::VmReg);
-        LUAU_ASSERT(storeInst.b.kind == IrOpKind::Inst);
+        CODEGEN_ASSERT(storeInst.a.kind == IrOpKind::VmReg);
+        CODEGEN_ASSERT(storeInst.b.kind == IrOpKind::Inst);
 
         if (!useValueNumbering)
             return;
@@ -694,7 +693,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         {
             if (inst.a.kind == IrOpKind::VmReg)
             {
-                if (FFlag::LuauReuseBufferChecks && inst.b.kind == IrOpKind::Inst)
+                if (inst.b.kind == IrOpKind::Inst)
                 {
                     if (uint32_t* prevIdx = state.getPreviousVersionedLoadIndex(IrCmd::LOAD_TVALUE, inst.a))
                     {
@@ -964,12 +963,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         break;
     case IrCmd::CHECK_BUFFER_LEN:
     {
-        if (!FFlag::LuauReuseBufferChecks)
-            break;
-
         std::optional<int> bufferOffset = function.asIntOp(inst.b.kind == IrOpKind::Constant ? inst.b : state.tryGetValue(inst.b));
         int accessSize = function.intOp(inst.c);
-        LUAU_ASSERT(accessSize > 0);
+        CODEGEN_ASSERT(accessSize > 0);
 
         if (bufferOffset)
         {
@@ -1003,8 +999,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 int prevBound = function.intOp(prev.b);
 
                 // Negative and overflowing constant offsets should already be replaced with unconditional jumps to a fallback
-                LUAU_ASSERT(currBound >= 0);
-                LUAU_ASSERT(prevBound >= 0);
+                CODEGEN_ASSERT(currBound >= 0);
+                CODEGEN_ASSERT(prevBound >= 0);
 
                 if (unsigned(currBound) >= unsigned(prevBound))
                     replace(function, prev.b, inst.b);
@@ -1396,7 +1392,7 @@ static void constPropInBlock(IrBuilder& build, IrBlock& block, ConstPropState& s
 
     for (uint32_t index = block.start; index <= block.finish; index++)
     {
-        LUAU_ASSERT(index < function.instructions.size());
+        CODEGEN_ASSERT(index < function.instructions.size());
         IrInst& inst = function.instructions[index];
 
         applySubstitutions(function, inst);
@@ -1419,7 +1415,7 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
     while (block)
     {
         uint32_t blockIdx = function.getBlockIndex(*block);
-        LUAU_ASSERT(!visited[blockIdx]);
+        CODEGEN_ASSERT(!visited[blockIdx]);
         visited[blockIdx] = true;
 
         constPropInBlock(build, *block, state);
@@ -1474,7 +1470,7 @@ static std::vector<uint32_t> collectDirectBlockJumpPath(IrFunction& function, st
     // Usually that would mean that we would have a conditional jump at the end of 'block'
     // But using check guards and fallback blocks it becomes a possible setup
     // We avoid this by making sure fallbacks rejoin the other immediate successor of 'block'
-    LUAU_ASSERT(getLiveOutValueCount(function, *block) == 0);
+    CODEGEN_ASSERT(getLiveOutValueCount(function, *block) == 0);
 
     std::vector<uint32_t> path;
 
@@ -1516,7 +1512,7 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
     IrFunction& function = build.function;
 
     uint32_t blockIdx = function.getBlockIndex(startingBlock);
-    LUAU_ASSERT(!visited[blockIdx]);
+    CODEGEN_ASSERT(!visited[blockIdx]);
     visited[blockIdx] = true;
 
     IrInst& termInst = function.instructions[startingBlock.finish];
@@ -1549,7 +1545,7 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
     constPropInBlock(build, startingBlock, state);
 
     // Verify that target hasn't changed
-    LUAU_ASSERT(function.instructions[startingBlock.finish].a.index == targetBlockIdx);
+    CODEGEN_ASSERT(function.instructions[startingBlock.finish].a.index == targetBlockIdx);
 
     // Note: using startingBlock after this line is unsafe as the reference may be reallocated by build.block() below
     const uint32_t startingSortKey = startingBlock.sortkey;
@@ -1580,8 +1576,8 @@ static void tryCreateLinearBlock(IrBuilder& build, std::vector<uint8_t>& visited
     // The information generated here is consistent with current state that could be outdated, but still useful in IR inspection
     if (function.cfg.in.size() == newBlock.index)
     {
-        LUAU_ASSERT(function.cfg.in.size() == function.cfg.out.size());
-        LUAU_ASSERT(function.cfg.in.size() == function.cfg.def.size());
+        CODEGEN_ASSERT(function.cfg.in.size() == function.cfg.out.size());
+        CODEGEN_ASSERT(function.cfg.in.size() == function.cfg.def.size());
 
         // Live in is the same as the input of the original first block
         function.cfg.in.push_back(function.cfg.in[path.front()]);
