@@ -991,18 +991,6 @@ void AssemblyBuilderA64::placeR3(const char* name, RegisterA64 dst, RegisterA64 
     commit();
 }
 
-void AssemblyBuilderA64::placeR3(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t sizes, uint8_t op, uint8_t op2)
-{
-    if (logText)
-        log(name, dst, src1, src2);
-
-    CODEGEN_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x || dst.kind == KindA64::d || dst.kind == KindA64::q);
-    CODEGEN_ASSERT(dst.kind == src1.kind && dst.kind == src2.kind);
-
-    place(dst.index | (src1.index << 5) | (op2 << 10) | (src2.index << 16) | (op << 21) | (sizes << 29));
-    commit();
-}
-
 void AssemblyBuilderA64::placeR1(const char* name, RegisterA64 dst, RegisterA64 src, uint32_t op)
 {
     if (logText)

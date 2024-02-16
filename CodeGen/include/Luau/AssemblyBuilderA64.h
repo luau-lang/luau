@@ -211,7 +211,6 @@ private:
     void placeSR3(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t op, int shift = 0, int N = 0);
     void placeSR2(const char* name, RegisterA64 dst, RegisterA64 src, uint8_t op, uint8_t op2 = 0);
     void placeR3(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t op, uint8_t op2);
-    void placeR3(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t sizes, uint8_t op, uint8_t op2);
     void placeR1(const char* name, RegisterA64 dst, RegisterA64 src, uint32_t op);
     void placeI12(const char* name, RegisterA64 dst, RegisterA64 src1, int src2, uint8_t op);
     void placeI16(const char* name, RegisterA64 dst, int src, uint8_t op, int shift = 0);
