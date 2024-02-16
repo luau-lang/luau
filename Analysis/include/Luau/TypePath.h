@@ -102,9 +102,7 @@ struct Path
     std::vector<Component> components;
 
     /// Creates a new empty Path.
-    Path()
-    {
-    }
+    Path() {}
 
     /// Creates a new Path from a list of components.
     explicit Path(std::vector<Component> components)

@@ -66,9 +66,15 @@ struct ErrorSuppression
     };
 
     ErrorSuppression() = default;
-    constexpr ErrorSuppression(Value enumValue) : value(enumValue) { }
+    constexpr ErrorSuppression(Value enumValue)
+        : value(enumValue)
+    {
+    }
 
-    constexpr operator Value() const { return value; }
+    constexpr operator Value() const
+    {
+        return value;
+    }
     explicit operator bool() const = delete;
 
     ErrorSuppression orElse(const ErrorSuppression& other) const
@@ -81,6 +87,7 @@ struct ErrorSuppression
             return *this;
         }
     }
+
 private:
     Value value;
 };

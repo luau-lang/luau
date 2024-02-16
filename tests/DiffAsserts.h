@@ -26,7 +26,7 @@ std::string diff<TypeId, TypeId>(TypeId l, TypeId r);
 template<>
 std::string diff<const Type&, const Type&>(const Type& l, const Type& r);
 
-}
+} // namespace Luau
 
 // Note: the do-while blocks in the macros below is to scope the INFO block to
 // only that assertion.
@@ -36,11 +36,11 @@ std::string diff<const Type&, const Type&>(const Type& l, const Type& r);
     { \
         INFO("Left and right values were not equal: ", diff(l, r)); \
         CHECK_EQ(l, r); \
-    } while(false);
+    } while (false);
 
 #define REQUIRE_EQ_DIFF(l, r) \
     do \
     { \
         INFO("Left and right values were not equal: ", diff(l, r)); \
         REQUIRE_EQ(l, r); \
-    } while(false);
+    } while (false);

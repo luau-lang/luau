@@ -100,7 +100,9 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
         if (options.includeAssembly || options.includeIr)
             logFunctionHeader(build, p);
 
-        if (!lowerFunction(ir, build, helpers, p, options, stats))
+        CodeGenCompilationResult result = CodeGenCompilationResult::Success;
+
+        if (!lowerFunction(ir, build, helpers, p, options, stats, result))
         {
             if (build.logText)
                 build.logAppend("; skipping (can't lower)\n");
@@ -154,7 +156,7 @@ unsigned int getCpuFeaturesA64();
 
 std::string getAssembly(lua_State* L, int idx, AssemblyOptions options, LoweringStats* stats)
 {
-    LUAU_ASSERT(lua_isLfunction(L, idx));
+    CODEGEN_ASSERT(lua_isLfunction(L, idx));
     const TValue* func = luaA_toobject(L, idx);
 
     switch (options.target)
@@ -200,7 +202,7 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options, Lowering
     }
 
     default:
-        LUAU_ASSERT(!"Unknown target");
+        CODEGEN_ASSERT(!"Unknown target");
         return std::string();
     }
 }

@@ -4054,9 +4054,7 @@ TEST_CASE_FIXTURE(Fixture, "table_subtyping_error_suppression")
     {
         CHECK_EQ("{| x: any, y: string |}", toString(tm->wantedType));
         CHECK_EQ("{| x: string, y: number |}", toString(tm->givenType));
-
     }
-
 }
 
 TEST_SUITE_END();

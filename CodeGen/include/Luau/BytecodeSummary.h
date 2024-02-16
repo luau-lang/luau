@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Common.h"
+#include "Luau/CodeGenCommon.h"
 #include "Luau/Bytecode.h"
 
 #include <string>
@@ -49,21 +49,21 @@ public:
 
     void incCount(unsigned nesting, uint8_t op)
     {
-        LUAU_ASSERT(nesting <= getNestingLimit());
-        LUAU_ASSERT(op < getOpLimit());
+        CODEGEN_ASSERT(nesting <= getNestingLimit());
+        CODEGEN_ASSERT(op < getOpLimit());
         ++counts[nesting][op];
     }
 
     unsigned getCount(unsigned nesting, uint8_t op) const
     {
-        LUAU_ASSERT(nesting <= getNestingLimit());
-        LUAU_ASSERT(op < getOpLimit());
+        CODEGEN_ASSERT(nesting <= getNestingLimit());
+        CODEGEN_ASSERT(op < getOpLimit());
         return counts[nesting][op];
     }
 
     const std::vector<unsigned>& getCounts(unsigned nesting) const
     {
-        LUAU_ASSERT(nesting <= getNestingLimit());
+        CODEGEN_ASSERT(nesting <= getNestingLimit());
         return counts[nesting];
     }
 

@@ -296,7 +296,7 @@ void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int
         build.jcc(ConditionX64::NotBelow, skipResize);
 
         // Argument setup reordered to avoid conflicts
-        LUAU_ASSERT(rArg3 != table);
+        CODEGEN_ASSERT(rArg3 != table);
         build.mov(dwordReg(rArg3), last);
         build.mov(rArg2, table);
         build.mov(rArg1, rState);
@@ -324,7 +324,7 @@ void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int
     }
     else
     {
-        LUAU_ASSERT(count != 0);
+        CODEGEN_ASSERT(count != 0);
 
         build.xor_(offset, offset);
         if (index != 1)
@@ -359,7 +359,7 @@ void emitInstSetList(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int
 void emitInstForGLoop(AssemblyBuilderX64& build, int ra, int aux, Label& loopRepeat)
 {
     // ipairs-style traversal is handled in IR
-    LUAU_ASSERT(aux >= 0);
+    CODEGEN_ASSERT(aux >= 0);
 
     // TODO: This should use IrCallWrapperX64
     RegisterX64 rArg1 = (build.abi == ABIX64::Windows) ? rcx : rdi;

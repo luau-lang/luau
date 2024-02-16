@@ -81,7 +81,7 @@ static uint8_t* defineCfaExpressionOffset(uint8_t* pos, uint32_t stackOffset)
 
 static uint8_t* defineSavedRegisterLocation(uint8_t* pos, int dwReg, uint32_t stackOffset)
 {
-    LUAU_ASSERT(stackOffset % kDataAlignFactor == 0 && "stack offsets have to be measured in kDataAlignFactor units");
+    CODEGEN_ASSERT(stackOffset % kDataAlignFactor == 0 && "stack offsets have to be measured in kDataAlignFactor units");
 
     if (dwReg <= 0x3f)
     {
@@ -99,7 +99,7 @@ static uint8_t* defineSavedRegisterLocation(uint8_t* pos, int dwReg, uint32_t st
 
 static uint8_t* advanceLocation(uint8_t* pos, unsigned int offset)
 {
-    LUAU_ASSERT(offset < 256);
+    CODEGEN_ASSERT(offset < 256);
     pos = writeu8(pos, DW_CFA_advance_loc1);
     pos = writeu8(pos, offset);
     return pos;
@@ -133,7 +133,7 @@ size_t UnwindBuilderDwarf2::getBeginOffset() const
 
 void UnwindBuilderDwarf2::startInfo(Arch arch)
 {
-    LUAU_ASSERT(arch == A64 || arch == X64);
+    CODEGEN_ASSERT(arch == A64 || arch == X64);
 
     uint8_t* cieLength = pos;
     pos = writeu32(pos, 0); // Length (to be filled later)
@@ -191,7 +191,7 @@ void UnwindBuilderDwarf2::finishFunction(uint32_t beginOffset, uint32_t endOffse
     unwindFunctions.back().beginOffset = beginOffset;
     unwindFunctions.back().endOffset = endOffset;
 
-    LUAU_ASSERT(fdeEntryStart != nullptr);
+    CODEGEN_ASSERT(fdeEntryStart != nullptr);
 
     pos = alignPosition(fdeEntryStart, pos);
     writeu32(fdeEntryStart, unsigned(pos - fdeEntryStart - 4)); // Length field itself is excluded from length
@@ -202,14 +202,14 @@ void UnwindBuilderDwarf2::finishInfo()
     // Terminate section
     pos = writeu32(pos, 0);
 
-    LUAU_ASSERT(getSize() <= kRawDataLimit);
+    CODEGEN_ASSERT(getSize() <= kRawDataLimit);
 }
 
 void UnwindBuilderDwarf2::prologueA64(uint32_t prologueSize, uint32_t stackSize, std::initializer_list<A64::RegisterA64> regs)
 {
-    LUAU_ASSERT(stackSize % 16 == 0);
-    LUAU_ASSERT(regs.size() >= 2 && regs.begin()[0] == A64::x29 && regs.begin()[1] == A64::x30);
-    LUAU_ASSERT(regs.size() * 8 <= stackSize);
+    CODEGEN_ASSERT(stackSize % 16 == 0);
+    CODEGEN_ASSERT(regs.size() >= 2 && regs.begin()[0] == A64::x29 && regs.begin()[1] == A64::x30);
+    CODEGEN_ASSERT(regs.size() * 8 <= stackSize);
 
     // sub sp, sp, stackSize
     pos = advanceLocation(pos, 4);
@@ -220,7 +220,7 @@ void UnwindBuilderDwarf2::prologueA64(uint32_t prologueSize, uint32_t stackSize,
 
     for (size_t i = 0; i < regs.size(); ++i)
     {
-        LUAU_ASSERT(regs.begin()[i].kind == A64::KindA64::x);
+        CODEGEN_ASSERT(regs.begin()[i].kind == A64::KindA64::x);
         pos = defineSavedRegisterLocation(pos, regs.begin()[i].index, stackSize - unsigned(i * 8));
     }
 }
@@ -228,7 +228,7 @@ void UnwindBuilderDwarf2::prologueA64(uint32_t prologueSize, uint32_t stackSize,
 void UnwindBuilderDwarf2::prologueX64(uint32_t prologueSize, uint32_t stackSize, bool setupFrame, std::initializer_list<X64::RegisterX64> gpr,
     const std::vector<X64::RegisterX64>& simd)
 {
-    LUAU_ASSERT(stackSize > 0 && stackSize < 4096 && stackSize % 8 == 0);
+    CODEGEN_ASSERT(stackSize > 0 && stackSize < 4096 && stackSize % 8 == 0);
 
     unsigned int stackOffset = 8; // Return address was pushed by calling the function
     unsigned int prologueOffset = 0;
@@ -250,7 +250,7 @@ void UnwindBuilderDwarf2::prologueX64(uint32_t prologueSize, uint32_t stackSize,
     // push reg
     for (X64::RegisterX64 reg : gpr)
     {
-        LUAU_ASSERT(reg.size == X64::SizeX64::qword);
+        CODEGEN_ASSERT(reg.size == X64::SizeX64::qword);
 
         stackOffset += 8;
         prologueOffset += 2;
@@ -259,7 +259,7 @@ void UnwindBuilderDwarf2::prologueX64(uint32_t prologueSize, uint32_t stackSize,
         pos = defineSavedRegisterLocation(pos, regIndexToDwRegX64[reg.index], stackOffset);
     }
 
-    LUAU_ASSERT(simd.empty());
+    CODEGEN_ASSERT(simd.empty());
 
     // sub rsp, stackSize
     stackOffset += stackSize;
@@ -267,8 +267,8 @@ void UnwindBuilderDwarf2::prologueX64(uint32_t prologueSize, uint32_t stackSize,
     pos = advanceLocation(pos, 4);
     pos = defineCfaExpressionOffset(pos, stackOffset);
 
-    LUAU_ASSERT(stackOffset % 16 == 0);
-    LUAU_ASSERT(prologueOffset == prologueSize);
+    CODEGEN_ASSERT(stackOffset % 16 == 0);
+    CODEGEN_ASSERT(prologueOffset == prologueSize);
 }
 
 size_t UnwindBuilderDwarf2::getSize() const

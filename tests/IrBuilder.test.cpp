@@ -13,7 +13,6 @@
 
 using namespace Luau::CodeGen;
 
-LUAU_FASTFLAG(LuauReuseBufferChecks)
 LUAU_DYNAMIC_FASTFLAG(LuauCodeGenCheckGcEffectFix)
 
 class IrBuilderFixture
@@ -2400,8 +2399,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateBufferLengthChecks")
 {
-    ScopedFastFlag luauReuseBufferChecks{FFlag::LuauReuseBufferChecks, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
@@ -2470,8 +2467,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BufferLenghtChecksNegativeIndex")
 {
-    ScopedFastFlag luauReuseBufferChecks{FFlag::LuauReuseBufferChecks, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Fallback);
 

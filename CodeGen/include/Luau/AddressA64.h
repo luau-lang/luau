@@ -32,8 +32,8 @@ struct AddressA64
         , offset(xzr)
         , data(off)
     {
-        LUAU_ASSERT(base.kind == KindA64::x || base == sp);
-        LUAU_ASSERT(kind != AddressKindA64::reg);
+        CODEGEN_ASSERT(base.kind == KindA64::x || base == sp);
+        CODEGEN_ASSERT(kind != AddressKindA64::reg);
     }
 
     constexpr AddressA64(RegisterA64 base, RegisterA64 offset)
@@ -42,8 +42,8 @@ struct AddressA64
         , offset(offset)
         , data(0)
     {
-        LUAU_ASSERT(base.kind == KindA64::x);
-        LUAU_ASSERT(offset.kind == KindA64::x);
+        CODEGEN_ASSERT(base.kind == KindA64::x);
+        CODEGEN_ASSERT(offset.kind == KindA64::x);
     }
 
     AddressKindA64 kind;
