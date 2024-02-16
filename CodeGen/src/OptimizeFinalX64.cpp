@@ -17,11 +17,11 @@ namespace CodeGen
 // This pass might not be useful on different architectures
 static void optimizeMemoryOperandsX64(IrFunction& function, IrBlock& block)
 {
-    LUAU_ASSERT(block.kind != IrBlockKind::Dead);
+    CODEGEN_ASSERT(block.kind != IrBlockKind::Dead);
 
     for (uint32_t index = block.start; index <= block.finish; index++)
     {
-        LUAU_ASSERT(index < function.instructions.size());
+        CODEGEN_ASSERT(index < function.instructions.size());
         IrInst& inst = function.instructions[index];
 
         switch (inst.cmd)

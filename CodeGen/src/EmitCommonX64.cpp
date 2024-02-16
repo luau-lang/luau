@@ -73,7 +73,7 @@ void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs,
         build.jcc(ConditionX64::Parity, label);
         break;
     default:
-        LUAU_ASSERT(!"Unsupported condition");
+        CODEGEN_ASSERT(!"Unsupported condition");
     }
 }
 
@@ -110,15 +110,15 @@ ConditionX64 getConditionInt(IrCondition cond)
     case IrCondition::UnsignedGreaterEqual:
         return ConditionX64::AboveEqual;
     default:
-        LUAU_ASSERT(!"Unsupported condition");
+        CODEGEN_ASSERT(!"Unsupported condition");
         return ConditionX64::Zero;
     }
 }
 
 void getTableNodeAtCachedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 node, RegisterX64 table, int pcpos)
 {
-    LUAU_ASSERT(tmp != node);
-    LUAU_ASSERT(table != node);
+    CODEGEN_ASSERT(tmp != node);
+    CODEGEN_ASSERT(table != node);
 
     build.mov(node, qword[table + offsetof(Table, node)]);
 
@@ -134,7 +134,7 @@ void getTableNodeAtCachedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, Regist
 
 void convertNumberToIndexOrJump(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 numd, RegisterX64 numi, Label& label)
 {
-    LUAU_ASSERT(numi.size == SizeX64::dword);
+    CODEGEN_ASSERT(numi.size == SizeX64::dword);
 
     // Convert to integer, NaN is converted into 0x80000000
     build.vcvttsd2si(numi, numd);

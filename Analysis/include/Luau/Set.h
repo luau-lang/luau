@@ -127,7 +127,8 @@ public:
         const_iterator(typename Impl::const_iterator impl, typename Impl::const_iterator end)
             : impl(impl)
             , end(end)
-        {}
+        {
+        }
 
         const T& operator*() const
         {
@@ -168,6 +169,7 @@ public:
             ++*this;
             return res;
         }
+
     private:
         typename Impl::const_iterator impl;
         typename Impl::const_iterator end;

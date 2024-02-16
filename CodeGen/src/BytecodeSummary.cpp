@@ -50,7 +50,7 @@ FunctionBytecodeSummary FunctionBytecodeSummary::fromProto(Proto* proto, unsigne
 
 std::vector<FunctionBytecodeSummary> summarizeBytecode(lua_State* L, int idx, unsigned nestingLimit)
 {
-    LUAU_ASSERT(lua_isLfunction(L, idx));
+    CODEGEN_ASSERT(lua_isLfunction(L, idx));
     const TValue* func = luaA_toobject(L, idx);
 
     Proto* root = clvalue(func)->l.p;

@@ -499,10 +499,10 @@ end
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        CHECK_EQ(toString(result.errors[0]),
-            "Type 'X | Y | Z' could not be converted into '{ w: number }'; type X | Y | Z[0] (X) is not a subtype of { w: number } ({ w: number })\n\t"
-            "type X | Y | Z[1] (Y) is not a subtype of { w: number } ({ w: number })\n\t"
-            "type X | Y | Z[2] (Z) is not a subtype of { w: number } ({ w: number })");
+        CHECK_EQ(toString(result.errors[0]), "Type 'X | Y | Z' could not be converted into '{ w: number }'; type X | Y | Z[0] (X) is not a subtype "
+                                             "of { w: number } ({ w: number })\n\t"
+                                             "type X | Y | Z[1] (Y) is not a subtype of { w: number } ({ w: number })\n\t"
+                                             "type X | Y | Z[2] (Z) is not a subtype of { w: number } ({ w: number })");
     }
     else
     {

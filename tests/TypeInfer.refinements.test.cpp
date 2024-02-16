@@ -515,9 +515,9 @@ TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "unknown");       // a == b
+        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "unknown"); // a == b
     else
-        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "a");       // a == b
+        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "a"); // a == b
 
     CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "string?"); // a == b
 }

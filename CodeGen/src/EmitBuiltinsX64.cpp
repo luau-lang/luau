@@ -81,16 +81,16 @@ void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int r
     switch (bfid)
     {
     case LBF_MATH_FREXP:
-        LUAU_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
+        CODEGEN_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
         return emitBuiltinMathFrexp(regs, build, ra, arg, nresults);
     case LBF_MATH_MODF:
-        LUAU_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
+        CODEGEN_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
         return emitBuiltinMathModf(regs, build, ra, arg, nresults);
     case LBF_MATH_SIGN:
-        LUAU_ASSERT(nparams == 1 && nresults == 1);
+        CODEGEN_ASSERT(nparams == 1 && nresults == 1);
         return emitBuiltinMathSign(regs, build, ra, arg);
     default:
-        LUAU_ASSERT(!"Missing x64 lowering");
+        CODEGEN_ASSERT(!"Missing x64 lowering");
     }
 }
 

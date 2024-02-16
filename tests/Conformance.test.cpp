@@ -2158,7 +2158,7 @@ TEST_CASE("IrInstructionLimit")
     Luau::CodeGen::CodeGenCompilationResult nativeResult = Luau::CodeGen::compile(L, -1, Luau::CodeGen::CodeGen_ColdFunctions, &nativeStats);
 
     // Limit is not hit immediately, so with some functions compiled it should be a success
-    CHECK(nativeResult != Luau::CodeGen::CodeGenCompilationResult::CodeGenFailed);
+    CHECK(nativeResult == Luau::CodeGen::CodeGenCompilationResult::CodeGenOverflowInstructionLimit);
 
     // We should be able to compile at least one of our functions
     CHECK(nativeStats.functionsCompiled > 0);

@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Common.h"
+#include "Luau/CodeGenCommon.h"
 
 #include <stdint.h>
 
@@ -40,9 +40,9 @@ struct RegisterA64
 
 constexpr RegisterA64 castReg(KindA64 kind, RegisterA64 reg)
 {
-    LUAU_ASSERT(kind != reg.kind);
-    LUAU_ASSERT(kind != KindA64::none && reg.kind != KindA64::none);
-    LUAU_ASSERT((kind == KindA64::w || kind == KindA64::x) == (reg.kind == KindA64::w || reg.kind == KindA64::x));
+    CODEGEN_ASSERT(kind != reg.kind);
+    CODEGEN_ASSERT(kind != KindA64::none && reg.kind != KindA64::none);
+    CODEGEN_ASSERT((kind == KindA64::w || kind == KindA64::x) == (reg.kind == KindA64::w || reg.kind == KindA64::x));
 
     return RegisterA64{kind, reg.index};
 }

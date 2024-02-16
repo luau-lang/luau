@@ -15,8 +15,6 @@ namespace Luau
 std::string rep(const std::string& s, size_t n);
 }
 
-LUAU_FASTFLAG(LuauVectorLiterals)
-LUAU_FASTFLAG(LuauCompileRevK)
 LUAU_FASTINT(LuauCompileInlineDepth)
 LUAU_FASTINT(LuauCompileInlineThreshold)
 LUAU_FASTINT(LuauCompileInlineThresholdMaxBoost)
@@ -1182,8 +1180,6 @@ RETURN R0 1
 
 TEST_CASE("AndOrChainCodegen")
 {
-    ScopedFastFlag sff(FFlag::LuauCompileRevK, true);
-
     const char* source = R"(
     return
         (1 - verticalGradientTurbulence < waterLevel + .015 and Enum.Material.Sand)
@@ -2106,8 +2102,6 @@ RETURN R0 0
 
 TEST_CASE("AndOrOptimizations")
 {
-    ScopedFastFlag sff(FFlag::LuauCompileRevK, true);
-
     // the OR/ORK optimization triggers for cutoff since lhs is simple
     CHECK_EQ("\n" + compileFunction(R"(
 local function advancedRidgedFilter(value, cutoff)
@@ -4490,8 +4484,6 @@ L0: RETURN R0 -1
 
 TEST_CASE("VectorLiterals")
 {
-    ScopedFastFlag sff(FFlag::LuauVectorLiterals, true);
-
     CHECK_EQ("\n" + compileFunction("return Vector3.new(1, 2, 3)", 0, 2, /*enableVectors*/ true), R"(
 LOADK R0 K0 [1, 2, 3]
 RETURN R0 1
@@ -7852,8 +7844,6 @@ RETURN R0 1
 
 TEST_CASE("ArithRevK")
 {
-    ScopedFastFlag sff(FFlag::LuauCompileRevK, true);
-
     // - and / have special optimized form for reverse constants; in the future, + and * will likely get compiled to ADDK/MULK
     // other operators are not important enough to optimize reverse constant forms for
     CHECK_EQ("\n" + compileFunction0(R"(

@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Common.h"
+#include "Luau/CodeGenCommon.h"
 
 #include <bitset>
 #include <queue>
@@ -167,7 +167,7 @@ struct BlockIteratorWrapper
 
     uint32_t operator[](size_t pos) const
     {
-        LUAU_ASSERT(pos < size_t(itEnd - itBegin));
+        CODEGEN_ASSERT(pos < size_t(itEnd - itBegin));
         return itBegin[pos];
     }
 };
