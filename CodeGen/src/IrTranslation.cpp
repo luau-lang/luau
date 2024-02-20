@@ -606,6 +606,8 @@ void translateInstMinus(IrBuilder& build, const Instruction* pc, int pcpos)
 
         IrOp vb = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(rb));
         IrOp va = build.inst(IrCmd::UNM_VEC, vb);
+        if (FFlag::LuauCodegenVectorTag)
+            va = build.inst(IrCmd::TAG_VECTOR, va);
         build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), va);
         return;
     }
