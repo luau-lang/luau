@@ -14,6 +14,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenLuData, false)
 LUAU_FASTFLAGVARIABLE(LuauCodegenVector, false)
+LUAU_FASTFLAGVARIABLE(LuauCodegenVectorTag, false)
 
 namespace Luau
 {
@@ -380,8 +381,11 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
                 result = build.inst(IrCmd::DIV_VEC, vb, vc);
                 break;
             default:
-                break;
+                CODEGEN_ASSERT(!"Unknown TM op");
             }
+
+            if (FFlag::LuauCodegenVectorTag)
+                result = build.inst(IrCmd::TAG_VECTOR, result);
 
             build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
             return;
@@ -393,7 +397,7 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
 
             build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rc)), build.constTag(LUA_TVECTOR), build.vmExit(pcpos));
 
-            IrOp vb = build.inst(IrCmd::NUM_TO_VECTOR, loadDoubleOrConstant(build, opb));
+            IrOp vb = build.inst(IrCmd::NUM_TO_VEC, loadDoubleOrConstant(build, opb));
             IrOp vc = build.inst(IrCmd::LOAD_TVALUE, opc);
             IrOp result;
 
@@ -406,8 +410,11 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
                 result = build.inst(IrCmd::DIV_VEC, vb, vc);
                 break;
             default:
-                break;
+                CODEGEN_ASSERT(!"Unknown TM op");
             }
+
+            if (FFlag::LuauCodegenVectorTag)
+                result = build.inst(IrCmd::TAG_VECTOR, result);
 
             build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
             return;
@@ -420,7 +427,7 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
                 build.inst(IrCmd::CHECK_TAG, build.inst(IrCmd::LOAD_TAG, build.vmReg(rc)), build.constTag(LUA_TNUMBER), build.vmExit(pcpos));
 
             IrOp vb = build.inst(IrCmd::LOAD_TVALUE, opb);
-            IrOp vc = build.inst(IrCmd::NUM_TO_VECTOR, loadDoubleOrConstant(build, opc));
+            IrOp vc = build.inst(IrCmd::NUM_TO_VEC, loadDoubleOrConstant(build, opc));
             IrOp result;
 
             switch (tm)
@@ -432,8 +439,11 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
                 result = build.inst(IrCmd::DIV_VEC, vb, vc);
                 break;
             default:
-                break;
+                CODEGEN_ASSERT(!"Unknown TM op");
             }
+
+            if (FFlag::LuauCodegenVectorTag)
+                result = build.inst(IrCmd::TAG_VECTOR, result);
 
             build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
             return;

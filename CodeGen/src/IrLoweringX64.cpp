@@ -15,6 +15,8 @@
 #include "lstate.h"
 #include "lgc.h"
 
+LUAU_FASTFLAG(LuauCodegenVectorTag)
+
 namespace Luau
 {
 namespace CodeGen
@@ -608,7 +610,9 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.vandps(tmp1.reg, regOp(inst.a), vectorAndMaskOp());
         build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
         build.vaddps(inst.regX64, tmp1.reg, tmp2.reg);
-        build.vorps(inst.regX64, inst.regX64, vectorOrMaskOp());
+
+        if (!FFlag::LuauCodegenVectorTag)
+            build.vorps(inst.regX64, inst.regX64, vectorOrMaskOp());
         break;
     }
     case IrCmd::SUB_VEC:
@@ -622,7 +626,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.vandps(tmp1.reg, regOp(inst.a), vectorAndMaskOp());
         build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
         build.vsubps(inst.regX64, tmp1.reg, tmp2.reg);
-        build.vorps(inst.regX64, inst.regX64, vectorOrMaskOp());
+        if (!FFlag::LuauCodegenVectorTag)
+            build.vorps(inst.regX64, inst.regX64, vectorOrMaskOp());
         break;
     }
     case IrCmd::MUL_VEC:
@@ -636,7 +641,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.vandps(tmp1.reg, regOp(inst.a), vectorAndMaskOp());
         build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
         build.vmulps(inst.regX64, tmp1.reg, tmp2.reg);
-        build.vorps(inst.regX64, inst.regX64, vectorOrMaskOp());
+        if (!FFlag::LuauCodegenVectorTag)
+            build.vorps(inst.regX64, inst.regX64, vectorOrMaskOp());
         break;
     }
     case IrCmd::DIV_VEC:
@@ -650,7 +656,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.vandps(tmp1.reg, regOp(inst.a), vectorAndMaskOp());
         build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
         build.vdivps(inst.regX64, tmp1.reg, tmp2.reg);
-        build.vpinsrd(inst.regX64, inst.regX64, build.i32(LUA_TVECTOR), 3);
+        if (!FFlag::LuauCodegenVectorTag)
+            build.vpinsrd(inst.regX64, inst.regX64, build.i32(LUA_TVECTOR), 3);
         break;
     }
     case IrCmd::UNM_VEC:
@@ -669,7 +676,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.vxorpd(inst.regX64, inst.regX64, build.f32x4(-0.0, -0.0, -0.0, -0.0));
         }
 
-        build.vpinsrd(inst.regX64, inst.regX64, build.i32(LUA_TVECTOR), 3);
+        if (!FFlag::LuauCodegenVectorTag)
+            build.vpinsrd(inst.regX64, inst.regX64, build.i32(LUA_TVECTOR), 3);
         break;
     }
     case IrCmd::NOT_ANY:
@@ -964,7 +972,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         build.vcvttsd2si(qwordReg(inst.regX64), memRegDoubleOp(inst.a));
         break;
-    case IrCmd::NUM_TO_VECTOR:
+    case IrCmd::NUM_TO_VEC:
         inst.regX64 = regs.allocReg(SizeX64::xmmword, index);
 
         if (inst.a.kind == IrOpKind::Constant)
@@ -974,14 +982,24 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             static_assert(sizeof(asU32) == sizeof(value), "Expecting float to be 32-bit");
             memcpy(&asU32, &value, sizeof(value));
 
-            build.vmovaps(inst.regX64, build.u32x4(asU32, asU32, asU32, LUA_TVECTOR));
+            if (FFlag::LuauCodegenVectorTag)
+                build.vmovaps(inst.regX64, build.u32x4(asU32, asU32, asU32, 0));
+            else
+                build.vmovaps(inst.regX64, build.u32x4(asU32, asU32, asU32, LUA_TVECTOR));
         }
         else
         {
             build.vcvtsd2ss(inst.regX64, inst.regX64, memRegDoubleOp(inst.a));
             build.vpshufps(inst.regX64, inst.regX64, inst.regX64, 0b00'00'00'00);
-            build.vpinsrd(inst.regX64, inst.regX64, build.i32(LUA_TVECTOR), 3);
+
+            if (!FFlag::LuauCodegenVectorTag)
+                build.vpinsrd(inst.regX64, inst.regX64, build.i32(LUA_TVECTOR), 3);
         }
+        break;
+    case IrCmd::TAG_VECTOR:
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a});
+
+        build.vpinsrd(inst.regX64, regOp(inst.a), build.i32(LUA_TVECTOR), 3);
         break;
     case IrCmd::ADJUST_STACK_TO_REG:
     {
