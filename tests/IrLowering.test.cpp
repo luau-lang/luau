@@ -176,7 +176,8 @@ bb_2:
 bb_bytecode_1:
   %6 = LOAD_TVALUE R0
   %7 = UNM_VEC %6
-  STORE_TVALUE R1, %7
+  %8 = TAG_VECTOR %7
+  STORE_TVALUE R1, %8
   INTERRUPT 1u
   RETURN R1, 1i
 )");
