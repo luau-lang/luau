@@ -205,8 +205,10 @@ const char* getCmdName(IrCmd cmd)
         return "NUM_TO_INT";
     case IrCmd::NUM_TO_UINT:
         return "NUM_TO_UINT";
-    case IrCmd::NUM_TO_VECTOR:
-        return "NUM_TO_VECTOR";
+    case IrCmd::NUM_TO_VEC:
+        return "NUM_TO_VEC";
+    case IrCmd::TAG_VECTOR:
+        return "TAG_VECTOR";
     case IrCmd::ADJUST_STACK_TO_REG:
         return "ADJUST_STACK_TO_REG";
     case IrCmd::ADJUST_STACK_TO_TOP:

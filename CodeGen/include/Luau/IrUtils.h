@@ -186,7 +186,8 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::UINT_TO_NUM:
     case IrCmd::NUM_TO_INT:
     case IrCmd::NUM_TO_UINT:
-    case IrCmd::NUM_TO_VECTOR:
+    case IrCmd::NUM_TO_VEC:
+    case IrCmd::TAG_VECTOR:
     case IrCmd::SUBSTITUTE:
     case IrCmd::INVOKE_FASTCALL:
     case IrCmd::BITAND_UINT:

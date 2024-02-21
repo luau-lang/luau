@@ -14,6 +14,8 @@
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCodeGenFixBufferLenCheckA64, false)
 LUAU_FASTFLAGVARIABLE(LuauCodeGenVectorA64, false)
 
+LUAU_FASTFLAG(LuauCodegenVectorTag)
+
 namespace Luau
 {
 namespace CodeGen
@@ -678,9 +680,12 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         {
             build.fadd(inst.regA64, regOp(inst.a), regOp(inst.b));
 
-            RegisterA64 tempw = regs.allocTemp(KindA64::w);
-            build.mov(tempw, LUA_TVECTOR);
-            build.ins_4s(inst.regA64, tempw, 3);
+            if (!FFlag::LuauCodegenVectorTag)
+            {
+                RegisterA64 tempw = regs.allocTemp(KindA64::w);
+                build.mov(tempw, LUA_TVECTOR);
+                build.ins_4s(inst.regA64, tempw, 3);
+            }
         }
         else
         {
@@ -705,9 +710,12 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         {
             build.fsub(inst.regA64, regOp(inst.a), regOp(inst.b));
 
-            RegisterA64 tempw = regs.allocTemp(KindA64::w);
-            build.mov(tempw, LUA_TVECTOR);
-            build.ins_4s(inst.regA64, tempw, 3);
+            if (!FFlag::LuauCodegenVectorTag)
+            {
+                RegisterA64 tempw = regs.allocTemp(KindA64::w);
+                build.mov(tempw, LUA_TVECTOR);
+                build.ins_4s(inst.regA64, tempw, 3);
+            }
         }
         else
         {
@@ -732,9 +740,12 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         {
             build.fmul(inst.regA64, regOp(inst.a), regOp(inst.b));
 
-            RegisterA64 tempw = regs.allocTemp(KindA64::w);
-            build.mov(tempw, LUA_TVECTOR);
-            build.ins_4s(inst.regA64, tempw, 3);
+            if (!FFlag::LuauCodegenVectorTag)
+            {
+                RegisterA64 tempw = regs.allocTemp(KindA64::w);
+                build.mov(tempw, LUA_TVECTOR);
+                build.ins_4s(inst.regA64, tempw, 3);
+            }
         }
         else
         {
@@ -759,9 +770,12 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         {
             build.fdiv(inst.regA64, regOp(inst.a), regOp(inst.b));
 
-            RegisterA64 tempw = regs.allocTemp(KindA64::w);
-            build.mov(tempw, LUA_TVECTOR);
-            build.ins_4s(inst.regA64, tempw, 3);
+            if (!FFlag::LuauCodegenVectorTag)
+            {
+                RegisterA64 tempw = regs.allocTemp(KindA64::w);
+                build.mov(tempw, LUA_TVECTOR);
+                build.ins_4s(inst.regA64, tempw, 3);
+            }
         }
         else
         {
@@ -786,9 +800,12 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         {
             build.fneg(inst.regA64, regOp(inst.a));
 
-            RegisterA64 tempw = regs.allocTemp(KindA64::w);
-            build.mov(tempw, LUA_TVECTOR);
-            build.ins_4s(inst.regA64, tempw, 3);
+            if (!FFlag::LuauCodegenVectorTag)
+            {
+                RegisterA64 tempw = regs.allocTemp(KindA64::w);
+                build.mov(tempw, LUA_TVECTOR);
+                build.ins_4s(inst.regA64, tempw, 3);
+            }
         }
         else
         {
@@ -1156,7 +1173,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         build.fcvtzs(castReg(KindA64::x, inst.regA64), temp);
         break;
     }
-    case IrCmd::NUM_TO_VECTOR:
+    case IrCmd::NUM_TO_VEC:
     {
         inst.regA64 = regs.allocReg(KindA64::q, index);
 
@@ -1166,6 +1183,23 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         build.fcvt(temps, tempd);
         build.dup_4s(inst.regA64, castReg(KindA64::q, temps), 0);
+
+        if (!FFlag::LuauCodegenVectorTag)
+        {
+            build.mov(tempw, LUA_TVECTOR);
+            build.ins_4s(inst.regA64, tempw, 3);
+        }
+        break;
+    }
+    case IrCmd::TAG_VECTOR:
+    {
+        inst.regA64 = regs.allocReuse(KindA64::q, index, {inst.a});
+
+        RegisterA64 reg = regOp(inst.a);
+        RegisterA64 tempw = regs.allocTemp(KindA64::w);
+
+        if (inst.regA64 != reg)
+            build.mov(inst.regA64, reg);
 
         build.mov(tempw, LUA_TVECTOR);
         build.ins_4s(inst.regA64, tempw, 3);
