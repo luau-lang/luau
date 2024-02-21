@@ -59,7 +59,7 @@ static Luau::CompileOptions copts()
     result.debugLevel = globalOptions.debugLevel;
 
     // globalOptions outlive the CompileOptions, so it's safe to use string data pointers here
-    result.vectorLib = globalOptions.vectorLib.c_str();
+    result.vectorLib = globalOptions.vectorLib.empty() ? nullptr : globalOptions.vectorLib.c_str();
     result.vectorCtor = globalOptions.vectorCtor.c_str();
     result.vectorType = globalOptions.vectorType.c_str();
 
