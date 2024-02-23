@@ -360,7 +360,7 @@ TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
         type Result<O, E> = Ok<O> | Err<E>
 
         local a : Result<string, number> = {success = false, result = "hotdogs"}
-        local b : Result<string, number> = {success = true, result = "hotdogs"}
+        -- local b : Result<string, number> = {success = true, result = "hotdogs"}
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);

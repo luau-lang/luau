@@ -8,8 +8,6 @@
 #include "Luau/TypePack.h"
 #include "Luau/Unifiable.h"
 
-LUAU_FASTFLAG(DebugLuauReadWriteProperties)
-
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
 
@@ -196,14 +194,14 @@ private:
 
     Property shallowClone(const Property& p)
     {
-        if (FFlag::DebugLuauReadWriteProperties)
+        if (FFlag::DebugLuauDeferredConstraintResolution)
         {
             std::optional<TypeId> cloneReadTy;
-            if (auto ty = p.readType())
+            if (auto ty = p.readTy)
                 cloneReadTy = shallowClone(*ty);
 
             std::optional<TypeId> cloneWriteTy;
-            if (auto ty = p.writeType())
+            if (auto ty = p.writeTy)
                 cloneWriteTy = shallowClone(*ty);
 
             std::optional<Property> cloned = Property::create(cloneReadTy, cloneWriteTy);
@@ -460,14 +458,14 @@ namespace
 
 Property clone(const Property& prop, TypeArena& dest, CloneState& cloneState)
 {
-    if (FFlag::DebugLuauReadWriteProperties)
+    if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         std::optional<TypeId> cloneReadTy;
-        if (auto ty = prop.readType())
+        if (auto ty = prop.readTy)
             cloneReadTy = clone(*ty, dest, cloneState);
 
         std::optional<TypeId> cloneWriteTy;
-        if (auto ty = prop.writeType())
+        if (auto ty = prop.writeTy)
             cloneWriteTy = clone(*ty, dest, cloneState);
 
         std::optional<Property> cloned = Property::create(cloneReadTy, cloneWriteTy);

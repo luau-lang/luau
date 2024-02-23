@@ -931,18 +931,17 @@ TEST_CASE_FIXTURE(Fixture, "tostring_unsee_ttv_if_array")
 TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
 {
     CheckResult result = check(R"(
---!strict
-   function f1() : {a : number, b : string, c : { d : number}}
-     return { a = 1, b = "a", c = {d = "a"}}
-   end
+        --!strict
+        function f1() : {a : number, b : string, c : { d : number}}
+            return { a = 1, b = "a", c = {d = "a"}}
+        end
+    )");
 
-)");
-    //clang-format off
-    std::string expected =
-        (FFlag::DebugLuauDeferredConstraintResolution)
-            ? R"(Type pack '{| a: number, b: string, c: {| d: string |} |}' could not be converted into '{ a: number, b: string, c: { d: number } }'; at [0]["c"]["d"], string is not exactly number)"
-            :
-            R"(Type
+    std::string expected;
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        expected = R"(Type pack '{ a: number, b: string, c: { d: string } }' could not be converted into '{ a: number, b: string, c: { d: number } }'; at [0][read "c"][read "d"], string is not exactly number)";
+    else
+        expected = R"(Type
     '{ a: number, b: string, c: { d: string } }'
 could not be converted into
     '{| a: number, b: string, c: {| d: number |} |}'
@@ -955,7 +954,6 @@ could not be converted into
 caused by:
   Property 'd' is not compatible.
 Type 'string' could not be converted into 'number' in an invariant context)";
-    //clang-format on
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
@@ -984,4 +982,20 @@ local f = abs
     TypeId fn = requireType("f");
     CHECK("@checked (number) -> number" == toString(fn));
 }
+
+TEST_CASE_FIXTURE(Fixture, "read_only_properties")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    CheckResult result = check(R"(
+        type A = {x: string}
+        type B = {read x: string}
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("{ x: string }" == toString(requireTypeAlias("A"), {true}));
+    CHECK("{ read x: string }" == toString(requireTypeAlias("B"), {true}));
+}
+
 TEST_SUITE_END();

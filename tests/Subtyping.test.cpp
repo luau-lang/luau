@@ -15,6 +15,8 @@
 
 #include <initializer_list>
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 using namespace Luau;
 
 namespace Luau
@@ -64,6 +66,8 @@ struct SubtypeFixture : Fixture
     InternalErrorReporter iceReporter;
     UnifierSharedState sharedState{&ice};
     Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
+
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     ScopePtr rootScope{new Scope(builtinTypes->emptyTypePack)};
     ScopePtr moduleScope{new Scope(rootScope)};
@@ -219,6 +223,11 @@ struct SubtypeFixture : Fixture
                                        {"X", builtinTypes->numberType},
                                        {"Y", builtinTypes->numberType},
                                    });
+
+    TypeId readOnlyVec2Class = cls("ReadOnlyVec2", {
+        {"X", Property::readonly(builtinTypes->numberType)},
+        {"Y", Property::readonly(builtinTypes->numberType)},
+    });
 
     // "hello" | "hello"
     TypeId helloOrHelloType = arena.addType(UnionType{{helloType, helloType}});
@@ -787,6 +796,34 @@ TEST_CASE_FIXTURE(SubtypeFixture, "{x: <T>(T) -> ()} <: {x: <U>(U) -> ()}")
     CHECK_IS_SUBTYPE(tbl({{"x", genericTToNothingType}}), tbl({{"x", genericUToNothingType}}));
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "{ x: number } <: { read x: number }")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    CHECK_IS_SUBTYPE(tbl({{"x", builtinTypes->numberType}}), tbl({{"x", Property::readonly(builtinTypes->numberType)}}));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{ x: number } <: { write x: number }")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    CHECK_IS_SUBTYPE(tbl({{"x", builtinTypes->numberType}}), tbl({{"x", Property::writeonly(builtinTypes->numberType)}}));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{ x: \"hello\" } <: { read x: string }")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    CHECK_IS_SUBTYPE(tbl({{"x", helloType}}), tbl({{"x", Property::readonly(builtinTypes->stringType)}}));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "{ x: string } <: { write x: string }")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    CHECK_IS_SUBTYPE(tbl({{"x", builtinTypes->stringType}}), tbl({{"x", Property::writeonly(builtinTypes->stringType)}}));
+}
+
 TEST_CASE_FIXTURE(SubtypeFixture, "{ @metatable { x: number } } <: { @metatable {} }")
 {
     CHECK_IS_SUBTYPE(meta({{"x", builtinTypes->numberType}}), meta({}));
@@ -1027,6 +1064,28 @@ TEST_CASE_FIXTURE(SubtypeFixture, "Vec2 <!: table & { X: number, Y: number }")
     CHECK_IS_NOT_SUBTYPE(vec2Class, meet(builtinTypes->tableType, xy));
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "ReadOnlyVec2 <!: { X: number, Y: number}")
+{
+    CHECK_IS_NOT_SUBTYPE(readOnlyVec2Class, tbl({{"X", builtinTypes->numberType}, {"Y", builtinTypes->numberType}}));
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "ReadOnlyVec2 <: { read X: number, read Y: number}")
+{
+    CHECK_IS_SUBTYPE(
+        readOnlyVec2Class, tbl({{"X", Property::readonly(builtinTypes->numberType)}, {"Y", Property::readonly(builtinTypes->numberType)}}));
+}
+
+TEST_IS_SUBTYPE(vec2Class, tbl({{"X", Property::readonly(builtinTypes->numberType)}, {"Y", Property::readonly(builtinTypes->numberType)}}));
+
+TEST_IS_NOT_SUBTYPE(tbl({{"P", grandchildOneClass}}), tbl({{"P", Property::rw(rootClass)}}));
+TEST_IS_SUBTYPE(tbl({{"P", grandchildOneClass}}), tbl({{"P", Property::readonly(rootClass)}}));
+TEST_IS_SUBTYPE(tbl({{"P", rootClass}}), tbl({{"P", Property::writeonly(grandchildOneClass)}}));
+
+TEST_IS_NOT_SUBTYPE(cls("HasChild", {{"P", childClass}}), tbl({{"P", rootClass}}));
+TEST_IS_SUBTYPE(cls("HasChild", {{"P", childClass}}), tbl({{"P", Property::readonly(rootClass)}}));
+TEST_IS_NOT_SUBTYPE(cls("HasChild", {{"P", childClass}}), tbl({{"P", grandchildOneClass}}));
+TEST_IS_SUBTYPE(cls("HasChild", {{"P", childClass}}), tbl({{"P", Property::writeonly(grandchildOneClass)}}));
+
 TEST_CASE_FIXTURE(SubtypeFixture, "\"hello\" <: { lower : (string) -> string }")
 {
     CHECK_IS_SUBTYPE(helloType, tableWithLower);
@@ -1217,8 +1276,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "table_property")
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
-    CHECK(result.reasoning == std::vector{SubtypingReasoning{/* subPath */ Path(TypePath::Property("X")),
-                                  /* superPath */ Path(TypePath::Property("X")),
+    CHECK(result.reasoning == std::vector{SubtypingReasoning{/* subPath */ Path(TypePath::Property::read("X")),
+                                  /* superPath */ Path(TypePath::Property::read("X")),
                                   /* variance */ SubtypingVariance::Invariant}});
 }
 
@@ -1317,8 +1376,8 @@ TEST_CASE_FIXTURE(SubtypeFixture, "nested_table_properties")
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
     CHECK(result.reasoning == std::vector{SubtypingReasoning{
-                                  /* subPath */ TypePath::PathBuilder().prop("X").prop("Y").prop("Z").build(),
-                                  /* superPath */ TypePath::PathBuilder().prop("X").prop("Y").prop("Z").build(),
+                                  /* subPath */ TypePath::PathBuilder().readProp("X").readProp("Y").readProp("Z").build(),
+                                  /* superPath */ TypePath::PathBuilder().readProp("X").readProp("Y").readProp("Z").build(),
                                   /* variance */ SubtypingVariance::Invariant,
                               }});
 }
@@ -1335,7 +1394,7 @@ TEST_CASE_FIXTURE(SubtypeFixture, "string_table_mt")
     // metatable is empty, and abort there, without looking at the metatable
     // properties (because there aren't any).
     CHECK(result.reasoning == std::vector{SubtypingReasoning{
-                                  /* subPath */ TypePath::PathBuilder().mt().prop("__index").build(),
+                                  /* subPath */ TypePath::PathBuilder().mt().readProp("__index").build(),
                                   /* superPath */ TypePath::kEmpty,
                               }});
 }
@@ -1360,12 +1419,13 @@ TEST_CASE_FIXTURE(SubtypeFixture, "multiple_reasonings")
 
     SubtypingResult result = isSubtype(subTy, superTy);
     CHECK(!result.isSubtype);
-    CHECK(result.reasoning == std::vector{
-                                  SubtypingReasoning{/* subPath */ Path(TypePath::Property("X")), /* superPath */ Path(TypePath::Property("X")),
-                                      /* variance */ SubtypingVariance::Invariant},
-                                  SubtypingReasoning{/* subPath */ Path(TypePath::Property("Y")), /* superPath */ Path(TypePath::Property("Y")),
-                                      /* variance */ SubtypingVariance::Invariant},
-                              });
+    CHECK(result.reasoning ==
+          std::vector{
+              SubtypingReasoning{/* subPath */ Path(TypePath::Property::read("X")), /* superPath */ Path(TypePath::Property::read("X")),
+                  /* variance */ SubtypingVariance::Invariant},
+              SubtypingReasoning{/* subPath */ Path(TypePath::Property::read("Y")), /* superPath */ Path(TypePath::Property::read("Y")),
+                  /* variance */ SubtypingVariance::Invariant},
+          });
 }
 
 TEST_SUITE_END();

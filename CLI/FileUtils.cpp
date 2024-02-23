@@ -431,6 +431,10 @@ std::vector<std::string> getSourceFiles(int argc, char** argv)
 
     for (int i = 1; i < argc; ++i)
     {
+        // Early out once we reach --program-args,-a since the remaining args are passed to lua
+        if (strcmp(argv[i], "--program-args") == 0 || strcmp(argv[i], "-a") == 0)
+            return files;
+
         // Treat '-' as a special file whose source is read from stdin
         // All other arguments that start with '-' are skipped
         if (argv[i][0] == '-' && argv[i][1] != '\0')

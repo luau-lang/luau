@@ -414,16 +414,11 @@ struct Property
     TypeId type() const;
     void setType(TypeId ty);
 
-    // Should only be called in RWP!
-    // We do not assert that `readTy` nor `writeTy` are nullopt or not.
-    // The invariant is that at least one of them mustn't be nullopt, which we do assert here.
-    // TODO: Kill this in favor of exposing `readTy`/`writeTy` directly? If we do, we'll lose the asserts which will be useful while debugging.
-    std::optional<TypeId> readType() const;
-    std::optional<TypeId> writeType() const;
-
     bool isShared() const;
+    bool isReadOnly() const;
+    bool isWriteOnly() const;
+    bool isReadWrite() const;
 
-private:
     std::optional<TypeId> readTy;
     std::optional<TypeId> writeTy;
 };
@@ -844,6 +839,7 @@ public:
 
     const TypePackId emptyTypePack;
     const TypePackId anyTypePack;
+    const TypePackId unknownTypePack;
     const TypePackId neverTypePack;
     const TypePackId uninhabitableTypePack;
     const TypePackId errorTypePack;

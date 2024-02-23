@@ -13,7 +13,7 @@
 #include <sstream>
 #include <type_traits>
 
-LUAU_FASTFLAG(DebugLuauReadWriteProperties);
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
 // Maximum number of steps to follow when traversing a path. May not always
 // equate to the number of components in a path, depending on the traversal
@@ -29,7 +29,7 @@ namespace TypePath
 Property::Property(std::string name)
     : name(std::move(name))
 {
-    LUAU_ASSERT(!FFlag::DebugLuauReadWriteProperties);
+    LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
 }
 
 Property Property::read(std::string name)
@@ -146,21 +146,21 @@ Path PathBuilder::build()
 
 PathBuilder& PathBuilder::readProp(std::string name)
 {
-    LUAU_ASSERT(FFlag::DebugLuauReadWriteProperties);
+    LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
     components.push_back(Property{std::move(name), true});
     return *this;
 }
 
 PathBuilder& PathBuilder::writeProp(std::string name)
 {
-    LUAU_ASSERT(FFlag::DebugLuauReadWriteProperties);
+    LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
     components.push_back(Property{std::move(name), false});
     return *this;
 }
 
 PathBuilder& PathBuilder::prop(std::string name)
 {
-    LUAU_ASSERT(!FFlag::DebugLuauReadWriteProperties);
+    LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
     components.push_back(Property{std::move(name)});
     return *this;
 }
@@ -323,7 +323,7 @@ struct TraversalState
                 // logic there.
                 updateCurrent(*m);
 
-                if (!traverse(TypePath::Property{"__index"}))
+                if (!traverse(TypePath::Property::read("__index")))
                     return false;
 
                 return traverse(property);
@@ -333,8 +333,8 @@ struct TraversalState
         if (prop)
         {
             std::optional<TypeId> maybeType;
-            if (FFlag::DebugLuauReadWriteProperties)
-                maybeType = property.isRead ? prop->readType() : prop->writeType();
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+                maybeType = property.isRead ? prop->readTy : prop->writeTy;
             else
                 maybeType = prop->type();
 
@@ -514,7 +514,7 @@ std::string toString(const TypePath::Path& path, bool prefixDot)
         if constexpr (std::is_same_v<T, TypePath::Property>)
         {
             result << '[';
-            if (FFlag::DebugLuauReadWriteProperties)
+            if (FFlag::DebugLuauDeferredConstraintResolution)
             {
                 if (c.isRead)
                     result << "read ";

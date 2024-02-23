@@ -14,7 +14,15 @@
 namespace Luau
 {
 
+enum class ValueContext;
 struct Scope;
+
+// if resultType is a freeType, assignmentType <: freeType <: resultType bounds
+struct EqualityConstraint
+{
+    TypeId resultType;
+    TypeId assignmentType;
+};
 
 // subType <: superType
 struct SubtypeConstraint
@@ -40,6 +48,8 @@ struct GeneralizationConstraint
 {
     TypeId generalizedType;
     TypeId sourceType;
+
+    std::vector<TypeId> interiorTypes;
 };
 
 // subType ~ inst superType
@@ -145,6 +155,7 @@ struct HasPropConstraint
     TypeId resultType;
     TypeId subjectType;
     std::string prop;
+    ValueContext context;
 
     // HACK: We presently need types like true|false or string|"hello" when
     // deciding whether a particular literal expression should have a singleton
@@ -256,7 +267,8 @@ struct ReducePackConstraint
 
 using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, IterableConstraint,
     NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, FunctionCheckConstraint, PrimitiveTypeConstraint, HasPropConstraint,
-    SetPropConstraint, SetIndexerConstraint, SingletonOrTopTypeConstraint, UnpackConstraint, SetOpConstraint, ReduceConstraint, ReducePackConstraint>;
+    SetPropConstraint, SetIndexerConstraint, SingletonOrTopTypeConstraint, UnpackConstraint, SetOpConstraint, ReduceConstraint, ReducePackConstraint,
+    EqualityConstraint>;
 
 struct Constraint
 {

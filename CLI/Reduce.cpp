@@ -152,7 +152,7 @@ struct Reducer
         }
 
 #if VERBOSE >= 1
-        printf("running %s\n", command.c_str());
+        printf("running %s\n", cmd.c_str());
 #endif
 
         TestResult result = TestResult::NoBug;
@@ -160,7 +160,7 @@ struct Reducer
         ++step;
         printf("Step %4d...\n", step);
 
-        FILE* p = popen(command.c_str(), "r");
+        FILE* p = popen(cmd.c_str(), "r");
 
         while (!feof(p))
         {

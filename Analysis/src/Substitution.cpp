@@ -9,7 +9,7 @@
 #include <stdexcept>
 
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
-LUAU_FASTFLAG(DebugLuauReadWriteProperties)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAGVARIABLE(LuauPreallocateTarjanVectors, false);
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256);
 
@@ -185,10 +185,10 @@ void Tarjan::visitChildren(TypeId ty, int index)
         LUAU_ASSERT(!ttv->boundTo);
         for (const auto& [name, prop] : ttv->props)
         {
-            if (FFlag::DebugLuauReadWriteProperties)
+            if (FFlag::DebugLuauDeferredConstraintResolution)
             {
-                visitChild(prop.readType());
-                visitChild(prop.writeType());
+                visitChild(prop.readTy);
+                visitChild(prop.writeTy);
             }
             else
                 visitChild(prop.type());
@@ -700,8 +700,8 @@ void Substitution::replaceChildren(TypeId ty)
         LUAU_ASSERT(!ttv->boundTo);
         for (auto& [name, prop] : ttv->props)
         {
-            if (FFlag::DebugLuauReadWriteProperties)
-                prop = Property::create(replace(prop.readType()), replace(prop.writeType()));
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+                prop = Property::create(replace(prop.readTy), replace(prop.writeTy));
             else
                 prop.setType(replace(prop.type()));
         }

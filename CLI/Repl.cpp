@@ -46,6 +46,8 @@ LUAU_FASTFLAGVARIABLE(LuauUpdatedRequireByStringSemantics, false)
 constexpr int MaxTraversalLimit = 50;
 
 static bool codegen = false;
+static int program_argc = 0;
+char** program_argv = nullptr;
 
 // Ctrl-C handling
 static void sigintCallback(lua_State* L, int gc)
@@ -316,6 +318,12 @@ void setupState(lua_State* L)
     lua_pop(L, 1);
 
     luaL_sandbox(L);
+}
+
+void setupArguments(lua_State* L, int argc, char** argv)
+{
+    for (int i = 0; i < argc; ++i)
+        lua_pushstring(L, argv[i]);
 }
 
 std::string runCode(lua_State* L, const std::string& source)
@@ -668,7 +676,8 @@ static bool runFile(const char* name, lua_State* GL, bool repl)
         if (coverageActive())
             coverageTrack(L, -1);
 
-        status = lua_resume(L, NULL, 0);
+        setupArguments(L, program_argc, program_argv);
+        status = lua_resume(L, NULL, program_argc);
     }
     else
     {
@@ -704,7 +713,7 @@ static bool runFile(const char* name, lua_State* GL, bool repl)
 
 static void displayHelp(const char* argv0)
 {
-    printf("Usage: %s [options] [file list]\n", argv0);
+    printf("Usage: %s [options] [file list] [-a] [arg list]\n", argv0);
     printf("\n");
     printf("When file list is omitted, an interactive REPL is started instead.\n");
     printf("\n");
@@ -717,6 +726,7 @@ static void displayHelp(const char* argv0)
     printf("  --profile[=N]: profile the code using N Hz sampling (default 10000) and output results to profile.out\n");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
     printf("  --codegen: execute code using native code generation\n");
+    printf("  --program-args,-a: declare start of arguments to be passed to the Luau program");
 }
 
 static int assertionHandler(const char* expr, const char* file, int line, const char* function)
@@ -739,6 +749,7 @@ int replMain(int argc, char** argv)
     bool coverage = false;
     bool interactive = false;
     bool codegenPerf = false;
+    int program_args = argc;
 
     for (int i = 1; i < argc; i++)
     {
@@ -800,6 +811,11 @@ int replMain(int argc, char** argv)
         {
             setLuauFlags(argv[i] + 9);
         }
+        else if (strcmp(argv[i], "--program-args") == 0 || strcmp(argv[i], "-a") == 0)
+        {
+            program_args = i + 1;
+            break;
+        }
         else if (argv[i][0] == '-')
         {
             fprintf(stderr, "Error: Unrecognized option '%s'.\n\n", argv[i]);
@@ -807,6 +823,10 @@ int replMain(int argc, char** argv)
             return 1;
         }
     }
+
+    program_argc = argc - program_args;
+    program_argv = &argv[program_args];
+
 
 #if !defined(LUAU_ENABLE_TIME_TRACE)
     if (FFlag::DebugLuauTimeTracing)

@@ -45,6 +45,12 @@ std::optional<TypeId> findMetatableEntry(
 std::optional<TypeId> findTablePropertyRespectingMeta(
     NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId ty, const std::string& name, Location location)
 {
+    return findTablePropertyRespectingMeta(builtinTypes, errors, ty, name, ValueContext::RValue, location);
+}
+
+std::optional<TypeId> findTablePropertyRespectingMeta(
+    NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId ty, const std::string& name, ValueContext context, Location location)
+{
     if (get<AnyType>(ty))
         return ty;
 
@@ -52,7 +58,20 @@ std::optional<TypeId> findTablePropertyRespectingMeta(
     {
         const auto& it = tableType->props.find(name);
         if (it != tableType->props.end())
-            return it->second.type();
+        {
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+            {
+                switch (context)
+                {
+                case ValueContext::RValue:
+                    return it->second.readTy;
+                case ValueContext::LValue:
+                    return it->second.writeTy;
+                }
+            }
+            else
+                return it->second.type();
+        }
     }
 
     std::optional<TypeId> mtIndex = findMetatableEntry(builtinTypes, errors, ty, "__index", location);

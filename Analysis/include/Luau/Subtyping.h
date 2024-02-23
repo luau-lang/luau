@@ -21,14 +21,15 @@ struct InternalErrorReporter;
 
 class TypeIds;
 class Normalizer;
-struct NormalizedType;
 struct NormalizedClassType;
-struct NormalizedStringType;
 struct NormalizedFunctionType;
-struct TypeArena;
-struct TypeCheckLimits;
+struct NormalizedStringType;
+struct NormalizedType;
+struct Property;
 struct Scope;
 struct TableIndexer;
+struct TypeArena;
+struct TypeCheckLimits;
 
 enum class SubtypingVariance
 {
@@ -79,6 +80,7 @@ struct SubtypingResult
     SubtypingResult& withSubPath(TypePath::Path path);
     SubtypingResult& withSuperPath(TypePath::Path path);
     SubtypingResult& withErrors(ErrorVec& err);
+    SubtypingResult& withError(TypeError err);
 
     // Only negates the `isSubtype`.
     static SubtypingResult negate(const SubtypingResult& result);
@@ -102,6 +104,10 @@ struct SubtypingEnvironment
     DenseHashMap<TypePackId, TypePackId> mappedGenericPacks{nullptr};
 
     DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> ephemeralCache{{}};
+
+    /// Applies `mappedGenerics` to the given type.
+    /// This is used specifically to substitute for generics in type family instances.
+    std::optional<TypeId> applyMappedGenerics(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId ty);
 };
 
 struct Subtyping
@@ -192,6 +198,7 @@ private:
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const SingletonType* subSingleton, const TableType* superTable);
 
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TableIndexer& subIndexer, const TableIndexer& superIndexer);
+    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const Property& subProperty, const Property& superProperty, const std::string& name);
 
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const NormalizedType* subNorm, const NormalizedType* superNorm);
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const NormalizedClassType& subClass, const NormalizedClassType& superClass);

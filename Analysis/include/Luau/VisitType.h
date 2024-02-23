@@ -11,7 +11,6 @@
 LUAU_FASTINT(LuauVisitRecursionLimit)
 LUAU_FASTFLAG(LuauBoundLazyTypes2)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
 namespace Luau
 {
@@ -281,12 +280,16 @@ struct GenericTypeVisitor
                 {
                     for (auto& [_name, prop] : ttv->props)
                     {
-                        if (FFlag::DebugLuauReadWriteProperties)
+                        if (FFlag::DebugLuauDeferredConstraintResolution)
                         {
-                            if (auto ty = prop.readType())
+                            if (auto ty = prop.readTy)
                                 traverse(*ty);
 
-                            if (auto ty = prop.writeType())
+                            // In the case that the readType and the writeType
+                            // are the same pointer, just traverse once.
+                            // Traversing each property twice has pretty
+                            // significant performance consequences.
+                            if (auto ty = prop.writeTy; ty && !prop.isShared())
                                 traverse(*ty);
                         }
                         else
@@ -315,12 +318,16 @@ struct GenericTypeVisitor
             {
                 for (const auto& [name, prop] : ctv->props)
                 {
-                    if (FFlag::DebugLuauReadWriteProperties)
+                    if (FFlag::DebugLuauDeferredConstraintResolution)
                     {
-                        if (auto ty = prop.readType())
+                        if (auto ty = prop.readTy)
                             traverse(*ty);
 
-                        if (auto ty = prop.writeType())
+                        // In the case that the readType and the writeType are
+                        // the same pointer, just traverse once. Traversing each
+                        // property twice would have pretty significant
+                        // performance consequences.
+                        if (auto ty = prop.writeTy; ty && !prop.isShared())
                             traverse(*ty);
                     }
                     else

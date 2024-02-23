@@ -14,6 +14,8 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+
 namespace Luau
 {
 
@@ -1848,6 +1850,49 @@ private:
 
     bool visit(AstTypeTable* node) override
     {
+        if (FFlag::DebugLuauDeferredConstraintResolution)
+        {
+            struct Rec
+            {
+                AstTableAccess access;
+                Location location;
+            };
+            DenseHashMap<AstName, Rec> names(AstName{});
+
+            for (const AstTableProp& item : node->props)
+            {
+                Rec* rec = names.find(item.name);
+                if (!rec)
+                {
+                    names[item.name] = Rec{item.access, item.location};
+                    continue;
+                }
+
+                if (int(rec->access) & int(item.access))
+                {
+                    if (rec->access == item.access)
+                        emitWarning(*context, LintWarning::Code_TableLiteral, item.location,
+                            "Table type field '%s' is a duplicate; previously defined at line %d", item.name.value, rec->location.begin.line + 1);
+                    else if (rec->access == AstTableAccess::ReadWrite)
+                        emitWarning(*context, LintWarning::Code_TableLiteral, item.location,
+                            "Table type field '%s' is already read-write; previously defined at line %d", item.name.value,
+                            rec->location.begin.line + 1);
+                    else if (rec->access == AstTableAccess::Read)
+                        emitWarning(*context, LintWarning::Code_TableLiteral, rec->location,
+                            "Table type field '%s' already has a read type defined at line %d", item.name.value, rec->location.begin.line + 1);
+                    else if (rec->access == AstTableAccess::Write)
+                        emitWarning(*context, LintWarning::Code_TableLiteral, rec->location,
+                            "Table type field '%s' already has a write type defined at line %d", item.name.value, rec->location.begin.line + 1);
+                    else
+                        LUAU_ASSERT(!"Unreachable");
+                }
+                else
+                    rec->access = AstTableAccess(int(rec->access) | int(item.access));
+            }
+
+            return true;
+        }
+
         DenseHashMap<AstName, int> names(AstName{});
 
         for (const AstTableProp& item : node->props)

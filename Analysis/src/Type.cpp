@@ -26,7 +26,6 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 
 namespace Luau
 {
@@ -632,13 +631,10 @@ Property::Property(TypeId readTy, bool deprecated, const std::string& deprecated
     , readTy(readTy)
     , writeTy(readTy)
 {
-    LUAU_ASSERT(!FFlag::DebugLuauReadWriteProperties);
 }
 
 Property Property::readonly(TypeId ty)
 {
-    LUAU_ASSERT(FFlag::DebugLuauReadWriteProperties);
-
     Property p;
     p.readTy = ty;
     return p;
@@ -646,8 +642,6 @@ Property Property::readonly(TypeId ty)
 
 Property Property::writeonly(TypeId ty)
 {
-    LUAU_ASSERT(FFlag::DebugLuauReadWriteProperties);
-
     Property p;
     p.writeTy = ty;
     return p;
@@ -660,8 +654,6 @@ Property Property::rw(TypeId ty)
 
 Property Property::rw(TypeId read, TypeId write)
 {
-    LUAU_ASSERT(FFlag::DebugLuauReadWriteProperties);
-
     Property p;
     p.readTy = read;
     p.writeTy = write;
@@ -683,34 +675,35 @@ Property Property::create(std::optional<TypeId> read, std::optional<TypeId> writ
 
 TypeId Property::type() const
 {
-    LUAU_ASSERT(!FFlag::DebugLuauReadWriteProperties);
     LUAU_ASSERT(readTy);
     return *readTy;
 }
 
 void Property::setType(TypeId ty)
 {
-    LUAU_ASSERT(!FFlag::DebugLuauReadWriteProperties);
     readTy = ty;
-}
-
-std::optional<TypeId> Property::readType() const
-{
-    LUAU_ASSERT(FFlag::DebugLuauReadWriteProperties);
-    LUAU_ASSERT(!(bool(readTy) && bool(writeTy)));
-    return readTy;
-}
-
-std::optional<TypeId> Property::writeType() const
-{
-    LUAU_ASSERT(FFlag::DebugLuauReadWriteProperties);
-    LUAU_ASSERT(!(bool(readTy) && bool(writeTy)));
-    return writeTy;
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        writeTy = ty;
 }
 
 bool Property::isShared() const
 {
     return readTy && writeTy && readTy == writeTy;
+}
+
+bool Property::isReadOnly() const
+{
+    return readTy && !writeTy;
+}
+
+bool Property::isWriteOnly() const
+{
+    return !readTy && writeTy;
+}
+
+bool Property::isReadWrite() const
+{
+    return readTy && writeTy;
 }
 
 TableType::TableType(TableState state, TypeLevel level, Scope* scope)
@@ -961,6 +954,7 @@ BuiltinTypes::BuiltinTypes()
     , optionalStringType(arena->addType(Type{UnionType{{stringType, nilType}}, /*persistent*/ true}))
     , emptyTypePack(arena->addTypePack(TypePackVar{TypePack{{}}, /*persistent*/ true}))
     , anyTypePack(arena->addTypePack(TypePackVar{VariadicTypePack{anyType}, /*persistent*/ true}))
+    , unknownTypePack(arena->addTypePack(TypePackVar{VariadicTypePack{unknownType}, /*persistent*/ true}))
     , neverTypePack(arena->addTypePack(TypePackVar{VariadicTypePack{neverType}, /*persistent*/ true}))
     , uninhabitableTypePack(arena->addTypePack(TypePackVar{TypePack{{neverType}, neverTypePack}, /*persistent*/ true}))
     , errorTypePack(arena->addTypePack(TypePackVar{Unifiable::Error{}, /*persistent*/ true}))

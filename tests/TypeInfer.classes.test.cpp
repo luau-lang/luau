@@ -463,7 +463,7 @@ local b: B = a
     LUAU_REQUIRE_ERRORS(result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK(toString(result.errors.at(0)) == "Type 'a' could not be converted into 'B'; at [\"x\"], ChildClass is not exactly BaseClass");
+        CHECK(toString(result.errors.at(0)) == "Type 'a' could not be converted into 'B'; at [read \"x\"], ChildClass is not exactly BaseClass");
     else
     {
         const std::string expected = R"(Type 'A' could not be converted into 'B'
@@ -637,6 +637,60 @@ TEST_CASE_FIXTURE(ClassFixture, "indexable_classes")
         )");
         CHECK_EQ(toString(result.errors.at(0)), "Type 'string' could not be converted into 'number'");
     }
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_write_class_properties")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    TypeArena& arena = frontend.globals.globalTypes;
+
+    unfreeze(arena);
+
+    TypeId instanceType = arena.addType(ClassType{"Instance", {}, nullopt, nullopt, {}, {}, "Test"});
+    getMutable<ClassType>(instanceType)->props = {
+        {"Parent", Property::rw(instanceType)}
+    };
+
+    //
+
+    TypeId workspaceType = arena.addType(ClassType{"Workspace", {}, nullopt, nullopt, {}, {}, "Test"});
+
+    TypeId scriptType = arena.addType(ClassType{
+        "Script", {
+            {"Parent", Property::rw(workspaceType, instanceType)}
+        },
+        instanceType, nullopt, {}, {}, "Test"
+    });
+
+    TypeId partType = arena.addType(ClassType{
+        "Part", {
+            {"BrickColor", Property::rw(builtinTypes->stringType)},
+            {"Parent", Property::rw(workspaceType, instanceType)}
+        },
+        instanceType, nullopt, {}, {}, "Test"});
+
+    getMutable<ClassType>(workspaceType)->props = {
+        {"Script", Property::readonly(scriptType)},
+        {"Part", Property::readonly(partType)}
+    };
+
+    frontend.globals.globalScope->bindings[frontend.globals.globalNames.names->getOrAdd("script")] = Binding{scriptType};
+
+    freeze(arena);
+
+    CheckResult result = check(R"(
+        script.Parent.Part.BrickColor = 0xFFFFFF
+        script.Parent.Part.Parent = script
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(Location{{1, 40}, {1, 48}} == result.errors[0].location);
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK(builtinTypes->stringType == tm->wantedType);
+    CHECK(builtinTypes->numberType == tm->givenType);
 }
 
 TEST_SUITE_END();

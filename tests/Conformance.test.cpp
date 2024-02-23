@@ -31,6 +31,7 @@ LUAU_FASTFLAG(LuauSciNumberSkipTrailDot)
 LUAU_DYNAMIC_FASTFLAG(LuauInterruptablePatternMatch)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_DYNAMIC_FASTFLAG(LuauCodeGenFixBufferLenCheckA64)
+LUAU_DYNAMIC_FASTFLAG(LuauCodegenTrackingMultilocationFix)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -2040,6 +2041,7 @@ TEST_CASE("SafeEnv")
 TEST_CASE("Native")
 {
     ScopedFastFlag luauCodeGenFixBufferLenCheckA64{DFFlag::LuauCodeGenFixBufferLenCheckA64, true};
+    ScopedFastFlag luauCodegenTrackingMultilocationFix{DFFlag::LuauCodegenTrackingMultilocationFix, true};
 
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
