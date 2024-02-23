@@ -9,6 +9,7 @@
 #include "Luau/Common.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Set.h"
+#include "Luau/Simplify.h"
 #include "Luau/Subtyping.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFwd.h"
@@ -20,7 +21,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAG(LuauTransitiveSubtyping)
-LUAU_FASTFLAG(DebugLuauReadWriteProperties)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 namespace Luau
@@ -472,11 +472,11 @@ bool Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
     {
         for (const auto& [_, prop] : ttv->props)
         {
-            if (FFlag::DebugLuauReadWriteProperties)
+            if (FFlag::DebugLuauDeferredConstraintResolution)
             {
                 // A table enclosing a read property whose type is uninhabitable is also itself uninhabitable,
                 // but not its write property. That just means the write property doesn't exist, and so is readonly.
-                if (auto ty = prop.readType(); ty && !isInhabited(*ty, seen))
+                if (auto ty = prop.readTy; ty && !isInhabited(*ty, seen))
                     return false;
             }
             else
@@ -2349,12 +2349,61 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         {
             const auto& [_name, tprop] = *tfound;
             // TODO: variance issues here, which can't be fixed until we have read/write property types
-            prop.setType(intersectionType(hprop.type(), tprop.type()));
-            hereSubThere &= (prop.type() == hprop.type());
-            thereSubHere &= (prop.type() == tprop.type());
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+            {
+                if (hprop.readTy.has_value())
+                {
+                    if (tprop.readTy.has_value())
+                    {
+                        TypeId ty = simplifyIntersection(builtinTypes, NotNull{arena}, *hprop.readTy, *tprop.readTy).result;
+                        prop.readTy = ty;
+                        hereSubThere &= (ty == hprop.readTy);
+                        thereSubHere &= (ty == tprop.readTy);
+                    }
+                    else
+                    {
+                        prop.readTy = *hprop.readTy;
+                        thereSubHere = false;
+                    }
+                }
+                else if (tprop.readTy.has_value())
+                {
+                    prop.readTy = *tprop.readTy;
+                    hereSubThere = false;
+                }
+
+                if (hprop.writeTy.has_value())
+                {
+                    if (tprop.writeTy.has_value())
+                    {
+                        prop.writeTy = simplifyIntersection(builtinTypes, NotNull{arena}, *hprop.writeTy, *tprop.writeTy).result;
+                        hereSubThere &= (prop.writeTy == hprop.writeTy);
+                        thereSubHere &= (prop.writeTy == tprop.writeTy);
+                    }
+                    else
+                    {
+                        prop.writeTy = *hprop.writeTy;
+                        thereSubHere = false;
+                    }
+                }
+                else if (tprop.writeTy.has_value())
+                {
+                    prop.writeTy = *tprop.writeTy;
+                    hereSubThere = false;
+                }
+            }
+            else
+            {
+                prop.setType(intersectionType(hprop.type(), tprop.type()));
+                hereSubThere &= (prop.type() == hprop.type());
+                thereSubHere &= (prop.type() == tprop.type());
+            }
         }
+
         // TODO: string indexers
-        result.props[name] = prop;
+
+        if (prop.readTy || prop.writeTy)
+            result.props[name] = prop;
     }
 
     for (const auto& [name, tprop] : tttv->props)
@@ -2431,8 +2480,10 @@ void Normalizer::intersectTablesWithTable(TypeIds& heres, TypeId there)
 {
     TypeIds tmp;
     for (TypeId here : heres)
+    {
         if (std::optional<TypeId> inter = intersectionOfTables(here, there))
             tmp.insert(*inter);
+    }
     heres.retain(tmp);
     heres.insert(tmp.begin(), tmp.end());
 }
@@ -2441,9 +2492,14 @@ void Normalizer::intersectTables(TypeIds& heres, const TypeIds& theres)
 {
     TypeIds tmp;
     for (TypeId here : heres)
+    {
         for (TypeId there : theres)
+        {
             if (std::optional<TypeId> inter = intersectionOfTables(here, there))
                 tmp.insert(*inter);
+        }
+    }
+
     heres.retain(tmp);
     heres.insert(tmp.begin(), tmp.end());
 }

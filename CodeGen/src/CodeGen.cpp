@@ -57,8 +57,6 @@ LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockLimit, 32'768) // 32 K
 // Current value is based on some member variables being limited to 16 bits
 LUAU_FASTINTVARIABLE(CodegenHeuristicsBlockInstructionLimit, 65'536) // 64 K
 
-LUAU_FASTFLAGVARIABLE(DisableNativeCodegenIfBreakpointIsSet, false)
-
 namespace Luau
 {
 namespace CodeGen
@@ -302,7 +300,7 @@ void create(lua_State* L, AllocationCallback* allocationCallback, void* allocati
     ecb->close = onCloseState;
     ecb->destroy = onDestroyFunction;
     ecb->enter = onEnter;
-    ecb->disable = FFlag::DisableNativeCodegenIfBreakpointIsSet ? onDisable : nullptr;
+    ecb->disable = onDisable;
 }
 
 void create(lua_State* L)

@@ -176,6 +176,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/GlobalTypes.h
     Analysis/include/Luau/InsertionOrderedMap.h
     Analysis/include/Luau/Instantiation.h
+    Analysis/include/Luau/Instantiation2.h
     Analysis/include/Luau/IostreamHelpers.h
     Analysis/include/Luau/JsonEmitter.h
     Analysis/include/Luau/Linter.h
@@ -242,6 +243,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Frontend.cpp
     Analysis/src/GlobalTypes.cpp
     Analysis/src/Instantiation.cpp
+    Analysis/src/Instantiation2.cpp
     Analysis/src/IostreamHelpers.cpp
     Analysis/src/JsonEmitter.cpp
     Analysis/src/Linter.cpp
@@ -457,7 +459,6 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.primitives.test.cpp
         tests/TypeInfer.provisional.test.cpp
         tests/TypeInfer.refinements.test.cpp
-        tests/TypeInfer.rwprops.test.cpp
         tests/TypeInfer.singletons.test.cpp
         tests/TypeInfer.tables.test.cpp
         tests/TypeInfer.test.cpp

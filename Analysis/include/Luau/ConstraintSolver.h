@@ -8,6 +8,7 @@
 #include "Luau/Location.h"
 #include "Luau/Module.h"
 #include "Luau/Normalize.h"
+#include "Luau/Substitution.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
 #include "Luau/TypeCheckLimits.h"
@@ -19,6 +20,8 @@
 
 namespace Luau
 {
+
+enum class ValueContext;
 
 struct DcrLogger;
 
@@ -110,8 +113,6 @@ struct ConstraintSolver
 
     bool isDone();
 
-    void finalizeModule();
-
     /** Attempt to dispatch a constraint.  Returns true if it was successful. If
      * tryDispatch() returns false, the constraint remains in the unsolved set
      * and will be retried later.
@@ -136,6 +137,7 @@ struct ConstraintSolver
     bool tryDispatch(const SetOpConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const ReduceConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const ReducePackConstraint& c, NotNull<const Constraint> constraint, bool force);
+    bool tryDispatch(const EqualityConstraint& c, NotNull<const Constraint> constraint, bool force);
 
     // for a, ... in some_table do
     // also handles __iter metamethod
@@ -146,9 +148,9 @@ struct ConstraintSolver
         TypeId nextTy, TypeId tableTy, TypeId firstIndexTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
 
     std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(
-        TypeId subjectType, const std::string& propName, bool suppressSimplification = false);
+        TypeId subjectType, const std::string& propName, ValueContext context, bool suppressSimplification = false);
     std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(
-        TypeId subjectType, const std::string& propName, bool suppressSimplification, DenseHashSet<TypeId>& seen);
+        TypeId subjectType, const std::string& propName, ValueContext context, bool suppressSimplification, DenseHashSet<TypeId>& seen);
 
     void block(NotNull<const Constraint> target, NotNull<const Constraint> constraint);
     /**
@@ -208,23 +210,6 @@ struct ConstraintSolver
      */
     bool isBlocked(NotNull<const Constraint> constraint);
 
-    /**
-     * Creates a new Unifier and performs a single unification operation. Commits
-     * the result.
-     * @param subType the sub-type to unify.
-     * @param superType the super-type to unify.
-     * @returns optionally a unification too complex error if unification failed
-     */
-    std::optional<TypeError> unify(NotNull<Scope> scope, Location location, TypeId subType, TypeId superType);
-
-    /**
-     * Creates a new Unifier and performs a single unification operation. Commits
-     * the result.
-     * @param subPack the sub-type pack to unify.
-     * @param superPack the super-type pack to unify.
-     */
-    ErrorVec unify(NotNull<Scope> scope, Location location, TypePackId subPack, TypePackId superPack);
-
     /** Pushes a new solver constraint to the solver.
      * @param cv the body of the constraint.
      **/
@@ -253,20 +238,33 @@ struct ConstraintSolver
      */
     bool hasUnresolvedConstraints(TypeId ty);
 
-private:
-    /** Helper used by tryDispatch(SubtypeConstraint) and
-     * tryDispatch(PackSubtypeConstraint)
+    /**
+     * Creates a new Unifier and performs a single unification operation.
      *
-     * Attempts to unify subTy with superTy.  If doing so would require unifying
+     * @param subType the sub-type to unify.
+     * @param superType the super-type to unify.
+     * @returns true if the unification succeeded.  False if the unification was
+     * too complex.
+     */
+    template <typename TID>
+    bool unify(NotNull<Scope> scope, Location location, TID subType, TID superType);
+
+    /** Attempts to unify subTy with superTy.  If doing so would require unifying
      * BlockedTypes, fail and block the constraint on those BlockedTypes.
+     *
+     * Note: TID can only be TypeId or TypePackId.
      *
      * If unification fails, replace all free types with errorType.
      *
      * If unification succeeds, unblock every type changed by the unification.
+     *
+     * @returns true if the unification succeeded.  False if the unification was
+     * too complex.
      */
     template<typename TID>
-    bool tryUnify(NotNull<const Constraint> constraint, TID subTy, TID superTy);
+    bool unify(NotNull<const Constraint> constraint, TID subTy, TID superTy);
 
+private:
     /**
      * Bind a BlockedType to another type while taking care not to bind it to
      * itself in the case that resultTy == blockedTy.  This can happen if we
@@ -294,6 +292,13 @@ private:
      * @param progressed the type or type pack pointer that has progressed.
      **/
     void unblock_(BlockedConstraintId progressed);
+
+    /**
+     * Reproduces any constraints necessary for new types that are copied when applying a substitution.
+     * At the time of writing, this pertains only to type families.
+     * @param subst the substitution that was applied
+     **/
+    void reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst);
 
     TypeId errorRecoveryType() const;
     TypePackId errorRecoveryTypePack() const;

@@ -130,6 +130,8 @@ struct ConstraintGenerator
     void visitModuleRoot(AstStatBlock* block);
 
 private:
+    std::vector<std::vector<TypeId>> interiorTypes;
+
     /**
      * Fabricates a new free type belonging to a given scope.
      * @param scope the scope the free type belongs to.

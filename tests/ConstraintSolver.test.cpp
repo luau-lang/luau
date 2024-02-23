@@ -17,7 +17,7 @@ static TypeId requireBinding(Scope* scope, const char* name)
 
 TEST_SUITE_BEGIN("ConstraintSolver");
 
-TEST_CASE_FIXTURE(ConstraintGeneratorFixture, "hello")
+TEST_CASE_FIXTURE(ConstraintGeneratorFixture, "constraint_basics")
 {
     solve(R"(
         local a = 55
@@ -58,12 +58,7 @@ TEST_CASE_FIXTURE(ConstraintGeneratorFixture, "proper_let_generalization")
 
     TypeId idType = requireBinding(rootScope, "b");
 
-    ToStringOptions opts;
-
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK("(unknown) -> number" == toString(idType, opts));
-    else
-        CHECK("<a>(a) -> number" == toString(idType, opts));
+    CHECK("(unknown) -> number" == toString(idType));
 }
 
 TEST_SUITE_END();

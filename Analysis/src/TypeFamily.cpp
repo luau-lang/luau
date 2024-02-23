@@ -7,6 +7,7 @@
 #include "Luau/DenseHash.h"
 #include "Luau/Instantiation.h"
 #include "Luau/Normalize.h"
+#include "Luau/NotNull.h"
 #include "Luau/Simplify.h"
 #include "Luau/Substitution.h"
 #include "Luau/Subtyping.h"
@@ -853,6 +854,27 @@ static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(TypeId instance, con
     TypeId lhsTy = follow(typeParams.at(0));
     TypeId rhsTy = follow(typeParams.at(1));
 
+    // Algebra Reduction Rules for comparison family functions
+    // Note that comparing to never tells you nothing about the other operand
+    // lt< 'a , never> -> continue
+    // lt< never, 'a>  -> continue
+    // lt< 'a, t>      -> 'a is t - we'll solve the constraint, return and solve lt<t, t> -> bool
+    // lt< t, 'a>      -> same as above
+    bool canSubmitConstraint = ctx->solver && ctx->constraint;
+    if (canSubmitConstraint)
+    {
+        if (get<FreeType>(lhsTy) && get<NeverType>(rhsTy) == nullptr)
+        {
+            auto c1 = ctx->solver->pushConstraint(ctx->scope, {}, EqualityConstraint{lhsTy, rhsTy});
+            const_cast<Constraint*>(ctx->constraint)->dependencies.emplace_back(c1);
+        }
+        else if (get<FreeType>(rhsTy) && get<NeverType>(lhsTy) == nullptr)
+        {
+            auto c1 = ctx->solver->pushConstraint(ctx->scope, {}, EqualityConstraint{rhsTy, lhsTy});
+            const_cast<Constraint*>(ctx->constraint)->dependencies.emplace_back(c1);
+        }
+    }
+
     // check to see if both operand types are resolved enough, and wait to reduce if not
     if (isPending(lhsTy, ctx->solver))
         return {std::nullopt, false, {lhsTy}, {}};
@@ -1248,8 +1270,8 @@ TypeFamilyReductionResult<TypeId> keyofFamilyImpl(
     if (!normTy)
         return {std::nullopt, false, {}, {}};
 
-    // if we don't have either just tables or just classes, we've got nothing to get keys of (at least until a future version perhaps adds classes as
-    // well)
+    // if we don't have either just tables or just classes, we've got nothing to get keys of (at least until a future version perhaps adds classes
+    // as well)
     if (normTy->hasTables() == normTy->hasClasses())
         return {std::nullopt, true, {}, {}};
 

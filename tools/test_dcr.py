@@ -108,12 +108,6 @@ def main():
         help="Write a new faillist.txt after running tests.",
     )
     parser.add_argument(
-        "--rwp",
-        dest="rwp",
-        action="store_true",
-        help="Run the tests with read-write properties enabled.",
-    )
-    parser.add_argument(
         "--ts",
         dest="suite",
         action="store",
@@ -135,8 +129,6 @@ def main():
     failList = loadFailList()
 
     flags = ["true", "DebugLuauDeferredConstraintResolution"]
-    if args.rwp:
-        flags.append("DebugLuauReadWriteProperties")
 
     commandLine = [args.path, "--reporters=xml", "--fflags=" + ",".join(flags)]
 

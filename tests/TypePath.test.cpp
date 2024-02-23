@@ -15,7 +15,18 @@
 using namespace Luau;
 using namespace Luau::TypePath;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_DYNAMIC_FASTINT(LuauTypePathMaximumTraverseSteps);
+
+struct TypePathFixture : Fixture
+{
+    ScopedFastFlag sff1{FFlag::DebugLuauDeferredConstraintResolution, true};
+};
+
+struct TypePathBuiltinsFixture : BuiltinsFixture
+{
+    ScopedFastFlag sff1{FFlag::DebugLuauDeferredConstraintResolution, true};
+};
 
 TEST_SUITE_BEGIN("TypePathManipulation");
 
@@ -95,12 +106,12 @@ TEST_SUITE_BEGIN("TypePathTraversal");
         LUAU_REQUIRE_NO_ERRORS(result); \
     } while (false);
 
-TEST_CASE_FIXTURE(Fixture, "empty_traversal")
+TEST_CASE_FIXTURE(TypePathFixture, "empty_traversal")
 {
     CHECK(traverseForType(builtinTypes->numberType, kEmpty, builtinTypes) == builtinTypes->numberType);
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_property")
+TEST_CASE_FIXTURE(TypePathFixture, "table_property")
 {
     TYPESOLVE_CODE(R"(
         local x = { y = 123 }
@@ -114,7 +125,7 @@ TEST_CASE_FIXTURE(ClassFixture, "class_property")
     CHECK(traverseForType(vector2InstanceType, Path(TypePath::Property{"X", true}), builtinTypes) == builtinTypes->numberType);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_property")
+TEST_CASE_FIXTURE(TypePathBuiltinsFixture, "metatable_property")
 {
     SUBCASE("meta_does_not_contribute")
     {
@@ -138,10 +149,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_property")
         )");
     }
 
-    CHECK(traverseForType(requireType("x"), Path(TypePath::Property("x")), builtinTypes) == builtinTypes->numberType);
+    CHECK(traverseForType(requireType("x"), Path(TypePath::Property::read("x")), builtinTypes) == builtinTypes->numberType);
 }
 
-TEST_CASE_FIXTURE(Fixture, "index")
+TEST_CASE_FIXTURE(TypePathFixture, "index")
 {
     SUBCASE("unions")
     {
@@ -242,7 +253,7 @@ TEST_CASE_FIXTURE(ClassFixture, "metatables")
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "bounds")
+TEST_CASE_FIXTURE(TypePathFixture, "bounds")
 {
     SUBCASE("free_type")
     {
@@ -274,7 +285,7 @@ TEST_CASE_FIXTURE(Fixture, "bounds")
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "indexers")
+TEST_CASE_FIXTURE(TypePathFixture, "indexers")
 {
     SUBCASE("table")
     {
@@ -308,7 +319,7 @@ TEST_CASE_FIXTURE(Fixture, "indexers")
     // TODO: Class types
 }
 
-TEST_CASE_FIXTURE(Fixture, "negated")
+TEST_CASE_FIXTURE(TypePathFixture, "negated")
 {
     SUBCASE("valid")
     {
@@ -327,7 +338,7 @@ TEST_CASE_FIXTURE(Fixture, "negated")
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "variadic")
+TEST_CASE_FIXTURE(TypePathFixture, "variadic")
 {
     SUBCASE("valid")
     {
@@ -346,7 +357,7 @@ TEST_CASE_FIXTURE(Fixture, "variadic")
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "arguments")
+TEST_CASE_FIXTURE(TypePathFixture, "arguments")
 {
     SUBCASE("function")
     {
@@ -368,7 +379,7 @@ TEST_CASE_FIXTURE(Fixture, "arguments")
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "returns")
+TEST_CASE_FIXTURE(TypePathFixture, "returns")
 {
     SUBCASE("function")
     {
@@ -391,7 +402,7 @@ TEST_CASE_FIXTURE(Fixture, "returns")
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "tail")
+TEST_CASE_FIXTURE(TypePathFixture, "tail")
 {
     SUBCASE("has_tail")
     {
@@ -422,7 +433,7 @@ TEST_CASE_FIXTURE(Fixture, "tail")
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "cycles" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(TypePathFixture, "cycles" * doctest::timeout(0.5))
 {
     // This will fail an occurs check, but it's a quick example of a cyclic type
     // where there _is_ no traversal.
@@ -451,7 +462,7 @@ TEST_CASE_FIXTURE(Fixture, "cycles" * doctest::timeout(0.5))
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "step_limit")
+TEST_CASE_FIXTURE(TypePathFixture, "step_limit")
 {
     ScopedFastInt sfi(DFInt::LuauTypePathMaximumTraverseSteps, 2);
 
@@ -466,12 +477,12 @@ TEST_CASE_FIXTURE(Fixture, "step_limit")
     )");
 
     TypeId root = requireTypeAlias("T");
-    Path path = PathBuilder().prop("x").prop("y").prop("z").build();
+    Path path = PathBuilder().readProp("x").readProp("y").readProp("z").build();
     auto result = traverseForType(root, path, builtinTypes);
     CHECK(!result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "complex_chains")
+TEST_CASE_FIXTURE(TypePathBuiltinsFixture, "complex_chains")
 {
     SUBCASE("add_metamethod_return_type")
     {
@@ -484,7 +495,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "complex_chains")
         )");
 
         TypeId root = requireTypeAlias("Tab");
-        Path path = PathBuilder().mt().prop("__add").rets().index(0).build();
+        Path path = PathBuilder().mt().readProp("__add").rets().index(0).build();
         auto result = traverseForType(root, path, builtinTypes);
         CHECK(result == builtinTypes->numberType);
     }
@@ -498,7 +509,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "complex_chains")
         )");
 
         TypeId root = requireTypeAlias("Obj");
-        Path path = PathBuilder().prop("method").index(0).args().index(1).build();
+        Path path = PathBuilder().readProp("method").index(0).args().index(1).build();
         auto result = traverseForType(root, path, builtinTypes);
         CHECK(*result == builtinTypes->falseType);
     }
@@ -510,6 +521,10 @@ TEST_SUITE_BEGIN("TypePathToString");
 
 TEST_CASE("field")
 {
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauDeferredConstraintResolution, false},
+    };
+
     CHECK(toString(PathBuilder().prop("foo").build()) == R"(["foo"])");
 }
 
@@ -535,8 +550,24 @@ TEST_CASE("empty_path")
 
 TEST_CASE("prop")
 {
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauDeferredConstraintResolution, false},
+    };
+
     Path p = PathBuilder().prop("foo").build();
     CHECK(p == Path(TypePath::Property{"foo"}));
+}
+
+TEST_CASE_FIXTURE(TypePathFixture, "readProp")
+{
+    Path p = PathBuilder().readProp("foo").build();
+    CHECK(p == Path(TypePath::Property::read("foo")));
+}
+
+TEST_CASE_FIXTURE(TypePathFixture, "writeProp")
+{
+    Path p = PathBuilder().writeProp("foo").build();
+    CHECK(p == Path(TypePath::Property::write("foo")));
 }
 
 TEST_CASE("index")
@@ -561,8 +592,10 @@ TEST_CASE("fields")
 
 TEST_CASE("chained")
 {
-    CHECK(PathBuilder().index(0).prop("foo").mt().prop("bar").args().index(1).build() ==
-          Path({Index{0}, TypePath::Property{"foo"}, TypeField::Metatable, TypePath::Property{"bar"}, PackField::Arguments, Index{1}}));
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    CHECK(PathBuilder().index(0).readProp("foo").mt().readProp("bar").args().index(1).build() ==
+          Path({Index{0}, TypePath::Property::read("foo"), TypeField::Metatable, TypePath::Property::read("bar"), PackField::Arguments, Index{1}}));
 }
 
 TEST_SUITE_END(); // TypePathBuilder

@@ -1460,7 +1460,7 @@ struct TypeChecker2
     {
         visit(expr, ValueContext::RValue);
         TypeId leftType = stripFromNilAndReport(lookupType(expr), location);
-        checkIndexTypeFromType(leftType, propName, location, context, astIndexExprTy);
+        checkIndexTypeFromType(leftType, propName, context, location, astIndexExprTy);
     }
 
     void visit(AstExprIndexName* indexName, ValueContext context)
@@ -1709,8 +1709,8 @@ struct TypeChecker2
 
     TypeId visit(AstExprBinary* expr, AstNode* overrideKey = nullptr)
     {
-        visit(expr->left, ValueContext::LValue);
-        visit(expr->right, ValueContext::LValue);
+        visit(expr->left, ValueContext::RValue);
+        visit(expr->right, ValueContext::RValue);
 
         NotNull<Scope> scope = stack.back();
 
@@ -2534,20 +2534,16 @@ struct TypeChecker2
             reportError(std::move(e));
     }
 
-    // If the provided type does not have the named property, report an error.
-    void checkIndexTypeFromType(TypeId tableTy, const std::string& prop, const Location& location, ValueContext context, TypeId astIndexExprType)
+    /* A helper for checkIndexTypeFromType.
+     *
+     * Returns a pair:
+     * * A boolean indicating that at least one of the constituent types
+     *     contains the prop, and
+     * * A vector of types that do not contain the prop.
+     */
+    std::pair<bool, std::vector<TypeId>> lookupProp(const NormalizedType* norm, const std::string& prop, ValueContext context,
+        const Location& location, TypeId astIndexExprType, std::vector<TypeError>& errors)
     {
-        const NormalizedType* norm = normalizer.normalize(tableTy);
-        if (!norm)
-        {
-            reportError(NormalizationTooComplex{}, location);
-            return;
-        }
-
-        // if the type is error suppressing, we don't actually have any work left to do.
-        if (norm->shouldSuppressErrors())
-            return;
-
         bool foundOneProp = false;
         std::vector<TypeId> typesMissingTheProp;
 
@@ -2556,7 +2552,7 @@ struct TypeChecker2
                 return;
 
             DenseHashSet<TypeId> seen{nullptr};
-            bool found = hasIndexTypeFromType(ty, prop, location, seen, astIndexExprType);
+            bool found = hasIndexTypeFromType(ty, prop, context, location, seen, astIndexExprType, errors);
             foundOneProp |= found;
             if (!found)
                 typesMissingTheProp.push_back(ty);
@@ -2601,6 +2597,26 @@ struct TypeChecker2
                 fetch(tyvar);
         }
 
+        return {foundOneProp, typesMissingTheProp};
+    }
+
+    // If the provided type does not have the named property, report an error.
+    void checkIndexTypeFromType(TypeId tableTy, const std::string& prop, ValueContext context, const Location& location, TypeId astIndexExprType)
+    {
+        const NormalizedType* norm = normalizer.normalize(tableTy);
+        if (!norm)
+        {
+            reportError(NormalizationTooComplex{}, location);
+            return;
+        }
+
+        // if the type is error suppressing, we don't actually have any work left to do.
+        if (norm->shouldSuppressErrors())
+            return;
+
+        std::vector<TypeError> dummy;
+        const auto [foundOneProp, typesMissingTheProp] = lookupProp(norm, prop, context, location, astIndexExprType, module->errors);
+
         if (!typesMissingTheProp.empty())
         {
             if (foundOneProp)
@@ -2611,17 +2627,29 @@ struct TypeChecker2
             // the `else` branch.
             else if (context == ValueContext::LValue && !get<ClassType>(tableTy))
             {
-                if (get<PrimitiveType>(tableTy) || get<FunctionType>(tableTy))
+                const auto [lvFoundOneProp, lvTypesMissingTheProp] = lookupProp(norm, prop, ValueContext::RValue, location, astIndexExprType, dummy);
+                if (lvFoundOneProp && lvTypesMissingTheProp.empty())
+                    reportError(PropertyAccessViolation{tableTy, prop, PropertyAccessViolation::CannotWrite}, location);
+                else if (get<PrimitiveType>(tableTy) || get<FunctionType>(tableTy))
                     reportError(NotATable{tableTy}, location);
                 else
                     reportError(CannotExtendTable{tableTy, CannotExtendTable::Property, prop}, location);
+            }
+            else if (context == ValueContext::RValue && !get<ClassType>(tableTy))
+            {
+                const auto [rvFoundOneProp, rvTypesMissingTheProp] = lookupProp(norm, prop, ValueContext::LValue, location, astIndexExprType, dummy);
+                if (rvFoundOneProp && rvTypesMissingTheProp.empty())
+                    reportError(PropertyAccessViolation{tableTy, prop, PropertyAccessViolation::CannotRead}, location);
+                else
+                    reportError(UnknownProperty{tableTy, prop}, location);
             }
             else
                 reportError(UnknownProperty{tableTy, prop}, location);
         }
     }
 
-    bool hasIndexTypeFromType(TypeId ty, const std::string& prop, const Location& location, DenseHashSet<TypeId>& seen, TypeId astIndexExprType)
+    bool hasIndexTypeFromType(TypeId ty, const std::string& prop, ValueContext context, const Location& location, DenseHashSet<TypeId>& seen,
+        TypeId astIndexExprType, std::vector<TypeError>& errors)
     {
         // If we have already encountered this type, we must assume that some
         // other codepath will do the right thing and signal false if the
@@ -2635,14 +2663,14 @@ struct TypeChecker2
 
         if (isString(ty))
         {
-            std::optional<TypeId> mtIndex = Luau::findMetatableEntry(builtinTypes, module->errors, builtinTypes->stringType, "__index", location);
+            std::optional<TypeId> mtIndex = Luau::findMetatableEntry(builtinTypes, errors, builtinTypes->stringType, "__index", location);
             LUAU_ASSERT(mtIndex);
             ty = *mtIndex;
         }
 
         if (auto tt = getTableType(ty))
         {
-            if (findTablePropertyRespectingMeta(builtinTypes, module->errors, ty, prop, location))
+            if (findTablePropertyRespectingMeta(builtinTypes, errors, ty, prop, context, location))
                 return true;
 
             if (tt->indexer)
@@ -2674,11 +2702,11 @@ struct TypeChecker2
         }
         else if (const UnionType* utv = get<UnionType>(ty))
             return std::all_of(begin(utv), end(utv), [&](TypeId part) {
-                return hasIndexTypeFromType(part, prop, location, seen, astIndexExprType);
+                return hasIndexTypeFromType(part, prop, context, location, seen, astIndexExprType, errors);
             });
         else if (const IntersectionType* itv = get<IntersectionType>(ty))
             return std::any_of(begin(itv), end(itv), [&](TypeId part) {
-                return hasIndexTypeFromType(part, prop, location, seen, astIndexExprType);
+                return hasIndexTypeFromType(part, prop, context, location, seen, astIndexExprType, errors);
             });
         else
             return false;
