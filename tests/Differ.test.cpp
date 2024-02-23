@@ -204,6 +204,8 @@ TEST_CASE_FIXTURE(DifferFixture, "right_cyclic_table_left_table_property_wrong")
 
 TEST_CASE_FIXTURE(DifferFixture, "equal_table_two_cyclic_tables_are_not_different")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
     CheckResult result = check(R"(
     local function id<a>(x: a): a
       return x

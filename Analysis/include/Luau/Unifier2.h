@@ -38,6 +38,11 @@ struct Unifier2
 
     DenseHashMap<TypeId, std::vector<TypeId>> expandedFreeTypes{nullptr};
 
+    // Mapping from generic types to free types to be used in instantiation.
+    DenseHashMap<TypeId, TypeId> genericSubstitutions{nullptr};
+    // Mapping from generic type packs to `TypePack`s of free types to be used in instantiation.
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions{nullptr};
+
     int recursionCount = 0;
     int recursionLimit = 0;
 

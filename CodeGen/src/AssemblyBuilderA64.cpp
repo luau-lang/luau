@@ -63,13 +63,22 @@ AssemblyBuilderA64::~AssemblyBuilderA64()
 
 void AssemblyBuilderA64::mov(RegisterA64 dst, RegisterA64 src)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x || dst == sp);
-    CODEGEN_ASSERT(dst.kind == src.kind || (dst.kind == KindA64::x && src == sp) || (dst == sp && src.kind == KindA64::x));
+    if (dst.kind != KindA64::q)
+    {
+        CODEGEN_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x || dst == sp);
+        CODEGEN_ASSERT(dst.kind == src.kind || (dst.kind == KindA64::x && src == sp) || (dst == sp && src.kind == KindA64::x));
 
         if (dst == sp || src == sp)
             placeR1("mov", dst, src, 0b00'100010'0'000000000000);
         else
             placeSR2("mov", dst, src, 0b01'01010);
+    }
+    else
+    {
+        CODEGEN_ASSERT(dst.kind == src.kind);
+
+        placeR1("mov", dst, src, 0b10'01110'10'1'00000'00011'1 | (src.index << 6));
+    }
 }
 
 void AssemblyBuilderA64::mov(RegisterA64 dst, int src)
@@ -577,7 +586,7 @@ void AssemblyBuilderA64::fadd(RegisterA64 dst, RegisterA64 src1, RegisterA64 src
     }
     else if (dst.kind == KindA64::s)
     {
-        CODEGEN_ASSERT(dst.kind == KindA64::s && src1.kind == KindA64::s && src2.kind == KindA64::s);
+        CODEGEN_ASSERT(src1.kind == KindA64::s && src2.kind == KindA64::s);
 
         placeR3("fadd", dst, src1, src2, 0b11110'00'1, 0b0010'10);
     }
@@ -599,7 +608,7 @@ void AssemblyBuilderA64::fdiv(RegisterA64 dst, RegisterA64 src1, RegisterA64 src
     }
     else if (dst.kind == KindA64::s)
     {
-        CODEGEN_ASSERT(dst.kind == KindA64::s && src1.kind == KindA64::s && src2.kind == KindA64::s);
+        CODEGEN_ASSERT(src1.kind == KindA64::s && src2.kind == KindA64::s);
 
         placeR3("fdiv", dst, src1, src2, 0b11110'00'1, 0b0001'10);
     }
@@ -621,7 +630,7 @@ void AssemblyBuilderA64::fmul(RegisterA64 dst, RegisterA64 src1, RegisterA64 src
     }
     else if (dst.kind == KindA64::s)
     {
-        CODEGEN_ASSERT(dst.kind == KindA64::s && src1.kind == KindA64::s && src2.kind == KindA64::s);
+        CODEGEN_ASSERT(src1.kind == KindA64::s && src2.kind == KindA64::s);
 
         placeR3("fmul", dst, src1, src2, 0b11110'00'1, 0b0000'10);
     }
@@ -643,7 +652,7 @@ void AssemblyBuilderA64::fneg(RegisterA64 dst, RegisterA64 src)
     }
     else if (dst.kind == KindA64::s)
     {
-        CODEGEN_ASSERT(dst.kind == KindA64::s && src.kind == KindA64::s);
+        CODEGEN_ASSERT(src.kind == KindA64::s);
 
         placeR1("fneg", dst, src, 0b000'11110'00'1'0000'10'10000);
     }
@@ -672,7 +681,7 @@ void AssemblyBuilderA64::fsub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src
     }
     else if (dst.kind == KindA64::s)
     {
-        CODEGEN_ASSERT(dst.kind == KindA64::s && src1.kind == KindA64::s && src2.kind == KindA64::s);
+        CODEGEN_ASSERT(src1.kind == KindA64::s && src2.kind == KindA64::s);
 
         placeR3("fsub", dst, src1, src2, 0b11110'00'1, 0b0011'10);
     }
@@ -979,18 +988,6 @@ void AssemblyBuilderA64::placeR3(const char* name, RegisterA64 dst, RegisterA64 
     uint32_t sf = (dst.kind == KindA64::x) ? 0x80000000 : 0;
 
     place(dst.index | (src1.index << 5) | (op2 << 10) | (src2.index << 16) | (op << 21) | sf);
-    commit();
-}
-
-void AssemblyBuilderA64::placeR3(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t sizes, uint8_t op, uint8_t op2)
-{
-    if (logText)
-        log(name, dst, src1, src2);
-
-    CODEGEN_ASSERT(dst.kind == KindA64::w || dst.kind == KindA64::x || dst.kind == KindA64::d || dst.kind == KindA64::q);
-    CODEGEN_ASSERT(dst.kind == src1.kind && dst.kind == src2.kind);
-
-    place(dst.index | (src1.index << 5) | (op2 << 10) | (src2.index << 16) | (op << 21) | (sizes << 29));
     commit();
 }
 

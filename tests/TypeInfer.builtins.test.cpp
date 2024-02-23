@@ -386,10 +386,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_on_union_of_tables")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK("{ @metatable {|  |}, A } | { @metatable {|  |}, B }" == toString(requireTypeAlias("X")));
-    else
-        CHECK("{ @metatable {  }, A } | { @metatable {  }, B }" == toString(requireTypeAlias("X")));
+    CHECK("{ @metatable {  }, A } | { @metatable {  }, B }" == toString(requireTypeAlias("X")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_2_args_overload")
@@ -1010,6 +1007,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types2")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("((boolean | number)?) -> number | true", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types3")
+{
+    CheckResult result = check(R"(
+        local function f(x: (number | boolean)?)
+            assert(x)
+            return x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("((boolean | number)?) -> number | true", toString(requireType("f")));
+    else // without the annotation, the old solver doesn't infer the best return type here
+        CHECK_EQ("((boolean | number)?) -> boolean | number", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types_even_from_type_pack_tail_but_only_for_the_first_type")

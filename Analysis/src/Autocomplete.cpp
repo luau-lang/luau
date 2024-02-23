@@ -14,7 +14,6 @@
 #include <utility>
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(DebugLuauReadWriteProperties);
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteStringLiteralBounds, false);
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteTableKeysNoInitialCharacter, false);
 
@@ -277,9 +276,9 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, NotNul
             {
                 Luau::TypeId type;
 
-                if (FFlag::DebugLuauReadWriteProperties)
+                if (FFlag::DebugLuauDeferredConstraintResolution)
                 {
-                    if (auto ty = prop.readType())
+                    if (auto ty = prop.readTy)
                         type = follow(*ty);
                     else
                         continue;

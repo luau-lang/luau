@@ -30,8 +30,10 @@ struct TypeFamilyContext
 
     // nullptr if the type family is being reduced outside of the constraint solver.
     ConstraintSolver* solver;
+    // The constraint being reduced in this run of the reduction
+    const Constraint* constraint;
 
-    TypeFamilyContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope)
+    TypeFamilyContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint)
         : arena(cs->arena)
         , builtins(cs->builtinTypes)
         , scope(scope)
@@ -39,6 +41,7 @@ struct TypeFamilyContext
         , ice(NotNull{&cs->iceReporter})
         , limits(NotNull{&cs->limits})
         , solver(cs.get())
+        , constraint(constraint.get())
     {
     }
 
@@ -51,10 +54,10 @@ struct TypeFamilyContext
         , ice(ice)
         , limits(limits)
         , solver(nullptr)
+        , constraint(nullptr)
     {
     }
 };
-
 /// Represents a reduction result, which may have successfully reduced the type,
 /// may have concretely failed to reduce the type, or may simply be stuck
 /// without more information.

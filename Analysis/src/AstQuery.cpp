@@ -11,7 +11,7 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(DebugLuauReadWriteProperties)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
 namespace Luau
 {
@@ -524,9 +524,9 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                 {
                     if (auto propIt = ttv->props.find(indexName->index.value); propIt != ttv->props.end())
                     {
-                        if (FFlag::DebugLuauReadWriteProperties)
+                        if (FFlag::DebugLuauDeferredConstraintResolution)
                         {
-                            if (auto ty = propIt->second.readType())
+                            if (auto ty = propIt->second.readTy)
                                 return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
                         }
                         else
@@ -537,9 +537,9 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                 {
                     if (auto propIt = ctv->props.find(indexName->index.value); propIt != ctv->props.end())
                     {
-                        if (FFlag::DebugLuauReadWriteProperties)
+                        if (FFlag::DebugLuauDeferredConstraintResolution)
                         {
-                            if (auto ty = propIt->second.readType())
+                            if (auto ty = propIt->second.readTy)
                                 return checkOverloadedDocumentationSymbol(module, *ty, parentExpr, propIt->second.documentationSymbol);
                         }
                         else

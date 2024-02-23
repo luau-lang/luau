@@ -385,7 +385,7 @@ def luau_typepath_property_summary(valobj, internal_dict, options):
     read_write = False
     try:
         fflag_valobj = valobj.GetFrame().GetValueForVariablePath(
-            "FFlag::DebugLuauReadWriteProperties::value")
+            "FFlag::DebugLuauDeferredConstraintResolution::value")
 
         read_write = fflag_valobj.GetValue() == "true"
     except Exception as e:

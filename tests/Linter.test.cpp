@@ -7,6 +7,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 using namespace Luau;
 
 TEST_SUITE_BEGIN("Linter");
@@ -1244,6 +1246,30 @@ _ = {
     CHECK_EQ(result.warnings[3].text, "Table index 3 is a duplicate; previously defined as a list entry");
     CHECK_EQ(result.warnings[4].text, "Table type field 'first' is a duplicate; previously defined at line 24");
     CHECK_EQ(result.warnings[5].text, "Table index 1 is a duplicate; previously defined at line 36");
+}
+
+TEST_CASE_FIXTURE(Fixture, "read_write_table_props")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    LintResult result = lint(R"(-- line 1
+        type A = {x: number}
+        type B = {read x: number, write x: number}
+        type C = {x: number, read x: number} -- line 4
+        type D = {x: number, write x: number}
+        type E = {read x: number, x: boolean}
+        type F = {read x: number, read x: number}
+        type G = {write x: number, x: boolean}
+        type H = {write x: number, write x: boolean}
+    )");
+
+    REQUIRE(6 == result.warnings.size());
+    CHECK(result.warnings[0].text == "Table type field 'x' is already read-write; previously defined at line 4");
+    CHECK(result.warnings[1].text == "Table type field 'x' is already read-write; previously defined at line 5");
+    CHECK(result.warnings[2].text == "Table type field 'x' already has a read type defined at line 6");
+    CHECK(result.warnings[3].text == "Table type field 'x' is a duplicate; previously defined at line 7");
+    CHECK(result.warnings[4].text == "Table type field 'x' already has a write type defined at line 8");
+    CHECK(result.warnings[5].text == "Table type field 'x' is a duplicate; previously defined at line 9");
 }
 
 TEST_CASE_FIXTURE(Fixture, "ImportOnlyUsedInTypeAnnotation")

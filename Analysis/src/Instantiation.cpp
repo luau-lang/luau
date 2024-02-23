@@ -2,6 +2,7 @@
 #include "Luau/Instantiation.h"
 
 #include "Luau/Common.h"
+#include "Luau/Instantiation2.h" // including for `Replacer` which was stolen since it will be kept in the new solver
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
 #include "Luau/TypeArena.h"
@@ -142,39 +143,6 @@ TypePackId ReplaceGenerics::clean(TypePackId tp)
     LUAU_ASSERT(isDirty(tp));
     return addTypePack(TypePackVar(FreeTypePack{scope, level}));
 }
-
-struct Replacer : Substitution
-{
-    DenseHashMap<TypeId, TypeId> replacements;
-    DenseHashMap<TypePackId, TypePackId> replacementPacks;
-
-    Replacer(NotNull<TypeArena> arena, DenseHashMap<TypeId, TypeId> replacements, DenseHashMap<TypePackId, TypePackId> replacementPacks)
-        : Substitution(TxnLog::empty(), arena)
-        , replacements(std::move(replacements))
-        , replacementPacks(std::move(replacementPacks))
-    {
-    }
-
-    bool isDirty(TypeId ty) override
-    {
-        return replacements.find(ty) != nullptr;
-    }
-
-    bool isDirty(TypePackId tp) override
-    {
-        return replacementPacks.find(tp) != nullptr;
-    }
-
-    TypeId clean(TypeId ty) override
-    {
-        return replacements[ty];
-    }
-
-    TypePackId clean(TypePackId tp) override
-    {
-        return replacementPacks[tp];
-    }
-};
 
 std::optional<TypeId> instantiate(
     NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, NotNull<TypeCheckLimits> limits, NotNull<Scope> scope, TypeId ty)

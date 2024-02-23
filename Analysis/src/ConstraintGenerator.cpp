@@ -217,9 +217,25 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
 
     rootScope->returnType = freshTypePack(scope);
 
+    TypeId moduleFnTy = arena->addType(FunctionType{TypeLevel{}, rootScope, builtinTypes->anyTypePack, rootScope->returnType});
+    interiorTypes.emplace_back();
+
     prepopulateGlobalScope(scope, block);
 
-    visitBlockWithoutChildScope(scope, block);
+    Checkpoint start = checkpoint(this);
+
+    ControlFlow cf = visitBlockWithoutChildScope(scope, block);
+    if (cf == ControlFlow::None)
+        addConstraint(scope, block->location, PackSubtypeConstraint{builtinTypes->emptyTypePack, rootScope->returnType});
+
+    Checkpoint end = checkpoint(this);
+
+    NotNull<Constraint> genConstraint = addConstraint(scope, block->location, GeneralizationConstraint{arena->addType(BlockedType{}), moduleFnTy, std::move(interiorTypes.back())});
+    forEachConstraint(start, end, this, [genConstraint](const ConstraintPtr& c) {
+        genConstraint->dependencies.push_back(NotNull{c.get()});
+    });
+
+    interiorTypes.pop_back();
 
     fillInInferredBindings(scope, block);
 
@@ -406,7 +422,7 @@ void ConstraintGenerator::computeRefinement(const ScopePtr& scope, Location loca
 
             TypeId nextDiscriminantTy = arena->addType(TableType{});
             NotNull<TableType> table{getMutable<TableType>(nextDiscriminantTy)};
-            table->props[*key->propName] = {discriminantTy};
+            table->props[*key->propName] = Property::readonly(discriminantTy);
             table->scope = scope.get();
             table->state = TableState::Sealed;
 
@@ -1894,7 +1910,7 @@ Inference ConstraintGenerator::checkIndexName(const ScopePtr& scope, const Refin
         scope->rvalueRefinements[key->def] = result;
     }
 
-    addConstraint(scope, indexee->location, HasPropConstraint{result, obj, std::move(index)});
+    addConstraint(scope, indexee->location, HasPropConstraint{result, obj, std::move(index), ValueContext::RValue});
 
     if (key)
         return Inference{result, refinementArena.proposition(key, builtinTypes->truthyType)};
@@ -1945,27 +1961,30 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprFunction* fun
 {
     Checkpoint startCheckpoint = checkpoint(this);
     FunctionSignature sig = checkFunctionSignature(scope, func, expectedType);
+
+    interiorTypes.push_back(std::vector<TypeId>{});
     checkFunctionBody(sig.bodyScope, func);
     Checkpoint endCheckpoint = checkpoint(this);
 
+    TypeId generalizedTy = arena->addType(BlockedType{});
+    NotNull<Constraint> gc = addConstraint(sig.signatureScope, func->location, GeneralizationConstraint{generalizedTy, sig.signature, std::move(interiorTypes.back())});
+    interiorTypes.pop_back();
+
+    Constraint* previous = nullptr;
+    forEachConstraint(startCheckpoint, endCheckpoint, this, [gc, &previous](const ConstraintPtr& constraint) {
+        gc->dependencies.emplace_back(constraint.get());
+
+        if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
+        {
+            if (previous)
+                constraint->dependencies.push_back(NotNull{previous});
+
+            previous = constraint.get();
+        }
+    });
+
     if (generalize && hasFreeType(sig.signature))
     {
-        TypeId generalizedTy = arena->addType(BlockedType{});
-        NotNull<Constraint> gc = addConstraint(sig.signatureScope, func->location, GeneralizationConstraint{generalizedTy, sig.signature});
-
-        Constraint* previous = nullptr;
-        forEachConstraint(startCheckpoint, endCheckpoint, this, [gc, &previous](const ConstraintPtr& constraint) {
-            gc->dependencies.emplace_back(constraint.get());
-
-            if (auto psc = get<PackSubtypeConstraint>(*constraint); psc && psc->returns)
-            {
-                if (previous)
-                    constraint->dependencies.push_back(NotNull{previous});
-
-                previous = constraint.get();
-            }
-        });
-
         return Inference{generalizedTy};
     }
     else
@@ -2529,7 +2548,8 @@ TypeId ConstraintGenerator::updateProperty(const ScopePtr& scope, AstExpr* expr,
     {
         TypeId segmentTy = arena->addType(BlockedType{});
         module->astTypes[exprs[i]] = segmentTy;
-        addConstraint(scope, expr->location, HasPropConstraint{segmentTy, prevSegmentTy, segments[i]});
+        ValueContext ctx = i == segments.size() - 1 ? ValueContext::LValue : ValueContext::RValue;
+        addConstraint(scope, expr->location, HasPropConstraint{segmentTy, prevSegmentTy, segments[i], ctx});
         prevSegmentTy = segmentTy;
     }
 
@@ -2562,6 +2582,8 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
 
     ttv->state = TableState::Unsealed;
     ttv->scope = scope.get();
+
+    interiorTypes.back().push_back(ty);
 
     auto createIndexer = [this, scope, ttv](const Location& location, TypeId currentIndexType, TypeId currentResultType) {
         if (!ttv->indexer)
@@ -2613,7 +2635,8 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
                 {
                     expectedValueType = arena->addType(BlockedType{});
                     addConstraint(scope, item.value->location,
-                        HasPropConstraint{*expectedValueType, *expectedType, stringKey->value.data, /*suppressSimplification*/ true});
+                        HasPropConstraint{
+                            *expectedValueType, *expectedType, stringKey->value.data, ValueContext::RValue, /*suppressSimplification*/ true});
                 }
             }
         }
@@ -2876,15 +2899,10 @@ ConstraintGenerator::FunctionSignature ConstraintGenerator::checkFunctionSignatu
 
 void ConstraintGenerator::checkFunctionBody(const ScopePtr& scope, AstExprFunction* fn)
 {
-    visitBlockWithoutChildScope(scope, fn->body);
-
     // If it is possible for execution to reach the end of the function, the return type must be compatible with ()
-
-    if (nullptr != getFallthrough(fn->body))
-    {
-        TypePackId empty = arena->addTypePack({}); // TODO we could have CG retain one of these forever
-        addConstraint(scope, fn->location, PackSubtypeConstraint{scope->returnType, empty});
-    }
+    ControlFlow cf = visitBlockWithoutChildScope(scope, fn->body);
+    if (cf == ControlFlow::None)
+        addConstraint(scope, fn->location, PackSubtypeConstraint{builtinTypes->emptyTypePack, scope->returnType});
 }
 
 TypeId ConstraintGenerator::resolveType(const ScopePtr& scope, AstType* ty, bool inTypeArguments, bool replaceErrorWithFresh)
@@ -2977,20 +2995,30 @@ TypeId ConstraintGenerator::resolveType(const ScopePtr& scope, AstType* ty, bool
 
         for (const AstTableProp& prop : tab->props)
         {
-            if (prop.access == AstTableAccess::Read)
-                reportError(prop.accessLocation.value_or(Location{}), GenericError{"read keyword is illegal here"});
-            else if (prop.access == AstTableAccess::Write)
-                reportError(prop.accessLocation.value_or(Location{}), GenericError{"write keyword is illegal here"});
-            else if (prop.access == AstTableAccess::ReadWrite)
+            // TODO: Recursion limit.
+            TypeId propTy = resolveType(scope, prop.type, inTypeArguments);
+
+            Property& p = props[prop.name.value];
+            p.typeLocation = prop.location;
+
+            switch (prop.access)
             {
-                std::string name = prop.name.value;
-                // TODO: Recursion limit.
-                TypeId propTy = resolveType(scope, prop.type, inTypeArguments);
-                props[name] = {propTy};
-                props[name].typeLocation = prop.location;
-            }
-            else
+            case AstTableAccess::ReadWrite:
+                p.readTy = propTy;
+                p.writeTy = propTy;
+                break;
+            case AstTableAccess::Read:
+                p.readTy = propTy;
+                break;
+            case AstTableAccess::Write:
+                reportError(*prop.accessLocation, GenericError{"write keyword is illegal here"});
+                p.readTy = propTy;
+                p.writeTy = propTy;
+                break;
+            default:
                 ice->ice("Unexpected property access " + std::to_string(int(prop.access)));
+                break;
+            }
         }
 
         if (AstTableIndexer* astIndexer = tab->indexer)

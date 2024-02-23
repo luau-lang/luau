@@ -32,9 +32,8 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
-LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
-LUAU_FASTFLAGVARIABLE(DebugLuauReadWriteProperties, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile, false)
 
 namespace Luau
@@ -1219,6 +1218,15 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
         result->cancelled = true;
     }
 
+    if (recordJsonLog)
+    {
+        std::string output = logger->compileOutput();
+        if (FFlag::DebugLuauLogSolverToJsonFile && writeJsonLog)
+            writeJsonLog(sourceModule.name, std::move(output));
+        else
+            printf("%s\n", output.c_str());
+    }
+
     for (TypeError& e : cs.errors)
         result->errors.emplace_back(std::move(e));
 
@@ -1262,15 +1270,6 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
     // bound to something by the time constraints are solved.
     freeze(result->internalTypes);
     freeze(result->interfaceTypes);
-
-    if (recordJsonLog)
-    {
-        std::string output = logger->compileOutput();
-        if (FFlag::DebugLuauLogSolverToJsonFile && writeJsonLog)
-            writeJsonLog(sourceModule.name, std::move(output));
-        else
-            printf("%s\n", output.c_str());
-    }
 
     return result;
 }

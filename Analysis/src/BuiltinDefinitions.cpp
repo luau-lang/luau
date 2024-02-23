@@ -283,6 +283,26 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     }
 
     attachMagicFunction(getGlobalBinding(globals, "assert"), magicFunctionAssert);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // declare function assert<T>(value: T, errorMessage: string?): intersect<T, ~(false?)>
+        TypeId genericT = arena.addType(GenericType{"T"});
+        TypeId refinedTy = arena.addType(TypeFamilyInstanceType{
+            NotNull{&kBuiltinTypeFamilies.intersectFamily},
+            {genericT, arena.addType(NegationType{builtinTypes->falsyType})},
+            {}
+        });
+
+        TypeId assertTy = arena.addType(FunctionType{
+            {genericT},
+            {},
+            arena.addTypePack(TypePack{{genericT, builtinTypes->optionalStringType}}),
+            arena.addTypePack(TypePack{{refinedTy}})
+        });
+        addGlobalBinding(globals, "assert", assertTy, "@luau");
+    }
+
     attachMagicFunction(getGlobalBinding(globals, "setmetatable"), magicFunctionSetMetaTable);
     attachMagicFunction(getGlobalBinding(globals, "select"), magicFunctionSelect);
     attachDcrMagicFunction(getGlobalBinding(globals, "select"), dcrMagicFunctionSelect);

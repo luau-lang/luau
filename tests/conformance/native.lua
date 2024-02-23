@@ -293,6 +293,24 @@ end
 
 assert(loopIteratorProtocol(0, table.create(100, 5)) == 5058)
 
+function valueTrackingIssue1()
+  local b = buffer.create(1)
+  buffer.writeu8(b, 0, 0)
+  local v1
+
+  local function closure()
+    assert(type(b) == "buffer") -- b is the first upvalue
+    v1 = nil -- v1 is the second upvalue
+
+    -- prevent inlining
+    for i = 1, 100 do print(`{b} is {b}`) end
+  end
+
+  closure()
+end
+
+valueTrackingIssue1()
+
 local function vec3compsum(a: vector)
   return a.X + a.Y + a.Z
 end

@@ -18,6 +18,7 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTFLAG(LuauCheckedFunctionSyntax)
 LUAU_FASTFLAGVARIABLE(LuauReadWritePropertySyntax, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 
 namespace Luau
 {
@@ -1339,7 +1340,7 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
         AstTableAccess access = AstTableAccess::ReadWrite;
         std::optional<Location> accessLocation;
 
-        if (FFlag::LuauReadWritePropertySyntax)
+        if (FFlag::LuauReadWritePropertySyntax || FFlag::DebugLuauDeferredConstraintResolution)
         {
             if (lexer.current().type == Lexeme::Name && lexer.lookahead().type != ':')
             {
