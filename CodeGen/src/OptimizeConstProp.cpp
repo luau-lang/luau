@@ -18,6 +18,7 @@ LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
 LUAU_FASTFLAG(LuauCodegenVector)
+LUAU_FASTFLAG(LuauCodegenVectorTag)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCodeGenCheckGcEffectFix, false)
 
 namespace Luau
@@ -715,9 +716,17 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             {
                 if (IrInst* arg = function.asInstOp(inst.b))
                 {
-                    if (arg->cmd == IrCmd::ADD_VEC || arg->cmd == IrCmd::SUB_VEC || arg->cmd == IrCmd::MUL_VEC || arg->cmd == IrCmd::DIV_VEC ||
-                        arg->cmd == IrCmd::UNM_VEC)
-                        tag = LUA_TVECTOR;
+                    if (FFlag::LuauCodegenVectorTag)
+                    {
+                        if (arg->cmd == IrCmd::TAG_VECTOR)
+                            tag = LUA_TVECTOR;
+                    }
+                    else
+                    {
+                        if (arg->cmd == IrCmd::ADD_VEC || arg->cmd == IrCmd::SUB_VEC || arg->cmd == IrCmd::MUL_VEC || arg->cmd == IrCmd::DIV_VEC ||
+                            arg->cmd == IrCmd::UNM_VEC)
+                            tag = LUA_TVECTOR;
+                    }
                 }
             }
 
@@ -1250,6 +1259,28 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         if (int(state.checkSlotMatchCache.size()) < FInt::LuauCodeGenReuseSlotLimit)
             state.checkSlotMatchCache.push_back(index);
         break;
+
+    case IrCmd::ADD_VEC:
+    case IrCmd::SUB_VEC:
+    case IrCmd::MUL_VEC:
+    case IrCmd::DIV_VEC:
+        if (FFlag::LuauCodegenVectorTag)
+        {
+            if (IrInst* a = function.asInstOp(inst.a); a && a->cmd == IrCmd::TAG_VECTOR)
+                inst.a = a->a;
+            if (IrInst* b = function.asInstOp(inst.b); b && b->cmd == IrCmd::TAG_VECTOR)
+                inst.b = b->a;
+        }
+        break;
+
+    case IrCmd::UNM_VEC:
+        if (FFlag::LuauCodegenVectorTag)
+        {
+            if (IrInst* a = function.asInstOp(inst.a); a && a->cmd == IrCmd::TAG_VECTOR)
+                inst.a = a->a;
+        }
+        break;
+
     case IrCmd::CHECK_NODE_NO_NEXT:
     case IrCmd::CHECK_NODE_VALUE:
     case IrCmd::BARRIER_TABLE_BACK:
@@ -1278,12 +1309,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::GET_TYPE:
     case IrCmd::GET_TYPEOF:
     case IrCmd::FINDUPVAL:
-    case IrCmd::ADD_VEC:
-    case IrCmd::SUB_VEC:
-    case IrCmd::MUL_VEC:
-    case IrCmd::DIV_VEC:
-    case IrCmd::UNM_VEC:
-    case IrCmd::NUM_TO_VECTOR:
+    case IrCmd::NUM_TO_VEC:
+    case IrCmd::TAG_VECTOR:
         break;
 
     case IrCmd::DO_ARITH:

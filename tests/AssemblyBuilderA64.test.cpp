@@ -218,6 +218,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Moves")
 {
     SINGLE_COMPARE(mov(x0, x1), 0xAA0103E0);
     SINGLE_COMPARE(mov(w0, w1), 0x2A0103E0);
+    SINGLE_COMPARE(mov(q0, q1), 0x4EA11C20);
 
     SINGLE_COMPARE(movz(x0, 42), 0xD2800540);
     SINGLE_COMPARE(movz(w0, 42), 0x52800540);
@@ -501,6 +502,15 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "PrePostIndexing")
     SINGLE_COMPARE(str(q0, mem(x1, 1, AddressKindA64::post)), 0x3C801420);
 }
 
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "SIMDMath")
+{
+    SINGLE_COMPARE(fadd(q0, q1, q2), 0x4E22D420);
+    SINGLE_COMPARE(fsub(q0, q1, q2), 0x4EA2D420);
+    SINGLE_COMPARE(fmul(q0, q1, q2), 0x6E22DC20);
+    SINGLE_COMPARE(fdiv(q0, q1, q2), 0x6E22FC20);
+    SINGLE_COMPARE(fneg(q0, q1), 0x6EA0F820);
+}
+
 TEST_CASE("LogTest")
 {
     AssemblyBuilderA64 build(/* logText= */ true);
@@ -552,6 +562,7 @@ TEST_CASE("LogTest")
     build.ins_4s(q31, 1, q29, 2);
     build.dup_4s(s29, q31, 2);
     build.dup_4s(q29, q30, 0);
+    build.fmul(q0, q1, q2);
 
     build.setLabel(l);
     build.ret();
@@ -594,6 +605,7 @@ TEST_CASE("LogTest")
  ins         v31.s[1],v29.s[2]
  dup         s29,v31.s[2]
  dup         v29.4s,v30.s[0]
+ fmul        v0.4s,v1.4s,v2.4s
 .L1:
  ret
 )";
