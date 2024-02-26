@@ -46,9 +46,9 @@ struct GlobalOptions
     int optimizationLevel = 1;
     int debugLevel = 1;
 
-    const char* vectorLib;
-    const char* vectorCtor;
-    const char* vectorType;
+    const char* vectorLib = nullptr;
+    const char* vectorCtor = nullptr;
+    const char* vectorType = nullptr;
 } globalOptions;
 
 static Luau::CompileOptions copts()
