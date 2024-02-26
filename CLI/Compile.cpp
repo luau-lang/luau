@@ -46,10 +46,9 @@ struct GlobalOptions
     int optimizationLevel = 1;
     int debugLevel = 1;
 
-    std::string vectorLib;
-    std::string vectorCtor;
-    std::string vectorType;
-
+    const char* vectorLib = nullptr;
+    const char* vectorCtor = nullptr;
+    const char* vectorType = nullptr;
 } globalOptions;
 
 static Luau::CompileOptions copts()
@@ -58,10 +57,9 @@ static Luau::CompileOptions copts()
     result.optimizationLevel = globalOptions.optimizationLevel;
     result.debugLevel = globalOptions.debugLevel;
 
-    // globalOptions outlive the CompileOptions, so it's safe to use string data pointers here
-    result.vectorLib = globalOptions.vectorLib.c_str();
-    result.vectorCtor = globalOptions.vectorCtor.c_str();
-    result.vectorType = globalOptions.vectorType.c_str();
+    result.vectorLib = globalOptions.vectorLib;
+    result.vectorCtor = globalOptions.vectorCtor;
+    result.vectorType = globalOptions.vectorType;
 
     return result;
 }
