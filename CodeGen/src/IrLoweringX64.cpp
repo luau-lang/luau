@@ -608,7 +608,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         ScopedRegX64 tmp2{regs};
 
         RegisterX64 tmpa = vecOp(inst.a, tmp1);
-        RegisterX64 tmpb = vecOp(inst.b, tmp2);
+        RegisterX64 tmpb = (inst.a == inst.b) ? tmpa : vecOp(inst.b, tmp2);
 
         build.vaddps(inst.regX64, tmpa, tmpb);
 
@@ -639,7 +639,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         ScopedRegX64 tmp2{regs};
 
         RegisterX64 tmpa = vecOp(inst.a, tmp1);
-        RegisterX64 tmpb = vecOp(inst.b, tmp2);
+        RegisterX64 tmpb = (inst.a == inst.b) ? tmpa : vecOp(inst.b, tmp2);
 
         build.vmulps(inst.regX64, tmpa, tmpb);
         if (!FFlag::LuauCodegenVectorTag)
