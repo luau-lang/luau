@@ -182,4 +182,17 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "generalize_a_type_that_is_bounded_by_another
     CHECK(builtinTypes.unknownType == follow(t2));
 }
 
+TEST_CASE_FIXTURE(Unifier2Fixture, "dont_traverse_into_class_types_when_generalizing")
+{
+    auto [propTy, _] = freshType();
+
+    TypeId cursedClass = arena.addType(ClassType{"Cursed", {{"oh_no", Property::readonly(propTy)}}, std::nullopt, std::nullopt, {}, {}, ""});
+
+    auto genClass = u2.generalize(cursedClass);
+    REQUIRE(genClass);
+
+    auto genPropTy = get<ClassType>(*genClass)->props.at("oh_no").readTy;
+    CHECK(is<FreeType>(*genPropTy));
+}
+
 TEST_SUITE_END();

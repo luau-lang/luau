@@ -1269,7 +1269,16 @@ struct TypeChecker2
             return;
         else if (isOptional(fnTy))
         {
-            reportError(OptionalValueAccess{fnTy}, call->func->location);
+            switch (shouldSuppressErrors(NotNull{&normalizer}, fnTy))
+            {
+                case ErrorSuppression::Suppress:
+                    break;
+                case ErrorSuppression::NormalizationFailed:
+                    reportError(NormalizationTooComplex{}, call->func->location);
+                    // fallthrough intentional
+                case ErrorSuppression::DoNotSuppress:
+                    reportError(OptionalValueAccess{fnTy}, call->func->location);
+            }
             return;
         }
 

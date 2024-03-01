@@ -432,6 +432,13 @@ struct TraversalState
 
             if (auto tt = get<TableType>(current); tt && tt->indexer)
                 indexer = &(*tt->indexer);
+            else if (auto mt = get<MetatableType>(current))
+            {
+                if (auto mtTab = get<TableType>(follow(mt->table)); mtTab && mtTab->indexer)
+                    indexer = &(*mtTab->indexer);
+                else if (auto mtMt = get<TableType>(follow(mt->metatable)); mtMt && mtMt->indexer)
+                    indexer = &(*mtMt->indexer);
+            }
             // Note: we don't appear to walk the class hierarchy for indexers
             else if (auto ct = get<ClassType>(current); ct && ct->indexer)
                 indexer = &(*ct->indexer);

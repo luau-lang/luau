@@ -509,7 +509,7 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_works_on_classes")
     CheckResult result = check(R"(
         type KeysOfMyObject = keyof<BaseClass>
 
-        local function ok(idx: KeysOfMyObject): "BaseMethod" | "BaseField" return idx end
+        local function ok(idx: KeysOfMyObject): "BaseMethod" | "BaseField" | "Touched" return idx end
         local function err(idx: KeysOfMyObject): "BaseMethod" return idx end
     )");
 
@@ -518,7 +518,7 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_works_on_classes")
     TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
     REQUIRE(tpm);
     CHECK_EQ("\"BaseMethod\"", toString(tpm->wantedTp));
-    CHECK_EQ("\"BaseField\" | \"BaseMethod\"", toString(tpm->givenTp));
+    CHECK_EQ("\"BaseField\" | \"BaseMethod\" | \"Touched\"", toString(tpm->givenTp));
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_errors_if_it_has_nonclass_part")

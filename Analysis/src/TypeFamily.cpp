@@ -15,6 +15,7 @@
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 #include "Luau/TypeCheckLimits.h"
+#include "Luau/TypeFwd.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 #include "Luau/VecDeque.h"
@@ -861,19 +862,32 @@ static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(TypeId instance, con
     // lt< 'a, t>      -> 'a is t - we'll solve the constraint, return and solve lt<t, t> -> bool
     // lt< t, 'a>      -> same as above
     bool canSubmitConstraint = ctx->solver && ctx->constraint;
+    bool lhsFree = get<FreeType>(lhsTy) != nullptr;
+    bool rhsFree = get<FreeType>(rhsTy) != nullptr;
     if (canSubmitConstraint)
     {
-        if (get<FreeType>(lhsTy) && get<NeverType>(rhsTy) == nullptr)
+        // Implement injective type families for comparison type families
+        // lt <number, t> implies t is number
+        // lt <t, number> implies t is number
+        if (lhsFree && isNumber(rhsTy))
+            asMutable(lhsTy)->ty.emplace<BoundType>(ctx->builtins->numberType);
+        else if (rhsFree && isNumber(lhsTy))
+            asMutable(rhsTy)->ty.emplace<BoundType>(ctx->builtins->numberType);
+        else if (lhsFree && get<NeverType>(rhsTy) == nullptr)
         {
             auto c1 = ctx->solver->pushConstraint(ctx->scope, {}, EqualityConstraint{lhsTy, rhsTy});
             const_cast<Constraint*>(ctx->constraint)->dependencies.emplace_back(c1);
         }
-        else if (get<FreeType>(rhsTy) && get<NeverType>(lhsTy) == nullptr)
+        else if (rhsFree && get<NeverType>(lhsTy) == nullptr)
         {
             auto c1 = ctx->solver->pushConstraint(ctx->scope, {}, EqualityConstraint{rhsTy, lhsTy});
             const_cast<Constraint*>(ctx->constraint)->dependencies.emplace_back(c1);
         }
     }
+
+    // The above might have caused the operand types to be rebound, we need to follow them again
+    lhsTy = follow(lhsTy);
+    rhsTy = follow(rhsTy);
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
     if (isPending(lhsTy, ctx->solver))

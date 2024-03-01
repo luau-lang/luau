@@ -2270,10 +2270,6 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(
         if (!key)
             return {leftType, rightType, nullptr};
 
-        auto augmentForErrorSupression = [&](TypeId ty) -> TypeId {
-            return arena->addType(UnionType{{ty, builtinTypes->errorType}});
-        };
-
         TypeId discriminantTy = builtinTypes->neverType;
         if (typeguard->type == "nil")
             discriminantTy = builtinTypes->nilType;
@@ -2288,9 +2284,9 @@ std::tuple<TypeId, TypeId, RefinementId> ConstraintGenerator::checkBinary(
         else if (typeguard->type == "buffer")
             discriminantTy = builtinTypes->bufferType;
         else if (typeguard->type == "table")
-            discriminantTy = augmentForErrorSupression(builtinTypes->tableType);
+            discriminantTy = builtinTypes->tableType;
         else if (typeguard->type == "function")
-            discriminantTy = augmentForErrorSupression(builtinTypes->functionType);
+            discriminantTy = builtinTypes->functionType;
         else if (typeguard->type == "userdata")
         {
             // For now, we don't really care about being accurate with userdata if the typeguard was using typeof.

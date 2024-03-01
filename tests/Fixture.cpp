@@ -117,7 +117,17 @@ std::optional<ModuleInfo> TestFileResolver::resolveModule(const ModuleInfo* cont
 
 std::string TestFileResolver::getHumanReadableModuleName(const ModuleName& name) const
 {
-    return name;
+    // We have a handful of tests that need to distinguish between a canonical
+    // ModuleName and the human-readable version so we apply a simple transform
+    // here:  We replace all slashes with dots.
+    std::string result = name;
+    for (size_t i = 0; i < result.size(); ++i)
+    {
+        if (result[i] == '/')
+            result[i] = '.';
+    }
+
+    return result;
 }
 
 std::optional<std::string> TestFileResolver::getEnvironmentForModule(const ModuleName& name) const

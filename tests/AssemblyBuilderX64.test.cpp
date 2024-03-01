@@ -7,8 +7,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCache32BitAsmConsts)
-
 using namespace Luau::CodeGen;
 using namespace Luau::CodeGen::X64;
 
@@ -748,7 +746,6 @@ TEST_CASE("ConstantStorage")
 
 TEST_CASE("ConstantStorageDedup")
 {
-    ScopedFastFlag luauCache32BitAsmConsts{FFlag::LuauCache32BitAsmConsts, true};
     AssemblyBuilderX64 build(/* logText= */ false);
 
     for (int i = 0; i <= 3000; i++)

@@ -108,7 +108,7 @@
 
 // upper bound for number of size classes used by page allocator
 #ifndef LUA_SIZECLASSES
-#define LUA_SIZECLASSES 32
+#define LUA_SIZECLASSES 40
 #endif
 
 // available number of separate memory categories

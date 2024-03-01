@@ -6,8 +6,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCache32BitAsmConsts, false)
-
 namespace Luau
 {
 namespace CodeGen
@@ -1041,33 +1039,24 @@ OperandX64 AssemblyBuilderX64::i64(int64_t value)
 
 OperandX64 AssemblyBuilderX64::f32(float value)
 {
-    if (FFlag::LuauCache32BitAsmConsts)
+    uint32_t as32BitKey;
+    static_assert(sizeof(as32BitKey) == sizeof(value), "Expecting float to be 32-bit");
+    memcpy(&as32BitKey, &value, sizeof(value));
+
+    if (as32BitKey != ~0u)
     {
-        uint32_t as32BitKey;
-        static_assert(sizeof(as32BitKey) == sizeof(value), "Expecting float to be 32-bit");
-        memcpy(&as32BitKey, &value, sizeof(value));
-
-        if (as32BitKey != ~0u)
-        {
-            if (int32_t* prev = constCache32.find(as32BitKey))
-                return OperandX64(SizeX64::dword, noreg, 1, rip, *prev);
-        }
-
-        size_t pos = allocateData(4, 4);
-        writef32(&data[pos], value);
-        int32_t offset = int32_t(pos - data.size());
-
-        if (as32BitKey != ~0u)
-            constCache32[as32BitKey] = offset;
-
-        return OperandX64(SizeX64::dword, noreg, 1, rip, offset);
+        if (int32_t* prev = constCache32.find(as32BitKey))
+            return OperandX64(SizeX64::dword, noreg, 1, rip, *prev);
     }
-    else
-    {
-        size_t pos = allocateData(4, 4);
-        writef32(&data[pos], value);
-        return OperandX64(SizeX64::dword, noreg, 1, rip, int32_t(pos - data.size()));
-    }
+
+    size_t pos = allocateData(4, 4);
+    writef32(&data[pos], value);
+    int32_t offset = int32_t(pos - data.size());
+
+    if (as32BitKey != ~0u)
+        constCache32[as32BitKey] = offset;
+
+    return OperandX64(SizeX64::dword, noreg, 1, rip, offset);
 }
 
 OperandX64 AssemblyBuilderX64::f64(double value)

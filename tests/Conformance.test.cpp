@@ -26,11 +26,7 @@ extern bool verbose;
 extern bool codegen;
 extern int optimizationLevel;
 
-LUAU_FASTFLAG(LuauTaggedLuData)
-LUAU_FASTFLAG(LuauSciNumberSkipTrailDot)
-LUAU_DYNAMIC_FASTFLAG(LuauInterruptablePatternMatch)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_DYNAMIC_FASTFLAG(LuauCodeGenFixBufferLenCheckA64)
 LUAU_DYNAMIC_FASTFLAG(LuauCodegenTrackingMultilocationFix)
 
 static lua_CompileOptions defaultOptions()
@@ -1459,8 +1455,6 @@ TEST_CASE("Coverage")
 
 TEST_CASE("StringConversion")
 {
-    ScopedFastFlag luauSciNumberSkipTrailDot{FFlag::LuauSciNumberSkipTrailDot, true};
-
     runConformance("strconv.lua");
 }
 
@@ -1654,8 +1648,6 @@ TEST_CASE("Interrupt")
         }
     };
 
-    ScopedFastFlag luauInterruptablePatternMatch{DFFlag::LuauInterruptablePatternMatch, true};
-
     for (int test = 1; test <= 5; ++test)
     {
         lua_State* T = lua_newthread(L);
@@ -1764,8 +1756,6 @@ TEST_CASE("UserdataApi")
 
 TEST_CASE("LightuserdataApi")
 {
-    ScopedFastFlag luauTaggedLuData{FFlag::LuauTaggedLuData, true};
-
     StateRef globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 
@@ -2040,7 +2030,6 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
-    ScopedFastFlag luauCodeGenFixBufferLenCheckA64{DFFlag::LuauCodeGenFixBufferLenCheckA64, true};
     ScopedFastFlag luauCodegenTrackingMultilocationFix{DFFlag::LuauCodegenTrackingMultilocationFix, true};
 
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
