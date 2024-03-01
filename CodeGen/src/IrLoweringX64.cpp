@@ -2237,7 +2237,7 @@ OperandX64 IrLoweringX64::bufferAddrOp(IrOp bufferOp, IrOp indexOp)
 
 RegisterX64 IrLoweringX64::vecOp(IrOp op, ScopedRegX64& tmp)
 {
-    if (FFlag::LuauCodegenVectorOptAnd && FFlag::LuauCodegenVectorTag)
+    if (FFlag::LuauCodegenVectorOptAnd && FFlag::LuauCodegenVectorTag2)
     {
         IrInst source = function.instOp(op);
         CODEGEN_ASSERT(source.cmd != IrCmd::SUBSTITUTE); // we don't process substitutions
@@ -2298,7 +2298,7 @@ OperandX64 IrLoweringX64::vectorAndMaskOp()
 
 OperandX64 IrLoweringX64::vectorOrMaskOp()
 {
-    CODEGEN_ASSERT(!FFlag::LuauCodegenVectorTag);
+    CODEGEN_ASSERT(!FFlag::LuauCodegenVectorTag2);
     if (vectorOrMask.base == noreg)
         vectorOrMask = build.u32x4(0, 0, 0, LUA_TVECTOR);
 

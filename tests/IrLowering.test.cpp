@@ -64,7 +64,6 @@ TEST_SUITE_BEGIN("IrLowering");
 TEST_CASE("VectorReciprocal")
 {
     ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
-    ScopedFastFlag luauCodegenVectorTag{FFlag::LuauCodegenVectorTag, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vecrcp(a: vector)
@@ -126,7 +125,6 @@ bb_bytecode_1:
 TEST_CASE("VectorAdd")
 {
     ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
-    ScopedFastFlag luauCodegenVectorTag{FFlag::LuauCodegenVectorTag, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3add(a: vector, b: vector)
@@ -155,7 +153,6 @@ bb_bytecode_1:
 TEST_CASE("VectorMinus")
 {
     ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
-    ScopedFastFlag luauCodegenVectorTag{FFlag::LuauCodegenVectorTag, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3minus(a: vector)
@@ -182,7 +179,6 @@ bb_bytecode_1:
 TEST_CASE("VectorSubMulDiv")
 {
     ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
-    ScopedFastFlag luauCodegenVectorTag{FFlag::LuauCodegenVectorTag, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3combo(a: vector, b: vector, c: vector, d: vector)
@@ -257,7 +253,6 @@ bb_bytecode_1:
 TEST_CASE("VectorMulDivMixed")
 {
     ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
-    ScopedFastFlag luauCodegenVectorTag{FFlag::LuauCodegenVectorTag, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3combo(a: vector, b: vector, c: vector, d: vector)
