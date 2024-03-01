@@ -11,9 +11,9 @@
 
 #include <limits.h>
 
-using namespace Luau::CodeGen;
+LUAU_FASTFLAG(LuauCodegenVectorTag2)
 
-LUAU_DYNAMIC_FASTFLAG(LuauCodeGenCheckGcEffectFix)
+using namespace Luau::CodeGen;
 
 class IrBuilderFixture
 {
@@ -2060,8 +2060,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DuplicateHashSlotChecksInvalidation")
 {
-    ScopedFastFlag luauCodeGenCheckGcEffectFix{DFFlag::LuauCodeGenCheckGcEffectFix, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
@@ -2494,6 +2492,85 @@ bb_0:
 
 bb_fallback_1:
    RETURN R0, 1u
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "TagVectorSkipErrorFix")
+{
+    ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
+
+    IrOp block = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp a = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(0));
+    IrOp b = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(1));
+
+    IrOp mul = build.inst(IrCmd::TAG_VECTOR, build.inst(IrCmd::MUL_VEC, a, b));
+
+    IrOp t1 = build.inst(IrCmd::TAG_VECTOR, build.inst(IrCmd::ADD_VEC, mul, mul));
+    IrOp t2 = build.inst(IrCmd::TAG_VECTOR, build.inst(IrCmd::SUB_VEC, mul, mul));
+
+    IrOp t3 = build.inst(IrCmd::TAG_VECTOR, build.inst(IrCmd::DIV_VEC, t1, build.inst(IrCmd::UNM_VEC, t2)));
+
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(0), t3);
+    build.inst(IrCmd::RETURN, build.vmReg(0), build.constUint(1));
+
+    updateUseCounts(build.function);
+    constPropInBlockChains(build, true);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::Yes) == R"(
+bb_0:                                                       ; useCount: 0
+   %0 = LOAD_TVALUE R0                                       ; useCount: 1, lastUse: %0
+   %1 = LOAD_TVALUE R1                                       ; useCount: 1, lastUse: %0
+   %2 = MUL_VEC %0, %1                                       ; useCount: 4, lastUse: %0
+   %4 = ADD_VEC %2, %2                                       ; useCount: 1, lastUse: %0
+   %6 = SUB_VEC %2, %2                                       ; useCount: 1, lastUse: %0
+   %8 = UNM_VEC %6                                           ; useCount: 1, lastUse: %0
+   %9 = DIV_VEC %4, %8                                       ; useCount: 1, lastUse: %0
+   %10 = TAG_VECTOR %9                                       ; useCount: 1, lastUse: %0
+   STORE_TVALUE R0, %10                                      ; %11
+   RETURN R0, 1u                                             ; %12
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "ForgprepInvalidation")
+{
+    IrOp block = build.block(IrBlockKind::Internal);
+    IrOp followup = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(block);
+
+    IrOp tbl = build.inst(IrCmd::LOAD_POINTER, build.vmReg(0));
+    build.inst(IrCmd::CHECK_READONLY, tbl, build.vmExit(1));
+
+    build.inst(IrCmd::FALLBACK_FORGPREP, build.constUint(2), build.vmReg(1), followup);
+
+    build.beginBlock(followup);
+    build.inst(IrCmd::CHECK_READONLY, tbl, build.vmExit(2));
+
+    build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(3));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build, true);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+; successors: bb_1
+; in regs: R0, R1
+; out regs: R1, R2, R3
+   %0 = LOAD_POINTER R0
+   CHECK_READONLY %0, exit(1)
+   FALLBACK_FORGPREP 2u, R1, bb_1
+
+bb_1:
+; predecessors: bb_0
+; in regs: R1, R2, R3
+   CHECK_READONLY %0, exit(2)
+   RETURN R1, 3i
 
 )");
 }

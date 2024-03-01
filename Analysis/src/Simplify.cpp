@@ -1033,9 +1033,17 @@ TypeId TypeSimplifier::intersectIntersectionWithType(TypeId left, TypeId right)
 
 std::optional<TypeId> TypeSimplifier::basicIntersect(TypeId left, TypeId right)
 {
-    if (get<AnyType>(left))
+    if (get<AnyType>(left) && get<ErrorType>(right))
         return right;
+    if (get<AnyType>(right) && get<ErrorType>(left))
+        return left;
+    if (get<AnyType>(left))
+        return arena->addType(UnionType{{right, builtinTypes->errorType}});
     if (get<AnyType>(right))
+        return arena->addType(UnionType{{left, builtinTypes->errorType}});
+    if (get<UnknownType>(left))
+        return right;
+    if (get<UnknownType>(right))
         return left;
     if (get<NeverType>(left))
         return left;
@@ -1120,9 +1128,17 @@ TypeId TypeSimplifier::intersect(TypeId left, TypeId right)
     left = simplify(left);
     right = simplify(right);
 
-    if (get<AnyType>(left))
+    if (get<AnyType>(left) && get<ErrorType>(right))
         return right;
+    if (get<AnyType>(right) && get<ErrorType>(left))
+        return left;
+    if (get<AnyType>(left))
+        return arena->addType(UnionType{{right, builtinTypes->errorType}});
     if (get<AnyType>(right))
+        return arena->addType(UnionType{{left, builtinTypes->errorType}});
+    if (get<UnknownType>(left))
+        return right;
+    if (get<UnknownType>(right))
         return left;
     if (get<NeverType>(left))
         return left;
@@ -1278,9 +1294,11 @@ TypeId TypeSimplifier::simplify(TypeId ty, DenseHashSet<TypeId>& seen)
     {
         TypeId negatedTy = follow(nt->ty);
         if (get<AnyType>(negatedTy))
+            return arena->addType(UnionType{{builtinTypes->neverType, builtinTypes->errorType}});
+        else if (get<UnknownType>(negatedTy))
             return builtinTypes->neverType;
         else if (get<NeverType>(negatedTy))
-            return builtinTypes->anyType;
+            return builtinTypes->unknownType;
         if (auto nnt = get<NegationType>(negatedTy))
             return simplify(nnt->ty, seen);
     }

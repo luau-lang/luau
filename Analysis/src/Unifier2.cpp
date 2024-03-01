@@ -580,6 +580,11 @@ struct FreeTypeSearcher : TypeVisitor
 
         return false;
     }
+
+    bool visit(TypeId, const ClassType&) override
+    {
+        return false;
+    }
 };
 
 struct MutatingGeneralizer : TypeOnceVisitor

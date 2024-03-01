@@ -726,7 +726,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
 
                     if (TypePackId* other = env.mappedGenericPacks.find(*superTail))
                         // TODO: TypePath can't express "slice of a pack + its tail".
-                        results.push_back(isCovariantWith(env, *other, subTailPack).withSuperComponent(TypePath::PackField::Tail));
+                        results.push_back(isContravariantWith(env, subTailPack, *other).withSuperComponent(TypePath::PackField::Tail));
                     else
                         env.mappedGenericPacks.try_insert(*superTail, subTailPack);
 

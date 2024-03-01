@@ -8,8 +8,6 @@
 #include <string.h>
 #include <stdio.h>
 
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauInterruptablePatternMatch, false)
-
 // macro to `unsign' a character
 #define uchar(c) ((unsigned char)(c))
 
@@ -432,18 +430,15 @@ static const char* match(MatchState* ms, const char* s, const char* p)
     if (ms->matchdepth-- == 0)
         luaL_error(ms->L, "pattern too complex");
 
-    if (DFFlag::LuauInterruptablePatternMatch)
-    {
-        lua_State* L = ms->L;
-        void (*interrupt)(lua_State*, int) = L->global->cb.interrupt;
+    lua_State* L = ms->L;
+    void (*interrupt)(lua_State*, int) = L->global->cb.interrupt;
 
-        if (LUAU_UNLIKELY(!!interrupt))
-        {
-            // this interrupt is not yieldable
-            L->nCcalls++;
-            interrupt(L, -1);
-            L->nCcalls--;
-        }
+    if (LUAU_UNLIKELY(!!interrupt))
+    {
+        // this interrupt is not yieldable
+        L->nCcalls++;
+        interrupt(L, -1);
+        L->nCcalls--;
     }
 
 init: // using goto's to optimize tail recursion

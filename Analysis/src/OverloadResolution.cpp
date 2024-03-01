@@ -236,6 +236,8 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
          */
 
         Location argLocation;
+        if (reason.superPath.components.size() <= 1)
+            break;
 
         if (const Luau::TypePath::Index* pathIndexComponent = get_if<Luau::TypePath::Index>(&reason.superPath.components.at(1)))
         {

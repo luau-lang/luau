@@ -32,7 +32,15 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_returns_any")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(builtinTypes->anyType, requireType("a"));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // Bug: We do not simplify at the right time
+        CHECK_EQ("any?", toString(requireType("a")));
+    }
+    else
+    {
+        CHECK_EQ(builtinTypes->anyType, requireType("a"));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_returns_any2")
@@ -64,7 +72,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_returns_any2")
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any")
 {
     CheckResult result = check(R"(
-        local bar: any
+        local bar = nil :: any
 
         local a
         for b in bar do
@@ -74,13 +82,21 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("any", toString(requireType("a")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // Bug: We do not simplify at the right time
+        CHECK_EQ("any?", toString(requireType("a")));
+    }
+    else
+    {
+        CHECK_EQ("any", toString(requireType("a")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any2")
 {
     CheckResult result = check(R"(
-        local bar: any
+        local bar = nil :: any
 
         local a
         for b in bar() do
@@ -90,7 +106,39 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any2")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("any", toString(requireType("a")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // Bug: We do not simplify at the right time
+        CHECK_EQ("any?", toString(requireType("a")));
+    }
+    else
+    {
+        CHECK_EQ("any", toString(requireType("a")));
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any_pack")
+{
+    CheckResult result = check(R"(
+        function bar(): ...any end
+
+        local a
+        for b in bar() do
+            a = b
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // Bug: We do not simplify at the right time
+        CHECK_EQ("any?", toString(requireType("a")));
+    }
+    else
+    {
+        CHECK_EQ("any", toString(requireType("a")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error")
@@ -104,7 +152,16 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ("*error-type*", toString(requireType("a")));
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // Bug: We do not simplify at the right time
+        CHECK_EQ("*error-type*?", toString(requireType("a")));
+    }
+    else
+    {
+        CHECK_EQ("*error-type*", toString(requireType("a")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error2")
@@ -118,9 +175,21 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error2")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // CLI-97375(awe): `bar()` is returning `nil` here, which isn't wrong necessarily,
+        // but then we're signaling an additional error for the access on `nil`.
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-    CHECK_EQ("*error-type*", toString(requireType("a")));
+        // Bug: We do not simplify at the right time
+        CHECK_EQ("*error-type*?", toString(requireType("a")));
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        CHECK_EQ("*error-type*", toString(requireType("a")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "length_of_error_type_does_not_produce_an_error")

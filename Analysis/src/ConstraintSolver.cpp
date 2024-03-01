@@ -472,6 +472,11 @@ struct FreeTypeSearcher : TypeOnceVisitor
         result->push_back({ty, location});
         return false;
     }
+
+    bool visit(TypeId, const ClassType&) override
+    {
+        return false;
+    }
 };
 
 } // namespace
@@ -672,13 +677,13 @@ bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Co
         return false;
     };
 
-    auto [iteratorTypes, iteratorTail] = flatten(c.iterator);
-    if (iteratorTail && isBlocked(*iteratorTail))
-        return block_(*iteratorTail);
+    TypePack iterator = extendTypePack(*arena, builtinTypes, c.iterator, 3);
+    if (iterator.head.size() < 3 && iterator.tail && isBlocked(*iterator.tail))
+        return block_(*iterator.tail);
 
     {
         bool blocked = false;
-        for (TypeId t : iteratorTypes)
+        for (TypeId t : iterator.head)
         {
             if (isBlocked(t))
             {
@@ -691,35 +696,32 @@ bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Co
             return false;
     }
 
-    if (0 == iteratorTypes.size())
+    if (0 == iterator.head.size())
     {
-        Anyification anyify{arena, constraint->scope, builtinTypes, &iceReporter, errorRecoveryType(), errorRecoveryTypePack()};
-        std::optional<TypePackId> anyified = anyify.substitute(c.variables);
-        LUAU_ASSERT(anyified);
-        unify(constraint, *anyified, c.variables);
+        unify(constraint, builtinTypes->anyTypePack, c.variables);
 
         return true;
     }
 
-    TypeId nextTy = follow(iteratorTypes[0]);
+    TypeId nextTy = follow(iterator.head[0]);
     if (get<FreeType>(nextTy))
         return block_(nextTy);
 
     if (get<FunctionType>(nextTy))
     {
         TypeId tableTy = builtinTypes->nilType;
-        if (iteratorTypes.size() >= 2)
-            tableTy = iteratorTypes[1];
+        if (iterator.head.size() >= 2)
+            tableTy = iterator.head[1];
 
         TypeId firstIndexTy = builtinTypes->nilType;
-        if (iteratorTypes.size() >= 3)
-            firstIndexTy = iteratorTypes[2];
+        if (iterator.head.size() >= 3)
+            firstIndexTy = iterator.head[2];
 
         return tryDispatchIterableFunction(nextTy, tableTy, firstIndexTy, c, constraint, force);
     }
 
     else
-        return tryDispatchIterableTable(iteratorTypes[0], c, constraint, force);
+        return tryDispatchIterableTable(iterator.head[0], c, constraint, force);
 
     return true;
 }
@@ -1174,10 +1176,14 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     const std::vector<TypeId> expectedArgs = flatten(ftv->argTypes).first;
     const std::vector<TypeId> argPackHead = flatten(argsPack).first;
 
-    for (size_t i = 0; i < c.callSite->args.size && i < expectedArgs.size() && i < argPackHead.size(); ++i)
+    // If this is a self call, the types will have more elements than the AST call.
+    // We don't attempt to perform bidirectional inference on the self type.
+    const size_t typeOffset = c.callSite->self ? 1 : 0;
+
+    for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size() && i + typeOffset < argPackHead.size(); ++i)
     {
-        const TypeId expectedArgTy = follow(expectedArgs[i]);
-        const TypeId actualArgTy = follow(argPackHead[i]);
+        const TypeId expectedArgTy = follow(expectedArgs[i + typeOffset]);
+        const TypeId actualArgTy = follow(argPackHead[i + typeOffset]);
         const AstExpr* expr = c.callSite->args.data[i];
 
         (*c.astExpectedTypes)[expr] = expectedArgTy;
@@ -1375,7 +1381,7 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
     }
 
     auto bind = [&](TypeId a, TypeId b) {
-        bindBlockedType(a, b, c.subjectType, constraint->location);
+        bindBlockedType(a, b, subjectType, constraint->location);
     };
 
     if (existingPropType)
@@ -1386,6 +1392,8 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
         unblock(c.resultType, constraint->location);
         return true;
     }
+
+    const TypeId originalSubjectType = subjectType;
 
     if (auto mt = get<MetatableType>(subjectType))
         subjectType = follow(mt->table);
@@ -1419,7 +1427,7 @@ bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Con
         }
     }
 
-    bind(c.resultType, subjectType);
+    bind(c.resultType, originalSubjectType);
     unblock(c.resultType, constraint->location);
     return true;
 }
@@ -1802,21 +1810,15 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
                 }
 
                 TypeId nextFn = iterRets.head[0];
-                TypeId table = iterRets.head.size() == 2 ? iterRets.head[1] : freshType(arena, builtinTypes, constraint->scope);
 
                 if (std::optional<TypeId> instantiatedNextFn = instantiate(builtinTypes, arena, NotNull{&limits}, constraint->scope, nextFn))
                 {
-                    const TypeId firstIndex = freshType(arena, builtinTypes, constraint->scope);
-
-                    // nextTy : (iteratorTy, indexTy?) -> (indexTy, valueTailTy...)
-                    const TypePackId nextArgPack = arena->addTypePack({table, arena->addType(UnionType{{firstIndex, builtinTypes->nilType}})});
-                    const TypePackId valueTailTy = arena->addTypePack(FreeTypePack{constraint->scope});
-                    const TypePackId nextRetPack = arena->addTypePack(TypePack{{firstIndex}, valueTailTy});
-
-                    const TypeId expectedNextTy = arena->addType(FunctionType{nextArgPack, nextRetPack});
-                    unify(constraint, *instantiatedNextFn, expectedNextTy);
+                    const FunctionType* nextFn = get<FunctionType>(*instantiatedNextFn);
+                    LUAU_ASSERT(nextFn);
+                    const TypePackId nextRetPack = nextFn->retTypes;
 
                     pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, nextRetPack});
+                    return true;
                 }
                 else
                 {
@@ -1864,31 +1866,13 @@ bool ConstraintSolver::tryDispatchIterableFunction(
         return false;
     }
 
-    TypeId firstIndex;
-    TypeId retIndex;
-    if (isNil(firstIndexTy) || isOptional(firstIndexTy))
-    {
-        // FIXME freshType is suspect here
-        firstIndex = arena->addType(UnionType{{freshType(arena, builtinTypes, constraint->scope), builtinTypes->nilType}});
-        retIndex = firstIndex;
-    }
-    else
-    {
-        firstIndex = firstIndexTy;
-        retIndex = arena->addType(UnionType{{firstIndexTy, builtinTypes->nilType}});
-    }
+    const FunctionType* nextFn = get<FunctionType>(nextTy);
+    // If this does not hold, we should've never called `tryDispatchIterableFunction` in the first place.
+    LUAU_ASSERT(nextFn);
+    const TypePackId nextRetPack = nextFn->retTypes;
 
-    // nextTy : (tableTy, indexTy?) -> (indexTy?, valueTailTy...)
-    const TypePackId nextArgPack = arena->addTypePack({tableTy, firstIndex});
-    const TypePackId valueTailTy = arena->addTypePack(FreeTypePack{constraint->scope});
-    const TypePackId nextRetPack = arena->addTypePack(TypePack{{retIndex}, valueTailTy});
-
-    const TypeId expectedNextTy = arena->addType(FunctionType{TypeLevel{}, constraint->scope, nextArgPack, nextRetPack});
-    bool ok = unify(constraint, nextTy, expectedNextTy);
-
-    // if there are no errors from unifying the two, we can pass forward the expected type as our selected resolution.
-    if (ok)
-        (*c.astForInNextTypes)[c.nextAstFragment] = expectedNextTy;
+    // the type of the `nextAstFragment` is the `nextTy`.
+    (*c.astForInNextTypes)[c.nextAstFragment] = nextTy;
 
     auto it = begin(nextRetPack);
     std::vector<TypeId> modifiedNextRetHead;
@@ -1988,7 +1972,7 @@ std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTa
             return {{}, result};
         }
     }
-    else if (auto mt = get<MetatableType>(subjectType))
+    else if (auto mt = get<MetatableType>(subjectType); mt && context == ValueContext::RValue)
     {
         auto [blocked, result] = lookupTableProp(mt->table, propName, context, suppressSimplification, seen);
         if (!blocked.empty() || result)
@@ -2023,6 +2007,8 @@ std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTa
             else
                 return lookupTableProp(indexType, propName, context, suppressSimplification, seen);
         }
+        else if (get<MetatableType>(mtt))
+            return lookupTableProp(mtt, propName, context, suppressSimplification, seen);
     }
     else if (auto ct = get<ClassType>(subjectType))
     {
