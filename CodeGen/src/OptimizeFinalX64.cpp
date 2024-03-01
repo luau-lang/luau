@@ -5,8 +5,6 @@
 
 #include <utility>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenMathMemArgs, false)
-
 namespace Luau
 {
 namespace CodeGen
@@ -116,7 +114,7 @@ static void optimizeMemoryOperandsX64(IrFunction& function, IrBlock& block)
         case IrCmd::SQRT_NUM:
         case IrCmd::ABS_NUM:
         {
-            if (FFlag::LuauCodegenMathMemArgs && inst.a.kind == IrOpKind::Inst)
+            if (inst.a.kind == IrOpKind::Inst)
             {
                 IrInst& arg = function.instOp(inst.a);
 

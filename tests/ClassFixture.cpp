@@ -18,10 +18,18 @@ ClassFixture::ClassFixture()
 
     unfreeze(arena);
 
+    TypeId connectionType = arena.addType(ClassType{"Connection", {}, nullopt, nullopt, {}, {}, "Connection"});
+
     TypeId baseClassInstanceType = arena.addType(ClassType{"BaseClass", {}, nullopt, nullopt, {}, {}, "Test"});
     getMutable<ClassType>(baseClassInstanceType)->props = {
         {"BaseMethod", {makeFunction(arena, baseClassInstanceType, {numberType}, {})}},
         {"BaseField", {numberType}},
+
+        {"Touched", {connectionType}},
+    };
+
+    getMutable<ClassType>(connectionType)->props = {
+        {"Connect", {makeFunction(arena, connectionType, {makeFunction(arena, nullopt, {baseClassInstanceType}, {})}, {})}}
     };
 
     TypeId baseClassType = arena.addType(ClassType{"BaseClass", {}, nullopt, nullopt, {}, {}, "Test"});

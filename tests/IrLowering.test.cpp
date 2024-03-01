@@ -12,8 +12,7 @@
 
 #include <memory>
 
-LUAU_FASTFLAG(LuauCodegenVector)
-LUAU_FASTFLAG(LuauCodegenMathMemArgs)
+LUAU_FASTFLAG(LuauCodegenVectorTag2)
 
 static std::string getCodegenAssembly(const char* source)
 {
@@ -64,7 +63,7 @@ TEST_SUITE_BEGIN("IrLowering");
 
 TEST_CASE("VectorReciprocal")
 {
-    ScopedFastFlag luauCodegenVector{FFlag::LuauCodegenVector, true};
+    ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vecrcp(a: vector)
@@ -79,10 +78,11 @@ bb_0:
 bb_2:
   JUMP bb_bytecode_1
 bb_bytecode_1:
-  %6 = NUM_TO_VECTOR 1
+  %6 = NUM_TO_VEC 1
   %7 = LOAD_TVALUE R0
   %8 = DIV_VEC %6, %7
-  STORE_TVALUE R1, %8
+  %9 = TAG_VECTOR %8
+  STORE_TVALUE R1, %9
   INTERRUPT 1u
   RETURN R1, 1i
 )");
@@ -90,8 +90,6 @@ bb_bytecode_1:
 
 TEST_CASE("VectorComponentRead")
 {
-    ScopedFastFlag luauCodegenVector{FFlag::LuauCodegenVector, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function compsum(a: vector)
     return a.X + a.Y + a.Z
@@ -126,7 +124,7 @@ bb_bytecode_1:
 
 TEST_CASE("VectorAdd")
 {
-    ScopedFastFlag luauCodegenVector{FFlag::LuauCodegenVector, true};
+    ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3add(a: vector, b: vector)
@@ -145,7 +143,8 @@ bb_bytecode_1:
   %10 = LOAD_TVALUE R0
   %11 = LOAD_TVALUE R1
   %12 = ADD_VEC %10, %11
-  STORE_TVALUE R2, %12
+  %13 = TAG_VECTOR %12
+  STORE_TVALUE R2, %13
   INTERRUPT 1u
   RETURN R2, 1i
 )");
@@ -153,7 +152,7 @@ bb_bytecode_1:
 
 TEST_CASE("VectorMinus")
 {
-    ScopedFastFlag luauCodegenVector{FFlag::LuauCodegenVector, true};
+    ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3minus(a: vector)
@@ -170,7 +169,8 @@ bb_2:
 bb_bytecode_1:
   %6 = LOAD_TVALUE R0
   %7 = UNM_VEC %6
-  STORE_TVALUE R1, %7
+  %8 = TAG_VECTOR %7
+  STORE_TVALUE R1, %8
   INTERRUPT 1u
   RETURN R1, 1i
 )");
@@ -178,7 +178,7 @@ bb_bytecode_1:
 
 TEST_CASE("VectorSubMulDiv")
 {
-    ScopedFastFlag luauCodegenVector{FFlag::LuauCodegenVector, true};
+    ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3combo(a: vector, b: vector, c: vector, d: vector)
@@ -199,21 +199,60 @@ bb_bytecode_1:
   %14 = LOAD_TVALUE R0
   %15 = LOAD_TVALUE R1
   %16 = MUL_VEC %14, %15
-  STORE_TVALUE R5, %16
-  %22 = LOAD_TVALUE R2
-  %23 = LOAD_TVALUE R3
-  %24 = DIV_VEC %22, %23
-  STORE_TVALUE R6, %24
-  %32 = SUB_VEC %16, %24
-  STORE_TVALUE R4, %32
+  %17 = TAG_VECTOR %16
+  STORE_TVALUE R5, %17
+  %23 = LOAD_TVALUE R2
+  %24 = LOAD_TVALUE R3
+  %25 = DIV_VEC %23, %24
+  %26 = TAG_VECTOR %25
+  STORE_TVALUE R6, %26
+  %34 = SUB_VEC %16, %25
+  %35 = TAG_VECTOR %34
+  STORE_TVALUE R4, %35
   INTERRUPT 3u
   RETURN R4, 1i
 )");
 }
 
+TEST_CASE("VectorSubMulDiv2")
+{
+    ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function vec3combo(a: vector)
+    local tmp = a * a
+    return (tmp - tmp) / (tmp + tmp)
+end
+)"),
+        R"(
+; function vec3combo($arg0) line 2
+bb_0:
+  CHECK_TAG R0, tvector, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %8 = LOAD_TVALUE R0
+  %10 = MUL_VEC %8, %8
+  %11 = TAG_VECTOR %10
+  STORE_TVALUE R1, %11
+  %19 = SUB_VEC %10, %10
+  %20 = TAG_VECTOR %19
+  STORE_TVALUE R3, %20
+  %28 = ADD_VEC %10, %10
+  %29 = TAG_VECTOR %28
+  STORE_TVALUE R4, %29
+  %37 = DIV_VEC %19, %28
+  %38 = TAG_VECTOR %37
+  STORE_TVALUE R2, %38
+  INTERRUPT 4u
+  RETURN R2, 1i
+)");
+}
+
 TEST_CASE("VectorMulDivMixed")
 {
-    ScopedFastFlag luauCodegenVector{FFlag::LuauCodegenVector, true};
+    ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3combo(a: vector, b: vector, c: vector, d: vector)
@@ -232,29 +271,36 @@ bb_2:
   JUMP bb_bytecode_1
 bb_bytecode_1:
   %12 = LOAD_TVALUE R0
-  %13 = NUM_TO_VECTOR 2
+  %13 = NUM_TO_VEC 2
   %14 = MUL_VEC %12, %13
-  STORE_TVALUE R7, %14
-  %18 = LOAD_TVALUE R1
-  %19 = NUM_TO_VECTOR 4
-  %20 = DIV_VEC %18, %19
-  STORE_TVALUE R8, %20
-  %28 = ADD_VEC %14, %20
-  STORE_TVALUE R6, %28
+  %15 = TAG_VECTOR %14
+  STORE_TVALUE R7, %15
+  %19 = LOAD_TVALUE R1
+  %20 = NUM_TO_VEC 4
+  %21 = DIV_VEC %19, %20
+  %22 = TAG_VECTOR %21
+  STORE_TVALUE R8, %22
+  %30 = ADD_VEC %14, %21
+  %31 = TAG_VECTOR %30
+  STORE_TVALUE R6, %31
   STORE_DOUBLE R8, 0.5
   STORE_TAG R8, tnumber
-  %37 = NUM_TO_VECTOR 0.5
-  %38 = LOAD_TVALUE R2
-  %39 = MUL_VEC %37, %38
-  STORE_TVALUE R7, %39
-  %47 = ADD_VEC %28, %39
-  STORE_TVALUE R5, %47
-  %51 = NUM_TO_VECTOR 40
-  %52 = LOAD_TVALUE R3
-  %53 = DIV_VEC %51, %52
-  STORE_TVALUE R6, %53
-  %61 = ADD_VEC %47, %53
-  STORE_TVALUE R4, %61
+  %40 = NUM_TO_VEC 0.5
+  %41 = LOAD_TVALUE R2
+  %42 = MUL_VEC %40, %41
+  %43 = TAG_VECTOR %42
+  STORE_TVALUE R7, %43
+  %51 = ADD_VEC %30, %42
+  %52 = TAG_VECTOR %51
+  STORE_TVALUE R5, %52
+  %56 = NUM_TO_VEC 40
+  %57 = LOAD_TVALUE R3
+  %58 = DIV_VEC %56, %57
+  %59 = TAG_VECTOR %58
+  STORE_TVALUE R6, %59
+  %67 = ADD_VEC %51, %58
+  %68 = TAG_VECTOR %67
+  STORE_TVALUE R4, %68
   INTERRUPT 8u
   RETURN R4, 1i
 )");
@@ -262,8 +308,6 @@ bb_bytecode_1:
 
 TEST_CASE("ExtraMathMemoryOperands")
 {
-    ScopedFastFlag luauCodegenMathMemArgs{FFlag::LuauCodegenMathMemArgs, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: number, b: number, c: number, d: number, e: number)
     return math.floor(a) + math.ceil(b) + math.round(c) + math.sqrt(d) + math.abs(e)

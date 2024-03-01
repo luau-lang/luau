@@ -14,6 +14,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(DebugLuauFreezeArena);
+LUAU_FASTFLAG(DebugLuauMagicTypes);
 
 namespace
 {
@@ -1271,6 +1272,65 @@ TEST_CASE_FIXTURE(FrontendFixture, "markdirty_early_return")
         frontend.markDirty(moduleName, &markedDirty);
         CHECK(!markedDirty.empty());
     }
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "attribute_ices_to_the_correct_module")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauMagicTypes, true};
+
+    fileResolver.source["game/one"] = R"(
+        require(game.two)
+    )";
+
+    fileResolver.source["game/two"] = R"(
+        local a: _luau_ice
+    )";
+
+    try
+    {
+        frontend.check("game/one");
+    }
+    catch (InternalCompilerError& err)
+    {
+        CHECK("game/two" == err.moduleName);
+        return;
+    }
+
+    FAIL("Expected an InternalCompilerError!");
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "checked_modules_have_the_correct_mode")
+{
+    fileResolver.source["game/A"] = R"(
+        --!nocheck
+        local a: number = "five"
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        --!nonstrict
+        local a = math.abs("five")
+    )";
+
+    fileResolver.source["game/C"] = R"(
+        --!strict
+        local a = 10
+    )";
+
+    frontend.check("game/A");
+    frontend.check("game/B");
+    frontend.check("game/C");
+
+    ModulePtr moduleA = frontend.moduleResolver.getModule("game/A");
+    REQUIRE(moduleA);
+    CHECK(moduleA->mode == Mode::NoCheck);
+
+    ModulePtr moduleB = frontend.moduleResolver.getModule("game/B");
+    REQUIRE(moduleB);
+    CHECK(moduleB->mode == Mode::Nonstrict);
+
+    ModulePtr moduleC = frontend.moduleResolver.getModule("game/C");
+    REQUIRE(moduleC);
+    CHECK(moduleC->mode == Mode::Strict);
 }
 
 TEST_SUITE_END();

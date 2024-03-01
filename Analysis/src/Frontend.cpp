@@ -1169,6 +1169,8 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
     result->name = sourceModule.name;
     result->humanReadableName = sourceModule.humanReadableName;
 
+    result->mode = sourceModule.mode.value_or(Mode::NoCheck);
+
     result->internalTypes.owningModule = result.get();
     result->interfaceTypes.owningModule = result.get();
 
@@ -1199,7 +1201,7 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
     cg.visitModuleRoot(sourceModule.root);
     result->errors = std::move(cg.errors);
 
-    ConstraintSolver cs{NotNull{&normalizer}, NotNull(cg.rootScope), borrowConstraints(cg.constraints), result->humanReadableName, moduleResolver,
+    ConstraintSolver cs{NotNull{&normalizer}, NotNull(cg.rootScope), borrowConstraints(cg.constraints), result->name, moduleResolver,
         requireCycles, logger.get(), limits};
 
     if (options.randomizeConstraintResolutionSeed)
@@ -1294,8 +1296,8 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, std::vect
         catch (const InternalCompilerError& err)
         {
             InternalCompilerError augmented = err.location.has_value()
-                                                  ? InternalCompilerError{err.message, sourceModule.humanReadableName, *err.location}
-                                                  : InternalCompilerError{err.message, sourceModule.humanReadableName};
+                                                  ? InternalCompilerError{err.message, sourceModule.name, *err.location}
+                                                  : InternalCompilerError{err.message, sourceModule.name};
             throw augmented;
         }
     }

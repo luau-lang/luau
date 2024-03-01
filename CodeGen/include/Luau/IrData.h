@@ -304,7 +304,11 @@ enum class IrCmd : uint8_t
 
     // Converts a double number to a vector with the value in X/Y/Z
     // A: double
-    NUM_TO_VECTOR,
+    NUM_TO_VEC,
+
+    // Adds VECTOR type tag to a vector, preserving X/Y/Z components
+    // A: TValue
+    TAG_VECTOR,
 
     // Adjust stack top (L->top) to point at 'B' TValues *after* the specified register
     // This is used to return multiple values

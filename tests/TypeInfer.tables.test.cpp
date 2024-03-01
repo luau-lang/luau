@@ -4022,8 +4022,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_write_property")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // CHECK("({ y: number }) -> ()" == toString(requireType("f")));
-    CHECK("({ y: number & unknown }) -> ()" == toString(requireType("f")));
+    CHECK("({ y: number }) -> ()" == toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_error_suppression")

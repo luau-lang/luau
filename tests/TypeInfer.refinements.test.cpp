@@ -967,7 +967,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_comparison_ifelse_expression")
 
     CHECK_EQ("number", toString(requireTypeAtPosition({10, 49})));
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("unknown & ~number", toString(requireTypeAtPosition({10, 66})));
+        CHECK_EQ("~number", toString(requireTypeAtPosition({10, 66})));
     else
         CHECK_EQ("unknown", toString(requireTypeAtPosition({10, 66})));
 }
@@ -1497,7 +1497,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknowns")
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         CHECK_EQ("string", toString(requireTypeAtPosition({3, 28})));
-        CHECK_EQ("unknown & ~string", toString(requireTypeAtPosition({5, 28})));
+        CHECK_EQ("~string", toString(requireTypeAtPosition({5, 28})));
     }
     else
     {

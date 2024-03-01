@@ -764,16 +764,17 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes)
     const TypeId numberType = builtinTypes->numberType;
     const TypeId booleanType = builtinTypes->booleanType;
     const TypeId stringType = builtinTypes->stringType;
-    const TypeId anyType = builtinTypes->anyType;
 
     const TypeId optionalNumber = arena->addType(UnionType{{nilType, numberType}});
     const TypeId optionalString = arena->addType(UnionType{{nilType, stringType}});
     const TypeId optionalBoolean = arena->addType(UnionType{{nilType, booleanType}});
 
     const TypePackId oneStringPack = arena->addTypePack({stringType});
-    const TypePackId anyTypePack = arena->addTypePack(TypePackVar{VariadicTypePack{anyType}, true});
+    const TypePackId anyTypePack = builtinTypes->anyTypePack;
 
-    FunctionType formatFTV{arena->addTypePack(TypePack{{stringType}, anyTypePack}), oneStringPack};
+    const TypePackId variadicTailPack = FFlag::DebugLuauDeferredConstraintResolution ? builtinTypes->unknownTypePack : anyTypePack;
+
+    FunctionType formatFTV{arena->addTypePack(TypePack{{stringType}, variadicTailPack}), oneStringPack};
     formatFTV.magicFunction = &magicFunctionFormat;
     const TypeId formatFn = arena->addType(formatFTV);
     attachDcrMagicFunction(formatFn, dcrMagicFunctionFormat);
@@ -820,13 +821,13 @@ TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes)
         {"split", {makeFunction(*arena, stringType, {}, {}, {optionalString}, {},
                       {arena->addType(TableType{{}, TableIndexer{numberType, stringType}, TypeLevel{}, TableState::Sealed})})}},
         {"pack", {arena->addType(FunctionType{
-                     arena->addTypePack(TypePack{{stringType}, anyTypePack}),
+                     arena->addTypePack(TypePack{{stringType}, variadicTailPack}),
                      oneStringPack,
                  })}},
         {"packsize", {makeFunction(*arena, stringType, {}, {}, {}, {}, {numberType})}},
         {"unpack", {arena->addType(FunctionType{
                        arena->addTypePack(TypePack{{stringType, stringType, optionalNumber}}),
-                       anyTypePack,
+                       variadicTailPack,
                    })}},
     };
 

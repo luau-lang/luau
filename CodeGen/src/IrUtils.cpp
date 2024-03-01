@@ -106,7 +106,8 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::NUM_TO_INT:
     case IrCmd::NUM_TO_UINT:
         return IrValueKind::Int;
-    case IrCmd::NUM_TO_VECTOR:
+    case IrCmd::NUM_TO_VEC:
+    case IrCmd::TAG_VECTOR:
         return IrValueKind::Tvalue;
     case IrCmd::ADJUST_STACK_TO_REG:
     case IrCmd::ADJUST_STACK_TO_TOP:
