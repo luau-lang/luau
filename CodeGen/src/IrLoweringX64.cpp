@@ -542,18 +542,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a});
 
-        RegisterX64 src = regOp(inst.a);
-
-        if (inst.regX64 == src)
-        {
-            build.vxorpd(inst.regX64, inst.regX64, build.f64(-0.0));
-        }
-        else
-        {
-            build.vmovsd(inst.regX64, src, src);
-            build.vxorpd(inst.regX64, inst.regX64, build.f64(-0.0));
-        }
-
+        build.vxorpd(inst.regX64, regOp(inst.a), build.f64(-0.0));
         break;
     }
     case IrCmd::FLOOR_NUM:
@@ -665,17 +654,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a});
 
-        RegisterX64 src = regOp(inst.a);
-
-        if (inst.regX64 == src)
-        {
-            build.vxorpd(inst.regX64, inst.regX64, build.f32x4(-0.0, -0.0, -0.0, -0.0));
-        }
-        else
-        {
-            build.vmovsd(inst.regX64, src, src);
-            build.vxorpd(inst.regX64, inst.regX64, build.f32x4(-0.0, -0.0, -0.0, -0.0));
-        }
+        build.vxorpd(inst.regX64, regOp(inst.a), build.f32x4(-0.0, -0.0, -0.0, -0.0));
 
         if (!FFlag::LuauCodegenVectorTag2)
             build.vpinsrd(inst.regX64, inst.regX64, build.i32(LUA_TVECTOR), 3);
