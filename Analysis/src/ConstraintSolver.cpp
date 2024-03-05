@@ -2528,4 +2528,11 @@ LUAU_NOINLINE void ConstraintSolver::throwUserCancelError()
     throw UserCancelError(currentModuleName);
 }
 
+// Instantiate private template implementations for external callers
+template bool ConstraintSolver::unify(NotNull<Scope> scope, Location location, TypeId subType, TypeId superType);
+template bool ConstraintSolver::unify(NotNull<Scope> scope, Location location, TypePackId subType, TypePackId superType);
+
+template bool ConstraintSolver::unify(NotNull<const Constraint> constraint, TypeId subTy, TypeId superTy);
+template bool ConstraintSolver::unify(NotNull<const Constraint> constraint, TypePackId subTy, TypePackId superTy);
+
 } // namespace Luau
