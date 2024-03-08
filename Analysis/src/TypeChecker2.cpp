@@ -17,6 +17,7 @@
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFamily.h"
+#include "Luau/TypeFamilyReductionGuesser.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypePath.h"
@@ -25,6 +26,8 @@
 #include "Luau/VisitType.h"
 
 #include <algorithm>
+#include <iostream>
+#include <ostream>
 
 LUAU_FASTFLAG(DebugLuauMagicTypes)
 
@@ -35,6 +38,7 @@ namespace Luau
 // TODO move these
 using PrintLineProc = void (*)(const std::string&);
 extern PrintLineProc luauPrintLine;
+
 
 /* Push a scope onto the end of a stack for the lifetime of the StackPusher instance.
  * TypeChecker2 uses this to maintain knowledge about which scope encloses every
@@ -1271,13 +1275,13 @@ struct TypeChecker2
         {
             switch (shouldSuppressErrors(NotNull{&normalizer}, fnTy))
             {
-                case ErrorSuppression::Suppress:
-                    break;
-                case ErrorSuppression::NormalizationFailed:
-                    reportError(NormalizationTooComplex{}, call->func->location);
-                    // fallthrough intentional
-                case ErrorSuppression::DoNotSuppress:
-                    reportError(OptionalValueAccess{fnTy}, call->func->location);
+            case ErrorSuppression::Suppress:
+                break;
+            case ErrorSuppression::NormalizationFailed:
+                reportError(NormalizationTooComplex{}, call->func->location);
+                // fallthrough intentional
+            case ErrorSuppression::DoNotSuppress:
+                reportError(OptionalValueAccess{fnTy}, call->func->location);
             }
             return;
         }
@@ -1528,6 +1532,7 @@ struct TypeChecker2
         functionDeclStack.push_back(inferredFnTy);
 
         const NormalizedType* normalizedFnTy = normalizer.normalize(inferredFnTy);
+        const FunctionType* inferredFtv = get<FunctionType>(normalizedFnTy->functions.parts.front());
         if (!normalizedFnTy)
         {
             reportError(CodeTooComplex{}, fn->location);
@@ -1621,6 +1626,19 @@ struct TypeChecker2
         // we need to typecheck the return annotation itself, if it exists.
         if (fn->returnAnnotation)
             visit(*fn->returnAnnotation);
+
+        // If the function type has a family annotation, we need to see if we can suggest an annotation
+        TypeFamilyReductionGuesser guesser{builtinTypes, NotNull{&normalizer}};
+        for (TypeId retTy : inferredFtv->retTypes)
+        {
+            if (get<TypeFamilyInstanceType>(follow(retTy)))
+            {
+                TypeFamilyReductionGuessResult result = guesser.guessTypeFamilyReductionForFunction(*fn, inferredFtv, retTy);
+                if (result.shouldRecommendAnnotation)
+                    reportError(
+                        ExplicitFunctionAnnotationRecommended{std::move(result.guessedFunctionAnnotations), result.guessedReturnType}, fn->location);
+            }
+        }
 
         functionDeclStack.pop_back();
     }

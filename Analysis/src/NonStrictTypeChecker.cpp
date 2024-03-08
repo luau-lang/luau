@@ -542,11 +542,11 @@ struct NonStrictTypeChecker
                         }
                     }
                 }
-                // For a checked function, these gotta be the same size
 
                 std::string functionName = getFunctionNameAsString(*call->func).value_or("");
-                if (call->args.size != argTypes.size())
+                if (call->args.size > argTypes.size())
                 {
+                    // We are passing more arguments than we expect, so we should error
                     reportError(CheckedFunctionIncorrectArgs{functionName, argTypes.size(), call->args.size}, call->location);
                     return fresh;
                 }
@@ -571,6 +571,20 @@ struct NonStrictTypeChecker
                     AstExpr* arg = call->args.data[i];
                     if (auto runTimeFailureType = willRunTimeError(arg, fresh))
                         reportError(CheckedFunctionCallError{argTypes[i], *runTimeFailureType, functionName, i}, arg->location);
+                }
+
+                if (call->args.size < argTypes.size())
+                {
+                    // We are passing fewer arguments than we expect
+                    // so we need to ensure that the rest of the args are optional.
+                    bool remainingArgsOptional = true;
+                    for (size_t i = call->args.size; i < argTypes.size(); i++)
+                        remainingArgsOptional = remainingArgsOptional && isOptional(argTypes[i]);
+                    if (!remainingArgsOptional)
+                    {
+                        reportError(CheckedFunctionIncorrectArgs{functionName, argTypes.size(), call->args.size}, call->location);
+                        return fresh;
+                    }
                 }
             }
         }

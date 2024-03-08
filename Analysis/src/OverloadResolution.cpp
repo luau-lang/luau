@@ -1,12 +1,14 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/OverloadResolution.h"
 
+#include "Luau/Instantiation2.h"
 #include "Luau/Subtyping.h"
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
+#include "Luau/TypeFamily.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
-#include "Luau/TypeFamily.h"
+#include "Luau/Unifier2.h"
 
 namespace Luau
 {
@@ -26,19 +28,28 @@ OverloadResolver::OverloadResolver(NotNull<BuiltinTypes> builtinTypes, NotNull<T
 
 std::pair<OverloadResolver::Analysis, TypeId> OverloadResolver::selectOverload(TypeId ty, TypePackId argsPack)
 {
+    auto tryOne = [&](TypeId f) {
+        if (auto ftv = get<FunctionType>(f))
+        {
+            SubtypingResult r = subtyping.isSubtype(argsPack, ftv->argTypes);
+            if (r.isSubtype)
+                return true;
+        }
+
+        return false;
+    };
+
     TypeId t = follow(ty);
+
+    if (tryOne(ty))
+        return {Analysis::Ok, ty};
+
     if (auto it = get<IntersectionType>(t))
     {
         for (TypeId component : it)
         {
-            if (auto ftv = get<FunctionType>(component))
-            {
-                SubtypingResult r = subtyping.isSubtype(argsPack, ftv->argTypes);
-                if (r.isSubtype)
-                    return {Analysis::Ok, component};
-            }
-            else
-                continue;
+            if (tryOne(component))
+                return {Analysis::Ok, component};
         }
     }
 
@@ -347,5 +358,64 @@ void OverloadResolver::add(Analysis analysis, TypeId ty, ErrorVec&& errors)
     }
 }
 
+
+SolveResult solveFunctionCall(
+    NotNull<TypeArena> arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Normalizer> normalizer,
+    NotNull<InternalErrorReporter> iceReporter,
+    NotNull<TypeCheckLimits> limits,
+    NotNull<Scope> scope,
+    const Location& location,
+    TypeId fn,
+    TypePackId argsPack
+)
+{
+    OverloadResolver resolver{
+        builtinTypes, NotNull{arena}, normalizer, scope, iceReporter, limits, location};
+    auto [status, overload] = resolver.selectOverload(fn, argsPack);
+    TypeId overloadToUse = fn;
+    if (status == OverloadResolver::Analysis::Ok)
+        overloadToUse = overload;
+    else if (get<AnyType>(fn) || get<FreeType>(fn))
+    {
+        // Nothing.  Let's keep going
+    }
+    else
+        return {SolveResult::NoMatchingOverload};
+
+    TypePackId resultPack = arena->freshTypePack(scope);
+
+    TypeId inferredTy = arena->addType(FunctionType{TypeLevel{}, scope.get(), argsPack, resultPack});
+    Unifier2 u2{NotNull{arena}, builtinTypes, scope, iceReporter};
+
+    const bool occursCheckPassed = u2.unify(overloadToUse, inferredTy);
+
+    if (!u2.genericSubstitutions.empty() || !u2.genericPackSubstitutions.empty())
+    {
+        Instantiation2 instantiation{arena, std::move(u2.genericSubstitutions), std::move(u2.genericPackSubstitutions)};
+
+        std::optional<TypePackId> subst = instantiation.substitute(resultPack);
+
+        if (!subst)
+            return {SolveResult::CodeTooComplex};
+        else
+            resultPack = *subst;
+    }
+
+    if (!occursCheckPassed)
+        return {SolveResult::OccursCheckFailed};
+
+    SolveResult result;
+    result.result = SolveResult::Ok;
+    result.typePackId = resultPack;
+
+    LUAU_ASSERT(overloadToUse);
+    result.overloadToUse = overloadToUse;
+    result.inferredTy = inferredTy;
+    result.expandedFreeTypes = std::move(u2.expandedFreeTypes);
+
+    return result;
+}
 
 } // namespace Luau

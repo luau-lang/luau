@@ -8,6 +8,8 @@
 #include "Luau/Instantiation.h"
 #include "Luau/Normalize.h"
 #include "Luau/NotNull.h"
+#include "Luau/OverloadResolution.h"
+#include "Luau/Set.h"
 #include "Luau/Simplify.h"
 #include "Luau/Substitution.h"
 #include "Luau/Subtyping.h"
@@ -19,7 +21,6 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 #include "Luau/VecDeque.h"
-#include "Luau/Set.h"
 #include "Luau/VisitType.h"
 
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyGraphReductionMaximumSteps, 1'000'000);
@@ -514,6 +515,18 @@ TypeFamilyReductionResult<TypeId> unmFamilyFn(
         return {std::nullopt, true, {}, {}};
 }
 
+NotNull<Constraint> TypeFamilyContext::pushConstraint(ConstraintV&& c)
+{
+    NotNull<Constraint> newConstraint = solver->pushConstraint(scope, constraint ? constraint->location : Location{}, std::move(c));
+
+    // Every constraint that is blocked on the current constraint must also be
+    // blocked on this new one.
+    if (constraint)
+        solver->inheritBlocks(NotNull{constraint}, newConstraint);
+
+    return newConstraint;
+}
+
 TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx, const std::string metamethod)
 {
@@ -525,6 +538,8 @@ TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(TypeId instance, const st
 
     TypeId lhsTy = follow(typeParams.at(0));
     TypeId rhsTy = follow(typeParams.at(1));
+
+    const Location location = ctx->constraint ? ctx->constraint->location : Location{};
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
     if (isPending(lhsTy, ctx->solver))
@@ -555,11 +570,11 @@ TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(TypeId instance, const st
     // the necessary state to do that, even if we intend to just eat the errors.
     ErrorVec dummy;
 
-    std::optional<TypeId> mmType = findMetatableEntry(ctx->builtins, dummy, lhsTy, metamethod, Location{});
+    std::optional<TypeId> mmType = findMetatableEntry(ctx->builtins, dummy, lhsTy, metamethod, location);
     bool reversed = false;
     if (!mmType)
     {
-        mmType = findMetatableEntry(ctx->builtins, dummy, rhsTy, metamethod, Location{});
+        mmType = findMetatableEntry(ctx->builtins, dummy, rhsTy, metamethod, location);
         reversed = true;
     }
 
@@ -570,33 +585,26 @@ TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(TypeId instance, const st
     if (isPending(*mmType, ctx->solver))
         return {std::nullopt, false, {*mmType}, {}};
 
-    const FunctionType* mmFtv = get<FunctionType>(*mmType);
-    if (!mmFtv)
-        return {std::nullopt, true, {}, {}};
+    TypePackId argPack = ctx->arena->addTypePack({lhsTy, rhsTy});
+    SolveResult solveResult;
 
-    std::optional<TypeId> instantiatedMmType = instantiate(ctx->builtins, ctx->arena, ctx->limits, ctx->scope, *mmType);
-    if (!instantiatedMmType)
-        return {std::nullopt, true, {}, {}};
-
-    const FunctionType* instantiatedMmFtv = get<FunctionType>(*instantiatedMmType);
-    if (!instantiatedMmFtv)
-        return {ctx->builtins->errorRecoveryType(), false, {}, {}};
-
-    std::vector<TypeId> inferredArgs;
     if (!reversed)
-        inferredArgs = {lhsTy, rhsTy};
+        solveResult = solveFunctionCall(ctx->arena, ctx->builtins, ctx->normalizer, ctx->ice, ctx->limits, ctx->scope, location, *mmType, argPack);
     else
-        inferredArgs = {rhsTy, lhsTy};
+    {
+        TypePack* p = getMutable<TypePack>(argPack);
+        std::swap(p->head.front(), p->head.back());
+        solveResult = solveFunctionCall(ctx->arena, ctx->builtins, ctx->normalizer, ctx->ice, ctx->limits, ctx->scope, location, *mmType, argPack);
+    }
 
-    TypePackId inferredArgPack = ctx->arena->addTypePack(std::move(inferredArgs));
-    Unifier2 u2{ctx->arena, ctx->builtins, ctx->scope, ctx->ice};
-    if (!u2.unify(inferredArgPack, instantiatedMmFtv->argTypes))
-        return {std::nullopt, true, {}, {}}; // occurs check failed
-
-    if (std::optional<TypeId> ret = first(instantiatedMmFtv->retTypes))
-        return {*ret, false, {}, {}};
-    else
+    if (!solveResult.typePackId.has_value())
         return {std::nullopt, true, {}, {}};
+
+    TypePack extracted = extendTypePack(*ctx->arena, ctx->builtins, *solveResult.typePackId, 1);
+    if (extracted.head.empty())
+        return {std::nullopt, true, {}, {}};
+
+    return {extracted.head.front(), false, {}, {}};
 }
 
 TypeFamilyReductionResult<TypeId> addFamilyFn(
@@ -855,6 +863,11 @@ static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(TypeId instance, con
     TypeId lhsTy = follow(typeParams.at(0));
     TypeId rhsTy = follow(typeParams.at(1));
 
+    if (isPending(lhsTy, ctx->solver))
+        return {std::nullopt, false, {lhsTy}, {}};
+    else if (isPending(rhsTy, ctx->solver))
+        return {std::nullopt, false, {rhsTy}, {}};
+
     // Algebra Reduction Rules for comparison family functions
     // Note that comparing to never tells you nothing about the other operand
     // lt< 'a , never> -> continue
@@ -875,12 +888,12 @@ static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(TypeId instance, con
             asMutable(rhsTy)->ty.emplace<BoundType>(ctx->builtins->numberType);
         else if (lhsFree && get<NeverType>(rhsTy) == nullptr)
         {
-            auto c1 = ctx->solver->pushConstraint(ctx->scope, {}, EqualityConstraint{lhsTy, rhsTy});
+            auto c1 = ctx->pushConstraint(EqualityConstraint{lhsTy, rhsTy});
             const_cast<Constraint*>(ctx->constraint)->dependencies.emplace_back(c1);
         }
         else if (rhsFree && get<NeverType>(lhsTy) == nullptr)
         {
-            auto c1 = ctx->solver->pushConstraint(ctx->scope, {}, EqualityConstraint{rhsTy, lhsTy});
+            auto c1 = ctx->pushConstraint(EqualityConstraint{rhsTy, lhsTy});
             const_cast<Constraint*>(ctx->constraint)->dependencies.emplace_back(c1);
         }
     }
@@ -890,10 +903,6 @@ static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(TypeId instance, con
     rhsTy = follow(rhsTy);
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
-    if (isPending(lhsTy, ctx->solver))
-        return {std::nullopt, false, {lhsTy}, {}};
-    else if (isPending(rhsTy, ctx->solver))
-        return {std::nullopt, false, {rhsTy}, {}};
 
     const NormalizedType* normLhsTy = ctx->normalizer->normalize(lhsTy);
     const NormalizedType* normRhsTy = ctx->normalizer->normalize(rhsTy);

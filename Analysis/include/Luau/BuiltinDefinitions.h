@@ -25,19 +25,21 @@ TypeId makeOption(NotNull<BuiltinTypes> builtinTypes, TypeArena& arena, TypeId t
 /** Small utility function for building up type definitions from C++.
  */
 TypeId makeFunction( // Monomorphic
-    TypeArena& arena, std::optional<TypeId> selfType, std::initializer_list<TypeId> paramTypes, std::initializer_list<TypeId> retTypes);
+    TypeArena& arena, std::optional<TypeId> selfType, std::initializer_list<TypeId> paramTypes, std::initializer_list<TypeId> retTypes,
+    bool checked = false);
 
 TypeId makeFunction( // Polymorphic
     TypeArena& arena, std::optional<TypeId> selfType, std::initializer_list<TypeId> generics, std::initializer_list<TypePackId> genericPacks,
-    std::initializer_list<TypeId> paramTypes, std::initializer_list<TypeId> retTypes);
+    std::initializer_list<TypeId> paramTypes, std::initializer_list<TypeId> retTypes, bool checked = false);
 
 TypeId makeFunction( // Monomorphic
     TypeArena& arena, std::optional<TypeId> selfType, std::initializer_list<TypeId> paramTypes, std::initializer_list<std::string> paramNames,
-    std::initializer_list<TypeId> retTypes);
+    std::initializer_list<TypeId> retTypes, bool checked = false);
 
 TypeId makeFunction( // Polymorphic
     TypeArena& arena, std::optional<TypeId> selfType, std::initializer_list<TypeId> generics, std::initializer_list<TypePackId> genericPacks,
-    std::initializer_list<TypeId> paramTypes, std::initializer_list<std::string> paramNames, std::initializer_list<TypeId> retTypes);
+    std::initializer_list<TypeId> paramTypes, std::initializer_list<std::string> paramNames, std::initializer_list<TypeId> retTypes,
+    bool checked = false);
 
 void attachMagicFunction(TypeId ty, MagicFunction fn);
 void attachDcrMagicFunction(TypeId ty, DcrMagicFunction fn);

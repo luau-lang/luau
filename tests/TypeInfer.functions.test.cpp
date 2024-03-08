@@ -2309,4 +2309,60 @@ end
     CHECK_EQ("(number) -> boolean", toString(requireType("odd")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_return_type")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+    CheckResult result = check(R"(
+function fib(n)
+    return n < 2 and 1 or fib(n-1) + fib(n-2)
+end
+)");
+
+    LUAU_REQUIRE_ERRORS(result);
+    auto err = get<ExplicitFunctionAnnotationRecommended>(result.errors.back());
+    LUAU_ASSERT(err);
+    CHECK("false | number" == toString(err->recommendedReturn));
+    CHECK(err->recommendedArgs.size() == 0);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_arg_type")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+    CheckResult result = check(R"(
+function fib(n, u)
+    return (n or u) and (n < u and n + fib(n,u))
+end
+)");
+
+    LUAU_REQUIRE_ERRORS(result);
+    auto err = get<ExplicitFunctionAnnotationRecommended>(result.errors.back());
+    LUAU_ASSERT(err);
+    CHECK("number" == toString(err->recommendedReturn));
+    CHECK(err->recommendedArgs.size() == 2);
+    CHECK("number" == toString(err->recommendedArgs[0].second));
+    CHECK("number" == toString(err->recommendedArgs[1].second));
+}
+
+TEST_CASE_FIXTURE(Fixture, "local_function_fwd_decl_doesnt_crash")
+{
+    CheckResult result = check(R"(
+        local foo
+
+        local function bar()
+            foo()
+        end
+
+        function foo()
+        end
+
+        bar()
+    )");
+
+    // This test verifies that an ICE doesn't occur, so the bulk of the test is
+    // just from running check above.
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

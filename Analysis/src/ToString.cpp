@@ -20,7 +20,6 @@
 #include <string>
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAGVARIABLE(LuauToStringPrettifyLocation, false)
 LUAU_FASTFLAGVARIABLE(LuauToStringSimpleCompositeTypesSingleLine, false)
 
 /*
@@ -1879,15 +1878,8 @@ std::string toString(const Position& position)
 
 std::string toString(const Location& location, int offset, bool useBegin)
 {
-    if (FFlag::LuauToStringPrettifyLocation)
-    {
-        return "(" + std::to_string(location.begin.line + offset) + ", " + std::to_string(location.begin.column + offset) + ") - (" +
-               std::to_string(location.end.line + offset) + ", " + std::to_string(location.end.column + offset) + ")";
-    }
-    else
-    {
-        return "Location { " + toString(location.begin) + ", " + toString(location.end) + " }";
-    }
+    return "(" + std::to_string(location.begin.line + offset) + ", " + std::to_string(location.begin.column + offset) + ") - (" +
+            std::to_string(location.end.line + offset) + ", " + std::to_string(location.end.column + offset) + ")";
 }
 
 std::string toString(const TypeOrPack& tyOrTp, ToStringOptions& opts)

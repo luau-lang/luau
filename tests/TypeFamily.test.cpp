@@ -552,6 +552,29 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_common_subset_if_union_of_dif
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(ClassFixture, "vector2_multiply_is_overloaded")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local v = Vector2.New(1, 2)
+
+        local v2 = v * 1.5
+        local v3 = v * v
+        local v4 = v * "Hello" -- line 5
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(5 == result.errors[0].location.begin.line);
+    CHECK(5 == result.errors[0].location.end.line);
+
+    CHECK("Vector2" == toString(requireType("v2")));
+    CHECK("Vector2" == toString(requireType("v3")));
+    CHECK("mul<Vector2, string>" == toString(requireType("v4")));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_rfc_example")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)

@@ -8,6 +8,7 @@
 #include "Luau/IrDump.h"
 #include "Luau/IrUtils.h"
 #include "Luau/OptimizeConstProp.h"
+#include "Luau/OptimizeDeadStore.h"
 #include "Luau/OptimizeFinalX64.h"
 
 #include "EmitCommon.h"
@@ -26,6 +27,7 @@ LUAU_FASTFLAG(DebugCodegenSkipNumbering)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockInstructionLimit)
+LUAU_FASTFLAG(LuauCodegenRemoveDeadStores2)
 
 namespace Luau
 {
@@ -309,6 +311,9 @@ inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& 
                 stats->blockLinearizationStats.constPropInstructionCount += constPropInstructionCount;
             }
         }
+
+        if (FFlag::LuauCodegenRemoveDeadStores2)
+            markDeadStoresInBlockChains(ir);
     }
 
     std::vector<uint32_t> sortedBlocks = getSortedBlockOrder(ir.function);

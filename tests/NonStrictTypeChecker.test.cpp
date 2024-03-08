@@ -89,6 +89,9 @@ declare function @checked optionalArg(x: string?) : number
 declare foo: {
     bar: @checked (number) -> number,
 }
+
+declare function @checked optionalArgsAtTheEnd1(x: string, y: number?, z: number?) : number
+declare function @checked optionalArgsAtTheEnd2(x: string, y: number?, z: string) : number
 )BUILTIN_SRC";
 };
 
@@ -472,6 +475,34 @@ abs(3, "hi");
     LUAU_ASSERT(r2);
     CHECK_EQ("abs", r1->functionName);
     CHECK_EQ("foo.bar", r2->functionName);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "optionals_in_checked_function_can_be_omitted")
+{
+    CheckResult result = checkNonStrict(R"(
+optionalArgsAtTheEnd1("a")
+optionalArgsAtTheEnd1("a", 3)
+optionalArgsAtTheEnd1("a", nil, 3)
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "optionals_in_checked_function_in_middle_cannot_be_omitted")
+{
+    CheckResult result = checkNonStrict(R"(
+optionalArgsAtTheEnd2("a", "a") -- error
+optionalArgsAtTheEnd2("a", nil, "b")
+optionalArgsAtTheEnd2("a", 3, "b")
+optionalArgsAtTheEnd2("a", "b", "c") -- error
+)");
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    NONSTRICT_REQUIRE_CHECKED_ERR(Position(1, 27), "optionalArgsAtTheEnd2", result);
+    NONSTRICT_REQUIRE_CHECKED_ERR(Position(4, 27), "optionalArgsAtTheEnd2", result);
+    auto r1 = get<CheckedFunctionIncorrectArgs>(result.errors[2]);
+    LUAU_ASSERT(r1);
+    CHECK_EQ(3, r1->expected);
+    CHECK_EQ(2, r1->actual);
 }
 
 TEST_SUITE_END();

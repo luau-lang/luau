@@ -6,7 +6,7 @@
 #include <string.h>
 
 template<typename T>
-struct ScopedFValue
+struct [[nodiscard]] ScopedFValue
 {
 private:
     Luau::FValue<T>* value = nullptr;

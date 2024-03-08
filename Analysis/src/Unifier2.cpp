@@ -106,6 +106,18 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
 
     if (subFree && superFree)
     {
+        DenseHashSet<TypeId> seen{nullptr};
+        if (OccursCheckResult::Fail == occursCheck(seen, subTy, superTy))
+        {
+            asMutable(subTy)->ty.emplace<BoundType>(builtinTypes->errorRecoveryType());
+            return false;
+        }
+        else if (OccursCheckResult::Fail == occursCheck(seen, superTy, subTy))
+        {
+            asMutable(subTy)->ty.emplace<BoundType>(builtinTypes->errorRecoveryType());
+            return false;
+        }
+
         superFree->lowerBound = mkUnion(subFree->lowerBound, superFree->lowerBound);
         superFree->upperBound = mkIntersection(subFree->upperBound, superFree->upperBound);
         asMutable(subTy)->ty.emplace<BoundType>(superTy);
@@ -819,6 +831,53 @@ TypeId Unifier2::mkIntersection(TypeId left, TypeId right)
     right = follow(right);
 
     return simplifyIntersection(builtinTypes, arena, left, right).result;
+}
+
+OccursCheckResult Unifier2::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack)
+{
+    RecursionLimiter _ra(&recursionCount, recursionLimit);
+
+    OccursCheckResult occurrence = OccursCheckResult::Pass;
+
+    auto check = [&](TypeId ty) {
+        if (occursCheck(seen, needle, ty) == OccursCheckResult::Fail)
+            occurrence = OccursCheckResult::Fail;
+    };
+
+    needle = follow(needle);
+    haystack = follow(haystack);
+
+    if (seen.find(haystack))
+        return OccursCheckResult::Pass;
+
+    seen.insert(haystack);
+
+    if (get<ErrorType>(needle))
+        return OccursCheckResult::Pass;
+
+    if (!get<FreeType>(needle))
+        ice->ice("Expected needle to be free");
+
+    if (needle == haystack)
+        return OccursCheckResult::Fail;
+
+    if (auto haystackFree = get<FreeType>(haystack))
+    {
+        check(haystackFree->lowerBound);
+        check(haystackFree->upperBound);
+    }
+    else if (auto ut = get<UnionType>(haystack))
+    {
+        for (TypeId ty : ut->options)
+            check(ty);
+    }
+    else if (auto it = get<IntersectionType>(haystack))
+    {
+        for (TypeId ty : it->parts)
+            check(ty);
+    }
+
+    return occurrence;
 }
 
 OccursCheckResult Unifier2::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack)

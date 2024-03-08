@@ -290,8 +290,8 @@ std::optional<TypeId> ConstraintGenerator::lookup(const ScopePtr& scope, DefId d
     {
         if (auto found = scope->lookup(def))
             return *found;
-        else if (phi->operands.size() == 1)
-            return lookup(scope, phi->operands[0], prototype);
+        else if (!prototype && phi->operands.size() == 1)
+            return lookup(scope, phi->operands.at(0), prototype);
         else if (!prototype)
             return std::nullopt;
 
@@ -963,7 +963,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatFunction* f
     DefId def = dfg->getDef(function->name);
     std::optional<TypeId> existingFunctionTy = lookup(scope, def);
 
-    if (sigFullyDefined && existingFunctionTy && get<BlockedType>(*existingFunctionTy))
+    if (existingFunctionTy && (sigFullyDefined || function->name->is<AstExprLocal>()) && get<BlockedType>(*existingFunctionTy))
         asMutable(*existingFunctionTy)->ty.emplace<BoundType>(sig.signature);
 
     if (AstExprLocal* localName = function->name->as<AstExprLocal>())
@@ -2537,7 +2537,7 @@ TypeId ConstraintGenerator::updateProperty(const ScopePtr& scope, AstExpr* expr,
     std::vector<std::string> segmentStrings(begin(segments), end(segments));
 
     TypeId updatedType = arena->addType(BlockedType{});
-    addConstraint(scope, expr->location, SetPropConstraint{updatedType, subjectType, std::move(segmentStrings), assignedTy});
+    auto setC = addConstraint(scope, expr->location, SetPropConstraint{updatedType, subjectType, std::move(segmentStrings), assignedTy});
 
     TypeId prevSegmentTy = updatedType;
     for (size_t i = 0; i < segments.size(); ++i)
@@ -2545,7 +2545,8 @@ TypeId ConstraintGenerator::updateProperty(const ScopePtr& scope, AstExpr* expr,
         TypeId segmentTy = arena->addType(BlockedType{});
         module->astTypes[exprs[i]] = segmentTy;
         ValueContext ctx = i == segments.size() - 1 ? ValueContext::LValue : ValueContext::RValue;
-        addConstraint(scope, expr->location, HasPropConstraint{segmentTy, prevSegmentTy, segments[i], ctx});
+        auto hasC = addConstraint(scope, expr->location, HasPropConstraint{segmentTy, prevSegmentTy, segments[i], ctx});
+        setC->dependencies.push_back(hasC);
         prevSegmentTy = segmentTy;
     }
 

@@ -1128,6 +1128,9 @@ TypeId TypeSimplifier::intersect(TypeId left, TypeId right)
     left = simplify(left);
     right = simplify(right);
 
+    if (left == right)
+        return left;
+
     if (get<AnyType>(left) && get<ErrorType>(right))
         return right;
     if (get<AnyType>(right) && get<ErrorType>(left))
