@@ -67,4 +67,36 @@ private:
     void add(Analysis analysis, TypeId ty, ErrorVec&& errors);
 };
 
+struct SolveResult
+{
+    enum OverloadCallResult {
+        Ok,
+        CodeTooComplex,
+        OccursCheckFailed,
+        NoMatchingOverload,
+    };
+
+    OverloadCallResult result;
+    std::optional<TypePackId> typePackId; // nullopt if result != Ok
+
+    TypeId overloadToUse = nullptr;
+    TypeId inferredTy = nullptr;
+    DenseHashMap<TypeId, std::vector<TypeId>> expandedFreeTypes{nullptr};
+};
+
+// Helper utility, presently used for binary operator type families.
+//
+// Given a function and a set of arguments, select a suitable overload.
+SolveResult solveFunctionCall(
+    NotNull<TypeArena> arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Normalizer> normalizer,
+    NotNull<InternalErrorReporter> iceReporter,
+    NotNull<TypeCheckLimits> limits,
+    NotNull<Scope> scope,
+    const Location& location,
+    TypeId fn,
+    TypePackId argsPack
+);
+
 } // namespace Luau

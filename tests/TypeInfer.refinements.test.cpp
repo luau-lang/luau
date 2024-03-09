@@ -2022,4 +2022,39 @@ end
     CHECK("string" == toString(t));
 }
 
+TEST_CASE_FIXTURE(RefinementClassFixture, "mutate_prop_of_some_refined_symbol")
+{
+    CheckResult result = check(R"(
+        local function instances(): {Instance} error("") end
+        local function vec3(x, y, z): Vector3 error("") end
+
+        for _, object in ipairs(instances()) do
+            if object:IsA("Part") then
+                object.Position = vec3(1, 2, 3)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(RefinementClassFixture, "mutate_prop_of_some_refined_symbol_2")
+{
+    CheckResult result = check(R"(
+        type Result<T, E> = never
+            | { tag: "ok", value: T }
+            | { tag: "err", error: E }
+
+        local function results(): {Result<number, string>} error("") end
+
+        for _, res in ipairs(results()) do
+            if res.tag == "ok" then
+                res.value = 7
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

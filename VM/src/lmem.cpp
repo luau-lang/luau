@@ -260,7 +260,10 @@ static lua_Page* newpage(lua_State* L, lua_Page** gcopageset, int pageSize, int 
     return page;
 }
 
-static lua_Page* newclasspage(lua_State* L, lua_Page** freepageset, lua_Page** gcopageset, uint8_t sizeClass, bool storeMetadata)
+// this is part of a cold path in newblock and newgcoblock
+// it is marked as noinline to prevent it from being inlined into those functions
+// if it is inlined, then the compiler may determine those functions are "too big" to be profitably inlined, which results in reduced performance
+LUAU_NOINLINE static lua_Page* newclasspage(lua_State* L, lua_Page** freepageset, lua_Page** gcopageset, uint8_t sizeClass, bool storeMetadata)
 {
     if (FFlag::LuauExtendedSizeClasses)
     {

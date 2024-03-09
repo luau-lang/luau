@@ -307,6 +307,9 @@ struct NormalizedType
     bool hasTables() const;
     bool hasFunctions() const;
     bool hasTyvars() const;
+
+    bool isFalsy() const;
+    bool isTruthy() const;
 };
 
 

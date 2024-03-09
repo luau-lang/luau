@@ -509,6 +509,26 @@ struct ErrorConverter
         return "Type family instance " + Luau::toString(e.ty) + " is uninhabited";
     }
 
+    std::string operator()(const ExplicitFunctionAnnotationRecommended& r) const
+    {
+        std::string toReturn = toString(r.recommendedReturn);
+        std::string argAnnotations;
+        for (auto [arg, type] : r.recommendedArgs)
+        {
+            argAnnotations += arg + ": " + toString(type) + ", ";
+        }
+        if (argAnnotations.length() >= 2)
+        {
+            argAnnotations.pop_back();
+            argAnnotations.pop_back();
+        }
+
+        if (argAnnotations.empty())
+            return "Consider annotating the return with " + toReturn;
+
+        return "Consider placing the following annotations on the arguments: " + argAnnotations + " or instead annotating the return as " + toReturn;
+    }
+
     std::string operator()(const UninhabitedTypePackFamily& e) const
     {
         return "Type pack family instance " + Luau::toString(e.tp) + " is uninhabited";
@@ -883,6 +903,12 @@ bool UninhabitedTypeFamily::operator==(const UninhabitedTypeFamily& rhs) const
     return ty == rhs.ty;
 }
 
+
+bool ExplicitFunctionAnnotationRecommended::operator==(const ExplicitFunctionAnnotationRecommended& rhs) const
+{
+    return recommendedReturn == rhs.recommendedReturn && recommendedArgs == rhs.recommendedArgs;
+}
+
 bool UninhabitedTypePackFamily::operator==(const UninhabitedTypePackFamily& rhs) const
 {
     return tp == rhs.tp;
@@ -1084,6 +1110,12 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
         e.ty = clone(e.ty);
     else if constexpr (std::is_same_v<T, UninhabitedTypeFamily>)
         e.ty = clone(e.ty);
+    else if constexpr (std::is_same_v<T, ExplicitFunctionAnnotationRecommended>)
+    {
+        e.recommendedReturn = clone(e.recommendedReturn);
+        for (auto [_, t] : e.recommendedArgs)
+            t = clone(t);
+    }
     else if constexpr (std::is_same_v<T, UninhabitedTypePackFamily>)
         e.tp = clone(e.tp);
     else if constexpr (std::is_same_v<T, WhereClauseNeeded>)

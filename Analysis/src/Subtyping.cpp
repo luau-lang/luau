@@ -480,7 +480,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     // tested as though it were its upper bounds.  We do not yet support bounded
     // generics, so the upper bound is always unknown.
     if (auto subGeneric = get<GenericType>(subTy); subGeneric && subsumes(subGeneric->scope, scope))
-        return isCovariantWith(env, builtinTypes->unknownType, superTy);
+        return isCovariantWith(env, builtinTypes->neverType, superTy);
     if (auto superGeneric = get<GenericType>(superTy); superGeneric && subsumes(superGeneric->scope, scope))
         return isCovariantWith(env, subTy, builtinTypes->unknownType);
 
@@ -1609,6 +1609,23 @@ TypeId Subtyping::makeAggregateType(const Container& container, TypeId orElse)
         return *begin(container);
     else
         return arena->addType(T{std::vector<TypeId>(begin(container), end(container))});
+}
+
+std::pair<TypeId, ErrorVec> Subtyping::handleTypeFamilyReductionResult(const TypeFamilyInstanceType* familyInstance)
+{
+    TypeFamilyContext context{arena, builtinTypes, scope, normalizer, iceReporter, NotNull{&limits}};
+    TypeId family = arena->addType(*familyInstance);
+    std::string familyString = toString(family);
+    FamilyGraphReductionResult result = reduceFamilies(family, {}, context, true);
+    ErrorVec errors;
+    if (result.blockedTypes.size() != 0 || result.blockedPacks.size() != 0)
+    {
+        errors.push_back(TypeError{{}, UninhabitedTypeFamily{family}});
+        return {builtinTypes->neverType, errors};
+    }
+    if (result.reducedTypes.contains(family))
+        return {family, errors};
+    return {builtinTypes->neverType, errors};
 }
 
 } // namespace Luau

@@ -44,8 +44,9 @@ std::optional<std::pair<TypeId, Scope*>> Scope::lookupEx(DefId def)
 
     while (true)
     {
-        TypeId* it = s->lvalueTypes.find(def);
-        if (it)
+        if (TypeId* it = s->lvalueTypes.find(def))
+            return std::pair{*it, s};
+        else if (TypeId* it = s->rvalueRefinements.find(def))
             return std::pair{*it, s};
 
         if (s->parent)

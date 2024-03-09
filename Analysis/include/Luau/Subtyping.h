@@ -219,23 +219,7 @@ private:
     template<typename T, typename Container>
     TypeId makeAggregateType(const Container& container, TypeId orElse);
 
-
-    std::pair<TypeId, ErrorVec> handleTypeFamilyReductionResult(const TypeFamilyInstanceType* familyInstance)
-    {
-        TypeFamilyContext context{arena, builtinTypes, scope, normalizer, iceReporter, NotNull{&limits}};
-        TypeId family = arena->addType(*familyInstance);
-        std::string familyString = toString(family);
-        FamilyGraphReductionResult result = reduceFamilies(family, {}, context, true);
-        ErrorVec errors;
-        if (result.blockedTypes.size() != 0 || result.blockedPacks.size() != 0)
-        {
-            errors.push_back(TypeError{{}, UninhabitedTypeFamily{family}});
-            return {builtinTypes->neverType, errors};
-        }
-        if (result.reducedTypes.contains(family))
-            return {family, errors};
-        return {builtinTypes->neverType, errors};
-    }
+    std::pair<TypeId, ErrorVec> handleTypeFamilyReductionResult(const TypeFamilyInstanceType* familyInstance);
 
     [[noreturn]] void unexpected(TypeId ty);
     [[noreturn]] void unexpected(TypePackId tp);
