@@ -726,7 +726,7 @@ static void displayHelp(const char* argv0)
     printf("  --profile[=N]: profile the code using N Hz sampling (default 10000) and output results to profile.out\n");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
     printf("  --codegen: execute code using native code generation\n");
-    printf("  --program-args,-a: declare start of arguments to be passed to the Luau program");
+    printf("  --program-args,-a: declare start of arguments to be passed to the Luau program\n");
 }
 
 static int assertionHandler(const char* expr, const char* file, int line, const char* function)
