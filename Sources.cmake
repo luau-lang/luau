@@ -88,6 +88,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/Label.h
     CodeGen/include/Luau/OperandX64.h
     CodeGen/include/Luau/OptimizeConstProp.h
+    CodeGen/include/Luau/OptimizeDeadStore.h
     CodeGen/include/Luau/OptimizeFinalX64.h
     CodeGen/include/Luau/RegisterA64.h
     CodeGen/include/Luau/RegisterX64.h
@@ -125,6 +126,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/lcodegen.cpp
     CodeGen/src/NativeState.cpp
     CodeGen/src/OptimizeConstProp.cpp
+    CodeGen/src/OptimizeDeadStore.cpp
     CodeGen/src/OptimizeFinalX64.cpp
     CodeGen/src/UnwindBuilderDwarf2.cpp
     CodeGen/src/UnwindBuilderWin.cpp
@@ -210,6 +212,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/TypeCheckLimits.h
     Analysis/include/Luau/TypedAllocator.h
     Analysis/include/Luau/TypeFamily.h
+    Analysis/include/Luau/TypeFamilyReductionGuesser.h
     Analysis/include/Luau/TypeFwd.h
     Analysis/include/Luau/TypeInfer.h
     Analysis/include/Luau/TypeOrPack.h
@@ -271,6 +274,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/TypeChecker2.cpp
     Analysis/src/TypedAllocator.cpp
     Analysis/src/TypeFamily.cpp
+    Analysis/src/TypeFamilyReductionGuesser.cpp
     Analysis/src/TypeInfer.cpp
     Analysis/src/TypeOrPack.cpp
     Analysis/src/TypePack.cpp

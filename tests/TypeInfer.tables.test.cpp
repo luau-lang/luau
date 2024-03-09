@@ -4171,17 +4171,9 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK("<a, b, c...>({{ read Character: a }}, { Character: t1 }) -> () "
+    CHECK("<a, b...>({{ read Character: t1 }}, { Character: t1 }) -> () "
         "where "
-        "t1 = a & { read FindFirstChild: (t1, string) -> (b, c...) }" == toString(requireType("oc")));
-
-// We currently get
-// <a, b, c...>({{ read Character: a }}, { Character: t1 }) -> () where t1 = { read FindFirstChild: (t1, string) -> (b, c...) }
-
-// But we'd like to see
-// <a, b...>({{ read Character: t1 }}, { Character: t1 }) -> () where t1 = { read FindFirstChild: (t1, string) -> (a, b...) }
-
-// The type of speaker.Character should be the same as player[1].Character
+        "t1 = { read FindFirstChild: (t1, string) -> (a, b...) }" == toString(requireType("oc")));
 }
 
 TEST_SUITE_END();

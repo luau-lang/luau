@@ -57,6 +57,8 @@ struct TypeFamilyContext
         , constraint(nullptr)
     {
     }
+
+    NotNull<Constraint> pushConstraint(ConstraintV&& c);
 };
 /// Represents a reduction result, which may have successfully reduced the type,
 /// may have concretely failed to reduce the type, or may simply be stuck

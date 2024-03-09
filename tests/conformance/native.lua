@@ -407,4 +407,24 @@ end
 
 bufferbounds(0)
 
+function deadStoreChecks1()
+  local a = 1.0
+  local b = 0.0
+
+  local function update()
+    b += a
+    for i = 1, 100 do print(`{b} is {b}`) end
+  end
+
+  update()
+  a = 10
+  update()
+  a = 100
+  update()
+
+  return b
+end
+
+assert(deadStoreChecks1() == 111)
+
 return('OK')

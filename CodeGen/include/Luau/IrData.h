@@ -398,6 +398,7 @@ enum class IrCmd : uint8_t
     // A, B: tag
     // C: block/vmexit/undef
     // In final x64 lowering, A can also be Rn
+    // When DebugLuauAbortingChecks flag is enabled, A can also be Rn
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_TAG,
 

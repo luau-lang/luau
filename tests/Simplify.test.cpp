@@ -563,4 +563,10 @@ TEST_CASE_FIXTURE(SimplifyFixture, "free_type_bound_by_any_with_any")
     CHECK("'a | *error-type*" == intersectStr(anyTy, freeTy));
 }
 
+TEST_CASE_FIXTURE(SimplifyFixture, "bound_intersected_by_itself_should_be_itself")
+{
+    TypeId blocked = arena->addType(BlockedType{});
+    CHECK(toString(blocked) == intersectStr(blocked, blocked));
+}
+
 TEST_SUITE_END();

@@ -195,6 +195,15 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "DynamicPropertyLookupOnClassesUnsafe { " << toString(err.ty) << " }";
     else if constexpr (std::is_same_v<T, UninhabitedTypeFamily>)
         stream << "UninhabitedTypeFamily { " << toString(err.ty) << " }";
+    else if constexpr (std::is_same_v<T, ExplicitFunctionAnnotationRecommended>)
+    {
+        std::string recArgs = "[";
+        for (auto [s, t] : err.recommendedArgs)
+            recArgs += " " + s + ": " + toString(t);
+        recArgs += " ]";
+        stream << "ExplicitFunctionAnnotationRecommended { recommmendedReturn = '" + toString(err.recommendedReturn) +
+                      "', recommmendedArgs = " + recArgs + "}";
+    }
     else if constexpr (std::is_same_v<T, UninhabitedTypePackFamily>)
         stream << "UninhabitedTypePackFamily { " << toString(err.tp) << " }";
     else if constexpr (std::is_same_v<T, WhereClauseNeeded>)

@@ -394,6 +394,25 @@ bool NormalizedType::hasTyvars() const
     return !tyvars.empty();
 }
 
+bool NormalizedType::isFalsy() const
+{
+
+    bool hasAFalse = false;
+    if (auto singleton = get<SingletonType>(booleans))
+    {
+        if (auto bs = singleton->variant.get_if<BooleanSingleton>())
+            hasAFalse = !bs->value;
+    }
+
+    return (hasAFalse || hasNils()) && (!hasTops() && !hasClasses() && !hasErrors() && !hasNumbers() && !hasStrings() && !hasThreads() &&
+                                           !hasBuffers() && !hasTables() && !hasFunctions() && !hasTyvars());
+}
+
+bool NormalizedType::isTruthy() const
+{
+    return !isFalsy();
+}
+
 static bool isShallowInhabited(const NormalizedType& norm)
 {
     // This test is just a shallow check, for example it returns `true` for `{ p : never }`

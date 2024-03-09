@@ -1474,4 +1474,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compare_singleton_string_to_string")
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "no_infinite_expansion_of_free_type" * doctest::timeout(1.0))
+{
+    ScopedFastFlag sff(FFlag::DebugLuauDeferredConstraintResolution, true);
+    check(R"(
+        local tooltip = {}
+
+        function tooltip:Show()
+            local playerGui = self.Player:FindFirstChild("PlayerGui")
+            for _,c in ipairs(playerGui:GetChildren()) do
+                if c:IsA("ScreenGui") and c.DisplayOrder > self.Gui.DisplayOrder then
+                end
+            end
+        end
+    )");
+
+    // just type-checking this code is enough
+}
+
 TEST_SUITE_END();

@@ -460,6 +460,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "correctly_scope_locals_while")
     CHECK_EQ(us->name, "a");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "trivial_ipairs_usage")
+{
+    CheckResult result = check(R"(
+        local next, t, s = ipairs({1, 2, 3})
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    REQUIRE_EQ("({number}, number) -> (number?, number)", toString(requireType("next")));
+    REQUIRE_EQ("{number}", toString(requireType("t")));
+    REQUIRE_EQ("number", toString(requireType("s")));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "ipairs_produces_integral_indices")
 {
     CheckResult result = check(R"(

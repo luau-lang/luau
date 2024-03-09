@@ -1068,7 +1068,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     }
 
     OverloadResolver resolver{
-        builtinTypes, NotNull{arena}, normalizer, constraint->scope, NotNull{&iceReporter}, NotNull{&limits}, c.callSite->location};
+        builtinTypes, NotNull{arena}, normalizer, constraint->scope, NotNull{&iceReporter}, NotNull{&limits}, constraint->location};
     auto [status, overload] = resolver.selectOverload(fn, argsPack);
     TypeId overloadToUse = fn;
     if (status == OverloadResolver::Analysis::Ok)
@@ -2184,14 +2184,15 @@ bool ConstraintSolver::block_(BlockedConstraintId target, NotNull<const Constrai
 {
     // If a set is not present for the target, construct a new DenseHashSet for it,
     // else grab the address of the existing set.
-    NotNull<DenseHashSet<const Constraint*>> blockVec{&blocked.try_emplace(target, nullptr).first->second};
+    auto [iter, inserted] = blocked.try_emplace(target, nullptr);
+    auto& [key, blockVec] = *iter;
 
-    if (blockVec->find(constraint))
+    if (blockVec.find(constraint))
         return false;
 
-    blockVec->insert(constraint);
+    blockVec.insert(constraint);
 
-    auto& count = blockedConstraints[constraint];
+    size_t& count = blockedConstraints[constraint];
     count += 1;
 
     return true;
