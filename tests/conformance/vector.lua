@@ -51,6 +51,9 @@ assert(8 * vector(8, 16, 24) == vector(64, 128, 192));
 assert(vector(1, 2, 4) * '8' == vector(8, 16, 32));
 assert('8' * vector(8, 16, 24) == vector(64, 128, 192));
 
+assert(vector(1, 2, 4) * -0.125 == vector(-0.125, -0.25, -0.5))
+assert(-0.125 * vector(1, 2, 4) == vector(-0.125, -0.25, -0.5))
+
 assert(vector(1, 2, 4) * 100 == vector(100, 200, 400))
 assert(100 * vector(1, 2, 4) == vector(100, 200, 400))
 
