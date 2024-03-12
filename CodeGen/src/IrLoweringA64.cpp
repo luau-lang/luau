@@ -12,6 +12,7 @@
 #include "lgc.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodeGenVectorA64, false)
+LUAU_FASTFLAGVARIABLE(LuauCodeGenOptVecA64, false)
 
 LUAU_FASTFLAG(LuauCodegenVectorTag2)
 
@@ -1176,17 +1177,40 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         inst.regA64 = regs.allocReg(KindA64::q, index);
 
-        RegisterA64 tempd = tempDouble(inst.a);
-        RegisterA64 temps = castReg(KindA64::s, tempd);
-        RegisterA64 tempw = regs.allocTemp(KindA64::w);
-
-        build.fcvt(temps, tempd);
-        build.dup_4s(inst.regA64, castReg(KindA64::q, temps), 0);
-
-        if (!FFlag::LuauCodegenVectorTag2)
+        if (FFlag::LuauCodeGenOptVecA64 && FFlag::LuauCodegenVectorTag2 && inst.a.kind == IrOpKind::Constant)
         {
-            build.mov(tempw, LUA_TVECTOR);
-            build.ins_4s(inst.regA64, tempw, 3);
+            float value = float(doubleOp(inst.a));
+            uint32_t asU32;
+            static_assert(sizeof(asU32) == sizeof(value), "Expecting float to be 32-bit");
+            memcpy(&asU32, &value, sizeof(value));
+
+            if (AssemblyBuilderA64::isFmovSupported(value))
+            {
+                build.fmov(inst.regA64, value);
+            }
+            else
+            {
+                RegisterA64 temp = regs.allocTemp(KindA64::x);
+
+                uint32_t vec[4] = { asU32, asU32, asU32, 0 };
+                build.adr(temp, vec, sizeof(vec));
+                build.ldr(inst.regA64, temp);
+            }
+        }
+        else
+        {
+            RegisterA64 tempd = tempDouble(inst.a);
+            RegisterA64 temps = castReg(KindA64::s, tempd);
+            RegisterA64 tempw = regs.allocTemp(KindA64::w);
+
+            build.fcvt(temps, tempd);
+            build.dup_4s(inst.regA64, castReg(KindA64::q, temps), 0);
+
+            if (!FFlag::LuauCodegenVectorTag2)
+            {
+                build.mov(tempw, LUA_TVECTOR);
+                build.ins_4s(inst.regA64, tempw, 3);
+            }
         }
         break;
     }
