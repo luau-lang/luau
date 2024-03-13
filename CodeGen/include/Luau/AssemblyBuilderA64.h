@@ -125,12 +125,12 @@ public:
     // Address of code (label)
     void adr(RegisterA64 dst, Label& label);
 
-    // Floating-point scalar moves
+    // Floating-point scalar/vector moves
     // Note: constant must be compatible with immediate floating point moves (see isFmovSupported)
     void fmov(RegisterA64 dst, RegisterA64 src);
     void fmov(RegisterA64 dst, double src);
 
-    // Floating-point scalar math
+    // Floating-point scalar/vector math
     void fabs(RegisterA64 dst, RegisterA64 src);
     void fadd(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
     void fdiv(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
@@ -139,6 +139,7 @@ public:
     void fsqrt(RegisterA64 dst, RegisterA64 src);
     void fsub(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
 
+    // Vector component manipulation
     void ins_4s(RegisterA64 dst, RegisterA64 src, uint8_t index);
     void ins_4s(RegisterA64 dst, uint8_t dstIndex, RegisterA64 src, uint8_t srcIndex);
     void dup_4s(RegisterA64 dst, RegisterA64 src, uint8_t index);

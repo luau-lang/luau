@@ -557,16 +557,26 @@ void AssemblyBuilderA64::fmov(RegisterA64 dst, RegisterA64 src)
 
 void AssemblyBuilderA64::fmov(RegisterA64 dst, double src)
 {
-    CODEGEN_ASSERT(dst.kind == KindA64::d);
+    CODEGEN_ASSERT(dst.kind == KindA64::d || dst.kind == KindA64::q);
 
     int imm = getFmovImm(src);
     CODEGEN_ASSERT(imm >= 0 && imm <= 256);
 
-    // fmov can't encode 0, but movi can; movi is otherwise not useful for 64-bit fp immediates because it encodes repeating patterns
-    if (imm == 256)
-        placeFMOV("movi", dst, src, 0b001'0111100000'000'1110'01'00000);
+    // fmov can't encode 0, but movi can; movi is otherwise not useful for fp immediates because it encodes repeating patterns
+    if (dst.kind == KindA64::d)
+    {
+        if (imm == 256)
+            placeFMOV("movi", dst, src, 0b001'0111100000'000'1110'01'00000);
+        else
+            placeFMOV("fmov", dst, src, 0b000'11110'01'1'00000000'100'00000 | (imm << 8));
+    }
     else
-        placeFMOV("fmov", dst, src, 0b000'11110'01'1'00000000'100'00000 | (imm << 8));
+    {
+        if (imm == 256)
+            placeFMOV("movi.4s", dst, src, 0b010'0111100000'000'0000'01'00000);
+        else
+            placeFMOV("fmov.4s", dst, src, 0b010'0111100000'000'1111'0'1'00000 | ((imm >> 5) << 11) | (imm & 31));
+    }
 }
 
 void AssemblyBuilderA64::fabs(RegisterA64 dst, RegisterA64 src)
