@@ -59,7 +59,8 @@ enum class IrCmd : uint8_t
 
     // Load a TValue from memory
     // A: Rn or Kn or pointer (TValue)
-    // B: int (optional 'A' pointer offset)
+    // B: int/none (optional 'A' pointer offset)
+    // C: tag/none (tag of the value being loaded)
     LOAD_TVALUE,
 
     // Load current environment table

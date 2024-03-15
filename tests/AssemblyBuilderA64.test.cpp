@@ -451,6 +451,12 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPImm")
     SINGLE_COMPARE(fmov(d0, 0), 0x2F00E400);
     SINGLE_COMPARE(fmov(d0, 0.125), 0x1E681000);
     SINGLE_COMPARE(fmov(d0, -0.125), 0x1E781000);
+    SINGLE_COMPARE(fmov(d0, 1.9375), 0x1E6FF000);
+
+    SINGLE_COMPARE(fmov(q0, 0), 0x4F000400);
+    SINGLE_COMPARE(fmov(q0, 0.125), 0x4F02F400);
+    SINGLE_COMPARE(fmov(q0, -0.125), 0x4F06F400);
+    SINGLE_COMPARE(fmov(q0, 1.9375), 0x4F03F7E0);
 
     CHECK(!AssemblyBuilderA64::isFmovSupported(-0.0));
     CHECK(!AssemblyBuilderA64::isFmovSupported(0.12389));

@@ -19,6 +19,7 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
 LUAU_FASTFLAG(LuauCodegenVectorTag2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCodeGenCoverForgprepEffect, false)
+LUAU_FASTFLAG(LuauCodegenLoadTVTag)
 
 namespace Luau
 {
@@ -726,6 +727,9 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                             arg->cmd == IrCmd::UNM_VEC)
                             tag = LUA_TVECTOR;
                     }
+
+                    if (FFlag::LuauCodegenLoadTVTag && arg->cmd == IrCmd::LOAD_TVALUE && arg->c.kind != IrOpKind::None)
+                        tag = function.tagOp(arg->c);
                 }
             }
 
