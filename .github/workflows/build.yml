@@ -25,6 +25,9 @@ jobs:
     runs-on: ${{matrix.os.version}}
     steps:
     - uses: actions/checkout@v1
+    - name: work around ASLR+ASAN compatibility
+      run: sudo sysctl -w vm.mmap_rnd_bits=28
+      if: matrix.os.name == 'ubuntu'
     - name: make tests
       run: |
         make -j2 config=sanitize werror=1 native=1 luau-tests
