@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauDebugInfoDupArgLeftovers, false)
+
 static lua_State* getthread(lua_State* L, int* arg)
 {
     if (lua_isthread(L, 1))
@@ -26,10 +28,17 @@ static int db_info(lua_State* L)
 {
     int arg;
     lua_State* L1 = getthread(L, &arg);
+    int l1top = 0;
 
-    // If L1 != L, L1 can be in any state, and therefore there are no guarantees about its stack space
+    // if L1 != L, L1 can be in any state, and therefore there are no guarantees about its stack space
     if (L != L1)
-        lua_rawcheckstack(L1, 1); // for 'f' option
+    {
+        // for 'f' option, we reserve one slot and we also record the stack top
+        lua_rawcheckstack(L1, 1);
+
+        if (DFFlag::LuauDebugInfoDupArgLeftovers)
+            l1top = lua_gettop(L1);
+    }
 
     int level;
     if (lua_isnumber(L, arg + 1))
@@ -59,7 +68,13 @@ static int db_info(lua_State* L)
         if (unsigned(*it - 'a') < 26)
         {
             if (occurs[*it - 'a'])
+            {
+                // restore stack state of another thread as 'f' option might not have been visited yet
+                if (DFFlag::LuauDebugInfoDupArgLeftovers && L != L1)
+                    lua_settop(L1, l1top);
+
                 luaL_argerror(L, arg + 2, "duplicate option");
+            }
             occurs[*it - 'a'] = true;
         }
 

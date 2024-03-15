@@ -14,6 +14,11 @@ LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 namespace Luau
 {
 
+bool inConditional(const TypeContext& context)
+{
+    return context == TypeContext::Condition;
+}
+
 std::optional<TypeId> findMetatableEntry(
     NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId type, const std::string& entry, Location location)
 {

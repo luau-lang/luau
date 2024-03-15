@@ -104,6 +104,11 @@ public:
         return status;
     }
 
+    const lua_State* getThread() const
+    {
+        return L;
+    }
+
 private:
     lua_State* L;
     int status;
@@ -120,7 +125,12 @@ int luaD_rawrunprotected(lua_State* L, Pfunc f, void* ud)
     }
     catch (lua_exception& e)
     {
-        // lua_exception means that luaD_throw was called and an exception object is on stack if status is ERRRUN
+        // It is assumed/required that the exception caught here was thrown from the same Luau state.
+        // If this assert fires, it indicates a lua_exception was not properly caught and propagated
+        // to the exception handler for a different Luau state. Report this issue to the Luau team if
+        // you need more information or assistance resolving this assert.
+        LUAU_ASSERT(e.getThread() == L);
+
         status = e.getStatus();
     }
     catch (std::exception& e)

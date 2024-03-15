@@ -8,6 +8,8 @@
 
 #include <math.h>
 
+LUAU_FASTFLAG(LuauCodegenRemoveDeadStores3)
+
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
 static const int kMinMaxUnrolledParams = 5;
@@ -46,8 +48,11 @@ static BuiltinImplResult translateBuiltinNumberToNumber(
     builtinCheckDouble(build, build.vmReg(arg), pcpos);
     build.inst(IrCmd::FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), args, build.constInt(1), build.constInt(1));
 
-    if (ra != arg)
-        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+    if (!FFlag::LuauCodegenRemoveDeadStores3)
+    {
+        if (ra != arg)
+            build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+    }
 
     return {BuiltinImplType::Full, 1};
 }
@@ -107,11 +112,14 @@ static BuiltinImplResult translateBuiltinNumberTo2Number(
     build.inst(
         IrCmd::FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), args, build.constInt(1), build.constInt(nresults == 1 ? 1 : 2));
 
-    if (ra != arg)
-        build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
+    if (!FFlag::LuauCodegenRemoveDeadStores3)
+    {
+        if (ra != arg)
+            build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
 
-    if (nresults != 1)
-        build.inst(IrCmd::STORE_TAG, build.vmReg(ra + 1), build.constTag(LUA_TNUMBER));
+        if (nresults != 1)
+            build.inst(IrCmd::STORE_TAG, build.vmReg(ra + 1), build.constTag(LUA_TNUMBER));
+    }
 
     return {BuiltinImplType::Full, 2};
 }

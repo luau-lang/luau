@@ -22,6 +22,37 @@ enum class ValueContext
     RValue
 };
 
+/// the current context of the type checker
+enum class TypeContext
+{
+    /// the default context
+    Default,
+    /// inside of a condition
+    Condition,
+};
+
+bool inConditional(const TypeContext& context);
+
+// sets the given type context to `Condition` and restores it to its original
+// value when the struct drops out of scope
+struct InConditionalContext
+{
+    TypeContext* typeContext;
+    TypeContext oldValue;
+
+    InConditionalContext(TypeContext* c)
+        : typeContext(c)
+        , oldValue(*c)
+    {
+        *typeContext = TypeContext::Condition;
+    }
+
+    ~InConditionalContext()
+    {
+        *typeContext = oldValue;
+    }
+};
+
 using ScopePtr = std::shared_ptr<struct Scope>;
 
 std::optional<TypeId> findMetatableEntry(

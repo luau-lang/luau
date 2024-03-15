@@ -9,6 +9,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_DYNAMIC_FASTINT(LuauSimplificationComplexityLimit)
 
 namespace
 {
@@ -133,8 +134,8 @@ TEST_CASE_FIXTURE(SimplifyFixture, "unknown_and_other_tops_and_bottom_types")
 
     CHECK(unknownTy == intersect(unknownTy, unknownTy));
 
-    CHECK("*error-type* | unknown" == intersectStr(unknownTy, anyTy));
-    CHECK("*error-type* | unknown" == intersectStr(anyTy, unknownTy));
+    CHECK("any" == intersectStr(unknownTy, anyTy));
+    CHECK("any" == intersectStr(anyTy, unknownTy));
 
     CHECK(neverTy == intersect(unknownTy, neverTy));
     CHECK(neverTy == intersect(neverTy, unknownTy));
@@ -443,6 +444,7 @@ TEST_CASE_FIXTURE(SimplifyFixture, "union")
 
 TEST_CASE_FIXTURE(SimplifyFixture, "two_unions")
 {
+    ScopedFastInt sfi{DFInt::LuauSimplificationComplexityLimit, 10};
     TypeId t1 = arena->addType(UnionType{{numberTy, booleanTy, stringTy, nilTy, tableTy}});
 
     CHECK("false?" == intersectStr(t1, falsyTy));

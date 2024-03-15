@@ -1615,7 +1615,6 @@ std::pair<TypeId, ErrorVec> Subtyping::handleTypeFamilyReductionResult(const Typ
 {
     TypeFamilyContext context{arena, builtinTypes, scope, normalizer, iceReporter, NotNull{&limits}};
     TypeId family = arena->addType(*familyInstance);
-    std::string familyString = toString(family);
     FamilyGraphReductionResult result = reduceFamilies(family, {}, context, true);
     ErrorVec errors;
     if (result.blockedTypes.size() != 0 || result.blockedPacks.size() != 0)

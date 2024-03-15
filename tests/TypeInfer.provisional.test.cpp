@@ -1141,4 +1141,42 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_roact_useState_minimization")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "bin_prov")
+{
+    CheckResult result = check(R"(
+        local Bin = {}
+
+        function Bin:add(item)
+            self.head = { item = item}
+            return item
+        end
+
+        function Bin:destroy()
+            while self.head do
+                local item = self.head.item
+                if type(item) == "function" then
+                    item()
+                elseif item.Destroy ~= nil then
+                end
+                self.head = self.head.next
+            end
+        end
+    )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "update_phonemes_minimized")
+{
+    CheckResult result = check(R"(
+        local video
+        function(response)
+            for index = 1, #response do
+                video = video
+            end
+            return video
+        end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
 TEST_SUITE_END();

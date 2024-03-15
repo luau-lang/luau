@@ -427,4 +427,26 @@ end
 
 assert(deadStoreChecks1() == 111)
 
+local function extramath1(a)
+  return type(math.sign(a))
+end
+
+assert(extramath1(2) == "number")
+assert(extramath1("2") == "number")
+
+local function extramath2(a)
+  return type(math.modf(a))
+end
+
+assert(extramath2(2) == "number")
+assert(extramath2("2") == "number")
+
+local function extramath3(a)
+  local b, c = math.modf(a)
+  return type(c)
+end
+
+assert(extramath3(2) == "number")
+assert(extramath3("2") == "number")
+
 return('OK')

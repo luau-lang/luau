@@ -9,7 +9,7 @@
 
 #include "lobject.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenRemoveDeadStores2, false)
+LUAU_FASTFLAGVARIABLE(LuauCodegenRemoveDeadStores3, false)
 LUAU_FASTFLAG(LuauCodegenVectorTag2)
 
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
@@ -264,6 +264,12 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
             state.killTagStore(regInfo);
 
             uint8_t tag = function.tagOp(inst.b);
+
+            // Storing 'nil' TValue doesn't update the value part because we don't care about that part of 'nil'
+            // This however prevents us from removing unused value store elimination and has an impact on GC
+            // To solve this issues, we invalidate the value part of a 'nil' store as well
+            if (tag == LUA_TNIL)
+                state.killValueStore(regInfo);
 
             regInfo.tagInstIdx = index;
             regInfo.maybeGco = isGCO(tag);
