@@ -155,6 +155,7 @@ struct lua_ExecutionCallbacks
     void (*destroy)(lua_State* L, Proto* proto); // called when function is destroyed
     int (*enter)(lua_State* L, Proto* proto);    // called when function is about to start/resume (when execdata is present), return 0 to exit VM
     void (*disable)(lua_State* L, Proto* proto); // called when function has to be switched from native to bytecode in the debugger
+    size_t (*getmemorysize)(lua_State* L, Proto* proto); // called to request the size of memory associated with native part of the Proto
 };
 
 /*

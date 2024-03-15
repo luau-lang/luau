@@ -15,6 +15,7 @@ LUAU_FASTFLAGVARIABLE(LuauCodeGenVectorA64, false)
 LUAU_FASTFLAGVARIABLE(LuauCodeGenOptVecA64, false)
 
 LUAU_FASTFLAG(LuauCodegenVectorTag2)
+LUAU_FASTFLAG(LuauCodegenRemoveDeadStores3)
 
 namespace Luau
 {
@@ -202,25 +203,71 @@ static bool emitBuiltin(
     switch (bfid)
     {
     case LBF_MATH_FREXP:
-        CODEGEN_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
-        emitInvokeLibm1P(build, offsetof(NativeContext, libm_frexp), arg);
-        build.str(d0, mem(rBase, res * sizeof(TValue) + offsetof(TValue, value.n)));
-        if (nresults == 2)
+    {
+        if (FFlag::LuauCodegenRemoveDeadStores3)
         {
-            build.ldr(w0, sTemporary);
-            build.scvtf(d1, w0);
-            build.str(d1, mem(rBase, (res + 1) * sizeof(TValue) + offsetof(TValue, value.n)));
+            CODEGEN_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
+            emitInvokeLibm1P(build, offsetof(NativeContext, libm_frexp), arg);
+            build.str(d0, mem(rBase, res * sizeof(TValue) + offsetof(TValue, value.n)));
+
+            RegisterA64 temp = regs.allocTemp(KindA64::w);
+            build.mov(temp, LUA_TNUMBER);
+            build.str(temp, mem(rBase, res * sizeof(TValue) + offsetof(TValue, tt)));
+
+            if (nresults == 2)
+            {
+                build.ldr(w0, sTemporary);
+                build.scvtf(d1, w0);
+                build.str(d1, mem(rBase, (res + 1) * sizeof(TValue) + offsetof(TValue, value.n)));
+                build.str(temp, mem(rBase, (res + 1) * sizeof(TValue) + offsetof(TValue, tt)));
+            }
+        }
+        else
+        {
+            CODEGEN_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
+            emitInvokeLibm1P(build, offsetof(NativeContext, libm_frexp), arg);
+            build.str(d0, mem(rBase, res * sizeof(TValue) + offsetof(TValue, value.n)));
+            if (nresults == 2)
+            {
+                build.ldr(w0, sTemporary);
+                build.scvtf(d1, w0);
+                build.str(d1, mem(rBase, (res + 1) * sizeof(TValue) + offsetof(TValue, value.n)));
+            }
         }
         return true;
+    }
     case LBF_MATH_MODF:
-        CODEGEN_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
-        emitInvokeLibm1P(build, offsetof(NativeContext, libm_modf), arg);
-        build.ldr(d1, sTemporary);
-        build.str(d1, mem(rBase, res * sizeof(TValue) + offsetof(TValue, value.n)));
-        if (nresults == 2)
-            build.str(d0, mem(rBase, (res + 1) * sizeof(TValue) + offsetof(TValue, value.n)));
+    {
+        if (FFlag::LuauCodegenRemoveDeadStores3)
+        {
+            CODEGEN_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
+            emitInvokeLibm1P(build, offsetof(NativeContext, libm_modf), arg);
+            build.ldr(d1, sTemporary);
+            build.str(d1, mem(rBase, res * sizeof(TValue) + offsetof(TValue, value.n)));
+
+            RegisterA64 temp = regs.allocTemp(KindA64::w);
+            build.mov(temp, LUA_TNUMBER);
+            build.str(temp, mem(rBase, res * sizeof(TValue) + offsetof(TValue, tt)));
+
+            if (nresults == 2)
+            {
+                build.str(d0, mem(rBase, (res + 1) * sizeof(TValue) + offsetof(TValue, value.n)));
+                build.str(temp, mem(rBase, (res + 1) * sizeof(TValue) + offsetof(TValue, tt)));
+            }
+        }
+        else
+        {
+            CODEGEN_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
+            emitInvokeLibm1P(build, offsetof(NativeContext, libm_modf), arg);
+            build.ldr(d1, sTemporary);
+            build.str(d1, mem(rBase, res * sizeof(TValue) + offsetof(TValue, value.n)));
+            if (nresults == 2)
+                build.str(d0, mem(rBase, (res + 1) * sizeof(TValue) + offsetof(TValue, value.n)));
+        }
         return true;
+    }
     case LBF_MATH_SIGN:
+    {
         CODEGEN_ASSERT(nparams == 1 && nresults == 1);
         build.ldr(d0, mem(rBase, arg * sizeof(TValue) + offsetof(TValue, value.n)));
         build.fcmpz(d0);
@@ -230,7 +277,15 @@ static bool emitBuiltin(
         build.fmov(d1, -1.0);
         build.fcsel(d0, d1, d0, getConditionFP(IrCondition::Less));
         build.str(d0, mem(rBase, res * sizeof(TValue) + offsetof(TValue, value.n)));
+
+        if (FFlag::LuauCodegenRemoveDeadStores3)
+        {
+            RegisterA64 temp = regs.allocTemp(KindA64::w);
+            build.mov(temp, LUA_TNUMBER);
+            build.str(temp, mem(rBase, res * sizeof(TValue) + offsetof(TValue, tt)));
+        }
         return true;
+    }
 
     default:
         CODEGEN_ASSERT(!"Missing A64 lowering");
@@ -1192,7 +1247,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             {
                 RegisterA64 temp = regs.allocTemp(KindA64::x);
 
-                uint32_t vec[4] = { asU32, asU32, asU32, 0 };
+                uint32_t vec[4] = {asU32, asU32, asU32, 0};
                 build.adr(temp, vec, sizeof(vec));
                 build.ldr(inst.regA64, temp);
             }

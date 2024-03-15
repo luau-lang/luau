@@ -251,8 +251,12 @@ void DataFlowGraphBuilder::joinProps(DfgScope* result, const DfgScope& a, const 
 
 DefId DataFlowGraphBuilder::lookup(DfgScope* scope, Symbol symbol)
 {
+    // true if any of the considered scopes are a loop.
+    bool outsideLoopScope = false;
     for (DfgScope* current = scope; current; current = current->parent)
     {
+        outsideLoopScope = outsideLoopScope || current->scopeType == DfgScope::Loop;
+
         if (auto found = current->bindings.find(symbol))
             return NotNull{*found};
         else if (current->scopeType == DfgScope::Function)
@@ -260,7 +264,12 @@ DefId DataFlowGraphBuilder::lookup(DfgScope* scope, Symbol symbol)
             FunctionCapture& capture = captures[symbol];
             DefId captureDef = defArena->phi({});
             capture.captureDefs.push_back(captureDef);
-            scope->bindings[symbol] = captureDef;
+
+            // If we are outside of a loop scope, then we don't want to actually bind
+            // uses of `symbol` to this new phi node since it will not get populated.
+            if (!outsideLoopScope)
+                scope->bindings[symbol] = captureDef;
+
             return NotNull{captureDef};
         }
     }

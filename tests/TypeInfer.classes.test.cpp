@@ -693,4 +693,18 @@ TEST_CASE_FIXTURE(Fixture, "read_write_class_properties")
     CHECK(builtinTypes->numberType == tm->givenType);
 }
 
+TEST_CASE_FIXTURE(ClassFixture, "cannot_index_a_class_with_no_indexer")
+{
+    CheckResult result = check(R"(
+        local a = BaseClass.New()
+
+        local c = a[1]
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK_MESSAGE(get<DynamicPropertyLookupOnClassesUnsafe>(result.errors[0]), "Expected DynamicPropertyLookupOnClassesUnsafe but got " << result.errors[0]);
+
+    CHECK(builtinTypes->errorType == requireType("c"));
+}
 TEST_SUITE_END();

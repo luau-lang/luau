@@ -561,6 +561,41 @@ TEST_CASE_FIXTURE(Fixture, "dont_allow_cyclic_unions_to_be_inferred")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "indexing_into_a_cyclic_union_doesnt_crash")
+{
+    // It shouldn't be possible to craft a cyclic union, but even if we do, we
+    // shouldn't blow up.
+
+    TypeArena& arena = frontend.globals.globalTypes;
+    unfreeze(arena);
+
+    TypeId badCyclicUnionTy = arena.freshType(frontend.globals.globalScope.get());
+    UnionType u;
+
+    u.options.push_back(badCyclicUnionTy);
+    u.options.push_back(arena.addType(TableType{{}, TableIndexer{builtinTypes->numberType, builtinTypes->numberType}, TypeLevel{}, frontend.globals.globalScope.get(), TableState::Sealed}));
+
+    asMutable(badCyclicUnionTy)->ty.emplace<UnionType>(std::move(u));
+
+    frontend.globals.globalScope->exportedTypeBindings["BadCyclicUnion"] = TypeFun{{}, badCyclicUnionTy};
+
+    freeze(arena);
+
+    CheckResult result = check(R"(
+        function f(x: BadCyclicUnion)
+            return x[0]
+        end
+    )");
+
+    // The old solver has a bug: It doesn't consider this goofy thing to be a
+    // table.  It's not really important.  What's important is that we don't
+    // crash, hang, or ICE.
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_union_write_indirect")
 {
 

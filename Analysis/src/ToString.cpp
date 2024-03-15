@@ -1776,6 +1776,10 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
             const std::string pathStr = c.path.size() == 1 ? "\"" + c.path[0] + "\"" : "[\"" + join(c.path, "\", \"") + "\"]";
             return tos(c.resultType) + " ~ setProp " + tos(c.subjectType) + ", " + pathStr + " " + tos(c.propType);
         }
+        else if constexpr (std::is_same_v<T, HasIndexerConstraint>)
+        {
+            return tos(c.resultType) + " ~ hasIndexer " + tos(c.subjectType) + " " + tos(c.indexType);
+        }
         else if constexpr (std::is_same_v<T, SetIndexerConstraint>)
         {
             return tos(c.resultType) + " ~ setIndexer " + tos(c.subjectType) + " [ " + tos(c.indexType) + " ] " + tos(c.propType);

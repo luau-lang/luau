@@ -26,8 +26,13 @@ extern bool verbose;
 extern bool codegen;
 extern int optimizationLevel;
 
+// internal functions, declared in lgc.h - not exposed via lua.h
+void luaC_fullgc(lua_State* L);
+void luaC_validate(lua_State* L);
+
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_DYNAMIC_FASTFLAG(LuauCodegenTrackingMultilocationFix)
+LUAU_FASTFLAG(LuauLoadExceptionSafe)
+LUAU_DYNAMIC_FASTFLAG(LuauDebugInfoDupArgLeftovers)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -241,7 +246,6 @@ static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = n
         status = lua_resume(L, nullptr, 0);
     }
 
-    extern void luaC_validate(lua_State * L); // internal function, declared in lgc.h - not exposed via lua.h
     luaC_validate(L);
 
     if (status == 0)
@@ -626,6 +630,8 @@ TEST_CASE("DateTime")
 
 TEST_CASE("Debug")
 {
+    ScopedFastFlag luauDebugInfoDupArgLeftovers{DFFlag::LuauDebugInfoDupArgLeftovers, true};
+
     runConformance("debug.lua");
 }
 
@@ -2030,8 +2036,6 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
-    ScopedFastFlag luauCodegenTrackingMultilocationFix{DFFlag::LuauCodegenTrackingMultilocationFix, true};
-
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;
@@ -2053,7 +2057,7 @@ TEST_CASE("NativeTypeAnnotations")
     });
 }
 
-TEST_CASE("HugeFunction")
+[[nodiscard]] static std::string makeHugeFunctionSource()
 {
     std::string source;
 
@@ -2073,6 +2077,13 @@ TEST_CASE("HugeFunction")
 
     // use failed fast-calls with imports and constants to exercise all of the more complex fallback sequences
     source += "return bit32.lshift('84', -1)";
+
+    return source;
+}
+
+TEST_CASE("HugeFunction")
+{
+    std::string source = makeHugeFunctionSource();
 
     StateRef globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
@@ -2098,6 +2109,78 @@ TEST_CASE("HugeFunction")
     REQUIRE(status == 0);
 
     CHECK(lua_tonumber(L, -1) == 42);
+}
+
+TEST_CASE("HugeFunctionLoadFailure")
+{
+    // This test case verifies that if an out-of-memory error occurs inside of
+    // luau_load, we are not left with any GC objects in inconsistent states
+    // that would cause issues during garbage collection.
+    //
+    // We create a script with a huge function in it, then pass this to
+    // luau_load.  This should require two "large" allocations:  One for the
+    // code array and one for the constants array (k).  We run this test twice
+    // and fail each of these two allocations.
+    ScopedFastFlag luauLoadExceptionSafe{FFlag::LuauLoadExceptionSafe, true};
+
+    std::string source = makeHugeFunctionSource();
+
+    static const size_t expectedTotalLargeAllocations = 2;
+
+    static size_t largeAllocationToFail = 0;
+    static size_t largeAllocationCount = 0;
+
+    const auto testAllocate = [](void* ud, void* ptr, size_t osize, size_t nsize) -> void*
+    {
+        if (nsize == 0)
+        {
+            free(ptr);
+            return nullptr;
+        }
+        else if (nsize > 32768)
+        {
+            if (largeAllocationCount == largeAllocationToFail)
+                return nullptr;
+
+            ++largeAllocationCount;
+            return realloc(ptr, nsize);
+        }
+        else
+        {
+            return realloc(ptr, nsize);
+        }
+    };
+
+    size_t bytecodeSize = 0;
+    char* const bytecode = luau_compile(source.data(), source.size(), nullptr, &bytecodeSize);
+
+    for (largeAllocationToFail = 0; largeAllocationToFail != expectedTotalLargeAllocations; ++largeAllocationToFail)
+    {
+        largeAllocationCount = 0;
+
+        StateRef globalState(lua_newstate(testAllocate, nullptr), lua_close);
+        lua_State* L = globalState.get();
+
+        luaL_openlibs(L);
+        luaL_sandbox(L);
+        luaL_sandboxthread(L);
+
+        try
+        {
+            luau_load(L, "=HugeFunction", bytecode, bytecodeSize, 0);
+            REQUIRE(false); // The luau_load should fail with an exception
+        }
+        catch (const std::exception& ex)
+        {
+            REQUIRE(strcmp(ex.what(), "lua_exception: not enough memory") == 0);
+        }
+
+        luaC_fullgc(L);
+    }
+
+    free(bytecode);
+
+    REQUIRE_EQ(largeAllocationToFail, expectedTotalLargeAllocations);
 }
 
 TEST_CASE("IrInstructionLimit")

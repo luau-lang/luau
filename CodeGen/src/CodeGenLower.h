@@ -27,7 +27,7 @@ LUAU_FASTFLAG(DebugCodegenSkipNumbering)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockInstructionLimit)
-LUAU_FASTFLAG(LuauCodegenRemoveDeadStores2)
+LUAU_FASTFLAG(LuauCodegenRemoveDeadStores3)
 
 namespace Luau
 {
@@ -312,7 +312,7 @@ inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& 
             }
         }
 
-        if (FFlag::LuauCodegenRemoveDeadStores2)
+        if (FFlag::LuauCodegenRemoveDeadStores3)
             markDeadStoresInBlockChains(ir);
     }
 

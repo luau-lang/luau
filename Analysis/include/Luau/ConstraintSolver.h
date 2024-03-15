@@ -131,6 +131,10 @@ struct ConstraintSolver
     bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const SetPropConstraint& c, NotNull<const Constraint> constraint, bool force);
+
+    bool tryDispatchHasIndexer(int& recursionDepth, NotNull<const Constraint> constraint, TypeId subjectType, TypeId indexType, TypeId resultType);
+    bool tryDispatch(const HasIndexerConstraint& c, NotNull<const Constraint> constraint);
+
     bool tryDispatch(const SetIndexerConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const SingletonOrTopTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const UnpackConstraint& c, NotNull<const Constraint> constraint);
@@ -148,9 +152,9 @@ struct ConstraintSolver
         TypeId nextTy, TypeId tableTy, TypeId firstIndexTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
 
     std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(
-        TypeId subjectType, const std::string& propName, ValueContext context, bool suppressSimplification = false);
+        TypeId subjectType, const std::string& propName, ValueContext context, bool inConditional = false, bool suppressSimplification = false);
     std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(
-        TypeId subjectType, const std::string& propName, ValueContext context, bool suppressSimplification, DenseHashSet<TypeId>& seen);
+        TypeId subjectType, const std::string& propName, ValueContext context, bool inConditional, bool suppressSimplification, DenseHashSet<TypeId>& seen);
 
     void block(NotNull<const Constraint> target, NotNull<const Constraint> constraint);
     /**

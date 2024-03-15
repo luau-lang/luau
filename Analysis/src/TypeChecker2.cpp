@@ -242,6 +242,7 @@ struct TypeChecker2
     Module* module;
     TypeArena testArena;
 
+    TypeContext typeContext = TypeContext::Default;
     std::vector<NotNull<Scope>> stack;
     std::vector<TypeId> functionDeclStack;
 
@@ -619,7 +620,11 @@ struct TypeChecker2
 
     void visit(AstStatIf* ifStatement)
     {
-        visit(ifStatement->condition, ValueContext::RValue);
+        {
+            InConditionalContext flipper{&typeContext};
+            visit(ifStatement->condition, ValueContext::RValue);
+        }
+
         visit(ifStatement->thenbody);
         if (ifStatement->elsebody)
             visit(ifStatement->elsebody);
@@ -1254,20 +1259,8 @@ struct TypeChecker2
         if (!originalCallTy)
             return;
 
-        TypeId fnTy = *originalCallTy;
-        if (selectedOverloadTy)
-        {
-            SubtypingResult result = subtyping->isSubtype(*originalCallTy, *selectedOverloadTy);
-            if (result.isSubtype)
-                fnTy = *selectedOverloadTy;
+        TypeId fnTy = follow(*originalCallTy);
 
-            if (result.normalizationTooComplex)
-            {
-                reportError(NormalizationTooComplex{}, call->func->location);
-                return;
-            }
-        }
-        fnTy = follow(fnTy);
 
         if (get<AnyType>(fnTy) || get<ErrorType>(fnTy) || get<NeverType>(fnTy))
             return;
@@ -1284,6 +1277,19 @@ struct TypeChecker2
                 reportError(OptionalValueAccess{fnTy}, call->func->location);
             }
             return;
+        }
+
+        if (selectedOverloadTy)
+        {
+            SubtypingResult result = subtyping->isSubtype(*originalCallTy, *selectedOverloadTy);
+            if (result.isSubtype)
+                fnTy = follow(*selectedOverloadTy);
+
+            if (result.normalizationTooComplex)
+            {
+                reportError(NormalizationTooComplex{}, call->func->location);
+                return;
+            }
         }
 
         if (call->self)
@@ -1323,6 +1329,8 @@ struct TypeChecker2
                 args.head.push_back(builtinTypes->anyType);
         }
 
+
+
         OverloadResolver resolver{
             builtinTypes,
             NotNull{&testArena},
@@ -1332,8 +1340,8 @@ struct TypeChecker2
             limits,
             call->location,
         };
-
         resolver.resolve(fnTy, &args, call->func, &argExprs);
+
         auto norm = normalizer.normalize(fnTy);
         if (!norm)
             reportError(NormalizationTooComplex{}, call->func->location);
@@ -1505,8 +1513,13 @@ struct TypeChecker2
             else
                 reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
         }
-        else if (auto cls = get<ClassType>(exprType); cls && cls->indexer)
-            testIsSubtype(indexType, cls->indexer->indexType, indexExpr->index->location);
+        else if (auto cls = get<ClassType>(exprType))
+        {
+            if (cls->indexer)
+                testIsSubtype(indexType, cls->indexer->indexType, indexExpr->index->location);
+            else
+                reportError(DynamicPropertyLookupOnClassesUnsafe{exprType}, indexExpr->location);
+        }
         else if (get<UnionType>(exprType) && isOptional(exprType))
         {
             switch (shouldSuppressErrors(NotNull{&normalizer}, exprType))
@@ -2710,7 +2723,11 @@ struct TypeChecker2
                     return true;
             }
 
-            return false;
+
+            // if we are in a conditional context, we treat the property as present and `unknown` because
+            // we may be _refining_ `tableTy` to include that property. we will want to revisit this a bit
+            // in the future once luau has support for exact tables since this only applies when inexact.
+            return inConditional(typeContext);
         }
         else if (const ClassType* cls = get<ClassType>(ty))
         {
@@ -2735,6 +2752,8 @@ struct TypeChecker2
             return std::any_of(begin(itv), end(itv), [&](TypeId part) {
                 return hasIndexTypeFromType(part, prop, context, location, seen, astIndexExprType, errors);
             });
+        else if (const PrimitiveType* pt = get<PrimitiveType>(ty))
+            return inConditional(typeContext) && pt->type == PrimitiveType::Table;
         else
             return false;
     }

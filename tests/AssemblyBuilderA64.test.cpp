@@ -1,10 +1,13 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/AssemblyBuilderA64.h"
 #include "Luau/StringUtils.h"
+#include "ScopedFlags.h"
 
 #include "doctest.h"
 
 #include <string.h>
+
+LUAU_FASTFLAG(LuauCodeGenOptVecA64)
 
 using namespace Luau::CodeGen;
 using namespace Luau::CodeGen::A64;
@@ -448,6 +451,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPCompare")
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "FPImm")
 {
+    ScopedFastFlag luauCodeGenOptVecA64{FFlag::LuauCodeGenOptVecA64, true};
+
     SINGLE_COMPARE(fmov(d0, 0), 0x2F00E400);
     SINGLE_COMPARE(fmov(d0, 0.125), 0x1E681000);
     SINGLE_COMPARE(fmov(d0, -0.125), 0x1E781000);

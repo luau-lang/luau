@@ -3,8 +3,6 @@
 
 #include "Luau/IrUtils.h"
 
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCodegenTrackingMultilocationFix, false)
-
 namespace Luau
 {
 namespace CodeGen
@@ -161,7 +159,7 @@ void IrValueLocationTracking::afterInstLowering(IrInst& inst, uint32_t instIdx)
     case IrCmd::LOAD_DOUBLE:
     case IrCmd::LOAD_INT:
     case IrCmd::LOAD_TVALUE:
-        if (DFFlag::LuauCodegenTrackingMultilocationFix && inst.a.kind == IrOpKind::VmReg)
+        if (inst.a.kind == IrOpKind::VmReg)
             invalidateRestoreOp(inst.a, /*skipValueInvalidation*/ false);
 
         recordRestoreOp(instIdx, inst.a);

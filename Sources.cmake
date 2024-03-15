@@ -259,6 +259,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Refinement.cpp
     Analysis/src/RequireTracer.cpp
     Analysis/src/Scope.cpp
+    Analysis/src/Set.cpp
     Analysis/src/Simplify.cpp
     Analysis/src/Substitution.cpp
     Analysis/src/Subtyping.cpp

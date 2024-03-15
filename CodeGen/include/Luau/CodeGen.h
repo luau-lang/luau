@@ -58,6 +58,12 @@ bool isSupported();
 void create(lua_State* L, AllocationCallback* allocationCallback, void* allocationCallbackContext);
 void create(lua_State* L);
 
+// Check if native execution is enabled
+[[nodiscard]] bool isNativeExecutionEnabled(lua_State* L);
+
+// Enable or disable native execution according to `enabled` argument
+void setNativeExecutionEnabled(lua_State* L, bool enabled);
+
 // Builds target function and all inner functions
 CodeGenCompilationResult compile(lua_State* L, int idx, unsigned int flags = 0, CompilationStats* stats = nullptr);
 

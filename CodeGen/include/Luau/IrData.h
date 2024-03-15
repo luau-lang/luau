@@ -322,7 +322,7 @@ enum class IrCmd : uint8_t
     ADJUST_STACK_TO_TOP,
 
     // Execute fastcall builtin function in-place
-    // A: builtin
+    // A: unsigned int (builtin id)
     // B: Rn (result start)
     // C: Rn (argument start)
     // D: Rn or Kn or undef (optional second argument)
@@ -331,7 +331,7 @@ enum class IrCmd : uint8_t
     FASTCALL,
 
     // Call the fastcall builtin function
-    // A: builtin
+    // A: unsigned int (builtin id)
     // B: Rn (result start)
     // C: Rn (argument start)
     // D: Rn or Kn or undef (optional second argument)

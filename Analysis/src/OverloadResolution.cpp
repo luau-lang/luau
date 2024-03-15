@@ -292,8 +292,13 @@ std::pair<OverloadResolver::Analysis, ErrorVec> OverloadResolver::checkOverload_
 
         if (failedSubPack && failedSuperPack)
         {
-            LUAU_ASSERT(!argExprs->empty());
-            argLocation = argExprs->at(argExprs->size() - 1)->location;
+            // If a bug in type inference occurs, we may have a mismatch in the return packs.
+            // This happens when inference incorrectly leaves the result type of a function free.
+            // If this happens, we don't want to explode, so we'll use the function's location.
+            if (argExprs->empty())
+                argLocation = fnExpr->location;
+            else
+                argLocation = argExprs->at(argExprs->size() - 1)->location;
 
             // TODO extract location from the SubtypingResult path and argExprs
             switch (reason.variance)

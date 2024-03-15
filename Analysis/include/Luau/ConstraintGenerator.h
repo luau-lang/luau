@@ -71,6 +71,8 @@ struct ConstraintGenerator
     // This is null when the CG is initially constructed.
     Scope* rootScope;
 
+    TypeContext typeContext = TypeContext::Default;
+
     struct InferredBinding
     {
         Scope* scope;

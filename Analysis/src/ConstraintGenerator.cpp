@@ -1175,7 +1175,10 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatCompoundAss
 
 ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatIf* ifStatement)
 {
-    RefinementId refinement = check(scope, ifStatement->condition, std::nullopt).refinement;
+    RefinementId refinement = [&](){
+        InConditionalContext flipper{&typeContext};
+        return check(scope, ifStatement->condition, std::nullopt).refinement;
+    }();
 
     ScopePtr thenScope = childScope(ifStatement->thenbody, scope);
     applyRefinements(thenScope, ifStatement->condition->location, refinement);
@@ -1910,7 +1913,7 @@ Inference ConstraintGenerator::checkIndexName(const ScopePtr& scope, const Refin
         scope->rvalueRefinements[key->def] = result;
     }
 
-    addConstraint(scope, indexee->location, HasPropConstraint{result, obj, std::move(index), ValueContext::RValue});
+    addConstraint(scope, indexee->location, HasPropConstraint{result, obj, std::move(index), ValueContext::RValue, inConditional(typeContext)});
 
     if (key)
         return Inference{result, refinementArena.proposition(key, builtinTypes->truthyType)};
@@ -1935,7 +1938,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIndexExpr* in
     TypeId obj = check(scope, indexExpr->expr).ty;
     TypeId indexType = check(scope, indexExpr->index).ty;
 
-    TypeId result = freshType(scope);
+    TypeId result = arena->addType(BlockedType{});
 
     const RefinementKey* key = dfg->getRefinementKey(indexExpr);
     if (key)
@@ -1946,10 +1949,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIndexExpr* in
         scope->rvalueRefinements[key->def] = result;
     }
 
-    TableIndexer indexer{indexType, result};
-    TypeId tableType = arena->addType(TableType{TableType::Props{}, TableIndexer{indexType, result}, TypeLevel{}, scope.get(), TableState::Free});
-
-    addConstraint(scope, indexExpr->expr->location, SubtypeConstraint{obj, tableType});
+    addConstraint(scope, indexExpr->expr->location, HasIndexerConstraint{result, obj, indexType});
 
     if (key)
         return Inference{result, refinementArena.proposition(key, builtinTypes->truthyType)};
@@ -2200,8 +2200,11 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprBinary* binar
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType)
 {
-    ScopePtr condScope = childScope(ifElse->condition, scope);
-    RefinementId refinement = check(condScope, ifElse->condition).refinement;
+    RefinementId refinement = [&](){
+        InConditionalContext flipper{&typeContext};
+        ScopePtr condScope = childScope(ifElse->condition, scope);
+        return check(condScope, ifElse->condition).refinement;
+    }();
 
     ScopePtr thenScope = childScope(ifElse->trueExpr, scope);
     applyRefinements(thenScope, ifElse->trueExpr->location, refinement);
@@ -2406,9 +2409,16 @@ std::optional<TypeId> ConstraintGenerator::checkLValue(const ScopePtr& scope, As
 
     if (transform)
     {
-        addConstraint(scope, local->location,
+        Constraint* owner = nullptr;
+        if (auto blocked = get<BlockedType>(*ty))
+            owner = blocked->owner;
+
+        auto unpackC = addConstraint(scope, local->location,
             UnpackConstraint{arena->addTypePack({*ty}), arena->addTypePack({assignedTy}),
                 /*resultIsLValue*/ true});
+
+        if (owner)
+            unpackC->dependencies.push_back(NotNull{owner});
 
         recordInferredBinding(local->local, *ty);
     }
@@ -2538,6 +2548,7 @@ TypeId ConstraintGenerator::updateProperty(const ScopePtr& scope, AstExpr* expr,
 
     TypeId updatedType = arena->addType(BlockedType{});
     auto setC = addConstraint(scope, expr->location, SetPropConstraint{updatedType, subjectType, std::move(segmentStrings), assignedTy});
+    getMutable<BlockedType>(updatedType)->owner = setC.get();
 
     TypeId prevSegmentTy = updatedType;
     for (size_t i = 0; i < segments.size(); ++i)
@@ -2545,7 +2556,7 @@ TypeId ConstraintGenerator::updateProperty(const ScopePtr& scope, AstExpr* expr,
         TypeId segmentTy = arena->addType(BlockedType{});
         module->astTypes[exprs[i]] = segmentTy;
         ValueContext ctx = i == segments.size() - 1 ? ValueContext::LValue : ValueContext::RValue;
-        auto hasC = addConstraint(scope, expr->location, HasPropConstraint{segmentTy, prevSegmentTy, segments[i], ctx});
+        auto hasC = addConstraint(scope, expr->location, HasPropConstraint{segmentTy, prevSegmentTy, segments[i], ctx, inConditional(typeContext)});
         setC->dependencies.push_back(hasC);
         prevSegmentTy = segmentTy;
     }
@@ -2582,16 +2593,12 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
 
     interiorTypes.back().push_back(ty);
 
-    auto createIndexer = [this, scope, ttv](const Location& location, TypeId currentIndexType, TypeId currentResultType) {
-        if (!ttv->indexer)
-        {
-            TypeId indexType = this->freshType(scope);
-            TypeId resultType = this->freshType(scope);
-            ttv->indexer = TableIndexer{indexType, resultType};
-        }
+    TypeIds indexKeyLowerBound;
+    TypeIds indexValueLowerBound;
 
-        addConstraint(scope, location, SubtypeConstraint{ttv->indexer->indexType, currentIndexType});
-        addConstraint(scope, location, SubtypeConstraint{ttv->indexer->indexResultType, currentResultType});
+    auto createIndexer = [&indexKeyLowerBound, &indexValueLowerBound](const Location& location, TypeId currentIndexType, TypeId currentResultType) {
+        indexKeyLowerBound.insert(follow(currentIndexType));
+        indexValueLowerBound.insert(follow(currentResultType));
     };
 
     std::optional<TypeId> annotatedKeyType;
@@ -2633,7 +2640,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
                     expectedValueType = arena->addType(BlockedType{});
                     addConstraint(scope, item.value->location,
                         HasPropConstraint{
-                            *expectedValueType, *expectedType, stringKey->value.data, ValueContext::RValue, /*suppressSimplification*/ true});
+                            *expectedValueType, *expectedType, stringKey->value.data, ValueContext::RValue, /*inConditional*/ inConditional(typeContext), /*suppressSimplification*/ true});
                 }
             }
         }
@@ -2703,6 +2710,23 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
             // right.
             createIndexer(item.value->location, numberType, itemTy);
         }
+    }
+
+    if (!indexKeyLowerBound.empty())
+    {
+        LUAU_ASSERT(!indexValueLowerBound.empty());
+
+        TypeId indexKey = indexKeyLowerBound.size() == 1
+            ? *indexKeyLowerBound.begin()
+            : arena->addType(UnionType{std::vector(indexKeyLowerBound.begin(), indexKeyLowerBound.end())})
+            ;
+
+        TypeId indexValue = indexValueLowerBound.size() == 1
+            ? *indexValueLowerBound.begin()
+            : arena->addType(UnionType{std::vector(indexValueLowerBound.begin(), indexValueLowerBound.end())})
+            ;
+
+        ttv->indexer = TableIndexer{indexKey, indexValue};
     }
 
     return Inference{ty};
