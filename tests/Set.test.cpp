@@ -1,7 +1,13 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "ScopedFlags.h"
 #include "Luau/Set.h"
 
 #include "doctest.h"
+
+#include <string>
+#include <vector>
+
+LUAU_FASTFLAG(LuauFixSetIter);
 
 TEST_SUITE_BEGIN("SetTests");
 
@@ -97,6 +103,34 @@ TEST_CASE("iterate_over_set_skips_erased_elements")
         sum += e;
 
     CHECK(sum == 9);
+}
+
+TEST_CASE("iterate_over_set_skips_first_element_if_it_is_erased")
+{
+    ScopedFastFlag sff{FFlag::LuauFixSetIter, true};
+
+    /*
+     * As of this writing, in the following set, the key "y" happens to occur
+     * before "x" in the underlying DenseHashSet.  This is important because it
+     * surfaces something that Set::const_iterator needs to do: If the
+     * underlying iterator happens to start at a deleted element, we need to
+     * advance until we find the first live element (or the end of the set).
+     */
+    Luau::Set<std::string> s1{{}};
+    s1.insert("x");
+    s1.insert("y");
+    s1.erase("y");
+
+    std::vector<std::string> out;
+    auto it = s1.begin();
+    auto endIt = s1.end();
+    while (it != endIt)
+    {
+        out.push_back(*it);
+        ++it;
+    }
+
+    CHECK(1 == out.size());
 }
 
 TEST_SUITE_END();

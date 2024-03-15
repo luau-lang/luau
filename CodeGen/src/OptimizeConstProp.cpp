@@ -20,6 +20,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
 LUAU_FASTFLAG(LuauCodegenVectorTag2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCodeGenCoverForgprepEffect, false)
 LUAU_FASTFLAG(LuauCodegenLoadTVTag)
+LUAU_FASTFLAG(LuauCodegenRemoveDeadStores3)
 
 namespace Luau
 {
@@ -1072,8 +1073,39 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         }
         break;
 
-        // TODO: FASTCALL is more restrictive than INVOKE_FASTCALL; we should either determine the exact semantics, or rework it
     case IrCmd::FASTCALL:
+    {
+        if (FFlag::LuauCodegenRemoveDeadStores3)
+        {
+            LuauBuiltinFunction bfid = LuauBuiltinFunction(function.uintOp(inst.a));
+            int firstReturnReg = vmRegOp(inst.b);
+            int nresults = function.intOp(inst.f);
+
+            // TODO: FASTCALL is more restrictive than INVOKE_FASTCALL; we should either determine the exact semantics, or rework it
+            handleBuiltinEffects(state, bfid, firstReturnReg, nresults);
+
+            switch (bfid)
+            {
+            case LBF_MATH_MODF:
+            case LBF_MATH_FREXP:
+                state.updateTag(IrOp{IrOpKind::VmReg, uint8_t(firstReturnReg)}, LUA_TNUMBER);
+
+                if (nresults > 1)
+                    state.updateTag(IrOp{IrOpKind::VmReg, uint8_t(firstReturnReg + 1)}, LUA_TNUMBER);
+                break;
+            case LBF_MATH_SIGN:
+                state.updateTag(IrOp{IrOpKind::VmReg, uint8_t(firstReturnReg)}, LUA_TNUMBER);
+                break;
+            default:
+                break;
+            }
+        }
+        else
+        {
+            handleBuiltinEffects(state, LuauBuiltinFunction(function.uintOp(inst.a)), vmRegOp(inst.b), function.intOp(inst.f));
+        }
+        break;
+    }
     case IrCmd::INVOKE_FASTCALL:
         handleBuiltinEffects(state, LuauBuiltinFunction(function.uintOp(inst.a)), vmRegOp(inst.b), function.intOp(inst.f));
         break;

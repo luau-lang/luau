@@ -25,6 +25,24 @@ LUAU_FASTFLAG(LuauReadWritePropertySyntax);
 
 TEST_SUITE_BEGIN("TableTests");
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "LUAU_ASSERT_arg_exprs_doesnt_trigger_assert")
+{
+    CheckResult result = check(R"(
+local FadeValue = {}
+function FadeValue.new(finalCallback)
+	local self = setmetatable({}, FadeValue)
+	self.finalCallback = finalCallback
+	return self
+end
+
+function FadeValue:destroy()
+	self.finalCallback()
+	self.finalCallback = nil
+end
+)");
+    
+}
+
 TEST_CASE_FIXTURE(Fixture, "basic")
 {
     CheckResult result = check("local t = {foo = \"bar\", baz = 9, quux = nil}");
@@ -2703,6 +2721,23 @@ TEST_CASE_FIXTURE(Fixture, "tables_get_names_from_their_locals")
     CHECK_EQ("T", toString(requireType("T")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "should_not_unblock_table_type_twice")
+{
+    ScopedFastFlag sff(FFlag::DebugLuauDeferredConstraintResolution, true);
+
+    check(R"(
+        local timer = peek(timerQueue)
+        while timer ~= nil do
+            if timer.startTime <= currentTime then
+                timer.isQueued = true
+            end
+            timer = peek(timerQueue)
+        end
+    )");
+
+    // Just checking this is enough to satisfy the original bug.
+}
+
 TEST_CASE_FIXTURE(Fixture, "generalize_table_argument")
 {
     CheckResult result = check(R"(
@@ -4174,6 +4209,42 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
     CHECK("<a, b...>({{ read Character: t1 }}, { Character: t1 }) -> () "
         "where "
         "t1 = { read FindFirstChild: (t1, string) -> (a, b...) }" == toString(requireType("oc")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "tables_can_have_both_metatables_and_indexers")
+{
+    CheckResult result = check(R"(
+        local a = {}
+        a[1] = 5
+        a[2] = 17
+
+        local t = {}
+        setmetatable(a, t)
+
+        local c = a[1]
+        print(a[1])
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("number" == toString(requireType("c")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "refined_thing_can_be_an_array")
+{
+    CheckResult result = check(R"(
+        function foo(x, y)
+            if x then
+                return x[1]
+            else
+                return y
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("<a>({a}, a) -> a" == toString(requireType("foo")));
 }
 
 TEST_SUITE_END();

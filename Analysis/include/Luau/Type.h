@@ -33,6 +33,7 @@ struct Scope;
 using ScopePtr = std::shared_ptr<Scope>;
 
 struct TypeFamily;
+struct Constraint;
 
 /**
  * There are three kinds of type variables:
@@ -144,6 +145,10 @@ struct BlockedType
 {
     BlockedType();
     int index;
+
+    // The constraint that is intended to unblock this type. Other constraints
+    // should block on this constraint if present.
+    Constraint* owner = nullptr;
 };
 
 struct PrimitiveType

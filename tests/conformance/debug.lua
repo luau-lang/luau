@@ -111,4 +111,31 @@ end
 
 testlinedefined()
 
+-- don't leave garbage on the other thread
+local wrapped1 = coroutine.create(function()
+	local thread = coroutine.create(function(target)
+		for i = 1, 100 do pcall(debug.info, target, 0, "llf") end
+		return 123
+	end)
+
+	local success, res = coroutine.resume(thread, coroutine.running())
+	assert(success)
+	assert(res == 123)
+end)
+
+coroutine.resume(wrapped1)
+
+local wrapped2 = coroutine.create(function()
+	local thread = coroutine.create(function(target)
+		for i = 1, 100 do pcall(debug.info, target, 0, "ff") end
+		return 123
+	end)
+
+	local success, res = coroutine.resume(thread, coroutine.running())
+	assert(success)
+	assert(res == 123)
+end)
+
+coroutine.resume(wrapped2)
+
 return 'OK'

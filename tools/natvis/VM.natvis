@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
 
-  <Type Name="::lua_TValue">
+  <Type Name="lua_TValue">
     <DisplayString Condition="tt == lua_Type::LUA_TNIL">nil</DisplayString>
     <DisplayString Condition="tt == lua_Type::LUA_TBOOLEAN">{(bool)value.b}</DisplayString>
     <DisplayString Condition="tt == lua_Type::LUA_TLIGHTUSERDATA">lightuserdata {(uintptr_t)value.p,h} tag: {extra[0]}</DisplayString>
@@ -39,7 +39,7 @@
     </Expand>
   </Type>
 
-  <Type Name="::TKey">
+  <Type Name="TKey">
     <DisplayString Condition="tt == lua_Type::LUA_TNIL">nil</DisplayString>
     <DisplayString Condition="tt == lua_Type::LUA_TBOOLEAN">{(bool)value.b}</DisplayString>
     <DisplayString Condition="tt == lua_Type::LUA_TLIGHTUSERDATA">lightuserdata {(uintptr_t)value.p,h} tag: {extra[0]}</DisplayString>
@@ -72,12 +72,12 @@
     </Expand>
   </Type>
 
-  <Type Name="::LuaNode">
+  <Type Name="LuaNode">
     <DisplayString Condition="key.tt != lua_Type::LUA_TNIL || val.tt != lua_Type::LUA_TNIL">{key,na} = {val}</DisplayString>
     <DisplayString Condition="key.tt == lua_Type::LUA_TNIL &amp;&amp; val.tt == 0">---</DisplayString>
   </Type>
 
-  <Type Name="::Table">
+  <Type Name="Table">
     <DisplayString>table</DisplayString>
     <Expand>
       <Item Name="metatable" Condition="metatable">metatable</Item>
@@ -103,7 +103,7 @@
     </Expand>
   </Type>
 
-  <Type Name="::Udata">
+  <Type Name="Udata">
     <Expand>
       <CustomListItems>
         <Variable Name="count" InitialValue="1&lt;&lt;metatable->lsizenode" />
@@ -131,7 +131,7 @@
     </Expand>
   </Type>
 
-  <Type Name="::Closure">
+  <Type Name="Closure">
     <DisplayString Condition="isC == 1" IncludeView="short">{c.f,na}</DisplayString>
     <DisplayString Condition="isC == 0" IncludeView="short">{l.p,na}</DisplayString>
     <DisplayString Condition="isC == 1" ExcludeView="short">{c}</DisplayString>
@@ -139,11 +139,11 @@
     <DisplayString>invalid</DisplayString>
   </Type>
 
-  <Type Name="::TString">
+  <Type Name="TString">
     <DisplayString>{data,s}</DisplayString>
   </Type>
 
-  <Type Name="::CallInfo">
+  <Type Name="CallInfo">
     <Intrinsic Name="cl" Category="Property" Expression="func->value.gc->cl"/>
     <Intrinsic Name="isC" Category="Property" Expression="cl().isC"/>
     <Intrinsic Name="proto" Category="Property" Expression="cl().l.p"/>
@@ -163,7 +163,7 @@
     <DisplayString Condition="isC()">=[C] {cl().c.f,na}</DisplayString>
   </Type>
 
-  <Type Name ="::lua_State">
+  <Type Name ="lua_State">
     <DisplayString Condition="ci">{ci,na}</DisplayString>
     <DisplayString>thread</DisplayString>
     <Expand>
@@ -211,7 +211,7 @@
     </Expand>
   </Type>
 
-  <Type Name="::Proto">
+  <Type Name="Proto">
     <DisplayString Condition="debugname">{source->data,sb}:{linedefined} function {debugname->data,sb} [{(int)numparams} arg, {(int)nups} upval]</DisplayString>
     <DisplayString Condition="!debugname">{source->data,sb}:{linedefined} [{(int)numparams} arg, {(int)nups} upval]</DisplayString>
     <Expand>
@@ -266,7 +266,7 @@
     </Expand>
   </Type>
 
-  <Type Name="::GCheader">
+  <Type Name="GCheader">
     <Expand>
       <Synthetic Name="[type]">
         <DisplayString>{(lua_Type)tt}</DisplayString>

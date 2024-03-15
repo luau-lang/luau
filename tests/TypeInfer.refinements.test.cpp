@@ -323,6 +323,99 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_assert_position")
     REQUIRE_EQ("number", toString(requireType("b")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_test_a_prop")
+{
+    CheckResult result = check(R"(
+        local function f(x: unknown): string?
+            if typeof(x) == "table" then
+                if typeof(x.foo) == "string" then
+                    return x.foo
+                end
+            end
+
+            return nil
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+            LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+        for (size_t i = 0; i < result.errors.size(); i++)
+        {
+            const UnknownProperty* up = get<UnknownProperty>(result.errors[i]);
+            REQUIRE_EQ("foo", up->key);
+            REQUIRE_EQ("unknown", toString(up->table));
+        }
+    }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_test_a_nested_prop")
+{
+    CheckResult result = check(R"(
+        local function f(x: unknown): string?
+            if typeof(x) == "table" then
+                -- this should error, `x.foo` is an unknown property
+                if typeof(x.foo.bar) == "string" then
+                    return x.foo.bar
+                end
+            end
+
+            return nil
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        const UnknownProperty* up = get<UnknownProperty>(result.errors[0]);
+        REQUIRE_EQ("bar", up->key);
+        REQUIRE_EQ("unknown", toString(up->table));
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+        for (size_t i = 0; i < result.errors.size(); i++)
+        {
+            const UnknownProperty* up = get<UnknownProperty>(result.errors[i]);
+            REQUIRE_EQ("foo", up->key);
+            REQUIRE_EQ("unknown", toString(up->table));
+        }
+    }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_test_a_tested_nested_prop")
+{
+    CheckResult result = check(R"(
+        local function f(x: unknown): string?
+            if typeof(x) == "table" then
+                if typeof(x.foo) == "table" and typeof(x.foo.bar) == "string" then
+                    return x.foo.bar
+                end
+            end
+
+            return nil
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+
+        for (size_t i = 0; i < result.errors.size(); i++)
+        {
+            const UnknownProperty* up = get<UnknownProperty>(result.errors[i]);
+            REQUIRE_EQ("foo", up->key);
+            REQUIRE_EQ("unknown", toString(up->table));
+        }
+    }
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "call_an_incompatible_function_after_using_typeguard")
 {
     CheckResult result = check(R"(
@@ -2056,5 +2149,6 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "mutate_prop_of_some_refined_symbol_2"
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
+
 
 TEST_SUITE_END();

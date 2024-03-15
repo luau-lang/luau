@@ -13,7 +13,7 @@
 #include <memory>
 
 LUAU_FASTFLAG(LuauCodegenVectorTag2)
-LUAU_FASTFLAG(LuauCodegenRemoveDeadStores2)
+LUAU_FASTFLAG(LuauCodegenRemoveDeadStores3)
 
 static std::string getCodegenAssembly(const char* source)
 {
@@ -91,7 +91,7 @@ bb_bytecode_1:
 
 TEST_CASE("VectorComponentRead")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores2, true};
+    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores3, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function compsum(a: vector)
@@ -175,7 +175,7 @@ bb_bytecode_1:
 TEST_CASE("VectorSubMulDiv")
 {
     ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores2, true};
+    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores3, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3combo(a: vector, b: vector, c: vector, d: vector)
@@ -210,7 +210,7 @@ bb_bytecode_1:
 TEST_CASE("VectorSubMulDiv2")
 {
     ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores2, true};
+    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores3, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3combo(a: vector)
@@ -241,7 +241,7 @@ bb_bytecode_1:
 TEST_CASE("VectorMulDivMixed")
 {
     ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores2, true};
+    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores3, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3combo(a: vector, b: vector, c: vector, d: vector)
@@ -283,7 +283,7 @@ bb_bytecode_1:
 
 TEST_CASE("ExtraMathMemoryOperands")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores2, true};
+    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores3, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: number, b: number, c: number, d: number, e: number)
@@ -316,6 +316,88 @@ bb_bytecode_1:
   STORE_TAG R5, tnumber
   INTERRUPT 29u
   RETURN R5, 1i
+)");
+}
+
+TEST_CASE("DseInitialStackState")
+{
+    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores3, true};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function foo()
+    while {} do
+        local _ = not _,{}
+        _ = nil
+    end
+end
+)"),
+        R"(
+; function foo() line 2
+bb_bytecode_0:
+  SET_SAVEDPC 1u
+  %1 = NEW_TABLE 0u, 0u
+  STORE_POINTER R0, %1
+  STORE_TAG R0, ttable
+  CHECK_GC
+  JUMP bb_2
+bb_2:
+  CHECK_SAFE_ENV exit(3)
+  JUMP_EQ_TAG K1, tnil, bb_fallback_4, bb_3
+bb_3:
+  %9 = LOAD_TVALUE K1
+  STORE_TVALUE R1, %9
+  JUMP bb_5
+bb_5:
+  SET_SAVEDPC 7u
+  %21 = NEW_TABLE 0u, 0u
+  STORE_POINTER R1, %21
+  STORE_TAG R1, ttable
+  CHECK_GC
+  STORE_TAG R0, tnil
+  INTERRUPT 9u
+  JUMP bb_bytecode_0
+)");
+}
+
+TEST_CASE("DseInitialStackState2")
+{
+    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores3, true};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function foo(a)
+    math.frexp(a)
+    return a
+end
+)"),
+        R"(
+; function foo($arg0) line 2
+bb_bytecode_0:
+  CHECK_SAFE_ENV exit(1)
+  CHECK_TAG R0, tnumber, exit(1)
+  FASTCALL 14u, R1, R0, undef, 1i, 2i
+  INTERRUPT 5u
+  RETURN R0, 1i
+)");
+}
+
+TEST_CASE("DseInitialStackState3")
+{
+    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores3, true};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function foo(a)
+    math.sign(a)
+    return a
+end
+)"),
+        R"(
+; function foo($arg0) line 2
+bb_bytecode_0:
+  CHECK_SAFE_ENV exit(1)
+  CHECK_TAG R0, tnumber, exit(1)
+  FASTCALL 47u, R1, R0, undef, 1i, 1i
+  INTERRUPT 5u
+  RETURN R0, 1i
 )");
 }
 
