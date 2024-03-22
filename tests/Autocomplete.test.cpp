@@ -146,6 +146,38 @@ struct ACBuiltinsFixture : ACFixtureImpl<BuiltinsFixture>
 {
 };
 
+#define LUAU_CHECK_HAS_KEY(map, key) do                               \
+    {                                                                 \
+        auto&& _m = (map);                                            \
+        auto&& _k = (key);                                            \
+        const size_t count = _m.count(_k);                            \
+        CHECK_MESSAGE(count, "Map should have key \"" << _k << "\""); \
+        if (!count)                                                   \
+        {                                                             \
+            MESSAGE("Keys: (count " << _m.size() << ")");             \
+            for (const auto& [k, v]: _m)                              \
+            {                                                         \
+                MESSAGE("\tkey: " << k);                              \
+            }                                                         \
+        }                                                             \
+    } while (false)
+
+#define LUAU_CHECK_HAS_NO_KEY(map, key) do                                 \
+    {                                                                      \
+        auto&& _m = (map);                                                 \
+        auto&& _k = (key);                                                 \
+        const size_t count = _m.count(_k);                                 \
+        CHECK_MESSAGE(!count, "Map should not have key \"" << _k << "\""); \
+        if (count)                                                         \
+        {                                                                  \
+            MESSAGE("Keys: (count " << _m.size() << ")");                  \
+            for (const auto& [k, v]: _m)                                   \
+            {                                                              \
+                MESSAGE("\tkey: " << k);                                   \
+            }                                                              \
+        }                                                                  \
+    } while (false)
+
 TEST_SUITE_BEGIN("AutocompleteTest");
 
 TEST_CASE_FIXTURE(ACFixture, "empty_program")
@@ -203,7 +235,7 @@ TEST_CASE_FIXTURE(ACFixture, "dont_suggest_local_before_its_definition")
 
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("myLocal"));
-    CHECK(!ac.entryMap.count("myInnerLocal"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "myInnerLocal");
 
     ac = autocomplete('2');
     CHECK(ac.entryMap.count("myLocal"));
@@ -211,7 +243,7 @@ TEST_CASE_FIXTURE(ACFixture, "dont_suggest_local_before_its_definition")
 
     ac = autocomplete('3');
     CHECK(ac.entryMap.count("myLocal"));
-    CHECK(!ac.entryMap.count("myInnerLocal"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "myInnerLocal");
 }
 
 TEST_CASE_FIXTURE(ACFixture, "recursive_function")
@@ -298,7 +330,7 @@ TEST_CASE_FIXTURE(ACFixture, "local_functions_fall_out_of_scope")
     auto ac = autocomplete('1');
 
     CHECK_NE(0, ac.entryMap.size());
-    CHECK(!ac.entryMap.count("abc"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "abc");
 }
 
 TEST_CASE_FIXTURE(ACFixture, "function_parameters")
@@ -325,7 +357,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "get_member_completions")
     CHECK_EQ(17, ac.entryMap.size());
     CHECK(ac.entryMap.count("find"));
     CHECK(ac.entryMap.count("pack"));
-    CHECK(!ac.entryMap.count("math"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "math");
     CHECK_EQ(ac.context, AutocompleteContext::Property);
 }
 
@@ -471,7 +503,7 @@ TEST_CASE_FIXTURE(ACFixture, "method_call_inside_function_body")
 
     CHECK_NE(0, ac.entryMap.size());
 
-    CHECK(!ac.entryMap.count("math"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "math");
     CHECK_EQ(ac.context, AutocompleteContext::Property);
 }
 
@@ -485,7 +517,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "method_call_inside_if_conditional")
 
     CHECK_NE(0, ac.entryMap.size());
     CHECK(ac.entryMap.count("concat"));
-    CHECK(!ac.entryMap.count("math"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "math");
     CHECK_EQ(ac.context, AutocompleteContext::Property);
 }
 
@@ -1330,7 +1362,7 @@ local a: nu@3
 
     ac = autocomplete('3');
 
-    CHECK(!ac.entryMap.count("num"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "num");
     CHECK(ac.entryMap.count("number"));
 }
 
@@ -2052,7 +2084,7 @@ ex.a(function(x:
 
     auto ac = autocomplete("Module/B", Position{2, 16});
 
-    CHECK(!ac.entryMap.count("done"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "done");
 
     fileResolver.source["Module/C"] = R"(
 local ex = require(script.Parent.A)
@@ -2063,7 +2095,7 @@ ex.b(function(x:
 
     ac = autocomplete("Module/C", Position{2, 16});
 
-    CHECK(!ac.entryMap.count("(done) -> number"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "(done) -> number");
 }
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "suggest_external_module_type")
@@ -2086,7 +2118,7 @@ ex.a(function(x:
 
     auto ac = autocomplete("Module/B", Position{2, 16});
 
-    CHECK(!ac.entryMap.count("done"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "done");
     CHECK(ac.entryMap.count("ex.done"));
     CHECK(ac.entryMap["ex.done"].typeCorrect == TypeCorrectKind::Correct);
 
@@ -2099,7 +2131,7 @@ ex.b(function(x:
 
     ac = autocomplete("Module/C", Position{2, 16});
 
-    CHECK(!ac.entryMap.count("(done) -> number"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "(done) -> number");
     CHECK(ac.entryMap.count("(ex.done) -> number"));
     CHECK(ac.entryMap["(ex.done) -> number"].typeCorrect == TypeCorrectKind::Correct);
 }
@@ -2113,7 +2145,7 @@ local bar: @1= foo
 
     auto ac = autocomplete('1');
 
-    CHECK(!ac.entryMap.count("foo"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "foo");
 }
 
 TEST_CASE_FIXTURE(ACFixture, "type_correct_function_no_parenthesis")
@@ -2338,7 +2370,7 @@ local name = na@1
 
     auto ac = autocomplete('1');
 
-    CHECK(!ac.entryMap.count("name"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "name");
     CHECK(ac.entryMap.count("other"));
 
     check(R"(
@@ -2348,8 +2380,8 @@ local name, test = na@1
 
     ac = autocomplete('1');
 
-    CHECK(!ac.entryMap.count("name"));
-    CHECK(!ac.entryMap.count("test"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "name");
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "test");
     CHECK(ac.entryMap.count("other"));
 }
 
@@ -2539,7 +2571,7 @@ TEST_CASE_FIXTURE(ACFixture, "not_the_var_we_are_defining")
     fileResolver.source["Module/A"] = "abc,de";
 
     auto ac = autocomplete("Module/A", Position{0, 6});
-    CHECK(!ac.entryMap.count("de"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "de");
 }
 
 TEST_CASE_FIXTURE(ACFixture, "recursive_function_global")
@@ -2597,8 +2629,8 @@ local t: Test = { s@1 }
 
     ac = autocomplete('1');
     CHECK(ac.entryMap.count("second"));
-    CHECK(!ac.entryMap.count("first"));
-    CHECK(!ac.entryMap.count("third"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "first");
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "third");
     CHECK_EQ(ac.context, AutocompleteContext::Property);
 
     // No parenthesis suggestion
@@ -2641,8 +2673,8 @@ local t: Test = { "f@1" }
     )");
 
     ac = autocomplete('1');
-    CHECK(!ac.entryMap.count("first"));
-    CHECK(!ac.entryMap.count("second"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "first");
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "second");
     CHECK_EQ(ac.context, AutocompleteContext::String);
 
     // Skip keys that are already defined
@@ -2652,7 +2684,7 @@ local t: Test = { first = 2, s@1 }
     )");
 
     ac = autocomplete('1');
-    CHECK(!ac.entryMap.count("first"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "first");
     CHECK(ac.entryMap.count("second"));
     CHECK_EQ(ac.context, AutocompleteContext::Property);
 
@@ -3122,8 +3154,8 @@ TEST_CASE_FIXTURE(ACFixture, "string_singleton_as_table_key")
 
     ac = autocomplete('4');
 
-    CHECK(!ac.entryMap.count("up"));
-    CHECK(!ac.entryMap.count("down"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "up");
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "down");
 
     CHECK(ac.entryMap.count("\"up\""));
     CHECK(ac.entryMap.count("\"down\""));
@@ -3145,8 +3177,8 @@ TEST_CASE_FIXTURE(ACFixture, "string_singleton_as_table_key")
 
     ac = autocomplete('8');
 
-    CHECK(!ac.entryMap.count("up"));
-    CHECK(!ac.entryMap.count("down"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "up");
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "down");
 
     CHECK(ac.entryMap.count("\"up\""));
     CHECK(ac.entryMap.count("\"down\""));
@@ -3174,55 +3206,57 @@ TEST_CASE_FIXTURE(ACFixture, "string_singleton_in_if_statement")
         local a: {[Direction]: boolean} = {[@A`@B`@C]}
     )");
 
-    auto ac = autocomplete('1');
+    Luau::AutocompleteResult ac;
 
-    CHECK(!ac.entryMap.count("left"));
-    CHECK(!ac.entryMap.count("right"));
+    ac = autocomplete('1');
+
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "left");
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "right");
 
     ac = autocomplete('2');
 
     CHECK(ac.entryMap.count("left"));
-    CHECK(!ac.entryMap.count("right"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "right");
 
     ac = autocomplete('3');
 
-    CHECK(!ac.entryMap.count("left"));
-    CHECK(!ac.entryMap.count("right"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "left");
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "right");
 
     ac = autocomplete('4');
 
-    CHECK(!ac.entryMap.count("left"));
-    CHECK(!ac.entryMap.count("right"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "left");
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "right");
 
     ac = autocomplete('5');
 
-    CHECK(ac.entryMap.count("left"));
+    LUAU_CHECK_HAS_KEY(ac.entryMap, "left");
     CHECK(ac.entryMap.count("right"));
 
     ac = autocomplete('6');
 
-    CHECK(!ac.entryMap.count("left"));
-    CHECK(!ac.entryMap.count("right"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "left");
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "right");
 
     ac = autocomplete('7');
 
-    CHECK(!ac.entryMap.count("left"));
-    CHECK(!ac.entryMap.count("right"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "left");
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "right");
 
     ac = autocomplete('8');
 
     CHECK(ac.entryMap.count("left"));
-    CHECK(!ac.entryMap.count("right"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "right");
 
     ac = autocomplete('9');
 
-    CHECK(!ac.entryMap.count("left"));
-    CHECK(!ac.entryMap.count("right"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "left");
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "right");
 
     ac = autocomplete('A');
 
-    CHECK(!ac.entryMap.count("left"));
-    CHECK(!ac.entryMap.count("right"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "left");
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "right");
 
     ac = autocomplete('B');
 
@@ -3231,8 +3265,8 @@ TEST_CASE_FIXTURE(ACFixture, "string_singleton_in_if_statement")
 
     ac = autocomplete('C');
 
-    CHECK(!ac.entryMap.count("left"));
-    CHECK(!ac.entryMap.count("right"));
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "left");
+    LUAU_CHECK_HAS_NO_KEY(ac.entryMap, "right");
 }
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_equality")

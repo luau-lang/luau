@@ -61,6 +61,7 @@ struct Instantiation2 : Substitution
     {
     }
 
+    bool ignoreChildren(TypeId ty) override;
     bool isDirty(TypeId ty) override;
     bool isDirty(TypePackId tp) override;
     TypeId clean(TypeId ty) override;

@@ -1198,48 +1198,6 @@ TEST_CASE_FIXTURE(Fixture, "bidirectional_checking_of_higher_order_function")
     CHECK(location.end.line == 4);
 }
 
-TEST_CASE_FIXTURE(Fixture, "bidirectional_checking_of_callback_property")
-{
-    CheckResult result = check(R"(
-        local print: (number) -> ()
-
-        type Point = {x: number, y: number}
-        local T : {callback: ((Point) -> ())?} = {}
-
-        T.callback = function(p) -- No error here
-            print(p.z)           -- error here.  Point has no property z
-        end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    CHECK_MESSAGE(get<UnknownProperty>(result.errors[0]), "Expected UnknownProperty but got " << result.errors[0]);
-
-    Location location = result.errors[0].location;
-    CHECK(location.begin.line == 7);
-    CHECK(location.end.line == 7);
-}
-
-TEST_CASE_FIXTURE(ClassFixture, "bidirectional_inference_of_class_methods")
-{
-    CheckResult result = check(R"(
-        local c = ChildClass.New()
-
-        -- Instead of reporting that the lambda is the wrong type, report that we are using its argument improperly.
-        c.Touched:Connect(function(other)
-            print(other.ThisDoesNotExist)
-        end)
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    UnknownProperty* err = get<UnknownProperty>(result.errors[0]);
-    REQUIRE(err);
-
-    CHECK("ThisDoesNotExist" == err->key);
-    CHECK("BaseClass" == toString(err->table));
-}
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "it_is_ok_to_have_inconsistent_number_of_return_values_in_nonstrict")
 {
     CheckResult result = check(R"(

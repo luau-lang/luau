@@ -1004,6 +1004,26 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties_nonstrict")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_should_not_add_an_indexer")
+{
+    CheckResult result = check(R"(
+        --!strict
+        local prices = {
+            hat = 1,
+            bat = 2,
+        }
+        print(prices.wwwww)
+        for _, _ in pairs(prices) do
+        end
+        print(prices.wwwww)
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "lti_fuzzer_uninitialized_loop_crash")
 {
     CheckResult result = check(R"(
@@ -1013,6 +1033,25 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lti_fuzzer_uninitialized_loop_crash")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(3, result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_array_of_singletons")
+{
+    CheckResult result = check(R"(
+        --!strict
+        type Direction = "Left" | "Right" | "Up" | "Down"
+        local Instructions: { Direction } = { "Left", "Down" }
+
+        for _, step in Instructions do
+            local dir: Direction = step
+            print(dir)
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+        LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

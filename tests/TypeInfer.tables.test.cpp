@@ -4247,4 +4247,45 @@ TEST_CASE_FIXTURE(Fixture, "refined_thing_can_be_an_array")
     CHECK("<a>({a}, a) -> a" == toString(requireType("foo")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "mymovie_read_write_tables_bug")
+{
+    CheckResult result = check(R"(
+        type MockedResponseBody = string | (() -> MockedResponseBody)
+        type MockedResponse = { type: 'body', body: MockedResponseBody } | { type: 'error' }
+
+        local function mockedResponseToHttpResponse(mockedResponse: MockedResponse)
+            assert(mockedResponse.type == 'body', 'Mocked response is not a body')
+            if typeof(mockedResponse.body) == 'string' then
+            else
+                return mockedResponseToHttpResponse(mockedResponse)
+            end
+        end
+    )");
+
+    // we're primarily interested in knowing that this does not crash.
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "mymovie_read_write_tables_bug_2")
+{
+    CheckResult result = check(R"(
+        type MockedResponse = { type: 'body' } | { type: 'error' }
+
+        local function mockedResponseToHttpResponse(mockedResponse: MockedResponse)
+            assert(mockedResponse.type == 'body', 'Mocked response is not a body')
+
+            if typeof(mockedResponse.body) == 'string' then
+            elseif typeof(mockedResponse.body) == 'table' then
+            else
+                return mockedResponseToHttpResponse(mockedResponse)
+            end
+        end
+    )");
+
+    // we're primarily interested in knowing that this does not crash.
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+
+
 TEST_SUITE_END();

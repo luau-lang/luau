@@ -9,8 +9,9 @@
 
 #include "lobject.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenRemoveDeadStores3, false)
+LUAU_FASTFLAGVARIABLE(LuauCodegenRemoveDeadStores4, false)
 LUAU_FASTFLAG(LuauCodegenVectorTag2)
+LUAU_FASTFLAG(LuauCodegenLoadTVTag)
 
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
 
@@ -336,7 +337,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 
             // If the argument is a vector, it's not a GC object
             // Note that for known boolean/number/GCO, we already optimize into STORE_SPLIT_TVALUE form
-            // TODO: this can be removed if TAG_VECTOR+STORE_TVALUE is replaced with STORE_SPLIT_TVALUE
+            // TODO (CLI-101027): similar code is used in constant propagation optimization and should be shared in utilities
             if (IrInst* arg = function.asInstOp(inst.b))
             {
                 if (FFlag::LuauCodegenVectorTag2)
@@ -350,6 +351,9 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
                         arg->cmd == IrCmd::UNM_VEC)
                         regInfo.maybeGco = false;
                 }
+
+                if (FFlag::LuauCodegenLoadTVTag && arg->cmd == IrCmd::LOAD_TVALUE && arg->c.kind != IrOpKind::None)
+                    regInfo.maybeGco = isGCO(function.tagOp(arg->c));
             }
 
             state.hasGcoToClear |= regInfo.maybeGco;
@@ -377,9 +381,6 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 
         // Guard checks can jump to a block which might be using some or all the values we stored
     case IrCmd::CHECK_TAG:
-        // After optimizations with DebugLuauAbortingChecks enabled, CHECK_TAG might use a VM register
-        visitVmRegDefsUses(state, function, inst);
-
         state.checkLiveIns(inst.c);
         break;
     case IrCmd::TRY_NUM_TO_INDEX:

@@ -542,6 +542,19 @@ BlockedType::BlockedType()
 {
 }
 
+Constraint* BlockedType::getOwner() const {
+    return owner;
+}
+
+void BlockedType::setOwner(Constraint* newOwner) {
+    LUAU_ASSERT(owner == nullptr);
+    
+    if (owner != nullptr)
+        return;
+
+    owner = newOwner;
+}
+
 PendingExpansionType::PendingExpansionType(
     std::optional<AstName> prefix, AstName name, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
     : prefix(prefix)
@@ -684,6 +697,12 @@ void Property::setType(TypeId ty)
     readTy = ty;
     if (FFlag::DebugLuauDeferredConstraintResolution)
         writeTy = ty;
+}
+
+void Property::makeShared()
+{
+    if (writeTy)
+        writeTy = readTy;
 }
 
 bool Property::isShared() const

@@ -933,7 +933,7 @@ TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
     CheckResult result = check(R"(
         --!strict
         function f1() : {a : number, b : string, c : { d : number}}
-            return { a = 1, b = "a", c = {d = "a"}}
+            return { a = 1, b = "b", c = {d = "d"}}
         end
     )");
 
