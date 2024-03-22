@@ -637,6 +637,14 @@ void luaM_getpagewalkinfo(lua_Page* page, char** start, char** end, int* busyBlo
     *blockSize = page->blockSize;
 }
 
+void luaM_getpageinfo(lua_Page* page, int* pageBlocks, int* busyBlocks, int* blockSize, int* pageSize)
+{
+    *pageBlocks = (page->pageSize - offsetof(lua_Page, data)) / page->blockSize;
+    *busyBlocks = page->busyBlocks;
+    *blockSize = page->blockSize;
+    *pageSize = page->pageSize;
+}
+
 lua_Page* luaM_getnextgcopage(lua_Page* page)
 {
     return page->gcolistnext;

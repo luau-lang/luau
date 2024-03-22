@@ -240,7 +240,6 @@ struct TypeChecker2
     const NotNull<InternalErrorReporter> ice;
     const SourceModule* sourceModule;
     Module* module;
-    TypeArena testArena;
 
     TypeContext typeContext = TypeContext::Default;
     std::vector<NotNull<Scope>> stack;
@@ -260,8 +259,8 @@ struct TypeChecker2
         , ice(unifierState->iceHandler)
         , sourceModule(sourceModule)
         , module(module)
-        , normalizer{&testArena, builtinTypes, unifierState, /* cacheInhabitance */ true}
-        , _subtyping{builtinTypes, NotNull{&testArena}, NotNull{&normalizer}, NotNull{unifierState->iceHandler},
+        , normalizer{&module->internalTypes, builtinTypes, unifierState, /* cacheInhabitance */ true}
+        , _subtyping{builtinTypes, NotNull{&module->internalTypes}, NotNull{&normalizer}, NotNull{unifierState->iceHandler},
               NotNull{module->getModuleScope().get()}}
         , subtyping(&_subtyping)
     {
@@ -443,7 +442,7 @@ struct TypeChecker2
         seenTypeFamilyInstances.insert(instance);
 
         ErrorVec errors = reduceFamilies(
-            instance, location, TypeFamilyContext{NotNull{&testArena}, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits}, true)
+            instance, location, TypeFamilyContext{NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits}, true)
                               .errors;
         if (!isErrorSuppressing(location, instance))
             reportErrors(std::move(errors));
@@ -651,7 +650,7 @@ struct TypeChecker2
         Scope* scope = findInnermostScope(ret->location);
         TypePackId expectedRetType = scope->returnType;
 
-        TypeArena* arena = &testArena;
+        TypeArena* arena = &module->internalTypes;
         TypePackId actualRetType = reconstructPack(ret->list, *arena);
 
         testIsSubtype(actualRetType, expectedRetType, ret->location);
@@ -778,7 +777,7 @@ struct TypeChecker2
             return;
 
         NotNull<Scope> scope = stack.back();
-        TypeArena& arena = testArena;
+        TypeArena& arena = module->internalTypes;
 
         std::vector<TypeId> variableTypes;
         for (AstLocal* var : forInStatement->vars)
@@ -1198,38 +1197,46 @@ struct TypeChecker2
 
     void visit(AstExprConstantNil* expr)
     {
+#if defined(LUAU_ENABLE_ASSERT)
         TypeId actualType = lookupType(expr);
         TypeId expectedType = builtinTypes->nilType;
 
         SubtypingResult r = subtyping->isSubtype(actualType, expectedType);
         LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, actualType));
+#endif
     }
 
     void visit(AstExprConstantBool* expr)
     {
-        TypeId actualType = lookupType(expr);
-        TypeId expectedType = builtinTypes->booleanType;
+#if defined(LUAU_ENABLE_ASSERT)
+        const TypeId bestType = expr->value ? builtinTypes->trueType : builtinTypes->falseType;
+        const TypeId inferredType = lookupType(expr);
 
-        SubtypingResult r = subtyping->isSubtype(actualType, expectedType);
-        LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, actualType));
+        const SubtypingResult r = subtyping->isSubtype(bestType, inferredType);
+        LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, inferredType));
+#endif
     }
 
     void visit(AstExprConstantNumber* expr)
     {
-        TypeId actualType = lookupType(expr);
-        TypeId expectedType = builtinTypes->numberType;
+#if defined(LUAU_ENABLE_ASSERT)
+        const TypeId bestType = builtinTypes->numberType;
+        const TypeId inferredType = lookupType(expr);
 
-        SubtypingResult r = subtyping->isSubtype(actualType, expectedType);
-        LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, actualType));
+        const SubtypingResult r = subtyping->isSubtype(bestType, inferredType);
+        LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, inferredType));
+#endif
     }
 
     void visit(AstExprConstantString* expr)
     {
-        TypeId actualType = lookupType(expr);
-        TypeId expectedType = builtinTypes->stringType;
+#if defined(LUAU_ENABLE_ASSERT)
+        const TypeId bestType = module->internalTypes.addType(SingletonType{StringSingleton{std::string{expr->value.data, expr->value.size}}});
+        const TypeId inferredType = lookupType(expr);
 
-        SubtypingResult r = subtyping->isSubtype(actualType, expectedType);
-        LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, actualType));
+        const SubtypingResult r = subtyping->isSubtype(bestType, inferredType);
+        LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, inferredType));
+#endif
     }
 
     void visit(AstExprLocal* expr)
@@ -1333,7 +1340,7 @@ struct TypeChecker2
 
         OverloadResolver resolver{
             builtinTypes,
-            NotNull{&testArena},
+            NotNull{&module->internalTypes},
             NotNull{&normalizer},
             NotNull{stack.back()},
             ice,
@@ -1703,10 +1710,10 @@ struct TypeChecker2
                         return;
                     }
 
-                    TypePackId expectedArgs = testArena.addTypePack({operandType});
-                    TypePackId expectedRet = testArena.addTypePack({resultType});
+                    TypePackId expectedArgs = module->internalTypes.addTypePack({operandType});
+                    TypePackId expectedRet = module->internalTypes.addTypePack({resultType});
 
-                    TypeId expectedFunction = testArena.addType(FunctionType{expectedArgs, expectedRet});
+                    TypeId expectedFunction = module->internalTypes.addType(FunctionType{expectedArgs, expectedRet});
 
                     bool success = testIsSubtype(*mm, expectedFunction, expr->location);
                     if (!success)
@@ -1758,8 +1765,8 @@ struct TypeChecker2
         bool isComparison = expr->op >= AstExprBinary::Op::CompareEq && expr->op <= AstExprBinary::Op::CompareGe;
         bool isLogical = expr->op == AstExprBinary::Op::And || expr->op == AstExprBinary::Op::Or;
 
-        TypeId leftType = lookupType(expr->left);
-        TypeId rightType = lookupType(expr->right);
+        TypeId leftType = follow(lookupType(expr->left));
+        TypeId rightType = follow(lookupType(expr->right));
         TypeId expectedResult = follow(lookupType(expr));
 
         if (get<TypeFamilyInstanceType>(expectedResult))
@@ -1770,7 +1777,7 @@ struct TypeChecker2
 
         if (expr->op == AstExprBinary::Op::Or)
         {
-            leftType = stripNil(builtinTypes, testArena, leftType);
+            leftType = stripNil(builtinTypes, module->internalTypes, leftType);
         }
 
         const NormalizedType* normLeft = normalizer.normalize(leftType);
@@ -1874,25 +1881,25 @@ struct TypeChecker2
                     // swapped argument ordering.
                     if (expr->op == AstExprBinary::Op::CompareGe || expr->op == AstExprBinary::Op::CompareGt)
                     {
-                        expectedArgs = testArena.addTypePack({rightType, leftType});
+                        expectedArgs = module->internalTypes.addTypePack({rightType, leftType});
                     }
                     else
                     {
-                        expectedArgs = testArena.addTypePack({leftType, rightType});
+                        expectedArgs = module->internalTypes.addTypePack({leftType, rightType});
                     }
 
                     TypePackId expectedRets;
                     if (expr->op == AstExprBinary::CompareEq || expr->op == AstExprBinary::CompareNe || expr->op == AstExprBinary::CompareGe ||
                         expr->op == AstExprBinary::CompareGt || expr->op == AstExprBinary::Op::CompareLe || expr->op == AstExprBinary::Op::CompareLt)
                     {
-                        expectedRets = testArena.addTypePack({builtinTypes->booleanType});
+                        expectedRets = module->internalTypes.addTypePack({builtinTypes->booleanType});
                     }
                     else
                     {
-                        expectedRets = testArena.addTypePack({testArena.freshType(scope, TypeLevel{})});
+                        expectedRets = module->internalTypes.addTypePack({module->internalTypes.freshType(scope, TypeLevel{})});
                     }
 
-                    TypeId expectedTy = testArena.addType(FunctionType(expectedArgs, expectedRets));
+                    TypeId expectedTy = module->internalTypes.addType(FunctionType(expectedArgs, expectedRets));
 
                     testIsSubtype(follow(*mm), expectedTy, expr->location);
 
@@ -2097,8 +2104,8 @@ struct TypeChecker2
             return *fst;
         else if (auto ftp = get<FreeTypePack>(pack))
         {
-            TypeId result = testArena.addType(FreeType{ftp->scope});
-            TypePackId freeTail = testArena.addTypePack(FreeTypePack{ftp->scope});
+            TypeId result = module->internalTypes.addType(FreeType{ftp->scope});
+            TypePackId freeTail = module->internalTypes.addTypePack(FreeTypePack{ftp->scope});
 
             TypePack& resultPack = asMutable(pack)->ty.emplace<TypePack>();
             resultPack.head.assign(1, result);
@@ -2623,7 +2630,7 @@ struct TypeChecker2
             {
                 std::vector<TypeId> parts;
                 parts.insert(parts.end(), norm->functions.parts.begin(), norm->functions.parts.end());
-                fetch(testArena.addType(IntersectionType{std::move(parts)}));
+                fetch(module->internalTypes.addType(IntersectionType{std::move(parts)}));
             }
         }
         for (const auto& [tyvar, intersect] : norm->tyvars)
@@ -2631,7 +2638,7 @@ struct TypeChecker2
             if (get<NeverType>(intersect->tops))
             {
                 TypeId ty = normalizer.typeFromNormal(*intersect);
-                fetch(testArena.addType(IntersectionType{{tyvar, ty}}));
+                fetch(module->internalTypes.addType(IntersectionType{{tyvar, ty}}));
             }
             else
                 fetch(tyvar);
@@ -2739,7 +2746,7 @@ struct TypeChecker2
                 return true;
             if (cls->indexer)
             {
-                TypeId inhabitatedTestType = testArena.addType(IntersectionType{{cls->indexer->indexType, astIndexExprType}});
+                TypeId inhabitatedTestType = module->internalTypes.addType(IntersectionType{{cls->indexer->indexType, astIndexExprType}});
                 return normalizer.isInhabited(inhabitatedTestType);
             }
             return false;

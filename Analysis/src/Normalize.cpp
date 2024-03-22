@@ -2968,6 +2968,12 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there, Set<T
             // assumption that it is the same as any.
             return true;
         }
+        else if (get<NeverType>(t))
+        {
+            // if we're intersecting with `~never`, this is equivalent to intersecting with `unknown`
+            // this is a noop since an intersection with `unknown` is trivial.
+            return true;
+        }
         else if (auto nt = get<NegationType>(t))
             return intersectNormalWithTy(here, nt->ty, seenSetTypes);
         else
@@ -2989,6 +2995,20 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there, Set<T
     here.tyvars = std::move(tyvars);
 
     return true;
+}
+
+void makeTableShared(TypeId ty)
+{
+    if (auto tableTy = getMutable<TableType>(ty))
+    {
+        for (auto& [_, prop] : tableTy->props)
+            prop.makeShared();
+    }
+    else if (auto metatableTy = get<MetatableType>(ty))
+    {
+        makeTableShared(metatableTy->metatable);
+        makeTableShared(metatableTy->table);
+    }
 }
 
 // -------- Convert back from a normalized type to a type
@@ -3085,7 +3105,18 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
     if (!get<NeverType>(norm.buffers))
         result.push_back(builtinTypes->bufferType);
 
-    result.insert(result.end(), norm.tables.begin(), norm.tables.end());
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        result.reserve(result.size() + norm.tables.size());
+        for (auto table : norm.tables)
+        {
+            makeTableShared(table);
+            result.push_back(table);
+        }
+    }
+    else
+        result.insert(result.end(), norm.tables.begin(), norm.tables.end());
+
     for (auto& [tyvar, intersect] : norm.tyvars)
     {
         if (get<NeverType>(intersect->tops))

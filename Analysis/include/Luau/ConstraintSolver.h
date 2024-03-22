@@ -277,8 +277,12 @@ private:
      *
      * To determine which scope is appropriate, we also accept rootTy, which is
      * to be the type that contains blockedTy.
+     *
+     * A constraint is required and will validate that blockedTy is owned by this
+     * constraint. This prevents one constraint from interfering with another's
+     * blocked types.
      */
-    void bindBlockedType(TypeId blockedTy, TypeId resultTy, TypeId rootTy, Location location);
+    void bindBlockedType(TypeId blockedTy, TypeId resultTy, TypeId rootTy, NotNull<const Constraint> constraint);
 
     /**
      * Marks a constraint as being blocked on a type or type pack. The constraint

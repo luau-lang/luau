@@ -19,8 +19,8 @@ LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
 LUAU_FASTFLAG(LuauCodegenVectorTag2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCodeGenCoverForgprepEffect, false)
+LUAU_FASTFLAG(LuauCodegenRemoveDeadStores4)
 LUAU_FASTFLAG(LuauCodegenLoadTVTag)
-LUAU_FASTFLAG(LuauCodegenRemoveDeadStores3)
 
 namespace Luau
 {
@@ -610,7 +610,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
 
                 if (state.tryGetTag(source) == value)
                 {
-                    if (FFlag::DebugLuauAbortingChecks)
+                    if (FFlag::DebugLuauAbortingChecks && !FFlag::LuauCodegenRemoveDeadStores4)
                         replace(function, block, index, {IrCmd::CHECK_TAG, inst.a, inst.b, build.undef()});
                     else
                         kill(function, inst);
@@ -1075,7 +1075,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
 
     case IrCmd::FASTCALL:
     {
-        if (FFlag::LuauCodegenRemoveDeadStores3)
+        if (FFlag::LuauCodegenRemoveDeadStores4)
         {
             LuauBuiltinFunction bfid = LuauBuiltinFunction(function.uintOp(inst.a));
             int firstReturnReg = vmRegOp(inst.b);

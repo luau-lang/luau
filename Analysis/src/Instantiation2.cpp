@@ -4,6 +4,13 @@
 namespace Luau
 {
 
+bool Instantiation2::ignoreChildren(TypeId ty)
+{
+    if (get<ClassType>(ty))
+        return true;
+    return false;
+}
+
 bool Instantiation2::isDirty(TypeId ty)
 {
     return get<GenericType>(ty) && genericSubstitutions.contains(ty);

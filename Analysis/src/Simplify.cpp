@@ -377,8 +377,12 @@ Relation relate(TypeId left, TypeId right, SimplifierSeenSet& seen)
     {
         std::vector<Relation> opts;
         for (TypeId part : ut)
-            if (relate(left, part, seen) == Relation::Subset)
+        {
+            Relation r = relate(left, part, seen);
+
+            if (r == Relation::Subset || r == Relation::Coincident)
                 return Relation::Subset;
+        }
         return Relation::Intersects;
     }
 

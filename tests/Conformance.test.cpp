@@ -30,9 +30,11 @@ extern int optimizationLevel;
 void luaC_fullgc(lua_State* L);
 void luaC_validate(lua_State* L);
 
+LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauLoadExceptionSafe)
 LUAU_DYNAMIC_FASTFLAG(LuauDebugInfoDupArgLeftovers)
+LUAU_FASTFLAG(LuauCompileRepeatUntilSkippedLocals)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -642,6 +644,8 @@ TEST_CASE("Debugger")
     static bool singlestep = false;
     static int stephits = 0;
 
+    ScopedFastFlag luauCompileRepeatUntilSkippedLocals{FFlag::LuauCompileRepeatUntilSkippedLocals, true};
+
     SUBCASE("")
     {
         singlestep = false;
@@ -788,6 +792,17 @@ TEST_CASE("Debugger")
                 CHECK(lua_isnil(L, -1));
                 lua_pop(L, 1);
             }
+            else if (breakhits == 15)
+            {
+                // test lua_getlocal
+                const char* x = lua_getlocal(L, 2, 1);
+                REQUIRE(x);
+                CHECK(strcmp(x, "x") == 0);
+                lua_pop(L, 1);
+
+                const char* a1 = lua_getlocal(L, 2, 2);
+                REQUIRE(!a1);
+            }
 
             if (interruptedthread)
             {
@@ -797,7 +812,7 @@ TEST_CASE("Debugger")
         },
         nullptr, &copts, /* skipCodegen */ true); // Native code doesn't support debugging yet
 
-    CHECK(breakhits == 14); // 2 hits per breakpoint
+    CHECK(breakhits == 16); // 2 hits per breakpoint
 
     if (singlestep)
         CHECK(stephits > 100); // note; this will depend on number of instructions which can vary, so we just make sure the callback gets hit often
@@ -2039,6 +2054,16 @@ TEST_CASE("Native")
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;
+
+    SUBCASE("Checked")
+    {
+        FFlag::DebugLuauAbortingChecks.value = true;
+    }
+
+    SUBCASE("Regular")
+    {
+        FFlag::DebugLuauAbortingChecks.value = false;
+    }
 
     runConformance("native.lua", [](lua_State* L) {
         setupNativeHelpers(L);

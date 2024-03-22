@@ -15,7 +15,7 @@ LUAU_FASTFLAGVARIABLE(LuauCodeGenVectorA64, false)
 LUAU_FASTFLAGVARIABLE(LuauCodeGenOptVecA64, false)
 
 LUAU_FASTFLAG(LuauCodegenVectorTag2)
-LUAU_FASTFLAG(LuauCodegenRemoveDeadStores3)
+LUAU_FASTFLAG(LuauCodegenRemoveDeadStores4)
 
 namespace Luau
 {
@@ -204,7 +204,7 @@ static bool emitBuiltin(
     {
     case LBF_MATH_FREXP:
     {
-        if (FFlag::LuauCodegenRemoveDeadStores3)
+        if (FFlag::LuauCodegenRemoveDeadStores4)
         {
             CODEGEN_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
             emitInvokeLibm1P(build, offsetof(NativeContext, libm_frexp), arg);
@@ -238,7 +238,7 @@ static bool emitBuiltin(
     }
     case LBF_MATH_MODF:
     {
-        if (FFlag::LuauCodegenRemoveDeadStores3)
+        if (FFlag::LuauCodegenRemoveDeadStores4)
         {
             CODEGEN_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
             emitInvokeLibm1P(build, offsetof(NativeContext, libm_modf), arg);
@@ -278,7 +278,7 @@ static bool emitBuiltin(
         build.fcsel(d0, d1, d0, getConditionFP(IrCondition::Less));
         build.str(d0, mem(rBase, res * sizeof(TValue) + offsetof(TValue, value.n)));
 
-        if (FFlag::LuauCodegenRemoveDeadStores3)
+        if (FFlag::LuauCodegenRemoveDeadStores4)
         {
             RegisterA64 temp = regs.allocTemp(KindA64::w);
             build.mov(temp, LUA_TNUMBER);
@@ -1512,20 +1512,35 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         Label fresh; // used when guard aborts execution or jumps to a VM exit
         Label& fail = getTargetLabel(inst.c, fresh);
 
-        // To support DebugLuauAbortingChecks, CHECK_TAG with VmReg has to be handled
-        RegisterA64 tag = inst.a.kind == IrOpKind::VmReg ? regs.allocTemp(KindA64::w) : regOp(inst.a);
-
-        if (inst.a.kind == IrOpKind::VmReg)
-            build.ldr(tag, mem(rBase, vmRegOp(inst.a) * sizeof(TValue) + offsetof(TValue, tt)));
-
-        if (tagOp(inst.b) == 0)
+        if (FFlag::LuauCodegenRemoveDeadStores4)
         {
-            build.cbnz(tag, fail);
+            if (tagOp(inst.b) == 0)
+            {
+                build.cbnz(regOp(inst.a), fail);
+            }
+            else
+            {
+                build.cmp(regOp(inst.a), tagOp(inst.b));
+                build.b(ConditionA64::NotEqual, fail);
+            }
         }
         else
         {
-            build.cmp(tag, tagOp(inst.b));
-            build.b(ConditionA64::NotEqual, fail);
+            // To support DebugLuauAbortingChecks, CHECK_TAG with VmReg has to be handled
+            RegisterA64 tag = inst.a.kind == IrOpKind::VmReg ? regs.allocTemp(KindA64::w) : regOp(inst.a);
+
+            if (inst.a.kind == IrOpKind::VmReg)
+                build.ldr(tag, mem(rBase, vmRegOp(inst.a) * sizeof(TValue) + offsetof(TValue, tt)));
+
+            if (tagOp(inst.b) == 0)
+            {
+                build.cbnz(tag, fail);
+            }
+            else
+            {
+                build.cmp(tag, tagOp(inst.b));
+                build.b(ConditionA64::NotEqual, fail);
+            }
         }
 
         finalizeTargetLabel(inst.c, fresh);

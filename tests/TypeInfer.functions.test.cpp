@@ -8,6 +8,7 @@
 #include "Luau/Type.h"
 #include "Luau/VisitType.h"
 
+#include "ClassFixture.h"
 #include "Fixture.h"
 
 #include "doctest.h"
@@ -2362,6 +2363,62 @@ TEST_CASE_FIXTURE(Fixture, "local_function_fwd_decl_doesnt_crash")
 
     // This test verifies that an ICE doesn't occur, so the bulk of the test is
     // just from running check above.
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectional_checking_of_callback_property")
+{
+    CheckResult result = check(R"(
+        function print(x: number) end
+
+        type Point = {x: number, y: number}
+        local T : {callback: ((Point) -> ())?} = {}
+
+        T.callback = function(p) -- No error here
+            print(p.z)           -- error here.  Point has no property z
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK_MESSAGE(get<UnknownProperty>(result.errors[0]), "Expected UnknownProperty but got " << result.errors[0]);
+
+    Location location = result.errors[0].location;
+    CHECK(location.begin.line == 7);
+    CHECK(location.end.line == 7);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "bidirectional_inference_of_class_methods")
+{
+    CheckResult result = check(R"(
+        local c = ChildClass.New()
+
+        -- Instead of reporting that the lambda is the wrong type, report that we are using its argument improperly.
+        c.Touched:Connect(function(other)
+            print(other.ThisDoesNotExist)
+        end)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    UnknownProperty* err = get<UnknownProperty>(result.errors[0]);
+    REQUIRE(err);
+
+    CHECK("ThisDoesNotExist" == err->key);
+    CHECK("BaseClass" == toString(err->table));
+}
+
+TEST_CASE_FIXTURE(Fixture, "pass_table_literal_to_function_expecting_optional_prop")
+{
+    CheckResult result = check(R"(
+        type T = {prop: number?}
+
+        function f(t: T) end
+
+        f({prop=5})
+        f({})
+    )");
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 

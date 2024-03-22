@@ -148,7 +148,7 @@ struct NonStrictTypeChecker
 
     NotNull<BuiltinTypes> builtinTypes;
     const NotNull<InternalErrorReporter> ice;
-    TypeArena arena;
+    NotNull<TypeArena> arena;
     Module* module;
     Normalizer normalizer;
     Subtyping subtyping;
@@ -159,13 +159,14 @@ struct NonStrictTypeChecker
 
     const NotNull<TypeCheckLimits> limits;
 
-    NonStrictTypeChecker(NotNull<BuiltinTypes> builtinTypes, const NotNull<InternalErrorReporter> ice, NotNull<UnifierSharedState> unifierState,
-        NotNull<const DataFlowGraph> dfg, NotNull<TypeCheckLimits> limits, Module* module)
+    NonStrictTypeChecker(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, const NotNull<InternalErrorReporter> ice,
+        NotNull<UnifierSharedState> unifierState, NotNull<const DataFlowGraph> dfg, NotNull<TypeCheckLimits> limits, Module* module)
         : builtinTypes(builtinTypes)
         , ice(ice)
+        , arena(arena)
         , module(module)
-        , normalizer{&arena, builtinTypes, unifierState, /* cache inhabitance */ true}
-        , subtyping{builtinTypes, NotNull{&arena}, NotNull(&normalizer), ice, NotNull{module->getModuleScope().get()}}
+        , normalizer{arena, builtinTypes, unifierState, /* cache inhabitance */ true}
+        , subtyping{builtinTypes, arena, NotNull(&normalizer), ice, NotNull{module->getModuleScope().get()}}
         , dfg(dfg)
         , limits(limits)
     {
@@ -187,8 +188,8 @@ struct NonStrictTypeChecker
             return *fst;
         else if (auto ftp = get<FreeTypePack>(pack))
         {
-            TypeId result = arena.addType(FreeType{ftp->scope});
-            TypePackId freeTail = arena.addTypePack(FreeTypePack{ftp->scope});
+            TypeId result = arena->addType(FreeType{ftp->scope});
+            TypePackId freeTail = arena->addTypePack(FreeTypePack{ftp->scope});
 
             TypePack& resultPack = asMutable(pack)->ty.emplace<TypePack>();
             resultPack.head.assign(1, result);
@@ -210,9 +211,8 @@ struct NonStrictTypeChecker
         if (noTypeFamilyErrors.find(instance))
             return instance;
 
-        ErrorVec errors = reduceFamilies(
-            instance, location, TypeFamilyContext{NotNull{&arena}, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits}, true)
-                              .errors;
+        ErrorVec errors =
+            reduceFamilies(instance, location, TypeFamilyContext{arena, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits}, true).errors;
 
         if (errors.empty())
             noTypeFamilyErrors.insert(instance);
@@ -303,7 +303,7 @@ struct NonStrictTypeChecker
                     ctx.remove(dfg->getDef(local));
             }
             else
-                ctx = NonStrictContext::disjunction(builtinTypes, NotNull{&arena}, visit(stat), ctx);
+                ctx = NonStrictContext::disjunction(builtinTypes, arena, visit(stat), ctx);
         }
         return ctx;
     }
@@ -317,9 +317,9 @@ struct NonStrictTypeChecker
         {
             NonStrictContext thenBody = visit(ifStatement->thenbody);
             NonStrictContext elseBody = visit(ifStatement->elsebody);
-            branchContext = NonStrictContext::conjunction(builtinTypes, NotNull{&arena}, thenBody, elseBody);
+            branchContext = NonStrictContext::conjunction(builtinTypes, arena, thenBody, elseBody);
         }
-        return NonStrictContext::disjunction(builtinTypes, NotNull{&arena}, condB, branchContext);
+        return NonStrictContext::disjunction(builtinTypes, arena, condB, branchContext);
     }
 
     NonStrictContext visit(AstStatWhile* whileStatement)
@@ -641,8 +641,7 @@ struct NonStrictTypeChecker
         NonStrictContext condB = visit(ifElse->condition);
         NonStrictContext thenB = visit(ifElse->trueExpr);
         NonStrictContext elseB = visit(ifElse->falseExpr);
-        return NonStrictContext::disjunction(
-            builtinTypes, NotNull{&arena}, condB, NonStrictContext::conjunction(builtinTypes, NotNull{&arena}, thenB, elseB));
+        return NonStrictContext::disjunction(builtinTypes, arena, condB, NonStrictContext::conjunction(builtinTypes, arena, thenB, elseB));
     }
 
     NonStrictContext visit(AstExprInterpString* interpString)
@@ -710,7 +709,7 @@ private:
     {
         TypeId& cachedResult = cachedNegations[baseType];
         if (!cachedResult)
-            cachedResult = arena.addType(NegationType{baseType});
+            cachedResult = arena->addType(NegationType{baseType});
         return cachedResult;
     };
 };
@@ -718,8 +717,7 @@ private:
 void checkNonStrict(NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> ice, NotNull<UnifierSharedState> unifierState,
     NotNull<const DataFlowGraph> dfg, NotNull<TypeCheckLimits> limits, const SourceModule& sourceModule, Module* module)
 {
-    // TODO: unimplemented
-    NonStrictTypeChecker typeChecker{builtinTypes, ice, unifierState, dfg, limits, module};
+    NonStrictTypeChecker typeChecker{NotNull{&module->internalTypes}, builtinTypes, ice, unifierState, dfg, limits, module};
     typeChecker.visit(sourceModule.root);
     unfreeze(module->interfaceTypes);
     copyErrors(module->errors, module->interfaceTypes, builtinTypes);

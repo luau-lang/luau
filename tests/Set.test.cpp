@@ -133,4 +133,18 @@ TEST_CASE("iterate_over_set_skips_first_element_if_it_is_erased")
     CHECK(1 == out.size());
 }
 
+TEST_CASE("erase_using_const_ref_argument")
+{
+    Luau::Set<std::string> s1{{}};
+
+    s1.insert("x");
+    s1.insert("y");
+
+    std::string key = "y";
+    s1.erase(key);
+
+    CHECK(s1.count("x"));
+    CHECK(!s1.count("y"));
+}
+
 TEST_SUITE_END();
