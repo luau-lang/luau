@@ -86,12 +86,14 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/IrUtils.h
     CodeGen/include/Luau/IrVisitUseDef.h
     CodeGen/include/Luau/Label.h
+    CodeGen/include/Luau/NativeProtoExecData.h
     CodeGen/include/Luau/OperandX64.h
     CodeGen/include/Luau/OptimizeConstProp.h
     CodeGen/include/Luau/OptimizeDeadStore.h
     CodeGen/include/Luau/OptimizeFinalX64.h
     CodeGen/include/Luau/RegisterA64.h
     CodeGen/include/Luau/RegisterX64.h
+    CodeGen/include/Luau/SharedCodeAllocator.h
     CodeGen/include/Luau/UnwindBuilder.h
     CodeGen/include/Luau/UnwindBuilderDwarf2.h
     CodeGen/include/Luau/UnwindBuilderWin.h
@@ -124,6 +126,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/IrUtils.cpp
     CodeGen/src/IrValueLocationTracking.cpp
     CodeGen/src/lcodegen.cpp
+    CodeGen/src/NativeProtoExecData.cpp
     CodeGen/src/NativeState.cpp
     CodeGen/src/OptimizeConstProp.cpp
     CodeGen/src/OptimizeDeadStore.cpp
@@ -132,6 +135,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/UnwindBuilderWin.cpp
     CodeGen/src/BytecodeAnalysis.cpp
     CodeGen/src/BytecodeSummary.cpp
+    CodeGen/src/SharedCodeAllocator.cpp
 
     CodeGen/src/BitUtils.h
     CodeGen/src/ByteUtils.h
@@ -200,6 +204,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Substitution.h
     Analysis/include/Luau/Subtyping.h
     Analysis/include/Luau/Symbol.h
+    Analysis/include/Luau/TableLiteralInference.h
     Analysis/include/Luau/ToDot.h
     Analysis/include/Luau/TopoSortStatements.h
     Analysis/include/Luau/ToString.h
@@ -264,6 +269,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Substitution.cpp
     Analysis/src/Subtyping.cpp
     Analysis/src/Symbol.cpp
+    Analysis/src/TableLiteralInference.cpp
     Analysis/src/ToDot.cpp
     Analysis/src/TopoSortStatements.cpp
     Analysis/src/ToString.cpp
@@ -350,15 +356,25 @@ target_sources(isocline PRIVATE
     extern/isocline/src/isocline.c
 )
 
+
+if (TARGET Luau.Repl.CLI OR TARGET Luau.Analyze.CLI OR
+    TARGET Luau.Ast.CLI OR TARGET Luau.CLI.Test OR
+    TARGET Luau.Reduce.CLI OR TARGET Luau.Compile.CLI OR
+    TARGET Luau.Bytecode.CLI)
+    # Common sources shared between all CLI apps.
+    target_sources(Luau.CLI.lib PRIVATE
+        CLI/FileUtils.cpp
+        CLI/Flags.cpp
+        CLI/Flags.h
+        CLI/FileUtils.h
+    )
+endif()
+
 if(TARGET Luau.Repl.CLI)
     # Luau.Repl.CLI Sources
     target_sources(Luau.Repl.CLI PRIVATE
         CLI/Coverage.h
         CLI/Coverage.cpp
-        CLI/FileUtils.h
-        CLI/FileUtils.cpp
-        CLI/Flags.h
-        CLI/Flags.cpp
         CLI/Profiler.h
         CLI/Profiler.cpp
         CLI/Repl.cpp
@@ -369,10 +385,6 @@ endif()
 if(TARGET Luau.Analyze.CLI)
     # Luau.Analyze.CLI Sources
     target_sources(Luau.Analyze.CLI PRIVATE
-        CLI/FileUtils.h
-        CLI/FileUtils.cpp
-        CLI/Flags.h
-        CLI/Flags.cpp
         CLI/Analyze.cpp)
 endif()
 
@@ -380,8 +392,6 @@ if(TARGET Luau.Ast.CLI)
     # Luau.Ast.CLI Sources
     target_sources(Luau.Ast.CLI PRIVATE
         CLI/Ast.cpp
-        CLI/FileUtils.h
-        CLI/FileUtils.cpp
     )
 endif()
 
@@ -437,6 +447,7 @@ if(TARGET Luau.UnitTest)
         tests/ScopedFlags.h
         tests/Simplify.test.cpp
         tests/Set.test.cpp
+        tests/SharedCodeAllocator.test.cpp
         tests/StringUtils.test.cpp
         tests/Subtyping.test.cpp
         tests/Symbol.test.cpp
@@ -497,10 +508,6 @@ if(TARGET Luau.CLI.Test)
     target_sources(Luau.CLI.Test PRIVATE
         CLI/Coverage.h
         CLI/Coverage.cpp
-        CLI/FileUtils.h
-        CLI/FileUtils.cpp
-        CLI/Flags.h
-        CLI/Flags.cpp
         CLI/Profiler.h
         CLI/Profiler.cpp
         CLI/Repl.cpp
@@ -523,27 +530,17 @@ if(TARGET Luau.Reduce.CLI)
     # Luau.Reduce.CLI Sources
     target_sources(Luau.Reduce.CLI PRIVATE
         CLI/Reduce.cpp
-        CLI/FileUtils.cpp
-        CLI/FileUtils.h
     )
 endif()
 
 if(TARGET Luau.Compile.CLI)
     # Luau.Compile.CLI Sources
     target_sources(Luau.Compile.CLI PRIVATE
-        CLI/FileUtils.h
-        CLI/FileUtils.cpp
-        CLI/Flags.h
-        CLI/Flags.cpp
         CLI/Compile.cpp)
 endif()
 
 if(TARGET Luau.Bytecode.CLI)
     # Luau.Bytecode.CLI Sources
     target_sources(Luau.Bytecode.CLI PRIVATE
-        CLI/FileUtils.h
-        CLI/FileUtils.cpp
-        CLI/Flags.h
-        CLI/Flags.cpp
         CLI/Bytecode.cpp)
 endif()

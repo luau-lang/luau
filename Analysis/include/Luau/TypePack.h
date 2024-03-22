@@ -82,6 +82,8 @@ struct BlockedTypePack
     BlockedTypePack();
     size_t index;
 
+    struct Constraint* owner = nullptr;
+
     static size_t nextIndex;
 };
 

@@ -22,6 +22,9 @@ LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
 
+LUAU_FASTFLAG(LuauCompileNoJumpLineRetarget)
+LUAU_FASTFLAG(LuauCompileRepeatUntilSkippedLocals)
+
 using namespace Luau;
 
 static std::string compileFunction(const char* source, uint32_t id, int optimizationLevel = 1, bool enableVectors = false)
@@ -2100,6 +2103,50 @@ RETURN R0 0
 )");
 }
 
+TEST_CASE("LoopContinueEarlyCleanup")
+{
+    ScopedFastFlag luauCompileRepeatUntilSkippedLocals{FFlag::LuauCompileRepeatUntilSkippedLocals, true};
+
+    // locals after a potential 'continue' are not accessible inside the condition and can be closed at the end of a block
+    CHECK_EQ("\n" + compileFunction(R"(
+local y
+repeat
+    local a, b
+    do continue end
+    local c, d
+    local function x()
+        return a + b + c + d
+    end
+
+    c = 2
+    a = 4
+
+    y = x
+until a
+)",
+                        1),
+        R"(
+LOADNIL R0
+L0: LOADNIL R1
+LOADNIL R2
+JUMP L1
+LOADNIL R3
+LOADNIL R4
+NEWCLOSURE R5 P0
+CAPTURE REF R1
+CAPTURE REF R3
+LOADN R3 2
+LOADN R1 4
+MOVE R0 R5
+CLOSEUPVALS R3
+L1: JUMPIF R1 L2
+CLOSEUPVALS R1
+JUMPBACK L0
+L2: CLOSEUPVALS R1
+RETURN R0 0
+)");
+}
+
 TEST_CASE("AndOrOptimizations")
 {
     // the OR/ORK optimization triggers for cutoff since lhs is simple
@@ -2740,6 +2787,8 @@ end
 
 TEST_CASE("DebugLineInfoWhile")
 {
+    ScopedFastFlag luauCompileNoJumpLineRetarget{FFlag::LuauCompileNoJumpLineRetarget, true};
+
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
     Luau::compileOrThrow(bcb, R"(
@@ -2761,7 +2810,7 @@ end
 6: GETIMPORT R1 2 [print]
 6: LOADK R2 K3 ['done!']
 6: CALL R1 1 0
-10: RETURN R0 0
+7: RETURN R0 0
 3: L1: JUMPBACK L0
 10: RETURN R0 0
 )");
@@ -3084,6 +3133,75 @@ local 8: reg 3, start pc 35 line 21, end pc 35 line 21
 )");
 }
 
+TEST_CASE("DebugLocals2")
+{
+    ScopedFastFlag luauCompileRepeatUntilSkippedLocals{FFlag::LuauCompileRepeatUntilSkippedLocals, true};
+
+    const char* source = R"(
+function foo(x)
+    repeat
+        local a, b
+    until true
+end
+)";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines | Luau::BytecodeBuilder::Dump_Locals);
+    bcb.setDumpSource(source);
+
+    Luau::CompileOptions options;
+    options.debugLevel = 2;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+local 0: reg 1, start pc 2 line 6, no live range
+local 1: reg 2, start pc 2 line 6, no live range
+local 2: reg 0, start pc 0 line 4, end pc 2 line 6
+4: LOADNIL R1
+4: LOADNIL R2
+6: RETURN R0 0
+)");
+}
+
+TEST_CASE("DebugLocals3")
+{
+    ScopedFastFlag luauCompileRepeatUntilSkippedLocals{FFlag::LuauCompileRepeatUntilSkippedLocals, true};
+    ScopedFastFlag luauCompileNoJumpLineRetarget{FFlag::LuauCompileNoJumpLineRetarget, true};
+
+    const char* source = R"(
+function foo(x)
+    repeat
+        local a, b
+        do continue end
+        local c, d = 2
+    until true
+end
+)";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines | Luau::BytecodeBuilder::Dump_Locals);
+    bcb.setDumpSource(source);
+
+    Luau::CompileOptions options;
+    options.debugLevel = 2;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+local 0: reg 3, start pc 5 line 8, no live range
+local 1: reg 4, start pc 5 line 8, no live range
+local 2: reg 1, start pc 2 line 5, end pc 4 line 6
+local 3: reg 2, start pc 2 line 5, end pc 4 line 6
+local 4: reg 0, start pc 0 line 4, end pc 5 line 8
+4: LOADNIL R1
+4: LOADNIL R2
+5: RETURN R0 0
+6: LOADN R3 2
+6: LOADNIL R4
+8: RETURN R0 0
+)");
+}
 TEST_CASE("DebugRemarks")
 {
     Luau::BytecodeBuilder bcb;
@@ -4039,6 +4157,8 @@ RETURN R0 0
 
 TEST_CASE("Coverage")
 {
+    ScopedFastFlag luauCompileNoJumpLineRetarget{FFlag::LuauCompileNoJumpLineRetarget, true};
+
     // basic statement coverage
     CHECK_EQ("\n" + compileFunction0Coverage(R"(
 print(1)
@@ -4074,7 +4194,7 @@ end
 3: GETIMPORT R0 3 [print]
 3: LOADN R1 1
 3: CALL R0 1 0
-7: RETURN R0 0
+3: RETURN R0 0
 5: L0: COVERAGE
 5: GETIMPORT R0 3 [print]
 5: LOADN R1 2
@@ -4102,7 +4222,7 @@ end
 4: GETIMPORT R0 3 [print]
 4: LOADN R1 1
 4: CALL R0 1 0
-9: RETURN R0 0
+4: RETURN R0 0
 7: L0: COVERAGE
 7: GETIMPORT R0 3 [print]
 7: LOADN R1 2

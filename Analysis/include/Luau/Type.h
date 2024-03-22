@@ -146,6 +146,10 @@ struct BlockedType
     BlockedType();
     int index;
 
+    Constraint* getOwner() const;
+    void setOwner(Constraint* newOwner);
+
+private:
     // The constraint that is intended to unblock this type. Other constraints
     // should block on this constraint if present.
     Constraint* owner = nullptr;
@@ -418,6 +422,9 @@ struct Property
     // TODO: Kill once we don't have non-RWP.
     TypeId type() const;
     void setType(TypeId ty);
+
+    // Sets the write type of this property to the read type.
+    void makeShared();
 
     bool isShared() const;
     bool isReadOnly() const;

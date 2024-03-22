@@ -69,7 +69,7 @@ static const Instruction kCodeEntryInsn = LOP_NATIVECALL;
 static void* gPerfLogContext = nullptr;
 static PerfLogFn gPerfLogFn = nullptr;
 
-struct NativeProto
+struct OldNativeProto
 {
     Proto* p;
     void* execdata;
@@ -116,7 +116,7 @@ ExtraExecData* getExtraExecData(Proto* proto, void* execdata)
     return reinterpret_cast<ExtraExecData*>(reinterpret_cast<char*>(execdata) + size);
 }
 
-static NativeProto createNativeProto(Proto* proto, const IrBuilder& ir)
+static OldNativeProto createOldNativeProto(Proto* proto, const IrBuilder& ir)
 {
     if (FFlag::LuauCodegenHeapSizeReport)
     {
@@ -186,7 +186,7 @@ static void logPerfFunction(Proto* p, uintptr_t addr, unsigned size)
 }
 
 template<typename AssemblyBuilder>
-static std::optional<NativeProto> createNativeFunction(
+static std::optional<OldNativeProto> createNativeFunction(
     AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto, uint32_t& totalIrInstCount, CodeGenCompilationResult& result)
 {
     IrBuilder ir;
@@ -204,7 +204,7 @@ static std::optional<NativeProto> createNativeFunction(
     if (!lowerFunction(ir, build, helpers, proto, {}, /* stats */ nullptr, result))
         return std::nullopt;
 
-    return createNativeProto(proto, ir);
+    return createOldNativeProto(proto, ir);
 }
 
 static NativeState* getNativeState(lua_State* L)
@@ -455,7 +455,7 @@ CodeGenCompilationResult compile(lua_State* L, int idx, unsigned int flags, Comp
     X64::assembleHelpers(build, helpers);
 #endif
 
-    std::vector<NativeProto> results;
+    std::vector<OldNativeProto> results;
     results.reserve(protos.size());
 
     uint32_t totalIrInstCount = 0;
@@ -468,7 +468,7 @@ CodeGenCompilationResult compile(lua_State* L, int idx, unsigned int flags, Comp
         // If multiple compilations fail, we only use the failure from the first unsuccessful compilation.
         CodeGenCompilationResult temp = CodeGenCompilationResult::Success;
 
-        if (std::optional<NativeProto> np = createNativeFunction(build, helpers, p, totalIrInstCount, temp))
+        if (std::optional<OldNativeProto> np = createNativeFunction(build, helpers, p, totalIrInstCount, temp))
             results.push_back(*np);
         // second compilation failure onwards, this condition fails and codeGenCompilationResult is not assigned.
         else if (codeGenCompilationResult == CodeGenCompilationResult::Success)
@@ -478,7 +478,7 @@ CodeGenCompilationResult compile(lua_State* L, int idx, unsigned int flags, Comp
     // Very large modules might result in overflowing a jump offset; in this case we currently abandon the entire module
     if (!build.finalize())
     {
-        for (NativeProto result : results)
+        for (OldNativeProto result : results)
             destroyExecData(result.execdata);
 
         return CodeGenCompilationResult::CodeGenAssemblerFinalizationFailure;
@@ -497,7 +497,7 @@ CodeGenCompilationResult compile(lua_State* L, int idx, unsigned int flags, Comp
     if (!data->codeAllocator.allocate(build.data.data(), int(build.data.size()), reinterpret_cast<const uint8_t*>(build.code.data()),
             int(build.code.size() * sizeof(build.code[0])), nativeData, sizeNativeData, codeStart))
     {
-        for (NativeProto result : results)
+        for (OldNativeProto result : results)
             destroyExecData(result.execdata);
 
         return CodeGenCompilationResult::AllocationFailed;
@@ -538,7 +538,7 @@ CodeGenCompilationResult compile(lua_State* L, int idx, unsigned int flags, Comp
         }
     }
 
-    for (const NativeProto& result : results)
+    for (const OldNativeProto& result : results)
     {
         // the memory is now managed by VM and will be freed via onDestroyFunction
         result.p->execdata = result.execdata;
@@ -548,7 +548,7 @@ CodeGenCompilationResult compile(lua_State* L, int idx, unsigned int flags, Comp
 
     if (stats != nullptr)
     {
-        for (const NativeProto& result : results)
+        for (const OldNativeProto& result : results)
         {
             stats->bytecodeSizeBytes += result.p->sizecode * sizeof(Instruction);
 

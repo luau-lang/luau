@@ -53,6 +53,17 @@ public:
             insert(*it);
     }
 
+    void erase(T&& element)
+    {
+        bool& entry = mapping[element];
+
+        if (entry)
+        {
+            entry = false;
+            entryCount--;
+        }
+    }
+
     void erase(const T& element)
     {
         bool& entry = mapping[element];

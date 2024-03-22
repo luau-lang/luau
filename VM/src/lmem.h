@@ -26,6 +26,7 @@ LUAI_FUNC void* luaM_realloc_(lua_State* L, void* block, size_t osize, size_t ns
 LUAI_FUNC l_noret luaM_toobig(lua_State* L);
 
 LUAI_FUNC void luaM_getpagewalkinfo(lua_Page* page, char** start, char** end, int* busyBlocks, int* blockSize);
+LUAI_FUNC void luaM_getpageinfo(lua_Page* page, int* pageBlocks, int* busyBlocks, int* blockSize, int* pageSize);
 LUAI_FUNC lua_Page* luaM_getnextgcopage(lua_Page* page);
 
 LUAI_FUNC void luaM_visitpage(lua_Page* page, void* context, bool (*visitor)(void* context, lua_Page* page, GCObject* gco));

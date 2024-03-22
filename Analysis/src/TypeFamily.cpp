@@ -25,6 +25,8 @@
 
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyGraphReductionMaximumSteps, 1'000'000);
 
+LUAU_FASTFLAG(DebugLuauLogSolver);
+
 namespace Luau
 {
 
@@ -152,6 +154,13 @@ struct FamilyReducer
     template<typename T>
     void replace(T subject, T replacement)
     {
+        if (FFlag::DebugLuauLogSolver)
+            printf("%s -> %s\n", toString(subject, {true}).c_str(), toString(replacement, {true}).c_str());
+
+        // TODO: This should be an ICE (CLI-100942)
+        if (subject->owningArena != ctx.arena.get())
+            ctx.ice->ice("Attempting to modify a type family instance from another arena", location);
+
         asMutable(subject)->ty.template emplace<Unifiable::Bound<T>>(replacement);
 
         if constexpr (std::is_same_v<T, TypeId>)
@@ -171,6 +180,9 @@ struct FamilyReducer
 
             if (reduction.uninhabited || force)
             {
+                if (FFlag::DebugLuauLogSolver)
+                    printf("%s is uninhabited\n", toString(subject, {true}).c_str());
+
                 if constexpr (std::is_same_v<T, TypeId>)
                     result.errors.push_back(TypeError{location, UninhabitedTypeFamily{subject}});
                 else if constexpr (std::is_same_v<T, TypePackId>)
@@ -178,6 +190,9 @@ struct FamilyReducer
             }
             else if (!reduction.uninhabited && !force)
             {
+                if (FFlag::DebugLuauLogSolver)
+                    printf("%s is irreducible; blocked on %zu types, %zu packs\n", toString(subject, {true}).c_str(), reduction.blockedTypes.size(), reduction.blockedPacks.size());
+
                 for (TypeId b : reduction.blockedTypes)
                     result.blockedTypes.insert(b);
 
@@ -201,11 +216,17 @@ struct FamilyReducer
 
             if (skip == SkipTestResult::Irreducible)
             {
+                if (FFlag::DebugLuauLogSolver)
+                    printf("%s is irreducible due to a dependency on %s\n" , toString(subject, {true}).c_str(), toString(p, {true}).c_str());
+
                 irreducible.insert(subject);
                 return false;
             }
             else if (skip == SkipTestResult::Defer)
             {
+                if (FFlag::DebugLuauLogSolver)
+                    printf("Deferring %s until %s is solved\n" , toString(subject, {true}).c_str(), toString(p, {true}).c_str());
+
                 if constexpr (std::is_same_v<T, TypeId>)
                     queuedTys.push_back(subject);
                 else if constexpr (std::is_same_v<T, TypePackId>)
@@ -221,11 +242,17 @@ struct FamilyReducer
 
             if (skip == SkipTestResult::Irreducible)
             {
+                if (FFlag::DebugLuauLogSolver)
+                    printf("%s is irreducible due to a dependency on %s\n" , toString(subject, {true}).c_str(), toString(p, {true}).c_str());
+
                 irreducible.insert(subject);
                 return false;
             }
             else if (skip == SkipTestResult::Defer)
             {
+                if (FFlag::DebugLuauLogSolver)
+                    printf("Deferring %s until %s is solved\n" , toString(subject, {true}).c_str(), toString(p, {true}).c_str());
+
                 if constexpr (std::is_same_v<T, TypeId>)
                     queuedTys.push_back(subject);
                 else if constexpr (std::is_same_v<T, TypePackId>)
@@ -246,12 +273,20 @@ struct FamilyReducer
         if (irreducible.contains(subject))
             return;
 
+        if (FFlag::DebugLuauLogSolver)
+            printf("Trying to reduce %s\n", toString(subject, {true}).c_str());
+
         if (const TypeFamilyInstanceType* tfit = get<TypeFamilyInstanceType>(subject))
         {
             SkipTestResult testCyclic = testForSkippability(subject);
 
             if (!testParameters(subject, tfit) && testCyclic != SkipTestResult::CyclicTypeFamily)
+            {
+                if (FFlag::DebugLuauLogSolver)
+                    printf("Irreducible due to irreducible/pending and a non-cyclic family\n");
+
                 return;
+            }
 
             TypeFamilyReductionResult<TypeId> result = tfit->family->reducer(subject, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
             handleFamilyReduction(subject, result);
@@ -265,6 +300,9 @@ struct FamilyReducer
 
         if (irreducible.contains(subject))
             return;
+
+        if (FFlag::DebugLuauLogSolver)
+            printf("Trying to reduce %s\n", toString(subject, {true}).c_str());
 
         if (const TypeFamilyInstanceTypePack* tfit = get<TypeFamilyInstanceTypePack>(subject))
         {
@@ -346,7 +384,7 @@ FamilyGraphReductionResult reduceFamilies(TypePackId entrypoint, Location locati
 
 bool isPending(TypeId ty, ConstraintSolver* solver)
 {
-    return is<BlockedType>(ty) || is<PendingExpansionType>(ty) || is<TypeFamilyInstanceType>(ty) || (solver && solver->hasUnresolvedConstraints(ty));
+    return is<BlockedType, PendingExpansionType, TypeFamilyInstanceType, LocalType>(ty) || (solver && solver->hasUnresolvedConstraints(ty));
 }
 
 TypeFamilyReductionResult<TypeId> notFamilyFn(

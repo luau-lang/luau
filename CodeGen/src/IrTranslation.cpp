@@ -13,7 +13,6 @@
 #include "ltm.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenVectorTag2, false)
-LUAU_FASTFLAGVARIABLE(LuauCodegenVectorTag, false)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLoadTVTag, false)
 
 namespace Luau
