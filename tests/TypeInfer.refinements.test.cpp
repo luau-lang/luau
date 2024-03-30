@@ -2150,5 +2150,23 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "mutate_prop_of_some_refined_symbol_2"
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "ensure_t_after_return_references_all_reachable_points")
+{
+    CheckResult result = check(R"(
+        local t = {}
+
+        local function f(k: string)
+            if t[k] ~= nil then
+                return
+            end
+
+            t[k] = 5
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("{ [string]: number }", toString(requireTypeAtPosition({8, 12}), {true}));
+}
 
 TEST_SUITE_END();

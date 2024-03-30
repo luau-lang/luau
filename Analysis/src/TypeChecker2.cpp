@@ -1648,7 +1648,7 @@ struct TypeChecker2
             visit(*fn->returnAnnotation);
 
         // If the function type has a family annotation, we need to see if we can suggest an annotation
-        TypeFamilyReductionGuesser guesser{builtinTypes, NotNull{&normalizer}};
+        TypeFamilyReductionGuesser guesser{NotNull{&module->internalTypes}, builtinTypes, NotNull{&normalizer}};
         for (TypeId retTy : inferredFtv->retTypes)
         {
             if (get<TypeFamilyInstanceType>(follow(retTy)))

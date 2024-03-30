@@ -430,6 +430,10 @@ bool Normalizer::isInhabited(const NormalizedType* norm)
 
 bool Normalizer::isInhabited(const NormalizedType* norm, Set<TypeId>& seen)
 {
+    RecursionCounter _rc(&sharedState->counters.recursionCount);
+    if (!withinResourceLimits())
+        return false;
+
     // If normalization failed, the type is complex, and so is more likely than not to be inhabited.
     if (!norm)
         return true;
@@ -473,6 +477,10 @@ bool Normalizer::isInhabited(TypeId ty)
 
 bool Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
 {
+    RecursionCounter _rc(&sharedState->counters.recursionCount);
+    if (!withinResourceLimits())
+        return false;
+
     // TODO: use log.follow(ty), CLI-64291
     ty = follow(ty);
 
@@ -2999,6 +3007,7 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there, Set<T
 
 void makeTableShared(TypeId ty)
 {
+    ty = follow(ty);
     if (auto tableTy = getMutable<TableType>(ty))
     {
         for (auto& [_, prop] : tableTy->props)

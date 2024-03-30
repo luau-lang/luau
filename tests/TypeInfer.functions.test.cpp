@@ -687,7 +687,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_3")
     REQUIRE_EQ(1, argVec.size());
 
     const TableType* argType = get<TableType>(follow(argVec[0]));
-    REQUIRE(argType != nullptr);
+    REQUIRE_MESSAGE(argType != nullptr, argVec[0]);
 
     CHECK(bool(argType->indexer));
 }
@@ -2420,6 +2420,28 @@ TEST_CASE_FIXTURE(Fixture, "pass_table_literal_to_function_expecting_optional_pr
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_infer_overloaded_functions")
+{
+    CheckResult result = check(R"(
+        function getR6Attachments(model)
+            model:FindFirstChild("Right Leg")
+            model:FindFirstChild("Left Leg")
+            model:FindFirstChild("Torso")
+            model:FindFirstChild("Torso")
+            model:FindFirstChild("Head")
+            model:FindFirstChild("Left Arm")
+            model:FindFirstChild("Right Arm")
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("<a...>(t1) -> () where t1 = { read FindFirstChild: (t1, string) -> (a...) }" == toString(requireType("getR6Attachments")));
+    else
+        CHECK("<a...>(t1) -> () where t1 = {+ FindFirstChild: (t1, string) -> (a...) +}" == toString(requireType("getR6Attachments")));
 }
 
 TEST_SUITE_END();

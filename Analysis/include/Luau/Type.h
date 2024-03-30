@@ -299,6 +299,7 @@ using MagicFunction = std::function<std::optional<WithPredicate<TypePackId>>(
 struct MagicFunctionCallContext
 {
     NotNull<struct ConstraintSolver> solver;
+    NotNull<const Constraint> constraint;
     const class AstExprCall* callSite;
     TypePackId arguments;
     TypePackId result;

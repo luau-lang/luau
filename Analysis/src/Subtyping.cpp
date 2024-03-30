@@ -654,7 +654,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
             {
                 for (size_t i = headSize; i < superHead.size(); ++i)
                     results.push_back(isCovariantWith(env, vt->ty, superHead[i])
-                                          .withSubComponent(TypePath::TypeField::Variadic)
+                                          .withSubPath(TypePath::PathBuilder().tail().variadic().build())
                                           .withSuperComponent(TypePath::Index{i}));
             }
             else if (auto gt = get<GenericTypePack>(*subTail))

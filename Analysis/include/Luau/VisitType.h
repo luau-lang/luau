@@ -64,6 +64,9 @@ inline void unsee(DenseHashSet<void*>& seen, const void* tv)
 
 } // namespace visit_detail
 
+// recursion counter is equivalent here, but we'd like a better name to express the intent.
+using TypeFamilyDepthCounter = RecursionCounter;
+
 template<typename S>
 struct GenericTypeVisitor
 {
@@ -72,6 +75,7 @@ struct GenericTypeVisitor
     Set seen;
     bool skipBoundTypes = false;
     int recursionCounter = 0;
+    int typeFamilyDepth = 0;
 
     GenericTypeVisitor() = default;
 
@@ -400,6 +404,8 @@ struct GenericTypeVisitor
         }
         else if (auto tfit = get<TypeFamilyInstanceType>(ty))
         {
+            TypeFamilyDepthCounter tfdc{&typeFamilyDepth};
+
             if (visit(ty, *tfit))
             {
                 for (TypeId p : tfit->typeArguments)
@@ -460,6 +466,8 @@ struct GenericTypeVisitor
             visit(tp, *btp);
         else if (auto tfitp = get<TypeFamilyInstanceTypePack>(tp))
         {
+            TypeFamilyDepthCounter tfdc{&typeFamilyDepth};
+
             if (visit(tp, *tfitp))
             {
                 for (TypeId t : tfitp->typeArguments)

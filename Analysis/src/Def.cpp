@@ -27,6 +27,10 @@ void collectOperands(DefId def, std::vector<DefId>* operands)
         operands->push_back(def);
     else if (auto phi = get<Phi>(def))
     {
+        // A trivial phi node has no operands to populate, so we push this definition in directly.
+        if (phi->operands.empty())
+            return operands->push_back(def);
+
         for (const Def* operand : phi->operands)
             collectOperands(NotNull{operand}, operands);
     }

@@ -11,6 +11,7 @@
 #include "Luau/VisitType.h"
 
 #include <iostream>
+#include <optional>
 #include <ostream>
 
 namespace Luau
@@ -64,8 +65,9 @@ struct InstanceCollector2 : TypeOnceVisitor
 
 
 
-TypeFamilyReductionGuesser::TypeFamilyReductionGuesser(NotNull<BuiltinTypes> builtins, NotNull<Normalizer> normalizer)
-    : builtins(builtins)
+TypeFamilyReductionGuesser::TypeFamilyReductionGuesser(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, NotNull<Normalizer> normalizer)
+    : arena(arena)
+    , builtins(builtins)
     , normalizer(normalizer)
 {
 }
@@ -85,6 +87,44 @@ void TypeFamilyReductionGuesser::dumpGuesses()
         printf("Type family %s ~~> %s\n", toString(tf).c_str(), toString(t).c_str());
     for (auto [t, t_] : substitutable)
         printf("Substitute %s for %s\n", toString(t).c_str(), toString(t_).c_str());
+}
+
+std::optional<TypeId> TypeFamilyReductionGuesser::guess(TypeId typ)
+{
+    std::optional<TypeId> guessedType = guessType(typ);
+
+    if (!guessedType.has_value())
+        return {};
+
+    TypeId guess = follow(*guessedType);
+    if (get<TypeFamilyInstanceType>(guess))
+        return {};
+
+    return guess;
+}
+
+std::optional<TypePackId> TypeFamilyReductionGuesser::guess(TypePackId tp)
+{
+    auto [head, tail] = flatten(tp);
+
+    std::vector<TypeId> guessedHead;
+    guessedHead.reserve(head.size());
+
+    for (auto typ : head)
+    {
+        std::optional<TypeId> guessedType = guessType(typ);
+
+        if (!guessedType.has_value())
+            return {};
+
+        TypeId guess = follow(*guessedType);
+        if (get<TypeFamilyInstanceType>(guess))
+            return {};
+
+        guessedHead.push_back(*guessedType);
+    }
+
+    return arena->addTypePack(TypePack{guessedHead, tail});
 }
 
 TypeFamilyReductionGuessResult TypeFamilyReductionGuesser::guessTypeFamilyReductionForFunction(

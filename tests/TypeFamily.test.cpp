@@ -552,6 +552,21 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_common_subset_if_union_of_dif
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(ClassFixture, "binary_type_family_works_with_default_argument")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type result = mul<number>
+
+        local function thunk(): result return 5 * 4 end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("() -> number" == toString(requireType("thunk")));
+}
+
 TEST_CASE_FIXTURE(ClassFixture, "vector2_multiply_is_overloaded")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)

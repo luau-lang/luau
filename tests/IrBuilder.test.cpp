@@ -12,9 +12,9 @@
 
 #include <limits.h>
 
-LUAU_FASTFLAG(LuauCodegenVectorTag2)
 LUAU_FASTFLAG(LuauCodegenRemoveDeadStores4)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
+LUAU_FASTFLAG(LuauCodegenInferNumTag)
 
 using namespace Luau::CodeGen;
 
@@ -2501,8 +2501,6 @@ bb_fallback_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "TagVectorSkipErrorFix")
 {
-    ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -2627,6 +2625,30 @@ bb_0:
    FASTCALL 20u, R1, R2, undef, 1i, 1i
    CHECK_TAG R2, tnumber, exit(1)
    RETURN R1, 2i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "InferNumberTagFromLimitedContext")
+{
+    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenInferNumTag, true};
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), build.constDouble(2.0));
+    build.inst(IrCmd::CHECK_TAG, build.vmReg(0), build.constTag(ttable), build.vmExit(1));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(1), build.inst(IrCmd::LOAD_TVALUE, build.vmReg(0)));
+    build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build, true);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   STORE_DOUBLE R0, 2
+   JUMP exit(1)
 
 )");
 }

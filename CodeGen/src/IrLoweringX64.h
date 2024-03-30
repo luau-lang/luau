@@ -63,7 +63,6 @@ struct IrLoweringX64
     Label& labelOp(IrOp op) const;
 
     OperandX64 vectorAndMaskOp();
-    OperandX64 vectorOrMaskOp();
 
     struct InterruptHandler
     {

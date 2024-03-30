@@ -1054,4 +1054,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_array_of_singletons")
         LUAU_REQUIRE_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "iter_mm_results_are_lvalue")
+{
+    CheckResult result = check(R"(
+        local foo = setmetatable({}, {
+            __iter = function()
+                return pairs({1, 2, 3})
+            end,
+        })
+
+        for k, v in foo do
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

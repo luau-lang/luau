@@ -1,0 +1,114 @@
+// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#pragma once
+
+#include "Luau/SharedCodeAllocator.h"
+
+#include "NativeState.h"
+
+#include <memory>
+#include <stdint.h>
+
+namespace Luau
+{
+namespace CodeGen
+{
+
+// The "code-gen context" maintains the native code-gen state.  There are two
+// implementations.  The StandaloneCodeGenContext is a VM-specific context type.
+// It is the "simple" implementation that can be used when native code-gen is
+// used with a single Luau VM.  The SharedCodeGenContext supports use from
+// multiple Luau VMs concurrently, and allows for sharing of executable native
+// code and related metadata.
+
+class BaseCodeGenContext
+{
+public:
+    BaseCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
+
+    [[nodiscard]] bool initHeaderFunctions();
+
+    virtual void compileOrBindModule(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats) = 0;
+
+    virtual void onCloseState() noexcept = 0;
+    virtual void onDestroyFunction(void* execdata) noexcept = 0;
+
+    CodeAllocator codeAllocator;
+    std::unique_ptr<UnwindBuilder> unwindBuilder;
+
+    uint8_t* gateData = nullptr;
+    size_t gateDataSize = 0;
+
+    NativeContext context;
+};
+
+class StandaloneCodeGenContext final : public BaseCodeGenContext
+{
+public:
+    StandaloneCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
+
+    virtual void compileOrBindModule(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats) override;
+
+    virtual void onCloseState() noexcept override;
+    virtual void onDestroyFunction(void* execdata) noexcept override;
+
+private:
+};
+
+class SharedCodeGenContext final : public BaseCodeGenContext
+{
+public:
+    SharedCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
+
+    virtual void compileOrBindModule(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats) override;
+
+    virtual void onCloseState() noexcept override;
+    virtual void onDestroyFunction(void* execdata) noexcept override;
+
+private:
+    SharedCodeAllocator sharedAllocator;
+};
+
+
+// The following will become the public interface, and can be moved into
+// CodeGen.h after the shared allocator work is complete.  When the old
+// implementation is removed, the _NEW suffix can be dropped from these
+// functions.
+
+class SharedCodeGenContext;
+
+struct SharedCodeGenContextDeleter
+{
+    void operator()(const SharedCodeGenContext* context) const noexcept;
+};
+
+using UniqueSharedCodeGenContext = std::unique_ptr<SharedCodeGenContext, SharedCodeGenContextDeleter>;
+
+// Creates a new SharedCodeGenContext that can be used by multiple Luau VMs
+// concurrently, using either the default allocator parameters or custom
+// allocator parameters.
+[[nodiscard]] UniqueSharedCodeGenContext createSharedCodeGenContext();
+
+[[nodiscard]] UniqueSharedCodeGenContext createSharedCodeGenContext(AllocationCallback* allocationCallback, void* allocationCallbackContext);
+
+[[nodiscard]] UniqueSharedCodeGenContext createSharedCodeGenContext(
+    size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
+
+// Destroys the provided SharedCodeGenContext.  All Luau VMs using the
+// SharedCodeGenContext must be destroyed before this function is called.
+void destroySharedCodeGenContext(const SharedCodeGenContext* codeGenContext) noexcept;
+
+// Initializes native code-gen on the provided Luau VM, using a VM-specific
+// code-gen context and either the default allocator parameters or custom
+// allocator parameters.
+void create_NEW(lua_State* L);
+void create_NEW(lua_State* L, AllocationCallback* allocationCallback, void* allocationCallbackContext);
+void create_NEW(lua_State* L, size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
+
+// Initializes native code-gen on the provided Luau VM, using the provided
+// SharedCodeGenContext.  Note that after this function is called, the
+// SharedCodeGenContext must not be destroyed until after the Luau VM L is
+// destroyed via lua_close.
+void create_NEW(lua_State* L, SharedCodeGenContext* codeGenContext);
+
+} // namespace CodeGen
+} // namespace Luau

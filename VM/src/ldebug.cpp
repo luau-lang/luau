@@ -186,8 +186,16 @@ int lua_getinfo(lua_State* L, int level, const char* what, lua_Debug* ar)
     CallInfo* ci = NULL;
     if (level < 0)
     {
-        const TValue* func = luaA_toobject(L, level);
-        api_check(L, ttisfunction(func));
+        // element has to be within stack
+        if (-level > L->top - L->base)
+            return 0;
+
+        StkId func = L->top + level;
+
+        // and it has to be a function
+        if (!ttisfunction(func))
+            return 0;
+
         f = clvalue(func);
     }
     else if (unsigned(level) < unsigned(L->ci - L->base_ci))

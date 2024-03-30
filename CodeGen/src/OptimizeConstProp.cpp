@@ -17,10 +17,10 @@
 LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
-LUAU_FASTFLAG(LuauCodegenVectorTag2)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCodeGenCoverForgprepEffect, false)
 LUAU_FASTFLAG(LuauCodegenRemoveDeadStores4)
 LUAU_FASTFLAG(LuauCodegenLoadTVTag)
+LUAU_FASTFLAGVARIABLE(LuauCodegenInferNumTag, false)
 
 namespace Luau
 {
@@ -717,17 +717,8 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
             {
                 if (IrInst* arg = function.asInstOp(inst.b))
                 {
-                    if (FFlag::LuauCodegenVectorTag2)
-                    {
-                        if (arg->cmd == IrCmd::TAG_VECTOR)
-                            tag = LUA_TVECTOR;
-                    }
-                    else
-                    {
-                        if (arg->cmd == IrCmd::ADD_VEC || arg->cmd == IrCmd::SUB_VEC || arg->cmd == IrCmd::MUL_VEC || arg->cmd == IrCmd::DIV_VEC ||
-                            arg->cmd == IrCmd::UNM_VEC)
-                            tag = LUA_TVECTOR;
-                    }
+                    if (arg->cmd == IrCmd::TAG_VECTOR)
+                        tag = LUA_TVECTOR;
 
                     if (FFlag::LuauCodegenLoadTVTag && arg->cmd == IrCmd::LOAD_TVALUE && arg->c.kind != IrOpKind::None)
                         tag = function.tagOp(arg->c);
@@ -906,23 +897,58 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     {
         uint8_t b = function.tagOp(inst.b);
 
-        if (uint8_t tag = state.tryGetTag(inst.a); tag != 0xff)
+        if (FFlag::LuauCodegenInferNumTag)
         {
-            if (tag == b)
+            uint8_t tag = state.tryGetTag(inst.a);
+
+            if (tag == 0xff)
             {
-                if (FFlag::DebugLuauAbortingChecks)
-                    replace(function, inst.c, build.undef());
+                if (IrOp value = state.tryGetValue(inst.a); value.kind == IrOpKind::Constant)
+                {
+                    if (function.constOp(value).kind == IrConstKind::Double)
+                        tag = LUA_TNUMBER;
+                }
+            }
+
+            if (tag != 0xff)
+            {
+                if (tag == b)
+                {
+                    if (FFlag::DebugLuauAbortingChecks)
+                        replace(function, inst.c, build.undef());
+                    else
+                        kill(function, inst);
+                }
                 else
-                    kill(function, inst);
+                {
+                    replace(function, block, index, {IrCmd::JUMP, inst.c}); // Shows a conflict in assumptions on this path
+                }
             }
             else
             {
-                replace(function, block, index, {IrCmd::JUMP, inst.c}); // Shows a conflict in assumptions on this path
+                state.updateTag(inst.a, b); // We can assume the tag value going forward
             }
         }
         else
         {
-            state.updateTag(inst.a, b); // We can assume the tag value going forward
+            if (uint8_t tag = state.tryGetTag(inst.a); tag != 0xff)
+            {
+                if (tag == b)
+                {
+                    if (FFlag::DebugLuauAbortingChecks)
+                        replace(function, inst.c, build.undef());
+                    else
+                        kill(function, inst);
+                }
+                else
+                {
+                    replace(function, block, index, {IrCmd::JUMP, inst.c}); // Shows a conflict in assumptions on this path
+                }
+            }
+            else
+            {
+                state.updateTag(inst.a, b); // We can assume the tag value going forward
+            }
         }
         break;
     }
@@ -1296,22 +1322,16 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::SUB_VEC:
     case IrCmd::MUL_VEC:
     case IrCmd::DIV_VEC:
-        if (FFlag::LuauCodegenVectorTag2)
-        {
-            if (IrInst* a = function.asInstOp(inst.a); a && a->cmd == IrCmd::TAG_VECTOR)
-                replace(function, inst.a, a->a);
+        if (IrInst* a = function.asInstOp(inst.a); a && a->cmd == IrCmd::TAG_VECTOR)
+            replace(function, inst.a, a->a);
 
-            if (IrInst* b = function.asInstOp(inst.b); b && b->cmd == IrCmd::TAG_VECTOR)
-                replace(function, inst.b, b->a);
-        }
+        if (IrInst* b = function.asInstOp(inst.b); b && b->cmd == IrCmd::TAG_VECTOR)
+            replace(function, inst.b, b->a);
         break;
 
     case IrCmd::UNM_VEC:
-        if (FFlag::LuauCodegenVectorTag2)
-        {
-            if (IrInst* a = function.asInstOp(inst.a); a && a->cmd == IrCmd::TAG_VECTOR)
-                replace(function, inst.a, a->a);
-        }
+        if (IrInst* a = function.asInstOp(inst.a); a && a->cmd == IrCmd::TAG_VECTOR)
+            replace(function, inst.a, a->a);
         break;
 
     case IrCmd::CHECK_NODE_NO_NEXT:

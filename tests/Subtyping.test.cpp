@@ -450,6 +450,26 @@ TEST_CASE_FIXTURE(SubtypeFixture, "basic_typefamily_with_generics")
     CHECK(result.isSubtype);
 }
 
+TEST_CASE_FIXTURE(SubtypeFixture, "variadic_subpath_in_pack")
+{
+    TypePackId subTArgs = arena.addTypePack(TypePack{{builtinTypes->stringType, builtinTypes->stringType}, builtinTypes->anyTypePack});
+    TypePackId superTArgs = arena.addTypePack(TypePack{{builtinTypes->numberType}, builtinTypes->anyTypePack});
+    // (string, string, ...any) -> number
+    TypeId functionSub = arena.addType(FunctionType{subTArgs, arena.addTypePack({builtinTypes->numberType})});
+    // (number, ...any) -> string
+    TypeId functionSuper = arena.addType(FunctionType{superTArgs, arena.addTypePack({builtinTypes->stringType})});
+
+
+    SubtypingResult result = isSubtype(functionSub, functionSuper);
+    CHECK(result.reasoning == std::vector{SubtypingReasoning{TypePath::PathBuilder().rets().index(0).build(),
+                                              TypePath::PathBuilder().rets().index(0).build(), SubtypingVariance::Covariant},
+                                  SubtypingReasoning{TypePath::PathBuilder().args().index(0).build(), TypePath::PathBuilder().args().index(0).build(),
+                                      SubtypingVariance::Contravariant},
+                                  SubtypingReasoning{TypePath::PathBuilder().args().index(1).build(),
+                                      TypePath::PathBuilder().args().tail().variadic().build(), SubtypingVariance::Contravariant}});
+    CHECK(!result.isSubtype);
+}
+
 TEST_CASE_FIXTURE(SubtypeFixture, "any <!: unknown")
 {
     CHECK_IS_NOT_SUBTYPE(builtinTypes->anyType, builtinTypes->unknownType);
