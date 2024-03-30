@@ -356,7 +356,6 @@ target_sources(isocline PRIVATE
     extern/isocline/src/isocline.c
 )
 
-
 if (TARGET Luau.Repl.CLI OR TARGET Luau.Analyze.CLI OR
     TARGET Luau.Ast.CLI OR TARGET Luau.CLI.Test OR
     TARGET Luau.Reduce.CLI OR TARGET Luau.Compile.CLI OR
