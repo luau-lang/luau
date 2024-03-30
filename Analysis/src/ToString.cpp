@@ -21,6 +21,7 @@
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAGVARIABLE(LuauToStringSimpleCompositeTypesSingleLine, false)
+LUAU_FASTFLAGVARIABLE(LuauStringifyCyclesRootedAtPacks, false)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -1491,10 +1492,21 @@ ToStringResult toStringDetailed(TypePackId tp, ToStringOptions& opts)
     else
         tvs.stringify(tp);
 
-    if (!cycles.empty())
+    if (FFlag::LuauStringifyCyclesRootedAtPacks)
     {
-        result.cycle = true;
-        state.emit(" where ");
+        if (!cycles.empty() || !cycleTPs.empty())
+        {
+            result.cycle = true;
+            state.emit(" where ");
+        }
+    }
+    else
+    {
+        if (!cycles.empty())
+        {
+            result.cycle = true;
+            state.emit(" where ");
+        }
     }
 
     state.exhaustive = true;
@@ -1519,6 +1531,32 @@ ToStringResult toStringDetailed(TypePackId tp, ToStringOptions& opts)
             cycleTy->ty);
 
         semi = true;
+    }
+
+    if (FFlag::LuauStringifyCyclesRootedAtPacks)
+    {
+        std::vector<std::pair<TypePackId, std::string>> sortedCycleTpNames{state.cycleTpNames.begin(), state.cycleTpNames.end()};
+        std::sort(sortedCycleTpNames.begin(), sortedCycleTpNames.end(), [](const auto& a, const auto& b) {
+            return a.second < b.second;
+        });
+
+        TypePackStringifier tps{tvs.state};
+
+        for (const auto& [cycleTp, name] : sortedCycleTpNames)
+        {
+            if (semi)
+                state.emit(" ; ");
+
+            state.emit(name);
+            state.emit(" = ");
+            Luau::visit(
+                [&tps, cycleTp = cycleTp](auto t) {
+                    return tps(cycleTp, t);
+                },
+                cycleTp->ty);
+
+            semi = true;
+        }
     }
 
     if (opts.maxTypeLength > 0 && result.name.length() > opts.maxTypeLength)
@@ -1721,7 +1759,7 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         {
             std::string subStr = tos(c.subPack);
             std::string superStr = tos(c.superPack);
-            return subStr + " <: " + superStr;
+            return subStr + " <...: " + superStr;
         }
         else if constexpr (std::is_same_v<T, GeneralizationConstraint>)
         {
@@ -1782,7 +1820,7 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         }
         else if constexpr (std::is_same_v<T, SetIndexerConstraint>)
         {
-            return tos(c.resultType) + " ~ setIndexer " + tos(c.subjectType) + " [ " + tos(c.indexType) + " ] " + tos(c.propType);
+            return "setIndexer " + tos(c.subjectType) + " [ " + tos(c.indexType) + " ] " + tos(c.propType);
         }
         else if constexpr (std::is_same_v<T, SingletonOrTopTypeConstraint>)
         {
@@ -1795,7 +1833,9 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
                 return result + " ~ if isSingleton D then D else unknown where D = " + discriminant;
         }
         else if constexpr (std::is_same_v<T, UnpackConstraint>)
-            return tos(c.resultPack) + " ~ unpack " + tos(c.sourcePack);
+            return tos(c.resultPack) + " ~ ...unpack " + tos(c.sourcePack);
+        else if constexpr (std::is_same_v<T, Unpack1Constraint>)
+            return tos(c.resultType) + " ~ unpack " + tos(c.sourceType);
         else if constexpr (std::is_same_v<T, SetOpConstraint>)
         {
             const char* op = c.mode == SetOpConstraint::Union ? " | " : " & ";

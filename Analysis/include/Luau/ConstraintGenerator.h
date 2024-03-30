@@ -95,6 +95,10 @@ struct ConstraintGenerator
     // will enqueue them during solving.
     std::vector<ConstraintPtr> unqueuedConstraints;
 
+    // Type family instances created by the generator. This is used to ensure
+    // that these instances are reduced fully by the solver.
+    std::vector<TypeId> familyInstances;
+
     // The private scope of type aliases for which the type parameters belong to.
     DenseHashMap<const AstStatTypeAlias*, ScopePtr> astTypeAliasDefiningScopes{nullptr};
 
@@ -254,16 +258,18 @@ private:
     Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
     std::tuple<TypeId, TypeId, RefinementId> checkBinary(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
 
-    /**
-     * Generate constraints to assign assignedTy to the expression expr
-     * @returns the type of the expression.  This may or may not be assignedTy itself.
-     */
-    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExpr* expr, TypeId assignedTy, bool transform);
-    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprLocal* local, TypeId assignedTy, bool transform);
-    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprGlobal* global, TypeId assignedTy);
-    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprIndexName* indexName, TypeId assignedTy);
-    std::optional<TypeId> checkLValue(const ScopePtr& scope, AstExprIndexExpr* indexExpr, TypeId assignedTy);
-    TypeId updateProperty(const ScopePtr& scope, AstExpr* expr, TypeId assignedTy);
+    struct LValueBounds
+    {
+        std::optional<TypeId> annotationTy;
+        std::optional<TypeId> assignedTy;
+    };
+
+    LValueBounds checkLValue(const ScopePtr& scope, AstExpr* expr, bool transform);
+    LValueBounds checkLValue(const ScopePtr& scope, AstExprLocal* local, bool transform);
+    LValueBounds checkLValue(const ScopePtr& scope, AstExprGlobal* global);
+    LValueBounds checkLValue(const ScopePtr& scope, AstExprIndexName* indexName);
+    LValueBounds checkLValue(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
+    LValueBounds updateProperty(const ScopePtr& scope, AstExpr* expr);
 
     struct FunctionSignature
     {
@@ -370,6 +376,8 @@ private:
      *  yields a vector of size 1, with value: [number | string]
      */
     std::vector<std::optional<TypeId>> getExpectedCallTypesForFunctionOverloads(const TypeId fnType);
+
+    TypeId createFamilyInstance(TypeFamilyInstanceType instance, const ScopePtr& scope, Location location);
 };
 
 /** Borrow a vector of pointers from a vector of owning pointers to constraints.

@@ -40,7 +40,6 @@ function FadeValue:destroy()
 	self.finalCallback = nil
 end
 )");
-    
 }
 
 TEST_CASE_FIXTURE(Fixture, "basic")
@@ -4247,6 +4246,43 @@ TEST_CASE_FIXTURE(Fixture, "refined_thing_can_be_an_array")
     CHECK("<a>({a}, a) -> a" == toString(requireType("foo")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "parameter_was_set_an_indexer_and_bounded_by_string")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        function f(t)
+            local s: string = t
+            t[5] = 7
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+
+    CHECK_EQ("Parameter 't' has been reduced to never. This function is not callable with any possible value.", toString(result.errors[0]));
+    CHECK_EQ("Parameter 't' is required to be a subtype of 'string' here.", toString(result.errors[1]));
+    CHECK_EQ("Parameter 't' is required to be a subtype of '{number}' here.", toString(result.errors[2]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parameter_was_set_an_indexer_and_bounded_by_another_parameter")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        function f(t1, t2)
+            t1[5] = 7 -- 't1 <: {number}
+            t2 = t1   -- 't1 <: 't2
+            t1[5] = 7 -- 't1 <: {number}
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("({number}, unknown) -> ()", toString(requireType("f")));
+}
+
 TEST_CASE_FIXTURE(Fixture, "mymovie_read_write_tables_bug")
 {
     CheckResult result = check(R"(
@@ -4285,7 +4321,5 @@ TEST_CASE_FIXTURE(Fixture, "mymovie_read_write_tables_bug_2")
     // we're primarily interested in knowing that this does not crash.
     LUAU_REQUIRE_ERRORS(result);
 }
-
-
 
 TEST_SUITE_END();

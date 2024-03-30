@@ -124,6 +124,7 @@ struct NativeState
 };
 
 void initFunctions(NativeState& data);
+void initFunctions(NativeContext& context);
 
 } // namespace CodeGen
 } // namespace Luau

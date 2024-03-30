@@ -12,7 +12,6 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenVectorTag2, false)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLoadTVTag, false)
 
 namespace Luau
@@ -388,8 +387,7 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
             CODEGEN_ASSERT(!"Unknown TM op");
         }
 
-        if (FFlag::LuauCodegenVectorTag2)
-            result = build.inst(IrCmd::TAG_VECTOR, result);
+        result = build.inst(IrCmd::TAG_VECTOR, result);
 
         build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
         return;
@@ -417,8 +415,7 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
             CODEGEN_ASSERT(!"Unknown TM op");
         }
 
-        if (FFlag::LuauCodegenVectorTag2)
-            result = build.inst(IrCmd::TAG_VECTOR, result);
+        result = build.inst(IrCmd::TAG_VECTOR, result);
 
         build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
         return;
@@ -446,8 +443,7 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
             CODEGEN_ASSERT(!"Unknown TM op");
         }
 
-        if (FFlag::LuauCodegenVectorTag2)
-            result = build.inst(IrCmd::TAG_VECTOR, result);
+        result = build.inst(IrCmd::TAG_VECTOR, result);
 
         build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), result);
         return;
@@ -589,8 +585,7 @@ void translateInstMinus(IrBuilder& build, const Instruction* pc, int pcpos)
 
         IrOp vb = build.inst(IrCmd::LOAD_TVALUE, build.vmReg(rb));
         IrOp va = build.inst(IrCmd::UNM_VEC, vb);
-        if (FFlag::LuauCodegenVectorTag2)
-            va = build.inst(IrCmd::TAG_VECTOR, va);
+        va = build.inst(IrCmd::TAG_VECTOR, va);
         build.inst(IrCmd::STORE_TVALUE, build.vmReg(ra), va);
         return;
     }

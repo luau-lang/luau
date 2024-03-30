@@ -17,23 +17,32 @@
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 #include "Luau/TypeCheckLimits.h"
+#include "Luau/TypeFamilyReductionGuesser.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
 #include "Luau/VecDeque.h"
 #include "Luau/VisitType.h"
 
+// used to control emitting CodeTooComplex warnings on type family reduction
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyGraphReductionMaximumSteps, 1'000'000);
+
+// used to control falling back to a more conservative reduction based on guessing
+// when this value is set to a negative value, guessing will be totally disabled.
+LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
 LUAU_FASTFLAG(DebugLuauLogSolver);
 
 namespace Luau
 {
 
+using TypeOrTypePackIdSet = DenseHashSet<const void*>;
+
 struct InstanceCollector : TypeOnceVisitor
 {
     VecDeque<TypeId> tys;
     VecDeque<TypePackId> tps;
+    TypeOrTypePackIdSet shouldGuess{nullptr};
     std::vector<TypeId> cyclicInstance;
 
     bool visit(TypeId ty, const TypeFamilyInstanceType&) override
@@ -44,7 +53,12 @@ struct InstanceCollector : TypeOnceVisitor
         // in the queue. Consider Add<Add<Add<number, number>, number>, number>:
         // we want to reduce the innermost Add<number, number> instantiation
         // first.
+
+        if (DFInt::LuauTypeFamilyUseGuesserDepth >= 0 && typeFamilyDepth > DFInt::LuauTypeFamilyUseGuesserDepth)
+            shouldGuess.insert(ty);
+
         tys.push_front(ty);
+
         return true;
     }
 
@@ -69,7 +83,12 @@ struct InstanceCollector : TypeOnceVisitor
         // in the queue. Consider Add<Add<Add<number, number>, number>, number>:
         // we want to reduce the innermost Add<number, number> instantiation
         // first.
+
+        if (DFInt::LuauTypeFamilyUseGuesserDepth >= 0 && typeFamilyDepth > DFInt::LuauTypeFamilyUseGuesserDepth)
+            shouldGuess.insert(tp);
+
         tps.push_front(tp);
+
         return true;
     }
 };
@@ -80,19 +99,21 @@ struct FamilyReducer
 
     VecDeque<TypeId> queuedTys;
     VecDeque<TypePackId> queuedTps;
+    TypeOrTypePackIdSet shouldGuess;
     std::vector<TypeId> cyclicTypeFamilies;
-    DenseHashSet<const void*> irreducible{nullptr};
+    TypeOrTypePackIdSet irreducible{nullptr};
     FamilyGraphReductionResult result;
     bool force = false;
 
     // Local to the constraint being reduced.
     Location location;
 
-    FamilyReducer(VecDeque<TypeId> queuedTys, VecDeque<TypePackId> queuedTps, std::vector<TypeId> cyclicTypes, Location location,
-        TypeFamilyContext ctx, bool force = false)
+    FamilyReducer(VecDeque<TypeId> queuedTys, VecDeque<TypePackId> queuedTps, TypeOrTypePackIdSet shouldGuess, std::vector<TypeId> cyclicTypes,
+        Location location, TypeFamilyContext ctx, bool force = false)
         : ctx(ctx)
         , queuedTys(std::move(queuedTys))
         , queuedTps(std::move(queuedTps))
+        , shouldGuess(std::move(shouldGuess))
         , cyclicTypeFamilies(std::move(cyclicTypes))
         , force(force)
         , location(location)
@@ -154,12 +175,11 @@ struct FamilyReducer
     template<typename T>
     void replace(T subject, T replacement)
     {
-        if (FFlag::DebugLuauLogSolver)
-            printf("%s -> %s\n", toString(subject, {true}).c_str(), toString(replacement, {true}).c_str());
-
-        // TODO: This should be an ICE (CLI-100942)
         if (subject->owningArena != ctx.arena.get())
             ctx.ice->ice("Attempting to modify a type family instance from another arena", location);
+
+        if (FFlag::DebugLuauLogSolver)
+            printf("%s -> %s\n", toString(subject, {true}).c_str(), toString(replacement, {true}).c_str());
 
         asMutable(subject)->ty.template emplace<Unifiable::Bound<T>>(replacement);
 
@@ -265,6 +285,34 @@ struct FamilyReducer
         return true;
     }
 
+    template<typename TID>
+    inline bool tryGuessing(TID subject)
+    {
+        if (shouldGuess.contains(subject))
+        {
+            if (FFlag::DebugLuauLogSolver)
+                printf("Flagged %s for reduction with guesser.\n", toString(subject, {true}).c_str());
+
+            TypeFamilyReductionGuesser guesser{ctx.arena, ctx.builtins, ctx.normalizer};
+            auto guessed = guesser.guess(subject);
+
+            if (guessed)
+            {
+                if (FFlag::DebugLuauLogSolver)
+                    printf("Selected %s as the guessed result type.\n", toString(*guessed, {true}).c_str());
+
+                replace(subject, *guessed);
+                return true;
+            }
+
+            if (FFlag::DebugLuauLogSolver)
+                printf("Failed to produce a guess for the result of %s.\n", toString(subject, {true}).c_str());
+        }
+
+        return false;
+    }
+
+
     void stepType()
     {
         TypeId subject = follow(queuedTys.front());
@@ -288,6 +336,9 @@ struct FamilyReducer
                 return;
             }
 
+            if (tryGuessing(subject))
+                return;
+
             TypeFamilyReductionResult<TypeId> result = tfit->family->reducer(subject, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
             handleFamilyReduction(subject, result);
         }
@@ -309,6 +360,9 @@ struct FamilyReducer
             if (!testParameters(subject, tfit))
                 return;
 
+            if (tryGuessing(subject))
+                return;
+
             TypeFamilyReductionResult<TypePackId> result = tfit->family->reducer(subject, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
             handleFamilyReduction(subject, result);
         }
@@ -324,9 +378,9 @@ struct FamilyReducer
 };
 
 static FamilyGraphReductionResult reduceFamiliesInternal(
-    VecDeque<TypeId> queuedTys, VecDeque<TypePackId> queuedTps, std::vector<TypeId> cyclics, Location location, TypeFamilyContext ctx, bool force)
+    VecDeque<TypeId> queuedTys, VecDeque<TypePackId> queuedTps, TypeOrTypePackIdSet shouldGuess, std::vector<TypeId> cyclics, Location location, TypeFamilyContext ctx, bool force)
 {
-    FamilyReducer reducer{std::move(queuedTys), std::move(queuedTps), std::move(cyclics), location, ctx, force};
+    FamilyReducer reducer{std::move(queuedTys), std::move(queuedTps), std::move(shouldGuess), std::move(cyclics), location, ctx, force};
     int iterationCount = 0;
 
     while (!reducer.done())
@@ -360,7 +414,7 @@ FamilyGraphReductionResult reduceFamilies(TypeId entrypoint, Location location, 
     if (collector.tys.empty() && collector.tps.empty())
         return {};
 
-    return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), std::move(collector.cyclicInstance), location, ctx, force);
+    return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), std::move(collector.shouldGuess), std::move(collector.cyclicInstance), location, ctx, force);
 }
 
 FamilyGraphReductionResult reduceFamilies(TypePackId entrypoint, Location location, TypeFamilyContext ctx, bool force)
@@ -379,7 +433,7 @@ FamilyGraphReductionResult reduceFamilies(TypePackId entrypoint, Location locati
     if (collector.tys.empty() && collector.tps.empty())
         return {};
 
-    return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), {}, location, ctx, force);
+    return reduceFamiliesInternal(std::move(collector.tys), std::move(collector.tps), std::move(collector.shouldGuess), std::move(collector.cyclicInstance), location, ctx, force);
 }
 
 bool isPending(TypeId ty, ConstraintSolver* solver)
@@ -1495,7 +1549,7 @@ void BuiltinTypeFamilies::addToScope(NotNull<TypeArena> arena, NotNull<Scope> sc
         TypeId t = arena->addType(GenericType{"T"});
         TypeId u = arena->addType(GenericType{"U"});
         GenericTypeDefinition genericT{t};
-        GenericTypeDefinition genericU{u};
+        GenericTypeDefinition genericU{u, {t}};
 
         return TypeFun{{genericT, genericU}, arena->addType(TypeFamilyInstanceType{NotNull{family}, {t, u}, {}})};
     };

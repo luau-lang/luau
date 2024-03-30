@@ -66,6 +66,7 @@ include(Sources.cmake)
 
 target_include_directories(Luau.Common INTERFACE Common/include)
 
+target_compile_features(Luau.CLI.lib PUBLIC cxx_std_17)
 target_link_libraries(Luau.CLI.lib PRIVATE Luau.Common)
 
 target_compile_features(Luau.Ast PUBLIC cxx_std_17)
@@ -140,6 +141,7 @@ endif()
 
 target_compile_options(Luau.Ast PRIVATE ${LUAU_OPTIONS})
 target_compile_options(Luau.Analysis PRIVATE ${LUAU_OPTIONS})
+target_compile_options(Luau.CLI.lib PRIVATE ${LUAU_OPTIONS})
 target_compile_options(Luau.CodeGen PRIVATE ${LUAU_OPTIONS})
 target_compile_options(Luau.VM PRIVATE ${LUAU_OPTIONS})
 target_compile_options(isocline PRIVATE ${LUAU_OPTIONS} ${ISOCLINE_OPTIONS})

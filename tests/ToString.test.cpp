@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauCheckedFunctionSyntax);
 LUAU_FASTFLAG(DebugLuauSharedSelf);
+LUAU_FASTFLAG(LuauStringifyCyclesRootedAtPacks);
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -878,7 +879,11 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_include_self_param")
 
     TypeId parentTy = requireType("foo");
     auto ttv = get<TableType>(follow(parentTy));
-    auto ftv = get<FunctionType>(follow(ttv->props.at("method").type()));
+    REQUIRE(ttv);
+
+    TypeId methodTy = ttv->props.at("method").type();
+    auto ftv = get<FunctionType>(follow(methodTy));
+    REQUIRE_MESSAGE(ftv, methodTy);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
         CHECK_EQ("foo:method(self: unknown, arg: string): ()", toStringNamedFunction("foo:method", *ftv));
@@ -996,6 +1001,36 @@ TEST_CASE_FIXTURE(Fixture, "read_only_properties")
 
     CHECK("{ x: string }" == toString(requireTypeAlias("A"), {true}));
     CHECK("{ read x: string }" == toString(requireTypeAlias("B"), {true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cycle_rooted_in_a_pack")
+{
+    ScopedFastFlag sff{FFlag::LuauStringifyCyclesRootedAtPacks, true};
+
+    TypeArena arena;
+
+    TypePackId thePack = arena.addTypePack({builtinTypes->numberType, builtinTypes->numberType});
+    TypePack* packPtr = getMutable<TypePack>(thePack);
+    REQUIRE(packPtr);
+
+    const TableType::Props theProps = {
+        {"BaseField", Property::readonly(builtinTypes->unknownType)},
+        {"BaseMethod", Property::readonly(arena.addType(
+            FunctionType{
+                thePack,
+                arena.addTypePack({})
+            }
+        ))}
+    };
+
+    TypeId theTable = arena.addType(TableType{theProps, {}, TypeLevel{}, TableState::Sealed});
+
+    packPtr->head[0] = theTable;
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("tp1 where tp1 = { read BaseField: unknown, read BaseMethod: (tp1) -> () }, number" == toString(thePack));
+    else
+        CHECK("tp1 where tp1 = {| BaseField: unknown, BaseMethod: (tp1) -> () |}, number" == toString(thePack));
 }
 
 TEST_SUITE_END();

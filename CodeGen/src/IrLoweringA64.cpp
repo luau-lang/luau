@@ -11,11 +11,10 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodeGenVectorA64, false)
 LUAU_FASTFLAGVARIABLE(LuauCodeGenOptVecA64, false)
 
-LUAU_FASTFLAG(LuauCodegenVectorTag2)
 LUAU_FASTFLAG(LuauCodegenRemoveDeadStores4)
+LUAU_FASTFLAG(LuauCodegenCheckTruthyFormB)
 
 namespace Luau
 {
@@ -731,148 +730,35 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         inst.regA64 = regs.allocReuse(KindA64::q, index, {inst.a, inst.b});
 
-        if (FFlag::LuauCodeGenVectorA64)
-        {
-            build.fadd(inst.regA64, regOp(inst.a), regOp(inst.b));
-
-            if (!FFlag::LuauCodegenVectorTag2)
-            {
-                RegisterA64 tempw = regs.allocTemp(KindA64::w);
-                build.mov(tempw, LUA_TVECTOR);
-                build.ins_4s(inst.regA64, tempw, 3);
-            }
-        }
-        else
-        {
-            RegisterA64 tempa = regs.allocTemp(KindA64::s);
-            RegisterA64 tempb = regs.allocTemp(KindA64::s);
-
-            for (uint8_t i = 0; i < 3; i++)
-            {
-                build.dup_4s(tempa, regOp(inst.a), i);
-                build.dup_4s(tempb, regOp(inst.b), i);
-                build.fadd(tempa, tempa, tempb);
-                build.ins_4s(inst.regA64, i, castReg(KindA64::q, tempa), 0);
-            }
-        }
+        build.fadd(inst.regA64, regOp(inst.a), regOp(inst.b));
         break;
     }
     case IrCmd::SUB_VEC:
     {
         inst.regA64 = regs.allocReuse(KindA64::q, index, {inst.a, inst.b});
 
-        if (FFlag::LuauCodeGenVectorA64)
-        {
-            build.fsub(inst.regA64, regOp(inst.a), regOp(inst.b));
-
-            if (!FFlag::LuauCodegenVectorTag2)
-            {
-                RegisterA64 tempw = regs.allocTemp(KindA64::w);
-                build.mov(tempw, LUA_TVECTOR);
-                build.ins_4s(inst.regA64, tempw, 3);
-            }
-        }
-        else
-        {
-            RegisterA64 tempa = regs.allocTemp(KindA64::s);
-            RegisterA64 tempb = regs.allocTemp(KindA64::s);
-
-            for (uint8_t i = 0; i < 3; i++)
-            {
-                build.dup_4s(tempa, regOp(inst.a), i);
-                build.dup_4s(tempb, regOp(inst.b), i);
-                build.fsub(tempa, tempa, tempb);
-                build.ins_4s(inst.regA64, i, castReg(KindA64::q, tempa), 0);
-            }
-        }
+        build.fsub(inst.regA64, regOp(inst.a), regOp(inst.b));
         break;
     }
     case IrCmd::MUL_VEC:
     {
         inst.regA64 = regs.allocReuse(KindA64::q, index, {inst.a, inst.b});
 
-        if (FFlag::LuauCodeGenVectorA64)
-        {
-            build.fmul(inst.regA64, regOp(inst.a), regOp(inst.b));
-
-            if (!FFlag::LuauCodegenVectorTag2)
-            {
-                RegisterA64 tempw = regs.allocTemp(KindA64::w);
-                build.mov(tempw, LUA_TVECTOR);
-                build.ins_4s(inst.regA64, tempw, 3);
-            }
-        }
-        else
-        {
-            RegisterA64 tempa = regs.allocTemp(KindA64::s);
-            RegisterA64 tempb = regs.allocTemp(KindA64::s);
-
-            for (uint8_t i = 0; i < 3; i++)
-            {
-                build.dup_4s(tempa, regOp(inst.a), i);
-                build.dup_4s(tempb, regOp(inst.b), i);
-                build.fmul(tempa, tempa, tempb);
-                build.ins_4s(inst.regA64, i, castReg(KindA64::q, tempa), 0);
-            }
-        }
+        build.fmul(inst.regA64, regOp(inst.a), regOp(inst.b));
         break;
     }
     case IrCmd::DIV_VEC:
     {
         inst.regA64 = regs.allocReuse(KindA64::q, index, {inst.a, inst.b});
 
-        if (FFlag::LuauCodeGenVectorA64)
-        {
-            build.fdiv(inst.regA64, regOp(inst.a), regOp(inst.b));
-
-            if (!FFlag::LuauCodegenVectorTag2)
-            {
-                RegisterA64 tempw = regs.allocTemp(KindA64::w);
-                build.mov(tempw, LUA_TVECTOR);
-                build.ins_4s(inst.regA64, tempw, 3);
-            }
-        }
-        else
-        {
-            RegisterA64 tempa = regs.allocTemp(KindA64::s);
-            RegisterA64 tempb = regs.allocTemp(KindA64::s);
-
-            for (uint8_t i = 0; i < 3; i++)
-            {
-                build.dup_4s(tempa, regOp(inst.a), i);
-                build.dup_4s(tempb, regOp(inst.b), i);
-                build.fdiv(tempa, tempa, tempb);
-                build.ins_4s(inst.regA64, i, castReg(KindA64::q, tempa), 0);
-            }
-        }
+        build.fdiv(inst.regA64, regOp(inst.a), regOp(inst.b));
         break;
     }
     case IrCmd::UNM_VEC:
     {
         inst.regA64 = regs.allocReuse(KindA64::q, index, {inst.a});
 
-        if (FFlag::LuauCodeGenVectorA64)
-        {
-            build.fneg(inst.regA64, regOp(inst.a));
-
-            if (!FFlag::LuauCodegenVectorTag2)
-            {
-                RegisterA64 tempw = regs.allocTemp(KindA64::w);
-                build.mov(tempw, LUA_TVECTOR);
-                build.ins_4s(inst.regA64, tempw, 3);
-            }
-        }
-        else
-        {
-            RegisterA64 tempa = regs.allocTemp(KindA64::s);
-
-            for (uint8_t i = 0; i < 3; i++)
-            {
-                build.dup_4s(tempa, regOp(inst.a), i);
-                build.fneg(tempa, tempa);
-                build.ins_4s(inst.regA64, i, castReg(KindA64::q, tempa), 0);
-            }
-        }
+        build.fneg(inst.regA64, regOp(inst.a));
         break;
     }
     case IrCmd::NOT_ANY:
@@ -1232,7 +1118,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         inst.regA64 = regs.allocReg(KindA64::q, index);
 
-        if (FFlag::LuauCodeGenOptVecA64 && FFlag::LuauCodegenVectorTag2 && inst.a.kind == IrOpKind::Constant)
+        if (FFlag::LuauCodeGenOptVecA64 && inst.a.kind == IrOpKind::Constant)
         {
             float value = float(doubleOp(inst.a));
             uint32_t asU32;
@@ -1256,16 +1142,9 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         {
             RegisterA64 tempd = tempDouble(inst.a);
             RegisterA64 temps = castReg(KindA64::s, tempd);
-            RegisterA64 tempw = regs.allocTemp(KindA64::w);
 
             build.fcvt(temps, tempd);
             build.dup_4s(inst.regA64, castReg(KindA64::q, temps), 0);
-
-            if (!FFlag::LuauCodegenVectorTag2)
-            {
-                build.mov(tempw, LUA_TVECTOR);
-                build.ins_4s(inst.regA64, tempw, 3);
-            }
         }
         break;
     }
@@ -1568,7 +1447,15 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
 
         // fail to fallback on 'false' boolean value (falsy)
-        build.cbz(regOp(inst.b), target);
+        if (!FFlag::LuauCodegenCheckTruthyFormB || inst.b.kind != IrOpKind::Constant)
+        {
+            build.cbz(regOp(inst.b), target);
+        }
+        else
+        {
+            if (intOp(inst.b) == 0)
+                build.b(target);
+        }
 
         if (inst.a.kind != IrOpKind::Constant)
             build.setLabel(skip);

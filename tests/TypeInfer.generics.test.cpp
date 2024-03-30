@@ -402,15 +402,7 @@ TEST_CASE_FIXTURE(Fixture, "calling_self_generic_methods")
         end
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-    {
-        LUAU_REQUIRE_NO_ERRORS(result);
-
-        CHECK_EQ("{ f: (t1) -> (), id: <a>(unknown, a) -> a } where t1 = { read id: ((t1, number) -> number) & ((t1, string) -> string) }",
-            toString(requireType("x"), {true}));
-    }
-    else
-        LUAU_REQUIRE_ERRORS(result);
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_property")
