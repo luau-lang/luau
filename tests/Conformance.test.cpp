@@ -35,6 +35,9 @@ LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauLoadExceptionSafe)
 LUAU_DYNAMIC_FASTFLAG(LuauDebugInfoDupArgLeftovers)
 LUAU_FASTFLAG(LuauCompileRepeatUntilSkippedLocals)
+LUAU_FASTFLAG(LuauCodegenInferNumTag)
+LUAU_FASTFLAG(LuauCodegenDetailedCompilationResult)
+LUAU_FASTFLAG(LuauCodegenCheckTruthyFormB)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -238,7 +241,12 @@ static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = n
     free(bytecode);
 
     if (result == 0 && codegen && !skipCodegen && luau_codegen_supported())
-        Luau::CodeGen::compile(L, -1, Luau::CodeGen::CodeGen_ColdFunctions);
+    {
+        if (FFlag::LuauCodegenDetailedCompilationResult)
+            Luau::CodeGen::compile(L, -1, Luau::CodeGen::CodeGen_ColdFunctions);
+        else
+            Luau::CodeGen::compile_DEPRECATED(L, -1, Luau::CodeGen::CodeGen_ColdFunctions);
+    }
 
     int status = (result == 0) ? lua_resume(L, nullptr, 0) : LUA_ERRSYNTAX;
 
@@ -1825,6 +1833,18 @@ TEST_CASE("LightuserdataApi")
     globalState.reset();
 }
 
+TEST_CASE("DebugApi")
+{
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    lua_pushnumber(L, 10);
+
+    lua_Debug ar;
+    CHECK(lua_getinfo(L, -1, "f", &ar) == 0); // number is not a function
+    CHECK(lua_getinfo(L, -10, "f", &ar) == 0); // not on stack
+}
+
 TEST_CASE("Iter")
 {
     runConformance("iter.lua");
@@ -2051,6 +2071,9 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
+    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenInferNumTag, true};
+    ScopedFastFlag luauCodegenCheckTruthyFormB{FFlag::LuauCodegenCheckTruthyFormB, true};
+
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;
@@ -2108,6 +2131,8 @@ TEST_CASE("NativeTypeAnnotations")
 
 TEST_CASE("HugeFunction")
 {
+    ScopedFastFlag luauCodegenDetailedCompilationResult{FFlag::LuauCodegenDetailedCompilationResult, true};
+
     std::string source = makeHugeFunctionSource();
 
     StateRef globalState(luaL_newstate(), lua_close);
@@ -2214,6 +2239,7 @@ TEST_CASE("IrInstructionLimit")
         return;
 
     ScopedFastInt codegenHeuristicsInstructionLimit{FInt::CodegenHeuristicsInstructionLimit, 50'000};
+    ScopedFastFlag luauCodegenDetailedCompilationResult{FFlag::LuauCodegenDetailedCompilationResult, true};
 
     std::string source;
 
@@ -2254,10 +2280,18 @@ TEST_CASE("IrInstructionLimit")
     REQUIRE(result == 0);
 
     Luau::CodeGen::CompilationStats nativeStats = {};
-    Luau::CodeGen::CodeGenCompilationResult nativeResult = Luau::CodeGen::compile(L, -1, Luau::CodeGen::CodeGen_ColdFunctions, &nativeStats);
+    Luau::CodeGen::CompilationResult nativeResult = Luau::CodeGen::compile(L, -1, Luau::CodeGen::CodeGen_ColdFunctions, &nativeStats);
 
     // Limit is not hit immediately, so with some functions compiled it should be a success
-    CHECK(nativeResult == Luau::CodeGen::CodeGenCompilationResult::CodeGenOverflowInstructionLimit);
+    CHECK(nativeResult.result == Luau::CodeGen::CodeGenCompilationResult::Success);
+
+    // But it has some failed functions
+    CHECK(nativeResult.hasErrors());
+    REQUIRE(!nativeResult.protoFailures.empty());
+
+    CHECK(nativeResult.protoFailures.front().result == Luau::CodeGen::CodeGenCompilationResult::CodeGenOverflowInstructionLimit);
+    CHECK(nativeResult.protoFailures.front().line != -1);
+    CHECK(nativeResult.protoFailures.front().debugname != "");
 
     // We should be able to compile at least one of our functions
     CHECK(nativeStats.functionsCompiled > 0);

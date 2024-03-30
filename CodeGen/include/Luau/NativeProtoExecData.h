@@ -41,6 +41,7 @@ struct NativeProtoExecDataDeleter
 using NativeProtoExecDataPtr = std::unique_ptr<uint32_t[], NativeProtoExecDataDeleter>;
 
 [[nodiscard]] NativeProtoExecDataPtr createNativeProtoExecData(uint32_t bytecodeInstructionCount);
+void destroyNativeProtoExecData(const uint32_t* instructionOffsets) noexcept;
 
 [[nodiscard]] NativeProtoExecDataHeader& getNativeProtoExecDataHeader(uint32_t* instructionOffsets) noexcept;
 [[nodiscard]] const NativeProtoExecDataHeader& getNativeProtoExecDataHeader(const uint32_t* instructionOffsets) noexcept;

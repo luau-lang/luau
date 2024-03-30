@@ -107,6 +107,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/CodeBlockUnwind.cpp
     CodeGen/src/CodeGen.cpp
     CodeGen/src/CodeGenAssembly.cpp
+    CodeGen/src/CodeGenContext.cpp
     CodeGen/src/CodeGenUtils.cpp
     CodeGen/src/CodeGenA64.cpp
     CodeGen/src/CodeGenX64.cpp
@@ -139,6 +140,7 @@ target_sources(Luau.CodeGen PRIVATE
 
     CodeGen/src/BitUtils.h
     CodeGen/src/ByteUtils.h
+    CodeGen/src/CodeGenContext.h
     CodeGen/src/CodeGenLower.h
     CodeGen/src/CodeGenUtils.h
     CodeGen/src/CodeGenA64.h
@@ -356,13 +358,19 @@ target_sources(isocline PRIVATE
     extern/isocline/src/isocline.c
 )
 
-# Common sources shared between all CLI apps
-target_sources(Luau.CLI.lib PRIVATE
-    CLI/FileUtils.cpp
-    CLI/Flags.cpp
-    CLI/Flags.h
-    CLI/FileUtils.h
-)
+
+if (TARGET Luau.Repl.CLI OR TARGET Luau.Analyze.CLI OR
+    TARGET Luau.Ast.CLI OR TARGET Luau.CLI.Test OR
+    TARGET Luau.Reduce.CLI OR TARGET Luau.Compile.CLI OR
+    TARGET Luau.Bytecode.CLI)
+    # Common sources shared between all CLI apps.
+    target_sources(Luau.CLI.lib PRIVATE
+        CLI/FileUtils.cpp
+        CLI/Flags.cpp
+        CLI/Flags.h
+        CLI/FileUtils.h
+    )
+endif()
 
 if(TARGET Luau.Repl.CLI)
     # Luau.Repl.CLI Sources

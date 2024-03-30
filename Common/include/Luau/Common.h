@@ -77,7 +77,7 @@ struct FValue
         list = this;
     }
 
-    operator T() const
+    LUAU_FORCEINLINE operator T() const
     {
         return value;
     }

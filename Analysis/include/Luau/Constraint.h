@@ -224,7 +224,6 @@ struct HasIndexerConstraint
 // If the table is a free or unsealed table, we augment it with a new indexer.
 struct SetIndexerConstraint
 {
-    TypeId resultType;
     TypeId subjectType;
     TypeId indexType;
     TypeId propType;
@@ -249,6 +248,20 @@ struct UnpackConstraint
 {
     TypePackId resultPack;
     TypePackId sourcePack;
+
+    // UnpackConstraint is sometimes used to resolve the types of assignments.
+    // When this is the case, any LocalTypes in resultPack can have their
+    // domains extended by the corresponding type from sourcePack.
+    bool resultIsLValue = false;
+};
+
+// resultType ~ unpack sourceType
+//
+// The same as UnpackConstraint, but specialized for a pair of types as opposed to packs.
+struct Unpack1Constraint
+{
+    TypeId resultType;
+    TypeId sourceType;
 
     // UnpackConstraint is sometimes used to resolve the types of assignments.
     // When this is the case, any LocalTypes in resultPack can have their
@@ -290,8 +303,8 @@ struct ReducePackConstraint
 
 using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, IterableConstraint,
     NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, FunctionCheckConstraint, PrimitiveTypeConstraint, HasPropConstraint,
-    SetPropConstraint, HasIndexerConstraint, SetIndexerConstraint, SingletonOrTopTypeConstraint, UnpackConstraint, SetOpConstraint, ReduceConstraint, ReducePackConstraint,
-    EqualityConstraint>;
+    SetPropConstraint, HasIndexerConstraint, SetIndexerConstraint, SingletonOrTopTypeConstraint, UnpackConstraint, Unpack1Constraint,
+    SetOpConstraint, ReduceConstraint, ReducePackConstraint, EqualityConstraint>;
 
 struct Constraint
 {

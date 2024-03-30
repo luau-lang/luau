@@ -4,6 +4,7 @@
 #include "Luau/AssemblyBuilderX64.h"
 #include "Luau/UnwindBuilder.h"
 
+#include "CodeGenContext.h"
 #include "NativeState.h"
 #include "EmitCommonX64.h"
 
@@ -214,6 +215,39 @@ bool initHeaderFunctions(NativeState& data)
 
     data.context.gateEntry = codeStart + build.getLabelOffset(entryLocations.start);
     data.context.gateExit = codeStart + build.getLabelOffset(entryLocations.epilogueStart);
+
+    return true;
+}
+
+bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
+{
+    AssemblyBuilderX64 build(/* logText= */ false);
+    UnwindBuilder& unwind = *codeGenContext.unwindBuilder.get();
+
+    unwind.startInfo(UnwindBuilder::X64);
+
+    EntryLocations entryLocations = buildEntryFunction(build, unwind);
+
+    build.finalize();
+
+    unwind.finishInfo();
+
+    CODEGEN_ASSERT(build.data.empty());
+
+    uint8_t* codeStart = nullptr;
+    if (!codeGenContext.codeAllocator.allocate(build.data.data(), int(build.data.size()), build.code.data(), int(build.code.size()),
+            codeGenContext.gateData, codeGenContext.gateDataSize, codeStart))
+    {
+        CODEGEN_ASSERT(!"Failed to create entry function");
+        return false;
+    }
+
+    // Set the offset at the begining so that functions in new blocks will not overlay the locations
+    // specified by the unwind information of the entry function
+    unwind.setBeginOffset(build.getLabelOffset(entryLocations.prologueEnd));
+
+    codeGenContext.context.gateEntry = codeStart + build.getLabelOffset(entryLocations.start);
+    codeGenContext.context.gateExit = codeStart + build.getLabelOffset(entryLocations.epilogueStart);
 
     return true;
 }

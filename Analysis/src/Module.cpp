@@ -196,9 +196,6 @@ Module::~Module()
 
 void Module::clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice)
 {
-    LUAU_ASSERT(interfaceTypes.types.empty());
-    LUAU_ASSERT(interfaceTypes.typePacks.empty());
-
     CloneState cloneState{builtinTypes};
 
     ScopePtr moduleScope = getModuleScope();

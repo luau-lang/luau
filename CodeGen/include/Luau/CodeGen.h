@@ -40,6 +40,26 @@ enum class CodeGenCompilationResult
     AllocationFailed = 9,                     // Native codegen failed due to an allocation error
 };
 
+struct ProtoCompilationFailure
+{
+    CodeGenCompilationResult result = CodeGenCompilationResult::Success;
+
+    std::string debugname;
+    int line = -1;
+};
+
+struct CompilationResult
+{
+    CodeGenCompilationResult result = CodeGenCompilationResult::Success;
+
+    std::vector<ProtoCompilationFailure> protoFailures;
+
+    [[nodiscard]] bool hasErrors() const
+    {
+        return result != CodeGenCompilationResult::Success || !protoFailures.empty();
+    }
+};
+
 struct CompilationStats
 {
     size_t bytecodeSizeBytes = 0;
@@ -65,7 +85,8 @@ void create(lua_State* L);
 void setNativeExecutionEnabled(lua_State* L, bool enabled);
 
 // Builds target function and all inner functions
-CodeGenCompilationResult compile(lua_State* L, int idx, unsigned int flags = 0, CompilationStats* stats = nullptr);
+CodeGenCompilationResult compile_DEPRECATED(lua_State* L, int idx, unsigned int flags = 0, CompilationStats* stats = nullptr);
+CompilationResult compile(lua_State* L, int idx, unsigned int flags = 0, CompilationStats* stats = nullptr);
 
 using AnnotatorFn = void (*)(void* context, std::string& result, int fid, int instpos);
 

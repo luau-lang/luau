@@ -17,9 +17,7 @@ namespace CodeGen
 
 void NativeProtoExecDataDeleter::operator()(const uint32_t* instructionOffsets) const noexcept
 {
-    const NativeProtoExecDataHeader* header = &getNativeProtoExecDataHeader(instructionOffsets);
-    header->~NativeProtoExecDataHeader();
-    delete[] reinterpret_cast<const uint8_t*>(header);
+    destroyNativeProtoExecData(instructionOffsets);
 }
 
 [[nodiscard]] NativeProtoExecDataPtr createNativeProtoExecData(uint32_t bytecodeInstructionCount)
@@ -29,6 +27,13 @@ void NativeProtoExecDataDeleter::operator()(const uint32_t* instructionOffsets) 
     return NativeProtoExecDataPtr{reinterpret_cast<uint32_t*>(bytes.release() + sizeof(NativeProtoExecDataHeader))};
 }
 
+void destroyNativeProtoExecData(const uint32_t* instructionOffsets) noexcept
+{
+    const NativeProtoExecDataHeader* header = &getNativeProtoExecDataHeader(instructionOffsets);
+    header->~NativeProtoExecDataHeader();
+    delete[] reinterpret_cast<const uint8_t*>(header);
+}
+
 [[nodiscard]] NativeProtoExecDataHeader& getNativeProtoExecDataHeader(uint32_t* instructionOffsets) noexcept
 {
     return *reinterpret_cast<NativeProtoExecDataHeader*>(reinterpret_cast<uint8_t*>(instructionOffsets) - sizeof(NativeProtoExecDataHeader));
@@ -36,7 +41,6 @@ void NativeProtoExecDataDeleter::operator()(const uint32_t* instructionOffsets) 
 
 [[nodiscard]] const NativeProtoExecDataHeader& getNativeProtoExecDataHeader(const uint32_t* instructionOffsets) noexcept
 {
-
     return *reinterpret_cast<const NativeProtoExecDataHeader*>(
         reinterpret_cast<const uint8_t*>(instructionOffsets) - sizeof(NativeProtoExecDataHeader));
 }

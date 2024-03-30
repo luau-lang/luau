@@ -451,5 +451,4 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typestates_preserve_error_suppression_proper
     CHECK("*error-type* | string" == toString(requireTypeAtPosition({3, 16}), {true}));
 }
 
-
 TEST_SUITE_END();

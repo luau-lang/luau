@@ -15,9 +15,9 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenVectorTag2)
 LUAU_FASTFLAGVARIABLE(LuauCodegenVectorOptAnd, false)
 LUAU_FASTFLAGVARIABLE(LuauCodegenSmallerUnm, false)
+LUAU_FASTFLAGVARIABLE(LuauCodegenCheckTruthyFormB, false)
 
 namespace Luau
 {
@@ -631,9 +631,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
             build.vaddps(inst.regX64, tmp1.reg, tmp2.reg);
         }
-
-        if (!FFlag::LuauCodegenVectorTag2)
-            build.vorps(inst.regX64, inst.regX64, vectorOrMaskOp());
         break;
     }
     case IrCmd::SUB_VEC:
@@ -660,9 +657,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
             build.vsubps(inst.regX64, tmp1.reg, tmp2.reg);
         }
-
-        if (!FFlag::LuauCodegenVectorTag2)
-            build.vorps(inst.regX64, inst.regX64, vectorOrMaskOp());
         break;
     }
     case IrCmd::MUL_VEC:
@@ -689,9 +683,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
             build.vmulps(inst.regX64, tmp1.reg, tmp2.reg);
         }
-
-        if (!FFlag::LuauCodegenVectorTag2)
-            build.vorps(inst.regX64, inst.regX64, vectorOrMaskOp());
         break;
     }
     case IrCmd::DIV_VEC:
@@ -718,9 +709,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
             build.vdivps(inst.regX64, tmp1.reg, tmp2.reg);
         }
-
-        if (!FFlag::LuauCodegenVectorTag2)
-            build.vpinsrd(inst.regX64, inst.regX64, build.i32(LUA_TVECTOR), 3);
         break;
     }
     case IrCmd::UNM_VEC:
@@ -745,9 +733,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
                 build.vxorpd(inst.regX64, inst.regX64, build.f32x4(-0.0, -0.0, -0.0, -0.0));
             }
         }
-
-        if (!FFlag::LuauCodegenVectorTag2)
-            build.vpinsrd(inst.regX64, inst.regX64, build.i32(LUA_TVECTOR), 3);
         break;
     }
     case IrCmd::NOT_ANY:
@@ -1052,18 +1037,12 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             static_assert(sizeof(asU32) == sizeof(value), "Expecting float to be 32-bit");
             memcpy(&asU32, &value, sizeof(value));
 
-            if (FFlag::LuauCodegenVectorTag2)
-                build.vmovaps(inst.regX64, build.u32x4(asU32, asU32, asU32, 0));
-            else
-                build.vmovaps(inst.regX64, build.u32x4(asU32, asU32, asU32, LUA_TVECTOR));
+            build.vmovaps(inst.regX64, build.u32x4(asU32, asU32, asU32, 0));
         }
         else
         {
             build.vcvtsd2ss(inst.regX64, inst.regX64, memRegDoubleOp(inst.a));
             build.vpshufps(inst.regX64, inst.regX64, inst.regX64, 0b00'00'00'00);
-
-            if (!FFlag::LuauCodegenVectorTag2)
-                build.vpinsrd(inst.regX64, inst.regX64, build.i32(LUA_TVECTOR), 3);
         }
         break;
     case IrCmd::TAG_VECTOR:
@@ -1306,8 +1285,16 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
 
         // fail to fallback on 'false' boolean value (falsy)
-        build.cmp(memRegUintOp(inst.b), 0);
-        jumpOrAbortOnUndef(ConditionX64::Equal, inst.c, next);
+        if (!FFlag::LuauCodegenCheckTruthyFormB || inst.b.kind != IrOpKind::Constant)
+        {
+            build.cmp(memRegUintOp(inst.b), 0);
+            jumpOrAbortOnUndef(ConditionX64::Equal, inst.c, next);
+        }
+        else
+        {
+            if (intOp(inst.b) == 0)
+                jumpOrAbortOnUndef(inst.c, next);
+        }
 
         if (inst.a.kind != IrOpKind::Constant)
             build.setLabel(skip);
@@ -2306,7 +2293,7 @@ OperandX64 IrLoweringX64::bufferAddrOp(IrOp bufferOp, IrOp indexOp)
 
 RegisterX64 IrLoweringX64::vecOp(IrOp op, ScopedRegX64& tmp)
 {
-    if (FFlag::LuauCodegenVectorOptAnd && FFlag::LuauCodegenVectorTag2)
+    if (FFlag::LuauCodegenVectorOptAnd)
     {
         IrInst source = function.instOp(op);
         CODEGEN_ASSERT(source.cmd != IrCmd::SUBSTITUTE); // we don't process substitutions
@@ -2363,16 +2350,6 @@ OperandX64 IrLoweringX64::vectorAndMaskOp()
         vectorAndMask = build.u32x4(~0u, ~0u, ~0u, 0);
 
     return vectorAndMask;
-}
-
-OperandX64 IrLoweringX64::vectorOrMaskOp()
-{
-    CODEGEN_ASSERT(!FFlag::LuauCodegenVectorTag2);
-
-    if (vectorOrMask.base == noreg)
-        vectorOrMask = build.u32x4(0, 0, 0, LUA_TVECTOR);
-
-    return vectorOrMask;
 }
 
 } // namespace X64

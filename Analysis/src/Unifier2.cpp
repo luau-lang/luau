@@ -9,6 +9,8 @@
 #include "Luau/TypeArena.h"
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeFamily.h"
+#include "Luau/TypeFwd.h"
+#include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/VisitType.h"
 
@@ -101,6 +103,19 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     if (subTy == superTy)
         return true;
 
+    // We have potentially done some unifications while dispatching either `SubtypeConstraint` or `PackSubtypeConstraint`,
+    // so rather than implementing backtracking or traversing the entire type graph multiple times, we could push
+    // additional constraints as we discover blocked types along with their proper bounds.
+    //
+    // But we exclude these two subtyping patterns, they are tautological:
+    //   - never <: *blocked*
+    //   - *blocked* <: unknown
+    if ((get<BlockedType>(subTy) || get<BlockedType>(superTy)) && !get<NeverType>(subTy) && !get<UnknownType>(superTy))
+    {
+        incompleteSubtypes.push_back(SubtypeConstraint{subTy, superTy});
+        return true;
+    }
+
     FreeType* subFree = getMutable<FreeType>(subTy);
     FreeType* superFree = getMutable<FreeType>(superTy);
 
@@ -124,8 +139,7 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     }
     else if (subFree)
     {
-        subFree->upperBound = mkIntersection(subFree->upperBound, superTy);
-        expandedFreeTypes[subTy].push_back(superTy);
+        return unifyFreeWithType(subTy, superTy);
     }
     else if (superFree)
     {
@@ -227,6 +241,62 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
 
     // The unification failed, but we're not doing type checking.
     return true;
+}
+
+// If superTy is a function and subTy already has a
+// potentially-compatible function in its upper bound, we assume that
+// the function is not overloaded and attempt to combine superTy into
+// subTy's existing function bound.
+bool Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
+{
+    FreeType* subFree = getMutable<FreeType>(subTy);
+    LUAU_ASSERT(subFree);
+
+    auto doDefault = [&]() {
+        subFree->upperBound = mkIntersection(subFree->upperBound, superTy);
+        expandedFreeTypes[subTy].push_back(superTy);
+        return true;
+    };
+
+    TypeId upperBound = follow(subFree->upperBound);
+
+    if (get<FunctionType>(upperBound))
+        return unify(subFree->upperBound, superTy);
+
+    const FunctionType* superFunction = get<FunctionType>(superTy);
+    if (!superFunction)
+        return doDefault();
+
+    const auto [superArgHead, superArgTail] = flatten(superFunction->argTypes);
+    if (superArgTail)
+        return doDefault();
+
+    const IntersectionType* upperBoundIntersection = get<IntersectionType>(subFree->upperBound);
+    if (!upperBoundIntersection)
+        return doDefault();
+
+    bool ok = true;
+    bool foundOne = false;
+
+    for (TypeId part : upperBoundIntersection->parts)
+    {
+        const FunctionType* ft = get<FunctionType>(follow(part));
+        if (!ft)
+            continue;
+
+        const auto [subArgHead, subArgTail] = flatten(ft->argTypes);
+
+        if (!subArgTail && subArgHead.size() == superArgHead.size())
+        {
+            foundOne = true;
+            ok &= unify(part, superTy);
+        }
+    }
+
+    if (foundOne)
+        return ok;
+    else
+        return doDefault();
 }
 
 bool Unifier2::unify(TypeId subTy, const FunctionType* superFn)
@@ -402,6 +472,12 @@ bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
 
     if (subTp == superTp)
         return true;
+
+    if (get<BlockedTypePack>(subTp) || get<BlockedTypePack>(superTp))
+    {
+        incompleteSubtypes.push_back(PackSubtypeConstraint{subTp, superTp});
+        return true;
+    }
 
     const FreeTypePack* subFree = get<FreeTypePack>(subTp);
     const FreeTypePack* superFree = get<FreeTypePack>(superTp);

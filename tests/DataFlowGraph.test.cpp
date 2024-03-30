@@ -631,4 +631,31 @@ print(t.x)
     CHECK(phi->operands.at(1) == x2);
 }
 
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "insert_trivial_phi_nodes_inside_of_phi_nodes")
+{
+    dfg(R"(
+        local t = {}
+
+        local function f(k: string)
+            if t[k] ~= nil then
+                return
+            end
+
+            t[k] = 5
+        end
+    )");
+
+    DefId t1 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]); // local t = {}
+    DefId t2 = getDef<AstExprLocal, 1>();                                // t[k] ~= nil
+    DefId t3 = getDef<AstExprLocal, 3>();                                // t[k] = 5
+
+    CHECK(t1 != t2);
+    CHECK(t2 == t3);
+
+    const Phi* t2phi = get<Phi>(t2);
+    REQUIRE(t2phi);
+    CHECK(t2phi->operands.size() == 1);
+    CHECK(t2phi->operands.at(0) == t1);
+}
+
 TEST_SUITE_END();

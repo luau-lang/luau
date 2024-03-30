@@ -12,7 +12,6 @@
 
 #include <memory>
 
-LUAU_FASTFLAG(LuauCodegenVectorTag2)
 LUAU_FASTFLAG(LuauCodegenRemoveDeadStores4)
 LUAU_FASTFLAG(LuauCodegenLoadTVTag)
 
@@ -65,8 +64,6 @@ TEST_SUITE_BEGIN("IrLowering");
 
 TEST_CASE("VectorReciprocal")
 {
-    ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vecrcp(a: vector)
     return 1 / a
@@ -121,8 +118,6 @@ bb_bytecode_1:
 
 TEST_CASE("VectorAdd")
 {
-    ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3add(a: vector, b: vector)
     return a + b
@@ -149,8 +144,6 @@ bb_bytecode_1:
 
 TEST_CASE("VectorMinus")
 {
-    ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3minus(a: vector)
     return -a
@@ -175,7 +168,6 @@ bb_bytecode_1:
 
 TEST_CASE("VectorSubMulDiv")
 {
-    ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
     ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores4, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
@@ -210,7 +202,6 @@ bb_bytecode_1:
 
 TEST_CASE("VectorSubMulDiv2")
 {
-    ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
     ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores4, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
@@ -241,7 +232,6 @@ bb_bytecode_1:
 
 TEST_CASE("VectorMulDivMixed")
 {
-    ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
     ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores4, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
@@ -405,7 +395,6 @@ bb_bytecode_0:
 TEST_CASE("VectorConstantTag")
 {
     ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores4, true};
-    ScopedFastFlag luauCodegenVectorTag2{FFlag::LuauCodegenVectorTag2, true};
     ScopedFastFlag luauCodegenLoadTVTag{FFlag::LuauCodegenLoadTVTag, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(

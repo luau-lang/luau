@@ -110,11 +110,15 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
     unwind->finalize(unwindData, unwindSize, block, blockSize);
 
 #if defined(_WIN32) && defined(_M_X64)
+
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
     if (!RtlAddFunctionTable((RUNTIME_FUNCTION*)block, uint32_t(unwind->getFunctionCount()), uintptr_t(block)))
     {
         CODEGEN_ASSERT(!"Failed to allocate function table");
         return nullptr;
     }
+#endif
+
 #elif defined(__linux__) || defined(__APPLE__)
     if (!__register_frame)
         return nullptr;
@@ -138,8 +142,12 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
 void destroyBlockUnwindInfo(void* context, void* unwindData)
 {
 #if defined(_WIN32) && defined(_M_X64)
+
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
     if (!RtlDeleteFunctionTable((RUNTIME_FUNCTION*)unwindData))
         CODEGEN_ASSERT(!"Failed to deallocate function table");
+#endif
+
 #elif defined(__linux__) || defined(__APPLE__)
     if (!__deregister_frame)
     {

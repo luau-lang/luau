@@ -431,7 +431,7 @@ static bool dcrMagicFunctionFormat(MagicFunctionCallContext context)
     // unify the prefix one argument at a time
     for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
     {
-        context.solver->unify(context.solver->rootScope, context.callSite->location, params[i + paramOffset], expected[i]);
+        context.solver->unify(context.constraint, params[i + paramOffset], expected[i]);
     }
 
     // if we know the argument count or if we have too many arguments for sure, we can issue an error
@@ -561,7 +561,7 @@ static bool dcrMagicFunctionGmatch(MagicFunctionCallContext context)
     if (returnTypes.empty())
         return false;
 
-    context.solver->unify(context.solver->rootScope, context.callSite->location, params[0], context.solver->builtinTypes->stringType);
+    context.solver->unify(context.constraint, params[0], context.solver->builtinTypes->stringType);
 
     const TypePackId emptyPack = arena->addTypePack({});
     const TypePackId returnList = arena->addTypePack(returnTypes);
@@ -630,13 +630,13 @@ static bool dcrMagicFunctionMatch(MagicFunctionCallContext context)
     if (returnTypes.empty())
         return false;
 
-    context.solver->unify(context.solver->rootScope, context.callSite->location, params[0], context.solver->builtinTypes->stringType);
+    context.solver->unify(context.constraint, params[0], context.solver->builtinTypes->stringType);
 
     const TypeId optionalNumber = arena->addType(UnionType{{context.solver->builtinTypes->nilType, context.solver->builtinTypes->numberType}});
 
     size_t initIndex = context.callSite->self ? 1 : 2;
     if (params.size() == 3 && context.callSite->args.size > initIndex)
-        context.solver->unify(context.solver->rootScope, context.callSite->location, params[2], optionalNumber);
+        context.solver->unify(context.constraint, params[2], optionalNumber);
 
     const TypePackId returnList = arena->addTypePack(returnTypes);
     asMutable(context.result)->ty.emplace<BoundTypePack>(returnList);
@@ -733,17 +733,17 @@ static bool dcrMagicFunctionFind(MagicFunctionCallContext context)
             return false;
     }
 
-    context.solver->unify(context.solver->rootScope, context.callSite->location, params[0], builtinTypes->stringType);
+    context.solver->unify(context.constraint, params[0], builtinTypes->stringType);
 
     const TypeId optionalNumber = arena->addType(UnionType{{builtinTypes->nilType, builtinTypes->numberType}});
     const TypeId optionalBoolean = arena->addType(UnionType{{builtinTypes->nilType, builtinTypes->booleanType}});
 
     size_t initIndex = context.callSite->self ? 1 : 2;
     if (params.size() >= 3 && context.callSite->args.size > initIndex)
-        context.solver->unify(context.solver->rootScope, context.callSite->location, params[2], optionalNumber);
+        context.solver->unify(context.constraint, params[2], optionalNumber);
 
     if (params.size() == 4 && context.callSite->args.size > plainIndex)
-        context.solver->unify(context.solver->rootScope, context.callSite->location, params[3], optionalBoolean);
+        context.solver->unify(context.constraint, params[3], optionalBoolean);
 
     returnTypes.insert(returnTypes.begin(), {optionalNumber, optionalNumber});
 

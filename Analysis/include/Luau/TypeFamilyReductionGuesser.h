@@ -13,6 +13,7 @@
 #include "Luau/TypeFwd.h"
 #include "Luau/VisitType.h"
 #include "Luau/NotNull.h"
+#include "TypeArena.h"
 
 namespace Luau
 {
@@ -42,11 +43,14 @@ struct TypeFamilyReductionGuesser
     DenseHashSet<TypeId> cyclicInstances{nullptr};
 
     // Utilities
+    NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtins;
     NotNull<Normalizer> normalizer;
 
-    TypeFamilyReductionGuesser(NotNull<BuiltinTypes> builtins, NotNull<Normalizer> normalizer);
+    TypeFamilyReductionGuesser(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, NotNull<Normalizer> normalizer);
 
+    std::optional<TypeId> guess(TypeId typ);
+    std::optional<TypePackId> guess(TypePackId typ);
     TypeFamilyReductionGuessResult guessTypeFamilyReductionForFunction(const AstExprFunction& expr, const FunctionType* ftv, TypeId retTy);
 
 private:
