@@ -358,19 +358,13 @@ target_sources(isocline PRIVATE
     extern/isocline/src/isocline.c
 )
 
-
-if (TARGET Luau.Repl.CLI OR TARGET Luau.Analyze.CLI OR
-    TARGET Luau.Ast.CLI OR TARGET Luau.CLI.Test OR
-    TARGET Luau.Reduce.CLI OR TARGET Luau.Compile.CLI OR
-    TARGET Luau.Bytecode.CLI)
-    # Common sources shared between all CLI apps.
-    target_sources(Luau.CLI.lib PRIVATE
-        CLI/FileUtils.cpp
-        CLI/Flags.cpp
-        CLI/Flags.h
-        CLI/FileUtils.h
-    )
-endif()
+# Common sources shared between all CLI apps
+target_sources(Luau.CLI.lib PRIVATE
+    CLI/FileUtils.cpp
+    CLI/Flags.cpp
+    CLI/Flags.h
+    CLI/FileUtils.h
+)
 
 if(TARGET Luau.Repl.CLI)
     # Luau.Repl.CLI Sources
