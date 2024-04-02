@@ -13,6 +13,46 @@
 #include <initializer_list>
 #include <memory>
 
+#if __APPLE__
+#include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+#include <CoreFoundation/CoreFoundation.h>
+
+std::optional<std::string> getResourcePath0()
+{
+    CFBundleRef mainBundle = CFBundleGetMainBundle();
+    if (mainBundle == NULL)
+    {
+        return std::nullopt;
+    }
+    CFURLRef mainBundleURL = CFBundleCopyBundleURL(mainBundle);
+    if (mainBundleURL == NULL)
+    {
+        CFRelease(mainBundle);
+        return std::nullopt;
+    }
+
+    char pathBuffer[PATH_MAX];
+    if (!CFURLGetFileSystemRepresentation(mainBundleURL, true, (UInt8*)pathBuffer, PATH_MAX))
+    {
+        CFRelease(mainBundleURL);
+        CFRelease(mainBundle);
+        return std::nullopt;
+    }
+
+    CFRelease(mainBundleURL);
+    CFRelease(mainBundle);
+    return std::string(pathBuffer);
+}
+
+std::optional<std::string> getResourcePath()
+{
+    static std::optional<std::string> path0 = getResourcePath0();
+    return path0;
+}
+#endif
+#endif
+
 LUAU_FASTFLAG(LuauUpdatedRequireByStringSemantics)
 
 class ReplWithPathFixture
@@ -49,7 +89,23 @@ public:
         std::string luauDirRel = ".";
         std::string luauDirAbs;
 
+#if !__APPLE__ || !TARGET_OS_IPHONE
         std::optional<std::string> cwd = getCurrentWorkingDirectory();
+#else
+        std::optional<std::string> cwd0 = getCurrentWorkingDirectory();
+        std::optional<std::string> cwd = getResourcePath();
+        if (cwd && cwd0)
+        {
+            // when running in xcode cwd0 is "/", however that is not always the case
+            const auto& _res = *cwd;
+            const auto& _cwd = *cwd0;
+            if (_res.find(_cwd) == 0)
+            {
+                // we need relative path so we subtract cwd0 from cwd
+                luauDirRel = "./" + _res.substr(_cwd.length());
+            }
+        }
+#endif
         REQUIRE_MESSAGE(cwd, "Error getting Luau path");
         std::replace((*cwd).begin(), (*cwd).end(), '\\', '/');
         luauDirAbs = *cwd;
