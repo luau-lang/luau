@@ -89,9 +89,7 @@ public:
         std::string luauDirRel = ".";
         std::string luauDirAbs;
 
-#if !__APPLE__ || !TARGET_OS_IPHONE
-        std::optional<std::string> cwd = getCurrentWorkingDirectory();
-#else
+#if TARGET_OS_IPHONE
         std::optional<std::string> cwd0 = getCurrentWorkingDirectory();
         std::optional<std::string> cwd = getResourcePath();
         if (cwd && cwd0)
@@ -105,6 +103,8 @@ public:
                 luauDirRel = "./" + _res.substr(_cwd.length());
             }
         }
+#else
+        std::optional<std::string> cwd = getCurrentWorkingDirectory();
 #endif
         REQUIRE_MESSAGE(cwd, "Error getting Luau path");
         std::replace((*cwd).begin(), (*cwd).end(), '\\', '/');
