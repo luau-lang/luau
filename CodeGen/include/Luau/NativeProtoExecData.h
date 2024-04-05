@@ -21,6 +21,13 @@ struct NativeProtoExecDataHeader
     // when the NativeProto is bound to the NativeModule via assignToModule().
     NativeModule* nativeModule = nullptr;
 
+    // We store the native code offset until the code is allocated in executable
+    // pages, after which point we store the actual address.
+    const uint8_t* entryOffsetOrAddress = nullptr;
+
+    // The bytecode id of the proto
+    uint32_t bytecodeId = 0;
+
     // The number of bytecode instructions in the proto.  This is the number of
     // elements in the instruction offsets array following this header.
     uint32_t bytecodeInstructionCount = 0;

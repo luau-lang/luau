@@ -38,6 +38,8 @@ LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode, false)
 
 namespace Luau
 {
@@ -891,7 +893,13 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
     SourceNode& sourceNode = *item.sourceNode;
     const SourceModule& sourceModule = *item.sourceModule;
     const Config& config = item.config;
-    Mode mode = sourceModule.mode.value_or(config.mode);
+    Mode mode;
+    if (FFlag::DebugLuauForceStrictMode)
+        mode = Mode::Strict;
+    else if (FFlag::DebugLuauForceNonStrictMode)
+        mode = Mode::Nonstrict;
+    else
+        mode = sourceModule.mode.value_or(config.mode);
     ScopePtr environmentScope = item.environmentScope;
     double timestamp = getTimestamp();
     const std::vector<RequireCycle>& requireCycles = item.requireCycles;

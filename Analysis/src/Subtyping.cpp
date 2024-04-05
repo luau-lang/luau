@@ -347,9 +347,12 @@ SubtypingResult Subtyping::isSubtype(TypeId subTy, TypeId superTy)
         TypeId upperBound = makeAggregateType<IntersectionType>(ub, builtinTypes->unknownType);
 
         const NormalizedType* nt = normalizer->normalize(upperBound);
-        if (!nt)
+        // we say that the result is true if normalization failed because complex types are likely to be inhabited.
+        NormalizationResult res = nt ? normalizer->isInhabited(nt) : NormalizationResult::True;
+
+        if (!nt || res == NormalizationResult::HitLimits)
             result.normalizationTooComplex = true;
-        else if (!normalizer->isInhabited(nt))
+        else if (res == NormalizationResult::False)
         {
             /* If the normalized upper bound we're mapping to a generic is
              * uninhabited, then we must consider the subtyping relation not to
@@ -432,6 +435,12 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
 {
     subTy = follow(subTy);
     superTy = follow(superTy);
+
+    if (TypeId* subIt = env.substitutions.find(subTy); subIt && *subIt)
+        subTy = *subIt;
+
+    if (TypeId* superIt = env.substitutions.find(superTy); superIt && *superIt)
+        superTy = *superIt;
 
     SubtypingResult* cachedResult = resultCache.find({subTy, superTy});
     if (cachedResult)
@@ -612,7 +621,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     else if (auto p = get2<ClassType, ClassType>(subTy, superTy))
         result = isCovariantWith(env, p);
     else if (auto p = get2<ClassType, TableType>(subTy, superTy))
-        result = isCovariantWith(env, p);
+        result = isCovariantWith(env, subTy, p.first, superTy, p.second);
     else if (auto p = get2<PrimitiveType, TableType>(subTy, superTy))
         result = isCovariantWith(env, p);
     else if (auto p = get2<SingletonType, TableType>(subTy, superTy))
@@ -1301,9 +1310,11 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Clas
     return {isSubclass(subClass, superClass)};
 }
 
-SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const ClassType* subClass, const TableType* superTable)
+SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId subTy, const ClassType* subClass, TypeId superTy, const TableType* superTable)
 {
     SubtypingResult result{true};
+
+    env.substitutions[superTy] = subTy;
 
     for (const auto& [name, prop] : superTable->props)
     {
@@ -1312,8 +1323,13 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Clas
             result.andAlso(isCovariantWith(env, *classProp, prop, name));
         }
         else
-            return SubtypingResult{false};
+        {
+            result = {false};
+            break;
+        }
     }
+
+    env.substitutions[superTy] = nullptr;
 
     return result;
 }

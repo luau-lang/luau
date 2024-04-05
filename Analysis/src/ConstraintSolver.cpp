@@ -27,7 +27,7 @@
 #include <utility>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
-
+LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings, false);
 LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500);
 
 namespace Luau
@@ -465,10 +465,8 @@ void ConstraintSolver::run()
             reduceFamilies(instance, Location{}, TypeFamilyContext{arena, builtinTypes, rootScope, normalizer, NotNull{&iceReporter}, NotNull{&limits}}, false);
     }
 
-    if (FFlag::DebugLuauLogSolver)
-    {
+    if (FFlag::DebugLuauLogSolver || FFlag::DebugLuauLogBindings)
         dumpBindings(rootScope, opts);
-    }
 
     if (logger)
     {
@@ -1761,7 +1759,7 @@ bool ConstraintSolver::tryDispatchUnpack1(NotNull<const Constraint> constraint, 
     else
     {
         LUAU_ASSERT(resultIsLValue);
-        unify(constraint, resultTy, srcTy);
+        unify(constraint, srcTy, resultTy);
     }
 
     unblock(resultTy, constraint->location);
@@ -1812,7 +1810,7 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
                 tryDispatchUnpack1(constraint, resultTy, srcTy, c.resultIsLValue);
         }
         else
-            unify(constraint, resultTy, srcTy);
+            unify(constraint, srcTy, resultTy);
 
         ++resultIter;
         ++i;

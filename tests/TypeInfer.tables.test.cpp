@@ -2174,7 +2174,7 @@ local b: B = a
     LUAU_REQUIRE_ERRORS(result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK(toString(result.errors.at(0)) == R"(Type 'a' could not be converted into 'B'; at [read "y"], number is not exactly string)");
+        CHECK(toString(result.errors.at(0)) == R"(Type 'A' could not be converted into 'B'; at [read "y"], number is not exactly string)");
     else
     {
         const std::string expected = R"(Type 'A' could not be converted into 'B'
@@ -2201,7 +2201,7 @@ local b: B = a
     LUAU_REQUIRE_ERRORS(result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK(toString(result.errors.at(0)) == R"(Type 'a' could not be converted into 'B'; at [read "b"][read "y"], number is not exactly string)");
+        CHECK(toString(result.errors.at(0)) == R"(Type 'A' could not be converted into 'B'; at [read "b"][read "y"], number is not exactly string)");
     else
     {
         const std::string expected = R"(Type 'A' could not be converted into 'B'
@@ -3994,7 +3994,7 @@ TEST_CASE_FIXTURE(Fixture, "identify_all_problematic_table_fields")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    std::string expected = "Type 'a' could not be converted into 'T'; at [read \"a\"], string is not exactly number"
+    std::string expected = "Type '{ a: string, b: boolean, c: number }' could not be converted into 'T'; at [read \"a\"], string is not exactly number"
                            "\n\tat [read \"b\"], boolean is not exactly string"
                            "\n\tat [read \"c\"], number is not exactly boolean";
     CHECK(toString(result.errors[0]) == expected);

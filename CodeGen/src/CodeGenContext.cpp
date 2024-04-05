@@ -2,6 +2,7 @@
 #include "CodeGenContext.h"
 
 #include "CodeGenA64.h"
+#include "CodeGenLower.h"
 #include "CodeGenX64.h"
 
 #include "Luau/CodeBlockUnwind.h"
@@ -9,7 +10,8 @@
 #include "Luau/UnwindBuilderDwarf2.h"
 #include "Luau/UnwindBuilderWin.h"
 
-LUAU_FASTFLAG(LuauCodegenHeapSizeReport)
+#include "lapi.h"
+
 
 LUAU_FASTINT(LuauCodeGenBlockSize)
 LUAU_FASTINT(LuauCodeGenMaxTotalSize)
@@ -19,9 +21,98 @@ namespace Luau
 namespace CodeGen
 {
 
+static const Instruction kCodeEntryInsn = LOP_NATIVECALL;
+
 // From CodeGen.cpp
 extern void* gPerfLogContext;
 extern PerfLogFn gPerfLogFn;
+
+unsigned int getCpuFeaturesA64();
+
+static void logPerfFunction(Proto* p, uintptr_t addr, unsigned size)
+{
+    CODEGEN_ASSERT(p->source);
+
+    const char* source = getstr(p->source);
+    source = (source[0] == '=' || source[0] == '@') ? source + 1 : "[string]";
+
+    char name[256];
+    snprintf(name, sizeof(name), "<luau> %s:%d %s", source, p->linedefined, p->debugname ? getstr(p->debugname) : "");
+
+    if (gPerfLogFn)
+        gPerfLogFn(gPerfLogContext, addr, size, name);
+}
+
+static void logPerfFunctions(
+    const std::vector<Proto*>& moduleProtos, const uint8_t* nativeModuleBaseAddress, const std::vector<NativeProtoExecDataPtr>& nativeProtos)
+{
+    if (gPerfLogFn == nullptr)
+        return;
+
+    if (nativeProtos.size() > 0)
+        gPerfLogFn(gPerfLogContext, uintptr_t(nativeModuleBaseAddress),
+            unsigned(getNativeProtoExecDataHeader(nativeProtos[0].get()).entryOffsetOrAddress - nativeModuleBaseAddress), "<luau helpers>");
+
+    auto protoIt = moduleProtos.begin();
+
+    for (const NativeProtoExecDataPtr& nativeProto : nativeProtos)
+    {
+        const NativeProtoExecDataHeader& header = getNativeProtoExecDataHeader(nativeProto.get());
+
+        while (protoIt != moduleProtos.end() && uint32_t((**protoIt).bytecodeid) != header.bytecodeId)
+        {
+            ++protoIt;
+        }
+
+        CODEGEN_ASSERT(protoIt != moduleProtos.end());
+
+        logPerfFunction(*protoIt, uintptr_t(header.entryOffsetOrAddress), uint32_t(header.nativeCodeSize));
+    }
+}
+
+// If Release is true, the native proto will be removed from the vector and
+// ownership will be assigned to the Proto object (for use with the
+// StandaloneCodeContext).  If Release is false, the native proto will not be
+// removed from the vector (for use with the SharedCodeContext).
+template<bool Release, typename NativeProtosVector>
+static size_t bindNativeProtos(const std::vector<Proto*>& moduleProtos, NativeProtosVector& nativeProtos)
+{
+    size_t protosBound = 0;
+
+    auto protoIt = moduleProtos.begin();
+
+    for (auto& nativeProto : nativeProtos)
+    {
+        const NativeProtoExecDataHeader& header = getNativeProtoExecDataHeader(nativeProto.get());
+
+        while (protoIt != moduleProtos.end() && uint32_t((**protoIt).bytecodeid) != header.bytecodeId)
+        {
+            ++protoIt;
+        }
+
+        CODEGEN_ASSERT(protoIt != moduleProtos.end());
+
+        // The NativeProtoExecData is now owned by the VM and will be destroyed
+        // via onDestroyFunction.
+        Proto* proto = *protoIt;
+
+        if constexpr (Release)
+        {
+            proto->execdata = nativeProto.release();
+        }
+        else
+        {
+            proto->execdata = nativeProto.get();
+        }
+
+        proto->exectarget = reinterpret_cast<uintptr_t>(header.entryOffsetOrAddress);
+        proto->codeentry = &kCodeEntryInsn;
+
+        ++protosBound;
+    }
+
+    return protosBound;
+}
 
 BaseCodeGenContext::BaseCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext)
     : codeAllocator{blockSize, maxTotalSize, allocationCallback, allocationCallbackContext}
@@ -64,7 +155,37 @@ StandaloneCodeGenContext::StandaloneCodeGenContext(
 {
 }
 
-void StandaloneCodeGenContext::compileOrBindModule(const ModuleId&, lua_State*, int, unsigned int, CompilationStats*) {}
+[[nodiscard]] std::optional<CodeGenCompilationResult> StandaloneCodeGenContext::tryBindExistingModule(const ModuleId&, const std::vector<Proto*>&)
+{
+    // The StandaloneCodeGenContext does not support sharing of native code
+    return {};
+}
+
+[[nodiscard]] CodeGenCompilationResult StandaloneCodeGenContext::bindModule(const ModuleId&, const std::vector<Proto*>& moduleProtos,
+    std::vector<NativeProtoExecDataPtr> nativeProtos, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize)
+{
+    uint8_t* nativeData = nullptr;
+    size_t sizeNativeData = 0;
+    uint8_t* codeStart = nullptr;
+    if (!codeAllocator.allocate(data, int(dataSize), code, int(codeSize), nativeData, sizeNativeData, codeStart))
+    {
+        return CodeGenCompilationResult::AllocationFailed;
+    }
+
+    // Relocate the entry offsets to their final executable addresses:
+    for (const NativeProtoExecDataPtr& nativeProto : nativeProtos)
+    {
+        NativeProtoExecDataHeader& header = getNativeProtoExecDataHeader(nativeProto.get());
+
+        header.entryOffsetOrAddress = codeStart + reinterpret_cast<uintptr_t>(header.entryOffsetOrAddress);
+    }
+
+    logPerfFunctions(moduleProtos, codeStart, nativeProtos);
+
+    bindNativeProtos<true>(moduleProtos, nativeProtos);
+
+    return CodeGenCompilationResult::Success;
+}
 
 void StandaloneCodeGenContext::onCloseState() noexcept
 {
@@ -82,10 +203,44 @@ void StandaloneCodeGenContext::onDestroyFunction(void* execdata) noexcept
 SharedCodeGenContext::SharedCodeGenContext(
     size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext)
     : BaseCodeGenContext{blockSize, maxTotalSize, allocationCallback, allocationCallbackContext}
+    , sharedAllocator{&codeAllocator}
 {
 }
 
-void SharedCodeGenContext::compileOrBindModule(const ModuleId&, lua_State*, int, unsigned int, CompilationStats*) {}
+[[nodiscard]] std::optional<CodeGenCompilationResult> SharedCodeGenContext::tryBindExistingModule(
+    const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos)
+{
+    NativeModuleRef nativeModule = sharedAllocator.tryGetNativeModule(moduleId);
+    if (nativeModule.empty())
+    {
+        return {};
+    }
+
+    // Bind the native protos and acquire an owning reference for each:
+    nativeModule->addRefs(bindNativeProtos<false>(moduleProtos, nativeModule->getNativeProtos()));
+
+    return CodeGenCompilationResult::Success;
+}
+
+[[nodiscard]] CodeGenCompilationResult SharedCodeGenContext::bindModule(const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos,
+    std::vector<NativeProtoExecDataPtr> nativeProtos, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize)
+{
+    const std::pair<NativeModuleRef, bool> insertionResult =
+        sharedAllocator.getOrInsertNativeModule(moduleId, std::move(nativeProtos), data, dataSize, code, codeSize);
+
+    // If we did not get a NativeModule back, allocation failed:
+    if (insertionResult.first.empty())
+        return CodeGenCompilationResult::AllocationFailed;
+
+    // If we allocated a new module, log the function code ranges for perf:
+    if (insertionResult.second)
+        logPerfFunctions(moduleProtos, insertionResult.first->getModuleBaseAddress(), insertionResult.first->getNativeProtos());
+
+    // Bind the native protos and acquire an owning reference for each:
+    insertionResult.first->addRefs(bindNativeProtos<false>(moduleProtos, insertionResult.first->getNativeProtos()));
+
+    return CodeGenCompilationResult::Success;
+}
 
 void SharedCodeGenContext::onCloseState() noexcept
 {
@@ -165,13 +320,16 @@ static int onEnter(lua_State* L, Proto* proto)
     return GateFn(codeGenContext->context.gateEntry)(L, proto, target, &codeGenContext->context);
 }
 
+static int onEnterDisabled(lua_State* L, Proto* proto)
+{
+    return 1;
+}
+
 // Defined in CodeGen.cpp
 void onDisable(lua_State* L, Proto* proto);
 
 static size_t getMemorySize(lua_State* L, Proto* proto)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenHeapSizeReport);
-
     const NativeProtoExecDataHeader& execDataHeader = getNativeProtoExecDataHeader(static_cast<const uint32_t*>(proto->execdata));
 
     const size_t execDataSize = sizeof(NativeProtoExecDataHeader) + execDataHeader.bytecodeInstructionCount * sizeof(Instruction);
@@ -191,9 +349,7 @@ static void initializeExecutionCallbacks(lua_State* L, BaseCodeGenContext* codeG
     ecb->destroy = onDestroyFunction;
     ecb->enter = onEnter;
     ecb->disable = onDisable;
-
-    if (FFlag::LuauCodegenHeapSizeReport)
-        ecb->getmemorysize = getMemorySize;
+    ecb->getmemorysize = getMemorySize;
 }
 
 void create_NEW(lua_State* L)
@@ -220,6 +376,187 @@ void create_NEW(lua_State* L, size_t blockSize, size_t maxTotalSize, AllocationC
 void create_NEW(lua_State* L, SharedCodeGenContext* codeGenContext)
 {
     initializeExecutionCallbacks(L, codeGenContext);
+}
+
+[[nodiscard]] static NativeProtoExecDataPtr createNativeProtoExecData(Proto* proto, const IrBuilder& ir)
+{
+    NativeProtoExecDataPtr nativeExecData = createNativeProtoExecData(proto->sizecode);
+
+    uint32_t instTarget = ir.function.entryLocation;
+
+    for (int i = 0; i < proto->sizecode; ++i)
+    {
+        CODEGEN_ASSERT(ir.function.bcMapping[i].asmLocation >= instTarget);
+
+        nativeExecData[i] = ir.function.bcMapping[i].asmLocation - instTarget;
+    }
+
+    // Set first instruction offset to 0 so that entering this function still
+    // executes any generated entry code.
+    nativeExecData[0] = 0;
+
+    NativeProtoExecDataHeader& header = getNativeProtoExecDataHeader(nativeExecData.get());
+    header.entryOffsetOrAddress = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(instTarget));
+    header.bytecodeId = uint32_t(proto->bytecodeid);
+    header.bytecodeInstructionCount = proto->sizecode;
+
+    return nativeExecData;
+}
+
+template<typename AssemblyBuilder>
+[[nodiscard]] static NativeProtoExecDataPtr createNativeFunction(
+    AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto, uint32_t& totalIrInstCount, CodeGenCompilationResult& result)
+{
+    IrBuilder ir;
+    ir.buildFunctionIr(proto);
+
+    unsigned instCount = unsigned(ir.function.instructions.size());
+
+    if (totalIrInstCount + instCount >= unsigned(FInt::CodegenHeuristicsInstructionLimit.value))
+    {
+        result = CodeGenCompilationResult::CodeGenOverflowInstructionLimit;
+        return {};
+    }
+
+    totalIrInstCount += instCount;
+
+    if (!lowerFunction(ir, build, helpers, proto, {}, /* stats */ nullptr, result))
+    {
+        return {};
+    }
+
+    return createNativeProtoExecData(proto, ir);
+}
+
+CompilationResult compile_NEW(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats)
+{
+    CODEGEN_ASSERT(lua_isLfunction(L, idx));
+    const TValue* func = luaA_toobject(L, idx);
+
+    Proto* root = clvalue(func)->l.p;
+
+    if ((flags & CodeGen_OnlyNativeModules) != 0 && (root->flags & LPF_NATIVE_MODULE) == 0)
+        return CompilationResult{CodeGenCompilationResult::NotNativeModule};
+
+    BaseCodeGenContext* codeGenContext = getCodeGenContext(L);
+    if (codeGenContext == nullptr)
+        return CompilationResult{CodeGenCompilationResult::CodeGenNotInitialized};
+
+    std::vector<Proto*> protos;
+    gatherFunctions(protos, root, flags);
+
+    // Skip protos that have been compiled during previous invocations of CodeGen::compile
+    protos.erase(std::remove_if(protos.begin(), protos.end(),
+                     [](Proto* p) {
+                         return p == nullptr || p->execdata != nullptr;
+                     }),
+        protos.end());
+
+    if (protos.empty())
+        return CompilationResult{CodeGenCompilationResult::NothingToCompile};
+
+    if (std::optional<CodeGenCompilationResult> existingModuleBindResult = codeGenContext->tryBindExistingModule(moduleId, protos))
+        return CompilationResult{*existingModuleBindResult};
+
+    if (stats != nullptr)
+        stats->functionsTotal = uint32_t(protos.size());
+
+#if defined(__aarch64__)
+    static unsigned int cpuFeatures = getCpuFeaturesA64();
+    A64::AssemblyBuilderA64 build(/* logText= */ false, cpuFeatures);
+#else
+    X64::AssemblyBuilderX64 build(/* logText= */ false);
+#endif
+
+    ModuleHelpers helpers;
+#if defined(__aarch64__)
+    A64::assembleHelpers(build, helpers);
+#else
+    X64::assembleHelpers(build, helpers);
+#endif
+
+    CompilationResult compilationResult;
+
+    std::vector<NativeProtoExecDataPtr> nativeProtos;
+    nativeProtos.reserve(protos.size());
+
+    uint32_t totalIrInstCount = 0;
+
+    for (size_t i = 0; i != protos.size(); ++i)
+    {
+        CodeGenCompilationResult protoResult = CodeGenCompilationResult::Success;
+
+        NativeProtoExecDataPtr nativeExecData = createNativeFunction(build, helpers, protos[i], totalIrInstCount, protoResult);
+        if (nativeExecData != nullptr)
+        {
+            nativeProtos.push_back(std::move(nativeExecData));
+        }
+        else
+        {
+            compilationResult.protoFailures.push_back(
+                {protoResult, protos[i]->debugname ? getstr(protos[i]->debugname) : "", protos[i]->linedefined});
+        }
+    }
+
+    // Very large modules might result in overflowing a jump offset; in this
+    // case we currently abandon the entire module
+    if (!build.finalize())
+    {
+        compilationResult.result = CodeGenCompilationResult::CodeGenAssemblerFinalizationFailure;
+        return compilationResult;
+    }
+
+    // If no functions were assembled, we don't need to allocate/copy executable pages for helpers
+    if (nativeProtos.empty())
+        return compilationResult;
+
+    if (stats != nullptr)
+    {
+        for (const NativeProtoExecDataPtr& nativeExecData : nativeProtos)
+        {
+            NativeProtoExecDataHeader& header = getNativeProtoExecDataHeader(nativeExecData.get());
+
+            stats->bytecodeSizeBytes += header.bytecodeInstructionCount * sizeof(Instruction);
+
+            // Account for the native -> bytecode instruction offsets mapping:
+            stats->nativeMetadataSizeBytes += header.bytecodeInstructionCount * sizeof(uint32_t);
+        }
+
+        stats->functionsCompiled += uint32_t(nativeProtos.size());
+        stats->nativeCodeSizeBytes += build.code.size();
+        stats->nativeDataSizeBytes += build.data.size();
+    }
+
+    for (size_t i = 0; i < nativeProtos.size(); ++i)
+    {
+        NativeProtoExecDataHeader& header = getNativeProtoExecDataHeader(nativeProtos[i].get());
+
+        uint32_t begin = uint32_t(reinterpret_cast<uintptr_t>(header.entryOffsetOrAddress));
+        uint32_t end = i + 1 < nativeProtos.size() ? uint32_t(uintptr_t(getNativeProtoExecDataHeader(nativeProtos[i + 1].get()).entryOffsetOrAddress))
+                                                   : uint32_t(build.code.size());
+
+        CODEGEN_ASSERT(begin < end);
+
+        header.nativeCodeSize = end - begin;
+    }
+
+    const CodeGenCompilationResult bindResult =
+        codeGenContext->bindModule(moduleId, protos, std::move(nativeProtos), reinterpret_cast<const uint8_t*>(build.data.data()), build.data.size(),
+            reinterpret_cast<const uint8_t*>(build.code.data()), build.code.size());
+    if (bindResult != CodeGenCompilationResult::Success)
+        compilationResult.result = bindResult;
+    return compilationResult;
+}
+
+[[nodiscard]] bool isNativeExecutionEnabled_NEW(lua_State* L)
+{
+    return getCodeGenContext(L) != nullptr && L->global->ecb.enter == onEnter;
+}
+
+void setNativeExecutionEnabled_NEW(lua_State* L, bool enabled)
+{
+    if (getCodeGenContext(L) != nullptr)
+        L->global->ecb.enter = enabled ? onEnter : onEnterDisabled;
 }
 
 } // namespace CodeGen

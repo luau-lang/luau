@@ -828,7 +828,7 @@ y.a.c = y
     if (FFlag::DebugLuauDeferredConstraintResolution)
         CHECK(
             toString(result.errors.at(0)) ==
-            R"(Type 'x' could not be converted into 'T<number>'; type x[read "a"][read "c"] (nil) is not exactly T<number>[read "a"][read "c"][0] (T<number>))");
+            R"(Type '{ a: { c: nil, d: number }, b: number }' could not be converted into 'T<number>'; type { a: { c: nil, d: number }, b: number }[read "a"][read "c"] (nil) is not exactly T<number>[read "a"][read "c"][0] (T<number>))");
     else
     {
         const std::string expected = R"(Type 'y' could not be converted into 'T<string>'

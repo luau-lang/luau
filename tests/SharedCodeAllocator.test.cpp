@@ -1,6 +1,10 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/SharedCodeAllocator.h"
 
+#include "Luau/CodeAllocator.h"
+
+#include "luacodegen.h"
+
 #include "doctest.h"
 
 // We explicitly test correctness of self-assignment for some types
@@ -10,15 +14,25 @@
 
 using namespace Luau::CodeGen;
 
+
+constexpr size_t kBlockSize = 1024 * 1024;
+constexpr size_t kMaxTotalSize = 1024 * 1024;
+
+static const uint8_t fakeCode[1] = {0x00};
+
 TEST_SUITE_BEGIN("SharedCodeAllocator");
 
 TEST_CASE("NativeModuleRefRefcounting")
 {
-    SharedCodeAllocator allocator{};
+    if (!luau_codegen_supported())
+        return;
+
+    CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
+    SharedCodeAllocator allocator{&codeAllocator};
 
     REQUIRE(allocator.tryGetNativeModule(ModuleId{0x0a}).empty());
 
-    NativeModuleRef modRefA = allocator.getOrInsertNativeModule(ModuleId{0x0a}, {}, {}, {});
+    NativeModuleRef modRefA = allocator.getOrInsertNativeModule(ModuleId{0x0a}, {}, nullptr, 0, fakeCode, std::size(fakeCode)).first;
     REQUIRE(!modRefA.empty());
 
     // If we attempt to get the module again, we should get the same module back:
@@ -26,14 +40,14 @@ TEST_CASE("NativeModuleRefRefcounting")
 
     // If we try to insert another instance of the module, we should get the
     // existing module back:
-    REQUIRE(allocator.getOrInsertNativeModule(ModuleId{0x0a}, {}, {}, {}).get() == modRefA.get());
+    REQUIRE(allocator.getOrInsertNativeModule(ModuleId{0x0a}, {}, nullptr, 0, fakeCode, std::size(fakeCode)).first.get() == modRefA.get());
 
     // If we try to look up a different module, we should not get the existing
     // module back:
     REQUIRE(allocator.tryGetNativeModule(ModuleId{0x0b}).empty());
 
     // (Insert a second module to help with validation below)
-    NativeModuleRef modRefB = allocator.getOrInsertNativeModule(ModuleId{0x0b}, {}, {}, {});
+    NativeModuleRef modRefB = allocator.getOrInsertNativeModule(ModuleId{0x0b}, {}, nullptr, 0, fakeCode, std::size(fakeCode)).first;
     REQUIRE(!modRefB.empty());
     REQUIRE(modRefB.get() != modRefA.get());
 
@@ -226,41 +240,40 @@ TEST_CASE("NativeModuleRefRefcounting")
 
 TEST_CASE("NativeProtoRefcounting")
 {
-    SharedCodeAllocator allocator{};
+    if (!luau_codegen_supported())
+        return;
 
-    std::vector<NativeProto> nativeProtos;
+    CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
+    SharedCodeAllocator allocator{&codeAllocator};
+
+    std::vector<NativeProtoExecDataPtr> nativeProtos;
     nativeProtos.reserve(1);
-    nativeProtos.push_back(NativeProto{0x01, createNativeProtoExecData(0)});
+    NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(0);
+    getNativeProtoExecDataHeader(nativeProto.get()).bytecodeId = 0x01;
+    nativeProtos.push_back(std::move(nativeProto));
 
-    NativeModuleRef modRefA = allocator.getOrInsertNativeModule(ModuleId{0x0a}, std::move(nativeProtos), {}, {});
+    NativeModuleRef modRefA =
+        allocator.getOrInsertNativeModule(ModuleId{0x0a}, std::move(nativeProtos), nullptr, 0, fakeCode, std::size(fakeCode)).first;
     REQUIRE(!modRefA.empty());
-    REQUIRE(modRefA->getRefcount());
-
-    const NativeProto* proto1 = modRefA->tryGetNativeProto(0x01);
-    REQUIRE(proto1 != nullptr);
-
-    // getNonOwningPointerToInstructionOffsets should not acquire ownership:
-    const uint32_t* unownedInstructionOffsets = proto1->getNonOwningPointerToInstructionOffsets();
-    REQUIRE(unownedInstructionOffsets != nullptr);
     REQUIRE(modRefA->getRefcount() == 1);
 
-    // getOwningPointerToInstructionOffsets should acquire ownership:
-    const uint32_t* ownedInstructionOffsets = proto1->getOwningPointerToInstructionOffsets();
-    REQUIRE(ownedInstructionOffsets == unownedInstructionOffsets);
+    // Verify behavior of addRef:
+    modRefA->addRef();
     REQUIRE(modRefA->getRefcount() == 2);
 
-    // We should be able to call it multiple times to get multiple references:
-    const uint32_t* ownedInstructionOffsets2 = proto1->getOwningPointerToInstructionOffsets();
-    REQUIRE(ownedInstructionOffsets2 == unownedInstructionOffsets);
+    // Verify behavior of addRefs:
+    modRefA->addRefs(2);
+    REQUIRE(modRefA->getRefcount() == 4);
+
+    // Undo two of our addRef(s):
+    modRefA->release();
     REQUIRE(modRefA->getRefcount() == 3);
 
-    // releaseOwningPointerToInstructionOffsets should be callable to release
-    // the reference:
-    NativeProto::releaseOwningPointerToInstructionOffsets(ownedInstructionOffsets2);
+    modRefA->release();
     REQUIRE(modRefA->getRefcount() == 2);
 
     // If we release our NativeModuleRef, the module should be kept alive by
-    // the owning instruction offsets pointer:
+    // the owning reference we acquired:
     modRefA.reset();
 
     modRefA = allocator.tryGetNativeModule(ModuleId{0x0a});
@@ -269,62 +282,65 @@ TEST_CASE("NativeProtoRefcounting")
 
     // If the last "release" comes via releaseOwningPointerToInstructionOffsets,
     // the module should be successfully destroyed:
+    const NativeModule* rawModA = modRefA.get();
+
     modRefA.reset();
-    NativeProto::releaseOwningPointerToInstructionOffsets(ownedInstructionOffsets);
+    rawModA->release();
     REQUIRE(allocator.tryGetNativeModule(ModuleId{0x0a}).empty());
 }
 
 TEST_CASE("NativeProtoState")
 {
-    SharedCodeAllocator allocator{};
+    if (!luau_codegen_supported())
+        return;
+
+    CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
+    SharedCodeAllocator allocator{&codeAllocator};
 
     const std::vector<uint8_t> data(16);
     const std::vector<uint8_t> code(16);
 
-    std::vector<NativeProto> nativeProtos;
+    std::vector<NativeProtoExecDataPtr> nativeProtos;
     nativeProtos.reserve(2);
 
     {
-        NativeProtoExecDataPtr nativeExecData = createNativeProtoExecData(2);
-        nativeExecData[0] = 0;
-        nativeExecData[1] = 4;
+        NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(2);
+        getNativeProtoExecDataHeader(nativeProto.get()).bytecodeId = 1;
+        getNativeProtoExecDataHeader(nativeProto.get()).entryOffsetOrAddress = reinterpret_cast<const uint8_t*>(0x00);
+        nativeProto[0] = 0;
+        nativeProto[1] = 4;
 
-        NativeProto proto{1, std::move(nativeExecData)};
-        proto.setEntryOffset(0x00);
-        nativeProtos.push_back(std::move(proto));
+        nativeProtos.push_back(std::move(nativeProto));
     }
 
     {
-        NativeProtoExecDataPtr nativeExecData = createNativeProtoExecData(2);
-        nativeExecData[0] = 8;
-        nativeExecData[1] = 12;
+        NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(2);
+        getNativeProtoExecDataHeader(nativeProto.get()).bytecodeId = 3;
+        getNativeProtoExecDataHeader(nativeProto.get()).entryOffsetOrAddress = reinterpret_cast<const uint8_t*>(0x08);
+        nativeProto[0] = 8;
+        nativeProto[1] = 12;
 
-        NativeProto proto{3, std::move(nativeExecData)};
-        proto.setEntryOffset(0x08);
-        nativeProtos.push_back(std::move(proto));
+        nativeProtos.push_back(std::move(nativeProto));
     }
 
-    NativeModuleRef modRefA = allocator.getOrInsertNativeModule(ModuleId{0x0a}, std::move(nativeProtos), data, code);
+    NativeModuleRef modRefA =
+        allocator.getOrInsertNativeModule(ModuleId{0x0a}, std::move(nativeProtos), data.data(), data.size(), code.data(), code.size()).first;
     REQUIRE(!modRefA.empty());
     REQUIRE(modRefA->getModuleBaseAddress() != nullptr);
 
-    const NativeProto* proto1 = modRefA->tryGetNativeProto(1);
+    const uint32_t* proto1 = modRefA->tryGetNativeProto(1);
     REQUIRE(proto1 != nullptr);
-    REQUIRE(proto1->getBytecodeId() == 1);
-    REQUIRE(proto1->getEntryAddress() == modRefA->getModuleBaseAddress() + 0x00);
-    const uint32_t* proto1Offsets = proto1->getNonOwningPointerToInstructionOffsets();
-    REQUIRE(proto1Offsets != nullptr);
-    REQUIRE(proto1Offsets[0] == 0);
-    REQUIRE(proto1Offsets[1] == 4);
+    REQUIRE(getNativeProtoExecDataHeader(proto1).bytecodeId == 1);
+    REQUIRE(getNativeProtoExecDataHeader(proto1).entryOffsetOrAddress == modRefA->getModuleBaseAddress() + 0x00);
+    REQUIRE(proto1[0] == 0);
+    REQUIRE(proto1[1] == 4);
 
-    const NativeProto* proto3 = modRefA->tryGetNativeProto(3);
+    const uint32_t* proto3 = modRefA->tryGetNativeProto(3);
     REQUIRE(proto3 != nullptr);
-    REQUIRE(proto3->getBytecodeId() == 3);
-    REQUIRE(proto3->getEntryAddress() == modRefA->getModuleBaseAddress() + 0x08);
-    const uint32_t* proto3Offsets = proto3->getNonOwningPointerToInstructionOffsets();
-    REQUIRE(proto3Offsets != nullptr);
-    REQUIRE(proto3Offsets[0] == 8);
-    REQUIRE(proto3Offsets[1] == 12);
+    REQUIRE(getNativeProtoExecDataHeader(proto3).bytecodeId == 3);
+    REQUIRE(getNativeProtoExecDataHeader(proto3).entryOffsetOrAddress == modRefA->getModuleBaseAddress() + 0x08);
+    REQUIRE(proto3[0] == 8);
+    REQUIRE(proto3[1] == 12);
 
     // Ensure that non-existent native protos cannot be found:
     REQUIRE(modRefA->tryGetNativeProto(0) == nullptr);

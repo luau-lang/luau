@@ -2439,9 +2439,41 @@ TEST_CASE_FIXTURE(Fixture, "dont_infer_overloaded_functions")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK("<a...>(t1) -> () where t1 = { read FindFirstChild: (t1, string) -> (a...) }" == toString(requireType("getR6Attachments")));
+        CHECK("(t1) -> () where t1 = { read FindFirstChild: (t1, string) -> (...unknown) }" == toString(requireType("getR6Attachments")));
     else
         CHECK("<a...>(t1) -> () where t1 = {+ FindFirstChild: (t1, string) -> (a...) +}" == toString(requireType("getR6Attachments")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "param_y_is_bounded_by_x_of_type_string")
+{
+    CheckResult result = check(R"(
+        local function f(x: string, y)
+            x = y
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("(string, string) -> ()" == toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_that_could_return_anything_is_compatible_with_function_that_is_expected_to_return_nothing")
+{
+    CheckResult result = check(R"(
+        -- We infer foo : (g: (number) -> (...unknown)) -> ()
+        function foo(g)
+            g(0)
+        end
+
+        -- a requires a function that returns no values
+        function a(f: ((number) -> ()) -> ())
+        end
+
+        -- "Returns an unknown number of values" is close enough to "returns no values."
+        a(foo)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

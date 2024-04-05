@@ -14,7 +14,6 @@
 #include <utility>
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteStringLiteralBounds, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -465,15 +464,12 @@ AutocompleteEntryMap autocompleteModuleTypes(const Module& module, Position posi
 
 static void autocompleteStringSingleton(TypeId ty, bool addQuotes, AstNode* node, Position position, AutocompleteEntryMap& result)
 {
-    if (FFlag::LuauAutocompleteStringLiteralBounds)
+    if (position == node->location.begin || position == node->location.end)
     {
-        if (position == node->location.begin || position == node->location.end)
-        {
-            if (auto str = node->as<AstExprConstantString>(); str && str->quoteStyle == AstExprConstantString::Quoted)
-                return;
-            else if (node->is<AstExprInterpString>())
-                return;
-        }
+        if (auto str = node->as<AstExprConstantString>(); str && str->quoteStyle == AstExprConstantString::Quoted)
+            return;
+        else if (node->is<AstExprInterpString>())
+            return;
     }
 
     auto formatKey = [addQuotes](const std::string& key) {

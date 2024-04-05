@@ -188,6 +188,12 @@ if(MSVC_IDE)
     target_sources(Luau.VM PRIVATE tools/natvis/VM.natvis)
 endif()
 
+# On Windows and Android threads are provided, on Linux/Mac/iOS we use pthreads
+add_library(osthreads INTERFACE)
+if(CMAKE_SYSTEM_NAME MATCHES "Linux|Darwin|iOS")
+    target_link_libraries(osthreads INTERFACE "-lpthread")
+endif ()
+
 if(LUAU_BUILD_CLI)
     target_compile_options(Luau.Repl.CLI PRIVATE ${LUAU_OPTIONS})
     target_compile_options(Luau.Reduce.CLI PRIVATE ${LUAU_OPTIONS})
@@ -200,13 +206,8 @@ if(LUAU_BUILD_CLI)
 
     target_link_libraries(Luau.Repl.CLI PRIVATE Luau.Compiler Luau.Config Luau.CodeGen Luau.VM Luau.CLI.lib isocline)
 
-    if(UNIX)
-        find_library(LIBPTHREAD pthread)
-        if (LIBPTHREAD)
-            target_link_libraries(Luau.Repl.CLI PRIVATE pthread)
-            target_link_libraries(Luau.Analyze.CLI PRIVATE pthread)
-        endif()
-    endif()
+    target_link_libraries(Luau.Repl.CLI PRIVATE osthreads)
+    target_link_libraries(Luau.Analyze.CLI PRIVATE osthreads)
 
     target_link_libraries(Luau.Analyze.CLI PRIVATE Luau.Analysis Luau.CLI.lib)
 
@@ -230,18 +231,17 @@ if(LUAU_BUILD_TESTS)
     target_compile_options(Luau.Conformance PRIVATE ${LUAU_OPTIONS})
     target_include_directories(Luau.Conformance PRIVATE extern)
     target_link_libraries(Luau.Conformance PRIVATE Luau.Analysis Luau.Compiler Luau.CodeGen Luau.VM)
-    file(REAL_PATH "tests/conformance" LUAU_CONFORMANCE_SOURCE_DIR)
+    if(CMAKE_SYSTEM_NAME MATCHES "Android|iOS")
+        set(LUAU_CONFORMANCE_SOURCE_DIR "Client/Luau/tests/conformance")
+    else ()
+        file(REAL_PATH "tests/conformance" LUAU_CONFORMANCE_SOURCE_DIR)
+    endif ()
     target_compile_definitions(Luau.Conformance PRIVATE LUAU_CONFORMANCE_SOURCE_DIR="${LUAU_CONFORMANCE_SOURCE_DIR}")
 
     target_compile_options(Luau.CLI.Test PRIVATE ${LUAU_OPTIONS})
     target_include_directories(Luau.CLI.Test PRIVATE extern CLI)
     target_link_libraries(Luau.CLI.Test PRIVATE Luau.Compiler Luau.Config Luau.CodeGen Luau.VM Luau.CLI.lib isocline)
-    if(UNIX)
-        find_library(LIBPTHREAD pthread)
-        if (LIBPTHREAD)
-            target_link_libraries(Luau.CLI.Test PRIVATE pthread)
-        endif()
-    endif()
+    target_link_libraries(Luau.CLI.Test PRIVATE osthreads)
 
 endif()
 

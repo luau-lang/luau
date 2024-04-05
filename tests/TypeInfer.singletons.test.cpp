@@ -228,7 +228,7 @@ TEST_CASE_FIXTURE(Fixture, "tagged_unions_immutable_tag")
         type Dog = { tag: "Dog", howls: boolean }
         type Cat = { tag: "Cat", meows: boolean }
         type Animal = Dog | Cat
-        local a : Animal = { tag = "Cat", meows = true }
+        local a: Animal = { tag = "Cat", meows = true }
         a.tag = "Dog"
     )");
 
@@ -365,8 +365,10 @@ TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    // FIXME: This could be improved by expanding the contents of `a`
-    const std::string expectedError = "Type 'a' could not be converted into 'Err<number> | Ok<string>'";
+    const std::string expectedError = R"(Type
+    '{ result: string, success: boolean }'
+could not be converted into
+    'Err<number> | Ok<string>')";
 
     CHECK(toString(result.errors[0]) == expectedError);
 }
@@ -537,6 +539,28 @@ TEST_CASE_FIXTURE(Fixture, "no_widening_from_callsites")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "singletons_stick_around_under_assignment")
+{
+    CheckResult result = check(R"(
+        type Foo = {
+            kind: "Foo",
+        }
+
+        local foo = (nil :: any) :: Foo
+
+        print(foo.kind == "Bar") -- TypeError: Type "Foo" cannot be compared with "Bar"
+        local kind = foo.kind
+        print(kind == "Bar") -- SHOULD BE: TypeError: Type "Foo" cannot be compared with "Bar"
+    )");
+
+    // FIXME: Under the new solver, we get both the errors we expect, but they're
+    // duplicated because of how we are currently running type family reduction.
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        LUAU_REQUIRE_ERROR_COUNT(4, result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_SUITE_END();

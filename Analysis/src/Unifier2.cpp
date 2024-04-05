@@ -584,8 +584,11 @@ struct FreeTypeSearcher : TypeVisitor
         }
     }
 
-    DenseHashMap<TypeId, size_t> negativeTypes{0};
-    DenseHashMap<TypeId, size_t> positiveTypes{0};
+    // The keys in these maps are either TypeIds or TypePackIds. It's safe to
+    // mix them because we only use these pointers as unique keys.  We never
+    // indirect them.
+    DenseHashMap<const void*, size_t> negativeTypes{0};
+    DenseHashMap<const void*, size_t> positiveTypes{0};
 
     bool visit(TypeId ty) override
     {
@@ -673,6 +676,28 @@ struct FreeTypeSearcher : TypeVisitor
     {
         return false;
     }
+
+    bool visit(TypePackId tp, const FreeTypePack& ftp) override
+    {
+        if (!subsumes(scope, ftp.scope))
+            return true;
+
+        switch (polarity)
+        {
+        case Positive:
+            positiveTypes[tp]++;
+            break;
+        case Negative:
+            negativeTypes[tp]++;
+            break;
+        case Both:
+            positiveTypes[tp]++;
+            negativeTypes[tp]++;
+            break;
+        }
+
+        return true;
+    }
 };
 
 struct MutatingGeneralizer : TypeOnceVisitor
@@ -680,15 +705,15 @@ struct MutatingGeneralizer : TypeOnceVisitor
     NotNull<BuiltinTypes> builtinTypes;
 
     NotNull<Scope> scope;
-    DenseHashMap<TypeId, size_t> positiveTypes;
-    DenseHashMap<TypeId, size_t> negativeTypes;
+    DenseHashMap<const void*, size_t> positiveTypes;
+    DenseHashMap<const void*, size_t> negativeTypes;
     std::vector<TypeId> generics;
     std::vector<TypePackId> genericPacks;
 
     bool isWithinFunction = false;
 
-    MutatingGeneralizer(NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, DenseHashMap<TypeId, size_t> positiveTypes,
-        DenseHashMap<TypeId, size_t> negativeTypes)
+    MutatingGeneralizer(NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, DenseHashMap<const void*, size_t> positiveTypes,
+        DenseHashMap<const void*, size_t> negativeTypes)
         : TypeOnceVisitor(/* skipBoundTypes */ true)
         , builtinTypes(builtinTypes)
         , scope(scope)
@@ -816,7 +841,7 @@ struct MutatingGeneralizer : TypeOnceVisitor
         return false;
     }
 
-    size_t getCount(const DenseHashMap<TypeId, size_t>& map, TypeId ty)
+    size_t getCount(const DenseHashMap<const void*, size_t>& map, const void* ty)
     {
         if (const size_t* count = map.find(ty))
             return *count;
@@ -849,9 +874,18 @@ struct MutatingGeneralizer : TypeOnceVisitor
         if (!subsumes(scope, ftp.scope))
             return true;
 
-        asMutable(tp)->ty.emplace<GenericTypePack>(scope);
+        tp = follow(tp);
 
-        genericPacks.push_back(tp);
+        const size_t positiveCount = getCount(positiveTypes, tp);
+        const size_t negativeCount = getCount(negativeTypes, tp);
+
+        if (1 == positiveCount + negativeCount)
+            asMutable(tp)->ty.emplace<BoundTypePack>(builtinTypes->unknownTypePack);
+        else
+        {
+            asMutable(tp)->ty.emplace<GenericTypePack>(scope);
+            genericPacks.push_back(tp);
+        }
 
         return true;
     }
