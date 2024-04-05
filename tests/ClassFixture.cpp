@@ -22,10 +22,10 @@ ClassFixture::ClassFixture()
 
     TypeId baseClassInstanceType = arena.addType(ClassType{"BaseClass", {}, nullopt, nullopt, {}, {}, "Test"});
     getMutable<ClassType>(baseClassInstanceType)->props = {
-        {"BaseMethod", {makeFunction(arena, baseClassInstanceType, {numberType}, {})}},
+        {"BaseMethod", Property::readonly(makeFunction(arena, baseClassInstanceType, {numberType}, {}))},
         {"BaseField", {numberType}},
 
-        {"Touched", {connectionType}},
+        {"Touched", Property::readonly(connectionType)},
     };
 
     getMutable<ClassType>(connectionType)->props = {

@@ -1105,6 +1105,45 @@ foo(1 :: any)
     LUAU_REQUIRE_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "luau_roact_useState_nilable_state_1")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    CheckResult result = check(R"(
+        type Dispatch<A> = (A) -> ()
+        type BasicStateAction<S> = ((S) -> S) | S
+
+        type ScriptConnection = { Disconnect: (ScriptConnection) -> () }
+
+        local blah = nil :: any
+
+        local function useState<S>(
+            initialState: (() -> S) | S,
+            ...
+        ): (S, Dispatch<BasicStateAction<S>>)
+            return blah, blah
+        end
+
+        local a, b = useState(nil :: ScriptConnection?)
+
+        if a then
+            a:Disconnect()
+            b(nil :: ScriptConnection?)
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        // This is a known bug in the old solver.
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        CHECK(Location{{19, 14}, {19, 41}} == result.errors[0].location);
+    }
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau_roact_useState_minimization")
 {
     // We don't expect this test to work on the old solver, but it also does not yet work on the new solver.

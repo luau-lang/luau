@@ -92,6 +92,20 @@ declare foo: {
 
 declare function @checked optionalArgsAtTheEnd1(x: string, y: number?, z: number?) : number
 declare function @checked optionalArgsAtTheEnd2(x: string, y: number?, z: string) : number
+
+type DateTypeArg = {
+    year: number,
+    month: number,
+    day: number,
+    hour: number?,
+    min: number?,
+    sec: number?,
+    isdst: boolean?,
+}
+
+declare os : {
+    time: @checked (time: DateTypeArg?) -> number
+}
 )BUILTIN_SRC";
 };
 
@@ -503,6 +517,14 @@ optionalArgsAtTheEnd2("a", "b", "c") -- error
     LUAU_ASSERT(r1);
     CHECK_EQ(3, r1->expected);
     CHECK_EQ(2, r1->actual);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "non_testable_type_throws_ice")
+{
+    CHECK_THROWS_AS(checkNonStrict(R"(
+os.time({year = 0, month = 0, day = 0, min = 0, isdst = nil})
+)"),
+        Luau::InternalCompilerError);
 }
 
 TEST_SUITE_END();

@@ -32,7 +32,6 @@ void luaC_validate(lua_State* L);
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_FASTFLAG(LuauLoadExceptionSafe)
 LUAU_DYNAMIC_FASTFLAG(LuauDebugInfoDupArgLeftovers)
 LUAU_FASTFLAG(LuauCompileRepeatUntilSkippedLocals)
 LUAU_FASTFLAG(LuauCodegenInferNumTag)
@@ -2171,8 +2170,6 @@ TEST_CASE("HugeFunctionLoadFailure")
     // luau_load.  This should require two "large" allocations:  One for the
     // code array and one for the constants array (k).  We run this test twice
     // and fail each of these two allocations.
-    ScopedFastFlag luauLoadExceptionSafe{FFlag::LuauLoadExceptionSafe, true};
-
     std::string source = makeHugeFunctionSource();
 
     static const size_t expectedTotalLargeAllocations = 2;

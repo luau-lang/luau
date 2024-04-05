@@ -17,7 +17,6 @@
 LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauCodeGenCoverForgprepEffect, false)
 LUAU_FASTFLAG(LuauCodegenRemoveDeadStores4)
 LUAU_FASTFLAG(LuauCodegenLoadTVTag)
 LUAU_FASTFLAGVARIABLE(LuauCodegenInferNumTag, false)
@@ -1462,9 +1461,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
         state.invalidate(IrOp{inst.b.kind, vmRegOp(inst.b) + 0u});
         state.invalidate(IrOp{inst.b.kind, vmRegOp(inst.b) + 1u});
         state.invalidate(IrOp{inst.b.kind, vmRegOp(inst.b) + 2u});
-
-        if (DFFlag::LuauCodeGenCoverForgprepEffect)
-            state.invalidateUserCall();
+        state.invalidateUserCall();
         break;
     }
 }

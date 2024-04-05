@@ -463,7 +463,7 @@ local b: B = a
     LUAU_REQUIRE_ERRORS(result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK(toString(result.errors.at(0)) == "Type 'a' could not be converted into 'B'; at [read \"x\"], ChildClass is not exactly BaseClass");
+        CHECK(toString(result.errors.at(0)) == "Type 'A' could not be converted into 'B'; at [read \"x\"], ChildClass is not exactly BaseClass");
     else
     {
         const std::string expected = R"(Type 'A' could not be converted into 'B'
@@ -707,4 +707,64 @@ TEST_CASE_FIXTURE(ClassFixture, "cannot_index_a_class_with_no_indexer")
 
     CHECK(builtinTypes->errorType == requireType("c"));
 }
+
+TEST_CASE_FIXTURE(ClassFixture, "cyclic_tables_are_assumed_to_be_compatible_with_classes")
+{
+    /*
+     * This is technically documenting a case where we are intentionally
+     * unsound.
+     *
+     * Our builtins are essentially defined like so:
+     *
+     * declare class BaseClass
+     *     BaseField: number
+     *     function BaseMethod(self, number): ()
+     *     read Touched: Connection
+     * end
+     *
+     * declare class Connection
+     *     Connect: (Connection, (BaseClass) -> ()) -> ()
+     * end
+     *
+     * The type we infer for `onTouch` is
+     *
+     * (t1) -> () where t1 = { read BaseField: unknown, read BaseMethod: (t1, number) -> () }
+     *
+     * In order to validate that onTouch can be passed to Connect, we must
+     * verify the following relation:
+     *
+     * BaseClass <: t1 where t1 = { read BaseField: unknown, read BaseMethod: (t1, number) -> () }
+     *
+     * However, the cycle between the table and the function gums up the works
+     * here and the worst thing is that it's perfectly reasonable in principle.
+     * Just from these types, we cannot see that BaseMethod will only be passed
+     * t1.  Without that guarantee, BaseClass cannot be used as a subtype of t1.
+     *
+     * I think the theoretically-correct way to untangle this would be to infer
+     * t1 as a bounded existential type.
+     *
+     * For now, we have a subtyping has a rule that provisionally substitutes
+     * the table for the class type when performing the subtyping test.  We
+     * essentially assume that, for all cyclic functions, that the table and the
+     * class are mutually subtypes of one another.
+     *
+     * For more information, read uses of Subtyping::substitutions.
+     */
+
+    CheckResult result = check(R"(
+        local c = BaseClass.New()
+
+        function requiresNothing() end
+
+        function onTouch(other)
+            requiresNothing(other:BaseMethod(0))
+            print(other.BaseField)
+        end
+
+        c.Touched:Connect(onTouch)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

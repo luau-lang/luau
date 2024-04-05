@@ -1352,12 +1352,15 @@ struct TypeChecker2
         auto norm = normalizer.normalize(fnTy);
         if (!norm)
             reportError(NormalizationTooComplex{}, call->func->location);
+        auto isInhabited = normalizer.isInhabited(norm);
+        if (isInhabited == NormalizationResult::HitLimits)
+            reportError(NormalizationTooComplex{}, call->func->location);
 
         if (norm && norm->shouldSuppressErrors())
             return; // error suppressing function type!
         else if (!resolver.ok.empty())
             return; // We found a call that works, so this is ok.
-        else if (!norm || !normalizer.isInhabited(norm))
+        else if (!norm || isInhabited == NormalizationResult::False)
             return; // Ok. Calling an uninhabited type is no-op.
         else if (!resolver.nonviableOverloads.empty())
         {
@@ -1802,7 +1805,7 @@ struct TypeChecker2
             return leftType;
         }
 
-        bool typesHaveIntersection = normalizer.isIntersectionInhabited(leftType, rightType);
+        NormalizationResult typesHaveIntersection = normalizer.isIntersectionInhabited(leftType, rightType);
         if (auto it = kBinaryOpMetamethods.find(expr->op); it != kBinaryOpMetamethods.end())
         {
             std::optional<TypeId> leftMt = getMetatable(leftType, builtinTypes);
@@ -1836,11 +1839,11 @@ struct TypeChecker2
 
             // If we're working with things that are not tables, the metatable comparisons above are a little excessive
             // It's ok for one type to have a meta table and the other to not. In that case, we should fall back on
-            // checking if the intersection of the types is inhabited.
+            // checking if the intersection of the types is inhabited. If `typesHaveIntersection` failed due to limits,
             // TODO: Maybe add more checks here (e.g. for functions, classes, etc)
             if (!(get<TableType>(leftType) || get<TableType>(rightType)))
                 if (!leftMt.has_value() || !rightMt.has_value())
-                    matches = matches || typesHaveIntersection;
+                    matches = matches || typesHaveIntersection != NormalizationResult::False;
 
             if (!matches && isComparison)
             {
@@ -2594,35 +2597,59 @@ struct TypeChecker2
         bool foundOneProp = false;
         std::vector<TypeId> typesMissingTheProp;
 
+        // this is `false` if we ever hit the resource limits during any of our uses of `fetch`.
+        bool normValid = true;
+
         auto fetch = [&](TypeId ty) {
-            if (!normalizer.isInhabited(ty))
+            NormalizationResult result = normalizer.isInhabited(ty);
+            if (result == NormalizationResult::HitLimits)
+                normValid = false;
+            if (result != NormalizationResult::True)
                 return;
 
             DenseHashSet<TypeId> seen{nullptr};
-            bool found = hasIndexTypeFromType(ty, prop, context, location, seen, astIndexExprType, errors);
-            foundOneProp |= found;
-            if (!found)
+            NormalizationResult found = hasIndexTypeFromType(ty, prop, context, location, seen, astIndexExprType, errors);
+
+            if (found == NormalizationResult::HitLimits)
+            {
+                normValid = false;
+                return;
+            }
+
+            foundOneProp |= found == NormalizationResult::True;
+            if (found == NormalizationResult::False)
                 typesMissingTheProp.push_back(ty);
         };
 
-        fetch(norm->tops);
-        fetch(norm->booleans);
+        if (normValid)
+            fetch(norm->tops);
+        if (normValid)
+            fetch(norm->booleans);
 
-        for (const auto& [ty, _negations] : norm->classes.classes)
+        if (normValid)
         {
-            fetch(ty);
+            for (const auto& [ty, _negations] : norm->classes.classes)
+            {
+                fetch(ty);
+            }
         }
-        fetch(norm->errors);
-        fetch(norm->nils);
-        fetch(norm->numbers);
-        if (!norm->strings.isNever())
+
+        if (normValid)
+            fetch(norm->errors);
+        if (normValid)
+            fetch(norm->nils);
+        if (normValid)
+            fetch(norm->numbers);
+        if (normValid && !norm->strings.isNever())
             fetch(builtinTypes->stringType);
-        fetch(norm->threads);
+        if (normValid)
+            fetch(norm->threads);
         for (TypeId ty : norm->tables)
-            fetch(ty);
-        if (norm->functions.isTop)
+            if (normValid)
+                fetch(ty);
+        if (normValid && norm->functions.isTop)
             fetch(builtinTypes->functionType);
-        else if (!norm->functions.isNever())
+        else if (normValid && !norm->functions.isNever())
         {
             if (norm->functions.parts.size() == 1)
                 fetch(norm->functions.parts.front());
@@ -2633,15 +2660,19 @@ struct TypeChecker2
                 fetch(module->internalTypes.addType(IntersectionType{std::move(parts)}));
             }
         }
-        for (const auto& [tyvar, intersect] : norm->tyvars)
+
+        if (normValid)
         {
-            if (get<NeverType>(intersect->tops))
+            for (const auto& [tyvar, intersect] : norm->tyvars)
             {
-                TypeId ty = normalizer.typeFromNormal(*intersect);
-                fetch(module->internalTypes.addType(IntersectionType{{tyvar, ty}}));
+                if (get<NeverType>(intersect->tops))
+                {
+                    TypeId ty = normalizer.typeFromNormal(*intersect);
+                    fetch(module->internalTypes.addType(IntersectionType{{tyvar, ty}}));
+                }
+                else
+                    fetch(tyvar);
             }
-            else
-                fetch(tyvar);
         }
 
         return {foundOneProp, typesMissingTheProp};
@@ -2695,18 +2726,18 @@ struct TypeChecker2
         }
     }
 
-    bool hasIndexTypeFromType(TypeId ty, const std::string& prop, ValueContext context, const Location& location, DenseHashSet<TypeId>& seen,
-        TypeId astIndexExprType, std::vector<TypeError>& errors)
+    NormalizationResult hasIndexTypeFromType(TypeId ty, const std::string& prop, ValueContext context, const Location& location,
+        DenseHashSet<TypeId>& seen, TypeId astIndexExprType, std::vector<TypeError>& errors)
     {
         // If we have already encountered this type, we must assume that some
         // other codepath will do the right thing and signal false if the
         // property is not present.
         if (seen.contains(ty))
-            return true;
+            return NormalizationResult::True;
         seen.insert(ty);
 
         if (get<ErrorType>(ty) || get<AnyType>(ty) || get<NeverType>(ty))
-            return true;
+            return NormalizationResult::True;
 
         if (isString(ty))
         {
@@ -2718,23 +2749,23 @@ struct TypeChecker2
         if (auto tt = getTableType(ty))
         {
             if (findTablePropertyRespectingMeta(builtinTypes, errors, ty, prop, context, location))
-                return true;
+                return NormalizationResult::True;
 
             if (tt->indexer)
             {
                 TypeId indexType = follow(tt->indexer->indexType);
                 if (isPrim(indexType, PrimitiveType::String))
-                    return true;
+                    return NormalizationResult::True;
                 // If the indexer looks like { [any] : _} - the prop lookup should be allowed!
                 else if (get<AnyType>(indexType) || get<UnknownType>(indexType))
-                    return true;
+                    return NormalizationResult::True;
             }
 
 
             // if we are in a conditional context, we treat the property as present and `unknown` because
             // we may be _refining_ `tableTy` to include that property. we will want to revisit this a bit
             // in the future once luau has support for exact tables since this only applies when inexact.
-            return inConditional(typeContext);
+            return inConditional(typeContext) ? NormalizationResult::True : NormalizationResult::False;
         }
         else if (const ClassType* cls = get<ClassType>(ty))
         {
@@ -2743,26 +2774,40 @@ struct TypeChecker2
             // is compatible with the indexer's indexType
             // Construct the intersection and test inhabitedness!
             if (auto property = lookupClassProp(cls, prop))
-                return true;
+                return NormalizationResult::True;
             if (cls->indexer)
             {
                 TypeId inhabitatedTestType = module->internalTypes.addType(IntersectionType{{cls->indexer->indexType, astIndexExprType}});
                 return normalizer.isInhabited(inhabitatedTestType);
             }
-            return false;
+            return NormalizationResult::False;
         }
         else if (const UnionType* utv = get<UnionType>(ty))
-            return std::all_of(begin(utv), end(utv), [&](TypeId part) {
-                return hasIndexTypeFromType(part, prop, context, location, seen, astIndexExprType, errors);
-            });
+        {
+            for (TypeId part : utv)
+            {
+                NormalizationResult result = hasIndexTypeFromType(part, prop, context, location, seen, astIndexExprType, errors);
+                if (result != NormalizationResult::True)
+                    return result;
+            }
+
+            return NormalizationResult::True;
+        }
         else if (const IntersectionType* itv = get<IntersectionType>(ty))
-            return std::any_of(begin(itv), end(itv), [&](TypeId part) {
-                return hasIndexTypeFromType(part, prop, context, location, seen, astIndexExprType, errors);
-            });
+        {
+            for (TypeId part : itv)
+            {
+                NormalizationResult result = hasIndexTypeFromType(part, prop, context, location, seen, astIndexExprType, errors);
+                if (result != NormalizationResult::False)
+                    return result;
+            }
+
+            return NormalizationResult::False;
+        }
         else if (const PrimitiveType* pt = get<PrimitiveType>(ty))
-            return inConditional(typeContext) && pt->type == PrimitiveType::Table;
+            return (inConditional(typeContext) && pt->type == PrimitiveType::Table) ? NormalizationResult::True : NormalizationResult::False;
         else
-            return false;
+            return NormalizationResult::False;
     }
 
     void diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& data) const

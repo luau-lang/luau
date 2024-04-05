@@ -25,7 +25,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "initialize_x_of_type_string_or_nil_with_nil
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK("nil" == toString(requireType("a")));
+    CHECK("string?" == toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(TypeStateFixture, "extraneous_lvalues_are_populated_with_nil")
@@ -55,7 +55,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "assign_different_values_to_x")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK("nil" == toString(requireType("a")));
+    CHECK("string?" == toString(requireType("a")));
     CHECK("string" == toString(requireType("b")));
 }
 
@@ -73,8 +73,28 @@ TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_was_constrained_by_two_types")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK("(string) -> string?" == toString(requireType("f")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // `y` is annotated `string | number` which is explicitly not compatible with `string?`
+        // as such, we produce an error here for that mismatch.
+        //
+        // this is not necessarily the best inference here, since we can indeed produce `string`
+        // as a type for `x`, but it's a limitation we can accept for now.
+        LUAU_REQUIRE_ERRORS(result);
+
+        TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
+        REQUIRE(tpm);
+        CHECK("string?" == toString(tpm->wantedTp));
+        CHECK("number | string" == toString(tpm->givenTp));
+
+        CHECK("(number | string) -> string?" == toString(requireType("f")));
+    }
+    else
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+
+        CHECK("(string) -> string?" == toString(requireType("f")));
+    }
 }
 
 #if 0
@@ -450,5 +470,25 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typestates_preserve_error_suppression_proper
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK("*error-type* | string" == toString(requireTypeAtPosition({3, 16}), {true}));
 }
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "typestates_do_not_apply_to_the_initial_local_definition")
+{
+    // early return if the flag isn't set since this is blocking gated commits
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyType = number | string
+        local foo: MyType = 5
+        print(foo)
+        foo = 7
+        print(foo)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("number | string" == toString(requireTypeAtPosition({3, 14}), {true}));
+    CHECK("number" == toString(requireTypeAtPosition({5, 14}), {true}));
+}
+
 
 TEST_SUITE_END();

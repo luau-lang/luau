@@ -15,8 +15,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenVectorOptAnd, false)
-LUAU_FASTFLAGVARIABLE(LuauCodegenSmallerUnm, false)
 LUAU_FASTFLAGVARIABLE(LuauCodegenCheckTruthyFormB, false)
 
 namespace Luau
@@ -543,24 +541,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a});
 
-        if (FFlag::LuauCodegenSmallerUnm)
-        {
-            build.vxorpd(inst.regX64, regOp(inst.a), build.f64(-0.0));
-        }
-        else
-        {
-            RegisterX64 src = regOp(inst.a);
-
-            if (inst.regX64 == src)
-            {
-                build.vxorpd(inst.regX64, inst.regX64, build.f64(-0.0));
-            }
-            else
-            {
-                build.vmovsd(inst.regX64, src, src);
-                build.vxorpd(inst.regX64, inst.regX64, build.f64(-0.0));
-            }
-        }
+        build.vxorpd(inst.regX64, regOp(inst.a), build.f64(-0.0));
         break;
     }
     case IrCmd::FLOOR_NUM:
@@ -611,128 +592,59 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});
 
-        if (FFlag::LuauCodegenVectorOptAnd)
-        {
-            ScopedRegX64 tmp1{regs};
-            ScopedRegX64 tmp2{regs};
+        ScopedRegX64 tmp1{regs};
+        ScopedRegX64 tmp2{regs};
 
-            RegisterX64 tmpa = vecOp(inst.a, tmp1);
-            RegisterX64 tmpb = (inst.a == inst.b) ? tmpa : vecOp(inst.b, tmp2);
+        RegisterX64 tmpa = vecOp(inst.a, tmp1);
+        RegisterX64 tmpb = (inst.a == inst.b) ? tmpa : vecOp(inst.b, tmp2);
 
-            build.vaddps(inst.regX64, tmpa, tmpb);
-        }
-        else
-        {
-            ScopedRegX64 tmp1{regs, SizeX64::xmmword};
-            ScopedRegX64 tmp2{regs, SizeX64::xmmword};
-
-            // Fourth component is the tag number which is interpreted as a denormal and has to be filtered out
-            build.vandps(tmp1.reg, regOp(inst.a), vectorAndMaskOp());
-            build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
-            build.vaddps(inst.regX64, tmp1.reg, tmp2.reg);
-        }
+        build.vaddps(inst.regX64, tmpa, tmpb);
         break;
     }
     case IrCmd::SUB_VEC:
     {
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});
 
-        if (FFlag::LuauCodegenVectorOptAnd)
-        {
-            ScopedRegX64 tmp1{regs};
-            ScopedRegX64 tmp2{regs};
+        ScopedRegX64 tmp1{regs};
+        ScopedRegX64 tmp2{regs};
 
-            RegisterX64 tmpa = vecOp(inst.a, tmp1);
-            RegisterX64 tmpb = (inst.a == inst.b) ? tmpa : vecOp(inst.b, tmp2);
+        RegisterX64 tmpa = vecOp(inst.a, tmp1);
+        RegisterX64 tmpb = (inst.a == inst.b) ? tmpa : vecOp(inst.b, tmp2);
 
-            build.vsubps(inst.regX64, tmpa, tmpb);
-        }
-        else
-        {
-            ScopedRegX64 tmp1{regs, SizeX64::xmmword};
-            ScopedRegX64 tmp2{regs, SizeX64::xmmword};
-
-            // Fourth component is the tag number which is interpreted as a denormal and has to be filtered out
-            build.vandps(tmp1.reg, regOp(inst.a), vectorAndMaskOp());
-            build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
-            build.vsubps(inst.regX64, tmp1.reg, tmp2.reg);
-        }
+        build.vsubps(inst.regX64, tmpa, tmpb);
         break;
     }
     case IrCmd::MUL_VEC:
     {
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});
 
-        if (FFlag::LuauCodegenVectorOptAnd)
-        {
-            ScopedRegX64 tmp1{regs};
-            ScopedRegX64 tmp2{regs};
+        ScopedRegX64 tmp1{regs};
+        ScopedRegX64 tmp2{regs};
 
-            RegisterX64 tmpa = vecOp(inst.a, tmp1);
-            RegisterX64 tmpb = (inst.a == inst.b) ? tmpa : vecOp(inst.b, tmp2);
+        RegisterX64 tmpa = vecOp(inst.a, tmp1);
+        RegisterX64 tmpb = (inst.a == inst.b) ? tmpa : vecOp(inst.b, tmp2);
 
-            build.vmulps(inst.regX64, tmpa, tmpb);
-        }
-        else
-        {
-            ScopedRegX64 tmp1{regs, SizeX64::xmmword};
-            ScopedRegX64 tmp2{regs, SizeX64::xmmword};
-
-            // Fourth component is the tag number which is interpreted as a denormal and has to be filtered out
-            build.vandps(tmp1.reg, regOp(inst.a), vectorAndMaskOp());
-            build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
-            build.vmulps(inst.regX64, tmp1.reg, tmp2.reg);
-        }
+        build.vmulps(inst.regX64, tmpa, tmpb);
         break;
     }
     case IrCmd::DIV_VEC:
     {
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});
 
-        if (FFlag::LuauCodegenVectorOptAnd)
-        {
-            ScopedRegX64 tmp1{regs};
-            ScopedRegX64 tmp2{regs};
+        ScopedRegX64 tmp1{regs};
+        ScopedRegX64 tmp2{regs};
 
-            RegisterX64 tmpa = vecOp(inst.a, tmp1);
-            RegisterX64 tmpb = (inst.a == inst.b) ? tmpa : vecOp(inst.b, tmp2);
+        RegisterX64 tmpa = vecOp(inst.a, tmp1);
+        RegisterX64 tmpb = (inst.a == inst.b) ? tmpa : vecOp(inst.b, tmp2);
 
-            build.vdivps(inst.regX64, tmpa, tmpb);
-        }
-        else
-        {
-            ScopedRegX64 tmp1{regs, SizeX64::xmmword};
-            ScopedRegX64 tmp2{regs, SizeX64::xmmword};
-
-            // Fourth component is the tag number which is interpreted as a denormal and has to be filtered out
-            build.vandps(tmp1.reg, regOp(inst.a), vectorAndMaskOp());
-            build.vandps(tmp2.reg, regOp(inst.b), vectorAndMaskOp());
-            build.vdivps(inst.regX64, tmp1.reg, tmp2.reg);
-        }
+        build.vdivps(inst.regX64, tmpa, tmpb);
         break;
     }
     case IrCmd::UNM_VEC:
     {
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a});
 
-        if (FFlag::LuauCodegenSmallerUnm)
-        {
-            build.vxorpd(inst.regX64, regOp(inst.a), build.f32x4(-0.0, -0.0, -0.0, -0.0));
-        }
-        else
-        {
-            RegisterX64 src = regOp(inst.a);
-
-            if (inst.regX64 == src)
-            {
-                build.vxorpd(inst.regX64, inst.regX64, build.f32x4(-0.0, -0.0, -0.0, -0.0));
-            }
-            else
-            {
-                build.vmovsd(inst.regX64, src, src);
-                build.vxorpd(inst.regX64, inst.regX64, build.f32x4(-0.0, -0.0, -0.0, -0.0));
-            }
-        }
+        build.vxorpd(inst.regX64, regOp(inst.a), build.f32x4(-0.0, -0.0, -0.0, -0.0));
         break;
     }
     case IrCmd::NOT_ANY:
@@ -2293,17 +2205,15 @@ OperandX64 IrLoweringX64::bufferAddrOp(IrOp bufferOp, IrOp indexOp)
 
 RegisterX64 IrLoweringX64::vecOp(IrOp op, ScopedRegX64& tmp)
 {
-    if (FFlag::LuauCodegenVectorOptAnd)
-    {
-        IrInst source = function.instOp(op);
-        CODEGEN_ASSERT(source.cmd != IrCmd::SUBSTITUTE); // we don't process substitutions
+    IrInst source = function.instOp(op);
+    CODEGEN_ASSERT(source.cmd != IrCmd::SUBSTITUTE); // we don't process substitutions
 
-        // source that comes from memory or from tag instruction has .w = TVECTOR, which is denormal
-        // to avoid performance degradation on some CPUs we mask this component to produce zero
-        // otherwise we conservatively assume the vector is a result of a well formed math op so .w is a normal number or zero
-        if (source.cmd != IrCmd::LOAD_TVALUE && source.cmd != IrCmd::TAG_VECTOR)
-            return regOp(op);
-    }
+    // source that comes from memory or from tag instruction has .w = TVECTOR, which is denormal
+    // to avoid performance degradation on some CPUs we mask this component to produce zero
+    // otherwise we conservatively assume the vector is a result of a well formed math op so .w is a normal number or zero
+    if (source.cmd != IrCmd::LOAD_TVALUE && source.cmd != IrCmd::TAG_VECTOR)
+        return regOp(op);
+
     tmp.alloc(SizeX64::xmmword);
     build.vandps(tmp.reg, regOp(op), vectorAndMaskOp());
     return tmp.reg;
