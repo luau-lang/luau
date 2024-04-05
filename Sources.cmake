@@ -358,7 +358,7 @@ target_sources(isocline PRIVATE
     extern/isocline/src/isocline.c
 )
 
-# Common sources shared between all CLI apps.
+# Common sources shared between all CLI apps
 target_sources(Luau.CLI.lib PRIVATE
     CLI/FileUtils.cpp
     CLI/Flags.cpp
