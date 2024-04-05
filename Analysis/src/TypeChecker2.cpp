@@ -2631,6 +2631,9 @@ struct TypeChecker2
             for (const auto& [ty, _negations] : norm->classes.classes)
             {
                 fetch(ty);
+
+                if (!normValid)
+                    break;
             }
         }
 
@@ -2644,9 +2647,16 @@ struct TypeChecker2
             fetch(builtinTypes->stringType);
         if (normValid)
             fetch(norm->threads);
-        for (TypeId ty : norm->tables)
-            if (normValid)
+        if (normValid)
+        {
+            for (TypeId ty : norm->tables)
+            {
                 fetch(ty);
+
+                if (!normValid)
+                    break;
+            }
+        }
         if (normValid && norm->functions.isTop)
             fetch(builtinTypes->functionType);
         else if (normValid && !norm->functions.isNever())
@@ -2672,6 +2682,9 @@ struct TypeChecker2
                 }
                 else
                     fetch(tyvar);
+
+                if (!normValid)
+                    break;
             }
         }
 
