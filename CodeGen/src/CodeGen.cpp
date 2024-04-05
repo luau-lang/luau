@@ -67,8 +67,8 @@ namespace CodeGen
 
 static const Instruction kCodeEntryInsn = LOP_NATIVECALL;
 
-static void* gPerfLogContext = nullptr;
-static PerfLogFn gPerfLogFn = nullptr;
+void* gPerfLogContext = nullptr;
+PerfLogFn gPerfLogFn = nullptr;
 
 struct OldNativeProto
 {

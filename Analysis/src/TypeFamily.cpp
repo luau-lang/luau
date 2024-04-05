@@ -1124,7 +1124,8 @@ TypeFamilyReductionResult<TypeId> eqFamilyFn(
         mmType = findMetatableEntry(ctx->builtins, dummy, rhsTy, "__eq", Location{});
 
     // if neither type has a metatable entry for `__eq`, then we'll check for inhabitance of the intersection!
-    if (!mmType && ctx->normalizer->isIntersectionInhabited(lhsTy, rhsTy))
+    NormalizationResult intersectInhabited = ctx->normalizer->isIntersectionInhabited(lhsTy, rhsTy);
+    if (!mmType && intersectInhabited == NormalizationResult::True)
         return {ctx->builtins->booleanType, false, {}, {}}; // if it's inhabited, everything is okay!
     else if (!mmType)
         return {std::nullopt, true, {}, {}}; // if it's not, then this family is irreducible!

@@ -6,6 +6,7 @@
 #include "NativeState.h"
 
 #include <memory>
+#include <optional>
 #include <stdint.h>
 
 namespace Luau
@@ -27,7 +28,11 @@ public:
 
     [[nodiscard]] bool initHeaderFunctions();
 
-    virtual void compileOrBindModule(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats) = 0;
+    [[nodiscard]] virtual std::optional<CodeGenCompilationResult> tryBindExistingModule(
+        const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos) = 0;
+
+    [[nodiscard]] virtual CodeGenCompilationResult bindModule(const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos,
+        std::vector<NativeProtoExecDataPtr> nativeExecDatas, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize) = 0;
 
     virtual void onCloseState() noexcept = 0;
     virtual void onDestroyFunction(void* execdata) noexcept = 0;
@@ -46,7 +51,11 @@ class StandaloneCodeGenContext final : public BaseCodeGenContext
 public:
     StandaloneCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
 
-    virtual void compileOrBindModule(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats) override;
+    [[nodiscard]] virtual std::optional<CodeGenCompilationResult> tryBindExistingModule(
+        const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos) override;
+
+    [[nodiscard]] virtual CodeGenCompilationResult bindModule(const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos,
+        std::vector<NativeProtoExecDataPtr> nativeExecDatas, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize) override;
 
     virtual void onCloseState() noexcept override;
     virtual void onDestroyFunction(void* execdata) noexcept override;
@@ -59,7 +68,11 @@ class SharedCodeGenContext final : public BaseCodeGenContext
 public:
     SharedCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
 
-    virtual void compileOrBindModule(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats) override;
+    [[nodiscard]] virtual std::optional<CodeGenCompilationResult> tryBindExistingModule(
+        const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos) override;
+
+    [[nodiscard]] virtual CodeGenCompilationResult bindModule(const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos,
+        std::vector<NativeProtoExecDataPtr> nativeExecDatas, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize) override;
 
     virtual void onCloseState() noexcept override;
     virtual void onDestroyFunction(void* execdata) noexcept override;
@@ -109,6 +122,14 @@ void create_NEW(lua_State* L, size_t blockSize, size_t maxTotalSize, AllocationC
 // SharedCodeGenContext must not be destroyed until after the Luau VM L is
 // destroyed via lua_close.
 void create_NEW(lua_State* L, SharedCodeGenContext* codeGenContext);
+
+CompilationResult compile_NEW(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats);
+
+// Returns true if native execution is currently enabled for this VM
+[[nodiscard]] bool isNativeExecutionEnabled_NEW(lua_State* L);
+
+// Enables or disables native excution for this VM
+void setNativeExecutionEnabled_NEW(lua_State* L, bool enabled);
 
 } // namespace CodeGen
 } // namespace Luau

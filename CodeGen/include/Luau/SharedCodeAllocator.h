@@ -28,68 +28,11 @@ namespace CodeGen
 
 using ModuleId = std::array<uint8_t, 16>;
 
-class NativeProto;
+struct CodeAllocator;
 class NativeModule;
 class NativeModuleRef;
 class SharedCodeAllocator;
 
-// A NativeProto represents a single natively-compiled function.  A NativeProto
-// should be constructed for each function as it is compiled.  When compilation
-// of all of the functions in a module is complete, the set of NativeProtos
-// representing those functions should be passed to the NativeModule constructor.
-class NativeProto
-{
-public:
-    NativeProto(uint32_t bytecodeId, NativeProtoExecDataPtr nativeExecData);
-
-    NativeProto(const NativeProto&) = delete;
-    NativeProto(NativeProto&&) noexcept = default;
-    NativeProto& operator=(const NativeProto&) = delete;
-    NativeProto& operator=(NativeProto&&) noexcept = default;
-
-    // This should be called to initialize the NativeProto state prior to
-    // passing the NativeProto to the NativeModule constructor.
-    void setEntryOffset(uint32_t entryOffset) noexcept;
-
-    // This will be called by the NativeModule constructor to bind this
-    // NativeProto to the NativeModule.
-    void assignToModule(NativeModule* nativeModule) noexcept;
-
-    // Gets the bytecode id for the Proto that was compiled into this NativeProto
-    [[nodiscard]] uint32_t getBytecodeId() const noexcept;
-
-    // Gets the address of the entry point for this function
-    [[nodiscard]] const uint8_t* getEntryAddress() const noexcept;
-
-    // Gets the native exec data for this function
-    [[nodiscard]] const NativeProtoExecDataHeader& getNativeExecDataHeader() const noexcept;
-
-    // The NativeProto stores an array that maps bytecode instruction indices to
-    // native code offsets relative to the native entry point.  When compilation
-    // and code allocation is complete, we store a pointer to this data in the
-    // Luau VM Proto object for this function.  When we do this, we must acquire
-    // a reference to the NativeModule that owns this NativeProto.  The
-    // getOwning-version of this function acquires that reference and gets the
-    // instruction offsets pointer.  When the Proto object is destroyed, this
-    // pointer must be passed to releaseOwningPointerToInstructionOffsets to
-    // release the reference.
-    //
-    // (This structure is designed to make it much more difficult to "forget"
-    // to acquire a reference.)
-    [[nodiscard]] const uint32_t* getNonOwningPointerToInstructionOffsets() const noexcept;
-    [[nodiscard]] const uint32_t* getOwningPointerToInstructionOffsets() const noexcept;
-
-    static void releaseOwningPointerToInstructionOffsets(const uint32_t* ownedInstructionOffsets) noexcept;
-
-private:
-    uint32_t bytecodeId = 0;
-
-    // We store the native code offset until assignToModule() is called, after
-    // which point we store the actual address.
-    const uint8_t* entryOffsetOrAddress = nullptr;
-
-    NativeProtoExecDataPtr nativeExecData = {};
-};
 
 // A NativeModule represents a single natively-compiled module (script).  It is
 // the unit of shared ownership and is thus where the reference count is
@@ -98,8 +41,8 @@ private:
 class NativeModule
 {
 public:
-    NativeModule(
-        SharedCodeAllocator* allocator, const ModuleId& moduleId, const uint8_t* moduleBaseAddress, std::vector<NativeProto> nativeProtos) noexcept;
+    NativeModule(SharedCodeAllocator* allocator, const ModuleId& moduleId, const uint8_t* moduleBaseAddress,
+        std::vector<NativeProtoExecDataPtr> nativeProtos) noexcept;
 
     NativeModule(const NativeModule&) = delete;
     NativeModule(NativeModule&&) = delete;
@@ -112,6 +55,7 @@ public:
     ~NativeModule() noexcept;
 
     size_t addRef() const noexcept;
+    size_t addRefs(size_t count) const noexcept;
     size_t release() const noexcept;
     [[nodiscard]] size_t getRefcount() const noexcept;
 
@@ -120,7 +64,9 @@ public:
 
     // Attempts to find the NativeProto with the given bytecode id.  If no
     // NativeProto for that bytecode id exists, a null pointer is returned.
-    [[nodiscard]] const NativeProto* tryGetNativeProto(uint32_t bytecodeId) const noexcept;
+    [[nodiscard]] const uint32_t* tryGetNativeProto(uint32_t bytecodeId) const noexcept;
+
+    [[nodiscard]] const std::vector<NativeProtoExecDataPtr>& getNativeProtos() const noexcept;
 
 private:
     mutable std::atomic<size_t> refcount = 0;
@@ -129,7 +75,7 @@ private:
     ModuleId moduleId = {};
     const uint8_t* moduleBaseAddress = nullptr;
 
-    std::vector<NativeProto> nativeProtos = {};
+    std::vector<NativeProtoExecDataPtr> nativeProtos = {};
 };
 
 // A NativeModuleRef is an owning reference to a NativeModule.  (Note:  We do
@@ -164,7 +110,7 @@ private:
 class SharedCodeAllocator
 {
 public:
-    SharedCodeAllocator() = default;
+    SharedCodeAllocator(CodeAllocator* codeAllocator) noexcept;
 
     SharedCodeAllocator(const SharedCodeAllocator&) = delete;
     SharedCodeAllocator(SharedCodeAllocator&&) = delete;
@@ -180,9 +126,11 @@ public:
     // If we have a NativeModule for the given ModuleId, an owning reference to
     // it is returned.  Otherwise, a new NativeModule is created for that ModuleId
     // using the provided NativeProtos, data, and code (space is allocated for the
-    // data and code such that it can be executed).
-    NativeModuleRef getOrInsertNativeModule(
-        const ModuleId& moduleId, std::vector<NativeProto> nativeProtos, const std::vector<uint8_t>& data, const std::vector<uint8_t>& code);
+    // data and code such that it can be executed).  Like std::map::insert, the
+    // bool result is true if a new module was created; false if an existing
+    // module is being returned.
+    std::pair<NativeModuleRef, bool> getOrInsertNativeModule(const ModuleId& moduleId, std::vector<NativeProtoExecDataPtr> nativeProtos,
+        const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize);
 
     // If a NativeModule exists for the given ModuleId and that NativeModule
     // is no longer referenced, the NativeModule is destroyed.  This should
@@ -200,10 +148,9 @@ private:
 
     mutable std::mutex mutex;
 
-    // Will be removed when backend allocator is integrated
-    const uint8_t* baseAddress = reinterpret_cast<const uint8_t*>(0x0f00'0000);
-
     std::unordered_map<ModuleId, std::unique_ptr<NativeModule>, ModuleIdHash, std::equal_to<>> nativeModules;
+
+    CodeAllocator* codeAllocator = nullptr;
 };
 
 } // namespace CodeGen

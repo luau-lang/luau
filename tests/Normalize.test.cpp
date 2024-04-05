@@ -731,7 +731,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "trivial_intersection_inhabited")
     const NormalizedType* n = normalizer.normalize(c);
     REQUIRE(n);
 
-    CHECK(normalizer.isInhabited(n));
+    CHECK(normalizer.isInhabited(n) == NormalizationResult::True);
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "bare_negated_boolean")

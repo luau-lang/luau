@@ -738,14 +738,18 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
         scope->lvalueTypes[def] = assignee;
     }
 
-    TypePackId resultPack = checkPack(scope, statLocal->values, expectedTypes).tp;
-    addConstraint(scope, statLocal->location, UnpackConstraint{arena->addTypePack(std::move(assignees)), resultPack, /*resultIsLValue*/ true});
+    TypePackId rvaluePack = checkPack(scope, statLocal->values, expectedTypes).tp;
 
-    // Types must flow between whatever annotations were provided and the rhs expression.
     if (hasAnnotation)
-        addConstraint(scope, statLocal->location, PackSubtypeConstraint{resultPack, arena->addTypePack(std::move(annotatedTypes))});
+    {
+        TypePackId annotatedPack = arena->addTypePack(std::move(annotatedTypes));
+        addConstraint(scope, statLocal->location, UnpackConstraint{arena->addTypePack(std::move(assignees)), annotatedPack, /*resultIsLValue*/ true});
+        addConstraint(scope, statLocal->location, PackSubtypeConstraint{rvaluePack, annotatedPack});
+    }
+    else
+        addConstraint(scope, statLocal->location, UnpackConstraint{arena->addTypePack(std::move(assignees)), rvaluePack, /*resultIsLValue*/ true});
 
-    if (statLocal->vars.size == 1 && statLocal->values.size == 1 && firstValueType && scope.get() == rootScope)
+    if (statLocal->vars.size == 1 && statLocal->values.size == 1 && firstValueType && scope.get() == rootScope && !hasAnnotation)
     {
         AstLocal* var = statLocal->vars.data[0];
         AstExpr* value = statLocal->values.data[0];
