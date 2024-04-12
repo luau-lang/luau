@@ -11,9 +11,7 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodeGenOptVecA64, false)
-
-LUAU_FASTFLAG(LuauCodegenRemoveDeadStores4)
+LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
 LUAU_FASTFLAG(LuauCodegenCheckTruthyFormB)
 
 namespace Luau
@@ -203,7 +201,7 @@ static bool emitBuiltin(
     {
     case LBF_MATH_FREXP:
     {
-        if (FFlag::LuauCodegenRemoveDeadStores4)
+        if (FFlag::LuauCodegenRemoveDeadStores5)
         {
             CODEGEN_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
             emitInvokeLibm1P(build, offsetof(NativeContext, libm_frexp), arg);
@@ -237,7 +235,7 @@ static bool emitBuiltin(
     }
     case LBF_MATH_MODF:
     {
-        if (FFlag::LuauCodegenRemoveDeadStores4)
+        if (FFlag::LuauCodegenRemoveDeadStores5)
         {
             CODEGEN_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
             emitInvokeLibm1P(build, offsetof(NativeContext, libm_modf), arg);
@@ -277,7 +275,7 @@ static bool emitBuiltin(
         build.fcsel(d0, d1, d0, getConditionFP(IrCondition::Less));
         build.str(d0, mem(rBase, res * sizeof(TValue) + offsetof(TValue, value.n)));
 
-        if (FFlag::LuauCodegenRemoveDeadStores4)
+        if (FFlag::LuauCodegenRemoveDeadStores5)
         {
             RegisterA64 temp = regs.allocTemp(KindA64::w);
             build.mov(temp, LUA_TNUMBER);
@@ -1118,7 +1116,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     {
         inst.regA64 = regs.allocReg(KindA64::q, index);
 
-        if (FFlag::LuauCodeGenOptVecA64 && inst.a.kind == IrOpKind::Constant)
+        if (inst.a.kind == IrOpKind::Constant)
         {
             float value = float(doubleOp(inst.a));
             uint32_t asU32;
@@ -1391,7 +1389,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         Label fresh; // used when guard aborts execution or jumps to a VM exit
         Label& fail = getTargetLabel(inst.c, fresh);
 
-        if (FFlag::LuauCodegenRemoveDeadStores4)
+        if (FFlag::LuauCodegenRemoveDeadStores5)
         {
             if (tagOp(inst.b) == 0)
             {

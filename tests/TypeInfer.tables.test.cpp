@@ -4283,6 +4283,30 @@ TEST_CASE_FIXTURE(Fixture, "parameter_was_set_an_indexer_and_bounded_by_another_
     CHECK_EQ("({number}, unknown) -> ()", toString(requireType("f")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "write_to_union_property_not_all_present")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    CheckResult result = check(R"(
+        type Animal = {tag: "Cat", meow: boolean} | {tag: "Dog", woof: boolean}
+        function f(t: Animal)
+            t.tag = "Dog"
+        end
+    )");
+
+    // this should fail because `t` may be a `Cat` variant, and `"Dog"` is not a subtype of `"Cat"`.
+    LUAU_REQUIRE_ERRORS(result);
+
+    CannotAssignToNever* tm = get<CannotAssignToNever>(result.errors[0]);
+    REQUIRE(tm);
+
+    CHECK(builtinTypes->stringType == tm->rhsType);
+    CHECK(CannotAssignToNever::Reason::PropertyNarrowed == tm->reason);
+    REQUIRE(tm->cause.size() == 2);
+    CHECK("\"Cat\"" == toString(tm->cause[0]));
+    CHECK("\"Dog\"" == toString(tm->cause[1]));
+}
+
 TEST_CASE_FIXTURE(Fixture, "mymovie_read_write_tables_bug")
 {
     CheckResult result = check(R"(
@@ -4320,6 +4344,19 @@ TEST_CASE_FIXTURE(Fixture, "mymovie_read_write_tables_bug_2")
 
     // we're primarily interested in knowing that this does not crash.
     LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "setindexer_always_transmute")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    CheckResult result = check(R"(
+        function f(x)
+            (5)[5] = x
+        end
+    )");
+
+    CHECK_EQ("(*error-type*) -> ()", toString(requireType("f")));
 }
 
 TEST_SUITE_END();

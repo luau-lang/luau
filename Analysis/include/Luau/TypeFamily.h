@@ -19,6 +19,22 @@ struct TypeArena;
 struct TxnLog;
 class Normalizer;
 
+struct TypeFamilyQueue
+{
+    NotNull<VecDeque<TypeId>> queuedTys;
+    NotNull<VecDeque<TypePackId>> queuedTps;
+
+    void add(TypeId instanceTy);
+    void add(TypePackId instanceTp);
+
+    template<typename T>
+    void add(const std::vector<T>& ts)
+    {
+        for (const T& t : ts)
+            enqueue(t);
+    }
+};
+
 struct TypeFamilyContext
 {
     NotNull<TypeArena> arena;
@@ -60,6 +76,7 @@ struct TypeFamilyContext
 
     NotNull<Constraint> pushConstraint(ConstraintV&& c);
 };
+
 /// Represents a reduction result, which may have successfully reduced the type,
 /// may have concretely failed to reduce the type, or may simply be stuck
 /// without more information.
@@ -83,7 +100,7 @@ struct TypeFamilyReductionResult
 
 template<typename T>
 using ReducerFunction =
-    std::function<TypeFamilyReductionResult<T>(T, const std::vector<TypeId>&, const std::vector<TypePackId>&, NotNull<TypeFamilyContext>)>;
+    std::function<TypeFamilyReductionResult<T>(T, NotNull<TypeFamilyQueue>, const std::vector<TypeId>&, const std::vector<TypePackId>&, NotNull<TypeFamilyContext>)>;
 
 /// Represents a type function that may be applied to map a series of types and
 /// type packs to a single output type.

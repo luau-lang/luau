@@ -19,6 +19,25 @@ bool inConditional(const TypeContext& context)
     return context == TypeContext::Condition;
 }
 
+bool occursCheck(TypeId needle, TypeId haystack)
+{
+    LUAU_ASSERT(get<BlockedType>(needle) || get<PendingExpansionType>(needle));
+    haystack = follow(haystack);
+
+    auto checkHaystack = [needle](TypeId haystack) {
+        return occursCheck(needle, haystack);
+    };
+
+    if (needle == haystack)
+        return true;
+    else if (auto ut = get<UnionType>(haystack))
+        return std::any_of(begin(ut), end(ut), checkHaystack);
+    else if (auto it = get<IntersectionType>(haystack))
+        return std::any_of(begin(it), end(it), checkHaystack);
+
+    return false;
+}
+
 std::optional<TypeId> findMetatableEntry(
     NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId type, const std::string& entry, Location location)
 {
@@ -330,7 +349,8 @@ TypeId stripNil(NotNull<BuiltinTypes> builtinTypes, TypeArena& arena, TypeId ty)
 
 ErrorSuppression shouldSuppressErrors(NotNull<Normalizer> normalizer, TypeId ty)
 {
-    const NormalizedType* normType = normalizer->normalize(ty);
+    LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
+    std::shared_ptr<const NormalizedType> normType = normalizer->normalize(ty);
 
     if (!normType)
         return ErrorSuppression::NormalizationFailed;

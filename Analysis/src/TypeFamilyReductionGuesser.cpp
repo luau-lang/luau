@@ -245,7 +245,7 @@ bool TypeFamilyReductionGuesser::operandIsAssignable(TypeId ty)
     return false;
 }
 
-const NormalizedType* TypeFamilyReductionGuesser::normalize(TypeId ty)
+std::shared_ptr<const NormalizedType> TypeFamilyReductionGuesser::normalize(TypeId ty)
 {
     return normalizer->normalize(ty);
 }
@@ -379,8 +379,8 @@ TypeFamilyInferenceResult TypeFamilyReductionGuesser::inferOrAndFamily(const Typ
         rhsTy = follow(*ty);
     TypeFamilyInferenceResult defaultAndOrInference{{builtins->unknownType, builtins->unknownType}, builtins->booleanType};
 
-    const NormalizedType* lty = normalize(lhsTy);
-    const NormalizedType* rty = normalize(lhsTy);
+    std::shared_ptr<const NormalizedType> lty = normalize(lhsTy);
+    std::shared_ptr<const NormalizedType> rty = normalize(lhsTy);
     bool lhsTruthy = lty ? lty->isTruthy() : false;
     bool rhsTruthy = rty ? rty->isTruthy() : false;
     // If at the end, we still don't have good substitutions, return the default type

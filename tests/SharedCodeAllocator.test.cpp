@@ -3,14 +3,20 @@
 
 #include "Luau/CodeAllocator.h"
 
+#include "luacode.h"
 #include "luacodegen.h"
+#include "lualib.h"
 
 #include "doctest.h"
+#include "ScopedFlags.h"
 
 // We explicitly test correctness of self-assignment for some types
 #ifdef __clang__
 #pragma GCC diagnostic ignored "-Wself-assign-overloaded"
 #endif
+
+LUAU_FASTFLAG(LuauCodegenContext)
+LUAU_FASTFLAG(LuauCodegenDetailedCompilationResult)
 
 using namespace Luau::CodeGen;
 
@@ -26,6 +32,9 @@ TEST_CASE("NativeModuleRefRefcounting")
 {
     if (!luau_codegen_supported())
         return;
+
+    ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
+    ScopedFastFlag luauCodegenDetailedCompilationResult{FFlag::LuauCodegenDetailedCompilationResult, true};
 
     CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
     SharedCodeAllocator allocator{&codeAllocator};
@@ -243,6 +252,9 @@ TEST_CASE("NativeProtoRefcounting")
     if (!luau_codegen_supported())
         return;
 
+    ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
+    ScopedFastFlag luauCodegenDetailedCompilationResult{FFlag::LuauCodegenDetailedCompilationResult, true};
+
     CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
     SharedCodeAllocator allocator{&codeAllocator};
 
@@ -293,6 +305,9 @@ TEST_CASE("NativeProtoState")
 {
     if (!luau_codegen_supported())
         return;
+
+    ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
+    ScopedFastFlag luauCodegenDetailedCompilationResult{FFlag::LuauCodegenDetailedCompilationResult, true};
 
     CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
     SharedCodeAllocator allocator{&codeAllocator};
@@ -346,4 +361,105 @@ TEST_CASE("NativeProtoState")
     REQUIRE(modRefA->tryGetNativeProto(0) == nullptr);
     REQUIRE(modRefA->tryGetNativeProto(2) == nullptr);
     REQUIRE(modRefA->tryGetNativeProto(4) == nullptr);
+}
+
+TEST_CASE("AnonymousModuleLifetime")
+{
+    if (!luau_codegen_supported())
+        return;
+
+    ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
+    ScopedFastFlag luauCodegenDetailedCompilationResult{FFlag::LuauCodegenDetailedCompilationResult, true};
+
+    CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
+    SharedCodeAllocator allocator{&codeAllocator};
+
+    const std::vector<uint8_t> data(8);
+    const std::vector<uint8_t> code(8);
+
+    std::vector<NativeProtoExecDataPtr> nativeProtos;
+    nativeProtos.reserve(1);
+
+    {
+        NativeProtoExecDataPtr nativeProto = createNativeProtoExecData(2);
+        getNativeProtoExecDataHeader(nativeProto.get()).bytecodeId = 1;
+        getNativeProtoExecDataHeader(nativeProto.get()).entryOffsetOrAddress = reinterpret_cast<const uint8_t*>(0x00);
+        nativeProto[0] = 0;
+        nativeProto[1] = 4;
+
+        nativeProtos.push_back(std::move(nativeProto));
+    }
+
+    NativeModuleRef modRef = allocator.insertAnonymousNativeModule(std::move(nativeProtos), data.data(), data.size(), code.data(), code.size());
+    REQUIRE(!modRef.empty());
+    REQUIRE(modRef->getModuleBaseAddress() != nullptr);
+    REQUIRE(modRef->tryGetNativeProto(1) != nullptr);
+    REQUIRE(modRef->getRefcount() == 1);
+
+    const NativeModule* mod = modRef.get();
+
+    // Acquire a reference (as if we are binding it to a Luau VM Proto):
+    modRef->addRef();
+    REQUIRE(mod->getRefcount() == 2);
+
+    // Release our "owning" reference:
+    modRef.reset();
+    REQUIRE(mod->getRefcount() == 1);
+
+    // Release our added reference (as if the Luau VM Proto is being GC'ed):
+    mod->release();
+
+    // When we return and the sharedCodeAllocator is destroyed it will verify
+    // that there are no outstanding anonymous NativeModules.
+}
+
+TEST_CASE("SharedAllocation")
+{
+    if (!luau_codegen_supported())
+        return;
+
+    ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
+    ScopedFastFlag luauCodegenDetailedCompilationResult{FFlag::LuauCodegenDetailedCompilationResult, true};
+
+    UniqueSharedCodeGenContext sharedCodeGenContext = createSharedCodeGenContext();
+
+    std::unique_ptr<lua_State, void (*)(lua_State*)> L1{luaL_newstate(), lua_close};
+    std::unique_ptr<lua_State, void (*)(lua_State*)> L2{luaL_newstate(), lua_close};
+
+    create(L1.get(), sharedCodeGenContext.get());
+    create(L2.get(), sharedCodeGenContext.get());
+
+    std::string source = R"(
+        function add(x, y) return x + y end
+        function sub(x, y) return x - y end
+    )";
+
+    size_t bytecodeSize = 0;
+    std::unique_ptr<char[], void (*)(void*)> bytecode{luau_compile(source.data(), source.size(), nullptr, &bytecodeSize), free};
+    const int loadResult1 = luau_load(L1.get(), "=Functions", bytecode.get(), bytecodeSize, 0);
+    const int loadResult2 = luau_load(L2.get(), "=Functions", bytecode.get(), bytecodeSize, 0);
+    REQUIRE(loadResult1 == 0);
+    REQUIRE(loadResult2 == 0);
+    bytecode.reset();
+
+    const ModuleId moduleId = {0x01};
+
+    CompilationStats nativeStats1 = {};
+    CompilationStats nativeStats2 = {};
+    const CompilationResult codeGenResult1 = Luau::CodeGen::compile(moduleId, L1.get(), -1, CodeGen_ColdFunctions, &nativeStats1);
+    const CompilationResult codeGenResult2 = Luau::CodeGen::compile(moduleId, L2.get(), -1, CodeGen_ColdFunctions, &nativeStats2);
+    REQUIRE(codeGenResult1.result == CodeGenCompilationResult::Success);
+    REQUIRE(codeGenResult2.result == CodeGenCompilationResult::Success);
+
+    // We should have identified all three functions both times through:
+    REQUIRE(nativeStats1.functionsTotal == 3);
+    REQUIRE(nativeStats2.functionsTotal == 3);
+
+    // We should have compiled the three functions only the first time:
+    REQUIRE(nativeStats1.functionsCompiled == 3);
+    REQUIRE(nativeStats2.functionsCompiled == 0);
+
+    // We should have bound all three functions both times through:
+    REQUIRE(nativeStats1.functionsBound == 3);
+    REQUIRE(nativeStats2.functionsBound == 3);
 }

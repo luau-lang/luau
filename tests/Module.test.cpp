@@ -2,8 +2,6 @@
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/Module.h"
-#include "Luau/Scope.h"
-#include "Luau/RecursionCounter.h"
 #include "Luau/Parser.h"
 
 #include "Fixture.h"
@@ -14,10 +12,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauStacklessTypeClone3)
 LUAU_FASTFLAG(DebugLuauFreezeArena);
 LUAU_FASTINT(LuauTypeCloneIterationLimit);
-LUAU_FASTINT(LuauTypeCloneRecursionLimit);
 
 TEST_SUITE_BEGIN("ModuleTests");
 
@@ -331,47 +327,17 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "clone_self_property")
     CHECK_EQ("This function must be called with self. Did you mean to use a colon instead of a dot?", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
-{
-#if defined(_DEBUG) || defined(_NOOPT)
-    int limit = 250;
-#else
-    int limit = 400;
-#endif
-
-    ScopedFastFlag sff{FFlag::LuauStacklessTypeClone3, false};
-    ScopedFastInt luauTypeCloneRecursionLimit{FInt::LuauTypeCloneRecursionLimit, limit};
-
-    TypeArena src;
-
-    TypeId table = src.addType(TableType{});
-    TypeId nested = table;
-
-    for (int i = 0; i < limit + 100; i++)
-    {
-        TableType* ttv = getMutable<TableType>(nested);
-
-        ttv->props["a"].setType(src.addType(TableType{}));
-        nested = ttv->props["a"].type();
-    }
-
-    TypeArena dest;
-    CloneState cloneState{builtinTypes};
-
-    CHECK_THROWS_AS(clone(table, dest, cloneState), RecursionLimitException);
-}
-
 TEST_CASE_FIXTURE(Fixture, "clone_iteration_limit")
 {
-    ScopedFastFlag sff{FFlag::LuauStacklessTypeClone3, true};
-    ScopedFastInt sfi{FInt::LuauTypeCloneIterationLimit, 500};
+    ScopedFastInt sfi{FInt::LuauTypeCloneIterationLimit, 2000};
 
     TypeArena src;
 
     TypeId table = src.addType(TableType{});
     TypeId nested = table;
 
-    for (int i = 0; i < 2500; i++)
+    int nesting = 2500;
+    for (int i = 0; i < nesting; i++)
     {
         TableType* ttv = getMutable<TableType>(nested);
         ttv->props["a"].setType(src.addType(TableType{}));
@@ -533,8 +499,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "clone_table_bound_to_table_bound_to_table")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "clone_a_bound_type_to_a_persistent_type")
 {
-    ScopedFastFlag sff{FFlag::LuauStacklessTypeClone3, true};
-
     TypeArena arena;
 
     TypeId boundTo = arena.addType(BoundType{builtinTypes->numberType});
@@ -549,8 +513,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "clone_a_bound_type_to_a_persistent_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "clone_a_bound_typepack_to_a_persistent_typepack")
 {
-    ScopedFastFlag sff{FFlag::LuauStacklessTypeClone3, true};
-
     TypeArena arena;
 
     TypePackId boundTo = arena.addTypePack(BoundTypePack{builtinTypes->neverTypePack});

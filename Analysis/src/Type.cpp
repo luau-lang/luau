@@ -9,6 +9,7 @@
 #include "Luau/RecursionCounter.h"
 #include "Luau/StringUtils.h"
 #include "Luau/ToString.h"
+#include "Luau/TypeFamily.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
 #include "Luau/VecDeque.h"
@@ -422,6 +423,9 @@ bool maybeSingleton(TypeId ty)
         for (TypeId part : itv)
             if (maybeSingleton(part)) // will i regret this?
                 return true;
+    if (const TypeFamilyInstanceType* tfit = get<TypeFamilyInstanceType>(ty))
+        if (tfit->family->name == "keyof" || tfit->family->name == "rawkeyof")
+            return true;
     return false;
 }
 

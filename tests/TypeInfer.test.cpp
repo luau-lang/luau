@@ -19,7 +19,6 @@
 LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
-LUAU_FASTFLAG(LuauTransitiveSubtyping);
 LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTINT(LuauNormalizeCacheLimit);
 LUAU_FASTINT(LuauRecursionLimit);
@@ -980,6 +979,41 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_found_this")
     )");
 }
 
+/*
+ * We had a bug where we'd improperly cache the normalization of types that are
+ * not fully solved yet.  This eventually caused a crash elsewhere in the type
+ * solver.
+ */
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_found_this_2")
+{
+    (void) check(R"(
+        local _
+        if _ then
+            _ = _
+            while _() do
+                _ = # _
+            end
+        end
+    )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "indexing_a_cyclic_intersection_does_not_crash")
+{
+    (void) check(R"(
+        local _
+        if _ then
+            while nil do
+                _ = _
+            end
+        end
+        if _[if _ then ""] then
+            while nil do
+                _ = if _ then ""
+            end
+        end
+    )");
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_metatable_crash")
 {
     CheckResult result = check(R"(
@@ -1272,9 +1306,6 @@ TEST_CASE_FIXTURE(Fixture, "dcr_delays_expansion_of_function_containing_blocked_
 {
     ScopedFastFlag sff[] = {
         {FFlag::DebugLuauDeferredConstraintResolution, true},
-        // If we run this with error-suppression, it triggers an assertion.
-        // FATAL ERROR: Assertion failed: !"Internal error: Trying to normalize a BlockedType"
-        {FFlag::LuauTransitiveSubtyping, false},
     };
 
     CheckResult result = check(R"(

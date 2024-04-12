@@ -12,7 +12,7 @@
 
 #include "lstate.h"
 
-LUAU_FASTFLAG(LuauCodegenRemoveDeadStores4)
+LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
 
 namespace Luau
 {
@@ -30,7 +30,7 @@ static void emitBuiltinMathFrexp(IrRegAllocX64& regs, AssemblyBuilderX64& build,
 
     build.vmovsd(luauRegValue(ra), xmm0);
 
-    if (FFlag::LuauCodegenRemoveDeadStores4)
+    if (FFlag::LuauCodegenRemoveDeadStores5)
         build.mov(luauRegTag(ra), LUA_TNUMBER);
 
     if (nresults > 1)
@@ -38,7 +38,7 @@ static void emitBuiltinMathFrexp(IrRegAllocX64& regs, AssemblyBuilderX64& build,
         build.vcvtsi2sd(xmm0, xmm0, dword[sTemporarySlot + 0]);
         build.vmovsd(luauRegValue(ra + 1), xmm0);
 
-        if (FFlag::LuauCodegenRemoveDeadStores4)
+        if (FFlag::LuauCodegenRemoveDeadStores5)
             build.mov(luauRegTag(ra + 1), LUA_TNUMBER);
     }
 }
@@ -53,14 +53,14 @@ static void emitBuiltinMathModf(IrRegAllocX64& regs, AssemblyBuilderX64& build, 
     build.vmovsd(xmm1, qword[sTemporarySlot + 0]);
     build.vmovsd(luauRegValue(ra), xmm1);
 
-    if (FFlag::LuauCodegenRemoveDeadStores4)
+    if (FFlag::LuauCodegenRemoveDeadStores5)
         build.mov(luauRegTag(ra), LUA_TNUMBER);
 
     if (nresults > 1)
     {
         build.vmovsd(luauRegValue(ra + 1), xmm0);
 
-        if (FFlag::LuauCodegenRemoveDeadStores4)
+        if (FFlag::LuauCodegenRemoveDeadStores5)
             build.mov(luauRegTag(ra + 1), LUA_TNUMBER);
     }
 }
@@ -91,7 +91,7 @@ static void emitBuiltinMathSign(IrRegAllocX64& regs, AssemblyBuilderX64& build, 
 
     build.vmovsd(luauRegValue(ra), tmp0.reg);
 
-    if (FFlag::LuauCodegenRemoveDeadStores4)
+    if (FFlag::LuauCodegenRemoveDeadStores5)
         build.mov(luauRegTag(ra), LUA_TNUMBER);
 }
 

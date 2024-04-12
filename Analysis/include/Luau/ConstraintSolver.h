@@ -75,9 +75,6 @@ struct ConstraintSolver
     // A constraint can be both blocked and unsolved, for instance.
     std::vector<NotNull<const Constraint>> unsolvedConstraints;
 
-    // This is a set of type families that need to be reduced after all constraints have been dispatched.
-    DenseHashSet<TypeId> familyInstances{nullptr};
-
     // A mapping of constraint pointer to how many things the constraint is
     // blocked on. Can be empty or 0 for constraints that are not blocked on
     // anything.
@@ -137,7 +134,7 @@ struct ConstraintSolver
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const SetPropConstraint& c, NotNull<const Constraint> constraint);
 
-    bool tryDispatchHasIndexer(int& recursionDepth, NotNull<const Constraint> constraint, TypeId subjectType, TypeId indexType, TypeId resultType);
+    bool tryDispatchHasIndexer(int& recursionDepth, NotNull<const Constraint> constraint, TypeId subjectType, TypeId indexType, TypeId resultType, Set<TypeId>& seen);
     bool tryDispatch(const HasIndexerConstraint& c, NotNull<const Constraint> constraint);
 
     /// (dispatched, found) where

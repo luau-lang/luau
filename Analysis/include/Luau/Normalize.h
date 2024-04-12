@@ -283,6 +283,11 @@ struct NormalizedType
     // The generic/free part of the type.
     NormalizedTyvars tyvars;
 
+    // Free types, blocked types, and certain other types change shape as type
+    // inference is done. If we were to cache the normalization of these types,
+    // we'd be reusing bad, stale data.
+    bool isCacheable = true;
+
     NormalizedType(NotNull<BuiltinTypes> builtinTypes);
 
     NormalizedType() = delete;
@@ -330,7 +335,7 @@ struct NormalizedType
 
 class Normalizer
 {
-    std::unordered_map<TypeId, std::unique_ptr<NormalizedType>> cachedNormals;
+    std::unordered_map<TypeId, std::shared_ptr<NormalizedType>> cachedNormals;
     std::unordered_map<const TypeIds*, TypeId> cachedIntersections;
     std::unordered_map<const TypeIds*, TypeId> cachedUnions;
     std::unordered_map<const TypeIds*, std::unique_ptr<TypeIds>> cachedTypeIds;
@@ -355,7 +360,8 @@ public:
     Normalizer& operator=(Normalizer&) = delete;
 
     // If this returns null, the typechecker should emit a "too complex" error
-    const NormalizedType* normalize(TypeId ty);
+    const NormalizedType* DEPRECATED_normalize(TypeId ty);
+    std::shared_ptr<const NormalizedType> normalize(TypeId ty);
     void clearNormal(NormalizedType& norm);
 
     // ------- Cached TypeIds

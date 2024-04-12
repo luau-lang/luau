@@ -24,7 +24,7 @@ struct FamilyFixture : Fixture
     {
         swapFamily = TypeFamily{/* name */ "Swap",
             /* reducer */
-            [](TypeId instance, std::vector<TypeId> tys, std::vector<TypePackId> tps,
+            [](TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& tys, const std::vector<TypePackId>& tps,
                 NotNull<TypeFamilyContext> ctx) -> TypeFamilyReductionResult<TypeId> {
                 LUAU_ASSERT(tys.size() == 1);
                 TypeId param = follow(tys.at(0));
@@ -216,6 +216,62 @@ TEST_CASE_FIXTURE(Fixture, "add_family_at_work")
     CHECK(toString(requireType("c")) == "Add<string, number>");
     CHECK(toString(result.errors[0]) == "Type family instance Add<number, string> is uninhabited");
     CHECK(toString(result.errors[1]) == "Type family instance Add<string, number> is uninhabited");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_add_family_at_work")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type T = add<number | T, number>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireTypeAlias("T")) == "number");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "mul_family_with_union_of_multiplicatives")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    loadDefinition(R"(
+        declare class Vec2
+            function __mul(self, rhs: number): Vec2
+        end
+
+        declare class Vec3
+            function __mul(self, rhs: number): Vec3
+        end
+    )");
+
+    CheckResult result = check(R"(
+        type T = mul<Vec2 | Vec3, number>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireTypeAlias("T")) == "Vec2 | Vec3");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "mul_family_with_union_of_multiplicatives_2")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    loadDefinition(R"(
+        declare class Vec3
+            function __mul(self, rhs: number): Vec3
+            function __mul(self, rhs: Vec3): Vec3
+        end
+    )");
+
+    CheckResult result = check(R"(
+        type T = mul<number | Vec3, Vec3>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireTypeAlias("T")) == "Vec3");
 }
 
 TEST_CASE_FIXTURE(Fixture, "internal_families_raise_errors")
