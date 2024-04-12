@@ -95,10 +95,6 @@ struct ConstraintGenerator
     // will enqueue them during solving.
     std::vector<ConstraintPtr> unqueuedConstraints;
 
-    // Type family instances created by the generator. This is used to ensure
-    // that these instances are reduced fully by the solver.
-    std::vector<TypeId> familyInstances;
-
     // The private scope of type aliases for which the type parameters belong to.
     DenseHashMap<const AstStatTypeAlias*, ScopePtr> astTypeAliasDefiningScopes{nullptr};
 
@@ -264,8 +260,8 @@ private:
         std::optional<TypeId> assignedTy;
     };
 
-    LValueBounds checkLValue(const ScopePtr& scope, AstExpr* expr, bool transform);
-    LValueBounds checkLValue(const ScopePtr& scope, AstExprLocal* local, bool transform);
+    LValueBounds checkLValue(const ScopePtr& scope, AstExpr* expr);
+    LValueBounds checkLValue(const ScopePtr& scope, AstExprLocal* local);
     LValueBounds checkLValue(const ScopePtr& scope, AstExprGlobal* global);
     LValueBounds checkLValue(const ScopePtr& scope, AstExprIndexName* indexName);
     LValueBounds checkLValue(const ScopePtr& scope, AstExprIndexExpr* indexExpr);

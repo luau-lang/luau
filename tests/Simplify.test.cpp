@@ -571,4 +571,15 @@ TEST_CASE_FIXTURE(SimplifyFixture, "bound_intersected_by_itself_should_be_itself
     CHECK(toString(blocked) == intersectStr(blocked, blocked));
 }
 
+TEST_CASE_FIXTURE(SimplifyFixture, "cyclic_never_union_and_string")
+{
+    // t1 where t1 = never | t1
+    TypeId leftType = arena->addType(UnionType{{builtinTypes->neverType, builtinTypes->neverType}});
+    UnionType* leftUnion = getMutable<UnionType>(leftType);
+    REQUIRE(leftUnion);
+    leftUnion->options[0] = leftType;
+
+    CHECK(builtinTypes->stringType == union_(leftType, builtinTypes->stringType));
+}
+
 TEST_SUITE_END();

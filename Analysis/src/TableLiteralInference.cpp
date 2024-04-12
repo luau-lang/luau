@@ -116,16 +116,9 @@ static std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& table
     return std::nullopt;
 }
 
-TypeId matchLiteralType(
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<TypeArena> arena,
-    NotNull<Unifier2> unifier,
-    TypeId expectedType,
-    TypeId exprType,
-    const AstExpr* expr
-)
+TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
+    NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, NotNull<Unifier2> unifier, TypeId expectedType, TypeId exprType,
+    const AstExpr* expr, std::vector<TypeId>& toBlock)
 {
     /*
      * Table types that arise from literal table expressions have some
@@ -244,7 +237,7 @@ TypeId matchLiteralType(
 
                 if (tt)
                 {
-                    TypeId res = matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, *tt, exprType, expr);
+                    TypeId res = matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, *tt, exprType, expr, toBlock);
 
                     parts.push_back(res);
                     return arena->addType(UnionType{std::move(parts)});
@@ -281,7 +274,8 @@ TypeId matchLiteralType(
                         (*astExpectedTypes)[item.key] = expectedTableTy->indexer->indexType;
                         (*astExpectedTypes)[item.value] = expectedTableTy->indexer->indexResultType;
 
-                        TypeId matchedType = matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, expectedTableTy->indexer->indexResultType, propTy, item.value);
+                        TypeId matchedType = matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier,
+                            expectedTableTy->indexer->indexResultType, propTy, item.value, toBlock);
 
                         if (tableTy->indexer)
                             unifier->unify(matchedType, tableTy->indexer->indexResultType);
@@ -311,19 +305,22 @@ TypeId matchLiteralType(
                 // quadratic in a hurry.
                 if (expectedProp.isShared())
                 {
-                    matchedType = matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, *expectedReadTy, propTy, item.value);
+                    matchedType =
+                        matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, *expectedReadTy, propTy, item.value, toBlock);
                     prop.readTy = matchedType;
                     prop.writeTy = matchedType;
                 }
                 else if (expectedReadTy)
                 {
-                    matchedType = matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, *expectedReadTy, propTy, item.value);
+                    matchedType =
+                        matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, *expectedReadTy, propTy, item.value, toBlock);
                     prop.readTy = matchedType;
                     prop.writeTy.reset();
                 }
                 else if (expectedWriteTy)
                 {
-                    matchedType = matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, *expectedWriteTy, propTy, item.value);
+                    matchedType =
+                        matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, *expectedWriteTy, propTy, item.value, toBlock);
                     prop.readTy.reset();
                     prop.writeTy = matchedType;
                 }
@@ -351,14 +348,31 @@ TypeId matchLiteralType(
                     LUAU_ASSERT(propTy);
 
                     unifier->unify(expectedTableTy->indexer->indexType, builtinTypes->numberType);
-                    TypeId matchedType = matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier, expectedTableTy->indexer->indexResultType, *propTy, item.value);
+                    TypeId matchedType = matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier,
+                        expectedTableTy->indexer->indexResultType, *propTy, item.value, toBlock);
 
                     tableTy->indexer->indexResultType = matchedType;
                 }
             }
             else if (item.kind == AstExprTable::Item::General)
             {
-                LUAU_ASSERT(!"TODO");
+
+                // We have { ..., [blocked] : somePropExpr, ...}
+                // If blocked resolves to a string, we will then take care of this above
+                // If it resolves to some other kind of expression, we don't have a way of folding this information into indexer
+                // because there is no named prop to remove
+                // We should just block here
+                const TypeId* keyTy = astTypes->find(item.key);
+                LUAU_ASSERT(keyTy);
+                TypeId tKey = follow(*keyTy);
+                if (get<BlockedType>(tKey))
+                    toBlock.push_back(tKey);
+
+                const TypeId* propTy = astTypes->find(item.value);
+                LUAU_ASSERT(propTy);
+                TypeId tProp = follow(*propTy);
+                if (get<BlockedType>(tProp))
+                    toBlock.push_back(tProp);
             }
             else
                 LUAU_ASSERT(!"Unexpected");

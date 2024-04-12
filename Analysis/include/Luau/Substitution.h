@@ -183,13 +183,21 @@ struct Tarjan
 struct Substitution : Tarjan
 {
 protected:
-    Substitution(const TxnLog* log_, TypeArena* arena)
-        : arena(arena)
-    {
-        log = log_;
-        LUAU_ASSERT(log);
-        LUAU_ASSERT(arena);
-    }
+    Substitution(const TxnLog* log_, TypeArena* arena);
+
+    /*
+     * By default, Substitution assumes that the types produced by clean() are
+     * freshly allocated types that are safe to mutate.
+     *
+     * If your clean() implementation produces a type that is not safe to
+     * mutate, you must call dontTraverseInto on this type (or type pack) to
+     * prevent Substitution from attempting to perform substitutions within the
+     * cleaned type.
+     *
+     * See the test weird_cyclic_instantiation for an example.
+     */
+    void dontTraverseInto(TypeId ty);
+    void dontTraverseInto(TypePackId tp);
 
 public:
     TypeArena* arena;
@@ -197,6 +205,9 @@ public:
     DenseHashMap<TypePackId, TypePackId> newPacks{nullptr};
     DenseHashSet<TypeId> replacedTypes{nullptr};
     DenseHashSet<TypePackId> replacedTypePacks{nullptr};
+
+    DenseHashSet<TypeId> noTraverseTypes{nullptr};
+    DenseHashSet<TypePackId> noTraverseTypePacks{nullptr};
 
     std::optional<TypeId> substitute(TypeId ty);
     std::optional<TypePackId> substitute(TypePackId tp);

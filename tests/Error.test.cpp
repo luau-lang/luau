@@ -6,8 +6,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauStacklessTypeClone3);
-
 TEST_SUITE_BEGIN("ErrorTests");
 
 TEST_CASE("TypeError_code_should_return_nonzero_code")
@@ -19,7 +17,7 @@ TEST_CASE("TypeError_code_should_return_nonzero_code")
 TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_names_show_instead_of_tables")
 {
     frontend.options.retainFullTypeGraphs = false;
-    ScopedFastFlag sff{FFlag::LuauStacklessTypeClone3, true};
+
     CheckResult result = check(R"(
 --!strict
 local Account = {}

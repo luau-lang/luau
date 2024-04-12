@@ -1082,4 +1082,57 @@ type t0 = (t0<t0...>)
 )");
     LUAU_REQUIRE_ERRORS(result);
 }
+
+
+TEST_CASE_FIXTURE(Fixture, "recursive_type_alias_warns")
+{
+    CheckResult result = check(R"(
+type Foo<T> = Foo<T>
+)");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto occursCheckError = get<OccursCheckFailed>(result.errors[0]);
+    REQUIRE(occursCheckError);
+}
+
+TEST_CASE_FIXTURE(Fixture, "recursive_type_alias_bad_pack_use_warns")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+type Foo<T> = Foo<T...>
+)");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    auto occursCheckFailed = get<OccursCheckFailed>(result.errors[1]);
+    REQUIRE(occursCheckFailed);
+
+    auto swappedGeneric = get<SwappedGenericTypeParameter>(result.errors[2]);
+    REQUIRE(swappedGeneric);
+    CHECK(swappedGeneric->name == "T");
+}
+
+TEST_CASE_FIXTURE(Fixture, "corecursive_aliases")
+{
+    CheckResult result = check(R"(
+type Foo<T> = Bar<T>
+type Bar<T> = Foo<T>
+)");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<OccursCheckFailed>(result.errors[0]);
+    REQUIRE(err);
+}
+
+TEST_CASE_FIXTURE(Fixture, "should_also_occurs_check")
+{
+    CheckResult result = check(R"(
+type Foo<T> = Foo<T> | string
+)");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    auto err = get<OccursCheckFailed>(result.errors[0]);
+    REQUIRE(err);
+}
+
 TEST_SUITE_END();

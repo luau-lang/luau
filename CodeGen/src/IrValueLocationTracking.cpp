@@ -119,7 +119,7 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
         break;
 
         // These instructions read VmReg only after optimizeMemoryOperandsX64
-    case IrCmd::CHECK_TAG: // TODO: remove with FFlagLuauCodegenRemoveDeadStores4
+    case IrCmd::CHECK_TAG: // TODO: remove with FFlagLuauCodegenRemoveDeadStores5
     case IrCmd::CHECK_TRUTHY:
     case IrCmd::ADD_NUM:
     case IrCmd::SUB_NUM:

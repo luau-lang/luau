@@ -225,8 +225,36 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "UnexpectedTypeInSubtyping {  ty = '" + toString(err.ty) + "' }";
     else if constexpr (std::is_same_v<T, UnexpectedTypePackInSubtyping>)
         stream << "UnexpectedTypePackInSubtyping {  tp = '" + toString(err.tp) + "' }";
+    else if constexpr (std::is_same_v<T, CannotAssignToNever>)
+    {
+        stream << "CannotAssignToNever { rvalueType = '" << toString(err.rhsType) << "', reason = '" << err.reason << "', cause = { ";
+
+        bool first = true;
+        for (TypeId ty : err.cause)
+        {
+            if (first)
+                first = false;
+            else
+                stream << ", ";
+
+            stream << "'" << toString(ty) << "'";
+        }
+
+        stream << " } } ";
+    }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
+}
+
+std::ostream& operator<<(std::ostream& stream, const CannotAssignToNever::Reason& reason)
+{
+    switch (reason)
+    {
+    case CannotAssignToNever::Reason::PropertyNarrowed:
+        return stream << "PropertyNarrowed";
+    default:
+        return stream << "UnknownReason";
+    }
 }
 
 std::ostream& operator<<(std::ostream& stream, const TypeErrorData& data)

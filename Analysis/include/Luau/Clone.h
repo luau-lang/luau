@@ -20,8 +20,6 @@ struct CloneState
 
     SeenTypes seenTypes;
     SeenTypePacks seenTypePacks;
-
-    int recursionCount = 0;
 };
 
 TypePackId clone(TypePackId tp, TypeArena& dest, CloneState& cloneState);

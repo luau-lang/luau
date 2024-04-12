@@ -21,6 +21,13 @@ namespace CodeGen
 // multiple Luau VMs concurrently, and allows for sharing of executable native
 // code and related metadata.
 
+struct ModuleBindResult
+{
+    CodeGenCompilationResult compilationResult = {};
+
+    uint32_t functionsBound = 0;
+};
+
 class BaseCodeGenContext
 {
 public:
@@ -28,10 +35,10 @@ public:
 
     [[nodiscard]] bool initHeaderFunctions();
 
-    [[nodiscard]] virtual std::optional<CodeGenCompilationResult> tryBindExistingModule(
+    [[nodiscard]] virtual std::optional<ModuleBindResult> tryBindExistingModule(
         const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos) = 0;
 
-    [[nodiscard]] virtual CodeGenCompilationResult bindModule(const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos,
+    [[nodiscard]] virtual ModuleBindResult bindModule(const std::optional<ModuleId>& moduleId, const std::vector<Proto*>& moduleProtos,
         std::vector<NativeProtoExecDataPtr> nativeExecDatas, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize) = 0;
 
     virtual void onCloseState() noexcept = 0;
@@ -51,10 +58,10 @@ class StandaloneCodeGenContext final : public BaseCodeGenContext
 public:
     StandaloneCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
 
-    [[nodiscard]] virtual std::optional<CodeGenCompilationResult> tryBindExistingModule(
+    [[nodiscard]] virtual std::optional<ModuleBindResult> tryBindExistingModule(
         const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos) override;
 
-    [[nodiscard]] virtual CodeGenCompilationResult bindModule(const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos,
+    [[nodiscard]] virtual ModuleBindResult bindModule(const std::optional<ModuleId>& moduleId, const std::vector<Proto*>& moduleProtos,
         std::vector<NativeProtoExecDataPtr> nativeExecDatas, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize) override;
 
     virtual void onCloseState() noexcept override;
@@ -68,10 +75,10 @@ class SharedCodeGenContext final : public BaseCodeGenContext
 public:
     SharedCodeGenContext(size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
 
-    [[nodiscard]] virtual std::optional<CodeGenCompilationResult> tryBindExistingModule(
+    [[nodiscard]] virtual std::optional<ModuleBindResult> tryBindExistingModule(
         const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos) override;
 
-    [[nodiscard]] virtual CodeGenCompilationResult bindModule(const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos,
+    [[nodiscard]] virtual ModuleBindResult bindModule(const std::optional<ModuleId>& moduleId, const std::vector<Proto*>& moduleProtos,
         std::vector<NativeProtoExecDataPtr> nativeExecDatas, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize) override;
 
     virtual void onCloseState() noexcept override;
@@ -87,29 +94,6 @@ private:
 // implementation is removed, the _NEW suffix can be dropped from these
 // functions.
 
-class SharedCodeGenContext;
-
-struct SharedCodeGenContextDeleter
-{
-    void operator()(const SharedCodeGenContext* context) const noexcept;
-};
-
-using UniqueSharedCodeGenContext = std::unique_ptr<SharedCodeGenContext, SharedCodeGenContextDeleter>;
-
-// Creates a new SharedCodeGenContext that can be used by multiple Luau VMs
-// concurrently, using either the default allocator parameters or custom
-// allocator parameters.
-[[nodiscard]] UniqueSharedCodeGenContext createSharedCodeGenContext();
-
-[[nodiscard]] UniqueSharedCodeGenContext createSharedCodeGenContext(AllocationCallback* allocationCallback, void* allocationCallbackContext);
-
-[[nodiscard]] UniqueSharedCodeGenContext createSharedCodeGenContext(
-    size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
-
-// Destroys the provided SharedCodeGenContext.  All Luau VMs using the
-// SharedCodeGenContext must be destroyed before this function is called.
-void destroySharedCodeGenContext(const SharedCodeGenContext* codeGenContext) noexcept;
-
 // Initializes native code-gen on the provided Luau VM, using a VM-specific
 // code-gen context and either the default allocator parameters or custom
 // allocator parameters.
@@ -123,6 +107,7 @@ void create_NEW(lua_State* L, size_t blockSize, size_t maxTotalSize, AllocationC
 // destroyed via lua_close.
 void create_NEW(lua_State* L, SharedCodeGenContext* codeGenContext);
 
+CompilationResult compile_NEW(lua_State* L, int idx, unsigned int flags, CompilationStats* stats);
 CompilationResult compile_NEW(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats);
 
 // Returns true if native execution is currently enabled for this VM

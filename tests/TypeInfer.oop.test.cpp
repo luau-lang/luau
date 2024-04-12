@@ -2,8 +2,6 @@
 
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
-#include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
 #include "Luau/Type.h"
 #include "Luau/VisitType.h"
 
@@ -15,7 +13,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauStacklessTypeClone3);
 
 TEST_SUITE_BEGIN("TypeInferOOP");
 
@@ -416,7 +413,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "promise_type_error_too_complex" * doctest::t
     // TODO: LTI changes to function call resolution have rendered this test impossibly slow
     // shared self should fix it, but there may be other mitigations possible as well
     REQUIRE(!FFlag::DebugLuauDeferredConstraintResolution);
-    ScopedFastFlag sff{FFlag::LuauStacklessTypeClone3, true};
 
     frontend.options.retainFullTypeGraphs = false;
 

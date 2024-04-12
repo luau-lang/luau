@@ -14,15 +14,7 @@ struct BuiltinTypes;
 struct Unifier2;
 class AstExpr;
 
-TypeId matchLiteralType(
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
-    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<TypeArena> arena,
-    NotNull<Unifier2> unifier,
-    TypeId expectedType,
-    TypeId exprType,
-    const AstExpr* expr
-);
-
+TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
+    NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, NotNull<Unifier2> unifier, TypeId expectedType, TypeId exprType,
+    const AstExpr* expr, std::vector<TypeId>& toBlock);
 }

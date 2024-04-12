@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/CodeGen.h"
 #include "Luau/Common.h"
 #include "Luau/NativeProtoExecData.h"
 
@@ -8,6 +9,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdint.h>
 #include <unordered_map>
 #include <vector>
@@ -26,7 +28,6 @@ namespace CodeGen
 // The module is the unit of shared ownership (i.e., it is where the reference
 // count is maintained).
 
-using ModuleId = std::array<uint8_t, 16>;
 
 struct CodeAllocator;
 class NativeModule;
@@ -41,7 +42,7 @@ class SharedCodeAllocator;
 class NativeModule
 {
 public:
-    NativeModule(SharedCodeAllocator* allocator, const ModuleId& moduleId, const uint8_t* moduleBaseAddress,
+    NativeModule(SharedCodeAllocator* allocator, const std::optional<ModuleId>& moduleId, const uint8_t* moduleBaseAddress,
         std::vector<NativeProtoExecDataPtr> nativeProtos) noexcept;
 
     NativeModule(const NativeModule&) = delete;
@@ -59,6 +60,8 @@ public:
     size_t release() const noexcept;
     [[nodiscard]] size_t getRefcount() const noexcept;
 
+    [[nodiscard]] const std::optional<ModuleId>& getModuleId() const noexcept;
+
     // Gets the base address of the executable native code for the module.
     [[nodiscard]] const uint8_t* getModuleBaseAddress() const noexcept;
 
@@ -72,7 +75,7 @@ private:
     mutable std::atomic<size_t> refcount = 0;
 
     SharedCodeAllocator* allocator = nullptr;
-    ModuleId moduleId = {};
+    std::optional<ModuleId> moduleId = {};
     const uint8_t* moduleBaseAddress = nullptr;
 
     std::vector<NativeProtoExecDataPtr> nativeProtos = {};
@@ -85,7 +88,7 @@ class NativeModuleRef
 {
 public:
     NativeModuleRef() noexcept = default;
-    NativeModuleRef(NativeModule* nativeModule) noexcept;
+    NativeModuleRef(const NativeModule* nativeModule) noexcept;
 
     NativeModuleRef(const NativeModuleRef& other) noexcept;
     NativeModuleRef(NativeModuleRef&& other) noexcept;
@@ -132,11 +135,14 @@ public:
     std::pair<NativeModuleRef, bool> getOrInsertNativeModule(const ModuleId& moduleId, std::vector<NativeProtoExecDataPtr> nativeProtos,
         const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize);
 
+    NativeModuleRef insertAnonymousNativeModule(
+        std::vector<NativeProtoExecDataPtr> nativeProtos, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize);
+
     // If a NativeModule exists for the given ModuleId and that NativeModule
     // is no longer referenced, the NativeModule is destroyed.  This should
     // usually only be called by NativeModule::release() when the reference
     // count becomes zero
-    void eraseNativeModuleIfUnreferenced(const ModuleId& moduleId);
+    void eraseNativeModuleIfUnreferenced(const NativeModule& nativeModule);
 
 private:
     struct ModuleIdHash
@@ -148,7 +154,9 @@ private:
 
     mutable std::mutex mutex;
 
-    std::unordered_map<ModuleId, std::unique_ptr<NativeModule>, ModuleIdHash, std::equal_to<>> nativeModules;
+    std::unordered_map<ModuleId, std::unique_ptr<NativeModule>, ModuleIdHash, std::equal_to<>> identifiedModules;
+
+    std::atomic<size_t> anonymousModuleCount = 0;
 
     CodeAllocator* codeAllocator = nullptr;
 };

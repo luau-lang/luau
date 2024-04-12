@@ -22,6 +22,22 @@ LUAU_FASTINT(LuauTarjanChildLimit);
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
+TEST_CASE_FIXTURE(Fixture, "general_case_table_literal_blocks")
+{
+    CheckResult result = check(R"(
+--!strict
+function f(x : {[any]: number})
+   return x
+end
+
+local Foo = {bar = "$$$"}
+
+f({[Foo.bar] = 0})
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "overload_resolution")
 {
     CheckResult result = check(R"(
@@ -2473,6 +2489,49 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_that_could_return_anything_is_compa
         a(foo)
     )");
 
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "self_application_does_not_segfault")
+{
+    (void)check(R"(
+        function f(a)
+            f(f)
+            return f(), a
+        end
+    )");
+
+    // We only care that type checking completes without tripping a crash or an assertion.
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_definition_in_a_do_block")
+{
+    CheckResult result = check(R"(
+        local f
+        do
+            function f()
+            end
+        end
+        f()
+    )");
+
+    // We are predominantly interested in this test not crashing.
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_definition_in_a_do_block_with_global")
+{
+    CheckResult result = check(R"(
+        function f() print("a") end
+        do
+            function f()
+                print("b")
+            end
+        end
+        f()
+    )");
+
+    // We are predominantly interested in this test not crashing.
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 

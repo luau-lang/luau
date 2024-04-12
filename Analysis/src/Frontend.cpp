@@ -1268,9 +1268,6 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
     if (options.randomizeConstraintResolutionSeed)
         cs.randomize(*options.randomizeConstraintResolutionSeed);
 
-    for (TypeId ty : cg.familyInstances)
-        cs.familyInstances.insert(ty);
-
     try
     {
         cs.run();

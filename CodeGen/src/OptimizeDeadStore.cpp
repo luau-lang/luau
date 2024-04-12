@@ -9,7 +9,7 @@
 
 #include "lobject.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenRemoveDeadStores4, false)
+LUAU_FASTFLAGVARIABLE(LuauCodegenRemoveDeadStores5, false)
 LUAU_FASTFLAG(LuauCodegenLoadTVTag)
 
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
@@ -18,6 +18,8 @@ namespace Luau
 {
 namespace CodeGen
 {
+
+constexpr uint8_t kUnknownTag = 0xff;
 
 // Luau value structure reminder:
 // [              TValue             ]
@@ -34,6 +36,9 @@ struct StoreRegInfo
 
     // This register might contain a GC object
     bool maybeGco = false;
+
+    // Knowing the last stored tag can help safely remove additional unused partial stores
+    uint8_t knownTag = kUnknownTag;
 };
 
 struct RemoveDeadStoreState
@@ -66,6 +71,32 @@ struct RemoveDeadStoreState
         }
     }
 
+    void killTagAndValueStorePair(StoreRegInfo& regInfo)
+    {
+        bool tagEstablished = regInfo.tagInstIdx != ~0u || regInfo.knownTag != kUnknownTag;
+
+        // When tag is 'nil', we don't need to remove the unused value store
+        bool valueEstablished = regInfo.valueInstIdx != ~0u || regInfo.knownTag == LUA_TNIL;
+
+        // Partial stores can only be removed if the whole pair is established
+        if (tagEstablished && valueEstablished)
+        {
+            if (regInfo.tagInstIdx != ~0u)
+            {
+                kill(function, function.instructions[regInfo.tagInstIdx]);
+                regInfo.tagInstIdx = ~0u;
+            }
+
+            if (regInfo.valueInstIdx != ~0u)
+            {
+                kill(function, function.instructions[regInfo.valueInstIdx]);
+                regInfo.valueInstIdx = ~0u;
+            }
+
+            regInfo.maybeGco = false;
+        }
+    }
+
     void killTValueStore(StoreRegInfo& regInfo)
     {
         if (regInfo.tvalueInstIdx != ~0u)
@@ -86,15 +117,23 @@ struct RemoveDeadStoreState
         if (function.cfg.captured.regs.test(reg))
             return;
 
-        killTagStore(regInfo);
-        killValueStore(regInfo);
+        killTagAndValueStorePair(regInfo);
         killTValueStore(regInfo);
+
+        // Opaque register definition removes the knowledge of the actual tag value
+        regInfo.knownTag = kUnknownTag;
     }
 
-    // When a register value is being used, we forget about the last store location to not kill them
+    // When a register value is being used (read), we forget about the last store location to not kill them
     void useReg(uint8_t reg)
     {
-        info[reg] = StoreRegInfo{};
+        StoreRegInfo& regInfo = info[reg];
+
+        // Register read doesn't clear the known tag
+        regInfo.tagInstIdx = ~0u;
+        regInfo.valueInstIdx = ~0u;
+        regInfo.tvalueInstIdx = ~0u;
+        regInfo.maybeGco = false;
     }
 
     // When checking control flow, such as exit to fallback blocks:
@@ -104,7 +143,7 @@ struct RemoveDeadStoreState
     {
         if (op.kind == IrOpKind::VmExit)
         {
-            clear();
+            readAllRegs();
         }
         else if (op.kind == IrOpKind::Block)
         {
@@ -120,7 +159,7 @@ struct RemoveDeadStoreState
             }
             else
             {
-                clear();
+                readAllRegs();
             }
         }
         else if (op.kind == IrOpKind::Undef)
@@ -147,7 +186,16 @@ struct RemoveDeadStoreState
                 bool isOut = out.regs.test(i) || (out.varargSeq && i >= out.varargStart);
 
                 if (!isOut)
-                    defReg(i);
+                {
+                    StoreRegInfo& regInfo = info[i];
+
+                    // Stores to captured registers are not removed since we don't track their uses outside of function
+                    if (!function.cfg.captured.regs.test(i))
+                    {
+                        killTagAndValueStorePair(regInfo);
+                        killTValueStore(regInfo);
+                    }
+                }
             }
         }
     }
@@ -217,10 +265,10 @@ struct RemoveDeadStoreState
     void capture(int reg) {}
 
     // Full clear of the tracked information
-    void clear()
+    void readAllRegs()
     {
         for (int i = 0; i <= maxReg; i++)
-            info[i] = StoreRegInfo();
+            useReg(i);
 
         hasGcoToClear = false;
     }
@@ -231,8 +279,19 @@ struct RemoveDeadStoreState
     {
         for (int i = 0; i <= maxReg; i++)
         {
-            if (info[i].maybeGco)
-                info[i] = StoreRegInfo();
+            StoreRegInfo& regInfo = info[i];
+
+            if (regInfo.maybeGco)
+            {
+                // If we happen to know the exact tag, it has to be a GCO, otherwise 'maybeGCO' should be false
+                CODEGEN_ASSERT(regInfo.knownTag == kUnknownTag || isGCO(regInfo.knownTag));
+
+                // Indirect register read by GC doesn't clear the known tag
+                regInfo.tagInstIdx = ~0u;
+                regInfo.valueInstIdx = ~0u;
+                regInfo.tvalueInstIdx = ~0u;
+                regInfo.maybeGco = false;
+            }
         }
 
         hasGcoToClear = false;
@@ -246,6 +305,105 @@ struct RemoveDeadStoreState
     // Some of the registers contain values which might be a GC object
     bool hasGcoToClear = false;
 };
+
+static bool tryReplaceTagWithFullStore(RemoveDeadStoreState& state, IrBuilder& build, IrFunction& function, IrBlock& block, uint32_t instIndex,
+    IrOp targetOp, IrOp tagOp, StoreRegInfo& regInfo)
+{
+    uint8_t tag = function.tagOp(tagOp);
+
+    // If the tag+value pair is established, we can mark both as dead and use a single split TValue store
+    if (regInfo.tagInstIdx != ~0u && (regInfo.valueInstIdx != ~0u || regInfo.knownTag == LUA_TNIL))
+    {
+        // If the 'nil' is stored, we keep 'STORE_TAG Rn, tnil' as it writes the 'full' TValue
+        // If a 'nil' tag is being replaced by something else, we also keep 'STORE_TAG Rn, tag', expecting a value store to follow
+        // And value store has to follow, as the pre-DSO code would not allow GC to observe an incomplete stack variable
+        if (tag != LUA_TNIL && regInfo.valueInstIdx != ~0u)
+        {
+            IrOp prevValueOp = function.instructions[regInfo.valueInstIdx].b;
+            replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, targetOp, tagOp, prevValueOp});
+        }
+
+        state.killTagStore(regInfo);
+        state.killValueStore(regInfo);
+
+        regInfo.tvalueInstIdx = instIndex;
+        regInfo.maybeGco = isGCO(tag);
+        regInfo.knownTag = tag;
+        state.hasGcoToClear |= regInfo.maybeGco;
+        return true;
+    }
+
+    // We can also replace a dead split TValue store with a new one, while keeping the value the same
+    if (regInfo.tvalueInstIdx != ~0u)
+    {
+        IrInst& prev = function.instructions[regInfo.tvalueInstIdx];
+
+        if (prev.cmd == IrCmd::STORE_SPLIT_TVALUE)
+        {
+            CODEGEN_ASSERT(prev.d.kind == IrOpKind::None);
+
+            // If the 'nil' is stored, we keep 'STORE_TAG Rn, tnil' as it writes the 'full' TValue
+            if (tag != LUA_TNIL)
+            {
+                IrOp prevValueOp = prev.c;
+                replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, targetOp, tagOp, prevValueOp});
+            }
+
+            state.killTValueStore(regInfo);
+
+            regInfo.tvalueInstIdx = instIndex;
+            regInfo.maybeGco = isGCO(tag);
+            regInfo.knownTag = tag;
+            state.hasGcoToClear |= regInfo.maybeGco;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool tryReplaceValueWithFullStore(RemoveDeadStoreState& state, IrBuilder& build, IrFunction& function, IrBlock& block, uint32_t instIndex,
+    IrOp targetOp, IrOp valueOp, StoreRegInfo& regInfo)
+{
+    // If the tag+value pair is established, we can mark both as dead and use a single split TValue store
+    if (regInfo.tagInstIdx != ~0u && regInfo.valueInstIdx != ~0u)
+    {
+        IrOp prevTagOp = function.instructions[regInfo.tagInstIdx].b;
+        uint8_t prevTag = function.tagOp(prevTagOp);
+
+        CODEGEN_ASSERT(regInfo.knownTag == prevTag);
+        replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, targetOp, prevTagOp, valueOp});
+
+        state.killTagStore(regInfo);
+        state.killValueStore(regInfo);
+
+        regInfo.tvalueInstIdx = instIndex;
+        return true;
+    }
+
+    // We can also replace a dead split TValue store with a new one, while keeping the value the same
+    if (regInfo.tvalueInstIdx != ~0u)
+    {
+        IrInst& prev = function.instructions[regInfo.tvalueInstIdx];
+
+        if (prev.cmd == IrCmd::STORE_SPLIT_TVALUE)
+        {
+            IrOp prevTagOp = prev.b;
+            uint8_t prevTag = function.tagOp(prevTagOp);
+
+            CODEGEN_ASSERT(regInfo.knownTag == prevTag);
+            CODEGEN_ASSERT(prev.d.kind == IrOpKind::None);
+            replace(function, block, instIndex, IrInst{IrCmd::STORE_SPLIT_TVALUE, targetOp, prevTagOp, valueOp});
+
+            state.killTValueStore(regInfo);
+
+            regInfo.tvalueInstIdx = instIndex;
+            return true;
+        }
+    }
+
+    return false;
+}
 
 static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, IrFunction& function, IrBlock& block, IrInst& inst, uint32_t index)
 {
@@ -261,18 +419,14 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 
             StoreRegInfo& regInfo = state.info[reg];
 
-            state.killTagStore(regInfo);
+            if (tryReplaceTagWithFullStore(state, build, function, block, index, inst.a, inst.b, regInfo))
+                break;
 
             uint8_t tag = function.tagOp(inst.b);
 
-            // Storing 'nil' TValue doesn't update the value part because we don't care about that part of 'nil'
-            // This however prevents us from removing unused value store elimination and has an impact on GC
-            // To solve this issues, we invalidate the value part of a 'nil' store as well
-            if (tag == LUA_TNIL)
-                state.killValueStore(regInfo);
-
             regInfo.tagInstIdx = index;
             regInfo.maybeGco = isGCO(tag);
+            regInfo.knownTag = tag;
             state.hasGcoToClear |= regInfo.maybeGco;
         }
         break;
@@ -293,7 +447,16 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 
             StoreRegInfo& regInfo = state.info[reg];
 
-            state.killValueStore(regInfo);
+            if (tryReplaceValueWithFullStore(state, build, function, block, index, inst.a, inst.b, regInfo))
+            {
+                regInfo.maybeGco = true;
+                state.hasGcoToClear |= true;
+                break;
+            }
+
+            // Partial value store can be removed by a new one if the tag is known
+            if (regInfo.knownTag != kUnknownTag)
+                state.killValueStore(regInfo);
 
             regInfo.valueInstIdx = index;
             regInfo.maybeGco = true;
@@ -302,7 +465,6 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         break;
     case IrCmd::STORE_DOUBLE:
     case IrCmd::STORE_INT:
-    case IrCmd::STORE_VECTOR:
         if (inst.a.kind == IrOpKind::VmReg)
         {
             int reg = vmRegOp(inst.a);
@@ -312,9 +474,22 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 
             StoreRegInfo& regInfo = state.info[reg];
 
-            state.killValueStore(regInfo);
+            if (tryReplaceValueWithFullStore(state, build, function, block, index, inst.a, inst.b, regInfo))
+                break;
+
+            // Partial value store can be removed by a new one if the tag is known
+            if (regInfo.knownTag != kUnknownTag)
+                state.killValueStore(regInfo);
 
             regInfo.valueInstIdx = index;
+            regInfo.maybeGco = false;
+        }
+        break;
+    case IrCmd::STORE_VECTOR:
+        // Partial vector value store cannot be combined into a STORE_SPLIT_TVALUE, so we skip dead store optimization for it
+        if (inst.a.kind == IrOpKind::VmReg)
+        {
+            state.useReg(vmRegOp(inst.a));
         }
         break;
     case IrCmd::STORE_TVALUE:
@@ -327,12 +502,14 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 
             StoreRegInfo& regInfo = state.info[reg];
 
-            state.killTagStore(regInfo);
-            state.killValueStore(regInfo);
+            state.killTagAndValueStorePair(regInfo);
             state.killTValueStore(regInfo);
 
             regInfo.tvalueInstIdx = index;
             regInfo.maybeGco = true;
+
+            // We do not use tag inference from the source instruction here as it doesn't provide useful opportunities for dead store removal
+            regInfo.knownTag = kUnknownTag;
 
             // If the argument is a vector, it's not a GC object
             // Note that for known boolean/number/GCO, we already optimize into STORE_SPLIT_TVALUE form
@@ -359,12 +536,12 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
 
             StoreRegInfo& regInfo = state.info[reg];
 
-            state.killTagStore(regInfo);
-            state.killValueStore(regInfo);
+            state.killTagAndValueStorePair(regInfo);
             state.killTValueStore(regInfo);
 
             regInfo.tvalueInstIdx = index;
             regInfo.maybeGco = isGCO(function.tagOp(inst.b));
+            regInfo.knownTag = function.tagOp(inst.b);
             state.hasGcoToClear |= regInfo.maybeGco;
         }
         break;
@@ -372,6 +549,16 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
         // Guard checks can jump to a block which might be using some or all the values we stored
     case IrCmd::CHECK_TAG:
         state.checkLiveIns(inst.c);
+
+        // Tag guard establishes the tag value of the register in the current block
+        if (IrInst* load = function.asInstOp(inst.a); load && load->cmd == IrCmd::LOAD_TAG && load->a.kind == IrOpKind::VmReg)
+        {
+            int reg = vmRegOp(load->a);
+
+            StoreRegInfo& regInfo = state.info[reg];
+
+            regInfo.knownTag = function.tagOp(inst.b);
+        }
         break;
     case IrCmd::TRY_NUM_TO_INDEX:
         state.checkLiveIns(inst.b);

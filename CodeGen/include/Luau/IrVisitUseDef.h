@@ -4,7 +4,7 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
-LUAU_FASTFLAG(LuauCodegenRemoveDeadStores4)
+LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
 
 namespace Luau
 {
@@ -188,7 +188,7 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
         visitor.def(inst.b);
         break;
     case IrCmd::FALLBACK_FORGPREP:
-        if (FFlag::LuauCodegenRemoveDeadStores4)
+        if (FFlag::LuauCodegenRemoveDeadStores5)
         {
             // This instruction doesn't always redefine Rn, Rn+1, Rn+2, so we have to mark it as implicit use
             visitor.useRange(vmRegOp(inst.b), 3);
@@ -216,7 +216,7 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
 
         // After optimizations with DebugLuauAbortingChecks enabled, CHECK_TAG Rn, tag, block instructions are generated
     case IrCmd::CHECK_TAG:
-        if (!FFlag::LuauCodegenRemoveDeadStores4)
+        if (!FFlag::LuauCodegenRemoveDeadStores5)
             visitor.maybeUse(inst.a);
         break;
 

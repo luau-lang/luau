@@ -658,4 +658,24 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "insert_trivial_phi_nodes_inside_of_phi_
     CHECK(t2phi->operands.at(0) == t1);
 }
 
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "dfg_function_definition_in_a_do_block")
+{
+    dfg(R"(
+        local f
+        do
+            function f()
+            end
+        end
+        f()
+    )");
+
+    DefId x1 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId x2 = getDef<AstExprLocal, 1>(); // x = 5
+    DefId x3 = getDef<AstExprLocal, 2>(); // print(x)
+
+    CHECK(x1 != x2);
+    CHECK(x1 != x3);
+    CHECK(x2 == x3);
+}
+
 TEST_SUITE_END();
