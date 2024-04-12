@@ -11,7 +11,7 @@
 #include "Luau/BuiltinDefinitions.h"
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAG(LuauTransitiveSubtyping);
+LUAU_FASTFLAG(LuauFixNormalizeCaching);
 
 using namespace Luau;
 
@@ -28,21 +28,6 @@ struct IsSubtypeFixture : Fixture
             FAIL("isSubtype: module scope data is not available");
 
         return ::Luau::isSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, ice);
-    }
-
-    bool isConsistentSubtype(TypeId a, TypeId b)
-    {
-        // any test that is testing isConsistentSubtype is testing the old solver exclusively!
-        ScopedFastFlag noDcr{FFlag::DebugLuauDeferredConstraintResolution, false};
-
-        Location location;
-        ModulePtr module = getMainModule();
-        REQUIRE(module);
-
-        if (!module->hasModuleScope())
-            FAIL("isSubtype: module scope data is not available");
-
-        return ::Luau::isConsistentSubtype(a, b, NotNull{module->getModuleScope().get()}, builtinTypes, ice);
     }
 };
 } // namespace
@@ -88,22 +73,6 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "functions")
     CHECK(isSubtype(c, a));
     CHECK(!isSubtype(d, a));
     CHECK(isSubtype(a, d));
-}
-
-TEST_CASE_FIXTURE(IsSubtypeFixture, "functions_and_any")
-{
-    check(R"(
-        function a(n: number) return "string" end
-        function b(q: any) return 5 :: any end
-    )");
-
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
-
-    // any makes things work even when it makes no sense.
-
-    CHECK(isConsistentSubtype(b, a));
-    CHECK(isConsistentSubtype(a, b));
 }
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "variadic_functions_with_no_head")
@@ -182,10 +151,6 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_union_prop")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_any_prop")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauTransitiveSubtyping, true},
-    };
-
     check(R"(
         local a: {x: number}
         local b: {x: any}
@@ -199,7 +164,6 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_any_prop")
     else
         CHECK(isSubtype(a, b));
     CHECK(!isSubtype(b, a));
-    CHECK(isConsistentSubtype(b, a));
 }
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "intersection")
@@ -243,10 +207,6 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "union_and_intersection")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauTransitiveSubtyping, true},
-    };
-
     check(R"(
         local a: {x: number}
         local b: {x: any}
@@ -264,7 +224,6 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
     else
         CHECK(isSubtype(a, b));
     CHECK(!isSubtype(b, a));
-    CHECK(isConsistentSubtype(b, a));
 
     CHECK(!isSubtype(c, a));
     CHECK(!isSubtype(a, c));
@@ -398,10 +357,6 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "metatable" * doctest::expected_failures{1})
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "any_is_unknown_union_error")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauTransitiveSubtyping, true},
-    };
-
     check(R"(
         local err = 5.nope.nope -- err is now an error type
         local a : any
@@ -418,10 +373,6 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "any_is_unknown_union_error")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "any_intersect_T_is_T")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauTransitiveSubtyping, true},
-    };
-
     check(R"(
         local a : (any & string)
         local b : string
@@ -440,10 +391,6 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "any_intersect_T_is_T")
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "error_suppression")
 {
-    ScopedFastFlag sffs[] = {
-        {FFlag::LuauTransitiveSubtyping, true},
-    };
-
     check("");
 
     TypeId any = builtinTypes->anyType;
@@ -453,33 +400,21 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "error_suppression")
 
     CHECK(!isSubtype(any, err));
     CHECK(isSubtype(err, any));
-    CHECK(isConsistentSubtype(any, err));
-    CHECK(isConsistentSubtype(err, any));
 
     CHECK(!isSubtype(any, str));
     CHECK(isSubtype(str, any));
-    CHECK(isConsistentSubtype(any, str));
-    CHECK(isConsistentSubtype(str, any));
 
     CHECK(!isSubtype(any, unk));
     CHECK(isSubtype(unk, any));
-    CHECK(isConsistentSubtype(any, unk));
-    CHECK(isConsistentSubtype(unk, any));
 
     CHECK(!isSubtype(err, str));
     CHECK(!isSubtype(str, err));
-    CHECK(isConsistentSubtype(err, str));
-    CHECK(isConsistentSubtype(str, err));
 
     CHECK(!isSubtype(err, unk));
     CHECK(!isSubtype(unk, err));
-    CHECK(isConsistentSubtype(err, unk));
-    CHECK(isConsistentSubtype(unk, err));
 
     CHECK(isSubtype(str, unk));
     CHECK(!isSubtype(unk, str));
-    CHECK(isConsistentSubtype(str, unk));
-    CHECK(!isConsistentSubtype(unk, str));
 }
 
 TEST_SUITE_END();
@@ -490,13 +425,15 @@ struct NormalizeFixture : Fixture
     InternalErrorReporter iceHandler;
     UnifierSharedState unifierState{&iceHandler};
     Normalizer normalizer{&arena, builtinTypes, NotNull{&unifierState}};
+    Scope globalScope{builtinTypes->anyTypePack};
+    ScopedFastFlag fixNormalizeCaching{FFlag::LuauFixNormalizeCaching, true};
 
     NormalizeFixture()
     {
         registerHiddenTypes(&frontend);
     }
 
-    const NormalizedType* toNormalizedType(const std::string& annotation)
+    std::shared_ptr<const NormalizedType> toNormalizedType(const std::string& annotation)
     {
         normalizer.clearCaches();
         CheckResult result = check("type _Res = " + annotation);
@@ -524,7 +461,7 @@ struct NormalizeFixture : Fixture
 
     TypeId normal(const std::string& annotation)
     {
-        const NormalizedType* norm = toNormalizedType(annotation);
+        std::shared_ptr<const NormalizedType> norm = toNormalizedType(annotation);
         REQUIRE(norm);
         return normalizer.typeFromNormal(*norm);
     }
@@ -728,10 +665,10 @@ TEST_CASE_FIXTURE(NormalizeFixture, "trivial_intersection_inhabited")
     TypeId a = arena.addType(FunctionType{builtinTypes->emptyTypePack, builtinTypes->anyTypePack, std::nullopt, false});
     TypeId c = arena.addType(IntersectionType{{a, a}});
 
-    const NormalizedType* n = normalizer.normalize(c);
+    std::shared_ptr<const NormalizedType> n = normalizer.normalize(c);
     REQUIRE(n);
 
-    CHECK(normalizer.isInhabited(n) == NormalizationResult::True);
+    CHECK(normalizer.isInhabited(n.get()) == NormalizationResult::True);
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "bare_negated_boolean")
@@ -841,7 +778,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "recurring_intersection")
     std::optional<TypeId> t = lookupType("B");
     REQUIRE(t);
 
-    const NormalizedType* nt = normalizer.normalize(*t);
+    std::shared_ptr<const NormalizedType> nt = normalizer.normalize(*t);
     REQUIRE(nt);
 
     CHECK("any" == toString(normalizer.typeFromNormal(*nt)));
@@ -854,7 +791,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_union")
     TypeId u = arena.addType(UnionType{{builtinTypes->numberType, t}});
     asMutable(t)->ty.emplace<IntersectionType>(IntersectionType{{builtinTypes->anyType, u}});
 
-    const NormalizedType* nt = normalizer.normalize(t);
+    std::shared_ptr<const NormalizedType> nt = normalizer.normalize(t);
     REQUIRE(nt);
 
     CHECK("number" == toString(normalizer.typeFromNormal(*nt)));
@@ -910,25 +847,25 @@ TEST_CASE_FIXTURE(NormalizeFixture, "normalize_blocked_types")
 {
     Type blocked{BlockedType{}};
 
-    const NormalizedType* norm = normalizer.normalize(&blocked);
+    std::shared_ptr<const NormalizedType> norm = normalizer.normalize(&blocked);
 
     CHECK_EQ(normalizer.typeFromNormal(*norm), &blocked);
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "normalize_is_exactly_number")
 {
-    const NormalizedType* number = normalizer.normalize(builtinTypes->numberType);
+    std::shared_ptr<const NormalizedType> number = normalizer.normalize(builtinTypes->numberType);
     // 1. all types for which Types::number say true for, NormalizedType::isExactlyNumber should say true as well
     CHECK(Luau::isNumber(builtinTypes->numberType) == number->isExactlyNumber());
     // 2. isExactlyNumber should handle cases like `number & number`
     TypeId intersection = arena.addType(IntersectionType{{builtinTypes->numberType, builtinTypes->numberType}});
-    const NormalizedType* normIntersection = normalizer.normalize(intersection);
+    std::shared_ptr<const NormalizedType> normIntersection = normalizer.normalize(intersection);
     CHECK(normIntersection->isExactlyNumber());
 
     // 3. isExactlyNumber should reject things that are definitely not precisely numbers `number | any`
 
     TypeId yoonion = arena.addType(UnionType{{builtinTypes->anyType, builtinTypes->numberType}});
-    const NormalizedType* unionIntersection = normalizer.normalize(yoonion);
+    std::shared_ptr<const NormalizedType> unionIntersection = normalizer.normalize(yoonion);
     CHECK(!unionIntersection->isExactlyNumber());
 }
 
@@ -952,14 +889,34 @@ TEST_CASE_FIXTURE(NormalizeFixture, "read_only_props_2")
 {
     ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
-    CHECK(R"({ x: never })" == toString(normal(R"({ x: "hello" } & { x: "world" })"), {true}));
+    CHECK(R"({ x: "hello" })" == toString(normal(R"({ x: "hello" } & { x: string })"), {true}));
+    CHECK(R"(never)" == toString(normal(R"({ x: "hello" } & { x: "world" })"), {true}));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "read_only_props_3")
 {
     ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
-    CHECK("{ read x: never }" == toString(normal(R"({ read x: "hello" } & { read x: "world" })"), {true}));
+    CHECK(R"({ read x: "hello" })" == toString(normal(R"({ read x: "hello" } & { read x: string })"), {true}));
+    CHECK("never" == toString(normal(R"({ read x: "hello" } & { read x: "world" })"), {true}));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "final_types_are_cached")
+{
+    std::shared_ptr<const NormalizedType> na1 = normalizer.normalize(builtinTypes->numberType);
+    std::shared_ptr<const NormalizedType> na2 = normalizer.normalize(builtinTypes->numberType);
+
+    CHECK(na1 == na2);
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "non_final_types_can_be_normalized_but_are_not_cached")
+{
+    TypeId a = arena.freshType(&globalScope);
+
+    std::shared_ptr<const NormalizedType> na1 = normalizer.normalize(a);
+    std::shared_ptr<const NormalizedType> na2 = normalizer.normalize(a);
+
+    CHECK(na1 != na2);
 }
 
 TEST_SUITE_END();

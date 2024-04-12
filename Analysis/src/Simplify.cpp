@@ -1265,9 +1265,15 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
 
         if (!changed)
             return left;
-        if (1 == newParts.size())
+        if (0 == newParts.size())
+        {
+            // If the left-side is changed but has no parts, then the left-side union is uninhabited.
+            return right;
+        }
+        else if (1 == newParts.size())
             return *begin(newParts);
-        return arena->addType(UnionType{std::vector<TypeId>{begin(newParts), end(newParts)}});
+        else
+            return arena->addType(UnionType{std::vector<TypeId>{begin(newParts), end(newParts)}});
     }
     else if (get<UnionType>(right))
         return union_(right, left);

@@ -6,12 +6,10 @@
 #include "Luau/Common.h"
 #include "Luau/Error.h"
 
-#include <algorithm>
 #include <optional>
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAG(LuauLoopControlFlowAnalysis)
 
 namespace Luau
 {
@@ -403,7 +401,7 @@ ControlFlow DataFlowGraphBuilder::visit(DfgScope* scope, AstStatIf* i)
     else if ((thencf | elsecf) == ControlFlow::None)
         join(scope, thenScope, elseScope);
 
-    if (FFlag::LuauLoopControlFlowAnalysis && thencf == elsecf)
+    if (thencf == elsecf)
         return thencf;
     else if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
         return ControlFlow::Returns;

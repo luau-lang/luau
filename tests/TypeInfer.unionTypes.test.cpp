@@ -9,7 +9,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauTransitiveSubtyping);
 
 TEST_SUITE_BEGIN("UnionTypes");
 
@@ -867,10 +866,6 @@ TEST_CASE_FIXTURE(Fixture, "optional_any")
 
 TEST_CASE_FIXTURE(Fixture, "generic_function_with_optional_arg")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauTransitiveSubtyping, true},
-    };
-
     CheckResult result = check(R"(
         function f<T>(x : T?) : {T}
             local result = {}

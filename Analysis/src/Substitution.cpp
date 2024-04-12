@@ -10,7 +10,6 @@
 
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAGVARIABLE(LuauPreallocateTarjanVectors, false);
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256);
 
 namespace Luau
@@ -150,14 +149,11 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
 
 Tarjan::Tarjan()
 {
-    if (FFlag::LuauPreallocateTarjanVectors)
-    {
-        nodes.reserve(FInt::LuauTarjanPreallocationSize);
-        stack.reserve(FInt::LuauTarjanPreallocationSize);
-        edgesTy.reserve(FInt::LuauTarjanPreallocationSize);
-        edgesTp.reserve(FInt::LuauTarjanPreallocationSize);
-        worklist.reserve(FInt::LuauTarjanPreallocationSize);
-    }
+    nodes.reserve(FInt::LuauTarjanPreallocationSize);
+    stack.reserve(FInt::LuauTarjanPreallocationSize);
+    edgesTy.reserve(FInt::LuauTarjanPreallocationSize);
+    edgesTp.reserve(FInt::LuauTarjanPreallocationSize);
+    worklist.reserve(FInt::LuauTarjanPreallocationSize);
 }
 
 void Tarjan::visitChildren(TypeId ty, int index)
@@ -529,6 +525,24 @@ TarjanResult Tarjan::findDirty(TypePackId tp)
     return visitRoot(tp);
 }
 
+Substitution::Substitution(const TxnLog* log_, TypeArena* arena)
+    : arena(arena)
+{
+    log = log_;
+    LUAU_ASSERT(log);
+    LUAU_ASSERT(arena);
+}
+
+void Substitution::dontTraverseInto(TypeId ty)
+{
+    noTraverseTypes.insert(ty);
+}
+
+void Substitution::dontTraverseInto(TypePackId tp)
+{
+    noTraverseTypePacks.insert(tp);
+}
+
 std::optional<TypeId> Substitution::substitute(TypeId ty)
 {
     ty = log->follow(ty);
@@ -544,7 +558,8 @@ std::optional<TypeId> Substitution::substitute(TypeId ty)
     {
         if (!ignoreChildren(oldTy) && !replacedTypes.contains(newTy))
         {
-            replaceChildren(newTy);
+            if (!noTraverseTypes.contains(newTy))
+                replaceChildren(newTy);
             replacedTypes.insert(newTy);
         }
     }
@@ -552,7 +567,8 @@ std::optional<TypeId> Substitution::substitute(TypeId ty)
     {
         if (!ignoreChildren(oldTp) && !replacedTypePacks.contains(newTp))
         {
-            replaceChildren(newTp);
+            if (!noTraverseTypePacks.contains(newTp))
+                replaceChildren(newTp);
             replacedTypePacks.insert(newTp);
         }
     }
@@ -575,7 +591,8 @@ std::optional<TypePackId> Substitution::substitute(TypePackId tp)
     {
         if (!ignoreChildren(oldTy) && !replacedTypes.contains(newTy))
         {
-            replaceChildren(newTy);
+            if (!noTraverseTypes.contains(newTy))
+                replaceChildren(newTy);
             replacedTypes.insert(newTy);
         }
     }
@@ -583,7 +600,8 @@ std::optional<TypePackId> Substitution::substitute(TypePackId tp)
     {
         if (!ignoreChildren(oldTp) && !replacedTypePacks.contains(newTp))
         {
-            replaceChildren(newTp);
+            if (!noTraverseTypePacks.contains(newTp))
+                replaceChildren(newTp);
             replacedTypePacks.insert(newTp);
         }
     }

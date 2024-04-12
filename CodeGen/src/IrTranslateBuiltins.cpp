@@ -8,7 +8,7 @@
 
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCodegenRemoveDeadStores4)
+LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
 
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
@@ -48,7 +48,7 @@ static BuiltinImplResult translateBuiltinNumberToNumber(
     builtinCheckDouble(build, build.vmReg(arg), pcpos);
     build.inst(IrCmd::FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), args, build.constInt(1), build.constInt(1));
 
-    if (!FFlag::LuauCodegenRemoveDeadStores4)
+    if (!FFlag::LuauCodegenRemoveDeadStores5)
     {
         if (ra != arg)
             build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));
@@ -112,7 +112,7 @@ static BuiltinImplResult translateBuiltinNumberTo2Number(
     build.inst(
         IrCmd::FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), args, build.constInt(1), build.constInt(nresults == 1 ? 1 : 2));
 
-    if (!FFlag::LuauCodegenRemoveDeadStores4)
+    if (!FFlag::LuauCodegenRemoveDeadStores5)
     {
         if (ra != arg)
             build.inst(IrCmd::STORE_TAG, build.vmReg(ra), build.constTag(LUA_TNUMBER));

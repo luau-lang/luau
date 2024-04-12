@@ -3,12 +3,10 @@
 
 #include "Luau/ApplyTypeFunction.h"
 #include "Luau/Cancellation.h"
-#include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/Instantiation.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Normalize.h"
-#include "Luau/Parser.h"
 #include "Luau/Quantify.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Scope.h"
@@ -36,11 +34,11 @@ LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
-LUAU_FASTFLAGVARIABLE(LuauLoopControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAGVARIABLE(LuauRemoveBadRelationalOperatorWarning, false)
 LUAU_FASTFLAGVARIABLE(LuauForbidAliasNamedTypeof, false)
 LUAU_FASTFLAGVARIABLE(LuauOkWithIteratingOverTableProperties, false)
+LUAU_FASTFLAG(LuauFixNormalizeCaching)
 
 namespace Luau
 {
@@ -351,9 +349,9 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStat& program)
     else if (auto repeat = program.as<AstStatRepeat>())
         return check(scope, *repeat);
     else if (program.is<AstStatBreak>())
-        return FFlag::LuauLoopControlFlowAnalysis ? ControlFlow::Breaks : ControlFlow::None;
+        return FFlag::LuauTinyControlFlowAnalysis ? ControlFlow::Breaks : ControlFlow::None;
     else if (program.is<AstStatContinue>())
-        return FFlag::LuauLoopControlFlowAnalysis ? ControlFlow::Continues : ControlFlow::None;
+        return FFlag::LuauTinyControlFlowAnalysis ? ControlFlow::Continues : ControlFlow::None;
     else if (auto return_ = program.as<AstStatReturn>())
         return check(scope, *return_);
     else if (auto expr = program.as<AstStatExpr>())
@@ -756,7 +754,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatIf& statement
         else if (thencf == ControlFlow::None && elsecf != ControlFlow::None)
             scope->inheritRefinements(thenScope);
 
-        if (FFlag::LuauLoopControlFlowAnalysis && thencf == elsecf)
+        if (FFlag::LuauTinyControlFlowAnalysis && thencf == elsecf)
             return thencf;
         else if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
             return ControlFlow::Returns;
@@ -2648,12 +2646,28 @@ static std::optional<bool> areEqComparable(NotNull<TypeArena> arena, NotNull<Nor
     if (isExempt(a) || isExempt(b))
         return true;
 
-    TypeId c = arena->addType(IntersectionType{{a, b}});
-    const NormalizedType* n = normalizer->normalize(c);
-    if (!n)
-        return std::nullopt;
+    NormalizationResult nr;
 
-    switch (normalizer->isInhabited(n))
+    if (FFlag::LuauFixNormalizeCaching)
+    {
+        TypeId c = arena->addType(IntersectionType{{a, b}});
+        std::shared_ptr<const NormalizedType> n = normalizer->normalize(c);
+        if (!n)
+            return std::nullopt;
+
+        nr = normalizer->isInhabited(n.get());
+    }
+    else
+    {
+        TypeId c = arena->addType(IntersectionType{{a, b}});
+        const NormalizedType* n = normalizer->DEPRECATED_normalize(c);
+        if (!n)
+            return std::nullopt;
+
+        nr = normalizer->isInhabited(n);
+    }
+
+    switch (nr)
     {
     case NormalizationResult::HitLimits:
         return std::nullopt;

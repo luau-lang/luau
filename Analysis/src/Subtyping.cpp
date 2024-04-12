@@ -346,9 +346,9 @@ SubtypingResult Subtyping::isSubtype(TypeId subTy, TypeId superTy)
         TypeId lowerBound = makeAggregateType<UnionType>(lb, builtinTypes->neverType);
         TypeId upperBound = makeAggregateType<IntersectionType>(ub, builtinTypes->unknownType);
 
-        const NormalizedType* nt = normalizer->normalize(upperBound);
+        std::shared_ptr<const NormalizedType> nt = normalizer->normalize(upperBound);
         // we say that the result is true if normalization failed because complex types are likely to be inhabited.
-        NormalizationResult res = nt ? normalizer->isInhabited(nt) : NormalizationResult::True;
+        NormalizationResult res = nt ? normalizer->isInhabited(nt.get()) : NormalizationResult::True;
 
         if (!nt || res == NormalizationResult::HitLimits)
             result.normalizationTooComplex = true;
@@ -1421,7 +1421,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Prop
     return res;
 }
 
-SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const NormalizedType* subNorm, const NormalizedType* superNorm)
+SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const std::shared_ptr<const NormalizedType>& subNorm, const std::shared_ptr<const NormalizedType>& superNorm)
 {
     if (!subNorm || !superNorm)
         return {false, true};

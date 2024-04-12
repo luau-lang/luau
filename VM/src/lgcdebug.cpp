@@ -14,8 +14,6 @@
 #include <string.h>
 #include <stdio.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenHeapSizeReport, false)
-
 static void validateobjref(global_State* g, GCObject* f, GCObject* t)
 {
     LUAU_ASSERT(!isdead(g, t));
@@ -826,15 +824,12 @@ static void enumproto(EnumContext* ctx, Proto* p)
     size_t size = sizeof(Proto) + sizeof(Instruction) * p->sizecode + sizeof(Proto*) * p->sizep + sizeof(TValue) * p->sizek + p->sizelineinfo +
                   sizeof(LocVar) * p->sizelocvars + sizeof(TString*) * p->sizeupvalues;
 
-    if (FFlag::LuauCodegenHeapSizeReport)
+    if (p->execdata && ctx->L->global->ecb.getmemorysize)
     {
-        if (p->execdata && ctx->L->global->ecb.getmemorysize)
-        {
-            size_t nativesize = ctx->L->global->ecb.getmemorysize(ctx->L, p);
+        size_t nativesize = ctx->L->global->ecb.getmemorysize(ctx->L, p);
 
-            ctx->node(ctx->context, p->execdata, uint8_t(LUA_TNONE), p->memcat, nativesize, NULL);
-            ctx->edge(ctx->context, enumtopointer(obj2gco(p)), p->execdata, "[native]");
-        }
+        ctx->node(ctx->context, p->execdata, uint8_t(LUA_TNONE), p->memcat, nativesize, NULL);
+        ctx->edge(ctx->context, enumtopointer(obj2gco(p)), p->execdata, "[native]");
     }
 
     enumnode(ctx, obj2gco(p), size, p->source ? getstr(p->source) : NULL);

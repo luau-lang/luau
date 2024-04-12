@@ -233,6 +233,18 @@ TEST_CASE_FIXTURE(Fixture, "tagged_unions_immutable_tag")
     )");
 
     LUAU_REQUIRE_ERRORS(result);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CannotAssignToNever* tm = get<CannotAssignToNever>(result.errors[0]);
+        REQUIRE(tm);
+
+        CHECK(builtinTypes->stringType == tm->rhsType);
+        CHECK(CannotAssignToNever::Reason::PropertyNarrowed == tm->reason);
+        REQUIRE(tm->cause.size() == 2);
+        CHECK("\"Dog\"" == toString(tm->cause[0]));
+        CHECK("\"Cat\"" == toString(tm->cause[1]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_has_a_boolean")

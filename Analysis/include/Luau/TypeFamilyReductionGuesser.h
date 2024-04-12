@@ -68,7 +68,7 @@ private:
     bool operandIsAssignable(TypeId ty);
     std::optional<TypeId> tryAssignOperandType(TypeId ty);
 
-    const NormalizedType* normalize(TypeId ty);
+    std::shared_ptr<const NormalizedType> normalize(TypeId ty);
     void step();
     void infer();
     bool done();

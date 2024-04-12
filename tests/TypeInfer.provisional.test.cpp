@@ -12,7 +12,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(DebugLuauSharedSelf);
-LUAU_FASTFLAG(LuauTransitiveSubtyping);
 LUAU_FASTINT(LuauNormalizeCacheLimit);
 LUAU_FASTINT(LuauTarjanChildLimit);
 LUAU_FASTINT(LuauTypeInferIterationLimit);
@@ -507,10 +506,6 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
 
 TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauTransitiveSubtyping, true},
-    };
-
     TypeArena arena;
     TypeId nilType = builtinTypes->nilType;
 
@@ -916,10 +911,6 @@ TEST_CASE_FIXTURE(Fixture, "floating_generics_should_not_be_allowed")
 
 TEST_CASE_FIXTURE(Fixture, "free_options_can_be_unified_together")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauTransitiveSubtyping, true},
-    };
-
     TypeArena arena;
     TypeId nilType = builtinTypes->nilType;
 
@@ -1071,7 +1062,6 @@ tbl:f3()
 TEST_CASE_FIXTURE(BuiltinsFixture, "normalization_limit_in_unify_with_any")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::LuauTransitiveSubtyping, true},
         {FFlag::DebugLuauDeferredConstraintResolution, true},
     };
 
@@ -1216,6 +1206,28 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "update_phonemes_minimized")
     )");
 
     LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_containing_non_final_type_is_erroneously_cached")
+{
+    TypeArena arena;
+    Scope globalScope(builtinTypes->anyTypePack);
+    UnifierSharedState sharedState{&ice};
+    Normalizer normalizer{&arena, builtinTypes, NotNull{&sharedState}};
+
+    TypeId tableTy = arena.addType(TableType{});
+    TableType* table = getMutable<TableType>(tableTy);
+    REQUIRE(table);
+
+    TypeId freeTy = arena.freshType(&globalScope);
+
+    table->props["foo"] = Property::rw(freeTy);
+
+    std::shared_ptr<const NormalizedType> n1 = normalizer.normalize(tableTy);
+    std::shared_ptr<const NormalizedType> n2 = normalizer.normalize(tableTy);
+
+    // This should not hold
+    CHECK(n1 == n2);
 }
 
 TEST_SUITE_END();

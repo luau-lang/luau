@@ -422,6 +422,7 @@ if(TARGET Luau.UnitTest)
         tests/Fixture.h
         tests/Frontend.test.cpp
         tests/InsertionOrderedMap.test.cpp
+        tests/Instantiation2.test.cpp
         tests/IostreamOptional.h
         tests/IrBuilder.test.cpp
         tests/IrCallWrapperX64.test.cpp
@@ -443,7 +444,6 @@ if(TARGET Luau.UnitTest)
         tests/ScopedFlags.h
         tests/Simplify.test.cpp
         tests/Set.test.cpp
-        tests/SharedCodeAllocator.test.cpp
         tests/StringUtils.test.cpp
         tests/Subtyping.test.cpp
         tests/Symbol.test.cpp
@@ -496,6 +496,7 @@ if(TARGET Luau.Conformance)
         tests/RegisterCallbacks.cpp
         tests/Conformance.test.cpp
         tests/IrLowering.test.cpp
+        tests/SharedCodeAllocator.test.cpp
         tests/main.cpp)
 endif()
 

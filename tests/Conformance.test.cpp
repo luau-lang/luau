@@ -32,7 +32,6 @@ void luaC_validate(lua_State* L);
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_DYNAMIC_FASTFLAG(LuauDebugInfoDupArgLeftovers)
 LUAU_FASTFLAG(LuauCompileRepeatUntilSkippedLocals)
 LUAU_FASTFLAG(LuauCodegenInferNumTag)
 LUAU_FASTFLAG(LuauCodegenDetailedCompilationResult)
@@ -639,8 +638,6 @@ TEST_CASE("DateTime")
 
 TEST_CASE("Debug")
 {
-    ScopedFastFlag luauDebugInfoDupArgLeftovers{DFFlag::LuauDebugInfoDupArgLeftovers, true};
-
     runConformance("debug.lua");
 }
 
