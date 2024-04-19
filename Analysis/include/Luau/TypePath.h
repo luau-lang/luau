@@ -79,9 +79,18 @@ enum class PackField
     Tail,
 };
 
+/// Component that represents the result of a reduction
+/// `resultType` is `never` if the reduction could not proceed
+struct Reduction
+{
+    TypeId resultType;
+
+    bool operator==(const Reduction& other) const;
+};
+
 /// A single component of a path, representing one inner type or type pack to
 /// traverse into.
-using Component = Luau::Variant<Property, Index, TypeField, PackField>;
+using Component = Luau::Variant<Property, Index, TypeField, PackField, Reduction>;
 
 /// A path through a type or type pack accessing a particular type or type pack
 /// contained within.
@@ -156,6 +165,7 @@ struct PathHash
     size_t operator()(const Index& idx) const;
     size_t operator()(const TypeField& field) const;
     size_t operator()(const PackField& field) const;
+    size_t operator()(const Reduction& reduction) const;
     size_t operator()(const Component& component) const;
     size_t operator()(const Path& path) const;
 };

@@ -163,6 +163,9 @@ bool isUnwindSupported()
 {
 #if defined(_WIN32) && defined(_M_X64)
     return true;
+#elif defined(__ANDROID__)
+    // Current unwind information is not compatible with Android
+    return false;
 #elif defined(__APPLE__) && defined(__aarch64__)
     char ver[256];
     size_t verLength = sizeof(ver);

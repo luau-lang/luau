@@ -338,7 +338,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknown_to_table_then_test_a_prop")
     )");
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-            LUAU_REQUIRE_NO_ERRORS(result);
+        LUAU_REQUIRE_NO_ERRORS(result);
     else
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
@@ -592,7 +592,10 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_not_nil")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "number | string");    // a ~= nil
-    CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a == nil
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "nil"); // a == nil :)
+    else
+        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a == nil
 }
 
 TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")

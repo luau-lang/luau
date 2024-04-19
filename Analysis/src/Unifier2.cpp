@@ -42,9 +42,7 @@ static bool areCompatible(TypeId left, TypeId right)
 
         LUAU_ASSERT(leftProp.isReadOnly() || leftProp.isShared());
 
-        const TypeId leftType = follow(
-            leftProp.isReadOnly() ? *leftProp.readTy : leftProp.type()
-        );
+        const TypeId leftType = follow(leftProp.isReadOnly() ? *leftProp.readTy : leftProp.type());
 
         if (isOptional(leftType) || get<FreeType>(leftType) || rightTable->state == TableState::Free || rightTable->indexer.has_value())
             return true;
@@ -52,7 +50,7 @@ static bool areCompatible(TypeId left, TypeId right)
         return false;
     };
 
-    for (const auto& [name, leftProp]: leftTable->props)
+    for (const auto& [name, leftProp] : leftTable->props)
     {
         auto it = rightTable->props.find(name);
         if (it == rightTable->props.end())
@@ -62,7 +60,7 @@ static bool areCompatible(TypeId left, TypeId right)
         }
     }
 
-    for (const auto& [name, rightProp]: rightTable->props)
+    for (const auto& [name, rightProp] : rightTable->props)
     {
         auto it = leftTable->props.find(name);
         if (it == leftTable->props.end())
@@ -75,6 +73,18 @@ static bool areCompatible(TypeId left, TypeId right)
     return true;
 }
 
+// returns `true` if `ty` is irressolvable and should be added to `incompleteSubtypes`.
+static bool isIrresolvable(TypeId ty)
+{
+    return get<BlockedType>(ty) || get<TypeFamilyInstanceType>(ty);
+}
+
+// returns `true` if `tp` is irressolvable and should be added to `incompleteSubtypes`.
+static bool isIrresolvable(TypePackId tp)
+{
+    return get<BlockedTypePack>(tp) || get<TypeFamilyInstanceTypePack>(tp);
+}
+
 Unifier2::Unifier2(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, NotNull<InternalErrorReporter> ice)
     : arena(arena)
     , builtinTypes(builtinTypes)
@@ -82,6 +92,19 @@ Unifier2::Unifier2(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes,
     , ice(ice)
     , limits(TypeCheckLimits{}) // TODO: typecheck limits in unifier2
     , recursionLimit(FInt::LuauTypeInferRecursionLimit)
+    , uninhabitedTypeFamilies(nullptr)
+{
+}
+
+Unifier2::Unifier2(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, NotNull<InternalErrorReporter> ice,
+    DenseHashSet<const void*>* uninhabitedTypeFamilies)
+    : arena(arena)
+    , builtinTypes(builtinTypes)
+    , scope(scope)
+    , ice(ice)
+    , limits(TypeCheckLimits{}) // TODO: typecheck limits in unifier2
+    , recursionLimit(FInt::LuauTypeInferRecursionLimit)
+    , uninhabitedTypeFamilies(uninhabitedTypeFamilies)
 {
 }
 
@@ -110,8 +133,11 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     // But we exclude these two subtyping patterns, they are tautological:
     //   - never <: *blocked*
     //   - *blocked* <: unknown
-    if ((get<BlockedType>(subTy) || get<BlockedType>(superTy)) && !get<NeverType>(subTy) && !get<UnknownType>(superTy))
+    if ((isIrresolvable(subTy) || isIrresolvable(superTy)) && !get<NeverType>(subTy) && !get<UnknownType>(superTy))
     {
+        if (uninhabitedTypeFamilies && (uninhabitedTypeFamilies->contains(subTy) || uninhabitedTypeFamilies->contains(superTy)))
+            return true;
+
         incompleteSubtypes.push_back(SubtypeConstraint{subTy, superTy});
         return true;
     }
@@ -473,8 +499,11 @@ bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
     if (subTp == superTp)
         return true;
 
-    if (get<BlockedTypePack>(subTp) || get<BlockedTypePack>(superTp))
+    if (isIrresolvable(subTp) || isIrresolvable(superTp))
     {
+        if (uninhabitedTypeFamilies && (uninhabitedTypeFamilies->contains(subTp) || uninhabitedTypeFamilies->contains(superTp)))
+            return true;
+
         incompleteSubtypes.push_back(PackSubtypeConstraint{subTp, superTp});
         return true;
     }

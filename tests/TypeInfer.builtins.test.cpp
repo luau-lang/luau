@@ -10,7 +10,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
-LUAU_FASTFLAG(LuauSetMetatableOnUnionsOfTables);
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -371,8 +370,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_unpacks_arg_types_correctly")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_on_union_of_tables")
 {
-    ScopedFastFlag sff{FFlag::LuauSetMetatableOnUnionsOfTables, true};
-
     CheckResult result = check(R"(
         type A = {tag: "A", x: number}
         type B = {tag: "B", y: string}

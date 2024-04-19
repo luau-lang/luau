@@ -7,6 +7,8 @@
 
 #include "lobject.h"
 
+LUAU_FASTFLAG(LuauCodegenDirectUserdataFlow)
+
 namespace Luau
 {
 namespace CodeGen
@@ -833,6 +835,27 @@ void analyzeBytecodeTypes(IrFunction& function)
                 bcType.result = regTags[ra];
                 break;
             }
+            case LOP_NAMECALL:
+            {
+                if (FFlag::LuauCodegenDirectUserdataFlow)
+                {
+                    int ra = LUAU_INSN_A(*pc);
+                    int rb = LUAU_INSN_B(*pc);
+                    uint32_t kc = pc[1];
+
+                    bcType.a = regTags[rb];
+                    bcType.b = getBytecodeConstantTag(proto, kc);
+
+                    // While namecall might result in a callable table, we assume the function fast path
+                    regTags[ra] = LBC_TYPE_FUNCTION;
+
+                    // Namecall places source register into target + 1
+                    regTags[ra + 1] = bcType.a;
+
+                    bcType.result = LBC_TYPE_FUNCTION;
+                }
+                break;
+            }
             case LOP_GETGLOBAL:
             case LOP_SETGLOBAL:
             case LOP_CALL:
@@ -866,7 +889,6 @@ void analyzeBytecodeTypes(IrFunction& function)
             case LOP_COVERAGE:
             case LOP_GETIMPORT:
             case LOP_CAPTURE:
-            case LOP_NAMECALL:
             case LOP_PREPVARARGS:
             case LOP_GETVARARGS:
             case LOP_FORGPREP:

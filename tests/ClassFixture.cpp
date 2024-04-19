@@ -29,8 +29,7 @@ ClassFixture::ClassFixture()
     };
 
     getMutable<ClassType>(connectionType)->props = {
-        {"Connect", {makeFunction(arena, connectionType, {makeFunction(arena, nullopt, {baseClassInstanceType}, {})}, {})}}
-    };
+        {"Connect", {makeFunction(arena, connectionType, {makeFunction(arena, nullopt, {baseClassInstanceType}, {})}, {})}}};
 
     TypeId baseClassType = arena.addType(ClassType{"BaseClass", {}, nullopt, nullopt, {}, {}, "Test"});
     getMutable<ClassType>(baseClassType)->props = {
@@ -103,13 +102,10 @@ ClassFixture::ClassFixture()
     };
     getMutable<TableType>(vector2MetaType)->props = {
         {"__add", {makeFunction(arena, nullopt, {vector2InstanceType, vector2InstanceType}, {vector2InstanceType})}},
-        {"__mul", {
-            arena.addType(IntersectionType{{
-                makeFunction(arena, vector2InstanceType, {vector2InstanceType}, {vector2InstanceType}),
-                makeFunction(arena, vector2InstanceType, {builtinTypes->numberType}, {vector2InstanceType}),
-            }})
-        }}
-    };
+        {"__mul", {arena.addType(IntersectionType{{
+                      makeFunction(arena, vector2InstanceType, {vector2InstanceType}, {vector2InstanceType}),
+                      makeFunction(arena, vector2InstanceType, {builtinTypes->numberType}, {vector2InstanceType}),
+                  }})}}};
     globals.globalScope->exportedTypeBindings["Vector2"] = TypeFun{{}, vector2InstanceType};
     addGlobalBinding(globals, "Vector2", vector2Type, "@test");
 

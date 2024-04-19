@@ -1767,12 +1767,6 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
             std::string superStr = tos(c.sourceType);
             return subStr + " ~ gen " + superStr;
         }
-        else if constexpr (std::is_same_v<T, InstantiationConstraint>)
-        {
-            std::string subStr = tos(c.subType);
-            std::string superStr = tos(c.superType);
-            return subStr + " ~ inst " + superStr;
-        }
         else if constexpr (std::is_same_v<T, IterableConstraint>)
         {
             std::string iteratorStr = tos(c.iterator);
@@ -1822,37 +1816,10 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         {
             return "setIndexer " + tos(c.subjectType) + " [ " + tos(c.indexType) + " ] " + tos(c.propType);
         }
-        else if constexpr (std::is_same_v<T, SingletonOrTopTypeConstraint>)
-        {
-            std::string result = tos(c.resultType);
-            std::string discriminant = tos(c.discriminantType);
-
-            if (c.negated)
-                return result + " ~ if isSingleton D then ~D else unknown where D = " + discriminant;
-            else
-                return result + " ~ if isSingleton D then D else unknown where D = " + discriminant;
-        }
         else if constexpr (std::is_same_v<T, UnpackConstraint>)
             return tos(c.resultPack) + " ~ ...unpack " + tos(c.sourcePack);
         else if constexpr (std::is_same_v<T, Unpack1Constraint>)
             return tos(c.resultType) + " ~ unpack " + tos(c.sourceType);
-        else if constexpr (std::is_same_v<T, SetOpConstraint>)
-        {
-            const char* op = c.mode == SetOpConstraint::Union ? " | " : " & ";
-            std::string res = tos(c.resultType) + " ~ ";
-            bool first = true;
-            for (TypeId t : c.types)
-            {
-                if (first)
-                    first = false;
-                else
-                    res += op;
-
-                res += tos(t);
-            }
-
-            return res;
-        }
         else if constexpr (std::is_same_v<T, ReduceConstraint>)
             return "reduce " + tos(c.ty);
         else if constexpr (std::is_same_v<T, ReducePackConstraint>)
@@ -1923,7 +1890,7 @@ std::string toString(const Position& position)
 std::string toString(const Location& location, int offset, bool useBegin)
 {
     return "(" + std::to_string(location.begin.line + offset) + ", " + std::to_string(location.begin.column + offset) + ") - (" +
-            std::to_string(location.end.line + offset) + ", " + std::to_string(location.end.column + offset) + ")";
+           std::to_string(location.end.line + offset) + ", " + std::to_string(location.end.column + offset) + ")";
 }
 
 std::string toString(const TypeOrPack& tyOrTp, ToStringOptions& opts)

@@ -441,8 +441,8 @@ struct TypeChecker2
             return instance;
         seenTypeFamilyInstances.insert(instance);
 
-        ErrorVec errors = reduceFamilies(
-            instance, location, TypeFamilyContext{NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits}, true)
+        ErrorVec errors = reduceFamilies(instance, location,
+            TypeFamilyContext{NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits}, true)
                               .errors;
         if (!isErrorSuppressing(location, instance))
             reportErrors(std::move(errors));
@@ -2743,7 +2743,7 @@ struct TypeChecker2
                     fetch(module->internalTypes.addType(IntersectionType{{tyvar, ty}}));
                 }
                 else
-                    fetch(tyvar);
+                    fetch(follow(tyvar));
 
                 if (!normValid)
                     break;
@@ -2871,17 +2871,24 @@ struct TypeChecker2
             for (TypeId part : utv)
             {
                 PropertyType result = hasIndexTypeFromType(part, prop, context, location, seen, astIndexExprType, errors);
+
                 if (result.present != NormalizationResult::True)
                     return {result.present, {}};
                 if (result.result)
                     parts.emplace_back(*result.result);
             }
 
+            if (parts.size() == 0)
+                return {NormalizationResult::False, {}};
+
+            if (parts.size() == 1)
+                return {NormalizationResult::True, {parts[0]}};
+
             TypeId propTy;
             if (context == ValueContext::LValue)
-                module->internalTypes.addType(IntersectionType{parts});
+                propTy = module->internalTypes.addType(IntersectionType{parts});
             else
-                module->internalTypes.addType(UnionType{parts});
+                propTy = module->internalTypes.addType(UnionType{parts});
 
             return {NormalizationResult::True, propTy};
         }

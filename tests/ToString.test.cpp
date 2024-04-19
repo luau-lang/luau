@@ -944,7 +944,8 @@ TEST_CASE_FIXTURE(Fixture, "tostring_error_mismatch")
 
     std::string expected;
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        expected = R"(Type pack '{ a: number, b: string, c: { d: string } }' could not be converted into '{ a: number, b: string, c: { d: number } }'; at [0][read "c"][read "d"], string is not exactly number)";
+        expected =
+            R"(Type pack '{ a: number, b: string, c: { d: string } }' could not be converted into '{ a: number, b: string, c: { d: number } }'; at [0][read "c"][read "d"], string is not exactly number)";
     else
         expected = R"(Type
     '{ a: number, b: string, c: { d: string } }'
@@ -1013,15 +1014,8 @@ TEST_CASE_FIXTURE(Fixture, "cycle_rooted_in_a_pack")
     TypePack* packPtr = getMutable<TypePack>(thePack);
     REQUIRE(packPtr);
 
-    const TableType::Props theProps = {
-        {"BaseField", Property::readonly(builtinTypes->unknownType)},
-        {"BaseMethod", Property::readonly(arena.addType(
-            FunctionType{
-                thePack,
-                arena.addTypePack({})
-            }
-        ))}
-    };
+    const TableType::Props theProps = {{"BaseField", Property::readonly(builtinTypes->unknownType)},
+        {"BaseMethod", Property::readonly(arena.addType(FunctionType{thePack, arena.addTypePack({})}))}};
 
     TypeId theTable = arena.addType(TableType{theProps, {}, TypeLevel{}, TableState::Sealed});
 

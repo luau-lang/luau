@@ -20,6 +20,8 @@ LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
 LUAU_FASTINT(LuauTarjanChildLimit);
 
+LUAU_DYNAMIC_FASTFLAG(LuauImproveNonFunctionCallError)
+
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
 TEST_CASE_FIXTURE(Fixture, "general_case_table_literal_blocks")
@@ -2129,10 +2131,20 @@ TEST_CASE_FIXTURE(Fixture, "attempt_to_call_an_intersection_of_tables")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ(toString(result.errors[0]), "Cannot call non-function { x: number } & { y: string }");
+    if (DFFlag::LuauImproveNonFunctionCallError)
+    {
+        if (FFlag::DebugLuauDeferredConstraintResolution)
+            CHECK_EQ(toString(result.errors[0]), "Cannot call a value of type { x: number } & { y: string }");
+        else
+            CHECK_EQ(toString(result.errors[0]), "Cannot call a value of type {| x: number |}");
+    }
     else
-        CHECK_EQ(toString(result.errors[0]), "Cannot call non-function {| x: number |}");
+    {
+        if (FFlag::DebugLuauDeferredConstraintResolution)
+            CHECK_EQ(toString(result.errors[0]), "Cannot call non-function { x: number } & { y: string }");
+        else
+            CHECK_EQ(toString(result.errors[0]), "Cannot call non-function {| x: number |}");
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "attempt_to_call_an_intersection_of_tables_with_call_metamethod")
@@ -2533,6 +2545,56 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_definition_in_a_do_block_with_globa
 
     // We are predominantly interested in this test not crashing.
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzzer_alias_global_function_doesnt_hit_nil_assert")
+{
+    CheckResult result = check(R"(
+function _()
+end
+local function l0()
+    function _()
+    end
+end
+_ = _
+)");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzzer_bug_missing_follow_causes_assertion")
+{
+    CheckResult result = check(R"(
+local _ = ({_=function()
+return _
+end,}),true,_[_()]
+for l0=_[_[_[`{function(l0)
+end}`]]],_[_.n6[_[_.n6]]],_[_[_.n6[_[_.n6]]]] do
+_ += if _ then ""
+end
+return _
+)");
+}
+
+TEST_CASE_FIXTURE(Fixture, "cannot_call_union_of_functions")
+{
+    CheckResult result = check(R"(
+        local f: (() -> ()) | (() -> () -> ()) = nil :: any
+        f()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    if (DFFlag::LuauImproveNonFunctionCallError)
+    {
+        std::string expected = R"(Cannot call a value of the union type:
+  | () -> ()
+  | () -> () -> ()
+We are unable to determine the appropriate result type for such a call.)";
+
+        CHECK(expected == toString(result.errors[0]));
+    }
+    else
+        CHECK("Cannot call non-function (() -> () -> ()) | (() -> ())" == toString(result.errors[0]));
 }
 
 TEST_SUITE_END();

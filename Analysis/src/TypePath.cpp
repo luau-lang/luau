@@ -52,6 +52,11 @@ bool Index::operator==(const Index& other) const
     return index == other.index;
 }
 
+bool Reduction::operator==(const Reduction& other) const
+{
+    return resultType == other.resultType;
+}
+
 Path Path::append(const Path& suffix) const
 {
     std::vector<Component> joined(components);
@@ -122,6 +127,11 @@ size_t PathHash::operator()(const TypeField& field) const
 size_t PathHash::operator()(const PackField& field) const
 {
     return static_cast<size_t>(field);
+}
+
+size_t PathHash::operator()(const Reduction& reduction) const
+{
+    return std::hash<TypeId>()(reduction.resultType);
 }
 
 size_t PathHash::operator()(const Component& component) const
@@ -472,6 +482,14 @@ struct TraversalState
         return false;
     }
 
+    bool traverse(TypePath::Reduction reduction)
+    {
+        if (checkInvariants())
+            return false;
+        updateCurrent(reduction.resultType);
+        return true;
+    }
+
     bool traverse(TypePath::PackField field)
     {
         if (checkInvariants())
@@ -584,8 +602,13 @@ std::string toString(const TypePath::Path& path, bool prefixDot)
                 result << "tail";
                 break;
             }
-
             result << "()";
+        }
+        else if constexpr (std::is_same_v<T, TypePath::Reduction>)
+        {
+            // We need to rework the TypePath system to make subtyping failures easier to understand
+            // https://roblox.atlassian.net/browse/CLI-104422
+            result << "~~>";
         }
         else
         {

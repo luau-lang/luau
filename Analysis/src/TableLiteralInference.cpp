@@ -13,14 +13,8 @@ namespace Luau
 
 static bool isLiteral(const AstExpr* expr)
 {
-    return (
-        expr->is<AstExprTable>() ||
-        expr->is<AstExprFunction>() ||
-        expr->is<AstExprConstantNumber>() ||
-        expr->is<AstExprConstantString>() ||
-        expr->is<AstExprConstantBool>() ||
-        expr->is<AstExprConstantNil>()
-    );
+    return (expr->is<AstExprTable>() || expr->is<AstExprFunction>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantString>() ||
+            expr->is<AstExprConstantBool>() || expr->is<AstExprConstantNil>());
 }
 
 // A fast approximation of subTy <: superTy
@@ -52,7 +46,7 @@ static std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& table
     size_t tableCount = 0;
     std::optional<TypeId> firstTable;
 
-    for (TypeId ty: tables)
+    for (TypeId ty : tables)
     {
         ty = follow(ty);
         if (auto tt = get<TableType>(ty))
@@ -65,7 +59,7 @@ static std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& table
                 firstTable = ty;
             ++tableCount;
 
-            for (const auto& [name, expectedProp]: tt->props)
+            for (const auto& [name, expectedProp] : tt->props)
             {
                 if (!expectedProp.readTy)
                     continue;
@@ -91,14 +85,12 @@ static std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& table
 
                 if (ft && get<SingletonType>(ft->lowerBound))
                 {
-                    if (fastIsSubtype(builtinTypes->booleanType, ft->upperBound) &&
-                        fastIsSubtype(expectedType, builtinTypes->booleanType))
+                    if (fastIsSubtype(builtinTypes->booleanType, ft->upperBound) && fastIsSubtype(expectedType, builtinTypes->booleanType))
                     {
                         return ty;
                     }
 
-                    if (fastIsSubtype(builtinTypes->stringType, ft->upperBound) &&
-                        fastIsSubtype(expectedType, ft->lowerBound))
+                    if (fastIsSubtype(builtinTypes->stringType, ft->upperBound) && fastIsSubtype(expectedType, ft->lowerBound))
                     {
                         return ty;
                     }
@@ -149,11 +141,8 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
     if (expr->is<AstExprConstantString>())
     {
         auto ft = get<FreeType>(exprType);
-        if (ft &&
-            get<SingletonType>(ft->lowerBound) &&
-            fastIsSubtype(builtinTypes->stringType, ft->upperBound) &&
-            fastIsSubtype(ft->lowerBound, builtinTypes->stringType)
-        )
+        if (ft && get<SingletonType>(ft->lowerBound) && fastIsSubtype(builtinTypes->stringType, ft->upperBound) &&
+            fastIsSubtype(ft->lowerBound, builtinTypes->stringType))
         {
             // if the upper bound is a subtype of the expected type, we can push the expected type in
             Relation upperBoundRelation = relate(ft->upperBound, expectedType);
@@ -177,11 +166,8 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
     else if (expr->is<AstExprConstantBool>())
     {
         auto ft = get<FreeType>(exprType);
-        if (ft &&
-            get<SingletonType>(ft->lowerBound) &&
-            fastIsSubtype(builtinTypes->booleanType, ft->upperBound) &&
-            fastIsSubtype(ft->lowerBound, builtinTypes->booleanType)
-        )
+        if (ft && get<SingletonType>(ft->lowerBound) && fastIsSubtype(builtinTypes->booleanType, ft->upperBound) &&
+            fastIsSubtype(ft->lowerBound, builtinTypes->booleanType))
         {
             // if the upper bound is a subtype of the expected type, we can push the expected type in
             Relation upperBoundRelation = relate(ft->upperBound, expectedType);
@@ -247,7 +233,7 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
             return exprType;
         }
 
-        for (const AstExprTable::Item& item: exprTable->items)
+        for (const AstExprTable::Item& item : exprTable->items)
         {
             if (isRecord(item))
             {
@@ -391,7 +377,7 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
         for (const auto& [name, _] : expectedTableTy->props)
             missingKeys.insert(name);
 
-        for (const AstExprTable::Item& item: exprTable->items)
+        for (const AstExprTable::Item& item : exprTable->items)
         {
             if (item.key)
             {
@@ -402,7 +388,7 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
             }
         }
 
-        for (const auto& key: missingKeys)
+        for (const auto& key : missingKeys)
         {
             LUAU_ASSERT(key.has_value());
 
@@ -427,4 +413,4 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
     return exprType;
 }
 
-}
+} // namespace Luau

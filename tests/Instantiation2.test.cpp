@@ -19,12 +19,10 @@ TEST_CASE_FIXTURE(Fixture, "weird_cyclic_instantiation")
 
     TypeId genericT = arena.addType(GenericType{"T"});
 
-    TypeId idTy = arena.addType(FunctionType{
-        /* generics */ {genericT},
+    TypeId idTy = arena.addType(FunctionType{/* generics */ {genericT},
         /* genericPacks */ {},
         /* argTypes */ arena.addTypePack({genericT}),
-        /* retTypes */ arena.addTypePack({genericT})
-    });
+        /* retTypes */ arena.addTypePack({genericT})});
 
     DenseHashMap<TypeId, TypeId> genericSubstitutions{nullptr};
     DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions{nullptr};

@@ -15,6 +15,8 @@
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauImproveNonFunctionCallError, false)
+
 static std::string wrongNumberOfArgsString(
     size_t expectedCount, std::optional<size_t> maximumCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
 {
@@ -335,8 +337,65 @@ struct ErrorConverter
         return e.message;
     }
 
+    std::optional<TypeId> findCallMetamethod(TypeId type) const
+    {
+        type = follow(type);
+
+        std::optional<TypeId> metatable;
+        if (const MetatableType* mtType = get<MetatableType>(type))
+            metatable = mtType->metatable;
+        else if (const ClassType* classType = get<ClassType>(type))
+            metatable = classType->metatable;
+
+        if (!metatable)
+            return std::nullopt;
+
+        TypeId unwrapped = follow(*metatable);
+
+        if (get<AnyType>(unwrapped))
+            return unwrapped;
+
+        const TableType* mtt = getTableType(unwrapped);
+        if (!mtt)
+            return std::nullopt;
+
+        auto it = mtt->props.find("__call");
+        if (it != mtt->props.end())
+            return it->second.type();
+        else
+            return std::nullopt;
+    }
+
     std::string operator()(const Luau::CannotCallNonFunction& e) const
     {
+        if (DFFlag::LuauImproveNonFunctionCallError)
+        {
+            if (auto unionTy = get<UnionType>(follow(e.ty)))
+            {
+                std::string err = "Cannot call a value of the union type:";
+
+                for (auto option : unionTy)
+                {
+                    option = follow(option);
+
+                    if (get<FunctionType>(option) || findCallMetamethod(option))
+                    {
+                        err += "\n  | " + toString(option);
+                        continue;
+                    }
+
+                    // early-exit if we find something that isn't callable in the union.
+                    return "Cannot call a value of type " + toString(option) + " in union:\n  " + toString(e.ty);
+                }
+
+                err += "\nWe are unable to determine the appropriate result type for such a call.";
+
+                return err;
+            }
+
+            return "Cannot call a value of type " + toString(e.ty);
+        }
+
         return "Cannot call non-function " + toString(e.ty);
     }
     std::string operator()(const Luau::ExtraInformation& e) const

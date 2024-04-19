@@ -36,6 +36,7 @@ LUAU_FASTFLAG(LuauCompileRepeatUntilSkippedLocals)
 LUAU_FASTFLAG(LuauCodegenInferNumTag)
 LUAU_FASTFLAG(LuauCodegenDetailedCompilationResult)
 LUAU_FASTFLAG(LuauCodegenCheckTruthyFormB)
+LUAU_DYNAMIC_FASTFLAG(LuauFastCrossTableMove)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -415,6 +416,8 @@ TEST_CASE("Sort")
 
 TEST_CASE("Move")
 {
+    ScopedFastFlag luauFastCrossTableMove{DFFlag::LuauFastCrossTableMove, true};
+
     runConformance("move.lua");
 }
 
@@ -1837,7 +1840,7 @@ TEST_CASE("DebugApi")
     lua_pushnumber(L, 10);
 
     lua_Debug ar;
-    CHECK(lua_getinfo(L, -1, "f", &ar) == 0); // number is not a function
+    CHECK(lua_getinfo(L, -1, "f", &ar) == 0);  // number is not a function
     CHECK(lua_getinfo(L, -10, "f", &ar) == 0); // not on stack
 }
 
@@ -2174,8 +2177,7 @@ TEST_CASE("HugeFunctionLoadFailure")
     static size_t largeAllocationToFail = 0;
     static size_t largeAllocationCount = 0;
 
-    const auto testAllocate = [](void* ud, void* ptr, size_t osize, size_t nsize) -> void*
-    {
+    const auto testAllocate = [](void* ud, void* ptr, size_t osize, size_t nsize) -> void* {
         if (nsize == 0)
         {
             free(ptr);
