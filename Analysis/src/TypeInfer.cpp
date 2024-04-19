@@ -33,6 +33,7 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAGVARIABLE(LuauMetatableInstantiationCloneCheck, false)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAGVARIABLE(LuauRemoveBadRelationalOperatorWarning, false)
@@ -5632,7 +5633,8 @@ TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf,
     TypeId instantiated = *maybeInstantiated;
 
     TypeId target = follow(instantiated);
-    bool needsClone = follow(tf.type) == target;
+    const TableType* tfTable = FFlag::LuauMetatableInstantiationCloneCheck ? getTableType(tf.type) : nullptr;
+    bool needsClone = follow(tf.type) == target || (FFlag::LuauMetatableInstantiationCloneCheck && tfTable != nullptr && tfTable == getTableType(target));
     bool shouldMutate = getTableType(tf.type);
     TableType* ttv = getMutableTableType(target);
 

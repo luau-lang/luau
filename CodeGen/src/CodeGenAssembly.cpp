@@ -122,7 +122,10 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
         if (stats && (stats->functionStatsFlags & FunctionStats_Enable))
         {
             FunctionStats functionStat;
-            functionStat.name = p->debugname ? getstr(p->debugname) : "";
+
+            // function name is empty for anonymous and pseudo top-level functions
+            // properly name pseudo top-level function because it will be compiled natively if it has loops
+            functionStat.name = p->debugname ? getstr(p->debugname) : p->bytecodeid == root->bytecodeid ? "[top level]" : "[anonymous]";
             functionStat.line = p->linedefined;
             functionStat.bcodeCount = getInstructionCount(p->code, p->sizecode);
             functionStat.irCount = unsigned(ir.function.instructions.size());

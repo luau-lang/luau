@@ -94,6 +94,26 @@ TypePackId TypeArena::addTypePack(TypePackVar tp)
     return allocated;
 }
 
+TypeId TypeArena::addTypeFamily(const TypeFamily& family, std::initializer_list<TypeId> types)
+{
+    return addType(TypeFamilyInstanceType{family, std::move(types)});
+}
+
+TypeId TypeArena::addTypeFamily(const TypeFamily& family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
+{
+    return addType(TypeFamilyInstanceType{family, std::move(typeArguments), std::move(packArguments)});
+}
+
+TypePackId TypeArena::addTypePackFamily(const TypePackFamily& family, std::initializer_list<TypeId> types)
+{
+    return addTypePack(TypeFamilyInstanceTypePack{NotNull{&family}, std::move(types)});
+}
+
+TypePackId TypeArena::addTypePackFamily(const TypePackFamily& family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
+{
+    return addTypePack(TypeFamilyInstanceTypePack{NotNull{&family}, std::move(typeArguments), std::move(packArguments)});
+}
+
 void freeze(TypeArena& arena)
 {
     if (!FFlag::DebugLuauFreezeArena)

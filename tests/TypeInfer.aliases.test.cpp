@@ -221,7 +221,8 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    const std::string expected = R"(Type '{ t: { v: string } }' could not be converted into 'U<number>'; at [read "t"][read "v"], string is not exactly number)";
+    const std::string expected =
+        R"(Type '{ t: { v: string } }' could not be converted into 'U<number>'; at [read "t"][read "v"], string is not exactly number)";
 
     CHECK(result.errors[0].location == Location{{4, 31}, {4, 52}});
     CHECK_EQ(expected, toString(result.errors[0]));

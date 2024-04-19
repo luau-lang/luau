@@ -546,13 +546,15 @@ BlockedType::BlockedType()
 {
 }
 
-Constraint* BlockedType::getOwner() const {
+Constraint* BlockedType::getOwner() const
+{
     return owner;
 }
 
-void BlockedType::setOwner(Constraint* newOwner) {
+void BlockedType::setOwner(Constraint* newOwner)
+{
     LUAU_ASSERT(owner == nullptr);
-    
+
     if (owner != nullptr)
         return;
 

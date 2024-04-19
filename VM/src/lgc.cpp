@@ -929,7 +929,7 @@ static size_t gcstep(lua_State* L, size_t limit)
     {
         while (g->sweepgcopage && cost < limit)
         {
-            lua_Page* next = luaM_getnextgcopage(g->sweepgcopage); // page sweep might destroy the page
+            lua_Page* next = luaM_getnextpage(g->sweepgcopage); // page sweep might destroy the page
 
             int steps = sweepgcopage(L, g->sweepgcopage);
 

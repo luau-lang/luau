@@ -365,41 +365,25 @@ void OverloadResolver::add(Analysis analysis, TypeId ty, ErrorVec&& errors)
 
 // we wrap calling the overload resolver in a separate function to reduce overall stack pressure in `solveFunctionCall`.
 // this limits the lifetime of `OverloadResolver`, a large type, to only as long as it is actually needed.
-std::optional<TypeId> selectOverload(
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<TypeArena> arena,
-    NotNull<Normalizer> normalizer,
-    NotNull<Scope> scope,
-    NotNull<InternalErrorReporter> iceReporter,
-    NotNull<TypeCheckLimits> limits,
-    const Location& location,
-    TypeId fn,
-    TypePackId argsPack
-)
+std::optional<TypeId> selectOverload(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, NotNull<Normalizer> normalizer,
+    NotNull<Scope> scope, NotNull<InternalErrorReporter> iceReporter, NotNull<TypeCheckLimits> limits, const Location& location, TypeId fn,
+    TypePackId argsPack)
 {
-        OverloadResolver resolver{builtinTypes, arena, normalizer, scope, iceReporter, limits, location};
-        auto [status, overload] = resolver.selectOverload(fn, argsPack);
+    OverloadResolver resolver{builtinTypes, arena, normalizer, scope, iceReporter, limits, location};
+    auto [status, overload] = resolver.selectOverload(fn, argsPack);
 
-        if (status == OverloadResolver::Analysis::Ok)
-            return overload;
+    if (status == OverloadResolver::Analysis::Ok)
+        return overload;
 
-        if (get<AnyType>(fn) || get<FreeType>(fn))
-            return fn;
+    if (get<AnyType>(fn) || get<FreeType>(fn))
+        return fn;
 
-        return {};
+    return {};
 }
 
-SolveResult solveFunctionCall(
-    NotNull<TypeArena> arena,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Normalizer> normalizer,
-    NotNull<InternalErrorReporter> iceReporter,
-    NotNull<TypeCheckLimits> limits,
-    NotNull<Scope> scope,
-    const Location& location,
-    TypeId fn,
-    TypePackId argsPack
-)
+SolveResult solveFunctionCall(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Normalizer> normalizer,
+    NotNull<InternalErrorReporter> iceReporter, NotNull<TypeCheckLimits> limits, NotNull<Scope> scope, const Location& location, TypeId fn,
+    TypePackId argsPack)
 {
     std::optional<TypeId> overloadToUse = selectOverload(builtinTypes, arena, normalizer, scope, iceReporter, limits, location, fn, argsPack);
     if (!overloadToUse)

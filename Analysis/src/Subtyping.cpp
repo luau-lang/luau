@@ -266,7 +266,8 @@ struct ApplyMappedGenerics : Substitution
     MappedGenericPacks& mappedGenericPacks;
 
 
-    ApplyMappedGenerics(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, MappedGenerics& mappedGenerics, MappedGenericPacks& mappedGenericPacks)
+    ApplyMappedGenerics(
+        NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, MappedGenerics& mappedGenerics, MappedGenericPacks& mappedGenericPacks)
         : Substitution(TxnLog::empty(), arena)
         , builtinTypes(builtinTypes)
         , arena(arena)
@@ -1244,18 +1245,18 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Tabl
             {
                 if (superProp.isShared())
                     results.push_back(isInvariantWith(env, subTable->indexer->indexResultType, superProp.type())
-                        .withSubComponent(TypePath::TypeField::IndexResult)
-                        .withSuperComponent(TypePath::Property::read(name)));
+                                          .withSubComponent(TypePath::TypeField::IndexResult)
+                                          .withSuperComponent(TypePath::Property::read(name)));
                 else
                 {
                     if (superProp.readTy)
                         results.push_back(isCovariantWith(env, subTable->indexer->indexResultType, *superProp.readTy)
-                            .withSubComponent(TypePath::TypeField::IndexResult)
-                            .withSuperComponent(TypePath::Property::read(name)));
+                                              .withSubComponent(TypePath::TypeField::IndexResult)
+                                              .withSuperComponent(TypePath::Property::read(name)));
                     if (superProp.writeTy)
                         results.push_back(isContravariantWith(env, subTable->indexer->indexResultType, *superProp.writeTy)
-                            .withSubComponent(TypePath::TypeField::IndexResult)
-                            .withSuperComponent(TypePath::Property::write(name)));
+                                              .withSubComponent(TypePath::TypeField::IndexResult)
+                                              .withSuperComponent(TypePath::Property::write(name)));
                 }
             }
         }
@@ -1310,7 +1311,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Clas
     return {isSubclass(subClass, superClass)};
 }
 
-SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId subTy, const ClassType* subClass, TypeId superTy, const TableType* superTable)
+SubtypingResult Subtyping::isCovariantWith(
+    SubtypingEnvironment& env, TypeId subTy, const ClassType* subClass, TypeId superTy, const TableType* superTable)
 {
     SubtypingResult result{true};
 
@@ -1421,7 +1423,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Prop
     return res;
 }
 
-SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const std::shared_ptr<const NormalizedType>& subNorm, const std::shared_ptr<const NormalizedType>& superNorm)
+SubtypingResult Subtyping::isCovariantWith(
+    SubtypingEnvironment& env, const std::shared_ptr<const NormalizedType>& subNorm, const std::shared_ptr<const NormalizedType>& superNorm)
 {
     if (!subNorm || !superNorm)
         return {false, true};
@@ -1584,15 +1587,16 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Type
 {
     // Reduce the typefamily instance
     auto [ty, errors] = handleTypeFamilyReductionResult(subFamilyInstance);
+
     // If we return optional, that means the type family was irreducible - we can reduce that to never
-    return isCovariantWith(env, ty, superTy).withErrors(errors);
+    return isCovariantWith(env, ty, superTy).withErrors(errors).withSubComponent(TypePath::Reduction{ty});
 }
 
 SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const TypeId subTy, const TypeFamilyInstanceType* superFamilyInstance)
 {
     // Reduce the typefamily instance
     auto [ty, errors] = handleTypeFamilyReductionResult(superFamilyInstance);
-    return isCovariantWith(env, subTy, ty).withErrors(errors);
+    return isCovariantWith(env, subTy, ty).withErrors(errors).withSuperComponent(TypePath::Reduction{ty});
 }
 
 /*

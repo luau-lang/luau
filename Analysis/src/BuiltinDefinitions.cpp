@@ -24,7 +24,6 @@
  */
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAGVARIABLE(LuauSetMetatableOnUnionsOfTables, false);
 LUAU_FASTFLAGVARIABLE(LuauMakeStringMethodsChecked, false);
 
 namespace Luau
@@ -1067,7 +1066,7 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
     else if (get<AnyType>(target) || get<ErrorType>(target) || isTableIntersection(target))
     {
     }
-    else if (FFlag::LuauSetMetatableOnUnionsOfTables && isTableUnion(target))
+    else if (isTableUnion(target))
     {
         const UnionType* ut = get<UnionType>(target);
         LUAU_ASSERT(ut);

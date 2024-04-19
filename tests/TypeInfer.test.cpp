@@ -986,7 +986,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_found_this")
  */
 TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_found_this_2")
 {
-    (void) check(R"(
+    (void)check(R"(
         local _
         if _ then
             _ = _
@@ -999,7 +999,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_found_this_2")
 
 TEST_CASE_FIXTURE(Fixture, "indexing_a_cyclic_intersection_does_not_crash")
 {
-    (void) check(R"(
+    (void)check(R"(
         local _
         if _ then
             while nil do
