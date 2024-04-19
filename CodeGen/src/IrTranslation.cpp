@@ -13,6 +13,7 @@
 #include "ltm.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenLoadTVTag, false)
+LUAU_FASTFLAGVARIABLE(LuauCodegenDirectUserdataFlow, false)
 
 namespace Luau
 {
@@ -1230,6 +1231,14 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
         return;
     }
 
+    if (FFlag::LuauCodegenDirectUserdataFlow && bcTypes.a == LBC_TYPE_USERDATA)
+    {
+        build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TUSERDATA), build.vmExit(pcpos));
+
+        build.inst(IrCmd::FALLBACK_GETTABLEKS, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+        return;
+    }
+
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
     build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
@@ -1256,10 +1265,20 @@ void translateInstSetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
     int rb = LUAU_INSN_B(*pc);
     uint32_t aux = pc[1];
 
-    IrOp fallback = build.block(IrBlockKind::Fallback);
     BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
+
+    if (FFlag::LuauCodegenDirectUserdataFlow && bcTypes.a == LBC_TYPE_USERDATA)
+    {
+        build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TUSERDATA), build.vmExit(pcpos));
+
+        build.inst(IrCmd::FALLBACK_SETTABLEKS, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+        return;
+    }
+
+    IrOp fallback = build.block(IrBlockKind::Fallback);
+
     build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TTABLE), bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
 
     IrOp vb = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
@@ -1370,12 +1389,31 @@ void translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
     int rb = LUAU_INSN_B(*pc);
     uint32_t aux = pc[1];
 
+    BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
+
+    if (FFlag::LuauCodegenDirectUserdataFlow && bcTypes.a == LBC_TYPE_VECTOR)
+    {
+        build.loadAndCheckTag(build.vmReg(rb), LUA_TVECTOR, build.vmExit(pcpos));
+
+        build.inst(IrCmd::FALLBACK_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+        return;
+    }
+
+    if (FFlag::LuauCodegenDirectUserdataFlow && bcTypes.a == LBC_TYPE_USERDATA)
+    {
+        build.loadAndCheckTag(build.vmReg(rb), LUA_TUSERDATA, build.vmExit(pcpos));
+
+        build.inst(IrCmd::FALLBACK_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
+        return;
+    }
+
     IrOp next = build.blockAtInst(pcpos + getOpLength(LOP_NAMECALL));
     IrOp fallback = build.block(IrBlockKind::Fallback);
     IrOp firstFastPathSuccess = build.block(IrBlockKind::Internal);
     IrOp secondFastPath = build.block(IrBlockKind::Internal);
 
-    build.loadAndCheckTag(build.vmReg(rb), LUA_TTABLE, fallback);
+    build.loadAndCheckTag(
+        build.vmReg(rb), LUA_TTABLE, FFlag::LuauCodegenDirectUserdataFlow && bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
     IrOp table = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
 
     CODEGEN_ASSERT(build.function.proto);

@@ -552,6 +552,27 @@ struct TypeFamilyInstanceType
 
     std::vector<TypeId> typeArguments;
     std::vector<TypePackId> packArguments;
+
+    TypeFamilyInstanceType(NotNull<const TypeFamily> family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
+        : family(family)
+        , typeArguments(typeArguments)
+        , packArguments(packArguments)
+    {
+    }
+
+    TypeFamilyInstanceType(const TypeFamily& family, std::vector<TypeId> typeArguments)
+        : family{&family}
+        , typeArguments(typeArguments)
+        , packArguments{}
+    {
+    }
+
+    TypeFamilyInstanceType(const TypeFamily& family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
+        : family{&family}
+        , typeArguments(typeArguments)
+        , packArguments(packArguments)
+    {
+    }
 };
 
 /** Represents a pending type alias instantiation.

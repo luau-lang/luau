@@ -200,7 +200,7 @@ TEST_CASE_FIXTURE(TypeStateFixture, "assignment_swap")
     CHECK("number" == toString(requireType("b")));
 }
 
-TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_was_constrained_by_two_types")
+TEST_CASE_FIXTURE(TypeStateFixture, "parameter_x_was_constrained_by_two_types_2")
 {
     CheckResult result = check(R"(
         local function f(x): number?

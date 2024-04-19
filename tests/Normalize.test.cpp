@@ -11,7 +11,9 @@
 #include "Luau/BuiltinDefinitions.h"
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAG(LuauFixNormalizeCaching);
+LUAU_FASTFLAG(LuauFixNormalizeCaching)
+LUAU_FASTFLAG(LuauNormalizeNotUnknownIntersection)
+LUAU_FASTFLAG(LuauFixCyclicUnionsOfIntersections);
 
 using namespace Luau;
 
@@ -797,6 +799,36 @@ TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_union")
     CHECK("number" == toString(normalizer.typeFromNormal(*nt)));
 }
 
+TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_union_of_intersection")
+{
+    ScopedFastFlag sff{FFlag::LuauFixCyclicUnionsOfIntersections, true};
+
+    // t1 where t1 = (string & t1) | string
+    TypeId boundTy = arena.addType(BlockedType{});
+    TypeId intersectTy = arena.addType(IntersectionType{{builtinTypes->stringType, boundTy}});
+    TypeId unionTy = arena.addType(UnionType{{builtinTypes->stringType, intersectTy}});
+    asMutable(boundTy)->reassign(Type{BoundType{unionTy}});
+
+    std::shared_ptr<const NormalizedType> nt = normalizer.normalize(unionTy);
+
+    CHECK("string" == toString(normalizer.typeFromNormal(*nt)));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_intersection_of_unions")
+{
+    ScopedFastFlag sff{FFlag::LuauFixCyclicUnionsOfIntersections, true};
+
+    // t1 where t1 = (string & t1) | string
+    TypeId boundTy = arena.addType(BlockedType{});
+    TypeId unionTy = arena.addType(UnionType{{builtinTypes->stringType, boundTy}});
+    TypeId intersectionTy = arena.addType(IntersectionType{{builtinTypes->stringType, unionTy}});
+    asMutable(boundTy)->reassign(Type{BoundType{intersectionTy}});
+
+    std::shared_ptr<const NormalizedType> nt = normalizer.normalize(intersectionTy);
+
+    CHECK("string" == toString(normalizer.typeFromNormal(*nt)));
+}
+
 TEST_CASE_FIXTURE(NormalizeFixture, "crazy_metatable")
 {
     CHECK("never" == toString(normal("Mt<{}, number> & Mt<{}, string>")));
@@ -917,6 +949,17 @@ TEST_CASE_FIXTURE(NormalizeFixture, "non_final_types_can_be_normalized_but_are_n
     std::shared_ptr<const NormalizedType> na2 = normalizer.normalize(a);
 
     CHECK(na1 != na2);
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "intersect_with_not_unknown")
+{
+    ScopedFastFlag sff{FFlag::LuauNormalizeNotUnknownIntersection, true};
+
+    TypeId notUnknown = arena.addType(NegationType{builtinTypes->unknownType});
+    TypeId type = arena.addType(IntersectionType{{builtinTypes->numberType, notUnknown}});
+    std::shared_ptr<const NormalizedType> normalized = normalizer.normalize(type);
+
+    CHECK("never" == toString(normalizer.typeFromNormal(*normalized.get())));
 }
 
 TEST_SUITE_END();

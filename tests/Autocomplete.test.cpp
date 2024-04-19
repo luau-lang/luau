@@ -145,36 +145,38 @@ struct ACBuiltinsFixture : ACFixtureImpl<BuiltinsFixture>
 {
 };
 
-#define LUAU_CHECK_HAS_KEY(map, key) do                               \
-    {                                                                 \
-        auto&& _m = (map);                                            \
-        auto&& _k = (key);                                            \
-        const size_t count = _m.count(_k);                            \
+#define LUAU_CHECK_HAS_KEY(map, key) \
+    do \
+    { \
+        auto&& _m = (map); \
+        auto&& _k = (key); \
+        const size_t count = _m.count(_k); \
         CHECK_MESSAGE(count, "Map should have key \"" << _k << "\""); \
-        if (!count)                                                   \
-        {                                                             \
-            MESSAGE("Keys: (count " << _m.size() << ")");             \
-            for (const auto& [k, v]: _m)                              \
-            {                                                         \
-                MESSAGE("\tkey: " << k);                              \
-            }                                                         \
-        }                                                             \
+        if (!count) \
+        { \
+            MESSAGE("Keys: (count " << _m.size() << ")"); \
+            for (const auto& [k, v] : _m) \
+            { \
+                MESSAGE("\tkey: " << k); \
+            } \
+        } \
     } while (false)
 
-#define LUAU_CHECK_HAS_NO_KEY(map, key) do                                 \
-    {                                                                      \
-        auto&& _m = (map);                                                 \
-        auto&& _k = (key);                                                 \
-        const size_t count = _m.count(_k);                                 \
+#define LUAU_CHECK_HAS_NO_KEY(map, key) \
+    do \
+    { \
+        auto&& _m = (map); \
+        auto&& _k = (key); \
+        const size_t count = _m.count(_k); \
         CHECK_MESSAGE(!count, "Map should not have key \"" << _k << "\""); \
-        if (count)                                                         \
-        {                                                                  \
-            MESSAGE("Keys: (count " << _m.size() << ")");                  \
-            for (const auto& [k, v]: _m)                                   \
-            {                                                              \
-                MESSAGE("\tkey: " << k);                                   \
-            }                                                              \
-        }                                                                  \
+        if (count) \
+        { \
+            MESSAGE("Keys: (count " << _m.size() << ")"); \
+            for (const auto& [k, v] : _m) \
+            { \
+                MESSAGE("\tkey: " << k); \
+            } \
+        } \
     } while (false)
 
 TEST_SUITE_BEGIN("AutocompleteTest");

@@ -18,6 +18,8 @@
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
 LUAU_FASTFLAGVARIABLE(LuauNormalizeAwayUninhabitableTables, false)
 LUAU_FASTFLAGVARIABLE(LuauFixNormalizeCaching, false);
+LUAU_FASTFLAGVARIABLE(LuauNormalizeNotUnknownIntersection, false);
+LUAU_FASTFLAGVARIABLE(LuauFixCyclicUnionsOfIntersections, false);
 
 // This could theoretically be 2000 on amd64, but x86 requires this.
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
@@ -27,6 +29,11 @@ LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 static bool fixNormalizeCaching()
 {
     return FFlag::LuauFixNormalizeCaching || FFlag::DebugLuauDeferredConstraintResolution;
+}
+
+static bool fixCyclicUnionsOfIntersections()
+{
+    return FFlag::LuauFixCyclicUnionsOfIntersections || FFlag::DebugLuauDeferredConstraintResolution;
 }
 
 namespace Luau
@@ -910,13 +917,13 @@ static bool isCacheable(TypeId ty, Set<TypeId>& seen)
 
     if (auto tfi = get<TypeFamilyInstanceType>(ty))
     {
-        for (TypeId t: tfi->typeArguments)
+        for (TypeId t : tfi->typeArguments)
         {
             if (!isCacheable(t, seen))
                 return false;
         }
 
-        for (TypePackId tp: tfi->packArguments)
+        for (TypePackId tp : tfi->packArguments)
         {
             if (!isCacheable(tp, seen))
                 return false;
@@ -1768,14 +1775,29 @@ NormalizationResult Normalizer::unionNormalWithTy(NormalizedType& here, TypeId t
     }
     else if (const IntersectionType* itv = get<IntersectionType>(there))
     {
+        if (fixCyclicUnionsOfIntersections())
+        {
+            if (seenSetTypes.count(there))
+                return NormalizationResult::True;
+            seenSetTypes.insert(there);
+        }
+
         NormalizedType norm{builtinTypes};
         norm.tops = builtinTypes->anyType;
         for (IntersectionTypeIterator it = begin(itv); it != end(itv); ++it)
         {
             NormalizationResult res = intersectNormalWithTy(norm, *it, seenSetTypes);
             if (res != NormalizationResult::True)
+            {
+                if (fixCyclicUnionsOfIntersections())
+                    seenSetTypes.erase(there);
                 return res;
+            }
         }
+
+        if (fixCyclicUnionsOfIntersections())
+            seenSetTypes.erase(there);
+
         return unionNormals(here, norm);
     }
     else if (get<UnknownType>(here.tops))
@@ -3192,6 +3214,13 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
         {
             // if we're intersecting with `~never`, this is equivalent to intersecting with `unknown`
             // this is a noop since an intersection with `unknown` is trivial.
+            return NormalizationResult::True;
+        }
+        else if ((FFlag::LuauNormalizeNotUnknownIntersection || FFlag::DebugLuauDeferredConstraintResolution) && get<UnknownType>(t))
+        {
+            // if we're intersecting with `~unknown`, this is equivalent to intersecting with `never`
+            // this means we should clear the type entirely.
+            clearNormal(here);
             return NormalizationResult::True;
         }
         else if (auto nt = get<NegationType>(t))

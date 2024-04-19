@@ -225,9 +225,9 @@ struct SubtypeFixture : Fixture
                                    });
 
     TypeId readOnlyVec2Class = cls("ReadOnlyVec2", {
-        {"X", Property::readonly(builtinTypes->numberType)},
-        {"Y", Property::readonly(builtinTypes->numberType)},
-    });
+                                                       {"X", Property::readonly(builtinTypes->numberType)},
+                                                       {"Y", Property::readonly(builtinTypes->numberType)},
+                                                   });
 
     // "hello" | "hello"
     TypeId helloOrHelloType = arena.addType(UnionType{{helloType, helloType}});
@@ -1283,6 +1283,30 @@ TEST_CASE_FIXTURE(SubtypeFixture, "<T>({ x: T }) -> T <: ({ method: <T>({ x: T }
     TypeId otherType = fn({tbl({{"method", tableToPropType}, {"x", builtinTypes->numberType}})}, {builtinTypes->numberType});
 
     CHECK_IS_SUBTYPE(tableToPropType, otherType);
+}
+
+TEST_CASE_FIXTURE(SubtypeFixture, "subtyping_reasonings_to_follow_a_reduced_type_family_instance")
+{
+    TypeId longTy = arena.addType(UnionType{{builtinTypes->booleanType, builtinTypes->bufferType, builtinTypes->classType, builtinTypes->functionType,
+        builtinTypes->numberType, builtinTypes->stringType, builtinTypes->tableType, builtinTypes->threadType}});
+    TypeId tblTy = tbl({{"depth", builtinTypes->unknownType}});
+    TypeId combined = meet(longTy, tblTy);
+    TypeId subTy = arena.addType(TypeFamilyInstanceType{NotNull{&builtinTypeFamilies.unionFamily}, {combined, builtinTypes->neverType}, {}});
+    TypeId superTy = builtinTypes->neverType;
+    SubtypingResult result = isSubtype(subTy, superTy);
+    CHECK(!result.isSubtype);
+
+    for (const SubtypingReasoning& reasoning : result.reasoning)
+    {
+        if (reasoning.subPath.empty() && reasoning.superPath.empty())
+            continue;
+
+        std::optional<TypeOrPack> optSubLeaf = traverse(subTy, reasoning.subPath, builtinTypes);
+        std::optional<TypeOrPack> optSuperLeaf = traverse(superTy, reasoning.superPath, builtinTypes);
+
+        if (!optSubLeaf || !optSuperLeaf)
+            CHECK(false);
+    }
 }
 
 TEST_SUITE_END();

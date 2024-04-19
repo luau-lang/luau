@@ -121,7 +121,7 @@ ExtraExecData* getExtraExecData(Proto* proto, void* execdata)
 static OldNativeProto createOldNativeProto(Proto* proto, const IrBuilder& ir)
 {
     CODEGEN_ASSERT(!FFlag::LuauCodegenContext);
-    
+
     int execDataSize = calculateExecDataSize(proto);
     CODEGEN_ASSERT(execDataSize % 4 == 0);
 

@@ -52,13 +52,6 @@ struct GeneralizationConstraint
     std::vector<TypeId> interiorTypes;
 };
 
-// subType ~ inst superType
-struct InstantiationConstraint
-{
-    TypeId subType;
-    TypeId superType;
-};
-
 // variables ~ iterate iterator
 // Unpack the iterator, figure out what types it iterates over, and bind those types to variables.
 struct IterableConstraint
@@ -229,17 +222,6 @@ struct SetIndexerConstraint
     TypeId propType;
 };
 
-// if negation:
-//   result ~ if isSingleton D then ~D else unknown where D = discriminantType
-// if not negation:
-//   result ~ if isSingleton D then D else unknown where D = discriminantType
-struct SingletonOrTopTypeConstraint
-{
-    TypeId resultType;
-    TypeId discriminantType;
-    bool negated;
-};
-
 // resultType ~ unpack sourceTypePack
 //
 // Similar to PackSubtypeConstraint, but with one important difference: If the
@@ -269,22 +251,6 @@ struct Unpack1Constraint
     bool resultIsLValue = false;
 };
 
-// resultType ~ T0 op T1 op ... op TN
-//
-// op is either union or intersection.  If any of the input types are blocked,
-// this constraint will block unless forced.
-struct SetOpConstraint
-{
-    enum
-    {
-        Intersection,
-        Union
-    } mode;
-
-    TypeId resultType;
-    std::vector<TypeId> types;
-};
-
 // ty ~ reduce ty
 //
 // Try to reduce ty, if it is a TypeFamilyInstanceType. Otherwise, do nothing.
@@ -301,10 +267,9 @@ struct ReducePackConstraint
     TypePackId tp;
 };
 
-using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, IterableConstraint,
-    NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, FunctionCheckConstraint, PrimitiveTypeConstraint, HasPropConstraint,
-    SetPropConstraint, HasIndexerConstraint, SetIndexerConstraint, SingletonOrTopTypeConstraint, UnpackConstraint, Unpack1Constraint,
-    SetOpConstraint, ReduceConstraint, ReducePackConstraint, EqualityConstraint>;
+using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, IterableConstraint, NameConstraint,
+    TypeAliasExpansionConstraint, FunctionCallConstraint, FunctionCheckConstraint, PrimitiveTypeConstraint, HasPropConstraint, SetPropConstraint,
+    HasIndexerConstraint, SetIndexerConstraint, UnpackConstraint, Unpack1Constraint, ReduceConstraint, ReducePackConstraint, EqualityConstraint>;
 
 struct Constraint
 {

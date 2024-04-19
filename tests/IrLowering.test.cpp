@@ -14,6 +14,7 @@
 
 LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
 LUAU_FASTFLAG(LuauCodegenLoadTVTag)
+LUAU_FASTFLAG(LuauCodegenDirectUserdataFlow)
 
 static std::string getCodegenAssembly(const char* source)
 {
@@ -402,7 +403,7 @@ local function vecrcp(a: vector)
     return vector(1, 2, 3) + a
 end
 )"),
-R"(
+        R"(
 ; function vecrcp($arg0) line 2
 bb_0:
   CHECK_TAG R0, tvector, exit(entry)
@@ -416,6 +417,130 @@ bb_bytecode_1:
   %13 = TAG_VECTOR %12
   STORE_TVALUE R1, %13
   INTERRUPT 2u
+  RETURN R1, 1i
+)");
+}
+
+TEST_CASE("VectorNamecall")
+{
+    ScopedFastFlag luauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function abs(a: vector)
+    return a:Abs()
+end
+)"),
+        R"(
+; function abs($arg0) line 2
+bb_0:
+  CHECK_TAG R0, tvector, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  FALLBACK_NAMECALL 0u, R1, R0, K0
+  INTERRUPT 2u
+  SET_SAVEDPC 3u
+  CALL R1, 1i, -1i
+  INTERRUPT 3u
+  RETURN R1, -1i
+)");
+}
+
+TEST_CASE("UserDataGetIndex")
+{
+    ScopedFastFlag luauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function getxy(a: Point)
+    return a.x + a.y
+end
+)"),
+        R"(
+; function getxy($arg0) line 2
+bb_0:
+  CHECK_TAG R0, tuserdata, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  FALLBACK_GETTABLEKS 0u, R2, R0, K0
+  FALLBACK_GETTABLEKS 2u, R3, R0, K1
+  CHECK_TAG R2, tnumber, bb_fallback_3
+  CHECK_TAG R3, tnumber, bb_fallback_3
+  %14 = LOAD_DOUBLE R2
+  %16 = ADD_NUM %14, R3
+  STORE_DOUBLE R1, %16
+  STORE_TAG R1, tnumber
+  JUMP bb_4
+bb_4:
+  INTERRUPT 5u
+  RETURN R1, 1i
+)");
+}
+
+TEST_CASE("UserDataSetIndex")
+{
+    ScopedFastFlag luauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function setxy(a: Point)
+    a.x = 3
+    a.y = 4
+end
+)"),
+        R"(
+; function setxy($arg0) line 2
+bb_0:
+  CHECK_TAG R0, tuserdata, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  STORE_DOUBLE R1, 3
+  STORE_TAG R1, tnumber
+  FALLBACK_SETTABLEKS 1u, R1, R0, K0
+  STORE_DOUBLE R1, 4
+  FALLBACK_SETTABLEKS 4u, R1, R0, K1
+  INTERRUPT 6u
+  RETURN R0, 0i
+)");
+}
+
+TEST_CASE("UserDataNamecall")
+{
+    ScopedFastFlag luauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function getxy(a: Point)
+    return a:GetX() + a:GetY()
+end
+)"),
+        R"(
+; function getxy($arg0) line 2
+bb_0:
+  CHECK_TAG R0, tuserdata, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  FALLBACK_NAMECALL 0u, R2, R0, K0
+  INTERRUPT 2u
+  SET_SAVEDPC 3u
+  CALL R2, 1i, 1i
+  FALLBACK_NAMECALL 3u, R3, R0, K1
+  INTERRUPT 5u
+  SET_SAVEDPC 6u
+  CALL R3, 1i, 1i
+  CHECK_TAG R2, tnumber, bb_fallback_3
+  CHECK_TAG R3, tnumber, bb_fallback_3
+  %20 = LOAD_DOUBLE R2
+  %22 = ADD_NUM %20, R3
+  STORE_DOUBLE R1, %22
+  STORE_TAG R1, tnumber
+  JUMP bb_4
+bb_4:
+  INTERRUPT 7u
   RETURN R1, 1i
 )");
 }

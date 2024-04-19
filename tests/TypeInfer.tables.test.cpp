@@ -22,6 +22,9 @@ LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering);
 LUAU_FASTFLAG(DebugLuauSharedSelf);
 LUAU_FASTFLAG(LuauReadWritePropertySyntax);
+LUAU_FASTFLAG(LuauMetatableInstantiationCloneCheck);
+
+LUAU_DYNAMIC_FASTFLAG(LuauImproveNonFunctionCallError)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -2383,7 +2386,11 @@ b()
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), R"(Cannot call non-function t1 where t1 = { @metatable { __call: t1 }, {  } })");
+
+    if (DFFlag::LuauImproveNonFunctionCallError)
+        CHECK_EQ(toString(result.errors[0]), R"(Cannot call a value of type t1 where t1 = { @metatable { __call: t1 }, {  } })");
+    else
+        CHECK_EQ(toString(result.errors[0]), R"(Cannot call non-function t1 where t1 = { @metatable { __call: t1 }, {  } })");
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_shouldn't_add_optional_properties_to_sealed_tables")
@@ -3016,7 +3023,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_call_metamethod_must_be_callable")
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        CHECK("Cannot call non-function { @metatable { __call: number }, {  } }" == toString(result.errors[0]));
+        if (DFFlag::LuauImproveNonFunctionCallError)
+            CHECK("Cannot call a value of type { @metatable { __call: number }, {  } }" == toString(result.errors[0]));
+        else
+            CHECK("Cannot call non-function { @metatable { __call: number }, {  } }" == toString(result.errors[0]));
     }
     else
     {
@@ -3994,9 +4004,10 @@ TEST_CASE_FIXTURE(Fixture, "identify_all_problematic_table_fields")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    std::string expected = "Type '{ a: string, b: boolean, c: number }' could not be converted into 'T'; at [read \"a\"], string is not exactly number"
-                           "\n\tat [read \"b\"], boolean is not exactly string"
-                           "\n\tat [read \"c\"], number is not exactly boolean";
+    std::string expected =
+        "Type '{ a: string, b: boolean, c: number }' could not be converted into 'T'; at [read \"a\"], string is not exactly number"
+        "\n\tat [read \"b\"], boolean is not exactly string"
+        "\n\tat [read \"c\"], number is not exactly boolean";
     CHECK(toString(result.errors[0]) == expected);
 }
 
@@ -4144,10 +4155,7 @@ TEST_CASE_FIXTURE(Fixture, "write_annotations_are_unsupported_even_with_the_new_
 
 TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauReadWritePropertySyntax, true},
-        {FFlag::DebugLuauDeferredConstraintResolution, false}
-    };
+    ScopedFastFlag sff[] = {{FFlag::LuauReadWritePropertySyntax, true}, {FFlag::DebugLuauDeferredConstraintResolution, false}};
 
     CheckResult result = check(R"(
         type W = {read x: number}
@@ -4171,10 +4179,7 @@ TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported
 
 TEST_CASE_FIXTURE(Fixture, "read_ond_write_only_indexers_are_unsupported")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauReadWritePropertySyntax, true},
-        {FFlag::DebugLuauDeferredConstraintResolution, false}
-    };
+    ScopedFastFlag sff[] = {{FFlag::LuauReadWritePropertySyntax, true}, {FFlag::DebugLuauDeferredConstraintResolution, false}};
 
     CheckResult result = check(R"(
         type T = {read [string]: number}
@@ -4191,10 +4196,7 @@ TEST_CASE_FIXTURE(Fixture, "read_ond_write_only_indexers_are_unsupported")
 
 TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauReadWritePropertySyntax, true},
-        {FFlag::DebugLuauDeferredConstraintResolution, true}
-    };
+    ScopedFastFlag sff[] = {{FFlag::LuauReadWritePropertySyntax, true}, {FFlag::DebugLuauDeferredConstraintResolution, true}};
 
     CheckResult result = check(R"(
         function oc(player, speaker)
@@ -4206,8 +4208,8 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK("<a, b...>({{ read Character: t1 }}, { Character: t1 }) -> () "
-        "where "
-        "t1 = { read FindFirstChild: (t1, string) -> (a, b...) }" == toString(requireType("oc")));
+          "where "
+          "t1 = { read FindFirstChild: (t1, string) -> (a, b...) }" == toString(requireType("oc")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tables_can_have_both_metatables_and_indexers")
@@ -4357,6 +4359,49 @@ TEST_CASE_FIXTURE(Fixture, "setindexer_always_transmute")
     )");
 
     CHECK_EQ("(*error-type*) -> ()", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "instantiated_metatable_frozen_table_clone_mutation")
+{
+    ScopedFastFlag luauMetatableInstantiationCloneCheck{FFlag::LuauMetatableInstantiationCloneCheck, true};
+
+    fileResolver.source["game/worker"] = R"(
+type WorkerImpl<T..., R...> = {
+    destroy: (self: Worker<T..., R...>) -> boolean,
+}
+
+type WorkerProps = { id: number }
+
+export type Worker<T..., R...> = typeof(setmetatable({} :: WorkerProps, {} :: WorkerImpl<T..., R...>))
+
+return {}
+    )";
+
+    fileResolver.source["game/library"] = R"(
+local Worker = require(game.worker)
+
+export type Worker<T..., R...> = Worker.Worker<T..., R...>
+
+return {}
+    )";
+
+    CheckResult result = frontend.check("game/library");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "setindexer_multiple_tables_intersection")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    CheckResult result = check(R"(
+        local function f(t: { [string]: number } & { [thread]: boolean }, x)
+            local k = "a"
+            t[k] = x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("({ [string]: number } & { [thread]: boolean }, boolean | number) -> ()" == toString(requireType("f")));
 }
 
 TEST_SUITE_END();

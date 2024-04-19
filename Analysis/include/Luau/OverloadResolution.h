@@ -69,7 +69,8 @@ private:
 
 struct SolveResult
 {
-    enum OverloadCallResult {
+    enum OverloadCallResult
+    {
         Ok,
         CodeTooComplex,
         OccursCheckFailed,
@@ -87,16 +88,8 @@ struct SolveResult
 // Helper utility, presently used for binary operator type families.
 //
 // Given a function and a set of arguments, select a suitable overload.
-SolveResult solveFunctionCall(
-    NotNull<TypeArena> arena,
-    NotNull<BuiltinTypes> builtinTypes,
-    NotNull<Normalizer> normalizer,
-    NotNull<InternalErrorReporter> iceReporter,
-    NotNull<TypeCheckLimits> limits,
-    NotNull<Scope> scope,
-    const Location& location,
-    TypeId fn,
-    TypePackId argsPack
-);
+SolveResult solveFunctionCall(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Normalizer> normalizer,
+    NotNull<InternalErrorReporter> iceReporter, NotNull<TypeCheckLimits> limits, NotNull<Scope> scope, const Location& location, TypeId fn,
+    TypePackId argsPack);
 
 } // namespace Luau

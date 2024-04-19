@@ -648,32 +648,20 @@ TEST_CASE_FIXTURE(Fixture, "read_write_class_properties")
     unfreeze(arena);
 
     TypeId instanceType = arena.addType(ClassType{"Instance", {}, nullopt, nullopt, {}, {}, "Test"});
-    getMutable<ClassType>(instanceType)->props = {
-        {"Parent", Property::rw(instanceType)}
-    };
+    getMutable<ClassType>(instanceType)->props = {{"Parent", Property::rw(instanceType)}};
 
     //
 
     TypeId workspaceType = arena.addType(ClassType{"Workspace", {}, nullopt, nullopt, {}, {}, "Test"});
 
-    TypeId scriptType = arena.addType(ClassType{
-        "Script", {
-            {"Parent", Property::rw(workspaceType, instanceType)}
-        },
-        instanceType, nullopt, {}, {}, "Test"
-    });
+    TypeId scriptType =
+        arena.addType(ClassType{"Script", {{"Parent", Property::rw(workspaceType, instanceType)}}, instanceType, nullopt, {}, {}, "Test"});
 
-    TypeId partType = arena.addType(ClassType{
-        "Part", {
-            {"BrickColor", Property::rw(builtinTypes->stringType)},
-            {"Parent", Property::rw(workspaceType, instanceType)}
-        },
-        instanceType, nullopt, {}, {}, "Test"});
+    TypeId partType = arena.addType(
+        ClassType{"Part", {{"BrickColor", Property::rw(builtinTypes->stringType)}, {"Parent", Property::rw(workspaceType, instanceType)}},
+            instanceType, nullopt, {}, {}, "Test"});
 
-    getMutable<ClassType>(workspaceType)->props = {
-        {"Script", Property::readonly(scriptType)},
-        {"Part", Property::readonly(partType)}
-    };
+    getMutable<ClassType>(workspaceType)->props = {{"Script", Property::readonly(scriptType)}, {"Part", Property::readonly(partType)}};
 
     frontend.globals.globalScope->bindings[frontend.globals.globalNames.names->getOrAdd("script")] = Binding{scriptType};
 
@@ -703,7 +691,8 @@ TEST_CASE_FIXTURE(ClassFixture, "cannot_index_a_class_with_no_indexer")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_MESSAGE(get<DynamicPropertyLookupOnClassesUnsafe>(result.errors[0]), "Expected DynamicPropertyLookupOnClassesUnsafe but got " << result.errors[0]);
+    CHECK_MESSAGE(
+        get<DynamicPropertyLookupOnClassesUnsafe>(result.errors[0]), "Expected DynamicPropertyLookupOnClassesUnsafe but got " << result.errors[0]);
 
     CHECK(builtinTypes->errorType == requireType("c"));
 }

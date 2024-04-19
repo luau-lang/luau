@@ -31,9 +31,7 @@ TypeId Instantiation2::clean(TypeId ty)
 
     // if we didn't learn anything about the lower bound, we pick the upper bound instead.
     // we default to the lower bound which represents the most specific type for the free type.
-    TypeId res = get<NeverType>(ft->lowerBound)
-        ? ft->upperBound
-        : ft->lowerBound;
+    TypeId res = get<NeverType>(ft->lowerBound) ? ft->upperBound : ft->lowerBound;
 
     // Instantiation should not traverse into the type that we are substituting for.
     dontTraverseInto(res);
