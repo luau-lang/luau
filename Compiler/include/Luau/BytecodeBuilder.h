@@ -76,6 +76,8 @@ public:
     void expandJumps();
 
     void setFunctionTypeInfo(std::string value);
+    void pushLocalTypeInfo(LuauBytecodeType type, uint8_t reg, uint32_t startpc, uint32_t endpc);
+    void pushUpvalTypeInfo(LuauBytecodeType type);
 
     void setDebugFunctionName(StringRef name);
     void setDebugFunctionLineDefined(int line);
@@ -98,6 +100,7 @@ public:
         Dump_Source = 1 << 2,
         Dump_Locals = 1 << 3,
         Dump_Remarks = 1 << 4,
+        Dump_Types = 1 << 5,
     };
 
     void setDumpFlags(uint32_t flags)
@@ -213,6 +216,19 @@ private:
         unsigned int name;
     };
 
+    struct TypedLocal
+    {
+        LuauBytecodeType type;
+        uint8_t reg;
+        uint32_t startpc;
+        uint32_t endpc;
+    };
+
+    struct TypedUpval
+    {
+        LuauBytecodeType type;
+    };
+
     struct Jump
     {
         uint32_t source;
@@ -258,6 +274,9 @@ private:
     std::vector<DebugLocal> debugLocals;
     std::vector<DebugUpval> debugUpvals;
 
+    std::vector<TypedLocal> typedLocals;
+    std::vector<TypedUpval> typedUpvals;
+
     DenseHashMap<StringRef, unsigned int, StringRefHash> stringTable;
     std::vector<StringRef> debugStrings;
 
@@ -271,6 +290,8 @@ private:
     std::vector<std::string> dumpSource;
     std::vector<std::pair<int, std::string>> dumpRemarks;
 
+    std::string tempTypeInfo;
+
     std::string (BytecodeBuilder::*dumpFunctionPtr)(std::vector<int>&) const = nullptr;
 
     void validate() const;
@@ -281,7 +302,7 @@ private:
     void dumpConstant(std::string& result, int k) const;
     void dumpInstruction(const uint32_t* opcode, std::string& output, int targetLabel) const;
 
-    void writeFunction(std::string& ss, uint32_t id, uint8_t flags) const;
+    void writeFunction(std::string& ss, uint32_t id, uint8_t flags);
     void writeLineInfo(std::string& ss) const;
     void writeStringTable(std::string& ss) const;
 

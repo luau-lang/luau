@@ -1069,15 +1069,15 @@ static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(TypeId instance, Not
         // lt <number, t> implies t is number
         // lt <t, number> implies t is number
         if (lhsFree && isNumber(rhsTy))
-            asMutable(lhsTy)->ty.emplace<BoundType>(ctx->builtins->numberType);
+            emplaceType<BoundType>(asMutable(lhsTy), ctx->builtins->numberType);
         else if (rhsFree && isNumber(lhsTy))
-            asMutable(rhsTy)->ty.emplace<BoundType>(ctx->builtins->numberType);
-        else if (lhsFree && get<NeverType>(rhsTy) == nullptr)
+            emplaceType<BoundType>(asMutable(rhsTy), ctx->builtins->numberType);
+        else if (lhsFree && ctx->normalizer->isInhabited(rhsTy) != NormalizationResult::False)
         {
             auto c1 = ctx->pushConstraint(EqualityConstraint{lhsTy, rhsTy});
             const_cast<Constraint*>(ctx->constraint)->dependencies.emplace_back(c1);
         }
-        else if (rhsFree && get<NeverType>(lhsTy) == nullptr)
+        else if (rhsFree && ctx->normalizer->isInhabited(lhsTy) != NormalizationResult::False)
         {
             auto c1 = ctx->pushConstraint(EqualityConstraint{rhsTy, lhsTy});
             const_cast<Constraint*>(ctx->constraint)->dependencies.emplace_back(c1);

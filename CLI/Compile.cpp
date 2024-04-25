@@ -45,6 +45,7 @@ struct GlobalOptions
 {
     int optimizationLevel = 1;
     int debugLevel = 1;
+    int typeInfoLevel = 0;
 
     const char* vectorLib = nullptr;
     const char* vectorCtor = nullptr;
@@ -56,6 +57,7 @@ static Luau::CompileOptions copts()
     Luau::CompileOptions result = {};
     result.optimizationLevel = globalOptions.optimizationLevel;
     result.debugLevel = globalOptions.debugLevel;
+    result.typeInfoLevel = globalOptions.typeInfoLevel;
 
     result.vectorLib = globalOptions.vectorLib;
     result.vectorCtor = globalOptions.vectorCtor;
@@ -324,7 +326,7 @@ static bool compileFile(const char* name, CompileFormat format, Luau::CodeGen::A
         if (format == CompileFormat::Text)
         {
             bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals |
-                             Luau::BytecodeBuilder::Dump_Remarks);
+                             Luau::BytecodeBuilder::Dump_Remarks | Luau::BytecodeBuilder::Dump_Types);
             bcb.setDumpSource(*source);
         }
         else if (format == CompileFormat::Remarks)
@@ -486,6 +488,16 @@ int main(int argc, char** argv)
                 return 1;
             }
             globalOptions.debugLevel = level;
+        }
+        else if (strncmp(argv[i], "-t", 2) == 0)
+        {
+            int level = atoi(argv[i] + 2);
+            if (level < 0 || level > 1)
+            {
+                fprintf(stderr, "Error: Type info level must be between 0 and 1 inclusive.\n");
+                return 1;
+            }
+            globalOptions.typeInfoLevel = level;
         }
         else if (strncmp(argv[i], "--target=", 9) == 0)
         {

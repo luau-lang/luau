@@ -977,6 +977,25 @@ struct BytecodeTypes
     uint8_t c = LBC_TYPE_ANY;
 };
 
+struct BytecodeRegTypeInfo
+{
+    uint8_t type = LBC_TYPE_ANY;
+    uint8_t reg = 0; // Register slot where variable is stored
+    int startpc = 0; // First point where variable is alive (could be before variable has been assigned a value)
+    int endpc = 0;   // First point where variable is dead
+};
+
+struct BytecodeTypeInfo
+{
+    std::vector<uint8_t> argumentTypes;
+    std::vector<BytecodeRegTypeInfo> regTypes;
+    std::vector<uint8_t> upvalueTypes;
+
+    // Offsets into regTypes for each individual register
+    // One extra element at the end contains the vector size for easier arr[Rn], arr[Rn + 1] range access
+    std::vector<uint32_t> regTypeOffsets;
+};
+
 struct IrFunction
 {
     std::vector<IrBlock> blocks;
@@ -993,6 +1012,8 @@ struct IrFunction
     // For each instruction, an operand that can be used to recompute the value
     std::vector<IrOp> valueRestoreOps;
     std::vector<uint32_t> validRestoreOpBlocks;
+
+    BytecodeTypeInfo bcTypeInfo;
 
     Proto* proto = nullptr;
     bool variadic = false;

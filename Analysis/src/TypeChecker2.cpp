@@ -1016,9 +1016,9 @@ struct TypeChecker2
                 reportError(UnificationTooComplex{}, forInStatement->values.data[0]->location);
             }
         }
-        else if (iteratorNorm && iteratorNorm->hasTopTable())
+        else if (iteratorNorm && iteratorNorm->hasTables())
         {
-            // nothing
+            // Ok. All tables can be iterated.
         }
         else if (!iteratorNorm || !iteratorNorm->shouldSuppressErrors())
         {
@@ -2045,25 +2045,28 @@ struct TypeChecker2
         case AstExprBinary::Op::CompareLt:
         {
             if (normLeft && normLeft->shouldSuppressErrors())
-                return builtinTypes->numberType;
+                return builtinTypes->booleanType;
+
+            // if we're comparing against an uninhabited type, it's unobservable that the comparison did not run
+            if (normLeft && normalizer.isInhabited(normLeft.get()) == NormalizationResult::False)
+                return builtinTypes->booleanType;
 
             if (normLeft && normLeft->isExactlyNumber())
             {
                 testIsSubtype(rightType, builtinTypes->numberType, expr->right->location);
-                return builtinTypes->numberType;
+                return builtinTypes->booleanType;
             }
-            else if (normLeft && normLeft->isSubtypeOfString())
+
+            if (normLeft && normLeft->isSubtypeOfString())
             {
                 testIsSubtype(rightType, builtinTypes->stringType, expr->right->location);
-                return builtinTypes->stringType;
+                return builtinTypes->booleanType;
             }
-            else
-            {
-                reportError(GenericError{format("Types '%s' and '%s' cannot be compared with relational operator %s", toString(leftType).c_str(),
-                                toString(rightType).c_str(), toString(expr->op).c_str())},
-                    expr->location);
-                return builtinTypes->errorRecoveryType();
-            }
+
+            reportError(GenericError{format("Types '%s' and '%s' cannot be compared with relational operator %s", toString(leftType).c_str(),
+                            toString(rightType).c_str(), toString(expr->op).c_str())},
+                expr->location);
+            return builtinTypes->errorRecoveryType();
         }
 
         case AstExprBinary::Op::And:
@@ -2144,9 +2147,9 @@ struct TypeChecker2
             TypeId result = module->internalTypes.addType(FreeType{ftp->scope});
             TypePackId freeTail = module->internalTypes.addTypePack(FreeTypePack{ftp->scope});
 
-            TypePack& resultPack = asMutable(pack)->ty.emplace<TypePack>();
-            resultPack.head.assign(1, result);
-            resultPack.tail = freeTail;
+            TypePack* resultPack = emplaceTypePack<TypePack>(asMutable(pack));
+            resultPack->head.assign(1, result);
+            resultPack->tail = freeTail;
 
             return result;
         }

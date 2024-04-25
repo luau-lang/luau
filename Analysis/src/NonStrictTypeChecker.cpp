@@ -191,9 +191,9 @@ struct NonStrictTypeChecker
             TypeId result = arena->addType(FreeType{ftp->scope});
             TypePackId freeTail = arena->addTypePack(FreeTypePack{ftp->scope});
 
-            TypePack& resultPack = asMutable(pack)->ty.emplace<TypePack>();
-            resultPack.head.assign(1, result);
-            resultPack.tail = freeTail;
+            TypePack* resultPack = emplaceTypePack<TypePack>(asMutable(pack));
+            resultPack->head.assign(1, result);
+            resultPack->tail = freeTail;
 
             return result;
         }
@@ -560,8 +560,19 @@ struct NonStrictTypeChecker
                     // We will compare arg and ~number
                     AstExpr* arg = call->args.data[i];
                     TypeId expectedArgType = argTypes[i];
+                    std::shared_ptr<const NormalizedType> norm = normalizer.normalize(expectedArgType);
                     DefId def = dfg->getDef(arg);
-                    TypeId runTimeErrorTy = getOrCreateNegation(expectedArgType);
+                    TypeId runTimeErrorTy;
+                    // If we're dealing with any, negating any will cause all subtype tests to fail, since ~any is any
+                    // However, when someone calls this function, they're going to want to be able to pass it anything,
+                    // for that reason, we manually inject never into the context so that the runtime test will always pass.
+                    if (!norm)
+                        reportError(NormalizationTooComplex{}, arg->location);
+
+                    if (norm && get<AnyType>(norm->tops))
+                        runTimeErrorTy = builtinTypes->neverType;
+                    else
+                        runTimeErrorTy = getOrCreateNegation(expectedArgType);
                     fresh.addContext(def, runTimeErrorTy);
                 }
 

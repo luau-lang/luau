@@ -4196,6 +4196,9 @@ TEST_CASE_FIXTURE(Fixture, "read_ond_write_only_indexers_are_unsupported")
 
 TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
 {
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     ScopedFastFlag sff[] = {{FFlag::LuauReadWritePropertySyntax, true}, {FFlag::DebugLuauDeferredConstraintResolution, true}};
 
     CheckResult result = check(R"(
@@ -4387,6 +4390,22 @@ return {}
 
     CheckResult result = frontend.check("game/library");
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "setprop_on_a_mutating_local_in_both_loops_and_functions")
+{
+    CheckResult result = check(R"(
+        local _ = 5
+
+        while (_) do
+            _._ = nil
+            function _()
+                _ = nil
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "setindexer_multiple_tables_intersection")

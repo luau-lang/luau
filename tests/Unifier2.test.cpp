@@ -76,13 +76,13 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "T <: U")
 
     CHECK(u2.unify(left, right));
 
-    CHECK("'a" == toString(left));
-    CHECK("'a" == toString(right));
+    CHECK("t1 where t1 = ('a <: (t1 <: 'b))" == toString(left));
+    CHECK("t1 where t1 = (('a <: t1) <: 'b)" == toString(right));
 
     CHECK("never" == toString(freeLeft->lowerBound));
-    CHECK("unknown" == toString(freeLeft->upperBound));
+    CHECK("t1 where t1 = (('a <: t1) <: 'b)" == toString(freeLeft->upperBound));
 
-    CHECK("never" == toString(freeRight->lowerBound));
+    CHECK("t1 where t1 = ('a <: (t1 <: 'b))" == toString(freeRight->lowerBound));
     CHECK("unknown" == toString(freeRight->upperBound));
 }
 

@@ -465,4 +465,11 @@ bool containsNever(TypePackId tp)
     return false;
 }
 
+template<>
+LUAU_NOINLINE Unifiable::Bound<TypePackId>* emplaceTypePack<BoundTypePack>(TypePackVar* ty, TypePackId& tyArg)
+{
+    LUAU_ASSERT(ty != follow(tyArg));
+    return &ty->ty.emplace<BoundTypePack>(tyArg);
+}
+
 } // namespace Luau

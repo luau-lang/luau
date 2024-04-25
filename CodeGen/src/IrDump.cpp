@@ -482,30 +482,30 @@ void toString(std::string& result, IrConst constant)
 
 const char* getBytecodeTypeName(uint8_t type)
 {
-    switch (type)
+    switch (type & ~LBC_TYPE_OPTIONAL_BIT)
     {
     case LBC_TYPE_NIL:
-        return "nil";
+        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "nil?" : "nil";
     case LBC_TYPE_BOOLEAN:
-        return "boolean";
+        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "boolean?" : "boolean";
     case LBC_TYPE_NUMBER:
-        return "number";
+        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "number?" : "number";
     case LBC_TYPE_STRING:
-        return "string";
+        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "string?" : "string";
     case LBC_TYPE_TABLE:
-        return "table";
+        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "table?" : "table";
     case LBC_TYPE_FUNCTION:
-        return "function";
+        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "function?" : "function";
     case LBC_TYPE_THREAD:
-        return "thread";
+        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "thread?" : "thread";
     case LBC_TYPE_USERDATA:
-        return "userdata";
+        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "userdata?" : "userdata";
     case LBC_TYPE_VECTOR:
-        return "vector";
+        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "vector?" : "vector";
     case LBC_TYPE_BUFFER:
-        return "buffer";
+        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "buffer?" : "buffer";
     case LBC_TYPE_ANY:
-        return "any";
+        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "any?" : "any";
     }
 
     CODEGEN_ASSERT(!"Unhandled type in getBytecodeTypeName");

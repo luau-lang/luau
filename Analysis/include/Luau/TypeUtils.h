@@ -201,6 +201,15 @@ const T* get(std::optional<Ty> ty)
         return nullptr;
 }
 
+template<typename T, typename Ty>
+T* getMutable(std::optional<Ty> ty)
+{
+    if (ty)
+        return getMutable<T>(*ty);
+    else
+        return nullptr;
+}
+
 template<typename Ty>
 std::optional<Ty> follow(std::optional<Ty> ty)
 {

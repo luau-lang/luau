@@ -5,8 +5,6 @@
 
 #include "lapi.h"
 
-LUAU_FASTFLAG(LuauCodegenDetailedCompilationResult)
-
 int luau_codegen_supported()
 {
     return Luau::CodeGen::isSupported();
@@ -19,8 +17,5 @@ void luau_codegen_create(lua_State* L)
 
 void luau_codegen_compile(lua_State* L, int idx)
 {
-    if (FFlag::LuauCodegenDetailedCompilationResult)
-        Luau::CodeGen::compile(L, idx);
-    else
-        Luau::CodeGen::compile_DEPRECATED(L, idx);
+    Luau::CodeGen::compile(L, idx);
 }

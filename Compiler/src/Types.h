@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Ast.h"
+#include "Luau/Bytecode.h"
 #include "Luau/DenseHash.h"
 
 #include <string>
@@ -9,6 +10,7 @@
 namespace Luau
 {
 
-void buildTypeMap(DenseHashMap<AstExprFunction*, std::string>& typeMap, AstNode* root, const char* vectorType);
+void buildTypeMap(DenseHashMap<AstExprFunction*, std::string>& functionTypes, DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes, AstNode* root,
+    const char* vectorType);
 
 } // namespace Luau

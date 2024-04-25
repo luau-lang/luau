@@ -2369,7 +2369,7 @@ end
     auto err = get<ExplicitFunctionAnnotationRecommended>(result.errors.back());
     LUAU_ASSERT(err);
     CHECK("number" == toString(err->recommendedReturn));
-    CHECK(err->recommendedArgs.size() == 2);
+    REQUIRE(err->recommendedArgs.size() == 2);
     CHECK("number" == toString(err->recommendedArgs[0].second));
     CHECK("number" == toString(err->recommendedArgs[1].second));
 }
@@ -2595,6 +2595,82 @@ We are unable to determine the appropriate result type for such a call.)";
     }
     else
         CHECK("Cannot call non-function (() -> () -> ()) | (() -> ())" == toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzzer_missing_follow_in_ast_stat_fun")
+{
+    (void)check(R"(
+        local _ = function<t0...>()
+        end ~= _
+
+        while (_) do
+            _,_,_,_,_,_,_,_,_,_._,_ = nil
+            function _(...):<t0...>()->()
+            end
+            function _<t0...>(...):any
+                _ ..= ...
+            end
+            _,_,_,_,_,_,_,_,_,_,_ = nil
+        end
+    )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "unifier_should_not_bind_free_types")
+{
+    CheckResult result = check(R"(
+        function foo(player)
+            local success,result = player:thing()
+            if(success) then
+                return "Successfully posted message.";
+            elseif(not result) then
+                return false;
+            else
+                return result;
+            end
+        end
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // The new solver should ideally be able to do better here, but this is no worse than the old solver.
+
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+        auto tm1 = get<TypePackMismatch>(result.errors[0]);
+        REQUIRE(tm1);
+        CHECK(toString(tm1->wantedTp) == "string");
+        CHECK(toString(tm1->givenTp) == "boolean");
+
+        auto tm2 = get<TypePackMismatch>(result.errors[1]);
+        REQUIRE(tm2);
+        CHECK(toString(tm2->wantedTp) == "string");
+        CHECK(toString(tm2->givenTp) == "~(false?)");
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        const TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+        REQUIRE(tm);
+        CHECK(toString(tm->wantedType) == "string");
+        CHECK(toString(tm->givenType) == "boolean");
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "captured_local_is_assigned_a_function")
+{
+    CheckResult result = check(R"(
+        local f
+
+        local function g()
+            f()
+        end
+
+        function f()
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();
