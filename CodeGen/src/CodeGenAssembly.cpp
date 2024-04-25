@@ -1,7 +1,9 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/CodeGen.h"
+#include "Luau/BytecodeAnalysis.h"
 #include "Luau/BytecodeUtils.h"
 #include "Luau/BytecodeSummary.h"
+#include "Luau/IrDump.h"
 
 #include "CodeGenLower.h"
 
@@ -9,6 +11,8 @@
 #include "CodeGenX64.h"
 
 #include "lapi.h"
+
+LUAU_FASTFLAG(LuauCodegenTypeInfo)
 
 namespace Luau
 {
@@ -42,6 +46,35 @@ static void logFunctionHeader(AssemblyBuilder& build, Proto* proto)
         build.logAppend(" line %d\n", proto->linedefined);
     else
         build.logAppend("\n");
+}
+
+template<typename AssemblyBuilder>
+static void logFunctionTypes(AssemblyBuilder& build, const IrFunction& function)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenTypeInfo);
+
+    const BytecodeTypeInfo& typeInfo = function.bcTypeInfo;
+
+    for (size_t i = 0; i < typeInfo.argumentTypes.size(); i++)
+    {
+        uint8_t ty = typeInfo.argumentTypes[i];
+
+        if (ty != LBC_TYPE_ANY)
+            build.logAppend("; R%d: %s [argument]\n", int(i), getBytecodeTypeName(ty));
+    }
+
+    for (size_t i = 0; i < typeInfo.upvalueTypes.size(); i++)
+    {
+        uint8_t ty = typeInfo.upvalueTypes[i];
+
+        if (ty != LBC_TYPE_ANY)
+            build.logAppend("; U%d: %s\n", int(i), getBytecodeTypeName(ty));
+    }
+
+    for (const BytecodeRegTypeInfo& el : typeInfo.regTypes)
+    {
+        build.logAppend("; R%d: %s from %d to %d\n", el.reg, getBytecodeTypeName(el.type), el.startpc, el.endpc);
+    }
 }
 
 unsigned getInstructionCount(const Instruction* insns, const unsigned size)
@@ -99,6 +132,9 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
 
         if (options.includeAssembly || options.includeIr)
             logFunctionHeader(build, p);
+
+        if (FFlag::LuauCodegenTypeInfo && options.includeIrTypes)
+            logFunctionTypes(build, ir.function);
 
         CodeGenCompilationResult result = CodeGenCompilationResult::Success;
 

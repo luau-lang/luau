@@ -12,7 +12,6 @@
 #include "lgc.h"
 
 LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
-LUAU_FASTFLAG(LuauCodegenCheckTruthyFormB)
 
 namespace Luau
 {
@@ -1445,7 +1444,7 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
 
         // fail to fallback on 'false' boolean value (falsy)
-        if (!FFlag::LuauCodegenCheckTruthyFormB || inst.b.kind != IrOpKind::Constant)
+        if (inst.b.kind != IrOpKind::Constant)
         {
             build.cbz(regOp(inst.b), target);
         }

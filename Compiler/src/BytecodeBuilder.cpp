@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauCompileNoJumpLineRetarget, false)
 LUAU_FASTFLAG(LuauCompileRepeatUntilSkippedLocals)
+LUAU_FASTFLAGVARIABLE(LuauCompileTypeInfo, false)
 
 namespace Luau
 {
@@ -281,6 +282,12 @@ void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues, uin
     debugLocals.clear();
     debugUpvals.clear();
 
+    if (FFlag::LuauCompileTypeInfo)
+    {
+        typedLocals.clear();
+        typedUpvals.clear();
+    }
+
     constantMap.clear();
     tableShapeMap.clear();
     protoMap.clear();
@@ -537,6 +544,29 @@ void BytecodeBuilder::setFunctionTypeInfo(std::string value)
     functions[currentFunction].typeinfo = std::move(value);
 }
 
+void BytecodeBuilder::pushLocalTypeInfo(LuauBytecodeType type, uint8_t reg, uint32_t startpc, uint32_t endpc)
+{
+    LUAU_ASSERT(FFlag::LuauCompileTypeInfo);
+
+    TypedLocal local;
+    local.type = type;
+    local.reg = reg;
+    local.startpc = startpc;
+    local.endpc = endpc;
+
+    typedLocals.push_back(local);
+}
+
+void BytecodeBuilder::pushUpvalTypeInfo(LuauBytecodeType type)
+{
+    LUAU_ASSERT(FFlag::LuauCompileTypeInfo);
+
+    TypedUpval upval;
+    upval.type = type;
+
+    typedUpvals.push_back(upval);
+}
+
 void BytecodeBuilder::setDebugFunctionName(StringRef name)
 {
     unsigned int index = addStringTableEntry(name);
@@ -636,7 +666,6 @@ void BytecodeBuilder::finalize()
     bytecode = char(version);
 
     uint8_t typesversion = getTypeEncodingVersion();
-    LUAU_ASSERT(typesversion == 1);
     writeByte(bytecode, typesversion);
 
     writeStringTable(bytecode);
@@ -650,7 +679,7 @@ void BytecodeBuilder::finalize()
     writeVarInt(bytecode, mainFunction);
 }
 
-void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags) const
+void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
 {
     LUAU_ASSERT(id < functions.size());
     const Function& func = functions[id];
@@ -663,8 +692,43 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
 
     writeByte(ss, flags);
 
-    writeVarInt(ss, uint32_t(func.typeinfo.size()));
-    ss.append(func.typeinfo);
+    if (FFlag::LuauCompileTypeInfo)
+    {
+        if (!func.typeinfo.empty() || !typedUpvals.empty() || !typedLocals.empty())
+        {
+            // collect type info into a temporary string to know the overall size of type data
+            tempTypeInfo.clear();
+            writeVarInt(tempTypeInfo, uint32_t(func.typeinfo.size()));
+            writeVarInt(tempTypeInfo, uint32_t(typedUpvals.size()));
+            writeVarInt(tempTypeInfo, uint32_t(typedLocals.size()));
+
+            tempTypeInfo.append(func.typeinfo);
+
+            for (const TypedUpval& l : typedUpvals)
+                writeByte(tempTypeInfo, l.type);
+
+            for (const TypedLocal& l : typedLocals)
+            {
+                writeByte(tempTypeInfo, l.type);
+                writeByte(tempTypeInfo, l.reg);
+                writeVarInt(tempTypeInfo, l.startpc);
+                LUAU_ASSERT(l.endpc >= l.startpc);
+                writeVarInt(tempTypeInfo, l.endpc - l.startpc);
+            }
+
+            writeVarInt(ss, uint32_t(tempTypeInfo.size()));
+            ss.append(tempTypeInfo);
+        }
+        else
+        {
+            writeVarInt(ss, 0);
+        }
+    }
+    else
+    {
+        writeVarInt(ss, uint32_t(func.typeinfo.size()));
+        ss.append(func.typeinfo);
+    }
 
     // instructions
     writeVarInt(ss, uint32_t(insns.size()));
@@ -1134,7 +1198,7 @@ uint8_t BytecodeBuilder::getVersion()
 
 uint8_t BytecodeBuilder::getTypeEncodingVersion()
 {
-    return LBC_TYPE_VERSION;
+    return FFlag::LuauCompileTypeInfo ? LBC_TYPE_VERSION : LBC_TYPE_VERSION_DEPRECATED;
 }
 
 #ifdef LUAU_ASSERTENABLED
@@ -2162,6 +2226,39 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
     }
 }
 
+static const char* getBaseTypeString(uint8_t type)
+{
+    uint8_t tag = type & ~LBC_TYPE_OPTIONAL_BIT;
+    switch (tag)
+    {
+    case LBC_TYPE_NIL:
+        return "nil";
+    case LBC_TYPE_BOOLEAN:
+        return "boolean";
+    case LBC_TYPE_NUMBER:
+        return "number";
+    case LBC_TYPE_STRING:
+        return "string";
+    case LBC_TYPE_TABLE:
+        return "table";
+    case LBC_TYPE_FUNCTION:
+        return "function";
+    case LBC_TYPE_THREAD:
+        return "thread";
+    case LBC_TYPE_USERDATA:
+        return "userdata";
+    case LBC_TYPE_VECTOR:
+        return "vector";
+    case LBC_TYPE_BUFFER:
+        return "buffer";
+    case LBC_TYPE_ANY:
+        return "any";
+    }
+
+    LUAU_ASSERT(!"Unhandled type in getBaseTypeString");
+    return nullptr;
+}
+
 std::string BytecodeBuilder::dumpCurrentFunction(std::vector<int>& dumpinstoffs) const
 {
     if ((dumpFlags & Dump_Code) == 0)
@@ -2194,6 +2291,45 @@ std::string BytecodeBuilder::dumpCurrentFunction(std::vector<int>& dumpinstoffs)
                 // it would be nice to emit name as well but it requires reverse lookup through stringtable
                 formatAppend(result, "local %d: reg %d, start pc %d line %d, end pc %d line %d\n", int(i), l.reg, l.startpc, lines[l.startpc],
                     l.endpc - 1, lines[l.endpc - 1]);
+            }
+        }
+    }
+
+    if (FFlag::LuauCompileTypeInfo)
+    {
+        if (dumpFlags & Dump_Types)
+        {
+            const std::string& typeinfo = functions.back().typeinfo;
+
+            // Arguments start from third byte in function typeinfo string
+            for (uint8_t i = 2; i < typeinfo.size(); ++i)
+            {
+                uint8_t et = typeinfo[i];
+
+                const char* base = getBaseTypeString(et);
+                const char* optional = (et & LBC_TYPE_OPTIONAL_BIT) ? "?" : "";
+
+                formatAppend(result, "R%d: %s%s [argument]\n", i - 2, base, optional);
+            }
+
+            for (size_t i = 0; i < typedUpvals.size(); ++i)
+            {
+                const TypedUpval& l = typedUpvals[i];
+
+                const char* base = getBaseTypeString(l.type);
+                const char* optional = (l.type & LBC_TYPE_OPTIONAL_BIT) ? "?" : "";
+
+                formatAppend(result, "U%d: %s%s\n", int(i), base, optional);
+            }
+
+            for (size_t i = 0; i < typedLocals.size(); ++i)
+            {
+                const TypedLocal& l = typedLocals[i];
+
+                const char* base = getBaseTypeString(l.type);
+                const char* optional = (l.type & LBC_TYPE_OPTIONAL_BIT) ? "?" : "";
+
+                formatAppend(result, "R%d: %s%s from %d to %d\n", l.reg, base, optional, l.startpc, l.endpc);
             }
         }
     }
@@ -2362,39 +2498,6 @@ std::string BytecodeBuilder::dumpSourceRemarks() const
     }
 
     return result;
-}
-
-static const char* getBaseTypeString(uint8_t type)
-{
-    uint8_t tag = type & ~LBC_TYPE_OPTIONAL_BIT;
-    switch (tag)
-    {
-    case LBC_TYPE_NIL:
-        return "nil";
-    case LBC_TYPE_BOOLEAN:
-        return "boolean";
-    case LBC_TYPE_NUMBER:
-        return "number";
-    case LBC_TYPE_STRING:
-        return "string";
-    case LBC_TYPE_TABLE:
-        return "table";
-    case LBC_TYPE_FUNCTION:
-        return "function";
-    case LBC_TYPE_THREAD:
-        return "thread";
-    case LBC_TYPE_USERDATA:
-        return "userdata";
-    case LBC_TYPE_VECTOR:
-        return "vector";
-    case LBC_TYPE_BUFFER:
-        return "buffer";
-    case LBC_TYPE_ANY:
-        return "any";
-    }
-
-    LUAU_ASSERT(!"Unhandled type in getBaseTypeString");
-    return nullptr;
 }
 
 std::string BytecodeBuilder::dumpTypeInfo() const

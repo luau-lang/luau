@@ -23,7 +23,7 @@ bool Instantiation2::isDirty(TypePackId tp)
 
 TypeId Instantiation2::clean(TypeId ty)
 {
-    TypeId substTy = genericSubstitutions[ty];
+    TypeId substTy = follow(genericSubstitutions[ty]);
     const FreeType* ft = get<FreeType>(substTy);
 
     // violation of the substitution invariant if this is not a free type.

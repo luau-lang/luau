@@ -8,6 +8,9 @@
 #include "lobject.h"
 
 LUAU_FASTFLAG(LuauCodegenDirectUserdataFlow)
+LUAU_FASTFLAG(LuauLoadTypeInfo)                   // Because new VM typeinfo load changes the format used by Codegen, same flag is used
+LUAU_FASTFLAGVARIABLE(LuauCodegenTypeInfo, false) // New analysis is flagged separately
+LUAU_FASTFLAG(LuauTypeInfoLookupImprovement)
 
 namespace Luau
 {
@@ -16,7 +19,225 @@ namespace CodeGen
 
 static bool hasTypedParameters(Proto* proto)
 {
+    CODEGEN_ASSERT(!FFlag::LuauLoadTypeInfo);
+
     return proto->typeinfo && proto->numparams != 0;
+}
+
+template<typename T>
+static T read(uint8_t* data, size_t& offset)
+{
+    CODEGEN_ASSERT(FFlag::LuauLoadTypeInfo);
+
+    T result;
+    memcpy(&result, data + offset, sizeof(T));
+    offset += sizeof(T);
+
+    return result;
+}
+
+static uint32_t readVarInt(uint8_t* data, size_t& offset)
+{
+    CODEGEN_ASSERT(FFlag::LuauLoadTypeInfo);
+
+    uint32_t result = 0;
+    uint32_t shift = 0;
+
+    uint8_t byte;
+
+    do
+    {
+        byte = read<uint8_t>(data, offset);
+        result |= (byte & 127) << shift;
+        shift += 7;
+    } while (byte & 128);
+
+    return result;
+}
+
+void loadBytecodeTypeInfo(IrFunction& function)
+{
+    CODEGEN_ASSERT(FFlag::LuauLoadTypeInfo);
+
+    Proto* proto = function.proto;
+
+    if (FFlag::LuauTypeInfoLookupImprovement)
+    {
+        if (!proto)
+            return;
+    }
+    else
+    {
+        if (!proto || !proto->typeinfo)
+            return;
+    }
+
+    BytecodeTypeInfo& typeInfo = function.bcTypeInfo;
+
+    // If there is no typeinfo, we generate default values for arguments and upvalues
+    if (FFlag::LuauTypeInfoLookupImprovement && !proto->typeinfo)
+    {
+        typeInfo.argumentTypes.resize(proto->numparams, LBC_TYPE_ANY);
+        typeInfo.upvalueTypes.resize(proto->nups, LBC_TYPE_ANY);
+        return;
+    }
+
+    uint8_t* data = proto->typeinfo;
+    size_t offset = 0;
+
+    uint32_t typeSize = readVarInt(data, offset);
+    uint32_t upvalCount = readVarInt(data, offset);
+    uint32_t localCount = readVarInt(data, offset);
+
+    CODEGEN_ASSERT(upvalCount == unsigned(proto->nups));
+
+    if (typeSize != 0)
+    {
+        uint8_t* types = (uint8_t*)data + offset;
+
+        CODEGEN_ASSERT(typeSize == uint32_t(2 + proto->numparams));
+        CODEGEN_ASSERT(types[0] == LBC_TYPE_FUNCTION);
+        CODEGEN_ASSERT(types[1] == proto->numparams);
+
+        typeInfo.argumentTypes.resize(proto->numparams);
+
+        // Skip two bytes of function type introduction
+        memcpy(typeInfo.argumentTypes.data(), types + 2, proto->numparams);
+        offset += typeSize;
+    }
+
+    if (upvalCount != 0)
+    {
+        typeInfo.upvalueTypes.resize(upvalCount);
+
+        uint8_t* types = (uint8_t*)data + offset;
+        memcpy(typeInfo.upvalueTypes.data(), types, upvalCount);
+        offset += upvalCount;
+    }
+
+    if (localCount != 0)
+    {
+        typeInfo.regTypes.resize(localCount);
+
+        for (uint32_t i = 0; i < localCount; i++)
+        {
+            BytecodeRegTypeInfo& info = typeInfo.regTypes[i];
+
+            info.type = read<uint8_t>(data, offset);
+            info.reg = read<uint8_t>(data, offset);
+            info.startpc = readVarInt(data, offset);
+            info.endpc = info.startpc + readVarInt(data, offset);
+        }
+    }
+
+    CODEGEN_ASSERT(offset == size_t(proto->sizetypeinfo));
+}
+
+static void prepareRegTypeInfoLookups(BytecodeTypeInfo& typeInfo)
+{
+    CODEGEN_ASSERT(FFlag::LuauTypeInfoLookupImprovement);
+
+    // Sort by register first, then by end PC
+    std::sort(typeInfo.regTypes.begin(), typeInfo.regTypes.end(), [](const BytecodeRegTypeInfo& a, const BytecodeRegTypeInfo& b) {
+        if (a.reg != b.reg)
+            return a.reg < b.reg;
+
+        return a.endpc < b.endpc;
+    });
+
+    // Prepare data for all registers as 'regTypes' might be missing temporaries
+    typeInfo.regTypeOffsets.resize(256 + 1);
+
+    for (size_t i = 0; i < typeInfo.regTypes.size(); i++)
+    {
+        const BytecodeRegTypeInfo& el = typeInfo.regTypes[i];
+
+        // Data is sorted by register order, so when we visit register Rn last time
+        // If means that register Rn+1 starts one after the slot where Rn ends
+        typeInfo.regTypeOffsets[el.reg + 1] = uint32_t(i + 1);
+    }
+
+    // Fill in holes with the offset of the previous register
+    for (size_t i = 1; i < typeInfo.regTypeOffsets.size(); i++)
+    {
+        uint32_t& el = typeInfo.regTypeOffsets[i];
+
+        if (el == 0)
+            el = typeInfo.regTypeOffsets[i - 1];
+    }
+}
+
+static BytecodeRegTypeInfo* findRegType(BytecodeTypeInfo& info, uint8_t reg, int pc)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenTypeInfo);
+
+    if (FFlag::LuauTypeInfoLookupImprovement)
+    {
+        auto b = info.regTypes.begin() + info.regTypeOffsets[reg];
+        auto e = info.regTypes.begin() + info.regTypeOffsets[reg + 1];
+
+        // Doen't have info
+        if (b == e)
+            return nullptr;
+
+        // No info after the last live range
+        if (pc >= (e - 1)->endpc)
+            return nullptr;
+
+        for (auto it = b; it != e; ++it)
+        {
+            CODEGEN_ASSERT(it->reg == reg);
+
+            if (pc >= it->startpc && pc < it->endpc)
+                return &*it;
+        }
+
+        return nullptr;
+    }
+    else
+    {
+        for (BytecodeRegTypeInfo& el : info.regTypes)
+        {
+            if (reg == el.reg && pc >= el.startpc && pc < el.endpc)
+                return &el;
+        }
+
+        return nullptr;
+    }
+}
+
+static void refineRegType(BytecodeTypeInfo& info, uint8_t reg, int pc, uint8_t ty)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenTypeInfo);
+
+    if (ty != LBC_TYPE_ANY)
+    {
+        if (BytecodeRegTypeInfo* regType = findRegType(info, reg, pc))
+        {
+            // Right now, we only refine register types that were unknown
+            if (regType->type == LBC_TYPE_ANY)
+                regType->type = ty;
+        }
+        else if (FFlag::LuauTypeInfoLookupImprovement && reg < info.argumentTypes.size())
+        {
+            if (info.argumentTypes[reg] == LBC_TYPE_ANY)
+                info.argumentTypes[reg] = ty;
+        }
+    }
+}
+
+static void refineUpvalueType(BytecodeTypeInfo& info, int up, uint8_t ty)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenTypeInfo);
+
+    if (ty != LBC_TYPE_ANY)
+    {
+        if (size_t(up) < info.upvalueTypes.size())
+        {
+            if (info.upvalueTypes[up] == LBC_TYPE_ANY)
+                info.upvalueTypes[up] = ty;
+        }
+    }
 }
 
 static uint8_t getBytecodeConstantTag(Proto* proto, unsigned ki)
@@ -389,6 +610,11 @@ void analyzeBytecodeTypes(IrFunction& function)
     Proto* proto = function.proto;
     CODEGEN_ASSERT(proto);
 
+    BytecodeTypeInfo& bcTypeInfo = function.bcTypeInfo;
+
+    if (FFlag::LuauTypeInfoLookupImprovement)
+        prepareRegTypeInfoLookups(bcTypeInfo);
+
     // Setup our current knowledge of type tags based on arguments
     uint8_t regTags[256];
     memset(regTags, LBC_TYPE_ANY, 256);
@@ -403,14 +629,27 @@ void analyzeBytecodeTypes(IrFunction& function)
 
         // At the block start, reset or knowledge to the starting state
         // In the future we might be able to propagate some info between the blocks as well
-        if (hasTypedParameters(proto))
+        if (FFlag::LuauLoadTypeInfo)
         {
-            for (int i = 0; i < proto->numparams; ++i)
+            for (size_t i = 0; i < bcTypeInfo.argumentTypes.size(); i++)
             {
-                uint8_t et = proto->typeinfo[2 + i];
+                uint8_t et = bcTypeInfo.argumentTypes[i];
 
                 // TODO: if argument is optional, this might force a VM exit unnecessarily
                 regTags[i] = et & ~LBC_TYPE_OPTIONAL_BIT;
+            }
+        }
+        else
+        {
+            if (hasTypedParameters(proto))
+            {
+                for (int i = 0; i < proto->numparams; ++i)
+                {
+                    uint8_t et = proto->typeinfo[2 + i];
+
+                    // TODO: if argument is optional, this might force a VM exit unnecessarily
+                    regTags[i] = et & ~LBC_TYPE_OPTIONAL_BIT;
+                }
             }
         }
 
@@ -421,6 +660,18 @@ void analyzeBytecodeTypes(IrFunction& function)
         {
             const Instruction* pc = &proto->code[i];
             LuauOpcode op = LuauOpcode(LUAU_INSN_OP(*pc));
+
+            if (FFlag::LuauCodegenTypeInfo)
+            {
+                // Assign known register types from local type information
+                // TODO: this is an expensive walk for each instruction
+                // TODO: it's best to lookup when register is actually used in the instruction
+                for (BytecodeRegTypeInfo& el : bcTypeInfo.regTypes)
+                {
+                    if (el.type != LBC_TYPE_ANY && i >= el.startpc && i < el.endpc)
+                        regTags[el.reg] = el.type;
+                }
+            }
 
             BytecodeTypes& bcType = function.bcTypes[i];
 
@@ -440,6 +691,9 @@ void analyzeBytecodeTypes(IrFunction& function)
                 int ra = LUAU_INSN_A(*pc);
                 regTags[ra] = LBC_TYPE_BOOLEAN;
                 bcType.result = regTags[ra];
+
+                if (FFlag::LuauCodegenTypeInfo)
+                    refineRegType(bcTypeInfo, ra, i, bcType.result);
                 break;
             }
             case LOP_LOADN:
@@ -447,6 +701,9 @@ void analyzeBytecodeTypes(IrFunction& function)
                 int ra = LUAU_INSN_A(*pc);
                 regTags[ra] = LBC_TYPE_NUMBER;
                 bcType.result = regTags[ra];
+
+                if (FFlag::LuauCodegenTypeInfo)
+                    refineRegType(bcTypeInfo, ra, i, bcType.result);
                 break;
             }
             case LOP_LOADK:
@@ -456,6 +713,9 @@ void analyzeBytecodeTypes(IrFunction& function)
                 bcType.a = getBytecodeConstantTag(proto, kb);
                 regTags[ra] = bcType.a;
                 bcType.result = regTags[ra];
+
+                if (FFlag::LuauCodegenTypeInfo)
+                    refineRegType(bcTypeInfo, ra, i, bcType.result);
                 break;
             }
             case LOP_LOADKX:
@@ -465,6 +725,9 @@ void analyzeBytecodeTypes(IrFunction& function)
                 bcType.a = getBytecodeConstantTag(proto, kb);
                 regTags[ra] = bcType.a;
                 bcType.result = regTags[ra];
+
+                if (FFlag::LuauCodegenTypeInfo)
+                    refineRegType(bcTypeInfo, ra, i, bcType.result);
                 break;
             }
             case LOP_MOVE:
@@ -474,6 +737,9 @@ void analyzeBytecodeTypes(IrFunction& function)
                 bcType.a = regTags[rb];
                 regTags[ra] = regTags[rb];
                 bcType.result = regTags[ra];
+
+                if (FFlag::LuauCodegenTypeInfo)
+                    refineRegType(bcTypeInfo, ra, i, bcType.result);
                 break;
             }
             case LOP_GETTABLE:
@@ -767,6 +1033,9 @@ void analyzeBytecodeTypes(IrFunction& function)
                 regTags[ra + 2] = bcType.b;
                 regTags[ra + 3] = bcType.c;
                 regTags[ra] = bcType.result;
+
+                if (FFlag::LuauCodegenTypeInfo)
+                    refineRegType(bcTypeInfo, ra, i, bcType.result);
                 break;
             }
             case LOP_FASTCALL1:
@@ -783,6 +1052,9 @@ void analyzeBytecodeTypes(IrFunction& function)
 
                 regTags[LUAU_INSN_B(*pc)] = bcType.a;
                 regTags[ra] = bcType.result;
+
+                if (FFlag::LuauCodegenTypeInfo)
+                    refineRegType(bcTypeInfo, ra, i, bcType.result);
                 break;
             }
             case LOP_FASTCALL2:
@@ -799,6 +1071,9 @@ void analyzeBytecodeTypes(IrFunction& function)
                 regTags[LUAU_INSN_B(*pc)] = bcType.a;
                 regTags[int(pc[1])] = bcType.b;
                 regTags[ra] = bcType.result;
+
+                if (FFlag::LuauCodegenTypeInfo)
+                    refineRegType(bcTypeInfo, ra, i, bcType.result);
                 break;
             }
             case LOP_FORNPREP:
@@ -808,6 +1083,13 @@ void analyzeBytecodeTypes(IrFunction& function)
                 regTags[ra] = LBC_TYPE_NUMBER;
                 regTags[ra + 1] = LBC_TYPE_NUMBER;
                 regTags[ra + 2] = LBC_TYPE_NUMBER;
+
+                if (FFlag::LuauCodegenTypeInfo)
+                {
+                    refineRegType(bcTypeInfo, ra, i, regTags[ra]);
+                    refineRegType(bcTypeInfo, ra + 1, i, regTags[ra + 1]);
+                    refineRegType(bcTypeInfo, ra + 2, i, regTags[ra + 2]);
+                }
                 break;
             }
             case LOP_FORNLOOP:
@@ -856,6 +1138,39 @@ void analyzeBytecodeTypes(IrFunction& function)
                 }
                 break;
             }
+            case LOP_GETUPVAL:
+            {
+                if (FFlag::LuauCodegenTypeInfo)
+                {
+                    int ra = LUAU_INSN_A(*pc);
+                    int up = LUAU_INSN_B(*pc);
+
+                    bcType.a = LBC_TYPE_ANY;
+
+                    if (size_t(up) < bcTypeInfo.upvalueTypes.size())
+                    {
+                        uint8_t et = bcTypeInfo.upvalueTypes[up];
+
+                        // TODO: if argument is optional, this might force a VM exit unnecessarily
+                        bcType.a = et & ~LBC_TYPE_OPTIONAL_BIT;
+                    }
+
+                    regTags[ra] = bcType.a;
+                    bcType.result = regTags[ra];
+                }
+                break;
+            }
+            case LOP_SETUPVAL:
+            {
+                if (FFlag::LuauCodegenTypeInfo)
+                {
+                    int ra = LUAU_INSN_A(*pc);
+                    int up = LUAU_INSN_B(*pc);
+
+                    refineUpvalueType(bcTypeInfo, up, regTags[ra]);
+                }
+                break;
+            }
             case LOP_GETGLOBAL:
             case LOP_SETGLOBAL:
             case LOP_CALL:
@@ -876,8 +1191,6 @@ void analyzeBytecodeTypes(IrFunction& function)
             case LOP_JUMPXEQKN:
             case LOP_JUMPXEQKS:
             case LOP_SETLIST:
-            case LOP_GETUPVAL:
-            case LOP_SETUPVAL:
             case LOP_CLOSEUPVALS:
             case LOP_FORGLOOP:
             case LOP_FORGPREP_NEXT:

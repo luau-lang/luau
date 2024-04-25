@@ -14,6 +14,7 @@
 
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenContext, false)
+LUAU_FASTFLAGVARIABLE(LuauCodegenCheckNullContext, false)
 
 LUAU_FASTINT(LuauCodeGenBlockSize)
 LUAU_FASTINT(LuauCodeGenMaxTotalSize)
@@ -403,6 +404,7 @@ static size_t getMemorySize(lua_State* L, Proto* proto)
 static void initializeExecutionCallbacks(lua_State* L, BaseCodeGenContext* codeGenContext) noexcept
 {
     CODEGEN_ASSERT(FFlag::LuauCodegenContext);
+    CODEGEN_ASSERT(!FFlag::LuauCodegenCheckNullContext || codeGenContext != nullptr);
 
     lua_ExecutionCallbacks* ecb = &L->global->ecb;
 

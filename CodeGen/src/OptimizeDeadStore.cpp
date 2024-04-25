@@ -10,7 +10,6 @@
 #include "lobject.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenRemoveDeadStores5, false)
-LUAU_FASTFLAG(LuauCodegenLoadTVTag)
 
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit
 
@@ -519,7 +518,7 @@ static void markDeadStoresInInst(RemoveDeadStoreState& state, IrBuilder& build, 
                 if (arg->cmd == IrCmd::TAG_VECTOR)
                     regInfo.maybeGco = false;
 
-                if (FFlag::LuauCodegenLoadTVTag && arg->cmd == IrCmd::LOAD_TVALUE && arg->c.kind != IrOpKind::None)
+                if (arg->cmd == IrCmd::LOAD_TVALUE && arg->c.kind != IrOpKind::None)
                     regInfo.maybeGco = isGCO(function.tagOp(arg->c));
             }
 

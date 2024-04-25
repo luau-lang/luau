@@ -30,6 +30,9 @@ void toString(IrToStringContext& ctx, const IrBlock& block, uint32_t index); // 
 void toString(IrToStringContext& ctx, IrOp op);
 
 void toString(std::string& result, IrConst constant);
+
+const char* getBytecodeTypeName(uint8_t type);
+
 void toString(std::string& result, const BytecodeTypes& bcTypes);
 
 void toStringDetailed(

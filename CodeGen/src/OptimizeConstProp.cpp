@@ -18,8 +18,6 @@ LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
 LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
-LUAU_FASTFLAG(LuauCodegenLoadTVTag)
-LUAU_FASTFLAGVARIABLE(LuauCodegenInferNumTag, false)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLoadPropCheckRegLinkInTv, false)
 
 namespace Luau
@@ -720,7 +718,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                     if (arg->cmd == IrCmd::TAG_VECTOR)
                         tag = LUA_TVECTOR;
 
-                    if (FFlag::LuauCodegenLoadTVTag && arg->cmd == IrCmd::LOAD_TVALUE && arg->c.kind != IrOpKind::None)
+                    if (arg->cmd == IrCmd::LOAD_TVALUE && arg->c.kind != IrOpKind::None)
                         tag = function.tagOp(arg->c);
                 }
             }
@@ -897,59 +895,34 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::CHECK_TAG:
     {
         uint8_t b = function.tagOp(inst.b);
+        uint8_t tag = state.tryGetTag(inst.a);
 
-        if (FFlag::LuauCodegenInferNumTag)
+        if (tag == 0xff)
         {
-            uint8_t tag = state.tryGetTag(inst.a);
-
-            if (tag == 0xff)
+            if (IrOp value = state.tryGetValue(inst.a); value.kind == IrOpKind::Constant)
             {
-                if (IrOp value = state.tryGetValue(inst.a); value.kind == IrOpKind::Constant)
-                {
-                    if (function.constOp(value).kind == IrConstKind::Double)
-                        tag = LUA_TNUMBER;
-                }
+                if (function.constOp(value).kind == IrConstKind::Double)
+                    tag = LUA_TNUMBER;
             }
+        }
 
-            if (tag != 0xff)
+        if (tag != 0xff)
+        {
+            if (tag == b)
             {
-                if (tag == b)
-                {
-                    if (FFlag::DebugLuauAbortingChecks)
-                        replace(function, inst.c, build.undef());
-                    else
-                        kill(function, inst);
-                }
+                if (FFlag::DebugLuauAbortingChecks)
+                    replace(function, inst.c, build.undef());
                 else
-                {
-                    replace(function, block, index, {IrCmd::JUMP, inst.c}); // Shows a conflict in assumptions on this path
-                }
+                    kill(function, inst);
             }
             else
             {
-                state.updateTag(inst.a, b); // We can assume the tag value going forward
+                replace(function, block, index, {IrCmd::JUMP, inst.c}); // Shows a conflict in assumptions on this path
             }
         }
         else
         {
-            if (uint8_t tag = state.tryGetTag(inst.a); tag != 0xff)
-            {
-                if (tag == b)
-                {
-                    if (FFlag::DebugLuauAbortingChecks)
-                        replace(function, inst.c, build.undef());
-                    else
-                        kill(function, inst);
-                }
-                else
-                {
-                    replace(function, block, index, {IrCmd::JUMP, inst.c}); // Shows a conflict in assumptions on this path
-                }
-            }
-            else
-            {
-                state.updateTag(inst.a, b); // We can assume the tag value going forward
-            }
+            state.updateTag(inst.a, b); // We can assume the tag value going forward
         }
         break;
     }

@@ -71,6 +71,7 @@ static std::string compileTypeTable(const char* source)
 
     Luau::CompileOptions opts;
     opts.vectorType = "Vector3";
+    opts.typeInfoLevel = 1;
     Luau::compileOrThrow(bcb, source, opts);
 
     return bcb.dumpTypeInfo();

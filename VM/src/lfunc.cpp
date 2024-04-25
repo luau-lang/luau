@@ -6,6 +6,8 @@
 #include "lmem.h"
 #include "lgc.h"
 
+LUAU_FASTFLAGVARIABLE(LuauLoadTypeInfo, false)
+
 Proto* luaF_newproto(lua_State* L)
 {
     Proto* f = luaM_newgco(L, Proto, sizeof(Proto), L->activememcat);
@@ -50,6 +52,9 @@ Proto* luaF_newproto(lua_State* L)
     f->linegaplog2 = 0;
     f->linedefined = 0;
     f->bytecodeid = 0;
+
+    if (FFlag::LuauLoadTypeInfo)
+        f->sizetypeinfo = 0;
 
     return f;
 }
@@ -173,8 +178,16 @@ void luaF_freeproto(lua_State* L, Proto* f, lua_Page* page)
     if (f->execdata)
         L->global->ecb.destroy(L, f);
 
-    if (f->typeinfo)
-        luaM_freearray(L, f->typeinfo, f->numparams + 2, uint8_t, f->memcat);
+    if (FFlag::LuauLoadTypeInfo)
+    {
+        if (f->typeinfo)
+            luaM_freearray(L, f->typeinfo, f->sizetypeinfo, uint8_t, f->memcat);
+    }
+    else
+    {
+        if (f->typeinfo)
+            luaM_freearray(L, f->typeinfo, f->numparams + 2, uint8_t, f->memcat);
+    }
 
     luaM_freegco(L, f, sizeof(Proto), f->memcat, page);
 }

@@ -26,6 +26,12 @@ struct CompileOptions
     // 2 - full debug info with local & upvalue names; necessary for debugger
     int debugLevel = 1;
 
+    // type information is used to guide native code generation decisions
+    // information includes testable types for function arguments, locals, upvalues and some temporaries
+    // 0 - generate for native modules
+    // 1 - generate for all modules
+    int typeInfoLevel = 0;
+
     // 0 - no code coverage support
     // 1 - statement coverage
     // 2 - statement and expression coverage (verbose)

@@ -15,8 +15,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenCheckTruthyFormB, false)
-
 namespace Luau
 {
 namespace CodeGen
@@ -1197,7 +1195,7 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         }
 
         // fail to fallback on 'false' boolean value (falsy)
-        if (!FFlag::LuauCodegenCheckTruthyFormB || inst.b.kind != IrOpKind::Constant)
+        if (inst.b.kind != IrOpKind::Constant)
         {
             build.cmp(memRegUintOp(inst.b), 0);
             jumpOrAbortOnUndef(ConditionX64::Equal, inst.c, next);

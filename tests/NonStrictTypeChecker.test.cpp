@@ -63,6 +63,7 @@ struct NonStrictTypeCheckerFixture : Fixture
     NonStrictTypeCheckerFixture()
     {
         registerHiddenTypes(&frontend);
+        registerTestTypes();
     }
 
     CheckResult checkNonStrict(const std::string& code)
@@ -74,6 +75,17 @@ struct NonStrictTypeCheckerFixture : Fixture
         LoadDefinitionFileResult res = loadDefinition(definitions);
         LUAU_ASSERT(res.success);
         return check(Mode::Nonstrict, code);
+    }
+
+    CheckResult checkNonStrictModule(const std::string& moduleName)
+    {
+        ScopedFastFlag flags[] = {
+            {FFlag::LuauCheckedFunctionSyntax, true},
+            {FFlag::DebugLuauDeferredConstraintResolution, true},
+        };
+        LoadDefinitionFileResult res = loadDefinition(definitions);
+        LUAU_ASSERT(res.success);
+        return frontend.check(moduleName);
     }
 
     std::string definitions = R"BUILTIN_SRC(
@@ -106,6 +118,8 @@ type DateTypeArg = {
 declare os : {
     time: @checked (time: DateTypeArg?) -> number
 }
+
+declare function @checked require(target : any) : any
 )BUILTIN_SRC";
 };
 
@@ -525,6 +539,25 @@ TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "non_testable_type_throws_ice")
 os.time({year = 0, month = 0, day = 0, min = 0, isdst = nil})
 )"),
         Luau::InternalCompilerError);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "non_strict_shouldnt_warn_on_require_module")
+{
+    fileResolver.source["Modules/A"] = R"(
+--!strict
+type t = {x : number}
+local e : t = {x = 3}
+return e
+)";
+    fileResolver.sourceTypes["Modules/A"] = SourceCode::Module;
+
+    fileResolver.source["Modules/B"] = R"(
+--!nonstrict
+local E = require(script.Parent.A)
+)";
+
+    CheckResult result = checkNonStrictModule("Modules/B");
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -1518,4 +1518,41 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "be_sure_to_use_active_txnlog_when_evaluating
         CHECK(5 == e.location.begin.line);
 }
 
+/*
+ * We had an issue where this kind of typeof() call could produce the untestable type ~{}
+ */
+TEST_CASE_FIXTURE(Fixture, "typeof_cannot_refine_builtin_alias")
+{
+    GlobalTypes& globals = frontend.globals;
+    TypeArena& arena = globals.globalTypes;
+
+    unfreeze(arena);
+
+    globals.globalScope->exportedTypeBindings["GlobalTable"] = TypeFun{{}, arena.addType(TableType{TableState::Sealed, TypeLevel{}})};
+
+    freeze(arena);
+
+    (void) check(R"(
+        function foo(x)
+            if typeof(x) == 'GlobalTable' then
+            end
+        end
+    )");
+}
+
+/*
+ * We had an issue where we tripped the canMutate() check when binding one
+ * blocked type to another.
+ */
+TEST_CASE_FIXTURE(Fixture, "delay_setIndexer_constraint_if_the_indexers_type_is_blocked")
+{
+    (void) check(R"(
+        local SG = GetService(true)
+        local lines: { [string]: typeof(SG.ScreenGui) } = {}
+        lines[deadline] = nil -- This line
+    )");
+
+    // As long as type inference doesn't trip an assert or crash, we're good!
+}
+
 TEST_SUITE_END();

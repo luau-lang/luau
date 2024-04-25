@@ -14,6 +14,7 @@ namespace CodeGen
 
 struct IrFunction;
 
+void loadBytecodeTypeInfo(IrFunction& function);
 void buildBytecodeBlocks(IrFunction& function, const std::vector<uint8_t>& jumpTargets);
 void analyzeBytecodeTypes(IrFunction& function);
 
