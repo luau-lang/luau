@@ -12,7 +12,6 @@
 
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
 LUAU_FASTINT(LuauTypeMaximumStringifierLength)
-LUAU_FASTFLAG(LuauToStringSimpleCompositeTypesSingleLine)
 
 namespace Luau
 {
@@ -36,7 +35,6 @@ struct ToStringOptions
 {
     ToStringOptions(bool exhaustive = false)
         : exhaustive(exhaustive)
-        , compositeTypesSingleLineLimit(FFlag::LuauToStringSimpleCompositeTypesSingleLine ? 5 : 0)
     {
     }
 

@@ -678,4 +678,30 @@ TEST_CASE_FIXTURE(DataFlowGraphFixture, "dfg_function_definition_in_a_do_block")
     CHECK(x2 == x3);
 }
 
+TEST_CASE_FIXTURE(DataFlowGraphFixture, "dfg_captured_local_is_assigned_a_function")
+{
+    dfg(R"(
+        local f
+
+        local function g()
+            f()
+        end
+
+        function f()
+        end
+    )");
+
+    DefId f1 = graph->getDef(query<AstStatLocal>(module)->vars.data[0]);
+    DefId f2 = getDef<AstExprLocal, 1>();
+    DefId f3 = getDef<AstExprLocal, 2>();
+
+    CHECK(f1 != f2);
+    CHECK(f2 != f3);
+
+    const Phi* f2phi = get<Phi>(f2);
+    REQUIRE(f2phi);
+    CHECK(f2phi->operands.size() == 1);
+    CHECK(f2phi->operands.at(0) == f3);
+}
+
 TEST_SUITE_END();

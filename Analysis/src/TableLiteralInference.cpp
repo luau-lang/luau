@@ -148,7 +148,7 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
             Relation upperBoundRelation = relate(ft->upperBound, expectedType);
             if (upperBoundRelation == Relation::Subset || upperBoundRelation == Relation::Coincident)
             {
-                asMutable(exprType)->ty.emplace<BoundType>(expectedType);
+                emplaceType<BoundType>(asMutable(exprType), expectedType);
                 return exprType;
             }
 
@@ -158,7 +158,7 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
             Relation lowerBoundRelation = relate(ft->lowerBound, expectedType);
             if (lowerBoundRelation == Relation::Subset || lowerBoundRelation == Relation::Coincident)
             {
-                asMutable(exprType)->ty.emplace<BoundType>(expectedType);
+                emplaceType<BoundType>(asMutable(exprType), expectedType);
                 return exprType;
             }
         }
@@ -173,7 +173,7 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
             Relation upperBoundRelation = relate(ft->upperBound, expectedType);
             if (upperBoundRelation == Relation::Subset || upperBoundRelation == Relation::Coincident)
             {
-                asMutable(exprType)->ty.emplace<BoundType>(expectedType);
+                emplaceType<BoundType>(asMutable(exprType), expectedType);
                 return exprType;
             }
 
@@ -183,7 +183,7 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
             Relation lowerBoundRelation = relate(ft->lowerBound, expectedType);
             if (lowerBoundRelation == Relation::Subset || lowerBoundRelation == Relation::Coincident)
             {
-                asMutable(exprType)->ty.emplace<BoundType>(expectedType);
+                emplaceType<BoundType>(asMutable(exprType), expectedType);
                 return exprType;
             }
         }
@@ -193,7 +193,7 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
     {
         if (auto ft = get<FreeType>(exprType); ft && fastIsSubtype(ft->upperBound, expectedType))
         {
-            asMutable(exprType)->ty.emplace<BoundType>(expectedType);
+            emplaceType<BoundType>(asMutable(exprType), expectedType);
             return exprType;
         }
 

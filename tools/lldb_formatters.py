@@ -228,21 +228,7 @@ class DenseHashMapSyntheticChildrenProvider:
                     skipped += 1
                     continue
 
-                slot_key = slot_key_valobj.GetSummary()
-                if slot_key is None:
-                    slot_key = slot_key_valobj.GetValue()
-
-                if slot_key is None:
-                    slot_key = slot_key_valobj.GetValueAsSigned()
-
-                if slot_key is None:
-                    slot_key = slot_key_valobj.GetValueAsUnsigned()
-
-                if slot_key is None:
-                    slot_key = str(index)
-
-                slot_value_valobj = slot_pair.GetChildMemberWithName("second")
-                return self.valobj.CreateValueFromData(f"[{slot_key}]", slot_value_valobj.GetData(), slot_value_valobj.GetType())
+                return self.valobj.CreateValueFromData(f"[{index}]", slot_pair.GetData(), slot_pair.GetType())
 
         except Exception as e:
             print("get_child_at_index error", e, index)

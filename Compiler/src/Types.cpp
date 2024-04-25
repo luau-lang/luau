@@ -3,6 +3,8 @@
 
 #include "Luau/BytecodeBuilder.h"
 
+LUAU_FASTFLAG(LuauCompileTypeInfo)
+
 namespace Luau
 {
 
@@ -144,14 +146,17 @@ static std::string getFunctionType(const AstExprFunction* func, const DenseHashM
 
 struct TypeMapVisitor : AstVisitor
 {
-    DenseHashMap<AstExprFunction*, std::string>& typeMap;
+    DenseHashMap<AstExprFunction*, std::string>& functionTypes;
+    DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes;
     const char* vectorType;
 
     DenseHashMap<AstName, AstStatTypeAlias*> typeAliases;
     std::vector<std::pair<AstName, AstStatTypeAlias*>> typeAliasStack;
 
-    TypeMapVisitor(DenseHashMap<AstExprFunction*, std::string>& typeMap, const char* vectorType)
-        : typeMap(typeMap)
+    TypeMapVisitor(
+        DenseHashMap<AstExprFunction*, std::string>& functionTypes, DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes, const char* vectorType)
+        : functionTypes(functionTypes)
+        , localTypes(localTypes)
         , vectorType(vectorType)
         , typeAliases(AstName())
     {
@@ -216,15 +221,34 @@ struct TypeMapVisitor : AstVisitor
         std::string type = getFunctionType(node, typeAliases, vectorType);
 
         if (!type.empty())
-            typeMap[node] = std::move(type);
+            functionTypes[node] = std::move(type);
+
+        return true;
+    }
+
+    bool visit(AstExprLocal* node) override
+    {
+        if (FFlag::LuauCompileTypeInfo)
+        {
+            AstLocal* local = node->local;
+
+            if (AstType* annotation = local->annotation)
+            {
+                LuauBytecodeType ty = getType(annotation, {}, typeAliases, /* resolveAliases= */ true, vectorType);
+
+                if (ty != LBC_TYPE_ANY)
+                    localTypes[local] = ty;
+            }
+        }
 
         return true;
     }
 };
 
-void buildTypeMap(DenseHashMap<AstExprFunction*, std::string>& typeMap, AstNode* root, const char* vectorType)
+void buildTypeMap(DenseHashMap<AstExprFunction*, std::string>& functionTypes, DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes, AstNode* root,
+    const char* vectorType)
 {
-    TypeMapVisitor visitor(typeMap, vectorType);
+    TypeMapVisitor visitor(functionTypes, localTypes, vectorType);
     root->visit(&visitor);
 }
 

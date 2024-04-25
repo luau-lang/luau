@@ -14,6 +14,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAG(LuauLoadTypeInfo)
+
 /*
  * Luau uses an incremental non-generational non-moving mark&sweep garbage collector.
  *
@@ -504,8 +506,17 @@ static size_t propagatemark(global_State* g)
         Proto* p = gco2p(o);
         g->gray = p->gclist;
         traverseproto(g, p);
-        return sizeof(Proto) + sizeof(Instruction) * p->sizecode + sizeof(Proto*) * p->sizep + sizeof(TValue) * p->sizek + p->sizelineinfo +
-               sizeof(LocVar) * p->sizelocvars + sizeof(TString*) * p->sizeupvalues;
+
+        if (FFlag::LuauLoadTypeInfo)
+        {
+            return sizeof(Proto) + sizeof(Instruction) * p->sizecode + sizeof(Proto*) * p->sizep + sizeof(TValue) * p->sizek + p->sizelineinfo +
+                   sizeof(LocVar) * p->sizelocvars + sizeof(TString*) * p->sizeupvalues + p->sizetypeinfo;
+        }
+        else
+        {
+            return sizeof(Proto) + sizeof(Instruction) * p->sizecode + sizeof(Proto*) * p->sizep + sizeof(TValue) * p->sizek + p->sizelineinfo +
+                   sizeof(LocVar) * p->sizelocvars + sizeof(TString*) * p->sizeupvalues;
+        }
     }
     default:
         LUAU_ASSERT(0);

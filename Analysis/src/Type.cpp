@@ -1324,4 +1324,11 @@ bool GenericTypePackDefinition::operator==(const GenericTypePackDefinition& rhs)
     return tp == rhs.tp && defaultValue == rhs.defaultValue;
 }
 
+template<>
+LUAU_NOINLINE Unifiable::Bound<TypeId>* emplaceType<BoundType>(Type* ty, TypeId& tyArg)
+{
+    LUAU_ASSERT(ty != follow(tyArg));
+    return &ty->ty.emplace<BoundType>(tyArg);
+}
+
 } // namespace Luau

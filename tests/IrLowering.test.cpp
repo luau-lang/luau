@@ -13,10 +13,13 @@
 #include <memory>
 
 LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
-LUAU_FASTFLAG(LuauCodegenLoadTVTag)
 LUAU_FASTFLAG(LuauCodegenDirectUserdataFlow)
+LUAU_FASTFLAG(LuauCompileTypeInfo)
+LUAU_FASTFLAG(LuauLoadTypeInfo)
+LUAU_FASTFLAG(LuauCodegenTypeInfo)
+LUAU_FASTFLAG(LuauTypeInfoLookupImprovement)
 
-static std::string getCodegenAssembly(const char* source)
+static std::string getCodegenAssembly(const char* source, bool includeIrTypes = false)
 {
     Luau::CodeGen::AssemblyOptions options;
 
@@ -27,6 +30,7 @@ static std::string getCodegenAssembly(const char* source)
     options.includeAssembly = false;
     options.includeIr = true;
     options.includeOutlinedCode = false;
+    options.includeIrTypes = includeIrTypes;
 
     options.includeIrPrefix = Luau::CodeGen::IncludeIrPrefix::No;
     options.includeUseInfo = Luau::CodeGen::IncludeUseInfo::No;
@@ -44,6 +48,7 @@ static std::string getCodegenAssembly(const char* source)
 
     copts.optimizationLevel = 2;
     copts.debugLevel = 1;
+    copts.typeInfoLevel = 1;
     copts.vectorCtor = "vector";
     copts.vectorType = "vector";
 
@@ -396,7 +401,6 @@ bb_bytecode_0:
 TEST_CASE("VectorConstantTag")
 {
     ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-    ScopedFastFlag luauCodegenLoadTVTag{FFlag::LuauCodegenLoadTVTag, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vecrcp(a: vector)
@@ -540,6 +544,317 @@ bb_bytecode_1:
   STORE_TAG R1, tnumber
   JUMP bb_4
 bb_4:
+  INTERRUPT 7u
+  RETURN R1, 1i
+)");
+}
+
+TEST_CASE("ExplicitUpvalueAndLocalTypes")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local y: vector = ...
+
+local function getsum(t)
+    local x: vector = t
+    return x.X + x.Y + y.X + y.Y
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function getsum($arg0) line 4
+; U0: vector
+; R0: vector from 0 to 14
+bb_bytecode_0:
+  CHECK_TAG R0, tvector, exit(0)
+  %2 = LOAD_FLOAT R0, 0i
+  STORE_DOUBLE R4, %2
+  STORE_TAG R4, tnumber
+  %7 = LOAD_FLOAT R0, 4i
+  %16 = ADD_NUM %2, %7
+  STORE_DOUBLE R3, %16
+  STORE_TAG R3, tnumber
+  GET_UPVALUE R5, U0
+  CHECK_TAG R5, tvector, exit(6)
+  %22 = LOAD_FLOAT R5, 0i
+  %31 = ADD_NUM %16, %22
+  STORE_DOUBLE R2, %31
+  STORE_TAG R2, tnumber
+  GET_UPVALUE R4, U0
+  CHECK_TAG R4, tvector, exit(10)
+  %37 = LOAD_FLOAT R4, 4i
+  %46 = ADD_NUM %31, %37
+  STORE_DOUBLE R1, %46
+  STORE_TAG R1, tnumber
+  INTERRUPT 13u
+  RETURN R1, 1i
+)");
+}
+
+TEST_CASE("FastcallTypeInferThroughLocal")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function getsum(x, c)
+    local v = vector(x, 2, 3)
+    if c then
+        return v.X + v.Y
+    else
+        return v.Z
+    end
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function getsum($arg0, $arg1) line 2
+; R2: vector from 0 to 17
+bb_bytecode_0:
+  %0 = LOAD_TVALUE R0
+  STORE_TVALUE R3, %0
+  STORE_DOUBLE R4, 2
+  STORE_TAG R4, tnumber
+  STORE_DOUBLE R5, 3
+  STORE_TAG R5, tnumber
+  CHECK_SAFE_ENV exit(4)
+  CHECK_TAG R3, tnumber, exit(4)
+  %13 = LOAD_DOUBLE R3
+  STORE_VECTOR R2, %13, 2, 3
+  STORE_TAG R2, tvector
+  JUMP_IF_FALSY R1, bb_bytecode_1, bb_3
+bb_3:
+  CHECK_TAG R2, tvector, exit(8)
+  %21 = LOAD_FLOAT R2, 0i
+  %26 = LOAD_FLOAT R2, 4i
+  %35 = ADD_NUM %21, %26
+  STORE_DOUBLE R3, %35
+  STORE_TAG R3, tnumber
+  INTERRUPT 13u
+  RETURN R3, 1i
+bb_bytecode_1:
+  CHECK_TAG R2, tvector, exit(14)
+  %42 = LOAD_FLOAT R2, 8i
+  STORE_DOUBLE R3, %42
+  STORE_TAG R3, tnumber
+  INTERRUPT 16u
+  RETURN R3, 1i
+)");
+}
+
+TEST_CASE("FastcallTypeInferThroughUpvalue")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local v = ...
+
+local function getsum(x, c)
+    v = vector(x, 2, 3)
+    if c then
+        return v.X + v.Y
+    else
+        return v.Z
+    end
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function getsum($arg0, $arg1) line 4
+; U0: vector
+bb_bytecode_0:
+  %0 = LOAD_TVALUE R0
+  STORE_TVALUE R3, %0
+  STORE_DOUBLE R4, 2
+  STORE_TAG R4, tnumber
+  STORE_DOUBLE R5, 3
+  STORE_TAG R5, tnumber
+  CHECK_SAFE_ENV exit(4)
+  CHECK_TAG R3, tnumber, exit(4)
+  %13 = LOAD_DOUBLE R3
+  STORE_VECTOR R2, %13, 2, 3
+  STORE_TAG R2, tvector
+  SET_UPVALUE U0, R2, tvector
+  JUMP_IF_FALSY R1, bb_bytecode_1, bb_3
+bb_3:
+  GET_UPVALUE R4, U0
+  CHECK_TAG R4, tvector, exit(10)
+  %23 = LOAD_FLOAT R4, 0i
+  STORE_DOUBLE R3, %23
+  STORE_TAG R3, tnumber
+  GET_UPVALUE R5, U0
+  CHECK_TAG R5, tvector, exit(13)
+  %29 = LOAD_FLOAT R5, 4i
+  %38 = ADD_NUM %23, %29
+  STORE_DOUBLE R2, %38
+  STORE_TAG R2, tnumber
+  INTERRUPT 16u
+  RETURN R2, 1i
+bb_bytecode_1:
+  GET_UPVALUE R3, U0
+  CHECK_TAG R3, tvector, exit(18)
+  %46 = LOAD_FLOAT R3, 8i
+  STORE_DOUBLE R2, %46
+  STORE_TAG R2, tnumber
+  INTERRUPT 20u
+  RETURN R2, 1i
+)");
+}
+
+TEST_CASE("LoadAndMoveTypePropagation")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function getsum(n)
+    local seqsum = 0
+    for i = 1,n do
+        if i < 10 then
+            seqsum += i
+        else
+            seqsum *= i
+        end
+    end
+
+    return seqsum
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function getsum($arg0) line 2
+; R1: number from 0 to 13
+; R4: number from 1 to 11
+bb_bytecode_0:
+  STORE_DOUBLE R1, 0
+  STORE_TAG R1, tnumber
+  STORE_DOUBLE R4, 1
+  STORE_TAG R4, tnumber
+  %4 = LOAD_TVALUE R0
+  STORE_TVALUE R2, %4
+  STORE_DOUBLE R3, 1
+  STORE_TAG R3, tnumber
+  CHECK_TAG R2, tnumber, exit(4)
+  %12 = LOAD_DOUBLE R2
+  JUMP_CMP_NUM 1, %12, not_le, bb_bytecode_4, bb_bytecode_1
+bb_bytecode_1:
+  INTERRUPT 5u
+  STORE_DOUBLE R5, 10
+  STORE_TAG R5, tnumber
+  CHECK_TAG R4, tnumber, bb_fallback_6
+  JUMP_CMP_NUM R4, 10, not_lt, bb_bytecode_2, bb_5
+bb_5:
+  CHECK_TAG R1, tnumber, exit(8)
+  CHECK_TAG R4, tnumber, exit(8)
+  %32 = LOAD_DOUBLE R1
+  %34 = ADD_NUM %32, R4
+  STORE_DOUBLE R1, %34
+  JUMP bb_bytecode_3
+bb_bytecode_2:
+  CHECK_TAG R1, tnumber, exit(10)
+  CHECK_TAG R4, tnumber, exit(10)
+  %41 = LOAD_DOUBLE R1
+  %43 = MUL_NUM %41, R4
+  STORE_DOUBLE R1, %43
+  JUMP bb_bytecode_3
+bb_bytecode_3:
+  %46 = LOAD_DOUBLE R2
+  %47 = LOAD_DOUBLE R4
+  %48 = ADD_NUM %47, 1
+  STORE_DOUBLE R4, %48
+  JUMP_CMP_NUM %48, %46, le, bb_bytecode_1, bb_bytecode_4
+bb_bytecode_4:
+  INTERRUPT 12u
+  RETURN R1, 1i
+)");
+}
+
+TEST_CASE("ArgumentTypeRefinement")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function getsum(x, y)
+    x = vector(1, y, 3)
+    return x.Y + x.Z
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function getsum($arg0, $arg1) line 2
+; R0: vector [argument]
+bb_bytecode_0:
+  STORE_DOUBLE R3, 1
+  STORE_TAG R3, tnumber
+  %2 = LOAD_TVALUE R1
+  STORE_TVALUE R4, %2
+  STORE_DOUBLE R5, 3
+  STORE_TAG R5, tnumber
+  CHECK_SAFE_ENV exit(4)
+  CHECK_TAG R4, tnumber, exit(4)
+  %14 = LOAD_DOUBLE R4
+  STORE_VECTOR R2, 1, %14, 3
+  STORE_TAG R2, tvector
+  %18 = LOAD_TVALUE R2
+  STORE_TVALUE R0, %18
+  %22 = LOAD_FLOAT R0, 4i
+  %27 = LOAD_FLOAT R0, 8i
+  %36 = ADD_NUM %22, %27
+  STORE_DOUBLE R2, %36
+  STORE_TAG R2, tnumber
+  INTERRUPT 13u
+  RETURN R2, 1i
+)");
+}
+
+TEST_CASE("InlineFunctionType")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function inl(v: vector, s: number)
+    return v.Y * s
+end
+
+local function getsum(x)
+    return inl(x, 2) + inl(x, 5)
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function inl($arg0, $arg1) line 2
+; R0: vector [argument]
+; R1: number [argument]
+bb_0:
+  CHECK_TAG R0, tvector, exit(entry)
+  CHECK_TAG R1, tnumber, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %8 = LOAD_FLOAT R0, 4i
+  %17 = MUL_NUM %8, R1
+  STORE_DOUBLE R2, %17
+  STORE_TAG R2, tnumber
+  INTERRUPT 3u
+  RETURN R2, 1i
+; function getsum($arg0) line 6
+; R0: vector from 0 to 3
+; R0: vector from 3 to 6
+bb_bytecode_0:
+  CHECK_TAG R0, tvector, exit(0)
+  %2 = LOAD_FLOAT R0, 4i
+  %8 = MUL_NUM %2, 2
+  %13 = LOAD_FLOAT R0, 4i
+  %19 = MUL_NUM %13, 5
+  %28 = ADD_NUM %8, %19
+  STORE_DOUBLE R1, %28
+  STORE_TAG R1, tnumber
   INTERRUPT 7u
   RETURN R1, 1i
 )");

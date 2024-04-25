@@ -28,6 +28,12 @@ struct FreeTypeCollector : TypeOnceVisitor
         result->insert(ty);
         return false;
     }
+
+    bool visit(TypeId ty, const ClassType&) override
+    {
+        // ClassTypes never contain free types.
+        return false;
+    }
 };
 
 DenseHashSet<TypeId> Constraint::getFreeTypes() const

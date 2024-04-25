@@ -1103,4 +1103,7 @@ LUAU_NOINLINE T* emplaceType(Type* ty, Args&&... args)
     return &ty->ty.emplace<T>(std::forward<Args>(args)...);
 }
 
+template<>
+LUAU_NOINLINE Unifiable::Bound<TypeId>* emplaceType<BoundType>(Type* ty, TypeId& tyArg);
+
 } // namespace Luau

@@ -14,7 +14,6 @@
 
 LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodegenInferNumTag)
 LUAU_FASTFLAG(LuauCodegenLoadPropCheckRegLinkInTv)
 
 using namespace Luau::CodeGen;
@@ -2633,8 +2632,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "InferNumberTagFromLimitedContext")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenInferNumTag, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);

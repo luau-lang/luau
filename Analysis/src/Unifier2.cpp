@@ -145,31 +145,14 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
     FreeType* subFree = getMutable<FreeType>(subTy);
     FreeType* superFree = getMutable<FreeType>(superTy);
 
-    if (subFree && superFree)
-    {
-        DenseHashSet<TypeId> seen{nullptr};
-        if (OccursCheckResult::Fail == occursCheck(seen, subTy, superTy))
-        {
-            asMutable(subTy)->ty.emplace<BoundType>(builtinTypes->errorRecoveryType());
-            return false;
-        }
-        else if (OccursCheckResult::Fail == occursCheck(seen, superTy, subTy))
-        {
-            asMutable(subTy)->ty.emplace<BoundType>(builtinTypes->errorRecoveryType());
-            return false;
-        }
-
-        superFree->lowerBound = mkUnion(subFree->lowerBound, superFree->lowerBound);
-        superFree->upperBound = mkIntersection(subFree->upperBound, superFree->upperBound);
-        asMutable(subTy)->ty.emplace<BoundType>(superTy);
-    }
-    else if (subFree)
-    {
-        return unifyFreeWithType(subTy, superTy);
-    }
-    else if (superFree)
+    if (superFree)
     {
         superFree->lowerBound = mkUnion(superFree->lowerBound, subTy);
+    }
+
+    if (subFree)
+    {
+        return unifyFreeWithType(subTy, superTy);
     }
 
     if (subFree || superFree)
@@ -516,11 +499,11 @@ bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
         DenseHashSet<TypePackId> seen{nullptr};
         if (OccursCheckResult::Fail == occursCheck(seen, subTp, superTp))
         {
-            asMutable(subTp)->ty.emplace<BoundTypePack>(builtinTypes->errorRecoveryTypePack());
+            emplaceTypePack<BoundTypePack>(asMutable(subTp), builtinTypes->errorTypePack);
             return false;
         }
 
-        asMutable(subTp)->ty.emplace<BoundTypePack>(superTp);
+        emplaceTypePack<BoundTypePack>(asMutable(subTp), superTp);
         return true;
     }
 
@@ -529,11 +512,11 @@ bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
         DenseHashSet<TypePackId> seen{nullptr};
         if (OccursCheckResult::Fail == occursCheck(seen, superTp, subTp))
         {
-            asMutable(superTp)->ty.emplace<BoundTypePack>(builtinTypes->errorRecoveryTypePack());
+            emplaceTypePack<BoundTypePack>(asMutable(superTp), builtinTypes->errorTypePack);
             return false;
         }
 
-        asMutable(superTp)->ty.emplace<BoundTypePack>(subTp);
+        emplaceTypePack<BoundTypePack>(asMutable(superTp), subTp);
         return true;
     }
 
@@ -567,13 +550,13 @@ bool Unifier2::unify(TypePackId subTp, TypePackId superTp)
     {
         TypePackId followedSubTail = follow(*subTail);
         if (get<FreeTypePack>(followedSubTail))
-            asMutable(followedSubTail)->ty.emplace<BoundTypePack>(builtinTypes->emptyTypePack);
+            emplaceTypePack<BoundTypePack>(asMutable(followedSubTail), builtinTypes->emptyTypePack);
     }
     else if (superTail)
     {
         TypePackId followedSuperTail = follow(*superTail);
         if (get<FreeTypePack>(followedSuperTail))
-            asMutable(followedSuperTail)->ty.emplace<BoundTypePack>(builtinTypes->emptyTypePack);
+            emplaceTypePack<BoundTypePack>(asMutable(followedSuperTail), builtinTypes->emptyTypePack);
     }
 
     return true;
@@ -759,28 +742,90 @@ struct MutatingGeneralizer : TypeOnceVisitor
             return;
         seen.insert(haystack);
 
-        std::vector<TypeId>* parts = nullptr;
         if (UnionType* ut = getMutable<UnionType>(haystack))
-            parts = &ut->options;
-        else if (IntersectionType* it = getMutable<IntersectionType>(needle))
-            parts = &it->parts;
-        else
-            return;
-
-        LUAU_ASSERT(parts);
-
-        for (TypeId& option : *parts)
         {
-            // FIXME: I bet this function has reentrancy problems
-            option = follow(option);
-            if (option == needle)
-                option = replacement;
+            for (auto iter = ut->options.begin(); iter != ut->options.end();)
+            {
+                // FIXME: I bet this function has reentrancy problems
+                TypeId option = follow(*iter);
 
-            // TODO seen set
-            else if (get<UnionType>(option))
-                replace(seen, option, needle, haystack);
-            else if (get<IntersectionType>(option))
-                replace(seen, option, needle, haystack);
+                if (option == needle && get<NeverType>(replacement))
+                {
+                    iter = ut->options.erase(iter);
+                    continue;
+                }
+
+                if (option == needle)
+                {
+                    *iter = replacement;
+                    iter++;
+                    continue;
+                }
+
+                // advance the iterator, nothing after this can use it.
+                iter++;
+
+                if (seen.find(option))
+                    continue;
+                seen.insert(option);
+
+                if (get<UnionType>(option))
+                    replace(seen, option, needle, haystack);
+                else if (get<IntersectionType>(option))
+                    replace(seen, option, needle, haystack);
+            }
+
+            if (ut->options.size() == 1)
+            {
+                TypeId onlyType = ut->options[0];
+                LUAU_ASSERT(onlyType != haystack);
+                emplaceType<BoundType>(asMutable(haystack), onlyType);
+            }
+
+            return;
+        }
+
+        if (IntersectionType* it = getMutable<IntersectionType>(needle))
+        {
+            for (auto iter = it->parts.begin(); iter != it->parts.end();)
+            {
+                // FIXME: I bet this function has reentrancy problems
+                TypeId part = follow(*iter);
+
+                if (part == needle && get<UnknownType>(replacement))
+                {
+                    iter = it->parts.erase(iter);
+                    continue;
+                }
+
+                if (part == needle)
+                {
+                    *iter = replacement;
+                    iter++;
+                    continue;
+                }
+
+                // advance the iterator, nothing after this can use it.
+                iter++;
+
+                if (seen.find(part))
+                    continue;
+                seen.insert(part);
+
+                if (get<UnionType>(part))
+                    replace(seen, part, needle, haystack);
+                else if (get<IntersectionType>(part))
+                    replace(seen, part, needle, haystack);
+            }
+
+            if (it->parts.size() == 1)
+            {
+                TypeId onlyType = it->parts[0];
+                LUAU_ASSERT(onlyType != needle);
+                emplaceType<BoundType>(asMutable(needle), onlyType);
+            }
+
+            return;
         }
     }
 
@@ -807,7 +852,7 @@ struct MutatingGeneralizer : TypeOnceVisitor
         traverse(ft->upperBound);
 
         // It is possible for the above traverse() calls to cause ty to be
-        // transmuted.  We must reaquire ft if this happens.
+        // transmuted.  We must reacquire ft if this happens.
         ty = follow(ty);
         ft = get<FreeType>(ty);
         if (!ft)
@@ -852,7 +897,17 @@ struct MutatingGeneralizer : TypeOnceVisitor
                 DenseHashSet<TypeId> replaceSeen{nullptr};
                 replace(replaceSeen, lb, ty, builtinTypes->unknownType);
             }
-            emplaceType<BoundType>(asMutable(ty), lb);
+
+            if (lb != ty)
+                emplaceType<BoundType>(asMutable(ty), lb);
+            else if (!isWithinFunction || (positiveCount + negativeCount == 1))
+                emplaceType<BoundType>(asMutable(ty), builtinTypes->unknownType);
+            else
+            {
+                // if the lower bound is the type in question, we don't actually have a lower bound.
+                emplaceType<GenericType>(asMutable(ty), scope);
+                generics.push_back(ty);
+            }
         }
         else
         {
@@ -864,7 +919,17 @@ struct MutatingGeneralizer : TypeOnceVisitor
                 DenseHashSet<TypeId> replaceSeen{nullptr};
                 replace(replaceSeen, ub, ty, builtinTypes->neverType);
             }
-            emplaceType<BoundType>(asMutable(ty), ub);
+
+            if (ub != ty)
+                emplaceType<BoundType>(asMutable(ty), ub);
+            else if (!isWithinFunction || (positiveCount + negativeCount == 1))
+                emplaceType<BoundType>(asMutable(ty), builtinTypes->unknownType);
+            else
+            {
+                // if the upper bound is the type in question, we don't actually have an upper bound.
+                emplaceType<GenericType>(asMutable(ty), scope);
+                generics.push_back(ty);
+            }
         }
 
         return false;
@@ -909,10 +974,10 @@ struct MutatingGeneralizer : TypeOnceVisitor
         const size_t negativeCount = getCount(negativeTypes, tp);
 
         if (1 == positiveCount + negativeCount)
-            asMutable(tp)->ty.emplace<BoundTypePack>(builtinTypes->unknownTypePack);
+            emplaceTypePack<BoundTypePack>(asMutable(tp), builtinTypes->unknownTypePack);
         else
         {
-            asMutable(tp)->ty.emplace<GenericTypePack>(scope);
+            emplaceTypePack<GenericTypePack>(asMutable(tp), scope);
             genericPacks.push_back(tp);
         }
 

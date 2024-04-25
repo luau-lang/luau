@@ -27,6 +27,8 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileRepeatUntilSkippedLocals, false)
+LUAU_FASTFLAG(LuauCompileTypeInfo)
+LUAU_FASTFLAGVARIABLE(LuauTypeInfoLookupImprovement, false)
 
 namespace Luau
 {
@@ -39,6 +41,8 @@ static const uint32_t kMaxLocalCount = 200;
 static const uint32_t kMaxInstructionCount = 1'000'000'000;
 
 static const uint8_t kInvalidReg = 255;
+
+static const uint32_t kDefaultAllocPc = ~0u;
 
 CompileError::CompileError(const Location& location, const std::string& message)
     : location(location)
@@ -102,7 +106,8 @@ struct Compiler
         , locstants(nullptr)
         , tableShapes(nullptr)
         , builtins(nullptr)
-        , typeMap(nullptr)
+        , functionTypes(nullptr)
+        , localTypes(nullptr)
     {
         // preallocate some buffers that are very likely to grow anyway; this works around std::vector's inefficient growth policy for small arrays
         localStack.reserve(16);
@@ -204,9 +209,12 @@ struct Compiler
 
         setDebugLine(func);
 
-        // note: we move types out of typeMap which is safe because compileFunction is only called once per function
-        if (std::string* funcType = typeMap.find(func))
-            bytecode.setFunctionTypeInfo(std::move(*funcType));
+        if (!FFlag::LuauCompileTypeInfo)
+        {
+            // note: we move types out of typeMap which is safe because compileFunction is only called once per function
+            if (std::string* funcType = functionTypes.find(func))
+                bytecode.setFunctionTypeInfo(std::move(*funcType));
+        }
 
         if (func->vararg)
             bytecode.emitABC(LOP_PREPVARARGS, uint8_t(self + func->args.size), 0, 0);
@@ -214,10 +222,13 @@ struct Compiler
         uint8_t args = allocReg(func, self + unsigned(func->args.size));
 
         if (func->self)
-            pushLocal(func->self, args);
+            pushLocal(func->self, args, kDefaultAllocPc);
 
         for (size_t i = 0; i < func->args.size; ++i)
-            pushLocal(func->args.data[i], uint8_t(args + self + i));
+            pushLocal(func->args.data[i], uint8_t(args + self + i), kDefaultAllocPc);
+
+        if (FFlag::LuauCompileTypeInfo)
+            argCount = localStack.size();
 
         AstStatBlock* stat = func->body;
 
@@ -249,6 +260,19 @@ struct Compiler
                 bytecode.pushDebugUpval(sref(l->name));
         }
 
+        if (FFlag::LuauCompileTypeInfo && options.typeInfoLevel >= 1)
+        {
+            for (AstLocal* l : upvals)
+            {
+                LuauBytecodeType ty = LBC_TYPE_ANY;
+
+                if (LuauBytecodeType* recordedTy = localTypes.find(l))
+                    ty = *recordedTy;
+
+                bytecode.pushUpvalTypeInfo(ty);
+            }
+        }
+
         if (options.optimizationLevel >= 1)
             bytecode.foldJumps();
 
@@ -258,6 +282,13 @@ struct Compiler
 
         if (bytecode.getInstructionCount() > kMaxInstructionCount)
             CompileError::raise(func->location, "Exceeded function instruction limit; split the function into parts to compile");
+
+        if (FFlag::LuauCompileTypeInfo)
+        {
+            // note: we move types out of typeMap which is safe because compileFunction is only called once per function
+            if (std::string* funcType = functionTypes.find(func))
+                bytecode.setFunctionTypeInfo(std::move(*funcType));
+        }
 
         // top-level code only executes once so it can be marked as cold if it has no loops; code with loops might be profitable to compile natively
         if (func->functionDepth == 0 && !hasLoops)
@@ -287,6 +318,10 @@ struct Compiler
 
         upvals.clear(); // note: instead of std::move above, we copy & clear to preserve capacity for future pushes
         stackSize = 0;
+
+        if (FFlag::LuauCompileTypeInfo)
+            argCount = 0;
+
         hasLoops = false;
 
         return fid;
@@ -585,6 +620,7 @@ struct Compiler
                 // if the last argument can return multiple values, we need to compute all of them into the remaining arguments
                 unsigned int tail = unsigned(func->args.size - expr->args.size) + 1;
                 uint8_t reg = allocReg(arg, tail);
+                uint32_t allocpc = FFlag::LuauCompileTypeInfo ? bytecode.getDebugPC() : kDefaultAllocPc;
 
                 if (AstExprCall* expr = arg->as<AstExprCall>())
                     compileExprCall(expr, reg, tail, /* targetTop= */ true);
@@ -594,7 +630,12 @@ struct Compiler
                     LUAU_ASSERT(!"Unexpected expression type");
 
                 for (size_t j = i; j < func->args.size; ++j)
-                    args.push_back({func->args.data[j], uint8_t(reg + (j - i))});
+                {
+                    if (FFlag::LuauCompileTypeInfo)
+                        args.push_back({func->args.data[j], uint8_t(reg + (j - i)), {Constant::Type_Unknown}, allocpc});
+                    else
+                        args.push_back({func->args.data[j], uint8_t(reg + (j - i))});
+                }
 
                 // all remaining function arguments have been allocated and assigned to
                 break;
@@ -603,13 +644,17 @@ struct Compiler
             {
                 // if the argument is mutated, we need to allocate a fresh register even if it's a constant
                 uint8_t reg = allocReg(arg, 1);
+                uint32_t allocpc = FFlag::LuauCompileTypeInfo ? bytecode.getDebugPC() : kDefaultAllocPc;
 
                 if (arg)
                     compileExprTemp(arg, reg);
                 else
                     bytecode.emitABC(LOP_LOADNIL, reg, 0, 0);
 
-                args.push_back({var, reg});
+                if (FFlag::LuauCompileTypeInfo)
+                    args.push_back({var, reg, {Constant::Type_Unknown}, allocpc});
+                else
+                    args.push_back({var, reg});
             }
             else if (arg == nullptr)
             {
@@ -629,14 +674,22 @@ struct Compiler
                 // if the argument is a local that isn't mutated, we will simply reuse the existing register
                 if (int reg = le ? getExprLocalReg(le) : -1; reg >= 0 && (!lv || !lv->written))
                 {
-                    args.push_back({var, uint8_t(reg)});
+                    if (FFlag::LuauTypeInfoLookupImprovement)
+                        args.push_back({var, uint8_t(reg), {Constant::Type_Unknown}, kDefaultAllocPc});
+                    else
+                        args.push_back({var, uint8_t(reg)});
                 }
                 else
                 {
                     uint8_t temp = allocReg(arg, 1);
+                    uint32_t allocpc = FFlag::LuauCompileTypeInfo ? bytecode.getDebugPC() : kDefaultAllocPc;
+
                     compileExprTemp(arg, temp);
 
-                    args.push_back({var, temp});
+                    if (FFlag::LuauCompileTypeInfo)
+                        args.push_back({var, temp, {Constant::Type_Unknown}, allocpc});
+                    else
+                        args.push_back({var, temp});
                 }
             }
         }
@@ -651,7 +704,10 @@ struct Compiler
         {
             if (arg.value.type == Constant::Type_Unknown)
             {
-                pushLocal(arg.local, arg.reg);
+                if (FFlag::LuauCompileTypeInfo)
+                    pushLocal(arg.local, arg.reg, arg.allocpc);
+                else
+                    pushLocal(arg.local, arg.reg, kDefaultAllocPc);
             }
             else
             {
@@ -2851,7 +2907,7 @@ struct Compiler
 
                 if (int reg = getExprLocalReg(re); reg >= 0 && (!lv || !lv->written) && (!rv || !rv->written))
                 {
-                    pushLocal(stat->vars.data[0], uint8_t(reg));
+                    pushLocal(stat->vars.data[0], uint8_t(reg), kDefaultAllocPc);
                     return;
                 }
             }
@@ -2859,11 +2915,12 @@ struct Compiler
 
         // note: allocReg in this case allocates into parent block register - note that we don't have RegScope here
         uint8_t vars = allocReg(stat, unsigned(stat->vars.size));
+        uint32_t allocpc = FFlag::LuauCompileTypeInfo ? bytecode.getDebugPC() : kDefaultAllocPc;
 
         compileExprListTemp(stat->values, vars, uint8_t(stat->vars.size), /* targetTop= */ true);
 
         for (size_t i = 0; i < stat->vars.size; ++i)
-            pushLocal(stat->vars.data[i], uint8_t(vars + i));
+            pushLocal(stat->vars.data[i], uint8_t(vars + i), allocpc);
     }
 
     bool tryCompileUnrolledFor(AstStatFor* stat, int thresholdBase, int thresholdMaxBoost)
@@ -2990,6 +3047,7 @@ struct Compiler
         // this makes sure the code inside the loop can't interfere with the iteration process (other than modifying the table we're iterating
         // through)
         uint8_t varreg = regs + 2;
+        uint32_t varregallocpc = FFlag::LuauCompileTypeInfo ? bytecode.getDebugPC() : kDefaultAllocPc;
 
         if (Variable* il = variables.find(stat->var); il && il->written)
             varreg = allocReg(stat, 1);
@@ -3011,7 +3069,7 @@ struct Compiler
         if (varreg != regs + 2)
             bytecode.emitABC(LOP_MOVE, varreg, regs + 2, 0);
 
-        pushLocal(stat->var, varreg);
+        pushLocal(stat->var, varreg, varregallocpc);
 
         compileStat(stat->body);
 
@@ -3056,6 +3114,7 @@ struct Compiler
         // note that we reserve at least 2 variables; this allows our fast path to assume that we need 2 variables instead of 1 or 2
         uint8_t vars = allocReg(stat, std::max(unsigned(stat->vars.size), 2u));
         LUAU_ASSERT(vars == regs + 3);
+        uint32_t varsallocpc = FFlag::LuauCompileTypeInfo ? bytecode.getDebugPC() : kDefaultAllocPc;
 
         LuauOpcode skipOp = LOP_FORGPREP;
 
@@ -3091,7 +3150,7 @@ struct Compiler
         size_t loopLabel = bytecode.emitLabel();
 
         for (size_t i = 0; i < stat->vars.size; ++i)
-            pushLocal(stat->vars.data[i], uint8_t(vars + i));
+            pushLocal(stat->vars.data[i], uint8_t(vars + i), varsallocpc);
 
         compileStat(stat->body);
 
@@ -3515,7 +3574,7 @@ struct Compiler
         {
             uint8_t var = allocReg(stat, 1);
 
-            pushLocal(stat->name, var);
+            pushLocal(stat->name, var, kDefaultAllocPc);
             compileExprFunction(stat->func, var);
 
             Local& l = locals[stat->name];
@@ -3569,7 +3628,7 @@ struct Compiler
             getUpval(local);
     }
 
-    void pushLocal(AstLocal* local, uint8_t reg)
+    void pushLocal(AstLocal* local, uint8_t reg, uint32_t allocpc)
     {
         if (localStack.size() >= kMaxLocalCount)
             CompileError::raise(
@@ -3584,6 +3643,9 @@ struct Compiler
         l.reg = reg;
         l.allocated = true;
         l.debugpc = bytecode.getDebugPC();
+
+        if (FFlag::LuauCompileTypeInfo)
+            l.allocpc = allocpc == kDefaultAllocPc ? l.debugpc : allocpc;
     }
 
     bool areLocalsCaptured(size_t start)
@@ -3644,6 +3706,17 @@ struct Compiler
                 uint32_t debugpc = bytecode.getDebugPC();
 
                 bytecode.pushDebugLocal(sref(localStack[i]->name), l->reg, l->debugpc, debugpc);
+            }
+
+            if (FFlag::LuauCompileTypeInfo && options.typeInfoLevel >= 1 && i >= argCount)
+            {
+                uint32_t debugpc = bytecode.getDebugPC();
+                LuauBytecodeType ty = LBC_TYPE_ANY;
+
+                if (LuauBytecodeType* recordedTy = localTypes.find(localStack[i]))
+                    ty = *recordedTy;
+
+                bytecode.pushLocalTypeInfo(ty, l->reg, l->allocpc, debugpc);
             }
         }
 
@@ -3909,6 +3982,7 @@ struct Compiler
         bool allocated = false;
         bool captured = false;
         uint32_t debugpc = 0;
+        uint32_t allocpc = 0;
     };
 
     struct LoopJump
@@ -3937,6 +4011,7 @@ struct Compiler
 
         uint8_t reg;
         Constant value;
+        uint32_t allocpc;
     };
 
     struct InlineFrame
@@ -3969,7 +4044,8 @@ struct Compiler
     DenseHashMap<AstLocal*, Constant> locstants;
     DenseHashMap<AstExprTable*, TableShape> tableShapes;
     DenseHashMap<AstExprCall*, int> builtins;
-    DenseHashMap<AstExprFunction*, std::string> typeMap;
+    DenseHashMap<AstExprFunction*, std::string> functionTypes;
+    DenseHashMap<AstLocal*, LuauBytecodeType> localTypes;
 
     const DenseHashMap<AstExprCall*, int>* builtinsFold = nullptr;
     bool builtinsFoldMathK = false;
@@ -3977,6 +4053,7 @@ struct Compiler
     // compileFunction state, gets reset for every function
     unsigned int regTop = 0;
     unsigned int stackSize = 0;
+    size_t argCount = 0;
     bool hasLoops = false;
 
     bool getfenvUsed = false;
@@ -4010,6 +4087,9 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
         {
             mainFlags |= LPF_NATIVE_MODULE;
             options.optimizationLevel = 2; // note: this might be removed in the future in favor of --!optimize
+
+            if (FFlag::LuauCompileTypeInfo)
+                options.typeInfoLevel = 1;
         }
     }
 
@@ -4058,8 +4138,16 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     root->visit(&functionVisitor);
 
     // computes type information for all functions based on type annotations
-    if (functionVisitor.hasTypes)
-        buildTypeMap(compiler.typeMap, root, options.vectorType);
+    if (FFlag::LuauCompileTypeInfo)
+    {
+        if (options.typeInfoLevel >= 1)
+            buildTypeMap(compiler.functionTypes, compiler.localTypes, root, options.vectorType);
+    }
+    else
+    {
+        if (functionVisitor.hasTypes)
+            buildTypeMap(compiler.functionTypes, compiler.localTypes, root, options.vectorType);
+    }
 
     for (AstExprFunction* expr : functions)
         compiler.compileFunction(expr, 0);

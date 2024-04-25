@@ -16,7 +16,6 @@
 #endif
 
 LUAU_FASTFLAG(LuauCodegenContext)
-LUAU_FASTFLAG(LuauCodegenDetailedCompilationResult)
 
 using namespace Luau::CodeGen;
 
@@ -34,7 +33,6 @@ TEST_CASE("NativeModuleRefRefcounting")
         return;
 
     ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
-    ScopedFastFlag luauCodegenDetailedCompilationResult{FFlag::LuauCodegenDetailedCompilationResult, true};
 
     CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
     SharedCodeAllocator allocator{&codeAllocator};
@@ -253,7 +251,6 @@ TEST_CASE("NativeProtoRefcounting")
         return;
 
     ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
-    ScopedFastFlag luauCodegenDetailedCompilationResult{FFlag::LuauCodegenDetailedCompilationResult, true};
 
     CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
     SharedCodeAllocator allocator{&codeAllocator};
@@ -307,7 +304,6 @@ TEST_CASE("NativeProtoState")
         return;
 
     ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
-    ScopedFastFlag luauCodegenDetailedCompilationResult{FFlag::LuauCodegenDetailedCompilationResult, true};
 
     CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
     SharedCodeAllocator allocator{&codeAllocator};
@@ -369,7 +365,6 @@ TEST_CASE("AnonymousModuleLifetime")
         return;
 
     ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
-    ScopedFastFlag luauCodegenDetailedCompilationResult{FFlag::LuauCodegenDetailedCompilationResult, true};
 
     CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
     SharedCodeAllocator allocator{&codeAllocator};
@@ -419,7 +414,6 @@ TEST_CASE("SharedAllocation")
         return;
 
     ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
-    ScopedFastFlag luauCodegenDetailedCompilationResult{FFlag::LuauCodegenDetailedCompilationResult, true};
 
     UniqueSharedCodeGenContext sharedCodeGenContext = createSharedCodeGenContext();
 

@@ -20,8 +20,7 @@
 #include <string>
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAGVARIABLE(LuauToStringSimpleCompositeTypesSingleLine, false)
-LUAU_FASTFLAGVARIABLE(LuauStringifyCyclesRootedAtPacks, false)
+LUAU_FASTFLAGVARIABLE(LuauToStringiteTypesSingleLine, false)
 
 /*
  * Enables increasing levels of verbosity for Luau type names when stringifying.
@@ -1492,21 +1491,10 @@ ToStringResult toStringDetailed(TypePackId tp, ToStringOptions& opts)
     else
         tvs.stringify(tp);
 
-    if (FFlag::LuauStringifyCyclesRootedAtPacks)
+    if (!cycles.empty() || !cycleTPs.empty())
     {
-        if (!cycles.empty() || !cycleTPs.empty())
-        {
-            result.cycle = true;
-            state.emit(" where ");
-        }
-    }
-    else
-    {
-        if (!cycles.empty())
-        {
-            result.cycle = true;
-            state.emit(" where ");
-        }
+        result.cycle = true;
+        state.emit(" where ");
     }
 
     state.exhaustive = true;
@@ -1533,30 +1521,27 @@ ToStringResult toStringDetailed(TypePackId tp, ToStringOptions& opts)
         semi = true;
     }
 
-    if (FFlag::LuauStringifyCyclesRootedAtPacks)
+    std::vector<std::pair<TypePackId, std::string>> sortedCycleTpNames{state.cycleTpNames.begin(), state.cycleTpNames.end()};
+    std::sort(sortedCycleTpNames.begin(), sortedCycleTpNames.end(), [](const auto& a, const auto& b) {
+        return a.second < b.second;
+    });
+
+    TypePackStringifier tps{tvs.state};
+
+    for (const auto& [cycleTp, name] : sortedCycleTpNames)
     {
-        std::vector<std::pair<TypePackId, std::string>> sortedCycleTpNames{state.cycleTpNames.begin(), state.cycleTpNames.end()};
-        std::sort(sortedCycleTpNames.begin(), sortedCycleTpNames.end(), [](const auto& a, const auto& b) {
-            return a.second < b.second;
-        });
+        if (semi)
+            state.emit(" ; ");
 
-        TypePackStringifier tps{tvs.state};
+        state.emit(name);
+        state.emit(" = ");
+        Luau::visit(
+            [&tps, cycleTp = cycleTp](auto t) {
+                return tps(cycleTp, t);
+            },
+            cycleTp->ty);
 
-        for (const auto& [cycleTp, name] : sortedCycleTpNames)
-        {
-            if (semi)
-                state.emit(" ; ");
-
-            state.emit(name);
-            state.emit(" = ");
-            Luau::visit(
-                [&tps, cycleTp = cycleTp](auto t) {
-                    return tps(cycleTp, t);
-                },
-                cycleTp->ty);
-
-            semi = true;
-        }
+        semi = true;
     }
 
     if (opts.maxTypeLength > 0 && result.name.length() > opts.maxTypeLength)

@@ -33,9 +33,6 @@ void luaC_validate(lua_State* L);
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauCompileRepeatUntilSkippedLocals)
-LUAU_FASTFLAG(LuauCodegenInferNumTag)
-LUAU_FASTFLAG(LuauCodegenDetailedCompilationResult)
-LUAU_FASTFLAG(LuauCodegenCheckTruthyFormB)
 LUAU_DYNAMIC_FASTFLAG(LuauFastCrossTableMove)
 
 static lua_CompileOptions defaultOptions()
@@ -43,6 +40,7 @@ static lua_CompileOptions defaultOptions()
     lua_CompileOptions copts = {};
     copts.optimizationLevel = optimizationLevel;
     copts.debugLevel = 1;
+    copts.typeInfoLevel = 1;
 
     copts.vectorCtor = "vector";
     copts.vectorType = "vector";
@@ -240,12 +238,7 @@ static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = n
     free(bytecode);
 
     if (result == 0 && codegen && !skipCodegen && luau_codegen_supported())
-    {
-        if (FFlag::LuauCodegenDetailedCompilationResult)
-            Luau::CodeGen::compile(L, -1, Luau::CodeGen::CodeGen_ColdFunctions);
-        else
-            Luau::CodeGen::compile_DEPRECATED(L, -1, Luau::CodeGen::CodeGen_ColdFunctions);
-    }
+        Luau::CodeGen::compile(L, -1, Luau::CodeGen::CodeGen_ColdFunctions);
 
     int status = (result == 0) ? lua_resume(L, nullptr, 0) : LUA_ERRSYNTAX;
 
@@ -338,6 +331,7 @@ static std::vector<Luau::CodeGen::FunctionBytecodeSummary> analyzeFile(const cha
     Luau::CompileOptions options;
     options.optimizationLevel = optimizationLevel;
     options.debugLevel = 1;
+    options.typeInfoLevel = 1;
 
     compileOrThrow(bcb, source, options);
 
@@ -2070,9 +2064,6 @@ TEST_CASE("SafeEnv")
 
 TEST_CASE("Native")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenInferNumTag, true};
-    ScopedFastFlag luauCodegenCheckTruthyFormB{FFlag::LuauCodegenCheckTruthyFormB, true};
-
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;
@@ -2130,8 +2121,6 @@ TEST_CASE("NativeTypeAnnotations")
 
 TEST_CASE("HugeFunction")
 {
-    ScopedFastFlag luauCodegenDetailedCompilationResult{FFlag::LuauCodegenDetailedCompilationResult, true};
-
     std::string source = makeHugeFunctionSource();
 
     StateRef globalState(luaL_newstate(), lua_close);
@@ -2235,7 +2224,6 @@ TEST_CASE("IrInstructionLimit")
         return;
 
     ScopedFastInt codegenHeuristicsInstructionLimit{FInt::CodegenHeuristicsInstructionLimit, 50'000};
-    ScopedFastFlag luauCodegenDetailedCompilationResult{FFlag::LuauCodegenDetailedCompilationResult, true};
 
     std::string source;
 
