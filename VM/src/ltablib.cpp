@@ -12,6 +12,7 @@
 #include "lvm.h"
 
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauFastCrossTableMove, false)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauFasterConcat, false)
 
 static int foreachi(lua_State* L)
 {
@@ -282,31 +283,42 @@ static int tmove(lua_State* L)
     return 1;
 }
 
-static void addfield(lua_State* L, luaL_Strbuf* b, int i)
+static void addfield(lua_State* L, luaL_Strbuf* b, int i, Table* t)
 {
-    int tt = lua_rawgeti(L, 1, i);
-    if (tt != LUA_TSTRING && tt != LUA_TNUMBER)
-        luaL_error(L, "invalid value (%s) at index %d in table for 'concat'", luaL_typename(L, -1), i);
-    luaL_addvalue(b);
+    if (DFFlag::LuauFasterConcat && t && unsigned(i - 1) < unsigned(t->sizearray) && ttisstring(&t->array[i - 1]))
+    {
+        TString* ts = tsvalue(&t->array[i - 1]);
+        luaL_addlstring(b, getstr(ts), ts->len);
+    }
+    else
+    {
+        int tt = lua_rawgeti(L, 1, i);
+        if (tt != LUA_TSTRING && tt != LUA_TNUMBER)
+            luaL_error(L, "invalid value (%s) at index %d in table for 'concat'", luaL_typename(L, -1), i);
+        luaL_addvalue(b);
+    }
 }
 
 static int tconcat(lua_State* L)
 {
-    luaL_Strbuf b;
     size_t lsep;
-    int i, last;
     const char* sep = luaL_optlstring(L, 2, "", &lsep);
     luaL_checktype(L, 1, LUA_TTABLE);
-    i = luaL_optinteger(L, 3, 1);
-    last = luaL_opt(L, luaL_checkinteger, 4, lua_objlen(L, 1));
+    int i = luaL_optinteger(L, 3, 1);
+    int last = luaL_opt(L, luaL_checkinteger, 4, lua_objlen(L, 1));
+
+    Table* t = DFFlag::LuauFasterConcat ? hvalue(L->base) : NULL;
+
+    luaL_Strbuf b;
     luaL_buffinit(L, &b);
     for (; i < last; i++)
     {
-        addfield(L, &b, i);
-        luaL_addlstring(&b, sep, lsep);
+        addfield(L, &b, i, t);
+        if (!DFFlag::LuauFasterConcat || lsep)
+            luaL_addlstring(&b, sep, lsep);
     }
     if (i == last) // add last value (if interval was not empty)
-        addfield(L, &b, i);
+        addfield(L, &b, i, t);
     luaL_pushresult(&b);
     return 1;
 }
