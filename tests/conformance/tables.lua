@@ -414,6 +414,13 @@ end
 
 -- test table.concat
 do
+  -- regular usage
+  assert(table.concat({}) == "")
+  assert(table.concat({}, ",") == "")
+  assert(table.concat({"a", "b", "c"}, ",") == "a,b,c")
+  assert(table.concat({"a", "b", "c"}, ",", 2) == "b,c")
+  assert(table.concat({"a", "b", "c"}, ",", 1, 2) == "a,b")
+
   -- hash elements
   local t = {}
   t[123] = "a"
@@ -427,7 +434,9 @@ do
   assert(table.concat({1, 2, 3}, ",") == "1,2,3")
   assert(table.concat({"a", 2, "c"}, ",") == "a,2,c")
 
-  -- out of bounds indices => element is nil => error
+  -- error cases
+  assert(pcall(table.concat, "") == false)
+  assert(pcall(table.concat, t, false) == false)
   assert(pcall(table.concat, t, ",", 1, 100) == false)
 end
 
