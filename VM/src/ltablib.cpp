@@ -314,7 +314,7 @@ static int tconcat(lua_State* L)
     for (; i < last; i++)
     {
         addfield(L, &b, i, t);
-        if (!DFFlag::LuauFasterConcat || lsep)
+        if (!DFFlag::LuauFasterConcat || lsep != 0)
             luaL_addlstring(&b, sep, lsep);
     }
     if (i == last) // add last value (if interval was not empty)
