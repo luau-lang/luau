@@ -29,6 +29,7 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 LUAU_FASTFLAGVARIABLE(LuauCompileRepeatUntilSkippedLocals, false)
 LUAU_FASTFLAG(LuauCompileTypeInfo)
 LUAU_FASTFLAGVARIABLE(LuauTypeInfoLookupImprovement, false)
+LUAU_FASTFLAGVARIABLE(LuauCompileTempTypeInfo, false)
 
 namespace Luau
 {
@@ -108,6 +109,8 @@ struct Compiler
         , builtins(nullptr)
         , functionTypes(nullptr)
         , localTypes(nullptr)
+        , exprTypes(nullptr)
+        , builtinTypes(options.vectorType)
     {
         // preallocate some buffers that are very likely to grow anyway; this works around std::vector's inefficient growth policy for small arrays
         localStack.reserve(16);
@@ -916,6 +919,9 @@ struct Compiler
 
             bytecode.emitABC(LOP_NAMECALL, regs, selfreg, uint8_t(BytecodeBuilder::getStringHash(iname)));
             bytecode.emitAux(cid);
+
+            if (FFlag::LuauCompileTempTypeInfo)
+                hintTemporaryExprRegType(fi->expr, selfreg, LBC_TYPE_TABLE, /* instLength */ 2);
         }
         else if (bfid >= 0)
         {
@@ -1570,6 +1576,9 @@ struct Compiler
                 uint8_t rl = compileExprAuto(expr->left, rs);
 
                 bytecode.emitABC(getBinaryOpArith(expr->op, /* k= */ true), target, rl, uint8_t(rc));
+
+                if (FFlag::LuauCompileTempTypeInfo)
+                    hintTemporaryExprRegType(expr->left, rl, LBC_TYPE_NUMBER, /* instLength */ 1);
             }
             else
             {
@@ -1583,6 +1592,9 @@ struct Compiler
                         LuauOpcode op = (expr->op == AstExprBinary::Sub) ? LOP_SUBRK : LOP_DIVRK;
 
                         bytecode.emitABC(op, target, uint8_t(lc), uint8_t(rr));
+
+                        if (FFlag::LuauCompileTempTypeInfo)
+                            hintTemporaryExprRegType(expr->right, rr, LBC_TYPE_NUMBER, /* instLength */ 1);
                         return;
                     }
                 }
@@ -1591,6 +1603,12 @@ struct Compiler
                 uint8_t rr = compileExprAuto(expr->right, rs);
 
                 bytecode.emitABC(getBinaryOpArith(expr->op), target, rl, rr);
+
+                if (FFlag::LuauCompileTempTypeInfo)
+                {
+                    hintTemporaryExprRegType(expr->left, rl, LBC_TYPE_NUMBER, /* instLength */ 1);
+                    hintTemporaryExprRegType(expr->right, rr, LBC_TYPE_NUMBER, /* instLength */ 1);
+                }
             }
         }
         break;
@@ -2030,6 +2048,9 @@ struct Compiler
 
         bytecode.emitABC(LOP_GETTABLEKS, target, reg, uint8_t(BytecodeBuilder::getStringHash(iname)));
         bytecode.emitAux(cid);
+
+        if (FFlag::LuauCompileTempTypeInfo)
+            hintTemporaryExprRegType(expr->expr, reg, LBC_TYPE_TABLE, /* instLength */ 2);
     }
 
     void compileExprIndexExpr(AstExprIndexExpr* expr, uint8_t target)
@@ -3410,6 +3431,14 @@ struct Compiler
                 uint8_t rr = compileExprAuto(stat->value, rs);
 
                 bytecode.emitABC(getBinaryOpArith(stat->op), target, target, rr);
+
+                if (FFlag::LuauCompileTempTypeInfo)
+                {
+                    if (var.kind != LValue::Kind_Local)
+                        hintTemporaryRegType(stat->var, target, LBC_TYPE_NUMBER, /* instLength */ 1);
+
+                    hintTemporaryExprRegType(stat->value, rr, LBC_TYPE_NUMBER, /* instLength */ 1);
+                }
             }
         }
         break;
@@ -3794,6 +3823,27 @@ struct Compiler
         return !node->is<AstStatBlock>() && !node->is<AstStatTypeAlias>();
     }
 
+    void hintTemporaryRegType(AstExpr* expr, int reg, LuauBytecodeType expectedType, int instLength)
+    {
+        LUAU_ASSERT(FFlag::LuauCompileTempTypeInfo);
+
+        // If we know the type of a temporary and it's not the type that would be expected by codegen, provide a hint
+        if (LuauBytecodeType* ty = exprTypes.find(expr))
+        {
+            if (*ty != expectedType)
+                bytecode.pushLocalTypeInfo(*ty, reg, bytecode.getDebugPC() - instLength, bytecode.getDebugPC());
+        }
+    }
+
+    void hintTemporaryExprRegType(AstExpr* expr, int reg, LuauBytecodeType expectedType, int instLength)
+    {
+        LUAU_ASSERT(FFlag::LuauCompileTempTypeInfo);
+
+        // If we allocated a temporary register for the operation argument, try hinting its type
+        if (!getExprLocal(expr))
+            hintTemporaryRegType(expr, reg, expectedType, instLength);
+    }
+
     struct FenvVisitor : AstVisitor
     {
         bool& getfenvUsed;
@@ -4046,6 +4096,9 @@ struct Compiler
     DenseHashMap<AstExprCall*, int> builtins;
     DenseHashMap<AstExprFunction*, std::string> functionTypes;
     DenseHashMap<AstLocal*, LuauBytecodeType> localTypes;
+    DenseHashMap<AstExpr*, LuauBytecodeType> exprTypes;
+
+    BuiltinTypes builtinTypes;
 
     const DenseHashMap<AstExprCall*, int>* builtinsFold = nullptr;
     bool builtinsFoldMathK = false;
@@ -4141,12 +4194,14 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     if (FFlag::LuauCompileTypeInfo)
     {
         if (options.typeInfoLevel >= 1)
-            buildTypeMap(compiler.functionTypes, compiler.localTypes, root, options.vectorType);
+            buildTypeMap(compiler.functionTypes, compiler.localTypes, compiler.exprTypes, root, options.vectorType, compiler.builtinTypes,
+                compiler.builtins, compiler.globals);
     }
     else
     {
         if (functionVisitor.hasTypes)
-            buildTypeMap(compiler.functionTypes, compiler.localTypes, root, options.vectorType);
+            buildTypeMap(compiler.functionTypes, compiler.localTypes, compiler.exprTypes, root, options.vectorType, compiler.builtinTypes,
+                compiler.builtins, compiler.globals);
     }
 
     for (AstExprFunction* expr : functions)

@@ -14,7 +14,7 @@ LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauFixNormalizeCaching)
 LUAU_FASTFLAG(LuauNormalizeNotUnknownIntersection)
 LUAU_FASTFLAG(LuauFixCyclicUnionsOfIntersections);
-
+LUAU_FASTINT(LuauTypeInferRecursionLimit)
 using namespace Luau;
 
 namespace
@@ -960,6 +960,34 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersect_with_not_unknown")
     std::shared_ptr<const NormalizedType> normalized = normalizer.normalize(type);
 
     CHECK("never" == toString(normalizer.typeFromNormal(*normalized.get())));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_stack_overflow_1")
+{
+    ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 165};
+    this->unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
+    TypeId t1 = arena.addType(TableType{});
+    TypeId t2 = arena.addType(TableType{});
+    TypeId t3 = arena.addType(IntersectionType{{t1, t2}});
+    asMutable(t1)->ty.get_if<TableType>()->props = {{"foo", Property::readonly(t2)}};
+    asMutable(t2)->ty.get_if<TableType>()->props = {{"foo", Property::readonly(t1)}};
+
+    std::shared_ptr<const NormalizedType> normalized = normalizer.normalize(t3);
+    CHECK(normalized);
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_stack_overflow_2")
+{
+    ScopedFastInt sfi{FInt::LuauTypeInferRecursionLimit, 165};
+    this->unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
+    TypeId t1 = arena.addType(TableType{});
+    TypeId t2 = arena.addType(TableType{});
+    TypeId t3 = arena.addType(IntersectionType{{t1, t2}});
+    asMutable(t1)->ty.get_if<TableType>()->props = {{"foo", Property::readonly(t3)}};
+    asMutable(t2)->ty.get_if<TableType>()->props = {{"foo", Property::readonly(t1)}};
+
+    std::shared_ptr<const NormalizedType> normalized = normalizer.normalize(t3);
+    CHECK(normalized);
 }
 
 TEST_SUITE_END();

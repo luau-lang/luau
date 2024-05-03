@@ -13,11 +13,54 @@
 #include "lapi.h"
 
 LUAU_FASTFLAG(LuauCodegenTypeInfo)
+LUAU_FASTFLAGVARIABLE(LuauCodegenIrTypeNames, false)
 
 namespace Luau
 {
 namespace CodeGen
 {
+
+static const LocVar* tryFindLocal(const Proto* proto, int reg, int pcpos)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenIrTypeNames);
+
+    for (int i = 0; i < proto->sizelocvars; i++)
+    {
+        const LocVar& local = proto->locvars[i];
+
+        if (reg == local.reg && pcpos >= local.startpc && pcpos < local.endpc)
+            return &local;
+    }
+
+    return nullptr;
+}
+
+const char* tryFindLocalName(const Proto* proto, int reg, int pcpos)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenIrTypeNames);
+
+    const LocVar* var = tryFindLocal(proto, reg, pcpos);
+
+    if (var && var->varname)
+        return getstr(var->varname);
+
+    return nullptr;
+}
+
+const char* tryFindUpvalueName(const Proto* proto, int upval)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenIrTypeNames);
+
+    if (proto->upvalues)
+    {
+        CODEGEN_ASSERT(upval < proto->sizeupvalues);
+
+        if (proto->upvalues[upval])
+            return getstr(proto->upvalues[upval]);
+    }
+
+    return nullptr;
+}
 
 template<typename AssemblyBuilder>
 static void logFunctionHeader(AssemblyBuilder& build, Proto* proto)
@@ -29,12 +72,22 @@ static void logFunctionHeader(AssemblyBuilder& build, Proto* proto)
 
     for (int i = 0; i < proto->numparams; i++)
     {
-        LocVar* var = proto->locvars ? &proto->locvars[proto->sizelocvars - proto->numparams + i] : nullptr;
-
-        if (var && var->varname)
-            build.logAppend("%s%s", i == 0 ? "" : ", ", getstr(var->varname));
+        if (FFlag::LuauCodegenIrTypeNames)
+        {
+            if (const char* name = tryFindLocalName(proto, i, 0))
+                build.logAppend("%s%s", i == 0 ? "" : ", ", name);
+            else
+                build.logAppend("%s$arg%d", i == 0 ? "" : ", ", i);
+        }
         else
-            build.logAppend("%s$arg%d", i == 0 ? "" : ", ", i);
+        {
+            LocVar* var = proto->locvars ? &proto->locvars[proto->sizelocvars - proto->numparams + i] : nullptr;
+
+            if (var && var->varname)
+                build.logAppend("%s%s", i == 0 ? "" : ", ", getstr(var->varname));
+            else
+                build.logAppend("%s$arg%d", i == 0 ? "" : ", ", i);
+        }
     }
 
     if (proto->numparams != 0 && proto->is_vararg)
@@ -59,21 +112,58 @@ static void logFunctionTypes(AssemblyBuilder& build, const IrFunction& function)
     {
         uint8_t ty = typeInfo.argumentTypes[i];
 
-        if (ty != LBC_TYPE_ANY)
-            build.logAppend("; R%d: %s [argument]\n", int(i), getBytecodeTypeName(ty));
+        if (FFlag::LuauCodegenIrTypeNames)
+        {
+            if (ty != LBC_TYPE_ANY)
+            {
+                if (const char* name = tryFindLocalName(function.proto, int(i), 0))
+                    build.logAppend("; R%d: %s [argument '%s']\n", int(i), getBytecodeTypeName(ty), name);
+                else
+                    build.logAppend("; R%d: %s [argument]\n", int(i), getBytecodeTypeName(ty));
+            }
+        }
+        else
+        {
+            if (ty != LBC_TYPE_ANY)
+                build.logAppend("; R%d: %s [argument]\n", int(i), getBytecodeTypeName(ty));
+        }
     }
 
     for (size_t i = 0; i < typeInfo.upvalueTypes.size(); i++)
     {
         uint8_t ty = typeInfo.upvalueTypes[i];
 
-        if (ty != LBC_TYPE_ANY)
-            build.logAppend("; U%d: %s\n", int(i), getBytecodeTypeName(ty));
+        if (FFlag::LuauCodegenIrTypeNames)
+        {
+            if (ty != LBC_TYPE_ANY)
+            {
+                if (const char* name = tryFindUpvalueName(function.proto, int(i)))
+                    build.logAppend("; U%d: %s ['%s']\n", int(i), getBytecodeTypeName(ty), name);
+                else
+                    build.logAppend("; U%d: %s\n", int(i), getBytecodeTypeName(ty));
+            }
+        }
+        else
+        {
+            if (ty != LBC_TYPE_ANY)
+                build.logAppend("; U%d: %s\n", int(i), getBytecodeTypeName(ty));
+        }
     }
 
     for (const BytecodeRegTypeInfo& el : typeInfo.regTypes)
     {
-        build.logAppend("; R%d: %s from %d to %d\n", el.reg, getBytecodeTypeName(el.type), el.startpc, el.endpc);
+        if (FFlag::LuauCodegenIrTypeNames)
+        {
+            // Using last active position as the PC because 'startpc' for type info is before local is initialized
+            if (const char* name = tryFindLocalName(function.proto, el.reg, el.endpc - 1))
+                build.logAppend("; R%d: %s from %d to %d [local '%s']\n", el.reg, getBytecodeTypeName(el.type), el.startpc, el.endpc, name);
+            else
+                build.logAppend("; R%d: %s from %d to %d\n", el.reg, getBytecodeTypeName(el.type), el.startpc, el.endpc);
+        }
+        else
+        {
+            build.logAppend("; R%d: %s from %d to %d\n", el.reg, getBytecodeTypeName(el.type), el.startpc, el.endpc);
+        }
     }
 }
 

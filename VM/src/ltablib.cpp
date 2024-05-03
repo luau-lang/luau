@@ -12,6 +12,7 @@
 #include "lvm.h"
 
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauFastCrossTableMove, false)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauFastTableMaxn, false)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauFasterConcat, false)
 
 static int foreachi(lua_State* L)
@@ -55,17 +56,45 @@ static int maxn(lua_State* L)
 {
     double max = 0;
     luaL_checktype(L, 1, LUA_TTABLE);
-    lua_pushnil(L); // first key
-    while (lua_next(L, 1))
+
+    if (DFFlag::LuauFastTableMaxn)
     {
-        lua_pop(L, 1); // remove value
-        if (lua_type(L, -1) == LUA_TNUMBER)
+        Table* t = hvalue(L->base);
+
+        for (int i = 0; i < t->sizearray; i++)
         {
-            double v = lua_tonumber(L, -1);
-            if (v > max)
-                max = v;
+            if (!ttisnil(&t->array[i]))
+                max = i + 1;
+        }
+
+        for (int i = 0; i < sizenode(t); i++)
+        {
+            LuaNode* n = gnode(t, i);
+
+            if (!ttisnil(gval(n)) && ttisnumber(gkey(n)))
+            {
+                double v = nvalue(gkey(n));
+
+                if (v > max)
+                    max = v;
+            }
         }
     }
+    else
+    {
+        lua_pushnil(L); // first key
+        while (lua_next(L, 1))
+        {
+            lua_pop(L, 1); // remove value
+            if (lua_type(L, -1) == LUA_TNUMBER)
+            {
+                double v = lua_tonumber(L, -1);
+                if (v > max)
+                    max = v;
+            }
+        }
+    }
+
     lua_pushnumber(L, max);
     return 1;
 }

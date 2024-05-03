@@ -306,10 +306,14 @@ end
 
 
 assert(table.maxn{} == 0)
+assert(table.maxn{[-100] = 1} == 0)
 assert(table.maxn{["1000"] = true} == 0)
 assert(table.maxn{["1000"] = true, [24.5] = 3} == 24.5)
 assert(table.maxn{[1000] = true} == 1000)
 assert(table.maxn{[10] = true, [100*math.pi] = print} == 100*math.pi)
+a = {[10] = 1, [20] = 2}
+a[20] = nil
+assert(table.maxn(a) == 10)
 
 
 -- int overflow

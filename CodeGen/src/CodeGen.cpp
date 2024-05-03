@@ -65,6 +65,38 @@ namespace Luau
 namespace CodeGen
 {
 
+std::string toString(const CodeGenCompilationResult& result)
+{
+    switch (result)
+    {
+    case CodeGenCompilationResult::Success:
+        return "Success";
+    case CodeGenCompilationResult::NothingToCompile:
+        return "NothingToCompile";
+    case CodeGenCompilationResult::NotNativeModule:
+        return "NotNativeModule";
+    case CodeGenCompilationResult::CodeGenNotInitialized:
+        return "CodeGenNotInitialized";
+    case CodeGenCompilationResult::CodeGenOverflowInstructionLimit:
+        return "CodeGenOverflowInstructionLimit";
+    case CodeGenCompilationResult::CodeGenOverflowBlockLimit:
+        return "CodeGenOverflowBlockLimit";
+    case CodeGenCompilationResult::CodeGenOverflowBlockInstructionLimit:
+        return "CodeGenOverflowBlockInstructionLimit";
+    case CodeGenCompilationResult::CodeGenAssemblerFinalizationFailure:
+        return "CodeGenAssemblerFinalizationFailure";
+    case CodeGenCompilationResult::CodeGenLoweringFailure:
+        return "CodeGenLoweringFailure";
+    case CodeGenCompilationResult::AllocationFailed:
+        return "AllocationFailed";
+    case CodeGenCompilationResult::Count:
+        return "Count";
+    }
+
+    CODEGEN_ASSERT(false);
+    return "";
+}
+
 static const Instruction kCodeEntryInsn = LOP_NATIVECALL;
 
 void* gPerfLogContext = nullptr;

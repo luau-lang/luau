@@ -4,6 +4,7 @@
 #include "Luau/BytecodeBuilder.h"
 
 LUAU_FASTFLAG(LuauCompileTypeInfo)
+LUAU_FASTFLAG(LuauCompileTempTypeInfo)
 
 namespace Luau
 {
@@ -37,10 +38,10 @@ static LuauBytecodeType getPrimitiveType(AstName name)
         return LBC_TYPE_INVALID;
 }
 
-static LuauBytecodeType getType(AstType* ty, const AstArray<AstGenericType>& generics, const DenseHashMap<AstName, AstStatTypeAlias*>& typeAliases,
-    bool resolveAliases, const char* vectorType)
+static LuauBytecodeType getType(const AstType* ty, const AstArray<AstGenericType>& generics,
+    const DenseHashMap<AstName, AstStatTypeAlias*>& typeAliases, bool resolveAliases, const char* vectorType)
 {
-    if (AstTypeReference* ref = ty->as<AstTypeReference>())
+    if (const AstTypeReference* ref = ty->as<AstTypeReference>())
     {
         if (ref->prefix)
             return LBC_TYPE_ANY;
@@ -66,15 +67,15 @@ static LuauBytecodeType getType(AstType* ty, const AstArray<AstGenericType>& gen
         // not primitive or alias or generic => host-provided, we assume userdata for now
         return LBC_TYPE_USERDATA;
     }
-    else if (AstTypeTable* table = ty->as<AstTypeTable>())
+    else if (const AstTypeTable* table = ty->as<AstTypeTable>())
     {
         return LBC_TYPE_TABLE;
     }
-    else if (AstTypeFunction* func = ty->as<AstTypeFunction>())
+    else if (const AstTypeFunction* func = ty->as<AstTypeFunction>())
     {
         return LBC_TYPE_FUNCTION;
     }
-    else if (AstTypeUnion* un = ty->as<AstTypeUnion>())
+    else if (const AstTypeUnion* un = ty->as<AstTypeUnion>())
     {
         bool optional = false;
         LuauBytecodeType type = LBC_TYPE_INVALID;
@@ -104,7 +105,7 @@ static LuauBytecodeType getType(AstType* ty, const AstArray<AstGenericType>& gen
 
         return LuauBytecodeType(type | (optional && (type != LBC_TYPE_ANY) ? LBC_TYPE_OPTIONAL_BIT : 0));
     }
-    else if (AstTypeIntersection* inter = ty->as<AstTypeIntersection>())
+    else if (const AstTypeIntersection* inter = ty->as<AstTypeIntersection>())
     {
         return LBC_TYPE_ANY;
     }
@@ -144,21 +145,44 @@ static std::string getFunctionType(const AstExprFunction* func, const DenseHashM
     return typeInfo;
 }
 
+static bool isMatchingGlobal(const DenseHashMap<AstName, Compile::Global>& globals, AstExpr* node, const char* name)
+{
+    LUAU_ASSERT(FFlag::LuauCompileTempTypeInfo);
+
+    if (AstExprGlobal* expr = node->as<AstExprGlobal>())
+        return Compile::getGlobalState(globals, expr->name) == Compile::Global::Default && expr->name == name;
+
+    return false;
+}
+
 struct TypeMapVisitor : AstVisitor
 {
     DenseHashMap<AstExprFunction*, std::string>& functionTypes;
     DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes;
+    DenseHashMap<AstExpr*, LuauBytecodeType>& exprTypes;
     const char* vectorType;
+    const BuiltinTypes& builtinTypes;
+    const DenseHashMap<AstExprCall*, int>& builtinCalls;
+    const DenseHashMap<AstName, Compile::Global>& globals;
 
     DenseHashMap<AstName, AstStatTypeAlias*> typeAliases;
     std::vector<std::pair<AstName, AstStatTypeAlias*>> typeAliasStack;
+    DenseHashMap<AstLocal*, const AstType*> resolvedLocals;
+    DenseHashMap<AstExpr*, const AstType*> resolvedExprs;
 
-    TypeMapVisitor(
-        DenseHashMap<AstExprFunction*, std::string>& functionTypes, DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes, const char* vectorType)
+    TypeMapVisitor(DenseHashMap<AstExprFunction*, std::string>& functionTypes, DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes,
+        DenseHashMap<AstExpr*, LuauBytecodeType>& exprTypes, const char* vectorType, const BuiltinTypes& builtinTypes,
+        const DenseHashMap<AstExprCall*, int>& builtinCalls, const DenseHashMap<AstName, Compile::Global>& globals)
         : functionTypes(functionTypes)
         , localTypes(localTypes)
+        , exprTypes(exprTypes)
         , vectorType(vectorType)
+        , builtinTypes(builtinTypes)
+        , builtinCalls(builtinCalls)
+        , globals(globals)
         , typeAliases(AstName())
+        , resolvedLocals(nullptr)
+        , resolvedExprs(nullptr)
     {
     }
 
@@ -189,6 +213,64 @@ struct TypeMapVisitor : AstVisitor
         }
     }
 
+    const AstType* resolveAliases(const AstType* ty)
+    {
+        LUAU_ASSERT(FFlag::LuauCompileTempTypeInfo);
+
+        if (const AstTypeReference* ref = ty->as<AstTypeReference>())
+        {
+            if (ref->prefix)
+                return ty;
+
+            if (AstStatTypeAlias* const* alias = typeAliases.find(ref->name); alias && *alias)
+                return (*alias)->type;
+        }
+
+        return ty;
+    }
+
+    const AstTableIndexer* tryGetTableIndexer(AstExpr* expr)
+    {
+        LUAU_ASSERT(FFlag::LuauCompileTempTypeInfo);
+
+        if (const AstType** typePtr = resolvedExprs.find(expr))
+        {
+            if (const AstTypeTable* tableTy = (*typePtr)->as<AstTypeTable>())
+                return tableTy->indexer;
+        }
+
+        return nullptr;
+    }
+
+    LuauBytecodeType recordResolvedType(AstExpr* expr, const AstType* ty)
+    {
+        LUAU_ASSERT(FFlag::LuauCompileTempTypeInfo);
+
+        ty = resolveAliases(ty);
+
+        resolvedExprs[expr] = ty;
+
+        LuauBytecodeType bty = getType(ty, {}, typeAliases, /* resolveAliases= */ true, vectorType);
+        exprTypes[expr] = bty;
+        return bty;
+    }
+
+    LuauBytecodeType recordResolvedType(AstLocal* local, const AstType* ty)
+    {
+        LUAU_ASSERT(FFlag::LuauCompileTempTypeInfo);
+
+        ty = resolveAliases(ty);
+
+        resolvedLocals[local] = ty;
+
+        LuauBytecodeType bty = getType(ty, {}, typeAliases, /* resolveAliases= */ true, vectorType);
+
+        if (bty != LBC_TYPE_ANY)
+            localTypes[local] = bty;
+
+        return bty;
+    }
+
     bool visit(AstStatBlock* node) override
     {
         size_t aliasStackTop = pushTypeAliases(node);
@@ -216,6 +298,60 @@ struct TypeMapVisitor : AstVisitor
         return false;
     }
 
+    // for...in statement can contain type annotations on locals (we might even infer some for ipairs/pairs/generalized iteration)
+    bool visit(AstStatForIn* node) override
+    {
+        if (!FFlag::LuauCompileTempTypeInfo)
+            return true;
+
+        for (AstExpr* expr : node->values)
+            expr->visit(this);
+
+        // This is similar to how Compiler matches builtin iteration, but we also handle generalized iteration case
+        if (node->vars.size == 2 && node->values.size == 1)
+        {
+            if (AstExprCall* call = node->values.data[0]->as<AstExprCall>(); call && call->args.size == 1)
+            {
+                AstExpr* func = call->func;
+                AstExpr* arg = call->args.data[0];
+
+                if (isMatchingGlobal(globals, func, "ipairs"))
+                {
+                    if (const AstTableIndexer* indexer = tryGetTableIndexer(arg))
+                    {
+                        recordResolvedType(node->vars.data[0], &builtinTypes.numberType);
+                        recordResolvedType(node->vars.data[1], indexer->resultType);
+                    }
+                }
+                else if (isMatchingGlobal(globals, func, "pairs"))
+                {
+                    if (const AstTableIndexer* indexer = tryGetTableIndexer(arg))
+                    {
+                        recordResolvedType(node->vars.data[0], indexer->indexType);
+                        recordResolvedType(node->vars.data[1], indexer->resultType);
+                    }
+                }
+            }
+            else if (const AstTableIndexer* indexer = tryGetTableIndexer(node->values.data[0]))
+            {
+                recordResolvedType(node->vars.data[0], indexer->indexType);
+                recordResolvedType(node->vars.data[1], indexer->resultType);
+            }
+        }
+
+        for (size_t i = 0; i < node->vars.size; i++)
+        {
+            AstLocal* var = node->vars.data[i];
+
+            if (AstType* annotation = var->annotation)
+                recordResolvedType(var, annotation);
+        }
+
+        node->body->visit(this);
+
+        return false;
+    }
+
     bool visit(AstExprFunction* node) override
     {
         std::string type = getFunctionType(node, typeAliases, vectorType);
@@ -223,32 +359,405 @@ struct TypeMapVisitor : AstVisitor
         if (!type.empty())
             functionTypes[node] = std::move(type);
 
-        return true;
+        return true; // Let generic visitor step into all expressions
     }
 
     bool visit(AstExprLocal* node) override
     {
-        if (FFlag::LuauCompileTypeInfo)
+        if (FFlag::LuauCompileTempTypeInfo)
         {
-            AstLocal* local = node->local;
-
-            if (AstType* annotation = local->annotation)
+            if (FFlag::LuauCompileTypeInfo)
             {
-                LuauBytecodeType ty = getType(annotation, {}, typeAliases, /* resolveAliases= */ true, vectorType);
+                AstLocal* local = node->local;
 
-                if (ty != LBC_TYPE_ANY)
-                    localTypes[local] = ty;
+                if (AstType* annotation = local->annotation)
+                {
+                    LuauBytecodeType ty = recordResolvedType(node, annotation);
+
+                    if (ty != LBC_TYPE_ANY)
+                        localTypes[local] = ty;
+                }
+                else if (const AstType** typePtr = resolvedLocals.find(local))
+                {
+                    localTypes[local] = recordResolvedType(node, *typePtr);
+                }
+            }
+
+            return false;
+        }
+        else
+        {
+            if (FFlag::LuauCompileTypeInfo)
+            {
+                AstLocal* local = node->local;
+
+                if (AstType* annotation = local->annotation)
+                {
+                    LuauBytecodeType ty = getType(annotation, {}, typeAliases, /* resolveAliases= */ true, vectorType);
+
+                    if (ty != LBC_TYPE_ANY)
+                        localTypes[local] = ty;
+                }
+            }
+
+            return true;
+        }
+    }
+
+    bool visit(AstStatLocal* node) override
+    {
+        if (!FFlag::LuauCompileTempTypeInfo)
+            return true;
+
+        for (AstExpr* expr : node->values)
+            expr->visit(this);
+
+        for (size_t i = 0; i < node->vars.size; i++)
+        {
+            AstLocal* var = node->vars.data[i];
+
+            // Propagate from the value that's being assigned
+            // This simple propagation doesn't handle type packs in tail position
+            if (var->annotation == nullptr)
+            {
+                if (i < node->values.size)
+                {
+                    if (const AstType** typePtr = resolvedExprs.find(node->values.data[i]))
+                        resolvedLocals[var] = *typePtr;
+                }
             }
         }
 
-        return true;
+        return false;
     }
+
+    bool visit(AstExprIndexExpr* node) override
+    {
+        if (!FFlag::LuauCompileTempTypeInfo)
+            return true;
+
+        node->expr->visit(this);
+        node->index->visit(this);
+
+        if (const AstTableIndexer* indexer = tryGetTableIndexer(node->expr))
+            recordResolvedType(node, indexer->resultType);
+
+        return false;
+    }
+
+    bool visit(AstExprIndexName* node) override
+    {
+        if (!FFlag::LuauCompileTempTypeInfo)
+            return true;
+
+        node->expr->visit(this);
+
+        if (const AstType** typePtr = resolvedExprs.find(node->expr))
+        {
+            if (const AstTypeTable* tableTy = (*typePtr)->as<AstTypeTable>())
+            {
+                for (const AstTableProp& prop : tableTy->props)
+                {
+                    if (prop.name == node->index)
+                    {
+                        recordResolvedType(node, prop.type);
+                        return false;
+                    }
+                }
+            }
+        }
+
+        if (LuauBytecodeType* typeBcPtr = exprTypes.find(node->expr))
+        {
+            if (*typeBcPtr == LBC_TYPE_VECTOR)
+            {
+                if (node->index == "X" || node->index == "Y" || node->index == "Z")
+                    recordResolvedType(node, &builtinTypes.numberType);
+            }
+        }
+
+        return false;
+    }
+
+    bool visit(AstExprUnary* node) override
+    {
+        if (!FFlag::LuauCompileTempTypeInfo)
+            return true;
+
+        node->expr->visit(this);
+
+        switch (node->op)
+        {
+        case AstExprUnary::Not:
+            recordResolvedType(node, &builtinTypes.booleanType);
+            break;
+        case AstExprUnary::Minus:
+        {
+            const AstType** typePtr = resolvedExprs.find(node->expr);
+            LuauBytecodeType* bcTypePtr = exprTypes.find(node->expr);
+
+            if (!typePtr || !bcTypePtr)
+                return false;
+
+            if (*bcTypePtr == LBC_TYPE_VECTOR)
+                recordResolvedType(node, *typePtr);
+            else if (*bcTypePtr == LBC_TYPE_NUMBER)
+                recordResolvedType(node, *typePtr);
+
+            break;
+        }
+        case AstExprUnary::Len:
+            recordResolvedType(node, &builtinTypes.numberType);
+            break;
+        }
+
+        return false;
+    }
+
+    bool visit(AstExprBinary* node) override
+    {
+        if (!FFlag::LuauCompileTempTypeInfo)
+            return true;
+
+        node->left->visit(this);
+        node->right->visit(this);
+
+        // Comparisons result in a boolean
+        if (node->op == AstExprBinary::CompareNe || node->op == AstExprBinary::CompareEq || node->op == AstExprBinary::CompareLt ||
+            node->op == AstExprBinary::CompareLe || node->op == AstExprBinary::CompareGt || node->op == AstExprBinary::CompareGe)
+        {
+            recordResolvedType(node, &builtinTypes.booleanType);
+            return false;
+        }
+
+        if (node->op == AstExprBinary::Concat || node->op == AstExprBinary::And || node->op == AstExprBinary::Or)
+            return false;
+
+        const AstType** leftTypePtr = resolvedExprs.find(node->left);
+        LuauBytecodeType* leftBcTypePtr = exprTypes.find(node->left);
+
+        if (!leftTypePtr || !leftBcTypePtr)
+            return false;
+
+        const AstType** rightTypePtr = resolvedExprs.find(node->right);
+        LuauBytecodeType* rightBcTypePtr = exprTypes.find(node->right);
+
+        if (!rightTypePtr || !rightBcTypePtr)
+            return false;
+
+        if (*leftBcTypePtr == LBC_TYPE_VECTOR)
+            recordResolvedType(node, *leftTypePtr);
+        else if (*rightBcTypePtr == LBC_TYPE_VECTOR)
+            recordResolvedType(node, *rightTypePtr);
+        else if (*leftBcTypePtr == LBC_TYPE_NUMBER && *rightBcTypePtr == LBC_TYPE_NUMBER)
+            recordResolvedType(node, *leftTypePtr);
+
+        return false;
+    }
+
+    bool visit(AstExprGroup* node) override
+    {
+        if (!FFlag::LuauCompileTempTypeInfo)
+            return true;
+
+        node->expr->visit(this);
+
+        if (const AstType** typePtr = resolvedExprs.find(node->expr))
+            recordResolvedType(node, *typePtr);
+
+        return false;
+    }
+
+    bool visit(AstExprTypeAssertion* node) override
+    {
+        if (!FFlag::LuauCompileTempTypeInfo)
+            return true;
+
+        node->expr->visit(this);
+
+        recordResolvedType(node, node->annotation);
+
+        return false;
+    }
+
+    bool visit(AstExprConstantBool* node) override
+    {
+        if (!FFlag::LuauCompileTempTypeInfo)
+            return true;
+
+        recordResolvedType(node, &builtinTypes.booleanType);
+
+        return false;
+    }
+
+    bool visit(AstExprConstantNumber* node) override
+    {
+        if (!FFlag::LuauCompileTempTypeInfo)
+            return true;
+
+        recordResolvedType(node, &builtinTypes.numberType);
+
+        return false;
+    }
+
+    bool visit(AstExprConstantString* node) override
+    {
+        if (!FFlag::LuauCompileTempTypeInfo)
+            return true;
+
+        recordResolvedType(node, &builtinTypes.stringType);
+
+        return false;
+    }
+
+    bool visit(AstExprInterpString* node) override
+    {
+        if (!FFlag::LuauCompileTempTypeInfo)
+            return true;
+
+        recordResolvedType(node, &builtinTypes.stringType);
+
+        return false;
+    }
+
+    bool visit(AstExprIfElse* node) override
+    {
+        if (!FFlag::LuauCompileTempTypeInfo)
+            return true;
+
+        node->condition->visit(this);
+        node->trueExpr->visit(this);
+        node->falseExpr->visit(this);
+
+        const AstType** trueTypePtr = resolvedExprs.find(node->trueExpr);
+        LuauBytecodeType* trueBcTypePtr = exprTypes.find(node->trueExpr);
+        LuauBytecodeType* falseBcTypePtr = exprTypes.find(node->falseExpr);
+
+        // Optimistic check that both expressions are of the same kind, as AstType* cannot be compared
+        if (trueTypePtr && trueBcTypePtr && falseBcTypePtr && *trueBcTypePtr == *falseBcTypePtr)
+            recordResolvedType(node, *trueTypePtr);
+
+        return false;
+    }
+
+    bool visit(AstExprCall* node) override
+    {
+        if (!FFlag::LuauCompileTempTypeInfo)
+            return true;
+
+        if (const int* bfid = builtinCalls.find(node))
+        {
+            switch (LuauBuiltinFunction(*bfid))
+            {
+            case LBF_NONE:
+            case LBF_ASSERT:
+            case LBF_RAWSET:
+            case LBF_RAWGET:
+            case LBF_TABLE_INSERT:
+            case LBF_TABLE_UNPACK:
+            case LBF_SELECT_VARARG:
+            case LBF_GETMETATABLE:
+            case LBF_SETMETATABLE:
+            case LBF_BUFFER_WRITEU8:
+            case LBF_BUFFER_WRITEU16:
+            case LBF_BUFFER_WRITEU32:
+            case LBF_BUFFER_WRITEF32:
+            case LBF_BUFFER_WRITEF64:
+                break;
+            case LBF_MATH_ABS:
+            case LBF_MATH_ACOS:
+            case LBF_MATH_ASIN:
+            case LBF_MATH_ATAN2:
+            case LBF_MATH_ATAN:
+            case LBF_MATH_CEIL:
+            case LBF_MATH_COSH:
+            case LBF_MATH_COS:
+            case LBF_MATH_DEG:
+            case LBF_MATH_EXP:
+            case LBF_MATH_FLOOR:
+            case LBF_MATH_FMOD:
+            case LBF_MATH_FREXP:
+            case LBF_MATH_LDEXP:
+            case LBF_MATH_LOG10:
+            case LBF_MATH_LOG:
+            case LBF_MATH_MAX:
+            case LBF_MATH_MIN:
+            case LBF_MATH_MODF:
+            case LBF_MATH_POW:
+            case LBF_MATH_RAD:
+            case LBF_MATH_SINH:
+            case LBF_MATH_SIN:
+            case LBF_MATH_SQRT:
+            case LBF_MATH_TANH:
+            case LBF_MATH_TAN:
+            case LBF_BIT32_ARSHIFT:
+            case LBF_BIT32_BAND:
+            case LBF_BIT32_BNOT:
+            case LBF_BIT32_BOR:
+            case LBF_BIT32_BXOR:
+            case LBF_BIT32_BTEST:
+            case LBF_BIT32_EXTRACT:
+            case LBF_BIT32_LROTATE:
+            case LBF_BIT32_LSHIFT:
+            case LBF_BIT32_REPLACE:
+            case LBF_BIT32_RROTATE:
+            case LBF_BIT32_RSHIFT:
+            case LBF_STRING_BYTE:
+            case LBF_STRING_LEN:
+            case LBF_MATH_CLAMP:
+            case LBF_MATH_SIGN:
+            case LBF_MATH_ROUND:
+            case LBF_BIT32_COUNTLZ:
+            case LBF_BIT32_COUNTRZ:
+            case LBF_RAWLEN:
+            case LBF_BIT32_EXTRACTK:
+            case LBF_TONUMBER:
+            case LBF_BIT32_BYTESWAP:
+            case LBF_BUFFER_READI8:
+            case LBF_BUFFER_READU8:
+            case LBF_BUFFER_READI16:
+            case LBF_BUFFER_READU16:
+            case LBF_BUFFER_READI32:
+            case LBF_BUFFER_READU32:
+            case LBF_BUFFER_READF32:
+            case LBF_BUFFER_READF64:
+                recordResolvedType(node, &builtinTypes.numberType);
+                break;
+
+            case LBF_TYPE:
+            case LBF_STRING_CHAR:
+            case LBF_TYPEOF:
+            case LBF_STRING_SUB:
+            case LBF_TOSTRING:
+                recordResolvedType(node, &builtinTypes.stringType);
+                break;
+
+            case LBF_RAWEQUAL:
+                recordResolvedType(node, &builtinTypes.booleanType);
+                break;
+
+            case LBF_VECTOR:
+                recordResolvedType(node, &builtinTypes.vectorType);
+                break;
+            }
+        }
+
+        return true; // Let generic visitor step into all expressions
+    }
+
+    // AstExpr classes that are not covered:
+    // * AstExprConstantNil is not resolved to 'nil' because that doesn't help codegen operations and often used as an initializer before real value
+    // * AstExprGlobal is not supported as we don't have info on globals
+    // * AstExprVarargs cannot be resolved to a testable type
+    // * AstExprTable cannot be reconstructed into a specific AstTypeTable and table annotations don't really help codegen
+    // * AstExprCall is very complex (especially if builtins and registered globals are included), will be extended in the future
 };
 
-void buildTypeMap(DenseHashMap<AstExprFunction*, std::string>& functionTypes, DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes, AstNode* root,
-    const char* vectorType)
+void buildTypeMap(DenseHashMap<AstExprFunction*, std::string>& functionTypes, DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes,
+    DenseHashMap<AstExpr*, LuauBytecodeType>& exprTypes, AstNode* root, const char* vectorType, const BuiltinTypes& builtinTypes,
+    const DenseHashMap<AstExprCall*, int>& builtinCalls, const DenseHashMap<AstName, Compile::Global>& globals)
 {
-    TypeMapVisitor visitor(functionTypes, localTypes, vectorType);
+    TypeMapVisitor visitor(functionTypes, localTypes, exprTypes, vectorType, builtinTypes, builtinCalls, globals);
     root->visit(&visitor);
 }
 

@@ -1619,9 +1619,7 @@ std::pair<bool, std::optional<TypeId>> ConstraintSolver::tryDispatchSetIndexer(
     {
         if (tt->indexer)
         {
-            if (isBlocked(tt->indexer->indexType))
-                return {block(tt->indexer->indexType, constraint), std::nullopt};
-            else if (isBlocked(tt->indexer->indexResultType))
+            if (isBlocked(tt->indexer->indexResultType))
                 return {block(tt->indexer->indexResultType, constraint), std::nullopt};
 
             unify(constraint, indexType, tt->indexer->indexType);
@@ -2014,10 +2012,14 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
                 if (std::optional<TypeId> instantiatedNextFn = instantiate(builtinTypes, arena, NotNull{&limits}, constraint->scope, nextFn))
                 {
                     const FunctionType* nextFn = get<FunctionType>(*instantiatedNextFn);
-                    LUAU_ASSERT(nextFn);
-                    const TypePackId nextRetPack = nextFn->retTypes;
 
-                    pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, nextRetPack, /* resultIsLValue=*/true});
+                    // If nextFn is nullptr, then the iterator function has an improper signature.
+                    if (nextFn)
+                    {
+                        const TypePackId nextRetPack = nextFn->retTypes;
+                        pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, nextRetPack, /* resultIsLValue=*/true});
+                    }
+
                     return true;
                 }
                 else
