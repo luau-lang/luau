@@ -12,6 +12,8 @@
 #include <string.h>
 #include <stdio.h>
 
+LUAU_FASTFLAGVARIABLE(LuauPushErrorStackCheck, false)
+
 static const char* getfuncname(Closure* f);
 
 static int currentpc(lua_State* L, CallInfo* ci)
@@ -330,12 +332,18 @@ l_noret luaG_runerrorL(lua_State* L, const char* fmt, ...)
     vsnprintf(result, sizeof(result), fmt, argp);
     va_end(argp);
 
+    if (FFlag::LuauPushErrorStackCheck)
+        lua_rawcheckstack(L, 1);
+
     pusherror(L, result);
     luaD_throw(L, LUA_ERRRUN);
 }
 
 void luaG_pusherror(lua_State* L, const char* error)
 {
+    if (FFlag::LuauPushErrorStackCheck)
+        lua_rawcheckstack(L, 1);
+
     pusherror(L, error);
 }
 

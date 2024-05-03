@@ -1280,7 +1280,9 @@ struct TypeChecker2
 
     void visit(AstExprGlobal* expr)
     {
-        // TODO!
+        NotNull<Scope> scope = stack.back();
+        if (!scope->lookup(expr->name))
+            reportError(UnknownSymbol{expr->name.value, UnknownSymbol::Binding}, expr->location);
     }
 
     void visit(AstExprVarargs* expr)

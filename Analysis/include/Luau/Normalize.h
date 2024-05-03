@@ -395,6 +395,7 @@ public:
     TypeId negate(TypeId there);
     void subtractPrimitive(NormalizedType& here, TypeId ty);
     void subtractSingleton(NormalizedType& here, TypeId ty);
+    NormalizationResult intersectNormalWithNegationTy(TypeId toNegate, NormalizedType& intersect, bool useDeprecated = false);
 
     // ------- Normalizing intersections
     TypeId intersectionOfTops(TypeId here, TypeId there);

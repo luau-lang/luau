@@ -4423,4 +4423,20 @@ TEST_CASE_FIXTURE(Fixture, "setindexer_multiple_tables_intersection")
     CHECK("({ [string]: number } & { [thread]: boolean }, boolean | number) -> ()" == toString(requireType("f")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "insert_a_and_f_of_a_into_table_res_in_a_loop")
+{
+    CheckResult result = check(R"(
+        local function f(t)
+            local res = {}
+
+            for k, a in t do
+                res[k] = f(a)
+                res[k] = a
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

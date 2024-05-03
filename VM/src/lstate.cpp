@@ -204,6 +204,7 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
         g->freepages[i] = NULL;
         g->freegcopages[i] = NULL;
     }
+    g->allpages = NULL;
     g->allgcopages = NULL;
     g->sweepgcopage = NULL;
     for (i = 0; i < LUA_T_COUNT; i++)

@@ -6,11 +6,15 @@
 #include "Luau/IrUtils.h"
 
 #include "lobject.h"
+#include "lstate.h"
+
+#include <algorithm>
 
 LUAU_FASTFLAG(LuauCodegenDirectUserdataFlow)
 LUAU_FASTFLAG(LuauLoadTypeInfo)                   // Because new VM typeinfo load changes the format used by Codegen, same flag is used
 LUAU_FASTFLAGVARIABLE(LuauCodegenTypeInfo, false) // New analysis is flagged separately
 LUAU_FASTFLAG(LuauTypeInfoLookupImprovement)
+LUAU_FASTFLAGVARIABLE(LuauCodegenVectorMispredictFix, false)
 
 namespace Luau
 {
@@ -769,10 +773,30 @@ void analyzeBytecodeTypes(IrFunction& function)
 
                 regTags[ra] = LBC_TYPE_ANY;
 
-                // Assuming that vector component is being indexed
-                // TODO: check what key is used
-                if (bcType.a == LBC_TYPE_VECTOR)
-                    regTags[ra] = LBC_TYPE_NUMBER;
+                if (FFlag::LuauCodegenVectorMispredictFix)
+                {
+                    if (bcType.a == LBC_TYPE_VECTOR)
+                    {
+                        TString* str = gco2ts(function.proto->k[kc].value.gc);
+                        const char* field = getstr(str);
+
+                        if (str->len == 1)
+                        {
+                            // Same handling as LOP_GETTABLEKS block in lvmexecute.cpp - case-insensitive comparison with "X" / "Y" / "Z"
+                            char ch = field[0] | ' ';
+
+                            if (ch == 'x' || ch == 'y' || ch == 'z')
+                                regTags[ra] = LBC_TYPE_NUMBER;
+                        }
+                    }
+                }
+                else
+                {
+                    // Assuming that vector component is being indexed
+                    // TODO: check what key is used
+                    if (bcType.a == LBC_TYPE_VECTOR)
+                        regTags[ra] = LBC_TYPE_NUMBER;
+                }
 
                 bcType.result = regTags[ra];
                 break;

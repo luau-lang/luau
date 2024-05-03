@@ -17,6 +17,39 @@ LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
 
 TEST_SUITE_BEGIN("TypeInferClasses");
 
+TEST_CASE_FIXTURE(ClassFixture, "Luau.Analyze.CLI_crashes_on_this_test")
+{
+    CheckResult result = check(R"(
+        local CircularQueue = {}
+CircularQueue.__index = CircularQueue
+
+function CircularQueue:new()
+	local newCircularQueue = {
+		head = nil,
+	}
+	setmetatable(newCircularQueue, CircularQueue)
+
+	return newCircularQueue
+end
+
+function CircularQueue:push()
+	local newListNode
+
+	if self.head then
+		newListNode = {
+			prevNode = self.head.prevNode,
+			nextNode = self.head,
+		}
+		newListNode.prevNode.nextNode = newListNode
+		newListNode.nextNode.prevNode = newListNode
+	end
+end
+
+return CircularQueue
+
+    )");
+}
+
 TEST_CASE_FIXTURE(ClassFixture, "call_method_of_a_class")
 {
     CheckResult result = check(R"(

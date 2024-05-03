@@ -317,6 +317,7 @@ static bool compileFile(const char* name, CompileFormat format, Luau::CodeGen::A
         {
             options.includeAssembly = format != CompileFormat::CodegenIr;
             options.includeIr = format != CompileFormat::CodegenAsm;
+            options.includeIrTypes = format != CompileFormat::CodegenAsm;
             options.includeOutlinedCode = format == CompileFormat::CodegenVerbose;
         }
 

@@ -1900,10 +1900,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprGlobal* globa
         return Inference{*ty, refinementArena.proposition(key, builtinTypes->truthyType)};
     }
     else
-    {
-        reportError(global->location, UnknownSymbol{global->name.value, UnknownSymbol::Binding});
         return Inference{builtinTypes->errorRecoveryType()};
-    }
 }
 
 Inference ConstraintGenerator::checkIndexName(const ScopePtr& scope, const RefinementKey* key, AstExpr* indexee, const std::string& index, Location indexLocation)
@@ -2453,7 +2450,12 @@ ConstraintGenerator::LValueBounds ConstraintGenerator::checkLValue(const ScopePt
 {
     std::optional<TypeId> annotatedTy = scope->lookup(Symbol{global->name});
     if (annotatedTy)
-        return {annotatedTy, arena->addType(BlockedType{})};
+    {
+        DefId def = dfg->getDef(global);
+        TypeId assignedTy = arena->addType(BlockedType{});
+        rootScope->lvalueTypes[def] = assignedTy;
+        return {annotatedTy, assignedTy};
+    }
     else
         return {annotatedTy, std::nullopt};
 }
