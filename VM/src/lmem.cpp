@@ -53,6 +53,10 @@
  * for each block size there's a page free list that contains pages that have at least one free block
  * (global_State::freegcopages). This free list is used to make sure object allocation is O(1).
  *
+ * When LUAU_ASSERTENABLED is enabled, all non-GCO pages are also linked in a list (global_State::allpages).
+ * Because this list is not strictly required for runtime operations, it is only tracked for the purposes of
+ * debugging. While overhead of linking those pages together is very small, unnecessary operations are avoided.
+ *
  * Compared to GCOs, regular allocations have two important differences: they can be freed in isolation,
  * and they don't start with a GC header. Because of this, each allocation is prefixed with block metadata,
  * which contains the pointer to the page for allocated blocks, and the pointer to the next free block
@@ -189,6 +193,12 @@ const SizeClassConfig kSizeClassConfig;
 // metadata for a block is stored in the first pointer of the block
 #define metadata(block) (*(void**)(block))
 #define freegcolink(block) (*(void**)((char*)block + kGCOLinkOffset))
+
+#if defined(LUAU_ASSERTENABLED)
+#define debugpageset(x) (x)
+#else
+#define debugpageset(x) NULL
+#endif
 
 struct lua_Page
 {
@@ -336,7 +346,7 @@ static void* newblock(lua_State* L, int sizeClass)
 
     // slow path: no page in the freelist, allocate a new one
     if (!page)
-        page = newclasspage(L, g->freepages, NULL, sizeClass, true);
+        page = newclasspage(L, g->freepages, debugpageset(&g->allpages), sizeClass, true);
 
     LUAU_ASSERT(!page->prev);
     LUAU_ASSERT(page->freeList || page->freeNext >= 0);
@@ -457,7 +467,7 @@ static void freeblock(lua_State* L, int sizeClass, void* block)
 
     // if it's the last block in the page, we don't need the page
     if (page->busyBlocks == 0)
-        freeclasspage(L, g->freepages, NULL, page, sizeClass);
+        freeclasspage(L, g->freepages, debugpageset(&g->allpages), page, sizeClass);
 }
 
 static void freegcoblock(lua_State* L, int sizeClass, void* block, lua_Page* page)

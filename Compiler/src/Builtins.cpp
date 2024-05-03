@@ -454,7 +454,7 @@ BuiltinInfo getBuiltinInfo(int bfid)
     case LBF_BUFFER_WRITEF32:
     case LBF_BUFFER_WRITEF64:
         return {3, 0, BuiltinInfo::Flag_NoneSafe};
-    };
+    }
 
     LUAU_UNREACHABLE();
 }

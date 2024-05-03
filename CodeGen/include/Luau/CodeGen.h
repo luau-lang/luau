@@ -40,7 +40,11 @@ enum class CodeGenCompilationResult
     CodeGenAssemblerFinalizationFailure = 7,  // Failure during assembler finalization
     CodeGenLoweringFailure = 8,               // Lowering failed
     AllocationFailed = 9,                     // Native codegen failed due to an allocation error
+
+    Count = 10,
 };
+
+std::string toString(const CodeGenCompilationResult& result);
 
 struct ProtoCompilationFailure
 {

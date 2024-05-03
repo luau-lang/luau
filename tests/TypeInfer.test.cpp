@@ -782,7 +782,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_heap_use_after_free_error")
         end
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+        LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_assertion_value_type")
@@ -1540,19 +1543,33 @@ TEST_CASE_FIXTURE(Fixture, "typeof_cannot_refine_builtin_alias")
     )");
 }
 
-/*
- * We had an issue where we tripped the canMutate() check when binding one
- * blocked type to another.
- */
-TEST_CASE_FIXTURE(Fixture, "delay_setIndexer_constraint_if_the_indexers_type_is_blocked")
+TEST_CASE_FIXTURE(BuiltinsFixture, "bad_iter_metamethod")
 {
-    (void) check(R"(
-        local SG = GetService(true)
-        local lines: { [string]: typeof(SG.ScreenGui) } = {}
-        lines[deadline] = nil -- This line
+    CheckResult result = check(R"(
+        function iter(): unknown
+            return nil
+        end
+
+        local a = {__iter = iter}
+        setmetatable(a, a)
+
+        for i in a do
+        end
     )");
 
-    // As long as type inference doesn't trip an assert or crash, we're good!
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        CannotCallNonFunction* ccnf = get<CannotCallNonFunction>(result.errors[0]);
+        REQUIRE(ccnf);
+
+        CHECK("unknown" == toString(ccnf->ty));
+    }
+    else
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
 }
 
 TEST_SUITE_END();

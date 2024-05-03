@@ -18,8 +18,12 @@ LUAU_FASTFLAG(LuauCompileTypeInfo)
 LUAU_FASTFLAG(LuauLoadTypeInfo)
 LUAU_FASTFLAG(LuauCodegenTypeInfo)
 LUAU_FASTFLAG(LuauTypeInfoLookupImprovement)
+LUAU_FASTFLAG(LuauCodegenIrTypeNames)
+LUAU_FASTFLAG(LuauCompileTempTypeInfo)
+LUAU_FASTFLAG(LuauCodegenFixVectorFields)
+LUAU_FASTFLAG(LuauCodegenVectorMispredictFix)
 
-static std::string getCodegenAssembly(const char* source, bool includeIrTypes = false)
+static std::string getCodegenAssembly(const char* source, bool includeIrTypes = false, int debugLevel = 1)
 {
     Luau::CodeGen::AssemblyOptions options;
 
@@ -47,7 +51,7 @@ static std::string getCodegenAssembly(const char* source, bool includeIrTypes = 
     Luau::CompileOptions copts = {};
 
     copts.optimizationLevel = 2;
-    copts.debugLevel = 1;
+    copts.debugLevel = debugLevel;
     copts.typeInfoLevel = 1;
     copts.vectorCtor = "vector";
     copts.vectorType = "vector";
@@ -64,6 +68,20 @@ static std::string getCodegenAssembly(const char* source, bool includeIrTypes = 
 
     FAIL("Failed to load bytecode");
     return "";
+}
+
+static std::string getCodegenHeader(const char* source)
+{
+    std::string assembly = getCodegenAssembly(source, /* includeIrTypes */ true, /* debugLevel */ 2);
+
+    auto bytecodeStart = assembly.find("bb_bytecode_0:");
+
+    if (bytecodeStart == std::string::npos)
+        bytecodeStart = assembly.find("bb_0:");
+
+    REQUIRE(bytecodeStart != std::string::npos);
+
+    return assembly.substr(0, bytecodeStart);
 }
 
 TEST_SUITE_BEGIN("IrLowering");
@@ -448,6 +466,50 @@ bb_bytecode_1:
   CALL R1, 1i, -1i
   INTERRUPT 3u
   RETURN R1, -1i
+)");
+}
+
+TEST_CASE("VectorRandomProp")
+{
+    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
+    ScopedFastFlag luauCodegenFixVectorFields{FFlag::LuauCodegenFixVectorFields, true};
+    ScopedFastFlag luauCodegenVectorMispredictFix{FFlag::LuauCodegenVectorMispredictFix, true};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function foo(a: vector)
+    return a.XX + a.YY + a.ZZ
+end
+)"),
+        R"(
+; function foo($arg0) line 2
+bb_0:
+  CHECK_TAG R0, tvector, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  FALLBACK_GETTABLEKS 0u, R3, R0, K0
+  FALLBACK_GETTABLEKS 2u, R4, R0, K1
+  CHECK_TAG R3, tnumber, bb_fallback_3
+  CHECK_TAG R4, tnumber, bb_fallback_3
+  %14 = LOAD_DOUBLE R3
+  %16 = ADD_NUM %14, R4
+  STORE_DOUBLE R2, %16
+  STORE_TAG R2, tnumber
+  JUMP bb_4
+bb_4:
+  CHECK_TAG R0, tvector, exit(5)
+  FALLBACK_GETTABLEKS 5u, R3, R0, K2
+  CHECK_TAG R2, tnumber, bb_fallback_5
+  CHECK_TAG R3, tnumber, bb_fallback_5
+  %30 = LOAD_DOUBLE R2
+  %32 = ADD_NUM %30, R3
+  STORE_DOUBLE R1, %32
+  STORE_TAG R1, tnumber
+  JUMP bb_6
+bb_6:
+  INTERRUPT 8u
+  RETURN R1, 1i
 )");
 }
 
@@ -857,6 +919,424 @@ bb_bytecode_0:
   STORE_TAG R1, tnumber
   INTERRUPT 7u
   RETURN R1, 1i
+)");
+}
+
+TEST_CASE("ResolveTablePathTypes")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
+        {FFlag::LuauCompileTempTypeInfo, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+type Vertex = {pos: vector, normal: vector}
+
+local function foo(arr: {Vertex}, i)
+    local v = arr[i]
+
+    return v.pos.Y
+end
+)",
+                        /* includeIrTypes */ true, /* debugLevel */ 2),
+        R"(
+; function foo(arr, i) line 4
+; R0: table [argument 'arr']
+; R2: table from 0 to 6 [local 'v']
+; R4: vector from 3 to 5
+bb_0:
+  CHECK_TAG R0, ttable, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  CHECK_TAG R1, tnumber, bb_fallback_3
+  %8 = LOAD_POINTER R0
+  %9 = LOAD_DOUBLE R1
+  %10 = TRY_NUM_TO_INDEX %9, bb_fallback_3
+  %11 = SUB_INT %10, 1i
+  CHECK_ARRAY_SIZE %8, %11, bb_fallback_3
+  CHECK_NO_METATABLE %8, bb_fallback_3
+  %14 = GET_ARR_ADDR %8, %11
+  %15 = LOAD_TVALUE %14
+  STORE_TVALUE R2, %15
+  JUMP bb_4
+bb_4:
+  CHECK_TAG R2, ttable, exit(1)
+  %23 = LOAD_POINTER R2
+  %24 = GET_SLOT_NODE_ADDR %23, 1u, K0
+  CHECK_SLOT_MATCH %24, K0, bb_fallback_5
+  %26 = LOAD_TVALUE %24, 0i
+  STORE_TVALUE R4, %26
+  JUMP bb_6
+bb_6:
+  CHECK_TAG R4, tvector, exit(3)
+  %33 = LOAD_FLOAT R4, 4i
+  STORE_DOUBLE R3, %33
+  STORE_TAG R3, tnumber
+  INTERRUPT 5u
+  RETURN R3, 1i
+)");
+}
+
+TEST_CASE("ResolvableSimpleMath")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
+        {FFlag::LuauCompileTempTypeInfo, true}};
+
+    CHECK_EQ("\n" + getCodegenHeader(R"(
+type Vertex = { p: vector, uv: vector, n: vector, t: vector, b: vector, h: number }
+local mesh: { vertices: {Vertex}, indices: {number} } = ...
+
+local function compute()
+    for i = 1,#mesh.indices,3 do
+        local a = mesh.vertices[mesh.indices[i]]
+        local b = mesh.vertices[mesh.indices[i + 1]]
+        local c = mesh.vertices[mesh.indices[i + 2]]
+
+        local vba = b.p - a.p
+        local vca = c.p - a.p
+
+        local uvba = b.uv - a.uv
+        local uvca = c.uv - a.uv
+
+        local r = 1.0 / (uvba.X * uvca.Y - uvca.X * uvba.Y);
+
+        local sdir = (uvca.Y * vba - uvba.Y * vca) * r
+
+        a.t += sdir
+    end
+end
+)"),
+        R"(
+; function compute() line 5
+; U0: table ['mesh']
+; R2: number from 0 to 78 [local 'i']
+; R3: table from 7 to 78 [local 'a']
+; R4: table from 15 to 78 [local 'b']
+; R5: table from 24 to 78 [local 'c']
+; R6: vector from 33 to 78 [local 'vba']
+; R7: vector from 37 to 38
+; R7: vector from 38 to 78 [local 'vca']
+; R8: vector from 37 to 38
+; R8: vector from 42 to 43
+; R8: vector from 43 to 78 [local 'uvba']
+; R9: vector from 42 to 43
+; R9: vector from 47 to 48
+; R9: vector from 48 to 78 [local 'uvca']
+; R10: vector from 47 to 48
+; R10: vector from 52 to 53
+; R10: number from 53 to 78 [local 'r']
+; R11: vector from 52 to 53
+; R11: vector from 65 to 78 [local 'sdir']
+; R12: vector from 72 to 73
+; R12: vector from 75 to 76
+; R13: vector from 71 to 72
+; R14: vector from 71 to 72
+)");
+}
+
+TEST_CASE("ResolveVectorNamecalls")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
+        {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+type Vertex = {pos: vector, normal: vector}
+
+local function foo(arr: {Vertex}, i)
+    return arr[i].normal:Dot(vector(0.707, 0, 0.707))
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function foo($arg0, $arg1) line 4
+; R0: table [argument]
+; R2: vector from 4 to 6
+bb_0:
+  CHECK_TAG R0, ttable, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  CHECK_TAG R1, tnumber, bb_fallback_3
+  %8 = LOAD_POINTER R0
+  %9 = LOAD_DOUBLE R1
+  %10 = TRY_NUM_TO_INDEX %9, bb_fallback_3
+  %11 = SUB_INT %10, 1i
+  CHECK_ARRAY_SIZE %8, %11, bb_fallback_3
+  CHECK_NO_METATABLE %8, bb_fallback_3
+  %14 = GET_ARR_ADDR %8, %11
+  %15 = LOAD_TVALUE %14
+  STORE_TVALUE R3, %15
+  JUMP bb_4
+bb_4:
+  CHECK_TAG R3, ttable, bb_fallback_5
+  %23 = LOAD_POINTER R3
+  %24 = GET_SLOT_NODE_ADDR %23, 1u, K0
+  CHECK_SLOT_MATCH %24, K0, bb_fallback_5
+  %26 = LOAD_TVALUE %24, 0i
+  STORE_TVALUE R2, %26
+  JUMP bb_6
+bb_6:
+  %31 = LOAD_TVALUE K1, 0i, tvector
+  STORE_TVALUE R4, %31
+  CHECK_TAG R2, tvector, exit(4)
+  FALLBACK_NAMECALL 4u, R2, R2, K2
+  INTERRUPT 6u
+  SET_SAVEDPC 7u
+  CALL R2, 2i, -1i
+  INTERRUPT 7u
+  RETURN R2, -1i
+)");
+}
+
+TEST_CASE("ImmediateTypeAnnotationHelp")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
+        {FFlag::LuauCompileTempTypeInfo, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function foo(arr, i)
+    return (arr[i] :: vector) / 5
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function foo($arg0, $arg1) line 2
+; R3: vector from 1 to 2
+bb_bytecode_0:
+  CHECK_TAG R0, ttable, bb_fallback_1
+  CHECK_TAG R1, tnumber, bb_fallback_1
+  %4 = LOAD_POINTER R0
+  %5 = LOAD_DOUBLE R1
+  %6 = TRY_NUM_TO_INDEX %5, bb_fallback_1
+  %7 = SUB_INT %6, 1i
+  CHECK_ARRAY_SIZE %4, %7, bb_fallback_1
+  CHECK_NO_METATABLE %4, bb_fallback_1
+  %10 = GET_ARR_ADDR %4, %7
+  %11 = LOAD_TVALUE %10
+  STORE_TVALUE R3, %11
+  JUMP bb_2
+bb_2:
+  CHECK_TAG R3, tvector, exit(1)
+  %19 = LOAD_TVALUE R3
+  %20 = NUM_TO_VEC 5
+  %21 = DIV_VEC %19, %20
+  %22 = TAG_VECTOR %21
+  STORE_TVALUE R2, %22
+  INTERRUPT 2u
+  RETURN R2, 1i
+)");
+}
+
+TEST_CASE("UnaryTypeResolve")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
+        {FFlag::LuauCompileTempTypeInfo, true}};
+
+    CHECK_EQ("\n" + getCodegenHeader(R"(
+local function foo(a, b: vector, c)
+    local d = not a
+    local e = -b
+    local f = #c
+    return (if d then e else vector(f, 2, 3)).X
+end
+)"),
+        R"(
+; function foo(a, b, c) line 2
+; R1: vector [argument 'b']
+; R3: boolean from 0 to 16 [local 'd']
+; R4: vector from 1 to 16 [local 'e']
+; R5: number from 2 to 16 [local 'f']
+; R7: vector from 13 to 15
+)");
+}
+
+TEST_CASE("ForInManualAnnotation")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
+        {FFlag::LuauCompileTempTypeInfo, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+type Vertex = {pos: vector, normal: vector}
+
+local function foo(a: {Vertex})
+    local sum = 0
+    for k, v: Vertex in ipairs(a) do
+        sum += v.pos.X
+    end
+    return sum
+end
+)",
+                        /* includeIrTypes */ true, /* debugLevel */ 2),
+        R"(
+; function foo(a) line 4
+; R0: table [argument 'a']
+; R1: number from 0 to 14 [local 'sum']
+; R5: number from 5 to 11 [local 'k']
+; R6: table from 5 to 11 [local 'v']
+; R8: vector from 8 to 10
+bb_0:
+  CHECK_TAG R0, ttable, exit(entry)
+  JUMP bb_4
+bb_4:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  STORE_DOUBLE R1, 0
+  STORE_TAG R1, tnumber
+  CHECK_SAFE_ENV exit(1)
+  JUMP_EQ_TAG K1, tnil, bb_fallback_6, bb_5
+bb_5:
+  %9 = LOAD_TVALUE K1
+  STORE_TVALUE R2, %9
+  JUMP bb_7
+bb_7:
+  %15 = LOAD_TVALUE R0
+  STORE_TVALUE R3, %15
+  INTERRUPT 4u
+  SET_SAVEDPC 5u
+  CALL R2, 1i, 3i
+  CHECK_SAFE_ENV exit(5)
+  CHECK_TAG R3, ttable, bb_fallback_8
+  CHECK_TAG R4, tnumber, bb_fallback_8
+  JUMP_CMP_NUM R4, 0, not_eq, bb_fallback_8, bb_9
+bb_9:
+  STORE_TAG R2, tnil
+  STORE_POINTER R4, 0i
+  STORE_EXTRA R4, 128i
+  STORE_TAG R4, tlightuserdata
+  JUMP bb_bytecode_3
+bb_bytecode_2:
+  CHECK_TAG R6, ttable, exit(6)
+  %35 = LOAD_POINTER R6
+  %36 = GET_SLOT_NODE_ADDR %35, 6u, K2
+  CHECK_SLOT_MATCH %36, K2, bb_fallback_10
+  %38 = LOAD_TVALUE %36, 0i
+  STORE_TVALUE R8, %38
+  JUMP bb_11
+bb_11:
+  CHECK_TAG R8, tvector, exit(8)
+  %45 = LOAD_FLOAT R8, 0i
+  STORE_DOUBLE R7, %45
+  STORE_TAG R7, tnumber
+  CHECK_TAG R1, tnumber, exit(10)
+  %52 = LOAD_DOUBLE R1
+  %54 = ADD_NUM %52, %45
+  STORE_DOUBLE R1, %54
+  JUMP bb_bytecode_3
+bb_bytecode_3:
+  INTERRUPT 11u
+  CHECK_TAG R2, tnil, bb_fallback_13
+  %60 = LOAD_POINTER R3
+  %61 = LOAD_INT R4
+  %62 = GET_ARR_ADDR %60, %61
+  CHECK_ARRAY_SIZE %60, %61, bb_12
+  %64 = LOAD_TAG %62
+  JUMP_EQ_TAG %64, tnil, bb_12, bb_14
+bb_14:
+  %66 = ADD_INT %61, 1i
+  STORE_INT R4, %66
+  %68 = INT_TO_NUM %66
+  STORE_DOUBLE R5, %68
+  STORE_TAG R5, tnumber
+  %71 = LOAD_TVALUE %62
+  STORE_TVALUE R6, %71
+  JUMP bb_bytecode_2
+bb_12:
+  INTERRUPT 13u
+  RETURN R1, 1i
+)");
+}
+
+TEST_CASE("ForInAutoAnnotationIpairs")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
+        {FFlag::LuauCompileTempTypeInfo, true}};
+
+    CHECK_EQ("\n" + getCodegenHeader(R"(
+type Vertex = {pos: vector, normal: vector}
+
+local function foo(a: {Vertex})
+    local sum = 0
+    for k, v in ipairs(a) do
+        local n = v.pos.X
+        sum += n
+    end
+    return sum
+end
+)"),
+        R"(
+; function foo(a) line 4
+; R0: table [argument 'a']
+; R1: number from 0 to 14 [local 'sum']
+; R5: number from 5 to 11 [local 'k']
+; R6: table from 5 to 11 [local 'v']
+; R7: number from 6 to 11 [local 'n']
+; R8: vector from 8 to 10
+)");
+}
+
+TEST_CASE("ForInAutoAnnotationPairs")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
+        {FFlag::LuauCompileTempTypeInfo, true}};
+
+    CHECK_EQ("\n" + getCodegenHeader(R"(
+type Vertex = {pos: vector, normal: vector}
+
+local function foo(a: {[string]: Vertex})
+    local sum = 0
+    for k, v in pairs(a) do
+        local n = v.pos.X
+        sum += n
+    end
+    return sum
+end
+)"),
+        R"(
+; function foo(a) line 4
+; R0: table [argument 'a']
+; R1: number from 0 to 14 [local 'sum']
+; R5: string from 5 to 11 [local 'k']
+; R6: table from 5 to 11 [local 'v']
+; R7: number from 6 to 11 [local 'n']
+; R8: vector from 8 to 10
+)");
+}
+
+TEST_CASE("ForInAutoAnnotationGeneric")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
+        {FFlag::LuauCompileTempTypeInfo, true}};
+
+    CHECK_EQ("\n" + getCodegenHeader(R"(
+type Vertex = {pos: vector, normal: vector}
+
+local function foo(a: {Vertex})
+    local sum = 0
+    for k, v in a do
+        local n = v.pos.X
+        sum += n
+    end
+    return sum
+end
+)"),
+        R"(
+; function foo(a) line 4
+; R0: table [argument 'a']
+; R1: number from 0 to 13 [local 'sum']
+; R5: number from 4 to 10 [local 'k']
+; R6: table from 4 to 10 [local 'v']
+; R7: number from 5 to 10 [local 'n']
+; R8: vector from 7 to 9
 )");
 }
 
