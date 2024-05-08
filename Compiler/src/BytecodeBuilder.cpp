@@ -665,8 +665,11 @@ void BytecodeBuilder::finalize()
 
     bytecode = char(version);
 
-    uint8_t typesversion = getTypeEncodingVersion();
-    writeByte(bytecode, typesversion);
+    if (version >= 4)
+    {
+        uint8_t typesversion = getTypeEncodingVersion();
+        writeByte(bytecode, typesversion);
+    }
 
     writeStringTable(bytecode);
 
@@ -690,44 +693,47 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id, uint8_t flags)
     writeByte(ss, func.numupvalues);
     writeByte(ss, func.isvararg);
 
-    writeByte(ss, flags);
-
-    if (FFlag::LuauCompileTypeInfo)
+    if (getVersion() >= 4)
     {
-        if (!func.typeinfo.empty() || !typedUpvals.empty() || !typedLocals.empty())
+        writeByte(ss, flags);
+
+        if (FFlag::LuauCompileTypeInfo)
         {
-            // collect type info into a temporary string to know the overall size of type data
-            tempTypeInfo.clear();
-            writeVarInt(tempTypeInfo, uint32_t(func.typeinfo.size()));
-            writeVarInt(tempTypeInfo, uint32_t(typedUpvals.size()));
-            writeVarInt(tempTypeInfo, uint32_t(typedLocals.size()));
-
-            tempTypeInfo.append(func.typeinfo);
-
-            for (const TypedUpval& l : typedUpvals)
-                writeByte(tempTypeInfo, l.type);
-
-            for (const TypedLocal& l : typedLocals)
+            if (!func.typeinfo.empty() || !typedUpvals.empty() || !typedLocals.empty())
             {
-                writeByte(tempTypeInfo, l.type);
-                writeByte(tempTypeInfo, l.reg);
-                writeVarInt(tempTypeInfo, l.startpc);
-                LUAU_ASSERT(l.endpc >= l.startpc);
-                writeVarInt(tempTypeInfo, l.endpc - l.startpc);
-            }
+                // collect type info into a temporary string to know the overall size of type data
+                tempTypeInfo.clear();
+                writeVarInt(tempTypeInfo, uint32_t(func.typeinfo.size()));
+                writeVarInt(tempTypeInfo, uint32_t(typedUpvals.size()));
+                writeVarInt(tempTypeInfo, uint32_t(typedLocals.size()));
 
-            writeVarInt(ss, uint32_t(tempTypeInfo.size()));
-            ss.append(tempTypeInfo);
+                tempTypeInfo.append(func.typeinfo);
+
+                for (const TypedUpval& l : typedUpvals)
+                    writeByte(tempTypeInfo, l.type);
+
+                for (const TypedLocal& l : typedLocals)
+                {
+                    writeByte(tempTypeInfo, l.type);
+                    writeByte(tempTypeInfo, l.reg);
+                    writeVarInt(tempTypeInfo, l.startpc);
+                    LUAU_ASSERT(l.endpc >= l.startpc);
+                    writeVarInt(tempTypeInfo, l.endpc - l.startpc);
+                }
+
+                writeVarInt(ss, uint32_t(tempTypeInfo.size()));
+                ss.append(tempTypeInfo);
+            }
+            else
+            {
+                writeVarInt(ss, 0);
+            }
         }
         else
         {
-            writeVarInt(ss, 0);
+            writeVarInt(ss, uint32_t(func.typeinfo.size()));
+            ss.append(func.typeinfo);
         }
-    }
-    else
-    {
-        writeVarInt(ss, uint32_t(func.typeinfo.size()));
-        ss.append(func.typeinfo);
     }
 
     // instructions
