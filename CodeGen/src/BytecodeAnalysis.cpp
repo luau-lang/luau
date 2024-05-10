@@ -2,6 +2,7 @@
 #include "Luau/BytecodeAnalysis.h"
 
 #include "Luau/BytecodeUtils.h"
+#include "Luau/CodeGen.h"
 #include "Luau/IrData.h"
 #include "Luau/IrUtils.h"
 
@@ -17,6 +18,8 @@ LUAU_FASTFLAG(LuauLoadTypeInfo)                   // Because new VM typeinfo loa
 LUAU_FASTFLAGVARIABLE(LuauCodegenTypeInfo, false) // New analysis is flagged separately
 LUAU_FASTFLAG(LuauTypeInfoLookupImprovement)
 LUAU_FASTFLAGVARIABLE(LuauCodegenVectorMispredictFix, false)
+LUAU_FASTFLAGVARIABLE(LuauCodegenAnalyzeHostVectorOps, false)
+LUAU_FASTFLAGVARIABLE(LuauCodegenLoadTypeUpvalCheck, false)
 
 namespace Luau
 {
@@ -95,7 +98,10 @@ void loadBytecodeTypeInfo(IrFunction& function)
     uint32_t upvalCount = readVarInt(data, offset);
     uint32_t localCount = readVarInt(data, offset);
 
-    CODEGEN_ASSERT(upvalCount == unsigned(proto->nups));
+    if (!FFlag::LuauCodegenLoadTypeUpvalCheck)
+    {
+        CODEGEN_ASSERT(upvalCount == unsigned(proto->nups));
+    }
 
     if (typeSize != 0)
     {
@@ -114,6 +120,11 @@ void loadBytecodeTypeInfo(IrFunction& function)
 
     if (upvalCount != 0)
     {
+        if (FFlag::LuauCodegenLoadTypeUpvalCheck)
+        {
+            CODEGEN_ASSERT(upvalCount == unsigned(proto->nups));
+        }
+
         typeInfo.upvalueTypes.resize(upvalCount);
 
         uint8_t* types = (uint8_t*)data + offset;
@@ -611,7 +622,7 @@ void buildBytecodeBlocks(IrFunction& function, const std::vector<uint8_t>& jumpT
     }
 }
 
-void analyzeBytecodeTypes(IrFunction& function)
+void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
 {
     Proto* proto = function.proto;
     CODEGEN_ASSERT(proto);
@@ -661,6 +672,8 @@ void analyzeBytecodeTypes(IrFunction& function)
 
         for (int i = proto->numparams; i < proto->maxstacksize; ++i)
             regTags[i] = LBC_TYPE_ANY;
+
+        LuauBytecodeType knownNextCallResult = LBC_TYPE_ANY;
 
         for (int i = block.startpc; i <= block.finishpc;)
         {
@@ -790,6 +803,9 @@ void analyzeBytecodeTypes(IrFunction& function)
                             if (ch == 'x' || ch == 'y' || ch == 'z')
                                 regTags[ra] = LBC_TYPE_NUMBER;
                         }
+
+                        if (FFlag::LuauCodegenAnalyzeHostVectorOps && regTags[ra] == LBC_TYPE_ANY && hostHooks.vectorAccessBytecodeType)
+                            regTags[ra] = hostHooks.vectorAccessBytecodeType(field, str->len);
                     }
                 }
                 else
@@ -1161,6 +1177,34 @@ void analyzeBytecodeTypes(IrFunction& function)
                     regTags[ra + 1] = bcType.a;
 
                     bcType.result = LBC_TYPE_FUNCTION;
+
+                    if (FFlag::LuauCodegenAnalyzeHostVectorOps && bcType.a == LBC_TYPE_VECTOR && hostHooks.vectorNamecallBytecodeType)
+                    {
+                        TString* str = gco2ts(function.proto->k[kc].value.gc);
+                        const char* field = getstr(str);
+
+                        knownNextCallResult = LuauBytecodeType(hostHooks.vectorNamecallBytecodeType(field, str->len));
+                    }
+                }
+                break;
+            }
+            case LOP_CALL:
+            {
+                if (FFlag::LuauCodegenAnalyzeHostVectorOps)
+                {
+                    int ra = LUAU_INSN_A(*pc);
+
+                    if (knownNextCallResult != LBC_TYPE_ANY)
+                    {
+                        bcType.result = knownNextCallResult;
+
+                        knownNextCallResult = LBC_TYPE_ANY;
+
+                        regTags[ra] = bcType.result;
+                    }
+
+                    if (FFlag::LuauCodegenTypeInfo)
+                        refineRegType(bcTypeInfo, ra, i, bcType.result);
                 }
                 break;
             }
@@ -1199,7 +1243,6 @@ void analyzeBytecodeTypes(IrFunction& function)
             }
             case LOP_GETGLOBAL:
             case LOP_SETGLOBAL:
-            case LOP_CALL:
             case LOP_RETURN:
             case LOP_JUMP:
             case LOP_JUMPBACK:

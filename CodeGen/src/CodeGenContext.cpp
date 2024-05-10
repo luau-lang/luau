@@ -478,12 +478,12 @@ void create_NEW(lua_State* L, SharedCodeGenContext* codeGenContext)
 }
 
 template<typename AssemblyBuilder>
-[[nodiscard]] static NativeProtoExecDataPtr createNativeFunction(
-    AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto, uint32_t& totalIrInstCount, CodeGenCompilationResult& result)
+[[nodiscard]] static NativeProtoExecDataPtr createNativeFunction(AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto,
+    uint32_t& totalIrInstCount, const HostIrHooks& hooks, CodeGenCompilationResult& result)
 {
     CODEGEN_ASSERT(FFlag::LuauCodegenContext);
 
-    IrBuilder ir;
+    IrBuilder ir(hooks);
     ir.buildFunctionIr(proto);
 
     unsigned instCount = unsigned(ir.function.instructions.size());
@@ -505,7 +505,7 @@ template<typename AssemblyBuilder>
 }
 
 [[nodiscard]] static CompilationResult compileInternal(
-    const std::optional<ModuleId>& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats)
+    const std::optional<ModuleId>& moduleId, lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats)
 {
     CODEGEN_ASSERT(FFlag::LuauCodegenContext);
     CODEGEN_ASSERT(lua_isLfunction(L, idx));
@@ -513,7 +513,7 @@ template<typename AssemblyBuilder>
 
     Proto* root = clvalue(func)->l.p;
 
-    if ((flags & CodeGen_OnlyNativeModules) != 0 && (root->flags & LPF_NATIVE_MODULE) == 0)
+    if ((options.flags & CodeGen_OnlyNativeModules) != 0 && (root->flags & LPF_NATIVE_MODULE) == 0)
         return CompilationResult{CodeGenCompilationResult::NotNativeModule};
 
     BaseCodeGenContext* codeGenContext = getCodeGenContext(L);
@@ -521,7 +521,7 @@ template<typename AssemblyBuilder>
         return CompilationResult{CodeGenCompilationResult::CodeGenNotInitialized};
 
     std::vector<Proto*> protos;
-    gatherFunctions(protos, root, flags);
+    gatherFunctions(protos, root, options.flags);
 
     // Skip protos that have been compiled during previous invocations of CodeGen::compile
     protos.erase(std::remove_if(protos.begin(), protos.end(),
@@ -572,7 +572,7 @@ template<typename AssemblyBuilder>
     {
         CodeGenCompilationResult protoResult = CodeGenCompilationResult::Success;
 
-        NativeProtoExecDataPtr nativeExecData = createNativeFunction(build, helpers, protos[i], totalIrInstCount, protoResult);
+        NativeProtoExecDataPtr nativeExecData = createNativeFunction(build, helpers, protos[i], totalIrInstCount, options.hooks, protoResult);
         if (nativeExecData != nullptr)
         {
             nativeProtos.push_back(std::move(nativeExecData));
@@ -639,18 +639,18 @@ template<typename AssemblyBuilder>
     return compilationResult;
 }
 
-CompilationResult compile_NEW(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats)
+CompilationResult compile_NEW(const ModuleId& moduleId, lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats)
 {
     CODEGEN_ASSERT(FFlag::LuauCodegenContext);
 
-    return compileInternal(moduleId, L, idx, flags, stats);
+    return compileInternal(moduleId, L, idx, options, stats);
 }
 
-CompilationResult compile_NEW(lua_State* L, int idx, unsigned int flags, CompilationStats* stats)
+CompilationResult compile_NEW(lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats)
 {
     CODEGEN_ASSERT(FFlag::LuauCodegenContext);
 
-    return compileInternal({}, L, idx, flags, stats);
+    return compileInternal({}, L, idx, options, stats);
 }
 
 [[nodiscard]] bool isNativeExecutionEnabled_NEW(lua_State* L)

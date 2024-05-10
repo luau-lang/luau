@@ -4,7 +4,6 @@
 #include "Luau/Common.h"
 #include "Luau/DenseHash.h"
 
-LUAU_FASTFLAG(LuauFixSetIter)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 namespace Luau
@@ -143,11 +142,8 @@ public:
             : impl(impl_)
             , end(end_)
         {
-            if (FFlag::LuauFixSetIter || FFlag::DebugLuauDeferredConstraintResolution)
-            {
-                while (impl != end && impl->second == false)
-                    ++impl;
-            }
+            while (impl != end && impl->second == false)
+                ++impl;
         }
 
         const T& operator*() const

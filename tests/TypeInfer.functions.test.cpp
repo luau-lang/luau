@@ -2351,8 +2351,9 @@ end
     LUAU_REQUIRE_ERRORS(result);
     auto err = get<ExplicitFunctionAnnotationRecommended>(result.errors.back());
     LUAU_ASSERT(err);
-    CHECK("false | number" == toString(err->recommendedReturn));
-    CHECK(err->recommendedArgs.size() == 0);
+    CHECK("number" == toString(err->recommendedReturn));
+    REQUIRE(1 == err->recommendedArgs.size());
+    CHECK("number" == toString(err->recommendedArgs[0].second));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_arg_type")
@@ -2671,6 +2672,19 @@ TEST_CASE_FIXTURE(Fixture, "captured_local_is_assigned_a_function")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "error_suppression_propagates_through_function_calls")
+{
+    CheckResult result = check(R"(
+        function first(x: any)
+            return pairs(x)(x)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("(any) -> (any?, any)" == toString(requireType("first")));
 }
 
 TEST_SUITE_END();

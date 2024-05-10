@@ -17,5 +17,6 @@ void luau_codegen_create(lua_State* L)
 
 void luau_codegen_compile(lua_State* L, int idx)
 {
-    Luau::CodeGen::compile(L, idx);
+    Luau::CodeGen::CompilationOptions options;
+    Luau::CodeGen::compile(L, idx, options);
 }

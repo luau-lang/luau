@@ -201,12 +201,12 @@ static void logPerfFunction(Proto* p, uintptr_t addr, unsigned size)
 }
 
 template<typename AssemblyBuilder>
-static std::optional<OldNativeProto> createNativeFunction(
-    AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto, uint32_t& totalIrInstCount, CodeGenCompilationResult& result)
+static std::optional<OldNativeProto> createNativeFunction(AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto, uint32_t& totalIrInstCount,
+    const HostIrHooks& hooks, CodeGenCompilationResult& result)
 {
     CODEGEN_ASSERT(!FFlag::LuauCodegenContext);
 
-    IrBuilder ir;
+    IrBuilder ir(hooks);
     ir.buildFunctionIr(proto);
 
     unsigned instCount = unsigned(ir.function.instructions.size());
@@ -476,7 +476,7 @@ void setNativeExecutionEnabled(lua_State* L, bool enabled)
     }
 }
 
-static CompilationResult compile_OLD(lua_State* L, int idx, unsigned int flags, CompilationStats* stats)
+static CompilationResult compile_OLD(lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats)
 {
     CompilationResult compilationResult;
 
@@ -485,7 +485,7 @@ static CompilationResult compile_OLD(lua_State* L, int idx, unsigned int flags, 
 
     Proto* root = clvalue(func)->l.p;
 
-    if ((flags & CodeGen_OnlyNativeModules) != 0 && (root->flags & LPF_NATIVE_MODULE) == 0)
+    if ((options.flags & CodeGen_OnlyNativeModules) != 0 && (root->flags & LPF_NATIVE_MODULE) == 0)
     {
         compilationResult.result = CodeGenCompilationResult::NotNativeModule;
         return compilationResult;
@@ -500,7 +500,7 @@ static CompilationResult compile_OLD(lua_State* L, int idx, unsigned int flags, 
     }
 
     std::vector<Proto*> protos;
-    gatherFunctions(protos, root, flags);
+    gatherFunctions(protos, root, options.flags);
 
     // Skip protos that have been compiled during previous invocations of CodeGen::compile
     protos.erase(std::remove_if(protos.begin(), protos.end(),
@@ -541,7 +541,7 @@ static CompilationResult compile_OLD(lua_State* L, int idx, unsigned int flags, 
     {
         CodeGenCompilationResult protoResult = CodeGenCompilationResult::Success;
 
-        if (std::optional<OldNativeProto> np = createNativeFunction(build, helpers, p, totalIrInstCount, protoResult))
+        if (std::optional<OldNativeProto> np = createNativeFunction(build, helpers, p, totalIrInstCount, options.hooks, protoResult))
             results.push_back(*np);
         else
             compilationResult.protoFailures.push_back({protoResult, p->debugname ? getstr(p->debugname) : "", p->linedefined});
@@ -618,13 +618,15 @@ static CompilationResult compile_OLD(lua_State* L, int idx, unsigned int flags, 
 
 CompilationResult compile(lua_State* L, int idx, unsigned int flags, CompilationStats* stats)
 {
+    Luau::CodeGen::CompilationOptions options{flags};
+
     if (FFlag::LuauCodegenContext)
     {
-        return compile_NEW(L, idx, flags, stats);
+        return compile_NEW(L, idx, options, stats);
     }
     else
     {
-        return compile_OLD(L, idx, flags, stats);
+        return compile_OLD(L, idx, options, stats);
     }
 }
 
@@ -632,7 +634,27 @@ CompilationResult compile(const ModuleId& moduleId, lua_State* L, int idx, unsig
 {
     CODEGEN_ASSERT(FFlag::LuauCodegenContext);
 
-    return compile_NEW(moduleId, L, idx, flags, stats);
+    Luau::CodeGen::CompilationOptions options{flags};
+    return compile_NEW(moduleId, L, idx, options, stats);
+}
+
+CompilationResult compile(lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats)
+{
+    if (FFlag::LuauCodegenContext)
+    {
+        return compile_NEW(L, idx, options, stats);
+    }
+    else
+    {
+        return compile_OLD(L, idx, options, stats);
+    }
+}
+
+CompilationResult compile(const ModuleId& moduleId, lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenContext);
+
+    return compile_NEW(moduleId, L, idx, options, stats);
 }
 
 void setPerfLog(void* context, PerfLogFn logFn)

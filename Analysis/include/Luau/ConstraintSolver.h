@@ -243,6 +243,24 @@ struct ConstraintSolver
     void reportError(TypeError e);
 
     /**
+     * Shifts the count of references from `source` to `target`. This should be paired
+     * with any instance of binding a free type in order to maintain accurate refcounts.
+     * If `target` is not a free type, this is a noop.
+     * @param source the free type which is being bound
+     * @param target the type which the free type is being bound to
+     */
+    void shiftReferences(TypeId source, TypeId target);
+
+    /**
+     * Generalizes the given free type if the reference counting allows it.
+     * @param the scope to generalize in
+     * @param type the free type we want to generalize
+     * @returns a non-free type that generalizes the argument, or `std::nullopt` if one
+     * does not exist
+     */
+    std::optional<TypeId> generalizeFreeType(NotNull<Scope> scope, TypeId type);
+
+    /**
      * Checks the existing set of constraints to see if there exist any that contain
      * the provided free type, indicating that it is not yet ready to be replaced by
      * one of its bounds.
