@@ -17,20 +17,15 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
 LUAU_FASTFLAGVARIABLE(LuauNormalizeAwayUninhabitableTables, false)
-LUAU_FASTFLAGVARIABLE(LuauFixNormalizeCaching, false);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeNotUnknownIntersection, false);
 LUAU_FASTFLAGVARIABLE(LuauFixCyclicUnionsOfIntersections, false);
 LUAU_FASTFLAGVARIABLE(LuauFixReduceStackPressure, false);
+LUAU_FASTFLAGVARIABLE(LuauFixCyclicTablesBlowingStack, false);
 
 // This could theoretically be 2000 on amd64, but x86 requires this.
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-
-static bool fixNormalizeCaching()
-{
-    return FFlag::LuauFixNormalizeCaching || FFlag::DebugLuauDeferredConstraintResolution;
-}
 
 static bool fixCyclicUnionsOfIntersections()
 {
@@ -40,6 +35,11 @@ static bool fixCyclicUnionsOfIntersections()
 static bool fixReduceStackPressure()
 {
     return FFlag::LuauFixReduceStackPressure || FFlag::DebugLuauDeferredConstraintResolution;
+}
+
+static bool fixCyclicTablesBlowingStack()
+{
+    return FFlag::LuauFixCyclicTablesBlowingStack || FFlag::DebugLuauDeferredConstraintResolution;
 }
 
 namespace Luau
@@ -353,6 +353,12 @@ bool NormalizedType::isSubtypeOfString() const
            !hasBuffers() && !hasTables() && !hasFunctions() && !hasTyvars();
 }
 
+bool NormalizedType::isSubtypeOfBooleans() const
+{
+    return hasBooleans() && !hasTops() && !hasClasses() && !hasErrors() && !hasNils() && !hasNumbers() && !hasStrings() && !hasThreads() &&
+           !hasBuffers() && !hasTables() && !hasFunctions() && !hasTyvars();
+}
+
 bool NormalizedType::shouldSuppressErrors() const
 {
     return hasErrors() || get<AnyType>(tops);
@@ -561,22 +567,21 @@ NormalizationResult Normalizer::isInhabited(TypeId ty, Set<TypeId>& seen)
         return isInhabited(mtv->metatable, seen);
     }
 
-    if (fixNormalizeCaching())
-    {
-        std::shared_ptr<const NormalizedType> norm = normalize(ty);
-        return isInhabited(norm.get(), seen);
-    }
-    else
-    {
-        const NormalizedType* norm = DEPRECATED_normalize(ty);
-        return isInhabited(norm, seen);
-    }
+    std::shared_ptr<const NormalizedType> norm = normalize(ty);
+    return isInhabited(norm.get(), seen);
 }
 
 NormalizationResult Normalizer::isIntersectionInhabited(TypeId left, TypeId right)
 {
+    Set<TypeId> seen{nullptr};
+    return isIntersectionInhabited(left, right, seen);
+}
+
+NormalizationResult Normalizer::isIntersectionInhabited(TypeId left, TypeId right, Set<TypeId>& seenSet)
+{
     left = follow(left);
     right = follow(right);
+    // We're asking if intersection is inahbited between left and right but we've already seen them ....
 
     if (cacheInhabitance)
     {
@@ -584,12 +589,8 @@ NormalizationResult Normalizer::isIntersectionInhabited(TypeId left, TypeId righ
             return *result ? NormalizationResult::True : NormalizationResult::False;
     }
 
-    Set<TypeId> seen{nullptr};
-    seen.insert(left);
-    seen.insert(right);
-
     NormalizedType norm{builtinTypes};
-    NormalizationResult res = normalizeIntersections({left, right}, norm);
+    NormalizationResult res = normalizeIntersections({left, right}, norm, seenSet);
     if (res != NormalizationResult::True)
     {
         if (cacheInhabitance && res == NormalizationResult::False)
@@ -598,7 +599,7 @@ NormalizationResult Normalizer::isIntersectionInhabited(TypeId left, TypeId righ
         return res;
     }
 
-    NormalizationResult result = isInhabited(&norm, seen);
+    NormalizationResult result = isInhabited(&norm, seenSet);
 
     if (cacheInhabitance && result == NormalizationResult::True)
         cachedIsInhabitedIntersection[{left, right}] = true;
@@ -870,31 +871,6 @@ Normalizer::Normalizer(TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, Not
 {
 }
 
-const NormalizedType* Normalizer::DEPRECATED_normalize(TypeId ty)
-{
-    if (!arena)
-        sharedState->iceHandler->ice("Normalizing types outside a module");
-
-    auto found = cachedNormals.find(ty);
-    if (found != cachedNormals.end())
-        return found->second.get();
-
-    NormalizedType norm{builtinTypes};
-    Set<TypeId> seenSetTypes{nullptr};
-    NormalizationResult res = unionNormalWithTy(norm, ty, seenSetTypes);
-    if (res != NormalizationResult::True)
-        return nullptr;
-    if (norm.isUnknown())
-    {
-        clearNormal(norm);
-        norm.tops = builtinTypes->unknownType;
-    }
-    std::shared_ptr<NormalizedType> shared = std::make_shared<NormalizedType>(std::move(norm));
-    const NormalizedType* result = shared.get();
-    cachedNormals[ty] = std::move(shared);
-    return result;
-}
-
 static bool isCacheable(TypeId ty, Set<TypeId>& seen);
 
 static bool isCacheable(TypePackId tp, Set<TypeId>& seen)
@@ -949,9 +925,6 @@ static bool isCacheable(TypeId ty, Set<TypeId>& seen)
 
 static bool isCacheable(TypeId ty)
 {
-    if (!fixNormalizeCaching())
-        return true;
-
     Set<TypeId> seen{nullptr};
     return isCacheable(ty, seen);
 }
@@ -985,7 +958,7 @@ std::shared_ptr<const NormalizedType> Normalizer::normalize(TypeId ty)
     return shared;
 }
 
-NormalizationResult Normalizer::normalizeIntersections(const std::vector<TypeId>& intersections, NormalizedType& outType)
+NormalizationResult Normalizer::normalizeIntersections(const std::vector<TypeId>& intersections, NormalizedType& outType, Set<TypeId>& seenSet)
 {
     if (!arena)
         sharedState->iceHandler->ice("Normalizing types outside a module");
@@ -995,7 +968,7 @@ NormalizationResult Normalizer::normalizeIntersections(const std::vector<TypeId>
     Set<TypeId> seenSetTypes{nullptr};
     for (auto ty : intersections)
     {
-        NormalizationResult res = intersectNormalWithTy(norm, ty, seenSetTypes);
+        NormalizationResult res = intersectNormalWithTy(norm, ty, seenSet);
         if (res != NormalizationResult::True)
             return res;
     }
@@ -1743,20 +1716,13 @@ bool Normalizer::withinResourceLimits()
     return true;
 }
 
-NormalizationResult Normalizer::intersectNormalWithNegationTy(TypeId toNegate, NormalizedType& intersect, bool useDeprecated)
+NormalizationResult Normalizer::intersectNormalWithNegationTy(TypeId toNegate, NormalizedType& intersect)
 {
 
     std::optional<NormalizedType> negated;
-    if (useDeprecated)
-    {
-        const NormalizedType* normal = DEPRECATED_normalize(toNegate);
-        negated = negateNormal(*normal);
-    }
-    else
-    {
-        std::shared_ptr<const NormalizedType> normal = normalize(toNegate);
-        negated = negateNormal(*normal);
-    }
+
+    std::shared_ptr<const NormalizedType> normal = normalize(toNegate);
+    negated = negateNormal(*normal);
 
     if (!negated)
         return NormalizationResult::False;
@@ -1911,16 +1877,8 @@ NormalizationResult Normalizer::unionNormalWithTy(NormalizedType& here, TypeId t
     {
         std::optional<NormalizedType> tn;
 
-        if (fixNormalizeCaching())
-        {
-            std::shared_ptr<const NormalizedType> thereNormal = normalize(ntv->ty);
-            tn = negateNormal(*thereNormal);
-        }
-        else
-        {
-            const NormalizedType* thereNormal = DEPRECATED_normalize(ntv->ty);
-            tn = negateNormal(*thereNormal);
-        }
+        std::shared_ptr<const NormalizedType> thereNormal = normalize(ntv->ty);
+        tn = negateNormal(*thereNormal);
 
         if (!tn)
             return NormalizationResult::False;
@@ -2519,7 +2477,7 @@ std::optional<TypePackId> Normalizer::intersectionOfTypePacks(TypePackId here, T
         return arena->addTypePack({});
 }
 
-std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there)
+std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there, Set<TypeId>& seenSet)
 {
     if (here == there)
         return here;
@@ -2600,8 +2558,33 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
                         // if the intersection of the read types of a property is uninhabited, the whole table is `never`.
                         if (fixReduceStackPressure())
                         {
-                            if (normalizeAwayUninhabitableTables() &&
-                                NormalizationResult::True != isIntersectionInhabited(*hprop.readTy, *tprop.readTy))
+                            // We've seen these table prop elements before and we're about to ask if their intersection
+                            // is inhabited
+                            if (fixCyclicTablesBlowingStack())
+                            {
+                                if (seenSet.contains(*hprop.readTy) && seenSet.contains(*tprop.readTy))
+                                {
+                                    seenSet.erase(*hprop.readTy);
+                                    seenSet.erase(*tprop.readTy);
+                                    return {builtinTypes->neverType};
+                                }
+                                else
+                                {
+                                    seenSet.insert(*hprop.readTy);
+                                    seenSet.insert(*tprop.readTy);
+                                }
+                            }
+
+                            NormalizationResult res = isIntersectionInhabited(*hprop.readTy, *tprop.readTy, seenSet);
+
+                            // Cleanup
+                            if (fixCyclicTablesBlowingStack())
+                            {
+                                seenSet.erase(*hprop.readTy);
+                                seenSet.erase(*tprop.readTy);
+                            }
+
+                            if (normalizeAwayUninhabitableTables() && NormalizationResult::True != res)
                                 return {builtinTypes->neverType};
                         }
                         else
@@ -2720,7 +2703,7 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     if (tmtable && hmtable)
     {
         // NOTE: this assumes metatables are ivariant
-        if (std::optional<TypeId> mtable = intersectionOfTables(hmtable, tmtable))
+        if (std::optional<TypeId> mtable = intersectionOfTables(hmtable, tmtable, seenSet))
         {
             if (table == htable && *mtable == hmtable)
                 return here;
@@ -2750,12 +2733,12 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         return table;
 }
 
-void Normalizer::intersectTablesWithTable(TypeIds& heres, TypeId there)
+void Normalizer::intersectTablesWithTable(TypeIds& heres, TypeId there, Set<TypeId>& seenSetTypes)
 {
     TypeIds tmp;
     for (TypeId here : heres)
     {
-        if (std::optional<TypeId> inter = intersectionOfTables(here, there))
+        if (std::optional<TypeId> inter = intersectionOfTables(here, there, seenSetTypes))
             tmp.insert(*inter);
     }
     heres.retain(tmp);
@@ -2769,7 +2752,8 @@ void Normalizer::intersectTables(TypeIds& heres, const TypeIds& theres)
     {
         for (TypeId there : theres)
         {
-            if (std::optional<TypeId> inter = intersectionOfTables(here, there))
+            Set<TypeId> seenSetTypes{nullptr};
+            if (std::optional<TypeId> inter = intersectionOfTables(here, there, seenSetTypes))
                 tmp.insert(*inter);
         }
     }
@@ -3137,7 +3121,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
     {
         TypeIds tables = std::move(here.tables);
         clearNormal(here);
-        intersectTablesWithTable(tables, there);
+        intersectTablesWithTable(tables, there, seenSetTypes);
         here.tables = std::move(tables);
     }
     else if (get<ClassType>(there))
@@ -3211,50 +3195,17 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
             subtractSingleton(here, follow(ntv->ty));
         else if (get<ClassType>(t))
         {
-            if (fixNormalizeCaching())
-            {
-                NormalizationResult res = intersectNormalWithNegationTy(t, here);
-                if (shouldEarlyExit(res))
-                    return res;
-            }
-            else
-            {
-                NormalizationResult res = intersectNormalWithNegationTy(t, here, /* useDeprecated */ true);
-                if (shouldEarlyExit(res))
-                    return res;
-            }
+            NormalizationResult res = intersectNormalWithNegationTy(t, here);
+            if (shouldEarlyExit(res))
+                return res;
         }
         else if (const UnionType* itv = get<UnionType>(t))
         {
-            if (fixNormalizeCaching())
+            for (TypeId part : itv->options)
             {
-                for (TypeId part : itv->options)
-                {
-                    NormalizationResult res = intersectNormalWithNegationTy(part, here);
-                    if (shouldEarlyExit(res))
-                        return res;
-                }
-            }
-            else
-            {
-                if (fixNormalizeCaching())
-                {
-                    for (TypeId part : itv->options)
-                    {
-                        NormalizationResult res = intersectNormalWithNegationTy(part, here);
-                        if (shouldEarlyExit(res))
-                            return res;
-                    }
-                }
-                else
-                {
-                    for (TypeId part : itv->options)
-                    {
-                        NormalizationResult res = intersectNormalWithNegationTy(part, here, /* useDeprecated */ true);
-                        if (shouldEarlyExit(res))
-                            return res;
-                    }
-                }
+                NormalizationResult res = intersectNormalWithNegationTy(part, here);
+                if (shouldEarlyExit(res))
+                    return res;
             }
         }
         else if (get<AnyType>(t))

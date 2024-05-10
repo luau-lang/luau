@@ -204,25 +204,21 @@ bool Unifier2::unify(TypeId subTy, TypeId superTy)
 
     auto subAny = get<AnyType>(subTy);
     auto superAny = get<AnyType>(superTy);
-    if (subAny && superAny)
-        return true;
-    else if (subAny && superFn)
-    {
-        // If `any` is the subtype, then we can propagate that inward.
-        bool argResult = unify(superFn->argTypes, builtinTypes->anyTypePack);
-        bool retResult = unify(builtinTypes->anyTypePack, superFn->retTypes);
-        return argResult && retResult;
-    }
-    else if (subFn && superAny)
-    {
-        // If `any` is the supertype, then we can propagate that inward.
-        bool argResult = unify(builtinTypes->anyTypePack, subFn->argTypes);
-        bool retResult = unify(subFn->retTypes, builtinTypes->anyTypePack);
-        return argResult && retResult;
-    }
 
     auto subTable = getMutable<TableType>(subTy);
     auto superTable = get<TableType>(superTy);
+
+    if (subAny && superAny)
+        return true;
+    else if (subAny && superFn)
+        return unify(subAny, superFn);
+    else if (subFn && superAny)
+        return unify(subFn, superAny);
+    else if (subAny && superTable)
+        return unify(subAny, superTable);
+    else if (subTable && superAny)
+        return unify(subTable, superAny);
+
     if (subTable && superTable)
     {
         // `boundTo` works like a bound type, and therefore we'd replace it
@@ -451,7 +447,16 @@ bool Unifier2::unify(TableType* subTable, const TableType* superTable)
          * an indexer, we therefore conclude that the unsealed table has the
          * same indexer.
          */
-        subTable->indexer = *superTable->indexer;
+
+        TypeId indexType = superTable->indexer->indexType;
+        if (TypeId* subst = genericSubstitutions.find(indexType))
+            indexType = *subst;
+
+        TypeId indexResultType = superTable->indexer->indexResultType;
+        if (TypeId* subst = genericSubstitutions.find(indexResultType))
+            indexResultType = *subst;
+
+        subTable->indexer = TableIndexer{indexType, indexResultType};
     }
 
     return result;
@@ -460,6 +465,62 @@ bool Unifier2::unify(TableType* subTable, const TableType* superTable)
 bool Unifier2::unify(const MetatableType* subMetatable, const MetatableType* superMetatable)
 {
     return unify(subMetatable->metatable, superMetatable->metatable) && unify(subMetatable->table, superMetatable->table);
+}
+
+bool Unifier2::unify(const AnyType* subAny, const FunctionType* superFn)
+{
+    // If `any` is the subtype, then we can propagate that inward.
+    bool argResult = unify(superFn->argTypes, builtinTypes->anyTypePack);
+    bool retResult = unify(builtinTypes->anyTypePack, superFn->retTypes);
+    return argResult && retResult;
+}
+
+bool Unifier2::unify(const FunctionType* subFn, const AnyType* superAny)
+{
+    // If `any` is the supertype, then we can propagate that inward.
+    bool argResult = unify(builtinTypes->anyTypePack, subFn->argTypes);
+    bool retResult = unify(subFn->retTypes, builtinTypes->anyTypePack);
+    return argResult && retResult;
+}
+
+bool Unifier2::unify(const AnyType* subAny, const TableType* superTable)
+{
+    for (const auto& [propName, prop]: superTable->props)
+    {
+        if (prop.readTy)
+            unify(builtinTypes->anyType, *prop.readTy);
+
+        if (prop.writeTy)
+            unify(*prop.writeTy, builtinTypes->anyType);
+    }
+
+    if (superTable->indexer)
+    {
+        unify(builtinTypes->anyType, superTable->indexer->indexType);
+        unify(builtinTypes->anyType, superTable->indexer->indexResultType);
+    }
+
+    return true;
+}
+
+bool Unifier2::unify(const TableType* subTable, const AnyType* superAny)
+{
+    for (const auto& [propName, prop]: subTable->props)
+    {
+        if (prop.readTy)
+            unify(*prop.readTy, builtinTypes->anyType);
+
+        if (prop.writeTy)
+            unify(builtinTypes->anyType, *prop.writeTy);
+    }
+
+    if (subTable->indexer)
+    {
+        unify(subTable->indexer->indexType, builtinTypes->anyType);
+        unify(subTable->indexer->indexResultType, builtinTypes->anyType);
+    }
+
+    return true;
 }
 
 // FIXME?  This should probably return an ErrorVec or an optional<TypeError>
@@ -596,6 +657,43 @@ struct FreeTypeSearcher : TypeVisitor
         }
     }
 
+    DenseHashSet<const void*> seenPositive{nullptr};
+    DenseHashSet<const void*> seenNegative{nullptr};
+
+    bool seenWithPolarity(const void* ty)
+    {
+        switch (polarity)
+        {
+            case Positive:
+            {
+                if (seenPositive.contains(ty))
+                    return true;
+
+                seenPositive.insert(ty);
+                return false;
+            }
+            case Negative:
+            {
+                if (seenNegative.contains(ty))
+                    return true;
+
+                seenNegative.insert(ty);
+                return false;
+            }
+            case Both:
+            {
+                if (seenPositive.contains(ty) && seenNegative.contains(ty))
+                    return true;
+
+                seenPositive.insert(ty);
+                seenNegative.insert(ty);
+                return false;
+            }
+        }
+
+        return false;
+    }
+
     // The keys in these maps are either TypeIds or TypePackIds. It's safe to
     // mix them because we only use these pointers as unique keys.  We never
     // indirect them.
@@ -604,12 +702,18 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty) override
     {
+        if (seenWithPolarity(ty))
+            return false;
+
         LUAU_ASSERT(ty);
         return true;
     }
 
     bool visit(TypeId ty, const FreeType& ft) override
     {
+        if (seenWithPolarity(ty))
+            return false;
+
         if (!subsumes(scope, ft.scope))
             return true;
 
@@ -632,6 +736,9 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const TableType& tt) override
     {
+        if (seenWithPolarity(ty))
+            return false;
+
         if ((tt.state == TableState::Free || tt.state == TableState::Unsealed) && subsumes(scope, tt.scope))
         {
             switch (polarity)
@@ -675,6 +782,9 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const FunctionType& ft) override
     {
+        if (seenWithPolarity(ty))
+            return false;
+
         flip();
         traverse(ft.argTypes);
         flip();
@@ -691,6 +801,9 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypePackId tp, const FreeTypePack& ftp) override
     {
+        if (seenWithPolarity(tp))
+            return false;
+
         if (!subsumes(scope, ftp.scope))
             return true;
 

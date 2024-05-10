@@ -17,7 +17,6 @@ LUAU_FASTINT(LuauRecursionLimit);
 LUAU_FASTINT(LuauTypeLengthLimit);
 LUAU_FASTINT(LuauParseErrorLimit);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauReadWritePropertySyntax);
 
 namespace
 {
@@ -3156,8 +3155,6 @@ TEST_CASE_FIXTURE(Fixture, "cannot_use_@_as_variable_name")
 
 TEST_CASE_FIXTURE(Fixture, "read_write_table_properties")
 {
-    ScopedFastFlag sff{FFlag::LuauReadWritePropertySyntax, true};
-
     auto pr = tryParse(R"(
         type A = {read x: number}
         type B = {write x: number}

@@ -4,6 +4,12 @@ print('testing vectors')
 -- detect vector size
 local vector_size = if pcall(function() return vector(0, 0, 0).w end) then 4 else 3
 
+function ecall(fn, ...)
+	local ok, err = pcall(fn, ...)
+	assert(not ok)
+	return err:sub((err:find(": ") or -1) + 2, #err)
+end
+
 -- equality
 assert(vector(1, 2, 3) == vector(1, 2, 3))
 assert(vector(0, 1, 2) == vector(-0, 1, 2))
@@ -92,15 +98,38 @@ assert(nanv ~= nanv);
 -- __index
 assert(vector(1, 2, 2).Magnitude == 3)
 assert(vector(0, 0, 0)['Dot'](vector(1, 2, 4), vector(5, 6, 7)) == 45)
+assert(vector(2, 0, 0).Unit == vector(1, 0, 0))
 
 -- __namecall
 assert(vector(1, 2, 4):Dot(vector(5, 6, 7)) == 45)
+assert(ecall(function() vector(1, 2, 4):Dot() end) == "missing argument #2 (vector expected)")
+assert(ecall(function() vector(1, 2, 4):Dot("a") end) == "invalid argument #2 (vector expected, got string)")
+
+local function doDot1(a: vector, b)
+	return a:Dot(b)
+end
+
+local function doDot2(a: vector, b)
+	return (a:Dot(b))
+end
+
+local v124 = vector(1, 2, 4)
+
+assert(doDot1(v124, vector(5, 6, 7)) == 45)
+assert(doDot2(v124, vector(5, 6, 7)) == 45)
+assert(ecall(function() doDot1(v124, "a") end) == "invalid argument #2 (vector expected, got string)")
+assert(ecall(function() doDot2(v124, "a") end) == "invalid argument #2 (vector expected, got string)")
+assert(select("#", doDot1(v124, vector(5, 6, 7))) == 1)
+assert(select("#", doDot2(v124, vector(5, 6, 7))) == 1)
 
 -- can't use vector with NaN components as table key
 assert(pcall(function() local t = {} t[vector(0/0, 2, 3)] = 1 end) == false)
 assert(pcall(function() local t = {} t[vector(1, 0/0, 3)] = 1 end) == false)
 assert(pcall(function() local t = {} t[vector(1, 2, 0/0)] = 1 end) == false)
 assert(pcall(function() local t = {} rawset(t, vector(0/0, 2, 3), 1) end) == false)
+
+assert(vector(1, 0, 0):Cross(vector(0, 1, 0)) == vector(0, 0, 1))
+assert(vector(0, 1, 0):Cross(vector(1, 0, 0)) == vector(0, 0, -1))
 
 -- make sure we cover both builtin and C impl
 assert(vector(1, 2, 4) == vector("1", "2", "4"))

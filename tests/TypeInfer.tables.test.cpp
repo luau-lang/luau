@@ -21,7 +21,6 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping);
 LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering);
 LUAU_FASTFLAG(DebugLuauSharedSelf);
-LUAU_FASTFLAG(LuauReadWritePropertySyntax);
 LUAU_FASTFLAG(LuauMetatableInstantiationCloneCheck);
 
 LUAU_DYNAMIC_FASTFLAG(LuauImproveNonFunctionCallError)
@@ -2729,7 +2728,9 @@ TEST_CASE_FIXTURE(Fixture, "tables_get_names_from_their_locals")
 
 TEST_CASE_FIXTURE(Fixture, "should_not_unblock_table_type_twice")
 {
-    ScopedFastFlag sff(FFlag::DebugLuauDeferredConstraintResolution, true);
+    // don't run this when the DCR flag isn't set
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
 
     check(R"(
         local timer = peek(timerQueue)
@@ -4014,7 +4015,6 @@ TEST_CASE_FIXTURE(Fixture, "identify_all_problematic_table_fields")
 TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported")
 {
     ScopedFastFlag sff[] = {
-        {FFlag::LuauReadWritePropertySyntax, true},
         {FFlag::DebugLuauDeferredConstraintResolution, false},
     };
 
@@ -4040,8 +4040,6 @@ TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported
 
 TEST_CASE_FIXTURE(Fixture, "read_ond_write_only_indexers_are_unsupported")
 {
-    ScopedFastFlag sff{FFlag::LuauReadWritePropertySyntax, true};
-
     CheckResult result = check(R"(
         type T = {read [string]: number}
         type U = {write [string]: boolean}
@@ -4155,7 +4153,9 @@ TEST_CASE_FIXTURE(Fixture, "write_annotations_are_unsupported_even_with_the_new_
 
 TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauReadWritePropertySyntax, true}, {FFlag::DebugLuauDeferredConstraintResolution, false}};
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauDeferredConstraintResolution, false}
+    };
 
     CheckResult result = check(R"(
         type W = {read x: number}
@@ -4179,7 +4179,9 @@ TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported
 
 TEST_CASE_FIXTURE(Fixture, "read_ond_write_only_indexers_are_unsupported")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauReadWritePropertySyntax, true}, {FFlag::DebugLuauDeferredConstraintResolution, false}};
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauDeferredConstraintResolution, false}
+    };
 
     CheckResult result = check(R"(
         type T = {read [string]: number}
@@ -4199,7 +4201,9 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
 
-    ScopedFastFlag sff[] = {{FFlag::LuauReadWritePropertySyntax, true}, {FFlag::DebugLuauDeferredConstraintResolution, true}};
+    ScopedFastFlag sff[] = {
+        {FFlag::DebugLuauDeferredConstraintResolution, true}
+    };
 
     CheckResult result = check(R"(
         function oc(player, speaker)
@@ -4437,6 +4441,23 @@ TEST_CASE_FIXTURE(Fixture, "insert_a_and_f_of_a_into_table_res_in_a_loop")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "ipairs_adds_an_unbounded_indexer")
+{
+    CheckResult result = check(R"(
+        --!strict
+
+        local a = {}
+        ipairs(a)
+    )");
+
+    // The old solver erroneously leaves a free type dangling here.  The new
+    // solver does better.
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK("{unknown}" == toString(requireType("a"), {true}));
+    else
+        CHECK("{a}" == toString(requireType("a"), {true}));
 }
 
 TEST_SUITE_END();

@@ -21,6 +21,11 @@ using namespace Luau::CodeGen;
 class IrBuilderFixture
 {
 public:
+    IrBuilderFixture()
+        : build(hooks)
+    {
+    }
+
     void constantFold()
     {
         for (IrBlock& block : build.function.blocks)
@@ -109,6 +114,7 @@ public:
         computeCfgDominanceTreeChildren(build.function);
     }
 
+    HostIrHooks hooks;
     IrBuilder build;
 
     // Luau.VM headers are not accessible

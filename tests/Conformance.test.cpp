@@ -16,6 +16,7 @@
 
 #include "doctest.h"
 #include "ScopedFlags.h"
+#include "ConformanceIrHooks.h"
 
 #include <fstream>
 #include <string>
@@ -46,6 +47,13 @@ static lua_CompileOptions defaultOptions()
     copts.vectorType = "vector";
 
     return copts;
+}
+
+static Luau::CodeGen::CompilationOptions defaultCodegenOptions()
+{
+    Luau::CodeGen::CompilationOptions opts = {};
+    opts.flags = Luau::CodeGen::CodeGen_ColdFunctions;
+    return opts;
 }
 
 static int lua_collectgarbage(lua_State* L)
@@ -118,6 +126,15 @@ static int lua_vector_dot(lua_State* L)
     return 1;
 }
 
+static int lua_vector_cross(lua_State* L)
+{
+    const float* a = luaL_checkvector(L, 1);
+    const float* b = luaL_checkvector(L, 2);
+
+    lua_pushvector(L, a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]);
+    return 1;
+}
+
 static int lua_vector_index(lua_State* L)
 {
     const float* v = luaL_checkvector(L, 1);
@@ -126,6 +143,14 @@ static int lua_vector_index(lua_State* L)
     if (strcmp(name, "Magnitude") == 0)
     {
         lua_pushnumber(L, sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
+        return 1;
+    }
+
+    if (strcmp(name, "Unit") == 0)
+    {
+        float invSqrt = 1.0f / sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+
+        lua_pushvector(L, v[0] * invSqrt, v[1] * invSqrt, v[2] * invSqrt);
         return 1;
     }
 
@@ -144,6 +169,9 @@ static int lua_vector_namecall(lua_State* L)
     {
         if (strcmp(str, "Dot") == 0)
             return lua_vector_dot(L);
+
+        if (strcmp(str, "Cross") == 0)
+            return lua_vector_cross(L);
     }
 
     luaL_error(L, "%s is not a valid method of vector", luaL_checkstring(L, 1));
@@ -157,7 +185,8 @@ int lua_silence(lua_State* L)
 using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
 
 static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = nullptr, void (*yield)(lua_State* L) = nullptr,
-    lua_State* initialLuaState = nullptr, lua_CompileOptions* options = nullptr, bool skipCodegen = false)
+    lua_State* initialLuaState = nullptr, lua_CompileOptions* options = nullptr, bool skipCodegen = false,
+    Luau::CodeGen::CompilationOptions* codegenOptions = nullptr)
 {
 #ifdef LUAU_CONFORMANCE_SOURCE_DIR
     std::string path = LUAU_CONFORMANCE_SOURCE_DIR;
@@ -238,7 +267,11 @@ static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = n
     free(bytecode);
 
     if (result == 0 && codegen && !skipCodegen && luau_codegen_supported())
-        Luau::CodeGen::compile(L, -1, Luau::CodeGen::CodeGen_ColdFunctions);
+    {
+        Luau::CodeGen::CompilationOptions nativeOpts = codegenOptions ? *codegenOptions : defaultCodegenOptions();
+
+        Luau::CodeGen::compile(L, -1, nativeOpts);
+    }
 
     int status = (result == 0) ? lua_resume(L, nullptr, 0) : LUA_ERRSYNTAX;
 
@@ -533,12 +566,51 @@ TEST_CASE("Pack")
 
 TEST_CASE("Vector")
 {
+    lua_CompileOptions copts = defaultOptions();
+    Luau::CodeGen::CompilationOptions nativeOpts = defaultCodegenOptions();
+
+    SUBCASE("NoIrHooks")
+    {
+        SUBCASE("O0")
+        {
+            copts.optimizationLevel = 0;
+        }
+        SUBCASE("O1")
+        {
+            copts.optimizationLevel = 1;
+        }
+        SUBCASE("O2")
+        {
+            copts.optimizationLevel = 2;
+        }
+    }
+    SUBCASE("IrHooks")
+    {
+        nativeOpts.hooks.vectorAccessBytecodeType = vectorAccessBytecodeType;
+        nativeOpts.hooks.vectorNamecallBytecodeType = vectorNamecallBytecodeType;
+        nativeOpts.hooks.vectorAccess = vectorAccess;
+        nativeOpts.hooks.vectorNamecall = vectorNamecall;
+
+        SUBCASE("O0")
+        {
+            copts.optimizationLevel = 0;
+        }
+        SUBCASE("O1")
+        {
+            copts.optimizationLevel = 1;
+        }
+        SUBCASE("O2")
+        {
+            copts.optimizationLevel = 2;
+        }
+    }
+
     runConformance(
         "vector.lua",
         [](lua_State* L) {
             setupVectorHelpers(L);
         },
-        nullptr, nullptr, nullptr);
+        nullptr, nullptr, &copts, false, &nativeOpts);
 }
 
 static void populateRTTI(lua_State* L, Luau::TypeId type)
@@ -2141,7 +2213,10 @@ TEST_CASE("HugeFunction")
     REQUIRE(result == 0);
 
     if (codegen && luau_codegen_supported())
-        Luau::CodeGen::compile(L, -1, Luau::CodeGen::CodeGen_ColdFunctions);
+    {
+        Luau::CodeGen::CompilationOptions nativeOptions{Luau::CodeGen::CodeGen_ColdFunctions};
+        Luau::CodeGen::compile(L, -1, nativeOptions);
+    }
 
     int status = lua_resume(L, nullptr, 0);
     REQUIRE(status == 0);
@@ -2263,8 +2338,9 @@ TEST_CASE("IrInstructionLimit")
 
     REQUIRE(result == 0);
 
+    Luau::CodeGen::CompilationOptions nativeOptions{Luau::CodeGen::CodeGen_ColdFunctions};
     Luau::CodeGen::CompilationStats nativeStats = {};
-    Luau::CodeGen::CompilationResult nativeResult = Luau::CodeGen::compile(L, -1, Luau::CodeGen::CodeGen_ColdFunctions, &nativeStats);
+    Luau::CodeGen::CompilationResult nativeResult = Luau::CodeGen::compile(L, -1, nativeOptions, &nativeStats);
 
     // Limit is not hit immediately, so with some functions compiled it should be a success
     CHECK(nativeResult.result == Luau::CodeGen::CodeGenCompilationResult::Success);

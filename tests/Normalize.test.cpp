@@ -11,7 +11,6 @@
 #include "Luau/BuiltinDefinitions.h"
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAG(LuauFixNormalizeCaching)
 LUAU_FASTFLAG(LuauNormalizeNotUnknownIntersection)
 LUAU_FASTFLAG(LuauFixCyclicUnionsOfIntersections);
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
@@ -428,7 +427,6 @@ struct NormalizeFixture : Fixture
     UnifierSharedState unifierState{&iceHandler};
     Normalizer normalizer{&arena, builtinTypes, NotNull{&unifierState}};
     Scope globalScope{builtinTypes->anyTypePack};
-    ScopedFastFlag fixNormalizeCaching{FFlag::LuauFixNormalizeCaching, true};
 
     NormalizeFixture()
     {

@@ -3,6 +3,7 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/BytecodeUtils.h"
+#include "Luau/CodeGen.h"
 #include "Luau/IrBuilder.h"
 #include "Luau/IrUtils.h"
 
@@ -14,6 +15,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenDirectUserdataFlow, false)
 LUAU_FASTFLAGVARIABLE(LuauCodegenFixVectorFields, false)
+LUAU_FASTFLAG(LuauCodegenAnalyzeHostVectorOps)
 
 namespace Luau
 {
@@ -1218,6 +1220,10 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
         }
         else
         {
+            if (FFlag::LuauCodegenAnalyzeHostVectorOps && build.hostHooks.vectorAccess &&
+                build.hostHooks.vectorAccess(build, field, str->len, ra, rb, pcpos))
+                return;
+
             build.inst(IrCmd::FALLBACK_GETTABLEKS, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
         }
 
@@ -1376,7 +1382,7 @@ void translateInstCapture(IrBuilder& build, const Instruction* pc, int pcpos)
     }
 }
 
-void translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
+bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
 {
     int ra = LUAU_INSN_A(*pc);
     int rb = LUAU_INSN_B(*pc);
@@ -1388,8 +1394,24 @@ void translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
     {
         build.loadAndCheckTag(build.vmReg(rb), LUA_TVECTOR, build.vmExit(pcpos));
 
+        if (FFlag::LuauCodegenAnalyzeHostVectorOps && build.hostHooks.vectorNamecall)
+        {
+            Instruction call = pc[2];
+            CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+
+            int callra = LUAU_INSN_A(call);
+            int nparams = LUAU_INSN_B(call) - 1;
+            int nresults = LUAU_INSN_C(call) - 1;
+
+            TString* str = gco2ts(build.function.proto->k[aux].value.gc);
+            const char* field = getstr(str);
+
+            if (build.hostHooks.vectorNamecall(build, field, str->len, callra, rb, nparams, nresults, pcpos))
+                return true;
+        }
+
         build.inst(IrCmd::FALLBACK_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
-        return;
+        return false;
     }
 
     if (FFlag::LuauCodegenDirectUserdataFlow && bcTypes.a == LBC_TYPE_USERDATA)
@@ -1397,7 +1419,7 @@ void translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
         build.loadAndCheckTag(build.vmReg(rb), LUA_TUSERDATA, build.vmExit(pcpos));
 
         build.inst(IrCmd::FALLBACK_NAMECALL, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
-        return;
+        return false;
     }
 
     IrOp next = build.blockAtInst(pcpos + getOpLength(LOP_NAMECALL));
@@ -1451,6 +1473,8 @@ void translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
     build.inst(IrCmd::JUMP, next);
 
     build.beginBlock(next);
+
+    return false;
 }
 
 void translateInstAndX(IrBuilder& build, const Instruction* pc, int pcpos, IrOp c)

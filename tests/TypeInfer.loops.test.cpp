@@ -1010,7 +1010,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iterate_over_properties_nonstrict")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_should_not_add_an_indexer")
+TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_should_not_retroactively_add_an_indexer")
 {
     CheckResult result = check(R"(
         --!strict
@@ -1025,7 +1025,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_should_not_add_an_indexer")
     )");
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
+    {
+        // We regress a little here: The old solver would typecheck the first
+        // access to prices.wwwww on a table that had no indexer, and the second
+        // on a table that does.
+        LUAU_REQUIRE_ERROR_COUNT(0, result);
+    }
     else
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
@@ -1112,6 +1117,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "forin_metatable_iter_mm")
 
     CHECK_EQ("number", toString(requireTypeAtPosition({6, 18})));
     CHECK_EQ("number", toString(requireTypeAtPosition({6, 21})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_preserves_error_suppression")
+{
+    CheckResult result = check(R"(
+        function first(x: any)
+            for k, v in pairs(x) do
+                print(k, v)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("any" == toString(requireTypeAtPosition({3, 22})));
+    CHECK("any" == toString(requireTypeAtPosition({3, 25})));
 }
 
 TEST_SUITE_END();

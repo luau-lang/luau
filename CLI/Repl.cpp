@@ -144,7 +144,10 @@ static int lua_require(lua_State* L)
     if (luau_load(ML, resolvedRequire.chunkName.c_str(), bytecode.data(), bytecode.size(), 0) == 0)
     {
         if (codegen)
-            Luau::CodeGen::compile(ML, -1);
+        {
+            Luau::CodeGen::CompilationOptions nativeOptions;
+            Luau::CodeGen::compile(ML, -1, nativeOptions);
+        }
 
         if (coverageActive())
             coverageTrack(ML, -1);
@@ -602,7 +605,10 @@ static bool runFile(const char* name, lua_State* GL, bool repl)
     if (luau_load(L, chunkname.c_str(), bytecode.data(), bytecode.size(), 0) == 0)
     {
         if (codegen)
-            Luau::CodeGen::compile(L, -1);
+        {
+            Luau::CodeGen::CompilationOptions nativeOptions;
+            Luau::CodeGen::compile(L, -1, nativeOptions);
+        }
 
         if (coverageActive())
             coverageTrack(L, -1);

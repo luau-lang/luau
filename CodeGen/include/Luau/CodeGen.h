@@ -66,6 +66,39 @@ struct CompilationResult
     }
 };
 
+struct IrBuilder;
+
+using HostVectorOperationBytecodeType = uint8_t (*)(const char* member, size_t memberLength);
+using HostVectorAccessHandler = bool (*)(IrBuilder& builder, const char* member, size_t memberLength, int resultReg, int sourceReg, int pcpos);
+using HostVectorNamecallHandler = bool (*)(
+    IrBuilder& builder, const char* member, size_t memberLength, int argResReg, int sourceReg, int params, int results, int pcpos);
+
+struct HostIrHooks
+{
+    // Suggest result type of a vector field access
+    HostVectorOperationBytecodeType vectorAccessBytecodeType = nullptr;
+
+    // Suggest result type of a vector function namecall
+    HostVectorOperationBytecodeType vectorNamecallBytecodeType = nullptr;
+
+    // Handle vector value field access
+    // 'sourceReg' is guaranteed to be a vector
+    // Guards should take a VM exit to 'pcpos'
+    HostVectorAccessHandler vectorAccess = nullptr;
+
+    // Handle namecalled performed on a vector value
+    // 'sourceReg' (self argument) is guaranteed to be a vector
+    // All other arguments can be of any type
+    // Guards should take a VM exit to 'pcpos'
+    HostVectorNamecallHandler vectorNamecall = nullptr;
+};
+
+struct CompilationOptions
+{
+    unsigned int flags = 0;
+    HostIrHooks hooks;
+};
+
 struct CompilationStats
 {
     size_t bytecodeSizeBytes = 0;
@@ -118,8 +151,11 @@ void setNativeExecutionEnabled(lua_State* L, bool enabled);
 using ModuleId = std::array<uint8_t, 16>;
 
 // Builds target function and all inner functions
-CompilationResult compile(lua_State* L, int idx, unsigned int flags = 0, CompilationStats* stats = nullptr);
-CompilationResult compile(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags = 0, CompilationStats* stats = nullptr);
+CompilationResult compile(lua_State* L, int idx, unsigned int flags, CompilationStats* stats = nullptr);
+CompilationResult compile(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats = nullptr);
+
+CompilationResult compile(lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats = nullptr);
+CompilationResult compile(const ModuleId& moduleId, lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats = nullptr);
 
 using AnnotatorFn = void (*)(void* context, std::string& result, int fid, int instpos);
 
@@ -164,7 +200,7 @@ struct AssemblyOptions
 
     Target target = Host;
 
-    unsigned int flags = 0;
+    CompilationOptions compilationOptions;
 
     bool outputBinary = false;
 

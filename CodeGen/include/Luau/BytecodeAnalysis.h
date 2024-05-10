@@ -13,10 +13,11 @@ namespace CodeGen
 {
 
 struct IrFunction;
+struct HostIrHooks;
 
 void loadBytecodeTypeInfo(IrFunction& function);
 void buildBytecodeBlocks(IrFunction& function, const std::vector<uint8_t>& jumpTargets);
-void analyzeBytecodeTypes(IrFunction& function);
+void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks);
 
 } // namespace CodeGen
 } // namespace Luau

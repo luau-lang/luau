@@ -27,6 +27,7 @@
 #include <utility>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
+LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverIncludeDependencies, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogBindings, false);
 LUAU_FASTINTVARIABLE(LuauSolverRecursionLimit, 500);
 
@@ -251,6 +252,15 @@ void dump(ConstraintSolver* cs, ToStringOptions& opts)
         auto it = cs->blockedConstraints.find(c);
         int blockCount = it == cs->blockedConstraints.end() ? 0 : int(it->second);
         printf("\t%d\t%s\n", blockCount, toString(*c, opts).c_str());
+
+        if (FFlag::DebugLuauLogSolverIncludeDependencies)
+        {
+            for (NotNull<Constraint> dep : c->dependencies)
+            {
+                if (std::find(cs->unsolvedConstraints.begin(), cs->unsolvedConstraints.end(), dep) != cs->unsolvedConstraints.end())
+                    printf("\t\t|\t%s\n", toString(*dep, opts).c_str());
+            }
+        }
     }
 }
 
@@ -305,7 +315,7 @@ ConstraintSolver::ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope
         unsolvedConstraints.push_back(c);
 
         // initialize the reference counts for the free types in this constraint.
-        for (auto ty : c->getFreeTypes())
+        for (auto ty : c->getMaybeMutatedFreeTypes())
         {
             // increment the reference count for `ty`
             auto [refCount, _] = unresolvedConstraints.try_insert(ty, 0);
@@ -394,7 +404,7 @@ void ConstraintSolver::run()
                 unsolvedConstraints.erase(unsolvedConstraints.begin() + i);
 
                 // decrement the referenced free types for this constraint if we dispatched successfully!
-                for (auto ty : c->getFreeTypes())
+                for (auto ty : c->getMaybeMutatedFreeTypes())
                 {
                     // this is a little weird, but because we're only counting free types in subtyping constraints,
                     // some constraints (like unpack) might actually produce _more_ references to a free type.
@@ -720,8 +730,6 @@ bool ConstraintSolver::tryDispatch(const NameConstraint& c, NotNull<const Constr
     {
         // nothing (yet)
     }
-    else
-        return block(c.namedType, constraint);
 
     return true;
 }
@@ -771,6 +779,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
 
     auto bindResult = [this, &c, constraint](TypeId result) {
         LUAU_ASSERT(get<PendingExpansionType>(c.target));
+        shiftReferences(c.target, result);
         emplaceType<BoundType>(asMutable(c.target), result);
         unblock(c.target, constraint->location);
     };
@@ -1190,6 +1199,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
             {
                 if (!lambdaExpr->args.data[j]->annotation && get<FreeType>(follow(lambdaArgTys[j])))
                 {
+                    shiftReferences(lambdaArgTys[j], expectedLambdaArgTys[j]);
                     emplaceType<BoundType>(asMutable(lambdaArgTys[j]), expectedLambdaArgTys[j]);
                 }
             }
@@ -1242,6 +1252,7 @@ bool ConstraintSolver::tryDispatch(const PrimitiveTypeConstraint& c, NotNull<con
     else if (expectedType && maybeSingleton(*expectedType))
         bindTo = freeType->lowerBound;
 
+    shiftReferences(c.freeType, bindTo);
     emplaceType<BoundType>(asMutable(c.freeType), bindTo);
 
     return true;
@@ -1551,7 +1562,11 @@ bool ConstraintSolver::tryDispatchHasIndexer(
         if (0 == results.size())
             emplaceType<BoundType>(asMutable(resultType), builtinTypes->errorType);
         else if (1 == results.size())
-            emplaceType<BoundType>(asMutable(resultType), *results.begin());
+        {
+            TypeId firstResult = *results.begin();
+            shiftReferences(resultType, firstResult);
+            emplaceType<BoundType>(asMutable(resultType), firstResult);
+        }
         else
             emplaceType<UnionType>(asMutable(resultType), std::vector(results.begin(), results.end()));
 
@@ -1716,7 +1731,10 @@ bool ConstraintSolver::tryDispatchUnpack1(NotNull<const Constraint> constraint, 
         --lt->blockCount;
 
         if (0 == lt->blockCount)
+        {
+            shiftReferences(ty, lt->domain);
             emplaceType<BoundType>(asMutable(ty), lt->domain);
+        }
     };
 
     if (auto ut = get<UnionType>(resultTy))
@@ -1732,6 +1750,7 @@ bool ConstraintSolver::tryDispatchUnpack1(NotNull<const Constraint> constraint, 
             // constitute any meaningful constraint, so we replace it
             // with a free type.
             TypeId f = freshType(arena, builtinTypes, constraint->scope);
+            shiftReferences(resultTy, f);
             emplaceType<BoundType>(asMutable(resultTy), f);
         }
         else
@@ -1798,7 +1817,10 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
             --lt->blockCount;
 
             if (0 == lt->blockCount)
+            {
+                shiftReferences(resultTy, lt->domain);
                 emplaceType<BoundType>(asMutable(resultTy), lt->domain);
+            }
         }
         else if (get<BlockedType>(resultTy) || get<PendingExpansionType>(resultTy))
         {
@@ -1977,7 +1999,10 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
                     LUAU_ASSERT(0 <= lt->blockCount);
 
                     if (0 == lt->blockCount)
+                    {
+                        shiftReferences(ty, lt->domain);
                         emplaceType<BoundType>(asMutable(ty), lt->domain);
+                    }
                 }
             }
         }
@@ -2395,10 +2420,15 @@ void ConstraintSolver::bindBlockedType(TypeId blockedTy, TypeId resultTy, TypeId
 
         LUAU_ASSERT(freeScope);
 
-        emplaceType<BoundType>(asMutable(blockedTy), arena->freshType(freeScope));
+        TypeId freeType = arena->freshType(freeScope);
+        shiftReferences(blockedTy, freeType);
+        emplaceType<BoundType>(asMutable(blockedTy), freeType);
     }
     else
+    {
+        shiftReferences(blockedTy, resultTy);
         emplaceType<BoundType>(asMutable(blockedTy), resultTy);
+    }
 }
 
 bool ConstraintSolver::block_(BlockedConstraintId target, NotNull<const Constraint> constraint)
@@ -2700,10 +2730,43 @@ void ConstraintSolver::reportError(TypeError e)
     errors.back().moduleName = currentModuleName;
 }
 
+void ConstraintSolver::shiftReferences(TypeId source, TypeId target)
+{
+    target = follow(target);
+
+    // if the target isn't a reference counted type, there's nothing to do.
+    // this stops us from keeping unnecessary counts for e.g. primitive types.
+    if (!isReferenceCountedType(target))
+        return;
+
+    auto sourceRefs = unresolvedConstraints.find(source);
+    if (!sourceRefs)
+        return;
+
+    // we read out the count before proceeding to avoid hash invalidation issues.
+    size_t count = *sourceRefs;
+
+    auto [targetRefs, _] = unresolvedConstraints.try_insert(target, 0);
+    targetRefs += count;
+}
+
+std::optional<TypeId> ConstraintSolver::generalizeFreeType(NotNull<Scope> scope, TypeId type)
+{
+    if (get<FreeType>(type))
+    {
+        auto refCount = unresolvedConstraints.find(type);
+        if (!refCount || *refCount > 1)
+            return {};
+    }
+
+    Unifier2 u2{NotNull{arena}, builtinTypes, scope, NotNull{&iceReporter}};
+    return u2.generalize(type);
+}
+
 bool ConstraintSolver::hasUnresolvedConstraints(TypeId ty)
 {
     if (auto refCount = unresolvedConstraints.find(ty))
-        return *refCount > 0;
+        return *refCount > 1;
 
     return false;
 }

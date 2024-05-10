@@ -3272,9 +3272,9 @@ TEST_CASE_FIXTURE(ACFixture, "string_singleton_in_if_statement")
 // https://github.com/Roblox/luau/issues/858
 TEST_CASE_FIXTURE(ACFixture, "string_singleton_in_if_statement2")
 {
-    ScopedFastFlag sff[]{
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
-    };
+    // don't run this when the DCR flag isn't set
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
 
     check(R"(
         --!strict
