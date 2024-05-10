@@ -15,6 +15,7 @@
 
 LUAU_FASTFLAG(LuauLoadTypeInfo) // Because new VM typeinfo load changes the format used by Codegen, same flag is used
 LUAU_FASTFLAG(LuauTypeInfoLookupImprovement)
+LUAU_FASTFLAG(LuauCodegenAnalyzeHostVectorOps)
 
 namespace Luau
 {
@@ -23,8 +24,9 @@ namespace CodeGen
 
 constexpr unsigned kNoAssociatedBlockIndex = ~0u;
 
-IrBuilder::IrBuilder()
-    : constantMap({IrConstKind::Tag, ~0ull})
+IrBuilder::IrBuilder(const HostIrHooks& hostHooks)
+    : hostHooks(hostHooks)
+    , constantMap({IrConstKind::Tag, ~0ull})
 {
 }
 static bool hasTypedParameters_DEPRECATED(Proto* proto)
@@ -230,7 +232,7 @@ void IrBuilder::buildFunctionIr(Proto* proto)
     rebuildBytecodeBasicBlocks(proto);
 
     // Infer register tags in bytecode
-    analyzeBytecodeTypes(function);
+    analyzeBytecodeTypes(function, hostHooks);
 
     function.bcMapping.resize(proto->sizecode, {~0u, ~0u});
 
@@ -283,10 +285,10 @@ void IrBuilder::buildFunctionIr(Proto* proto)
 
             translateInst(op, pc, i);
 
-            if (fastcallSkipTarget != -1)
+            if (cmdSkipTarget != -1)
             {
-                nexti = fastcallSkipTarget;
-                fastcallSkipTarget = -1;
+                nexti = cmdSkipTarget;
+                cmdSkipTarget = -1;
             }
         }
 
@@ -613,7 +615,15 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstCapture(*this, pc, i);
         break;
     case LOP_NAMECALL:
-        translateInstNamecall(*this, pc, i);
+        if (FFlag::LuauCodegenAnalyzeHostVectorOps)
+        {
+            if (translateInstNamecall(*this, pc, i))
+                cmdSkipTarget = i + 3;
+        }
+        else
+        {
+            translateInstNamecall(*this, pc, i);
+        }
         break;
     case LOP_PREPVARARGS:
         inst(IrCmd::FALLBACK_PREPVARARGS, constUint(i), constInt(LUAU_INSN_A(*pc)));
@@ -654,7 +664,7 @@ void IrBuilder::handleFastcallFallback(IrOp fallbackOrUndef, const Instruction* 
     }
     else
     {
-        fastcallSkipTarget = i + skip + 2;
+        cmdSkipTarget = i + skip + 2;
     }
 }
 

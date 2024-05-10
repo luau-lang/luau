@@ -438,10 +438,13 @@ TEST_CASE("SharedAllocation")
 
     const ModuleId moduleId = {0x01};
 
+    CompilationOptions options;
+    options.flags = CodeGen_ColdFunctions;
+
     CompilationStats nativeStats1 = {};
     CompilationStats nativeStats2 = {};
-    const CompilationResult codeGenResult1 = Luau::CodeGen::compile(moduleId, L1.get(), -1, CodeGen_ColdFunctions, &nativeStats1);
-    const CompilationResult codeGenResult2 = Luau::CodeGen::compile(moduleId, L2.get(), -1, CodeGen_ColdFunctions, &nativeStats2);
+    const CompilationResult codeGenResult1 = Luau::CodeGen::compile(moduleId, L1.get(), -1, options, &nativeStats1);
+    const CompilationResult codeGenResult2 = Luau::CodeGen::compile(moduleId, L2.get(), -1, options, &nativeStats2);
     REQUIRE(codeGenResult1.result == CodeGenCompilationResult::Success);
     REQUIRE(codeGenResult2.result == CodeGenCompilationResult::Success);
 

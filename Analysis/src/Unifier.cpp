@@ -23,7 +23,6 @@ LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering, false)
 LUAU_FASTFLAGVARIABLE(LuauUnifierShouldNotCopyError, false)
-LUAU_FASTFLAG(LuauFixNormalizeCaching)
 
 namespace Luau
 {
@@ -580,28 +579,14 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     {
         if (normalize)
         {
-            if (FFlag::LuauFixNormalizeCaching)
-            {
-                // TODO: there are probably cheaper ways to check if any <: T.
-                std::shared_ptr<const NormalizedType> superNorm = normalizer->normalize(superTy);
+            // TODO: there are probably cheaper ways to check if any <: T.
+            std::shared_ptr<const NormalizedType> superNorm = normalizer->normalize(superTy);
 
-                if (!superNorm)
-                    return reportError(location, NormalizationTooComplex{});
+            if (!superNorm)
+                return reportError(location, NormalizationTooComplex{});
 
-                if (!log.get<AnyType>(superNorm->tops))
-                    failure = true;
-            }
-            else
-            {
-                // TODO: there are probably cheaper ways to check if any <: T.
-                const NormalizedType* superNorm = normalizer->DEPRECATED_normalize(superTy);
-
-                if (!superNorm)
-                    return reportError(location, NormalizationTooComplex{});
-
-                if (!log.get<AnyType>(superNorm->tops))
-                    failure = true;
-            }
+            if (!log.get<AnyType>(superNorm->tops))
+                failure = true;
         }
         else
             failure = true;
@@ -962,30 +947,15 @@ void Unifier::tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionTyp
         // We deal with this by type normalization.
         Unifier innerState = makeChildUnifier();
 
-        if (FFlag::LuauFixNormalizeCaching)
-        {
-            std::shared_ptr<const NormalizedType> subNorm = normalizer->normalize(subTy);
-            std::shared_ptr<const NormalizedType> superNorm = normalizer->normalize(superTy);
-            if (!subNorm || !superNorm)
-                return reportError(location, NormalizationTooComplex{});
-            else if ((failedOptionCount == 1 || foundHeuristic) && failedOption)
-                innerState.tryUnifyNormalizedTypes(
-                    subTy, superTy, *subNorm, *superNorm, "None of the union options are compatible. For example:", *failedOption);
-            else
-                innerState.tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the union options are compatible");
-        }
+        std::shared_ptr<const NormalizedType> subNorm = normalizer->normalize(subTy);
+        std::shared_ptr<const NormalizedType> superNorm = normalizer->normalize(superTy);
+        if (!subNorm || !superNorm)
+            return reportError(location, NormalizationTooComplex{});
+        else if ((failedOptionCount == 1 || foundHeuristic) && failedOption)
+            innerState.tryUnifyNormalizedTypes(
+                subTy, superTy, *subNorm, *superNorm, "None of the union options are compatible. For example:", *failedOption);
         else
-        {
-            const NormalizedType* subNorm = normalizer->DEPRECATED_normalize(subTy);
-            const NormalizedType* superNorm = normalizer->DEPRECATED_normalize(superTy);
-            if (!subNorm || !superNorm)
-                return reportError(location, NormalizationTooComplex{});
-            else if ((failedOptionCount == 1 || foundHeuristic) && failedOption)
-                innerState.tryUnifyNormalizedTypes(
-                    subTy, superTy, *subNorm, *superNorm, "None of the union options are compatible. For example:", *failedOption);
-            else
-                innerState.tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the union options are compatible");
-        }
+            innerState.tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the union options are compatible");
 
         if (!innerState.failure)
             log.concat(std::move(innerState.log));
@@ -999,30 +969,15 @@ void Unifier::tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionTyp
         // It is possible that T <: A | B even though T </: A and T </:B
         // for example boolean <: true | false.
         // We deal with this by type normalization.
-        if (FFlag::LuauFixNormalizeCaching)
-        {
-            std::shared_ptr<const NormalizedType> subNorm = normalizer->normalize(subTy);
-            std::shared_ptr<const NormalizedType> superNorm = normalizer->normalize(superTy);
-            if (!subNorm || !superNorm)
-                reportError(location, NormalizationTooComplex{});
-            else if ((failedOptionCount == 1 || foundHeuristic) && failedOption)
-                tryUnifyNormalizedTypes(
-                    subTy, superTy, *subNorm, *superNorm, "None of the union options are compatible. For example:", *failedOption);
-            else
-                tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the union options are compatible");
-        }
+        std::shared_ptr<const NormalizedType> subNorm = normalizer->normalize(subTy);
+        std::shared_ptr<const NormalizedType> superNorm = normalizer->normalize(superTy);
+        if (!subNorm || !superNorm)
+            reportError(location, NormalizationTooComplex{});
+        else if ((failedOptionCount == 1 || foundHeuristic) && failedOption)
+            tryUnifyNormalizedTypes(
+                subTy, superTy, *subNorm, *superNorm, "None of the union options are compatible. For example:", *failedOption);
         else
-        {
-            const NormalizedType* subNorm = normalizer->DEPRECATED_normalize(subTy);
-            const NormalizedType* superNorm = normalizer->DEPRECATED_normalize(superTy);
-            if (!subNorm || !superNorm)
-                reportError(location, NormalizationTooComplex{});
-            else if ((failedOptionCount == 1 || foundHeuristic) && failedOption)
-                tryUnifyNormalizedTypes(
-                    subTy, superTy, *subNorm, *superNorm, "None of the union options are compatible. For example:", *failedOption);
-            else
-                tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the union options are compatible");
-        }
+            tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the union options are compatible");
     }
     else if (!found)
     {
@@ -1125,24 +1080,12 @@ void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionType*
             // It is possible that A & B <: T even though A </: T and B </: T
             // for example (string?) & ~nil <: string.
             // We deal with this by type normalization.
-            if (FFlag::LuauFixNormalizeCaching)
-            {
-                std::shared_ptr<const NormalizedType> subNorm = normalizer->normalize(subTy);
-                std::shared_ptr<const NormalizedType> superNorm = normalizer->normalize(superTy);
-                if (subNorm && superNorm)
-                    tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the intersection parts are compatible");
-                else
-                    reportError(location, NormalizationTooComplex{});
-            }
+            std::shared_ptr<const NormalizedType> subNorm = normalizer->normalize(subTy);
+            std::shared_ptr<const NormalizedType> superNorm = normalizer->normalize(superTy);
+            if (subNorm && superNorm)
+                tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the intersection parts are compatible");
             else
-            {
-                const NormalizedType* subNorm = normalizer->DEPRECATED_normalize(subTy);
-                const NormalizedType* superNorm = normalizer->DEPRECATED_normalize(superTy);
-                if (subNorm && superNorm)
-                    tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the intersection parts are compatible");
-                else
-                    reportError(location, NormalizationTooComplex{});
-            }
+                reportError(location, NormalizationTooComplex{});
 
             return;
         }
@@ -1192,24 +1135,12 @@ void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionType*
         // for example string? & number? <: nil.
         // We deal with this by type normalization.
 
-        if (FFlag::LuauFixNormalizeCaching)
-        {
-            std::shared_ptr<const NormalizedType> subNorm = normalizer->normalize(subTy);
-            std::shared_ptr<const NormalizedType> superNorm = normalizer->normalize(superTy);
-            if (subNorm && superNorm)
-                tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the intersection parts are compatible");
-            else
-                reportError(location, NormalizationTooComplex{});
-        }
+        std::shared_ptr<const NormalizedType> subNorm = normalizer->normalize(subTy);
+        std::shared_ptr<const NormalizedType> superNorm = normalizer->normalize(superTy);
+        if (subNorm && superNorm)
+            tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the intersection parts are compatible");
         else
-        {
-            const NormalizedType* subNorm = normalizer->DEPRECATED_normalize(subTy);
-            const NormalizedType* superNorm = normalizer->DEPRECATED_normalize(superTy);
-            if (subNorm && superNorm)
-                tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the intersection parts are compatible");
-            else
-                reportError(location, NormalizationTooComplex{});
-        }
+            reportError(location, NormalizationTooComplex{});
     }
     else if (!found)
     {
@@ -2712,32 +2643,16 @@ void Unifier::tryUnifyNegations(TypeId subTy, TypeId superTy)
     if (!log.get<NegationType>(subTy) && !log.get<NegationType>(superTy))
         ice("tryUnifyNegations superTy or subTy must be a negation type");
 
-    if (FFlag::LuauFixNormalizeCaching)
-    {
-        std::shared_ptr<const NormalizedType> subNorm = normalizer->normalize(subTy);
-        std::shared_ptr<const NormalizedType> superNorm = normalizer->normalize(superTy);
-        if (!subNorm || !superNorm)
-            return reportError(location, NormalizationTooComplex{});
+    std::shared_ptr<const NormalizedType> subNorm = normalizer->normalize(subTy);
+    std::shared_ptr<const NormalizedType> superNorm = normalizer->normalize(superTy);
+    if (!subNorm || !superNorm)
+        return reportError(location, NormalizationTooComplex{});
 
-        // T </: ~U iff T <: U
-        Unifier state = makeChildUnifier();
-        state.tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "");
-        if (state.errors.empty())
-            reportError(location, TypeMismatch{superTy, subTy, mismatchContext()});
-    }
-    else
-    {
-        const NormalizedType* subNorm = normalizer->DEPRECATED_normalize(subTy);
-        const NormalizedType* superNorm = normalizer->DEPRECATED_normalize(superTy);
-        if (!subNorm || !superNorm)
-            return reportError(location, NormalizationTooComplex{});
-
-        // T </: ~U iff T <: U
-        Unifier state = makeChildUnifier();
-        state.tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "");
-        if (state.errors.empty())
-            reportError(location, TypeMismatch{superTy, subTy, mismatchContext()});
-    }
+    // T </: ~U iff T <: U
+    Unifier state = makeChildUnifier();
+    state.tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "");
+    if (state.errors.empty())
+        reportError(location, TypeMismatch{superTy, subTy, mismatchContext()});
 }
 
 static void queueTypePack(std::vector<TypeId>& queue, DenseHashSet<TypePackId>& seenTypePacks, Unifier& state, TypePackId a, TypePackId anyTypePack)

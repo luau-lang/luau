@@ -6,9 +6,11 @@
 #include "Luau/CodeGen.h"
 #include "Luau/Compiler.h"
 #include "Luau/Parser.h"
+#include "Luau/IrBuilder.h"
 
 #include "doctest.h"
 #include "ScopedFlags.h"
+#include "ConformanceIrHooks.h"
 
 #include <memory>
 
@@ -22,10 +24,16 @@ LUAU_FASTFLAG(LuauCodegenIrTypeNames)
 LUAU_FASTFLAG(LuauCompileTempTypeInfo)
 LUAU_FASTFLAG(LuauCodegenFixVectorFields)
 LUAU_FASTFLAG(LuauCodegenVectorMispredictFix)
+LUAU_FASTFLAG(LuauCodegenAnalyzeHostVectorOps)
 
 static std::string getCodegenAssembly(const char* source, bool includeIrTypes = false, int debugLevel = 1)
 {
     Luau::CodeGen::AssemblyOptions options;
+
+    options.compilationOptions.hooks.vectorAccessBytecodeType = vectorAccessBytecodeType;
+    options.compilationOptions.hooks.vectorNamecallBytecodeType = vectorNamecallBytecodeType;
+    options.compilationOptions.hooks.vectorAccess = vectorAccess;
+    options.compilationOptions.hooks.vectorNamecall = vectorNamecall;
 
     // For IR, we don't care about assembly, but we want a stable target
     options.target = Luau::CodeGen::AssemblyOptions::Target::X64_SystemV;
@@ -510,6 +518,277 @@ bb_4:
 bb_6:
   INTERRUPT 8u
   RETURN R1, 1i
+)");
+}
+
+TEST_CASE("VectorCustomAccess")
+{
+    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
+    ScopedFastFlag luauCodegenVectorMispredictFix{FFlag::LuauCodegenVectorMispredictFix, true};
+    ScopedFastFlag luauCodegenAnalyzeHostVectorOps{FFlag::LuauCodegenAnalyzeHostVectorOps, true};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function vec3magn(a: vector)
+    return a.Magnitude * 2
+end
+)"),
+        R"(
+; function vec3magn($arg0) line 2
+bb_0:
+  CHECK_TAG R0, tvector, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %6 = LOAD_FLOAT R0, 0i
+  %7 = LOAD_FLOAT R0, 4i
+  %8 = LOAD_FLOAT R0, 8i
+  %9 = MUL_NUM %6, %6
+  %10 = MUL_NUM %7, %7
+  %11 = MUL_NUM %8, %8
+  %12 = ADD_NUM %9, %10
+  %13 = ADD_NUM %12, %11
+  %14 = SQRT_NUM %13
+  %20 = MUL_NUM %14, 2
+  STORE_DOUBLE R1, %20
+  STORE_TAG R1, tnumber
+  INTERRUPT 3u
+  RETURN R1, 1i
+)");
+}
+
+TEST_CASE("VectorCustomNamecall")
+{
+    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
+    ScopedFastFlag LuauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
+    ScopedFastFlag luauCodegenAnalyzeHostVectorOps{FFlag::LuauCodegenAnalyzeHostVectorOps, true};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function vec3dot(a: vector, b: vector)
+    return (a:Dot(b))
+end
+)"),
+        R"(
+; function vec3dot($arg0, $arg1) line 2
+bb_0:
+  CHECK_TAG R0, tvector, exit(entry)
+  CHECK_TAG R1, tvector, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %6 = LOAD_TVALUE R1
+  STORE_TVALUE R4, %6
+  %12 = LOAD_FLOAT R0, 0i
+  %13 = LOAD_FLOAT R4, 0i
+  %14 = MUL_NUM %12, %13
+  %15 = LOAD_FLOAT R0, 4i
+  %16 = LOAD_FLOAT R4, 4i
+  %17 = MUL_NUM %15, %16
+  %18 = LOAD_FLOAT R0, 8i
+  %19 = LOAD_FLOAT R4, 8i
+  %20 = MUL_NUM %18, %19
+  %21 = ADD_NUM %14, %17
+  %22 = ADD_NUM %21, %20
+  STORE_DOUBLE R2, %22
+  STORE_TAG R2, tnumber
+  INTERRUPT 4u
+  RETURN R2, 1i
+)");
+}
+
+TEST_CASE("VectorCustomAccessChain")
+{
+    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
+    ScopedFastFlag luauCodegenVectorMispredictFix{FFlag::LuauCodegenVectorMispredictFix, true};
+    ScopedFastFlag LuauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
+    ScopedFastFlag luauCodegenAnalyzeHostVectorOps{FFlag::LuauCodegenAnalyzeHostVectorOps, true};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function foo(a: vector, b: vector)
+    return a.Unit * b.Magnitude
+end
+)"),
+        R"(
+; function foo($arg0, $arg1) line 2
+bb_0:
+  CHECK_TAG R0, tvector, exit(entry)
+  CHECK_TAG R1, tvector, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %8 = LOAD_FLOAT R0, 0i
+  %9 = LOAD_FLOAT R0, 4i
+  %10 = LOAD_FLOAT R0, 8i
+  %11 = MUL_NUM %8, %8
+  %12 = MUL_NUM %9, %9
+  %13 = MUL_NUM %10, %10
+  %14 = ADD_NUM %11, %12
+  %15 = ADD_NUM %14, %13
+  %16 = SQRT_NUM %15
+  %17 = DIV_NUM 1, %16
+  %18 = MUL_NUM %8, %17
+  %19 = MUL_NUM %9, %17
+  %20 = MUL_NUM %10, %17
+  STORE_VECTOR R3, %18, %19, %20
+  STORE_TAG R3, tvector
+  %25 = LOAD_FLOAT R1, 0i
+  %26 = LOAD_FLOAT R1, 4i
+  %27 = LOAD_FLOAT R1, 8i
+  %28 = MUL_NUM %25, %25
+  %29 = MUL_NUM %26, %26
+  %30 = MUL_NUM %27, %27
+  %31 = ADD_NUM %28, %29
+  %32 = ADD_NUM %31, %30
+  %33 = SQRT_NUM %32
+  %40 = LOAD_TVALUE R3
+  %42 = NUM_TO_VEC %33
+  %43 = MUL_VEC %40, %42
+  %44 = TAG_VECTOR %43
+  STORE_TVALUE R2, %44
+  INTERRUPT 5u
+  RETURN R2, 1i
+)");
+}
+
+TEST_CASE("VectorCustomNamecallChain")
+{
+    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
+    ScopedFastFlag luauCodegenVectorMispredictFix{FFlag::LuauCodegenVectorMispredictFix, true};
+    ScopedFastFlag LuauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
+    ScopedFastFlag luauCodegenAnalyzeHostVectorOps{FFlag::LuauCodegenAnalyzeHostVectorOps, true};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function foo(n: vector, b: vector, t: vector)
+    return n:Cross(t):Dot(b) + 1
+end
+)"),
+        R"(
+; function foo($arg0, $arg1, $arg2) line 2
+bb_0:
+  CHECK_TAG R0, tvector, exit(entry)
+  CHECK_TAG R1, tvector, exit(entry)
+  CHECK_TAG R2, tvector, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %8 = LOAD_TVALUE R2
+  STORE_TVALUE R6, %8
+  %14 = LOAD_FLOAT R0, 0i
+  %15 = LOAD_FLOAT R6, 0i
+  %16 = LOAD_FLOAT R0, 4i
+  %17 = LOAD_FLOAT R6, 4i
+  %18 = LOAD_FLOAT R0, 8i
+  %19 = LOAD_FLOAT R6, 8i
+  %20 = MUL_NUM %16, %19
+  %21 = MUL_NUM %18, %17
+  %22 = SUB_NUM %20, %21
+  %23 = MUL_NUM %18, %15
+  %24 = MUL_NUM %14, %19
+  %25 = SUB_NUM %23, %24
+  %26 = MUL_NUM %14, %17
+  %27 = MUL_NUM %16, %15
+  %28 = SUB_NUM %26, %27
+  STORE_VECTOR R4, %22, %25, %28
+  STORE_TAG R4, tvector
+  %31 = LOAD_TVALUE R1
+  STORE_TVALUE R6, %31
+  %37 = LOAD_FLOAT R4, 0i
+  %38 = LOAD_FLOAT R6, 0i
+  %39 = MUL_NUM %37, %38
+  %40 = LOAD_FLOAT R4, 4i
+  %41 = LOAD_FLOAT R6, 4i
+  %42 = MUL_NUM %40, %41
+  %43 = LOAD_FLOAT R4, 8i
+  %44 = LOAD_FLOAT R6, 8i
+  %45 = MUL_NUM %43, %44
+  %46 = ADD_NUM %39, %42
+  %47 = ADD_NUM %46, %45
+  %53 = ADD_NUM %47, 1
+  STORE_DOUBLE R3, %53
+  STORE_TAG R3, tnumber
+  INTERRUPT 9u
+  RETURN R3, 1i
+)");
+}
+
+TEST_CASE("VectorCustomNamecallChain2")
+{
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCompileTempTypeInfo, true},
+        {FFlag::LuauCodegenVectorMispredictFix, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenAnalyzeHostVectorOps, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+type Vertex = {n: vector, b: vector}
+
+local function foo(v: Vertex, t: vector)
+    return v.n:Cross(t):Dot(v.b) + 1
+end
+)"),
+        R"(
+; function foo($arg0, $arg1) line 4
+bb_0:
+  CHECK_TAG R0, ttable, exit(entry)
+  CHECK_TAG R1, tvector, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %8 = LOAD_POINTER R0
+  %9 = GET_SLOT_NODE_ADDR %8, 0u, K1
+  CHECK_SLOT_MATCH %9, K1, bb_fallback_3
+  %11 = LOAD_TVALUE %9, 0i
+  STORE_TVALUE R3, %11
+  JUMP bb_4
+bb_4:
+  %16 = LOAD_TVALUE R1
+  STORE_TVALUE R5, %16
+  CHECK_TAG R3, tvector, exit(3)
+  CHECK_TAG R5, tvector, exit(3)
+  %22 = LOAD_FLOAT R3, 0i
+  %23 = LOAD_FLOAT R5, 0i
+  %24 = LOAD_FLOAT R3, 4i
+  %25 = LOAD_FLOAT R5, 4i
+  %26 = LOAD_FLOAT R3, 8i
+  %27 = LOAD_FLOAT R5, 8i
+  %28 = MUL_NUM %24, %27
+  %29 = MUL_NUM %26, %25
+  %30 = SUB_NUM %28, %29
+  %31 = MUL_NUM %26, %23
+  %32 = MUL_NUM %22, %27
+  %33 = SUB_NUM %31, %32
+  %34 = MUL_NUM %22, %25
+  %35 = MUL_NUM %24, %23
+  %36 = SUB_NUM %34, %35
+  STORE_VECTOR R3, %30, %33, %36
+  CHECK_TAG R0, ttable, exit(6)
+  %41 = LOAD_POINTER R0
+  %42 = GET_SLOT_NODE_ADDR %41, 6u, K3
+  CHECK_SLOT_MATCH %42, K3, bb_fallback_5
+  %44 = LOAD_TVALUE %42, 0i
+  STORE_TVALUE R5, %44
+  JUMP bb_6
+bb_6:
+  CHECK_TAG R3, tvector, exit(8)
+  CHECK_TAG R5, tvector, exit(8)
+  %53 = LOAD_FLOAT R3, 0i
+  %54 = LOAD_FLOAT R5, 0i
+  %55 = MUL_NUM %53, %54
+  %56 = LOAD_FLOAT R3, 4i
+  %57 = LOAD_FLOAT R5, 4i
+  %58 = MUL_NUM %56, %57
+  %59 = LOAD_FLOAT R3, 8i
+  %60 = LOAD_FLOAT R5, 8i
+  %61 = MUL_NUM %59, %60
+  %62 = ADD_NUM %55, %58
+  %63 = ADD_NUM %62, %61
+  %69 = ADD_NUM %63, 1
+  STORE_DOUBLE R2, %69
+  STORE_TAG R2, tnumber
+  INTERRUPT 12u
+  RETURN R2, 1i
 )");
 }
 
@@ -1040,7 +1319,7 @@ TEST_CASE("ResolveVectorNamecalls")
 {
     ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
         {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
-        {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}};
+        {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenAnalyzeHostVectorOps, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 type Vertex = {pos: vector, normal: vector}
@@ -1083,10 +1362,20 @@ bb_6:
   %31 = LOAD_TVALUE K1, 0i, tvector
   STORE_TVALUE R4, %31
   CHECK_TAG R2, tvector, exit(4)
-  FALLBACK_NAMECALL 4u, R2, R2, K2
-  INTERRUPT 6u
-  SET_SAVEDPC 7u
-  CALL R2, 2i, -1i
+  %37 = LOAD_FLOAT R2, 0i
+  %38 = LOAD_FLOAT R4, 0i
+  %39 = MUL_NUM %37, %38
+  %40 = LOAD_FLOAT R2, 4i
+  %41 = LOAD_FLOAT R4, 4i
+  %42 = MUL_NUM %40, %41
+  %43 = LOAD_FLOAT R2, 8i
+  %44 = LOAD_FLOAT R4, 8i
+  %45 = MUL_NUM %43, %44
+  %46 = ADD_NUM %39, %42
+  %47 = ADD_NUM %46, %45
+  STORE_DOUBLE R2, %47
+  STORE_TAG R2, tnumber
+  ADJUST_STACK_TO_REG R2, 1i
   INTERRUPT 7u
   RETURN R2, -1i
 )");

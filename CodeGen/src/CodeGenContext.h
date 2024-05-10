@@ -107,8 +107,8 @@ void create_NEW(lua_State* L, size_t blockSize, size_t maxTotalSize, AllocationC
 // destroyed via lua_close.
 void create_NEW(lua_State* L, SharedCodeGenContext* codeGenContext);
 
-CompilationResult compile_NEW(lua_State* L, int idx, unsigned int flags, CompilationStats* stats);
-CompilationResult compile_NEW(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats);
+CompilationResult compile_NEW(lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats);
+CompilationResult compile_NEW(const ModuleId& moduleId, lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats);
 
 // Returns true if native execution is currently enabled for this VM
 [[nodiscard]] bool isNativeExecutionEnabled_NEW(lua_State* L);

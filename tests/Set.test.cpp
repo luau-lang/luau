@@ -7,8 +7,6 @@
 #include <string>
 #include <vector>
 
-LUAU_FASTFLAG(LuauFixSetIter);
-
 TEST_SUITE_BEGIN("SetTests");
 
 TEST_CASE("empty_set_size_0")
@@ -107,8 +105,6 @@ TEST_CASE("iterate_over_set_skips_erased_elements")
 
 TEST_CASE("iterate_over_set_skips_first_element_if_it_is_erased")
 {
-    ScopedFastFlag sff{FFlag::LuauFixSetIter, true};
-
     /*
      * As of this writing, in the following set, the key "y" happens to occur
      * before "x" in the underlying DenseHashSet.  This is important because it

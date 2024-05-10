@@ -266,7 +266,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Refinement.cpp
     Analysis/src/RequireTracer.cpp
     Analysis/src/Scope.cpp
-    Analysis/src/Set.cpp
     Analysis/src/Simplify.cpp
     Analysis/src/Substitution.cpp
     Analysis/src/Subtyping.cpp
@@ -494,6 +493,7 @@ if(TARGET Luau.Conformance)
     target_sources(Luau.Conformance PRIVATE
         tests/RegisterCallbacks.h
         tests/RegisterCallbacks.cpp
+        tests/ConformanceIrHooks.h
         tests/Conformance.test.cpp
         tests/IrLowering.test.cpp
         tests/SharedCodeAllocator.test.cpp

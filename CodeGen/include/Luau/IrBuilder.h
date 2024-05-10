@@ -16,11 +16,11 @@ namespace Luau
 namespace CodeGen
 {
 
-struct AssemblyOptions;
+struct HostIrHooks;
 
 struct IrBuilder
 {
-    IrBuilder();
+    IrBuilder(const HostIrHooks& hostHooks);
 
     void buildFunctionIr(Proto* proto);
 
@@ -64,13 +64,17 @@ struct IrBuilder
 
     IrOp vmExit(uint32_t pcpos);
 
+    const HostIrHooks& hostHooks;
+
     bool inTerminatedBlock = false;
 
     bool interruptRequested = false;
 
     bool activeFastcallFallback = false;
     IrOp fastcallFallbackReturn;
-    int fastcallSkipTarget = -1;
+
+    // Force builder to skip source commands
+    int cmdSkipTarget = -1;
 
     IrFunction function;
 

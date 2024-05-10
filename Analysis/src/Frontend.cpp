@@ -1297,6 +1297,30 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
     result->type = sourceModule.type;
     result->upperBoundContributors = std::move(cs.upperBoundContributors);
 
+    if (result->timeout || result->cancelled)
+    {
+        // If solver was interrupted, skip typechecking and replace all module results with error-supressing types to avoid leaking blocked/pending
+        // types
+        ScopePtr moduleScope = result->getModuleScope();
+        moduleScope->returnType = builtinTypes->errorRecoveryTypePack();
+
+        for (auto& [name, ty] : result->declaredGlobals)
+            ty = builtinTypes->errorRecoveryType();
+
+        for (auto& [name, tf] : result->exportedTypeBindings)
+            tf.type = builtinTypes->errorRecoveryType();
+    }
+    else
+    {
+        if (mode == Mode::Nonstrict)
+            Luau::checkNonStrict(builtinTypes, iceHandler, NotNull{&unifierState}, NotNull{&dfg}, NotNull{&limits}, sourceModule, result.get());
+        else
+            Luau::check(builtinTypes, NotNull{&unifierState}, NotNull{&limits}, logger.get(), sourceModule, result.get());
+    }
+
+    unfreeze(result->interfaceTypes);
+    result->clonePublicInterface(builtinTypes, *iceHandler);
+
     if (FFlag::DebugLuauForbidInternalTypes)
     {
         InternalTypeFinder finder;
@@ -1324,30 +1348,6 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
         for (const auto& [_, tp] : result->astResolvedTypePacks)
             finder.traverse(tp);
     }
-
-    if (result->timeout || result->cancelled)
-    {
-        // If solver was interrupted, skip typechecking and replace all module results with error-supressing types to avoid leaking blocked/pending
-        // types
-        ScopePtr moduleScope = result->getModuleScope();
-        moduleScope->returnType = builtinTypes->errorRecoveryTypePack();
-
-        for (auto& [name, ty] : result->declaredGlobals)
-            ty = builtinTypes->errorRecoveryType();
-
-        for (auto& [name, tf] : result->exportedTypeBindings)
-            tf.type = builtinTypes->errorRecoveryType();
-    }
-    else
-    {
-        if (mode == Mode::Nonstrict)
-            Luau::checkNonStrict(builtinTypes, iceHandler, NotNull{&unifierState}, NotNull{&dfg}, NotNull{&limits}, sourceModule, result.get());
-        else
-            Luau::check(builtinTypes, NotNull{&unifierState}, NotNull{&limits}, logger.get(), sourceModule, result.get());
-    }
-
-    unfreeze(result->interfaceTypes);
-    result->clonePublicInterface(builtinTypes, *iceHandler);
 
     // It would be nice if we could freeze the arenas before doing type
     // checking, but we'll have to do some work to get there.

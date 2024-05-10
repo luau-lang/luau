@@ -39,7 +39,6 @@ LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAGVARIABLE(LuauRemoveBadRelationalOperatorWarning, false)
 LUAU_FASTFLAGVARIABLE(LuauForbidAliasNamedTypeof, false)
 LUAU_FASTFLAGVARIABLE(LuauOkWithIteratingOverTableProperties, false)
-LUAU_FASTFLAG(LuauFixNormalizeCaching)
 
 namespace Luau
 {
@@ -2649,24 +2648,12 @@ static std::optional<bool> areEqComparable(NotNull<TypeArena> arena, NotNull<Nor
 
     NormalizationResult nr;
 
-    if (FFlag::LuauFixNormalizeCaching)
-    {
-        TypeId c = arena->addType(IntersectionType{{a, b}});
-        std::shared_ptr<const NormalizedType> n = normalizer->normalize(c);
-        if (!n)
-            return std::nullopt;
+    TypeId c = arena->addType(IntersectionType{{a, b}});
+    std::shared_ptr<const NormalizedType> n = normalizer->normalize(c);
+    if (!n)
+        return std::nullopt;
 
-        nr = normalizer->isInhabited(n.get());
-    }
-    else
-    {
-        TypeId c = arena->addType(IntersectionType{{a, b}});
-        const NormalizedType* n = normalizer->DEPRECATED_normalize(c);
-        if (!n)
-            return std::nullopt;
-
-        nr = normalizer->isInhabited(n);
-    }
+    nr = normalizer->isInhabited(n.get());
 
     switch (nr)
     {

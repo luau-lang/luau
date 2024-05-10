@@ -183,11 +183,11 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
 {
     Proto* root = clvalue(func)->l.p;
 
-    if ((options.flags & CodeGen_OnlyNativeModules) != 0 && (root->flags & LPF_NATIVE_MODULE) == 0)
+    if ((options.compilationOptions.flags & CodeGen_OnlyNativeModules) != 0 && (root->flags & LPF_NATIVE_MODULE) == 0)
         return std::string();
 
     std::vector<Proto*> protos;
-    gatherFunctions(protos, root, options.flags);
+    gatherFunctions(protos, root, options.compilationOptions.flags);
 
     protos.erase(std::remove_if(protos.begin(), protos.end(),
                      [](Proto* p) {
@@ -215,7 +215,7 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
 
     for (Proto* p : protos)
     {
-        IrBuilder ir;
+        IrBuilder ir(options.compilationOptions.hooks);
         ir.buildFunctionIr(p);
         unsigned asmSize = build.getCodeSize();
         unsigned asmCount = build.getInstructionCount();

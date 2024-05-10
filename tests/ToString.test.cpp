@@ -354,21 +354,41 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
         function f2(f) return f or f1 end
         function f3(f) return f or f2 end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    ToStringOptions o;
-    o.exhaustive = false;
-
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        o.maxTypeLength = 30;
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+        auto err = get<ExplicitFunctionAnnotationRecommended>(result.errors[0]);
+        LUAU_ASSERT(err);
+        CHECK("(...any) -> ()" == toString(err->recommendedReturn));
+        REQUIRE(1 == err->recommendedArgs.size());
+        CHECK("unknown" == toString(err->recommendedArgs[0].second));
+        err = get<ExplicitFunctionAnnotationRecommended>(result.errors[1]);
+        LUAU_ASSERT(err);
+        // FIXME: this recommendation could be better
+        CHECK("<a>(a) -> or<a, (...any) -> ()>" == toString(err->recommendedReturn));
+        REQUIRE(1 == err->recommendedArgs.size());
+        CHECK("unknown" == toString(err->recommendedArgs[0].second));
+        err = get<ExplicitFunctionAnnotationRecommended>(result.errors[2]);
+        LUAU_ASSERT(err);
+        // FIXME: this recommendation could be better
+        CHECK("<a>(a) -> or<a, <b>(b) -> or<b, (...any) -> ()>>" == toString(err->recommendedReturn));
+        REQUIRE(1 == err->recommendedArgs.size());
+        CHECK("unknown" == toString(err->recommendedArgs[0].second));
+
+        ToStringOptions o;
+        o.exhaustive = false;
+        o.maxTypeLength = 20;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> or<a, () -> ... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> or<b, <a>(a... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> or<c, <b>(b... *TRUNCATED*");
     }
     else
     {
+        LUAU_REQUIRE_NO_ERRORS(result);
+
+        ToStringOptions o;
+        o.exhaustive = false;
         o.maxTypeLength = 40;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
         CHECK_EQ(toString(requireType("f1"), o), "(() -> ()) -> () -> ()");
@@ -385,20 +405,42 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
         function f2(f) return f or f1 end
         function f3(f) return f or f2 end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
 
-    ToStringOptions o;
-    o.exhaustive = true;
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        o.maxTypeLength = 30;
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+        auto err = get<ExplicitFunctionAnnotationRecommended>(result.errors[0]);
+        LUAU_ASSERT(err);
+        CHECK("(...any) -> ()" == toString(err->recommendedReturn));
+        REQUIRE(1 == err->recommendedArgs.size());
+        CHECK("unknown" == toString(err->recommendedArgs[0].second));
+        err = get<ExplicitFunctionAnnotationRecommended>(result.errors[1]);
+        LUAU_ASSERT(err);
+        // FIXME: this recommendation could be better
+        CHECK("<a>(a) -> or<a, (...any) -> ()>" == toString(err->recommendedReturn));
+        REQUIRE(1 == err->recommendedArgs.size());
+        CHECK("unknown" == toString(err->recommendedArgs[0].second));
+        err = get<ExplicitFunctionAnnotationRecommended>(result.errors[2]);
+        LUAU_ASSERT(err);
+        // FIXME: this recommendation could be better
+        CHECK("<a>(a) -> or<a, <b>(b) -> or<b, (...any) -> ()>>" == toString(err->recommendedReturn));
+        REQUIRE(1 == err->recommendedArgs.size());
+        CHECK("unknown" == toString(err->recommendedArgs[0].second));
+
+        ToStringOptions o;
+        o.exhaustive = true;
+        o.maxTypeLength = 20;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> or<a, () -> ... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> or<b, <a>(a... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> or<c, <b>(b... *TRUNCATED*");
     }
     else
     {
+        LUAU_REQUIRE_NO_ERRORS(result);
+
+        ToStringOptions o;
+        o.exhaustive = true;
         o.maxTypeLength = 40;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
         CHECK_EQ(toString(requireType("f1"), o), "(() -> ()) -> () -> ()");

@@ -500,6 +500,15 @@ TypeFamilyReductionResult<TypeId> lenFamilyFn(TypeId instance, NotNull<TypeFamil
     if (isPending(operandTy, ctx->solver) || get<LocalType>(operandTy))
         return {std::nullopt, false, {operandTy}, {}};
 
+    // if the type is free but has only one remaining reference, we can generalize it to its upper bound here.
+    if (ctx->solver)
+    {
+        std::optional<TypeId> maybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, operandTy);
+        if (!maybeGeneralized)
+            return {std::nullopt, false, {operandTy}, {}};
+        operandTy = *maybeGeneralized;
+    }
+
     std::shared_ptr<const NormalizedType> normTy = ctx->normalizer->normalize(operandTy);
     NormalizationResult inhabited = ctx->normalizer->isInhabited(normTy.get());
 
@@ -575,6 +584,15 @@ TypeFamilyReductionResult<TypeId> unmFamilyFn(TypeId instance, NotNull<TypeFamil
     // check to see if the operand type is resolved enough, and wait to reduce if not
     if (isPending(operandTy, ctx->solver))
         return {std::nullopt, false, {operandTy}, {}};
+
+    // if the type is free but has only one remaining reference, we can generalize it to its upper bound here.
+    if (ctx->solver)
+    {
+        std::optional<TypeId> maybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, operandTy);
+        if (!maybeGeneralized)
+            return {std::nullopt, false, {operandTy}, {}};
+        operandTy = *maybeGeneralized;
+    }
 
     std::shared_ptr<const NormalizedType> normTy = ctx->normalizer->normalize(operandTy);
 
@@ -673,6 +691,21 @@ TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(TypeId instance, NotNull<
         return {std::nullopt, false, {lhsTy}, {}};
     else if (isPending(rhsTy, ctx->solver))
         return {std::nullopt, false, {rhsTy}, {}};
+
+    // if either type is free but has only one remaining reference, we can generalize it to its upper bound here.
+    if (ctx->solver)
+    {
+        std::optional<TypeId> lhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, lhsTy);
+        std::optional<TypeId> rhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, rhsTy);
+
+        if (!lhsMaybeGeneralized)
+            return {std::nullopt, false, {lhsTy}, {}};
+        else if (!rhsMaybeGeneralized)
+            return {std::nullopt, false, {rhsTy}, {}};
+
+        lhsTy = *lhsMaybeGeneralized;
+        rhsTy = *rhsMaybeGeneralized;
+    }
 
     // TODO: Normalization needs to remove cyclic type families from a `NormalizedType`.
     std::shared_ptr<const NormalizedType> normLhsTy = ctx->normalizer->normalize(lhsTy);
@@ -895,6 +928,21 @@ TypeFamilyReductionResult<TypeId> concatFamilyFn(TypeId instance, NotNull<TypeFa
     else if (isPending(rhsTy, ctx->solver))
         return {std::nullopt, false, {rhsTy}, {}};
 
+    // if either type is free but has only one remaining reference, we can generalize it to its upper bound here.
+    if (ctx->solver)
+    {
+        std::optional<TypeId> lhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, lhsTy);
+        std::optional<TypeId> rhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, rhsTy);
+
+        if (!lhsMaybeGeneralized)
+            return {std::nullopt, false, {lhsTy}, {}};
+        else if (!rhsMaybeGeneralized)
+            return {std::nullopt, false, {rhsTy}, {}};
+
+        lhsTy = *lhsMaybeGeneralized;
+        rhsTy = *rhsMaybeGeneralized;
+    }
+
     std::shared_ptr<const NormalizedType> normLhsTy = ctx->normalizer->normalize(lhsTy);
     std::shared_ptr<const NormalizedType> normRhsTy = ctx->normalizer->normalize(rhsTy);
 
@@ -982,12 +1030,26 @@ TypeFamilyReductionResult<TypeId> andFamilyFn(TypeId instance, NotNull<TypeFamil
     if (follow(lhsTy) == instance && lhsTy != rhsTy)
         return {rhsTy, false, {}, {}};
 
-
     // check to see if both operand types are resolved enough, and wait to reduce if not
     if (isPending(lhsTy, ctx->solver))
         return {std::nullopt, false, {lhsTy}, {}};
     else if (isPending(rhsTy, ctx->solver))
         return {std::nullopt, false, {rhsTy}, {}};
+
+    // if either type is free but has only one remaining reference, we can generalize it to its upper bound here.
+    if (ctx->solver)
+    {
+        std::optional<TypeId> lhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, lhsTy);
+        std::optional<TypeId> rhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, rhsTy);
+
+        if (!lhsMaybeGeneralized)
+            return {std::nullopt, false, {lhsTy}, {}};
+        else if (!rhsMaybeGeneralized)
+            return {std::nullopt, false, {rhsTy}, {}};
+
+        lhsTy = *lhsMaybeGeneralized;
+        rhsTy = *rhsMaybeGeneralized;
+    }
 
     // And evalutes to a boolean if the LHS is falsey, and the RHS type if LHS is truthy.
     SimplifyResult filteredLhs = simplifyIntersection(ctx->builtins, ctx->arena, lhsTy, ctx->builtins->falsyType);
@@ -1024,6 +1086,21 @@ TypeFamilyReductionResult<TypeId> orFamilyFn(TypeId instance, NotNull<TypeFamily
         return {std::nullopt, false, {lhsTy}, {}};
     else if (isPending(rhsTy, ctx->solver))
         return {std::nullopt, false, {rhsTy}, {}};
+
+    // if either type is free but has only one remaining reference, we can generalize it to its upper bound here.
+    if (ctx->solver)
+    {
+        std::optional<TypeId> lhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, lhsTy);
+        std::optional<TypeId> rhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, rhsTy);
+
+        if (!lhsMaybeGeneralized)
+            return {std::nullopt, false, {lhsTy}, {}};
+        else if (!rhsMaybeGeneralized)
+            return {std::nullopt, false, {rhsTy}, {}};
+
+        lhsTy = *lhsMaybeGeneralized;
+        rhsTy = *rhsMaybeGeneralized;
+    }
 
     // Or evalutes to the LHS type if the LHS is truthy, and the RHS type if LHS is falsy.
     SimplifyResult filteredLhs = simplifyIntersection(ctx->builtins, ctx->arena, lhsTy, ctx->builtins->truthyType);
@@ -1087,6 +1164,21 @@ static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(TypeId instance, Not
     // The above might have caused the operand types to be rebound, we need to follow them again
     lhsTy = follow(lhsTy);
     rhsTy = follow(rhsTy);
+
+    // if either type is free but has only one remaining reference, we can generalize it to its upper bound here.
+    if (ctx->solver)
+    {
+        std::optional<TypeId> lhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, lhsTy);
+        std::optional<TypeId> rhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, rhsTy);
+
+        if (!lhsMaybeGeneralized)
+            return {std::nullopt, false, {lhsTy}, {}};
+        else if (!rhsMaybeGeneralized)
+            return {std::nullopt, false, {rhsTy}, {}};
+
+        lhsTy = *lhsMaybeGeneralized;
+        rhsTy = *rhsMaybeGeneralized;
+    }
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
 
@@ -1196,6 +1288,21 @@ TypeFamilyReductionResult<TypeId> eqFamilyFn(TypeId instance, NotNull<TypeFamily
     else if (isPending(rhsTy, ctx->solver))
         return {std::nullopt, false, {rhsTy}, {}};
 
+    // if either type is free but has only one remaining reference, we can generalize it to its upper bound here.
+    if (ctx->solver)
+    {
+        std::optional<TypeId> lhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, lhsTy);
+        std::optional<TypeId> rhsMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, rhsTy);
+
+        if (!lhsMaybeGeneralized)
+            return {std::nullopt, false, {lhsTy}, {}};
+        else if (!rhsMaybeGeneralized)
+            return {std::nullopt, false, {rhsTy}, {}};
+
+        lhsTy = *lhsMaybeGeneralized;
+        rhsTy = *rhsMaybeGeneralized;
+    }
+
     std::shared_ptr<const NormalizedType> normLhsTy = ctx->normalizer->normalize(lhsTy);
     std::shared_ptr<const NormalizedType> normRhsTy = ctx->normalizer->normalize(rhsTy);
     NormalizationResult lhsInhabited = ctx->normalizer->isInhabited(normLhsTy.get());
@@ -1223,10 +1330,25 @@ TypeFamilyReductionResult<TypeId> eqFamilyFn(TypeId instance, NotNull<TypeFamily
 
     // if neither type has a metatable entry for `__eq`, then we'll check for inhabitance of the intersection!
     NormalizationResult intersectInhabited = ctx->normalizer->isIntersectionInhabited(lhsTy, rhsTy);
-    if (!mmType && intersectInhabited == NormalizationResult::True)
-        return {ctx->builtins->booleanType, false, {}, {}}; // if it's inhabited, everything is okay!
-    else if (!mmType)
+    if (!mmType)
+    {
+        if (intersectInhabited == NormalizationResult::True)
+            return {ctx->builtins->booleanType, false, {}, {}}; // if it's inhabited, everything is okay!
+
+        // we might be in a case where we still want to accept the comparison...
+        if (intersectInhabited == NormalizationResult::False)
+        {
+            // if they're both subtypes of `string` but have no common intersection, the comparison is allowed but always `false`.
+            if (normLhsTy->isSubtypeOfString() && normRhsTy->isSubtypeOfString())
+                return {ctx->builtins->falseType, false, {}, {}};
+
+            // if they're both subtypes of `boolean` but have no common intersection, the comparison is allowed but always `false`.
+            if (normLhsTy->isSubtypeOfBooleans() && normRhsTy->isSubtypeOfBooleans())
+                return {ctx->builtins->falseType, false, {}, {}};
+        }
+
         return {std::nullopt, true, {}, {}}; // if it's not, then this family is irreducible!
+    }
 
     mmType = follow(*mmType);
     if (isPending(*mmType, ctx->solver))
@@ -1303,6 +1425,21 @@ TypeFamilyReductionResult<TypeId> refineFamilyFn(TypeId instance, NotNull<TypeFa
     else if (isPending(discriminantTy, ctx->solver))
         return {std::nullopt, false, {discriminantTy}, {}};
 
+    // if either type is free but has only one remaining reference, we can generalize it to its upper bound here.
+    if (ctx->solver)
+    {
+        std::optional<TypeId> targetMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, targetTy);
+        std::optional<TypeId> discriminantMaybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, discriminantTy);
+
+        if (!targetMaybeGeneralized)
+            return {std::nullopt, false, {targetTy}, {}};
+        else if (!discriminantMaybeGeneralized)
+            return {std::nullopt, false, {discriminantTy}, {}};
+
+        targetTy = *targetMaybeGeneralized;
+        discriminantTy = *discriminantMaybeGeneralized;
+    }
+
     // we need a more complex check for blocking on the discriminant in particular
     FindRefinementBlockers frb;
     frb.traverse(discriminantTy);
@@ -1357,6 +1494,15 @@ TypeFamilyReductionResult<TypeId> singletonFamilyFn(TypeId instance, NotNull<Typ
     // check to see if both operand types are resolved enough, and wait to reduce if not
     if (isPending(type, ctx->solver))
         return {std::nullopt, false, {type}, {}};
+
+    // if the type is free but has only one remaining reference, we can generalize it to its upper bound here.
+    if (ctx->solver)
+    {
+        std::optional<TypeId> maybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, type);
+        if (!maybeGeneralized)
+            return {std::nullopt, false, {type}, {}};
+        type = *maybeGeneralized;
+    }
 
     TypeId followed = type;
     // we want to follow through a negation here as well.
