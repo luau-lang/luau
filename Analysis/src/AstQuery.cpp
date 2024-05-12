@@ -332,6 +332,11 @@ std::optional<TypeId> findExpectedTypeAtPosition(const Module& module, const Sou
 
 static std::optional<AstStatLocal*> findBindingLocalStatement(const SourceModule& source, const Binding& binding)
 {
+    // Bindings coming from global sources (e.g., definition files) have a zero position.
+    // They cannot be defined from a local statement
+    if (binding.location == Location{{0, 0}, {0, 0}})
+        return std::nullopt;
+
     std::vector<AstNode*> nodes = findAstAncestryOfPosition(source, binding.location.begin);
     auto iter = std::find_if(nodes.rbegin(), nodes.rend(), [](AstNode* node) {
         return node->is<AstStatLocal>();
