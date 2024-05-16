@@ -763,7 +763,8 @@ DataFlowResult DataFlowGraphBuilder::visitExpr(DfgScope* scope, AstExprCall* c)
     for (AstExpr* arg : c->args)
         visitExpr(scope, arg);
 
-    return {defArena->freshCell(), nullptr};
+    // calls should be treated as subscripted.
+    return {defArena->freshCell(/* subscripted */ true), nullptr};
 }
 
 DataFlowResult DataFlowGraphBuilder::visitExpr(DfgScope* scope, AstExprIndexName* i)

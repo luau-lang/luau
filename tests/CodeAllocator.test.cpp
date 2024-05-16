@@ -253,7 +253,7 @@ TEST_CASE("Dwarf2UnwindCodesA64")
     CHECK(memcmp(data.data(), expected.data(), expected.size()) == 0);
 }
 
-#if defined(__x86_64__) || defined(_M_X64)
+#if defined(CODEGEN_TARGET_X64)
 
 #if defined(_WIN32)
 // Windows x64 ABI
@@ -774,7 +774,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
 
 #endif
 
-#if defined(__aarch64__)
+#if defined(CODEGEN_TARGET_A64)
 
 TEST_CASE("GeneratedCodeExecutionA64")
 {

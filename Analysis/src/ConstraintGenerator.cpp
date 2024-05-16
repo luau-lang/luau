@@ -414,7 +414,7 @@ void ConstraintGenerator::computeRefinement(const ScopePtr& scope, Location loca
             discriminantTy = arena->addType(NegationType{discriminantTy});
 
         if (eq)
-            discriminantTy = arena->addTypeFamily(kBuiltinTypeFamilies.singletonFamily, {discriminantTy});
+            discriminantTy = createTypeFamilyInstance(kBuiltinTypeFamilies.singletonFamily, {discriminantTy}, {}, scope, location);
 
         for (const RefinementKey* key = proposition->key; key; key = key->parent)
         {
@@ -526,13 +526,7 @@ void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location locat
             {
                 if (mustDeferIntersection(ty) || mustDeferIntersection(dt))
                 {
-                    TypeId resultType = createFamilyInstance(
-                        TypeFamilyInstanceType{
-                            NotNull{&kBuiltinTypeFamilies.refineFamily},
-                            {ty, dt},
-                            {},
-                        },
-                        scope, location);
+                    TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.refineFamily, {ty, dt}, {}, scope, location);
 
                     ty = resultType;
                 }
@@ -2009,35 +2003,17 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprUnary* unary)
     {
     case AstExprUnary::Op::Not:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.notFamily},
-                {operandType},
-                {},
-            },
-            scope, unary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.notFamily, {operandType}, {}, scope, unary->location);
         return Inference{resultType, refinementArena.negation(refinement)};
     }
     case AstExprUnary::Op::Len:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.lenFamily},
-                {operandType},
-                {},
-            },
-            scope, unary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.lenFamily, {operandType}, {}, scope, unary->location);
         return Inference{resultType, refinementArena.negation(refinement)};
     }
     case AstExprUnary::Op::Minus:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.unmFamily},
-                {operandType},
-                {},
-            },
-            scope, unary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.unmFamily, {operandType}, {}, scope, unary->location);
         return Inference{resultType, refinementArena.negation(refinement)};
     }
     default: // msvc can't prove that this is exhaustive.
@@ -2053,168 +2029,96 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprBinary* binar
     {
     case AstExprBinary::Op::Add:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.addFamily},
-                {leftType, rightType},
-                {},
-            },
-            scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.addFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Sub:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.subFamily},
-                {leftType, rightType},
-                {},
-            },
-            scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.subFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Mul:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.mulFamily},
-                {leftType, rightType},
-                {},
-            },
-            scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.mulFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Div:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.divFamily},
-                {leftType, rightType},
-                {},
-            },
-            scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.divFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::FloorDiv:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.idivFamily},
-                {leftType, rightType},
-                {},
-            },
-            scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.idivFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Pow:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.powFamily},
-                {leftType, rightType},
-                {},
-            },
-            scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.powFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Mod:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.modFamily},
-                {leftType, rightType},
-                {},
-            },
-            scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.modFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Concat:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.concatFamily},
-                {leftType, rightType},
-                {},
-            },
-            scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.concatFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::And:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.andFamily},
-                {leftType, rightType},
-                {},
-            },
-            scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.andFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Or:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.orFamily},
-                {leftType, rightType},
-                {},
-            },
-            scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.orFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::CompareLt:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.ltFamily},
-                {leftType, rightType},
-                {},
-            },
-            scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.ltFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::CompareGe:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.ltFamily},
-                {rightType, leftType}, // lua decided that `__ge(a, b)` is instead just `__lt(b, a)`
-                {},
-            },
-            scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.ltFamily,
+            {rightType, leftType}, // lua decided that `__ge(a, b)` is instead just `__lt(b, a)`
+            {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::CompareLe:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.leFamily},
-                {leftType, rightType},
-                {},
-            },
-            scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.leFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::CompareGt:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.leFamily},
-                {rightType, leftType}, // lua decided that `__gt(a, b)` is instead just `__le(b, a)`
-                {},
-            },
-            scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.leFamily,
+            {rightType, leftType}, // lua decided that `__gt(a, b)` is instead just `__le(b, a)`
+            {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::CompareEq:
     case AstExprBinary::Op::CompareNe:
     {
-        TypeId resultType = createFamilyInstance(
-            TypeFamilyInstanceType{
-                NotNull{&kBuiltinTypeFamilies.eqFamily},
-                {leftType, rightType},
-                {},
-            },
-            scope, binary->location);
+        DefId leftDef = dfg->getDef(binary->left);
+        DefId rightDef = dfg->getDef(binary->right);
+        bool leftSubscripted = containsSubscriptedDefinition(leftDef);
+        bool rightSubscripted = containsSubscriptedDefinition(rightDef);
+
+        if (leftSubscripted && rightSubscripted)
+        {
+            // we cannot add nil in this case because then we will blindly accept comparisons that we should not.
+        }
+        else if (leftSubscripted)
+            leftType = makeUnion(scope, binary->location, leftType, builtinTypes->nilType);
+        else if (rightSubscripted)
+            rightType = makeUnion(scope, binary->location, rightType, builtinTypes->nilType);
+
+        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.eqFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Op__Count:
@@ -3290,26 +3194,14 @@ void ConstraintGenerator::reportCodeTooComplex(Location location)
 
 TypeId ConstraintGenerator::makeUnion(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs)
 {
-    TypeId resultType = createFamilyInstance(
-        TypeFamilyInstanceType{
-            NotNull{&kBuiltinTypeFamilies.unionFamily},
-            {lhs, rhs},
-            {},
-        },
-        scope, location);
+    TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.unionFamily, {lhs, rhs}, {}, scope, location);
 
     return resultType;
 }
 
 TypeId ConstraintGenerator::makeIntersect(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs)
 {
-    TypeId resultType = createFamilyInstance(
-        TypeFamilyInstanceType{
-            NotNull{&kBuiltinTypeFamilies.intersectFamily},
-            {lhs, rhs},
-            {},
-        },
-        scope, location);
+    TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.intersectFamily, {lhs, rhs}, {}, scope, location);
 
     return resultType;
 }
@@ -3387,13 +3279,7 @@ void ConstraintGenerator::fillInInferredBindings(const ScopePtr& globalScope, As
             scope->bindings[symbol] = Binding{tys.front(), location};
         else
         {
-            TypeId ty = createFamilyInstance(
-                TypeFamilyInstanceType{
-                    NotNull{&kBuiltinTypeFamilies.unionFamily},
-                    std::move(tys),
-                    {},
-                },
-                globalScope, location);
+            TypeId ty = createTypeFamilyInstance(kBuiltinTypeFamilies.unionFamily, std::move(tys), {}, globalScope, location);
 
             scope->bindings[symbol] = Binding{ty, location};
         }
@@ -3463,9 +3349,10 @@ std::vector<std::optional<TypeId>> ConstraintGenerator::getExpectedCallTypesForF
     return expectedTypes;
 }
 
-TypeId ConstraintGenerator::createFamilyInstance(TypeFamilyInstanceType instance, const ScopePtr& scope, Location location)
+TypeId ConstraintGenerator::createTypeFamilyInstance(
+    const TypeFamily& family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments, const ScopePtr& scope, Location location)
 {
-    TypeId result = arena->addType(std::move(instance));
+    TypeId result = arena->addTypeFamily(family, typeArguments, packArguments);
     addConstraint(scope, location, ReduceConstraint{result});
     return result;
 }

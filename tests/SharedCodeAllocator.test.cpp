@@ -15,8 +15,6 @@
 #pragma GCC diagnostic ignored "-Wself-assign-overloaded"
 #endif
 
-LUAU_FASTFLAG(LuauCodegenContext)
-
 using namespace Luau::CodeGen;
 
 
@@ -31,8 +29,6 @@ TEST_CASE("NativeModuleRefRefcounting")
 {
     if (!luau_codegen_supported())
         return;
-
-    ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
 
     CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
     SharedCodeAllocator allocator{&codeAllocator};
@@ -250,8 +246,6 @@ TEST_CASE("NativeProtoRefcounting")
     if (!luau_codegen_supported())
         return;
 
-    ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
-
     CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
     SharedCodeAllocator allocator{&codeAllocator};
 
@@ -302,8 +296,6 @@ TEST_CASE("NativeProtoState")
 {
     if (!luau_codegen_supported())
         return;
-
-    ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
 
     CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
     SharedCodeAllocator allocator{&codeAllocator};
@@ -364,8 +356,6 @@ TEST_CASE("AnonymousModuleLifetime")
     if (!luau_codegen_supported())
         return;
 
-    ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
-
     CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
     SharedCodeAllocator allocator{&codeAllocator};
 
@@ -412,8 +402,6 @@ TEST_CASE("SharedAllocation")
 {
     if (!luau_codegen_supported())
         return;
-
-    ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
 
     UniqueSharedCodeGenContext sharedCodeGenContext = createSharedCodeGenContext();
 

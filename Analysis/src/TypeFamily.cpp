@@ -1507,7 +1507,7 @@ TypeFamilyReductionResult<TypeId> singletonFamilyFn(TypeId instance, NotNull<Typ
     TypeId followed = type;
     // we want to follow through a negation here as well.
     if (auto negation = get<NegationType>(followed))
-       followed = follow(negation->ty);
+        followed = follow(negation->ty);
 
     // if we have a singleton type or `nil`, which is its own singleton type...
     if (get<SingletonType>(followed) || isNil(followed))

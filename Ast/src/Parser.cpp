@@ -16,7 +16,6 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // Warning: If you are introducing new syntax, ensure that it is behind a separate
 // flag so that we don't break production games by reverting syntax changes.
 // See docs/SyntaxChanges.md for an explanation.
-LUAU_FASTFLAG(LuauCheckedFunctionSyntax)
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 
 namespace Luau
@@ -838,7 +837,7 @@ AstStat* Parser::parseDeclaration(const Location& start)
     {
         nextLexeme();
         bool checkedFunction = false;
-        if (FFlag::LuauCheckedFunctionSyntax && lexer.current().type == Lexeme::ReservedChecked)
+        if (lexer.current().type == Lexeme::ReservedChecked)
         {
             checkedFunction = true;
             nextLexeme();
@@ -1731,9 +1730,8 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
     {
         return {parseTableType(/* inDeclarationContext */ inDeclarationContext), {}};
     }
-    else if (FFlag::LuauCheckedFunctionSyntax && inDeclarationContext && lexer.current().type == Lexeme::ReservedChecked)
+    else if (inDeclarationContext && lexer.current().type == Lexeme::ReservedChecked)
     {
-        LUAU_ASSERT(FFlag::LuauCheckedFunctionSyntax);
         nextLexeme();
         return parseFunctionType(allowPack, /* isCheckedFunction */ true);
     }

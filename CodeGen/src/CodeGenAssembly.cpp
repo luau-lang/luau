@@ -279,7 +279,7 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
         return build.text;
 }
 
-#if defined(__aarch64__)
+#if defined(CODEGEN_TARGET_A64)
 unsigned int getCpuFeaturesA64();
 #endif
 
@@ -292,7 +292,7 @@ std::string getAssembly(lua_State* L, int idx, AssemblyOptions options, Lowering
     {
     case AssemblyOptions::Host:
     {
-#if defined(__aarch64__)
+#if defined(CODEGEN_TARGET_A64)
         static unsigned int cpuFeatures = getCpuFeaturesA64();
         A64::AssemblyBuilderA64 build(/* logText= */ options.includeAssembly, cpuFeatures);
 #else

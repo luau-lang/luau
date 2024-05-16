@@ -4460,4 +4460,23 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "ipairs_adds_an_unbounded_indexer")
         CHECK("{a}" == toString(requireType("a"), {true}));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_results_compare_to_nil")
+{
+    CheckResult result = check(R"(
+        --!strict
+
+        function foo(tbl: {number})
+            if tbl[2] == nil then
+                print("foo")
+            end
+
+            if tbl[3] ~= nil then
+                print("bar")
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();
