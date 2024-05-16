@@ -15,8 +15,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauCheckedFunctionSyntax);
-
 #define NONSTRICT_REQUIRE_ERR_AT_POS(pos, result, idx) \
     do \
     { \
@@ -69,7 +67,6 @@ struct NonStrictTypeCheckerFixture : Fixture
     CheckResult checkNonStrict(const std::string& code)
     {
         ScopedFastFlag flags[] = {
-            {FFlag::LuauCheckedFunctionSyntax, true},
             {FFlag::DebugLuauDeferredConstraintResolution, true},
         };
         LoadDefinitionFileResult res = loadDefinition(definitions);
@@ -80,7 +77,6 @@ struct NonStrictTypeCheckerFixture : Fixture
     CheckResult checkNonStrictModule(const std::string& moduleName)
     {
         ScopedFastFlag flags[] = {
-            {FFlag::LuauCheckedFunctionSyntax, true},
             {FFlag::DebugLuauDeferredConstraintResolution, true},
         };
         LoadDefinitionFileResult res = loadDefinition(definitions);

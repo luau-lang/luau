@@ -701,4 +701,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_oss_crash_gh1161")
     CHECK(get<FunctionExitsWithoutReturning>(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(FamilyFixture, "fuzzer_numeric_binop_doesnt_assert_on_generalizeFreeType")
+{
+    CheckResult result = check(R"(
+Module 'l0':
+local _ = (67108864)(_ >= _).insert
+do end
+do end
+_(...,_(_,_(_()),_()))
+(67108864)()()
+_(_ ~= _ // _,l0)(_(_({n0,})),_(_),_)
+_(setmetatable(_,{[...]=_,}))
+
+)");
+}
+
 TEST_SUITE_END();

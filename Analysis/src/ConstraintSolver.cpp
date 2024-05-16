@@ -5,6 +5,7 @@
 #include "Luau/Common.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/DcrLogger.h"
+#include "Luau/Generalization.h"
 #include "Luau/Instantiation.h"
 #include "Luau/Instantiation2.h"
 #include "Luau/Location.h"
@@ -577,9 +578,7 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
 
     std::optional<QuantifierResult> generalized;
 
-    Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}};
-
-    std::optional<TypeId> generalizedTy = u2.generalize(c.sourceType);
+    std::optional<TypeId> generalizedTy = generalize(NotNull{arena}, builtinTypes, constraint->scope, c.sourceType);
     if (generalizedTy)
         generalized = QuantifierResult{*generalizedTy}; // FIXME insertedGenerics and insertedGenericPacks
     else
@@ -609,7 +608,7 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
 
     for (TypeId ty : c.interiorTypes)
     {
-        u2.generalize(ty);
+        generalize(NotNull{arena}, builtinTypes, constraint->scope, ty);
         unblock(ty, constraint->location);
     }
 
@@ -682,7 +681,16 @@ bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Co
 
     TypeId nextTy = follow(iterator.head[0]);
     if (get<FreeType>(nextTy))
-        return block_(nextTy);
+    {
+        TypeId keyTy = freshType(arena, builtinTypes, constraint->scope);
+        TypeId valueTy = freshType(arena, builtinTypes, constraint->scope);
+        TypeId tableTy = arena->addType(TableType{TableState::Sealed, {}, constraint->scope});
+        getMutable<TableType>(tableTy)->indexer = TableIndexer{keyTy, valueTy};
+
+        pushConstraint(constraint->scope, constraint->location, SubtypeConstraint{nextTy, tableTy});
+        pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, arena->addTypePack({keyTy, valueTy}), /*resultIsLValue=*/true});
+        return true;
+    }
 
     if (get<FunctionType>(nextTy))
     {
@@ -1924,24 +1932,19 @@ bool ConstraintSolver::tryDispatch(const EqualityConstraint& c, NotNull<const Co
 
 bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
-    auto block_ = [&](auto&& t) {
-        if (force)
-        {
-            // TODO: I believe it is the case that, if we are asked to force
-            // this constraint, then we can do nothing but fail.  I'd like to
-            // find a code sample that gets here.
-            LUAU_ASSERT(false);
-        }
-        else
-            block(t, constraint);
-        return false;
-    };
-
-    // We may have to block here if we don't know what the iteratee type is,
-    // if it's a free table, if we don't know it has a metatable, and so on.
     iteratorTy = follow(iteratorTy);
+
     if (get<FreeType>(iteratorTy))
-        return block_(iteratorTy);
+    {
+        TypeId keyTy = freshType(arena, builtinTypes, constraint->scope);
+        TypeId valueTy = freshType(arena, builtinTypes, constraint->scope);
+        TypeId tableTy = arena->addType(TableType{TableState::Sealed, {}, constraint->scope});
+        getMutable<TableType>(tableTy)->indexer = TableIndexer{keyTy, valueTy};
+
+        pushConstraint(constraint->scope, constraint->location, SubtypeConstraint{iteratorTy, tableTy});
+        pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, arena->addTypePack({keyTy, valueTy}), /*resultIsLValue=*/true});
+        return true;
+    }
 
     auto unpack = [&](TypeId ty) {
         TypePackId variadic = arena->addTypePack(VariadicTypePack{ty});
@@ -2752,15 +2755,15 @@ void ConstraintSolver::shiftReferences(TypeId source, TypeId target)
 
 std::optional<TypeId> ConstraintSolver::generalizeFreeType(NotNull<Scope> scope, TypeId type)
 {
-    if (get<FreeType>(type))
+    TypeId t = follow(type);
+    if (get<FreeType>(t))
     {
-        auto refCount = unresolvedConstraints.find(type);
+        auto refCount = unresolvedConstraints.find(t);
         if (!refCount || *refCount > 1)
             return {};
     }
 
-    Unifier2 u2{NotNull{arena}, builtinTypes, scope, NotNull{&iceReporter}};
-    return u2.generalize(type);
+    return generalize(NotNull{arena}, builtinTypes, scope, type);
 }
 
 bool ConstraintSolver::hasUnresolvedConstraints(TypeId ty)

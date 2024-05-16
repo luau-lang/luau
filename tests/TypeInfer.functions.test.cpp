@@ -2687,4 +2687,40 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "error_suppression_propagates_through_functio
     CHECK("(any) -> (any?, any)" == toString(requireType("first")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_normalizer_out_of_resources")
+{
+    // This luau code should finish typechecking, not segfault upon dereferencing
+    // the normalized type
+    CheckResult result = check(R"(
+ Module 'l0':
+local _ = true,...,_
+if ... then
+while _:_(_._G) do
+do end
+_ = _ and _
+_ = 0 and {# _,}
+local _ = "CCCCCCCCCCCCCCCCCCCCCCCCCCC"
+local l0 = require(module0)
+end
+local function l0()
+end
+elseif _ then
+l0 = _
+end
+do end
+while _ do
+_ = if _ then _ elseif _ then _,if _ then _ else _
+_ = _()
+do end
+do end
+if _ then
+end
+end
+_ = _,{}
+
+    )");
+
+}
+
+
 TEST_SUITE_END();

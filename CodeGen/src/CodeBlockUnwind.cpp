@@ -7,7 +7,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#if defined(_WIN32) && defined(_M_X64)
+#if defined(_WIN32) && defined(CODEGEN_TARGET_X64)
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -26,7 +26,7 @@ extern "C" void __deregister_frame(const void*) __attribute__((weak));
 extern "C" void __unw_add_dynamic_fde() __attribute__((weak));
 #endif
 
-#if defined(__APPLE__) && defined(__aarch64__)
+#if defined(__APPLE__) && defined(CODEGEN_TARGET_A64)
 #include <sys/sysctl.h>
 #include <mach-o/loader.h>
 #include <dlfcn.h>
@@ -48,7 +48,7 @@ namespace Luau
 namespace CodeGen
 {
 
-#if defined(__APPLE__) && defined(__aarch64__)
+#if defined(__APPLE__) && defined(CODEGEN_TARGET_A64)
 static int findDynamicUnwindSections(uintptr_t addr, unw_dynamic_unwind_sections_t* info)
 {
     // Define a minimal mach header for JIT'd code.
@@ -109,7 +109,7 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
     char* unwindData = (char*)block;
     unwind->finalize(unwindData, unwindSize, block, blockSize);
 
-#if defined(_WIN32) && defined(_M_X64)
+#if defined(_WIN32) && defined(CODEGEN_TARGET_X64)
 
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
     if (!RtlAddFunctionTable((RUNTIME_FUNCTION*)block, uint32_t(unwind->getFunctionCount()), uintptr_t(block)))
@@ -126,7 +126,7 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
     visitFdeEntries(unwindData, __register_frame);
 #endif
 
-#if defined(__APPLE__) && defined(__aarch64__)
+#if defined(__APPLE__) && defined(CODEGEN_TARGET_A64)
     // Starting from macOS 14, we need to register unwind section callback to state that our ABI doesn't require pointer authentication
     // This might conflict with other JITs that do the same; unfortunately this is the best we can do for now.
     static unw_add_find_dynamic_unwind_sections_t unw_add_find_dynamic_unwind_sections =
@@ -141,7 +141,7 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
 
 void destroyBlockUnwindInfo(void* context, void* unwindData)
 {
-#if defined(_WIN32) && defined(_M_X64)
+#if defined(_WIN32) && defined(CODEGEN_TARGET_X64)
 
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
     if (!RtlDeleteFunctionTable((RUNTIME_FUNCTION*)unwindData))
@@ -161,12 +161,12 @@ void destroyBlockUnwindInfo(void* context, void* unwindData)
 
 bool isUnwindSupported()
 {
-#if defined(_WIN32) && defined(_M_X64)
+#if defined(_WIN32) && defined(CODEGEN_TARGET_X64)
     return true;
 #elif defined(__ANDROID__)
     // Current unwind information is not compatible with Android
     return false;
-#elif defined(__APPLE__) && defined(__aarch64__)
+#elif defined(__APPLE__) && defined(CODEGEN_TARGET_A64)
     char ver[256];
     size_t verLength = sizeof(ver);
     // libunwind on macOS 12 and earlier (which maps to osrelease 21) assumes JIT frames use pointer authentication without a way to override that

@@ -1591,7 +1591,6 @@ struct TypeChecker2
         functionDeclStack.push_back(inferredFnTy);
 
         std::shared_ptr<const NormalizedType> normalizedFnTy = normalizer.normalize(inferredFnTy);
-        const FunctionType* inferredFtv = get<FunctionType>(normalizedFnTy->functions.parts.front());
         if (!normalizedFnTy)
         {
             reportError(CodeTooComplex{}, fn->location);
@@ -1686,16 +1685,23 @@ struct TypeChecker2
         if (fn->returnAnnotation)
             visit(*fn->returnAnnotation);
 
+
         // If the function type has a family annotation, we need to see if we can suggest an annotation
-        TypeFamilyReductionGuesser guesser{NotNull{&module->internalTypes}, builtinTypes, NotNull{&normalizer}};
-        for (TypeId retTy : inferredFtv->retTypes)
+        if (normalizedFnTy)
         {
-            if (get<TypeFamilyInstanceType>(follow(retTy)))
+            const FunctionType* inferredFtv = get<FunctionType>(normalizedFnTy->functions.parts.front());
+            LUAU_ASSERT(inferredFtv);
+
+            TypeFamilyReductionGuesser guesser{NotNull{&module->internalTypes}, builtinTypes, NotNull{&normalizer}};
+            for (TypeId retTy : inferredFtv->retTypes)
             {
-                TypeFamilyReductionGuessResult result = guesser.guessTypeFamilyReductionForFunction(*fn, inferredFtv, retTy);
-                if (result.shouldRecommendAnnotation)
-                    reportError(
-                        ExplicitFunctionAnnotationRecommended{std::move(result.guessedFunctionAnnotations), result.guessedReturnType}, fn->location);
+                if (get<TypeFamilyInstanceType>(follow(retTy)))
+                {
+                    TypeFamilyReductionGuessResult result = guesser.guessTypeFamilyReductionForFunction(*fn, inferredFtv, retTy);
+                    if (result.shouldRecommendAnnotation)
+                        reportError(ExplicitFunctionAnnotationRecommended{std::move(result.guessedFunctionAnnotations), result.guessedReturnType},
+                            fn->location);
+                }
             }
         }
 
