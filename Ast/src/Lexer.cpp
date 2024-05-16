@@ -8,7 +8,6 @@
 #include <limits.h>
 
 LUAU_FASTFLAGVARIABLE(LuauLexerLookaheadRemembersBraceType, false)
-LUAU_FASTFLAGVARIABLE(LuauCheckedFunctionSyntax, false)
 
 namespace Luau
 {
@@ -995,17 +994,14 @@ Lexeme Lexer::readNext()
     }
     case '@':
     {
-        if (FFlag::LuauCheckedFunctionSyntax)
-        {
-            // We're trying to lex the token @checked
-            LUAU_ASSERT(peekch() == '@');
+        // We're trying to lex the token @checked
+        LUAU_ASSERT(peekch() == '@');
 
-            std::pair<AstName, Lexeme::Type> maybeChecked = readName();
-            if (maybeChecked.second != Lexeme::ReservedChecked)
-                return Lexeme(Location(start, position()), Lexeme::Error);
+        std::pair<AstName, Lexeme::Type> maybeChecked = readName();
+        if (maybeChecked.second != Lexeme::ReservedChecked)
+            return Lexeme(Location(start, position()), Lexeme::Error);
 
-            return Lexeme(Location(start, position()), maybeChecked.second, maybeChecked.first.value);
-        }
+        return Lexeme(Location(start, position()), maybeChecked.second, maybeChecked.first.value);
     }
     default:
         if (isDigit(peekch()))

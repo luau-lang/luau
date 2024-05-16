@@ -12,7 +12,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauCheckedFunctionSyntax);
 LUAU_FASTFLAG(DebugLuauSharedSelf);
 
 TEST_SUITE_BEGIN("ToString");
@@ -1007,7 +1006,6 @@ Type 'string' could not be converted into 'number' in an invariant context)";
 TEST_CASE_FIXTURE(Fixture, "checked_fn_toString")
 {
     ScopedFastFlag flags[] = {
-        {FFlag::LuauCheckedFunctionSyntax, true},
         {FFlag::DebugLuauDeferredConstraintResolution, true},
     };
 

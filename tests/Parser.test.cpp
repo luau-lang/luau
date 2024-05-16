@@ -11,7 +11,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauCheckedFunctionSyntax);
 LUAU_FASTFLAG(LuauLexerLookaheadRemembersBraceType);
 LUAU_FASTINT(LuauRecursionLimit);
 LUAU_FASTINT(LuauTypeLengthLimit);
@@ -3051,7 +3050,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_top_level_checked_fn")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag sff{FFlag::LuauCheckedFunctionSyntax, true};
 
     std::string src = R"BUILTIN_SRC(
 declare function @checked abs(n: number): number
@@ -3071,7 +3069,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_declared_table_checked_member")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag sff{FFlag::LuauCheckedFunctionSyntax, true};
 
     const std::string src = R"BUILTIN_SRC(
     declare math : {
@@ -3099,7 +3096,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_checked_outside_decl_fails")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag sff{FFlag::LuauCheckedFunctionSyntax, true};
 
     ParseResult pr = tryParse(R"(
     local @checked = 3
@@ -3113,7 +3109,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_checked_in_and_out_of_decl_fails")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag sff{FFlag::LuauCheckedFunctionSyntax, true};
 
     auto pr = tryParse(R"(
     local @checked = 3
@@ -3129,7 +3124,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_checked_as_function_name_fails")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag sff{FFlag::LuauCheckedFunctionSyntax, true};
 
     auto pr = tryParse(R"(
     function @checked(x: number) : number
@@ -3143,7 +3137,6 @@ TEST_CASE_FIXTURE(Fixture, "cannot_use_@_as_variable_name")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag sff{FFlag::LuauCheckedFunctionSyntax, true};
 
     auto pr = tryParse(R"(
     local @blah = 3

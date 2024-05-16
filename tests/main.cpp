@@ -18,7 +18,7 @@
 #include <windows.h> // IsDebuggerPresent
 #endif
 
-#if defined(__x86_64__) || defined(_M_X64)
+#if defined(CODEGEN_TARGET_X64)
 #include <immintrin.h>
 #endif
 
@@ -330,7 +330,7 @@ static void setFastFlags(const std::vector<doctest::String>& flags)
 // This function performs system/architecture specific initialization prior to running tests.
 static void initSystem()
 {
-#if defined(__x86_64__) || defined(_M_X64)
+#if defined(CODEGEN_TARGET_X64)
     // Some unit tests make use of denormalized numbers.  So flags to flush to zero or treat denormals as zero
     // must be disabled for expected behavior.
     _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_OFF);
