@@ -13,3 +13,4 @@
 /luau-compile
 __pycache__
 .cache
+.clangd
