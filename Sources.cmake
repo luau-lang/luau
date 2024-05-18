@@ -295,6 +295,13 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Unifier2.cpp
 )
 
+# Luau.Analysis Sources
+target_sources(Luau.EqSat PRIVATE
+    EqSat/include/Luau/Id.h
+
+    EqSat/src/Id.cpp
+)
+
 # Luau.VM Sources
 target_sources(Luau.VM PRIVATE
     VM/include/lua.h
