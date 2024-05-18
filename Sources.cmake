@@ -297,9 +297,13 @@ target_sources(Luau.Analysis PRIVATE
 
 # Luau.Analysis Sources
 target_sources(Luau.EqSat PRIVATE
+    EqSat/include/Luau/EGraph.h
     EqSat/include/Luau/Id.h
+    EqSat/include/Luau/Language.h
+    EqSat/include/Luau/UnionFind.h
 
     EqSat/src/Id.cpp
+    EqSat/src/UnionFind.cpp
 )
 
 # Luau.VM Sources
