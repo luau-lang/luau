@@ -1,5 +1,7 @@
 /build/
 /build[.-]*/
+/cmake/
+/cmake[.-]*/
 /coverage/
 /.vs/
 /.vscode/
