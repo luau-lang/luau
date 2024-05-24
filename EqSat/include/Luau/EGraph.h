@@ -22,9 +22,9 @@ struct EClass {
 };
 
 /// In Definition 2.1, an EGraph is composed with a tuple (U, M, H) where
-/// - U: [`EGraph::u`]
-/// - M: [`EGraph::m`]
-/// - H: [`EGraph::h`]
+/// - U: [`EGraph::unionfind`]
+/// - M: [`EGraph::classes`]
+/// - H: [`EGraph::hashcons`]
 ///
 /// See <https://arxiv.org/pdf/2004.03082>.
 template<typename L, typename N>
@@ -35,15 +35,15 @@ struct EGraph
 
 private:
     /// A union-find data structure 𝑈 stores an equivalence relation over e-class ids.
-    UnionFind u;
+    UnionFind unionfind;
 
     /// The e-class map 𝑀 maps e-class ids to e-classes. All equivalent e-class ids map to the same
     /// e-class, i.e., 𝑎 ≡id 𝑏 iff 𝑀[𝑎] is the same set as 𝑀[𝑏]. An e-class id 𝑎 is said to refer to the
     /// e-class 𝑀[find(𝑎)].
-    DenseHashMap<Id, EClass<L, typename N::Data>> m;
+    DenseHashMap<Id, EClass<L, typename N::Data>> classes;
 
     /// The hashcons 𝐻 is a map from e-nodes to e-class ids.
-    DenseHashMap<L, Id> h;
+    DenseHashMap<L, Id> hashcons;
 };
 
 } // namespace Luau::EqSat
