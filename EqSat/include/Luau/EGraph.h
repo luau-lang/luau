@@ -1,10 +1,10 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/DenseHash.h"
 #include "Luau/Id.h"
 #include "Luau/UnionFind.h"
 
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -51,10 +51,10 @@ private:
     /// The e-class map 𝑀 maps e-class ids to e-classes. All equivalent e-class ids map to the same
     /// e-class, i.e., 𝑎 ≡id 𝑏 iff 𝑀[𝑎] is the same set as 𝑀[𝑏]. An e-class id 𝑎 is said to refer to the
     /// e-class 𝑀[find(𝑎)].
-    DenseHashMap<Id, EClass<L, typename N::Data>> classes;
+    std::unordered_map<Id, EClass<L, typename N::Data>> classes;
 
     /// The hashcons 𝐻 is a map from e-nodes to e-class ids.
-    DenseHashMap<L, Id> hashcons;
+    std::unordered_map<L, Id> hashcons;
 };
 
 } // namespace Luau::EqSat
