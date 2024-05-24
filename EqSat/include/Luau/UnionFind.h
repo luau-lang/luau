@@ -9,7 +9,7 @@ namespace Luau::EqSat
 {
 
 /// See <https://dl.acm.org/doi/pdf/10.1145/321879.321884>.
-struct UnionFind
+struct UnionFind final
 {
     Id makeSet();
     Id find(Id id) const;

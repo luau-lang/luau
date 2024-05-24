@@ -14,7 +14,8 @@ namespace Luau::EqSat
 /// Each e-class is a set of e-nodes representing equivalent terms from a given language,
 /// and an e-node is a function symbol paired with a list of children e-classes.
 template<typename L, typename D>
-struct EClass {
+struct EClass final
+{
     Id id;
     std::vector<L> nodes;
     D data;
@@ -28,7 +29,7 @@ struct EClass {
 ///
 /// See <https://arxiv.org/pdf/2004.03082>.
 template<typename L, typename N>
-struct EGraph
+struct EGraph final
 {
     // TODO: static_assert L <: Language
     // TODO: static_assert N <: Analysis<L>
