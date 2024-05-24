@@ -34,6 +34,16 @@ struct EGraph final
     // TODO: static_assert L <: Language
     // TODO: static_assert N <: Analysis<L>
 
+    Id find(Id id) const;
+
+    // Per the egg paper, definition 2.2 (Canonicalization):
+    //
+    //   An e-node 𝑛 is canonical iff 𝑛 = canonicalize(𝑛), where
+    //   canonicalize(𝑓(𝑎1, 𝑎2, ...)) = 𝑓(find(𝑎1), find(𝑎2), ...).
+    //
+    // Doing so requires sketching out `Luau::EqSat::Language` which
+    // I want to do at a later time for the time being. Will revisit.
+
 private:
     /// A union-find data structure 𝑈 stores an equivalence relation over e-class ids.
     UnionFind unionfind;
