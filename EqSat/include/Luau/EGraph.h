@@ -42,11 +42,8 @@ private:
     /// e-class 𝑀[find(𝑎)].
     DenseHashMap<Id, EClass<L, typename N::Data>> m;
 
-    /// The hashcons 𝐻 is a map from e-nodes to e-node ids.
-    ///
-    /// Author note: the paper says this maps from e-nodes to e-class ids, but the
-    /// corresponding map in the egg crate called `memo`, they map it to e-node ids?
-    DenseHashMap<EClass<L, typename N::Data>, Id> h;
+    /// The hashcons 𝐻 is a map from e-nodes to e-class ids.
+    DenseHashMap<L, Id> h;
 };
 
 } // namespace Luau::EqSat
