@@ -429,6 +429,8 @@ if(TARGET Luau.UnitTest)
         tests/DiffAsserts.cpp
         tests/DiffAsserts.h
         tests/Differ.test.cpp
+        tests/EqSat.language.test.cpp
+        tests/EqSat.propositional.test.cpp
         tests/Error.test.cpp
         tests/Fixture.cpp
         tests/Fixture.h

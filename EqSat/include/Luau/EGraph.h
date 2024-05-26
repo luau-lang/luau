@@ -57,7 +57,7 @@ private:
     std::unordered_map<Id, EClass<L, typename N::Data>> classes;
 
     /// The hashcons 𝐻 is a map from e-nodes to e-class ids.
-    std::unordered_map<L, Id> hashcons;
+    std::unordered_map<L, Id, typename L::Hash> hashcons;
 };
 
 } // namespace Luau::EqSat
