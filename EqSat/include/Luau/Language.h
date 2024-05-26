@@ -75,7 +75,6 @@ private:
     template<typename T>
     static void fnMove(void* dst, void* src)
     {
-        // static_cast<T&&> is equivalent to std::move() but faster in Debug
         new (dst) T(static_cast<T&&>(*static_cast<T*>(src)));
     }
 
