@@ -214,6 +214,14 @@ TEST_CASE_FIXTURE(SimplifyFixture, "any_and_indeterminate_types")
     CHECK(errorTy == anyLhsPending->options[1]);
 }
 
+TEST_CASE_FIXTURE(SimplifyFixture, "union_where_lhs_elements_are_a_subset_of_the_rhs")
+{
+    TypeId lhs = union_(numberTy, stringTy);
+    TypeId rhs = union_(stringTy, numberTy);
+
+    CHECK("number | string" == toString(union_(lhs, rhs)));
+}
+
 TEST_CASE_FIXTURE(SimplifyFixture, "unknown_and_indeterminate_types")
 {
     CHECK(freeTy == intersect(unknownTy, freeTy));

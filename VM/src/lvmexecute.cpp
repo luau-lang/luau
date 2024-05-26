@@ -16,6 +16,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauVmSplitDoarith, false)
+
 // Disable c99-designator to avoid the warning in CGOTO dispatch table
 #ifdef __clang__
 #if __has_warning("-Wc99-designator")
@@ -1487,7 +1489,14 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_ADD));
+                        if (FFlag::LuauVmSplitDoarith)
+                        {
+                            VM_PROTECT(luaV_doarithimpl<TM_ADD>(L, ra, rb, rc));
+                        }
+                        else
+                        {
+                            VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_ADD));
+                        }
                         VM_NEXT();
                     }
                 }
@@ -1533,7 +1542,14 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_SUB));
+                        if (FFlag::LuauVmSplitDoarith)
+                        {
+                            VM_PROTECT(luaV_doarithimpl<TM_SUB>(L, ra, rb, rc));
+                        }
+                        else
+                        {
+                            VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_SUB));
+                        }
                         VM_NEXT();
                     }
                 }
@@ -1594,7 +1610,14 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_MUL));
+                        if (FFlag::LuauVmSplitDoarith)
+                        {
+                            VM_PROTECT(luaV_doarithimpl<TM_MUL>(L, ra, rb, rc));
+                        }
+                        else
+                        {
+                            VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_MUL));
+                        }
                         VM_NEXT();
                     }
                 }
@@ -1655,7 +1678,14 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_DIV));
+                        if (FFlag::LuauVmSplitDoarith)
+                        {
+                            VM_PROTECT(luaV_doarithimpl<TM_DIV>(L, ra, rb, rc));
+                        }
+                        else
+                        {
+                            VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_DIV));
+                        }
                         VM_NEXT();
                     }
                 }
@@ -1703,7 +1733,14 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_IDIV));
+                        if (FFlag::LuauVmSplitDoarith)
+                        {
+                            VM_PROTECT(luaV_doarithimpl<TM_IDIV>(L, ra, rb, rc));
+                        }
+                        else
+                        {
+                            VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_IDIV));
+                        }
                         VM_NEXT();
                     }
                 }
@@ -1727,7 +1764,14 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_MOD));
+                    if (FFlag::LuauVmSplitDoarith)
+                    {
+                        VM_PROTECT(luaV_doarithimpl<TM_MOD>(L, ra, rb, rc));
+                    }
+                    else
+                    {
+                        VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_MOD));
+                    }
                     VM_NEXT();
                 }
             }
@@ -1748,7 +1792,14 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_POW));
+                    if (FFlag::LuauVmSplitDoarith)
+                    {
+                        VM_PROTECT(luaV_doarithimpl<TM_POW>(L, ra, rb, rc));
+                    }
+                    else
+                    {
+                        VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_POW));
+                    }
                     VM_NEXT();
                 }
             }
@@ -1769,7 +1820,14 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_ADD));
+                    if (FFlag::LuauVmSplitDoarith)
+                    {
+                        VM_PROTECT(luaV_doarithimpl<TM_ADD>(L, ra, rb, kv));
+                    }
+                    else
+                    {
+                        VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_ADD));
+                    }
                     VM_NEXT();
                 }
             }
@@ -1790,7 +1848,14 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_SUB));
+                    if (FFlag::LuauVmSplitDoarith)
+                    {
+                        VM_PROTECT(luaV_doarithimpl<TM_SUB>(L, ra, rb, kv));
+                    }
+                    else
+                    {
+                        VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_SUB));
+                    }
                     VM_NEXT();
                 }
             }
@@ -1835,7 +1900,14 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_MUL));
+                        if (FFlag::LuauVmSplitDoarith)
+                        {
+                            VM_PROTECT(luaV_doarithimpl<TM_MUL>(L, ra, rb, kv));
+                        }
+                        else
+                        {
+                            VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_MUL));
+                        }
                         VM_NEXT();
                     }
                 }
@@ -1881,7 +1953,14 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_DIV));
+                        if (FFlag::LuauVmSplitDoarith)
+                        {
+                            VM_PROTECT(luaV_doarithimpl<TM_DIV>(L, ra, rb, kv));
+                        }
+                        else
+                        {
+                            VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_DIV));
+                        }
                         VM_NEXT();
                     }
                 }
@@ -1928,7 +2007,14 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_IDIV));
+                        if (FFlag::LuauVmSplitDoarith)
+                        {
+                            VM_PROTECT(luaV_doarithimpl<TM_IDIV>(L, ra, rb, kv));
+                        }
+                        else
+                        {
+                            VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_IDIV));
+                        }
                         VM_NEXT();
                     }
                 }
@@ -1952,7 +2038,14 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_MOD));
+                    if (FFlag::LuauVmSplitDoarith)
+                    {
+                        VM_PROTECT(luaV_doarithimpl<TM_MOD>(L, ra, rb, kv));
+                    }
+                    else
+                    {
+                        VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_MOD));
+                    }
                     VM_NEXT();
                 }
             }
@@ -1979,7 +2072,14 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_POW));
+                    if (FFlag::LuauVmSplitDoarith)
+                    {
+                        VM_PROTECT(luaV_doarithimpl<TM_POW>(L, ra, rb, kv));
+                    }
+                    else
+                    {
+                        VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_POW));
+                    }
                     VM_NEXT();
                 }
             }
@@ -2092,7 +2192,14 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, rb, TM_UNM));
+                        if (FFlag::LuauVmSplitDoarith)
+                        {
+                            VM_PROTECT(luaV_doarithimpl<TM_UNM>(L, ra, rb, rb));
+                        }
+                        else
+                        {
+                            VM_PROTECT(luaV_doarith(L, ra, rb, rb, TM_UNM));
+                        }
                         VM_NEXT();
                     }
                 }
@@ -2711,7 +2818,14 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, kv, rc, TM_SUB));
+                    if (FFlag::LuauVmSplitDoarith)
+                    {
+                        VM_PROTECT(luaV_doarithimpl<TM_SUB>(L, ra, kv, rc));
+                    }
+                    else
+                    {
+                        VM_PROTECT(luaV_doarith(L, ra, kv, rc, TM_SUB));
+                    }
                     VM_NEXT();
                 }
             }
@@ -2739,7 +2853,14 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, kv, rc, TM_DIV));
+                    if (FFlag::LuauVmSplitDoarith)
+                    {
+                        VM_PROTECT(luaV_doarithimpl<TM_DIV>(L, ra, kv, rc));
+                    }
+                    else
+                    {
+                        VM_PROTECT(luaV_doarith(L, ra, kv, rc, TM_DIV));
+                    }
                     VM_NEXT();
                 }
             }

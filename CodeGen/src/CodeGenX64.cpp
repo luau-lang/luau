@@ -181,7 +181,7 @@ static EntryLocations buildEntryFunction(AssemblyBuilderX64& build, UnwindBuilde
     build.ret();
 
     // Our entry function is special, it spans the whole remaining code area
-    unwind.finishFunction(build.getLabelOffset(locations.start), kFullBlockFuncton);
+    unwind.finishFunction(build.getLabelOffset(locations.start), kFullBlockFunction);
 
     return locations;
 }

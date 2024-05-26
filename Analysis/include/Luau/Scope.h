@@ -102,4 +102,12 @@ bool subsumesStrict(Scope* left, Scope* right);
 // outermost-possible scope.
 bool subsumes(Scope* left, Scope* right);
 
+inline Scope* max(Scope* left, Scope* right)
+{
+    if (subsumes(left, right))
+        return right;
+    else
+        return left;
+}
+
 } // namespace Luau
