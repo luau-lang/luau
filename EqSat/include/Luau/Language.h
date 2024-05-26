@@ -56,6 +56,7 @@ class Language
     const char* tag;
     char buffer[std::max({sizeof(Ts)...})];
 
+private:
     template<typename T>
     using WithinDomain = std::disjunction<std::is_same<std::decay_t<T>, Ts>...>;
 
