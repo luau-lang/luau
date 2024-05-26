@@ -302,7 +302,6 @@ target_sources(Luau.EqSat PRIVATE
     EqSat/include/Luau/Language.h
     EqSat/include/Luau/UnionFind.h
 
-    EqSat/src/EGraph.cpp
     EqSat/src/Id.cpp
     EqSat/src/UnionFind.cpp
 )

@@ -34,7 +34,10 @@ struct EGraph final
     // TODO: static_assert L <: Language
     // TODO: static_assert N <: Analysis<L>
 
-    Id find(Id id) const;
+    Id find(Id id) const
+    {
+        return unionfind.find(id);
+    }
 
     // Per the egg paper, definition 2.2 (Canonicalization):
     //
