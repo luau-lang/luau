@@ -25,10 +25,16 @@ namespace CodeGen
 static const Instruction kCodeEntryInsn = LOP_NATIVECALL;
 
 // From CodeGen.cpp
-extern void* gPerfLogContext;
-extern PerfLogFn gPerfLogFn;
+static void* gPerfLogContext = nullptr;
+static PerfLogFn gPerfLogFn = nullptr;
 
 unsigned int getCpuFeaturesA64();
+
+void setPerfLog(void* context, PerfLogFn logFn)
+{
+    gPerfLogContext = context;
+    gPerfLogFn = logFn;
+}
 
 static void logPerfFunction(Proto* p, uintptr_t addr, unsigned size)
 {
@@ -365,17 +371,17 @@ static void initializeExecutionCallbacks(lua_State* L, BaseCodeGenContext* codeG
     ecb->getmemorysize = getMemorySize;
 }
 
-void create_NEW(lua_State* L)
+void create(lua_State* L)
 {
-    return create_NEW(L, size_t(FInt::LuauCodeGenBlockSize), size_t(FInt::LuauCodeGenMaxTotalSize), nullptr, nullptr);
+    return create(L, size_t(FInt::LuauCodeGenBlockSize), size_t(FInt::LuauCodeGenMaxTotalSize), nullptr, nullptr);
 }
 
-void create_NEW(lua_State* L, AllocationCallback* allocationCallback, void* allocationCallbackContext)
+void create(lua_State* L, AllocationCallback* allocationCallback, void* allocationCallbackContext)
 {
-    return create_NEW(L, size_t(FInt::LuauCodeGenBlockSize), size_t(FInt::LuauCodeGenMaxTotalSize), allocationCallback, allocationCallbackContext);
+    return create(L, size_t(FInt::LuauCodeGenBlockSize), size_t(FInt::LuauCodeGenMaxTotalSize), allocationCallback, allocationCallbackContext);
 }
 
-void create_NEW(lua_State* L, size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext)
+void create(lua_State* L, size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext)
 {
     std::unique_ptr<StandaloneCodeGenContext> codeGenContext =
         std::make_unique<StandaloneCodeGenContext>(blockSize, maxTotalSize, allocationCallback, allocationCallbackContext);
@@ -386,7 +392,7 @@ void create_NEW(lua_State* L, size_t blockSize, size_t maxTotalSize, AllocationC
     initializeExecutionCallbacks(L, codeGenContext.release());
 }
 
-void create_NEW(lua_State* L, SharedCodeGenContext* codeGenContext)
+void create(lua_State* L, SharedCodeGenContext* codeGenContext)
 {
     initializeExecutionCallbacks(L, codeGenContext);
 }
@@ -575,22 +581,32 @@ template<typename AssemblyBuilder>
     return compilationResult;
 }
 
-CompilationResult compile_NEW(const ModuleId& moduleId, lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats)
+CompilationResult compile(const ModuleId& moduleId, lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats)
 {
     return compileInternal(moduleId, L, idx, options, stats);
 }
 
-CompilationResult compile_NEW(lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats)
+CompilationResult compile(lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats)
 {
     return compileInternal({}, L, idx, options, stats);
 }
 
-[[nodiscard]] bool isNativeExecutionEnabled_NEW(lua_State* L)
+CompilationResult compile(lua_State* L, int idx, unsigned int flags, CompilationStats* stats)
+{
+    return compileInternal({}, L, idx, CompilationOptions{flags}, stats);
+}
+
+CompilationResult compile(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats)
+{
+    return compileInternal(moduleId, L, idx, CompilationOptions{flags}, stats);
+}
+
+[[nodiscard]] bool isNativeExecutionEnabled(lua_State* L)
 {
     return getCodeGenContext(L) != nullptr && L->global->ecb.enter == onEnter;
 }
 
-void setNativeExecutionEnabled_NEW(lua_State* L, bool enabled)
+void setNativeExecutionEnabled(lua_State* L, bool enabled)
 {
     if (getCodeGenContext(L) != nullptr)
         L->global->ecb.enter = enabled ? onEnter : onEnterDisabled;

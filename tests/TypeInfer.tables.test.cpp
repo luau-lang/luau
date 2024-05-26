@@ -4479,4 +4479,31 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_results_compare_to_nil")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzzer_normalization_preserves_tbl_scopes")
+{
+    CheckResult result = check(R"(
+Module 'l0':
+do end
+
+Module 'l1':
+local _ = {n0=nil,}
+if if nil then _ then
+if nil and (_)._ ~= (_)._ then
+do end
+while _ do
+_ = _
+do end
+end
+end
+do end
+end
+local l0
+while _ do
+_ = nil
+(_[_])._ %= `{# _}{bit32.extract(# _,1)}`
+end
+
+)");
+}
+
 TEST_SUITE_END();

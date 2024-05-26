@@ -7,11 +7,13 @@
 #include "Luau/NotNull.h"
 #include "Luau/StringUtils.h"
 #include "Luau/ToString.h"
+#include "Luau/TypeFamily.h"
 
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <unordered_set>
 
 LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 
@@ -60,6 +62,23 @@ static std::string wrongNumberOfArgsString(
 
 namespace Luau
 {
+
+// this list of binary operator type families is used for better stringification of type families errors
+static const std::unordered_map<std::string, const char*> kBinaryOps{
+    {"add", "+"}, {"sub", "-"}, {"mul", "*"}, {"div", "/"}, {"idiv", "//"}, {"pow", "^"}, {"mod", "%"}, {"concat", ".."}, {"and", "and"},
+    {"or", "or"},  {"lt", "< or >="}, {"le", "<= or >"}, {"eq", "== or ~="}
+};
+
+// this list of unary operator type families is used for better stringification of type families errors
+static const std::unordered_map<std::string, const char*> kUnaryOps{
+    {"unm", "-"}, {"len", "#"}, {"not", "not"}
+};
+
+// this list of type families will receive a special error indicating that the user should file a bug on the GitHub repository
+// putting a type family in this list indicates that it is expected to _always_ reduce
+static const std::unordered_set<std::string> kUnreachableTypeFamilies{
+    "refine", "singleton", "union", "intersect"
+};
 
 struct ErrorConverter
 {
@@ -565,6 +584,96 @@ struct ErrorConverter
 
     std::string operator()(const UninhabitedTypeFamily& e) const
     {
+        auto tfit = get<TypeFamilyInstanceType>(e.ty);
+        LUAU_ASSERT(tfit); // Luau analysis has actually done something wrong if this type is not a type family.
+        if (!tfit)
+            return "Unexpected type " + Luau::toString(e.ty) + " flagged as an uninhabited type family.";
+
+        // unary operators
+        if (auto unaryString = kUnaryOps.find(tfit->family->name); unaryString != kUnaryOps.end())
+        {
+            std::string result = "Operator '" + std::string(unaryString->second) + "' could not be applied to ";
+
+            if (tfit->typeArguments.size() == 1 && tfit->packArguments.empty())
+            {
+                result += "operand of type " + Luau::toString(tfit->typeArguments[0]);
+
+                if (tfit->family->name != "not")
+                    result += "; there is no corresponding overload for __" + tfit->family->name;
+            }
+            else
+            {
+                // if it's not the expected case, we ought to add a specialization later, but this is a sane default.
+                result += "operands of types ";
+
+                bool isFirst = true;
+                for (auto arg : tfit->typeArguments)
+                {
+                    if (!isFirst)
+                        result += ", ";
+
+                    result += Luau::toString(arg);
+                    isFirst = false;
+                }
+
+                for (auto packArg : tfit->packArguments)
+                    result += ", " + Luau::toString(packArg);
+            }
+
+            return result;
+        }
+
+        // binary operators
+        if (auto binaryString = kBinaryOps.find(tfit->family->name); binaryString != kBinaryOps.end())
+        {
+            std::string result = "Operator '" + std::string(binaryString->second) + "' could not be applied to operands of types ";
+
+            if (tfit->typeArguments.size() == 2 && tfit->packArguments.empty())
+            {
+                // this is the expected case.
+                result += Luau::toString(tfit->typeArguments[0]) + " and " + Luau::toString(tfit->typeArguments[1]);
+            }
+            else
+            {
+                // if it's not the expected case, we ought to add a specialization later, but this is a sane default.
+
+                bool isFirst = true;
+                for (auto arg : tfit->typeArguments)
+                {
+                    if (!isFirst)
+                        result += ", ";
+
+                    result += Luau::toString(arg);
+                    isFirst = false;
+                }
+
+                for (auto packArg : tfit->packArguments)
+                    result += ", " + Luau::toString(packArg);
+            }
+
+            result += "; there is no corresponding overload for __" + tfit->family->name;
+
+            return result;
+        }
+
+        // miscellaneous
+
+        if ("keyof" == tfit->family->name || "rawkeyof" == tfit->family->name)
+        {
+            if (tfit->typeArguments.size() == 1 && tfit->packArguments.empty())
+                return "Type '" + toString(tfit->typeArguments[0]) + "' does not have keys, so '" + Luau::toString(e.ty) + "' is invalid";
+            else
+                return "Type family instance " + Luau::toString(e.ty) + " is ill-formed, and thus invalid";
+        }
+
+        if (kUnreachableTypeFamilies.count(tfit->family->name))
+        {
+            return "Type family instance " + Luau::toString(e.ty) + " is uninhabited\n" +
+                "This is likely to be a bug, please report it at https://github.com/luau-lang/luau/issues";
+        }
+
+        // Everything should be specialized above to report a more descriptive error that hopefully does not mention "type families" explicitly.
+        // If we produce this message, it's an indication that we've missed a specialization and it should be fixed!
         return "Type family instance " + Luau::toString(e.ty) + " is uninhabited";
     }
 

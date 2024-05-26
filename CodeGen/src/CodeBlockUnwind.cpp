@@ -102,17 +102,17 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
     UnwindBuilder* unwind = (UnwindBuilder*)context;
 
     // All unwinding related data is placed together at the start of the block
-    size_t unwindSize = unwind->getSize();
+    size_t unwindSize = unwind->getUnwindInfoSize(blockSize);
     unwindSize = (unwindSize + (kCodeAlignment - 1)) & ~(kCodeAlignment - 1); // Match code allocator alignment
     CODEGEN_ASSERT(blockSize >= unwindSize);
 
     char* unwindData = (char*)block;
-    unwind->finalize(unwindData, unwindSize, block, blockSize);
+    [[maybe_unused]] size_t functionCount = unwind->finalize(unwindData, unwindSize, block, blockSize);
 
 #if defined(_WIN32) && defined(CODEGEN_TARGET_X64)
 
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
-    if (!RtlAddFunctionTable((RUNTIME_FUNCTION*)block, uint32_t(unwind->getFunctionCount()), uintptr_t(block)))
+    if (!RtlAddFunctionTable((RUNTIME_FUNCTION*)block, uint32_t(functionCount), uintptr_t(block)))
     {
         CODEGEN_ASSERT(!"Failed to allocate function table");
         return nullptr;

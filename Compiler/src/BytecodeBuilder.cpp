@@ -1666,7 +1666,7 @@ void BytecodeBuilder::validateVariadic() const
 
             if (LUAU_INSN_B(insn) == 0)
             {
-                // consumer instruction ens a variadic sequence
+                // consumer instruction ends a variadic sequence
                 LUAU_ASSERT(variadicSeq);
                 variadicSeq = false;
             }

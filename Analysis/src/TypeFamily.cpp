@@ -37,7 +37,7 @@ LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyApplicationCartesianProductLimit, 5'0
 // when this value is set to a negative value, guessing will be totally disabled.
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauTypeFamilyUseGuesserDepth, -1);
 
-LUAU_FASTFLAG(DebugLuauLogSolver);
+LUAU_FASTFLAGVARIABLE(DebugLuauLogTypeFamilies, false);
 
 namespace Luau
 {
@@ -184,7 +184,7 @@ struct FamilyReducer
         if (subject->owningArena != ctx.arena.get())
             ctx.ice->ice("Attempting to modify a type family instance from another arena", location);
 
-        if (FFlag::DebugLuauLogSolver)
+        if (FFlag::DebugLuauLogTypeFamilies)
             printf("%s -> %s\n", toString(subject, {true}).c_str(), toString(replacement, {true}).c_str());
 
         asMutable(subject)->ty.template emplace<Unifiable::Bound<T>>(replacement);
@@ -206,7 +206,7 @@ struct FamilyReducer
 
             if (reduction.uninhabited || force)
             {
-                if (FFlag::DebugLuauLogSolver)
+                if (FFlag::DebugLuauLogTypeFamilies)
                     printf("%s is uninhabited\n", toString(subject, {true}).c_str());
 
                 if constexpr (std::is_same_v<T, TypeId>)
@@ -216,7 +216,7 @@ struct FamilyReducer
             }
             else if (!reduction.uninhabited && !force)
             {
-                if (FFlag::DebugLuauLogSolver)
+                if (FFlag::DebugLuauLogTypeFamilies)
                     printf("%s is irreducible; blocked on %zu types, %zu packs\n", toString(subject, {true}).c_str(), reduction.blockedTypes.size(),
                         reduction.blockedPacks.size());
 
@@ -243,7 +243,7 @@ struct FamilyReducer
 
             if (skip == SkipTestResult::Irreducible)
             {
-                if (FFlag::DebugLuauLogSolver)
+                if (FFlag::DebugLuauLogTypeFamilies)
                     printf("%s is irreducible due to a dependency on %s\n", toString(subject, {true}).c_str(), toString(p, {true}).c_str());
 
                 irreducible.insert(subject);
@@ -251,7 +251,7 @@ struct FamilyReducer
             }
             else if (skip == SkipTestResult::Defer)
             {
-                if (FFlag::DebugLuauLogSolver)
+                if (FFlag::DebugLuauLogTypeFamilies)
                     printf("Deferring %s until %s is solved\n", toString(subject, {true}).c_str(), toString(p, {true}).c_str());
 
                 if constexpr (std::is_same_v<T, TypeId>)
@@ -269,7 +269,7 @@ struct FamilyReducer
 
             if (skip == SkipTestResult::Irreducible)
             {
-                if (FFlag::DebugLuauLogSolver)
+                if (FFlag::DebugLuauLogTypeFamilies)
                     printf("%s is irreducible due to a dependency on %s\n", toString(subject, {true}).c_str(), toString(p, {true}).c_str());
 
                 irreducible.insert(subject);
@@ -277,7 +277,7 @@ struct FamilyReducer
             }
             else if (skip == SkipTestResult::Defer)
             {
-                if (FFlag::DebugLuauLogSolver)
+                if (FFlag::DebugLuauLogTypeFamilies)
                     printf("Deferring %s until %s is solved\n", toString(subject, {true}).c_str(), toString(p, {true}).c_str());
 
                 if constexpr (std::is_same_v<T, TypeId>)
@@ -297,7 +297,7 @@ struct FamilyReducer
     {
         if (shouldGuess.contains(subject))
         {
-            if (FFlag::DebugLuauLogSolver)
+            if (FFlag::DebugLuauLogTypeFamilies)
                 printf("Flagged %s for reduction with guesser.\n", toString(subject, {true}).c_str());
 
             TypeFamilyReductionGuesser guesser{ctx.arena, ctx.builtins, ctx.normalizer};
@@ -305,14 +305,14 @@ struct FamilyReducer
 
             if (guessed)
             {
-                if (FFlag::DebugLuauLogSolver)
+                if (FFlag::DebugLuauLogTypeFamilies)
                     printf("Selected %s as the guessed result type.\n", toString(*guessed, {true}).c_str());
 
                 replace(subject, *guessed);
                 return true;
             }
 
-            if (FFlag::DebugLuauLogSolver)
+            if (FFlag::DebugLuauLogTypeFamilies)
                 printf("Failed to produce a guess for the result of %s.\n", toString(subject, {true}).c_str());
         }
 
@@ -328,7 +328,7 @@ struct FamilyReducer
         if (irreducible.contains(subject))
             return;
 
-        if (FFlag::DebugLuauLogSolver)
+        if (FFlag::DebugLuauLogTypeFamilies)
             printf("Trying to reduce %s\n", toString(subject, {true}).c_str());
 
         if (const TypeFamilyInstanceType* tfit = get<TypeFamilyInstanceType>(subject))
@@ -337,7 +337,7 @@ struct FamilyReducer
 
             if (!testParameters(subject, tfit) && testCyclic != SkipTestResult::CyclicTypeFamily)
             {
-                if (FFlag::DebugLuauLogSolver)
+                if (FFlag::DebugLuauLogTypeFamilies)
                     printf("Irreducible due to irreducible/pending and a non-cyclic family\n");
 
                 return;
@@ -361,7 +361,7 @@ struct FamilyReducer
         if (irreducible.contains(subject))
             return;
 
-        if (FFlag::DebugLuauLogSolver)
+        if (FFlag::DebugLuauLogTypeFamilies)
             printf("Trying to reduce %s\n", toString(subject, {true}).c_str());
 
         if (const TypeFamilyInstanceTypePack* tfit = get<TypeFamilyInstanceTypePack>(subject))

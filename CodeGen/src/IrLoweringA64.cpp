@@ -12,6 +12,7 @@
 #include "lgc.h"
 
 LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
+LUAU_FASTFLAG(LuauCodegenSplitDoarith)
 
 namespace Luau
 {
@@ -1242,9 +1243,47 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         else
             build.add(x3, rBase, uint16_t(vmRegOp(inst.c) * sizeof(TValue)));
 
-        build.mov(w4, TMS(intOp(inst.d)));
-        build.ldr(x5, mem(rNativeContext, offsetof(NativeContext, luaV_doarith)));
-        build.blr(x5);
+        if (FFlag::LuauCodegenSplitDoarith)
+        {
+            switch (TMS(intOp(inst.d)))
+            {
+            case TM_ADD:
+                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithadd)));
+                break;
+            case TM_SUB:
+                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithsub)));
+                break;
+            case TM_MUL:
+                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithmul)));
+                break;
+            case TM_DIV:
+                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithdiv)));
+                break;
+            case TM_IDIV:
+                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithidiv)));
+                break;
+            case TM_MOD:
+                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithmod)));
+                break;
+            case TM_POW:
+                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithpow)));
+                break;
+            case TM_UNM:
+                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithunm)));
+                break;
+            default:
+                CODEGEN_ASSERT(!"Invalid doarith helper operation tag");
+                break;
+            }
+
+            build.blr(x4);
+        }
+        else
+        {
+            build.mov(w4, TMS(intOp(inst.d)));
+            build.ldr(x5, mem(rNativeContext, offsetof(NativeContext, luaV_doarith)));
+            build.blr(x5);
+        }
 
         emitUpdateBase(build);
         break;

@@ -16,7 +16,7 @@ namespace CodeGen
 {
 
 // This value is used in 'finishFunction' to mark the function that spans to the end of the whole code block
-static uint32_t kFullBlockFuncton = ~0u;
+static uint32_t kFullBlockFunction = ~0u;
 
 class UnwindBuilder
 {
@@ -52,11 +52,10 @@ public:
     virtual void prologueX64(uint32_t prologueSize, uint32_t stackSize, bool setupFrame, std::initializer_list<X64::RegisterX64> gpr,
         const std::vector<X64::RegisterX64>& simd) = 0;
 
-    virtual size_t getSize() const = 0;
-    virtual size_t getFunctionCount() const = 0;
+    virtual size_t getUnwindInfoSize(size_t blockSize) const = 0;
 
     // This will place the unwinding data at the target address and might update values of some fields
-    virtual void finalize(char* target, size_t offset, void* funcAddress, size_t funcSize) const = 0;
+    virtual size_t finalize(char* target, size_t offset, void* funcAddress, size_t blockSize) const = 0;
 };
 
 } // namespace CodeGen

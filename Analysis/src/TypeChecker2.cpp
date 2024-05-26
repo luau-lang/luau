@@ -1242,13 +1242,14 @@ struct TypeChecker2
 
     void visit(AstExprConstantBool* expr)
     {
-#if defined(LUAU_ENABLE_ASSERT)
+        // booleans use specialized inference logic for singleton types, which can lead to real type errors here.
+
         const TypeId bestType = expr->value ? builtinTypes->trueType : builtinTypes->falseType;
         const TypeId inferredType = lookupType(expr);
 
         const SubtypingResult r = subtyping->isSubtype(bestType, inferredType);
-        LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, inferredType));
-#endif
+        if (!r.isSubtype && !isErrorSuppressing(expr->location, inferredType))
+            reportError(TypeMismatch{inferredType, bestType}, expr->location);
     }
 
     void visit(AstExprConstantNumber* expr)
@@ -1264,13 +1265,14 @@ struct TypeChecker2
 
     void visit(AstExprConstantString* expr)
     {
-#if defined(LUAU_ENABLE_ASSERT)
+        // strings use specialized inference logic for singleton types, which can lead to real type errors here.
+
         const TypeId bestType = module->internalTypes.addType(SingletonType{StringSingleton{std::string{expr->value.data, expr->value.size}}});
         const TypeId inferredType = lookupType(expr);
 
         const SubtypingResult r = subtyping->isSubtype(bestType, inferredType);
-        LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, inferredType));
-#endif
+        if (!r.isSubtype && !isErrorSuppressing(expr->location, inferredType))
+            reportError(TypeMismatch{inferredType, bestType}, expr->location);
     }
 
     void visit(AstExprLocal* expr)

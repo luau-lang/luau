@@ -1255,6 +1255,10 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
             case Relation::Coincident:
             case Relation::Superset:
                 return left;
+            case Relation::Subset:
+                newParts.insert(right);
+                changed = true;
+                break;
             default:
                 newParts.insert(part);
                 newParts.insert(right);

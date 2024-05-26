@@ -391,8 +391,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_errors_if_it_has_nontable_
 
     // FIXME(CLI-95289): we should actually only report the type family being uninhabited error at its first use, I think?
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(toString(result.errors[0]) == "Type family instance keyof<MyObject | boolean> is uninhabited");
-    CHECK(toString(result.errors[1]) == "Type family instance keyof<MyObject | boolean> is uninhabited");
+    CHECK(toString(result.errors[0]) == "Type 'MyObject | boolean' does not have keys, so 'keyof<MyObject | boolean>' is invalid");
+    CHECK(toString(result.errors[1]) == "Type 'MyObject | boolean' does not have keys, so 'keyof<MyObject | boolean>' is invalid");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_string_indexer")
@@ -517,8 +517,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_errors_if_it_has_nontab
 
     // FIXME(CLI-95289): we should actually only report the type family being uninhabited error at its first use, I think?
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(toString(result.errors[0]) == "Type family instance rawkeyof<MyObject | boolean> is uninhabited");
-    CHECK(toString(result.errors[1]) == "Type family instance rawkeyof<MyObject | boolean> is uninhabited");
+    CHECK(toString(result.errors[0]) == "Type 'MyObject | boolean' does not have keys, so 'rawkeyof<MyObject | boolean>' is invalid");
+    CHECK(toString(result.errors[1]) == "Type 'MyObject | boolean' does not have keys, so 'rawkeyof<MyObject | boolean>' is invalid");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_common_subset_if_union_of_differing_tables")
@@ -590,8 +590,8 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_errors_if_it_has_nonclass_par
 
     // FIXME(CLI-95289): we should actually only report the type family being uninhabited error at its first use, I think?
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(toString(result.errors[0]) == "Type family instance keyof<BaseClass | boolean> is uninhabited");
-    CHECK(toString(result.errors[1]) == "Type family instance keyof<BaseClass | boolean> is uninhabited");
+    CHECK(toString(result.errors[0]) == "Type 'BaseClass | boolean' does not have keys, so 'keyof<BaseClass | boolean>' is invalid");
+    CHECK(toString(result.errors[1]) == "Type 'BaseClass | boolean' does not have keys, so 'keyof<BaseClass | boolean>' is invalid");
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_common_subset_if_union_of_differing_classes")
