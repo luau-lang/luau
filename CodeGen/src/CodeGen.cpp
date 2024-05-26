@@ -95,10 +95,6 @@ std::string toString(const CodeGenCompilationResult& result)
     return "";
 }
 
-void* gPerfLogContext = nullptr;
-PerfLogFn gPerfLogFn = nullptr;
-
-
 void onDisable(lua_State* L, Proto* proto)
 {
     // do nothing if proto already uses bytecode
@@ -194,60 +190,6 @@ bool isSupported()
 #else
     return false;
 #endif
-}
-
-void create(lua_State* L, AllocationCallback* allocationCallback, void* allocationCallbackContext)
-{
-    create_NEW(L, allocationCallback, allocationCallbackContext);
-}
-
-void create(lua_State* L)
-{
-    create_NEW(L);
-}
-
-void create(lua_State* L, SharedCodeGenContext* codeGenContext)
-{
-    create_NEW(L, codeGenContext);
-}
-
-[[nodiscard]] bool isNativeExecutionEnabled(lua_State* L)
-{
-    return isNativeExecutionEnabled_NEW(L);
-}
-
-void setNativeExecutionEnabled(lua_State* L, bool enabled)
-{
-    setNativeExecutionEnabled_NEW(L, enabled);
-}
-
-CompilationResult compile(lua_State* L, int idx, unsigned int flags, CompilationStats* stats)
-{
-    Luau::CodeGen::CompilationOptions options{flags};
-
-    return compile_NEW(L, idx, options, stats);
-}
-
-CompilationResult compile(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats)
-{
-    Luau::CodeGen::CompilationOptions options{flags};
-    return compile_NEW(moduleId, L, idx, options, stats);
-}
-
-CompilationResult compile(lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats)
-{
-    return compile_NEW(L, idx, options, stats);
-}
-
-CompilationResult compile(const ModuleId& moduleId, lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats)
-{
-    return compile_NEW(moduleId, L, idx, options, stats);
-}
-
-void setPerfLog(void* context, PerfLogFn logFn)
-{
-    gPerfLogContext = context;
-    gPerfLogFn = logFn;
 }
 
 } // namespace CodeGen

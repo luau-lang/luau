@@ -373,6 +373,152 @@ void luaV_concat(lua_State* L, int total, int last)
     } while (total > 1); // repeat until only 1 result left
 }
 
+template<TMS op>
+void luaV_doarithimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* rc)
+{
+    TValue tempb, tempc;
+    const TValue *b, *c;
+
+    // vector operations that we support:
+    // v+v  v-v  -v    (add/sub/neg)
+    // v*v  s*v  v*s   (mul)
+    // v/v  s/v  v/s   (div)
+    // v//v s//v v//s  (floor div)
+    const float* vb = ttisvector(rb) ? vvalue(rb) : nullptr;
+    const float* vc = ttisvector(rc) ? vvalue(rc) : nullptr;
+
+    if (vb && vc)
+    {
+        switch (op)
+        {
+        case TM_ADD:
+            setvvalue(ra, vb[0] + vc[0], vb[1] + vc[1], vb[2] + vc[2], vb[3] + vc[3]);
+            return;
+        case TM_SUB:
+            setvvalue(ra, vb[0] - vc[0], vb[1] - vc[1], vb[2] - vc[2], vb[3] - vc[3]);
+            return;
+        case TM_MUL:
+            setvvalue(ra, vb[0] * vc[0], vb[1] * vc[1], vb[2] * vc[2], vb[3] * vc[3]);
+            return;
+        case TM_DIV:
+            setvvalue(ra, vb[0] / vc[0], vb[1] / vc[1], vb[2] / vc[2], vb[3] / vc[3]);
+            return;
+        case TM_IDIV:
+            setvvalue(ra, float(luai_numidiv(vb[0], vc[0])), float(luai_numidiv(vb[1], vc[1])), float(luai_numidiv(vb[2], vc[2])),
+                float(luai_numidiv(vb[3], vc[3])));
+            return;
+        case TM_UNM:
+            setvvalue(ra, -vb[0], -vb[1], -vb[2], -vb[3]);
+            return;
+        default:
+            break;
+        }
+    }
+    else if (vb)
+    {
+        c = ttisnumber(rc) ? rc : luaV_tonumber(rc, &tempc);
+
+        if (c)
+        {
+            float nc = cast_to(float, nvalue(c));
+
+            switch (op)
+            {
+            case TM_MUL:
+                setvvalue(ra, vb[0] * nc, vb[1] * nc, vb[2] * nc, vb[3] * nc);
+                return;
+            case TM_DIV:
+                setvvalue(ra, vb[0] / nc, vb[1] / nc, vb[2] / nc, vb[3] / nc);
+                return;
+            case TM_IDIV:
+                setvvalue(ra, float(luai_numidiv(vb[0], nc)), float(luai_numidiv(vb[1], nc)), float(luai_numidiv(vb[2], nc)),
+                    float(luai_numidiv(vb[3], nc)));
+                return;
+            default:
+                break;
+            }
+        }
+    }
+    else if (vc)
+    {
+        b = ttisnumber(rb) ? rb : luaV_tonumber(rb, &tempb);
+
+        if (b)
+        {
+            float nb = cast_to(float, nvalue(b));
+
+            switch (op)
+            {
+            case TM_MUL:
+                setvvalue(ra, nb * vc[0], nb * vc[1], nb * vc[2], nb * vc[3]);
+                return;
+            case TM_DIV:
+                setvvalue(ra, nb / vc[0], nb / vc[1], nb / vc[2], nb / vc[3]);
+                return;
+            case TM_IDIV:
+                setvvalue(ra, float(luai_numidiv(nb, vc[0])), float(luai_numidiv(nb, vc[1])), float(luai_numidiv(nb, vc[2])),
+                    float(luai_numidiv(nb, vc[3])));
+                return;
+            default:
+                break;
+            }
+        }
+    }
+
+    if ((b = luaV_tonumber(rb, &tempb)) != NULL && (c = luaV_tonumber(rc, &tempc)) != NULL)
+    {
+        double nb = nvalue(b), nc = nvalue(c);
+
+        switch (op)
+        {
+        case TM_ADD:
+            setnvalue(ra, luai_numadd(nb, nc));
+            break;
+        case TM_SUB:
+            setnvalue(ra, luai_numsub(nb, nc));
+            break;
+        case TM_MUL:
+            setnvalue(ra, luai_nummul(nb, nc));
+            break;
+        case TM_DIV:
+            setnvalue(ra, luai_numdiv(nb, nc));
+            break;
+        case TM_IDIV:
+            setnvalue(ra, luai_numidiv(nb, nc));
+            break;
+        case TM_MOD:
+            setnvalue(ra, luai_nummod(nb, nc));
+            break;
+        case TM_POW:
+            setnvalue(ra, luai_numpow(nb, nc));
+            break;
+        case TM_UNM:
+            setnvalue(ra, luai_numunm(nb));
+            break;
+        default:
+            LUAU_ASSERT(0);
+            break;
+        }
+    }
+    else
+    {
+        if (!call_binTM(L, rb, rc, ra, op))
+        {
+            luaG_aritherror(L, rb, rc, op);
+        }
+    }
+}
+
+// instantiate private template implementation for external callers
+template void luaV_doarithimpl<TM_ADD>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
+template void luaV_doarithimpl<TM_SUB>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
+template void luaV_doarithimpl<TM_MUL>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
+template void luaV_doarithimpl<TM_DIV>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
+template void luaV_doarithimpl<TM_IDIV>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
+template void luaV_doarithimpl<TM_MOD>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
+template void luaV_doarithimpl<TM_POW>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
+template void luaV_doarithimpl<TM_UNM>(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);
+
 void luaV_doarith(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TMS op)
 {
     TValue tempb, tempc;

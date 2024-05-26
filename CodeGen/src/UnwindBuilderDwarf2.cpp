@@ -202,7 +202,7 @@ void UnwindBuilderDwarf2::finishInfo()
     // Terminate section
     pos = writeu32(pos, 0);
 
-    CODEGEN_ASSERT(getSize() <= kRawDataLimit);
+    CODEGEN_ASSERT(getUnwindInfoSize() <= kRawDataLimit);
 }
 
 void UnwindBuilderDwarf2::prologueA64(uint32_t prologueSize, uint32_t stackSize, std::initializer_list<A64::RegisterA64> regs)
@@ -271,19 +271,14 @@ void UnwindBuilderDwarf2::prologueX64(uint32_t prologueSize, uint32_t stackSize,
     CODEGEN_ASSERT(prologueOffset == prologueSize);
 }
 
-size_t UnwindBuilderDwarf2::getSize() const
+size_t UnwindBuilderDwarf2::getUnwindInfoSize(size_t blockSize) const
 {
     return size_t(pos - rawData);
 }
 
-size_t UnwindBuilderDwarf2::getFunctionCount() const
+size_t UnwindBuilderDwarf2::finalize(char* target, size_t offset, void* funcAddress, size_t blockSize) const
 {
-    return unwindFunctions.size();
-}
-
-void UnwindBuilderDwarf2::finalize(char* target, size_t offset, void* funcAddress, size_t funcSize) const
-{
-    memcpy(target, rawData, getSize());
+    memcpy(target, rawData, getUnwindInfoSize());
 
     for (const UnwindFunctionDwarf2& func : unwindFunctions)
     {
@@ -291,11 +286,13 @@ void UnwindBuilderDwarf2::finalize(char* target, size_t offset, void* funcAddres
 
         writeu64(fdeEntry + kFdeInitialLocationOffset, uintptr_t(funcAddress) + offset + func.beginOffset);
 
-        if (func.endOffset == kFullBlockFuncton)
-            writeu64(fdeEntry + kFdeAddressRangeOffset, funcSize - offset);
+        if (func.endOffset == kFullBlockFunction)
+            writeu64(fdeEntry + kFdeAddressRangeOffset, blockSize - offset);
         else
             writeu64(fdeEntry + kFdeAddressRangeOffset, func.endOffset - func.beginOffset);
     }
+
+    return unwindFunctions.size();
 }
 
 } // namespace CodeGen

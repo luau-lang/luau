@@ -34,6 +34,14 @@ struct NativeContext
     int (*luaV_lessequal)(lua_State* L, const TValue* l, const TValue* r) = nullptr;
     int (*luaV_equalval)(lua_State* L, const TValue* t1, const TValue* t2) = nullptr;
     void (*luaV_doarith)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TMS op) = nullptr;
+    void (*luaV_doarithadd)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_doarithsub)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_doarithmul)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_doarithdiv)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_doarithidiv)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_doarithmod)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_doarithpow)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_doarithunm)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
     void (*luaV_dolen)(lua_State* L, StkId ra, const TValue* rb) = nullptr;
     void (*luaV_gettable)(lua_State* L, const TValue* t, TValue* key, StkId val) = nullptr;
     void (*luaV_settable)(lua_State* L, const TValue* t, TValue* key, StkId val) = nullptr;

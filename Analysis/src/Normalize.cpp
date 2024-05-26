@@ -2534,6 +2534,7 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         state = tttv->state;
 
     TypeLevel level = max(httv->level, tttv->level);
+    Scope* scope = max(httv->scope, tttv->scope);
 
     std::unique_ptr<TableType> result = nullptr;
     bool hereSubThere = true;
@@ -2644,7 +2645,7 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         if (prop.readTy || prop.writeTy)
         {
             if (!result.get())
-                result = std::make_unique<TableType>(TableType{state, level});
+                result = std::make_unique<TableType>(TableType{state, level, scope});
             result->props[name] = prop;
         }
     }
@@ -2654,7 +2655,7 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         if (httv->props.count(name) == 0)
         {
             if (!result.get())
-                result = std::make_unique<TableType>(TableType{state, level});
+                result = std::make_unique<TableType>(TableType{state, level, scope});
 
             result->props[name] = tprop;
             hereSubThere = false;
@@ -2667,7 +2668,7 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         TypeId index = unionType(httv->indexer->indexType, tttv->indexer->indexType);
         TypeId indexResult = intersectionType(httv->indexer->indexResultType, tttv->indexer->indexResultType);
         if (!result.get())
-            result = std::make_unique<TableType>(TableType{state, level});
+            result = std::make_unique<TableType>(TableType{state, level, scope});
         result->indexer = {index, indexResult};
         hereSubThere &= (httv->indexer->indexType == index) && (httv->indexer->indexResultType == indexResult);
         thereSubHere &= (tttv->indexer->indexType == index) && (tttv->indexer->indexResultType == indexResult);
@@ -2675,14 +2676,14 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
     else if (httv->indexer)
     {
         if (!result.get())
-            result = std::make_unique<TableType>(TableType{state, level});
+            result = std::make_unique<TableType>(TableType{state, level, scope});
         result->indexer = httv->indexer;
         thereSubHere = false;
     }
     else if (tttv->indexer)
     {
         if (!result.get())
-            result = std::make_unique<TableType>(TableType{state, level});
+            result = std::make_unique<TableType>(TableType{state, level, scope});
         result->indexer = tttv->indexer;
         hereSubThere = false;
     }
@@ -2697,7 +2698,7 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         if (result.get())
             table = arena->addType(std::move(*result));
         else
-            table = arena->addType(TableType{state, level});
+            table = arena->addType(TableType{state, level, scope});
     }
 
     if (tmtable && hmtable)

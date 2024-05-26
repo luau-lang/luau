@@ -43,6 +43,16 @@ void initFunctions(NativeState& data)
     data.context.luaV_lessequal = luaV_lessequal;
     data.context.luaV_equalval = luaV_equalval;
     data.context.luaV_doarith = luaV_doarith;
+
+    data.context.luaV_doarithadd = luaV_doarithimpl<TM_ADD>;
+    data.context.luaV_doarithsub = luaV_doarithimpl<TM_SUB>;
+    data.context.luaV_doarithmul = luaV_doarithimpl<TM_MUL>;
+    data.context.luaV_doarithdiv = luaV_doarithimpl<TM_DIV>;
+    data.context.luaV_doarithidiv = luaV_doarithimpl<TM_IDIV>;
+    data.context.luaV_doarithmod = luaV_doarithimpl<TM_MOD>;
+    data.context.luaV_doarithpow = luaV_doarithimpl<TM_POW>;
+    data.context.luaV_doarithunm = luaV_doarithimpl<TM_UNM>;
+
     data.context.luaV_dolen = luaV_dolen;
     data.context.luaV_gettable = luaV_gettable;
     data.context.luaV_settable = luaV_settable;
@@ -121,6 +131,16 @@ void initFunctions(NativeContext& context)
     context.luaV_lessequal = luaV_lessequal;
     context.luaV_equalval = luaV_equalval;
     context.luaV_doarith = luaV_doarith;
+
+    context.luaV_doarithadd = luaV_doarithimpl<TM_ADD>;
+    context.luaV_doarithsub = luaV_doarithimpl<TM_SUB>;
+    context.luaV_doarithmul = luaV_doarithimpl<TM_MUL>;
+    context.luaV_doarithdiv = luaV_doarithimpl<TM_DIV>;
+    context.luaV_doarithidiv = luaV_doarithimpl<TM_IDIV>;
+    context.luaV_doarithmod = luaV_doarithimpl<TM_MOD>;
+    context.luaV_doarithpow = luaV_doarithimpl<TM_POW>;
+    context.luaV_doarithunm = luaV_doarithimpl<TM_UNM>;
+
     context.luaV_dolen = luaV_dolen;
     context.luaV_gettable = luaV_gettable;
     context.luaV_settable = luaV_settable;

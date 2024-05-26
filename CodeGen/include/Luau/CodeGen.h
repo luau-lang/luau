@@ -144,8 +144,17 @@ using UniqueSharedCodeGenContext = std::unique_ptr<SharedCodeGenContext, SharedC
 // SharedCodeGenContext must be destroyed before this function is called.
 void destroySharedCodeGenContext(const SharedCodeGenContext* codeGenContext) noexcept;
 
-void create(lua_State* L, AllocationCallback* allocationCallback, void* allocationCallbackContext);
+// Initializes native code-gen on the provided Luau VM, using a VM-specific
+// code-gen context and either the default allocator parameters or custom
+// allocator parameters.
 void create(lua_State* L);
+void create(lua_State* L, AllocationCallback* allocationCallback, void* allocationCallbackContext);
+void create(lua_State* L, size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
+
+// Initializes native code-gen on the provided Luau VM, using the provided
+// SharedCodeGenContext.  Note that after this function is called, the
+// SharedCodeGenContext must not be destroyed until after the Luau VM L is
+// destroyed via lua_close.
 void create(lua_State* L, SharedCodeGenContext* codeGenContext);
 
 // Check if native execution is enabled
