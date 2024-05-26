@@ -29,6 +29,14 @@ struct Atom
     {
         return !(*this == rhs);
     }
+
+    struct Hash
+    {
+        size_t operator()(const Atom& atom) const
+        {
+            return std::hash<T>{}(atom.value);
+        }
+    };
 };
 
 // `Language` is very similar to `Luau::Variant` with enough differences warranting a different type altogether.
@@ -55,6 +63,7 @@ class Language
     using FnMove = void (*)(void*, void*);
     using FnDtor = void (*)(void*);
     using FnPred = bool (*)(const void*, const void*);
+    using FnHash = size_t (*)(const void*);
 
     template<typename T>
     static void fnCopy(void* dst, const void* src)
@@ -81,10 +90,17 @@ class Language
         return *static_cast<const T*>(lhs) == *static_cast<const T*>(rhs);
     }
 
+    template<typename T>
+    static size_t fnHash(const void* buffer)
+    {
+        return typename T::Hash{}(*static_cast<const T*>(buffer));
+    }
+
     static constexpr FnCopy tableCopy[sizeof...(Ts)] = {&fnCopy<Ts>...};
     static constexpr FnMove tableMove[sizeof...(Ts)] = {&fnMove<Ts>...};
     static constexpr FnDtor tableDtor[sizeof...(Ts)] = {&fnDtor<Ts>...};
     static constexpr FnPred tablePred[sizeof...(Ts)] = {&fnPred<Ts>...};
+    static constexpr FnHash tableHash[sizeof...(Ts)] = {&fnHash<Ts>...};
 
     static constexpr int getIndexFromTag(const char* tag)
     {
@@ -161,10 +177,11 @@ public:
 public:
     struct Hash
     {
-        size_t operator()(const Language<Ts...>& lang)
+        size_t operator()(const Language& language) const
         {
-            // TODO. Currently here so I can build and test this project.
-            return 0;
+            size_t hash = std::hash<const char*>{}(language.tag);
+            hash ^= tableHash[getIndexFromTag(language.tag)](&language.buffer);
+            return hash;
         }
     };
 };

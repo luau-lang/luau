@@ -4,6 +4,7 @@
 #include "Luau/Language.h"
 
 #include <string>
+#include <unordered_map>
 
 LUAU_EQSAT_ATOM(I32, int);
 LUAU_EQSAT_ATOM(Bool, bool);
@@ -74,6 +75,23 @@ TEST_CASE("language_equality")
     CHECK(v1 == v2);
     CHECK(v2 != v3);
     CHECK(v3 != v4);
+}
+
+TEST_CASE("language_is_mappable")
+{
+    std::unordered_map<Value, int, Value::Hash> map;
+
+    Value v1{I32{5}};
+    Value v2{I32{5}};
+    Value v3{Bool{true}};
+
+    map[v1] = 1;
+    map[v2] = 2;
+    map[v3] = 42;
+
+    CHECK(map[v1] == 2);
+    CHECK(map[v2] == 2);
+    CHECK(map[v3] == 42);
 }
 
 TEST_SUITE_END();
