@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include <doctest.h>
 
+#include "Luau/Id.h"
 #include "Luau/Language.h"
 
 #include <string>
@@ -10,9 +11,14 @@ LUAU_EQSAT_ATOM(I32, int);
 LUAU_EQSAT_ATOM(Bool, bool);
 LUAU_EQSAT_ATOM(Str, std::string);
 
+LUAU_EQSAT_FIELD(Left);
+LUAU_EQSAT_FIELD(Right);
+
+LUAU_EQSAT_BINARY_NODE(Add, Left, Right);
+
 using namespace Luau;
 
-using Value = EqSat::Language<I32, Bool, Str>;
+using Value = EqSat::Language<I32, Bool, Str, Add>;
 
 TEST_SUITE_BEGIN("EqSatLanguage");
 
@@ -20,6 +26,12 @@ TEST_CASE("atom_equality")
 {
     CHECK(I32{0} == I32{0});
     CHECK(I32{0} != I32{1});
+}
+
+TEST_CASE("node_equality")
+{
+    CHECK(Add{EqSat::Id{0}, EqSat::Id{0}} == Add{EqSat::Id{0}, EqSat::Id{0}});
+    CHECK(Add{EqSat::Id{1}, EqSat::Id{0}} != Add{EqSat::Id{0}, EqSat::Id{0}});
 }
 
 TEST_CASE("language_get")
@@ -71,10 +83,12 @@ TEST_CASE("language_equality")
     Value v2{I32{0}};
     Value v3{I32{1}};
     Value v4{Bool{true}};
+    Value v5{Add{EqSat::Id{0}, EqSat::Id{1}}};
 
     CHECK(v1 == v2);
     CHECK(v2 != v3);
     CHECK(v3 != v4);
+    CHECK(v4 != v5);
 }
 
 TEST_CASE("language_is_mappable")
@@ -84,14 +98,33 @@ TEST_CASE("language_is_mappable")
     Value v1{I32{5}};
     Value v2{I32{5}};
     Value v3{Bool{true}};
+    Value v4{Add{EqSat::Id{0}, EqSat::Id{1}}};
 
     map[v1] = 1;
     map[v2] = 2;
     map[v3] = 42;
+    map[v4] = 37;
 
     CHECK(map[v1] == 2);
     CHECK(map[v2] == 2);
     CHECK(map[v3] == 42);
+    CHECK(map[v4] == 37);
+}
+
+TEST_CASE("node_field")
+{
+    EqSat::Id left{0};
+    EqSat::Id right{1};
+
+    Add add{left, right};
+
+    EqSat::Id left2 = add.field<Left>();
+    EqSat::Id right2 = add.field<Right>();
+
+    CHECK(left == left2);
+    CHECK(left != right2);
+    CHECK(right == right2);
+    CHECK(right != left2);
 }
 
 TEST_SUITE_END();

@@ -1,6 +1,9 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Id.h"
+
+#include <array>
 #include <algorithm>
 #include <type_traits>
 #include <utility>
@@ -8,11 +11,39 @@
 namespace Luau::EqSat
 {
 
-#define LUAU_EQSAT_ATOM(name, t) LUAU_EQSAT_ATOM_CUSTOM(name, #name, t)
-#define LUAU_EQSAT_ATOM_CUSTOM(name, custom, t) \
+#define LUAU_EQSAT_ATOM(name, t) \
     struct name : public ::Luau::EqSat::Atom<name, t> \
     { \
-        static constexpr const char* tag = custom; \
+        static constexpr const char* tag = #name; \
+    }
+
+#define LUAU_EQSAT_FIELD(name) \
+    struct name : public ::Luau::EqSat::Field<name> \
+    { \
+    }
+
+#define LUAU_EQSAT_UNARY_NODE(name, field) \
+    struct name : public ::Luau::EqSat::Node<name, field> \
+    { \
+        static constexpr const char* tag = #name; \
+        using Base::Node; \
+    }
+
+#define LUAU_EQSAT_BINARY_NODE(name, field1, field2) \
+    struct name : public ::Luau::EqSat::Node<name, field1, field2> \
+    { \
+        static constexpr const char* tag = #name; \
+        using Base::Node; \
+    }
+
+#define DERIVE_EQ(name, field) \
+    bool operator==(const name& rhs) const \
+    { \
+        return field == rhs.field; \
+    } \
+    bool operator!=(const name& rhs) const \
+    { \
+        return !(*this == rhs); \
     }
 
 template<typename B, typename T>
@@ -20,15 +51,7 @@ struct Atom
 {
     T value;
 
-    bool operator==(const Atom& rhs) const
-    {
-        return value == rhs.value;
-    }
-
-    bool operator!=(const Atom& rhs) const
-    {
-        return !(*this == rhs);
-    }
+    DERIVE_EQ(Atom, value);
 
     struct Hash
     {
@@ -38,6 +61,84 @@ struct Atom
         }
     };
 };
+
+/// Empty base class just for static_asserts.
+struct FieldBase
+{
+};
+
+template<typename T>
+struct Field : FieldBase
+{
+    Id id;
+
+    Field(Id id)
+        : id(id)
+    {
+    }
+
+    DERIVE_EQ(Field, id);
+
+    struct Hash
+    {
+        size_t operator()(const Field& field) const
+        {
+            return std::hash<Id>{}(field.id);
+        }
+    };
+};
+
+template<typename B, typename... Fields>
+class Node
+{
+    static_assert(std::conjunction<std::is_base_of<FieldBase, Fields>...>::value);
+
+    std::array<Id, sizeof...(Fields)> array;
+
+    template<typename T>
+    static constexpr int getIndex()
+    {
+        using TT = std::decay_t<T>;
+
+        constexpr int N = sizeof...(Fields);
+        constexpr bool is[N] = {std::is_same_v<TT, Fields>...};
+
+        for (int i = 0; i < N; ++i)
+            if (is[i])
+                return i;
+
+        return -1;
+    }
+
+public:
+    using Base = Node;
+
+    template<typename... Args>
+    Node(Args&&... args)
+        : array{std::forward<Args>(args)...}
+    {
+    }
+
+    template<typename T>
+    Id field() const
+    {
+        static_assert(std::is_base_of<FieldBase, T>::value);
+        static_assert(getIndex<T>() >= 0);
+        return array[getIndex<T>()];
+    }
+
+    DERIVE_EQ(Node, array);
+
+    struct Hash
+    {
+        size_t operator()(const Node& node) const
+        {
+            return 0;
+        }
+    };
+};
+
+#undef DERIVE_EQ
 
 // `Language` is very similar to `Luau::Variant` with enough differences warranting a different type altogether.
 //
