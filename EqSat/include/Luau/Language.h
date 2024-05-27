@@ -26,9 +26,11 @@ std::size_t languageHash(const T& lang) {
     return LanguageHash<T>{}(lang);
 }
 
-inline size_t hashCombine(size_t& seed, size_t hash)
+inline void hashCombine(size_t& seed, size_t hash)
 {
-    return seed ^= hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    // Golden Ratio constant used for better hash scattering
+    // See https://softwareengineering.stackexchange.com/a/402543
+    seed ^= hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
 #define LUAU_EQSAT_ATOM(name, t) \
