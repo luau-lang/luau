@@ -289,9 +289,9 @@ public:
     {
         size_t operator()(const Language& language) const
         {
-            size_t hash = std::hash<const char*>{}(language.tag);
-            hash ^= tableHash[getIndexFromTag(language.tag)](&language.buffer);
-            return hash;
+            size_t seed = std::hash<const char*>{}(language.tag);
+            hashCombine(seed, tableHash[getIndexFromTag(language.tag)](&language.buffer));
+            return seed;
         }
     };
 };
