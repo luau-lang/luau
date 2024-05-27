@@ -11,6 +11,26 @@
 namespace Luau::EqSat
 {
 
+template<typename T, typename = void>
+struct LanguageHash
+{
+    size_t operator()(const T&) const
+    {
+        // See available specializations at the bottom of this file.
+        static_assert(false, "missing languageHash specialization");
+    }
+};
+
+template <typename T>
+std::size_t languageHash(const T& lang) {
+    return LanguageHash<T>{}(lang);
+}
+
+inline size_t hashCombine(size_t& seed, size_t hash)
+{
+    return seed ^= hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
 #define LUAU_EQSAT_ATOM(name, t) \
     struct name : public ::Luau::EqSat::Atom<name, t> \
     { \
@@ -46,20 +66,22 @@ namespace Luau::EqSat
         return !(*this == rhs); \
     }
 
+#define DERIVE_HASH(name, field) \
+    struct Hash \
+    { \
+        size_t operator()(const name& value) const \
+        { \
+            return languageHash(value.field); \
+        } \
+    }
+
 template<typename Phantom, typename T>
 struct Atom
 {
     T value;
 
     DERIVE_EQ(Atom, value);
-
-    struct Hash
-    {
-        size_t operator()(const Atom& atom) const
-        {
-            return std::hash<T>{}(atom.value);
-        }
-    };
+    DERIVE_HASH(Atom, value);
 };
 
 /// Empty base class just for static_asserts.
@@ -111,17 +133,11 @@ public:
     }
 
     DERIVE_EQ(Node, array);
-
-    struct Hash
-    {
-        size_t operator()(const Node& node) const
-        {
-            return 0;
-        }
-    };
+    DERIVE_HASH(Node, array);
 };
 
 #undef DERIVE_EQ
+#undef DERIVE_HASH
 
 // `Language` is very similar to `Luau::Variant` with enough differences warranting a different type altogether.
 //
@@ -268,6 +284,27 @@ public:
             return hash;
         }
     };
+};
+
+template<typename T>
+struct LanguageHash<T, std::void_t<decltype(std::hash<T>{}(std::declval<T>()))>>
+{
+    size_t operator()(const T& t) const
+    {
+        return std::hash<T>{}(t);
+    }
+};
+
+template<typename T, size_t I>
+struct LanguageHash<std::array<T, I>>
+{
+    size_t operator()(const std::array<T, I>& array) const
+    {
+        size_t seed = 0;
+        for (Id id : array)
+            hashCombine(seed, languageHash(id));
+        return seed;
+    }
 };
 
 } // namespace Luau::EqSat
