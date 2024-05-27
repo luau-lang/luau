@@ -311,8 +311,8 @@ struct LanguageHash<std::array<T, I>>
     size_t operator()(const std::array<T, I>& array) const
     {
         size_t seed = 0;
-        for (Id id : array)
-            hashCombine(seed, languageHash(id));
+        for (const T& t : array)
+            hashCombine(seed, languageHash(t));
         return seed;
     }
 };
