@@ -46,7 +46,7 @@ namespace Luau::EqSat
         return !(*this == rhs); \
     }
 
-template<typename B, typename T>
+template<typename Phantom, typename T>
 struct Atom
 {
     T value;
@@ -67,28 +67,12 @@ struct FieldBase
 {
 };
 
-template<typename T>
+template<typename Phantom>
 struct Field : FieldBase
 {
-    Id id;
-
-    Field(Id id)
-        : id(id)
-    {
-    }
-
-    DERIVE_EQ(Field, id);
-
-    struct Hash
-    {
-        size_t operator()(const Field& field) const
-        {
-            return std::hash<Id>{}(field.id);
-        }
-    };
 };
 
-template<typename B, typename... Fields>
+template<typename Phantom, typename... Fields>
 class Node
 {
     static_assert(std::conjunction<std::is_base_of<FieldBase, Fields>...>::value);
