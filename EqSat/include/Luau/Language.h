@@ -56,32 +56,28 @@ inline size_t hashCombine(size_t& seed, size_t hash)
         using Base::Node; \
     }
 
-#define DERIVE_EQ(name, field) \
-    bool operator==(const name& rhs) const \
-    { \
-        return field == rhs.field; \
-    } \
-    bool operator!=(const name& rhs) const \
-    { \
-        return !(*this == rhs); \
-    }
-
-#define DERIVE_HASH(name, field) \
-    struct Hash \
-    { \
-        size_t operator()(const name& value) const \
-        { \
-            return languageHash(value.field); \
-        } \
-    }
-
 template<typename Phantom, typename T>
 struct Atom
 {
     T value;
 
-    DERIVE_EQ(Atom, value);
-    DERIVE_HASH(Atom, value);
+    bool operator==(const Atom& rhs) const
+    {
+        return value == rhs.value;
+    }
+
+    bool operator!=(const Atom& rhs) const
+    {
+        return !(*this == rhs);
+    }
+
+    struct Hash
+    {
+        size_t operator()(const Atom& value) const
+        {
+            return languageHash(value.value);
+        }
+    };
 };
 
 /// Empty base class just for static_asserts.
@@ -132,12 +128,24 @@ public:
         return array[getIndex<T>()];
     }
 
-    DERIVE_EQ(Node, array);
-    DERIVE_HASH(Node, array);
-};
+    bool operator==(const Node& rhs) const
+    {
+        return array == rhs.array;
+    }
 
-#undef DERIVE_EQ
-#undef DERIVE_HASH
+    bool operator!=(const Node& rhs) const
+    {
+        return !(*this == rhs);
+    }
+
+    struct Hash
+    {
+        size_t operator()(const Node& value) const
+        {
+            return languageHash(value.array);
+        }
+    };
+};
 
 // `Language` is very similar to `Luau::Variant` with enough differences warranting a different type altogether.
 //
