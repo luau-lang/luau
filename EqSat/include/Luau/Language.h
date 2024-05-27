@@ -122,8 +122,7 @@ public:
     template<typename T>
     Id field() const
     {
-        static_assert(std::is_base_of<FieldBase, T>::value);
-        static_assert(getIndex<T>() >= 0);
+        static_assert(std::disjunction_v<std::is_same<std::decay_t<T>, Fields>...>);
         return array[getIndex<T>()];
     }
 
