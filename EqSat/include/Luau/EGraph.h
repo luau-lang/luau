@@ -40,11 +40,12 @@ struct EGraph final
         return unionfind.find(id);
     }
 
-    // An e-node 𝑛 is canonical iff 𝑛 = canonicalize(𝑛), where
-    // canonicalize(𝑓(𝑎1, 𝑎2, ...)) = 𝑓(find(𝑎1), find(𝑎2), ...).
-    std::optional<Id> lookup(L enode) const
+    template<typename T>
+    std::optional<Id> lookup(T&& enode) const
     {
-        for (Id& id : enode.operands())
+        // An e-node 𝑛 is canonical iff 𝑛 = canonicalize(𝑛), where
+        // canonicalize(𝑓(𝑎1, 𝑎2, ...)) = 𝑓(find(𝑎1), find(𝑎2), ...).
+        for (Id& id : enode->operands())
             id = find(id);
 
         if (auto it = hashcons.find(enode); it != hashcons.end())
