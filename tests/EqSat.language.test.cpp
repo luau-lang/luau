@@ -127,4 +127,19 @@ TEST_CASE("node_field")
     CHECK(right != left2);
 }
 
+TEST_CASE("language_operands")
+{
+    Value v1{I32{0}};
+    CHECK(v1.operands().empty());
+
+    Value v2{Add{EqSat::Id{0}, EqSat::Id{1}}};
+    const Add* add = v2.get<Add>();
+    REQUIRE(add);
+
+    EqSat::Slice<EqSat::Id> actual = v2.operands();
+    CHECK(actual.size() == 2);
+    CHECK(actual[0] == add->field<Left>());
+    CHECK(actual[1] == add->field<Right>());
+}
+
 TEST_SUITE_END();

@@ -17,6 +17,7 @@ Id UnionFind::find(Id id) const
 {
     LUAU_ASSERT(size_t(id) < parents.size());
 
+    // An e-class id 𝑎 is canonical iff find(𝑎) = 𝑎.
     while (id != parents[size_t(id)])
         id = parents[size_t(id)];
 

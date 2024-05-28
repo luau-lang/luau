@@ -4,6 +4,7 @@
 #include "Luau/Id.h"
 #include "Luau/UnionFind.h"
 
+#include <optional>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -39,13 +40,29 @@ struct EGraph final
         return unionfind.find(id);
     }
 
-    // Per the egg paper, definition 2.2 (Canonicalization):
-    //
-    //   An e-node 𝑛 is canonical iff 𝑛 = canonicalize(𝑛), where
-    //   canonicalize(𝑓(𝑎1, 𝑎2, ...)) = 𝑓(find(𝑎1), find(𝑎2), ...).
-    //
-    // Doing so requires sketching out `Luau::EqSat::Language` which
-    // I want to do at a later time for the time being. Will revisit.
+    // An e-node 𝑛 is canonical iff 𝑛 = canonicalize(𝑛), where
+    // canonicalize(𝑓(𝑎1, 𝑎2, ...)) = 𝑓(find(𝑎1), find(𝑎2), ...).
+    std::optional<Id> lookup(L enode) const
+    {
+        for (Id& id : enode.operands())
+            id = find(id);
+
+        if (auto it = hashcons.find(enode); it != hashcons.end())
+            return it->second;
+
+        return std::nullopt;
+    }
+
+    // TODO: `add`. For now, we call it shoveItIn so it's obvious it's just for testing.
+    Id shoveItIn(L enode)
+    {
+        if (auto id = lookup(enode))
+            return *id;
+
+        Id id{hashcons.size()};
+        hashcons.insert_or_assign(enode, id);
+        return id;
+    }
 
 private:
     /// A union-find data structure 𝑈 stores an equivalence relation over e-class ids.

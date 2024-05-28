@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Id.h"
+#include "Luau/Slice.h"
 
 #include <array>
 #include <algorithm>
@@ -63,6 +64,11 @@ struct Atom
 {
     T value;
 
+    Slice<Id> operands()
+    {
+        return {};
+    }
+
     bool operator==(const Atom& rhs) const
     {
         return value == rhs.value;
@@ -123,8 +129,13 @@ public:
     {
     }
 
+    Slice<Id> operands()
+    {
+        return Slice{array};
+    }
+
     template<typename T>
-    Id field() const
+    const Id& field() const
     {
         static_assert(std::disjunction_v<std::is_same<std::decay_t<T>, Fields>...>);
         return array[getIndex<T>()];
@@ -175,6 +186,7 @@ private:
     using FnDtor = void (*)(void*);
     using FnPred = bool (*)(const void*, const void*);
     using FnHash = size_t (*)(const void*);
+    using FnOper = Slice<Id> (*)(void*);
 
     template<typename T>
     static void fnCopy(void* dst, const void* src)
@@ -206,11 +218,18 @@ private:
         return typename T::Hash{}(*static_cast<const T*>(buffer));
     }
 
+    template<typename T>
+    static Slice<Id> fnOper(void* buffer)
+    {
+        return static_cast<T*>(buffer)->operands();
+    }
+
     static constexpr FnCopy tableCopy[sizeof...(Ts)] = {&fnCopy<Ts>...};
     static constexpr FnMove tableMove[sizeof...(Ts)] = {&fnMove<Ts>...};
     static constexpr FnDtor tableDtor[sizeof...(Ts)] = {&fnDtor<Ts>...};
     static constexpr FnPred tablePred[sizeof...(Ts)] = {&fnPred<Ts>...};
     static constexpr FnHash tableHash[sizeof...(Ts)] = {&fnHash<Ts>...};
+    static constexpr FnOper tableOper[sizeof...(Ts)] = {&fnOper<Ts>...};
 
     static constexpr int getIndexFromTag(const char* tag)
     {
@@ -265,6 +284,18 @@ public:
             tableMove[getIndexFromTag(tag)](&buffer, &other.buffer); // nothrow
         }
         return *this;
+    }
+
+    int index() const
+    {
+        return getIndexFromTag(tag);
+    }
+
+    /// You should never call this function with the intention of mutating the `Id`.
+    /// Reading is ok, but you should also never assume that these `Id`s are stable.
+    Slice<Id> operands()
+    {
+        return tableOper[getIndexFromTag(tag)](&buffer);
     }
 
     template<typename T>

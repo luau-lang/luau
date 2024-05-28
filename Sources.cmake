@@ -300,6 +300,7 @@ target_sources(Luau.EqSat PRIVATE
     EqSat/include/Luau/EGraph.h
     EqSat/include/Luau/Id.h
     EqSat/include/Luau/Language.h
+    EqSat/include/Luau/Slice.h
     EqSat/include/Luau/UnionFind.h
 
     EqSat/src/Id.cpp
@@ -431,6 +432,7 @@ if(TARGET Luau.UnitTest)
         tests/Differ.test.cpp
         tests/EqSat.language.test.cpp
         tests/EqSat.propositional.test.cpp
+        tests/EqSat.slice.test.cpp
         tests/Error.test.cpp
         tests/Fixture.cpp
         tests/Fixture.h
