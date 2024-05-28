@@ -9,7 +9,7 @@ namespace Luau::EqSat
 {
 
 template<typename T>
-class Slice
+class Slice final
 {
     T* _data;
     size_t _size;
