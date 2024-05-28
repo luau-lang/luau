@@ -2,6 +2,7 @@
 #include <doctest.h>
 
 #include "Luau/EGraph.h"
+#include "Luau/Id.h"
 #include "Luau/Language.h"
 
 #include <optional>
@@ -38,7 +39,12 @@ TEST_CASE("egraph_hashconsing")
 {
     EGraph egraph;
 
-    CHECK(egraph.shoveItIn(Bool{true}) == egraph.shoveItIn(Bool{true}));
+    EqSat::Id id1 = egraph.add(Bool{true});
+    EqSat::Id id2 = egraph.add(Bool{true});
+    EqSat::Id id3 = egraph.add(Bool{false});
+
+    CHECK(id1 == id2);
+    CHECK(id2 != id3);
 }
 
 TEST_SUITE_END();

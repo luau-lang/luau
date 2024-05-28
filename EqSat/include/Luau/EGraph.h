@@ -53,8 +53,7 @@ struct EGraph final
         return std::nullopt;
     }
 
-    // TODO: `add`. For now, we call it shoveItIn so it's obvious it's just for testing.
-    Id shoveItIn(L enode)
+    Id add(L enode)
     {
         if (auto id = lookup(enode))
             return *id;
