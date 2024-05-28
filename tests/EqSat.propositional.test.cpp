@@ -47,4 +47,15 @@ TEST_CASE("egraph_hashconsing")
     CHECK(id2 != id3);
 }
 
+TEST_CASE("egraph_data")
+{
+    EGraph egraph;
+
+    EqSat::Id id1 = egraph.add(Bool{true});
+    EqSat::Id id2 = egraph.add(Bool{false});
+
+    CHECK(egraph[id1].data == std::nullopt); // TODO: true
+    CHECK(egraph[id2].data == std::nullopt); // TODO: false
+}
+
 TEST_SUITE_END();
