@@ -26,12 +26,22 @@ using namespace Luau;
 
 using PropositionalLogic = EqSat::Language<Var, Bool, Not, And, Or, Implies>;
 
+using EGraph = EqSat::EGraph<PropositionalLogic, struct ConstantFold>;
+
 struct ConstantFold
 {
     using Data = std::optional<bool>;
-};
 
-using EGraph = EqSat::EGraph<PropositionalLogic, ConstantFold>;
+    Data make(const EGraph& egraph, const PropositionalLogic& enode) const
+    {
+        if (enode.get<Var>())
+            return std::nullopt;
+        else if (auto b = enode.get<Bool>())
+            return b->value;
+
+        return std::nullopt;
+    }
+};
 
 TEST_SUITE_BEGIN("EqSatPropositionalLogic");
 
@@ -54,8 +64,8 @@ TEST_CASE("egraph_data")
     EqSat::Id id1 = egraph.add(Bool{true});
     EqSat::Id id2 = egraph.add(Bool{false});
 
-    CHECK(egraph[id1].data == std::nullopt); // TODO: true
-    CHECK(egraph[id2].data == std::nullopt); // TODO: false
+    CHECK(egraph[id1].data == true);
+    CHECK(egraph[id2].data == false);
 }
 
 TEST_SUITE_END();

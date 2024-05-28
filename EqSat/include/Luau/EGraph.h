@@ -13,6 +13,20 @@
 namespace Luau::EqSat
 {
 
+template<typename L, typename N>
+class EGraph;
+
+template<typename L, typename N>
+struct Analysis final
+{
+    N analysis;
+
+    typename N::Data make(const EGraph<L, N>& egraph, const L& enode) const
+    {
+        return analysis.make(egraph, enode);
+    }
+};
+
 /// Each e-class is a set of e-nodes representing equivalent terms from a given language,
 /// and an e-node is a function symbol paired with a list of children e-classes.
 template<typename L, typename D>
@@ -28,6 +42,8 @@ struct EClass final
 template<typename L, typename N>
 class EGraph final
 {
+    Analysis<L, N> analysis;
+
     /// A union-find data structure 𝑈 stores an equivalence relation over e-class ids.
     UnionFind unionfind;
 
@@ -55,16 +71,13 @@ private:
         classes.insert_or_assign(id, EClass<L, typename N::Data>{
             id,
             {enode},
-            {}, // TODO: analysis make
+            analysis.make(*this, enode),
             {},
         });
         return id;
     }
 
 public:
-    // TODO: static_assert L <: Language
-    // TODO: static_assert N <: Analysis<L>
-
     Id find(Id id) const
     {
         return unionfind.find(id);
