@@ -5,6 +5,7 @@
 /coverage/
 /.vs/
 /.vscode/
+/.xmake/
 /fuzz/luau.pb.*
 /crash-*
 /default.prof*
