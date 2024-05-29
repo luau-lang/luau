@@ -89,12 +89,41 @@ add_files('extern/isocline/src/isocline.c')
 target_end()
 
 
+target('luau_cli')
+_config_project({
+    project_kind = 'static',
+    enable_exception = true
+})
+add_files('CLI/Repl.cpp', 'CLI/Flags.cpp', 'CLI/FileUtils.cpp', 'CLI/Profiler.cpp', 'CLI/Coverage.cpp', 'CLI/Require.cpp')
+add_deps('luau_compiler', 'luau_analysis', 'luau_vm', 'luau_codegen', 'isocline')
+target_end()
+
+
 target('luau')
 _config_project({
     project_kind = 'binary',
     enable_exception = true
 })
-add_files('CLI/ReplEntry.cpp', 'CLI/Repl.cpp', 'CLI/Flags.cpp', 'CLI/FileUtils.cpp', 'CLI/Profiler.cpp', 'CLI/Coverage.cpp', 'CLI/Require.cpp')
-add_deps('luau_compiler', 'luau_analysis', 'luau_vm', 'luau_codegen', 'isocline')
+add_files('CLI/ReplEntry.cpp')
+add_deps('luau_cli')
 target_end()
 
+
+target('luau-compile')
+_config_project({
+    project_kind = 'binary',
+    enable_exception = true
+})
+add_files('CLI/Compile.cpp')
+add_deps('luau_cli')
+target_end()
+
+
+target('luau-analyze')
+_config_project({
+    project_kind = 'binary',
+    enable_exception = true
+})
+add_files('CLI/Compile.cpp')
+add_deps('luau_cli')
+target_end()
