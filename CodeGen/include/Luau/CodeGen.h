@@ -92,7 +92,7 @@ struct HostIrHooks
     // Guards should take a VM exit to 'pcpos'
     HostVectorAccessHandler vectorAccess = nullptr;
 
-    // Handle namecalled performed on a vector value
+    // Handle namecall performed on a vector value
     // 'sourceReg' (self argument) is guaranteed to be a vector
     // All other arguments can be of any type
     // Guards should take a VM exit to 'pcpos'
@@ -103,6 +103,9 @@ struct CompilationOptions
 {
     unsigned int flags = 0;
     HostIrHooks hooks;
+
+    // null-terminated array of userdata types names that might have custom lowering
+    const char* const* userdataTypes = nullptr;
 };
 
 struct CompilationStats
@@ -162,6 +165,12 @@ void create(lua_State* L, SharedCodeGenContext* codeGenContext);
 
 // Enable or disable native execution according to `enabled` argument
 void setNativeExecutionEnabled(lua_State* L, bool enabled);
+
+// Given a name, this function must return the index of the type which matches the type array used all CompilationOptions and AssemblyOptions
+// If the type is unknown, 0xff has to be returned
+using UserdataRemapperCallback = uint8_t(void* context, const char* name, size_t nameLength);
+
+void setUserdataRemapper(lua_State* L, void* context, UserdataRemapperCallback cb);
 
 using ModuleId = std::array<uint8_t, 16>;
 

@@ -101,4 +101,14 @@ TEST_CASE("singleton_types")
     CHECK(result.errors.empty());
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "property_of_buffers")
+{
+    CheckResult result = check(R"(
+        local b = buffer.create(100)
+        print(b.foo)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
 TEST_SUITE_END();

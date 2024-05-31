@@ -134,7 +134,6 @@ struct ConstraintSolver
     bool tryDispatch(const FunctionCheckConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
-    bool tryDispatch(const SetPropConstraint& c, NotNull<const Constraint> constraint);
 
     bool tryDispatchHasIndexer(
         int& recursionDepth, NotNull<const Constraint> constraint, TypeId subjectType, TypeId indexType, TypeId resultType, Set<TypeId>& seen);
@@ -142,11 +141,13 @@ struct ConstraintSolver
 
     std::pair<bool, std::optional<TypeId>> tryDispatchSetIndexer(
         NotNull<const Constraint> constraint, TypeId subjectType, TypeId indexType, TypeId propType, bool expandFreeTypeBounds);
-    bool tryDispatch(const SetIndexerConstraint& c, NotNull<const Constraint> constraint, bool force);
 
-    bool tryDispatchUnpack1(NotNull<const Constraint> constraint, TypeId resultType, TypeId sourceType, bool resultIsLValue);
+    bool tryDispatch(const AssignConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const AssignPropConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const AssignIndexConstraint& c, NotNull<const Constraint> constraint);
+
+    bool tryDispatchUnpack1(NotNull<const Constraint> constraint, TypeId resultType, TypeId sourceType);
     bool tryDispatch(const UnpackConstraint& c, NotNull<const Constraint> constraint);
-    bool tryDispatch(const Unpack1Constraint& c, NotNull<const Constraint> constraint);
 
     bool tryDispatch(const ReduceConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const ReducePackConstraint& c, NotNull<const Constraint> constraint, bool force);
@@ -164,6 +165,17 @@ struct ConstraintSolver
         const std::string& propName, ValueContext context, bool inConditional = false, bool suppressSimplification = false);
     std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(NotNull<const Constraint> constraint, TypeId subjectType,
         const std::string& propName, ValueContext context, bool inConditional, bool suppressSimplification, DenseHashSet<TypeId>& seen);
+
+    /**
+     * Generate constraints to unpack the types of srcTypes and assign each
+     * value to the corresponding LocalType in destTypes.
+     *
+     * @param destTypes A finite TypePack comprised of LocalTypes.
+     * @param srcTypes A TypePack that represents rvalues to be assigned.
+     * @returns The underlying UnpackConstraint.  There's a bit of code in
+     * iteration that needs to pass blocks on to this constraint.
+     */
+    NotNull<const Constraint> unpackAndAssign(TypePackId destTypes, TypePackId srcTypes, NotNull<const Constraint> constraint);
 
     void block(NotNull<const Constraint> target, NotNull<const Constraint> constraint);
     /**

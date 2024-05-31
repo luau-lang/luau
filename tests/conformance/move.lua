@@ -65,30 +65,6 @@ do
   a = table.move({[minI] = 100}, minI, minI, maxI)
   eqT(a, {[minI] = 100, [maxI] = 100})
 
-  -- moving small amount of elements (array/hash) using a wide range
-  a = {}
-  table.move({1, 2, 3, 4, 5}, -100000000, 100000000, -100000000, a)
-  eqT(a, {1, 2, 3, 4, 5})
-
-  a = {}
-  table.move({1, 2}, -100000000, 100000000, 0, a)
-  eqT(a, {[100000001] = 1, [100000002] = 2})
-
-  -- hash part copy
-  a = {}
-  table.move({[-1000000] = 1, [-100] = 2, [100] = 3, [100000] = 4}, -100000000, 100000000, 0, a)
-  eqT(a, {[99000000] = 1, [99999900] = 2, [100000100] = 3, [100100000] = 4})
-
-  -- precise hash part bounds
-  a = {}
-  table.move({[-100000000 - 1] = -1, [-100000000] = 1, [-100] = 2, [100] = 3, [100000000] = 4, [100000000 + 1] = -1}, -100000000, 100000000, 0, a)
-  eqT(a, {[0] = 1, [99999900] = 2, [100000100] = 3, [200000000] = 4})
-
-  -- no integer undeflow in corner hash part case
-  a = {}
-  table.move({[minI] = 100, [-100] = 2}, minI, minI + 100000000, minI, a)
-  eqT(a, {[minI] = 100})
-
   -- hash part skips array slice
   a = {}
   table.move({[-1] = 1, [0] = 2, [1] = 3, [2] = 4}, -1, 3, 1, a)
@@ -97,6 +73,19 @@ do
   a = {}
   table.move({[-1] = 1, [0] = 2, [1] = 3, [2] = 4, [10] = 5, [100] = 6, [1000] = 7}, -1, 3, 1, a)
   eqT(a, {[1] = 1, [2] = 2, [3] = 3, [4] = 4})
+
+  -- moving ranges containing nil values into tables with values
+  a = {1, 2, 3, 4, 5}
+  table.move({10}, 1, 3, 2, a)
+  eqT(a, {1, 10, nil, nil, 5})
+
+  a = {1, 2, 3, 4, 5}
+  table.move({10}, -1, 1, 2, a)
+  eqT(a, {1, nil, nil, 10, 5})
+
+  a = {[-1000] = 1, [1000] = 2, [1] = 3}
+  table.move({10}, -1000, 1000, -1000, a)
+  eqT(a, {10})
 end
 
 checkerror("too many", table.move, {}, 0, maxI, 1)

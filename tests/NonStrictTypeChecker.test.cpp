@@ -556,4 +556,22 @@ local E = require(script.Parent.A)
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_shouldnt_warn_on_valid_buffer_use")
+{
+    loadDefinition(R"(
+declare buffer: {
+    create: @checked (size: number) -> buffer,
+    readi8: @checked (b: buffer, offset: number) -> number,
+    writef64: @checked (b: buffer, offset: number, value: number) -> (),
+}
+)");
+
+    CheckResult result = checkNonStrict(R"(
+local b = buffer.create(100)
+buffer.writef64(b, 0, 5)
+buffer.readi8(b, 0)
+)");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

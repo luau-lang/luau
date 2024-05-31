@@ -1787,23 +1787,18 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         {
             return tos(c.resultType) + " ~ hasProp " + tos(c.subjectType) + ", \"" + c.prop + "\" ctx=" + std::to_string(int(c.context));
         }
-        else if constexpr (std::is_same_v<T, SetPropConstraint>)
-        {
-            const std::string pathStr = c.path.size() == 1 ? "\"" + c.path[0] + "\"" : "[\"" + join(c.path, "\", \"") + "\"]";
-            return tos(c.resultType) + " ~ setProp " + tos(c.subjectType) + ", " + pathStr + " " + tos(c.propType);
-        }
         else if constexpr (std::is_same_v<T, HasIndexerConstraint>)
         {
             return tos(c.resultType) + " ~ hasIndexer " + tos(c.subjectType) + " " + tos(c.indexType);
         }
-        else if constexpr (std::is_same_v<T, SetIndexerConstraint>)
-        {
-            return "setIndexer " + tos(c.subjectType) + " [ " + tos(c.indexType) + " ] " + tos(c.propType);
-        }
+        else if constexpr (std::is_same_v<T, AssignConstraint>)
+            return "assign " + tos(c.lhsType) + " " + tos(c.rhsType);
+        else if constexpr (std::is_same_v<T, AssignPropConstraint>)
+            return "assignProp " + tos(c.lhsType) + " " + c.propName + " " + tos(c.rhsType);
+        else if constexpr (std::is_same_v<T, AssignIndexConstraint>)
+            return "assignIndex " + tos(c.lhsType) + " " + tos(c.indexType) + " " + tos(c.rhsType);
         else if constexpr (std::is_same_v<T, UnpackConstraint>)
             return tos(c.resultPack) + " ~ ...unpack " + tos(c.sourcePack);
-        else if constexpr (std::is_same_v<T, Unpack1Constraint>)
-            return tos(c.resultType) + " ~ unpack " + tos(c.sourceType);
         else if constexpr (std::is_same_v<T, ReduceConstraint>)
             return "reduce " + tos(c.ty);
         else if constexpr (std::is_same_v<T, ReducePackConstraint>)

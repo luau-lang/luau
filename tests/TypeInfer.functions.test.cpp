@@ -1582,7 +1582,7 @@ TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_th
     if (!result.errors.empty())
     {
         for (const auto& e : result.errors)
-            printf("%s %s: %s\n", e.moduleName.c_str(), toString(e.location).c_str(), toString(e).c_str());
+            MESSAGE(e.moduleName << " " << toString(e.location) << ": " << toString(e));
     }
 }
 

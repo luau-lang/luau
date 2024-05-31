@@ -18,7 +18,7 @@ LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
 LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
-LUAU_FASTFLAGVARIABLE(LuauCodegenLoadPropCheckRegLinkInTv, false)
+LUAU_FASTFLAGVARIABLE(LuauCodegenFixSplitStoreConstMismatch, false)
 
 namespace Luau
 {
@@ -739,7 +739,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
 
             // If we know the tag, we can try extracting the value from a register used by LOAD_TVALUE
             // To do that, we have to ensure that the register link of the source value is still valid
-            if (tag != 0xff && (!FFlag::LuauCodegenLoadPropCheckRegLinkInTv || state.tryGetRegLink(inst.b) != nullptr))
+            if (tag != 0xff && state.tryGetRegLink(inst.b) != nullptr)
             {
                 if (IrInst* arg = function.asInstOp(inst.b); arg && arg->cmd == IrCmd::LOAD_TVALUE && arg->a.kind == IrOpKind::VmReg)
                 {
@@ -750,18 +750,48 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 }
             }
 
-            // If we have constant tag and value, replace TValue store with tag/value pair store
-            if (tag != 0xff && value.kind != IrOpKind::None && (tag == LUA_TBOOLEAN || tag == LUA_TNUMBER || isGCO(tag)))
+            if (FFlag::LuauCodegenFixSplitStoreConstMismatch)
             {
-                replace(function, block, index, {IrCmd::STORE_SPLIT_TVALUE, inst.a, build.constTag(tag), value, inst.c});
+                // If we have constant tag and value, replace TValue store with tag/value pair store
+                bool canSplitTvalueStore = false;
 
-                // Value can be propagated to future loads of the same register
-                if (inst.a.kind == IrOpKind::VmReg && activeLoadValue != kInvalidInstIdx)
-                    state.valueMap[state.versionedVmRegLoad(activeLoadCmd, inst.a)] = activeLoadValue;
+                if (tag == LUA_TBOOLEAN &&
+                    (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Int)))
+                    canSplitTvalueStore = true;
+                else if (tag == LUA_TNUMBER &&
+                         (value.kind == IrOpKind::Inst || (value.kind == IrOpKind::Constant && function.constOp(value).kind == IrConstKind::Double)))
+                    canSplitTvalueStore = true;
+                else if (tag != 0xff && isGCO(tag) && value.kind == IrOpKind::Inst)
+                    canSplitTvalueStore = true;
+
+                if (canSplitTvalueStore)
+                {
+                    replace(function, block, index, {IrCmd::STORE_SPLIT_TVALUE, inst.a, build.constTag(tag), value, inst.c});
+
+                    // Value can be propagated to future loads of the same register
+                    if (inst.a.kind == IrOpKind::VmReg && activeLoadValue != kInvalidInstIdx)
+                        state.valueMap[state.versionedVmRegLoad(activeLoadCmd, inst.a)] = activeLoadValue;
+                }
+                else if (inst.a.kind == IrOpKind::VmReg)
+                {
+                    state.forwardVmRegStoreToLoad(inst, IrCmd::LOAD_TVALUE);
+                }
             }
-            else if (inst.a.kind == IrOpKind::VmReg)
+            else
             {
-                state.forwardVmRegStoreToLoad(inst, IrCmd::LOAD_TVALUE);
+                // If we have constant tag and value, replace TValue store with tag/value pair store
+                if (tag != 0xff && value.kind != IrOpKind::None && (tag == LUA_TBOOLEAN || tag == LUA_TNUMBER || isGCO(tag)))
+                {
+                    replace(function, block, index, {IrCmd::STORE_SPLIT_TVALUE, inst.a, build.constTag(tag), value, inst.c});
+
+                    // Value can be propagated to future loads of the same register
+                    if (inst.a.kind == IrOpKind::VmReg && activeLoadValue != kInvalidInstIdx)
+                        state.valueMap[state.versionedVmRegLoad(activeLoadCmd, inst.a)] = activeLoadValue;
+                }
+                else if (inst.a.kind == IrOpKind::VmReg)
+                {
+                    state.forwardVmRegStoreToLoad(inst, IrCmd::LOAD_TVALUE);
+                }
             }
         }
         break;

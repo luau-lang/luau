@@ -732,7 +732,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "and_binexps_dont_unify")
     end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    // This infers a type for `t` of `{unknown}`, and so it makes sense that `t[1].test` would error.
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+    else
+        LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operators")

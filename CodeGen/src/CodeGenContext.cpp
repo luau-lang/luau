@@ -612,5 +612,29 @@ void setNativeExecutionEnabled(lua_State* L, bool enabled)
         L->global->ecb.enter = enabled ? onEnter : onEnterDisabled;
 }
 
+static uint8_t userdataRemapperWrap(lua_State* L, const char* str, size_t len)
+{
+    if (BaseCodeGenContext* codegenCtx = getCodeGenContext(L))
+    {
+        uint8_t index = codegenCtx->userdataRemapper(codegenCtx->userdataRemappingContext, str, len);
+
+        if (index < (LBC_TYPE_TAGGED_USERDATA_END - LBC_TYPE_TAGGED_USERDATA_BASE))
+            return LBC_TYPE_TAGGED_USERDATA_BASE + index;
+    }
+
+    return LBC_TYPE_USERDATA;
+}
+
+void setUserdataRemapper(lua_State* L, void* context, UserdataRemapperCallback cb)
+{
+    if (BaseCodeGenContext* codegenCtx = getCodeGenContext(L))
+    {
+        codegenCtx->userdataRemappingContext = context;
+        codegenCtx->userdataRemapper = cb;
+
+        L->global->ecb.gettypemapping = cb ? userdataRemapperWrap : nullptr;
+    }
+}
+
 } // namespace CodeGen
 } // namespace Luau

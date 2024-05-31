@@ -1561,6 +1561,18 @@ struct TypeChecker2
             else
                 reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
         }
+        else if (auto mt = get<MetatableType>(exprType))
+        {
+            const TableType* tt = get<TableType>(follow(mt->table));
+            LUAU_ASSERT(tt);
+            if (tt->indexer)
+                testIsSubtype(indexType, tt->indexer->indexType, indexExpr->index->location);
+            else
+            {
+                // TODO: Maybe the metatable has a suitable indexer?
+                reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
+            }
+        }
         else if (auto cls = get<ClassType>(exprType))
         {
             if (cls->indexer)
@@ -1581,6 +1593,19 @@ struct TypeChecker2
                 reportError(OptionalValueAccess{exprType}, indexExpr->location);
             }
         }
+        else if (auto exprIntersection = get<IntersectionType>(exprType))
+        {
+            for (TypeId part : exprIntersection)
+            {
+                (void)part;
+            }
+        }
+        else if (get<NeverType>(exprType) || isErrorSuppressing(indexExpr->location, exprType))
+        {
+            // Nothing
+        }
+        else
+            reportError(NotATable{exprType}, indexExpr->location);
     }
 
     void visit(AstExprFunction* fn)
@@ -2720,6 +2745,8 @@ struct TypeChecker2
             fetch(builtinTypes->stringType);
         if (normValid)
             fetch(norm->threads);
+        if (normValid)
+            fetch(norm->buffers);
 
         if (normValid)
         {

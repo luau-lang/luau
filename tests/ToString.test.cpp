@@ -782,7 +782,10 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_map")
     TypeId ty = requireType("map");
     const FunctionType* ftv = get<FunctionType>(follow(ty));
 
-    CHECK_EQ("map<a, b>(arr: {a}, fn: (a) -> b): {b}", toStringNamedFunction("map", *ftv));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("map<a, b>(arr: {a}, fn: (a) -> (b, ...unknown)): {b}", toStringNamedFunction("map", *ftv));
+    else
+        CHECK_EQ("map<a, b>(arr: {a}, fn: (a) -> b): {b}", toStringNamedFunction("map", *ftv));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_generic_pack")

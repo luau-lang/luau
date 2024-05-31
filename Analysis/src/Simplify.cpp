@@ -1368,6 +1368,17 @@ SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<
     return SimplifyResult{res, std::move(s.blockedTypes)};
 }
 
+SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, std::set<TypeId> parts)
+{
+    LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
+
+    TypeSimplifier s{builtinTypes, arena};
+
+    TypeId res = s.intersectFromParts(std::move(parts));
+
+    return SimplifyResult{res, std::move(s.blockedTypes)};
+}
+
 SimplifyResult simplifyUnion(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId left, TypeId right)
 {
     LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);

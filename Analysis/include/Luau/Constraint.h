@@ -179,23 +179,6 @@ struct HasPropConstraint
     bool suppressSimplification = false;
 };
 
-// result ~ setProp subjectType ["prop", "prop2", ...] propType
-//
-// If the subject is a table or table-like thing that already has the named
-// property chain, we unify propType with that existing property type.
-//
-// If the subject is a free table, we augment it in place.
-//
-// If the subject is an unsealed table, result is an augmented table that
-// includes that new prop.
-struct SetPropConstraint
-{
-    TypeId resultType;
-    TypeId subjectType;
-    std::vector<std::string> path;
-    TypeId propType;
-};
-
 // resultType ~ hasIndexer subjectType indexType
 //
 // If the subject type is a table or table-like thing that supports indexing,
@@ -209,16 +192,37 @@ struct HasIndexerConstraint
     TypeId indexType;
 };
 
-// result ~ setIndexer subjectType indexType propType
-//
-// If the subject is a table or table-like thing that already has an indexer,
-// unify its indexType and propType with those from this constraint.
-//
-// If the table is a free or unsealed table, we augment it with a new indexer.
-struct SetIndexerConstraint
+struct AssignConstraint
 {
-    TypeId subjectType;
+    TypeId lhsType;
+    TypeId rhsType;
+};
+
+// assign lhsType propName rhsType
+//
+// Assign a value of type rhsType into the named property of lhsType.
+
+struct AssignPropConstraint
+{
+    TypeId lhsType;
+    std::string propName;
+    TypeId rhsType;
+
+    /// The canonical write type of the property.  It is _solely_ used to
+    /// populate astTypes during constraint resolution.  Nothing should ever
+    /// block on it.
+    TypeId propType;
+};
+
+struct AssignIndexConstraint
+{
+    TypeId lhsType;
     TypeId indexType;
+    TypeId rhsType;
+
+    /// The canonical write type of the property.  It is _solely_ used to
+    /// populate astTypes during constraint resolution.  Nothing should ever
+    /// block on it.
     TypeId propType;
 };
 
@@ -230,25 +234,6 @@ struct UnpackConstraint
 {
     TypePackId resultPack;
     TypePackId sourcePack;
-
-    // UnpackConstraint is sometimes used to resolve the types of assignments.
-    // When this is the case, any LocalTypes in resultPack can have their
-    // domains extended by the corresponding type from sourcePack.
-    bool resultIsLValue = false;
-};
-
-// resultType ~ unpack sourceType
-//
-// The same as UnpackConstraint, but specialized for a pair of types as opposed to packs.
-struct Unpack1Constraint
-{
-    TypeId resultType;
-    TypeId sourceType;
-
-    // UnpackConstraint is sometimes used to resolve the types of assignments.
-    // When this is the case, any LocalTypes in resultPack can have their
-    // domains extended by the corresponding type from sourcePack.
-    bool resultIsLValue = false;
 };
 
 // ty ~ reduce ty
@@ -268,8 +253,8 @@ struct ReducePackConstraint
 };
 
 using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, IterableConstraint, NameConstraint,
-    TypeAliasExpansionConstraint, FunctionCallConstraint, FunctionCheckConstraint, PrimitiveTypeConstraint, HasPropConstraint, SetPropConstraint,
-    HasIndexerConstraint, SetIndexerConstraint, UnpackConstraint, Unpack1Constraint, ReduceConstraint, ReducePackConstraint, EqualityConstraint>;
+    TypeAliasExpansionConstraint, FunctionCallConstraint, FunctionCheckConstraint, PrimitiveTypeConstraint, HasPropConstraint, HasIndexerConstraint,
+    AssignConstraint, AssignPropConstraint, AssignIndexConstraint, UnpackConstraint, ReduceConstraint, ReducePackConstraint, EqualityConstraint>;
 
 struct Constraint
 {

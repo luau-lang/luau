@@ -438,7 +438,9 @@ enum LuauBytecodeTag
     LBC_VERSION_TARGET = 5,
     // Type encoding version
     LBC_TYPE_VERSION_DEPRECATED = 1,
-    LBC_TYPE_VERSION = 2,
+    LBC_TYPE_VERSION_MIN = 1,
+    LBC_TYPE_VERSION_MAX = 3,
+    LBC_TYPE_VERSION_TARGET = 3,
     // Types of constant table entries
     LBC_CONSTANT_NIL = 0,
     LBC_CONSTANT_BOOLEAN,
@@ -465,6 +467,10 @@ enum LuauBytecodeType
     LBC_TYPE_BUFFER,
 
     LBC_TYPE_ANY = 15,
+
+    LBC_TYPE_TAGGED_USERDATA_BASE = 64,
+    LBC_TYPE_TAGGED_USERDATA_END = 64 + 32,
+
     LBC_TYPE_OPTIONAL_BIT = 1 << 7,
 
     LBC_TYPE_INVALID = 256,

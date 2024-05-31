@@ -420,4 +420,22 @@ print(NewProxyOne.HelloICauseACrash)
 )");
 }
 
+TEST_CASE_FIXTURE(ReplFixture, "InteractiveStackReserve1")
+{
+    // Reset stack reservation
+    lua_resume(L, nullptr, 0);
+
+    runCode(L, R"(
+local t = {}
+)");
+}
+
+TEST_CASE_FIXTURE(ReplFixture, "InteractiveStackReserve2")
+{
+    // Reset stack reservation
+    lua_resume(L, nullptr, 0);
+
+    getCompletionSet("a");
+}
+
 TEST_SUITE_END();

@@ -433,8 +433,52 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "varlist_declared_by_for_in_loop_should_be_fr
         end
     )");
 
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        auto err = get<TypeMismatch>(result.errors[0]);
+        CHECK(err != nullptr);
+    }
+    else
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "iter_constraint_before_loop_body")
+{
+    CheckResult result = check(R"(
+        local T = {
+    	    fields = {},
+        }
+
+        function f()
+            for u, v in pairs(T.fields) do
+                T.fields[u] = nil
+            end
+        end
+    )");
+
     LUAU_REQUIRE_NO_ERRORS(result);
 }
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rbxl_place_file_crash_for_wrong_constraints")
+{
+    CheckResult result = check(R"(
+local VehicleParameters = { 
+    -- These are default values in the case the package structure is broken
+	StrutSpringStiffnessFront = 28000,
+}
+
+local function updateFromConfiguration()
+	for property, value in pairs(VehicleParameters) do
+        VehicleParameters[property] = value
+	end
+end
+)");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "properly_infer_iteratee_is_a_free_table")
 {
