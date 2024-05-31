@@ -22,8 +22,9 @@ LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
 
-LUAU_FASTFLAG(LuauCompileNoJumpLineRetarget)
-LUAU_FASTFLAG(LuauCompileRepeatUntilSkippedLocals)
+LUAU_FASTFLAG(LuauCompileTypeInfo)
+LUAU_FASTFLAG(LuauCompileTempTypeInfo)
+LUAU_FASTFLAG(LuauCompileUserdataInfo)
 
 using namespace Luau;
 
@@ -2106,8 +2107,6 @@ RETURN R0 0
 
 TEST_CASE("LoopContinueEarlyCleanup")
 {
-    ScopedFastFlag luauCompileRepeatUntilSkippedLocals{FFlag::LuauCompileRepeatUntilSkippedLocals, true};
-
     // locals after a potential 'continue' are not accessible inside the condition and can be closed at the end of a block
     CHECK_EQ("\n" + compileFunction(R"(
 local y
@@ -2788,8 +2787,6 @@ end
 
 TEST_CASE("DebugLineInfoWhile")
 {
-    ScopedFastFlag luauCompileNoJumpLineRetarget{FFlag::LuauCompileNoJumpLineRetarget, true};
-
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
     Luau::compileOrThrow(bcb, R"(
@@ -3136,8 +3133,6 @@ local 8: reg 3, start pc 35 line 21, end pc 35 line 21
 
 TEST_CASE("DebugLocals2")
 {
-    ScopedFastFlag luauCompileRepeatUntilSkippedLocals{FFlag::LuauCompileRepeatUntilSkippedLocals, true};
-
     const char* source = R"(
 function foo(x)
     repeat
@@ -3167,9 +3162,6 @@ local 2: reg 0, start pc 0 line 4, end pc 2 line 6
 
 TEST_CASE("DebugLocals3")
 {
-    ScopedFastFlag luauCompileRepeatUntilSkippedLocals{FFlag::LuauCompileRepeatUntilSkippedLocals, true};
-    ScopedFastFlag luauCompileNoJumpLineRetarget{FFlag::LuauCompileNoJumpLineRetarget, true};
-
     const char* source = R"(
 function foo(x)
     repeat
@@ -3203,6 +3195,7 @@ local 4: reg 0, start pc 0 line 4, end pc 5 line 8
 8: RETURN R0 0
 )");
 }
+
 TEST_CASE("DebugRemarks")
 {
     Luau::BytecodeBuilder bcb;
@@ -3227,6 +3220,80 @@ LOADNIL R0
 REMARK test remark #2
 REMARK test remark #3
 RETURN R0 0
+)");
+}
+
+TEST_CASE("DebugTypes")
+{
+    ScopedFastFlag luauCompileTypeInfo{FFlag::LuauCompileTypeInfo, true};
+    ScopedFastFlag luauCompileTempTypeInfo{FFlag::LuauCompileTempTypeInfo, true};
+    ScopedFastFlag luauCompileUserdataInfo{FFlag::LuauCompileUserdataInfo, true};
+
+    const char* source = R"(
+local up: number = 2
+
+function foo(e: vector, f: mat3, g: sequence)
+    local h = e * e
+
+    for i=1,3 do
+        print(i)
+    end
+
+    print(e * f)
+    print(g)
+    print(h)
+
+    up += a
+    return a
+end
+)";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Types);
+    bcb.setDumpSource(source);
+
+    Luau::CompileOptions options;
+    options.vectorCtor = "vector";
+    options.vectorType = "vector";
+
+    options.typeInfoLevel = 1;
+
+    static const char* kUserdataCompileTypes[] = {"vec2", "color", "mat3", nullptr};
+    options.userdataTypes = kUserdataCompileTypes;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+R0: vector [argument]
+R1: mat3 [argument]
+R2: userdata [argument]
+U0: number
+R6: any from 1 to 9
+R3: vector from 0 to 30
+MUL R3 R0 R0
+LOADN R6 1
+LOADN R4 3
+LOADN R5 1
+FORNPREP R4 L1
+L0: GETIMPORT R7 1 [print]
+MOVE R8 R6
+CALL R7 1 0
+FORNLOOP R4 L0
+L1: GETIMPORT R4 1 [print]
+MUL R5 R0 R1
+CALL R4 1 0
+GETIMPORT R4 1 [print]
+MOVE R5 R2
+CALL R4 1 0
+GETIMPORT R4 1 [print]
+MOVE R5 R3
+CALL R4 1 0
+GETUPVAL R4 0
+GETIMPORT R5 3 [a]
+ADD R4 R4 R5
+SETUPVAL R4 0
+GETIMPORT R4 3 [a]
+RETURN R4 1
 )");
 }
 
@@ -4158,8 +4225,6 @@ RETURN R0 0
 
 TEST_CASE("Coverage")
 {
-    ScopedFastFlag luauCompileNoJumpLineRetarget{FFlag::LuauCompileNoJumpLineRetarget, true};
-
     // basic statement coverage
     CHECK_EQ("\n" + compileFunction0Coverage(R"(
 print(1)

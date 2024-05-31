@@ -33,8 +33,7 @@ void luaC_validate(lua_State* L);
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_FASTFLAG(LuauCompileRepeatUntilSkippedLocals)
-LUAU_DYNAMIC_FASTFLAG(LuauFastCrossTableMove)
+LUAU_FASTFLAG(LuauCodegenFixSplitStoreConstMismatch)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -443,8 +442,6 @@ TEST_CASE("Sort")
 
 TEST_CASE("Move")
 {
-    ScopedFastFlag luauFastCrossTableMove{DFFlag::LuauFastCrossTableMove, true};
-
     runConformance("move.lua");
 }
 
@@ -716,8 +713,6 @@ TEST_CASE("Debugger")
     static lua_State* interruptedthread = nullptr;
     static bool singlestep = false;
     static int stephits = 0;
-
-    ScopedFastFlag luauCompileRepeatUntilSkippedLocals{FFlag::LuauCompileRepeatUntilSkippedLocals, true};
 
     SUBCASE("")
     {
@@ -2139,6 +2134,8 @@ TEST_CASE("Native")
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;
+
+    ScopedFastFlag luauCodegenFixSplitStoreConstMismatch{FFlag::LuauCodegenFixSplitStoreConstMismatch, true};
 
     SUBCASE("Checked")
     {

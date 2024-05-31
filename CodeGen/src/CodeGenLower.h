@@ -28,6 +28,7 @@ LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockInstructionLimit)
 LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
+LUAU_FASTFLAG(LuauLoadUserdataInfo)
 
 namespace Luau
 {
@@ -149,7 +150,11 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 
                 if (bcTypes.result != LBC_TYPE_ANY || bcTypes.a != LBC_TYPE_ANY || bcTypes.b != LBC_TYPE_ANY || bcTypes.c != LBC_TYPE_ANY)
                 {
-                    toString(ctx.result, bcTypes);
+                    if (FFlag::LuauLoadUserdataInfo)
+                        toString(ctx.result, bcTypes, options.compilationOptions.userdataTypes);
+                    else
+                        toString_DEPRECATED(ctx.result, bcTypes);
+
                     build.logAppend("\n");
                 }
             }

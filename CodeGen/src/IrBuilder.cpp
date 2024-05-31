@@ -14,8 +14,8 @@
 #include <string.h>
 
 LUAU_FASTFLAG(LuauLoadTypeInfo) // Because new VM typeinfo load changes the format used by Codegen, same flag is used
-LUAU_FASTFLAG(LuauTypeInfoLookupImprovement)
 LUAU_FASTFLAG(LuauCodegenAnalyzeHostVectorOps)
+LUAU_FASTFLAG(LuauLoadUserdataInfo)
 
 namespace Luau
 {
@@ -119,20 +119,13 @@ static bool hasTypedParameters(const BytecodeTypeInfo& typeInfo)
 {
     CODEGEN_ASSERT(FFlag::LuauLoadTypeInfo);
 
-    if (FFlag::LuauTypeInfoLookupImprovement)
+    for (auto el : typeInfo.argumentTypes)
     {
-        for (auto el : typeInfo.argumentTypes)
-        {
-            if (el != LBC_TYPE_ANY)
-                return true;
-        }
+        if (el != LBC_TYPE_ANY)
+            return true;
+    }
 
-        return false;
-    }
-    else
-    {
-        return !typeInfo.argumentTypes.empty();
-    }
+    return false;
 }
 
 static void buildArgumentTypeChecks(IrBuilder& build)
@@ -196,6 +189,19 @@ static void buildArgumentTypeChecks(IrBuilder& build)
             break;
         case LBC_TYPE_BUFFER:
             build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TBUFFER), build.vmExit(kVmExitEntryGuardPc));
+            break;
+        default:
+            if (FFlag::LuauLoadUserdataInfo)
+            {
+                if (tag >= LBC_TYPE_TAGGED_USERDATA_BASE && tag < LBC_TYPE_TAGGED_USERDATA_END)
+                {
+                    build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TUSERDATA), build.vmExit(kVmExitEntryGuardPc));
+                }
+                else
+                {
+                    CODEGEN_ASSERT(!"unknown argument type tag");
+                }
+            }
             break;
         }
 

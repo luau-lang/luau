@@ -241,6 +241,10 @@ IrValueKind getCmdValueKind(IrCmd cmd);
 
 bool isGCO(uint8_t tag);
 
+// Optional bit has to be cleared at call site, otherwise, this will return 'false' for 'userdata?'
+bool isUserdataBytecodeType(uint8_t ty);
+bool isCustomUserdataBytecodeType(uint8_t ty);
+
 // Manually add or remove use of an operand
 void addUse(IrFunction& function, IrOp op);
 void removeUse(IrFunction& function, IrOp op);

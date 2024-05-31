@@ -26,10 +26,9 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileRepeatUntilSkippedLocals, false)
 LUAU_FASTFLAG(LuauCompileTypeInfo)
-LUAU_FASTFLAGVARIABLE(LuauTypeInfoLookupImprovement, false)
 LUAU_FASTFLAGVARIABLE(LuauCompileTempTypeInfo, false)
+LUAU_FASTFLAGVARIABLE(LuauCompileUserdataInfo, false)
 
 namespace Luau
 {
@@ -107,6 +106,7 @@ struct Compiler
         , locstants(nullptr)
         , tableShapes(nullptr)
         , builtins(nullptr)
+        , userdataTypes(AstName())
         , functionTypes(nullptr)
         , localTypes(nullptr)
         , exprTypes(nullptr)
@@ -677,10 +677,7 @@ struct Compiler
                 // if the argument is a local that isn't mutated, we will simply reuse the existing register
                 if (int reg = le ? getExprLocalReg(le) : -1; reg >= 0 && (!lv || !lv->written))
                 {
-                    if (FFlag::LuauTypeInfoLookupImprovement)
-                        args.push_back({var, uint8_t(reg), {Constant::Type_Unknown}, kDefaultAllocPc});
-                    else
-                        args.push_back({var, uint8_t(reg)});
+                    args.push_back({var, uint8_t(reg), {Constant::Type_Unknown}, kDefaultAllocPc});
                 }
                 else
                 {
@@ -2771,16 +2768,14 @@ struct Compiler
             {
                 validateContinueUntil(loops.back().continueUsed, stat->condition, body, i + 1);
                 continueValidated = true;
-
-                if (FFlag::LuauCompileRepeatUntilSkippedLocals)
-                    conditionLocals = localStack.size();
+                conditionLocals = localStack.size();
             }
         }
 
         // if continue was used, some locals might not have had their initialization completed
         // the lifetime of these locals has to end before the condition is executed
         // because referencing skipped locals is not possible from the condition, this earlier closure doesn't affect upvalues
-        if (FFlag::LuauCompileRepeatUntilSkippedLocals && continueValidated)
+        if (continueValidated)
         {
             // if continueValidated is set, it means we have visited at least one body node and size > 0
             setDebugLineEnd(body->body.data[body->body.size - 1]);
@@ -4094,6 +4089,7 @@ struct Compiler
     DenseHashMap<AstLocal*, Constant> locstants;
     DenseHashMap<AstExprTable*, TableShape> tableShapes;
     DenseHashMap<AstExprCall*, int> builtins;
+    DenseHashMap<AstName, uint8_t> userdataTypes;
     DenseHashMap<AstExprFunction*, std::string> functionTypes;
     DenseHashMap<AstLocal*, LuauBytecodeType> localTypes;
     DenseHashMap<AstExpr*, LuauBytecodeType> exprTypes;
@@ -4190,18 +4186,34 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     Compiler::FunctionVisitor functionVisitor(&compiler, functions);
     root->visit(&functionVisitor);
 
+    if (FFlag::LuauCompileUserdataInfo)
+    {
+        if (const char* const* ptr = options.userdataTypes)
+        {
+            for (; *ptr; ++ptr)
+            {
+                // Type will only resolve to an AstName if it is actually mentioned in the source
+                if (AstName name = names.get(*ptr); name.value)
+                    compiler.userdataTypes[name] = bytecode.addUserdataType(name.value);
+            }
+
+            if (uintptr_t(ptr - options.userdataTypes) > (LBC_TYPE_TAGGED_USERDATA_END - LBC_TYPE_TAGGED_USERDATA_BASE))
+                CompileError::raise(root->location, "Exceeded userdata type limit in the compilation options");
+        }
+    }
+
     // computes type information for all functions based on type annotations
     if (FFlag::LuauCompileTypeInfo)
     {
         if (options.typeInfoLevel >= 1)
-            buildTypeMap(compiler.functionTypes, compiler.localTypes, compiler.exprTypes, root, options.vectorType, compiler.builtinTypes,
-                compiler.builtins, compiler.globals);
+            buildTypeMap(compiler.functionTypes, compiler.localTypes, compiler.exprTypes, root, options.vectorType, compiler.userdataTypes,
+                compiler.builtinTypes, compiler.builtins, compiler.globals, bytecode);
     }
     else
     {
         if (functionVisitor.hasTypes)
-            buildTypeMap(compiler.functionTypes, compiler.localTypes, compiler.exprTypes, root, options.vectorType, compiler.builtinTypes,
-                compiler.builtins, compiler.globals);
+            buildTypeMap(compiler.functionTypes, compiler.localTypes, compiler.exprTypes, root, options.vectorType, compiler.userdataTypes,
+                compiler.builtinTypes, compiler.builtins, compiler.globals, bytecode);
     }
 
     for (AstExprFunction* expr : functions)

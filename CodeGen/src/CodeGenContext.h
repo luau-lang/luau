@@ -50,6 +50,9 @@ public:
     uint8_t* gateData = nullptr;
     size_t gateDataSize = 0;
 
+    void* userdataRemappingContext = nullptr;
+    UserdataRemapperCallback* userdataRemapper = nullptr;
+
     NativeContext context;
 };
 

@@ -252,6 +252,16 @@ bool isGCO(uint8_t tag)
     return tag >= LUA_TSTRING;
 }
 
+bool isUserdataBytecodeType(uint8_t ty)
+{
+    return ty == LBC_TYPE_USERDATA || isCustomUserdataBytecodeType(ty);
+}
+
+bool isCustomUserdataBytecodeType(uint8_t ty)
+{
+    return ty >= LBC_TYPE_TAGGED_USERDATA_BASE && ty < LBC_TYPE_TAGGED_USERDATA_END;
+}
+
 void kill(IrFunction& function, IrInst& inst)
 {
     CODEGEN_ASSERT(inst.useCount == 0);

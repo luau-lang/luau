@@ -1438,6 +1438,7 @@ SubtypingResult Subtyping::isCovariantWith(
     result.andAlso(isCovariantWith(env, subNorm->strings, superNorm->strings));
     result.andAlso(isCovariantWith(env, subNorm->strings, superNorm->tables));
     result.andAlso(isCovariantWith(env, subNorm->threads, superNorm->threads));
+    result.andAlso(isCovariantWith(env, subNorm->buffers, superNorm->buffers));
     result.andAlso(isCovariantWith(env, subNorm->tables, superNorm->tables));
     result.andAlso(isCovariantWith(env, subNorm->functions, superNorm->functions));
     // isCovariantWith(subNorm->tyvars, superNorm->tyvars);

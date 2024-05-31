@@ -11,12 +11,10 @@
 #include "Luau/OverloadResolution.h"
 #include "Luau/Set.h"
 #include "Luau/Simplify.h"
-#include "Luau/Substitution.h"
 #include "Luau/Subtyping.h"
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
-#include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeFamilyReductionGuesser.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeUtils.h"
@@ -346,9 +344,8 @@ struct FamilyReducer
             if (tryGuessing(subject))
                 return;
 
-            TypeFamilyQueue queue{NotNull{&queuedTys}, NotNull{&queuedTps}};
             TypeFamilyReductionResult<TypeId> result =
-                tfit->family->reducer(subject, NotNull{&queue}, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
+                tfit->family->reducer(subject, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
             handleFamilyReduction(subject, result);
         }
     }
@@ -372,9 +369,8 @@ struct FamilyReducer
             if (tryGuessing(subject))
                 return;
 
-            TypeFamilyQueue queue{NotNull{&queuedTys}, NotNull{&queuedTps}};
             TypeFamilyReductionResult<TypePackId> result =
-                tfit->family->reducer(subject, NotNull{&queue}, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
+                tfit->family->reducer(subject, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
             handleFamilyReduction(subject, result);
         }
     }
@@ -449,24 +445,89 @@ FamilyGraphReductionResult reduceFamilies(TypePackId entrypoint, Location locati
         std::move(collector.cyclicInstance), location, ctx, force);
 }
 
-void TypeFamilyQueue::add(TypeId instanceTy)
-{
-    LUAU_ASSERT(get<TypeFamilyInstanceType>(instanceTy));
-    queuedTys->push_back(instanceTy);
-}
-
-void TypeFamilyQueue::add(TypePackId instanceTp)
-{
-    LUAU_ASSERT(get<TypeFamilyInstanceTypePack>(instanceTp));
-    queuedTps->push_back(instanceTp);
-}
-
 bool isPending(TypeId ty, ConstraintSolver* solver)
 {
     return is<BlockedType, PendingExpansionType, TypeFamilyInstanceType, LocalType>(ty) || (solver && solver->hasUnresolvedConstraints(ty));
 }
 
-TypeFamilyReductionResult<TypeId> notFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+template<typename F, typename... Args>
+static std::optional<TypeFamilyReductionResult<TypeId>> tryDistributeTypeFamilyApp(F f, TypeId instance,
+    const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx, Args&& ...args)
+{
+    // op (a | b) (c | d) ~ (op a (c | d)) | (op b (c | d)) ~ (op a c) | (op a d) | (op b c) | (op b d)
+    bool uninhabited = false;
+    std::vector<TypeId> blockedTypes;
+    std::vector<TypeId> results;
+    size_t cartesianProductSize = 1;
+
+    const UnionType* firstUnion = nullptr;
+    size_t unionIndex;
+
+    std::vector<TypeId> arguments = typeParams;
+    for (size_t i = 0; i < arguments.size(); ++i)
+    {
+        const UnionType* ut = get<UnionType>(follow(arguments[i]));
+        if (!ut)
+            continue;
+
+        // We want to find the first union type in the set of arguments to distribute that one and only that one union.
+        // The function `f` we have is recursive, so `arguments[unionIndex]` will be updated in-place for each option in
+        // the union we've found in this context, so that index will no longer be a union type. Any other arguments at
+        // index + 1 or after will instead be distributed, if those are a union, which will be subjected to the same rules.
+        if (!firstUnion && ut)
+        {
+            firstUnion = ut;
+            unionIndex = i;
+        }
+
+        cartesianProductSize *= std::distance(begin(ut), end(ut));
+
+        // TODO: We'd like to report that the type family application is too complex here.
+        if (size_t(DFInt::LuauTypeFamilyApplicationCartesianProductLimit) <= cartesianProductSize)
+            return {{std::nullopt, true, {}, {}}};
+    }
+
+    if (!firstUnion)
+    {
+        // If we couldn't find any union type argument, we're not distributing.
+        return std::nullopt;
+    }
+
+    for (TypeId option : firstUnion)
+    {
+        arguments[unionIndex] = option;
+
+        TypeFamilyReductionResult<TypeId> result = f(instance, arguments, packParams, ctx, args...);
+        blockedTypes.insert(blockedTypes.end(), result.blockedTypes.begin(), result.blockedTypes.end());
+        uninhabited |= result.uninhabited;
+
+        if (result.uninhabited || !result.result)
+            break;
+        else
+            results.push_back(*result.result);
+    }
+
+    if (uninhabited || !blockedTypes.empty())
+        return {{std::nullopt, uninhabited, blockedTypes, {}}};
+
+    if (!results.empty())
+    {
+        if (results.size() == 1)
+            return {{results[0], false, {}, {}}};
+
+        TypeId resultTy = ctx->arena->addType(TypeFamilyInstanceType{
+            NotNull{&kBuiltinTypeFamilies.unionFamily},
+            std::move(results),
+            {},
+        });
+
+        return {{resultTy, false, {}, {}}};
+    }
+
+    return std::nullopt;
+}
+
+TypeFamilyReductionResult<TypeId> notFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 1 || !packParams.empty())
@@ -477,14 +538,20 @@ TypeFamilyReductionResult<TypeId> notFamilyFn(TypeId instance, NotNull<TypeFamil
 
     TypeId ty = follow(typeParams.at(0));
 
+    if (ty == instance)
+        return {ctx->builtins->neverType, false, {}, {}};
+
     if (isPending(ty, ctx->solver))
         return {std::nullopt, false, {ty}, {}};
+
+    if (auto result = tryDistributeTypeFamilyApp(notFamilyFn, instance, typeParams, packParams, ctx))
+        return *result;
 
     // `not` operates on anything and returns a `boolean` always.
     return {ctx->builtins->booleanType, false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> lenFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> lenFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 1 || !packParams.empty())
@@ -494,6 +561,9 @@ TypeFamilyReductionResult<TypeId> lenFamilyFn(TypeId instance, NotNull<TypeFamil
     }
 
     TypeId operandTy = follow(typeParams.at(0));
+
+    if (operandTy == instance)
+        return {ctx->builtins->neverType, false, {}, {}};
 
     // check to see if the operand type is resolved enough, and wait to reduce if not
     // the use of `typeFromNormal` later necessitates blocking on local types.
@@ -533,6 +603,9 @@ TypeFamilyReductionResult<TypeId> lenFamilyFn(TypeId instance, NotNull<TypeFamil
     if (normTy->hasTopTable() || get<TableType>(normalizedOperand))
         return {ctx->builtins->numberType, false, {}, {}};
 
+    if (auto result = tryDistributeTypeFamilyApp(notFamilyFn, instance, typeParams, packParams, ctx))
+        return *result;
+
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.
     ErrorVec dummy;
@@ -570,7 +643,7 @@ TypeFamilyReductionResult<TypeId> lenFamilyFn(TypeId instance, NotNull<TypeFamil
     return {ctx->builtins->numberType, false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> unmFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> unmFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 1 || !packParams.empty())
@@ -580,6 +653,9 @@ TypeFamilyReductionResult<TypeId> unmFamilyFn(TypeId instance, NotNull<TypeFamil
     }
 
     TypeId operandTy = follow(typeParams.at(0));
+
+    if (operandTy == instance)
+        return {ctx->builtins->neverType, false, {}, {}};
 
     // check to see if the operand type is resolved enough, and wait to reduce if not
     if (isPending(operandTy, ctx->solver))
@@ -611,6 +687,9 @@ TypeFamilyReductionResult<TypeId> unmFamilyFn(TypeId instance, NotNull<TypeFamil
     // If the type is exactly `number`, we can reduce now.
     if (normTy->isExactlyNumber())
         return {ctx->builtins->numberType, false, {}, {}};
+
+    if (auto result = tryDistributeTypeFamilyApp(notFamilyFn, instance, typeParams, packParams, ctx))
+        return *result;
 
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.
@@ -664,7 +743,7 @@ NotNull<Constraint> TypeFamilyContext::pushConstraint(ConstraintV&& c)
     return newConstraint;
 }
 
-TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx, const std::string metamethod)
 {
     if (typeParams.size() != 2 || !packParams.empty())
@@ -723,67 +802,8 @@ TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(TypeId instance, NotNull<
     if (normLhsTy->isExactlyNumber() && normRhsTy->isExactlyNumber())
         return {ctx->builtins->numberType, false, {}, {}};
 
-    // op (a | b) (c | d) ~ (op a (c | d)) | (op b (c | d)) ~ (op a c) | (op a d) | (op b c) | (op b d)
-    std::vector<TypeId> results;
-    bool uninhabited = false;
-    std::vector<TypeId> blockedTypes;
-    std::vector<TypeId> arguments = typeParams;
-    auto distributeFamilyApp = [&](const UnionType* ut, size_t argumentIndex) {
-        // Returning true here means we completed the loop without any problems.
-        for (TypeId option : ut)
-        {
-            arguments[argumentIndex] = option;
-
-            TypeFamilyReductionResult<TypeId> result = numericBinopFamilyFn(instance, queue, arguments, packParams, ctx, metamethod);
-            blockedTypes.insert(blockedTypes.end(), result.blockedTypes.begin(), result.blockedTypes.end());
-            uninhabited |= result.uninhabited;
-
-            if (result.uninhabited)
-                return false;
-            else if (!result.result)
-                return false;
-            else
-                results.push_back(*result.result);
-        }
-
-        return true;
-    };
-
-    const UnionType* lhsUnion = get<UnionType>(lhsTy);
-    const UnionType* rhsUnion = get<UnionType>(rhsTy);
-    if (lhsUnion || rhsUnion)
-    {
-        // TODO: We'd like to report that the type family application is too complex here.
-        size_t lhsUnionSize = lhsUnion ? std::distance(begin(lhsUnion), end(lhsUnion)) : 1;
-        size_t rhsUnionSize = rhsUnion ? std::distance(begin(rhsUnion), end(rhsUnion)) : 1;
-        if (size_t(DFInt::LuauTypeFamilyApplicationCartesianProductLimit) <= lhsUnionSize * rhsUnionSize)
-            return {std::nullopt, true, {}, {}};
-
-        if (lhsUnion && !distributeFamilyApp(lhsUnion, 0))
-            return {std::nullopt, uninhabited, std::move(blockedTypes), {}};
-
-        if (rhsUnion && !distributeFamilyApp(rhsUnion, 1))
-            return {std::nullopt, uninhabited, std::move(blockedTypes), {}};
-
-        if (results.empty())
-        {
-            // If this happens, it means `distributeFamilyApp` has improperly returned `true` even
-            // though there exists no arm of the union that is inhabited or have a reduced type.
-            ctx->ice->ice("`distributeFamilyApp` failed to add any types to the results vector?");
-        }
-
-        if (results.size() == 1)
-            return {results[0], false, {}, {}};
-
-        TypeId resultTy = ctx->arena->addType(TypeFamilyInstanceType{
-            NotNull{&kBuiltinTypeFamilies.unionFamily},
-            std::move(results),
-            {},
-        });
-
-        queue->add(resultTy);
-        return {resultTy, false, {}, {}};
-    }
+    if (auto result = tryDistributeTypeFamilyApp(numericBinopFamilyFn, instance, typeParams, packParams, ctx, metamethod))
+        return *result;
 
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.
@@ -826,7 +846,7 @@ TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(TypeId instance, NotNull<
     return {extracted.head.front(), false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> addFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> addFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
@@ -835,10 +855,10 @@ TypeFamilyReductionResult<TypeId> addFamilyFn(TypeId instance, NotNull<TypeFamil
         LUAU_ASSERT(false);
     }
 
-    return numericBinopFamilyFn(instance, queue, typeParams, packParams, ctx, "__add");
+    return numericBinopFamilyFn(instance, typeParams, packParams, ctx, "__add");
 }
 
-TypeFamilyReductionResult<TypeId> subFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> subFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
@@ -847,10 +867,10 @@ TypeFamilyReductionResult<TypeId> subFamilyFn(TypeId instance, NotNull<TypeFamil
         LUAU_ASSERT(false);
     }
 
-    return numericBinopFamilyFn(instance, queue, typeParams, packParams, ctx, "__sub");
+    return numericBinopFamilyFn(instance, typeParams, packParams, ctx, "__sub");
 }
 
-TypeFamilyReductionResult<TypeId> mulFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> mulFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
@@ -859,10 +879,10 @@ TypeFamilyReductionResult<TypeId> mulFamilyFn(TypeId instance, NotNull<TypeFamil
         LUAU_ASSERT(false);
     }
 
-    return numericBinopFamilyFn(instance, queue, typeParams, packParams, ctx, "__mul");
+    return numericBinopFamilyFn(instance, typeParams, packParams, ctx, "__mul");
 }
 
-TypeFamilyReductionResult<TypeId> divFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> divFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
@@ -871,10 +891,10 @@ TypeFamilyReductionResult<TypeId> divFamilyFn(TypeId instance, NotNull<TypeFamil
         LUAU_ASSERT(false);
     }
 
-    return numericBinopFamilyFn(instance, queue, typeParams, packParams, ctx, "__div");
+    return numericBinopFamilyFn(instance, typeParams, packParams, ctx, "__div");
 }
 
-TypeFamilyReductionResult<TypeId> idivFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> idivFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
@@ -883,10 +903,10 @@ TypeFamilyReductionResult<TypeId> idivFamilyFn(TypeId instance, NotNull<TypeFami
         LUAU_ASSERT(false);
     }
 
-    return numericBinopFamilyFn(instance, queue, typeParams, packParams, ctx, "__idiv");
+    return numericBinopFamilyFn(instance, typeParams, packParams, ctx, "__idiv");
 }
 
-TypeFamilyReductionResult<TypeId> powFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> powFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
@@ -895,10 +915,10 @@ TypeFamilyReductionResult<TypeId> powFamilyFn(TypeId instance, NotNull<TypeFamil
         LUAU_ASSERT(false);
     }
 
-    return numericBinopFamilyFn(instance, queue, typeParams, packParams, ctx, "__pow");
+    return numericBinopFamilyFn(instance, typeParams, packParams, ctx, "__pow");
 }
 
-TypeFamilyReductionResult<TypeId> modFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> modFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
@@ -907,10 +927,10 @@ TypeFamilyReductionResult<TypeId> modFamilyFn(TypeId instance, NotNull<TypeFamil
         LUAU_ASSERT(false);
     }
 
-    return numericBinopFamilyFn(instance, queue, typeParams, packParams, ctx, "__mod");
+    return numericBinopFamilyFn(instance, typeParams, packParams, ctx, "__mod");
 }
 
-TypeFamilyReductionResult<TypeId> concatFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> concatFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
@@ -921,6 +941,10 @@ TypeFamilyReductionResult<TypeId> concatFamilyFn(TypeId instance, NotNull<TypeFa
 
     TypeId lhsTy = follow(typeParams.at(0));
     TypeId rhsTy = follow(typeParams.at(1));
+
+    // isPending of `lhsTy` or `rhsTy` would return true, even if it cycles. We want a different answer for that.
+    if (lhsTy == instance || rhsTy == instance)
+        return {ctx->builtins->neverType, false, {}, {}};
 
     // check to see if both operand types are resolved enough, and wait to reduce if not
     if (isPending(lhsTy, ctx->solver))
@@ -961,6 +985,9 @@ TypeFamilyReductionResult<TypeId> concatFamilyFn(TypeId instance, NotNull<TypeFa
     // if we're concatenating two elements that are either strings or numbers, the result is `string`.
     if ((normLhsTy->isSubtypeOfString() || normLhsTy->isExactlyNumber()) && (normRhsTy->isSubtypeOfString() || normRhsTy->isExactlyNumber()))
         return {ctx->builtins->stringType, false, {}, {}};
+
+    if (auto result = tryDistributeTypeFamilyApp(concatFamilyFn, instance, typeParams, packParams, ctx))
+        return *result;
 
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.
@@ -1011,7 +1038,7 @@ TypeFamilyReductionResult<TypeId> concatFamilyFn(TypeId instance, NotNull<TypeFa
     return {ctx->builtins->stringType, false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> andFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> andFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
@@ -1062,7 +1089,7 @@ TypeFamilyReductionResult<TypeId> andFamilyFn(TypeId instance, NotNull<TypeFamil
     return {overallResult.result, false, std::move(blockedTypes), {}};
 }
 
-TypeFamilyReductionResult<TypeId> orFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> orFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
@@ -1113,7 +1140,7 @@ TypeFamilyReductionResult<TypeId> orFamilyFn(TypeId instance, NotNull<TypeFamily
     return {overallResult.result, false, std::move(blockedTypes), {}};
 }
 
-static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx, const std::string metamethod)
 {
 
@@ -1125,6 +1152,9 @@ static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(TypeId instance, Not
 
     TypeId lhsTy = follow(typeParams.at(0));
     TypeId rhsTy = follow(typeParams.at(1));
+
+    if (lhsTy == instance || rhsTy == instance)
+        return {ctx->builtins->neverType, false, {}, {}};
 
     if (isPending(lhsTy, ctx->solver))
         return {std::nullopt, false, {lhsTy}, {}};
@@ -1207,6 +1237,9 @@ static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(TypeId instance, Not
     if (normLhsTy->isExactlyNumber() && normRhsTy->isExactlyNumber())
         return {ctx->builtins->booleanType, false, {}, {}};
 
+    if (auto result = tryDistributeTypeFamilyApp(comparisonFamilyFn, instance, typeParams, packParams, ctx, metamethod))
+        return *result;
+
     // findMetatableEntry demands the ability to emit errors, so we must give it
     // the necessary state to do that, even if we intend to just eat the errors.
     ErrorVec dummy;
@@ -1246,7 +1279,7 @@ static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(TypeId instance, Not
     return {ctx->builtins->booleanType, false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> ltFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> ltFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
@@ -1255,10 +1288,10 @@ TypeFamilyReductionResult<TypeId> ltFamilyFn(TypeId instance, NotNull<TypeFamily
         LUAU_ASSERT(false);
     }
 
-    return comparisonFamilyFn(instance, queue, typeParams, packParams, ctx, "__lt");
+    return comparisonFamilyFn(instance, typeParams, packParams, ctx, "__lt");
 }
 
-TypeFamilyReductionResult<TypeId> leFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> leFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
@@ -1267,10 +1300,10 @@ TypeFamilyReductionResult<TypeId> leFamilyFn(TypeId instance, NotNull<TypeFamily
         LUAU_ASSERT(false);
     }
 
-    return comparisonFamilyFn(instance, queue, typeParams, packParams, ctx, "__le");
+    return comparisonFamilyFn(instance, typeParams, packParams, ctx, "__le");
 }
 
-TypeFamilyReductionResult<TypeId> eqFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> eqFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
@@ -1407,7 +1440,7 @@ struct FindRefinementBlockers : TypeOnceVisitor
 };
 
 
-TypeFamilyReductionResult<TypeId> refineFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> refineFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
@@ -1480,7 +1513,7 @@ TypeFamilyReductionResult<TypeId> refineFamilyFn(TypeId instance, NotNull<TypeFa
     return {resultTy, false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> singletonFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> singletonFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 1 || !packParams.empty())
@@ -1517,7 +1550,7 @@ TypeFamilyReductionResult<TypeId> singletonFamilyFn(TypeId instance, NotNull<Typ
     return {ctx->builtins->unknownType, false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> unionFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> unionFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (!packParams.empty())
@@ -1578,7 +1611,7 @@ TypeFamilyReductionResult<TypeId> unionFamilyFn(TypeId instance, NotNull<TypeFam
 }
 
 
-TypeFamilyReductionResult<TypeId> intersectFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> intersectFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (!packParams.empty())
@@ -1802,7 +1835,7 @@ TypeFamilyReductionResult<TypeId> keyofFamilyImpl(
     return {ctx->arena->addType(UnionType{singletons}), false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> keyofFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> keyofFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 1 || !packParams.empty())
@@ -1814,7 +1847,7 @@ TypeFamilyReductionResult<TypeId> keyofFamilyFn(TypeId instance, NotNull<TypeFam
     return keyofFamilyImpl(typeParams, packParams, ctx, /* isRaw */ false);
 }
 
-TypeFamilyReductionResult<TypeId> rawkeyofFamilyFn(TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& typeParams,
+TypeFamilyReductionResult<TypeId> rawkeyofFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 1 || !packParams.empty())

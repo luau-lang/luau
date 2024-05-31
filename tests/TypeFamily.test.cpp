@@ -3,7 +3,6 @@
 
 #include "Luau/ConstraintSolver.h"
 #include "Luau/NotNull.h"
-#include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 
 #include "ClassFixture.h"
@@ -14,6 +13,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 
 struct FamilyFixture : Fixture
 {
@@ -24,7 +24,7 @@ struct FamilyFixture : Fixture
     {
         swapFamily = TypeFamily{/* name */ "Swap",
             /* reducer */
-            [](TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& tys, const std::vector<TypePackId>& tps,
+            [](TypeId instance, const std::vector<TypeId>& tys, const std::vector<TypePackId>& tps,
                 NotNull<TypeFamilyContext> ctx) -> TypeFamilyReductionResult<TypeId> {
                 LUAU_ASSERT(tys.size() == 1);
                 TypeId param = follow(tys.at(0));
@@ -714,6 +714,119 @@ _(_ ~= _ // _,l0)(_(_({n0,})),_(_),_)
 _(setmetatable(_,{[...]=_,}))
 
 )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_concat_family_at_work")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type T = concat<string | T, string>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireTypeAlias("T")) == "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "exceeded_distributivity_limits")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    ScopedFastInt sfi{DFInt::LuauTypeFamilyApplicationCartesianProductLimit, 10};
+
+    loadDefinition(R"(
+        declare class A
+            function __mul(self, rhs: unknown): A
+        end
+
+        declare class B
+            function __mul(self, rhs: unknown): B
+        end
+
+        declare class C
+            function __mul(self, rhs: unknown): C
+        end
+
+        declare class D
+            function __mul(self, rhs: unknown): D
+        end
+    )");
+
+    CheckResult result = check(R"(
+        type T = mul<A | B | C | D, A | B | C | D>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<UninhabitedTypeFamily>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "didnt_quite_exceed_distributivity_limits")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    // We duplicate the test here because we want to make sure the test failed
+    // due to exceeding the limits specifically, rather than any possible reasons.
+    ScopedFastInt sfi{DFInt::LuauTypeFamilyApplicationCartesianProductLimit, 20};
+
+    loadDefinition(R"(
+        declare class A
+            function __mul(self, rhs: unknown): A
+        end
+
+        declare class B
+            function __mul(self, rhs: unknown): B
+        end
+
+        declare class C
+            function __mul(self, rhs: unknown): C
+        end
+
+        declare class D
+            function __mul(self, rhs: unknown): D
+        end
+    )");
+
+    CheckResult result = check(R"(
+        type T = mul<A | B | C | D, A | B | C | D>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "ensure_equivalence_with_distributivity")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    loadDefinition(R"(
+        declare class A
+            function __mul(self, rhs: unknown): A
+        end
+
+        declare class B
+            function __mul(self, rhs: unknown): B
+        end
+
+        declare class C
+            function __mul(self, rhs: unknown): C
+        end
+
+        declare class D
+            function __mul(self, rhs: unknown): D
+        end
+    )");
+
+    CheckResult result = check(R"(
+        type T = mul<A | B, C | D>
+        type U = mul<A, C> | mul<A, D> | mul<B, C> | mul<B, D>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireTypeAlias("T")) == "A | B");
+    CHECK(toString(requireTypeAlias("U")) == "A | A | B | B");
 }
 
 TEST_SUITE_END();

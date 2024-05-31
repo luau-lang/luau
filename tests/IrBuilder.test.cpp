@@ -14,7 +14,7 @@
 
 LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodegenLoadPropCheckRegLinkInTv)
+LUAU_FASTFLAG(LuauCodegenFixSplitStoreConstMismatch)
 
 using namespace Luau::CodeGen;
 
@@ -2658,6 +2658,60 @@ bb_0:
 )");
 }
 
+TEST_CASE_FIXTURE(IrBuilderFixture, "DoNotProduceInvalidSplitStore1")
+{
+    ScopedFastFlag luauCodegenFixSplitStoreConstMismatch{FFlag::LuauCodegenFixSplitStoreConstMismatch, true};
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), build.constInt(1));
+    build.inst(IrCmd::CHECK_TAG, build.vmReg(0), build.constTag(ttable), build.vmExit(1));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(1), build.inst(IrCmd::LOAD_TVALUE, build.vmReg(0)));
+    build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build, true);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   STORE_INT R0, 1i
+   CHECK_TAG R0, ttable, exit(1)
+   %2 = LOAD_TVALUE R0
+   STORE_TVALUE R1, %2
+   RETURN R1, 1i
+
+)");
+}
+
+TEST_CASE_FIXTURE(IrBuilderFixture, "DoNotProduceInvalidSplitStore2")
+{
+    ScopedFastFlag luauCodegenFixSplitStoreConstMismatch{FFlag::LuauCodegenFixSplitStoreConstMismatch, true};
+
+    IrOp entry = build.block(IrBlockKind::Internal);
+
+    build.beginBlock(entry);
+    build.inst(IrCmd::STORE_INT, build.vmReg(0), build.constInt(1));
+    build.inst(IrCmd::CHECK_TAG, build.vmReg(0), build.constTag(tnumber), build.vmExit(1));
+    build.inst(IrCmd::STORE_TVALUE, build.vmReg(1), build.inst(IrCmd::LOAD_TVALUE, build.vmReg(0)));
+    build.inst(IrCmd::RETURN, build.vmReg(1), build.constInt(1));
+
+    updateUseCounts(build.function);
+    computeCfgInfo(build.function);
+    constPropInBlockChains(build, true);
+
+    CHECK("\n" + toString(build.function, IncludeUseInfo::No) == R"(
+bb_0:
+   STORE_INT R0, 1i
+   CHECK_TAG R0, tnumber, exit(1)
+   %2 = LOAD_TVALUE R0
+   STORE_TVALUE R1, %2
+   RETURN R1, 1i
+
+)");
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("Analysis");
@@ -3475,8 +3529,6 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "TaggedValuePropagationIntoTvalueChecksRegisterVersion")
 {
-    ScopedFastFlag luauCodegenLoadPropCheckRegLinkInTv{FFlag::LuauCodegenLoadPropCheckRegLinkInTv, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);

@@ -13,7 +13,7 @@
 #include "lapi.h"
 
 LUAU_FASTFLAG(LuauCodegenTypeInfo)
-LUAU_FASTFLAGVARIABLE(LuauCodegenIrTypeNames, false)
+LUAU_FASTFLAG(LuauLoadUserdataInfo)
 
 namespace Luau
 {
@@ -22,8 +22,6 @@ namespace CodeGen
 
 static const LocVar* tryFindLocal(const Proto* proto, int reg, int pcpos)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenIrTypeNames);
-
     for (int i = 0; i < proto->sizelocvars; i++)
     {
         const LocVar& local = proto->locvars[i];
@@ -37,8 +35,6 @@ static const LocVar* tryFindLocal(const Proto* proto, int reg, int pcpos)
 
 const char* tryFindLocalName(const Proto* proto, int reg, int pcpos)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenIrTypeNames);
-
     const LocVar* var = tryFindLocal(proto, reg, pcpos);
 
     if (var && var->varname)
@@ -49,8 +45,6 @@ const char* tryFindLocalName(const Proto* proto, int reg, int pcpos)
 
 const char* tryFindUpvalueName(const Proto* proto, int upval)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenIrTypeNames);
-
     if (proto->upvalues)
     {
         CODEGEN_ASSERT(upval < proto->sizeupvalues);
@@ -72,22 +66,10 @@ static void logFunctionHeader(AssemblyBuilder& build, Proto* proto)
 
     for (int i = 0; i < proto->numparams; i++)
     {
-        if (FFlag::LuauCodegenIrTypeNames)
-        {
-            if (const char* name = tryFindLocalName(proto, i, 0))
-                build.logAppend("%s%s", i == 0 ? "" : ", ", name);
-            else
-                build.logAppend("%s$arg%d", i == 0 ? "" : ", ", i);
-        }
+        if (const char* name = tryFindLocalName(proto, i, 0))
+            build.logAppend("%s%s", i == 0 ? "" : ", ", name);
         else
-        {
-            LocVar* var = proto->locvars ? &proto->locvars[proto->sizelocvars - proto->numparams + i] : nullptr;
-
-            if (var && var->varname)
-                build.logAppend("%s%s", i == 0 ? "" : ", ", getstr(var->varname));
-            else
-                build.logAppend("%s$arg%d", i == 0 ? "" : ", ", i);
-        }
+            build.logAppend("%s$arg%d", i == 0 ? "" : ", ", i);
     }
 
     if (proto->numparams != 0 && proto->is_vararg)
@@ -102,9 +84,10 @@ static void logFunctionHeader(AssemblyBuilder& build, Proto* proto)
 }
 
 template<typename AssemblyBuilder>
-static void logFunctionTypes(AssemblyBuilder& build, const IrFunction& function)
+static void logFunctionTypes_DEPRECATED(AssemblyBuilder& build, const IrFunction& function)
 {
     CODEGEN_ASSERT(FFlag::LuauCodegenTypeInfo);
+    CODEGEN_ASSERT(!FFlag::LuauLoadUserdataInfo);
 
     const BytecodeTypeInfo& typeInfo = function.bcTypeInfo;
 
@@ -112,20 +95,12 @@ static void logFunctionTypes(AssemblyBuilder& build, const IrFunction& function)
     {
         uint8_t ty = typeInfo.argumentTypes[i];
 
-        if (FFlag::LuauCodegenIrTypeNames)
+        if (ty != LBC_TYPE_ANY)
         {
-            if (ty != LBC_TYPE_ANY)
-            {
-                if (const char* name = tryFindLocalName(function.proto, int(i), 0))
-                    build.logAppend("; R%d: %s [argument '%s']\n", int(i), getBytecodeTypeName(ty), name);
-                else
-                    build.logAppend("; R%d: %s [argument]\n", int(i), getBytecodeTypeName(ty));
-            }
-        }
-        else
-        {
-            if (ty != LBC_TYPE_ANY)
-                build.logAppend("; R%d: %s [argument]\n", int(i), getBytecodeTypeName(ty));
+            if (const char* name = tryFindLocalName(function.proto, int(i), 0))
+                build.logAppend("; R%d: %s [argument '%s']\n", int(i), getBytecodeTypeName_DEPRECATED(ty), name);
+            else
+                build.logAppend("; R%d: %s [argument]\n", int(i), getBytecodeTypeName_DEPRECATED(ty));
         }
     }
 
@@ -133,37 +108,75 @@ static void logFunctionTypes(AssemblyBuilder& build, const IrFunction& function)
     {
         uint8_t ty = typeInfo.upvalueTypes[i];
 
-        if (FFlag::LuauCodegenIrTypeNames)
+        if (ty != LBC_TYPE_ANY)
         {
-            if (ty != LBC_TYPE_ANY)
-            {
-                if (const char* name = tryFindUpvalueName(function.proto, int(i)))
-                    build.logAppend("; U%d: %s ['%s']\n", int(i), getBytecodeTypeName(ty), name);
-                else
-                    build.logAppend("; U%d: %s\n", int(i), getBytecodeTypeName(ty));
-            }
-        }
-        else
-        {
-            if (ty != LBC_TYPE_ANY)
-                build.logAppend("; U%d: %s\n", int(i), getBytecodeTypeName(ty));
+            if (const char* name = tryFindUpvalueName(function.proto, int(i)))
+                build.logAppend("; U%d: %s ['%s']\n", int(i), getBytecodeTypeName_DEPRECATED(ty), name);
+            else
+                build.logAppend("; U%d: %s\n", int(i), getBytecodeTypeName_DEPRECATED(ty));
         }
     }
 
     for (const BytecodeRegTypeInfo& el : typeInfo.regTypes)
     {
-        if (FFlag::LuauCodegenIrTypeNames)
-        {
-            // Using last active position as the PC because 'startpc' for type info is before local is initialized
-            if (const char* name = tryFindLocalName(function.proto, el.reg, el.endpc - 1))
-                build.logAppend("; R%d: %s from %d to %d [local '%s']\n", el.reg, getBytecodeTypeName(el.type), el.startpc, el.endpc, name);
-            else
-                build.logAppend("; R%d: %s from %d to %d\n", el.reg, getBytecodeTypeName(el.type), el.startpc, el.endpc);
-        }
+        // Using last active position as the PC because 'startpc' for type info is before local is initialized
+        if (const char* name = tryFindLocalName(function.proto, el.reg, el.endpc - 1))
+            build.logAppend("; R%d: %s from %d to %d [local '%s']\n", el.reg, getBytecodeTypeName_DEPRECATED(el.type), el.startpc, el.endpc, name);
         else
+            build.logAppend("; R%d: %s from %d to %d\n", el.reg, getBytecodeTypeName_DEPRECATED(el.type), el.startpc, el.endpc);
+    }
+}
+
+template<typename AssemblyBuilder>
+static void logFunctionTypes(AssemblyBuilder& build, const IrFunction& function, const char* const* userdataTypes)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenTypeInfo);
+    CODEGEN_ASSERT(FFlag::LuauLoadUserdataInfo);
+
+    const BytecodeTypeInfo& typeInfo = function.bcTypeInfo;
+
+    for (size_t i = 0; i < typeInfo.argumentTypes.size(); i++)
+    {
+        uint8_t ty = typeInfo.argumentTypes[i];
+
+        const char* type = getBytecodeTypeName(ty, userdataTypes);
+        const char* optional = (ty & LBC_TYPE_OPTIONAL_BIT) != 0 ? "?" : "";
+
+        if (ty != LBC_TYPE_ANY)
         {
-            build.logAppend("; R%d: %s from %d to %d\n", el.reg, getBytecodeTypeName(el.type), el.startpc, el.endpc);
+            if (const char* name = tryFindLocalName(function.proto, int(i), 0))
+                build.logAppend("; R%d: %s%s [argument '%s']\n", int(i), type, optional, name);
+            else
+                build.logAppend("; R%d: %s%s [argument]\n", int(i), type, optional);
         }
+    }
+
+    for (size_t i = 0; i < typeInfo.upvalueTypes.size(); i++)
+    {
+        uint8_t ty = typeInfo.upvalueTypes[i];
+
+        const char* type = getBytecodeTypeName(ty, userdataTypes);
+        const char* optional = (ty & LBC_TYPE_OPTIONAL_BIT) != 0 ? "?" : "";
+
+        if (ty != LBC_TYPE_ANY)
+        {
+            if (const char* name = tryFindUpvalueName(function.proto, int(i)))
+                build.logAppend("; U%d: %s%s ['%s']\n", int(i), type, optional, name);
+            else
+                build.logAppend("; U%d: %s%s\n", int(i), type, optional);
+        }
+    }
+
+    for (const BytecodeRegTypeInfo& el : typeInfo.regTypes)
+    {
+        const char* type = getBytecodeTypeName(el.type, userdataTypes);
+        const char* optional = (el.type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "?" : "";
+
+        // Using last active position as the PC because 'startpc' for type info is before local is initialized
+        if (const char* name = tryFindLocalName(function.proto, el.reg, el.endpc - 1))
+            build.logAppend("; R%d: %s%s from %d to %d [local '%s']\n", el.reg, type, optional, el.startpc, el.endpc, name);
+        else
+            build.logAppend("; R%d: %s%s from %d to %d\n", el.reg, type, optional, el.startpc, el.endpc);
     }
 }
 
@@ -224,7 +237,12 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
             logFunctionHeader(build, p);
 
         if (FFlag::LuauCodegenTypeInfo && options.includeIrTypes)
-            logFunctionTypes(build, ir.function);
+        {
+            if (FFlag::LuauLoadUserdataInfo)
+                logFunctionTypes(build, ir.function, options.compilationOptions.userdataTypes);
+            else
+                logFunctionTypes_DEPRECATED(build, ir.function);
+        }
 
         CodeGenCompilationResult result = CodeGenCompilationResult::Success;
 

@@ -915,6 +915,7 @@ TEST_IS_SUBTYPE(numberToNumberType, negate(builtinTypes->classType));
 TEST_IS_NOT_SUBTYPE(numberToNumberType, negate(builtinTypes->functionType));
 
 // Negated supertypes: Primitives and singletons
+TEST_IS_NOT_SUBTYPE(builtinTypes->stringType, negate(builtinTypes->stringType));
 TEST_IS_SUBTYPE(builtinTypes->stringType, negate(builtinTypes->numberType));
 TEST_IS_SUBTYPE(str("foo"), meet(builtinTypes->stringType, negate(str("bar"))));
 TEST_IS_NOT_SUBTYPE(builtinTypes->trueType, negate(builtinTypes->booleanType));
