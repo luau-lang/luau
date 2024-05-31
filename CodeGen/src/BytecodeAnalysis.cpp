@@ -14,8 +14,6 @@
 LUAU_FASTFLAG(LuauCodegenDirectUserdataFlow)
 LUAU_FASTFLAG(LuauLoadTypeInfo)                   // Because new VM typeinfo load changes the format used by Codegen, same flag is used
 LUAU_FASTFLAGVARIABLE(LuauCodegenTypeInfo, false) // New analysis is flagged separately
-LUAU_FASTFLAG(LuauTypeInfoLookupImprovement)
-LUAU_FASTFLAGVARIABLE(LuauCodegenVectorMispredictFix, false)
 LUAU_FASTFLAGVARIABLE(LuauCodegenAnalyzeHostVectorOps, false)
 LUAU_FASTFLAGVARIABLE(LuauCodegenLoadTypeUpvalCheck, false)
 
@@ -68,21 +66,13 @@ void loadBytecodeTypeInfo(IrFunction& function)
 
     Proto* proto = function.proto;
 
-    if (FFlag::LuauTypeInfoLookupImprovement)
-    {
-        if (!proto)
-            return;
-    }
-    else
-    {
-        if (!proto || !proto->typeinfo)
-            return;
-    }
+    if (!proto)
+        return;
 
     BytecodeTypeInfo& typeInfo = function.bcTypeInfo;
 
     // If there is no typeinfo, we generate default values for arguments and upvalues
-    if (FFlag::LuauTypeInfoLookupImprovement && !proto->typeinfo)
+    if (!proto->typeinfo)
     {
         typeInfo.argumentTypes.resize(proto->numparams, LBC_TYPE_ANY);
         typeInfo.upvalueTypes.resize(proto->nups, LBC_TYPE_ANY);
@@ -150,8 +140,6 @@ void loadBytecodeTypeInfo(IrFunction& function)
 
 static void prepareRegTypeInfoLookups(BytecodeTypeInfo& typeInfo)
 {
-    CODEGEN_ASSERT(FFlag::LuauTypeInfoLookupImprovement);
-
     // Sort by register first, then by end PC
     std::sort(typeInfo.regTypes.begin(), typeInfo.regTypes.end(), [](const BytecodeRegTypeInfo& a, const BytecodeRegTypeInfo& b) {
         if (a.reg != b.reg)
@@ -186,39 +174,26 @@ static BytecodeRegTypeInfo* findRegType(BytecodeTypeInfo& info, uint8_t reg, int
 {
     CODEGEN_ASSERT(FFlag::LuauCodegenTypeInfo);
 
-    if (FFlag::LuauTypeInfoLookupImprovement)
-    {
-        auto b = info.regTypes.begin() + info.regTypeOffsets[reg];
-        auto e = info.regTypes.begin() + info.regTypeOffsets[reg + 1];
+    auto b = info.regTypes.begin() + info.regTypeOffsets[reg];
+    auto e = info.regTypes.begin() + info.regTypeOffsets[reg + 1];
 
-        // Doen't have info
-        if (b == e)
-            return nullptr;
-
-        // No info after the last live range
-        if (pc >= (e - 1)->endpc)
-            return nullptr;
-
-        for (auto it = b; it != e; ++it)
-        {
-            CODEGEN_ASSERT(it->reg == reg);
-
-            if (pc >= it->startpc && pc < it->endpc)
-                return &*it;
-        }
-
+    // Doen't have info
+    if (b == e)
         return nullptr;
-    }
-    else
-    {
-        for (BytecodeRegTypeInfo& el : info.regTypes)
-        {
-            if (reg == el.reg && pc >= el.startpc && pc < el.endpc)
-                return &el;
-        }
 
+    // No info after the last live range
+    if (pc >= (e - 1)->endpc)
         return nullptr;
+
+    for (auto it = b; it != e; ++it)
+    {
+        CODEGEN_ASSERT(it->reg == reg);
+
+        if (pc >= it->startpc && pc < it->endpc)
+            return &*it;
     }
+
+    return nullptr;
 }
 
 static void refineRegType(BytecodeTypeInfo& info, uint8_t reg, int pc, uint8_t ty)
@@ -233,7 +208,7 @@ static void refineRegType(BytecodeTypeInfo& info, uint8_t reg, int pc, uint8_t t
             if (regType->type == LBC_TYPE_ANY)
                 regType->type = ty;
         }
-        else if (FFlag::LuauTypeInfoLookupImprovement && reg < info.argumentTypes.size())
+        else if (reg < info.argumentTypes.size())
         {
             if (info.argumentTypes[reg] == LBC_TYPE_ANY)
                 info.argumentTypes[reg] = ty;
@@ -627,8 +602,7 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
 
     BytecodeTypeInfo& bcTypeInfo = function.bcTypeInfo;
 
-    if (FFlag::LuauTypeInfoLookupImprovement)
-        prepareRegTypeInfoLookups(bcTypeInfo);
+    prepareRegTypeInfoLookups(bcTypeInfo);
 
     // Setup our current knowledge of type tags based on arguments
     uint8_t regTags[256];
@@ -786,32 +760,22 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
 
                 regTags[ra] = LBC_TYPE_ANY;
 
-                if (FFlag::LuauCodegenVectorMispredictFix)
+                if (bcType.a == LBC_TYPE_VECTOR)
                 {
-                    if (bcType.a == LBC_TYPE_VECTOR)
+                    TString* str = gco2ts(function.proto->k[kc].value.gc);
+                    const char* field = getstr(str);
+
+                    if (str->len == 1)
                     {
-                        TString* str = gco2ts(function.proto->k[kc].value.gc);
-                        const char* field = getstr(str);
+                        // Same handling as LOP_GETTABLEKS block in lvmexecute.cpp - case-insensitive comparison with "X" / "Y" / "Z"
+                        char ch = field[0] | ' ';
 
-                        if (str->len == 1)
-                        {
-                            // Same handling as LOP_GETTABLEKS block in lvmexecute.cpp - case-insensitive comparison with "X" / "Y" / "Z"
-                            char ch = field[0] | ' ';
-
-                            if (ch == 'x' || ch == 'y' || ch == 'z')
-                                regTags[ra] = LBC_TYPE_NUMBER;
-                        }
-
-                        if (FFlag::LuauCodegenAnalyzeHostVectorOps && regTags[ra] == LBC_TYPE_ANY && hostHooks.vectorAccessBytecodeType)
-                            regTags[ra] = hostHooks.vectorAccessBytecodeType(field, str->len);
+                        if (ch == 'x' || ch == 'y' || ch == 'z')
+                            regTags[ra] = LBC_TYPE_NUMBER;
                     }
-                }
-                else
-                {
-                    // Assuming that vector component is being indexed
-                    // TODO: check what key is used
-                    if (bcType.a == LBC_TYPE_VECTOR)
-                        regTags[ra] = LBC_TYPE_NUMBER;
+
+                    if (FFlag::LuauCodegenAnalyzeHostVectorOps && regTags[ra] == LBC_TYPE_ANY && hostHooks.vectorAccessBytecodeType)
+                        regTags[ra] = hostHooks.vectorAccessBytecodeType(field, str->len);
                 }
 
                 bcType.result = regTags[ra];

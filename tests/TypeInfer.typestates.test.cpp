@@ -406,6 +406,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prototyped_recursive_functions_but_has_futur
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+
     CHECK("((() -> ()) | number)?" == toString(requireType("f")));
 }
 

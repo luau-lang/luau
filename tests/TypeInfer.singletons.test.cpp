@@ -44,6 +44,20 @@ TEST_CASE_FIXTURE(Fixture, "string_singletons")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "string_singleton_function_call")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local x = "a"
+        function f(x: "a") end
+        f(x)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "bool_singletons_mismatch")
 {
     CheckResult result = check(R"(

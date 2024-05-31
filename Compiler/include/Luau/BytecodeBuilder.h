@@ -79,6 +79,9 @@ public:
     void pushLocalTypeInfo(LuauBytecodeType type, uint8_t reg, uint32_t startpc, uint32_t endpc);
     void pushUpvalTypeInfo(LuauBytecodeType type);
 
+    uint32_t addUserdataType(const char* name);
+    void useUserdataType(uint32_t index);
+
     void setDebugFunctionName(StringRef name);
     void setDebugFunctionLineDefined(int line);
     void setDebugLine(int line);
@@ -229,6 +232,13 @@ private:
         LuauBytecodeType type;
     };
 
+    struct UserdataType
+    {
+        std::string name;
+        uint32_t nameRef = 0;
+        bool used = false;
+    };
+
     struct Jump
     {
         uint32_t source;
@@ -277,6 +287,8 @@ private:
     std::vector<TypedLocal> typedLocals;
     std::vector<TypedUpval> typedUpvals;
 
+    std::vector<UserdataType> userdataTypes;
+
     DenseHashMap<StringRef, unsigned int, StringRefHash> stringTable;
     std::vector<StringRef> debugStrings;
 
@@ -308,6 +320,8 @@ private:
 
     int32_t addConstant(const ConstantKey& key, const Constant& value);
     unsigned int addStringTableEntry(StringRef value);
+
+    const char* tryGetUserdataTypeName(LuauBytecodeType type) const;
 };
 
 } // namespace Luau

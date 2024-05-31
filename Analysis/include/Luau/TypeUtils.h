@@ -55,6 +55,9 @@ struct InConditionalContext
 
 using ScopePtr = std::shared_ptr<struct Scope>;
 
+std::optional<Property> findTableProperty(
+    NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId ty, const std::string& name, Location location);
+
 std::optional<TypeId> findMetatableEntry(
     NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId type, const std::string& entry, Location location);
 std::optional<TypeId> findTablePropertyRespectingMeta(

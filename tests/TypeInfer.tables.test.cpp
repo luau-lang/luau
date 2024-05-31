@@ -2462,10 +2462,7 @@ local x: {number} | number | string
 local y = #x
     )");
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-    else
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_hang_when_trying_to_look_up_in_cyclic_metatable_index")
@@ -2973,7 +2970,7 @@ c = b
 
     const TableType* ttv = get<TableType>(*ty);
     REQUIRE(ttv);
-    CHECK(ttv->instantiatedTypeParams.empty());
+    CHECK(0 == ttv->instantiatedTypeParams.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_indexing_error_location")
@@ -4355,19 +4352,6 @@ TEST_CASE_FIXTURE(Fixture, "mymovie_read_write_tables_bug_2")
     LUAU_REQUIRE_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "setindexer_always_transmute")
-{
-    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
-
-    CheckResult result = check(R"(
-        function f(x)
-            (5)[5] = x
-        end
-    )");
-
-    CHECK_EQ("(*error-type*) -> ()", toString(requireType("f")));
-}
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "instantiated_metatable_frozen_table_clone_mutation")
 {
     ScopedFastFlag luauMetatableInstantiationCloneCheck{FFlag::LuauMetatableInstantiationCloneCheck, true};
@@ -4412,6 +4396,21 @@ TEST_CASE_FIXTURE(Fixture, "setprop_on_a_mutating_local_in_both_loops_and_functi
     LUAU_REQUIRE_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "cant_index_this")
+{
+    CheckResult result = check(R"(
+        local a: number = 9
+        a[18] = "tomfoolery"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    NotATable* notATable = get<NotATable>(result.errors[0]);
+    REQUIRE(notATable);
+
+    CHECK("number" == toString(notATable->ty));
+}
+
 TEST_CASE_FIXTURE(Fixture, "setindexer_multiple_tables_intersection")
 {
     ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
@@ -4423,8 +4422,8 @@ TEST_CASE_FIXTURE(Fixture, "setindexer_multiple_tables_intersection")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK("({ [string]: number } & { [thread]: boolean }, boolean | number) -> ()" == toString(requireType("f")));
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK("({ [string]: number } & { [thread]: boolean }, never) -> ()" == toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "insert_a_and_f_of_a_into_table_res_in_a_loop")

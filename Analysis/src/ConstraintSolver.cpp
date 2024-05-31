@@ -206,6 +206,12 @@ static std::pair<std::vector<TypeId>, std::vector<TypePackId>> saturateArguments
         saturatedPackArguments.push_back(builtinTypes->errorRecoveryTypePack());
     }
 
+    for (TypeId& arg : saturatedTypeArguments)
+        arg = follow(arg);
+
+    for (TypePackId& pack : saturatedPackArguments)
+        pack = follow(pack);
+
     // At this point, these two conditions should be true. If they aren't we
     // will run into access violations.
     LUAU_ASSERT(saturatedTypeArguments.size() == fn.typeParams.size());
@@ -407,11 +413,17 @@ void ConstraintSolver::run()
                 // decrement the referenced free types for this constraint if we dispatched successfully!
                 for (auto ty : c->getMaybeMutatedFreeTypes())
                 {
-                    // this is a little weird, but because we're only counting free types in subtyping constraints,
-                    // some constraints (like unpack) might actually produce _more_ references to a free type.
                     size_t& refCount = unresolvedConstraints[ty];
                     if (refCount > 0)
                         refCount -= 1;
+
+                    // We have two constraints that are designed to wait for the
+                    // refCount on a free type to be equal to 1: the
+                    // PrimitiveTypeConstraint and ReduceConstraint. We
+                    // therefore wake any constraint waiting for a free type's
+                    // refcount to be 1 or 0.
+                    if (refCount <= 1)
+                        unblock(ty, Location{});
                 }
 
                 if (logger)
@@ -518,15 +530,15 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*fcc, constraint);
     else if (auto hpc = get<HasPropConstraint>(*constraint))
         success = tryDispatch(*hpc, constraint);
-    else if (auto spc = get<SetPropConstraint>(*constraint))
-        success = tryDispatch(*spc, constraint);
     else if (auto spc = get<HasIndexerConstraint>(*constraint))
         success = tryDispatch(*spc, constraint);
-    else if (auto spc = get<SetIndexerConstraint>(*constraint))
-        success = tryDispatch(*spc, constraint, force);
-    else if (auto uc = get<UnpackConstraint>(*constraint))
+    else if (auto uc = get<AssignConstraint>(*constraint))
         success = tryDispatch(*uc, constraint);
-    else if (auto uc = get<Unpack1Constraint>(*constraint))
+    else if (auto uc = get<AssignPropConstraint>(*constraint))
+        success = tryDispatch(*uc, constraint);
+    else if (auto uc = get<AssignIndexConstraint>(*constraint))
+        success = tryDispatch(*uc, constraint);
+    else if (auto uc = get<UnpackConstraint>(*constraint))
         success = tryDispatch(*uc, constraint);
     else if (auto rc = get<ReduceConstraint>(*constraint))
         success = tryDispatch(*rc, constraint, force);
@@ -688,7 +700,18 @@ bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Co
         getMutable<TableType>(tableTy)->indexer = TableIndexer{keyTy, valueTy};
 
         pushConstraint(constraint->scope, constraint->location, SubtypeConstraint{nextTy, tableTy});
-        pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, arena->addTypePack({keyTy, valueTy}), /*resultIsLValue=*/true});
+
+        auto it = begin(c.variables);
+        auto endIt = end(c.variables);
+
+        if (it != endIt)
+        {
+            pushConstraint(constraint->scope, constraint->location, AssignConstraint{*it, keyTy});
+            ++it;
+        }
+        if (it != endIt)
+            pushConstraint(constraint->scope, constraint->location, AssignConstraint{*it, valueTy});
+
         return true;
     }
 
@@ -915,7 +938,17 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     // Type function application will happily give us the exact same type if
     // there are e.g. generic saturatedTypeArguments that go unused.
     const TableType* tfTable = getTableType(tf->type);
-    bool needsClone = follow(tf->type) == target || (tfTable != nullptr && tfTable == getTableType(target));
+
+    //clang-format off
+    bool needsClone =
+        follow(tf->type) == target ||
+        (tfTable != nullptr && tfTable == getTableType(target)) ||
+        std::any_of(typeArguments.begin(), typeArguments.end(), [&](const auto& other) {
+            return other == target;
+        }
+    );
+    //clang-format on
+
     // Only tables have the properties we're trying to set.
     TableType* ttv = getMutableTableType(target);
 
@@ -1291,158 +1324,6 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
     return true;
 }
 
-static bool isUnsealedTable(TypeId ty)
-{
-    ty = follow(ty);
-    const TableType* ttv = get<TableType>(ty);
-    return ttv && ttv->state == TableState::Unsealed;
-}
-
-/**
- * Given a path into a set of nested unsealed tables `ty`, insert a new property `replaceTy` as the leaf-most property.
- *
- * Fails and does nothing if every table along the way is not unsealed.
- *
- * Mutates the innermost table type in-place.
- */
-static void updateTheTableType(
-    NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId ty, const std::vector<std::string>& path, TypeId replaceTy)
-{
-    if (path.empty())
-        return;
-
-    // First walk the path and ensure that it's unsealed tables all the way
-    // to the end.
-    {
-        TypeId t = ty;
-        for (size_t i = 0; i < path.size() - 1; ++i)
-        {
-            if (!isUnsealedTable(t))
-                return;
-
-            const TableType* tbl = get<TableType>(t);
-            auto it = tbl->props.find(path[i]);
-            if (it == tbl->props.end())
-                return;
-
-            t = follow(it->second.type());
-        }
-
-        // The last path segment should not be a property of the table at all.
-        // We are not changing property types.  We are only admitting this one
-        // new property to be appended.
-        if (!isUnsealedTable(t))
-            return;
-        const TableType* tbl = get<TableType>(t);
-        if (0 != tbl->props.count(path.back()))
-            return;
-    }
-
-    TypeId t = ty;
-    ErrorVec dummy;
-
-    for (size_t i = 0; i < path.size() - 1; ++i)
-    {
-        t = follow(t);
-        auto propTy = findTablePropertyRespectingMeta(builtinTypes, dummy, t, path[i], ValueContext::LValue, Location{});
-        dummy.clear();
-
-        if (!propTy)
-            return;
-
-        t = *propTy;
-    }
-
-    const std::string& lastSegment = path.back();
-
-    t = follow(t);
-    TableType* tt = getMutable<TableType>(t);
-    if (auto mt = get<MetatableType>(t))
-        tt = getMutable<TableType>(mt->table);
-
-    if (!tt)
-        return;
-
-    tt->props[lastSegment].setType(replaceTy);
-}
-
-bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Constraint> constraint)
-{
-    TypeId subjectType = follow(c.subjectType);
-    const TypeId propType = follow(c.propType);
-
-    if (isBlocked(subjectType))
-        return block(subjectType, constraint);
-
-    std::optional<TypeId> existingPropType = subjectType;
-
-    LUAU_ASSERT(!c.path.empty());
-    if (c.path.empty())
-        return false;
-
-    for (size_t i = 0; i < c.path.size(); ++i)
-    {
-        const std::string& segment = c.path[i];
-        if (!existingPropType)
-            break;
-
-        ValueContext ctx = i == c.path.size() - 1 ? ValueContext::LValue : ValueContext::RValue;
-
-        auto [blocked, result] = lookupTableProp(constraint, *existingPropType, segment, ctx);
-        if (!blocked.empty())
-        {
-            for (TypeId blocked : blocked)
-                block(blocked, constraint);
-            return false;
-        }
-
-        existingPropType = result;
-    }
-
-    auto bind = [&](TypeId a, TypeId b) {
-        bindBlockedType(a, b, subjectType, constraint);
-    };
-
-    if (existingPropType)
-    {
-        unify(constraint, propType, *existingPropType);
-        unify(constraint, *existingPropType, propType);
-        bind(c.resultType, c.subjectType);
-        unblock(c.resultType, constraint->location);
-        return true;
-    }
-
-    const TypeId originalSubjectType = subjectType;
-
-    if (auto mt = get<MetatableType>(subjectType))
-        subjectType = follow(mt->table);
-
-    if (get<FreeType>(subjectType))
-        return false;
-    else if (auto ttv = getMutable<TableType>(subjectType))
-    {
-        if (ttv->state == TableState::Free)
-        {
-            LUAU_ASSERT(!subjectType->persistent);
-
-            ttv->props[c.path[0]] = Property{propType};
-            bind(c.resultType, subjectType);
-            unblock(c.resultType, constraint->location);
-            return true;
-        }
-        else if (ttv->state == TableState::Unsealed)
-        {
-            LUAU_ASSERT(!subjectType->persistent);
-
-            updateTheTableType(builtinTypes, NotNull{arena}, subjectType, c.path, propType);
-        }
-    }
-
-    bind(c.resultType, originalSubjectType);
-    unblock(c.resultType, constraint->location);
-    return true;
-}
-
 bool ConstraintSolver::tryDispatchHasIndexer(
     int& recursionDepth, NotNull<const Constraint> constraint, TypeId subjectType, TypeId indexType, TypeId resultType, Set<TypeId>& seen)
 {
@@ -1460,6 +1341,13 @@ bool ConstraintSolver::tryDispatchHasIndexer(
 
     if (auto ft = get<FreeType>(subjectType))
     {
+        if (auto tbl = get<TableType>(follow(ft->upperBound)); tbl && tbl->indexer)
+        {
+            unify(constraint, indexType, tbl->indexer->indexType);
+            bindBlockedType(resultType, tbl->indexer->indexResultType, subjectType, constraint);
+            return true;
+        }
+
         FreeType freeResult{ft->scope, builtinTypes->neverType, builtinTypes->unknownType};
         emplaceType<FreeType>(asMutable(resultType), freeResult);
 
@@ -1708,33 +1596,20 @@ std::pair<bool, std::optional<TypeId>> ConstraintSolver::tryDispatchSetIndexer(
     return {true, std::nullopt};
 }
 
-bool ConstraintSolver::tryDispatch(const SetIndexerConstraint& c, NotNull<const Constraint> constraint, bool force)
+bool ConstraintSolver::tryDispatch(const AssignConstraint& c, NotNull<const Constraint> constraint)
 {
-    TypeId subjectType = follow(c.subjectType);
-    if (isBlocked(subjectType))
-        return block(subjectType, constraint);
+    const TypeId lhsTy = follow(c.lhsType);
+    const TypeId rhsTy = follow(c.rhsType);
 
-    auto [dispatched, resultTy] = tryDispatchSetIndexer(constraint, subjectType, c.indexType, c.propType, /*expandFreeTypeBounds=*/true);
-    if (dispatched)
-    {
-        bindBlockedType(c.propType, resultTy.value_or(builtinTypes->errorRecoveryType()), subjectType, constraint);
-        unblock(c.propType, constraint->location);
-    }
-
-    return dispatched;
-}
-
-bool ConstraintSolver::tryDispatchUnpack1(NotNull<const Constraint> constraint, TypeId resultTy, TypeId srcTy, bool resultIsLValue)
-{
-    resultTy = follow(resultTy);
-    LUAU_ASSERT(canMutate(resultTy, constraint));
+    if (!get<LocalType>(lhsTy) && isBlocked(lhsTy))
+        return block(lhsTy, constraint);
 
     auto tryExpand = [&](TypeId ty) {
         LocalType* lt = getMutable<LocalType>(ty);
-        if (!lt || !resultIsLValue)
+        if (!lt)
             return;
 
-        lt->domain = simplifyUnion(builtinTypes, arena, lt->domain, srcTy).result;
+        lt->domain = simplifyUnion(builtinTypes, arena, lt->domain, rhsTy).result;
         LUAU_ASSERT(lt->blockCount > 0);
         --lt->blockCount;
 
@@ -1745,11 +1620,289 @@ bool ConstraintSolver::tryDispatchUnpack1(NotNull<const Constraint> constraint, 
         }
     };
 
-    if (auto ut = get<UnionType>(resultTy))
-        std::for_each(begin(ut), end(ut), tryExpand);
-    else if (get<LocalType>(resultTy))
-        tryExpand(resultTy);
-    else if (get<BlockedType>(resultTy))
+    if (auto ut = get<UnionType>(lhsTy))
+    {
+        // FIXME: I suspect there's a bug here where lhsTy is a union that contains no LocalTypes.
+        for (TypeId t : ut)
+            tryExpand(t);
+    }
+    else if (get<LocalType>(lhsTy))
+        tryExpand(lhsTy);
+    else
+        unify(constraint, rhsTy, lhsTy);
+
+    unblock(lhsTy, constraint->location);
+
+    return true;
+}
+
+bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const Constraint> constraint)
+{
+    TypeId lhsType = follow(c.lhsType);
+    const std::string& propName = c.propName;
+    const TypeId rhsType = follow(c.rhsType);
+
+    if (isBlocked(lhsType))
+        return block(lhsType, constraint);
+
+    // 1. lhsType is a class that already has the prop
+    // 2. lhsType is a table that already has the prop (or a union or
+    //    intersection that has the prop in aggregate)
+    // 3. lhsType has a metatable that already has the prop
+    // 4. lhsType is an unsealed table that does not have the prop, but has a
+    //    string indexer
+    // 5. lhsType is an unsealed table that does not have the prop or a string
+    //    indexer
+
+    // Important: In every codepath through this function, the type `c.propType`
+    // must be bound to something, even if it's just the errorType.
+
+    if (auto lhsClass = get<ClassType>(lhsType))
+    {
+        const Property* prop = lookupClassProp(lhsClass, propName);
+        if (!prop || !prop->writeTy.has_value())
+            return true;
+
+        emplaceType<BoundType>(asMutable(c.propType), *prop->writeTy);
+        unify(constraint, rhsType, *prop->writeTy);
+        return true;
+    }
+
+    if (auto lhsFree = getMutable<FreeType>(lhsType))
+    {
+        if (get<TableType>(lhsFree->upperBound) || get<MetatableType>(lhsFree->upperBound))
+            lhsType = lhsFree->upperBound;
+        else
+        {
+            TypeId newUpperBound = arena->addType(TableType{TableState::Free, TypeLevel{}, constraint->scope});
+            TableType* upperTable = getMutable<TableType>(newUpperBound);
+            LUAU_ASSERT(upperTable);
+
+            upperTable->props[c.propName] = rhsType;
+
+            // Food for thought: Could we block if simplification encounters a blocked type?
+            lhsFree->upperBound = simplifyIntersection(builtinTypes, arena, lhsFree->upperBound, newUpperBound).result;
+
+            emplaceType<BoundType>(asMutable(c.propType), rhsType);
+            return true;
+        }
+    }
+
+    // Handle the case that lhsType is a table that already has the property or
+    // a matching indexer. This also handles unions and intersections.
+    const auto [blocked, maybeTy] = lookupTableProp(constraint, lhsType, propName, ValueContext::LValue);
+    if (!blocked.empty())
+    {
+        for (TypeId t : blocked)
+            block(t, constraint);
+        return false;
+    }
+
+    if (maybeTy)
+    {
+        const TypeId propTy = *maybeTy;
+        emplaceType<BoundType>(asMutable(c.propType), propTy);
+        unify(constraint, rhsType, propTy);
+        return true;
+    }
+
+    if (auto lhsMeta = get<MetatableType>(lhsType))
+        lhsType = follow(lhsMeta->table);
+
+    // Handle the case where the lhs type is a table that does not have the
+    // named property. It could be a table with a string indexer, or an unsealed
+    // or free table that can grow.
+    if (auto lhsTable = getMutable<TableType>(lhsType))
+    {
+        if (auto it = lhsTable->props.find(propName); it != lhsTable->props.end())
+        {
+            Property& prop = it->second;
+
+            if (prop.writeTy.has_value())
+            {
+                emplaceType<BoundType>(asMutable(c.propType), *prop.writeTy);
+                unify(constraint, rhsType, *prop.writeTy);
+                return true;
+            }
+            else
+            {
+                LUAU_ASSERT(prop.isReadOnly());
+                if (lhsTable->state == TableState::Unsealed || lhsTable->state == TableState::Free)
+                {
+                    prop.writeTy = prop.readTy;
+                    emplaceType<BoundType>(asMutable(c.propType), *prop.writeTy);
+                    unify(constraint, rhsType, *prop.writeTy);
+                    return true;
+                }
+                else
+                {
+                    emplaceType<BoundType>(asMutable(c.propType), builtinTypes->errorType);
+                    return true;
+                }
+            }
+        }
+
+        if (lhsTable->indexer && maybeString(lhsTable->indexer->indexType))
+        {
+            emplaceType<BoundType>(asMutable(c.propType), rhsType);
+            unify(constraint, rhsType, lhsTable->indexer->indexResultType);
+            return true;
+        }
+
+        if (lhsTable->state == TableState::Unsealed || lhsTable->state == TableState::Free)
+        {
+            emplaceType<BoundType>(asMutable(c.propType), rhsType);
+            lhsTable->props[propName] = Property::rw(rhsType);
+            return true;
+        }
+    }
+
+    emplaceType<BoundType>(asMutable(c.propType), builtinTypes->errorType);
+
+    return true;
+}
+
+bool ConstraintSolver::tryDispatch(const AssignIndexConstraint& c, NotNull<const Constraint> constraint)
+{
+    const TypeId lhsType = follow(c.lhsType);
+    const TypeId indexType = follow(c.indexType);
+    const TypeId rhsType = follow(c.rhsType);
+
+    if (isBlocked(lhsType))
+        return block(lhsType, constraint);
+
+    // 0. lhsType could be an intersection or union.
+    // 1. lhsType is a class with an indexer
+    // 2. lhsType is a table with an indexer, or it has a metatable that has an indexer
+    // 3. lhsType is a free or unsealed table and can grow an indexer
+
+    // Important: In every codepath through this function, the type `c.propType`
+    // must be bound to something, even if it's just the errorType.
+
+    auto tableStuff = [&](TableType* lhsTable) -> std::optional<bool> {
+        if (lhsTable->indexer)
+        {
+            unify(constraint, indexType, lhsTable->indexer->indexType);
+            unify(constraint, rhsType, lhsTable->indexer->indexResultType);
+            emplaceType<BoundType>(asMutable(c.propType), lhsTable->indexer->indexResultType);
+            return true;
+        }
+
+        if (lhsTable->state == TableState::Unsealed || lhsTable->state == TableState::Free)
+        {
+            lhsTable->indexer = TableIndexer{indexType, rhsType};
+            emplaceType<BoundType>(asMutable(c.propType), rhsType);
+            return true;
+        }
+
+        return {};
+    };
+
+    if (auto lhsFree = getMutable<FreeType>(lhsType))
+    {
+        if (auto lhsTable = getMutable<TableType>(lhsFree->upperBound))
+        {
+            if (auto res = tableStuff(lhsTable))
+                return *res;
+        }
+
+        TypeId newUpperBound =
+            arena->addType(TableType{/*props*/ {}, TableIndexer{indexType, rhsType}, TypeLevel{}, constraint->scope, TableState::Free});
+        const TableType* newTable = get<TableType>(newUpperBound);
+        LUAU_ASSERT(newTable);
+
+        unify(constraint, lhsType, newUpperBound);
+
+        LUAU_ASSERT(newTable->indexer);
+        emplaceType<BoundType>(asMutable(c.propType), newTable->indexer->indexResultType);
+        return true;
+    }
+
+    if (auto lhsTable = getMutable<TableType>(lhsType))
+    {
+        std::optional<bool> res = tableStuff(lhsTable);
+        if (res.has_value())
+            return *res;
+    }
+
+    if (auto lhsClass = get<ClassType>(lhsType))
+    {
+        while (true)
+        {
+            if (lhsClass->indexer)
+            {
+                unify(constraint, indexType, lhsClass->indexer->indexType);
+                unify(constraint, rhsType, lhsClass->indexer->indexResultType);
+                emplaceType<BoundType>(asMutable(c.propType), lhsClass->indexer->indexResultType);
+                return true;
+            }
+
+            if (lhsClass->parent)
+                lhsClass = get<ClassType>(lhsClass->parent);
+            else
+                break;
+        }
+        return true;
+    }
+
+    if (auto lhsIntersection = getMutable<IntersectionType>(lhsType))
+    {
+        std::set<TypeId> parts;
+
+        for (TypeId t : lhsIntersection)
+        {
+            if (auto tbl = getMutable<TableType>(follow(t)))
+            {
+                if (tbl->indexer)
+                {
+                    unify(constraint, indexType, tbl->indexer->indexType);
+                    parts.insert(tbl->indexer->indexResultType);
+                }
+
+                if (tbl->state == TableState::Unsealed || tbl->state == TableState::Free)
+                {
+                    tbl->indexer = TableIndexer{indexType, rhsType};
+                    parts.insert(rhsType);
+                }
+            }
+            else if (auto cls = get<ClassType>(follow(t)))
+            {
+                while (true)
+                {
+                    if (cls->indexer)
+                    {
+                        unify(constraint, indexType, cls->indexer->indexType);
+                        parts.insert(cls->indexer->indexResultType);
+                        break;
+                    }
+
+                    if (cls->parent)
+                        cls = get<ClassType>(cls->parent);
+                    else
+                        break;
+                }
+            }
+        }
+
+        TypeId res = simplifyIntersection(builtinTypes, arena, std::move(parts)).result;
+
+        unify(constraint, rhsType, res);
+    }
+
+    // Other types do not support index assignment.
+    emplaceType<BoundType>(asMutable(c.propType), builtinTypes->errorType);
+
+    return true;
+}
+
+bool ConstraintSolver::tryDispatchUnpack1(NotNull<const Constraint> constraint, TypeId resultTy, TypeId srcTy)
+{
+    resultTy = follow(resultTy);
+    LUAU_ASSERT(canMutate(resultTy, constraint));
+
+    LUAU_ASSERT(get<BlockedType>(resultTy));
+
+    if (get<BlockedType>(resultTy))
     {
         if (follow(srcTy) == resultTy)
         {
@@ -1765,10 +1918,7 @@ bool ConstraintSolver::tryDispatchUnpack1(NotNull<const Constraint> constraint, 
             bindBlockedType(resultTy, srcTy, srcTy, constraint);
     }
     else
-    {
-        LUAU_ASSERT(resultIsLValue);
         unify(constraint, srcTy, resultTy);
-    }
 
     unblock(resultTy, constraint->location);
     return true;
@@ -1804,7 +1954,7 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
 
         TypeId srcTy = follow(srcPack.head[i]);
         TypeId resultTy = follow(*resultIter);
-        tryDispatchUnpack1(constraint, resultTy, srcTy, c.resultIsLValue);
+        tryDispatchUnpack1(constraint, resultTy, srcTy);
 
         ++resultIter;
         ++i;
@@ -1818,19 +1968,7 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
     {
         TypeId resultTy = follow(*resultIter);
         LUAU_ASSERT(canMutate(resultTy, constraint));
-        if (auto lt = getMutable<LocalType>(resultTy); c.resultIsLValue && lt)
-        {
-            lt->domain = simplifyUnion(builtinTypes, arena, lt->domain, builtinTypes->nilType).result;
-            LUAU_ASSERT(0 <= lt->blockCount);
-            --lt->blockCount;
-
-            if (0 == lt->blockCount)
-            {
-                shiftReferences(resultTy, lt->domain);
-                emplaceType<BoundType>(asMutable(resultTy), lt->domain);
-            }
-        }
-        else if (get<BlockedType>(resultTy) || get<PendingExpansionType>(resultTy))
+        if (get<BlockedType>(resultTy) || get<PendingExpansionType>(resultTy))
         {
             emplaceType<BoundType>(asMutable(resultTy), builtinTypes->nilType);
             unblock(resultTy, constraint->location);
@@ -1840,11 +1978,6 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
     }
 
     return true;
-}
-
-bool ConstraintSolver::tryDispatch(const Unpack1Constraint& c, NotNull<const Constraint> constraint)
-{
-    return tryDispatchUnpack1(constraint, c.resultType, c.sourceType, c.resultIsLValue);
 }
 
 bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Constraint> constraint, bool force)
@@ -1942,13 +2075,23 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
         getMutable<TableType>(tableTy)->indexer = TableIndexer{keyTy, valueTy};
 
         pushConstraint(constraint->scope, constraint->location, SubtypeConstraint{iteratorTy, tableTy});
-        pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, arena->addTypePack({keyTy, valueTy}), /*resultIsLValue=*/true});
+
+        auto it = begin(c.variables);
+        auto endIt = end(c.variables);
+        if (it != endIt)
+        {
+            pushConstraint(constraint->scope, constraint->location, AssignConstraint{*it, keyTy});
+            ++it;
+        }
+        if (it != endIt)
+            pushConstraint(constraint->scope, constraint->location, AssignConstraint{*it, valueTy});
+
         return true;
     }
 
     auto unpack = [&](TypeId ty) {
-        TypePackId variadic = arena->addTypePack(VariadicTypePack{ty});
-        pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, variadic, /* resultIsLValue */ true});
+        for (TypeId varTy : c.variables)
+            pushConstraint(constraint->scope, constraint->location, AssignConstraint{varTy, ty});
     };
 
     if (get<AnyType>(iteratorTy))
@@ -2043,10 +2186,7 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
 
                     // If nextFn is nullptr, then the iterator function has an improper signature.
                     if (nextFn)
-                    {
-                        const TypePackId nextRetPack = nextFn->retTypes;
-                        pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, nextRetPack, /* resultIsLValue=*/true});
-                    }
+                        unpackAndAssign(c.variables, nextFn->retTypes, constraint);
 
                     return true;
                 }
@@ -2119,10 +2259,35 @@ bool ConstraintSolver::tryDispatchIterableFunction(
         modifiedNextRetHead.push_back(*it);
 
     TypePackId modifiedNextRetPack = arena->addTypePack(std::move(modifiedNextRetHead), it.tail());
-    auto psc = pushConstraint(constraint->scope, constraint->location, UnpackConstraint{c.variables, modifiedNextRetPack, /* resultIsLValue */ true});
-    inheritBlocks(constraint, psc);
+
+    auto unpackConstraint = unpackAndAssign(c.variables, modifiedNextRetPack, constraint);
+
+    inheritBlocks(constraint, unpackConstraint);
 
     return true;
+}
+
+NotNull<const Constraint> ConstraintSolver::unpackAndAssign(TypePackId destTypes, TypePackId srcTypes, NotNull<const Constraint> constraint)
+{
+    std::vector<TypeId> unpackedTys;
+    for (TypeId _ty : destTypes)
+    {
+        (void) _ty;
+        unpackedTys.push_back(arena->addType(BlockedType{}));
+    }
+
+    TypePackId unpackedTp = arena->addTypePack(TypePack{unpackedTys});
+    auto unpackConstraint = pushConstraint(constraint->scope, constraint->location, UnpackConstraint{unpackedTp, srcTypes});
+
+    size_t i = 0;
+    for (TypeId varTy : destTypes)
+    {
+        pushConstraint(constraint->scope, constraint->location, AssignConstraint{varTy, unpackedTys[i]});
+        getMutable<BlockedType>(unpackedTys[i])->setOwner(unpackConstraint);
+        ++i;
+    }
+
+    return unpackConstraint;
 }
 
 std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTableProp(NotNull<const Constraint> constraint, TypeId subjectType,
@@ -2759,8 +2924,13 @@ std::optional<TypeId> ConstraintSolver::generalizeFreeType(NotNull<Scope> scope,
     if (get<FreeType>(t))
     {
         auto refCount = unresolvedConstraints.find(t);
-        if (!refCount || *refCount > 1)
+        if (refCount && *refCount > 0)
             return {};
+
+        // if no reference count is present, then that means the only constraints referring to
+        // this free type need only for it to be generalized. in principle, this means we could
+        // have actually never generated the free type in the first place, but we couldn't know
+        // that until all constraint generation is complete.
     }
 
     return generalize(NotNull{arena}, builtinTypes, scope, type);
@@ -2769,7 +2939,7 @@ std::optional<TypeId> ConstraintSolver::generalizeFreeType(NotNull<Scope> scope,
 bool ConstraintSolver::hasUnresolvedConstraints(TypeId ty)
 {
     if (auto refCount = unresolvedConstraints.find(ty))
-        return *refCount > 1;
+        return *refCount > 0;
 
     return false;
 }

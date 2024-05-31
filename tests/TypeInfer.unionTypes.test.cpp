@@ -606,13 +606,7 @@ TEST_CASE_FIXTURE(Fixture, "indexing_into_a_cyclic_union_doesnt_crash")
         end
     )");
 
-    // The old solver has a bug: It doesn't consider this goofy thing to be a
-    // table.  It's not really important.  What's important is that we don't
-    // crash, hang, or ICE.
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        LUAU_REQUIRE_NO_ERRORS(result);
-    else
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_union_write_indirect")

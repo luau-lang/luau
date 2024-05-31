@@ -13,18 +13,17 @@
 #include "ConformanceIrHooks.h"
 
 #include <memory>
+#include <string_view>
 
 LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
 LUAU_FASTFLAG(LuauCodegenDirectUserdataFlow)
 LUAU_FASTFLAG(LuauCompileTypeInfo)
 LUAU_FASTFLAG(LuauLoadTypeInfo)
 LUAU_FASTFLAG(LuauCodegenTypeInfo)
-LUAU_FASTFLAG(LuauTypeInfoLookupImprovement)
-LUAU_FASTFLAG(LuauCodegenIrTypeNames)
 LUAU_FASTFLAG(LuauCompileTempTypeInfo)
-LUAU_FASTFLAG(LuauCodegenFixVectorFields)
-LUAU_FASTFLAG(LuauCodegenVectorMispredictFix)
 LUAU_FASTFLAG(LuauCodegenAnalyzeHostVectorOps)
+LUAU_FASTFLAG(LuauCompileUserdataInfo)
+LUAU_FASTFLAG(LuauLoadUserdataInfo)
 
 static std::string getCodegenAssembly(const char* source, bool includeIrTypes = false, int debugLevel = 1)
 {
@@ -64,12 +63,42 @@ static std::string getCodegenAssembly(const char* source, bool includeIrTypes = 
     copts.vectorCtor = "vector";
     copts.vectorType = "vector";
 
+    static const char* kUserdataCompileTypes[] = {"vec2", "color", "mat3", nullptr};
+    copts.userdataTypes = kUserdataCompileTypes;
+
     Luau::BytecodeBuilder bcb;
     Luau::compileOrThrow(bcb, result, names, copts);
 
     std::string bytecode = bcb.getBytecode();
     std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
+
+    // Runtime mapping is specifically created to NOT match the compilation mapping
+    options.compilationOptions.userdataTypes = kUserdataRunTypes;
+
+    if (Luau::CodeGen::isSupported())
+    {
+        // Type remapper requires the codegen runtime
+        Luau::CodeGen::create(L);
+
+        Luau::CodeGen::setUserdataRemapper(L, kUserdataRunTypes, [](void* context, const char* str, size_t len) -> uint8_t {
+            const char** types = (const char**)context;
+
+            uint8_t index = 0;
+
+            std::string_view sv{str, len};
+
+            for (; *types; ++types)
+            {
+                if (sv == *types)
+                    return index;
+
+                index++;
+            }
+
+            return 0xff;
+        });
+    }
 
     if (luau_load(L, "name", bytecode.data(), bytecode.size(), 0) == 0)
         return Luau::CodeGen::getAssembly(L, -1, options, nullptr);
@@ -480,8 +509,6 @@ bb_bytecode_1:
 TEST_CASE("VectorRandomProp")
 {
     ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-    ScopedFastFlag luauCodegenFixVectorFields{FFlag::LuauCodegenFixVectorFields, true};
-    ScopedFastFlag luauCodegenVectorMispredictFix{FFlag::LuauCodegenVectorMispredictFix, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: vector)
@@ -524,7 +551,6 @@ bb_6:
 TEST_CASE("VectorCustomAccess")
 {
     ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-    ScopedFastFlag luauCodegenVectorMispredictFix{FFlag::LuauCodegenVectorMispredictFix, true};
     ScopedFastFlag luauCodegenAnalyzeHostVectorOps{FFlag::LuauCodegenAnalyzeHostVectorOps, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
@@ -600,7 +626,6 @@ bb_bytecode_1:
 TEST_CASE("VectorCustomAccessChain")
 {
     ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-    ScopedFastFlag luauCodegenVectorMispredictFix{FFlag::LuauCodegenVectorMispredictFix, true};
     ScopedFastFlag LuauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
     ScopedFastFlag luauCodegenAnalyzeHostVectorOps{FFlag::LuauCodegenAnalyzeHostVectorOps, true};
 
@@ -655,7 +680,6 @@ bb_bytecode_1:
 TEST_CASE("VectorCustomNamecallChain")
 {
     ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-    ScopedFastFlag luauCodegenVectorMispredictFix{FFlag::LuauCodegenVectorMispredictFix, true};
     ScopedFastFlag LuauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
     ScopedFastFlag luauCodegenAnalyzeHostVectorOps{FFlag::LuauCodegenAnalyzeHostVectorOps, true};
 
@@ -717,8 +741,8 @@ bb_bytecode_1:
 TEST_CASE("VectorCustomNamecallChain2")
 {
     ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCompileTempTypeInfo, true},
-        {FFlag::LuauCodegenVectorMispredictFix, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenAnalyzeHostVectorOps, true}};
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true},
+        {FFlag::LuauCodegenAnalyzeHostVectorOps, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 type Vertex = {n: vector, b: vector}
@@ -1048,7 +1072,7 @@ bb_bytecode_1:
 TEST_CASE("LoadAndMoveTypePropagation")
 {
     ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}};
+        {FFlag::LuauCodegenRemoveDeadStores5, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function getsum(n)
@@ -1116,7 +1140,7 @@ bb_bytecode_4:
 TEST_CASE("ArgumentTypeRefinement")
 {
     ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}};
+        {FFlag::LuauCodegenRemoveDeadStores5, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function getsum(x, y)
@@ -1155,7 +1179,7 @@ bb_bytecode_0:
 TEST_CASE("InlineFunctionType")
 {
     ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}};
+        {FFlag::LuauCodegenRemoveDeadStores5, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function inl(v: vector, s: number)
@@ -1204,8 +1228,7 @@ bb_bytecode_0:
 TEST_CASE("ResolveTablePathTypes")
 {
     ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
-        {FFlag::LuauCompileTempTypeInfo, true}};
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 type Vertex = {pos: vector, normal: vector}
@@ -1260,8 +1283,7 @@ bb_6:
 TEST_CASE("ResolvableSimpleMath")
 {
     ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
-        {FFlag::LuauCompileTempTypeInfo, true}};
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenHeader(R"(
 type Vertex = { p: vector, uv: vector, n: vector, t: vector, b: vector, h: number }
@@ -1318,8 +1340,8 @@ end
 TEST_CASE("ResolveVectorNamecalls")
 {
     ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
-        {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenAnalyzeHostVectorOps, true}};
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true},
+        {FFlag::LuauCodegenAnalyzeHostVectorOps, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 type Vertex = {pos: vector, normal: vector}
@@ -1384,8 +1406,7 @@ bb_6:
 TEST_CASE("ImmediateTypeAnnotationHelp")
 {
     ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
-        {FFlag::LuauCompileTempTypeInfo, true}};
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(arr, i)
@@ -1424,8 +1445,7 @@ bb_2:
 TEST_CASE("UnaryTypeResolve")
 {
     ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
-        {FFlag::LuauCompileTempTypeInfo, true}};
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenHeader(R"(
 local function foo(a, b: vector, c)
@@ -1448,8 +1468,7 @@ end
 TEST_CASE("ForInManualAnnotation")
 {
     ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
-        {FFlag::LuauCompileTempTypeInfo, true}};
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 type Vertex = {pos: vector, normal: vector}
@@ -1545,8 +1564,7 @@ bb_12:
 TEST_CASE("ForInAutoAnnotationIpairs")
 {
     ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
-        {FFlag::LuauCompileTempTypeInfo, true}};
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenHeader(R"(
 type Vertex = {pos: vector, normal: vector}
@@ -1574,8 +1592,7 @@ end
 TEST_CASE("ForInAutoAnnotationPairs")
 {
     ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
-        {FFlag::LuauCompileTempTypeInfo, true}};
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenHeader(R"(
 type Vertex = {pos: vector, normal: vector}
@@ -1603,8 +1620,7 @@ end
 TEST_CASE("ForInAutoAnnotationGeneric")
 {
     ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauTypeInfoLookupImprovement, true}, {FFlag::LuauCodegenIrTypeNames, true},
-        {FFlag::LuauCompileTempTypeInfo, true}};
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenHeader(R"(
 type Vertex = {pos: vector, normal: vector}
@@ -1626,6 +1642,51 @@ end
 ; R6: table from 4 to 10 [local 'v']
 ; R7: number from 5 to 10 [local 'n']
 ; R8: vector from 7 to 9
+)");
+}
+
+// Temporary test, when we don't compile new typeinfo, but support loading it
+TEST_CASE("CustomUserdataTypesTemp")
+{
+    // This test requires runtime component to be present
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, false},
+        {FFlag::LuauLoadUserdataInfo, true}};
+
+    CHECK_EQ("\n" + getCodegenHeader(R"(
+local function foo(v: vec2, x: mat3)
+    return v.X * x
+end
+)"),
+        R"(
+; function foo(v, x) line 2
+; R0: userdata [argument 'v']
+; R1: userdata [argument 'x']
+)");
+}
+
+TEST_CASE("CustomUserdataTypes")
+{
+    // This test requires runtime component to be present
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}};
+
+    CHECK_EQ("\n" + getCodegenHeader(R"(
+local function foo(v: vec2, x: mat3)
+    return v.X * x
+end
+)"),
+        R"(
+; function foo(v, x) line 2
+; R0: vec2 [argument 'v']
+; R1: mat3 [argument 'x']
 )");
 }
 

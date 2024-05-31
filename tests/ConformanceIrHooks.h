@@ -3,6 +3,8 @@
 
 #include "Luau/IrBuilder.h"
 
+static const char* kUserdataRunTypes[] = {"extra", "color", "vec2", "mat3", nullptr};
+
 inline uint8_t vectorAccessBytecodeType(const char* member, size_t memberLength)
 {
     using namespace Luau::CodeGen;

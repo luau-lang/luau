@@ -208,6 +208,35 @@ end
 
 assert(pcall(fuzzfail21) == false)
 
+local function fuzzfail22(...)
+  local _ = {false,},true,...,l0
+  while _ do
+  _ = true,{unpack(0,_),},l0
+  _.n126 = nil
+  _ = {not _,_=not _,n0=_,_,n0=not _,},_ < _
+  return _ > _
+  end
+  return `""`
+end
+
+assert(pcall(fuzzfail22) == false)
+
+local function fuzzfail23(...)
+  local _ = {false,},_,...,l0
+  while _ do
+  _ = true,{unpack(_),},l0
+  _ = {{[_]=nil,_=not _,_,true,_=nil,},not _,not _,_,bxor=- _,}
+  do end
+  break
+  end
+  do end
+  local _ = _,true
+  do end
+  local _ = _,true
+end
+
+assert(pcall(fuzzfail23) == false)
+
 local function arraySizeInv1()
   local t = {1, 2, nil, nil, nil, nil, nil, nil, nil, true}
 
