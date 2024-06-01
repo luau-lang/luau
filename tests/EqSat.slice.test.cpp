@@ -7,7 +7,7 @@
 
 using namespace Luau;
 
-TEST_SUITE_BEGIN("EqSatLanguage");
+TEST_SUITE_BEGIN("EqSatSlice");
 
 TEST_CASE("slice_is_a_view_over_array")
 {
