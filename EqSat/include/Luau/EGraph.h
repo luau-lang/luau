@@ -62,6 +62,8 @@ class EGraph final
     /// The hashcons 𝐻 is a map from e-nodes to e-class ids.
     std::unordered_map<L, Id, typename L::Hash> hashcons;
 
+    VecDeque<std::pair<L, Id>> worklist;
+
 private:
     void canonicalize(L& enode)
     {
@@ -95,6 +97,7 @@ private:
         for (Id operand : enode.operands())
             get(operand).parents.push_back({enode, id});
 
+        worklist.push_back({enode, id});
         hashcons.insert_or_assign(enode, id);
 
         return id;
@@ -104,9 +107,29 @@ private:
     // For a canonicalized eclass, use `get(find(id))` or `egraph[id]`.
     EClass<L, typename N::Data>& get(Id id)
     {
-        auto it = classes.find(id);
-        LUAU_ASSERT(it != classes.end());
-        return it->second;
+        return classes.at(id);
+    }
+
+    void repair(EClass<L, typename N::Data>& eclass)
+    {
+        // After canonicalizing the enodes, the eclass may contain multiple enodes that are equivalent.
+        std::unordered_map<L, Id, typename L::Hash> map;
+        for (auto& [enode, id] : eclass.parents)
+        {
+            // By removing the old enode from the hashcons map, we will always find our new canonicalized eclass id.
+            hashcons.erase(enode);
+            canonicalize(enode);
+            hashcons.insert_or_assign(enode, find(id));
+
+            if (auto it = map.find(enode); it != map.end())
+                merge(id, it->second);
+
+            map.insert_or_assign(enode, find(id));
+        }
+
+        eclass.parents.clear();
+        for (auto& [enode, id] : map)
+            eclass.parents.push_back({std::move(enode), id});
     }
 
 public:
@@ -150,7 +173,26 @@ public:
         EClass<L, typename N::Data> eclass2 = get(id2);
         classes.erase(id2);
 
+        worklist.reserve(worklist.size() + eclass2.parents.size());
+        for (auto [enode, id] : eclass2.parents)
+            worklist.push_back({std::move(enode), id});
+
         analysis.join(eclass1.data, eclass2.data);
+    }
+
+    void rebuild()
+    {
+        while (!worklist.empty())
+        {
+            auto [enode, id] = worklist.back();
+            worklist.pop_back();
+            repair(get(find(id)));
+        }
+    }
+
+    size_t size() const
+    {
+        return classes.size();
     }
 
     EClass<L, typename N::Data>& operator[](Id id)

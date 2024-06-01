@@ -23,7 +23,8 @@ struct LanguageHash
 };
 
 template <typename T>
-std::size_t languageHash(const T& lang) {
+std::size_t languageHash(const T& lang)
+{
     return LanguageHash<T>{}(lang);
 }
 
