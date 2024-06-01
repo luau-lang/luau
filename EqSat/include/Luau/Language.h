@@ -27,13 +27,6 @@ std::size_t languageHash(const T& lang) {
     return LanguageHash<T>{}(lang);
 }
 
-inline void hashCombine(size_t& seed, size_t hash)
-{
-    // Golden Ratio constant used for better hash scattering
-    // See https://softwareengineering.stackexchange.com/a/402543
-    seed ^= hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-}
-
 #define LUAU_EQSAT_ATOM(name, t) \
     struct name : public ::Luau::EqSat::Atom<name, t> \
     { \
@@ -172,7 +165,7 @@ public:
 //
 // And finally, each `T` in `Ts` have additional requirements which `Luau::Variant` doesn't need.
 template<typename... Ts>
-class Language
+class Language final
 {
     const char* tag;
     char buffer[std::max({sizeof(Ts)...})];
@@ -189,37 +182,37 @@ private:
     using FnOper = Slice<Id> (*)(void*);
 
     template<typename T>
-    static void fnCopy(void* dst, const void* src)
+    static void fnCopy(void* dst, const void* src) noexcept
     {
         new (dst) T(*static_cast<const T*>(src));
     }
 
     template<typename T>
-    static void fnMove(void* dst, void* src)
+    static void fnMove(void* dst, void* src) noexcept
     {
         new (dst) T(static_cast<T&&>(*static_cast<T*>(src)));
     }
 
     template<typename T>
-    static void fnDtor(void* dst)
+    static void fnDtor(void* dst) noexcept
     {
         static_cast<T*>(dst)->~T();
     }
 
     template<typename T>
-    static bool fnPred(const void* lhs, const void* rhs)
+    static bool fnPred(const void* lhs, const void* rhs) noexcept
     {
         return *static_cast<const T*>(lhs) == *static_cast<const T*>(rhs);
     }
 
     template<typename T>
-    static size_t fnHash(const void* buffer)
+    static size_t fnHash(const void* buffer) noexcept
     {
         return typename T::Hash{}(*static_cast<const T*>(buffer));
     }
 
     template<typename T>
-    static Slice<Id> fnOper(void* buffer)
+    static Slice<Id> fnOper(void* buffer) noexcept
     {
         return static_cast<T*>(buffer)->operands();
     }
@@ -231,7 +224,7 @@ private:
     static constexpr FnHash tableHash[sizeof...(Ts)] = {&fnHash<Ts>...};
     static constexpr FnOper tableOper[sizeof...(Ts)] = {&fnOper<Ts>...};
 
-    static constexpr int getIndexFromTag(const char* tag)
+    static constexpr int getIndexFromTag(const char* tag) noexcept
     {
         constexpr int N = sizeof...(Ts);
         constexpr const char* is[N] = {Ts::tag...};
@@ -245,37 +238,37 @@ private:
 
 public:
     template<typename T>
-    Language(T&& t, std::enable_if_t<WithinDomain<T>::value>* = 0)
+    Language(T&& t, std::enable_if_t<WithinDomain<T>::value>* = 0) noexcept
     {
         tag = T::tag;
         new (&buffer) std::decay_t<T>(std::forward<T>(t));
     }
 
-    Language(const Language& other)
+    Language(const Language& other) noexcept
     {
         tag = other.tag;
         tableCopy[getIndexFromTag(tag)](&buffer, &other.buffer);
     }
 
-    Language(Language&& other)
+    Language(Language&& other) noexcept
     {
         tag = other.tag;
         tableMove[getIndexFromTag(tag)](&buffer, &other.buffer);
     }
 
-    ~Language()
+    ~Language() noexcept
     {
         tableDtor[getIndexFromTag(tag)](&buffer);
     }
 
-    Language& operator=(const Language& other)
+    Language& operator=(const Language& other) noexcept
     {
         Language copy{other};
         *this = static_cast<Language&&>(copy);
         return *this;
     }
 
-    Language& operator=(Language&& other)
+    Language& operator=(Language&& other) noexcept
     {
         if (this != &other)
         {
@@ -286,31 +279,36 @@ public:
         return *this;
     }
 
-    int index() const
+    int index() const noexcept
     {
         return getIndexFromTag(tag);
     }
 
     /// You should never call this function with the intention of mutating the `Id`.
     /// Reading is ok, but you should also never assume that these `Id`s are stable.
-    Slice<Id> operands()
+    Slice<Id> operands() noexcept
     {
         return tableOper[getIndexFromTag(tag)](&buffer);
     }
 
+    Slice<Id> operands() const noexcept
+    {
+        return const_cast<Language*>(this)->operands();
+    }
+
     template<typename T>
-    const T* get() const
+    const T* get() const noexcept
     {
         static_assert(WithinDomain<T>::value);
         return tag == T::tag ? reinterpret_cast<const T*>(&buffer) : nullptr;
     }
 
-    bool operator==(const Language& rhs) const
+    bool operator==(const Language& rhs) const noexcept
     {
         return tag == rhs.tag && tablePred[getIndexFromTag(tag)](&buffer, &rhs.buffer);
     }
 
-    bool operator!=(const Language& rhs) const
+    bool operator!=(const Language& rhs) const noexcept
     {
         return !(*this == rhs);
     }
@@ -326,6 +324,13 @@ public:
         }
     };
 };
+
+inline void hashCombine(size_t& seed, size_t hash)
+{
+    // Golden Ratio constant used for better hash scattering
+    // See https://softwareengineering.stackexchange.com/a/402543
+    seed ^= hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
 
 template<typename T>
 struct LanguageHash<T, std::void_t<decltype(std::hash<T>{}(std::declval<T>()))>>
