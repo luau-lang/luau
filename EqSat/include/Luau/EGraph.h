@@ -4,10 +4,10 @@
 #include "Luau/Common.h"
 #include "Luau/Id.h"
 #include "Luau/UnionFind.h"
+#include "Luau/VecDeque.h"
 
 #include <optional>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 namespace Luau::EqSat
@@ -21,9 +21,16 @@ struct Analysis final
 {
     N analysis;
 
-    typename N::Data make(const EGraph<L, N>& egraph, const L& enode) const
+    using D = typename N::Data;
+
+    D make(const EGraph<L, N>& egraph, const L& enode) const
     {
         return analysis.make(egraph, enode);
+    }
+
+    void join(D& a, const D& b)
+    {
+        return analysis.join(a, b);
     }
 };
 
@@ -56,8 +63,7 @@ class EGraph final
     std::unordered_map<L, Id, typename L::Hash> hashcons;
 
 private:
-    template<typename T>
-    void canonicalize(T&& enode)
+    void canonicalize(L& enode)
     {
         // An e-node 𝑛 is canonical iff 𝑛 = canonicalize(𝑛), where
         // canonicalize(𝑓(𝑎1, 𝑎2, ...)) = 𝑓(find(𝑎1), find(𝑎2), ...).
@@ -65,16 +71,42 @@ private:
             id = find(id);
     }
 
+    bool isCanonical(const L& enode) const
+    {
+        bool canonical = true;
+        for (Id id : enode.operands())
+            canonical &= (id == find(id));
+        return canonical;
+    }
+
     Id makeEClass(const L& enode)
     {
+        LUAU_ASSERT(isCanonical(enode));
+
         Id id = unionfind.makeSet();
+
         classes.insert_or_assign(id, EClass<L, typename N::Data>{
             id,
             {enode},
             analysis.make(*this, enode),
             {},
         });
+
+        for (Id operand : enode.operands())
+            get(operand).parents.push_back({enode, id});
+
+        hashcons.insert_or_assign(enode, id);
+
         return id;
+    }
+
+    // Looks up for an eclass from a given non-canonicalized `id`.
+    // For a canonicalized eclass, use `get(find(id))` or `egraph[id]`.
+    EClass<L, typename N::Data>& get(Id id)
+    {
+        auto it = classes.find(id);
+        LUAU_ASSERT(it != classes.end());
+        return it->second;
     }
 
 public:
@@ -83,9 +115,10 @@ public:
         return unionfind.find(id);
     }
 
-    template<typename T>
-    std::optional<Id> lookup(T&& enode) const
+    std::optional<Id> lookup(const L& enode) const
     {
+        LUAU_ASSERT(isCanonical(enode));
+
         if (auto it = hashcons.find(enode); it != hashcons.end())
             return it->second;
 
@@ -100,19 +133,34 @@ public:
             return *id;
 
         Id id = makeEClass(enode);
-        for (Id operand : enode.operands())
-            (*this)[operand].parents.push_back({enode, id});
-
-        hashcons.insert_or_assign(enode, id);
         // TODO clean = false
         return id;
     }
 
+    void merge(Id id1, Id id2)
+    {
+        id1 = find(id1);
+        id2 = find(id2);
+        if (id1 == id2)
+            return;
+
+        unionfind.merge(id1, id2);
+
+        EClass<L, typename N::Data>& eclass1 = get(id1);
+        EClass<L, typename N::Data> eclass2 = get(id2);
+        classes.erase(id2);
+
+        analysis.join(eclass1.data, eclass2.data);
+    }
+
     EClass<L, typename N::Data>& operator[](Id id)
     {
-        auto it = classes.find(find(id));
-        LUAU_ASSERT(it != classes.end());
-        return it->second;
+        return get(find(id));
+    }
+
+    const EClass<L, typename N::Data>& operator[](Id id) const
+    {
+        return const_cast<EGraph*>(this)->get(find(id));
     }
 };
 

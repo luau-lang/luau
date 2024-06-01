@@ -38,8 +38,40 @@ struct ConstantFold
             return std::nullopt;
         else if (auto b = enode.get<Bool>())
             return b->value;
+        else if (auto n = enode.get<Not>())
+        {
+            if (auto data = egraph[n->field<Negated>()].data)
+                return !*data;
+        }
+        else if (auto a = enode.get<And>())
+        {
+            Data left = egraph[a->field<Left>()].data;
+            Data right = egraph[a->field<Right>()].data;
+            if (left && right)
+                return *left && *right;
+        }
+        else if (auto o = enode.get<Or>())
+        {
+            Data left = egraph[o->field<Left>()].data;
+            Data right = egraph[o->field<Right>()].data;
+            if (left && right)
+                return *left && *right;
+        }
+        else if (auto i = enode.get<Implies>())
+        {
+            Data antecedent = egraph[i->field<Antecedent>()].data;
+            Data consequent = egraph[i->field<Consequent>()].data;
+            if (antecedent && consequent)
+                return !*antecedent || *consequent;
+        }
 
         return std::nullopt;
+    }
+
+    void join(Data& a, const Data& b)
+    {
+        if (!a && b)
+            a = b;
     }
 };
 
@@ -66,6 +98,18 @@ TEST_CASE("egraph_data")
 
     CHECK(egraph[id1].data == true);
     CHECK(egraph[id2].data == false);
+}
+
+TEST_CASE("egraph_merge")
+{
+    EGraph egraph;
+
+    EqSat::Id id1 = egraph.add(Var{"a"});
+    EqSat::Id id2 = egraph.add(Bool{true});
+    egraph.merge(id1, id2);
+
+    CHECK(egraph[id1].data == true);
+    CHECK(egraph[id2].data == true);
 }
 
 TEST_SUITE_END();
