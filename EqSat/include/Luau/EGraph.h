@@ -3,6 +3,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/Id.h"
+#include "Luau/Language.h"
 #include "Luau/UnionFind.h"
 #include "Luau/VecDeque.h"
 
@@ -23,9 +24,19 @@ struct Analysis final
 
     using D = typename N::Data;
 
-    D make(const EGraph<L, N>& egraph, const L& enode) const
+    template<typename T>
+    static D fnMake(const N& analysis, const EGraph<L, N>& egraph, const L& enode)
     {
-        return analysis.make(egraph, enode);
+        return analysis.make(egraph, *enode.template get<T>());
+    }
+
+    template<typename... Ts>
+    D make(const EGraph<L, N>& egraph, const Language<Ts...>& enode) const
+    {
+        using FnMake = D (*)(const N&, const EGraph<L, N>&, const L&);
+        static constexpr FnMake tableMake[sizeof...(Ts)] = {&fnMake<Ts>...};
+
+        return tableMake[enode.index()](analysis, egraph, enode);
     }
 
     void join(D& a, const D& b)

@@ -32,38 +32,51 @@ struct ConstantFold
 {
     using Data = std::optional<bool>;
 
-    Data make(const EGraph& egraph, const PropositionalLogic& enode) const
+    Data make(const EGraph& egraph, const Var& var) const
     {
-        if (enode.get<Var>())
-            return std::nullopt;
-        else if (auto b = enode.get<Bool>())
-            return b->value;
-        else if (auto n = enode.get<Not>())
-        {
-            if (auto data = egraph[n->field<Negated>()].data)
-                return !*data;
-        }
-        else if (auto a = enode.get<And>())
-        {
-            Data left = egraph[a->field<Left>()].data;
-            Data right = egraph[a->field<Right>()].data;
-            if (left && right)
-                return *left && *right;
-        }
-        else if (auto o = enode.get<Or>())
-        {
-            Data left = egraph[o->field<Left>()].data;
-            Data right = egraph[o->field<Right>()].data;
-            if (left && right)
-                return *left && *right;
-        }
-        else if (auto i = enode.get<Implies>())
-        {
-            Data antecedent = egraph[i->field<Antecedent>()].data;
-            Data consequent = egraph[i->field<Consequent>()].data;
-            if (antecedent && consequent)
-                return !*antecedent || *consequent;
-        }
+        return std::nullopt;
+    }
+
+    Data make(const EGraph& egraph, const Bool& b) const
+    {
+        return b.value;
+    }
+
+    Data make(const EGraph& egraph, const Not& n) const
+    {
+        Data data = egraph[n.field<Negated>()].data;
+        if (data)
+            return !*data;
+
+        return std::nullopt;
+    }
+
+    Data make(const EGraph& egraph, const And& a) const
+    {
+        Data left = egraph[a.field<Left>()].data;
+        Data right = egraph[a.field<Right>()].data;
+        if (left && right)
+            return *left && *right;
+
+        return std::nullopt;
+    }
+
+    Data make(const EGraph& egraph, const Or& o) const
+    {
+        Data left = egraph[o.field<Left>()].data;
+        Data right = egraph[o.field<Right>()].data;
+        if (left && right)
+            return *left || *right;
+
+        return std::nullopt;
+    }
+
+    Data make(const EGraph& egraph, const Implies& i) const
+    {
+        Data antecedent = egraph[i.field<Antecedent>()].data;
+        Data consequent = egraph[i.field<Consequent>()].data;
+        if (antecedent && consequent)
+            return !*antecedent || *consequent;
 
         return std::nullopt;
     }
