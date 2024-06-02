@@ -39,7 +39,7 @@ struct Analysis final
         return tableMake[enode.index()](analysis, egraph, enode);
     }
 
-    void join(D& a, const D& b)
+    void join(D& a, const D& b) const
     {
         return analysis.join(a, b);
     }

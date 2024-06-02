@@ -81,7 +81,7 @@ struct ConstantFold
         return std::nullopt;
     }
 
-    void join(Data& a, const Data& b)
+    void join(Data& a, const Data& b) const
     {
         if (!a && b)
             a = b;
