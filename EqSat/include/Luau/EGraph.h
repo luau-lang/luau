@@ -123,6 +123,12 @@ private:
 
     void repair(EClass<L, typename N::Data>& eclass)
     {
+        // In the egg paper, the `repair` function makes use of two loops over the `eclass.parents`
+        // by first erasing the old enode entry, and adding back the canonicalized enode with the canonical id.
+        // And then in another loop that follows, deduplicate it.
+        //
+        // Here, we unify the two loops. I think it's equivalent?
+
         // After canonicalizing the enodes, the eclass may contain multiple enodes that are equivalent.
         std::unordered_map<L, Id, typename L::Hash> map;
         for (auto& [enode, id] : eclass.parents)
