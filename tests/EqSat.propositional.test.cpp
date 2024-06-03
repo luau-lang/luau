@@ -9,18 +9,10 @@
 
 LUAU_EQSAT_ATOM(Var, std::string);
 LUAU_EQSAT_ATOM(Bool, bool);
-
-LUAU_EQSAT_FIELD(Negated);
-LUAU_EQSAT_NODE_FIELDS(Not, Negated);
-
-LUAU_EQSAT_FIELD(Left);
-LUAU_EQSAT_FIELD(Right);
-LUAU_EQSAT_NODE_FIELDS(And, Left, Right);
-LUAU_EQSAT_NODE_FIELDS(Or, Left, Right);
-
-LUAU_EQSAT_FIELD(Antecedent);
-LUAU_EQSAT_FIELD(Consequent);
-LUAU_EQSAT_NODE_FIELDS(Implies, Antecedent, Consequent);
+LUAU_EQSAT_NODE_ARRAY(Not, 1);
+LUAU_EQSAT_NODE_ARRAY(And, 2);
+LUAU_EQSAT_NODE_ARRAY(Or, 2);
+LUAU_EQSAT_NODE_ARRAY(Implies, 2);
 
 using namespace Luau;
 
@@ -44,7 +36,7 @@ struct ConstantFold
 
     Data make(const EGraph& egraph, const Not& n) const
     {
-        Data data = egraph[n.field<Negated>()].data;
+        Data data = egraph[n[0]].data;
         if (data)
             return !*data;
 
@@ -53,28 +45,28 @@ struct ConstantFold
 
     Data make(const EGraph& egraph, const And& a) const
     {
-        Data left = egraph[a.field<Left>()].data;
-        Data right = egraph[a.field<Right>()].data;
-        if (left && right)
-            return *left && *right;
+        Data l = egraph[a[0]].data;
+        Data r = egraph[a[1]].data;
+        if (l && r)
+            return *l && *r;
 
         return std::nullopt;
     }
 
     Data make(const EGraph& egraph, const Or& o) const
     {
-        Data left = egraph[o.field<Left>()].data;
-        Data right = egraph[o.field<Right>()].data;
-        if (left && right)
-            return *left || *right;
+        Data l = egraph[o[0]].data;
+        Data r = egraph[o[1]].data;
+        if (l && r)
+            return *l || *r;
 
         return std::nullopt;
     }
 
     Data make(const EGraph& egraph, const Implies& i) const
     {
-        Data antecedent = egraph[i.field<Antecedent>()].data;
-        Data consequent = egraph[i.field<Consequent>()].data;
+        Data antecedent = egraph[i[0]].data;
+        Data consequent = egraph[i[1]].data;
         if (antecedent && consequent)
             return !*antecedent || *consequent;
 
