@@ -164,6 +164,13 @@ private:
 /// Empty base class just for static_asserts.
 struct FieldBase
 {
+    FieldBase() = delete;
+
+    FieldBase(FieldBase&&) = delete;
+    FieldBase& operator=(FieldBase&&) = delete;
+
+    FieldBase(const FieldBase&) = delete;
+    FieldBase& operator=(const FieldBase&) = delete;
 };
 
 template<typename Phantom>
