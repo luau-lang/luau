@@ -9,32 +9,6 @@
 #include <type_traits>
 #include <utility>
 
-namespace Luau::EqSat
-{
-
-template<typename T, typename = void>
-struct LanguageHash
-{
-    size_t operator()(const T&) const
-    {
-        // See available specializations at the bottom of this file.
-        static_assert(false, "missing languageHash specialization");
-    }
-};
-
-template <typename T>
-std::size_t languageHash(const T& lang)
-{
-    return LanguageHash<T>{}(lang);
-}
-
-// We have four different kinds of declarations:
-//
-// Atom, the root data type that holds the value in question.
-// NodeArray, a fixed sized sequence of `Id`s.
-// NodeVector, a dynamically sized sequence of `Id`s.
-// NodeFields, a fixed sized sequence of `Id`s accessed by field names rather than subscripts.
-
 #define LUAU_EQSAT_ATOM(name, t) \
     struct name : public ::Luau::EqSat::Atom<name, t> \
     { \
@@ -67,6 +41,25 @@ std::size_t languageHash(const T& lang)
         static constexpr const char* tag = #name; \
         using NodeFields::NodeFields; \
     }
+
+namespace Luau::EqSat
+{
+
+template<typename T, typename = void>
+struct LanguageHash
+{
+    size_t operator()(const T&) const
+    {
+        // See available specializations at the bottom of this file.
+        static_assert(false, "missing languageHash specialization");
+    }
+};
+
+template <typename T>
+std::size_t languageHash(const T& lang)
+{
+    return LanguageHash<T>{}(lang);
+}
 
 template<typename Phantom, typename T>
 struct Atom
