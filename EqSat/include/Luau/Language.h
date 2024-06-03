@@ -80,7 +80,7 @@ public:
         return {};
     }
 
-    Slice<Id> operands() const
+    Slice<const Id> operands() const
     {
         return {};
     }
@@ -116,7 +116,7 @@ struct NodeVector
     {
     }
 
-    const Id& operator[](size_t i) const
+    Id operator[](size_t i) const
     {
         return vector[i];
     }
@@ -203,9 +203,9 @@ public:
         return Slice{array};
     }
 
-    Slice<Id> operands() const
+    Slice<const Id> operands() const
     {
-        return Slice{array};
+        return Slice{array.data(), array.size()};
     }
 
     template<typename T>
@@ -260,7 +260,9 @@ private:
     using FnDtor = void (*)(void*);
     using FnPred = bool (*)(const void*, const void*);
     using FnHash = size_t (*)(const void*);
-    using FnOper = Slice<Id> (*)(void*);
+
+    template<typename T>
+    using FnSlice = Slice<T> (*)(std::conditional_t<std::is_const_v<T>, const void*, void*>);
 
     template<typename T>
     static void fnCopy(void* dst, const void* src) noexcept
@@ -292,10 +294,10 @@ private:
         return typename T::Hash{}(*static_cast<const T*>(buffer));
     }
 
-    template<typename T>
-    static Slice<Id> fnOper(void* buffer) noexcept
+    template<typename S, typename T>
+    static Slice<S> fnOperands(std::conditional_t<std::is_const_v<S>, const void*, void*> buffer) noexcept
     {
-        return static_cast<T*>(buffer)->operands();
+        return static_cast<std::conditional_t<std::is_const_v<S>, const T*, T*>>(buffer)->operands();
     }
 
     static constexpr FnCopy tableCopy[sizeof...(Ts)] = {&fnCopy<Ts>...};
@@ -303,7 +305,8 @@ private:
     static constexpr FnDtor tableDtor[sizeof...(Ts)] = {&fnDtor<Ts>...};
     static constexpr FnPred tablePred[sizeof...(Ts)] = {&fnPred<Ts>...};
     static constexpr FnHash tableHash[sizeof...(Ts)] = {&fnHash<Ts>...};
-    static constexpr FnOper tableOper[sizeof...(Ts)] = {&fnOper<Ts>...};
+    static constexpr FnSlice<Id> tableSliceId[sizeof...(Ts)] = {&fnOperands<Id, Ts>...};
+    static constexpr FnSlice<const Id> tableSliceConstId[sizeof...(Ts)] = {&fnOperands<const Id, Ts>...};
 
     static constexpr int getIndexFromTag(const char* tag) noexcept
     {
@@ -369,12 +372,12 @@ public:
     /// Reading is ok, but you should also never assume that these `Id`s are stable.
     Slice<Id> operands() noexcept
     {
-        return tableOper[getIndexFromTag(tag)](&buffer);
+        return tableSliceId[getIndexFromTag(tag)](&buffer);
     }
 
-    Slice<Id> operands() const noexcept
+    Slice<const Id> operands() const noexcept
     {
-        return const_cast<Language*>(this)->operands();
+        return tableSliceConstId[getIndexFromTag(tag)](&buffer);
     }
 
     template<typename T>
