@@ -87,6 +87,11 @@ public:
         return {};
     }
 
+    Slice<Id> operands() const
+    {
+        return {};
+    }
+
     bool operator==(const Atom& rhs) const
     {
         return _value == rhs._value;
@@ -126,7 +131,12 @@ struct NodeVector
 public:
     Slice<Id> operands()
     {
-        return {vector.data(), vector.size()};
+        return Slice{vector.data(), vector.size()};
+    }
+
+    Slice<const Id> operands() const
+    {
+        return Slice{vector.data(), vector.size()};
     }
 
     bool operator==(const NodeVector& rhs) const
@@ -189,6 +199,11 @@ public:
     }
 
     Slice<Id> operands()
+    {
+        return Slice{array};
+    }
+
+    Slice<Id> operands() const
     {
         return Slice{array};
     }
@@ -306,7 +321,7 @@ public:
     template<typename T>
     Language(T&& t, std::enable_if_t<WithinDomain<T>::value>* = 0) noexcept
     {
-        tag = T::tag;
+        tag = std::decay_t<T>::tag;
         new (&buffer) std::decay_t<T>(std::forward<T>(t));
     }
 
