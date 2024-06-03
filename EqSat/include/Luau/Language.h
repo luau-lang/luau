@@ -434,4 +434,16 @@ struct LanguageHash<std::array<T, I>>
     }
 };
 
+template<typename T>
+struct LanguageHash<std::vector<T>>
+{
+    size_t operator()(const std::vector<T>& vector) const
+    {
+        size_t seed = 0;
+        for (const T& t : vector)
+            hashCombine(seed, languageHash(t));
+        return seed;
+    }
+};
+
 } // namespace Luau::EqSat
