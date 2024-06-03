@@ -11,16 +11,16 @@ LUAU_EQSAT_ATOM(Var, std::string);
 LUAU_EQSAT_ATOM(Bool, bool);
 
 LUAU_EQSAT_FIELD(Negated);
-LUAU_EQSAT_UNARY_NODE(Not, Negated);
+LUAU_EQSAT_NODE_FIELDS(Not, Negated);
 
 LUAU_EQSAT_FIELD(Left);
 LUAU_EQSAT_FIELD(Right);
-LUAU_EQSAT_BINARY_NODE(And, Left, Right);
-LUAU_EQSAT_BINARY_NODE(Or, Left, Right);
+LUAU_EQSAT_NODE_FIELDS(And, Left, Right);
+LUAU_EQSAT_NODE_FIELDS(Or, Left, Right);
 
 LUAU_EQSAT_FIELD(Antecedent);
 LUAU_EQSAT_FIELD(Consequent);
-LUAU_EQSAT_BINARY_NODE(Implies, Antecedent, Consequent);
+LUAU_EQSAT_NODE_FIELDS(Implies, Antecedent, Consequent);
 
 using namespace Luau;
 
@@ -39,7 +39,7 @@ struct ConstantFold
 
     Data make(const EGraph& egraph, const Bool& b) const
     {
-        return b.value;
+        return b.value();
     }
 
     Data make(const EGraph& egraph, const Not& n) const

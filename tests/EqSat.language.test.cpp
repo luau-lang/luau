@@ -13,8 +13,7 @@ LUAU_EQSAT_ATOM(Str, std::string);
 
 LUAU_EQSAT_FIELD(Left);
 LUAU_EQSAT_FIELD(Right);
-
-LUAU_EQSAT_BINARY_NODE(Add, Left, Right);
+LUAU_EQSAT_NODE_FIELDS(Add, Left, Right);
 
 using namespace Luau;
 
@@ -40,7 +39,7 @@ TEST_CASE("language_get")
 
     auto i = v.get<I32>();
     REQUIRE(i);
-    CHECK(i->value);
+    CHECK(i->value());
 
     CHECK(!v.get<Bool>());
 }
@@ -54,7 +53,7 @@ TEST_CASE("language_copy_ctor")
     auto i2 = v2.get<I32>();
     REQUIRE(i1);
     REQUIRE(i2);
-    CHECK(i1->value == i2->value);
+    CHECK(i1->value() == i2->value());
 }
 
 TEST_CASE("language_move_ctor")
@@ -63,18 +62,18 @@ TEST_CASE("language_move_ctor")
     {
         auto s1 = v1.get<Str>();
         REQUIRE(s1);
-        CHECK(s1->value == "hello");
+        CHECK(s1->value() == "hello");
     }
 
     Value v2 = std::move(v1);
 
     auto s1 = v1.get<Str>();
     REQUIRE(s1);
-    CHECK(s1->value == ""); // this also tests the dtor.
+    CHECK(s1->value() == ""); // this also tests the dtor.
 
     auto s2 = v2.get<Str>();
     REQUIRE(s2);
-    CHECK(s2->value == "hello");
+    CHECK(s2->value() == "hello");
 }
 
 TEST_CASE("language_equality")
