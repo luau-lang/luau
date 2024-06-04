@@ -16,6 +16,7 @@ LUAU_FASTINT(LuauRecursionLimit);
 LUAU_FASTINT(LuauTypeLengthLimit);
 LUAU_FASTINT(LuauParseErrorLimit);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauLeadingBarAndAmpersand);
 
 namespace
 {
@@ -3169,11 +3170,15 @@ TEST_CASE_FIXTURE(Fixture, "read_write_table_properties")
 
 TEST_CASE_FIXTURE(Fixture, "can_parse_leading_bar_unions_successfully")
 {
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand, true};
+
     parse(R"(type A = | "Hello" | "World")");
 }
 
 TEST_CASE_FIXTURE(Fixture, "can_parse_leading_ampersand_intersections_successfully")
 {
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand, true};
+
     parse(R"(type A = & { string } & { number })");
 }
 
