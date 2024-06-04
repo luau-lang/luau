@@ -1628,20 +1628,22 @@ AstType* Parser::parseType(bool inDeclarationContext)
 {
     Location begin = lexer.current().location;
 
+    unsigned int oldRecursionCount = recursionCounter;
+    // recursion counter is incremented in parseSimpleType and/or parseTypeSuffix
+
+    AstType* type = nullptr;
+
     Lexeme::Type c = lexer.current().type;
-    if (c == '|' || c == '&')
+    if (c != '|' && c != '&')
     {
-        return parseTypeSuffix(nullptr, begin);
+        type = parseSimpleType(/* allowPack= */ false, /* in declaration context */ inDeclarationContext).type;
+        recursionCounter = oldRecursionCount;
     }
 
-    unsigned int oldRecursionCount = recursionCounter;
-    // recursion counter is incremented in parseSimpleType
-
-    AstType* type = parseSimpleType(/* allowPack= */ false, /* in declaration context */ inDeclarationContext).type;
-
+    AstType* typeWithSuffix = parseTypeSuffix(type, begin);
     recursionCounter = oldRecursionCount;
 
-    return parseTypeSuffix(type, begin);
+    return typeWithSuffix;
 }
 
 // Type ::= nil | Name[`.' Name] [ `<' Type [`,' ...] `>' ] | `typeof' `(' expr `)' | `{' [PropList] `}'
