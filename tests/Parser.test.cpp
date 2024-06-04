@@ -3167,4 +3167,14 @@ TEST_CASE_FIXTURE(Fixture, "read_write_table_properties")
     LUAU_ASSERT(pr.errors.size() == 0);
 }
 
+TEST_CASE_FIXTURE(Fixture, "can_parse_leading_bar_unions_successfully")
+{
+    parse(R"(type A = | "Hello" | "World")");
+}
+
+TEST_CASE_FIXTURE(Fixture, "can_parse_leading_ampersand_intersections_successfully")
+{
+    parse(R"(type A = & { string } & { number })");
+}
+
 TEST_SUITE_END();

@@ -1523,7 +1523,11 @@ AstType* Parser::parseFunctionTypeTail(const Lexeme& begin, AstArray<AstGenericT
 AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
 {
     TempVector<AstType*> parts(scratchType);
-    parts.push_back(type);
+
+    if (type != nullptr)
+    {
+        parts.push_back(type);
+    }
 
     incrementRecursionCounter("type annotation");
 
@@ -1622,10 +1626,16 @@ AstTypeOrPack Parser::parseTypeOrPack()
 
 AstType* Parser::parseType(bool inDeclarationContext)
 {
+    Location begin = lexer.current().location;
+
+    Lexeme::Type c = lexer.current().type;
+    if (c == '|' || c == '&')
+    {
+        return parseTypeSuffix(nullptr, begin);
+    }
+
     unsigned int oldRecursionCount = recursionCounter;
     // recursion counter is incremented in parseSimpleType
-
-    Location begin = lexer.current().location;
 
     AstType* type = parseSimpleType(/* allowPack= */ false, /* in declaration context */ inDeclarationContext).type;
 
