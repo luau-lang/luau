@@ -267,7 +267,7 @@ if(LUAU_BUILD_WEB)
     target_link_options(Luau.Web PRIVATE -sSINGLE_FILE=1)
 endif()
 
-# add_subdirectory(fuzz)
+add_subdirectory(fuzz)
 
 # validate dependencies for internal libraries
 foreach(LIB Luau.Ast Luau.Compiler Luau.Config Luau.Analysis Luau.EqSat Luau.CodeGen Luau.VM)
