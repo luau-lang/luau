@@ -89,7 +89,6 @@ target_link_libraries(Luau.Analysis PUBLIC Luau.Ast Luau.EqSat Luau.Config)
 target_compile_features(Luau.EqSat PUBLIC cxx_std_17)
 target_include_directories(Luau.EqSat PUBLIC EqSat/include)
 target_link_libraries(Luau.EqSat PUBLIC Luau.Common)
-set_target_properties(Luau.EqSat PROPERTIES LINKER_LANGUAGE CXX)
 
 target_compile_features(Luau.CodeGen PRIVATE cxx_std_17)
 target_include_directories(Luau.CodeGen PUBLIC CodeGen/include)
