@@ -234,17 +234,6 @@ public:
     };
 };
 
-// `Language` is very similar to `Luau::Variant` with enough differences warranting a different type altogether.
-//
-// Firstly, where `Luau::Variant` uses an `int` to decide which type the variant currently holds, we use
-// a `const char*` instead. We use the pointer address for tag checking, and the string buffer for stringification.
-//
-// Secondly, we need `Language` to have additional methods such as:
-// - `children()` to get child operands,
-// - `operator==` to decide equality, and
-// - `hash()` function.
-//
-// And finally, each `T` in `Ts` have additional requirements which `Luau::Variant` doesn't need.
 template<typename... Ts>
 class Language final
 {
