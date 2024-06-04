@@ -6,6 +6,8 @@
 #include "doctest.h"
 #include "Fixture.h"
 
+LUAU_FASTFLAG(LuauFixBindingForGlobalPos);
+
 using namespace Luau;
 
 struct DocumentationSymbolFixture : BuiltinsFixture
@@ -329,6 +331,18 @@ TEST_CASE_FIXTURE(Fixture, "find_expr_ancestry")
 
     REQUIRE(!ancestry.empty());
     CHECK(ancestry.back()->is<AstExprFunction>());
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "find_binding_at_position_global_start_of_file")
+{
+    ScopedFastFlag sff{FFlag::LuauFixBindingForGlobalPos, true};
+    check("local x = string.char(1)");
+    const Position pos(0, 12);
+
+    std::optional<Binding> binding = findBindingAtPosition(*getMainModule(), *getMainSourceModule(), pos);
+
+    REQUIRE(binding);
+    CHECK_EQ(binding->location, Location{Position{0, 0}, Position{0, 0}});
 }
 
 TEST_SUITE_END();
