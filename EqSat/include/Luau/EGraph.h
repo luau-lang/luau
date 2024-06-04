@@ -173,7 +173,6 @@ public:
             return *id;
 
         Id id = makeEClass(enode);
-        // TODO clean = false
         return id;
     }
 
