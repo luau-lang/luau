@@ -74,4 +74,4 @@ public:
     }
 };
 
-}
+} // namespace Luau::EqSat
