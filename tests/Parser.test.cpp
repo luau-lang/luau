@@ -3187,6 +3187,7 @@ TEST_CASE_FIXTURE(Fixture, "mixed_leading_intersection_and_union_not_allowed")
     ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand, true};
 
     matchParseError("type A = & number | string | boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
+    matchParseError("type A = | number & string & boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
 }
 
 TEST_SUITE_END();
