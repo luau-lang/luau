@@ -237,8 +237,11 @@ public:
 template<typename... Ts>
 class Language final
 {
+    static constexpr size_t bufferSize = std::max({sizeof(Ts)...});
+    static constexpr size_t bufferAlign = std::max({alignof(Ts)...});
+
     const char* tag;
-    char buffer[std::max({sizeof(Ts)...})];
+    alignas(bufferAlign) char buffer[bufferSize];
 
 private:
     template<typename T>
