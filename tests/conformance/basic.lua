@@ -726,16 +726,15 @@ assert((function()
     return sum
 end)() == 15)
 
--- the reason why this test is interesting is that the table created here has arraysize=0 and a single hash element with key = 1.0
--- ipairs must iterate through that
+-- ipairs will not iterate through hash part
 assert((function()
-    local arr = { [1] = 42 }
+    local arr = { [1] = 1, [42] = 42, x = 10 }
     local sum = 0
     for i,v in ipairs(arr) do
     sum = sum + v
     end
     return sum
-end)() == 42)
+end)() == 1)
 
 -- the reason why this test is interesting is it ensures we do correct mutability analysis for locals
 local function chainTest(n)
