@@ -23,11 +23,10 @@
 #define GCSsweep 4
 
 /*
-** macro to tell when main invariant (white objects cannot point to black
-** ones) must be kept. During a collection, the sweep
-** phase may break the invariant, as objects turned white may point to
-** still-black objects. The invariant is restored when sweep ends and
-** all objects are white again.
+** The main invariant of the garbage collector, while marking objects,
+** is that a black object can never point to a white one. This invariant
+** is not being enforced during a sweep phase, and is restored when sweep
+** ends.
 */
 #define keepinvariant(g) ((g)->gcstate == GCSpropagate || (g)->gcstate == GCSpropagateagain || (g)->gcstate == GCSatomic)
 
