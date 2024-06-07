@@ -17,6 +17,7 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // flag so that we don't break production games by reverting syntax changes.
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
+LUAU_FASTFLAGVARIABLE(LuauLeadingBarAndAmpersand, false)
 
 namespace Luau
 {
@@ -1523,7 +1524,11 @@ AstType* Parser::parseFunctionTypeTail(const Lexeme& begin, AstArray<AstGenericT
 AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
 {
     TempVector<AstType*> parts(scratchType);
-    parts.push_back(type);
+
+    if (!FFlag::LuauLeadingBarAndAmpersand || type != nullptr)
+    {
+        parts.push_back(type);
+    }
 
     incrementRecursionCounter("type annotation");
 
@@ -1623,15 +1628,34 @@ AstTypeOrPack Parser::parseTypeOrPack()
 AstType* Parser::parseType(bool inDeclarationContext)
 {
     unsigned int oldRecursionCount = recursionCounter;
-    // recursion counter is incremented in parseSimpleType
+    // recursion counter is incremented in parseSimpleType and/or parseTypeSuffix
 
     Location begin = lexer.current().location;
 
-    AstType* type = parseSimpleType(/* allowPack= */ false, /* in declaration context */ inDeclarationContext).type;
+    if (FFlag::LuauLeadingBarAndAmpersand)
+    {
+        AstType* type = nullptr;
 
-    recursionCounter = oldRecursionCount;
+        Lexeme::Type c = lexer.current().type;
+        if (c != '|' && c != '&')
+        {
+            type = parseSimpleType(/* allowPack= */ false, /* in declaration context */ inDeclarationContext).type;
+            recursionCounter = oldRecursionCount;
+        }
 
-    return parseTypeSuffix(type, begin);
+        AstType* typeWithSuffix = parseTypeSuffix(type, begin);
+        recursionCounter = oldRecursionCount;
+
+        return typeWithSuffix;
+    }
+    else
+    {
+        AstType* type = parseSimpleType(/* allowPack= */ false, /* in declaration context */ inDeclarationContext).type;
+
+        recursionCounter = oldRecursionCount;
+
+        return parseTypeSuffix(type, begin);
+    }
 }
 
 // Type ::= nil | Name[`.' Name] [ `<' Type [`,' ...] `>' ] | `typeof' `(' expr `)' | `{' [PropList] `}'
