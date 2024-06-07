@@ -701,7 +701,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
         REQUIRE(ut);
 
         REQUIRE(ut->options.size() == 2);
-        CHECK_EQ(builtinTypes->nilType, ut->options[0]);
+        CHECK_EQ(builtinTypes->nilType, follow(ut->options[0]));
         CHECK_EQ(*builtinTypes->numberType, *ut->options[1]);
     }
     else
@@ -1177,6 +1177,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iteration_preserves_error_suppression")
 
     CHECK("any" == toString(requireTypeAtPosition({3, 22})));
     CHECK("any" == toString(requireTypeAtPosition({3, 25})));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "tryDispatchIterableFunction_under_constrained_loop_should_not_assert")
+{
+    CheckResult result = check(R"(
+local function foo(Instance)
+	for _, Child in next, Instance:GetChildren() do
+	end
+end
+    )");
 }
 
 TEST_SUITE_END();

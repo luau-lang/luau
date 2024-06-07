@@ -7,7 +7,6 @@ namespace CodeGen
 {
 
 class BaseCodeGenContext;
-struct NativeState;
 struct ModuleHelpers;
 
 namespace A64
@@ -15,7 +14,6 @@ namespace A64
 
 class AssemblyBuilderA64;
 
-bool initHeaderFunctions(NativeState& data);
 bool initHeaderFunctions(BaseCodeGenContext& codeGenContext);
 void assembleHelpers(AssemblyBuilderA64& build, ModuleHelpers& helpers);
 

@@ -28,6 +28,7 @@
 LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
+LUAU_FASTFLAG(LuauAttributeSyntax);
 
 namespace Luau
 {
@@ -246,6 +247,17 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
 
     if (logger)
         logger->captureGenerationModule(module);
+
+    for (const auto& [ty, domain] : localTypes)
+    {
+        // FIXME: This isn't the most efficient thing.
+        TypeId domainTy = builtinTypes->neverType;
+        for (TypeId d : domain)
+            domainTy = simplifyUnion(builtinTypes, arena, domainTy, d).result;
+
+        LUAU_ASSERT(get<BlockedType>(ty));
+        asMutable(ty)->ty.emplace<BoundType>(domainTy);
+    }
 }
 
 TypeId ConstraintGenerator::freshType(const ScopePtr& scope)
@@ -310,7 +322,8 @@ std::optional<TypeId> ConstraintGenerator::lookup(const ScopePtr& scope, Locatio
             std::optional<TypeId> ty = lookup(scope, location, operand, /*prototype*/ false);
             if (!ty)
             {
-                ty = arena->addType(LocalType{builtinTypes->neverType});
+                ty = arena->addType(BlockedType{});
+                localTypes[*ty] = {};
                 rootScope->lvalueTypes[operand] = *ty;
             }
 
@@ -703,7 +716,8 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
     {
         const Location location = local->location;
 
-        TypeId assignee = arena->addType(LocalType{builtinTypes->neverType, /* blockCount */ 1, local->name.value});
+        TypeId assignee = arena->addType(BlockedType{});
+        localTypes[assignee] = {};
 
         assignees.push_back(assignee);
 
@@ -740,7 +754,12 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
     if (hasAnnotation)
     {
         for (size_t i = 0; i < statLocal->vars.size; ++i)
-            addConstraint(scope, statLocal->location, AssignConstraint{assignees[i], annotatedTypes[i]});
+        {
+            LUAU_ASSERT(get<BlockedType>(assignees[i]));
+            std::vector<TypeId>* localDomain = localTypes.find(assignees[i]);
+            LUAU_ASSERT(localDomain);
+            localDomain->push_back(annotatedTypes[i]);
+        }
 
         TypePackId annotatedPack = arena->addTypePack(std::move(annotatedTypes));
         addConstraint(scope, statLocal->location, PackSubtypeConstraint{rvaluePack, annotatedPack});
@@ -750,15 +769,30 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
         std::vector<TypeId> valueTypes;
         valueTypes.reserve(statLocal->vars.size);
 
-        for (size_t i = 0; i < statLocal->vars.size; ++i)
-            valueTypes.push_back(arena->addType(BlockedType{}));
+        auto [head, tail] = flatten(rvaluePack);
 
-        auto uc = addConstraint(scope, statLocal->location, UnpackConstraint{arena->addTypePack(valueTypes), rvaluePack});
+        if (head.size() >= statLocal->vars.size)
+        {
+            for (size_t i = 0; i < statLocal->vars.size; ++i)
+                valueTypes.push_back(head[i]);
+        }
+        else
+        {
+            for (size_t i = 0; i < statLocal->vars.size; ++i)
+                valueTypes.push_back(arena->addType(BlockedType{}));
+
+            auto uc = addConstraint(scope, statLocal->location, UnpackConstraint{valueTypes, rvaluePack});
+
+            for (TypeId t: valueTypes)
+                getMutable<BlockedType>(t)->setOwner(uc);
+        }
 
         for (size_t i = 0; i < statLocal->vars.size; ++i)
         {
-            getMutable<BlockedType>(valueTypes[i])->setOwner(uc);
-            addConstraint(scope, statLocal->location, AssignConstraint{assignees[i], valueTypes[i]});
+            LUAU_ASSERT(get<BlockedType>(assignees[i]));
+            std::vector<TypeId>* localDomain = localTypes.find(assignees[i]);
+            LUAU_ASSERT(localDomain);
+            localDomain->push_back(valueTypes[i]);
         }
     }
 
@@ -860,25 +894,34 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatForIn* forI
 
     for (AstLocal* var : forIn->vars)
     {
-        TypeId assignee = arena->addType(LocalType{builtinTypes->neverType, /* blockCount */ 1, var->name.value});
+        TypeId assignee = arena->addType(BlockedType{});
         variableTypes.push_back(assignee);
+
+        TypeId loopVar = arena->addType(BlockedType{});
+        localTypes[loopVar].push_back(assignee);
 
         if (var->annotation)
         {
             TypeId annotationTy = resolveType(loopScope, var->annotation, /*inTypeArguments*/ false);
             loopScope->bindings[var] = Binding{annotationTy, var->location};
-            addConstraint(scope, var->location, SubtypeConstraint{assignee, annotationTy});
+            addConstraint(scope, var->location, SubtypeConstraint{loopVar, annotationTy});
         }
         else
-            loopScope->bindings[var] = Binding{assignee, var->location};
+            loopScope->bindings[var] = Binding{loopVar, var->location};
 
         DefId def = dfg->getDef(var);
-        loopScope->lvalueTypes[def] = assignee;
+        loopScope->lvalueTypes[def] = loopVar;
     }
 
-    TypePackId variablePack = arena->addTypePack(std::move(variableTypes));
     auto iterable = addConstraint(
-        loopScope, getLocation(forIn->values), IterableConstraint{iterator, variablePack, forIn->values.data[0], &module->astForInNextTypes});
+        loopScope, getLocation(forIn->values), IterableConstraint{iterator, variableTypes, forIn->values.data[0], &module->astForInNextTypes});
+
+    for (TypeId var: variableTypes)
+    {
+        auto bt = getMutable<BlockedType>(var);
+        LUAU_ASSERT(bt);
+        bt->setOwner(iterable);
+    }
 
     Checkpoint start = checkpoint(this);
     visit(loopScope, forIn->body);
@@ -1105,14 +1148,31 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatAssign* ass
     std::vector<TypeId> valueTypes;
     valueTypes.reserve(assign->vars.size);
 
-    for (size_t i = 0; i < assign->vars.size; ++i)
-        valueTypes.push_back(arena->addType(BlockedType{}));
+    auto [head, tail] = flatten(resultPack);
+    if (head.size() >= assign->vars.size)
+    {
+        // If the resultPack is definitely long enough for each variable, we can
+        // skip the UnpackConstraint and use the result types directly.
 
-    auto uc = addConstraint(scope, assign->location, UnpackConstraint{arena->addTypePack(valueTypes), resultPack});
+        for (size_t i = 0; i < assign->vars.size; ++i)
+            valueTypes.push_back(head[i]);
+    }
+    else
+    {
+        // We're not sure how many types are produced by the right-side
+        // expressions.  We'll use an UnpackConstraint to defer this until
+        // later.
+        for (size_t i = 0; i < assign->vars.size; ++i)
+            valueTypes.push_back(arena->addType(BlockedType{}));
+
+        auto uc = addConstraint(scope, assign->location, UnpackConstraint{valueTypes, resultPack});
+
+        for (TypeId t: valueTypes)
+            getMutable<BlockedType>(t)->setOwner(uc);
+    }
 
     for (size_t i = 0; i < assign->vars.size; ++i)
     {
-        getMutable<BlockedType>(valueTypes[i])->setOwner(uc);
         visitLValue(scope, assign->vars.data[i], valueTypes[i]);
     }
 
@@ -1393,7 +1453,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareFunc
     TypePackId retPack = resolveTypePack(funScope, global->retTypes, /* inTypeArguments */ false);
     TypeId fnType = arena->addType(FunctionType{TypeLevel{}, funScope.get(), std::move(genericTys), std::move(genericTps), paramPack, retPack});
     FunctionType* ftv = getMutable<FunctionType>(fnType);
-    ftv->isCheckedFunction = global->checkedFunction;
+    ftv->isCheckedFunction = FFlag::LuauAttributeSyntax ? global->isCheckedFunction() : false;
 
     ftv->argNames.reserve(global->paramNames.size);
     for (const auto& el : global->paramNames)
@@ -1599,9 +1659,8 @@ InferencePack ConstraintGenerator::checkPack(const ScopePtr& scope, AstExprCall*
 
             mt = arena->addType(BlockedType{});
             unpackedTypes.emplace_back(mt);
-            TypePackId mtPack = arena->addTypePack(std::move(unpackedTypes));
 
-            auto c = addConstraint(scope, call->location, UnpackConstraint{mtPack, *argTail});
+            auto c = addConstraint(scope, call->location, UnpackConstraint{unpackedTypes, *argTail});
             getMutable<BlockedType>(mt)->setOwner(c);
             if (auto b = getMutable<BlockedType>(target); b && b->getOwner() == nullptr)
                 b->setOwner(c);
@@ -1842,7 +1901,37 @@ Inference ConstraintGenerator::checkIndexName(
     const ScopePtr& scope, const RefinementKey* key, AstExpr* indexee, const std::string& index, Location indexLocation)
 {
     TypeId obj = check(scope, indexee).ty;
-    TypeId result = arena->addType(BlockedType{});
+    TypeId result = nullptr;
+
+    // We optimize away the HasProp constraint in simple cases so that we can
+    // reason about updates to unsealed tables more accurately.
+
+    const TableType* tt = getTableType(obj);
+
+    // This is a little bit iffy but I *believe* it is okay because, if the
+    // local's domain is going to be extended at all, it will be someplace after
+    // the current lexical position within the script.
+    if (!tt)
+    {
+        if (auto localDomain = localTypes.find(obj); localDomain && 1 == localDomain->size())
+            tt = getTableType(localDomain->front());
+    }
+
+    if (tt)
+    {
+        auto it = tt->props.find(index);
+        if (it != tt->props.end() && it->second.readTy.has_value())
+            result = *it->second.readTy;
+    }
+
+    if (!result)
+    {
+        result = arena->addType(BlockedType{});
+
+        auto c = addConstraint(
+            scope, indexee->location, HasPropConstraint{result, obj, std::move(index), ValueContext::RValue, inConditional(typeContext)});
+        getMutable<BlockedType>(result)->setOwner(c);
+    }
 
     if (key)
     {
@@ -1851,10 +1940,6 @@ Inference ConstraintGenerator::checkIndexName(
 
         scope->rvalueRefinements[key->def] = result;
     }
-
-    auto c =
-        addConstraint(scope, indexee->location, HasPropConstraint{result, obj, std::move(index), ValueContext::RValue, inConditional(typeContext)});
-    getMutable<BlockedType>(result)->setOwner(c);
 
     if (key)
         return Inference{result, refinementArena.proposition(key, builtinTypes->truthyType)};
@@ -2242,18 +2327,14 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprLocal* local
 
     if (ty)
     {
-        if (auto lt = getMutable<LocalType>(*ty))
-            ++lt->blockCount;
-        else if (auto ut = getMutable<UnionType>(*ty))
-        {
-            for (TypeId optTy : ut->options)
-                if (auto lt = getMutable<LocalType>(optTy))
-                    ++lt->blockCount;
-        }
+        std::vector<TypeId>* localDomain = localTypes.find(*ty);
+        if (localDomain)
+            localDomain->push_back(rhsType);
     }
     else
     {
-        ty = arena->addType(LocalType{builtinTypes->neverType, /* blockCount */ 1, local->local->name.value});
+        ty = arena->addType(BlockedType{});
+        localTypes[*ty].push_back(rhsType);
 
         if (annotatedTy)
         {
@@ -2277,7 +2358,9 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprLocal* local
 
     if (annotatedTy)
         addConstraint(scope, local->location, SubtypeConstraint{rhsType, *annotatedTy});
-    addConstraint(scope, local->location, AssignConstraint{*ty, rhsType});
+
+    if (auto localDomain = localTypes.find(*ty))
+        localDomain->push_back(rhsType);
 }
 
 void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprGlobal* global, TypeId rhsType)
@@ -2289,7 +2372,6 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprGlobal* glob
         rootScope->lvalueTypes[def] = rhsType;
 
         addConstraint(scope, global->location, SubtypeConstraint{rhsType, *annotatedTy});
-        addConstraint(scope, global->location, AssignConstraint{*annotatedTy, rhsType});
     }
 }
 
@@ -2298,7 +2380,10 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexName* e
     TypeId lhsTy = check(scope, expr->expr).ty;
     TypeId propTy = arena->addType(BlockedType{});
     module->astTypes[expr] = propTy;
-    addConstraint(scope, expr->location, AssignPropConstraint{lhsTy, expr->index.value, rhsType, propTy});
+
+    bool incremented = recordPropertyAssignment(lhsTy);
+
+    addConstraint(scope, expr->location, AssignPropConstraint{lhsTy, expr->index.value, rhsType, propTy, incremented});
 }
 
 void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexExpr* expr, TypeId rhsType)
@@ -2310,7 +2395,10 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexExpr* e
         module->astTypes[expr] = propTy;
         module->astTypes[expr->index] = builtinTypes->stringType; // FIXME? Singleton strings exist.
         std::string propName{constantString->value.data, constantString->value.size};
-        addConstraint(scope, expr->location, AssignPropConstraint{lhsTy, std::move(propName), rhsType, propTy});
+
+        bool incremented = recordPropertyAssignment(lhsTy);
+
+        addConstraint(scope, expr->location, AssignPropConstraint{lhsTy, std::move(propName), rhsType, propTy, incremented});
 
         return;
     }
@@ -2775,7 +2863,7 @@ TypeId ConstraintGenerator::resolveType(const ScopePtr& scope, AstType* ty, bool
         // TODO: FunctionType needs a pointer to the scope so that we know
         // how to quantify/instantiate it.
         FunctionType ftv{TypeLevel{}, scope.get(), {}, {}, argTypes, returnTypes};
-        ftv.isCheckedFunction = fn->checkedFunction;
+        ftv.isCheckedFunction = FFlag::LuauAttributeSyntax ? fn->isCheckedFunction() : false;
 
         // This replicates the behavior of the appropriate FunctionType
         // constructors.
@@ -2977,8 +3065,7 @@ Inference ConstraintGenerator::flattenPack(const ScopePtr& scope, Location locat
         return Inference{*f, refinement};
 
     TypeId typeResult = arena->addType(BlockedType{});
-    TypePackId resultPack = arena->addTypePack({typeResult}, arena->freshTypePack(scope.get()));
-    auto c = addConstraint(scope, location, UnpackConstraint{resultPack, tp});
+    auto c = addConstraint(scope, location, UnpackConstraint{{typeResult}, tp});
     getMutable<BlockedType>(typeResult)->setOwner(c);
 
     return Inference{typeResult, refinement};
@@ -3073,6 +3160,46 @@ void ConstraintGenerator::prepopulateGlobalScope(const ScopePtr& globalScope, As
         prepareModuleScope(module->name, globalScope);
 
     program->visit(&gp);
+}
+
+bool ConstraintGenerator::recordPropertyAssignment(TypeId ty)
+{
+    DenseHashSet<TypeId> seen{nullptr};
+    VecDeque<TypeId> queue;
+
+    queue.push_back(ty);
+
+    bool incremented = false;
+
+    while (!queue.empty())
+    {
+        const TypeId t = follow(queue.front());
+        queue.pop_front();
+
+        if (seen.find(t))
+            continue;
+        seen.insert(t);
+
+        if (auto tt = getMutable<TableType>(t); tt && tt->state == TableState::Unsealed)
+        {
+            tt->remainingProps += 1;
+            incremented = true;
+        }
+        else if (auto mt = get<MetatableType>(t))
+            queue.push_back(mt->table);
+        else if (auto localDomain = localTypes.find(t))
+        {
+            for (TypeId domainTy : *localDomain)
+                queue.push_back(domainTy);
+        }
+        else if (auto ut = get<UnionType>(t))
+        {
+            for (TypeId part : ut)
+                queue.push_back(part);
+        }
+    }
+
+    return incremented;
 }
 
 void ConstraintGenerator::recordInferredBinding(AstLocal* local, TypeId ty)

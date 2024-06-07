@@ -100,16 +100,6 @@ struct FindCyclicTypes final : TypeVisitor
         return false;
     }
 
-    bool visit(TypeId ty, const LocalType& lt) override
-    {
-        if (!visited.insert(ty))
-            return false;
-
-        traverse(lt.domain);
-
-        return false;
-    }
-
     bool visit(TypeId ty, const TableType& ttv) override
     {
         if (!visited.insert(ty))
@@ -523,21 +513,6 @@ struct TypeStringifier
             else
                 state.emit(ftv.level);
         }
-    }
-
-    void operator()(TypeId ty, const LocalType& lt)
-    {
-        state.emit("l-");
-        state.emit(lt.name);
-        if (FInt::DebugLuauVerboseTypeNames >= 1)
-        {
-            state.emit("[");
-            state.emit(lt.blockCount);
-            state.emit("]");
-        }
-        state.emit("=[");
-        stringify(lt.domain);
-        state.emit("]");
     }
 
     void operator()(TypeId, const BoundType& btv)
@@ -1724,6 +1699,18 @@ std::string generateName(size_t i)
     return n;
 }
 
+std::string toStringVector(const std::vector<TypeId>& types, ToStringOptions& opts)
+{
+    std::string s;
+    for (TypeId ty : types)
+    {
+        if (!s.empty())
+            s += ", ";
+        s += toString(ty, opts);
+    }
+    return s;
+}
+
 std::string toString(const Constraint& constraint, ToStringOptions& opts)
 {
     auto go = [&opts](auto&& c) -> std::string {
@@ -1754,7 +1741,7 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         else if constexpr (std::is_same_v<T, IterableConstraint>)
         {
             std::string iteratorStr = tos(c.iterator);
-            std::string variableStr = tos(c.variables);
+            std::string variableStr = toStringVector(c.variables, opts);
 
             return variableStr + " ~ iterate " + iteratorStr;
         }
@@ -1791,14 +1778,12 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         {
             return tos(c.resultType) + " ~ hasIndexer " + tos(c.subjectType) + " " + tos(c.indexType);
         }
-        else if constexpr (std::is_same_v<T, AssignConstraint>)
-            return "assign " + tos(c.lhsType) + " " + tos(c.rhsType);
         else if constexpr (std::is_same_v<T, AssignPropConstraint>)
             return "assignProp " + tos(c.lhsType) + " " + c.propName + " " + tos(c.rhsType);
         else if constexpr (std::is_same_v<T, AssignIndexConstraint>)
             return "assignIndex " + tos(c.lhsType) + " " + tos(c.indexType) + " " + tos(c.rhsType);
         else if constexpr (std::is_same_v<T, UnpackConstraint>)
-            return tos(c.resultPack) + " ~ ...unpack " + tos(c.sourcePack);
+            return toStringVector(c.resultPack, opts) + " ~ ...unpack " + tos(c.sourcePack);
         else if constexpr (std::is_same_v<T, ReduceConstraint>)
             return "reduce " + tos(c.ty);
         else if constexpr (std::is_same_v<T, ReducePackConstraint>)

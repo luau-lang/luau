@@ -8,6 +8,7 @@
 #include <limits.h>
 
 LUAU_FASTFLAGVARIABLE(LuauLexerLookaheadRemembersBraceType, false)
+LUAU_FASTFLAGVARIABLE(LuauAttributeSyntax, false)
 
 namespace Luau
 {
@@ -102,11 +103,19 @@ Lexeme::Lexeme(const Location& location, Type type, const char* name)
     , length(0)
     , name(name)
 {
-    LUAU_ASSERT(type == Name || (type >= Reserved_BEGIN && type < Lexeme::Reserved_END));
+    LUAU_ASSERT(type == Name || type == Attribute || (type >= Reserved_BEGIN && type < Lexeme::Reserved_END));
+}
+
+unsigned int Lexeme::getLength() const
+{
+    LUAU_ASSERT(type == RawString || type == QuotedString || type == InterpStringBegin || type == InterpStringMid || type == InterpStringEnd ||
+                type == InterpStringSimple || type == BrokenInterpDoubleBrace || type == Number || type == Comment || type == BlockComment);
+
+    return length;
 }
 
 static const char* kReserved[] = {"and", "break", "do", "else", "elseif", "end", "false", "for", "function", "if", "in", "local", "nil", "not", "or",
-    "repeat", "return", "then", "true", "until", "while", "@checked"};
+    "repeat", "return", "then", "true", "until", "while"};
 
 std::string Lexeme::toString() const
 {
@@ -190,6 +199,10 @@ std::string Lexeme::toString() const
 
     case Comment:
         return "comment";
+
+    case Attribute:
+        LUAU_ASSERT(FFlag::LuauAttributeSyntax);
+        return name ? format("'%s'", name) : "attribute";
 
     case BrokenString:
         return "malformed string";
@@ -278,7 +291,7 @@ std::pair<AstName, Lexeme::Type> AstNameTable::getOrAddWithType(const char* name
     nameData[length] = 0;
 
     const_cast<Entry&>(entry).value = AstName(nameData);
-    const_cast<Entry&>(entry).type = Lexeme::Name;
+    const_cast<Entry&>(entry).type = (name[0] == '@' ? Lexeme::Attribute : Lexeme::Name);
 
     return std::make_pair(entry.value, entry.type);
 }
@@ -994,14 +1007,11 @@ Lexeme Lexer::readNext()
     }
     case '@':
     {
-        // We're trying to lex the token @checked
-        LUAU_ASSERT(peekch() == '@');
-
-        std::pair<AstName, Lexeme::Type> maybeChecked = readName();
-        if (maybeChecked.second != Lexeme::ReservedChecked)
-            return Lexeme(Location(start, position()), Lexeme::Error);
-
-        return Lexeme(Location(start, position()), maybeChecked.second, maybeChecked.first.value);
+        if (FFlag::LuauAttributeSyntax)
+        {
+            std::pair<AstName, Lexeme::Type> attribute = readName();
+            return Lexeme(Location(start, position()), Lexeme::Attribute, attribute.first.value);
+        }
     }
     default:
         if (isDigit(peekch()))

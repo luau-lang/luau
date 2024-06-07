@@ -11,6 +11,7 @@ namespace CodeGen
 {
 
 struct IrBuilder;
+enum class HostMetamethod;
 
 inline bool isJumpD(LuauOpcode op)
 {
@@ -129,6 +130,7 @@ inline bool isNonTerminatingJump(IrCmd cmd)
     case IrCmd::CHECK_NODE_NO_NEXT:
     case IrCmd::CHECK_NODE_VALUE:
     case IrCmd::CHECK_BUFFER_LEN:
+    case IrCmd::CHECK_USERDATA_TAG:
         return true;
     default:
         break;
@@ -182,6 +184,7 @@ inline bool hasResult(IrCmd cmd)
     case IrCmd::DUP_TABLE:
     case IrCmd::TRY_NUM_TO_INDEX:
     case IrCmd::TRY_CALL_FASTGETTM:
+    case IrCmd::NEW_USERDATA:
     case IrCmd::INT_TO_NUM:
     case IrCmd::UINT_TO_NUM:
     case IrCmd::NUM_TO_INT:
@@ -244,6 +247,8 @@ bool isGCO(uint8_t tag);
 // Optional bit has to be cleared at call site, otherwise, this will return 'false' for 'userdata?'
 bool isUserdataBytecodeType(uint8_t ty);
 bool isCustomUserdataBytecodeType(uint8_t ty);
+
+HostMetamethod tmToHostMetamethod(int tm);
 
 // Manually add or remove use of an operand
 void addUse(IrFunction& function, IrOp op);

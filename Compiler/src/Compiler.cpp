@@ -4219,7 +4219,8 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     for (AstExprFunction* expr : functions)
         compiler.compileFunction(expr, 0);
 
-    AstExprFunction main(root->location, /*generics= */ AstArray<AstGenericType>(), /*genericPacks= */ AstArray<AstGenericTypePack>(),
+    AstExprFunction main(root->location, /*attributes=*/AstArray<AstAttr*>({nullptr, 0}), /*generics= */ AstArray<AstGenericType>(),
+        /*genericPacks= */ AstArray<AstGenericTypePack>(),
         /* self= */ nullptr, AstArray<AstLocal*>(), /* vararg= */ true, /* varargLocation= */ Luau::Location(), root, /* functionDepth= */ 0,
         /* debugname= */ AstName());
     uint32_t mainid = compiler.compileFunction(&main, mainFlags);

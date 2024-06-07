@@ -94,6 +94,7 @@ struct NativeContext
     void (*forgPrepXnextFallback)(lua_State* L, TValue* ra, int pc) = nullptr;
     Closure* (*callProlog)(lua_State* L, TValue* ra, StkId argtop, int nresults) = nullptr;
     void (*callEpilogC)(lua_State* L, int nresults, int n) = nullptr;
+    Udata* (*newUserdata)(lua_State* L, size_t s, int tag) = nullptr;
 
     Closure* (*callFallback)(lua_State* L, StkId ra, StkId argtop, int nresults) = nullptr;
 
@@ -116,22 +117,6 @@ struct NativeContext
 
 using GateFn = int (*)(lua_State*, Proto*, uintptr_t, NativeContext*);
 
-struct NativeState
-{
-    NativeState();
-    NativeState(AllocationCallback* allocationCallback, void* allocationCallbackContext);
-    ~NativeState();
-
-    CodeAllocator codeAllocator;
-    std::unique_ptr<UnwindBuilder> unwindBuilder;
-
-    uint8_t* gateData = nullptr;
-    size_t gateDataSize = 0;
-
-    NativeContext context;
-};
-
-void initFunctions(NativeState& data);
 void initFunctions(NativeContext& context);
 
 } // namespace CodeGen

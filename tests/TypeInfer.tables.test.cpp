@@ -3153,7 +3153,7 @@ TEST_CASE_FIXTURE(Fixture, "accidentally_checked_prop_in_opposite_branch")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("Value of type '{ x: number? }?' could be nil", toString(result.errors[0]));
+        CHECK_EQ("Type 'nil' does not have key 'x'", toString(result.errors[0]));
     else
         CHECK_EQ("Value of type '{| x: number? |}?' could be nil", toString(result.errors[0]));
     CHECK_EQ("boolean", toString(requireType("u")));
@@ -4439,7 +4439,13 @@ TEST_CASE_FIXTURE(Fixture, "insert_a_and_f_of_a_into_table_res_in_a_loop")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK(get<FunctionExitsWithoutReturning>(result.errors[0]));
+    }
+    else
+        LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "ipairs_adds_an_unbounded_indexer")

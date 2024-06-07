@@ -118,6 +118,8 @@ struct ConstraintGenerator
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope;
     std::vector<RequireCycle> requireCycles;
 
+    DenseHashMap<TypeId, std::vector<TypeId>> localTypes{nullptr};
+
     DcrLogger* logger;
 
     ConstraintGenerator(ModulePtr module, NotNull<Normalizer> normalizer, NotNull<ModuleResolver> moduleResolver, NotNull<BuiltinTypes> builtinTypes,
@@ -353,6 +355,8 @@ private:
      * initial scan of the AST and note what globals are defined.
      */
     void prepopulateGlobalScope(const ScopePtr& globalScope, AstStatBlock* program);
+
+    bool recordPropertyAssignment(TypeId ty);
 
     // Record the fact that a particular local has a particular type in at least
     // one of its states.

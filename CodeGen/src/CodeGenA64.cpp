@@ -258,39 +258,6 @@ static EntryLocations buildEntryFunction(AssemblyBuilderA64& build, UnwindBuilde
     return locations;
 }
 
-bool initHeaderFunctions(NativeState& data)
-{
-    AssemblyBuilderA64 build(/* logText= */ false);
-    UnwindBuilder& unwind = *data.unwindBuilder.get();
-
-    unwind.startInfo(UnwindBuilder::A64);
-
-    EntryLocations entryLocations = buildEntryFunction(build, unwind);
-
-    build.finalize();
-
-    unwind.finishInfo();
-
-    CODEGEN_ASSERT(build.data.empty());
-
-    uint8_t* codeStart = nullptr;
-    if (!data.codeAllocator.allocate(build.data.data(), int(build.data.size()), reinterpret_cast<const uint8_t*>(build.code.data()),
-            int(build.code.size() * sizeof(build.code[0])), data.gateData, data.gateDataSize, codeStart))
-    {
-        CODEGEN_ASSERT(!"Failed to create entry function");
-        return false;
-    }
-
-    // Set the offset at the begining so that functions in new blocks will not overlay the locations
-    // specified by the unwind information of the entry function
-    unwind.setBeginOffset(build.getLabelOffset(entryLocations.prologueEnd));
-
-    data.context.gateEntry = codeStart + build.getLabelOffset(entryLocations.start);
-    data.context.gateExit = codeStart + build.getLabelOffset(entryLocations.epilogueStart);
-
-    return true;
-}
-
 bool initHeaderFunctions(BaseCodeGenContext& codeGenContext)
 {
     AssemblyBuilderA64 build(/* logText= */ false);

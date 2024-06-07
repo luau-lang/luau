@@ -338,10 +338,6 @@ public:
     {
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("free"), std::nullopt, Location());
     }
-    AstType* operator()(const LocalType& lt)
-    {
-        return Luau::visit(*this, lt.domain->ty);
-    }
     AstType* operator()(const UnionType& uv)
     {
         AstArray<AstType*> unionTypes;
