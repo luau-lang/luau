@@ -561,6 +561,11 @@ void BlockedType::setOwner(Constraint* newOwner)
     owner = newOwner;
 }
 
+void BlockedType::replaceOwner(Constraint* newOwner)
+{
+    owner = newOwner;
+}
+
 PendingExpansionType::PendingExpansionType(
     std::optional<AstName> prefix, AstName name, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
     : prefix(prefix)

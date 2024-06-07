@@ -195,7 +195,7 @@ static Error parseJson(const std::string& contents, Action action)
             }
             else if (lexer.current().type == Lexeme::QuotedString)
             {
-                std::string value(lexer.current().data, lexer.current().length);
+                std::string value(lexer.current().data, lexer.current().getLength());
                 next(lexer);
 
                 if (Error err = action(keys, value))
@@ -232,7 +232,7 @@ static Error parseJson(const std::string& contents, Action action)
             }
             else if (lexer.current().type == Lexeme::QuotedString)
             {
-                std::string key(lexer.current().data, lexer.current().length);
+                std::string key(lexer.current().data, lexer.current().getLength());
                 next(lexer);
 
                 keys.push_back(key);
@@ -250,7 +250,7 @@ static Error parseJson(const std::string& contents, Action action)
                          lexer.current().type == Lexeme::ReservedFalse)
                 {
                     std::string value = lexer.current().type == Lexeme::QuotedString
-                                            ? std::string(lexer.current().data, lexer.current().length)
+                                            ? std::string(lexer.current().data, lexer.current().getLength())
                                             : (lexer.current().type == Lexeme::ReservedTrue ? "true" : "false");
                     next(lexer);
 

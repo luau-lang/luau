@@ -26,7 +26,6 @@ namespace CodeGen
 {
 
 enum class IrCondition : uint8_t;
-struct NativeState;
 struct IrOp;
 
 namespace X64

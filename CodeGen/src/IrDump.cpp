@@ -199,6 +199,8 @@ const char* getCmdName(IrCmd cmd)
         return "TRY_NUM_TO_INDEX";
     case IrCmd::TRY_CALL_FASTGETTM:
         return "TRY_CALL_FASTGETTM";
+    case IrCmd::NEW_USERDATA:
+        return "NEW_USERDATA";
     case IrCmd::INT_TO_NUM:
         return "INT_TO_NUM";
     case IrCmd::UINT_TO_NUM:
@@ -257,6 +259,8 @@ const char* getCmdName(IrCmd cmd)
         return "CHECK_NODE_VALUE";
     case IrCmd::CHECK_BUFFER_LEN:
         return "CHECK_BUFFER_LEN";
+    case IrCmd::CHECK_USERDATA_TAG:
+        return "CHECK_USERDATA_TAG";
     case IrCmd::INTERRUPT:
         return "INTERRUPT";
     case IrCmd::CHECK_GC:

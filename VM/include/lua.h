@@ -324,6 +324,10 @@ typedef void (*lua_Destructor)(lua_State* L, void* userdata);
 LUA_API void lua_setuserdatadtor(lua_State* L, int tag, lua_Destructor dtor);
 LUA_API lua_Destructor lua_getuserdatadtor(lua_State* L, int tag);
 
+// alternative access for metatables already registered with luaL_newmetatable
+LUA_API void lua_setuserdatametatable(lua_State* L, int tag, int idx);
+LUA_API void lua_getuserdatametatable(lua_State* L, int tag);
+
 LUA_API void lua_setlightuserdataname(lua_State* L, int tag, const char* name);
 LUA_API const char* lua_getlightuserdataname(lua_State* L, int tag);
 

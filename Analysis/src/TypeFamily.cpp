@@ -447,7 +447,7 @@ FamilyGraphReductionResult reduceFamilies(TypePackId entrypoint, Location locati
 
 bool isPending(TypeId ty, ConstraintSolver* solver)
 {
-    return is<BlockedType, PendingExpansionType, TypeFamilyInstanceType, LocalType>(ty) || (solver && solver->hasUnresolvedConstraints(ty));
+    return is<BlockedType, PendingExpansionType, TypeFamilyInstanceType>(ty) || (solver && solver->hasUnresolvedConstraints(ty));
 }
 
 template<typename F, typename... Args>
@@ -567,7 +567,7 @@ TypeFamilyReductionResult<TypeId> lenFamilyFn(TypeId instance, const std::vector
 
     // check to see if the operand type is resolved enough, and wait to reduce if not
     // the use of `typeFromNormal` later necessitates blocking on local types.
-    if (isPending(operandTy, ctx->solver) || get<LocalType>(operandTy))
+    if (isPending(operandTy, ctx->solver))
         return {std::nullopt, false, {operandTy}, {}};
 
     // if the type is free but has only one remaining reference, we can generalize it to its upper bound here.
@@ -1422,12 +1422,6 @@ struct FindRefinementBlockers : TypeOnceVisitor
     }
 
     bool visit(TypeId ty, const PendingExpansionType&) override
-    {
-        found.insert(ty);
-        return false;
-    }
-
-    bool visit(TypeId ty, const LocalType&) override
     {
         found.insert(ty);
         return false;

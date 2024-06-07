@@ -24,6 +24,8 @@ LUAU_FASTFLAG(LuauCompileTempTypeInfo)
 LUAU_FASTFLAG(LuauCodegenAnalyzeHostVectorOps)
 LUAU_FASTFLAG(LuauCompileUserdataInfo)
 LUAU_FASTFLAG(LuauLoadUserdataInfo)
+LUAU_FASTFLAG(LuauCodegenUserdataOps)
+LUAU_FASTFLAG(LuauCodegenUserdataAlloc)
 
 static std::string getCodegenAssembly(const char* source, bool includeIrTypes = false, int debugLevel = 1)
 {
@@ -33,6 +35,13 @@ static std::string getCodegenAssembly(const char* source, bool includeIrTypes = 
     options.compilationOptions.hooks.vectorNamecallBytecodeType = vectorNamecallBytecodeType;
     options.compilationOptions.hooks.vectorAccess = vectorAccess;
     options.compilationOptions.hooks.vectorNamecall = vectorNamecall;
+
+    options.compilationOptions.hooks.userdataAccessBytecodeType = userdataAccessBytecodeType;
+    options.compilationOptions.hooks.userdataMetamethodBytecodeType = userdataMetamethodBytecodeType;
+    options.compilationOptions.hooks.userdataNamecallBytecodeType = userdataNamecallBytecodeType;
+    options.compilationOptions.hooks.userdataAccess = userdataAccess;
+    options.compilationOptions.hooks.userdataMetamethod = userdataMetamethod;
+    options.compilationOptions.hooks.userdataNamecall = userdataNamecall;
 
     // For IR, we don't care about assembly, but we want a stable target
     options.target = Luau::CodeGen::AssemblyOptions::Target::X64_SystemV;
@@ -1687,6 +1696,354 @@ end
 ; function foo(v, x) line 2
 ; R0: vec2 [argument 'v']
 ; R1: mat3 [argument 'x']
+)");
+}
+
+TEST_CASE("CustomUserdataPropertyAccess")
+{
+    // This test requires runtime component to be present
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenUserdataOps, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function foo(v: vec2)
+    return v.X + v.Y
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function foo($arg0) line 2
+; R0: vec2 [argument]
+bb_0:
+  CHECK_TAG R0, tuserdata, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %6 = LOAD_POINTER R0
+  CHECK_USERDATA_TAG %6, 12i, exit(0)
+  %8 = BUFFER_READF32 %6, 0i, tuserdata
+  %15 = BUFFER_READF32 %6, 4i, tuserdata
+  %24 = ADD_NUM %8, %15
+  STORE_DOUBLE R1, %24
+  STORE_TAG R1, tnumber
+  INTERRUPT 5u
+  RETURN R1, 1i
+)");
+}
+
+TEST_CASE("CustomUserdataPropertyAccess2")
+{
+    // This test requires runtime component to be present
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenUserdataOps, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function foo(a: mat3)
+    return a.Row1 * a.Row2
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function foo($arg0) line 2
+; R0: mat3 [argument]
+bb_0:
+  CHECK_TAG R0, tuserdata, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  FALLBACK_GETTABLEKS 0u, R2, R0, K0
+  FALLBACK_GETTABLEKS 2u, R3, R0, K1
+  CHECK_TAG R2, tvector, exit(4)
+  CHECK_TAG R3, tvector, exit(4)
+  %14 = LOAD_TVALUE R2
+  %15 = LOAD_TVALUE R3
+  %16 = MUL_VEC %14, %15
+  %17 = TAG_VECTOR %16
+  STORE_TVALUE R1, %17
+  INTERRUPT 5u
+  RETURN R1, 1i
+)");
+}
+
+TEST_CASE("CustomUserdataNamecall1")
+{
+    // This test requires runtime component to be present
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenAnalyzeHostVectorOps, true},
+        {FFlag::LuauCodegenUserdataOps, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function foo(a: vec2, b: vec2)
+    return a:Dot(b)
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function foo($arg0, $arg1) line 2
+; R0: vec2 [argument]
+; R1: vec2 [argument]
+bb_0:
+  CHECK_TAG R0, tuserdata, exit(entry)
+  CHECK_TAG R1, tuserdata, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %6 = LOAD_TVALUE R1
+  STORE_TVALUE R4, %6
+  %10 = LOAD_POINTER R0
+  CHECK_USERDATA_TAG %10, 12i, exit(1)
+  %14 = LOAD_POINTER R4
+  CHECK_USERDATA_TAG %14, 12i, exit(1)
+  %16 = BUFFER_READF32 %10, 0i, tuserdata
+  %17 = BUFFER_READF32 %14, 0i, tuserdata
+  %18 = MUL_NUM %16, %17
+  %19 = BUFFER_READF32 %10, 4i, tuserdata
+  %20 = BUFFER_READF32 %14, 4i, tuserdata
+  %21 = MUL_NUM %19, %20
+  %22 = ADD_NUM %18, %21
+  STORE_DOUBLE R2, %22
+  STORE_TAG R2, tnumber
+  ADJUST_STACK_TO_REG R2, 1i
+  INTERRUPT 4u
+  RETURN R2, -1i
+)");
+}
+
+TEST_CASE("CustomUserdataNamecall2")
+{
+    // This test requires runtime component to be present
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenAnalyzeHostVectorOps, true},
+        {FFlag::LuauCodegenUserdataOps, true}, {FFlag::LuauCodegenUserdataAlloc, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function foo(a: vec2, b: vec2)
+    return a:Min(b)
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function foo($arg0, $arg1) line 2
+; R0: vec2 [argument]
+; R1: vec2 [argument]
+bb_0:
+  CHECK_TAG R0, tuserdata, exit(entry)
+  CHECK_TAG R1, tuserdata, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %6 = LOAD_TVALUE R1
+  STORE_TVALUE R4, %6
+  %10 = LOAD_POINTER R0
+  CHECK_USERDATA_TAG %10, 12i, exit(1)
+  %14 = LOAD_POINTER R4
+  CHECK_USERDATA_TAG %14, 12i, exit(1)
+  %16 = BUFFER_READF32 %10, 0i, tuserdata
+  %17 = BUFFER_READF32 %14, 0i, tuserdata
+  %18 = MIN_NUM %16, %17
+  %19 = BUFFER_READF32 %10, 4i, tuserdata
+  %20 = BUFFER_READF32 %14, 4i, tuserdata
+  %21 = MIN_NUM %19, %20
+  CHECK_GC
+  %23 = NEW_USERDATA 8i, 12i
+  BUFFER_WRITEF32 %23, 0i, %18, tuserdata
+  BUFFER_WRITEF32 %23, 4i, %21, tuserdata
+  STORE_POINTER R2, %23
+  STORE_TAG R2, tuserdata
+  ADJUST_STACK_TO_REG R2, 1i
+  INTERRUPT 4u
+  RETURN R2, -1i
+)");
+}
+
+TEST_CASE("CustomUserdataMetamethodDirectFlow")
+{
+    // This test requires runtime component to be present
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenUserdataOps, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function foo(a: mat3, b: mat3)
+    return a * b
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function foo($arg0, $arg1) line 2
+; R0: mat3 [argument]
+; R1: mat3 [argument]
+bb_0:
+  CHECK_TAG R0, tuserdata, exit(entry)
+  CHECK_TAG R1, tuserdata, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  SET_SAVEDPC 1u
+  DO_ARITH R2, R0, R1, 10i
+  INTERRUPT 1u
+  RETURN R2, 1i
+)");
+}
+
+TEST_CASE("CustomUserdataMetamethodDirectFlow2")
+{
+    // This test requires runtime component to be present
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenUserdataOps, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function foo(a: mat3)
+    return -a
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function foo($arg0) line 2
+; R0: mat3 [argument]
+bb_0:
+  CHECK_TAG R0, tuserdata, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  SET_SAVEDPC 1u
+  DO_ARITH R1, R0, R0, 15i
+  INTERRUPT 1u
+  RETURN R1, 1i
+)");
+}
+
+TEST_CASE("CustomUserdataMetamethodDirectFlow3")
+{
+    // This test requires runtime component to be present
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenUserdataOps, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function foo(a: sequence)
+    return #a
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function foo($arg0) line 2
+; R0: userdata [argument]
+bb_0:
+  CHECK_TAG R0, tuserdata, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  SET_SAVEDPC 1u
+  DO_LEN R1, R0
+  INTERRUPT 1u
+  RETURN R1, 1i
+)");
+}
+
+TEST_CASE("CustomUserdataMetamethod")
+{
+    // This test requires runtime component to be present
+    if (!Luau::CodeGen::isSupported())
+        return;
+
+    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
+        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenUserdataOps, true},
+        {FFlag::LuauCodegenUserdataAlloc, true}};
+
+    CHECK_EQ("\n" + getCodegenAssembly(R"(
+local function foo(a: vec2, b: vec2, c: vec2)
+    return -c + a * b
+end
+)",
+                        /* includeIrTypes */ true),
+        R"(
+; function foo($arg0, $arg1, $arg2) line 2
+; R0: vec2 [argument]
+; R1: vec2 [argument]
+; R2: vec2 [argument]
+bb_0:
+  CHECK_TAG R0, tuserdata, exit(entry)
+  CHECK_TAG R1, tuserdata, exit(entry)
+  CHECK_TAG R2, tuserdata, exit(entry)
+  JUMP bb_2
+bb_2:
+  JUMP bb_bytecode_1
+bb_bytecode_1:
+  %10 = LOAD_POINTER R2
+  CHECK_USERDATA_TAG %10, 12i, exit(0)
+  %12 = BUFFER_READF32 %10, 0i, tuserdata
+  %13 = BUFFER_READF32 %10, 4i, tuserdata
+  %14 = UNM_NUM %12
+  %15 = UNM_NUM %13
+  CHECK_GC
+  %17 = NEW_USERDATA 8i, 12i
+  BUFFER_WRITEF32 %17, 0i, %14, tuserdata
+  BUFFER_WRITEF32 %17, 4i, %15, tuserdata
+  STORE_POINTER R4, %17
+  STORE_TAG R4, tuserdata
+  %26 = LOAD_POINTER R0
+  CHECK_USERDATA_TAG %26, 12i, exit(1)
+  %28 = LOAD_POINTER R1
+  CHECK_USERDATA_TAG %28, 12i, exit(1)
+  %30 = BUFFER_READF32 %26, 0i, tuserdata
+  %31 = BUFFER_READF32 %28, 0i, tuserdata
+  %32 = MUL_NUM %30, %31
+  %33 = BUFFER_READF32 %26, 4i, tuserdata
+  %34 = BUFFER_READF32 %28, 4i, tuserdata
+  %35 = MUL_NUM %33, %34
+  %37 = NEW_USERDATA 8i, 12i
+  BUFFER_WRITEF32 %37, 0i, %32, tuserdata
+  BUFFER_WRITEF32 %37, 4i, %35, tuserdata
+  STORE_POINTER R5, %37
+  STORE_TAG R5, tuserdata
+  %50 = BUFFER_READF32 %17, 0i, tuserdata
+  %51 = BUFFER_READF32 %37, 0i, tuserdata
+  %52 = ADD_NUM %50, %51
+  %53 = BUFFER_READF32 %17, 4i, tuserdata
+  %54 = BUFFER_READF32 %37, 4i, tuserdata
+  %55 = ADD_NUM %53, %54
+  %57 = NEW_USERDATA 8i, 12i
+  BUFFER_WRITEF32 %57, 0i, %52, tuserdata
+  BUFFER_WRITEF32 %57, 4i, %55, tuserdata
+  STORE_POINTER R3, %57
+  STORE_TAG R3, tuserdata
+  INTERRUPT 3u
+  RETURN R3, 1i
 )");
 }
 

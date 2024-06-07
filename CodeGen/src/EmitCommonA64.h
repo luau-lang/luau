@@ -22,8 +22,6 @@ namespace Luau
 namespace CodeGen
 {
 
-struct NativeState;
-
 namespace A64
 {
 
