@@ -14,8 +14,8 @@
 
 LUAU_FASTFLAGVARIABLE(LuauCodegenCheckNullContext, false)
 
-LUAU_FASTINT(LuauCodeGenBlockSize)
-LUAU_FASTINT(LuauCodeGenMaxTotalSize)
+LUAU_FASTINTVARIABLE(LuauCodeGenBlockSize, 4 * 1024 * 1024)
+LUAU_FASTINTVARIABLE(LuauCodeGenMaxTotalSize, 256 * 1024 * 1024)
 
 namespace Luau
 {

@@ -57,7 +57,7 @@ struct GeneralizationConstraint
 struct IterableConstraint
 {
     TypePackId iterator;
-    TypePackId variables;
+    std::vector<TypeId> variables;
 
     const AstNode* nextAstFragment;
     DenseHashMap<const AstNode*, TypeId>* astForInNextTypes;
@@ -192,13 +192,7 @@ struct HasIndexerConstraint
     TypeId indexType;
 };
 
-struct AssignConstraint
-{
-    TypeId lhsType;
-    TypeId rhsType;
-};
-
-// assign lhsType propName rhsType
+// assignProp lhsType propName rhsType
 //
 // Assign a value of type rhsType into the named property of lhsType.
 
@@ -212,6 +206,12 @@ struct AssignPropConstraint
     /// populate astTypes during constraint resolution.  Nothing should ever
     /// block on it.
     TypeId propType;
+
+    // When we generate constraints, we increment the remaining prop count on
+    // the table if we are able. This flag informs the solver as to whether or
+    // not it should in turn decrement the prop count when this constraint is
+    // dispatched.
+    bool decrementPropCount = false;
 };
 
 struct AssignIndexConstraint
@@ -226,13 +226,13 @@ struct AssignIndexConstraint
     TypeId propType;
 };
 
-// resultType ~ unpack sourceTypePack
+// resultTypes ~ unpack sourceTypePack
 //
 // Similar to PackSubtypeConstraint, but with one important difference: If the
 // sourcePack is blocked, this constraint blocks.
 struct UnpackConstraint
 {
-    TypePackId resultPack;
+    std::vector<TypeId> resultPack;
     TypePackId sourcePack;
 };
 
@@ -254,7 +254,7 @@ struct ReducePackConstraint
 
 using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, IterableConstraint, NameConstraint,
     TypeAliasExpansionConstraint, FunctionCallConstraint, FunctionCheckConstraint, PrimitiveTypeConstraint, HasPropConstraint, HasIndexerConstraint,
-    AssignConstraint, AssignPropConstraint, AssignIndexConstraint, UnpackConstraint, ReduceConstraint, ReducePackConstraint, EqualityConstraint>;
+    AssignPropConstraint, AssignIndexConstraint, UnpackConstraint, ReduceConstraint, ReducePackConstraint, EqualityConstraint>;
 
 struct Constraint
 {

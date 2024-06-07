@@ -142,7 +142,6 @@ struct ConstraintSolver
     std::pair<bool, std::optional<TypeId>> tryDispatchSetIndexer(
         NotNull<const Constraint> constraint, TypeId subjectType, TypeId indexType, TypeId propType, bool expandFreeTypeBounds);
 
-    bool tryDispatch(const AssignConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const AssignPropConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const AssignIndexConstraint& c, NotNull<const Constraint> constraint);
 
@@ -158,8 +157,7 @@ struct ConstraintSolver
     bool tryDispatchIterableTable(TypeId iteratorTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
 
     // for a, ... in next_function, t, ... do
-    bool tryDispatchIterableFunction(
-        TypeId nextTy, TypeId tableTy, TypeId firstIndexTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
+    bool tryDispatchIterableFunction(TypeId nextTy, TypeId tableTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
 
     std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(NotNull<const Constraint> constraint, TypeId subjectType,
         const std::string& propName, ValueContext context, bool inConditional = false, bool suppressSimplification = false);
@@ -168,14 +166,18 @@ struct ConstraintSolver
 
     /**
      * Generate constraints to unpack the types of srcTypes and assign each
-     * value to the corresponding LocalType in destTypes.
+     * value to the corresponding BlockedType in destTypes.
      *
-     * @param destTypes A finite TypePack comprised of LocalTypes.
+     * This function also overwrites the owners of each BlockedType.  This is
+     * okay because this function is only used to decompose IterableConstraint
+     * into an UnpackConstraint.
+     *
+     * @param destTypes A vector of types comprised of BlockedTypes.
      * @param srcTypes A TypePack that represents rvalues to be assigned.
      * @returns The underlying UnpackConstraint.  There's a bit of code in
      * iteration that needs to pass blocks on to this constraint.
      */
-    NotNull<const Constraint> unpackAndAssign(TypePackId destTypes, TypePackId srcTypes, NotNull<const Constraint> constraint);
+    NotNull<const Constraint> unpackAndAssign(const std::vector<TypeId> destTypes, TypePackId srcTypes, NotNull<const Constraint> constraint);
 
     void block(NotNull<const Constraint> target, NotNull<const Constraint> constraint);
     /**

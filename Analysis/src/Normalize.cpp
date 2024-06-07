@@ -1815,12 +1815,6 @@ NormalizationResult Normalizer::unionNormalWithTy(NormalizedType& here, TypeId t
         if (!isCacheable(there))
             here.isCacheable = false;
     }
-    else if (auto lt = get<LocalType>(there))
-    {
-        // FIXME?  This is somewhat questionable.
-        // Maybe we should assert because this should never happen?
-        unionNormalWithTy(here, lt->domain, seenSetTypes, ignoreSmallerTyvars);
-    }
     else if (get<FunctionType>(there))
         unionFunctionsWithFunction(here.functions, there);
     else if (get<TableType>(there) || get<MetatableType>(there))
@@ -3095,7 +3089,7 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
         return NormalizationResult::True;
     }
     else if (get<GenericType>(there) || get<FreeType>(there) || get<BlockedType>(there) || get<PendingExpansionType>(there) ||
-             get<TypeFamilyInstanceType>(there) || get<LocalType>(there))
+             get<TypeFamilyInstanceType>(there))
     {
         NormalizedType thereNorm{builtinTypes};
         NormalizedType topNorm{builtinTypes};
@@ -3103,10 +3097,6 @@ NormalizationResult Normalizer::intersectNormalWithTy(NormalizedType& here, Type
         thereNorm.tyvars.insert_or_assign(there, std::make_unique<NormalizedType>(std::move(topNorm)));
         here.isCacheable = false;
         return intersectNormals(here, thereNorm);
-    }
-    else if (auto lt = get<LocalType>(there))
-    {
-        return intersectNormalWithTy(here, lt->domain, seenSetTypes);
     }
 
     NormalizedTyvars tyvars = std::move(here.tyvars);

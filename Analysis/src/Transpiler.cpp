@@ -1182,11 +1182,11 @@ std::string toString(AstNode* node)
     Printer printer(writer);
     printer.writeTypes = true;
 
-    if (auto statNode = dynamic_cast<AstStat*>(node))
+    if (auto statNode = node->asStat())
         printer.visualize(*statNode);
-    else if (auto exprNode = dynamic_cast<AstExpr*>(node))
+    else if (auto exprNode = node->asExpr())
         printer.visualize(*exprNode);
-    else if (auto typeNode = dynamic_cast<AstType*>(node))
+    else if (auto typeNode = node->asType())
         printer.visualizeTypeAnnotation(*typeNode);
 
     return writer.str();

@@ -262,14 +262,6 @@ void StateDot::visitChildren(TypeId ty, int index)
                     visitChild(t.upperBound, index, "[upperBound]");
             }
         }
-        else if constexpr (std::is_same_v<T, LocalType>)
-        {
-            formatAppend(result, "LocalType");
-            finishNodeLabel(ty);
-            finishNode();
-
-            visitChild(t.domain, 1, "[domain]");
-        }
         else if constexpr (std::is_same_v<T, AnyType>)
         {
             formatAppend(result, "AnyType %d", index);

@@ -69,7 +69,6 @@ struct Unifier2
      */
     bool unify(TypeId subTy, TypeId superTy);
     bool unifyFreeWithType(TypeId subTy, TypeId superTy);
-    bool unify(const LocalType* subTy, TypeId superFn);
     bool unify(TypeId subTy, const FunctionType* superFn);
     bool unify(const UnionType* subUnion, TypeId superTy);
     bool unify(TypeId subTy, const UnionType* superUnion);

@@ -14,6 +14,7 @@
 #include "lstate.h"
 #include "lstring.h"
 #include "ltable.h"
+#include "ludata.h"
 
 #include <string.h>
 
@@ -217,6 +218,20 @@ void callEpilogC(lua_State* L, int nresults, int n)
     L->ci = cip;
     L->base = cip->base;
     L->top = (nresults == LUA_MULTRET) ? res : cip->top;
+}
+
+Udata* newUserdata(lua_State* L, size_t s, int tag)
+{
+    Udata* u = luaU_newudata(L, s, tag);
+
+    if (Table* h = L->global->udatamt[tag])
+    {
+        u->metatable = h;
+
+        luaC_objbarrier(L, u, h);
+    }
+
+    return u;
 }
 
 // Extracted as-is from lvmexecute.cpp with the exception of control flow (reentry) and removed interrupts/savedpc

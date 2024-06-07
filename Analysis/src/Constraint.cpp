@@ -81,7 +81,8 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes() const
     }
     else if (auto itc = get<IterableConstraint>(*this))
     {
-        rci.traverse(itc->variables);
+        for (TypeId ty : itc->variables)
+            rci.traverse(ty);
         // `IterableConstraints` should not mutate `iterator`.
     }
     else if (auto nc = get<NameConstraint>(*this))
@@ -106,11 +107,6 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes() const
         rci.traverse(hic->resultType);
         // `HasIndexerConstraint` should not mutate `subjectType` or `indexType`.
     }
-    else if (auto ac = get<AssignConstraint>(*this))
-    {
-        rci.traverse(ac->lhsType);
-        rci.traverse(ac->rhsType);
-    }
     else if (auto apc = get<AssignPropConstraint>(*this))
     {
         rci.traverse(apc->lhsType);
@@ -124,7 +120,8 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes() const
     }
     else if (auto uc = get<UnpackConstraint>(*this))
     {
-        rci.traverse(uc->resultPack);
+        for (TypeId ty : uc->resultPack)
+            rci.traverse(ty);
         // `UnpackConstraint` should not mutate `sourcePack`.
     }
     else if (auto rpc = get<ReducePackConstraint>(*this))

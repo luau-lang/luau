@@ -290,6 +290,11 @@ enum class IrCmd : uint8_t
     // C: block
     TRY_CALL_FASTGETTM,
 
+    // Create new tagged userdata
+    // A: int (size)
+    // B: int (tag)
+    NEW_USERDATA,
+
     // Convert integer into a double number
     // A: int
     INT_TO_NUM,
@@ -459,6 +464,13 @@ enum class IrCmd : uint8_t
     // D: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_BUFFER_LEN,
+
+    // Guard against userdata tag mismatch
+    // A: pointer (userdata)
+    // B: int (tag)
+    // C: block/vmexit/undef
+    // When undef is specified instead of a block, execution is aborted on check failure
+    CHECK_USERDATA_TAG,
 
     // Special operations
 

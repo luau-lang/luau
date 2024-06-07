@@ -24,8 +24,6 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
         // We decline to copy them.
         if constexpr (std::is_same_v<T, FreeType>)
             return ty;
-        else if constexpr (std::is_same_v<T, LocalType>)
-            return ty;
         else if constexpr (std::is_same_v<T, BoundType>)
         {
             // This should never happen, but visit() cannot see it.

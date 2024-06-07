@@ -99,6 +99,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::TRY_NUM_TO_INDEX:
         return IrValueKind::Int;
     case IrCmd::TRY_CALL_FASTGETTM:
+    case IrCmd::NEW_USERDATA:
         return IrValueKind::Pointer;
     case IrCmd::INT_TO_NUM:
     case IrCmd::UINT_TO_NUM:
@@ -135,6 +136,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::CHECK_NODE_NO_NEXT:
     case IrCmd::CHECK_NODE_VALUE:
     case IrCmd::CHECK_BUFFER_LEN:
+    case IrCmd::CHECK_USERDATA_TAG:
     case IrCmd::INTERRUPT:
     case IrCmd::CHECK_GC:
     case IrCmd::BARRIER_OBJ:
@@ -260,6 +262,44 @@ bool isUserdataBytecodeType(uint8_t ty)
 bool isCustomUserdataBytecodeType(uint8_t ty)
 {
     return ty >= LBC_TYPE_TAGGED_USERDATA_BASE && ty < LBC_TYPE_TAGGED_USERDATA_END;
+}
+
+HostMetamethod tmToHostMetamethod(int tm)
+{
+    switch (TMS(tm))
+    {
+    case TM_ADD:
+        return HostMetamethod::Add;
+    case TM_SUB:
+        return HostMetamethod::Sub;
+    case TM_MUL:
+        return HostMetamethod::Mul;
+    case TM_DIV:
+        return HostMetamethod::Div;
+    case TM_IDIV:
+        return HostMetamethod::Idiv;
+    case TM_MOD:
+        return HostMetamethod::Mod;
+    case TM_POW:
+        return HostMetamethod::Pow;
+    case TM_UNM:
+        return HostMetamethod::Minus;
+    case TM_EQ:
+        return HostMetamethod::Equal;
+    case TM_LT:
+        return HostMetamethod::LessThan;
+    case TM_LE:
+        return HostMetamethod::LessEqual;
+    case TM_LEN:
+        return HostMetamethod::Length;
+    case TM_CONCAT:
+        return HostMetamethod::Concat;
+    default:
+        CODEGEN_ASSERT(!"invalid tag method for host");
+        break;
+    }
+
+    return HostMetamethod::Add;
 }
 
 void kill(IrFunction& function, IrInst& inst)

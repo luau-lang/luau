@@ -1196,12 +1196,6 @@ struct InternalTypeFinder : TypeOnceVisitor
         return false;
     }
 
-    bool visit(TypeId, const LocalType&) override
-    {
-        LUAU_ASSERT(false);
-        return false;
-    }
-
     bool visit(TypePackId, const BlockedTypePack&) override
     {
         LUAU_ASSERT(false);

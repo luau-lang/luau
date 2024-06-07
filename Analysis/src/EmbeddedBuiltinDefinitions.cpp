@@ -2,6 +2,7 @@
 #include "Luau/BuiltinDefinitions.h"
 
 LUAU_FASTFLAGVARIABLE(LuauCheckedEmbeddedDefinitions2, false);
+LUAU_FASTFLAG(LuauAttributeSyntax);
 
 namespace Luau
 {
@@ -319,9 +320,9 @@ declare os: {
     clock: () -> number,
 }
 
-declare function @checked require(target: any): any
+@checked declare function require(target: any): any
 
-declare function @checked getfenv(target: any): { [string]: any }
+@checked declare function getfenv(target: any): { [string]: any }
 
 declare _G: any
 declare _VERSION: string
@@ -363,7 +364,7 @@ declare function select<A...>(i: string | number, ...: A...): ...any
 -- (nil, string).
 declare function loadstring<A...>(src: string, chunkname: string?): (((A...) -> any)?, string?)
 
-declare function @checked newproxy(mt: boolean?): any
+@checked declare function newproxy(mt: boolean?): any
 
 declare coroutine: {
     create: <A..., R...>(f: (A...) -> R...) -> thread,
@@ -451,7 +452,7 @@ std::string getBuiltinDefinitionSource()
     std::string result = kBuiltinDefinitionLuaSrc;
 
     // Annotates each non generic function as checked
-    if (FFlag::LuauCheckedEmbeddedDefinitions2)
+    if (FFlag::LuauCheckedEmbeddedDefinitions2 && FFlag::LuauAttributeSyntax)
         result = kBuiltinDefinitionLuaSrcChecked;
 
     return result;
