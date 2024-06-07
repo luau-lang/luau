@@ -412,8 +412,8 @@ do
 
   assert(table.find({false, true}, true) == 2)
 
-  -- make sure table.find checks the hash portion as well by constructing a table literal that forces the value into the hash part
-  assert(table.find({[(1)] = true}, true) == 1)
+  -- make sure table.find checks the hash portion as well
+  assert(table.find({[(2)] = true}, true, 2) == 2)
 end
 
 -- test table.concat
