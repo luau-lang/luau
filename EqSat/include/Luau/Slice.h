@@ -4,6 +4,7 @@
 #include "Luau/Common.h"
 
 #include <array>
+#include <cstddef>
 
 namespace Luau::EqSat
 {
