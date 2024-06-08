@@ -209,7 +209,7 @@ public:
     }
 
     template<typename T>
-    const Id& field() const
+    Id field() const
     {
         static_assert(std::disjunction_v<std::is_same<std::decay_t<T>, Fields>...>);
         return array[getIndex<T>()];
