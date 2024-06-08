@@ -300,6 +300,7 @@ target_sources(Luau.EqSat PRIVATE
     EqSat/include/Luau/EGraph.h
     EqSat/include/Luau/Id.h
     EqSat/include/Luau/Language.h
+    EqSat/include/Luau/LanguageHash.h
     EqSat/include/Luau/Slice.h
     EqSat/include/Luau/UnionFind.h
 

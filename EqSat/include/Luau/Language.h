@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Id.h"
+#include "Luau/LanguageHash.h"
 #include "Luau/Slice.h"
 
 #include <array>
@@ -44,22 +45,6 @@
 
 namespace Luau::EqSat
 {
-
-template<typename T, typename = void>
-struct LanguageHash
-{
-    size_t operator()(const T&) const
-    {
-        // See available specializations at the bottom of this file.
-        static_assert(false, "missing languageHash specialization");
-    }
-};
-
-template <typename T>
-std::size_t languageHash(const T& lang)
-{
-    return LanguageHash<T>{}(lang);
-}
 
 template<typename Phantom, typename T>
 struct Atom
@@ -399,46 +384,6 @@ public:
             return seed;
         }
     };
-};
-
-inline void hashCombine(size_t& seed, size_t hash)
-{
-    // Golden Ratio constant used for better hash scattering
-    // See https://softwareengineering.stackexchange.com/a/402543
-    seed ^= hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-}
-
-template<typename T>
-struct LanguageHash<T, std::void_t<decltype(std::hash<T>{}(std::declval<T>()))>>
-{
-    size_t operator()(const T& t) const
-    {
-        return std::hash<T>{}(t);
-    }
-};
-
-template<typename T, size_t I>
-struct LanguageHash<std::array<T, I>>
-{
-    size_t operator()(const std::array<T, I>& array) const
-    {
-        size_t seed = 0;
-        for (const T& t : array)
-            hashCombine(seed, languageHash(t));
-        return seed;
-    }
-};
-
-template<typename T>
-struct LanguageHash<std::vector<T>>
-{
-    size_t operator()(const std::vector<T>& vector) const
-    {
-        size_t seed = 0;
-        for (const T& t : vector)
-            hashCombine(seed, languageHash(t));
-        return seed;
-    }
 };
 
 } // namespace Luau::EqSat
