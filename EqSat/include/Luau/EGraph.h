@@ -145,8 +145,11 @@ private:
         }
 
         eclass.parents.clear();
-        for (auto& [enode, id] : map)
-            eclass.parents.push_back({std::move(enode), id});
+        for (auto it = map.begin(); it != map.end();)
+        {
+            auto node = map.extract(it++);
+            eclass.parents.emplace_back(std::move(node.key()), node.mapped());
+        }
     }
 
 public:
@@ -186,7 +189,7 @@ public:
         unionfind.merge(id1, id2);
 
         EClass<L, typename N::Data>& eclass1 = get(id1);
-        EClass<L, typename N::Data> eclass2 = get(id2);
+        EClass<L, typename N::Data> eclass2 = std::move(get(id2));
         classes.erase(id2);
 
         worklist.reserve(worklist.size() + eclass2.parents.size());
