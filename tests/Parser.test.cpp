@@ -17,7 +17,8 @@ LUAU_FASTINT(LuauTypeLengthLimit);
 LUAU_FASTINT(LuauParseErrorLimit);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauAttributeSyntax);
-LUAU_FASTFLAG(LuauLeadingBarAndAmpersand);
+LUAU_FASTFLAG(LuauLeadingBarAndAmpersand2);
+LUAU_FASTFLAG(LuauAttributeSyntaxFunExpr);
 
 namespace
 {
@@ -3177,21 +3178,21 @@ TEST_CASE_FIXTURE(Fixture, "read_write_table_properties")
 
 TEST_CASE_FIXTURE(Fixture, "can_parse_leading_bar_unions_successfully")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand, true};
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
 
     parse(R"(type A = | "Hello" | "World")");
 }
 
 TEST_CASE_FIXTURE(Fixture, "can_parse_leading_ampersand_intersections_successfully")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand, true};
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
 
     parse(R"(type A = & { string } & { number })");
 }
 
 TEST_CASE_FIXTURE(Fixture, "mixed_leading_intersection_and_union_not_allowed")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand, true};
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
 
     matchParseError("type A = & number | string | boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
     matchParseError("type A = | number & string & boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
@@ -3232,6 +3233,45 @@ end)");
     CHECK_EQ(attributes.size, 1);
 
     checkAttribute(attributes.data[0], AstAttr::Type::Checked, Location(Position(1, 0), Position(1, 8)));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_attribute_for_function_expression")
+{
+    ScopedFastFlag sff[] = {{FFlag::LuauAttributeSyntax, true}, {FFlag::LuauAttributeSyntaxFunExpr, true}};
+
+    AstStatBlock* stat1 = parse(R"(
+local function invoker(f)
+    return f(1)
+end
+
+invoker(@checked function(x) return (x + 2) end)
+)");
+
+    LUAU_ASSERT(stat1 != nullptr);
+
+    AstExprFunction* func1 = stat1->body.data[1]->as<AstStatExpr>()->expr->as<AstExprCall>()->args.data[0]->as<AstExprFunction>();
+    LUAU_ASSERT(func1 != nullptr);
+
+    AstArray<AstAttr*> attributes1 = func1->attributes;
+
+    CHECK_EQ(attributes1.size, 1);
+
+    checkAttribute(attributes1.data[0], AstAttr::Type::Checked, Location(Position(5, 8), Position(5, 16)));
+
+    AstStatBlock* stat2 = parse(R"(
+local f = @checked function(x) return (x + 2) end
+)");
+
+    LUAU_ASSERT(stat2 != nullptr);
+
+    AstExprFunction* func2 = stat2->body.data[0]->as<AstStatLocal>()->values.data[0]->as<AstExprFunction>();
+    LUAU_ASSERT(func2 != nullptr);
+
+    AstArray<AstAttr*> attributes2 = func2->attributes;
+
+    CHECK_EQ(attributes2.size, 1);
+
+    checkAttribute(attributes2.data[0], AstAttr::Type::Checked, Location(Position(1, 10), Position(1, 18)));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_attribute_on_local_function_stat")
@@ -3340,6 +3380,22 @@ function foo1 () @checked return 'a' end
 )");
     checkFirstErrorForAttributes(pr8.errors, 1, Location(Position(1, 26), Position(1, 32)),
         "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'return' intead");
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_parse_attribute_on_argument_non_function")
+{
+    ScopedFastFlag sff[] = {{FFlag::LuauAttributeSyntax, true}, {FFlag::LuauAttributeSyntaxFunExpr, true}};
+
+    ParseResult pr = tryParse(R"(
+local function invoker(f, y)
+    return f(y)
+end
+
+invoker(function(x) return (x + 2) end, @checked 1)
+)");
+
+    checkFirstErrorForAttributes(
+        pr.errors, 1, Location(Position(5, 40), Position(5, 48)), "Expected 'function' declaration after attribute, but got '1' intead");
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_attribute_on_function_type_declaration")
@@ -3472,21 +3528,21 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "can_parse_leading_bar_unions_successfully")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand, true};
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
 
     parse(R"(type A = | "Hello" | "World")");
 }
 
 TEST_CASE_FIXTURE(Fixture, "can_parse_leading_ampersand_intersections_successfully")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand, true};
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
 
     parse(R"(type A = & { string } & { number })");
 }
 
 TEST_CASE_FIXTURE(Fixture, "mixed_leading_intersection_and_union_not_allowed")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand, true};
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
 
     matchParseError("type A = & number | string | boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
     matchParseError("type A = | number & string & boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");

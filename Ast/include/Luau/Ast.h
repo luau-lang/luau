@@ -207,6 +207,7 @@ public:
     enum Type
     {
         Checked,
+        Native,
     };
 
     AstAttr(const Location& location, Type type);
@@ -419,6 +420,8 @@ public:
         const std::optional<Location>& argLocation = std::nullopt);
 
     void visit(AstVisitor* visitor) override;
+
+    bool hasNativeAttribute() const;
 
     AstArray<AstAttr*> attributes;
     AstArray<AstGenericType> generics;

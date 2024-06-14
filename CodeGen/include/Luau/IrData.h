@@ -31,7 +31,7 @@ enum
 // * Rn - VM stack register slot, n in 0..254
 // * Kn - VM proto constant slot, n in 0..2^23-1
 // * UPn - VM function upvalue slot, n in 0..199
-// * A, B, C, D, E are instruction arguments
+// * A, B, C, D, E, F, G are instruction arguments
 enum class IrCmd : uint8_t
 {
     NOP,
@@ -869,6 +869,7 @@ struct IrInst
     IrOp d;
     IrOp e;
     IrOp f;
+    IrOp g;
 
     uint32_t lastUse = 0;
     uint16_t useCount = 0;
@@ -923,6 +924,7 @@ struct IrInstHash
         h = mix(h, key.d);
         h = mix(h, key.e);
         h = mix(h, key.f);
+        h = mix(h, key.g);
 
         // MurmurHash2 tail
         h ^= h >> 13;
@@ -937,7 +939,7 @@ struct IrInstEq
 {
     bool operator()(const IrInst& a, const IrInst& b) const
     {
-        return a.cmd == b.cmd && a.a == b.a && a.b == b.b && a.c == b.c && a.d == b.d && a.e == b.e && a.f == b.f;
+        return a.cmd == b.cmd && a.a == b.a && a.b == b.b && a.c == b.c && a.d == b.d && a.e == b.e && a.f == b.f && a.g == b.g;
     }
 };
 

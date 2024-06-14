@@ -14,6 +14,7 @@
 
 LUAU_FASTFLAG(LuauCodegenTypeInfo)
 LUAU_FASTFLAG(LuauLoadUserdataInfo)
+LUAU_FASTFLAG(LuauNativeAttribute)
 
 namespace Luau
 {
@@ -200,7 +201,10 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
         return std::string();
 
     std::vector<Proto*> protos;
-    gatherFunctions(protos, root, options.compilationOptions.flags);
+    if (FFlag::LuauNativeAttribute)
+        gatherFunctions(protos, root, options.compilationOptions.flags, root->flags & LPF_NATIVE_FUNCTION);
+    else
+        gatherFunctions_DEPRECATED(protos, root, options.compilationOptions.flags);
 
     protos.erase(std::remove_if(protos.begin(), protos.end(),
                      [](Proto* p) {

@@ -337,7 +337,9 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
                     TypeId matchedType = matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier,
                         expectedTableTy->indexer->indexResultType, *propTy, item.value, toBlock);
 
-                    tableTy->indexer->indexResultType = matchedType;
+                    // if the index result type is the prop type, we can replace it with the matched type here.
+                    if (tableTy->indexer->indexResultType == *propTy)
+                        tableTy->indexer->indexResultType = matchedType;
                 }
             }
             else if (item.kind == AstExprTable::Item::General)

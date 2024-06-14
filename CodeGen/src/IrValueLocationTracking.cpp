@@ -146,6 +146,7 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
         CODEGEN_ASSERT(inst.d.kind != IrOpKind::VmReg);
         CODEGEN_ASSERT(inst.e.kind != IrOpKind::VmReg);
         CODEGEN_ASSERT(inst.f.kind != IrOpKind::VmReg);
+        CODEGEN_ASSERT(inst.g.kind != IrOpKind::VmReg);
         break;
     }
 }

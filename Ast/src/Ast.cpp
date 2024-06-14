@@ -4,6 +4,7 @@
 #include "Luau/Common.h"
 
 LUAU_FASTFLAG(LuauAttributeSyntax);
+LUAU_FASTFLAG(LuauNativeAttribute);
 
 namespace Luau
 {
@@ -212,6 +213,18 @@ void AstExprFunction::visit(AstVisitor* visitor)
 
         body->visit(visitor);
     }
+}
+
+bool AstExprFunction::hasNativeAttribute() const
+{
+    LUAU_ASSERT(FFlag::LuauNativeAttribute);
+
+    for (const auto attribute : attributes)
+    {
+        if (attribute->type == AstAttr::Type::Native)
+            return true;
+    }
+    return false;
 }
 
 AstExprTable::AstExprTable(const Location& location, const AstArray<Item>& items)

@@ -9,7 +9,6 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(DebugLuauSharedSelf);
-LUAU_FASTFLAG(LuauForbidAliasNamedTypeof);
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -1065,8 +1064,6 @@ TEST_CASE_FIXTURE(Fixture, "table_types_record_the_property_locations")
 
 TEST_CASE_FIXTURE(Fixture, "typeof_is_not_a_valid_alias_name")
 {
-    ScopedFastFlag sff{FFlag::LuauForbidAliasNamedTypeof, true};
-
     CheckResult result = check(R"(
         type typeof = number
     )");

@@ -12,7 +12,6 @@
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauNormalizeNotUnknownIntersection)
-LUAU_FASTFLAG(LuauFixCyclicUnionsOfIntersections);
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 using namespace Luau;
 
@@ -799,8 +798,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_union")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_union_of_intersection")
 {
-    ScopedFastFlag sff{FFlag::LuauFixCyclicUnionsOfIntersections, true};
-
     // t1 where t1 = (string & t1) | string
     TypeId boundTy = arena.addType(BlockedType{});
     TypeId intersectTy = arena.addType(IntersectionType{{builtinTypes->stringType, boundTy}});
@@ -814,8 +811,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_union_of_intersection")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_intersection_of_unions")
 {
-    ScopedFastFlag sff{FFlag::LuauFixCyclicUnionsOfIntersections, true};
-
     // t1 where t1 = (string & t1) | string
     TypeId boundTy = arena.addType(BlockedType{});
     TypeId unionTy = arena.addType(UnionType{{builtinTypes->stringType, boundTy}});

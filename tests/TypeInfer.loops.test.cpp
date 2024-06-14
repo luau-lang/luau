@@ -696,13 +696,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         TypeId keyTy = requireType("key");
-
-        const UnionType* ut = get<UnionType>(keyTy);
-        REQUIRE(ut);
-
-        REQUIRE(ut->options.size() == 2);
-        CHECK_EQ(builtinTypes->nilType, follow(ut->options[0]));
-        CHECK_EQ(*builtinTypes->numberType, *ut->options[1]);
+        CHECK("number?" == toString(keyTy));
     }
     else
         CHECK_EQ(*builtinTypes->numberType, *requireType("key"));

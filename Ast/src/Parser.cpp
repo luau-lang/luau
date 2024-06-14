@@ -18,7 +18,9 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 LUAU_FASTFLAG(LuauAttributeSyntax)
-LUAU_FASTFLAGVARIABLE(LuauLeadingBarAndAmpersand, false)
+LUAU_FASTFLAGVARIABLE(LuauLeadingBarAndAmpersand2, false)
+LUAU_FASTFLAGVARIABLE(LuauNativeAttribute, false)
+LUAU_FASTFLAGVARIABLE(LuauAttributeSyntaxFunExpr, false)
 
 namespace Luau
 {
@@ -29,7 +31,7 @@ struct AttributeEntry
     AstAttr::Type type;
 };
 
-AttributeEntry kAttributeEntries[] = {{"@checked", AstAttr::Type::Checked}, {nullptr, AstAttr::Type::Checked}};
+AttributeEntry kAttributeEntries[] = {{"@checked", AstAttr::Type::Checked}, {"@native", AstAttr::Type::Native}, {nullptr, AstAttr::Type::Checked}};
 
 ParseError::ParseError(const Location& location, const std::string& message)
     : location(location)
@@ -703,6 +705,10 @@ std::pair<bool, AstAttr::Type> Parser::validateAttribute(const char* attributeNa
         if (found)
         {
             type = kAttributeEntries[i].type;
+
+            if (!FFlag::LuauNativeAttribute && type == AstAttr::Type::Native)
+                found = false;
+
             break;
         }
     }
@@ -772,7 +778,7 @@ AstStat* Parser::parseAttributeStat()
 {
     LUAU_ASSERT(FFlag::LuauAttributeSyntax);
 
-    AstArray<AstAttr*> attributes = Parser::parseAttributes();
+    AstArray<AstAttr*> attributes = parseAttributes();
 
     Lexeme::Type type = lexer.current().type;
 
@@ -1654,7 +1660,7 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
 {
     TempVector<AstType*> parts(scratchType);
 
-    if (!FFlag::LuauLeadingBarAndAmpersand || type != nullptr)
+    if (!FFlag::LuauLeadingBarAndAmpersand2 || type != nullptr)
     {
         parts.push_back(type);
     }
@@ -1682,6 +1688,8 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
         }
         else if (c == '?')
         {
+            LUAU_ASSERT(parts.size() >= 1);
+
             Location loc = lexer.current().location;
             nextLexeme();
 
@@ -1714,7 +1722,7 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
     }
 
     if (parts.size() == 1)
-        return type;
+        return FFlag::LuauLeadingBarAndAmpersand2 ? parts[0] : type;
 
     if (isUnion && isIntersection)
     {
@@ -1761,7 +1769,7 @@ AstType* Parser::parseType(bool inDeclarationContext)
 
     Location begin = lexer.current().location;
 
-    if (FFlag::LuauLeadingBarAndAmpersand)
+    if (FFlag::LuauLeadingBarAndAmpersand2)
     {
         AstType* type = nullptr;
 
@@ -2369,10 +2377,23 @@ static ConstantNumberParseResult parseDouble(double& result, const char* data)
     return ConstantNumberParseResult::Ok;
 }
 
-// simpleexp -> NUMBER | STRING | NIL | true | false | ... | constructor | FUNCTION body | primaryexp
+// simpleexp -> NUMBER | STRING | NIL | true | false | ... | constructor | [attributes] FUNCTION body | primaryexp
 AstExpr* Parser::parseSimpleExpr()
 {
     Location start = lexer.current().location;
+
+    AstArray<AstAttr*> attributes{nullptr, 0};
+
+    if (FFlag::LuauAttributeSyntax && FFlag::LuauAttributeSyntaxFunExpr && lexer.current().type == Lexeme::Attribute)
+    {
+        attributes = parseAttributes();
+
+        if (lexer.current().type != Lexeme::ReservedFunction)
+        {
+            return reportExprError(
+                start, {}, "Expected 'function' declaration after attribute, but got %s intead", lexer.current().toString().c_str());
+        }
+    }
 
     if (lexer.current().type == Lexeme::ReservedNil)
     {
@@ -2397,7 +2418,7 @@ AstExpr* Parser::parseSimpleExpr()
         Lexeme matchFunction = lexer.current();
         nextLexeme();
 
-        return parseFunctionBody(false, matchFunction, AstName(), nullptr, AstArray<AstAttr*>({nullptr, 0})).first;
+        return parseFunctionBody(false, matchFunction, AstName(), nullptr, attributes).first;
     }
     else if (lexer.current().type == Lexeme::Number)
     {
