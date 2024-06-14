@@ -3178,21 +3178,21 @@ TEST_CASE_FIXTURE(Fixture, "read_write_table_properties")
 
 TEST_CASE_FIXTURE(Fixture, "can_parse_leading_bar_unions_successfully")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand, true};
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
 
     parse(R"(type A = | "Hello" | "World")");
 }
 
 TEST_CASE_FIXTURE(Fixture, "can_parse_leading_ampersand_intersections_successfully")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand, true};
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
 
     parse(R"(type A = & { string } & { number })");
 }
 
 TEST_CASE_FIXTURE(Fixture, "mixed_leading_intersection_and_union_not_allowed")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand, true};
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
 
     matchParseError("type A = & number | string | boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
     matchParseError("type A = | number & string & boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
