@@ -102,6 +102,12 @@ struct Module
     DenseHashMap<const AstType*, TypeId> astResolvedTypes{nullptr};
     DenseHashMap<const AstTypePack*, TypePackId> astResolvedTypePacks{nullptr};
 
+    // The computed result type of a compound assignment. (eg foo += 1)
+    //
+    // Type checking uses this to check that the result of such an operation is
+    // actually compatible with the left-side operand.
+    DenseHashMap<const AstStat*, TypeId> astCompoundAssignResultTypes{nullptr};
+
     DenseHashMap<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors{nullptr};
 
     // Map AST nodes to the scope they create.  Cannot be NotNull<Scope> because

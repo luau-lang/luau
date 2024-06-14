@@ -179,6 +179,8 @@ struct BuiltinTypeFamilies
     TypeFamily keyofFamily;
     TypeFamily rawkeyofFamily;
 
+    TypeFamily indexFamily;
+
     void addToScope(NotNull<TypeArena> arena, NotNull<Scope> scope) const;
 };
 

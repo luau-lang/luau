@@ -228,6 +228,7 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
         CODEGEN_ASSERT(inst.d.kind != IrOpKind::VmReg);
         CODEGEN_ASSERT(inst.e.kind != IrOpKind::VmReg);
         CODEGEN_ASSERT(inst.f.kind != IrOpKind::VmReg);
+        CODEGEN_ASSERT(inst.g.kind != IrOpKind::VmReg);
         break;
     }
 }

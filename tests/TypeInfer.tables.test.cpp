@@ -4511,4 +4511,30 @@ end
 )");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_literal_inference_assert")
+{
+    CheckResult result = check(R"(
+        local buttons = {
+            buttons = {};
+        }
+
+        buttons.Button = {
+            call = nil;
+            lightParts = nil;
+            litPropertyOverrides = nil;
+            model = nil;
+            pivot = nil;
+            unlitPropertyOverrides = nil;
+        }
+        buttons.Button.__index = buttons.Button
+
+        local lightFuncs: { (self: types.Button, lit: boolean) -> nil } = {
+            ['\x00'] = function(self: types.Button, lit: boolean)
+        end;
+        }
+    )");
+
+
+}
+
 TEST_SUITE_END();

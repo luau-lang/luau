@@ -34,6 +34,8 @@ void luaC_validate(lua_State* L);
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTFLAG(LuauCodegenFixSplitStoreConstMismatch)
+LUAU_FASTFLAG(LuauAttributeSyntax)
+LUAU_FASTFLAG(LuauNativeAttribute)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -2705,6 +2707,59 @@ end
     CHECK_EQ(summaries[3].getCounts(0),
         std::vector<unsigned>({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+}
+
+TEST_CASE("NativeAttribute")
+{
+    if (!codegen || !luau_codegen_supported())
+        return;
+
+    ScopedFastFlag sffs[] = {{FFlag::LuauAttributeSyntax, true}, {FFlag::LuauNativeAttribute, true}};
+
+    std::string source = R"R(
+        @native
+        local function sum(x, y)
+            local function sumHelper(z)
+                return (x+y+z)
+            end
+            return sumHelper
+        end
+
+        local function sub(x, y)
+            @native
+            local function subHelper(z)
+                return (x+y-z)
+            end
+			return subHelper
+        end)R";
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    luau_codegen_create(L);
+
+    luaL_openlibs(L);
+    luaL_sandbox(L);
+    luaL_sandboxthread(L);
+
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source.data(), source.size(), nullptr, &bytecodeSize);
+    int result = luau_load(L, "=Code", bytecode, bytecodeSize, 0);
+    free(bytecode);
+
+    REQUIRE(result == 0);
+
+    Luau::CodeGen::CompilationOptions nativeOptions{Luau::CodeGen::CodeGen_ColdFunctions};
+    Luau::CodeGen::CompilationStats nativeStats = {};
+    Luau::CodeGen::CompilationResult nativeResult = Luau::CodeGen::compile(L, -1, nativeOptions, &nativeStats);
+
+    CHECK(nativeResult.result == Luau::CodeGen::CodeGenCompilationResult::Success);
+
+    CHECK(!nativeResult.hasErrors());
+    REQUIRE(nativeResult.protoFailures.empty());
+
+    // We should be able to compile at least one of our functions
+    CHECK_EQ(nativeStats.functionsCompiled, 2);
 }
 
 TEST_SUITE_END();

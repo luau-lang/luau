@@ -234,7 +234,7 @@ private:
     // asexp -> simpleexp [`::' Type]
     AstExpr* parseAssertionExpr();
 
-    // simpleexp -> NUMBER | STRING | NIL | true | false | ... | constructor | FUNCTION body | primaryexp
+    // simpleexp -> NUMBER | STRING | NIL | true | false | ... | constructor | [attributes] FUNCTION body | primaryexp
     AstExpr* parseSimpleExpr();
 
     // args ::=  `(' [explist] `)' | tableconstructor | String

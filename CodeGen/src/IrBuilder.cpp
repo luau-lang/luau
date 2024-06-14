@@ -16,6 +16,7 @@
 LUAU_FASTFLAG(LuauLoadTypeInfo) // Because new VM typeinfo load changes the format used by Codegen, same flag is used
 LUAU_FASTFLAG(LuauCodegenAnalyzeHostVectorOps)
 LUAU_FASTFLAG(LuauLoadUserdataInfo)
+LUAU_FASTFLAG(LuauCodegenInstG)
 
 namespace Luau
 {
@@ -741,6 +742,9 @@ void IrBuilder::clone(const IrBlock& source, bool removeCurrentTerminator)
         redirect(clone.e);
         redirect(clone.f);
 
+        if (FFlag::LuauCodegenInstG)
+            redirect(clone.g);
+
         addUse(function, clone.a);
         addUse(function, clone.b);
         addUse(function, clone.c);
@@ -748,11 +752,17 @@ void IrBuilder::clone(const IrBlock& source, bool removeCurrentTerminator)
         addUse(function, clone.e);
         addUse(function, clone.f);
 
+        if (FFlag::LuauCodegenInstG)
+            addUse(function, clone.g);
+
         // Instructions that referenced the original will have to be adjusted to use the clone
         instRedir[index] = uint32_t(function.instructions.size());
 
         // Reconstruct the fresh clone
-        inst(clone.cmd, clone.a, clone.b, clone.c, clone.d, clone.e, clone.f);
+        if (FFlag::LuauCodegenInstG)
+            inst(clone.cmd, clone.a, clone.b, clone.c, clone.d, clone.e, clone.f, clone.g);
+        else
+            inst(clone.cmd, clone.a, clone.b, clone.c, clone.d, clone.e, clone.f);
     }
 }
 
@@ -850,8 +860,33 @@ IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d, IrOp e)
 
 IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d, IrOp e, IrOp f)
 {
+    if (FFlag::LuauCodegenInstG)
+    {
+        return inst(cmd, a, b, c, d, e, f, {});
+    }
+    else
+    {
+        uint32_t index = uint32_t(function.instructions.size());
+        function.instructions.push_back({cmd, a, b, c, d, e, f});
+
+        CODEGEN_ASSERT(!inTerminatedBlock);
+
+        if (isBlockTerminator(cmd))
+        {
+            function.blocks[activeBlockIdx].finish = index;
+            inTerminatedBlock = true;
+        }
+
+        return {IrOpKind::Inst, index};
+    }
+}
+
+IrOp IrBuilder::inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d, IrOp e, IrOp f, IrOp g)
+{
+    CODEGEN_ASSERT(FFlag::LuauCodegenInstG);
+
     uint32_t index = uint32_t(function.instructions.size());
-    function.instructions.push_back({cmd, a, b, c, d, e, f});
+    function.instructions.push_back({cmd, a, b, c, d, e, f, g});
 
     CODEGEN_ASSERT(!inTerminatedBlock);
 

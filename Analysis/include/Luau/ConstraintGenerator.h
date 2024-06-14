@@ -118,7 +118,7 @@ struct ConstraintGenerator
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope;
     std::vector<RequireCycle> requireCycles;
 
-    DenseHashMap<TypeId, std::vector<TypeId>> localTypes{nullptr};
+    DenseHashMap<TypeId, TypeIds> localTypes{nullptr};
 
     DcrLogger* logger;
 

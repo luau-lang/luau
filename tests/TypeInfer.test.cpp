@@ -19,6 +19,7 @@
 LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
+LUAU_FASTFLAG(LuauLeadingBarAndAmpersand2)
 LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTINT(LuauNormalizeCacheLimit);
 LUAU_FASTINT(LuauRecursionLimit);
@@ -1570,6 +1571,64 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_iter_metamethod")
     {
         LUAU_REQUIRE_NO_ERRORS(result);
     }
+}
+
+TEST_CASE_FIXTURE(Fixture, "leading_bar")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+    CheckResult result = check(R"(
+        type Bar = | number
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("number" == toString(requireTypeAlias("Bar")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "leading_bar_question_mark")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+    CheckResult result = check(R"(
+        type Bar = |?
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK("Expected type, got '?'" == toString(result.errors[0]));
+    CHECK("*error-type*?" == toString(requireTypeAlias("Bar")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "leading_ampersand")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+    CheckResult result = check(R"(
+        type Amp = & string
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("string" == toString(requireTypeAlias("Amp")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "leading_bar_no_type")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+    CheckResult result = check(R"(
+        type Bar = |
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK("Expected type, got <eof>" == toString(result.errors[0]));
+    CHECK("*error-type*" == toString(requireTypeAlias("Bar")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "leading_ampersand_no_type")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+    CheckResult result = check(R"(
+        type Amp = &
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK("Expected type, got <eof>" == toString(result.errors[0]));
+    CHECK("*error-type*" == toString(requireTypeAlias("Amp")));
 }
 
 TEST_SUITE_END();

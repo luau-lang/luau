@@ -18,7 +18,6 @@
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
 LUAU_FASTFLAGVARIABLE(LuauNormalizeAwayUninhabitableTables, false)
 LUAU_FASTFLAGVARIABLE(LuauNormalizeNotUnknownIntersection, false);
-LUAU_FASTFLAGVARIABLE(LuauFixCyclicUnionsOfIntersections, false);
 LUAU_FASTFLAGVARIABLE(LuauFixReduceStackPressure, false);
 LUAU_FASTFLAGVARIABLE(LuauFixCyclicTablesBlowingStack, false);
 
@@ -26,11 +25,6 @@ LUAU_FASTFLAGVARIABLE(LuauFixCyclicTablesBlowingStack, false);
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-
-static bool fixCyclicUnionsOfIntersections()
-{
-    return FFlag::LuauFixCyclicUnionsOfIntersections || FFlag::DebugLuauDeferredConstraintResolution;
-}
 
 static bool fixReduceStackPressure()
 {
@@ -1776,12 +1770,9 @@ NormalizationResult Normalizer::unionNormalWithTy(NormalizedType& here, TypeId t
     }
     else if (const IntersectionType* itv = get<IntersectionType>(there))
     {
-        if (fixCyclicUnionsOfIntersections())
-        {
-            if (seenSetTypes.count(there))
-                return NormalizationResult::True;
-            seenSetTypes.insert(there);
-        }
+        if (seenSetTypes.count(there))
+            return NormalizationResult::True;
+        seenSetTypes.insert(there);
 
         NormalizedType norm{builtinTypes};
         norm.tops = builtinTypes->anyType;
@@ -1790,14 +1781,12 @@ NormalizationResult Normalizer::unionNormalWithTy(NormalizedType& here, TypeId t
             NormalizationResult res = intersectNormalWithTy(norm, *it, seenSetTypes);
             if (res != NormalizationResult::True)
             {
-                if (fixCyclicUnionsOfIntersections())
-                    seenSetTypes.erase(there);
+                seenSetTypes.erase(there);
                 return res;
             }
         }
 
-        if (fixCyclicUnionsOfIntersections())
-            seenSetTypes.erase(there);
+        seenSetTypes.erase(there);
 
         return unionNormals(here, norm);
     }

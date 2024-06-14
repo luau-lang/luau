@@ -94,6 +94,10 @@ struct ConstraintSolver
     // Irreducible/uninhabited type families or type pack families.
     DenseHashSet<const void*> uninhabitedTypeFamilies{{}};
 
+    // The set of types that will definitely be unchanged by generalization.
+    DenseHashSet<TypeId> generalizedTypes_{nullptr};
+    const NotNull<DenseHashSet<TypeId>> generalizedTypes{&generalizedTypes_};
+
     // Recorded errors that take place within the solver.
     ErrorVec errors;
 
@@ -102,6 +106,8 @@ struct ConstraintSolver
 
     DcrLogger* logger;
     TypeCheckLimits limits;
+
+    DenseHashMap<TypeId, const Constraint*> typeFamiliesToFinalize{nullptr};
 
     explicit ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, std::vector<NotNull<Constraint>> constraints,
         ModuleName moduleName, NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger,
@@ -116,8 +122,35 @@ struct ConstraintSolver
      **/
     void run();
 
+
+    /**
+     * Attempts to perform one final reduction on type families after every constraint has been completed
+     *
+     **/
+    void finalizeTypeFamilies();
+
     bool isDone();
 
+private:
+    /**
+     * Bind a type variable to another type.
+     *
+     * A constraint is required and will validate that blockedTy is owned by this
+     * constraint. This prevents one constraint from interfering with another's
+     * blocked types.
+     *
+     * Bind will also unblock the type variable for you.
+     */
+    void bind(NotNull<const Constraint> constraint, TypeId ty, TypeId boundTo);
+    void bind(NotNull<const Constraint> constraint, TypePackId tp, TypePackId boundTo);
+
+    template<typename T, typename... Args>
+    void emplace(NotNull<const Constraint> constraint, TypeId ty, Args&&... args);
+
+    template<typename T, typename... Args>
+    void emplace(NotNull<const Constraint> constraint, TypePackId tp, Args&&... args);
+
+public:
     /** Attempt to dispatch a constraint.  Returns true if it was successful. If
      * tryDispatch() returns false, the constraint remains in the unsolved set
      * and will be retried later.
@@ -135,19 +168,14 @@ struct ConstraintSolver
     bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
 
+
     bool tryDispatchHasIndexer(
         int& recursionDepth, NotNull<const Constraint> constraint, TypeId subjectType, TypeId indexType, TypeId resultType, Set<TypeId>& seen);
     bool tryDispatch(const HasIndexerConstraint& c, NotNull<const Constraint> constraint);
 
-    std::pair<bool, std::optional<TypeId>> tryDispatchSetIndexer(
-        NotNull<const Constraint> constraint, TypeId subjectType, TypeId indexType, TypeId propType, bool expandFreeTypeBounds);
-
     bool tryDispatch(const AssignPropConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const AssignIndexConstraint& c, NotNull<const Constraint> constraint);
-
-    bool tryDispatchUnpack1(NotNull<const Constraint> constraint, TypeId resultType, TypeId sourceType);
     bool tryDispatch(const UnpackConstraint& c, NotNull<const Constraint> constraint);
-
     bool tryDispatch(const ReduceConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const ReducePackConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const EqualityConstraint& c, NotNull<const Constraint> constraint, bool force);
@@ -297,22 +325,6 @@ struct ConstraintSolver
      */
     template<typename TID>
     bool unify(NotNull<const Constraint> constraint, TID subTy, TID superTy);
-
-private:
-    /**
-     * Bind a BlockedType to another type while taking care not to bind it to
-     * itself in the case that resultTy == blockedTy.  This can happen if we
-     * have a tautological constraint.  When it does, we must instead bind
-     * blockedTy to a fresh type belonging to an appropriate scope.
-     *
-     * To determine which scope is appropriate, we also accept rootTy, which is
-     * to be the type that contains blockedTy.
-     *
-     * A constraint is required and will validate that blockedTy is owned by this
-     * constraint. This prevents one constraint from interfering with another's
-     * blocked types.
-     */
-    void bindBlockedType(TypeId blockedTy, TypeId resultTy, TypeId rootTy, NotNull<const Constraint> constraint);
 
     /**
      * Marks a constraint as being blocked on a type or type pack. The constraint

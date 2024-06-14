@@ -37,7 +37,6 @@ LUAU_FASTFLAGVARIABLE(LuauMetatableInstantiationCloneCheck, false)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAGVARIABLE(LuauRemoveBadRelationalOperatorWarning, false)
-LUAU_FASTFLAGVARIABLE(LuauForbidAliasNamedTypeof, false)
 LUAU_FASTFLAGVARIABLE(LuauOkWithIteratingOverTableProperties, false)
 
 namespace Luau
@@ -667,7 +666,7 @@ LUAU_NOINLINE void TypeChecker::checkBlockTypeAliases(const ScopePtr& scope, std
     {
         if (const auto& typealias = stat->as<AstStatTypeAlias>())
         {
-            if (typealias->name == kParseNameError || (FFlag::LuauForbidAliasNamedTypeof && typealias->name == "typeof"))
+            if (typealias->name == kParseNameError || typealias->name == "typeof")
                 continue;
 
             auto& bindings = typealias->exported ? scope->exportedTypeBindings : scope->privateTypeBindings;
@@ -1535,7 +1534,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& ty
     if (name == kParseNameError)
         return ControlFlow::None;
 
-    if (FFlag::LuauForbidAliasNamedTypeof && name == "typeof")
+    if (name == "typeof")
     {
         reportError(typealias.location, GenericError{"Type aliases cannot be named typeof"});
         return ControlFlow::None;
@@ -1656,7 +1655,7 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
     // If the alias is missing a name, we can't do anything with it.  Ignore it.
     // Also, typeof is not a valid type alias name.  We will report an error for
     // this in check()
-    if (name == kParseNameError || (FFlag::LuauForbidAliasNamedTypeof && name == "typeof"))
+    if (name == kParseNameError || name == "typeof")
         return;
 
     std::optional<TypeFun> binding;

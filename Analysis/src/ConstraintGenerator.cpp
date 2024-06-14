@@ -253,7 +253,11 @@ void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
         // FIXME: This isn't the most efficient thing.
         TypeId domainTy = builtinTypes->neverType;
         for (TypeId d : domain)
+        {
+            if (d == ty)
+                continue;
             domainTy = simplifyUnion(builtinTypes, arena, domainTy, d).result;
+        }
 
         LUAU_ASSERT(get<BlockedType>(ty));
         asMutable(ty)->ty.emplace<BoundType>(domainTy);
@@ -323,7 +327,7 @@ std::optional<TypeId> ConstraintGenerator::lookup(const ScopePtr& scope, Locatio
             if (!ty)
             {
                 ty = arena->addType(BlockedType{});
-                localTypes[*ty] = {};
+                localTypes.try_insert(*ty, {});
                 rootScope->lvalueTypes[operand] = *ty;
             }
 
@@ -717,7 +721,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
         const Location location = local->location;
 
         TypeId assignee = arena->addType(BlockedType{});
-        localTypes[assignee] = {};
+        localTypes.try_insert(assignee, {});
 
         assignees.push_back(assignee);
 
@@ -756,9 +760,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
         for (size_t i = 0; i < statLocal->vars.size; ++i)
         {
             LUAU_ASSERT(get<BlockedType>(assignees[i]));
-            std::vector<TypeId>* localDomain = localTypes.find(assignees[i]);
+            TypeIds* localDomain = localTypes.find(assignees[i]);
             LUAU_ASSERT(localDomain);
-            localDomain->push_back(annotatedTypes[i]);
+            localDomain->insert(annotatedTypes[i]);
         }
 
         TypePackId annotatedPack = arena->addTypePack(std::move(annotatedTypes));
@@ -790,9 +794,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
         for (size_t i = 0; i < statLocal->vars.size; ++i)
         {
             LUAU_ASSERT(get<BlockedType>(assignees[i]));
-            std::vector<TypeId>* localDomain = localTypes.find(assignees[i]);
+            TypeIds* localDomain = localTypes.find(assignees[i]);
             LUAU_ASSERT(localDomain);
-            localDomain->push_back(valueTypes[i]);
+            localDomain->insert(valueTypes[i]);
         }
     }
 
@@ -898,7 +902,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatForIn* forI
         variableTypes.push_back(assignee);
 
         TypeId loopVar = arena->addType(BlockedType{});
-        localTypes[loopVar].push_back(assignee);
+        localTypes[loopVar].insert(assignee);
 
         if (var->annotation)
         {
@@ -1183,8 +1187,13 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatCompoundAss
 {
     AstExprBinary binop = AstExprBinary{assign->location, assign->op, assign->var, assign->value};
     TypeId resultTy = check(scope, &binop).ty;
+    module->astCompoundAssignResultTypes[assign] = resultTy;
 
-    visitLValue(scope, assign->var, resultTy);
+    TypeId lhsType = check(scope, assign->var).ty;
+    visitLValue(scope, assign->var, lhsType);
+
+    follow(lhsType);
+    follow(resultTy);
 
     return ControlFlow::None;
 }
@@ -1383,16 +1392,15 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClas
             }
         }
 
-        if (ctv->props.count(propName) == 0)
+        TableType::Props& props = assignToMetatable ? metatable->props : ctv->props;
+
+        if (props.count(propName) == 0)
         {
-            if (assignToMetatable)
-                metatable->props[propName] = {propTy};
-            else
-                ctv->props[propName] = {propTy};
+            props[propName] = {propTy};
         }
         else
         {
-            TypeId currentTy = assignToMetatable ? metatable->props[propName].type() : ctv->props[propName].type();
+            TypeId currentTy = props[propName].type();
 
             // We special-case this logic to keep the intersection flat; otherwise we
             // would create a ton of nested intersection types.
@@ -1402,19 +1410,13 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClas
                 options.push_back(propTy);
                 TypeId newItv = arena->addType(IntersectionType{std::move(options)});
 
-                if (assignToMetatable)
-                    metatable->props[propName] = {newItv};
-                else
-                    ctv->props[propName] = {newItv};
+                props[propName] = {newItv};
             }
             else if (get<FunctionType>(currentTy))
             {
                 TypeId intersection = arena->addType(IntersectionType{{currentTy, propTy}});
 
-                if (assignToMetatable)
-                    metatable->props[propName] = {intersection};
-                else
-                    ctv->props[propName] = {intersection};
+                props[propName] = {intersection};
             }
             else
             {
@@ -1913,8 +1915,8 @@ Inference ConstraintGenerator::checkIndexName(
     // the current lexical position within the script.
     if (!tt)
     {
-        if (auto localDomain = localTypes.find(obj); localDomain && 1 == localDomain->size())
-            tt = getTableType(localDomain->front());
+        if (TypeIds* localDomain = localTypes.find(obj); localDomain && 1 == localDomain->size())
+            tt = getTableType(*localDomain->begin());
     }
 
     if (tt)
@@ -2327,14 +2329,14 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprLocal* local
 
     if (ty)
     {
-        std::vector<TypeId>* localDomain = localTypes.find(*ty);
+        TypeIds* localDomain = localTypes.find(*ty);
         if (localDomain)
-            localDomain->push_back(rhsType);
+            localDomain->insert(rhsType);
     }
     else
     {
         ty = arena->addType(BlockedType{});
-        localTypes[*ty].push_back(rhsType);
+        localTypes[*ty].insert(rhsType);
 
         if (annotatedTy)
         {
@@ -2359,8 +2361,8 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprLocal* local
     if (annotatedTy)
         addConstraint(scope, local->location, SubtypeConstraint{rhsType, *annotatedTy});
 
-    if (auto localDomain = localTypes.find(*ty))
-        localDomain->push_back(rhsType);
+    if (TypeIds* localDomain = localTypes.find(*ty))
+        localDomain->insert(rhsType);
 }
 
 void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprGlobal* global, TypeId rhsType)
@@ -2383,7 +2385,8 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexName* e
 
     bool incremented = recordPropertyAssignment(lhsTy);
 
-    addConstraint(scope, expr->location, AssignPropConstraint{lhsTy, expr->index.value, rhsType, propTy, incremented});
+    auto apc = addConstraint(scope, expr->location, AssignPropConstraint{lhsTy, expr->index.value, rhsType, propTy, incremented});
+    getMutable<BlockedType>(propTy)->setOwner(apc);
 }
 
 void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexExpr* expr, TypeId rhsType)
@@ -2398,7 +2401,8 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexExpr* e
 
         bool incremented = recordPropertyAssignment(lhsTy);
 
-        addConstraint(scope, expr->location, AssignPropConstraint{lhsTy, std::move(propName), rhsType, propTy, incremented});
+        auto apc = addConstraint(scope, expr->location, AssignPropConstraint{lhsTy, std::move(propName), rhsType, propTy, incremented});
+        getMutable<BlockedType>(propTy)->setOwner(apc);
 
         return;
     }
@@ -2407,7 +2411,8 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexExpr* e
     TypeId indexTy = check(scope, expr->index).ty;
     TypeId propTy = arena->addType(BlockedType{});
     module->astTypes[expr] = propTy;
-    addConstraint(scope, expr->location, AssignIndexConstraint{lhsTy, indexTy, rhsType, propTy});
+    auto aic = addConstraint(scope, expr->location, AssignIndexConstraint{lhsTy, indexTy, rhsType, propTy});
+    getMutable<BlockedType>(propTy)->setOwner(aic);
 }
 
 Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType)
@@ -2447,7 +2452,8 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
 
             if (AstExprConstantString* key = item.key->as<AstExprConstantString>())
             {
-                ttv->props[key->value.begin()] = {itemTy};
+                std::string propName{key->value.data, key->value.size};
+                ttv->props[propName] = {itemTy};
             }
             else
             {
@@ -3187,7 +3193,7 @@ bool ConstraintGenerator::recordPropertyAssignment(TypeId ty)
         }
         else if (auto mt = get<MetatableType>(t))
             queue.push_back(mt->table);
-        else if (auto localDomain = localTypes.find(t))
+        else if (TypeIds* localDomain = localTypes.find(t))
         {
             for (TypeId domainTy : *localDomain)
                 queue.push_back(domainTy);

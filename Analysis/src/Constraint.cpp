@@ -93,6 +93,10 @@ DenseHashSet<TypeId> Constraint::getMaybeMutatedFreeTypes() const
     {
         rci.traverse(taec->target);
     }
+    else if (auto fchc = get<FunctionCheckConstraint>(*this))
+    {
+        rci.traverse(fchc->argsPack);
+    }
     else if (auto ptc = get<PrimitiveTypeConstraint>(*this))
     {
         rci.traverse(ptc->freeType);
