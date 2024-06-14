@@ -576,15 +576,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "singletons_stick_around_under_assignment")
 
         local foo = (nil :: any) :: Foo
 
-        print(foo.kind == "Bar") -- TypeError: Type "Foo" cannot be compared with "Bar"
+        print(foo.kind == "Bar") -- type of equality refines to `false`
         local kind = foo.kind
-        print(kind == "Bar") -- SHOULD BE: TypeError: Type "Foo" cannot be compared with "Bar"
+        print(kind == "Bar") -- type of equality refines to `false`
     )");
 
-    // FIXME: Under the new solver, we get both the errors we expect, but they're
-    // duplicated because of how we are currently running type family reduction.
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        LUAU_REQUIRE_ERROR_COUNT(4, result);
+        LUAU_REQUIRE_NO_ERRORS(result);
     else
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 }

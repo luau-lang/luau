@@ -11,6 +11,7 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(DebugCodegenChaosA64, false)
+LUAU_FASTFLAG(LuauCodegenInstG)
 
 namespace Luau
 {
@@ -256,6 +257,9 @@ void IrRegAllocA64::freeLastUseRegs(const IrInst& inst, uint32_t index)
     checkOp(inst.d);
     checkOp(inst.e);
     checkOp(inst.f);
+
+    if (FFlag::LuauCodegenInstG)
+        checkOp(inst.g);
 }
 
 void IrRegAllocA64::freeTempRegs()

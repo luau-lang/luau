@@ -21,14 +21,18 @@ struct GeneralizationFixture
 {
     TypeArena arena;
     BuiltinTypes builtinTypes;
-    Scope scope{builtinTypes.anyTypePack};
+    ScopePtr globalScope = std::make_shared<Scope>(builtinTypes.anyTypePack);
+    ScopePtr scope = std::make_shared<Scope>(globalScope);
     ToStringOptions opts;
+
+    DenseHashSet<TypeId> generalizedTypes_{nullptr};
+    NotNull<DenseHashSet<TypeId>> generalizedTypes{&generalizedTypes_};
 
     ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     std::pair<TypeId, FreeType*> freshType()
     {
-        FreeType ft{&scope, builtinTypes.neverType, builtinTypes.unknownType};
+        FreeType ft{scope.get(), builtinTypes.neverType, builtinTypes.unknownType};
 
         TypeId ty = arena.addType(ft);
         FreeType* ftv = getMutable<FreeType>(ty);
@@ -49,7 +53,7 @@ struct GeneralizationFixture
 
     std::optional<TypeId> generalize(TypeId ty)
     {
-        return ::Luau::generalize(NotNull{&arena}, NotNull{&builtinTypes}, NotNull{&scope}, ty);
+        return ::Luau::generalize(NotNull{&arena}, NotNull{&builtinTypes}, NotNull{scope.get()}, generalizedTypes, ty);
     }
 };
 
@@ -114,6 +118,73 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "dont_traverse_into_class_types_when_ge
 
     auto genPropTy = get<ClassType>(*genClass)->props.at("oh_no").readTy;
     CHECK(is<FreeType>(*genPropTy));
+}
+
+TEST_CASE_FIXTURE(GeneralizationFixture, "cache_fully_generalized_types")
+{
+    CHECK(generalizedTypes->empty());
+
+    TypeId tinyTable = arena.addType(TableType{
+        TableType::Props{{"one", builtinTypes.numberType}, {"two", builtinTypes.stringType}},
+        std::nullopt,
+        TypeLevel{},
+        TableState::Sealed
+    });
+
+    generalize(tinyTable);
+
+    CHECK(generalizedTypes->contains(tinyTable));
+    CHECK(generalizedTypes->contains(builtinTypes.numberType));
+    CHECK(generalizedTypes->contains(builtinTypes.stringType));
+}
+
+TEST_CASE_FIXTURE(GeneralizationFixture, "dont_cache_types_that_arent_done_yet")
+{
+    TypeId freeTy = arena.addType(FreeType{NotNull{globalScope.get()}, builtinTypes.neverType, builtinTypes.stringType});
+
+    TypeId fnTy = arena.addType(FunctionType{
+        builtinTypes.emptyTypePack,
+        arena.addTypePack(TypePack{{builtinTypes.numberType}})
+    });
+
+    TypeId tableTy = arena.addType(TableType{
+        TableType::Props{{"one", builtinTypes.numberType}, {"two", freeTy}, {"three", fnTy}},
+        std::nullopt,
+        TypeLevel{},
+        TableState::Sealed
+    });
+
+    generalize(tableTy);
+
+    CHECK(generalizedTypes->contains(fnTy));
+    CHECK(generalizedTypes->contains(builtinTypes.numberType));
+    CHECK(generalizedTypes->contains(builtinTypes.neverType));
+    CHECK(generalizedTypes->contains(builtinTypes.stringType));
+    CHECK(!generalizedTypes->contains(freeTy));
+    CHECK(!generalizedTypes->contains(tableTy));
+}
+
+TEST_CASE_FIXTURE(GeneralizationFixture, "functions_containing_cyclic_tables_can_be_cached")
+{
+    TypeId selfTy = arena.addType(BlockedType{});
+
+    TypeId methodTy = arena.addType(FunctionType{
+        arena.addTypePack({selfTy}),
+        arena.addTypePack({builtinTypes.numberType}),
+    });
+
+    asMutable(selfTy)->ty.emplace<TableType>(
+        TableType::Props{{"count", builtinTypes.numberType}, {"method", methodTy}},
+        std::nullopt,
+        TypeLevel{},
+        TableState::Sealed
+    );
+
+    generalize(methodTy);
+
+    CHECK(generalizedTypes->contains(methodTy));
+    CHECK(generalizedTypes->contains(selfTy));
+    CHECK(generalizedTypes->contains(builtinTypes.numberType));
 }
 
 TEST_SUITE_END();

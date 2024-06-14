@@ -612,4 +612,6 @@ enum LuauProtoFlag
     LPF_NATIVE_MODULE = 1 << 0,
     // used to tag individual protos as not profitable to compile natively
     LPF_NATIVE_COLD = 1 << 1,
+    // used to tag main proto for modules that have at least one function with native attribute
+    LPF_NATIVE_FUNCTION = 1 << 2,
 };

@@ -7,6 +7,7 @@
 #include "Luau/NotNull.h"
 #include "Luau/StringUtils.h"
 #include "Luau/ToString.h"
+#include "Luau/Type.h"
 #include "Luau/TypeFamily.h"
 
 #include <optional>
@@ -664,6 +665,18 @@ struct ErrorConverter
                 return "Type '" + toString(tfit->typeArguments[0]) + "' does not have keys, so '" + Luau::toString(e.ty) + "' is invalid";
             else
                 return "Type family instance " + Luau::toString(e.ty) + " is ill-formed, and thus invalid";
+        }
+
+        if ("index" == tfit->family->name)
+        {
+            if (tfit->typeArguments.size() != 2)
+                return "Type family instance " + Luau::toString(e.ty) + " is ill-formed, and thus invalid";
+
+            if (auto errType = get<ErrorType>(tfit->typeArguments[1])) // Second argument to index<_,_> is not a type
+                return "Second argument to index<" + Luau::toString(tfit->typeArguments[0]) + ", _> is not a valid index type";
+            else // Second argument to index<_,_> is not a property of the first argument
+                return "Property '" + Luau::toString(tfit->typeArguments[1]) + "' does not exist on type '" + Luau::toString(tfit->typeArguments[0]) +
+                       "'";
         }
 
         if (kUnreachableTypeFamilies.count(tfit->family->name))

@@ -1490,6 +1490,18 @@ TypeFamilyReductionResult<TypeId> refineFamilyFn(TypeId instance, const std::vec
         if (get<AnyType>(follow(nt->ty)))
             return {targetTy, false, {}, {}};
 
+    // If the target type is a table, then simplification already implements the logic to deal with refinements properly since the
+    // type of the discriminant is guaranteed to only ever be an (arbitrarily-nested) table of a single property type.
+    if (get<TableType>(targetTy))
+    {
+        SimplifyResult result = simplifyIntersection(ctx->builtins, ctx->arena, targetTy, discriminantTy);
+        if (!result.blockedTypes.empty())
+            return {std::nullopt, false, {result.blockedTypes.begin(), result.blockedTypes.end()}, {}};
+
+        return {result.result, false, {}, {}};
+    }
+
+    // In the general case, we'll still use normalization though.
     TypeId intersection = ctx->arena->addType(IntersectionType{{targetTy, discriminantTy}});
     std::shared_ptr<const NormalizedType> normIntersection = ctx->normalizer->normalize(intersection);
     std::shared_ptr<const NormalizedType> normType = ctx->normalizer->normalize(targetTy);
@@ -1853,6 +1865,208 @@ TypeFamilyReductionResult<TypeId> rawkeyofFamilyFn(TypeId instance, const std::v
     return keyofFamilyImpl(typeParams, packParams, ctx, /* isRaw */ true);
 }
 
+/* Searches through table's or class's props/indexer to find the property of `ty`
+   If found, appends that property to `result` and returns true
+   Else, returns false */
+bool searchPropsAndIndexer(
+    TypeId ty, TableType::Props tblProps, std::optional<TableIndexer> tblIndexer, DenseHashSet<TypeId>& result, NotNull<TypeFamilyContext> ctx)
+{
+    ty = follow(ty);
+
+    // index into tbl's properties
+    if (auto stringSingleton = get<StringSingleton>(get<SingletonType>(ty)))
+    {
+        if (tblProps.find(stringSingleton->value) != tblProps.end())
+        {
+            TypeId propTy = follow(tblProps.at(stringSingleton->value).type());
+
+            // property is a union type -> we need to extend our reduction type
+            if (auto propUnionTy = get<UnionType>(propTy))
+            {
+                for (TypeId option : propUnionTy->options)
+                    result.insert(option);
+            }
+            else // property is a singular type or intersection type -> we can simply append
+                result.insert(propTy);
+
+            return true;
+        }
+    }
+
+    // index into tbl's indexer
+    if (tblIndexer)
+    {
+        if (isSubtype(ty, tblIndexer->indexType, ctx->scope, ctx->builtins, *ctx->ice))
+        {
+            TypeId idxResultTy = follow(tblIndexer->indexResultType);
+
+            // indexResultType is a union type -> we need to extend our reduction type
+            if (auto idxResUnionTy = get<UnionType>(idxResultTy))
+            {
+                for (TypeId option : idxResUnionTy->options)
+                    result.insert(option);
+            }
+            else // indexResultType is a singular type or intersection type -> we can simply append
+                result.insert(idxResultTy);
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/* Handles recursion / metamethods of tables/classes
+   `isRaw` parameter indicates whether or not we should follow __index metamethods
+   returns false if property of `ty` could not be found */
+bool tblIndexInto(TypeId indexer, TypeId indexee, DenseHashSet<TypeId>& result, NotNull<TypeFamilyContext> ctx, bool isRaw)
+{
+    indexer = follow(indexer);
+    indexee = follow(indexee);
+
+    // we have a table type to try indexing
+    if (auto tableTy = get<TableType>(indexee))
+    {
+        return searchPropsAndIndexer(indexer, tableTy->props, tableTy->indexer, result, ctx);
+    }
+
+    // we have a metatable type to try indexing
+    if (auto metatableTy = get<MetatableType>(indexee))
+    {
+        if (auto tableTy = get<TableType>(metatableTy->table))
+        {
+
+            // try finding all properties within the current scope of the table
+            if (searchPropsAndIndexer(indexer, tableTy->props, tableTy->indexer, result, ctx))
+                return true;
+        }
+
+        // if the code reached here, it means we weren't able to find all properties -> look into __index metamethod
+        if (!isRaw)
+        {
+            // findMetatableEntry demands the ability to emit errors, so we must give it
+            // the necessary state to do that, even if we intend to just eat the errors.
+            ErrorVec dummy;
+            std::optional<TypeId> mmType = findMetatableEntry(ctx->builtins, dummy, indexee, "__index", Location{});
+            if (mmType)
+                return tblIndexInto(indexer, *mmType, result, ctx, isRaw);
+        }
+    }
+
+    return false;
+}
+
+/* Vocabulary note: indexee refers to the type that contains the properties,
+                    indexer refers to the type that is used to access indexee
+   Example:         index<Person, "name"> => `Person` is the indexee and `"name"` is the indexer */
+TypeFamilyReductionResult<TypeId> indexFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+{
+    if (typeParams.size() != 2 || !packParams.empty())
+    {
+        ctx->ice->ice("index type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    TypeId indexeeTy = follow(typeParams.at(0));
+    std::shared_ptr<const NormalizedType> indexeeNormTy = ctx->normalizer->normalize(indexeeTy);
+
+    // if the indexee failed to normalize, we can't reduce, but know nothing about inhabitance.
+    if (!indexeeNormTy)
+        return {std::nullopt, false, {}, {}};
+
+    // if we don't have either just tables or just classes, we've got nothing to index into
+    if (indexeeNormTy->hasTables() == indexeeNormTy->hasClasses())
+        return {std::nullopt, true, {}, {}};
+
+    // we're trying to reject any type that has not normalized to a table/class or a union of tables/classes.
+    if (indexeeNormTy->hasTops() || indexeeNormTy->hasBooleans() || indexeeNormTy->hasErrors() || indexeeNormTy->hasNils() ||
+        indexeeNormTy->hasNumbers() || indexeeNormTy->hasStrings() || indexeeNormTy->hasThreads() || indexeeNormTy->hasBuffers() ||
+        indexeeNormTy->hasFunctions() || indexeeNormTy->hasTyvars())
+        return {std::nullopt, true, {}, {}};
+
+    TypeId indexerTy = follow(typeParams.at(1));
+    std::shared_ptr<const NormalizedType> indexerNormTy = ctx->normalizer->normalize(indexerTy);
+
+    // if the indexer failed to normalize, we can't reduce, but know nothing about inhabitance.
+    if (!indexerNormTy)
+        return {std::nullopt, false, {}, {}};
+
+    // we're trying to reject any type that is not a string singleton or primitive (string, number, boolean, thread, nil, function, table, or buffer)
+    if (indexerNormTy->hasTops() || indexerNormTy->hasErrors())
+        return {std::nullopt, true, {}, {}};
+
+    // indexer can be a union —> break them down into a vector
+    const std::vector<TypeId>* typesToFind;
+    const std::vector<TypeId> singleType{indexerTy};
+    if (auto unionTy = get<UnionType>(indexerTy))
+        typesToFind = &unionTy->options;
+    else
+        typesToFind = &singleType;
+
+    DenseHashSet<TypeId> properties{{}}; // vector of types that will be returned
+    bool isRaw = false;
+
+    if (indexeeNormTy->hasClasses())
+    {
+        LUAU_ASSERT(!indexeeNormTy->hasTables());
+
+        // at least one class is guaranteed to be in the iterator by .hasClasses()
+        for (auto classesIter = indexeeNormTy->classes.ordering.begin(); classesIter != indexeeNormTy->classes.ordering.end(); ++classesIter)
+        {
+            auto classTy = get<ClassType>(*classesIter);
+            if (!classTy)
+            {
+                LUAU_ASSERT(false); // this should not be possible according to normalization's spec
+                return {std::nullopt, true, {}, {}};
+            }
+
+            for (TypeId ty : *typesToFind)
+            {
+                // Search for all instances of indexer in class->props and class->indexer using `indexInto`
+                if (searchPropsAndIndexer(ty, classTy->props, classTy->indexer, properties, ctx))
+                    continue; // Indexer was found in this class, so we can move on to the next
+
+                // If code reaches here,that means the property not found -> check in the metatable's __index
+
+                // findMetatableEntry demands the ability to emit errors, so we must give it
+                // the necessary state to do that, even if we intend to just eat the errors.
+                ErrorVec dummy;
+                std::optional<TypeId> mmType = findMetatableEntry(ctx->builtins, dummy, *classesIter, "__index", Location{});
+                if (!mmType) // if a metatable does not exist, there is no where else to look
+                    return {std::nullopt, true, {}, {}};
+
+                if (!tblIndexInto(ty, *mmType, properties, ctx, isRaw)) // if indexer is not in the metatable, we fail to reduce
+                    return {std::nullopt, true, {}, {}};
+            }
+        }
+    }
+
+    if (indexeeNormTy->hasTables())
+    {
+        LUAU_ASSERT(!indexeeNormTy->hasClasses());
+
+        // at least one table is guaranteed to be in the iterator by .hasTables()
+        for (auto tablesIter = indexeeNormTy->tables.begin(); tablesIter != indexeeNormTy->tables.end(); ++tablesIter)
+        {
+            for (TypeId ty : *typesToFind)
+                if (!tblIndexInto(ty, *tablesIter, properties, ctx, isRaw))
+                    return {std::nullopt, true, {}, {}};
+        }
+    }
+
+    // Call `follow()` on each element to resolve all Bound types before returning
+    std::transform(properties.begin(), properties.end(), properties.begin(), [](TypeId ty) {
+        return follow(ty);
+    });
+
+    // If the type being reduced to is a single type, no need to union
+    if (properties.size() == 1)
+        return {*properties.begin(), false, {}, {}};
+
+    return {ctx->arena->addType(UnionType{std::vector<TypeId>(properties.begin(), properties.end())}), false, {}, {}};
+}
+
 BuiltinTypeFamilies::BuiltinTypeFamilies()
     : notFamily{"not", notFamilyFn}
     , lenFamily{"len", lenFamilyFn}
@@ -1876,6 +2090,7 @@ BuiltinTypeFamilies::BuiltinTypeFamilies()
     , intersectFamily{"intersect", intersectFamilyFn}
     , keyofFamily{"keyof", keyofFamilyFn}
     , rawkeyofFamily{"rawkeyof", rawkeyofFamilyFn}
+    , indexFamily{"index", indexFamilyFn}
 {
 }
 
@@ -1917,6 +2132,8 @@ void BuiltinTypeFamilies::addToScope(NotNull<TypeArena> arena, NotNull<Scope> sc
 
     scope->exportedTypeBindings[keyofFamily.name] = mkUnaryTypeFamily(&keyofFamily);
     scope->exportedTypeBindings[rawkeyofFamily.name] = mkUnaryTypeFamily(&rawkeyofFamily);
+
+    scope->exportedTypeBindings[indexFamily.name] = mkBinaryTypeFamily(&indexFamily);
 }
 
 } // namespace Luau

@@ -4,6 +4,7 @@
 
 #include "Luau/Scope.h"
 #include "Luau/Type.h"
+#include "Luau/ToString.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypePack.h"
 #include "Luau/VisitType.h"
@@ -16,6 +17,7 @@ struct MutatingGeneralizer : TypeOnceVisitor
     NotNull<BuiltinTypes> builtinTypes;
 
     NotNull<Scope> scope;
+    NotNull<DenseHashSet<TypeId>> cachedTypes;
     DenseHashMap<const void*, size_t> positiveTypes;
     DenseHashMap<const void*, size_t> negativeTypes;
     std::vector<TypeId> generics;
@@ -23,11 +25,12 @@ struct MutatingGeneralizer : TypeOnceVisitor
 
     bool isWithinFunction = false;
 
-    MutatingGeneralizer(NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, DenseHashMap<const void*, size_t> positiveTypes,
+    MutatingGeneralizer(NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, NotNull<DenseHashSet<TypeId>> cachedTypes, DenseHashMap<const void*, size_t> positiveTypes,
                         DenseHashMap<const void*, size_t> negativeTypes)
         : TypeOnceVisitor(/* skipBoundTypes */ true)
         , builtinTypes(builtinTypes)
         , scope(scope)
+        , cachedTypes(cachedTypes)
         , positiveTypes(std::move(positiveTypes))
         , negativeTypes(std::move(negativeTypes))
     {
@@ -130,6 +133,9 @@ struct MutatingGeneralizer : TypeOnceVisitor
 
     bool visit(TypeId ty, const FunctionType& ft) override
     {
+        if (cachedTypes->contains(ty))
+            return false;
+
         const bool oldValue = isWithinFunction;
 
         isWithinFunction = true;
@@ -144,6 +150,8 @@ struct MutatingGeneralizer : TypeOnceVisitor
 
     bool visit(TypeId ty, const FreeType&) override
     {
+        LUAU_ASSERT(!cachedTypes->contains(ty));
+
         const FreeType* ft = get<FreeType>(ty);
         LUAU_ASSERT(ft);
 
@@ -244,6 +252,9 @@ struct MutatingGeneralizer : TypeOnceVisitor
 
     bool visit(TypeId ty, const TableType&) override
     {
+        if (cachedTypes->contains(ty))
+            return false;
+
         const size_t positiveCount = getCount(positiveTypes, ty);
         const size_t negativeCount = getCount(negativeTypes, ty);
 
@@ -287,10 +298,12 @@ struct MutatingGeneralizer : TypeOnceVisitor
 struct FreeTypeSearcher : TypeVisitor
 {
     NotNull<Scope> scope;
+    NotNull<DenseHashSet<TypeId>> cachedTypes;
 
-    explicit FreeTypeSearcher(NotNull<Scope> scope)
+    explicit FreeTypeSearcher(NotNull<Scope> scope, NotNull<DenseHashSet<TypeId>> cachedTypes)
         : TypeVisitor(/*skipBoundTypes*/ true)
         , scope(scope)
+        , cachedTypes(cachedTypes)
     {
     }
 
@@ -363,7 +376,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty) override
     {
-        if (seenWithPolarity(ty))
+        if (cachedTypes->contains(ty) || seenWithPolarity(ty))
             return false;
 
         LUAU_ASSERT(ty);
@@ -372,7 +385,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const FreeType& ft) override
     {
-        if (seenWithPolarity(ty))
+        if (cachedTypes->contains(ty) || seenWithPolarity(ty))
             return false;
 
         if (!subsumes(scope, ft.scope))
@@ -397,7 +410,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const TableType& tt) override
     {
-        if (seenWithPolarity(ty))
+        if (cachedTypes->contains(ty) || seenWithPolarity(ty))
             return false;
 
         if ((tt.state == TableState::Free || tt.state == TableState::Unsealed) && subsumes(scope, tt.scope))
@@ -443,7 +456,7 @@ struct FreeTypeSearcher : TypeVisitor
 
     bool visit(TypeId ty, const FunctionType& ft) override
     {
-        if (seenWithPolarity(ty))
+        if (cachedTypes->contains(ty) || seenWithPolarity(ty))
             return false;
 
         flip();
@@ -486,8 +499,371 @@ struct FreeTypeSearcher : TypeVisitor
     }
 };
 
+// We keep a running set of types that will not change under generalization and
+// only have outgoing references to types that are the same.  We use this to
+// short circuit generalization.  It improves performance quite a lot.
+//
+// We do this by tracing through the type and searching for types that are
+// uncacheable. If a type has a reference to an uncacheable type, it is itself
+// uncacheable.
+//
+// If a type has no outbound references to uncacheable types, we add it to the
+// cache.
+struct TypeCacher : TypeOnceVisitor
+{
+    NotNull<DenseHashSet<TypeId>> cachedTypes;
 
-std::optional<TypeId> generalize(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, TypeId ty)
+    DenseHashSet<TypeId> uncacheable{nullptr};
+    DenseHashSet<TypePackId> uncacheablePacks{nullptr};
+
+    explicit TypeCacher(NotNull<DenseHashSet<TypeId>> cachedTypes)
+        : TypeOnceVisitor(/* skipBoundTypes */ true)
+        , cachedTypes(cachedTypes)
+    {}
+
+    void cache(TypeId ty)
+    {
+        cachedTypes->insert(ty);
+    }
+
+    bool isCached(TypeId ty) const
+    {
+        return cachedTypes->contains(ty);
+    }
+
+    void markUncacheable(TypeId ty)
+    {
+        uncacheable.insert(ty);
+    }
+
+    void markUncacheable(TypePackId tp)
+    {
+        uncacheablePacks.insert(tp);
+    }
+
+    bool isUncacheable(TypeId ty) const
+    {
+        return uncacheable.contains(ty);
+    }
+
+    bool isUncacheable(TypePackId tp) const
+    {
+        return uncacheablePacks.contains(tp);
+    }
+
+    bool visit(TypeId ty) override
+    {
+        if (isUncacheable(ty) || isCached(ty))
+            return false;
+        return true;
+    }
+
+    bool visit(TypeId ty, const FreeType& ft) override
+    {
+        // Free types are never cacheable.
+        LUAU_ASSERT(!isCached(ty));
+
+        if (!isUncacheable(ty))
+        {
+            traverse(ft.lowerBound);
+            traverse(ft.upperBound);
+
+            markUncacheable(ty);
+        }
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const GenericType&) override
+    {
+        cache(ty);
+        return false;
+    }
+
+    bool visit(TypeId ty, const PrimitiveType&) override
+    {
+        cache(ty);
+        return false;
+    }
+
+    bool visit(TypeId ty, const SingletonType&) override
+    {
+        cache(ty);
+        return false;
+    }
+
+    bool visit(TypeId ty, const BlockedType&) override
+    {
+        markUncacheable(ty);
+        return false;
+    }
+
+    bool visit(TypeId ty, const PendingExpansionType&) override
+    {
+        markUncacheable(ty);
+        return false;
+    }
+
+    bool visit(TypeId ty, const FunctionType& ft) override
+    {
+        if (isCached(ty) || isUncacheable(ty))
+            return false;
+
+        traverse(ft.argTypes);
+        traverse(ft.retTypes);
+        for (TypeId gen: ft.generics)
+            traverse(gen);
+
+        bool uncacheable = false;
+
+        if (isUncacheable(ft.argTypes))
+            uncacheable = true;
+
+        else if (isUncacheable(ft.retTypes))
+            uncacheable = true;
+
+        for (TypeId argTy: ft.argTypes)
+        {
+            if (isUncacheable(argTy))
+            {
+                uncacheable = true;
+                break;
+            }
+        }
+
+        for (TypeId retTy: ft.retTypes)
+        {
+            if (isUncacheable(retTy))
+            {
+                uncacheable = true;
+                break;
+            }
+        }
+
+        for (TypeId g: ft.generics)
+        {
+            if (isUncacheable(g))
+            {
+                uncacheable = true;
+                break;
+            }
+        }
+
+        if (uncacheable)
+            markUncacheable(ty);
+        else
+            cache(ty);
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const TableType& tt) override
+    {
+        if (isCached(ty) || isUncacheable(ty))
+            return false;
+
+        if (tt.boundTo)
+        {
+            traverse(*tt.boundTo);
+            if (isUncacheable(*tt.boundTo))
+            {
+                markUncacheable(ty);
+                return false;
+            }
+        }
+
+        bool uncacheable = false;
+
+        // This logic runs immediately after generalization, so any remaining
+        // unsealed tables are assuredly not cacheable.  They may yet have
+        // properties added to them.
+        if (tt.state == TableState::Free || tt.state == TableState::Unsealed)
+            uncacheable = true;
+
+        for (const auto& [_name, prop] : tt.props)
+        {
+            if (prop.readTy)
+            {
+                traverse(*prop.readTy);
+
+                if (isUncacheable(*prop.readTy))
+                    uncacheable = true;
+            }
+            if (prop.writeTy && prop.writeTy != prop.readTy)
+            {
+                traverse(*prop.writeTy);
+
+                if (isUncacheable(*prop.writeTy))
+                    uncacheable = true;
+            }
+        }
+
+        if (tt.indexer)
+        {
+            traverse(tt.indexer->indexType);
+            if (isUncacheable(tt.indexer->indexType))
+                uncacheable = true;
+
+            traverse(tt.indexer->indexResultType);
+            if (isUncacheable(tt.indexer->indexResultType))
+                uncacheable = true;
+        }
+
+        if (uncacheable)
+            markUncacheable(ty);
+        else
+            cache(ty);
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const ClassType&) override
+    {
+        cache(ty);
+        return false;
+    }
+
+    bool visit(TypeId ty, const AnyType&) override
+    {
+        cache(ty);
+        return false;
+    }
+
+    bool visit(TypeId ty, const UnionType& ut) override
+    {
+        if (isUncacheable(ty) || isCached(ty))
+            return false;
+
+        bool uncacheable = false;
+
+        for (TypeId partTy : ut.options)
+        {
+            traverse(partTy);
+
+            uncacheable |= isUncacheable(partTy);
+        }
+
+        if (uncacheable)
+            markUncacheable(ty);
+        else
+            cache(ty);
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const IntersectionType& it) override
+    {
+        if (isUncacheable(ty) || isCached(ty))
+            return false;
+
+        bool uncacheable = false;
+
+        for (TypeId partTy : it.parts)
+        {
+            traverse(partTy);
+
+            uncacheable |= isUncacheable(partTy);
+        }
+
+        if (uncacheable)
+            markUncacheable(ty);
+        else
+            cache(ty);
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const UnknownType&) override
+    {
+        cache(ty);
+        return false;
+    }
+
+    bool visit(TypeId ty, const NeverType&) override
+    {
+        cache(ty);
+        return false;
+    }
+
+    bool visit(TypeId ty, const NegationType& nt) override
+    {
+        if (!isCached(ty) && !isUncacheable(ty))
+        {
+            traverse(nt.ty);
+
+            if (isUncacheable(nt.ty))
+                markUncacheable(ty);
+            else
+                cache(ty);
+        }
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const TypeFamilyInstanceType& tfit) override
+    {
+        if (isCached(ty) || isUncacheable(ty))
+            return false;
+
+        bool uncacheable = false;
+
+        for (TypeId argTy : tfit.typeArguments)
+        {
+            traverse(argTy);
+
+            if (isUncacheable(argTy))
+                uncacheable = true;
+        }
+
+        for (TypePackId argPack : tfit.packArguments)
+        {
+            traverse(argPack);
+
+            if (isUncacheable(argPack))
+                uncacheable = true;
+        }
+
+        if (uncacheable)
+            markUncacheable(ty);
+        else
+            cache(ty);
+
+        return false;
+    }
+
+    bool visit(TypePackId tp, const FreeTypePack&) override
+    {
+        markUncacheable(tp);
+        return false;
+    }
+
+    bool visit(TypePackId tp, const VariadicTypePack& vtp) override
+    {
+        if (isUncacheable(tp))
+            return false;
+
+        traverse(vtp.ty);
+
+        if (isUncacheable(vtp.ty))
+            markUncacheable(tp);
+
+        return false;
+    }
+
+    bool visit(TypePackId tp, const BlockedTypePack&) override
+    {
+        markUncacheable(tp);
+        return false;
+    }
+
+    bool visit(TypePackId tp, const TypeFamilyInstanceTypePack&) override
+    {
+        markUncacheable(tp);
+        return false;
+    }
+};
+
+std::optional<TypeId> generalize(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, NotNull<DenseHashSet<TypeId>> cachedTypes, TypeId ty)
 {
     ty = follow(ty);
 
@@ -497,10 +873,10 @@ std::optional<TypeId> generalize(NotNull<TypeArena> arena, NotNull<BuiltinTypes>
     if (const FunctionType* ft = get<FunctionType>(ty); ft && (!ft->generics.empty() || !ft->genericPacks.empty()))
         return ty;
 
-    FreeTypeSearcher fts{scope};
+    FreeTypeSearcher fts{scope, cachedTypes};
     fts.traverse(ty);
 
-    MutatingGeneralizer gen{builtinTypes, scope, std::move(fts.positiveTypes), std::move(fts.negativeTypes)};
+    MutatingGeneralizer gen{builtinTypes, scope, cachedTypes, std::move(fts.positiveTypes), std::move(fts.negativeTypes)};
 
     gen.traverse(ty);
 
@@ -512,6 +888,9 @@ std::optional<TypeId> generalize(NotNull<TypeArena> arena, NotNull<BuiltinTypes>
 
     if (ty->owningArena != arena || ty->persistent)
         return ty;
+
+    TypeCacher cacher{cachedTypes};
+    cacher.traverse(ty);
 
     FunctionType* ftv = getMutable<FunctionType>(ty);
     if (ftv)

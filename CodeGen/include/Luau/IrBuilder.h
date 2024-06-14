@@ -54,6 +54,7 @@ struct IrBuilder
     IrOp inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d);
     IrOp inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d, IrOp e);
     IrOp inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d, IrOp e, IrOp f);
+    IrOp inst(IrCmd cmd, IrOp a, IrOp b, IrOp c, IrOp d, IrOp e, IrOp f, IrOp g);
 
     IrOp block(IrBlockKind kind); // Requested kind can be ignored if we are in an outlined sequence
     IrOp blockAtInst(uint32_t index);

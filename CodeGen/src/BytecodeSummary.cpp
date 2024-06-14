@@ -8,6 +8,8 @@
 #include "lobject.h"
 #include "lstate.h"
 
+LUAU_FASTFLAG(LuauNativeAttribute)
+
 namespace Luau
 {
 namespace CodeGen
@@ -56,7 +58,10 @@ std::vector<FunctionBytecodeSummary> summarizeBytecode(lua_State* L, int idx, un
     Proto* root = clvalue(func)->l.p;
 
     std::vector<Proto*> protos;
-    gatherFunctions(protos, root, CodeGen_ColdFunctions);
+    if (FFlag::LuauNativeAttribute)
+        gatherFunctions(protos, root, CodeGen_ColdFunctions, root->flags & LPF_NATIVE_FUNCTION);
+    else
+        gatherFunctions_DEPRECATED(protos, root, CodeGen_ColdFunctions);
 
     std::vector<FunctionBytecodeSummary> summaries;
     summaries.reserve(protos.size());

@@ -30,6 +30,8 @@ LUAU_FASTFLAG(LuauCompileTypeInfo)
 LUAU_FASTFLAGVARIABLE(LuauCompileTempTypeInfo, false)
 LUAU_FASTFLAGVARIABLE(LuauCompileUserdataInfo, false)
 
+LUAU_FASTFLAG(LuauNativeAttribute)
+
 namespace Luau
 {
 
@@ -195,7 +197,7 @@ struct Compiler
             return node->as<AstExprFunction>();
     }
 
-    uint32_t compileFunction(AstExprFunction* func, uint8_t protoflags)
+    uint32_t compileFunction(AstExprFunction* func, uint8_t& protoflags)
     {
         LUAU_TIMETRACE_SCOPE("Compiler::compileFunction", "Compiler");
 
@@ -296,6 +298,9 @@ struct Compiler
         // top-level code only executes once so it can be marked as cold if it has no loops; code with loops might be profitable to compile natively
         if (func->functionDepth == 0 && !hasLoops)
             protoflags |= LPF_NATIVE_COLD;
+
+        if (FFlag::LuauNativeAttribute && func->hasNativeAttribute())
+            protoflags |= LPF_NATIVE_FUNCTION;
 
         bytecode.endFunction(uint8_t(stackSize), uint8_t(upvals.size()), protoflags);
 
@@ -3863,13 +3868,12 @@ struct Compiler
 
     struct FunctionVisitor : AstVisitor
     {
-        Compiler* self;
         std::vector<AstExprFunction*>& functions;
         bool hasTypes = false;
+        bool hasNativeFunction = false;
 
-        FunctionVisitor(Compiler* self, std::vector<AstExprFunction*>& functions)
-            : self(self)
-            , functions(functions)
+        FunctionVisitor(std::vector<AstExprFunction*>& functions)
+            : functions(functions)
         {
             // preallocate the result; this works around std::vector's inefficient growth policy for small arrays
             functions.reserve(16);
@@ -3884,6 +3888,9 @@ struct Compiler
 
             // this makes sure all functions that are used when compiling this one have been already added to the vector
             functions.push_back(node);
+
+            if (FFlag::LuauNativeAttribute && !hasNativeFunction && node->hasNativeAttribute())
+                hasNativeFunction = true;
 
             return false;
         }
@@ -4117,6 +4124,14 @@ struct Compiler
     std::vector<std::unique_ptr<char[]>> interpStrings;
 };
 
+static void setCompileOptionsForNativeCompilation(CompileOptions& options)
+{
+    options.optimizationLevel = 2; // note: this might be removed in the future in favor of --!optimize
+
+    if (FFlag::LuauCompileTypeInfo)
+        options.typeInfoLevel = 1;
+}
+
 void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, const AstNameTable& names, const CompileOptions& inputOptions)
 {
     LUAU_TIMETRACE_SCOPE("compileOrThrow", "Compiler");
@@ -4135,14 +4150,20 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
         if (hc.header && hc.content == "native")
         {
             mainFlags |= LPF_NATIVE_MODULE;
-            options.optimizationLevel = 2; // note: this might be removed in the future in favor of --!optimize
-
-            if (FFlag::LuauCompileTypeInfo)
-                options.typeInfoLevel = 1;
+            setCompileOptionsForNativeCompilation(options);
         }
     }
 
     AstStatBlock* root = parseResult.root;
+
+    // gathers all functions with the invariant that all function references are to functions earlier in the list
+    // for example, function foo() return function() end end will result in two vector entries, [0] = anonymous and [1] = foo
+    std::vector<AstExprFunction*> functions;
+    Compiler::FunctionVisitor functionVisitor(functions);
+    root->visit(&functionVisitor);
+
+    if (functionVisitor.hasNativeFunction)
+        setCompileOptionsForNativeCompilation(options);
 
     Compiler compiler(bytecode, options);
 
@@ -4180,12 +4201,6 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
         predictTableShapes(compiler.tableShapes, root);
     }
 
-    // gathers all functions with the invariant that all function references are to functions earlier in the list
-    // for example, function foo() return function() end end will result in two vector entries, [0] = anonymous and [1] = foo
-    std::vector<AstExprFunction*> functions;
-    Compiler::FunctionVisitor functionVisitor(&compiler, functions);
-    root->visit(&functionVisitor);
-
     if (FFlag::LuauCompileUserdataInfo)
     {
         if (const char* const* ptr = options.userdataTypes)
@@ -4217,7 +4232,15 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     }
 
     for (AstExprFunction* expr : functions)
-        compiler.compileFunction(expr, 0);
+    {
+        uint8_t protoflags = 0;
+        compiler.compileFunction(expr, protoflags);
+
+        // If a function has native attribute and the whole module is not native, we set  LPF_NATIVE_FUNCTION flag
+        // This ensures that LPF_NATIVE_MODULE and LPF_NATIVE_FUNCTION are exclusive.
+        if (FFlag::LuauNativeAttribute && (protoflags & LPF_NATIVE_FUNCTION) && !(mainFlags & LPF_NATIVE_MODULE))
+            mainFlags |= LPF_NATIVE_FUNCTION;
+    }
 
     AstExprFunction main(root->location, /*attributes=*/AstArray<AstAttr*>({nullptr, 0}), /*generics= */ AstArray<AstGenericType>(),
         /*genericPacks= */ AstArray<AstGenericTypePack>(),

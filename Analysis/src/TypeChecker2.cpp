@@ -446,7 +446,6 @@ struct TypeChecker2
                               .errors;
         if (!isErrorSuppressing(location, instance))
             reportErrors(std::move(errors));
-
         return instance;
     }
 
@@ -1108,10 +1107,13 @@ struct TypeChecker2
     void visit(AstStatCompoundAssign* stat)
     {
         AstExprBinary fake{stat->location, stat->op, stat->var, stat->value};
-        TypeId resultTy = visit(&fake, stat);
+        visit(&fake, stat);
+
+        TypeId* resultTy = module->astCompoundAssignResultTypes.find(stat);
+        LUAU_ASSERT(resultTy);
         TypeId varTy = lookupType(stat->var);
 
-        testIsSubtype(resultTy, varTy, stat->location);
+        testIsSubtype(*resultTy, varTy, stat->location);
     }
 
     void visit(AstStatFunction* stat)
@@ -1857,7 +1859,7 @@ struct TypeChecker2
 
         bool isStringOperation =
             (normLeft ? normLeft->isSubtypeOfString() : isString(leftType)) && (normRight ? normRight->isSubtypeOfString() : isString(rightType));
-
+        leftType = follow(leftType);
         if (get<AnyType>(leftType) || get<ErrorType>(leftType) || get<NeverType>(leftType))
             return leftType;
         else if (get<AnyType>(rightType) || get<ErrorType>(rightType) || get<NeverType>(rightType))
