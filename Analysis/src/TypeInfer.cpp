@@ -33,11 +33,11 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauMetatableInstantiationCloneCheck, false)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAGVARIABLE(LuauRemoveBadRelationalOperatorWarning, false)
 LUAU_FASTFLAGVARIABLE(LuauOkWithIteratingOverTableProperties, false)
+LUAU_FASTFLAGVARIABLE(LuauReusableSubstitutions, false)
 
 namespace Luau
 {
@@ -214,6 +214,7 @@ TypeChecker::TypeChecker(const ScopePtr& globalScope, ModuleResolver* resolver, 
     , iceHandler(iceHandler)
     , unifierState(iceHandler)
     , normalizer(nullptr, builtinTypes, NotNull{&unifierState})
+    , reusableInstantiation(TxnLog::empty(), nullptr, builtinTypes, {}, nullptr)
     , nilType(builtinTypes->nilType)
     , numberType(builtinTypes->numberType)
     , stringType(builtinTypes->stringType)
@@ -4865,12 +4866,27 @@ TypeId TypeChecker::instantiate(const ScopePtr& scope, TypeId ty, Location locat
     if (ftv && ftv->hasNoFreeOrGenericTypes)
         return ty;
 
-    Instantiation instantiation{log, &currentModule->internalTypes, builtinTypes, scope->level, /*scope*/ nullptr};
+    std::optional<TypeId> instantiated;
 
-    if (instantiationChildLimit)
-        instantiation.childLimit = *instantiationChildLimit;
+    if (FFlag::LuauReusableSubstitutions)
+    {
+        reusableInstantiation.resetState(log, &currentModule->internalTypes, builtinTypes, scope->level, /*scope*/ nullptr);
 
-    std::optional<TypeId> instantiated = instantiation.substitute(ty);
+        if (instantiationChildLimit)
+            reusableInstantiation.childLimit = *instantiationChildLimit;
+
+        instantiated = reusableInstantiation.substitute(ty);
+    }
+    else
+    {
+        Instantiation instantiation{log, &currentModule->internalTypes, builtinTypes, scope->level, /*scope*/ nullptr};
+
+        if (instantiationChildLimit)
+            instantiation.childLimit = *instantiationChildLimit;
+
+        instantiated = instantiation.substitute(ty);
+    }
+
     if (instantiated.has_value())
         return *instantiated;
     else
@@ -5619,8 +5635,8 @@ TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf,
     TypeId instantiated = *maybeInstantiated;
 
     TypeId target = follow(instantiated);
-    const TableType* tfTable = FFlag::LuauMetatableInstantiationCloneCheck ? getTableType(tf.type) : nullptr;
-    bool needsClone = follow(tf.type) == target || (FFlag::LuauMetatableInstantiationCloneCheck && tfTable != nullptr && tfTable == getTableType(target));
+    const TableType* tfTable = getTableType(tf.type);
+    bool needsClone = follow(tf.type) == target || (tfTable != nullptr && tfTable == getTableType(target));
     bool shouldMutate = getTableType(tf.type);
     TableType* ttv = getMutableTableType(target);
 

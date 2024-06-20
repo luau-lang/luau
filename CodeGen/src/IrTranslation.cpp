@@ -13,9 +13,9 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenDirectUserdataFlow, false)
 LUAU_FASTFLAG(LuauCodegenAnalyzeHostVectorOps)
 LUAU_FASTFLAG(LuauCodegenUserdataOps)
+LUAU_FASTFLAG(LuauCodegenFastcall3)
 
 namespace Luau
 {
@@ -743,7 +743,7 @@ void translateInstCloseUpvals(IrBuilder& build, const Instruction* pc)
     build.inst(IrCmd::CLOSE_UPVALS, build.vmReg(ra));
 }
 
-IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool customParams, int customParamCount, IrOp customArgs)
+IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool customParams, int customParamCount, IrOp customArgs, IrOp customArg3)
 {
     LuauOpcode opcode = LuauOpcode(LUAU_INSN_OP(*pc));
     int bfid = LUAU_INSN_A(*pc);
@@ -769,13 +769,15 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
             builtinArgs = build.constDouble(protok.value.n);
     }
 
+    IrOp builtinArg3 = FFlag::LuauCodegenFastcall3 ? (customParams ? customArg3 : build.vmReg(ra + 3)) : IrOp{};
+
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
     // In unsafe environment, instead of retrying fastcall at 'pcpos' we side-exit directly to fallback sequence
     build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos + getOpLength(opcode)));
 
-    BuiltinImplResult br =
-        translateBuiltin(build, LuauBuiltinFunction(bfid), ra, arg, builtinArgs, nparams, nresults, fallback, pcpos + getOpLength(opcode));
+    BuiltinImplResult br = translateBuiltin(
+        build, LuauBuiltinFunction(bfid), ra, arg, builtinArgs, builtinArg3, nparams, nresults, fallback, pcpos + getOpLength(opcode));
 
     if (br.type != BuiltinImplType::None)
     {
@@ -791,6 +793,22 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
 
             return build.undef();
         }
+    }
+    else if (FFlag::LuauCodegenFastcall3)
+    {
+        IrOp arg3 = customParams ? customArg3 : build.undef();
+
+        // TODO: we can skip saving pc for some well-behaved builtins which we didn't inline
+        build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + getOpLength(opcode)));
+
+        IrOp res = build.inst(IrCmd::INVOKE_FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), args, arg3, build.constInt(nparams),
+            build.constInt(nresults));
+        build.inst(IrCmd::CHECK_FASTCALL_RES, res, fallback);
+
+        if (nresults == LUA_MULTRET)
+            build.inst(IrCmd::ADJUST_STACK_TO_REG, build.vmReg(ra), res);
+        else if (nparams == LUA_MULTRET)
+            build.inst(IrCmd::ADJUST_STACK_TO_TOP);
     }
     else
     {
@@ -1277,7 +1295,7 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
         return;
     }
 
-    if (FFlag::LuauCodegenDirectUserdataFlow && (FFlag::LuauCodegenUserdataOps ? isUserdataBytecodeType(bcTypes.a) : bcTypes.a == LBC_TYPE_USERDATA))
+    if (FFlag::LuauCodegenUserdataOps ? isUserdataBytecodeType(bcTypes.a) : bcTypes.a == LBC_TYPE_USERDATA)
     {
         build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TUSERDATA), build.vmExit(pcpos));
 
@@ -1324,7 +1342,7 @@ void translateInstSetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
 
-    if (FFlag::LuauCodegenDirectUserdataFlow && (FFlag::LuauCodegenUserdataOps ? isUserdataBytecodeType(bcTypes.a) : bcTypes.a == LBC_TYPE_USERDATA))
+    if (FFlag::LuauCodegenUserdataOps ? isUserdataBytecodeType(bcTypes.a) : bcTypes.a == LBC_TYPE_USERDATA)
     {
         build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TUSERDATA), build.vmExit(pcpos));
 
@@ -1446,7 +1464,7 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
 
     BytecodeTypes bcTypes = build.function.getBytecodeTypesAt(pcpos);
 
-    if (FFlag::LuauCodegenDirectUserdataFlow && bcTypes.a == LBC_TYPE_VECTOR)
+    if (bcTypes.a == LBC_TYPE_VECTOR)
     {
         build.loadAndCheckTag(build.vmReg(rb), LUA_TVECTOR, build.vmExit(pcpos));
 
@@ -1470,7 +1488,7 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
         return false;
     }
 
-    if (FFlag::LuauCodegenDirectUserdataFlow && (FFlag::LuauCodegenUserdataOps ? isUserdataBytecodeType(bcTypes.a) : bcTypes.a == LBC_TYPE_USERDATA))
+    if (FFlag::LuauCodegenUserdataOps ? isUserdataBytecodeType(bcTypes.a) : bcTypes.a == LBC_TYPE_USERDATA)
     {
         build.loadAndCheckTag(build.vmReg(rb), LUA_TUSERDATA, build.vmExit(pcpos));
 
@@ -1499,8 +1517,7 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp firstFastPathSuccess = build.block(IrBlockKind::Internal);
     IrOp secondFastPath = build.block(IrBlockKind::Internal);
 
-    build.loadAndCheckTag(
-        build.vmReg(rb), LUA_TTABLE, FFlag::LuauCodegenDirectUserdataFlow && bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
+    build.loadAndCheckTag(build.vmReg(rb), LUA_TTABLE, bcTypes.a == LBC_TYPE_TABLE ? build.vmExit(pcpos) : fallback);
     IrOp table = build.inst(IrCmd::LOAD_POINTER, build.vmReg(rb));
 
     CODEGEN_ASSERT(build.function.proto);

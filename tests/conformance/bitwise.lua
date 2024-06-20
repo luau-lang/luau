@@ -72,6 +72,7 @@ for _, b in pairs(c) do
   assert(bit32.bxor(b, b) == 0)
   assert(bit32.bxor(b, 0) == b)
   assert(bit32.bxor(b, b, b) == b)
+  assert(bit32.bxor(b, b, b, b) == 0)
   assert(bit32.bnot(b) ~= b)
   assert(bit32.bnot(bit32.bnot(b)) == b)
   assert(bit32.bnot(b) == 2^32 - 1 - b)

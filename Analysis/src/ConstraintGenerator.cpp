@@ -787,7 +787,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatLocal* stat
 
             auto uc = addConstraint(scope, statLocal->location, UnpackConstraint{valueTypes, rvaluePack});
 
-            for (TypeId t: valueTypes)
+            for (TypeId t : valueTypes)
                 getMutable<BlockedType>(t)->setOwner(uc);
         }
 
@@ -920,7 +920,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatForIn* forI
     auto iterable = addConstraint(
         loopScope, getLocation(forIn->values), IterableConstraint{iterator, variableTypes, forIn->values.data[0], &module->astForInNextTypes});
 
-    for (TypeId var: variableTypes)
+    for (TypeId var : variableTypes)
     {
         auto bt = getMutable<BlockedType>(var);
         LUAU_ASSERT(bt);
@@ -1171,7 +1171,7 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatAssign* ass
 
         auto uc = addConstraint(scope, assign->location, UnpackConstraint{valueTypes, resultPack});
 
-        for (TypeId t: valueTypes)
+        for (TypeId t : valueTypes)
             getMutable<BlockedType>(t)->setOwner(uc);
     }
 

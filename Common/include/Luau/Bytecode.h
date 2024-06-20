@@ -46,6 +46,7 @@
 // Version 3: Adds FORGPREP/JUMPXEQK* and enhances AUX encoding for FORGLOOP. Removes FORGLOOP_NEXT/INEXT and JUMPIFEQK/JUMPIFNOTEQK. Currently supported.
 // Version 4: Adds Proto::flags, typeinfo, and floor division opcodes IDIV/IDIVK. Currently supported.
 // Version 5: Adds SUBRK/DIVRK and vector constants. Currently supported.
+// Version 6: Adds FASTCALL3. Currently supported.
 
 // # Bytecode type information history
 // Version 1: (from bytecode version 4) Type information for function signature. Currently supported.
@@ -299,8 +300,13 @@ enum LuauOpcode
     // A: target register (see FORGLOOP for register layout)
     LOP_FORGPREP_INEXT,
 
-    // removed in v3
-    LOP_DEP_FORGLOOP_INEXT,
+    // FASTCALL3: perform a fast call of a built-in function using 3 register arguments
+    // A: builtin function id (see LuauBuiltinFunction)
+    // B: source argument register
+    // C: jump offset to get to following CALL
+    // AUX: source register 2 in least-significant byte
+    // AUX: source register 3 in second least-significant byte
+    LOP_FASTCALL3,
 
     // FORGPREP_NEXT: prepare FORGLOOP with 2 output variables (no AUX encoding), assuming generator is luaB_next, and jump to FORGLOOP
     // A: target register (see FORGLOOP for register layout)
@@ -434,7 +440,7 @@ enum LuauBytecodeTag
 {
     // Bytecode version; runtime supports [MIN, MAX], compiler emits TARGET by default but may emit a higher version when flags are enabled
     LBC_VERSION_MIN = 3,
-    LBC_VERSION_MAX = 5,
+    LBC_VERSION_MAX = 6,
     LBC_VERSION_TARGET = 5,
     // Type encoding version
     LBC_TYPE_VERSION_DEPRECATED = 1,

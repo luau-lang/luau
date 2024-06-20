@@ -29,6 +29,7 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 LUAU_FASTFLAG(LuauCompileTypeInfo)
 LUAU_FASTFLAGVARIABLE(LuauCompileTempTypeInfo, false)
 LUAU_FASTFLAGVARIABLE(LuauCompileUserdataInfo, false)
+LUAU_FASTFLAGVARIABLE(LuauCompileFastcall3, false)
 
 LUAU_FASTFLAG(LuauNativeAttribute)
 
@@ -473,10 +474,32 @@ struct Compiler
     {
         LUAU_ASSERT(!expr->self);
         LUAU_ASSERT(expr->args.size >= 1);
-        LUAU_ASSERT(expr->args.size <= 2 || (bfid == LBF_BIT32_EXTRACTK && expr->args.size == 3));
+
+        if (FFlag::LuauCompileFastcall3)
+            LUAU_ASSERT(expr->args.size <= 3);
+        else
+            LUAU_ASSERT(expr->args.size <= 2 || (bfid == LBF_BIT32_EXTRACTK && expr->args.size == 3));
+
         LUAU_ASSERT(bfid == LBF_BIT32_EXTRACTK ? bfK >= 0 : bfK < 0);
 
-        LuauOpcode opc = expr->args.size == 1 ? LOP_FASTCALL1 : (bfK >= 0 || isConstant(expr->args.data[1])) ? LOP_FASTCALL2K : LOP_FASTCALL2;
+        LuauOpcode opc = LOP_NOP;
+
+        if (FFlag::LuauCompileFastcall3)
+        {
+            if (expr->args.size == 1)
+                opc = LOP_FASTCALL1;
+            else if (bfK >= 0 || (expr->args.size == 2 && isConstant(expr->args.data[1])))
+                opc = LOP_FASTCALL2K;
+            else if (expr->args.size == 2)
+                opc = LOP_FASTCALL2;
+            else
+                opc = LOP_FASTCALL3;
+        }
+        else
+        {
+            opc = expr->args.size == 1 ? LOP_FASTCALL1
+                                       : (bfK >= 0 || (expr->args.size == 2 && isConstant(expr->args.data[1]))) ? LOP_FASTCALL2K : LOP_FASTCALL2;
+        }
 
         uint32_t args[3] = {};
 
@@ -504,8 +527,16 @@ struct Compiler
         size_t fastcallLabel = bytecode.emitLabel();
 
         bytecode.emitABC(opc, uint8_t(bfid), uint8_t(args[0]), 0);
-        if (opc != LOP_FASTCALL1)
+
+        if (FFlag::LuauCompileFastcall3 && opc == LOP_FASTCALL3)
+        {
+            LUAU_ASSERT(bfK < 0);
+            bytecode.emitAux(args[1] | (args[2] << 8));
+        }
+        else if (opc != LOP_FASTCALL1)
+        {
             bytecode.emitAux(bfK >= 0 ? bfK : args[1]);
+        }
 
         // Set up a traditional Lua stack for the subsequent LOP_CALL.
         // Note, as with other instructions that immediately follow FASTCALL, these are normally not executed and are used as a fallback for
@@ -857,11 +888,28 @@ struct Compiler
             }
         }
 
-        // Optimization: for 1/2 argument fast calls use specialized opcodes
-        if (bfid >= 0 && expr->args.size >= 1 && expr->args.size <= 2)
+        unsigned maxFastcallArgs = 2;
+
+        // Fastcall with 3 arguments is only used if it can help save one or more move instructions
+        if (FFlag::LuauCompileFastcall3 && bfid >= 0 && expr->args.size == 3)
+        {
+            for (size_t i = 0; i < expr->args.size; ++i)
+            {
+                if (int reg = getExprLocalReg(expr->args.data[i]); reg >= 0)
+                {
+                    maxFastcallArgs = 3;
+                    break;
+                }
+            }
+        }
+
+        // Optimization: for 1/2/3 argument fast calls use specialized opcodes
+        if (bfid >= 0 && expr->args.size >= 1 && expr->args.size <= (FFlag::LuauCompileFastcall3 ? maxFastcallArgs : 2u))
         {
             if (!isExprMultRet(expr->args.data[expr->args.size - 1]))
+            {
                 return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, bfid);
+            }
             else if (options.optimizationLevel >= 2)
             {
                 // when a builtin is none-safe with matching arity, even if the last expression returns 0 or >1 arguments,

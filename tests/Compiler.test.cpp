@@ -25,6 +25,7 @@ LUAU_FASTINT(LuauRecursionLimit)
 LUAU_FASTFLAG(LuauCompileTypeInfo)
 LUAU_FASTFLAG(LuauCompileTempTypeInfo)
 LUAU_FASTFLAG(LuauCompileUserdataInfo)
+LUAU_FASTFLAG(LuauCompileFastcall3)
 
 using namespace Luau;
 
@@ -3486,6 +3487,33 @@ RETURN R1 -1
 )");
 }
 
+TEST_CASE("Fastcall3")
+{
+    ScopedFastFlag luauCompileFastcall3{FFlag::LuauCompileFastcall3, true};
+
+    CHECK_EQ("\n" + compileFunction0(R"(
+local a, b, c = ...
+return math.min(a, b, c) + math.clamp(a, b, c)
+)"),
+        R"(
+GETVARARGS R0 3
+FASTCALL3 19 R0 R1 R2 L0
+MOVE R5 R0
+MOVE R6 R1
+MOVE R7 R2
+GETIMPORT R4 2 [math.min]
+CALL R4 3 1
+L0: FASTCALL3 46 R0 R1 R2 L1
+MOVE R6 R0
+MOVE R7 R1
+MOVE R8 R2
+GETIMPORT R5 4 [math.clamp]
+CALL R5 3 1
+L1: ADD R3 R4 R5
+RETURN R3 1
+)");
+}
+
 TEST_CASE("FastcallSelect")
 {
     // select(_, ...) compiles to a builtin call
@@ -4665,6 +4693,34 @@ FASTCALL 54 L0
 GETIMPORT R0 2 [Vector3.new]
 CALL R0 3 -1
 L0: RETURN R0 -1
+)");
+}
+
+TEST_CASE("VectorFastCall3")
+{
+    ScopedFastFlag luauCompileFastcall3{FFlag::LuauCompileFastcall3, true};
+
+    const char* source = R"(
+local a, b, c = ...
+return Vector3.new(a, b, c)
+)";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::CompileOptions options;
+    options.vectorLib = "Vector3";
+    options.vectorCtor = "new";
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETVARARGS R0 3
+FASTCALL3 54 R0 R1 R2 L0
+MOVE R4 R0
+MOVE R5 R1
+MOVE R6 R2
+GETIMPORT R3 2 [Vector3.new]
+CALL R3 3 -1
+L0: RETURN R3 -1
 )");
 }
 

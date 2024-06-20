@@ -4,6 +4,7 @@
 #include "Luau/Anyification.h"
 #include "Luau/ControlFlow.h"
 #include "Luau/Error.h"
+#include "Luau/Instantiation.h"
 #include "Luau/Module.h"
 #include "Luau/Predicate.h"
 #include "Luau/Substitution.h"
@@ -361,6 +362,8 @@ public:
 
     UnifierSharedState unifierState;
     Normalizer normalizer;
+
+    Instantiation reusableInstantiation;
 
     std::vector<RequireCycle> requireCycles;
 

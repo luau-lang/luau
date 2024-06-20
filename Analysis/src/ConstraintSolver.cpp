@@ -694,7 +694,7 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
     }
 
     for (TypeId ty : c.interiorTypes)
-        generalize(NotNull{arena}, builtinTypes, constraint->scope, generalizedTypes, ty);
+        generalize(NotNull{arena}, builtinTypes, constraint->scope, generalizedTypes, ty, /* avoidSealingTables */ false);
 
     return true;
 }
@@ -769,13 +769,8 @@ bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Co
     {
         TypeId keyTy = freshType(arena, builtinTypes, constraint->scope);
         TypeId valueTy = freshType(arena, builtinTypes, constraint->scope);
-        TypeId tableTy = arena->addType(TableType{
-            TableType::Props{},
-            TableIndexer{keyTy, valueTy},
-            TypeLevel{},
-            constraint->scope,
-            TableState::Free
-        });
+        TypeId tableTy =
+            arena->addType(TableType{TableType::Props{}, TableIndexer{keyTy, valueTy}, TypeLevel{}, constraint->scope, TableState::Free});
 
         unify(constraint, nextTy, tableTy);
 
@@ -1022,13 +1017,10 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     const TableType* tfTable = getTableType(tf->type);
 
     //clang-format off
-    bool needsClone =
-        follow(tf->type) == target ||
-        (tfTable != nullptr && tfTable == getTableType(target)) ||
-        std::any_of(typeArguments.begin(), typeArguments.end(), [&](const auto& other) {
-            return other == target;
-        }
-    );
+    bool needsClone = follow(tf->type) == target || (tfTable != nullptr && tfTable == getTableType(target)) ||
+                      std::any_of(typeArguments.begin(), typeArguments.end(), [&](const auto& other) {
+                          return other == target;
+                      });
     //clang-format on
 
     // Only tables have the properties we're trying to set.
@@ -1446,6 +1438,8 @@ bool ConstraintSolver::tryDispatchHasIndexer(
             bind(constraint, resultType, tbl->indexer->indexResultType);
             return true;
         }
+        else if (auto mt = get<MetatableType>(follow(ft->upperBound)))
+            return tryDispatchHasIndexer(recursionDepth, constraint, mt->table, indexType, resultType, seen);
 
         FreeType freeResult{ft->scope, builtinTypes->neverType, builtinTypes->unknownType};
         emplace<FreeType>(constraint, resultType, freeResult);
@@ -1461,11 +1455,11 @@ bool ConstraintSolver::tryDispatchHasIndexer(
         if (auto indexer = tt->indexer)
         {
             unify(constraint, indexType, indexer->indexType);
-
             bind(constraint, resultType, indexer->indexResultType);
             return true;
         }
-        else if (tt->state == TableState::Unsealed)
+
+        if (tt->state == TableState::Unsealed)
         {
             // FIXME this is greedy.
 
@@ -2067,7 +2061,7 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
     }
 
     auto unpack = [&](TypeId ty) {
-        for (TypeId varTy: c.variables)
+        for (TypeId varTy : c.variables)
         {
             LUAU_ASSERT(get<BlockedType>(varTy));
             LUAU_ASSERT(varTy != ty);
@@ -2228,11 +2222,12 @@ bool ConstraintSolver::tryDispatchIterableFunction(
     return true;
 }
 
-NotNull<const Constraint> ConstraintSolver::unpackAndAssign(const std::vector<TypeId> destTypes, TypePackId srcTypes, NotNull<const Constraint> constraint)
+NotNull<const Constraint> ConstraintSolver::unpackAndAssign(
+    const std::vector<TypeId> destTypes, TypePackId srcTypes, NotNull<const Constraint> constraint)
 {
     auto c = pushConstraint(constraint->scope, constraint->location, UnpackConstraint{destTypes, srcTypes});
 
-    for (TypeId t: destTypes)
+    for (TypeId t : destTypes)
     {
         BlockedType* bt = getMutable<BlockedType>(t);
         LUAU_ASSERT(bt);
@@ -2834,7 +2829,7 @@ void ConstraintSolver::shiftReferences(TypeId source, TypeId target)
     targetRefs += count;
 }
 
-std::optional<TypeId> ConstraintSolver::generalizeFreeType(NotNull<Scope> scope, TypeId type)
+std::optional<TypeId> ConstraintSolver::generalizeFreeType(NotNull<Scope> scope, TypeId type, bool avoidSealingTables)
 {
     TypeId t = follow(type);
     if (get<FreeType>(t))
@@ -2849,7 +2844,7 @@ std::optional<TypeId> ConstraintSolver::generalizeFreeType(NotNull<Scope> scope,
         // that until all constraint generation is complete.
     }
 
-    return generalize(NotNull{arena}, builtinTypes, scope, generalizedTypes, type);
+    return generalize(NotNull{arena}, builtinTypes, scope, generalizedTypes, type, avoidSealingTables);
 }
 
 bool ConstraintSolver::hasUnresolvedConstraints(TypeId ty)

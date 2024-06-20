@@ -9,7 +9,6 @@
 
 #include "lobject.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenRemoveDeadStores5, false)
 LUAU_FASTFLAG(LuauCodegenUserdataOps)
 
 // TODO: optimization can be improved by knowing which registers are live in at each VM exit

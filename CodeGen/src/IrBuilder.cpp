@@ -13,10 +13,10 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauLoadTypeInfo) // Because new VM typeinfo load changes the format used by Codegen, same flag is used
 LUAU_FASTFLAG(LuauCodegenAnalyzeHostVectorOps)
 LUAU_FASTFLAG(LuauLoadUserdataInfo)
 LUAU_FASTFLAG(LuauCodegenInstG)
+LUAU_FASTFLAG(LuauCodegenFastcall3)
 
 namespace Luau
 {
@@ -30,96 +30,9 @@ IrBuilder::IrBuilder(const HostIrHooks& hostHooks)
     , constantMap({IrConstKind::Tag, ~0ull})
 {
 }
-static bool hasTypedParameters_DEPRECATED(Proto* proto)
-{
-    CODEGEN_ASSERT(!FFlag::LuauLoadTypeInfo);
-
-    return proto->typeinfo && proto->numparams != 0;
-}
-
-static void buildArgumentTypeChecks_DEPRECATED(IrBuilder& build, Proto* proto)
-{
-    CODEGEN_ASSERT(!FFlag::LuauLoadTypeInfo);
-    CODEGEN_ASSERT(hasTypedParameters_DEPRECATED(proto));
-
-    for (int i = 0; i < proto->numparams; ++i)
-    {
-        uint8_t et = proto->typeinfo[2 + i];
-
-        uint8_t tag = et & ~LBC_TYPE_OPTIONAL_BIT;
-        uint8_t optional = et & LBC_TYPE_OPTIONAL_BIT;
-
-        if (tag == LBC_TYPE_ANY)
-            continue;
-
-        IrOp load = build.inst(IrCmd::LOAD_TAG, build.vmReg(i));
-
-        IrOp nextCheck;
-        if (optional)
-        {
-            nextCheck = build.block(IrBlockKind::Internal);
-            IrOp fallbackCheck = build.block(IrBlockKind::Internal);
-
-            build.inst(IrCmd::JUMP_EQ_TAG, load, build.constTag(LUA_TNIL), nextCheck, fallbackCheck);
-
-            build.beginBlock(fallbackCheck);
-        }
-
-        switch (tag)
-        {
-        case LBC_TYPE_NIL:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TNIL), build.vmExit(kVmExitEntryGuardPc));
-            break;
-        case LBC_TYPE_BOOLEAN:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TBOOLEAN), build.vmExit(kVmExitEntryGuardPc));
-            break;
-        case LBC_TYPE_NUMBER:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TNUMBER), build.vmExit(kVmExitEntryGuardPc));
-            break;
-        case LBC_TYPE_STRING:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TSTRING), build.vmExit(kVmExitEntryGuardPc));
-            break;
-        case LBC_TYPE_TABLE:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TTABLE), build.vmExit(kVmExitEntryGuardPc));
-            break;
-        case LBC_TYPE_FUNCTION:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TFUNCTION), build.vmExit(kVmExitEntryGuardPc));
-            break;
-        case LBC_TYPE_THREAD:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TTHREAD), build.vmExit(kVmExitEntryGuardPc));
-            break;
-        case LBC_TYPE_USERDATA:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TUSERDATA), build.vmExit(kVmExitEntryGuardPc));
-            break;
-        case LBC_TYPE_VECTOR:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TVECTOR), build.vmExit(kVmExitEntryGuardPc));
-            break;
-        case LBC_TYPE_BUFFER:
-            build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TBUFFER), build.vmExit(kVmExitEntryGuardPc));
-            break;
-        }
-
-        if (optional)
-        {
-            build.inst(IrCmd::JUMP, nextCheck);
-            build.beginBlock(nextCheck);
-        }
-    }
-
-    // If the last argument is optional, we can skip creating a new internal block since one will already have been created.
-    if (!(proto->typeinfo[2 + proto->numparams - 1] & LBC_TYPE_OPTIONAL_BIT))
-    {
-        IrOp next = build.block(IrBlockKind::Internal);
-        build.inst(IrCmd::JUMP, next);
-
-        build.beginBlock(next);
-    }
-}
 
 static bool hasTypedParameters(const BytecodeTypeInfo& typeInfo)
 {
-    CODEGEN_ASSERT(FFlag::LuauLoadTypeInfo);
-
     for (auto el : typeInfo.argumentTypes)
     {
         if (el != LBC_TYPE_ANY)
@@ -131,8 +44,6 @@ static bool hasTypedParameters(const BytecodeTypeInfo& typeInfo)
 
 static void buildArgumentTypeChecks(IrBuilder& build)
 {
-    CODEGEN_ASSERT(FFlag::LuauLoadTypeInfo);
-
     const BytecodeTypeInfo& typeInfo = build.function.bcTypeInfo;
     CODEGEN_ASSERT(hasTypedParameters(typeInfo));
 
@@ -228,11 +139,10 @@ void IrBuilder::buildFunctionIr(Proto* proto)
     function.proto = proto;
     function.variadic = proto->is_vararg != 0;
 
-    if (FFlag::LuauLoadTypeInfo)
-        loadBytecodeTypeInfo(function);
+    loadBytecodeTypeInfo(function);
 
     // Reserve entry block
-    bool generateTypeChecks = FFlag::LuauLoadTypeInfo ? hasTypedParameters(function.bcTypeInfo) : hasTypedParameters_DEPRECATED(proto);
+    bool generateTypeChecks = hasTypedParameters(function.bcTypeInfo);
     IrOp entry = generateTypeChecks ? block(IrBlockKind::Internal) : IrOp{};
 
     // Rebuild original control flow blocks
@@ -247,10 +157,7 @@ void IrBuilder::buildFunctionIr(Proto* proto)
     {
         beginBlock(entry);
 
-        if (FFlag::LuauLoadTypeInfo)
-            buildArgumentTypeChecks(*this);
-        else
-            buildArgumentTypeChecks_DEPRECATED(*this, proto);
+        buildArgumentTypeChecks(*this);
 
         inst(IrCmd::JUMP, blockAtInst(0));
     }
@@ -544,16 +451,21 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstCloseUpvals(*this, pc);
         break;
     case LOP_FASTCALL:
-        handleFastcallFallback(translateFastCallN(*this, pc, i, false, 0, {}), pc, i);
+        handleFastcallFallback(translateFastCallN(*this, pc, i, false, 0, {}, {}), pc, i);
         break;
     case LOP_FASTCALL1:
-        handleFastcallFallback(translateFastCallN(*this, pc, i, true, 1, undef()), pc, i);
+        handleFastcallFallback(translateFastCallN(*this, pc, i, true, 1, undef(), undef()), pc, i);
         break;
     case LOP_FASTCALL2:
-        handleFastcallFallback(translateFastCallN(*this, pc, i, true, 2, vmReg(pc[1])), pc, i);
+        handleFastcallFallback(translateFastCallN(*this, pc, i, true, 2, vmReg(pc[1]), undef()), pc, i);
         break;
     case LOP_FASTCALL2K:
-        handleFastcallFallback(translateFastCallN(*this, pc, i, true, 2, vmConst(pc[1])), pc, i);
+        handleFastcallFallback(translateFastCallN(*this, pc, i, true, 2, vmConst(pc[1]), undef()), pc, i);
+        break;
+    case LOP_FASTCALL3:
+        CODEGEN_ASSERT(FFlag::LuauCodegenFastcall3);
+
+        handleFastcallFallback(translateFastCallN(*this, pc, i, true, 3, vmReg(pc[1] & 0xff), vmReg((pc[1] >> 8) & 0xff)), pc, i);
         break;
     case LOP_FORNPREP:
         translateInstForNPrep(*this, pc, i);
