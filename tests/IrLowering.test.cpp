@@ -15,17 +15,15 @@
 #include <memory>
 #include <string_view>
 
-LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
-LUAU_FASTFLAG(LuauCodegenDirectUserdataFlow)
 LUAU_FASTFLAG(LuauCompileTypeInfo)
-LUAU_FASTFLAG(LuauLoadTypeInfo)
-LUAU_FASTFLAG(LuauCodegenTypeInfo)
 LUAU_FASTFLAG(LuauCompileTempTypeInfo)
 LUAU_FASTFLAG(LuauCodegenAnalyzeHostVectorOps)
 LUAU_FASTFLAG(LuauCompileUserdataInfo)
 LUAU_FASTFLAG(LuauLoadUserdataInfo)
 LUAU_FASTFLAG(LuauCodegenUserdataOps)
 LUAU_FASTFLAG(LuauCodegenUserdataAlloc)
+LUAU_FASTFLAG(LuauCompileFastcall3)
+LUAU_FASTFLAG(LuauCodegenFastcall3)
 
 static std::string getCodegenAssembly(const char* source, bool includeIrTypes = false, int debugLevel = 1)
 {
@@ -159,8 +157,6 @@ bb_bytecode_1:
 
 TEST_CASE("VectorComponentRead")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function compsum(a: vector)
     return a.X + a.Y + a.Z
@@ -238,8 +234,6 @@ bb_bytecode_1:
 
 TEST_CASE("VectorSubMulDiv")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3combo(a: vector, b: vector, c: vector, d: vector)
     return a * b - c / d
@@ -272,8 +266,6 @@ bb_bytecode_1:
 
 TEST_CASE("VectorSubMulDiv2")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3combo(a: vector)
     local tmp = a * a
@@ -302,8 +294,6 @@ bb_bytecode_1:
 
 TEST_CASE("VectorMulDivMixed")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vec3combo(a: vector, b: vector, c: vector, d: vector)
     return a * 2 + b / 4 + 0.5 * c + 40 / d
@@ -344,8 +334,6 @@ bb_bytecode_1:
 
 TEST_CASE("ExtraMathMemoryOperands")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: number, b: number, c: number, d: number, e: number)
     return math.floor(a) + math.ceil(b) + math.round(c) + math.sqrt(d) + math.abs(e)
@@ -382,8 +370,6 @@ bb_bytecode_1:
 
 TEST_CASE("DseInitialStackState")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo()
     while {} do
@@ -422,7 +408,7 @@ bb_5:
 
 TEST_CASE("DseInitialStackState2")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
+    ScopedFastFlag luauCodegenFastcall3{FFlag::LuauCodegenFastcall3, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a)
@@ -435,7 +421,7 @@ end
 bb_bytecode_0:
   CHECK_SAFE_ENV exit(1)
   CHECK_TAG R0, tnumber, exit(1)
-  FASTCALL 14u, R1, R0, undef, 1i, 2i
+  FASTCALL 14u, R1, R0, 2i
   INTERRUPT 5u
   RETURN R0, 1i
 )");
@@ -443,7 +429,7 @@ bb_bytecode_0:
 
 TEST_CASE("DseInitialStackState3")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
+    ScopedFastFlag luauCodegenFastcall3{FFlag::LuauCodegenFastcall3, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a)
@@ -456,7 +442,7 @@ end
 bb_bytecode_0:
   CHECK_SAFE_ENV exit(1)
   CHECK_TAG R0, tnumber, exit(1)
-  FASTCALL 47u, R1, R0, undef, 1i, 1i
+  FASTCALL 47u, R1, R0, 1i
   INTERRUPT 5u
   RETURN R0, 1i
 )");
@@ -464,8 +450,6 @@ bb_bytecode_0:
 
 TEST_CASE("VectorConstantTag")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function vecrcp(a: vector)
     return vector(1, 2, 3) + a
@@ -491,8 +475,6 @@ bb_bytecode_1:
 
 TEST_CASE("VectorNamecall")
 {
-    ScopedFastFlag luauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function abs(a: vector)
     return a:Abs()
@@ -517,8 +499,6 @@ bb_bytecode_1:
 
 TEST_CASE("VectorRandomProp")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: vector)
     return a.XX + a.YY + a.ZZ
@@ -559,7 +539,6 @@ bb_6:
 
 TEST_CASE("VectorCustomAccess")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
     ScopedFastFlag luauCodegenAnalyzeHostVectorOps{FFlag::LuauCodegenAnalyzeHostVectorOps, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
@@ -594,8 +573,6 @@ bb_bytecode_1:
 
 TEST_CASE("VectorCustomNamecall")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-    ScopedFastFlag LuauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
     ScopedFastFlag luauCodegenAnalyzeHostVectorOps{FFlag::LuauCodegenAnalyzeHostVectorOps, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
@@ -634,8 +611,6 @@ bb_bytecode_1:
 
 TEST_CASE("VectorCustomAccessChain")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-    ScopedFastFlag LuauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
     ScopedFastFlag luauCodegenAnalyzeHostVectorOps{FFlag::LuauCodegenAnalyzeHostVectorOps, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
@@ -688,8 +663,6 @@ bb_bytecode_1:
 
 TEST_CASE("VectorCustomNamecallChain")
 {
-    ScopedFastFlag luauCodegenRemoveDeadStores{FFlag::LuauCodegenRemoveDeadStores5, true};
-    ScopedFastFlag LuauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
     ScopedFastFlag luauCodegenAnalyzeHostVectorOps{FFlag::LuauCodegenAnalyzeHostVectorOps, true};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
@@ -749,9 +722,7 @@ bb_bytecode_1:
 
 TEST_CASE("VectorCustomNamecallChain2")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true},
-        {FFlag::LuauCodegenAnalyzeHostVectorOps, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCodegenAnalyzeHostVectorOps, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 type Vertex = {n: vector, b: vector}
@@ -827,8 +798,6 @@ bb_6:
 
 TEST_CASE("UserDataGetIndex")
 {
-    ScopedFastFlag luauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function getxy(a: Point)
     return a.x + a.y
@@ -859,8 +828,6 @@ bb_4:
 
 TEST_CASE("UserDataSetIndex")
 {
-    ScopedFastFlag luauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function setxy(a: Point)
     a.x = 3
@@ -887,8 +854,6 @@ bb_bytecode_1:
 
 TEST_CASE("UserDataNamecall")
 {
-    ScopedFastFlag luauCodegenDirectUserdataFlow{FFlag::LuauCodegenDirectUserdataFlow, true};
-
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function getxy(a: Point)
     return a:GetX() + a:GetY()
@@ -925,8 +890,7 @@ bb_4:
 
 TEST_CASE("ExplicitUpvalueAndLocalTypes")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local y: vector = ...
@@ -969,8 +933,7 @@ bb_bytecode_0:
 
 TEST_CASE("FastcallTypeInferThroughLocal")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileFastcall3, true}, {FFlag::LuauCodegenFastcall3, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function getsum(x, c)
@@ -985,43 +948,40 @@ end
                         /* includeIrTypes */ true),
         R"(
 ; function getsum($arg0, $arg1) line 2
-; R2: vector from 0 to 17
+; R2: vector from 0 to 18
 bb_bytecode_0:
-  %0 = LOAD_TVALUE R0
-  STORE_TVALUE R3, %0
   STORE_DOUBLE R4, 2
   STORE_TAG R4, tnumber
   STORE_DOUBLE R5, 3
   STORE_TAG R5, tnumber
   CHECK_SAFE_ENV exit(4)
-  CHECK_TAG R3, tnumber, exit(4)
-  %13 = LOAD_DOUBLE R3
-  STORE_VECTOR R2, %13, 2, 3
+  CHECK_TAG R0, tnumber, exit(4)
+  %11 = LOAD_DOUBLE R0
+  STORE_VECTOR R2, %11, 2, 3
   STORE_TAG R2, tvector
   JUMP_IF_FALSY R1, bb_bytecode_1, bb_3
 bb_3:
-  CHECK_TAG R2, tvector, exit(8)
-  %21 = LOAD_FLOAT R2, 0i
-  %26 = LOAD_FLOAT R2, 4i
-  %35 = ADD_NUM %21, %26
-  STORE_DOUBLE R3, %35
+  CHECK_TAG R2, tvector, exit(9)
+  %19 = LOAD_FLOAT R2, 0i
+  %24 = LOAD_FLOAT R2, 4i
+  %33 = ADD_NUM %19, %24
+  STORE_DOUBLE R3, %33
   STORE_TAG R3, tnumber
-  INTERRUPT 13u
+  INTERRUPT 14u
   RETURN R3, 1i
 bb_bytecode_1:
-  CHECK_TAG R2, tvector, exit(14)
-  %42 = LOAD_FLOAT R2, 8i
-  STORE_DOUBLE R3, %42
+  CHECK_TAG R2, tvector, exit(15)
+  %40 = LOAD_FLOAT R2, 8i
+  STORE_DOUBLE R3, %40
   STORE_TAG R3, tnumber
-  INTERRUPT 16u
+  INTERRUPT 17u
   RETURN R3, 1i
 )");
 }
 
 TEST_CASE("FastcallTypeInferThroughUpvalue")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileFastcall3, true}, {FFlag::LuauCodegenFastcall3, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local v = ...
@@ -1040,48 +1000,45 @@ end
 ; function getsum($arg0, $arg1) line 4
 ; U0: vector
 bb_bytecode_0:
-  %0 = LOAD_TVALUE R0
-  STORE_TVALUE R3, %0
   STORE_DOUBLE R4, 2
   STORE_TAG R4, tnumber
   STORE_DOUBLE R5, 3
   STORE_TAG R5, tnumber
   CHECK_SAFE_ENV exit(4)
-  CHECK_TAG R3, tnumber, exit(4)
-  %13 = LOAD_DOUBLE R3
-  STORE_VECTOR R2, %13, 2, 3
+  CHECK_TAG R0, tnumber, exit(4)
+  %11 = LOAD_DOUBLE R0
+  STORE_VECTOR R2, %11, 2, 3
   STORE_TAG R2, tvector
   SET_UPVALUE U0, R2, tvector
   JUMP_IF_FALSY R1, bb_bytecode_1, bb_3
 bb_3:
   GET_UPVALUE R4, U0
-  CHECK_TAG R4, tvector, exit(10)
-  %23 = LOAD_FLOAT R4, 0i
-  STORE_DOUBLE R3, %23
+  CHECK_TAG R4, tvector, exit(11)
+  %21 = LOAD_FLOAT R4, 0i
+  STORE_DOUBLE R3, %21
   STORE_TAG R3, tnumber
   GET_UPVALUE R5, U0
-  CHECK_TAG R5, tvector, exit(13)
-  %29 = LOAD_FLOAT R5, 4i
-  %38 = ADD_NUM %23, %29
-  STORE_DOUBLE R2, %38
+  CHECK_TAG R5, tvector, exit(14)
+  %27 = LOAD_FLOAT R5, 4i
+  %36 = ADD_NUM %21, %27
+  STORE_DOUBLE R2, %36
   STORE_TAG R2, tnumber
-  INTERRUPT 16u
+  INTERRUPT 17u
   RETURN R2, 1i
 bb_bytecode_1:
   GET_UPVALUE R3, U0
-  CHECK_TAG R3, tvector, exit(18)
-  %46 = LOAD_FLOAT R3, 8i
-  STORE_DOUBLE R2, %46
+  CHECK_TAG R3, tvector, exit(19)
+  %44 = LOAD_FLOAT R3, 8i
+  STORE_DOUBLE R2, %44
   STORE_TAG R2, tnumber
-  INTERRUPT 20u
+  INTERRUPT 21u
   RETURN R2, 1i
 )");
 }
 
 TEST_CASE("LoadAndMoveTypePropagation")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function getsum(n)
@@ -1148,8 +1105,7 @@ bb_bytecode_4:
 
 TEST_CASE("ArgumentTypeRefinement")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileFastcall3, true}, {FFlag::LuauCodegenFastcall3, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function getsum(x, y)
@@ -1164,31 +1120,28 @@ end
 bb_bytecode_0:
   STORE_DOUBLE R3, 1
   STORE_TAG R3, tnumber
-  %2 = LOAD_TVALUE R1
-  STORE_TVALUE R4, %2
   STORE_DOUBLE R5, 3
   STORE_TAG R5, tnumber
   CHECK_SAFE_ENV exit(4)
-  CHECK_TAG R4, tnumber, exit(4)
-  %14 = LOAD_DOUBLE R4
-  STORE_VECTOR R2, 1, %14, 3
+  CHECK_TAG R1, tnumber, exit(4)
+  %12 = LOAD_DOUBLE R1
+  STORE_VECTOR R2, 1, %12, 3
   STORE_TAG R2, tvector
-  %18 = LOAD_TVALUE R2
-  STORE_TVALUE R0, %18
-  %22 = LOAD_FLOAT R0, 4i
-  %27 = LOAD_FLOAT R0, 8i
-  %36 = ADD_NUM %22, %27
-  STORE_DOUBLE R2, %36
+  %16 = LOAD_TVALUE R2
+  STORE_TVALUE R0, %16
+  %20 = LOAD_FLOAT R0, 4i
+  %25 = LOAD_FLOAT R0, 8i
+  %34 = ADD_NUM %20, %25
+  STORE_DOUBLE R2, %34
   STORE_TAG R2, tnumber
-  INTERRUPT 13u
+  INTERRUPT 14u
   RETURN R2, 1i
 )");
 }
 
 TEST_CASE("InlineFunctionType")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function inl(v: vector, s: number)
@@ -1236,8 +1189,7 @@ bb_bytecode_0:
 
 TEST_CASE("ResolveTablePathTypes")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 type Vertex = {pos: vector, normal: vector}
@@ -1291,8 +1243,7 @@ bb_6:
 
 TEST_CASE("ResolvableSimpleMath")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenHeader(R"(
 type Vertex = { p: vector, uv: vector, n: vector, t: vector, b: vector, h: number }
@@ -1348,9 +1299,7 @@ end
 
 TEST_CASE("ResolveVectorNamecalls")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true},
-        {FFlag::LuauCodegenAnalyzeHostVectorOps, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCodegenAnalyzeHostVectorOps, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 type Vertex = {pos: vector, normal: vector}
@@ -1414,8 +1363,7 @@ bb_6:
 
 TEST_CASE("ImmediateTypeAnnotationHelp")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(arr, i)
@@ -1453,8 +1401,8 @@ bb_2:
 
 TEST_CASE("UnaryTypeResolve")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileFastcall3, true},
+        {FFlag::LuauCodegenFastcall3, true}};
 
     CHECK_EQ("\n" + getCodegenHeader(R"(
 local function foo(a, b: vector, c)
@@ -1467,17 +1415,16 @@ end
         R"(
 ; function foo(a, b, c) line 2
 ; R1: vector [argument 'b']
-; R3: boolean from 0 to 16 [local 'd']
-; R4: vector from 1 to 16 [local 'e']
-; R5: number from 2 to 16 [local 'f']
-; R7: vector from 13 to 15
+; R3: boolean from 0 to 17 [local 'd']
+; R4: vector from 1 to 17 [local 'e']
+; R5: number from 2 to 17 [local 'f']
+; R7: vector from 14 to 16
 )");
 }
 
 TEST_CASE("ForInManualAnnotation")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 type Vertex = {pos: vector, normal: vector}
@@ -1572,8 +1519,7 @@ bb_12:
 
 TEST_CASE("ForInAutoAnnotationIpairs")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenHeader(R"(
 type Vertex = {pos: vector, normal: vector}
@@ -1600,8 +1546,7 @@ end
 
 TEST_CASE("ForInAutoAnnotationPairs")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenHeader(R"(
 type Vertex = {pos: vector, normal: vector}
@@ -1628,8 +1573,7 @@ end
 
 TEST_CASE("ForInAutoAnnotationGeneric")
 {
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}};
 
     CHECK_EQ("\n" + getCodegenHeader(R"(
 type Vertex = {pos: vector, normal: vector}
@@ -1661,8 +1605,7 @@ TEST_CASE("CustomUserdataTypesTemp")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, false},
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, false},
         {FFlag::LuauLoadUserdataInfo, true}};
 
     CHECK_EQ("\n" + getCodegenHeader(R"(
@@ -1683,8 +1626,7 @@ TEST_CASE("CustomUserdataTypes")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
         {FFlag::LuauLoadUserdataInfo, true}};
 
     CHECK_EQ("\n" + getCodegenHeader(R"(
@@ -1705,9 +1647,8 @@ TEST_CASE("CustomUserdataPropertyAccess")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
-        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenUserdataOps, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenUserdataOps, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(v: vec2)
@@ -1742,9 +1683,8 @@ TEST_CASE("CustomUserdataPropertyAccess2")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
-        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenUserdataOps, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenUserdataOps, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: mat3)
@@ -1781,10 +1721,8 @@ TEST_CASE("CustomUserdataNamecall1")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
-        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenAnalyzeHostVectorOps, true},
-        {FFlag::LuauCodegenUserdataOps, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenAnalyzeHostVectorOps, true}, {FFlag::LuauCodegenUserdataOps, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: vec2, b: vec2)
@@ -1830,10 +1768,9 @@ TEST_CASE("CustomUserdataNamecall2")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
-        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenAnalyzeHostVectorOps, true},
-        {FFlag::LuauCodegenUserdataOps, true}, {FFlag::LuauCodegenUserdataAlloc, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenAnalyzeHostVectorOps, true}, {FFlag::LuauCodegenUserdataOps, true},
+        {FFlag::LuauCodegenUserdataAlloc, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: vec2, b: vec2)
@@ -1882,9 +1819,8 @@ TEST_CASE("CustomUserdataMetamethodDirectFlow")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
-        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenUserdataOps, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenUserdataOps, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: mat3, b: mat3)
@@ -1916,9 +1852,8 @@ TEST_CASE("CustomUserdataMetamethodDirectFlow2")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
-        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenUserdataOps, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenUserdataOps, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: mat3)
@@ -1948,9 +1883,8 @@ TEST_CASE("CustomUserdataMetamethodDirectFlow3")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
-        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenUserdataOps, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenUserdataOps, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: sequence)
@@ -1980,10 +1914,8 @@ TEST_CASE("CustomUserdataMetamethod")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauLoadTypeInfo, true}, {FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCodegenTypeInfo, true},
-        {FFlag::LuauCodegenRemoveDeadStores5, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
-        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenDirectUserdataFlow, true}, {FFlag::LuauCodegenUserdataOps, true},
-        {FFlag::LuauCodegenUserdataAlloc, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileTypeInfo, true}, {FFlag::LuauCompileTempTypeInfo, true}, {FFlag::LuauCompileUserdataInfo, true},
+        {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenUserdataOps, true}, {FFlag::LuauCodegenUserdataAlloc, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: vec2, b: vec2, c: vec2)

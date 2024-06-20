@@ -65,21 +65,15 @@ namespace Luau
 {
 
 // this list of binary operator type families is used for better stringification of type families errors
-static const std::unordered_map<std::string, const char*> kBinaryOps{
-    {"add", "+"}, {"sub", "-"}, {"mul", "*"}, {"div", "/"}, {"idiv", "//"}, {"pow", "^"}, {"mod", "%"}, {"concat", ".."}, {"and", "and"},
-    {"or", "or"},  {"lt", "< or >="}, {"le", "<= or >"}, {"eq", "== or ~="}
-};
+static const std::unordered_map<std::string, const char*> kBinaryOps{{"add", "+"}, {"sub", "-"}, {"mul", "*"}, {"div", "/"}, {"idiv", "//"},
+    {"pow", "^"}, {"mod", "%"}, {"concat", ".."}, {"and", "and"}, {"or", "or"}, {"lt", "< or >="}, {"le", "<= or >"}, {"eq", "== or ~="}};
 
 // this list of unary operator type families is used for better stringification of type families errors
-static const std::unordered_map<std::string, const char*> kUnaryOps{
-    {"unm", "-"}, {"len", "#"}, {"not", "not"}
-};
+static const std::unordered_map<std::string, const char*> kUnaryOps{{"unm", "-"}, {"len", "#"}, {"not", "not"}};
 
 // this list of type families will receive a special error indicating that the user should file a bug on the GitHub repository
 // putting a type family in this list indicates that it is expected to _always_ reduce
-static const std::unordered_set<std::string> kUnreachableTypeFamilies{
-    "refine", "singleton", "union", "intersect"
-};
+static const std::unordered_set<std::string> kUnreachableTypeFamilies{"refine", "singleton", "union", "intersect"};
 
 struct ErrorConverter
 {
@@ -682,7 +676,7 @@ struct ErrorConverter
         if (kUnreachableTypeFamilies.count(tfit->family->name))
         {
             return "Type family instance " + Luau::toString(e.ty) + " is uninhabited\n" +
-                "This is likely to be a bug, please report it at https://github.com/luau-lang/luau/issues";
+                   "This is likely to be a bug, please report it at https://github.com/luau-lang/luau/issues";
         }
 
         // Everything should be specialized above to report a more descriptive error that hopefully does not mention "type families" explicitly.

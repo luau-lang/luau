@@ -21,11 +21,29 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping);
 LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
 LUAU_FASTFLAG(LuauFixIndexerSubtypingOrdering);
 LUAU_FASTFLAG(DebugLuauSharedSelf);
-LUAU_FASTFLAG(LuauMetatableInstantiationCloneCheck);
 
 LUAU_DYNAMIC_FASTFLAG(LuauImproveNonFunctionCallError)
 
 TEST_SUITE_BEGIN("TableTests");
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_shouldnt_seal_table_in_len_family_fn")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+    CheckResult result = check(R"(
+local t = {}
+for i = #t, 2, -1 do
+    t[i] = t[i + 1]
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    const TableType* tType = get<TableType>(requireType("t"));
+    REQUIRE(tType != nullptr);
+    REQUIRE(tType->indexer);
+    CHECK_EQ(tType->indexer->indexType, builtinTypes->numberType);
+    CHECK_EQ(follow(tType->indexer->indexResultType), builtinTypes->unknownType);
+}
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "LUAU_ASSERT_arg_exprs_doesnt_trigger_assert")
 {
@@ -4150,9 +4168,7 @@ TEST_CASE_FIXTURE(Fixture, "write_annotations_are_unsupported_even_with_the_new_
 
 TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, false}
-    };
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauDeferredConstraintResolution, false}};
 
     CheckResult result = check(R"(
         type W = {read x: number}
@@ -4176,9 +4192,7 @@ TEST_CASE_FIXTURE(Fixture, "read_and_write_only_table_properties_are_unsupported
 
 TEST_CASE_FIXTURE(Fixture, "read_ond_write_only_indexers_are_unsupported")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, false}
-    };
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauDeferredConstraintResolution, false}};
 
     CheckResult result = check(R"(
         type T = {read [string]: number}
@@ -4198,9 +4212,7 @@ TEST_CASE_FIXTURE(Fixture, "table_writes_introduce_write_properties")
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
 
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauDeferredConstraintResolution, true}
-    };
+    ScopedFastFlag sff[] = {{FFlag::DebugLuauDeferredConstraintResolution, true}};
 
     CheckResult result = check(R"(
         function oc(player, speaker)
@@ -4354,8 +4366,6 @@ TEST_CASE_FIXTURE(Fixture, "mymovie_read_write_tables_bug_2")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "instantiated_metatable_frozen_table_clone_mutation")
 {
-    ScopedFastFlag luauMetatableInstantiationCloneCheck{FFlag::LuauMetatableInstantiationCloneCheck, true};
-
     fileResolver.source["game/worker"] = R"(
 type WorkerImpl<T..., R...> = {
     destroy: (self: Worker<T..., R...>) -> boolean,
@@ -4533,8 +4543,24 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_literal_inference_assert")
         end;
         }
     )");
+}
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_table_assertion_crash")
+{
+    CheckResult result = check(R"(
+        local NexusInstance = {}
+        function NexusInstance:__InitMetaMethods(): ()
+            local Metatable = {}
+            local OriginalIndexTable = getmetatable(self).__index
+            setmetatable(self, Metatable)
 
+            Metatable.__newindex = function(_, Index: string, Value: any): ()
+                --Return if the new and old values are the same.
+                if self[Index] == Value then
+                end
+            end
+        end
+    )");
 }
 
 TEST_SUITE_END();

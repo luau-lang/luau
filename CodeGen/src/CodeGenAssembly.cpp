@@ -12,7 +12,6 @@
 
 #include "lapi.h"
 
-LUAU_FASTFLAG(LuauCodegenTypeInfo)
 LUAU_FASTFLAG(LuauLoadUserdataInfo)
 LUAU_FASTFLAG(LuauNativeAttribute)
 
@@ -87,7 +86,6 @@ static void logFunctionHeader(AssemblyBuilder& build, Proto* proto)
 template<typename AssemblyBuilder>
 static void logFunctionTypes_DEPRECATED(AssemblyBuilder& build, const IrFunction& function)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenTypeInfo);
     CODEGEN_ASSERT(!FFlag::LuauLoadUserdataInfo);
 
     const BytecodeTypeInfo& typeInfo = function.bcTypeInfo;
@@ -131,7 +129,6 @@ static void logFunctionTypes_DEPRECATED(AssemblyBuilder& build, const IrFunction
 template<typename AssemblyBuilder>
 static void logFunctionTypes(AssemblyBuilder& build, const IrFunction& function, const char* const* userdataTypes)
 {
-    CODEGEN_ASSERT(FFlag::LuauCodegenTypeInfo);
     CODEGEN_ASSERT(FFlag::LuauLoadUserdataInfo);
 
     const BytecodeTypeInfo& typeInfo = function.bcTypeInfo;
@@ -240,7 +237,7 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
         if (options.includeAssembly || options.includeIr)
             logFunctionHeader(build, p);
 
-        if (FFlag::LuauCodegenTypeInfo && options.includeIrTypes)
+        if (options.includeIrTypes)
         {
             if (FFlag::LuauLoadUserdataInfo)
                 logFunctionTypes(build, ir.function, options.compilationOptions.userdataTypes);

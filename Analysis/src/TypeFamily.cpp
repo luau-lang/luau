@@ -344,8 +344,7 @@ struct FamilyReducer
             if (tryGuessing(subject))
                 return;
 
-            TypeFamilyReductionResult<TypeId> result =
-                tfit->family->reducer(subject, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
+            TypeFamilyReductionResult<TypeId> result = tfit->family->reducer(subject, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
             handleFamilyReduction(subject, result);
         }
     }
@@ -369,8 +368,7 @@ struct FamilyReducer
             if (tryGuessing(subject))
                 return;
 
-            TypeFamilyReductionResult<TypePackId> result =
-                tfit->family->reducer(subject, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
+            TypeFamilyReductionResult<TypePackId> result = tfit->family->reducer(subject, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
             handleFamilyReduction(subject, result);
         }
     }
@@ -451,8 +449,8 @@ bool isPending(TypeId ty, ConstraintSolver* solver)
 }
 
 template<typename F, typename... Args>
-static std::optional<TypeFamilyReductionResult<TypeId>> tryDistributeTypeFamilyApp(F f, TypeId instance,
-    const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx, Args&& ...args)
+static std::optional<TypeFamilyReductionResult<TypeId>> tryDistributeTypeFamilyApp(F f, TypeId instance, const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx, Args&&... args)
 {
     // op (a | b) (c | d) ~ (op a (c | d)) | (op b (c | d)) ~ (op a c) | (op a d) | (op b c) | (op b d)
     bool uninhabited = false;
@@ -527,8 +525,8 @@ static std::optional<TypeFamilyReductionResult<TypeId>> tryDistributeTypeFamilyA
     return std::nullopt;
 }
 
-TypeFamilyReductionResult<TypeId> notFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> notFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 1 || !packParams.empty())
     {
@@ -551,8 +549,8 @@ TypeFamilyReductionResult<TypeId> notFamilyFn(TypeId instance, const std::vector
     return {ctx->builtins->booleanType, false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> lenFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> lenFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 1 || !packParams.empty())
     {
@@ -573,7 +571,7 @@ TypeFamilyReductionResult<TypeId> lenFamilyFn(TypeId instance, const std::vector
     // if the type is free but has only one remaining reference, we can generalize it to its upper bound here.
     if (ctx->solver)
     {
-        std::optional<TypeId> maybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, operandTy);
+        std::optional<TypeId> maybeGeneralized = ctx->solver->generalizeFreeType(ctx->scope, operandTy, /* avoidSealingTables */ true);
         if (!maybeGeneralized)
             return {std::nullopt, false, {operandTy}, {}};
         operandTy = *maybeGeneralized;
@@ -643,8 +641,8 @@ TypeFamilyReductionResult<TypeId> lenFamilyFn(TypeId instance, const std::vector
     return {ctx->builtins->numberType, false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> unmFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> unmFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 1 || !packParams.empty())
     {
@@ -846,8 +844,8 @@ TypeFamilyReductionResult<TypeId> numericBinopFamilyFn(TypeId instance, const st
     return {extracted.head.front(), false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> addFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> addFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -858,8 +856,8 @@ TypeFamilyReductionResult<TypeId> addFamilyFn(TypeId instance, const std::vector
     return numericBinopFamilyFn(instance, typeParams, packParams, ctx, "__add");
 }
 
-TypeFamilyReductionResult<TypeId> subFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> subFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -870,8 +868,8 @@ TypeFamilyReductionResult<TypeId> subFamilyFn(TypeId instance, const std::vector
     return numericBinopFamilyFn(instance, typeParams, packParams, ctx, "__sub");
 }
 
-TypeFamilyReductionResult<TypeId> mulFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> mulFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -882,8 +880,8 @@ TypeFamilyReductionResult<TypeId> mulFamilyFn(TypeId instance, const std::vector
     return numericBinopFamilyFn(instance, typeParams, packParams, ctx, "__mul");
 }
 
-TypeFamilyReductionResult<TypeId> divFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> divFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -894,8 +892,8 @@ TypeFamilyReductionResult<TypeId> divFamilyFn(TypeId instance, const std::vector
     return numericBinopFamilyFn(instance, typeParams, packParams, ctx, "__div");
 }
 
-TypeFamilyReductionResult<TypeId> idivFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> idivFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -906,8 +904,8 @@ TypeFamilyReductionResult<TypeId> idivFamilyFn(TypeId instance, const std::vecto
     return numericBinopFamilyFn(instance, typeParams, packParams, ctx, "__idiv");
 }
 
-TypeFamilyReductionResult<TypeId> powFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> powFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -918,8 +916,8 @@ TypeFamilyReductionResult<TypeId> powFamilyFn(TypeId instance, const std::vector
     return numericBinopFamilyFn(instance, typeParams, packParams, ctx, "__pow");
 }
 
-TypeFamilyReductionResult<TypeId> modFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> modFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -930,8 +928,8 @@ TypeFamilyReductionResult<TypeId> modFamilyFn(TypeId instance, const std::vector
     return numericBinopFamilyFn(instance, typeParams, packParams, ctx, "__mod");
 }
 
-TypeFamilyReductionResult<TypeId> concatFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> concatFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -1038,8 +1036,8 @@ TypeFamilyReductionResult<TypeId> concatFamilyFn(TypeId instance, const std::vec
     return {ctx->builtins->stringType, false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> andFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> andFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -1089,8 +1087,8 @@ TypeFamilyReductionResult<TypeId> andFamilyFn(TypeId instance, const std::vector
     return {overallResult.result, false, std::move(blockedTypes), {}};
 }
 
-TypeFamilyReductionResult<TypeId> orFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> orFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -1279,8 +1277,8 @@ static TypeFamilyReductionResult<TypeId> comparisonFamilyFn(TypeId instance, con
     return {ctx->builtins->booleanType, false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> ltFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> ltFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -1291,8 +1289,8 @@ TypeFamilyReductionResult<TypeId> ltFamilyFn(TypeId instance, const std::vector<
     return comparisonFamilyFn(instance, typeParams, packParams, ctx, "__lt");
 }
 
-TypeFamilyReductionResult<TypeId> leFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> leFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -1303,8 +1301,8 @@ TypeFamilyReductionResult<TypeId> leFamilyFn(TypeId instance, const std::vector<
     return comparisonFamilyFn(instance, typeParams, packParams, ctx, "__le");
 }
 
-TypeFamilyReductionResult<TypeId> eqFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> eqFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -1434,8 +1432,8 @@ struct FindRefinementBlockers : TypeOnceVisitor
 };
 
 
-TypeFamilyReductionResult<TypeId> refineFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> refineFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -1519,8 +1517,8 @@ TypeFamilyReductionResult<TypeId> refineFamilyFn(TypeId instance, const std::vec
     return {resultTy, false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> singletonFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> singletonFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 1 || !packParams.empty())
     {
@@ -1556,8 +1554,8 @@ TypeFamilyReductionResult<TypeId> singletonFamilyFn(TypeId instance, const std::
     return {ctx->builtins->unknownType, false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> unionFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> unionFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (!packParams.empty())
     {
@@ -1617,8 +1615,8 @@ TypeFamilyReductionResult<TypeId> unionFamilyFn(TypeId instance, const std::vect
 }
 
 
-TypeFamilyReductionResult<TypeId> intersectFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> intersectFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (!packParams.empty())
     {
@@ -1841,8 +1839,8 @@ TypeFamilyReductionResult<TypeId> keyofFamilyImpl(
     return {ctx->arena->addType(UnionType{singletons}), false, {}, {}};
 }
 
-TypeFamilyReductionResult<TypeId> keyofFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> keyofFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 1 || !packParams.empty())
     {
@@ -1853,8 +1851,8 @@ TypeFamilyReductionResult<TypeId> keyofFamilyFn(TypeId instance, const std::vect
     return keyofFamilyImpl(typeParams, packParams, ctx, /* isRaw */ false);
 }
 
-TypeFamilyReductionResult<TypeId> rawkeyofFamilyFn(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> rawkeyofFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
 {
     if (typeParams.size() != 1 || !packParams.empty())
     {

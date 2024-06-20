@@ -27,12 +27,16 @@ struct ReplaceGenerics : Substitution
     {
     }
 
+    void resetState(const TxnLog* log, TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, TypeLevel level, Scope* scope,
+        const std::vector<TypeId>& generics, const std::vector<TypePackId>& genericPacks);
+
     NotNull<BuiltinTypes> builtinTypes;
 
     TypeLevel level;
     Scope* scope;
     std::vector<TypeId> generics;
     std::vector<TypePackId> genericPacks;
+
     bool ignoreChildren(TypeId ty) override;
     bool isDirty(TypeId ty) override;
     bool isDirty(TypePackId tp) override;
@@ -48,13 +52,19 @@ struct Instantiation : Substitution
         , builtinTypes(builtinTypes)
         , level(level)
         , scope(scope)
+        , reusableReplaceGenerics(log, arena, builtinTypes, level, scope, {}, {})
     {
     }
+
+    void resetState(const TxnLog* log, TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, TypeLevel level, Scope* scope);
 
     NotNull<BuiltinTypes> builtinTypes;
 
     TypeLevel level;
     Scope* scope;
+
+    ReplaceGenerics reusableReplaceGenerics;
+
     bool ignoreChildren(TypeId ty) override;
     bool isDirty(TypeId ty) override;
     bool isDirty(TypePackId tp) override;

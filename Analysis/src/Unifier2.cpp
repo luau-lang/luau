@@ -479,7 +479,7 @@ bool Unifier2::unify(const FunctionType* subFn, const AnyType* superAny)
 
 bool Unifier2::unify(const AnyType* subAny, const TableType* superTable)
 {
-    for (const auto& [propName, prop]: superTable->props)
+    for (const auto& [propName, prop] : superTable->props)
     {
         if (prop.readTy)
             unify(builtinTypes->anyType, *prop.readTy);
@@ -499,7 +499,7 @@ bool Unifier2::unify(const AnyType* subAny, const TableType* superTable)
 
 bool Unifier2::unify(const TableType* subTable, const AnyType* superAny)
 {
-    for (const auto& [propName, prop]: subTable->props)
+    for (const auto& [propName, prop] : subTable->props)
     {
         if (prop.readTy)
             unify(*prop.readTy, builtinTypes->anyType);
@@ -658,31 +658,31 @@ struct FreeTypeSearcher : TypeVisitor
     {
         switch (polarity)
         {
-            case Positive:
-            {
-                if (seenPositive.contains(ty))
-                    return true;
+        case Positive:
+        {
+            if (seenPositive.contains(ty))
+                return true;
 
-                seenPositive.insert(ty);
-                return false;
-            }
-            case Negative:
-            {
-                if (seenNegative.contains(ty))
-                    return true;
+            seenPositive.insert(ty);
+            return false;
+        }
+        case Negative:
+        {
+            if (seenNegative.contains(ty))
+                return true;
 
-                seenNegative.insert(ty);
-                return false;
-            }
-            case Both:
-            {
-                if (seenPositive.contains(ty) && seenNegative.contains(ty))
-                    return true;
+            seenNegative.insert(ty);
+            return false;
+        }
+        case Both:
+        {
+            if (seenPositive.contains(ty) && seenNegative.contains(ty))
+                return true;
 
-                seenPositive.insert(ty);
-                seenNegative.insert(ty);
-                return false;
-            }
+            seenPositive.insert(ty);
+            seenNegative.insert(ty);
+            return false;
+        }
         }
 
         return false;

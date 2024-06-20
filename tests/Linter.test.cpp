@@ -8,6 +8,9 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauAttributeSyntax);
+LUAU_FASTFLAG(LuauNativeAttribute);
+LUAU_FASTFLAG(LintRedundantNativeAttribute);
 
 using namespace Luau;
 
@@ -1953,6 +1956,34 @@ local _ = a <= (b == 0)
     CHECK_EQ(result.warnings[2].text, "not X <= Y is equivalent to (not X) <= Y; add parentheses to silence");
     CHECK_EQ(result.warnings[3].text, "X <= Y == Z is equivalent to (X <= Y) == Z; add parentheses to silence");
     CHECK_EQ(result.warnings[4].text, "X <= Y <= Z is equivalent to (X <= Y) <= Z; did you mean X <= Y and Y <= Z?");
+}
+
+TEST_CASE_FIXTURE(Fixture, "RedundantNativeAttribute")
+{
+    ScopedFastFlag sff[] = {{FFlag::LuauAttributeSyntax, true}, {FFlag::LuauNativeAttribute, true}, {FFlag::LintRedundantNativeAttribute, true}};
+
+    LintResult result = lint(R"(
+--!native
+
+@native
+local function f(a)
+    @native
+    local function g(b)
+        return (a + b)
+    end
+    return g
+end
+
+f(3)(4)
+)");
+
+    REQUIRE(2 == result.warnings.size());
+
+    CHECK_EQ(result.warnings[0].text, "native attribute on a function is redundant in a native module; consider removing it");
+    CHECK_EQ(result.warnings[0].location, Location(Position(3, 0), Position(3, 7)));
+
+    CHECK_EQ(result.warnings[1].text, "native attribute on a function is redundant in a native module; consider removing it");
+    CHECK_EQ(result.warnings[1].location, Location(Position(5, 4), Position(5, 11)));
 }
 
 TEST_SUITE_END();

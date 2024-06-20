@@ -28,6 +28,7 @@ inline int getOpLength(LuauOpcode op)
     case LOP_LOADKX:
     case LOP_FASTCALL2:
     case LOP_FASTCALL2K:
+    case LOP_FASTCALL3:
     case LOP_JUMPXEQKNIL:
     case LOP_JUMPXEQKB:
     case LOP_JUMPXEQKN:

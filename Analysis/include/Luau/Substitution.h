@@ -134,7 +134,8 @@ struct Tarjan
     TarjanResult visitRoot(TypeId ty);
     TarjanResult visitRoot(TypePackId ty);
 
-    void clearTarjan();
+    // Used to reuse the object for a new operation
+    void clearTarjan(const TxnLog* log);
 
     // Get/set the dirty bit for an index (grows the vector if needed)
     bool getDirty(int index);
@@ -211,6 +212,8 @@ public:
 
     std::optional<TypeId> substitute(TypeId ty);
     std::optional<TypePackId> substitute(TypePackId tp);
+
+    void resetState(const TxnLog* log, TypeArena* arena);
 
     TypeId replace(TypeId ty);
     TypePackId replace(TypePackId tp);
