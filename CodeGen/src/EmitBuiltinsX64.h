@@ -16,7 +16,7 @@ class AssemblyBuilderX64;
 struct OperandX64;
 struct IrRegAllocX64;
 
-void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int ra, int arg, OperandX64 arg2, int nparams, int nresults);
+void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int ra, int arg, int nresults);
 
 } // namespace X64
 } // namespace CodeGen

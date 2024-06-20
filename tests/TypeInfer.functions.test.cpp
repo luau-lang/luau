@@ -2298,10 +2298,14 @@ end
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         LUAU_REQUIRE_ERROR_COUNT(4, result);
-        CHECK(toString(result.errors[0]) == "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub");
-        CHECK(toString(result.errors[1]) == "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub");
-        CHECK(toString(result.errors[2]) == "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub");
-        CHECK(toString(result.errors[3]) == "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub");
+        CHECK(toString(result.errors[0]) ==
+              "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub");
+        CHECK(toString(result.errors[1]) ==
+              "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub");
+        CHECK(toString(result.errors[2]) ==
+              "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub");
+        CHECK(toString(result.errors[3]) ==
+              "Operator '-' could not be applied to operands of types unknown and number; there is no corresponding overload for __sub");
     }
     else
     {
@@ -2719,7 +2723,6 @@ end
 _ = _,{}
 
     )");
-
 }
 
 

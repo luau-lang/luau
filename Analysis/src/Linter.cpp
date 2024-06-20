@@ -16,6 +16,11 @@ LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
+LUAU_FASTFLAG(LuauAttributeSyntax)
+LUAU_FASTFLAG(LuauAttribute)
+LUAU_FASTFLAG(LuauNativeAttribute)
+LUAU_FASTFLAGVARIABLE(LintRedundantNativeAttribute, false)
+
 namespace Luau
 {
 
@@ -2922,6 +2927,64 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
     }
 }
 
+static bool hasNativeCommentDirective(const std::vector<HotComment>& hotcomments)
+{
+    LUAU_ASSERT(FFlag::LuauAttributeSyntax);
+    LUAU_ASSERT(FFlag::LuauNativeAttribute);
+    LUAU_ASSERT(FFlag::LintRedundantNativeAttribute);
+
+    for (const HotComment& hc : hotcomments)
+    {
+        if (hc.content.empty() || hc.content[0] == ' ' || hc.content[0] == '\t')
+            continue;
+
+        if (hc.header)
+        {
+            size_t space = hc.content.find_first_of(" \t");
+            std::string_view first = std::string_view(hc.content).substr(0, space);
+
+            if (first == "native")
+                return true;
+        }
+    }
+
+    return false;
+}
+
+struct LintRedundantNativeAttribute : AstVisitor
+{
+public:
+    LUAU_NOINLINE static void process(LintContext& context)
+    {
+        LUAU_ASSERT(FFlag::LuauAttributeSyntax);
+        LUAU_ASSERT(FFlag::LuauNativeAttribute);
+        LUAU_ASSERT(FFlag::LintRedundantNativeAttribute);
+
+        LintRedundantNativeAttribute pass;
+        pass.context = &context;
+        context.root->visit(&pass);
+    }
+
+private:
+    LintContext* context;
+
+    bool visit(AstExprFunction* node) override
+    {
+        node->body->visit(this);
+
+        for (const auto attribute : node->attributes)
+        {
+            if (attribute->type == AstAttr::Type::Native)
+            {
+                emitWarning(*context, LintWarning::Code_RedundantNativeAttribute, attribute->location,
+                    "native attribute on a function is redundant in a native module; consider removing it");
+            }
+        }
+
+        return false;
+    }
+};
+
 std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const ScopePtr& env, const Module* module,
     const std::vector<HotComment>& hotcomments, const LintOptions& options)
 {
@@ -3007,6 +3070,13 @@ std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const Sc
 
     if (context.warningEnabled(LintWarning::Code_ComparisonPrecedence))
         LintComparisonPrecedence::process(context);
+
+    if (FFlag::LuauAttributeSyntax && FFlag::LuauNativeAttribute && FFlag::LintRedundantNativeAttribute &&
+        context.warningEnabled(LintWarning::Code_RedundantNativeAttribute))
+    {
+        if (hasNativeCommentDirective(hotcomments))
+            LintRedundantNativeAttribute::process(context);
+    }
 
     std::sort(context.result.begin(), context.result.end(), WarningComparator());
 

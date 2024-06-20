@@ -22,7 +22,8 @@ struct BuiltinImplResult
     int actualResultCount;
 };
 
-BuiltinImplResult translateBuiltin(IrBuilder& build, int bfid, int ra, int arg, IrOp args, int nparams, int nresults, IrOp fallback, int pcpos);
+BuiltinImplResult translateBuiltin(
+    IrBuilder& build, int bfid, int ra, int arg, IrOp args, IrOp arg3, int nparams, int nresults, IrOp fallback, int pcpos);
 
 } // namespace CodeGen
 } // namespace Luau

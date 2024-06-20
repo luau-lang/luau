@@ -1536,7 +1536,7 @@ TEST_CASE_FIXTURE(Fixture, "typeof_cannot_refine_builtin_alias")
 
     freeze(arena);
 
-    (void) check(R"(
+    (void)check(R"(
         function foo(x)
             if typeof(x) == 'GlobalTable' then
             end

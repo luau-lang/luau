@@ -82,8 +82,8 @@ struct TypeFamilyReductionResult
 };
 
 template<typename T>
-using ReducerFunction = std::function<TypeFamilyReductionResult<T>(T, const std::vector<TypeId>&, const std::vector<TypePackId>&,
-    NotNull<TypeFamilyContext>)>;
+using ReducerFunction =
+    std::function<TypeFamilyReductionResult<T>(T, const std::vector<TypeId>&, const std::vector<TypePackId>&, NotNull<TypeFamilyContext>)>;
 
 /// Represents a type function that may be applied to map a series of types and
 /// type packs to a single output type.

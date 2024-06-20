@@ -974,8 +974,7 @@ void Unifier::tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionTyp
         if (!subNorm || !superNorm)
             reportError(location, NormalizationTooComplex{});
         else if ((failedOptionCount == 1 || foundHeuristic) && failedOption)
-            tryUnifyNormalizedTypes(
-                subTy, superTy, *subNorm, *superNorm, "None of the union options are compatible. For example:", *failedOption);
+            tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "None of the union options are compatible. For example:", *failedOption);
         else
             tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "none of the union options are compatible");
     }

@@ -24,15 +24,17 @@ struct MutatingGeneralizer : TypeOnceVisitor
     std::vector<TypePackId> genericPacks;
 
     bool isWithinFunction = false;
+    bool avoidSealingTables = false;
 
-    MutatingGeneralizer(NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, NotNull<DenseHashSet<TypeId>> cachedTypes, DenseHashMap<const void*, size_t> positiveTypes,
-                        DenseHashMap<const void*, size_t> negativeTypes)
+    MutatingGeneralizer(NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, NotNull<DenseHashSet<TypeId>> cachedTypes,
+        DenseHashMap<const void*, size_t> positiveTypes, DenseHashMap<const void*, size_t> negativeTypes, bool avoidSealingTables)
         : TypeOnceVisitor(/* skipBoundTypes */ true)
         , builtinTypes(builtinTypes)
         , scope(scope)
         , cachedTypes(cachedTypes)
         , positiveTypes(std::move(positiveTypes))
         , negativeTypes(std::move(negativeTypes))
+        , avoidSealingTables(avoidSealingTables)
     {
     }
 
@@ -268,7 +270,8 @@ struct MutatingGeneralizer : TypeOnceVisitor
         TableType* tt = getMutable<TableType>(ty);
         LUAU_ASSERT(tt);
 
-        tt->state = TableState::Sealed;
+        if (!avoidSealingTables)
+            tt->state = TableState::Sealed;
 
         return true;
     }
@@ -338,31 +341,31 @@ struct FreeTypeSearcher : TypeVisitor
     {
         switch (polarity)
         {
-            case Positive:
-            {
-                if (seenPositive.contains(ty))
-                    return true;
+        case Positive:
+        {
+            if (seenPositive.contains(ty))
+                return true;
 
-                seenPositive.insert(ty);
-                return false;
-            }
-            case Negative:
-            {
-                if (seenNegative.contains(ty))
-                    return true;
+            seenPositive.insert(ty);
+            return false;
+        }
+        case Negative:
+        {
+            if (seenNegative.contains(ty))
+                return true;
 
-                seenNegative.insert(ty);
-                return false;
-            }
-            case Both:
-            {
-                if (seenPositive.contains(ty) && seenNegative.contains(ty))
-                    return true;
+            seenNegative.insert(ty);
+            return false;
+        }
+        case Both:
+        {
+            if (seenPositive.contains(ty) && seenNegative.contains(ty))
+                return true;
 
-                seenPositive.insert(ty);
-                seenNegative.insert(ty);
-                return false;
-            }
+            seenPositive.insert(ty);
+            seenNegative.insert(ty);
+            return false;
+        }
         }
 
         return false;
@@ -519,7 +522,8 @@ struct TypeCacher : TypeOnceVisitor
     explicit TypeCacher(NotNull<DenseHashSet<TypeId>> cachedTypes)
         : TypeOnceVisitor(/* skipBoundTypes */ true)
         , cachedTypes(cachedTypes)
-    {}
+    {
+    }
 
     void cache(TypeId ty)
     {
@@ -611,7 +615,7 @@ struct TypeCacher : TypeOnceVisitor
 
         traverse(ft.argTypes);
         traverse(ft.retTypes);
-        for (TypeId gen: ft.generics)
+        for (TypeId gen : ft.generics)
             traverse(gen);
 
         bool uncacheable = false;
@@ -622,7 +626,7 @@ struct TypeCacher : TypeOnceVisitor
         else if (isUncacheable(ft.retTypes))
             uncacheable = true;
 
-        for (TypeId argTy: ft.argTypes)
+        for (TypeId argTy : ft.argTypes)
         {
             if (isUncacheable(argTy))
             {
@@ -631,7 +635,7 @@ struct TypeCacher : TypeOnceVisitor
             }
         }
 
-        for (TypeId retTy: ft.retTypes)
+        for (TypeId retTy : ft.retTypes)
         {
             if (isUncacheable(retTy))
             {
@@ -640,7 +644,7 @@ struct TypeCacher : TypeOnceVisitor
             }
         }
 
-        for (TypeId g: ft.generics)
+        for (TypeId g : ft.generics)
         {
             if (isUncacheable(g))
             {
@@ -863,7 +867,8 @@ struct TypeCacher : TypeOnceVisitor
     }
 };
 
-std::optional<TypeId> generalize(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, NotNull<DenseHashSet<TypeId>> cachedTypes, TypeId ty)
+std::optional<TypeId> generalize(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope,
+    NotNull<DenseHashSet<TypeId>> cachedTypes, TypeId ty, bool avoidSealingTables)
 {
     ty = follow(ty);
 
@@ -876,14 +881,14 @@ std::optional<TypeId> generalize(NotNull<TypeArena> arena, NotNull<BuiltinTypes>
     FreeTypeSearcher fts{scope, cachedTypes};
     fts.traverse(ty);
 
-    MutatingGeneralizer gen{builtinTypes, scope, cachedTypes, std::move(fts.positiveTypes), std::move(fts.negativeTypes)};
+    MutatingGeneralizer gen{builtinTypes, scope, cachedTypes, std::move(fts.positiveTypes), std::move(fts.negativeTypes), avoidSealingTables};
 
     gen.traverse(ty);
 
     /* MutatingGeneralizer mutates types in place, so it is possible that ty has
-        * been transmuted to a BoundType. We must follow it again and verify that
-        * we are allowed to mutate it before we attach generics to it.
-        */
+     * been transmuted to a BoundType. We must follow it again and verify that
+     * we are allowed to mutate it before we attach generics to it.
+     */
     ty = follow(ty);
 
     if (ty->owningArena != arena || ty->persistent)

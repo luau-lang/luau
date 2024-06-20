@@ -9,6 +9,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauCompileTypeInfo, false)
 LUAU_FASTFLAG(LuauCompileUserdataInfo)
+LUAU_FASTFLAG(LuauCompileFastcall3)
 
 namespace Luau
 {
@@ -113,6 +114,7 @@ inline bool isFastCall(LuauOpcode op)
     case LOP_FASTCALL1:
     case LOP_FASTCALL2:
     case LOP_FASTCALL2K:
+    case LOP_FASTCALL3:
         return true;
 
     default:
@@ -1241,6 +1243,9 @@ std::string BytecodeBuilder::getError(const std::string& message)
 uint8_t BytecodeBuilder::getVersion()
 {
     // This function usually returns LBC_VERSION_TARGET but may sometimes return a higher number (within LBC_VERSION_MIN/MAX) under fast flags
+    if (FFlag::LuauCompileFastcall3)
+        return 6;
+
     return LBC_VERSION_TARGET;
 }
 
@@ -1619,6 +1624,16 @@ void BytecodeBuilder::validateInstructions() const
             VJUMP(LUAU_INSN_C(insn));
             LUAU_ASSERT(LUAU_INSN_OP(insns[i + 1 + LUAU_INSN_C(insn)]) == LOP_CALL);
             VCONSTANY(insns[i + 1]);
+            break;
+
+        case LOP_FASTCALL3:
+            LUAU_ASSERT(FFlag::LuauCompileFastcall3);
+
+            VREG(LUAU_INSN_B(insn));
+            VJUMP(LUAU_INSN_C(insn));
+            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 1 + LUAU_INSN_C(insn)]) == LOP_CALL);
+            VREG(insns[i + 1] & 0xff);
+            VREG((insns[i + 1] >> 8) & 0xff);
             break;
 
         case LOP_COVERAGE:
@@ -2232,6 +2247,13 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         formatAppend(result, "FASTCALL2K %d R%d K%d L%d [", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code, targetLabel);
         dumpConstant(result, *code);
         result.append("]\n");
+        code++;
+        break;
+
+    case LOP_FASTCALL3:
+        LUAU_ASSERT(FFlag::LuauCompileFastcall3);
+
+        formatAppend(result, "FASTCALL3 %d R%d R%d R%d L%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code & 0xff, (*code >> 8) & 0xff, targetLabel);
         code++;
         break;
 

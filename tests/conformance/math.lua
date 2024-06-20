@@ -268,10 +268,33 @@ assert(math.min(1) == 1)
 assert(math.min(1, 2) == 1)
 assert(math.min(1, 2, -1) == -1)
 assert(math.min(1, -1, 2) == -1)
+assert(math.min(1, -1, 2, -2) == -2)
 assert(math.max(1) == 1)
 assert(math.max(1, 2) == 2)
 assert(math.max(1, 2, -1) == 2)
 assert(math.max(1, -1, 2) == 2)
+assert(math.max(1, -1, 2, -2) == 2)
+
+local ma, mb, mc, md
+
+assert(pcall(function()
+  ma = 1
+  mb = -1
+  mc = 2
+  md = -2
+end) == true)
+
+-- min/max without contant-folding
+assert(math.min(ma) == 1)
+assert(math.min(ma, mc) == 1)
+assert(math.min(ma, mc, mb) == -1)
+assert(math.min(ma, mb, mc) == -1)
+assert(math.min(ma, mb, mc, md) == -2)
+assert(math.max(ma) == 1)
+assert(math.max(ma, mc) == 2)
+assert(math.max(ma, mc, mb) == 2)
+assert(math.max(ma, mb, mc) == 2)
+assert(math.max(ma, mb, mc, md) == 2)
 
 -- noise
 assert(math.noise(0.5) == 0)

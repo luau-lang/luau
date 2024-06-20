@@ -124,11 +124,16 @@ static_assert(offsetof(Udata, data) == ABISWITCH(16, 16, 12), "size mismatch for
 static_assert(sizeof(Table) == ABISWITCH(48, 32, 32), "size mismatch for table header");
 static_assert(offsetof(Buffer, data) == ABISWITCH(8, 8, 8), "size mismatch for buffer header");
 
-LUAU_FASTFLAGVARIABLE(LuauExtendedSizeClasses, false)
-
 const size_t kSizeClasses = LUA_SIZECLASSES;
-const size_t kMaxSmallSize_DEPRECATED = 512; // TODO: remove with FFlagLuauExtendedSizeClasses
+
+// Controls the number of entries in SizeClassConfig and define the maximum possible paged allocation size
+// Modifications require updates the SizeClassConfig initialization
 const size_t kMaxSmallSize = 1024;
+
+// Effective limit on object size to use paged allocation
+// Can be modified without additional changes to code, provided it is smaller or equal to kMaxSmallSize
+const size_t kMaxSmallSizeUsed = 1024;
+
 const size_t kLargePageThreshold = 512; // larger pages are used for objects larger than this size to fit more of them into a page
 
 // constant factor to reduce our page sizes by, to increase the chances that pages we allocate will
@@ -187,8 +192,7 @@ struct SizeClassConfig
 const SizeClassConfig kSizeClassConfig;
 
 // size class for a block of size sz; returns -1 for size=0 because empty allocations take no space
-#define sizeclass(sz) \
-    (size_t((sz)-1) < (FFlag::LuauExtendedSizeClasses ? kMaxSmallSize : kMaxSmallSize_DEPRECATED) ? kSizeClassConfig.classForSize[sz] : -1)
+#define sizeclass(sz) (size_t((sz)-1) < kMaxSmallSizeUsed ? kSizeClassConfig.classForSize[sz] : -1)
 
 // metadata for a block is stored in the first pointer of the block
 #define metadata(block) (*(void**)(block))
@@ -275,34 +279,18 @@ static lua_Page* newpage(lua_State* L, lua_Page** pageset, int pageSize, int blo
 // if it is inlined, then the compiler may determine those functions are "too big" to be profitably inlined, which results in reduced performance
 LUAU_NOINLINE static lua_Page* newclasspage(lua_State* L, lua_Page** freepageset, lua_Page** pageset, uint8_t sizeClass, bool storeMetadata)
 {
-    if (FFlag::LuauExtendedSizeClasses)
-    {
-        int sizeOfClass = kSizeClassConfig.sizeOfClass[sizeClass];
-        int pageSize = sizeOfClass > int(kLargePageThreshold) ? kLargePageSize : kSmallPageSize;
-        int blockSize = sizeOfClass + (storeMetadata ? kBlockHeader : 0);
-        int blockCount = (pageSize - offsetof(lua_Page, data)) / blockSize;
+    int sizeOfClass = kSizeClassConfig.sizeOfClass[sizeClass];
+    int pageSize = sizeOfClass > int(kLargePageThreshold) ? kLargePageSize : kSmallPageSize;
+    int blockSize = sizeOfClass + (storeMetadata ? kBlockHeader : 0);
+    int blockCount = (pageSize - offsetof(lua_Page, data)) / blockSize;
 
-        lua_Page* page = newpage(L, pageset, pageSize, blockSize, blockCount);
+    lua_Page* page = newpage(L, pageset, pageSize, blockSize, blockCount);
 
-        // prepend a page to page freelist (which is empty because we only ever allocate a new page when it is!)
-        LUAU_ASSERT(!freepageset[sizeClass]);
-        freepageset[sizeClass] = page;
+    // prepend a page to page freelist (which is empty because we only ever allocate a new page when it is!)
+    LUAU_ASSERT(!freepageset[sizeClass]);
+    freepageset[sizeClass] = page;
 
-        return page;
-    }
-    else
-    {
-        int blockSize = kSizeClassConfig.sizeOfClass[sizeClass] + (storeMetadata ? kBlockHeader : 0);
-        int blockCount = (kSmallPageSize - offsetof(lua_Page, data)) / blockSize;
-
-        lua_Page* page = newpage(L, pageset, kSmallPageSize, blockSize, blockCount);
-
-        // prepend a page to page freelist (which is empty because we only ever allocate a new page when it is!)
-        LUAU_ASSERT(!freepageset[sizeClass]);
-        freepageset[sizeClass] = page;
-
-        return page;
-    }
+    return page;
 }
 
 static void freepage(lua_State* L, lua_Page** pageset, lua_Page* page)

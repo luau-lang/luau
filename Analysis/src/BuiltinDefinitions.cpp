@@ -256,21 +256,44 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
 
     TypeId tableMetaMT = arena.addType(MetatableType{tabTy, genericMT});
 
+    // getmetatable : <MT>({ @metatable MT, {+ +} }) -> MT
     addGlobalBinding(globals, "getmetatable", makeFunction(arena, std::nullopt, {genericMT}, {}, {tableMetaMT}, {genericMT}), "@luau");
 
-    // clang-format off
-    // setmetatable<T: {}, MT>(T, MT) -> { @metatable MT, T }
-    addGlobalBinding(globals, "setmetatable",
-        arena.addType(
-            FunctionType{
-                {genericMT},
-                {},
-                arena.addTypePack(TypePack{{tabTy, genericMT}}),
-                arena.addTypePack(TypePack{{tableMetaMT}})
-            }
-        ), "@luau"
-    );
-    // clang-format on
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        TypeId genericT = arena.addType(GenericType{"T"});
+        TypeId tMetaMT = arena.addType(MetatableType{genericT, genericMT});
+
+        // clang-format off
+        // setmetatable<T: {}, MT>(T, MT) -> { @metatable MT, T }
+        addGlobalBinding(globals, "setmetatable",
+            arena.addType(
+                FunctionType{
+                    {genericT, genericMT},
+                    {},
+                    arena.addTypePack(TypePack{{genericT, genericMT}}),
+                    arena.addTypePack(TypePack{{tMetaMT}})
+                }
+            ), "@luau"
+        );
+        // clang-format on
+    }
+    else
+    {
+        // clang-format off
+        // setmetatable<T: {}, MT>(T, MT) -> { @metatable MT, T }
+        addGlobalBinding(globals, "setmetatable",
+            arena.addType(
+                FunctionType{
+                    {genericMT},
+                    {},
+                    arena.addTypePack(TypePack{{tabTy, genericMT}}),
+                    arena.addTypePack(TypePack{{tableMetaMT}})
+                }
+            ), "@luau"
+        );
+        // clang-format on
+    }
 
     for (const auto& pair : globals.globalScope->bindings)
     {

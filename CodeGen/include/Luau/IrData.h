@@ -326,13 +326,12 @@ enum class IrCmd : uint8_t
     // This is used to recover after calling a variadic function
     ADJUST_STACK_TO_TOP,
 
-    // Execute fastcall builtin function in-place
+    // Execute fastcall builtin function with 1 argument in-place
+    // This is used for a few builtins that can have more than 1 result and cannot be represented as a regular instruction
     // A: unsigned int (builtin id)
     // B: Rn (result start)
-    // C: Rn (argument start)
-    // D: Rn or Kn or undef (optional second argument)
-    // E: int (argument count)
-    // F: int (result count)
+    // C: Rn (first argument)
+    // D: int (result count)
     FASTCALL,
 
     // Call the fastcall builtin function
@@ -340,8 +339,9 @@ enum class IrCmd : uint8_t
     // B: Rn (result start)
     // C: Rn (argument start)
     // D: Rn or Kn or undef (optional second argument)
-    // E: int (argument count or -1 to use all arguments up to stack top)
-    // F: int (result count or -1 to preserve all results and adjust stack top)
+    // E: Rn or Kn or undef (optional third argument)
+    // F: int (argument count or -1 to use all arguments up to stack top)
+    // G: int (result count or -1 to preserve all results and adjust stack top)
     INVOKE_FASTCALL,
 
     // Check that fastcall builtin function invocation was successful (negative result count jumps to fallback)

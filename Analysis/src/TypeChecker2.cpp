@@ -1540,6 +1540,24 @@ struct TypeChecker2
         visitExprName(indexName->expr, indexName->location, indexName->index.value, context, builtinTypes->stringType);
     }
 
+    void indexExprMetatableHelper(AstExprIndexExpr* indexExpr, const MetatableType* metaTable, TypeId exprType, TypeId indexType)
+    {
+        if (auto tt = get<TableType>(follow(metaTable->table)); tt && tt->indexer)
+            testIsSubtype(indexType, tt->indexer->indexType, indexExpr->index->location);
+        else if (auto mt = get<MetatableType>(follow(metaTable->table)))
+            indexExprMetatableHelper(indexExpr, mt, exprType, indexType);
+        else if (auto tmt = get<TableType>(follow(metaTable->metatable)); tmt && tmt->indexer)
+            testIsSubtype(indexType, tmt->indexer->indexType, indexExpr->index->location);
+        else if (auto mtmt = get<MetatableType>(follow(metaTable->metatable)))
+            indexExprMetatableHelper(indexExpr, mtmt, exprType, indexType);
+        else
+        {
+            LUAU_ASSERT(tt || get<PrimitiveType>(follow(metaTable->table)));
+
+            reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
+        }
+    }
+
     void visit(AstExprIndexExpr* indexExpr, ValueContext context)
     {
         if (auto str = indexExpr->index->as<AstExprConstantString>())
@@ -1565,15 +1583,7 @@ struct TypeChecker2
         }
         else if (auto mt = get<MetatableType>(exprType))
         {
-            const TableType* tt = get<TableType>(follow(mt->table));
-            LUAU_ASSERT(tt);
-            if (tt->indexer)
-                testIsSubtype(indexType, tt->indexer->indexType, indexExpr->index->location);
-            else
-            {
-                // TODO: Maybe the metatable has a suitable indexer?
-                reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
-            }
+            return indexExprMetatableHelper(indexExpr, mt, exprType, indexType);
         }
         else if (auto cls = get<ClassType>(exprType))
         {

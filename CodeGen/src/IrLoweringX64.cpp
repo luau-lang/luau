@@ -17,6 +17,7 @@
 
 LUAU_FASTFLAG(LuauCodegenUserdataOps)
 LUAU_FASTFLAG(LuauCodegenUserdataAlloc)
+LUAU_FASTFLAG(LuauCodegenFastcall3)
 
 namespace Luau
 {
@@ -1008,9 +1009,10 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
     case IrCmd::FASTCALL:
     {
-        OperandX64 arg2 = inst.d.kind != IrOpKind::Undef ? memRegDoubleOp(inst.d) : OperandX64{0};
-
-        emitBuiltin(regs, build, uintOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c), arg2, intOp(inst.e), intOp(inst.f));
+        if (FFlag::LuauCodegenFastcall3)
+            emitBuiltin(regs, build, uintOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.d));
+        else
+            emitBuiltin(regs, build, uintOp(inst.a), vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.f));
         break;
     }
     case IrCmd::INVOKE_FASTCALL:
@@ -1018,25 +1020,49 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         unsigned bfid = uintOp(inst.a);
 
         OperandX64 args = 0;
+        ScopedRegX64 argsAlt{regs};
 
-        if (inst.d.kind == IrOpKind::VmReg)
-            args = luauRegAddress(vmRegOp(inst.d));
-        else if (inst.d.kind == IrOpKind::VmConst)
-            args = luauConstantAddress(vmConstOp(inst.d));
+        // 'E' argument can only be produced by LOP_FASTCALL3
+        if (FFlag::LuauCodegenFastcall3 && inst.e.kind != IrOpKind::Undef)
+        {
+            CODEGEN_ASSERT(intOp(inst.f) == 3);
+
+            ScopedRegX64 tmp{regs, SizeX64::xmmword};
+            argsAlt.alloc(SizeX64::qword);
+
+            build.mov(argsAlt.reg, qword[rState + offsetof(lua_State, top)]);
+
+            build.vmovups(tmp.reg, luauReg(vmRegOp(inst.d)));
+            build.vmovups(xmmword[argsAlt.reg], tmp.reg);
+
+            build.vmovups(tmp.reg, luauReg(vmRegOp(inst.e)));
+            build.vmovups(xmmword[argsAlt.reg + sizeof(TValue)], tmp.reg);
+        }
         else
-            CODEGEN_ASSERT(inst.d.kind == IrOpKind::Undef);
+        {
+            if (inst.d.kind == IrOpKind::VmReg)
+                args = luauRegAddress(vmRegOp(inst.d));
+            else if (inst.d.kind == IrOpKind::VmConst)
+                args = luauConstantAddress(vmConstOp(inst.d));
+            else
+                CODEGEN_ASSERT(inst.d.kind == IrOpKind::Undef);
+        }
 
         int ra = vmRegOp(inst.b);
         int arg = vmRegOp(inst.c);
-        int nparams = intOp(inst.e);
-        int nresults = intOp(inst.f);
+        int nparams = intOp(FFlag::LuauCodegenFastcall3 ? inst.f : inst.e);
+        int nresults = intOp(FFlag::LuauCodegenFastcall3 ? inst.g : inst.f);
 
         IrCallWrapperX64 callWrap(regs, build, index);
         callWrap.addArgument(SizeX64::qword, rState);
         callWrap.addArgument(SizeX64::qword, luauRegAddress(ra));
         callWrap.addArgument(SizeX64::qword, luauRegAddress(arg));
         callWrap.addArgument(SizeX64::dword, nresults);
-        callWrap.addArgument(SizeX64::qword, args);
+
+        if (FFlag::LuauCodegenFastcall3 && inst.e.kind != IrOpKind::Undef)
+            callWrap.addArgument(SizeX64::qword, argsAlt);
+        else
+            callWrap.addArgument(SizeX64::qword, args);
 
         if (nparams == LUA_MULTRET)
         {
