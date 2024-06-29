@@ -33,7 +33,6 @@ void luaC_validate(lua_State* L);
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_FASTFLAG(LuauCodegenFixSplitStoreConstMismatch)
 LUAU_FASTFLAG(LuauAttributeSyntax)
 LUAU_FASTFLAG(LuauNativeAttribute)
 
@@ -2357,8 +2356,6 @@ TEST_CASE("Native")
     // This tests requires code to run natively, otherwise all 'is_native' checks will fail
     if (!codegen || !luau_codegen_supported())
         return;
-
-    ScopedFastFlag luauCodegenFixSplitStoreConstMismatch{FFlag::LuauCodegenFixSplitStoreConstMismatch, true};
 
     SUBCASE("Checked")
     {

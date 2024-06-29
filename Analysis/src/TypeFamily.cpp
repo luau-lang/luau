@@ -180,7 +180,10 @@ struct FamilyReducer
     void replace(T subject, T replacement)
     {
         if (subject->owningArena != ctx.arena.get())
-            ctx.ice->ice("Attempting to modify a type family instance from another arena", location);
+        {
+            result.errors.emplace_back(location, InternalError{"Attempting to modify a type family instance from another arena"});
+            return;
+        }
 
         if (FFlag::DebugLuauLogTypeFamilies)
             printf("%s -> %s\n", toString(subject, {true}).c_str(), toString(replacement, {true}).c_str());
@@ -514,7 +517,7 @@ static std::optional<TypeFamilyReductionResult<TypeId>> tryDistributeTypeFamilyA
             return {{results[0], false, {}, {}}};
 
         TypeId resultTy = ctx->arena->addType(TypeFamilyInstanceType{
-            NotNull{&kBuiltinTypeFamilies.unionFamily},
+            NotNull{&builtinTypeFunctions().unionFamily},
             std::move(results),
             {},
         });
@@ -1957,15 +1960,9 @@ bool tblIndexInto(TypeId indexer, TypeId indexee, DenseHashSet<TypeId>& result, 
 /* Vocabulary note: indexee refers to the type that contains the properties,
                     indexer refers to the type that is used to access indexee
    Example:         index<Person, "name"> => `Person` is the indexee and `"name"` is the indexer */
-TypeFamilyReductionResult<TypeId> indexFamilyFn(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+TypeFamilyReductionResult<TypeId> indexFamilyImpl(
+    const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx, bool isRaw)
 {
-    if (typeParams.size() != 2 || !packParams.empty())
-    {
-        ctx->ice->ice("index type family: encountered a type family instance without the required argument structure");
-        LUAU_ASSERT(false);
-    }
-
     TypeId indexeeTy = follow(typeParams.at(0));
     std::shared_ptr<const NormalizedType> indexeeNormTy = ctx->normalizer->normalize(indexeeTy);
 
@@ -2003,11 +2000,13 @@ TypeFamilyReductionResult<TypeId> indexFamilyFn(
         typesToFind = &singleType;
 
     DenseHashSet<TypeId> properties{{}}; // vector of types that will be returned
-    bool isRaw = false;
 
     if (indexeeNormTy->hasClasses())
     {
         LUAU_ASSERT(!indexeeNormTy->hasTables());
+
+        if (isRaw) // rawget should never reduce for classes (to match the behavior of the rawget global function)
+            return {std::nullopt, true, {}, {}};
 
         // at least one class is guaranteed to be in the iterator by .hasClasses()
         for (auto classesIter = indexeeNormTy->classes.ordering.begin(); classesIter != indexeeNormTy->classes.ordering.end(); ++classesIter)
@@ -2021,7 +2020,7 @@ TypeFamilyReductionResult<TypeId> indexFamilyFn(
 
             for (TypeId ty : *typesToFind)
             {
-                // Search for all instances of indexer in class->props and class->indexer using `indexInto`
+                // Search for all instances of indexer in class->props and class->indexer
                 if (searchPropsAndIndexer(ty, classTy->props, classTy->indexer, properties, ctx))
                     continue; // Indexer was found in this class, so we can move on to the next
 
@@ -2065,6 +2064,30 @@ TypeFamilyReductionResult<TypeId> indexFamilyFn(
     return {ctx->arena->addType(UnionType{std::vector<TypeId>(properties.begin(), properties.end())}), false, {}, {}};
 }
 
+TypeFamilyReductionResult<TypeId> indexFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+{
+    if (typeParams.size() != 2 || !packParams.empty())
+    {
+        ctx->ice->ice("index type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    return indexFamilyImpl(typeParams, packParams, ctx, /* isRaw */ false);
+}
+
+TypeFamilyReductionResult<TypeId> rawgetFamilyFn(
+    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFamilyContext> ctx)
+{
+    if (typeParams.size() != 2 || !packParams.empty())
+    {
+        ctx->ice->ice("rawget type family: encountered a type family instance without the required argument structure");
+        LUAU_ASSERT(false);
+    }
+
+    return indexFamilyImpl(typeParams, packParams, ctx, /* isRaw */ true);
+}
+
 BuiltinTypeFamilies::BuiltinTypeFamilies()
     : notFamily{"not", notFamilyFn}
     , lenFamily{"len", lenFamilyFn}
@@ -2089,6 +2112,7 @@ BuiltinTypeFamilies::BuiltinTypeFamilies()
     , keyofFamily{"keyof", keyofFamilyFn}
     , rawkeyofFamily{"rawkeyof", rawkeyofFamilyFn}
     , indexFamily{"index", indexFamilyFn}
+    , rawgetFamily{"rawget", rawgetFamilyFn}
 {
 }
 
@@ -2132,6 +2156,14 @@ void BuiltinTypeFamilies::addToScope(NotNull<TypeArena> arena, NotNull<Scope> sc
     scope->exportedTypeBindings[rawkeyofFamily.name] = mkUnaryTypeFamily(&rawkeyofFamily);
 
     scope->exportedTypeBindings[indexFamily.name] = mkBinaryTypeFamily(&indexFamily);
+    scope->exportedTypeBindings[rawgetFamily.name] = mkBinaryTypeFamily(&rawgetFamily);
+}
+
+const BuiltinTypeFamilies& builtinTypeFunctions()
+{
+    static std::unique_ptr<const BuiltinTypeFamilies> result = std::make_unique<BuiltinTypeFamilies>();
+
+    return *result;
 }
 
 } // namespace Luau

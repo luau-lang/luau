@@ -3,8 +3,6 @@
 
 #include "Luau/BytecodeBuilder.h"
 
-LUAU_FASTFLAG(LuauCompileTypeInfo)
-LUAU_FASTFLAG(LuauCompileTempTypeInfo)
 LUAU_FASTFLAG(LuauCompileUserdataInfo)
 
 namespace Luau
@@ -160,8 +158,6 @@ static std::string getFunctionType(const AstExprFunction* func, const DenseHashM
 
 static bool isMatchingGlobal(const DenseHashMap<AstName, Compile::Global>& globals, AstExpr* node, const char* name)
 {
-    LUAU_ASSERT(FFlag::LuauCompileTempTypeInfo);
-
     if (AstExprGlobal* expr = node->as<AstExprGlobal>())
         return Compile::getGlobalState(globals, expr->name) == Compile::Global::Default && expr->name == name;
 
@@ -233,8 +229,6 @@ struct TypeMapVisitor : AstVisitor
 
     const AstType* resolveAliases(const AstType* ty)
     {
-        LUAU_ASSERT(FFlag::LuauCompileTempTypeInfo);
-
         if (const AstTypeReference* ref = ty->as<AstTypeReference>())
         {
             if (ref->prefix)
@@ -249,8 +243,6 @@ struct TypeMapVisitor : AstVisitor
 
     const AstTableIndexer* tryGetTableIndexer(AstExpr* expr)
     {
-        LUAU_ASSERT(FFlag::LuauCompileTempTypeInfo);
-
         if (const AstType** typePtr = resolvedExprs.find(expr))
         {
             if (const AstTypeTable* tableTy = (*typePtr)->as<AstTypeTable>())
@@ -262,8 +254,6 @@ struct TypeMapVisitor : AstVisitor
 
     LuauBytecodeType recordResolvedType(AstExpr* expr, const AstType* ty)
     {
-        LUAU_ASSERT(FFlag::LuauCompileTempTypeInfo);
-
         ty = resolveAliases(ty);
 
         resolvedExprs[expr] = ty;
@@ -275,8 +265,6 @@ struct TypeMapVisitor : AstVisitor
 
     LuauBytecodeType recordResolvedType(AstLocal* local, const AstType* ty)
     {
-        LUAU_ASSERT(FFlag::LuauCompileTempTypeInfo);
-
         ty = resolveAliases(ty);
 
         resolvedLocals[local] = ty;
@@ -319,9 +307,6 @@ struct TypeMapVisitor : AstVisitor
     // for...in statement can contain type annotations on locals (we might even infer some for ipairs/pairs/generalized iteration)
     bool visit(AstStatForIn* node) override
     {
-        if (!FFlag::LuauCompileTempTypeInfo)
-            return true;
-
         for (AstExpr* expr : node->values)
             expr->visit(this);
 
@@ -382,51 +367,25 @@ struct TypeMapVisitor : AstVisitor
 
     bool visit(AstExprLocal* node) override
     {
-        if (FFlag::LuauCompileTempTypeInfo)
+        AstLocal* local = node->local;
+
+        if (AstType* annotation = local->annotation)
         {
-            if (FFlag::LuauCompileTypeInfo)
-            {
-                AstLocal* local = node->local;
+            LuauBytecodeType ty = recordResolvedType(node, annotation);
 
-                if (AstType* annotation = local->annotation)
-                {
-                    LuauBytecodeType ty = recordResolvedType(node, annotation);
-
-                    if (ty != LBC_TYPE_ANY)
-                        localTypes[local] = ty;
-                }
-                else if (const AstType** typePtr = resolvedLocals.find(local))
-                {
-                    localTypes[local] = recordResolvedType(node, *typePtr);
-                }
-            }
-
-            return false;
+            if (ty != LBC_TYPE_ANY)
+                localTypes[local] = ty;
         }
-        else
+        else if (const AstType** typePtr = resolvedLocals.find(local))
         {
-            if (FFlag::LuauCompileTypeInfo)
-            {
-                AstLocal* local = node->local;
-
-                if (AstType* annotation = local->annotation)
-                {
-                    LuauBytecodeType ty = getType(annotation, {}, typeAliases, /* resolveAliases= */ true, vectorType, userdataTypes, bytecode);
-
-                    if (ty != LBC_TYPE_ANY)
-                        localTypes[local] = ty;
-                }
-            }
-
-            return true;
+            localTypes[local] = recordResolvedType(node, *typePtr);
         }
+
+        return false;
     }
 
     bool visit(AstStatLocal* node) override
     {
-        if (!FFlag::LuauCompileTempTypeInfo)
-            return true;
-
         for (AstExpr* expr : node->values)
             expr->visit(this);
 
@@ -451,9 +410,6 @@ struct TypeMapVisitor : AstVisitor
 
     bool visit(AstExprIndexExpr* node) override
     {
-        if (!FFlag::LuauCompileTempTypeInfo)
-            return true;
-
         node->expr->visit(this);
         node->index->visit(this);
 
@@ -465,9 +421,6 @@ struct TypeMapVisitor : AstVisitor
 
     bool visit(AstExprIndexName* node) override
     {
-        if (!FFlag::LuauCompileTempTypeInfo)
-            return true;
-
         node->expr->visit(this);
 
         if (const AstType** typePtr = resolvedExprs.find(node->expr))
@@ -499,9 +452,6 @@ struct TypeMapVisitor : AstVisitor
 
     bool visit(AstExprUnary* node) override
     {
-        if (!FFlag::LuauCompileTempTypeInfo)
-            return true;
-
         node->expr->visit(this);
 
         switch (node->op)
@@ -534,9 +484,6 @@ struct TypeMapVisitor : AstVisitor
 
     bool visit(AstExprBinary* node) override
     {
-        if (!FFlag::LuauCompileTempTypeInfo)
-            return true;
-
         node->left->visit(this);
         node->right->visit(this);
 
@@ -575,9 +522,6 @@ struct TypeMapVisitor : AstVisitor
 
     bool visit(AstExprGroup* node) override
     {
-        if (!FFlag::LuauCompileTempTypeInfo)
-            return true;
-
         node->expr->visit(this);
 
         if (const AstType** typePtr = resolvedExprs.find(node->expr))
@@ -588,9 +532,6 @@ struct TypeMapVisitor : AstVisitor
 
     bool visit(AstExprTypeAssertion* node) override
     {
-        if (!FFlag::LuauCompileTempTypeInfo)
-            return true;
-
         node->expr->visit(this);
 
         recordResolvedType(node, node->annotation);
@@ -600,9 +541,6 @@ struct TypeMapVisitor : AstVisitor
 
     bool visit(AstExprConstantBool* node) override
     {
-        if (!FFlag::LuauCompileTempTypeInfo)
-            return true;
-
         recordResolvedType(node, &builtinTypes.booleanType);
 
         return false;
@@ -610,9 +548,6 @@ struct TypeMapVisitor : AstVisitor
 
     bool visit(AstExprConstantNumber* node) override
     {
-        if (!FFlag::LuauCompileTempTypeInfo)
-            return true;
-
         recordResolvedType(node, &builtinTypes.numberType);
 
         return false;
@@ -620,9 +555,6 @@ struct TypeMapVisitor : AstVisitor
 
     bool visit(AstExprConstantString* node) override
     {
-        if (!FFlag::LuauCompileTempTypeInfo)
-            return true;
-
         recordResolvedType(node, &builtinTypes.stringType);
 
         return false;
@@ -630,9 +562,6 @@ struct TypeMapVisitor : AstVisitor
 
     bool visit(AstExprInterpString* node) override
     {
-        if (!FFlag::LuauCompileTempTypeInfo)
-            return true;
-
         recordResolvedType(node, &builtinTypes.stringType);
 
         return false;
@@ -640,9 +569,6 @@ struct TypeMapVisitor : AstVisitor
 
     bool visit(AstExprIfElse* node) override
     {
-        if (!FFlag::LuauCompileTempTypeInfo)
-            return true;
-
         node->condition->visit(this);
         node->trueExpr->visit(this);
         node->falseExpr->visit(this);
@@ -660,9 +586,6 @@ struct TypeMapVisitor : AstVisitor
 
     bool visit(AstExprCall* node) override
     {
-        if (!FFlag::LuauCompileTempTypeInfo)
-            return true;
-
         if (const int* bfid = builtinCalls.find(node))
         {
             switch (LuauBuiltinFunction(*bfid))

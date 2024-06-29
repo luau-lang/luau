@@ -15,7 +15,6 @@ LUAI_FUNC int luaV_strcmp(const TString* ls, const TString* rs);
 LUAI_FUNC int luaV_lessthan(lua_State* L, const TValue* l, const TValue* r);
 LUAI_FUNC int luaV_lessequal(lua_State* L, const TValue* l, const TValue* r);
 LUAI_FUNC int luaV_equalval(lua_State* L, const TValue* t1, const TValue* t2);
-LUAI_FUNC void luaV_doarith(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TMS op);
 
 template<TMS op>
 void luaV_doarithimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* rc);

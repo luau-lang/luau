@@ -348,16 +348,38 @@ struct GenericTypeVisitor
         {
             if (visit(ty, *utv))
             {
+                bool unionChanged = false;
                 for (TypeId optTy : utv->options)
+                {
                     traverse(optTy);
+                    if (!get<UnionType>(follow(ty)))
+                    {
+                        unionChanged = true;
+                        break;
+                    }
+                }
+
+                if (unionChanged)
+                    traverse(ty);
             }
         }
         else if (auto itv = get<IntersectionType>(ty))
         {
             if (visit(ty, *itv))
             {
+                bool intersectionChanged = false;
                 for (TypeId partTy : itv->parts)
+                {
                     traverse(partTy);
+                    if (!get<IntersectionType>(follow(ty)))
+                    {
+                        intersectionChanged = true;
+                        break;
+                    }
+                }
+
+                if (intersectionChanged)
+                    traverse(ty);
             }
         }
         else if (auto ltv = get<LazyType>(ty))

@@ -216,7 +216,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     NotNull<BuiltinTypes> builtinTypes = globals.builtinTypes;
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        kBuiltinTypeFamilies.addToScope(NotNull{&arena}, NotNull{globals.globalScope.get()});
+        builtinTypeFunctions().addToScope(NotNull{&arena}, NotNull{globals.globalScope.get()});
 
     LoadDefinitionFileResult loadResult = frontend.loadDefinitionFile(
         globals, globals.globalScope, getBuiltinDefinitionSource(), "@luau", /* captureComments */ false, typeCheckForAutocomplete);
@@ -313,7 +313,7 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
         // declare function assert<T>(value: T, errorMessage: string?): intersect<T, ~(false?)>
         TypeId genericT = arena.addType(GenericType{"T"});
         TypeId refinedTy = arena.addType(TypeFamilyInstanceType{
-            NotNull{&kBuiltinTypeFamilies.intersectFamily}, {genericT, arena.addType(NegationType{builtinTypes->falsyType})}, {}});
+            NotNull{&builtinTypeFunctions().intersectFamily}, {genericT, arena.addType(NegationType{builtinTypes->falsyType})}, {}});
 
         TypeId assertTy = arena.addType(FunctionType{
             {genericT}, {}, arena.addTypePack(TypePack{{genericT, builtinTypes->optionalStringType}}), arena.addTypePack(TypePack{{refinedTy}})});

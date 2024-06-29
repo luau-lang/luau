@@ -443,7 +443,6 @@ enum LuauBytecodeTag
     LBC_VERSION_MAX = 6,
     LBC_VERSION_TARGET = 5,
     // Type encoding version
-    LBC_TYPE_VERSION_DEPRECATED = 1,
     LBC_TYPE_VERSION_MIN = 1,
     LBC_TYPE_VERSION_MAX = 3,
     LBC_TYPE_VERSION_TARGET = 3,

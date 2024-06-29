@@ -2379,6 +2379,28 @@ end
     CHECK("number" == toString(err->recommendedArgs[1].second));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "tf_suggest_arg_type_2")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    // Make sure the error types are cloned to module interface
+    frontend.options.retainFullTypeGraphs = false;
+
+    CheckResult result = check(R"(
+local function escape_fslash(pre)
+    return (#pre % 2 == 0 and '\\' or '') .. pre .. '.'
+end
+)");
+
+    LUAU_REQUIRE_ERRORS(result);
+    auto err = get<ExplicitFunctionAnnotationRecommended>(result.errors.back());
+    LUAU_ASSERT(err);
+    CHECK("unknown" == toString(err->recommendedReturn));
+    REQUIRE(err->recommendedArgs.size() == 1);
+    CHECK("a" == toString(err->recommendedArgs[0].second));
+}
+
 TEST_CASE_FIXTURE(Fixture, "local_function_fwd_decl_doesnt_crash")
 {
     CheckResult result = check(R"(

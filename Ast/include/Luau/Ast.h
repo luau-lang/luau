@@ -826,11 +826,12 @@ class AstStatDeclareGlobal : public AstStat
 public:
     LUAU_RTTI(AstStatDeclareGlobal)
 
-    AstStatDeclareGlobal(const Location& location, const AstName& name, AstType* type);
+    AstStatDeclareGlobal(const Location& location, const AstName& name, const Location& nameLocation, AstType* type);
 
     void visit(AstVisitor* visitor) override;
 
     AstName name;
+    Location nameLocation;
     AstType* type;
 };
 
@@ -839,13 +840,13 @@ class AstStatDeclareFunction : public AstStat
 public:
     LUAU_RTTI(AstStatDeclareFunction)
 
-    AstStatDeclareFunction(const Location& location, const AstName& name, const AstArray<AstGenericType>& generics,
-        const AstArray<AstGenericTypePack>& genericPacks, const AstTypeList& params, const AstArray<AstArgumentName>& paramNames,
-        const AstTypeList& retTypes);
+    AstStatDeclareFunction(const Location& location, const AstName& name, const Location& nameLocation, const AstArray<AstGenericType>& generics,
+        const AstArray<AstGenericTypePack>& genericPacks, const AstTypeList& params, const AstArray<AstArgumentName>& paramNames, bool vararg,
+        const Location& varargLocation, const AstTypeList& retTypes);
 
-    AstStatDeclareFunction(const Location& location, const AstArray<AstAttr*>& attributes, const AstName& name,
+    AstStatDeclareFunction(const Location& location, const AstArray<AstAttr*>& attributes, const AstName& name, const Location& nameLocation,
         const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks, const AstTypeList& params,
-        const AstArray<AstArgumentName>& paramNames, const AstTypeList& retTypes);
+        const AstArray<AstArgumentName>& paramNames, bool vararg, const Location& varargLocation, const AstTypeList& retTypes);
 
 
     void visit(AstVisitor* visitor) override;
@@ -854,18 +855,23 @@ public:
 
     AstArray<AstAttr*> attributes;
     AstName name;
+    Location nameLocation;
     AstArray<AstGenericType> generics;
     AstArray<AstGenericTypePack> genericPacks;
     AstTypeList params;
     AstArray<AstArgumentName> paramNames;
+    bool vararg = false;
+    Location varargLocation;
     AstTypeList retTypes;
 };
 
 struct AstDeclaredClassProp
 {
     AstName name;
+    Location nameLocation;
     AstType* ty = nullptr;
     bool isMethod = false;
+    Location location;
 };
 
 enum class AstTableAccess

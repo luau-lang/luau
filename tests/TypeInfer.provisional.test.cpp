@@ -312,7 +312,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated
     }
 }
 
-// FIXME: Move this test to another source file when removing FFlag::LuauLowerBoundsCalculation
 TEST_CASE_FIXTURE(Fixture, "do_not_ice_when_trying_to_pick_first_of_generic_type_pack")
 {
     // In-place quantification causes these types to have the wrong types but only because of nasty interaction with prototyping.

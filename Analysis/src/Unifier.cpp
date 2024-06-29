@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAGVARIABLE(LuauFixIndexerSubtypingOrdering, false)
 LUAU_FASTFLAGVARIABLE(LuauUnifierShouldNotCopyError, false)
+LUAU_FASTFLAGVARIABLE(LuauUnifierRecursionOnRestart, false)
 
 namespace Luau
 {
@@ -2179,7 +2180,18 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
 
         // If one of the types stopped being a table altogether, we need to restart from the top
         if ((superTy != superTyNew || activeSubTy != subTyNew) && errors.empty())
-            return tryUnify(subTy, superTy, false, isIntersection);
+        {
+            if (FFlag::LuauUnifierRecursionOnRestart)
+            {
+                RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                tryUnify(subTy, superTy, false, isIntersection);
+                return;
+            }
+            else
+            {
+                return tryUnify(subTy, superTy, false, isIntersection);
+            }
+        }
 
         // Otherwise, restart only the table unification
         TableType* newSuperTable = log.getMutable<TableType>(superTyNew);
@@ -2258,7 +2270,18 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection, 
 
         // If one of the types stopped being a table altogether, we need to restart from the top
         if ((superTy != superTyNew || activeSubTy != subTyNew) && errors.empty())
-            return tryUnify(subTy, superTy, false, isIntersection);
+        {
+            if (FFlag::LuauUnifierRecursionOnRestart)
+            {
+                RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
+                tryUnify(subTy, superTy, false, isIntersection);
+                return;
+            }
+            else
+            {
+                return tryUnify(subTy, superTy, false, isIntersection);
+            }
+        }
 
         // Recursive unification can change the txn log, and invalidate the old
         // table. If we detect that this has happened, we start over, with the updated

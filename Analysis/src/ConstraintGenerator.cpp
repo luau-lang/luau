@@ -29,6 +29,7 @@ LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
 LUAU_FASTFLAG(LuauAttributeSyntax);
+LUAU_FASTFLAG(LuauDeclarationExtraPropData);
 
 namespace Luau
 {
@@ -431,7 +432,7 @@ void ConstraintGenerator::computeRefinement(const ScopePtr& scope, Location loca
             discriminantTy = arena->addType(NegationType{discriminantTy});
 
         if (eq)
-            discriminantTy = createTypeFamilyInstance(kBuiltinTypeFamilies.singletonFamily, {discriminantTy}, {}, scope, location);
+            discriminantTy = createTypeFamilyInstance(builtinTypeFunctions().singletonFamily, {discriminantTy}, {}, scope, location);
 
         for (const RefinementKey* key = proposition->key; key; key = key->parent)
         {
@@ -543,7 +544,7 @@ void ConstraintGenerator::applyRefinements(const ScopePtr& scope, Location locat
             {
                 if (mustDeferIntersection(ty) || mustDeferIntersection(dt))
                 {
-                    TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.refineFamily, {ty, dt}, {}, scope, location);
+                    TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().refineFamily, {ty, dt}, {}, scope, location);
 
                     ty = resultType;
                 }
@@ -1389,6 +1390,18 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClas
                 ftv->argTypes = addTypePack({classTy}, ftv->argTypes);
 
                 ftv->hasSelf = true;
+
+                if (FFlag::LuauDeclarationExtraPropData)
+                {
+                    FunctionDefinition defn;
+
+                    defn.definitionModuleName = module->name;
+                    defn.definitionLocation = prop.location;
+                    // No data is preserved for varargLocation
+                    defn.originalNameLocation = prop.nameLocation;
+
+                    ftv->definition = defn;
+                }
             }
         }
 
@@ -1396,7 +1409,38 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareClas
 
         if (props.count(propName) == 0)
         {
-            props[propName] = {propTy};
+            if (FFlag::LuauDeclarationExtraPropData)
+                props[propName] = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", prop.location};
+            else
+                props[propName] = {propTy};
+        }
+        else if (FFlag::LuauDeclarationExtraPropData)
+        {
+            Luau::Property& prop = props[propName];
+            TypeId currentTy = prop.type();
+
+            // We special-case this logic to keep the intersection flat; otherwise we
+            // would create a ton of nested intersection types.
+            if (const IntersectionType* itv = get<IntersectionType>(currentTy))
+            {
+                std::vector<TypeId> options = itv->parts;
+                options.push_back(propTy);
+                TypeId newItv = arena->addType(IntersectionType{std::move(options)});
+
+                prop.readTy = newItv;
+                prop.writeTy = newItv;
+            }
+            else if (get<FunctionType>(currentTy))
+            {
+                TypeId intersection = arena->addType(IntersectionType{{currentTy, propTy}});
+
+                prop.readTy = intersection;
+                prop.writeTy = intersection;
+            }
+            else
+            {
+                reportError(declaredClass->location, GenericError{format("Cannot overload non-function class member '%s'", propName.c_str())});
+            }
         }
         else
         {
@@ -1453,7 +1497,18 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatDeclareFunc
 
     TypePackId paramPack = resolveTypePack(funScope, global->params, /* inTypeArguments */ false);
     TypePackId retPack = resolveTypePack(funScope, global->retTypes, /* inTypeArguments */ false);
-    TypeId fnType = arena->addType(FunctionType{TypeLevel{}, funScope.get(), std::move(genericTys), std::move(genericTps), paramPack, retPack});
+
+    FunctionDefinition defn;
+
+    if (FFlag::LuauDeclarationExtraPropData)
+    {
+        defn.definitionModuleName = module->name;
+        defn.definitionLocation = global->location;
+        defn.varargLocation = global->vararg ? std::make_optional(global->varargLocation) : std::nullopt;
+        defn.originalNameLocation = global->nameLocation;
+    }
+
+    TypeId fnType = arena->addType(FunctionType{TypeLevel{}, funScope.get(), std::move(genericTys), std::move(genericTps), paramPack, retPack, defn});
     FunctionType* ftv = getMutable<FunctionType>(fnType);
     ftv->isCheckedFunction = FFlag::LuauAttributeSyntax ? global->isCheckedFunction() : false;
 
@@ -2032,17 +2087,17 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprUnary* unary)
     {
     case AstExprUnary::Op::Not:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.notFamily, {operandType}, {}, scope, unary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().notFamily, {operandType}, {}, scope, unary->location);
         return Inference{resultType, refinementArena.negation(refinement)};
     }
     case AstExprUnary::Op::Len:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.lenFamily, {operandType}, {}, scope, unary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().lenFamily, {operandType}, {}, scope, unary->location);
         return Inference{resultType, refinementArena.negation(refinement)};
     }
     case AstExprUnary::Op::Minus:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.unmFamily, {operandType}, {}, scope, unary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().unmFamily, {operandType}, {}, scope, unary->location);
         return Inference{resultType, refinementArena.negation(refinement)};
     }
     default: // msvc can't prove that this is exhaustive.
@@ -2058,74 +2113,75 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprBinary* binar
     {
     case AstExprBinary::Op::Add:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.addFamily, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().addFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Sub:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.subFamily, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().subFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Mul:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.mulFamily, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().mulFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Div:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.divFamily, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().divFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::FloorDiv:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.idivFamily, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().idivFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Pow:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.powFamily, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().powFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Mod:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.modFamily, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().modFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Concat:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.concatFamily, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().concatFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::And:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.andFamily, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().andFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Or:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.orFamily, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().orFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::CompareLt:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.ltFamily, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().ltFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::CompareGe:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.ltFamily,
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().ltFamily,
             {rightType, leftType}, // lua decided that `__ge(a, b)` is instead just `__lt(b, a)`
             {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::CompareLe:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.leFamily, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().leFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::CompareGt:
     {
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.leFamily,
+        TypeId resultType = createTypeFamilyInstance(
+builtinTypeFunctions().leFamily,
             {rightType, leftType}, // lua decided that `__gt(a, b)` is instead just `__le(b, a)`
             {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
@@ -2147,7 +2203,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprBinary* binar
         else if (rightSubscripted)
             rightType = makeUnion(scope, binary->location, rightType, builtinTypes->nilType);
 
-        TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.eqFamily, {leftType, rightType}, {}, scope, binary->location);
+        TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().eqFamily, {leftType, rightType}, {}, scope, binary->location);
         return Inference{resultType, std::move(refinement)};
     }
     case AstExprBinary::Op::Op__Count:
@@ -3100,14 +3156,14 @@ TypeId ConstraintGenerator::makeUnion(const ScopePtr& scope, Location location, 
     if (get<NeverType>(follow(rhs)))
         return lhs;
 
-    TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.unionFamily, {lhs, rhs}, {}, scope, location);
+    TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().unionFamily, {lhs, rhs}, {}, scope, location);
 
     return resultType;
 }
 
 TypeId ConstraintGenerator::makeIntersect(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs)
 {
-    TypeId resultType = createTypeFamilyInstance(kBuiltinTypeFamilies.intersectFamily, {lhs, rhs}, {}, scope, location);
+    TypeId resultType = createTypeFamilyInstance(builtinTypeFunctions().intersectFamily, {lhs, rhs}, {}, scope, location);
 
     return resultType;
 }
@@ -3225,7 +3281,7 @@ void ConstraintGenerator::fillInInferredBindings(const ScopePtr& globalScope, As
             scope->bindings[symbol] = Binding{tys.front(), location};
         else
         {
-            TypeId ty = createTypeFamilyInstance(kBuiltinTypeFamilies.unionFamily, std::move(tys), {}, globalScope, location);
+            TypeId ty = createTypeFamilyInstance(builtinTypeFunctions().unionFamily, std::move(tys), {}, globalScope, location);
 
             scope->bindings[symbol] = Binding{ty, location};
         }

@@ -13,7 +13,6 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAG(LuauCodegenAnalyzeHostVectorOps)
 LUAU_FASTFLAG(LuauCodegenUserdataOps)
 LUAU_FASTFLAG(LuauCodegenFastcall3)
 
@@ -1285,8 +1284,7 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
         }
         else
         {
-            if (FFlag::LuauCodegenAnalyzeHostVectorOps && build.hostHooks.vectorAccess &&
-                build.hostHooks.vectorAccess(build, field, str->len, ra, rb, pcpos))
+            if (build.hostHooks.vectorAccess && build.hostHooks.vectorAccess(build, field, str->len, ra, rb, pcpos))
                 return;
 
             build.inst(IrCmd::FALLBACK_GETTABLEKS, build.constUint(pcpos), build.vmReg(ra), build.vmReg(rb), build.vmConst(aux));
@@ -1468,7 +1466,7 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
     {
         build.loadAndCheckTag(build.vmReg(rb), LUA_TVECTOR, build.vmExit(pcpos));
 
-        if (FFlag::LuauCodegenAnalyzeHostVectorOps && build.hostHooks.vectorNamecall)
+        if (build.hostHooks.vectorNamecall)
         {
             Instruction call = pc[2];
             CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
