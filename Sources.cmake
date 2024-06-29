@@ -295,6 +295,19 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Unifier2.cpp
 )
 
+# Luau.Analysis Sources
+target_sources(Luau.EqSat PRIVATE
+    EqSat/include/Luau/EGraph.h
+    EqSat/include/Luau/Id.h
+    EqSat/include/Luau/Language.h
+    EqSat/include/Luau/LanguageHash.h
+    EqSat/include/Luau/Slice.h
+    EqSat/include/Luau/UnionFind.h
+
+    EqSat/src/Id.cpp
+    EqSat/src/UnionFind.cpp
+)
+
 # Luau.VM Sources
 target_sources(Luau.VM PRIVATE
     VM/include/lua.h
@@ -418,6 +431,9 @@ if(TARGET Luau.UnitTest)
         tests/DiffAsserts.cpp
         tests/DiffAsserts.h
         tests/Differ.test.cpp
+        tests/EqSat.language.test.cpp
+        tests/EqSat.propositional.test.cpp
+        tests/EqSat.slice.test.cpp
         tests/Error.test.cpp
         tests/Fixture.cpp
         tests/Fixture.h
