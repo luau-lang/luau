@@ -7,6 +7,7 @@
 #include "Fixture.h"
 #include "ClassFixture.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 using namespace Luau;
@@ -505,6 +506,31 @@ caused by:
 Type 'ChildClass' could not be converted into 'BaseClass' in an invariant context)";
         CHECK_EQ(expected, toString(result.errors.at(0)));
     }
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "optional_class_casts_work_in_new_solver")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    CheckResult result = check(R"(
+        type A = { x: ChildClass }
+        type B = { x: BaseClass }
+
+        local a = { x = ChildClass.New() } :: A
+        local opt_a = a :: A?
+        local b = { x = BaseClass.New() } :: B
+        local opt_b = b :: B?
+        local b_from_a = a :: B
+        local b_from_opt_a = opt_a :: B
+        local opt_b_from_a = a :: B?
+        local opt_b_from_opt_a = opt_a :: B?
+        local a_from_b = b :: A
+        local a_from_opt_b = opt_b :: A
+        local opt_a_from_b = b :: A?
+        local opt_a_from_opt_b = opt_b :: A?
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "callable_classes")

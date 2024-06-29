@@ -11,8 +11,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenAnalyzeHostVectorOps, false)
-LUAU_FASTFLAGVARIABLE(LuauCodegenLoadTypeUpvalCheck, false)
 LUAU_FASTFLAGVARIABLE(LuauCodegenUserdataOps, false)
 LUAU_FASTFLAGVARIABLE(LuauCodegenFastcall3, false)
 
@@ -72,11 +70,6 @@ void loadBytecodeTypeInfo(IrFunction& function)
     uint32_t upvalCount = readVarInt(data, offset);
     uint32_t localCount = readVarInt(data, offset);
 
-    if (!FFlag::LuauCodegenLoadTypeUpvalCheck)
-    {
-        CODEGEN_ASSERT(upvalCount == unsigned(proto->nups));
-    }
-
     if (typeSize != 0)
     {
         uint8_t* types = (uint8_t*)data + offset;
@@ -94,10 +87,7 @@ void loadBytecodeTypeInfo(IrFunction& function)
 
     if (upvalCount != 0)
     {
-        if (FFlag::LuauCodegenLoadTypeUpvalCheck)
-        {
-            CODEGEN_ASSERT(upvalCount == unsigned(proto->nups));
-        }
+        CODEGEN_ASSERT(upvalCount == unsigned(proto->nups));
 
         typeInfo.upvalueTypes.resize(upvalCount);
 
@@ -775,7 +765,7 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
                                 regTags[ra] = LBC_TYPE_NUMBER;
                         }
 
-                        if (FFlag::LuauCodegenAnalyzeHostVectorOps && regTags[ra] == LBC_TYPE_ANY && hostHooks.vectorAccessBytecodeType)
+                        if (regTags[ra] == LBC_TYPE_ANY && hostHooks.vectorAccessBytecodeType)
                             regTags[ra] = hostHooks.vectorAccessBytecodeType(field, str->len);
                     }
                     else if (isCustomUserdataBytecodeType(bcType.a))
@@ -800,7 +790,7 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
                                 regTags[ra] = LBC_TYPE_NUMBER;
                         }
 
-                        if (FFlag::LuauCodegenAnalyzeHostVectorOps && regTags[ra] == LBC_TYPE_ANY && hostHooks.vectorAccessBytecodeType)
+                        if (regTags[ra] == LBC_TYPE_ANY && hostHooks.vectorAccessBytecodeType)
                             regTags[ra] = hostHooks.vectorAccessBytecodeType(field, str->len);
                     }
                 }
@@ -1218,14 +1208,14 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
                     TString* str = gco2ts(function.proto->k[kc].value.gc);
                     const char* field = getstr(str);
 
-                    if (FFlag::LuauCodegenAnalyzeHostVectorOps && bcType.a == LBC_TYPE_VECTOR && hostHooks.vectorNamecallBytecodeType)
+                    if (bcType.a == LBC_TYPE_VECTOR && hostHooks.vectorNamecallBytecodeType)
                         knownNextCallResult = LuauBytecodeType(hostHooks.vectorNamecallBytecodeType(field, str->len));
                     else if (isCustomUserdataBytecodeType(bcType.a) && hostHooks.userdataNamecallBytecodeType)
                         knownNextCallResult = LuauBytecodeType(hostHooks.userdataNamecallBytecodeType(bcType.a, field, str->len));
                 }
                 else
                 {
-                    if (FFlag::LuauCodegenAnalyzeHostVectorOps && bcType.a == LBC_TYPE_VECTOR && hostHooks.vectorNamecallBytecodeType)
+                    if (bcType.a == LBC_TYPE_VECTOR && hostHooks.vectorNamecallBytecodeType)
                     {
                         TString* str = gco2ts(function.proto->k[kc].value.gc);
                         const char* field = getstr(str);
@@ -1237,21 +1227,18 @@ void analyzeBytecodeTypes(IrFunction& function, const HostIrHooks& hostHooks)
             }
             case LOP_CALL:
             {
-                if (FFlag::LuauCodegenAnalyzeHostVectorOps)
+                int ra = LUAU_INSN_A(*pc);
+
+                if (knownNextCallResult != LBC_TYPE_ANY)
                 {
-                    int ra = LUAU_INSN_A(*pc);
+                    bcType.result = knownNextCallResult;
 
-                    if (knownNextCallResult != LBC_TYPE_ANY)
-                    {
-                        bcType.result = knownNextCallResult;
+                    knownNextCallResult = LBC_TYPE_ANY;
 
-                        knownNextCallResult = LBC_TYPE_ANY;
-
-                        regTags[ra] = bcType.result;
-                    }
-
-                    refineRegType(bcTypeInfo, ra, i, bcType.result);
+                    regTags[ra] = bcType.result;
                 }
+
+                refineRegType(bcTypeInfo, ra, i, bcType.result);
                 break;
             }
             case LOP_GETUPVAL:

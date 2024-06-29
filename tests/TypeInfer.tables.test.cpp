@@ -15,7 +15,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
 LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
@@ -3257,7 +3256,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_leak_free_table_props")
 TEST_CASE_FIXTURE(Fixture, "inferred_return_type_of_free_table")
 {
     ScopedFastFlag sff[] = {
-        // {FFlag::LuauLowerBoundsCalculation, true},
         {FFlag::DebugLuauSharedSelf, true},
     };
 

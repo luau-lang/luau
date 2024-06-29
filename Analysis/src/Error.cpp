@@ -661,14 +661,14 @@ struct ErrorConverter
                 return "Type family instance " + Luau::toString(e.ty) + " is ill-formed, and thus invalid";
         }
 
-        if ("index" == tfit->family->name)
+        if ("index" == tfit->family->name || "rawget" == tfit->family->name)
         {
             if (tfit->typeArguments.size() != 2)
                 return "Type family instance " + Luau::toString(e.ty) + " is ill-formed, and thus invalid";
 
-            if (auto errType = get<ErrorType>(tfit->typeArguments[1])) // Second argument to index<_,_> is not a type
-                return "Second argument to index<" + Luau::toString(tfit->typeArguments[0]) + ", _> is not a valid index type";
-            else // Second argument to index<_,_> is not a property of the first argument
+            if (auto errType = get<ErrorType>(tfit->typeArguments[1])) // Second argument to (index | rawget)<_,_> is not a type
+                return "Second argument to " + tfit->family->name + "<" + Luau::toString(tfit->typeArguments[0]) + ", _> is not a valid index type";
+            else // Property `indexer` does not exist on type `indexee`
                 return "Property '" + Luau::toString(tfit->typeArguments[1]) + "' does not exist on type '" + Luau::toString(tfit->typeArguments[0]) +
                        "'";
         }
@@ -1321,7 +1321,7 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     else if constexpr (std::is_same_v<T, ExplicitFunctionAnnotationRecommended>)
     {
         e.recommendedReturn = clone(e.recommendedReturn);
-        for (auto [_, t] : e.recommendedArgs)
+        for (auto& [_, t] : e.recommendedArgs)
             t = clone(t);
     }
     else if constexpr (std::is_same_v<T, UninhabitedTypePackFamily>)

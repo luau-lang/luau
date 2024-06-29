@@ -7,6 +7,7 @@
 #include "Luau/TypeArena.h"
 #include "Luau/Error.h"
 
+#include "Fixture.h"
 #include "ScopedFlags.h"
 
 #include "doctest.h"
@@ -170,6 +171,80 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "functions_containing_cyclic_tables_can
     CHECK(generalizedTypes->contains(methodTy));
     CHECK(generalizedTypes->contains(selfTy));
     CHECK(generalizedTypes->contains(builtinTypes.numberType));
+}
+
+TEST_CASE_FIXTURE(GeneralizationFixture, "union_type_traversal_doesnt_crash")
+{
+    // t1 where t1 = ('h <: (t1 <: 'i)) | ('j <: (t1 <: 'i))
+    TypeId i = arena.addType(FreeType{NotNull{globalScope.get()}});
+    TypeId h = arena.addType(FreeType{NotNull{globalScope.get()}});
+    TypeId j = arena.addType(FreeType{NotNull{globalScope.get()}});
+    TypeId unionType = arena.addType(UnionType{{h, j}});
+    getMutable<FreeType>(h)->upperBound = i;
+    getMutable<FreeType>(h)->lowerBound = builtinTypes.neverType;
+    getMutable<FreeType>(i)->upperBound = builtinTypes.unknownType;
+    getMutable<FreeType>(i)->lowerBound = unionType;
+    getMutable<FreeType>(j)->upperBound = i;
+    getMutable<FreeType>(j)->lowerBound = builtinTypes.neverType;
+
+    generalize(unionType);
+}
+
+TEST_CASE_FIXTURE(GeneralizationFixture, "intersection_type_traversal_doesnt_crash")
+{
+    // t1 where t1 = ('h <: (t1 <: 'i)) & ('j <: (t1 <: 'i))
+    TypeId i = arena.addType(FreeType{NotNull{globalScope.get()}});
+    TypeId h = arena.addType(FreeType{NotNull{globalScope.get()}});
+    TypeId j = arena.addType(FreeType{NotNull{globalScope.get()}});
+    TypeId intersectionType = arena.addType(IntersectionType{{h, j}});
+
+    getMutable<FreeType>(h)->upperBound = i;
+    getMutable<FreeType>(h)->lowerBound = builtinTypes.neverType;
+    getMutable<FreeType>(i)->upperBound = builtinTypes.unknownType;
+    getMutable<FreeType>(i)->lowerBound = intersectionType;
+    getMutable<FreeType>(j)->upperBound = i;
+    getMutable<FreeType>(j)->lowerBound = builtinTypes.neverType;
+
+    generalize(intersectionType);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_traversal_should_re_traverse_unions_if_they_change_type")
+{
+    // This test case should just not assert
+    CheckResult result = check(R"(
+function byId(p)
+ return p.id
+end
+
+function foo()
+
+ local productButtonPairs = {}
+ local func = byId
+ local dir = -1
+
+ local function updateSearch()
+  for product, button in pairs(productButtonPairs) do
+   button.LayoutOrder = func(product) * dir
+  end
+ end
+ 
+  function(mode)
+   if mode == 'Name'then
+   else
+    if mode == 'New'then
+     func = function(p)
+      return p.id
+     end
+    elseif mode == 'Price'then
+     func = function(p)
+      return p.price
+     end
+    end
+
+   end
+  end
+end
+)");
 }
 
 TEST_SUITE_END();

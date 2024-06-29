@@ -250,6 +250,10 @@ void flushEvents(GlobalContext& context, uint32_t threadId, const std::vector<Ev
 
 ThreadContext& getThreadContext()
 {
+    // Check custom provider that which might implement a custom TLS
+    if (auto provider = threadContextProvider())
+        return provider();
+
     thread_local ThreadContext context;
     return context;
 }

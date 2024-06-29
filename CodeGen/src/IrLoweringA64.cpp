@@ -11,11 +11,11 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenSplitDoarith)
 LUAU_FASTFLAG(LuauCodegenUserdataOps)
 LUAU_FASTFLAGVARIABLE(LuauCodegenUserdataAlloc, false)
 LUAU_FASTFLAGVARIABLE(LuauCodegenUserdataOpsFixA64, false)
 LUAU_FASTFLAG(LuauCodegenFastcall3)
+LUAU_FASTFLAG(LuauCodegenMathSign)
 
 namespace Luau
 {
@@ -240,6 +240,7 @@ static bool emitBuiltin(AssemblyBuilderA64& build, IrFunction& function, IrRegAl
     }
     case LBF_MATH_SIGN:
     {
+        CODEGEN_ASSERT(!FFlag::LuauCodegenMathSign);
         CODEGEN_ASSERT(nresults == 1);
         build.ldr(d0, mem(rBase, arg * sizeof(TValue) + offsetof(TValue, value.n)));
         build.fcmpz(d0);
@@ -695,6 +696,24 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         inst.regA64 = regs.allocReuse(KindA64::d, index, {inst.a});
         RegisterA64 temp = tempDouble(inst.a);
         build.fabs(inst.regA64, temp);
+        break;
+    }
+    case IrCmd::SIGN_NUM:
+    {
+        CODEGEN_ASSERT(FFlag::LuauCodegenMathSign);
+
+        inst.regA64 = regs.allocReuse(KindA64::d, index, {inst.a});
+
+        RegisterA64 temp = tempDouble(inst.a);
+        RegisterA64 temp0 = regs.allocTemp(KindA64::d);
+        RegisterA64 temp1 = regs.allocTemp(KindA64::d);
+
+        build.fcmpz(temp);
+        build.fmov(temp0, 0.0);
+        build.fmov(temp1, 1.0);
+        build.fcsel(inst.regA64, temp1, temp0, getConditionFP(IrCondition::Greater));
+        build.fmov(temp1, -1.0);
+        build.fcsel(inst.regA64, temp1, inst.regA64, getConditionFP(IrCondition::Less));
         break;
     }
     case IrCmd::ADD_VEC:
@@ -1283,47 +1302,38 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
         else
             build.add(x3, rBase, uint16_t(vmRegOp(inst.c) * sizeof(TValue)));
 
-        if (FFlag::LuauCodegenSplitDoarith)
+        switch (TMS(intOp(inst.d)))
         {
-            switch (TMS(intOp(inst.d)))
-            {
-            case TM_ADD:
-                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithadd)));
-                break;
-            case TM_SUB:
-                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithsub)));
-                break;
-            case TM_MUL:
-                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithmul)));
-                break;
-            case TM_DIV:
-                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithdiv)));
-                break;
-            case TM_IDIV:
-                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithidiv)));
-                break;
-            case TM_MOD:
-                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithmod)));
-                break;
-            case TM_POW:
-                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithpow)));
-                break;
-            case TM_UNM:
-                build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithunm)));
-                break;
-            default:
-                CODEGEN_ASSERT(!"Invalid doarith helper operation tag");
-                break;
-            }
+        case TM_ADD:
+            build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithadd)));
+            break;
+        case TM_SUB:
+            build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithsub)));
+            break;
+        case TM_MUL:
+            build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithmul)));
+            break;
+        case TM_DIV:
+            build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithdiv)));
+            break;
+        case TM_IDIV:
+            build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithidiv)));
+            break;
+        case TM_MOD:
+            build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithmod)));
+            break;
+        case TM_POW:
+            build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithpow)));
+            break;
+        case TM_UNM:
+            build.ldr(x4, mem(rNativeContext, offsetof(NativeContext, luaV_doarithunm)));
+            break;
+        default:
+            CODEGEN_ASSERT(!"Invalid doarith helper operation tag");
+            break;
+        }
 
-            build.blr(x4);
-        }
-        else
-        {
-            build.mov(w4, TMS(intOp(inst.d)));
-            build.ldr(x5, mem(rNativeContext, offsetof(NativeContext, luaV_doarith)));
-            build.blr(x5);
-        }
+        build.blr(x4);
 
         emitUpdateBase(build);
         break;

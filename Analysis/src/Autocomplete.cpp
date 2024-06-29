@@ -1830,12 +1830,21 @@ AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName
     if (!sourceModule)
         return {};
 
-    ModulePtr module = frontend.moduleResolverForAutocomplete.getModule(moduleName);
+    ModulePtr module;
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        module = frontend.moduleResolver.getModule(moduleName);
+    else
+        module = frontend.moduleResolverForAutocomplete.getModule(moduleName);
+
     if (!module)
         return {};
 
     NotNull<BuiltinTypes> builtinTypes = frontend.builtinTypes;
-    Scope* globalScope = frontend.globalsForAutocomplete.globalScope.get();
+    Scope* globalScope;
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        globalScope = frontend.globals.globalScope.get();
+    else
+        globalScope = frontend.globalsForAutocomplete.globalScope.get();
 
     TypeArena typeArena;
     return autocomplete(*sourceModule, module, builtinTypes, &typeArena, globalScope, position, callback);

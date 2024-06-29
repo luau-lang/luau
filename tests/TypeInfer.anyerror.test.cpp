@@ -401,4 +401,13 @@ end
     CHECK("(any, any) -> any" == toString(requireType("foo")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "cast_to_table_of_any")
+{
+    CheckResult result = check(R"(
+        local v = {true} :: {any}
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

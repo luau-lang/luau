@@ -9,6 +9,7 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauCodegenFastcall3)
+LUAU_FASTFLAGVARIABLE(LuauCodegenMathSign, false)
 
 // TODO: when nresults is less than our actual result count, we can skip computing/writing unused results
 
@@ -42,6 +43,8 @@ static IrOp builtinLoadDouble(IrBuilder& build, IrOp arg)
 static BuiltinImplResult translateBuiltinNumberToNumber(
     IrBuilder& build, LuauBuiltinFunction bfid, int nparams, int ra, int arg, IrOp args, int nresults, int pcpos)
 {
+    CODEGEN_ASSERT(!FFlag::LuauCodegenMathSign);
+
     if (nparams < 1 || nresults > 1)
         return {BuiltinImplType::None, -1};
 
@@ -845,7 +848,10 @@ BuiltinImplResult translateBuiltin(
     case LBF_MATH_LOG10:
         return translateBuiltinNumberToNumberLibm(build, LuauBuiltinFunction(bfid), nparams, ra, arg, nresults, pcpos);
     case LBF_MATH_SIGN:
-        return translateBuiltinNumberToNumber(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
+        if (FFlag::LuauCodegenMathSign)
+            return translateBuiltinMathUnary(build, IrCmd::SIGN_NUM, nparams, ra, arg, nresults, pcpos);
+        else
+            return translateBuiltinNumberToNumber(build, LuauBuiltinFunction(bfid), nparams, ra, arg, args, nresults, pcpos);
     case LBF_MATH_POW:
     case LBF_MATH_FMOD:
     case LBF_MATH_ATAN2:

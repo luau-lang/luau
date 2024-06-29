@@ -396,4 +396,15 @@ TEST_CASE_FIXTURE(Fixture, "lti_permit_explicit_never_annotation")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "cast_from_never_does_not_error")
+{
+    CheckResult result = check(R"(
+        local function f(x: never): number
+            return x :: number
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

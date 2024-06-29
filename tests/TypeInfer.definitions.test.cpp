@@ -7,6 +7,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauDeclarationExtraPropData)
+
 using namespace Luau;
 
 TEST_SUITE_BEGIN("DefinitionTests");
@@ -319,6 +321,8 @@ TEST_CASE_FIXTURE(Fixture, "definitions_documentation_symbols")
 
 TEST_CASE_FIXTURE(Fixture, "definitions_symbols_are_generated_for_recursively_referenced_types")
 {
+    ScopedFastFlag luauDeclarationExtraPropData{FFlag::LuauDeclarationExtraPropData, true};
+
     loadDefinition(R"(
         declare class MyClass
             function myMethod(self)
@@ -330,6 +334,22 @@ TEST_CASE_FIXTURE(Fixture, "definitions_symbols_are_generated_for_recursively_re
     std::optional<TypeFun> myClassTy = frontend.globals.globalScope->lookupType("MyClass");
     REQUIRE(bool(myClassTy));
     CHECK_EQ(myClassTy->type->documentationSymbol, "@test/globaltype/MyClass");
+
+    ClassType* cls = getMutable<ClassType>(myClassTy->type);
+    REQUIRE(bool(cls));
+    REQUIRE_EQ(cls->props.count("myMethod"), 1);
+
+    const auto& method = cls->props["myMethod"];
+    CHECK_EQ(method.documentationSymbol, "@test/globaltype/MyClass.myMethod");
+
+    FunctionType* function = getMutable<FunctionType>(method.type());
+    REQUIRE(function);
+
+    REQUIRE(function->definition.has_value());
+    CHECK(function->definition->definitionModuleName == "@test");
+    CHECK(function->definition->definitionLocation == Location({2, 12}, {2, 35}));
+    CHECK(!function->definition->varargLocation.has_value());
+    CHECK(function->definition->originalNameLocation == Location({2, 21}, {2, 29}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "documentation_symbols_dont_attach_to_persistent_types")

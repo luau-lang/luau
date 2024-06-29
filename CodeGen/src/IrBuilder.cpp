@@ -13,7 +13,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCodegenAnalyzeHostVectorOps)
 LUAU_FASTFLAG(LuauLoadUserdataInfo)
 LUAU_FASTFLAG(LuauCodegenInstG)
 LUAU_FASTFLAG(LuauCodegenFastcall3)
@@ -534,15 +533,8 @@ void IrBuilder::translateInst(LuauOpcode op, const Instruction* pc, int i)
         translateInstCapture(*this, pc, i);
         break;
     case LOP_NAMECALL:
-        if (FFlag::LuauCodegenAnalyzeHostVectorOps)
-        {
-            if (translateInstNamecall(*this, pc, i))
-                cmdSkipTarget = i + 3;
-        }
-        else
-        {
-            translateInstNamecall(*this, pc, i);
-        }
+        if (translateInstNamecall(*this, pc, i))
+            cmdSkipTarget = i + 3;
         break;
     case LOP_PREPVARARGS:
         inst(IrCmd::FALLBACK_PREPVARARGS, constUint(i), constInt(LUAU_INSN_A(*pc)));

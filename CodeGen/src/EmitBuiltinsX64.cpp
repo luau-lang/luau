@@ -12,6 +12,8 @@
 
 #include "lstate.h"
 
+LUAU_FASTFLAG(LuauCodegenMathSign)
+
 namespace Luau
 {
 namespace CodeGen
@@ -57,6 +59,8 @@ static void emitBuiltinMathModf(IrRegAllocX64& regs, AssemblyBuilderX64& build, 
 
 static void emitBuiltinMathSign(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int arg)
 {
+    CODEGEN_ASSERT(!FFlag::LuauCodegenMathSign);
+
     ScopedRegX64 tmp0{regs, SizeX64::xmmword};
     ScopedRegX64 tmp1{regs, SizeX64::xmmword};
     ScopedRegX64 tmp2{regs, SizeX64::xmmword};
@@ -94,6 +98,7 @@ void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int r
         CODEGEN_ASSERT(nresults == 1 || nresults == 2);
         return emitBuiltinMathModf(regs, build, ra, arg, nresults);
     case LBF_MATH_SIGN:
+        CODEGEN_ASSERT(!FFlag::LuauCodegenMathSign);
         CODEGEN_ASSERT(nresults == 1);
         return emitBuiltinMathSign(regs, build, ra, arg);
     default:
