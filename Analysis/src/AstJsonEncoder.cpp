@@ -8,6 +8,8 @@
 
 #include <math.h>
 
+LUAU_FASTFLAG(LuauDeclarationExtraPropData)
+
 namespace Luau
 {
 
@@ -735,8 +737,21 @@ struct AstJsonEncoder : public AstVisitor
     void write(class AstStatDeclareFunction* node)
     {
         writeNode(node, "AstStatDeclareFunction", [&]() {
+            // TODO: attributes
             PROP(name);
+
+            if (FFlag::LuauDeclarationExtraPropData)
+                PROP(nameLocation);
+
             PROP(params);
+
+            if (FFlag::LuauDeclarationExtraPropData)
+            {
+                PROP(paramNames);
+                PROP(vararg);
+                PROP(varargLocation);
+            }
+
             PROP(retTypes);
             PROP(generics);
             PROP(genericPacks);
@@ -747,6 +762,10 @@ struct AstJsonEncoder : public AstVisitor
     {
         writeNode(node, "AstStatDeclareGlobal", [&]() {
             PROP(name);
+
+            if (FFlag::LuauDeclarationExtraPropData)
+                PROP(nameLocation);
+
             PROP(type);
         });
     }
@@ -756,8 +775,16 @@ struct AstJsonEncoder : public AstVisitor
         writeRaw("{");
         bool c = pushComma();
         write("name", prop.name);
+
+        if (FFlag::LuauDeclarationExtraPropData)
+            write("nameLocation", prop.nameLocation);
+
         writeType("AstDeclaredClassProp");
         write("luauType", prop.ty);
+
+        if (FFlag::LuauDeclarationExtraPropData)
+            write("location", prop.location);
+
         popComma(c);
         writeRaw("}");
     }

@@ -69,6 +69,7 @@ IrValueKind getCmdValueKind(IrCmd cmd)
     case IrCmd::ROUND_NUM:
     case IrCmd::SQRT_NUM:
     case IrCmd::ABS_NUM:
+    case IrCmd::SIGN_NUM:
         return IrValueKind::Double;
     case IrCmd::ADD_VEC:
     case IrCmd::SUB_VEC:
@@ -657,6 +658,14 @@ void foldConstants(IrBuilder& build, IrFunction& function, IrBlock& block, uint3
     case IrCmd::ABS_NUM:
         if (inst.a.kind == IrOpKind::Constant)
             substitute(function, inst, build.constDouble(fabs(function.doubleOp(inst.a))));
+        break;
+    case IrCmd::SIGN_NUM:
+        if (inst.a.kind == IrOpKind::Constant)
+        {
+            double v = function.doubleOp(inst.a);
+
+            substitute(function, inst, build.constDouble(v > 0.0 ? 1.0 : v < 0.0 ? -1.0 : 0.0));
+        }
         break;
     case IrCmd::NOT_ANY:
         if (inst.a.kind == IrOpKind::Constant)

@@ -29,7 +29,6 @@ void initFunctions(NativeContext& context)
     context.luaV_lessthan = luaV_lessthan;
     context.luaV_lessequal = luaV_lessequal;
     context.luaV_equalval = luaV_equalval;
-    context.luaV_doarith = luaV_doarith;
 
     context.luaV_doarithadd = luaV_doarithimpl<TM_ADD>;
     context.luaV_doarithsub = luaV_doarithimpl<TM_SUB>;

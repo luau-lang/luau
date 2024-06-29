@@ -179,6 +179,10 @@ enum class IrCmd : uint8_t
     // A: double
     ABS_NUM,
 
+    // Get the sign of the argument (math.sign)
+    // A: double
+    SIGN_NUM,
+
     // Add/Sub/Mul/Div/Idiv two vectors
     // A, B: TValue
     ADD_VEC,

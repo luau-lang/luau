@@ -18,6 +18,7 @@
 LUAU_FASTFLAG(LuauCodegenUserdataOps)
 LUAU_FASTFLAG(LuauCodegenUserdataAlloc)
 LUAU_FASTFLAG(LuauCodegenFastcall3)
+LUAU_FASTFLAG(LuauCodegenMathSign)
 
 namespace Luau
 {
@@ -590,6 +591,33 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
 
         build.vandpd(inst.regX64, inst.regX64, build.i64(~(1LL << 63)));
         break;
+    case IrCmd::SIGN_NUM:
+    {
+        CODEGEN_ASSERT(FFlag::LuauCodegenMathSign);
+
+        inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a});
+
+        ScopedRegX64 tmp0{regs, SizeX64::xmmword};
+        ScopedRegX64 tmp1{regs, SizeX64::xmmword};
+        ScopedRegX64 tmp2{regs, SizeX64::xmmword};
+
+        build.vxorpd(tmp0.reg, tmp0.reg, tmp0.reg);
+
+        // Set tmp1 to -1 if arg < 0, else 0
+        build.vcmpltsd(tmp1.reg, regOp(inst.a), tmp0.reg);
+        build.vmovsd(tmp2.reg, build.f64(-1));
+        build.vandpd(tmp1.reg, tmp1.reg, tmp2.reg);
+
+        // Set mask bit to 1 if 0 < arg, else 0
+        build.vcmpltsd(inst.regX64, tmp0.reg, regOp(inst.a));
+
+        // Result = (mask-bit == 1) ? 1.0 : tmp1
+        // If arg < 0 then tmp1 is -1 and mask-bit is 0, result is -1
+        // If arg == 0 then tmp1 is 0 and mask-bit is 0, result is 0
+        // If arg > 0 then tmp1 is 0 and mask-bit is 1, result is 1
+        build.vblendvpd(inst.regX64, tmp1.reg, build.f64x2(1, 1), inst.regX64);
+        break;
+    }
     case IrCmd::ADD_VEC:
     {
         inst.regX64 = regs.allocRegOrReuse(SizeX64::xmmword, index, {inst.a, inst.b});

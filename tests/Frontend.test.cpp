@@ -1333,4 +1333,58 @@ TEST_CASE_FIXTURE(FrontendFixture, "checked_modules_have_the_correct_mode")
     CHECK(moduleC->mode == Mode::Strict);
 }
 
+TEST_CASE_FIXTURE(FrontendFixture, "separate_caches_for_autocomplete")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
+
+    fileResolver.source["game/A"] = R"(
+        --!nonstrict
+        local exports = {}
+        function exports.hello() end
+        return exports
+    )";
+
+    FrontendOptions opts;
+    opts.forAutocomplete = true;
+
+    frontend.check("game/A", opts);
+
+    CHECK(nullptr == frontend.moduleResolver.getModule("game/A"));
+
+    ModulePtr acModule = frontend.moduleResolverForAutocomplete.getModule("game/A");
+    REQUIRE(acModule != nullptr);
+    CHECK(acModule->mode == Mode::Strict);
+
+    frontend.check("game/A");
+
+    ModulePtr module = frontend.moduleResolver.getModule("game/A");
+
+    REQUIRE(module != nullptr);
+    CHECK(module->mode == Mode::Nonstrict);
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "no_separate_caches_with_the_new_solver")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    fileResolver.source["game/A"] = R"(
+        --!nonstrict
+        local exports = {}
+        function exports.hello() end
+        return exports
+    )";
+
+    FrontendOptions opts;
+    opts.forAutocomplete = true;
+
+    frontend.check("game/A", opts);
+
+    CHECK(nullptr == frontend.moduleResolverForAutocomplete.getModule("game/A"));
+
+    ModulePtr module = frontend.moduleResolver.getModule("game/A");
+
+    REQUIRE(module != nullptr);
+    CHECK(module->mode == Mode::Nonstrict);
+}
+
 TEST_SUITE_END();

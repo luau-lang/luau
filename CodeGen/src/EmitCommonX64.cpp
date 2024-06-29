@@ -14,8 +14,6 @@
 
 #include <utility>
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenSplitDoarith, false)
-
 namespace Luau
 {
 namespace CodeGen
@@ -158,43 +156,35 @@ void callArithHelper(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, Ope
     callWrap.addArgument(SizeX64::qword, b);
     callWrap.addArgument(SizeX64::qword, c);
 
-    if (FFlag::LuauCodegenSplitDoarith)
+    switch (tm)
     {
-        switch (tm)
-        {
-        case TM_ADD:
-            callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithadd)]);
-            break;
-        case TM_SUB:
-            callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithsub)]);
-            break;
-        case TM_MUL:
-            callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithmul)]);
-            break;
-        case TM_DIV:
-            callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithdiv)]);
-            break;
-        case TM_IDIV:
-            callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithidiv)]);
-            break;
-        case TM_MOD:
-            callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithmod)]);
-            break;
-        case TM_POW:
-            callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithpow)]);
-            break;
-        case TM_UNM:
-            callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithunm)]);
-            break;
-        default:
-            CODEGEN_ASSERT(!"Invalid doarith helper operation tag");
-            break;
-        }
-    }
-    else
-    {
-        callWrap.addArgument(SizeX64::dword, tm);
-        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarith)]);
+    case TM_ADD:
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithadd)]);
+        break;
+    case TM_SUB:
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithsub)]);
+        break;
+    case TM_MUL:
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithmul)]);
+        break;
+    case TM_DIV:
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithdiv)]);
+        break;
+    case TM_IDIV:
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithidiv)]);
+        break;
+    case TM_MOD:
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithmod)]);
+        break;
+    case TM_POW:
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithpow)]);
+        break;
+    case TM_UNM:
+        callWrap.call(qword[rNativeContext + offsetof(NativeContext, luaV_doarithunm)]);
+        break;
+    default:
+        CODEGEN_ASSERT(!"Invalid doarith helper operation tag");
+        break;
     }
 
     emitUpdateBase(build);

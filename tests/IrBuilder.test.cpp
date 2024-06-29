@@ -13,9 +13,9 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodegenFixSplitStoreConstMismatch)
 LUAU_FASTFLAG(LuauCodegenInstG)
 LUAU_FASTFLAG(LuauCodegenFastcall3)
+LUAU_FASTFLAG(LuauCodegenMathSign)
 
 using namespace Luau::CodeGen;
 
@@ -335,6 +335,8 @@ TEST_SUITE_BEGIN("ConstantFolding");
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Numeric")
 {
+    ScopedFastFlag luauCodegenMathSign{FFlag::LuauCodegenMathSign, true};
+
     IrOp block = build.block(IrBlockKind::Internal);
 
     build.beginBlock(block);
@@ -365,6 +367,8 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Numeric")
     build.inst(IrCmd::STORE_INT, build.vmReg(20), build.inst(IrCmd::NOT_ANY, build.constTag(tboolean), build.constInt(0)));
     build.inst(IrCmd::STORE_INT, build.vmReg(21), build.inst(IrCmd::NOT_ANY, build.constTag(tboolean), build.constInt(1)));
 
+    build.inst(IrCmd::STORE_DOUBLE, build.vmReg(22), build.inst(IrCmd::SIGN_NUM, build.constDouble(-4)));
+
     build.inst(IrCmd::RETURN, build.constUint(0));
 
     updateUseCounts(build.function);
@@ -393,6 +397,7 @@ bb_0:
    STORE_INT R19, 0i
    STORE_INT R20, 1i
    STORE_INT R21, 0i
+   STORE_DOUBLE R22, -1
    RETURN 0u
 
 )");
@@ -2662,8 +2667,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DoNotProduceInvalidSplitStore1")
 {
-    ScopedFastFlag luauCodegenFixSplitStoreConstMismatch{FFlag::LuauCodegenFixSplitStoreConstMismatch, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);
@@ -2690,8 +2693,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "DoNotProduceInvalidSplitStore2")
 {
-    ScopedFastFlag luauCodegenFixSplitStoreConstMismatch{FFlag::LuauCodegenFixSplitStoreConstMismatch, true};
-
     IrOp entry = build.block(IrBlockKind::Internal);
 
     build.beginBlock(entry);

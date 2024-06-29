@@ -2138,24 +2138,39 @@ struct TypeChecker2
         TypeId annotationType = lookupAnnotation(expr->annotation);
         TypeId computedType = lookupType(expr->expr);
 
-        // Note: As an optimization, we try 'number <: number | string' first, as that is the more likely case.
-        if (subtyping->isSubtype(annotationType, computedType).isSubtype)
-            return;
-
-        if (subtyping->isSubtype(computedType, annotationType).isSubtype)
-            return;
-
         switch (shouldSuppressErrors(NotNull{&normalizer}, computedType).orElse(shouldSuppressErrors(NotNull{&normalizer}, annotationType)))
         {
         case ErrorSuppression::Suppress:
             return;
         case ErrorSuppression::NormalizationFailed:
             reportError(NormalizationTooComplex{}, expr->location);
+            return;
         case ErrorSuppression::DoNotSuppress:
             break;
         }
 
-        reportError(TypesAreUnrelated{computedType, annotationType}, expr->location);
+        switch (normalizer.isInhabited(computedType))
+        {
+        case NormalizationResult::True:
+            break;
+        case NormalizationResult::False:
+            return;
+        case NormalizationResult::HitLimits:
+            reportError(NormalizationTooComplex{}, expr->location);
+            return;
+        }
+
+        switch (normalizer.isIntersectionInhabited(computedType, annotationType))
+        {
+        case NormalizationResult::True:
+            return;
+        case NormalizationResult::False:
+            reportError(TypesAreUnrelated{computedType, annotationType}, expr->location);
+            break;
+        case NormalizationResult::HitLimits:
+            reportError(NormalizationTooComplex{}, expr->location);
+            break;
+        }
     }
 
     void visit(AstExprIfElse* expr)

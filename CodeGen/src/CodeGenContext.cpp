@@ -12,8 +12,6 @@
 
 #include "lapi.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCodegenCheckNullContext, false)
-
 LUAU_FASTINTVARIABLE(LuauCodeGenBlockSize, 4 * 1024 * 1024)
 LUAU_FASTINTVARIABLE(LuauCodeGenMaxTotalSize, 256 * 1024 * 1024)
 LUAU_FASTFLAG(LuauNativeAttribute)
@@ -360,7 +358,7 @@ static size_t getMemorySize(lua_State* L, Proto* proto)
 
 static void initializeExecutionCallbacks(lua_State* L, BaseCodeGenContext* codeGenContext) noexcept
 {
-    CODEGEN_ASSERT(!FFlag::LuauCodegenCheckNullContext || codeGenContext != nullptr);
+    CODEGEN_ASSERT(codeGenContext != nullptr);
 
     lua_ExecutionCallbacks* ecb = &L->global->ecb;
 

@@ -22,8 +22,6 @@ LUAU_FASTINT(LuauCompileLoopUnrollThreshold)
 LUAU_FASTINT(LuauCompileLoopUnrollThresholdMaxBoost)
 LUAU_FASTINT(LuauRecursionLimit)
 
-LUAU_FASTFLAG(LuauCompileTypeInfo)
-LUAU_FASTFLAG(LuauCompileTempTypeInfo)
 LUAU_FASTFLAG(LuauCompileUserdataInfo)
 LUAU_FASTFLAG(LuauCompileFastcall3)
 
@@ -3226,8 +3224,6 @@ RETURN R0 0
 
 TEST_CASE("DebugTypes")
 {
-    ScopedFastFlag luauCompileTypeInfo{FFlag::LuauCompileTypeInfo, true};
-    ScopedFastFlag luauCompileTempTypeInfo{FFlag::LuauCompileTempTypeInfo, true};
     ScopedFastFlag luauCompileUserdataInfo{FFlag::LuauCompileUserdataInfo, true};
 
     const char* source = R"(

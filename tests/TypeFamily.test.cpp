@@ -1045,4 +1045,122 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_index_metatables")
     CHECK(toString(result.errors[0]) == "Property '\"Car\"' does not exist on type 'exampleClass2'");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = {a: string, b: number, c: boolean}
+        type RawAType = rawget<MyObject, "a">
+        type RawBType = rawget<MyObject, keyof<MyObject>>
+        local function ok(idx: RawAType): string return idx end
+        local function ok2(idx: RawBType): string | number | boolean return idx end
+        local function err(idx: RawAType): boolean return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
+    REQUIRE(tpm);
+    CHECK_EQ("boolean", toString(tpm->wantedTp));
+    CHECK_EQ("string", toString(tpm->givenTp));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_array")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local MyObject = {"hello", 1, true}
+        type RawAType = rawget<typeof(MyObject), number>
+        local function ok(idx: RawAType): string | number | boolean return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_errors_w_var_indexer")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = {a: string, b: number, c: boolean}
+        local key = "a"
+        type errType1 = rawget<MyObject, key>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(toString(result.errors[0]) == "Second argument to rawget<MyObject, _> is not a valid index type");
+    CHECK(toString(result.errors[1]) == "Unknown type 'key'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_union_type_indexer")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = {a: string, b: number, c: boolean}
+        type rawType = rawget<MyObject, "a" | "b">
+        local function ok(idx: rawType): string | number return idx end
+        type errType = rawget<MyObject, "a" | "d">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Property '\"a\" | \"d\"' does not exist on type 'MyObject'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_union_type_indexee")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = {a: string, b: number, c: boolean}
+        type MyObject2 = {a: number}
+        type rawTypeA = rawget<MyObject | MyObject2, "a">
+        local function ok(idx: rawTypeA): string | number return idx end
+        type errType = rawget<MyObject | MyObject2, "b">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Property '\"b\"' does not exist on type 'MyObject | MyObject2'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_index_metatables")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local exampleClass = { Foo = "text", Bar = true }
+        local exampleClass2 = setmetatable({ Foo = 8 }, { __index = exampleClass })
+        type exampleTy2 = rawget<typeof(exampleClass2), "Foo">
+        local function ok(idx: exampleTy2): number return idx end
+        local exampleClass3 = setmetatable({ Bar = 5 }, { __index = exampleClass })
+        type errType = rawget<typeof(exampleClass3), "Foo">
+        type errType2 = rawget<typeof(exampleClass3), "Bar" | "Foo">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(toString(result.errors[0]) == "Property '\"Foo\"' does not exist on type 'exampleClass3'");
+    CHECK(toString(result.errors[1]) == "Property '\"Bar\" | \"Foo\"' does not exist on type 'exampleClass3'");
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "rawget_type_family_errors_w_classes")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type PropsOfMyObject = rawget<BaseClass, "BaseField">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Property '\"BaseField\"' does not exist on type 'BaseClass'");
+}
+
 TEST_SUITE_END();

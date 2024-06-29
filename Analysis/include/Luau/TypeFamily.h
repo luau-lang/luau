@@ -180,12 +180,11 @@ struct BuiltinTypeFamilies
     TypeFamily rawkeyofFamily;
 
     TypeFamily indexFamily;
+    TypeFamily rawgetFamily;
 
     void addToScope(NotNull<TypeArena> arena, NotNull<Scope> scope) const;
 };
 
-
-
-const BuiltinTypeFamilies kBuiltinTypeFamilies{};
+const BuiltinTypeFamilies& builtinTypeFunctions();
 
 } // namespace Luau

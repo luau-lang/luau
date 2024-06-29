@@ -19,6 +19,7 @@ LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauAttributeSyntax);
 LUAU_FASTFLAG(LuauLeadingBarAndAmpersand2);
 LUAU_FASTFLAG(LuauAttributeSyntaxFunExpr);
+LUAU_FASTFLAG(LuauDeclarationExtraPropData);
 
 namespace
 {
@@ -1858,6 +1859,8 @@ function func():end
 
 TEST_CASE_FIXTURE(Fixture, "parse_declarations")
 {
+    ScopedFastFlag luauDeclarationExtraPropData{FFlag::LuauDeclarationExtraPropData, true};
+
     AstStatBlock* stat = parseEx(R"(
         declare foo: number
         declare function bar(x: number): string
@@ -1871,18 +1874,23 @@ TEST_CASE_FIXTURE(Fixture, "parse_declarations")
     AstStatDeclareGlobal* global = stat->body.data[0]->as<AstStatDeclareGlobal>();
     REQUIRE(global);
     CHECK(global->name == "foo");
+    CHECK(global->nameLocation == Location({1, 16}, {1, 19}));
     CHECK(global->type);
 
     AstStatDeclareFunction* func = stat->body.data[1]->as<AstStatDeclareFunction>();
     REQUIRE(func);
     CHECK(func->name == "bar");
+    CHECK(func->nameLocation == Location({2, 25}, {2, 28}));
     REQUIRE_EQ(func->params.types.size, 1);
     REQUIRE_EQ(func->retTypes.types.size, 1);
 
     AstStatDeclareFunction* varFunc = stat->body.data[2]->as<AstStatDeclareFunction>();
     REQUIRE(varFunc);
     CHECK(varFunc->name == "var");
+    CHECK(varFunc->nameLocation == Location({3, 25}, {3, 28}));
     CHECK(varFunc->params.tailType);
+    CHECK(varFunc->vararg);
+    CHECK(varFunc->varargLocation == Location({3, 29}, {3, 32}));
 
     matchParseError("declare function foo(x)", "All declaration parameters must be annotated");
     matchParseError("declare foo", "Expected ':' when parsing global variable declaration, got <eof>");
@@ -1890,6 +1898,8 @@ TEST_CASE_FIXTURE(Fixture, "parse_declarations")
 
 TEST_CASE_FIXTURE(Fixture, "parse_class_declarations")
 {
+    ScopedFastFlag luauDeclarationExtraPropData{FFlag::LuauDeclarationExtraPropData, true};
+
     AstStatBlock* stat = parseEx(R"(
         declare class Foo
             prop: number
@@ -1913,11 +1923,16 @@ TEST_CASE_FIXTURE(Fixture, "parse_class_declarations")
 
     AstDeclaredClassProp& prop = declaredClass->props.data[0];
     CHECK(prop.name == "prop");
+    CHECK(prop.nameLocation == Location({2, 12}, {2, 16}));
     CHECK(prop.ty->is<AstTypeReference>());
+    CHECK(prop.location == Location({2, 12}, {2, 24}));
 
     AstDeclaredClassProp& method = declaredClass->props.data[1];
     CHECK(method.name == "method");
+    CHECK(method.nameLocation == Location({3, 21}, {3, 27}));
     CHECK(method.ty->is<AstTypeFunction>());
+    CHECK(method.location == Location({3, 12}, {3, 54}));
+    CHECK(method.isMethod);
 
     AstStatDeclareClass* subclass = stat->body.data[1]->as<AstStatDeclareClass>();
     REQUIRE(subclass);
@@ -1928,7 +1943,9 @@ TEST_CASE_FIXTURE(Fixture, "parse_class_declarations")
     REQUIRE_EQ(subclass->props.size, 1);
     AstDeclaredClassProp& prop2 = subclass->props.data[0];
     CHECK(prop2.name == "prop2");
+    CHECK(prop2.nameLocation == Location({7, 12}, {7, 17}));
     CHECK(prop2.ty->is<AstTypeReference>());
+    CHECK(prop2.location == Location({7, 12}, {7, 25}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_method_properties")

@@ -705,9 +705,10 @@ void AstStatTypeAlias::visit(AstVisitor* visitor)
     }
 }
 
-AstStatDeclareGlobal::AstStatDeclareGlobal(const Location& location, const AstName& name, AstType* type)
+AstStatDeclareGlobal::AstStatDeclareGlobal(const Location& location, const AstName& name, const Location& nameLocation, AstType* type)
     : AstStat(ClassIndex(), location)
     , name(name)
+    , nameLocation(nameLocation)
     , type(type)
 {
 }
@@ -718,30 +719,36 @@ void AstStatDeclareGlobal::visit(AstVisitor* visitor)
         type->visit(visitor);
 }
 
-AstStatDeclareFunction::AstStatDeclareFunction(const Location& location, const AstName& name, const AstArray<AstGenericType>& generics,
-    const AstArray<AstGenericTypePack>& genericPacks, const AstTypeList& params, const AstArray<AstArgumentName>& paramNames,
-    const AstTypeList& retTypes)
+AstStatDeclareFunction::AstStatDeclareFunction(const Location& location, const AstName& name, const Location& nameLocation,
+    const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks, const AstTypeList& params,
+    const AstArray<AstArgumentName>& paramNames, bool vararg, const Location& varargLocation, const AstTypeList& retTypes)
     : AstStat(ClassIndex(), location)
     , attributes()
     , name(name)
+    , nameLocation(nameLocation)
     , generics(generics)
     , genericPacks(genericPacks)
     , params(params)
     , paramNames(paramNames)
+    , vararg(vararg)
+    , varargLocation(varargLocation)
     , retTypes(retTypes)
 {
 }
 
 AstStatDeclareFunction::AstStatDeclareFunction(const Location& location, const AstArray<AstAttr*>& attributes, const AstName& name,
-    const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks, const AstTypeList& params,
-    const AstArray<AstArgumentName>& paramNames, const AstTypeList& retTypes)
+    const Location& nameLocation, const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks,
+    const AstTypeList& params, const AstArray<AstArgumentName>& paramNames, bool vararg, const Location& varargLocation, const AstTypeList& retTypes)
     : AstStat(ClassIndex(), location)
     , attributes(attributes)
     , name(name)
+    , nameLocation(nameLocation)
     , generics(generics)
     , genericPacks(genericPacks)
     , params(params)
     , paramNames(paramNames)
+    , vararg(vararg)
+    , varargLocation(varargLocation)
     , retTypes(retTypes)
 {
 }
