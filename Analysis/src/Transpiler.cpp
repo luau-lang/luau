@@ -49,7 +49,7 @@ struct Writer
     virtual void keyword(std::string_view) = 0;
     virtual void symbol(std::string_view) = 0;
     virtual void literal(std::string_view) = 0;
-    virtual void string(std::string_view) = 0;
+    virtual void string(std::string_view, bool quoted = true) = 0;
 };
 
 struct StringWriter : Writer
@@ -151,15 +151,20 @@ struct StringWriter : Writer
         write(s);
     }
 
-    void string(std::string_view s) override
+    void string(std::string_view s, bool quoted) override
     {
-        char quote = '\'';
-        if (std::string::npos != s.find(quote))
-            quote = '\"';
+        if (quoted)
+        {
+            char quote = '\'';
+            if (std::string::npos != s.find(quote))
+                quote = '\"';
 
-        write(quote);
+            write(quote);
+            write(escape(s));
+            write(quote);
+            return;
+        }
         write(escape(s));
-        write(quote);
     }
 };
 
@@ -337,7 +342,7 @@ struct Printer
         }
         else if (const auto& a = expr.as<AstExprConstantString>())
         {
-            writer.string(std::string_view(a->value.data, a->value.size));
+            writer.string(std::string_view(a->value.data, a->value.size), a->quoteStyle == AstExprConstantString::Quoted);
         }
         else if (const auto& a = expr.as<AstExprLocal>())
         {
