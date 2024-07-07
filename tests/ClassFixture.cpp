@@ -119,7 +119,7 @@ ClassFixture::ClassFixture()
     auto addIndexableClass = [&arena, &globals](const char* className, TypeId keyType, TypeId returnType) {
         TypeId indexableClassMetaType = arena.addType(TableType{});
         TypeId indexableClassType =
-            arena.addType(ClassType{className, {}, nullopt, indexableClassMetaType, {}, {}, "Test", TableIndexer{keyType, returnType}});
+            arena.addType(ClassType{className, {}, nullopt, indexableClassMetaType, {}, {}, "Test", {}, TableIndexer{keyType, returnType}});
         globals.globalScope->exportedTypeBindings[className] = TypeFun{{}, indexableClassType};
     };
 
