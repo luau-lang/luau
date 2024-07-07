@@ -186,7 +186,7 @@ TEST_CASE_FIXTURE(Unifier2Fixture, "dont_traverse_into_class_types_when_generali
 {
     auto [propTy, _] = freshType();
 
-    TypeId cursedClass = arena.addType(ClassType{"Cursed", {{"oh_no", Property::readonly(propTy)}}, std::nullopt, std::nullopt, {}, {}, ""});
+    TypeId cursedClass = arena.addType(ClassType{"Cursed", {{"oh_no", Property::readonly(propTy)}}, std::nullopt, std::nullopt, {}, {}, "", {}});
 
     auto genClass = u2.generalize(cursedClass);
     REQUIRE(genClass);

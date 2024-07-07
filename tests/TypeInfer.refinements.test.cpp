@@ -66,14 +66,14 @@ struct RefinementClassFixture : BuiltinsFixture
         std::optional<TypeId> rootSuper = std::make_optional(builtinTypes->classType);
 
         unfreeze(arena);
-        TypeId vec3 = arena.addType(ClassType{"Vector3", {}, rootSuper, std::nullopt, {}, nullptr, "Test"});
+        TypeId vec3 = arena.addType(ClassType{"Vector3", {}, rootSuper, std::nullopt, {}, nullptr, "Test", {}});
         getMutable<ClassType>(vec3)->props = {
             {"X", Property{builtinTypes->numberType}},
             {"Y", Property{builtinTypes->numberType}},
             {"Z", Property{builtinTypes->numberType}},
         };
 
-        TypeId inst = arena.addType(ClassType{"Instance", {}, rootSuper, std::nullopt, {}, nullptr, "Test"});
+        TypeId inst = arena.addType(ClassType{"Instance", {}, rootSuper, std::nullopt, {}, nullptr, "Test", {}});
 
         TypePackId isAParams = arena.addTypePack({inst, builtinTypes->stringType});
         TypePackId isARets = arena.addTypePack({builtinTypes->booleanType});
@@ -86,8 +86,8 @@ struct RefinementClassFixture : BuiltinsFixture
             {"IsA", Property{isA}},
         };
 
-        TypeId folder = frontend.globals.globalTypes.addType(ClassType{"Folder", {}, inst, std::nullopt, {}, nullptr, "Test"});
-        TypeId part = frontend.globals.globalTypes.addType(ClassType{"Part", {}, inst, std::nullopt, {}, nullptr, "Test"});
+        TypeId folder = frontend.globals.globalTypes.addType(ClassType{"Folder", {}, inst, std::nullopt, {}, nullptr, "Test", {}});
+        TypeId part = frontend.globals.globalTypes.addType(ClassType{"Part", {}, inst, std::nullopt, {}, nullptr, "Test", {}});
         getMutable<ClassType>(part)->props = {
             {"Position", Property{vec3}},
         };
