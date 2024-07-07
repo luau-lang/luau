@@ -35,6 +35,7 @@ LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
 LUAU_FASTFLAGVARIABLE(LuauCancelFromProgress, false)
+LUAU_FASTFLAGVARIABLE(LuauStoreCommentsForDefinitionFiles, false)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile, false)
@@ -126,6 +127,12 @@ static ParseResult parseSourceForModule(std::string_view source, Luau::SourceMod
     Luau::ParseResult parseResult = Luau::Parser::parse(source.data(), source.size(), *sourceModule.names, *sourceModule.allocator, options);
     sourceModule.root = parseResult.root;
     sourceModule.mode = Mode::Definition;
+
+    if (FFlag::LuauStoreCommentsForDefinitionFiles && options.captureComments)
+    {
+        sourceModule.hotcomments = std::move(parseResult.hotcomments);
+        sourceModule.commentLocations = std::move(parseResult.commentLocations);
+    }
     return parseResult;
 }
 
