@@ -11,13 +11,15 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauCheckedFunctionSyntax);
 LUAU_FASTFLAG(LuauLexerLookaheadRemembersBraceType);
 LUAU_FASTINT(LuauRecursionLimit);
 LUAU_FASTINT(LuauTypeLengthLimit);
 LUAU_FASTINT(LuauParseErrorLimit);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauReadWritePropertySyntax);
+LUAU_FASTFLAG(LuauAttributeSyntax);
+LUAU_FASTFLAG(LuauLeadingBarAndAmpersand2);
+LUAU_FASTFLAG(LuauAttributeSyntaxFunExpr);
+LUAU_FASTFLAG(LuauDeclarationExtraPropData);
 
 namespace
 {
@@ -1857,6 +1859,8 @@ function func():end
 
 TEST_CASE_FIXTURE(Fixture, "parse_declarations")
 {
+    ScopedFastFlag luauDeclarationExtraPropData{FFlag::LuauDeclarationExtraPropData, true};
+
     AstStatBlock* stat = parseEx(R"(
         declare foo: number
         declare function bar(x: number): string
@@ -1870,18 +1874,23 @@ TEST_CASE_FIXTURE(Fixture, "parse_declarations")
     AstStatDeclareGlobal* global = stat->body.data[0]->as<AstStatDeclareGlobal>();
     REQUIRE(global);
     CHECK(global->name == "foo");
+    CHECK(global->nameLocation == Location({1, 16}, {1, 19}));
     CHECK(global->type);
 
     AstStatDeclareFunction* func = stat->body.data[1]->as<AstStatDeclareFunction>();
     REQUIRE(func);
     CHECK(func->name == "bar");
+    CHECK(func->nameLocation == Location({2, 25}, {2, 28}));
     REQUIRE_EQ(func->params.types.size, 1);
     REQUIRE_EQ(func->retTypes.types.size, 1);
 
     AstStatDeclareFunction* varFunc = stat->body.data[2]->as<AstStatDeclareFunction>();
     REQUIRE(varFunc);
     CHECK(varFunc->name == "var");
+    CHECK(varFunc->nameLocation == Location({3, 25}, {3, 28}));
     CHECK(varFunc->params.tailType);
+    CHECK(varFunc->vararg);
+    CHECK(varFunc->varargLocation == Location({3, 29}, {3, 32}));
 
     matchParseError("declare function foo(x)", "All declaration parameters must be annotated");
     matchParseError("declare foo", "Expected ':' when parsing global variable declaration, got <eof>");
@@ -1889,6 +1898,8 @@ TEST_CASE_FIXTURE(Fixture, "parse_declarations")
 
 TEST_CASE_FIXTURE(Fixture, "parse_class_declarations")
 {
+    ScopedFastFlag luauDeclarationExtraPropData{FFlag::LuauDeclarationExtraPropData, true};
+
     AstStatBlock* stat = parseEx(R"(
         declare class Foo
             prop: number
@@ -1912,11 +1923,16 @@ TEST_CASE_FIXTURE(Fixture, "parse_class_declarations")
 
     AstDeclaredClassProp& prop = declaredClass->props.data[0];
     CHECK(prop.name == "prop");
+    CHECK(prop.nameLocation == Location({2, 12}, {2, 16}));
     CHECK(prop.ty->is<AstTypeReference>());
+    CHECK(prop.location == Location({2, 12}, {2, 24}));
 
     AstDeclaredClassProp& method = declaredClass->props.data[1];
     CHECK(method.name == "method");
+    CHECK(method.nameLocation == Location({3, 21}, {3, 27}));
     CHECK(method.ty->is<AstTypeFunction>());
+    CHECK(method.location == Location({3, 12}, {3, 54}));
+    CHECK(method.isMethod);
 
     AstStatDeclareClass* subclass = stat->body.data[1]->as<AstStatDeclareClass>();
     REQUIRE(subclass);
@@ -1927,7 +1943,9 @@ TEST_CASE_FIXTURE(Fixture, "parse_class_declarations")
     REQUIRE_EQ(subclass->props.size, 1);
     AstDeclaredClassProp& prop2 = subclass->props.data[0];
     CHECK(prop2.name == "prop2");
+    CHECK(prop2.nameLocation == Location({7, 12}, {7, 17}));
     CHECK(prop2.ty->is<AstTypeReference>());
+    CHECK(prop2.location == Location({7, 12}, {7, 25}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_method_properties")
@@ -3052,10 +3070,10 @@ TEST_CASE_FIXTURE(Fixture, "parse_top_level_checked_fn")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag sff{FFlag::LuauCheckedFunctionSyntax, true};
+    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
 
     std::string src = R"BUILTIN_SRC(
-declare function @checked abs(n: number): number
+@checked declare function abs(n: number): number
 )BUILTIN_SRC";
 
     ParseResult pr = tryParse(src, opts);
@@ -3065,14 +3083,14 @@ declare function @checked abs(n: number): number
     AstStat* root = *(pr.root->body.data);
     auto func = root->as<AstStatDeclareFunction>();
     LUAU_ASSERT(func);
-    LUAU_ASSERT(func->checkedFunction);
+    LUAU_ASSERT(func->isCheckedFunction());
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_declared_table_checked_member")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag sff{FFlag::LuauCheckedFunctionSyntax, true};
+    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
 
     const std::string src = R"BUILTIN_SRC(
     declare math : {
@@ -3093,14 +3111,14 @@ TEST_CASE_FIXTURE(Fixture, "parse_declared_table_checked_member")
     auto prop = *tbl->props.data;
     auto func = prop.type->as<AstTypeFunction>();
     LUAU_ASSERT(func);
-    LUAU_ASSERT(func->checkedFunction);
+    LUAU_ASSERT(func->isCheckedFunction());
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_checked_outside_decl_fails")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag sff{FFlag::LuauCheckedFunctionSyntax, true};
+    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
 
     ParseResult pr = tryParse(R"(
     local @checked = 3
@@ -3114,11 +3132,11 @@ TEST_CASE_FIXTURE(Fixture, "parse_checked_in_and_out_of_decl_fails")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag sff{FFlag::LuauCheckedFunctionSyntax, true};
+    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
 
     auto pr = tryParse(R"(
     local @checked = 3
-    declare function @checked abs(n: number): number
+    @checked declare function abs(n: number): number
 )",
         opts);
     LUAU_ASSERT(pr.errors.size() == 2);
@@ -3130,10 +3148,10 @@ TEST_CASE_FIXTURE(Fixture, "parse_checked_as_function_name_fails")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag sff{FFlag::LuauCheckedFunctionSyntax, true};
+    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
 
     auto pr = tryParse(R"(
-    function @checked(x: number) : number
+    @checked function(x: number) : number
     end
 )",
         opts);
@@ -3144,7 +3162,7 @@ TEST_CASE_FIXTURE(Fixture, "cannot_use_@_as_variable_name")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag sff{FFlag::LuauCheckedFunctionSyntax, true};
+    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
 
     auto pr = tryParse(R"(
     local @blah = 3
@@ -3156,8 +3174,6 @@ TEST_CASE_FIXTURE(Fixture, "cannot_use_@_as_variable_name")
 
 TEST_CASE_FIXTURE(Fixture, "read_write_table_properties")
 {
-    ScopedFastFlag sff{FFlag::LuauReadWritePropertySyntax, true};
-
     auto pr = tryParse(R"(
         type A = {read x: number}
         type B = {write x: number}
@@ -3176,5 +3192,378 @@ TEST_CASE_FIXTURE(Fixture, "read_write_table_properties")
 
     LUAU_ASSERT(pr.errors.size() == 0);
 }
+
+TEST_CASE_FIXTURE(Fixture, "can_parse_leading_bar_unions_successfully")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+
+    parse(R"(type A = | "Hello" | "World")");
+}
+
+TEST_CASE_FIXTURE(Fixture, "can_parse_leading_ampersand_intersections_successfully")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+
+    parse(R"(type A = & { string } & { number })");
+}
+
+TEST_CASE_FIXTURE(Fixture, "mixed_leading_intersection_and_union_not_allowed")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+
+    matchParseError("type A = & number | string | boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
+    matchParseError("type A = | number & string & boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
+}
+
+void checkAttribute(const AstAttr* attr, const AstAttr::Type type, const Location& location)
+{
+    CHECK_EQ(attr->type, type);
+    CHECK_EQ(attr->location, location);
+}
+
+void checkFirstErrorForAttributes(const std::vector<ParseError>& errors, const size_t minSize, const Location& location, const std::string& message)
+{
+    LUAU_ASSERT(minSize >= 1);
+
+    CHECK_GE(errors.size(), minSize);
+    CHECK_EQ(errors[0].getLocation(), location);
+    CHECK_EQ(errors[0].getMessage(), message);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_attribute_on_function_stat")
+{
+    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
+
+    AstStatBlock* stat = parse(R"(
+@checked
+function hello(x, y)
+    return x + y
+end)");
+
+    LUAU_ASSERT(stat != nullptr);
+
+    AstStatFunction* statFun = stat->body.data[0]->as<AstStatFunction>();
+    LUAU_ASSERT(statFun != nullptr);
+
+    AstArray<AstAttr*> attributes = statFun->func->attributes;
+
+    CHECK_EQ(attributes.size, 1);
+
+    checkAttribute(attributes.data[0], AstAttr::Type::Checked, Location(Position(1, 0), Position(1, 8)));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_attribute_for_function_expression")
+{
+    ScopedFastFlag sff[] = {{FFlag::LuauAttributeSyntax, true}, {FFlag::LuauAttributeSyntaxFunExpr, true}};
+
+    AstStatBlock* stat1 = parse(R"(
+local function invoker(f)
+    return f(1)
+end
+
+invoker(@checked function(x) return (x + 2) end)
+)");
+
+    LUAU_ASSERT(stat1 != nullptr);
+
+    AstExprFunction* func1 = stat1->body.data[1]->as<AstStatExpr>()->expr->as<AstExprCall>()->args.data[0]->as<AstExprFunction>();
+    LUAU_ASSERT(func1 != nullptr);
+
+    AstArray<AstAttr*> attributes1 = func1->attributes;
+
+    CHECK_EQ(attributes1.size, 1);
+
+    checkAttribute(attributes1.data[0], AstAttr::Type::Checked, Location(Position(5, 8), Position(5, 16)));
+
+    AstStatBlock* stat2 = parse(R"(
+local f = @checked function(x) return (x + 2) end
+)");
+
+    LUAU_ASSERT(stat2 != nullptr);
+
+    AstExprFunction* func2 = stat2->body.data[0]->as<AstStatLocal>()->values.data[0]->as<AstExprFunction>();
+    LUAU_ASSERT(func2 != nullptr);
+
+    AstArray<AstAttr*> attributes2 = func2->attributes;
+
+    CHECK_EQ(attributes2.size, 1);
+
+    checkAttribute(attributes2.data[0], AstAttr::Type::Checked, Location(Position(1, 10), Position(1, 18)));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_attribute_on_local_function_stat")
+{
+    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
+
+    AstStatBlock* stat = parse(R"(
+    @checked
+local function hello(x, y)
+    return x + y
+end)");
+
+    LUAU_ASSERT(stat != nullptr);
+
+    AstStatLocalFunction* statFun = stat->body.data[0]->as<AstStatLocalFunction>();
+    LUAU_ASSERT(statFun != nullptr);
+
+    AstArray<AstAttr*> attributes = statFun->func->attributes;
+
+    CHECK_EQ(attributes.size, 1);
+
+    checkAttribute(attributes.data[0], AstAttr::Type::Checked, Location(Position(1, 4), Position(1, 12)));
+}
+
+TEST_CASE_FIXTURE(Fixture, "empty_attribute_name_is_not_allowed")
+{
+    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
+
+    ParseResult result = tryParse(R"(
+@
+function hello(x, y)
+    return x + y
+end)");
+
+    checkFirstErrorForAttributes(result.errors, 1, Location(Position(1, 0), Position(1, 1)), "Attribute name is missing");
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_parse_attributes_on_non_function_stat")
+{
+    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
+
+    ParseResult pr1 = tryParse(R"(
+@checked
+if a<0 then a = 0 end)");
+    checkFirstErrorForAttributes(pr1.errors, 1, Location(Position(2, 0), Position(2, 2)),
+        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'if' intead");
+
+    ParseResult pr2 = tryParse(R"(
+local i = 1
+@checked
+while a[i] do
+    print(a[i])
+    i = i + 1
+end)");
+    checkFirstErrorForAttributes(pr2.errors, 1, Location(Position(3, 0), Position(3, 5)),
+        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'while' intead");
+
+    ParseResult pr3 = tryParse(R"(
+@checked
+do
+    local a2 = 2*a
+    local d = sqrt(b^2 - 4*a*c)
+    x1 = (-b + d)/a2
+    x2 = (-b - d)/a2
+end)");
+    checkFirstErrorForAttributes(pr3.errors, 1, Location(Position(2, 0), Position(2, 2)),
+        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'do' intead");
+
+    ParseResult pr4 = tryParse(R"(
+@checked
+for i=1,10 do print(i) end
+)");
+    checkFirstErrorForAttributes(pr4.errors, 1, Location(Position(2, 0), Position(2, 3)),
+        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'for' intead");
+
+    ParseResult pr5 = tryParse(R"(
+@checked
+repeat
+    line = io.read()
+until line ~= ""
+)");
+    checkFirstErrorForAttributes(pr5.errors, 1, Location(Position(2, 0), Position(2, 6)),
+        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'repeat' intead");
+
+
+    ParseResult pr6 = tryParse(R"(
+@checked
+local x = 10
+)");
+    checkFirstErrorForAttributes(
+        pr6.errors, 1, Location(Position(2, 6), Position(2, 7)), "Expected 'function' after local declaration with attribute, but got 'x' intead");
+
+    ParseResult pr7 = tryParse(R"(
+local i = 1
+while a[i] do
+    if a[i] == v then @checked break end
+    i = i + 1
+end
+)");
+    checkFirstErrorForAttributes(pr7.errors, 1, Location(Position(3, 31), Position(3, 36)),
+        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'break' intead");
+
+
+    ParseResult pr8 = tryParse(R"(
+function foo1 () @checked return 'a' end
+)");
+    checkFirstErrorForAttributes(pr8.errors, 1, Location(Position(1, 26), Position(1, 32)),
+        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'return' intead");
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_parse_attribute_on_argument_non_function")
+{
+    ScopedFastFlag sff[] = {{FFlag::LuauAttributeSyntax, true}, {FFlag::LuauAttributeSyntaxFunExpr, true}};
+
+    ParseResult pr = tryParse(R"(
+local function invoker(f, y)
+    return f(y)
+end
+
+invoker(function(x) return (x + 2) end, @checked 1)
+)");
+
+    checkFirstErrorForAttributes(
+        pr.errors, 1, Location(Position(5, 40), Position(5, 48)), "Expected 'function' declaration after attribute, but got '1' intead");
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_attribute_on_function_type_declaration")
+{
+    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
+
+    ParseOptions opts;
+    opts.allowDeclarationSyntax = true;
+
+    std::string src = R"(
+@checked declare function abs(n: number): number
+)";
+
+    ParseResult pr = tryParse(src, opts);
+    CHECK_EQ(pr.errors.size(), 0);
+
+    LUAU_ASSERT(pr.root->body.size == 1);
+
+    AstStat* root = *(pr.root->body.data);
+
+    auto func = root->as<AstStatDeclareFunction>();
+    LUAU_ASSERT(func != nullptr);
+
+    CHECK(func->isCheckedFunction());
+
+    AstArray<AstAttr*> attributes = func->attributes;
+
+    checkAttribute(attributes.data[0], AstAttr::Type::Checked, Location(Position(1, 0), Position(1, 8)));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_attributes_on_function_type_declaration_in_table")
+{
+    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
+
+    ParseOptions opts;
+    opts.allowDeclarationSyntax = true;
+
+    std::string src = R"(
+declare bit32: {
+    band: @checked (...number) -> number
+})";
+
+    ParseResult pr = tryParse(src, opts);
+    CHECK_EQ(pr.errors.size(), 0);
+
+    LUAU_ASSERT(pr.root->body.size == 1);
+
+    AstStat* root = *(pr.root->body.data);
+
+    AstStatDeclareGlobal* glob = root->as<AstStatDeclareGlobal>();
+    LUAU_ASSERT(glob);
+
+    auto tbl = glob->type->as<AstTypeTable>();
+    LUAU_ASSERT(tbl);
+
+    LUAU_ASSERT(tbl->props.size == 1);
+    AstTableProp prop = tbl->props.data[0];
+
+    AstTypeFunction* func = prop.type->as<AstTypeFunction>();
+    LUAU_ASSERT(func);
+
+    AstArray<AstAttr*> attributes = func->attributes;
+
+    CHECK_EQ(attributes.size, 1);
+    checkAttribute(attributes.data[0], AstAttr::Type::Checked, Location(Position(2, 10), Position(2, 18)));
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_parse_attributes_on_non_function_type_declarations")
+{
+    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
+
+    ParseOptions opts;
+    opts.allowDeclarationSyntax = true;
+
+    ParseResult pr1 = tryParse(R"(
+@checked declare foo: number
+    )",
+        opts);
+
+    checkFirstErrorForAttributes(
+        pr1.errors, 1, Location(Position(1, 17), Position(1, 20)), "Expected a function type declaration after attribute, but got 'foo' intead");
+
+    ParseResult pr2 = tryParse(R"(
+@checked declare class Foo
+    prop: number
+    function method(self, foo: number): string
+end)",
+        opts);
+
+    checkFirstErrorForAttributes(
+        pr2.errors, 1, Location(Position(1, 17), Position(1, 22)), "Expected a function type declaration after attribute, but got 'class' intead");
+
+    ParseResult pr3 = tryParse(R"(
+declare bit32: {
+    band: @checked number
+})",
+        opts);
+
+    checkFirstErrorForAttributes(
+        pr3.errors, 1, Location(Position(2, 19), Position(2, 25)), "Expected '(' when parsing function parameters, got 'number'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "attributes_cannot_be_duplicated")
+{
+    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
+
+    ParseResult result = tryParse(R"(
+@checked
+    @checked
+function hello(x, y)
+    return x + y
+end)");
+
+    checkFirstErrorForAttributes(result.errors, 1, Location(Position(2, 4), Position(2, 12)), "Cannot duplicate attribute '@checked'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "unsupported_attributes_are_not_allowed")
+{
+    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
+
+    ParseResult result = tryParse(R"(
+@checked
+    @cool_attribute
+function hello(x, y)
+    return x + y
+end)");
+
+    checkFirstErrorForAttributes(result.errors, 1, Location(Position(2, 4), Position(2, 19)), "Invalid attribute '@cool_attribute'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "can_parse_leading_bar_unions_successfully")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+
+    parse(R"(type A = | "Hello" | "World")");
+}
+
+TEST_CASE_FIXTURE(Fixture, "can_parse_leading_ampersand_intersections_successfully")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+
+    parse(R"(type A = & { string } & { number })");
+}
+
+TEST_CASE_FIXTURE(Fixture, "mixed_leading_intersection_and_union_not_allowed")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+
+    matchParseError("type A = & number | string | boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
+    matchParseError("type A = | number & string & boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
+}
+
 
 TEST_SUITE_END();

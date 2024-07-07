@@ -33,13 +33,12 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauMetatableInstantiationCloneCheck, false)
 LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAGVARIABLE(LuauRemoveBadRelationalOperatorWarning, false)
-LUAU_FASTFLAGVARIABLE(LuauForbidAliasNamedTypeof, false)
 LUAU_FASTFLAGVARIABLE(LuauOkWithIteratingOverTableProperties, false)
-LUAU_FASTFLAG(LuauFixNormalizeCaching)
+LUAU_FASTFLAGVARIABLE(LuauReusableSubstitutions, false)
+LUAU_FASTFLAG(LuauDeclarationExtraPropData)
 
 namespace Luau
 {
@@ -216,6 +215,7 @@ TypeChecker::TypeChecker(const ScopePtr& globalScope, ModuleResolver* resolver, 
     , iceHandler(iceHandler)
     , unifierState(iceHandler)
     , normalizer(nullptr, builtinTypes, NotNull{&unifierState})
+    , reusableInstantiation(TxnLog::empty(), nullptr, builtinTypes, {}, nullptr)
     , nilType(builtinTypes->nilType)
     , numberType(builtinTypes->numberType)
     , stringType(builtinTypes->stringType)
@@ -668,7 +668,7 @@ LUAU_NOINLINE void TypeChecker::checkBlockTypeAliases(const ScopePtr& scope, std
     {
         if (const auto& typealias = stat->as<AstStatTypeAlias>())
         {
-            if (typealias->name == kParseNameError || (FFlag::LuauForbidAliasNamedTypeof && typealias->name == "typeof"))
+            if (typealias->name == kParseNameError || typealias->name == "typeof")
                 continue;
 
             auto& bindings = typealias->exported ? scope->exportedTypeBindings : scope->privateTypeBindings;
@@ -1536,7 +1536,7 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& ty
     if (name == kParseNameError)
         return ControlFlow::None;
 
-    if (FFlag::LuauForbidAliasNamedTypeof && name == "typeof")
+    if (name == "typeof")
     {
         reportError(typealias.location, GenericError{"Type aliases cannot be named typeof"});
         return ControlFlow::None;
@@ -1657,7 +1657,7 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
     // If the alias is missing a name, we can't do anything with it.  Ignore it.
     // Also, typeof is not a valid type alias name.  We will report an error for
     // this in check()
-    if (name == kParseNameError || (FFlag::LuauForbidAliasNamedTypeof && name == "typeof"))
+    if (name == kParseNameError || name == "typeof")
         return;
 
     std::optional<TypeFun> binding;
@@ -1784,12 +1784,55 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass&
                 ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
                 ftv->argTypes = addTypePack(TypePack{{classTy}, ftv->argTypes});
                 ftv->hasSelf = true;
+
+                if (FFlag::LuauDeclarationExtraPropData)
+                {
+                    FunctionDefinition defn;
+
+                    defn.definitionModuleName = currentModule->name;
+                    defn.definitionLocation = prop.location;
+                    // No data is preserved for varargLocation
+                    defn.originalNameLocation = prop.nameLocation;
+
+                    ftv->definition = defn;
+                }
             }
         }
 
         if (assignTo.count(propName) == 0)
         {
-            assignTo[propName] = {propTy};
+            if (FFlag::LuauDeclarationExtraPropData)
+                assignTo[propName] = {propTy, /*deprecated*/ false, /*deprecatedSuggestion*/ "", prop.location};
+            else
+                assignTo[propName] = {propTy};
+        }
+        else if (FFlag::LuauDeclarationExtraPropData)
+        {
+            Luau::Property& prop = assignTo[propName];
+            TypeId currentTy = prop.type();
+
+            // We special-case this logic to keep the intersection flat; otherwise we
+            // would create a ton of nested intersection types.
+            if (const IntersectionType* itv = get<IntersectionType>(currentTy))
+            {
+                std::vector<TypeId> options = itv->parts;
+                options.push_back(propTy);
+                TypeId newItv = addType(IntersectionType{std::move(options)});
+
+                prop.readTy = newItv;
+                prop.writeTy = newItv;
+            }
+            else if (get<FunctionType>(currentTy))
+            {
+                TypeId intersection = addType(IntersectionType{{currentTy, propTy}});
+
+                prop.readTy = intersection;
+                prop.writeTy = intersection;
+            }
+            else
+            {
+                reportError(declaredClass.location, GenericError{format("Cannot overload non-function class member '%s'", propName.c_str())});
+            }
         }
         else
         {
@@ -1841,7 +1884,18 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatDeclareFuncti
 
     TypePackId argPack = resolveTypePack(funScope, global.params);
     TypePackId retPack = resolveTypePack(funScope, global.retTypes);
-    TypeId fnType = addType(FunctionType{funScope->level, std::move(genericTys), std::move(genericTps), argPack, retPack});
+
+    FunctionDefinition defn;
+
+    if (FFlag::LuauDeclarationExtraPropData)
+    {
+        defn.definitionModuleName = currentModule->name;
+        defn.definitionLocation = global.location;
+        defn.varargLocation = global.vararg ? std::make_optional(global.varargLocation) : std::nullopt;
+        defn.originalNameLocation = global.nameLocation;
+    }
+
+    TypeId fnType = addType(FunctionType{funScope->level, std::move(genericTys), std::move(genericTps), argPack, retPack, defn});
     FunctionType* ftv = getMutable<FunctionType>(fnType);
 
     ftv->argNames.reserve(global.paramNames.size);
@@ -2649,24 +2703,12 @@ static std::optional<bool> areEqComparable(NotNull<TypeArena> arena, NotNull<Nor
 
     NormalizationResult nr;
 
-    if (FFlag::LuauFixNormalizeCaching)
-    {
-        TypeId c = arena->addType(IntersectionType{{a, b}});
-        std::shared_ptr<const NormalizedType> n = normalizer->normalize(c);
-        if (!n)
-            return std::nullopt;
+    TypeId c = arena->addType(IntersectionType{{a, b}});
+    std::shared_ptr<const NormalizedType> n = normalizer->normalize(c);
+    if (!n)
+        return std::nullopt;
 
-        nr = normalizer->isInhabited(n.get());
-    }
-    else
-    {
-        TypeId c = arena->addType(IntersectionType{{a, b}});
-        const NormalizedType* n = normalizer->DEPRECATED_normalize(c);
-        if (!n)
-            return std::nullopt;
-
-        nr = normalizer->isInhabited(n);
-    }
+    nr = normalizer->isInhabited(n.get());
 
     switch (nr)
     {
@@ -4879,12 +4921,27 @@ TypeId TypeChecker::instantiate(const ScopePtr& scope, TypeId ty, Location locat
     if (ftv && ftv->hasNoFreeOrGenericTypes)
         return ty;
 
-    Instantiation instantiation{log, &currentModule->internalTypes, builtinTypes, scope->level, /*scope*/ nullptr};
+    std::optional<TypeId> instantiated;
 
-    if (instantiationChildLimit)
-        instantiation.childLimit = *instantiationChildLimit;
+    if (FFlag::LuauReusableSubstitutions)
+    {
+        reusableInstantiation.resetState(log, &currentModule->internalTypes, builtinTypes, scope->level, /*scope*/ nullptr);
 
-    std::optional<TypeId> instantiated = instantiation.substitute(ty);
+        if (instantiationChildLimit)
+            reusableInstantiation.childLimit = *instantiationChildLimit;
+
+        instantiated = reusableInstantiation.substitute(ty);
+    }
+    else
+    {
+        Instantiation instantiation{log, &currentModule->internalTypes, builtinTypes, scope->level, /*scope*/ nullptr};
+
+        if (instantiationChildLimit)
+            instantiation.childLimit = *instantiationChildLimit;
+
+        instantiated = instantiation.substitute(ty);
+    }
+
     if (instantiated.has_value())
         return *instantiated;
     else
@@ -5633,8 +5690,8 @@ TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf,
     TypeId instantiated = *maybeInstantiated;
 
     TypeId target = follow(instantiated);
-    const TableType* tfTable = FFlag::LuauMetatableInstantiationCloneCheck ? getTableType(tf.type) : nullptr;
-    bool needsClone = follow(tf.type) == target || (FFlag::LuauMetatableInstantiationCloneCheck && tfTable != nullptr && tfTable == getTableType(target));
+    const TableType* tfTable = getTableType(tf.type);
+    bool needsClone = follow(tf.type) == target || (tfTable != nullptr && tfTable == getTableType(target));
     bool shouldMutate = getTableType(tf.type);
     TableType* ttv = getMutableTableType(target);
 

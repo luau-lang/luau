@@ -268,10 +268,43 @@ assert(math.min(1) == 1)
 assert(math.min(1, 2) == 1)
 assert(math.min(1, 2, -1) == -1)
 assert(math.min(1, -1, 2) == -1)
+assert(math.min(1, -1, 2, -2) == -2)
 assert(math.max(1) == 1)
 assert(math.max(1, 2) == 2)
 assert(math.max(1, 2, -1) == 2)
 assert(math.max(1, -1, 2) == 2)
+assert(math.max(1, -1, 2, -2) == 2)
+
+local ma, mb, mc, md
+
+assert(pcall(function()
+  ma = 1
+  mb = -1
+  mc = 2
+  md = -2
+end) == true)
+
+-- min/max without contant-folding
+assert(math.min(ma) == 1)
+assert(math.min(ma, mc) == 1)
+assert(math.min(ma, mc, mb) == -1)
+assert(math.min(ma, mb, mc) == -1)
+assert(math.min(ma, mb, mc, md) == -2)
+assert(math.max(ma) == 1)
+assert(math.max(ma, mc) == 2)
+assert(math.max(ma, mc, mb) == 2)
+assert(math.max(ma, mb, mc) == 2)
+assert(math.max(ma, mb, mc, md) == 2)
+
+local inf = math.huge * 2
+local nan = 0 / 0
+
+assert(math.min(nan, 2) ~= math.min(nan, 2))
+assert(math.min(1, nan) == 1)
+assert(math.max(nan, 2) ~= math.max(nan, 2))
+assert(math.max(1, nan) == 1)
+
+local function noinline(x, ...) local s, r = pcall(function(y) return y end, x) return r end
 
 -- noise
 assert(math.noise(0.5) == 0)
@@ -279,8 +312,10 @@ assert(math.noise(0.5, 0.5) == -0.25)
 assert(math.noise(0.5, 0.5, -0.5) == 0.125)
 assert(math.noise(455.7204209769105, 340.80410508750134, 121.80087666537628) == 0.5010709762573242)
 
-local inf = math.huge * 2
-local nan = 0 / 0
+assert(math.noise(noinline(0.5)) == 0)
+assert(math.noise(noinline(0.5), 0.5) == -0.25)
+assert(math.noise(noinline(0.5), 0.5, -0.5) == 0.125)
+assert(math.noise(noinline(455.7204209769105), 340.80410508750134, 121.80087666537628) == 0.5010709762573242)
 
 -- sign
 assert(math.sign(0) == 0)
@@ -290,16 +325,23 @@ assert(math.sign(inf) == 1)
 assert(math.sign(-inf) == -1)
 assert(math.sign(nan) == 0)
 
-assert(math.min(nan, 2) ~= math.min(nan, 2))
-assert(math.min(1, nan) == 1)
-assert(math.max(nan, 2) ~= math.max(nan, 2))
-assert(math.max(1, nan) == 1)
+assert(math.sign(noinline(0)) == 0)
+assert(math.sign(noinline(42)) == 1)
+assert(math.sign(noinline(-42)) == -1)
+assert(math.sign(noinline(inf)) == 1)
+assert(math.sign(noinline(-inf)) == -1)
+assert(math.sign(noinline(nan)) == 0)
 
 -- clamp
 assert(math.clamp(-1, 0, 1) == 0)
 assert(math.clamp(0.5, 0, 1) == 0.5)
 assert(math.clamp(2, 0, 1) == 1)
 assert(math.clamp(4, 0, 0) == 0)
+
+assert(math.clamp(noinline(-1), 0, 1) == 0)
+assert(math.clamp(noinline(0.5), 0, 1) == 0.5)
+assert(math.clamp(noinline(2), 0, 1) == 1)
+assert(math.clamp(noinline(4), 0, 0) == 0)
 
 -- round
 assert(math.round(0) == 0)
@@ -313,18 +355,57 @@ assert(math.round(math.huge) == math.huge)
 assert(math.round(0.49999999999999994) == 0)
 assert(math.round(-0.49999999999999994) == 0)
 
+assert(math.round(noinline(0)) == 0)
+assert(math.round(noinline(0.4)) == 0)
+assert(math.round(noinline(0.5)) == 1)
+assert(math.round(noinline(3.5)) == 4)
+assert(math.round(noinline(-0.4)) == 0)
+assert(math.round(noinline(-0.5)) == -1)
+assert(math.round(noinline(-3.5)) == -4)
+assert(math.round(noinline(math.huge)) == math.huge)
+assert(math.round(noinline(0.49999999999999994)) == 0)
+assert(math.round(noinline(-0.49999999999999994)) == 0)
+
 -- fmod
 assert(math.fmod(3, 2) == 1)
 assert(math.fmod(-3, 2) == -1)
 assert(math.fmod(3, -2) == 1)
 assert(math.fmod(-3, -2) == -1)
 
+assert(math.fmod(noinline(3), 2) == 1)
+assert(math.fmod(noinline(-3), 2) == -1)
+assert(math.fmod(noinline(3), -2) == 1)
+assert(math.fmod(noinline(-3), -2) == -1)
+
 -- pow
 assert(math.pow(2, 0) == 1)
 assert(math.pow(2, 2) == 4)
 assert(math.pow(4, 0.5) == 2)
 assert(math.pow(-2, 2) == 4)
+
+assert(math.pow(noinline(2), 0) == 1)
+assert(math.pow(noinline(2), 2) == 4)
+assert(math.pow(noinline(4), 0.5) == 2)
+assert(math.pow(noinline(-2), 2) == 4)
+
 assert(tostring(math.pow(-2, 0.5)) == "nan")
+
+-- test that fastcalls return correct number of results
+assert(select('#', math.floor(1.4)) == 1)
+assert(select('#', math.ceil(1.6)) == 1)
+assert(select('#', math.sqrt(9)) == 1)
+assert(select('#', math.deg(9)) == 1)
+assert(select('#', math.rad(9)) == 1)
+assert(select('#', math.sin(1.5)) == 1)
+assert(select('#', math.atan2(1.5, 0.5)) == 1)
+assert(select('#', math.modf(1.5)) == 2)
+assert(select('#', math.frexp(1.5)) == 2)
+
+-- test that fastcalls that return variadic results return them correctly in variadic position
+assert(select(1, math.modf(1.5)) == 1)
+assert(select(2, math.modf(1.5)) == 0.5)
+assert(select(1, math.frexp(1.5)) == 0.75)
+assert(select(2, math.frexp(1.5)) == 1)
 
 -- most of the tests above go through fastcall path
 -- to make sure the basic implementations are also correct we test these functions with string->number coercions
@@ -369,22 +450,5 @@ assert(math.sign("2") == 1)
 assert(math.sign("-2") == -1)
 assert(math.sign("0") == 0)
 assert(math.round("1.8") == 2)
-
--- test that fastcalls return correct number of results
-assert(select('#', math.floor(1.4)) == 1)
-assert(select('#', math.ceil(1.6)) == 1)
-assert(select('#', math.sqrt(9)) == 1)
-assert(select('#', math.deg(9)) == 1)
-assert(select('#', math.rad(9)) == 1)
-assert(select('#', math.sin(1.5)) == 1)
-assert(select('#', math.atan2(1.5, 0.5)) == 1)
-assert(select('#', math.modf(1.5)) == 2)
-assert(select('#', math.frexp(1.5)) == 2)
-
--- test that fastcalls that return variadic results return them correctly in variadic position
-assert(select(1, math.modf(1.5)) == 1)
-assert(select(2, math.modf(1.5)) == 0.5)
-assert(select(1, math.frexp(1.5)) == 0.75)
-assert(select(2, math.frexp(1.5)) == 1)
 
 return('OK')

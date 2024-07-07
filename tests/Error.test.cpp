@@ -6,6 +6,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+
 TEST_SUITE_BEGIN("ErrorTests");
 
 TEST_CASE("TypeError_code_should_return_nonzero_code")
@@ -32,6 +34,48 @@ local x: Account = 5
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("Type 'number' could not be converted into 'Account'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "binary_op_type_family_errors")
+{
+    frontend.options.retainFullTypeGraphs = false;
+
+    CheckResult result = check(R"(
+        --!strict
+        local x = 1 + "foo"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("Operator '+' could not be applied to operands of types number and string; there is no corresponding overload for __add",
+            toString(result.errors[0]));
+    else
+        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "unary_op_type_family_errors")
+{
+    frontend.options.retainFullTypeGraphs = false;
+
+    CheckResult result = check(R"(
+        --!strict
+        local x = -"foo"
+    )");
+
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        CHECK_EQ(
+            "Operator '-' could not be applied to operand of type string; there is no corresponding overload for __unm", toString(result.errors[0]));
+        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[1]));
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
+    }
 }
 
 TEST_SUITE_END();

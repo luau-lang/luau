@@ -50,6 +50,9 @@ public:
     uint8_t* gateData = nullptr;
     size_t gateDataSize = 0;
 
+    void* userdataRemappingContext = nullptr;
+    UserdataRemapperCallback* userdataRemapper = nullptr;
+
     NativeContext context;
 };
 
@@ -87,34 +90,6 @@ public:
 private:
     SharedCodeAllocator sharedAllocator;
 };
-
-
-// The following will become the public interface, and can be moved into
-// CodeGen.h after the shared allocator work is complete.  When the old
-// implementation is removed, the _NEW suffix can be dropped from these
-// functions.
-
-// Initializes native code-gen on the provided Luau VM, using a VM-specific
-// code-gen context and either the default allocator parameters or custom
-// allocator parameters.
-void create_NEW(lua_State* L);
-void create_NEW(lua_State* L, AllocationCallback* allocationCallback, void* allocationCallbackContext);
-void create_NEW(lua_State* L, size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
-
-// Initializes native code-gen on the provided Luau VM, using the provided
-// SharedCodeGenContext.  Note that after this function is called, the
-// SharedCodeGenContext must not be destroyed until after the Luau VM L is
-// destroyed via lua_close.
-void create_NEW(lua_State* L, SharedCodeGenContext* codeGenContext);
-
-CompilationResult compile_NEW(lua_State* L, int idx, unsigned int flags, CompilationStats* stats);
-CompilationResult compile_NEW(const ModuleId& moduleId, lua_State* L, int idx, unsigned int flags, CompilationStats* stats);
-
-// Returns true if native execution is currently enabled for this VM
-[[nodiscard]] bool isNativeExecutionEnabled_NEW(lua_State* L);
-
-// Enables or disables native excution for this VM
-void setNativeExecutionEnabled_NEW(lua_State* L, bool enabled);
 
 } // namespace CodeGen
 } // namespace Luau

@@ -156,6 +156,7 @@ struct lua_ExecutionCallbacks
     int (*enter)(lua_State* L, Proto* proto);    // called when function is about to start/resume (when execdata is present), return 0 to exit VM
     void (*disable)(lua_State* L, Proto* proto); // called when function has to be switched from native to bytecode in the debugger
     size_t (*getmemorysize)(lua_State* L, Proto* proto); // called to request the size of memory associated with native part of the Proto
+    uint8_t (*gettypemapping)(lua_State* L, const char* str, size_t len); // called to get the userdata type index
 };
 
 /*
@@ -188,7 +189,8 @@ typedef struct global_State
 
     struct lua_Page* freepages[LUA_SIZECLASSES]; // free page linked list for each size class for non-collectable objects
     struct lua_Page* freegcopages[LUA_SIZECLASSES]; // free page linked list for each size class for collectable objects
-    struct lua_Page* allgcopages; // page linked list with all pages for all classes
+    struct lua_Page* allpages; // page linked list with all pages for all non-collectable object classes (available with LUAU_ASSERTENABLED)
+    struct lua_Page* allgcopages; // page linked list with all pages for all collectable object classes
     struct lua_Page* sweepgcopage; // position of the sweep in `allgcopages'
 
     size_t memcatbytes[LUA_MEMORY_CATEGORIES]; // total amount of memory used by each memory category
@@ -215,6 +217,7 @@ typedef struct global_State
     lua_ExecutionCallbacks ecb;
 
     void (*udatagc[LUA_UTAG_LIMIT])(lua_State*, void*); // for each userdata tag, a gc callback to be called immediately before freeing memory
+    Table* udatamt[LUA_LUTAG_LIMIT]; // metatables for tagged userdata
 
     TString* lightuserdataname[LUA_LUTAG_LIMIT]; // names for tagged lightuserdata
 

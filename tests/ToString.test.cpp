@@ -12,8 +12,8 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauCheckedFunctionSyntax);
 LUAU_FASTFLAG(DebugLuauSharedSelf);
+LUAU_FASTFLAG(LuauAttributeSyntax);
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -354,21 +354,24 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
         function f2(f) return f or f1 end
         function f3(f) return f or f2 end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    ToStringOptions o;
-    o.exhaustive = false;
-
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        o.maxTypeLength = 30;
+        LUAU_REQUIRE_NO_ERRORS(result);
+
+        ToStringOptions o;
+        o.exhaustive = false;
+        o.maxTypeLength = 20;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) ... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ())... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ())... *TRUNCATED*");
     }
     else
     {
+        LUAU_REQUIRE_NO_ERRORS(result);
+
+        ToStringOptions o;
+        o.exhaustive = false;
         o.maxTypeLength = 40;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
         CHECK_EQ(toString(requireType("f1"), o), "(() -> ()) -> () -> ()");
@@ -385,20 +388,25 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
         function f2(f) return f or f1 end
         function f3(f) return f or f2 end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
 
-    ToStringOptions o;
-    o.exhaustive = true;
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        o.maxTypeLength = 30;
+        LUAU_REQUIRE_NO_ERRORS(result);
+
+        ToStringOptions o;
+        o.exhaustive = true;
+        o.maxTypeLength = 20;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) ... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ())... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ())... *TRUNCATED*");
     }
     else
     {
+        LUAU_REQUIRE_NO_ERRORS(result);
+
+        ToStringOptions o;
+        o.exhaustive = true;
         o.maxTypeLength = 40;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
         CHECK_EQ(toString(requireType("f1"), o), "(() -> ()) -> () -> ()");
@@ -741,7 +749,10 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_map")
     TypeId ty = requireType("map");
     const FunctionType* ftv = get<FunctionType>(follow(ty));
 
-    CHECK_EQ("map<a, b>(arr: {a}, fn: (a) -> b): {b}", toStringNamedFunction("map", *ftv));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("map<a, b>(arr: {a}, fn: (a) -> (b, ...unknown)): {b}", toStringNamedFunction("map", *ftv));
+    else
+        CHECK_EQ("map<a, b>(arr: {a}, fn: (a) -> b): {b}", toStringNamedFunction("map", *ftv));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_generic_pack")
@@ -965,12 +976,12 @@ Type 'string' could not be converted into 'number' in an invariant context)";
 TEST_CASE_FIXTURE(Fixture, "checked_fn_toString")
 {
     ScopedFastFlag flags[] = {
-        {FFlag::LuauCheckedFunctionSyntax, true},
         {FFlag::DebugLuauDeferredConstraintResolution, true},
+        {FFlag::LuauAttributeSyntax, true},
     };
 
     auto _result = loadDefinition(R"(
-declare function @checked abs(n: number) : number
+@checked declare function abs(n: number) : number
 )");
 
     auto result = check(Mode::Nonstrict, R"(

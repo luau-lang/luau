@@ -12,7 +12,7 @@
 
 #include "lstate.h"
 
-LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
+LUAU_FASTFLAG(LuauCodegenMathSign)
 
 namespace Luau
 {
@@ -29,17 +29,13 @@ static void emitBuiltinMathFrexp(IrRegAllocX64& regs, AssemblyBuilderX64& build,
     callWrap.call(qword[rNativeContext + offsetof(NativeContext, libm_frexp)]);
 
     build.vmovsd(luauRegValue(ra), xmm0);
-
-    if (FFlag::LuauCodegenRemoveDeadStores5)
-        build.mov(luauRegTag(ra), LUA_TNUMBER);
+    build.mov(luauRegTag(ra), LUA_TNUMBER);
 
     if (nresults > 1)
     {
         build.vcvtsi2sd(xmm0, xmm0, dword[sTemporarySlot + 0]);
         build.vmovsd(luauRegValue(ra + 1), xmm0);
-
-        if (FFlag::LuauCodegenRemoveDeadStores5)
-            build.mov(luauRegTag(ra + 1), LUA_TNUMBER);
+        build.mov(luauRegTag(ra + 1), LUA_TNUMBER);
     }
 }
 
@@ -52,21 +48,19 @@ static void emitBuiltinMathModf(IrRegAllocX64& regs, AssemblyBuilderX64& build, 
 
     build.vmovsd(xmm1, qword[sTemporarySlot + 0]);
     build.vmovsd(luauRegValue(ra), xmm1);
-
-    if (FFlag::LuauCodegenRemoveDeadStores5)
-        build.mov(luauRegTag(ra), LUA_TNUMBER);
+    build.mov(luauRegTag(ra), LUA_TNUMBER);
 
     if (nresults > 1)
     {
         build.vmovsd(luauRegValue(ra + 1), xmm0);
-
-        if (FFlag::LuauCodegenRemoveDeadStores5)
-            build.mov(luauRegTag(ra + 1), LUA_TNUMBER);
+        build.mov(luauRegTag(ra + 1), LUA_TNUMBER);
     }
 }
 
 static void emitBuiltinMathSign(IrRegAllocX64& regs, AssemblyBuilderX64& build, int ra, int arg)
 {
+    CODEGEN_ASSERT(!FFlag::LuauCodegenMathSign);
+
     ScopedRegX64 tmp0{regs, SizeX64::xmmword};
     ScopedRegX64 tmp1{regs, SizeX64::xmmword};
     ScopedRegX64 tmp2{regs, SizeX64::xmmword};
@@ -90,23 +84,22 @@ static void emitBuiltinMathSign(IrRegAllocX64& regs, AssemblyBuilderX64& build, 
     build.vblendvpd(tmp0.reg, tmp2.reg, build.f64x2(1, 1), tmp0.reg);
 
     build.vmovsd(luauRegValue(ra), tmp0.reg);
-
-    if (FFlag::LuauCodegenRemoveDeadStores5)
-        build.mov(luauRegTag(ra), LUA_TNUMBER);
+    build.mov(luauRegTag(ra), LUA_TNUMBER);
 }
 
-void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int ra, int arg, OperandX64 arg2, int nparams, int nresults)
+void emitBuiltin(IrRegAllocX64& regs, AssemblyBuilderX64& build, int bfid, int ra, int arg, int nresults)
 {
     switch (bfid)
     {
     case LBF_MATH_FREXP:
-        CODEGEN_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
+        CODEGEN_ASSERT(nresults == 1 || nresults == 2);
         return emitBuiltinMathFrexp(regs, build, ra, arg, nresults);
     case LBF_MATH_MODF:
-        CODEGEN_ASSERT(nparams == 1 && (nresults == 1 || nresults == 2));
+        CODEGEN_ASSERT(nresults == 1 || nresults == 2);
         return emitBuiltinMathModf(regs, build, ra, arg, nresults);
     case LBF_MATH_SIGN:
-        CODEGEN_ASSERT(nparams == 1 && nresults == 1);
+        CODEGEN_ASSERT(!FFlag::LuauCodegenMathSign);
+        CODEGEN_ASSERT(nresults == 1);
         return emitBuiltinMathSign(regs, build, ra, arg);
     default:
         CODEGEN_ASSERT(!"Missing x64 lowering");

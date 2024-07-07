@@ -271,11 +271,6 @@ private:
             t->upperBound = shallowClone(t->upperBound);
     }
 
-    void cloneChildren(LocalType* t)
-    {
-        t->domain = shallowClone(t->domain);
-    }
-
     void cloneChildren(GenericType* t)
     {
         // TOOD: clone upper bounds.

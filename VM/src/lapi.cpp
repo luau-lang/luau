@@ -1427,6 +1427,33 @@ lua_Destructor lua_getuserdatadtor(lua_State* L, int tag)
     return L->global->udatagc[tag];
 }
 
+void lua_setuserdatametatable(lua_State* L, int tag, int idx)
+{
+    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
+    api_check(L, !L->global->udatamt[tag]); // reassignment not supported
+    StkId o = index2addr(L, idx);
+    api_check(L, ttistable(o));
+    L->global->udatamt[tag] = hvalue(o);
+    L->top--;
+}
+
+void lua_getuserdatametatable(lua_State* L, int tag)
+{
+    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
+    luaC_threadbarrier(L);
+
+    if (Table* h = L->global->udatamt[tag])
+    {
+        sethvalue(L, L->top, h);
+    }
+    else
+    {
+        setnilvalue(L->top);
+    }
+
+    api_incr_top(L);
+}
+
 void lua_setlightuserdataname(lua_State* L, int tag, const char* name)
 {
     api_check(L, unsigned(tag) < LUA_LUTAG_LIMIT);

@@ -34,6 +34,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
+LUAU_FASTFLAGVARIABLE(LuauCancelFromProgress, false)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile, false)
@@ -440,6 +441,8 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
     LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
 
     FrontendOptions frontendOptions = optionOverride.value_or(options);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        frontendOptions.forAutocomplete = false;
 
     if (std::optional<CheckResult> result = getCheckResult(name, true, frontendOptions.forAutocomplete))
         return std::move(*result);
@@ -492,9 +495,11 @@ void Frontend::queueModuleCheck(const ModuleName& name)
 }
 
 std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptions> optionOverride,
-    std::function<void(std::function<void()> task)> executeTask, std::function<void(size_t done, size_t total)> progress)
+    std::function<void(std::function<void()> task)> executeTask, std::function<bool(size_t done, size_t total)> progress)
 {
     FrontendOptions frontendOptions = optionOverride.value_or(options);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        frontendOptions.forAutocomplete = false;
 
     // By taking data into locals, we make sure queue is cleared at the end, even if an ICE or a different exception is thrown
     std::vector<ModuleName> currModuleQueue;
@@ -673,7 +678,17 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
         }
 
         if (progress)
-            progress(buildQueueItems.size() - remaining, buildQueueItems.size());
+        {
+            if (FFlag::LuauCancelFromProgress)
+            {
+                if (!progress(buildQueueItems.size() - remaining, buildQueueItems.size()))
+                    cancelled = true;
+            }
+            else
+            {
+                progress(buildQueueItems.size() - remaining, buildQueueItems.size());
+            }
+        }
 
         // Items cannot be submitted while holding the lock
         for (size_t i : nextItems)
@@ -707,6 +722,9 @@ std::vector<ModuleName> Frontend::checkQueuedModules(std::optional<FrontendOptio
 
 std::optional<CheckResult> Frontend::getCheckResult(const ModuleName& name, bool accumulateNested, bool forAutocomplete)
 {
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        forAutocomplete = false;
+
     auto it = sourceNodes.find(name);
 
     if (it == sourceNodes.end() || it->second->hasDirtyModule(forAutocomplete))
@@ -1003,11 +1021,10 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         module->astForInNextTypes.clear();
         module->astResolvedTypes.clear();
         module->astResolvedTypePacks.clear();
+        module->astCompoundAssignResultTypes.clear();
         module->astScopes.clear();
         module->upperBoundContributors.clear();
-
-        if (!FFlag::DebugLuauDeferredConstraintResolution)
-            module->scopes.clear();
+        module->scopes.clear();
     }
 
     if (mode != Mode::NoCheck)
@@ -1196,12 +1213,6 @@ struct InternalTypeFinder : TypeOnceVisitor
         return false;
     }
 
-    bool visit(TypeId, const LocalType&) override
-    {
-        LUAU_ASSERT(false);
-        return false;
-    }
-
     bool visit(TypePackId, const BlockedTypePack&) override
     {
         LUAU_ASSERT(false);
@@ -1297,6 +1308,30 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
     result->type = sourceModule.type;
     result->upperBoundContributors = std::move(cs.upperBoundContributors);
 
+    if (result->timeout || result->cancelled)
+    {
+        // If solver was interrupted, skip typechecking and replace all module results with error-supressing types to avoid leaking blocked/pending
+        // types
+        ScopePtr moduleScope = result->getModuleScope();
+        moduleScope->returnType = builtinTypes->errorRecoveryTypePack();
+
+        for (auto& [name, ty] : result->declaredGlobals)
+            ty = builtinTypes->errorRecoveryType();
+
+        for (auto& [name, tf] : result->exportedTypeBindings)
+            tf.type = builtinTypes->errorRecoveryType();
+    }
+    else
+    {
+        if (mode == Mode::Nonstrict)
+            Luau::checkNonStrict(builtinTypes, iceHandler, NotNull{&unifierState}, NotNull{&dfg}, NotNull{&limits}, sourceModule, result.get());
+        else
+            Luau::check(builtinTypes, NotNull{&unifierState}, NotNull{&limits}, logger.get(), sourceModule, result.get());
+    }
+
+    unfreeze(result->interfaceTypes);
+    result->clonePublicInterface(builtinTypes, *iceHandler);
+
     if (FFlag::DebugLuauForbidInternalTypes)
     {
         InternalTypeFinder finder;
@@ -1324,30 +1359,6 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
         for (const auto& [_, tp] : result->astResolvedTypePacks)
             finder.traverse(tp);
     }
-
-    if (result->timeout || result->cancelled)
-    {
-        // If solver was interrupted, skip typechecking and replace all module results with error-supressing types to avoid leaking blocked/pending
-        // types
-        ScopePtr moduleScope = result->getModuleScope();
-        moduleScope->returnType = builtinTypes->errorRecoveryTypePack();
-
-        for (auto& [name, ty] : result->declaredGlobals)
-            ty = builtinTypes->errorRecoveryType();
-
-        for (auto& [name, tf] : result->exportedTypeBindings)
-            tf.type = builtinTypes->errorRecoveryType();
-    }
-    else
-    {
-        if (mode == Mode::Nonstrict)
-            Luau::checkNonStrict(builtinTypes, iceHandler, NotNull{&unifierState}, NotNull{&dfg}, NotNull{&limits}, sourceModule, result.get());
-        else
-            Luau::check(builtinTypes, NotNull{&unifierState}, NotNull{&limits}, logger.get(), sourceModule, result.get());
-    }
-
-    unfreeze(result->interfaceTypes);
-    result->clonePublicInterface(builtinTypes, *iceHandler);
 
     // It would be nice if we could freeze the arenas before doing type
     // checking, but we'll have to do some work to get there.

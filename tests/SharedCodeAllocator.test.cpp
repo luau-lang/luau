@@ -15,8 +15,6 @@
 #pragma GCC diagnostic ignored "-Wself-assign-overloaded"
 #endif
 
-LUAU_FASTFLAG(LuauCodegenContext)
-
 using namespace Luau::CodeGen;
 
 
@@ -31,8 +29,6 @@ TEST_CASE("NativeModuleRefRefcounting")
 {
     if (!luau_codegen_supported())
         return;
-
-    ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
 
     CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
     SharedCodeAllocator allocator{&codeAllocator};
@@ -250,8 +246,6 @@ TEST_CASE("NativeProtoRefcounting")
     if (!luau_codegen_supported())
         return;
 
-    ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
-
     CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
     SharedCodeAllocator allocator{&codeAllocator};
 
@@ -302,8 +296,6 @@ TEST_CASE("NativeProtoState")
 {
     if (!luau_codegen_supported())
         return;
-
-    ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
 
     CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
     SharedCodeAllocator allocator{&codeAllocator};
@@ -364,8 +356,6 @@ TEST_CASE("AnonymousModuleLifetime")
     if (!luau_codegen_supported())
         return;
 
-    ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
-
     CodeAllocator codeAllocator{kBlockSize, kMaxTotalSize};
     SharedCodeAllocator allocator{&codeAllocator};
 
@@ -413,8 +403,6 @@ TEST_CASE("SharedAllocation")
     if (!luau_codegen_supported())
         return;
 
-    ScopedFastFlag luauCodegenContext{FFlag::LuauCodegenContext, true};
-
     UniqueSharedCodeGenContext sharedCodeGenContext = createSharedCodeGenContext();
 
     std::unique_ptr<lua_State, void (*)(lua_State*)> L1{luaL_newstate(), lua_close};
@@ -438,10 +426,13 @@ TEST_CASE("SharedAllocation")
 
     const ModuleId moduleId = {0x01};
 
+    CompilationOptions options;
+    options.flags = CodeGen_ColdFunctions;
+
     CompilationStats nativeStats1 = {};
     CompilationStats nativeStats2 = {};
-    const CompilationResult codeGenResult1 = Luau::CodeGen::compile(moduleId, L1.get(), -1, CodeGen_ColdFunctions, &nativeStats1);
-    const CompilationResult codeGenResult2 = Luau::CodeGen::compile(moduleId, L2.get(), -1, CodeGen_ColdFunctions, &nativeStats2);
+    const CompilationResult codeGenResult1 = Luau::CodeGen::compile(moduleId, L1.get(), -1, options, &nativeStats1);
+    const CompilationResult codeGenResult2 = Luau::CodeGen::compile(moduleId, L2.get(), -1, options, &nativeStats2);
     REQUIRE(codeGenResult1.result == CodeGenCompilationResult::Success);
     REQUIRE(codeGenResult2.result == CodeGenCompilationResult::Success);
 

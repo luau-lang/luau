@@ -35,6 +35,7 @@ struct ACFixtureImpl : BaseType
     {
         FrontendOptions opts;
         opts.forAutocomplete = true;
+        opts.retainFullTypeGraphs = true;
         this->frontend.check("MainModule", opts);
 
         return Luau::autocomplete(this->frontend, "MainModule", Position{row, column}, nullCallback);
@@ -44,6 +45,7 @@ struct ACFixtureImpl : BaseType
     {
         FrontendOptions opts;
         opts.forAutocomplete = true;
+        opts.retainFullTypeGraphs = true;
         this->frontend.check("MainModule", opts);
 
         return Luau::autocomplete(this->frontend, "MainModule", getPosition(marker), callback);
@@ -53,6 +55,7 @@ struct ACFixtureImpl : BaseType
     {
         FrontendOptions opts;
         opts.forAutocomplete = true;
+        opts.retainFullTypeGraphs = true;
         this->frontend.check(name, opts);
 
         return Luau::autocomplete(this->frontend, name, pos, callback);
@@ -3272,9 +3275,9 @@ TEST_CASE_FIXTURE(ACFixture, "string_singleton_in_if_statement")
 // https://github.com/Roblox/luau/issues/858
 TEST_CASE_FIXTURE(ACFixture, "string_singleton_in_if_statement2")
 {
-    ScopedFastFlag sff[]{
-        {FFlag::DebugLuauDeferredConstraintResolution, true},
-    };
+    // don't run this when the DCR flag isn't set
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
 
     check(R"(
         --!strict
@@ -3681,6 +3684,8 @@ a.@1
 
     auto ac = autocomplete('1');
 
+    CHECK(2 == ac.entryMap.size());
+
     CHECK(ac.entryMap.count("x"));
     CHECK(ac.entryMap.count("y"));
 
@@ -3733,11 +3738,13 @@ TEST_CASE_FIXTURE(ACFixture, "string_contents_is_available_to_callback")
         declare function require(path: string): any
     )");
 
-    std::optional<Binding> require = frontend.globalsForAutocomplete.globalScope->linearSearchForBinding("require");
+    GlobalTypes& globals = FFlag::DebugLuauDeferredConstraintResolution ? frontend.globals : frontend.globalsForAutocomplete;
+
+    std::optional<Binding> require = globals.globalScope->linearSearchForBinding("require");
     REQUIRE(require);
-    Luau::unfreeze(frontend.globalsForAutocomplete.globalTypes);
+    Luau::unfreeze(globals.globalTypes);
     attachTag(require->typeId, "RequireCall");
-    Luau::freeze(frontend.globalsForAutocomplete.globalTypes);
+    Luau::freeze(globals.globalTypes);
 
     check(R"(
         local x = require("testing/@1")
@@ -3837,11 +3844,13 @@ TEST_CASE_FIXTURE(ACFixture, "string_completion_outside_quotes")
         declare function require(path: string): any
     )");
 
-    std::optional<Binding> require = frontend.globalsForAutocomplete.globalScope->linearSearchForBinding("require");
+    GlobalTypes& globals = FFlag::DebugLuauDeferredConstraintResolution ? frontend.globals : frontend.globalsForAutocomplete;
+
+    std::optional<Binding> require = globals.globalScope->linearSearchForBinding("require");
     REQUIRE(require);
-    Luau::unfreeze(frontend.globalsForAutocomplete.globalTypes);
+    Luau::unfreeze(globals.globalTypes);
     attachTag(require->typeId, "RequireCall");
-    Luau::freeze(frontend.globalsForAutocomplete.globalTypes);
+    Luau::freeze(globals.globalTypes);
 
     check(R"(
         local x = require(@1"@2"@3)

@@ -406,6 +406,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prototyped_recursive_functions_but_has_futur
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+
     CHECK("((() -> ()) | number)?" == toString(requireType("f")));
 }
 
@@ -490,5 +491,34 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typestates_do_not_apply_to_the_initial_local
     CHECK("number" == toString(requireTypeAtPosition({5, 14}), {true}));
 }
 
+TEST_CASE_FIXTURE(Fixture, "typestate_globals")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    loadDefinition(R"(
+        declare foo: string | number
+        declare function f(x: string): ()
+    )");
+
+    CheckResult result = check(R"(
+        foo = "a"
+        f(foo)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "typestate_unknown_global")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    CheckResult result = check(R"(
+        x = 5
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(get<UnknownSymbol>(result.errors[0]));
+}
 
 TEST_SUITE_END();

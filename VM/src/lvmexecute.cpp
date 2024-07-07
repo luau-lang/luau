@@ -96,7 +96,7 @@
         VM_DISPATCH_OP(LOP_POWK), VM_DISPATCH_OP(LOP_AND), VM_DISPATCH_OP(LOP_OR), VM_DISPATCH_OP(LOP_ANDK), VM_DISPATCH_OP(LOP_ORK), \
         VM_DISPATCH_OP(LOP_CONCAT), VM_DISPATCH_OP(LOP_NOT), VM_DISPATCH_OP(LOP_MINUS), VM_DISPATCH_OP(LOP_LENGTH), VM_DISPATCH_OP(LOP_NEWTABLE), \
         VM_DISPATCH_OP(LOP_DUPTABLE), VM_DISPATCH_OP(LOP_SETLIST), VM_DISPATCH_OP(LOP_FORNPREP), VM_DISPATCH_OP(LOP_FORNLOOP), \
-        VM_DISPATCH_OP(LOP_FORGLOOP), VM_DISPATCH_OP(LOP_FORGPREP_INEXT), VM_DISPATCH_OP(LOP_DEP_FORGLOOP_INEXT), VM_DISPATCH_OP(LOP_FORGPREP_NEXT), \
+        VM_DISPATCH_OP(LOP_FORGLOOP), VM_DISPATCH_OP(LOP_FORGPREP_INEXT), VM_DISPATCH_OP(LOP_FASTCALL3), VM_DISPATCH_OP(LOP_FORGPREP_NEXT), \
         VM_DISPATCH_OP(LOP_NATIVECALL), VM_DISPATCH_OP(LOP_GETVARARGS), VM_DISPATCH_OP(LOP_DUPCLOSURE), VM_DISPATCH_OP(LOP_PREPVARARGS), \
         VM_DISPATCH_OP(LOP_LOADKX), VM_DISPATCH_OP(LOP_JUMPX), VM_DISPATCH_OP(LOP_FASTCALL), VM_DISPATCH_OP(LOP_COVERAGE), \
         VM_DISPATCH_OP(LOP_CAPTURE), VM_DISPATCH_OP(LOP_SUBRK), VM_DISPATCH_OP(LOP_DIVRK), VM_DISPATCH_OP(LOP_FASTCALL1), \
@@ -1487,7 +1487,7 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_ADD));
+                        VM_PROTECT(luaV_doarithimpl<TM_ADD>(L, ra, rb, rc));
                         VM_NEXT();
                     }
                 }
@@ -1533,7 +1533,7 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_SUB));
+                        VM_PROTECT(luaV_doarithimpl<TM_SUB>(L, ra, rb, rc));
                         VM_NEXT();
                     }
                 }
@@ -1594,7 +1594,7 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_MUL));
+                        VM_PROTECT(luaV_doarithimpl<TM_MUL>(L, ra, rb, rc));
                         VM_NEXT();
                     }
                 }
@@ -1655,7 +1655,7 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_DIV));
+                        VM_PROTECT(luaV_doarithimpl<TM_DIV>(L, ra, rb, rc));
                         VM_NEXT();
                     }
                 }
@@ -1703,7 +1703,7 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_IDIV));
+                        VM_PROTECT(luaV_doarithimpl<TM_IDIV>(L, ra, rb, rc));
                         VM_NEXT();
                     }
                 }
@@ -1727,7 +1727,7 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_MOD));
+                    VM_PROTECT(luaV_doarithimpl<TM_MOD>(L, ra, rb, rc));
                     VM_NEXT();
                 }
             }
@@ -1748,7 +1748,7 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, rb, rc, TM_POW));
+                    VM_PROTECT(luaV_doarithimpl<TM_POW>(L, ra, rb, rc));
                     VM_NEXT();
                 }
             }
@@ -1769,7 +1769,7 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_ADD));
+                    VM_PROTECT(luaV_doarithimpl<TM_ADD>(L, ra, rb, kv));
                     VM_NEXT();
                 }
             }
@@ -1790,7 +1790,7 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_SUB));
+                    VM_PROTECT(luaV_doarithimpl<TM_SUB>(L, ra, rb, kv));
                     VM_NEXT();
                 }
             }
@@ -1835,7 +1835,7 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_MUL));
+                        VM_PROTECT(luaV_doarithimpl<TM_MUL>(L, ra, rb, kv));
                         VM_NEXT();
                     }
                 }
@@ -1881,7 +1881,7 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_DIV));
+                        VM_PROTECT(luaV_doarithimpl<TM_DIV>(L, ra, rb, kv));
                         VM_NEXT();
                     }
                 }
@@ -1928,7 +1928,7 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_IDIV));
+                        VM_PROTECT(luaV_doarithimpl<TM_IDIV>(L, ra, rb, kv));
                         VM_NEXT();
                     }
                 }
@@ -1952,7 +1952,7 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_MOD));
+                    VM_PROTECT(luaV_doarithimpl<TM_MOD>(L, ra, rb, kv));
                     VM_NEXT();
                 }
             }
@@ -1979,7 +1979,7 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, rb, kv, TM_POW));
+                    VM_PROTECT(luaV_doarithimpl<TM_POW>(L, ra, rb, kv));
                     VM_NEXT();
                 }
             }
@@ -2092,7 +2092,7 @@ reentry:
                     else
                     {
                         // slow-path, may invoke C/Lua via metamethods
-                        VM_PROTECT(luaV_doarith(L, ra, rb, rb, TM_UNM));
+                        VM_PROTECT(luaV_doarithimpl<TM_UNM>(L, ra, rb, rb));
                         VM_NEXT();
                     }
                 }
@@ -2432,12 +2432,6 @@ reentry:
                 VM_NEXT();
             }
 
-            VM_CASE(LOP_DEP_FORGLOOP_INEXT)
-            {
-                LUAU_ASSERT(!"Unsupported deprecated opcode");
-                LUAU_UNREACHABLE();
-            }
-
             VM_CASE(LOP_FORGPREP_NEXT)
             {
                 Instruction insn = *pc++;
@@ -2711,7 +2705,7 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, kv, rc, TM_SUB));
+                    VM_PROTECT(luaV_doarithimpl<TM_SUB>(L, ra, kv, rc));
                     VM_NEXT();
                 }
             }
@@ -2739,7 +2733,7 @@ reentry:
                 else
                 {
                     // slow-path, may invoke C/Lua via metamethods
-                    VM_PROTECT(luaV_doarith(L, ra, kv, rc, TM_DIV));
+                    VM_PROTECT(luaV_doarithimpl<TM_DIV>(L, ra, kv, rc));
                     VM_NEXT();
                 }
             }
@@ -2869,6 +2863,60 @@ reentry:
                     VM_PROTECT_PC(); // f may fail due to OOM
 
                     int n = f(L, ra, arg1, nresults, arg2, nparams);
+
+                    if (n >= 0)
+                    {
+                        if (nresults == LUA_MULTRET)
+                            L->top = ra + n;
+
+                        pc += skip + 1; // skip instructions that compute function as well as CALL
+                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        VM_NEXT();
+                    }
+                    else
+                    {
+                        // continue execution through the fallback code
+                        VM_NEXT();
+                    }
+                }
+                else
+                {
+                    // continue execution through the fallback code
+                    VM_NEXT();
+                }
+            }
+
+            VM_CASE(LOP_FASTCALL3)
+            {
+                Instruction insn = *pc++;
+                int bfid = LUAU_INSN_A(insn);
+                int skip = LUAU_INSN_C(insn) - 1;
+                uint32_t aux = *pc++;
+                TValue* arg1 = VM_REG(LUAU_INSN_B(insn));
+                TValue* arg2 = VM_REG(aux & 0xff);
+                TValue* arg3 = VM_REG((aux >> 8) & 0xff);
+
+                LUAU_ASSERT(unsigned(pc - cl->l.p->code + skip) < unsigned(cl->l.p->sizecode));
+
+                Instruction call = pc[skip];
+                LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+
+                StkId ra = VM_REG(LUAU_INSN_A(call));
+
+                int nparams = 3;
+                int nresults = LUAU_INSN_C(call) - 1;
+
+                luau_FastFunction f = luauF_table[bfid];
+                LUAU_ASSERT(f);
+
+                if (cl->env->safeenv)
+                {
+                    VM_PROTECT_PC(); // f may fail due to OOM
+
+                    setobj2s(L, L->top, arg2);
+                    setobj2s(L, L->top + 1, arg3);
+
+                    int n = f(L, ra, arg1, nresults, L->top, nparams);
 
                     if (n >= 0)
                     {

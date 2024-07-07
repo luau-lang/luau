@@ -446,7 +446,6 @@ struct TypeChecker2
                               .errors;
         if (!isErrorSuppressing(location, instance))
             reportErrors(std::move(errors));
-
         return instance;
     }
 
@@ -1108,10 +1107,13 @@ struct TypeChecker2
     void visit(AstStatCompoundAssign* stat)
     {
         AstExprBinary fake{stat->location, stat->op, stat->var, stat->value};
-        TypeId resultTy = visit(&fake, stat);
+        visit(&fake, stat);
+
+        TypeId* resultTy = module->astCompoundAssignResultTypes.find(stat);
+        LUAU_ASSERT(resultTy);
         TypeId varTy = lookupType(stat->var);
 
-        testIsSubtype(resultTy, varTy, stat->location);
+        testIsSubtype(*resultTy, varTy, stat->location);
     }
 
     void visit(AstStatFunction* stat)
@@ -1242,13 +1244,14 @@ struct TypeChecker2
 
     void visit(AstExprConstantBool* expr)
     {
-#if defined(LUAU_ENABLE_ASSERT)
+        // booleans use specialized inference logic for singleton types, which can lead to real type errors here.
+
         const TypeId bestType = expr->value ? builtinTypes->trueType : builtinTypes->falseType;
         const TypeId inferredType = lookupType(expr);
 
         const SubtypingResult r = subtyping->isSubtype(bestType, inferredType);
-        LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, inferredType));
-#endif
+        if (!r.isSubtype && !isErrorSuppressing(expr->location, inferredType))
+            reportError(TypeMismatch{inferredType, bestType}, expr->location);
     }
 
     void visit(AstExprConstantNumber* expr)
@@ -1264,13 +1267,14 @@ struct TypeChecker2
 
     void visit(AstExprConstantString* expr)
     {
-#if defined(LUAU_ENABLE_ASSERT)
+        // strings use specialized inference logic for singleton types, which can lead to real type errors here.
+
         const TypeId bestType = module->internalTypes.addType(SingletonType{StringSingleton{std::string{expr->value.data, expr->value.size}}});
         const TypeId inferredType = lookupType(expr);
 
         const SubtypingResult r = subtyping->isSubtype(bestType, inferredType);
-        LUAU_ASSERT(r.isSubtype || isErrorSuppressing(expr->location, inferredType));
-#endif
+        if (!r.isSubtype && !isErrorSuppressing(expr->location, inferredType))
+            reportError(TypeMismatch{inferredType, bestType}, expr->location);
     }
 
     void visit(AstExprLocal* expr)
@@ -1280,7 +1284,9 @@ struct TypeChecker2
 
     void visit(AstExprGlobal* expr)
     {
-        // TODO!
+        NotNull<Scope> scope = stack.back();
+        if (!scope->lookup(expr->name))
+            reportError(UnknownSymbol{expr->name.value, UnknownSymbol::Binding}, expr->location);
     }
 
     void visit(AstExprVarargs* expr)
@@ -1534,6 +1540,24 @@ struct TypeChecker2
         visitExprName(indexName->expr, indexName->location, indexName->index.value, context, builtinTypes->stringType);
     }
 
+    void indexExprMetatableHelper(AstExprIndexExpr* indexExpr, const MetatableType* metaTable, TypeId exprType, TypeId indexType)
+    {
+        if (auto tt = get<TableType>(follow(metaTable->table)); tt && tt->indexer)
+            testIsSubtype(indexType, tt->indexer->indexType, indexExpr->index->location);
+        else if (auto mt = get<MetatableType>(follow(metaTable->table)))
+            indexExprMetatableHelper(indexExpr, mt, exprType, indexType);
+        else if (auto tmt = get<TableType>(follow(metaTable->metatable)); tmt && tmt->indexer)
+            testIsSubtype(indexType, tmt->indexer->indexType, indexExpr->index->location);
+        else if (auto mtmt = get<MetatableType>(follow(metaTable->metatable)))
+            indexExprMetatableHelper(indexExpr, mtmt, exprType, indexType);
+        else
+        {
+            LUAU_ASSERT(tt || get<PrimitiveType>(follow(metaTable->table)));
+
+            reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
+        }
+    }
+
     void visit(AstExprIndexExpr* indexExpr, ValueContext context)
     {
         if (auto str = indexExpr->index->as<AstExprConstantString>())
@@ -1557,6 +1581,10 @@ struct TypeChecker2
             else
                 reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
         }
+        else if (auto mt = get<MetatableType>(exprType))
+        {
+            return indexExprMetatableHelper(indexExpr, mt, exprType, indexType);
+        }
         else if (auto cls = get<ClassType>(exprType))
         {
             if (cls->indexer)
@@ -1577,6 +1605,19 @@ struct TypeChecker2
                 reportError(OptionalValueAccess{exprType}, indexExpr->location);
             }
         }
+        else if (auto exprIntersection = get<IntersectionType>(exprType))
+        {
+            for (TypeId part : exprIntersection)
+            {
+                (void)part;
+            }
+        }
+        else if (get<NeverType>(exprType) || isErrorSuppressing(indexExpr->location, exprType))
+        {
+            // Nothing
+        }
+        else
+            reportError(NotATable{exprType}, indexExpr->location);
     }
 
     void visit(AstExprFunction* fn)
@@ -1589,7 +1630,6 @@ struct TypeChecker2
         functionDeclStack.push_back(inferredFnTy);
 
         std::shared_ptr<const NormalizedType> normalizedFnTy = normalizer.normalize(inferredFnTy);
-        const FunctionType* inferredFtv = get<FunctionType>(normalizedFnTy->functions.parts.front());
         if (!normalizedFnTy)
         {
             reportError(CodeTooComplex{}, fn->location);
@@ -1684,16 +1724,23 @@ struct TypeChecker2
         if (fn->returnAnnotation)
             visit(*fn->returnAnnotation);
 
+
         // If the function type has a family annotation, we need to see if we can suggest an annotation
-        TypeFamilyReductionGuesser guesser{NotNull{&module->internalTypes}, builtinTypes, NotNull{&normalizer}};
-        for (TypeId retTy : inferredFtv->retTypes)
+        if (normalizedFnTy)
         {
-            if (get<TypeFamilyInstanceType>(follow(retTy)))
+            const FunctionType* inferredFtv = get<FunctionType>(normalizedFnTy->functions.parts.front());
+            LUAU_ASSERT(inferredFtv);
+
+            TypeFamilyReductionGuesser guesser{NotNull{&module->internalTypes}, builtinTypes, NotNull{&normalizer}};
+            for (TypeId retTy : inferredFtv->retTypes)
             {
-                TypeFamilyReductionGuessResult result = guesser.guessTypeFamilyReductionForFunction(*fn, inferredFtv, retTy);
-                if (result.shouldRecommendAnnotation)
-                    reportError(
-                        ExplicitFunctionAnnotationRecommended{std::move(result.guessedFunctionAnnotations), result.guessedReturnType}, fn->location);
+                if (get<TypeFamilyInstanceType>(follow(retTy)))
+                {
+                    TypeFamilyReductionGuessResult result = guesser.guessTypeFamilyReductionForFunction(*fn, inferredFtv, retTy);
+                    if (result.shouldRecommendAnnotation)
+                        reportError(ExplicitFunctionAnnotationRecommended{std::move(result.guessedFunctionAnnotations), result.guessedReturnType},
+                            fn->location);
+                }
             }
         }
 
@@ -1822,7 +1869,7 @@ struct TypeChecker2
 
         bool isStringOperation =
             (normLeft ? normLeft->isSubtypeOfString() : isString(leftType)) && (normRight ? normRight->isSubtypeOfString() : isString(rightType));
-
+        leftType = follow(leftType);
         if (get<AnyType>(leftType) || get<ErrorType>(leftType) || get<NeverType>(leftType))
             return leftType;
         else if (get<AnyType>(rightType) || get<ErrorType>(rightType) || get<NeverType>(rightType))
@@ -2091,24 +2138,39 @@ struct TypeChecker2
         TypeId annotationType = lookupAnnotation(expr->annotation);
         TypeId computedType = lookupType(expr->expr);
 
-        // Note: As an optimization, we try 'number <: number | string' first, as that is the more likely case.
-        if (subtyping->isSubtype(annotationType, computedType).isSubtype)
-            return;
-
-        if (subtyping->isSubtype(computedType, annotationType).isSubtype)
-            return;
-
         switch (shouldSuppressErrors(NotNull{&normalizer}, computedType).orElse(shouldSuppressErrors(NotNull{&normalizer}, annotationType)))
         {
         case ErrorSuppression::Suppress:
             return;
         case ErrorSuppression::NormalizationFailed:
             reportError(NormalizationTooComplex{}, expr->location);
+            return;
         case ErrorSuppression::DoNotSuppress:
             break;
         }
 
-        reportError(TypesAreUnrelated{computedType, annotationType}, expr->location);
+        switch (normalizer.isInhabited(computedType))
+        {
+        case NormalizationResult::True:
+            break;
+        case NormalizationResult::False:
+            return;
+        case NormalizationResult::HitLimits:
+            reportError(NormalizationTooComplex{}, expr->location);
+            return;
+        }
+
+        switch (normalizer.isIntersectionInhabited(computedType, annotationType))
+        {
+        case NormalizationResult::True:
+            return;
+        case NormalizationResult::False:
+            reportError(TypesAreUnrelated{computedType, annotationType}, expr->location);
+            break;
+        case NormalizationResult::HitLimits:
+            reportError(NormalizationTooComplex{}, expr->location);
+            break;
+        }
     }
 
     void visit(AstExprIfElse* expr)
@@ -2710,6 +2772,8 @@ struct TypeChecker2
             fetch(builtinTypes->stringType);
         if (normValid)
             fetch(norm->threads);
+        if (normValid)
+            fetch(norm->buffers);
 
         if (normValid)
         {

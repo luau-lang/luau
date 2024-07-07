@@ -46,6 +46,9 @@ struct CompileOptions
 
     // null-terminated array of globals that are mutable; disables the import optimization for fields accessed through these
     const char* const* mutableGlobals = nullptr;
+
+    // null-terminated array of userdata types that will be included in the type information
+    const char* const* userdataTypes = nullptr;
 };
 
 class CompileError : public std::exception

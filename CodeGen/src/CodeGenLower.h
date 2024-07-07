@@ -27,14 +27,15 @@ LUAU_FASTFLAG(DebugCodegenSkipNumbering)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockLimit)
 LUAU_FASTINT(CodegenHeuristicsBlockInstructionLimit)
-LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
+LUAU_FASTFLAG(LuauLoadUserdataInfo)
+LUAU_FASTFLAG(LuauNativeAttribute)
 
 namespace Luau
 {
 namespace CodeGen
 {
 
-inline void gatherFunctions(std::vector<Proto*>& results, Proto* proto, unsigned int flags)
+inline void gatherFunctions_DEPRECATED(std::vector<Proto*>& results, Proto* proto, unsigned int flags)
 {
     if (results.size() <= size_t(proto->bytecodeid))
         results.resize(proto->bytecodeid + 1);
@@ -49,7 +50,36 @@ inline void gatherFunctions(std::vector<Proto*>& results, Proto* proto, unsigned
 
     // Recursively traverse child protos even if we aren't compiling this one
     for (int i = 0; i < proto->sizep; i++)
-        gatherFunctions(results, proto->p[i], flags);
+        gatherFunctions_DEPRECATED(results, proto->p[i], flags);
+}
+
+inline void gatherFunctionsHelper(
+    std::vector<Proto*>& results, Proto* proto, const unsigned int flags, const bool hasNativeFunctions, const bool root)
+{
+    if (results.size() <= size_t(proto->bytecodeid))
+        results.resize(proto->bytecodeid + 1);
+
+    // Skip protos that we've already compiled in this run: this happens because at -O2, inlined functions get their protos reused
+    if (results[proto->bytecodeid])
+        return;
+
+    // if native module, compile cold functions if requested
+    // if not native module, compile function if it has native attribute and is not root
+    bool shouldGather = hasNativeFunctions ? (!root && (proto->flags & LPF_NATIVE_FUNCTION) != 0)
+                                           : ((proto->flags & LPF_NATIVE_COLD) == 0 || (flags & CodeGen_ColdFunctions) != 0);
+
+    if (shouldGather)
+        results[proto->bytecodeid] = proto;
+
+    // Recursively traverse child protos even if we aren't compiling this one
+    for (int i = 0; i < proto->sizep; i++)
+        gatherFunctionsHelper(results, proto->p[i], flags, hasNativeFunctions, false);
+}
+
+inline void gatherFunctions(std::vector<Proto*>& results, Proto* root, const unsigned int flags, const bool hasNativeFunctions = false)
+{
+    LUAU_ASSERT(FFlag::LuauNativeAttribute);
+    gatherFunctionsHelper(results, root, flags, hasNativeFunctions, true);
 }
 
 inline unsigned getInstructionCount(const std::vector<IrInst>& instructions, IrCmd cmd)
@@ -149,7 +179,11 @@ inline bool lowerImpl(AssemblyBuilder& build, IrLowering& lowering, IrFunction& 
 
                 if (bcTypes.result != LBC_TYPE_ANY || bcTypes.a != LBC_TYPE_ANY || bcTypes.b != LBC_TYPE_ANY || bcTypes.c != LBC_TYPE_ANY)
                 {
-                    toString(ctx.result, bcTypes);
+                    if (FFlag::LuauLoadUserdataInfo)
+                        toString(ctx.result, bcTypes, options.compilationOptions.userdataTypes);
+                    else
+                        toString_DEPRECATED(ctx.result, bcTypes);
+
                     build.logAppend("\n");
                 }
             }
@@ -312,8 +346,7 @@ inline bool lowerFunction(IrBuilder& ir, AssemblyBuilder& build, ModuleHelpers& 
             }
         }
 
-        if (FFlag::LuauCodegenRemoveDeadStores5)
-            markDeadStoresInBlockChains(ir);
+        markDeadStoresInBlockChains(ir);
     }
 
     std::vector<uint32_t> sortedBlocks = getSortedBlockOrder(ir.function);

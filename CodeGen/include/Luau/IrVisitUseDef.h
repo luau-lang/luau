@@ -4,7 +4,7 @@
 #include "Luau/Common.h"
 #include "Luau/IrData.h"
 
-LUAU_FASTFLAG(LuauCodegenRemoveDeadStores5)
+LUAU_FASTFLAG(LuauCodegenFastcall3)
 
 namespace Luau
 {
@@ -112,12 +112,48 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
         visitor.useRange(vmRegOp(inst.a), function.intOp(inst.b));
         break;
 
-        // TODO: FASTCALL is more restrictive than INVOKE_FASTCALL; we should either determine the exact semantics, or rework it
     case IrCmd::FASTCALL:
-    case IrCmd::INVOKE_FASTCALL:
-        if (int count = function.intOp(inst.e); count != -1)
+        if (FFlag::LuauCodegenFastcall3)
         {
-            if (count >= 3)
+            visitor.use(inst.c);
+
+            if (int nresults = function.intOp(inst.d); nresults != -1)
+                visitor.defRange(vmRegOp(inst.b), nresults);
+        }
+        else
+        {
+            if (int count = function.intOp(inst.e); count != -1)
+            {
+                if (count >= 3)
+                {
+                    CODEGEN_ASSERT(inst.d.kind == IrOpKind::VmReg && vmRegOp(inst.d) == vmRegOp(inst.c) + 1);
+
+                    visitor.useRange(vmRegOp(inst.c), count);
+                }
+                else
+                {
+                    if (count >= 1)
+                        visitor.use(inst.c);
+
+                    if (count >= 2)
+                        visitor.maybeUse(inst.d); // Argument can also be a VmConst
+                }
+            }
+            else
+            {
+                visitor.useVarargs(vmRegOp(inst.c));
+            }
+
+            // Multiple return sequences (count == -1) are defined by ADJUST_STACK_TO_REG
+            if (int count = function.intOp(inst.f); count != -1)
+                visitor.defRange(vmRegOp(inst.b), count);
+        }
+        break;
+    case IrCmd::INVOKE_FASTCALL:
+        if (int count = function.intOp(FFlag::LuauCodegenFastcall3 ? inst.f : inst.e); count != -1)
+        {
+            // Only LOP_FASTCALL3 lowering is allowed to have third optional argument
+            if (count >= 3 && (!FFlag::LuauCodegenFastcall3 || inst.e.kind == IrOpKind::Undef))
             {
                 CODEGEN_ASSERT(inst.d.kind == IrOpKind::VmReg && vmRegOp(inst.d) == vmRegOp(inst.c) + 1);
 
@@ -130,6 +166,9 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
 
                 if (count >= 2)
                     visitor.maybeUse(inst.d); // Argument can also be a VmConst
+
+                if (FFlag::LuauCodegenFastcall3 && count >= 3)
+                    visitor.maybeUse(inst.e); // Argument can also be a VmConst
             }
         }
         else
@@ -138,7 +177,7 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
         }
 
         // Multiple return sequences (count == -1) are defined by ADJUST_STACK_TO_REG
-        if (int count = function.intOp(inst.f); count != -1)
+        if (int count = function.intOp(FFlag::LuauCodegenFastcall3 ? inst.g : inst.f); count != -1)
             visitor.defRange(vmRegOp(inst.b), count);
         break;
     case IrCmd::FORGLOOP:
@@ -188,15 +227,8 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
         visitor.def(inst.b);
         break;
     case IrCmd::FALLBACK_FORGPREP:
-        if (FFlag::LuauCodegenRemoveDeadStores5)
-        {
-            // This instruction doesn't always redefine Rn, Rn+1, Rn+2, so we have to mark it as implicit use
-            visitor.useRange(vmRegOp(inst.b), 3);
-        }
-        else
-        {
-            visitor.use(inst.b);
-        }
+        // This instruction doesn't always redefine Rn, Rn+1, Rn+2, so we have to mark it as implicit use
+        visitor.useRange(vmRegOp(inst.b), 3);
 
         visitor.defRange(vmRegOp(inst.b), 3);
         break;
@@ -214,12 +246,6 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
         visitor.use(inst.a);
         break;
 
-        // After optimizations with DebugLuauAbortingChecks enabled, CHECK_TAG Rn, tag, block instructions are generated
-    case IrCmd::CHECK_TAG:
-        if (!FFlag::LuauCodegenRemoveDeadStores5)
-            visitor.maybeUse(inst.a);
-        break;
-
     default:
         // All instructions which reference registers have to be handled explicitly
         CODEGEN_ASSERT(inst.a.kind != IrOpKind::VmReg);
@@ -228,6 +254,7 @@ static void visitVmRegDefsUses(T& visitor, IrFunction& function, const IrInst& i
         CODEGEN_ASSERT(inst.d.kind != IrOpKind::VmReg);
         CODEGEN_ASSERT(inst.e.kind != IrOpKind::VmReg);
         CODEGEN_ASSERT(inst.f.kind != IrOpKind::VmReg);
+        CODEGEN_ASSERT(inst.g.kind != IrOpKind::VmReg);
         break;
     }
 }

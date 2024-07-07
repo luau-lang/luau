@@ -13,6 +13,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
+LUAU_FASTFLAG(LuauUnifierRecursionOnRestart);
 
 struct TryUnifyFixture : Fixture
 {
@@ -478,6 +479,36 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "unifying_two_unions_under_dcr_does_not_creat
         REQUIRE(bt);
         CHECK(bt->boundTo == outerType);
     }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_unification_full_restart_recursion")
+{
+    ScopedFastFlag luauUnifierRecursionOnRestart{FFlag::LuauUnifierRecursionOnRestart, true};
+
+    CheckResult result = check(R"(
+local A, B, C, D
+
+E = function(a, b)
+    local mt = getmetatable(b)
+    if mt.tm:bar(A) == nil and mt.tm:bar(B) == nil then end
+    if mt.foo == true then D(b, 3) end
+    mt.foo:call(false, b)
+end
+
+A = function(a, b)
+    local mt = getmetatable(b)
+    if mt.foo == true then D(b, 3) end
+    C(mt, 3)
+end
+
+B = function(a, b)
+    local mt = getmetatable(b)
+    if mt.foo == true then D(b, 3) end
+    C(mt, 3)
+end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

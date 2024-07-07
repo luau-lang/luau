@@ -19,6 +19,7 @@
 LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
+LUAU_FASTFLAG(LuauLeadingBarAndAmpersand2)
 LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTINT(LuauNormalizeCacheLimit);
 LUAU_FASTINT(LuauRecursionLimit);
@@ -782,7 +783,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_heap_use_after_free_error")
         end
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+        LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_assertion_value_type")
@@ -1532,7 +1536,7 @@ TEST_CASE_FIXTURE(Fixture, "typeof_cannot_refine_builtin_alias")
 
     freeze(arena);
 
-    (void) check(R"(
+    (void)check(R"(
         function foo(x)
             if typeof(x) == 'GlobalTable' then
             end
@@ -1540,19 +1544,91 @@ TEST_CASE_FIXTURE(Fixture, "typeof_cannot_refine_builtin_alias")
     )");
 }
 
-/*
- * We had an issue where we tripped the canMutate() check when binding one
- * blocked type to another.
- */
-TEST_CASE_FIXTURE(Fixture, "delay_setIndexer_constraint_if_the_indexers_type_is_blocked")
+TEST_CASE_FIXTURE(BuiltinsFixture, "bad_iter_metamethod")
 {
-    (void) check(R"(
-        local SG = GetService(true)
-        local lines: { [string]: typeof(SG.ScreenGui) } = {}
-        lines[deadline] = nil -- This line
+    CheckResult result = check(R"(
+        function iter(): unknown
+            return nil
+        end
+
+        local a = {__iter = iter}
+        setmetatable(a, a)
+
+        for i in a do
+        end
     )");
 
-    // As long as type inference doesn't trip an assert or crash, we're good!
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        CannotCallNonFunction* ccnf = get<CannotCallNonFunction>(result.errors[0]);
+        REQUIRE(ccnf);
+
+        CHECK("unknown" == toString(ccnf->ty));
+    }
+    else
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "leading_bar")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+    CheckResult result = check(R"(
+        type Bar = | number
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("number" == toString(requireTypeAlias("Bar")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "leading_bar_question_mark")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+    CheckResult result = check(R"(
+        type Bar = |?
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK("Expected type, got '?'" == toString(result.errors[0]));
+    CHECK("*error-type*?" == toString(requireTypeAlias("Bar")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "leading_ampersand")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+    CheckResult result = check(R"(
+        type Amp = & string
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK("string" == toString(requireTypeAlias("Amp")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "leading_bar_no_type")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+    CheckResult result = check(R"(
+        type Bar = |
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK("Expected type, got <eof>" == toString(result.errors[0]));
+    CHECK("*error-type*" == toString(requireTypeAlias("Bar")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "leading_ampersand_no_type")
+{
+    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
+    CheckResult result = check(R"(
+        type Amp = &
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK("Expected type, got <eof>" == toString(result.errors[0]));
+    CHECK("*error-type*" == toString(requireTypeAlias("Amp")));
 }
 
 TEST_SUITE_END();

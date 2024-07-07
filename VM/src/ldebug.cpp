@@ -330,12 +330,16 @@ l_noret luaG_runerrorL(lua_State* L, const char* fmt, ...)
     vsnprintf(result, sizeof(result), fmt, argp);
     va_end(argp);
 
+    lua_rawcheckstack(L, 1);
+
     pusherror(L, result);
     luaD_throw(L, LUA_ERRRUN);
 }
 
 void luaG_pusherror(lua_State* L, const char* error)
 {
+    lua_rawcheckstack(L, 1);
+
     pusherror(L, error);
 }
 

@@ -11,6 +11,7 @@
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256);
+LUAU_FASTFLAG(LuauReusableSubstitutions)
 
 namespace Luau
 {
@@ -23,8 +24,6 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
         // The pointer identities of free and local types is very important.
         // We decline to copy them.
         if constexpr (std::is_same_v<T, FreeType>)
-            return ty;
-        else if constexpr (std::is_same_v<T, LocalType>)
             return ty;
         else if constexpr (std::is_same_v<T, BoundType>)
         {
@@ -148,6 +147,8 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
 }
 
 Tarjan::Tarjan()
+    : typeToIndex(nullptr, FFlag::LuauReusableSubstitutions ? FInt::LuauTarjanPreallocationSize : 0)
+    , packToIndex(nullptr, FFlag::LuauReusableSubstitutions ? FInt::LuauTarjanPreallocationSize : 0)
 {
     nodes.reserve(FInt::LuauTarjanPreallocationSize);
     stack.reserve(FInt::LuauTarjanPreallocationSize);
@@ -448,13 +449,30 @@ TarjanResult Tarjan::visitRoot(TypePackId tp)
     return loop();
 }
 
-void Tarjan::clearTarjan()
+void Tarjan::clearTarjan(const TxnLog* log)
 {
-    typeToIndex.clear();
-    packToIndex.clear();
+    if (FFlag::LuauReusableSubstitutions)
+    {
+        typeToIndex.clear(~0u);
+        packToIndex.clear(~0u);
+    }
+    else
+    {
+        typeToIndex.clear();
+        packToIndex.clear();
+    }
+
     nodes.clear();
 
     stack.clear();
+
+    if (FFlag::LuauReusableSubstitutions)
+    {
+        childCount = 0;
+        // childLimit setting stays the same
+
+        this->log = log;
+    }
 
     edgesTy.clear();
     edgesTp.clear();
@@ -530,7 +548,6 @@ Substitution::Substitution(const TxnLog* log_, TypeArena* arena)
 {
     log = log_;
     LUAU_ASSERT(log);
-    LUAU_ASSERT(arena);
 }
 
 void Substitution::dontTraverseInto(TypeId ty)
@@ -548,7 +565,7 @@ std::optional<TypeId> Substitution::substitute(TypeId ty)
     ty = log->follow(ty);
 
     // clear algorithm state for reentrancy
-    clearTarjan();
+    clearTarjan(log);
 
     auto result = findDirty(ty);
     if (result != TarjanResult::Ok)
@@ -581,7 +598,7 @@ std::optional<TypePackId> Substitution::substitute(TypePackId tp)
     tp = log->follow(tp);
 
     // clear algorithm state for reentrancy
-    clearTarjan();
+    clearTarjan(log);
 
     auto result = findDirty(tp);
     if (result != TarjanResult::Ok)
@@ -607,6 +624,23 @@ std::optional<TypePackId> Substitution::substitute(TypePackId tp)
     }
     TypePackId newTp = replace(tp);
     return newTp;
+}
+
+void Substitution::resetState(const TxnLog* log, TypeArena* arena)
+{
+    LUAU_ASSERT(FFlag::LuauReusableSubstitutions);
+
+    clearTarjan(log);
+
+    this->arena = arena;
+
+    newTypes.clear();
+    newPacks.clear();
+    replacedTypes.clear();
+    replacedTypePacks.clear();
+
+    noTraverseTypes.clear();
+    noTraverseTypePacks.clear();
 }
 
 TypeId Substitution::clone(TypeId ty)

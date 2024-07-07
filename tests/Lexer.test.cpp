@@ -192,13 +192,13 @@ TEST_CASE("string_interpolation_double_brace")
 
     auto brokenInterpBegin = lexer.next();
     CHECK_EQ(brokenInterpBegin.type, Lexeme::BrokenInterpDoubleBrace);
-    CHECK_EQ(std::string(brokenInterpBegin.data, brokenInterpBegin.length), std::string("foo"));
+    CHECK_EQ(std::string(brokenInterpBegin.data, brokenInterpBegin.getLength()), std::string("foo"));
 
     CHECK_EQ(lexer.next().type, Lexeme::Name);
 
     auto interpEnd = lexer.next();
     CHECK_EQ(interpEnd.type, Lexeme::InterpStringEnd);
-    CHECK_EQ(std::string(interpEnd.data, interpEnd.length), std::string("}bar"));
+    CHECK_EQ(std::string(interpEnd.data, interpEnd.getLength()), std::string("}bar"));
 }
 
 TEST_CASE("string_interpolation_double_but_unmatched_brace")

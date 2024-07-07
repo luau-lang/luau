@@ -33,7 +33,14 @@ struct NativeContext
     int (*luaV_lessthan)(lua_State* L, const TValue* l, const TValue* r) = nullptr;
     int (*luaV_lessequal)(lua_State* L, const TValue* l, const TValue* r) = nullptr;
     int (*luaV_equalval)(lua_State* L, const TValue* t1, const TValue* t2) = nullptr;
-    void (*luaV_doarith)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TMS op) = nullptr;
+    void (*luaV_doarithadd)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_doarithsub)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_doarithmul)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_doarithdiv)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_doarithidiv)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_doarithmod)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_doarithpow)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
+    void (*luaV_doarithunm)(lua_State* L, StkId ra, const TValue* rb, const TValue* rc) = nullptr;
     void (*luaV_dolen)(lua_State* L, StkId ra, const TValue* rb) = nullptr;
     void (*luaV_gettable)(lua_State* L, const TValue* t, TValue* key, StkId val) = nullptr;
     void (*luaV_settable)(lua_State* L, const TValue* t, TValue* key, StkId val) = nullptr;
@@ -86,6 +93,7 @@ struct NativeContext
     void (*forgPrepXnextFallback)(lua_State* L, TValue* ra, int pc) = nullptr;
     Closure* (*callProlog)(lua_State* L, TValue* ra, StkId argtop, int nresults) = nullptr;
     void (*callEpilogC)(lua_State* L, int nresults, int n) = nullptr;
+    Udata* (*newUserdata)(lua_State* L, size_t s, int tag) = nullptr;
 
     Closure* (*callFallback)(lua_State* L, StkId ra, StkId argtop, int nresults) = nullptr;
 
@@ -108,22 +116,6 @@ struct NativeContext
 
 using GateFn = int (*)(lua_State*, Proto*, uintptr_t, NativeContext*);
 
-struct NativeState
-{
-    NativeState();
-    NativeState(AllocationCallback* allocationCallback, void* allocationCallbackContext);
-    ~NativeState();
-
-    CodeAllocator codeAllocator;
-    std::unique_ptr<UnwindBuilder> unwindBuilder;
-
-    uint8_t* gateData = nullptr;
-    size_t gateDataSize = 0;
-
-    NativeContext context;
-};
-
-void initFunctions(NativeState& data);
 void initFunctions(NativeContext& context);
 
 } // namespace CodeGen

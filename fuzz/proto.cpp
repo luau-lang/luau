@@ -379,7 +379,7 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
         if (luau_load(globalState, "=fuzz", bytecode.data(), bytecode.size(), 0) == 0)
         {
             Luau::CodeGen::AssemblyOptions options;
-            options.flags = Luau::CodeGen::CodeGen_ColdFunctions;
+            options.compilationOptions.flags = Luau::CodeGen::CodeGen_ColdFunctions;
             options.outputBinary = true;
             options.target = kFuzzCodegenTarget;
             Luau::CodeGen::getAssembly(globalState, -1, options);

@@ -3,7 +3,6 @@
 
 #include "Luau/ConstraintSolver.h"
 #include "Luau/NotNull.h"
-#include "Luau/TxnLog.h"
 #include "Luau/Type.h"
 
 #include "ClassFixture.h"
@@ -14,6 +13,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 
 struct FamilyFixture : Fixture
 {
@@ -24,7 +24,7 @@ struct FamilyFixture : Fixture
     {
         swapFamily = TypeFamily{/* name */ "Swap",
             /* reducer */
-            [](TypeId instance, NotNull<TypeFamilyQueue> queue, const std::vector<TypeId>& tys, const std::vector<TypePackId>& tps,
+            [](TypeId instance, const std::vector<TypeId>& tys, const std::vector<TypePackId>& tps,
                 NotNull<TypeFamilyContext> ctx) -> TypeFamilyReductionResult<TypeId> {
                 LUAU_ASSERT(tys.size() == 1);
                 TypeId param = follow(tys.at(0));
@@ -167,15 +167,13 @@ TEST_CASE_FIXTURE(FamilyFixture, "table_internal_families")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(requireType("a")) == "{string}");
     CHECK(toString(requireType("b")) == "{number}");
-    CHECK(toString(requireType("c")) == "{Swap<boolean>}");
-    CHECK(toString(result.errors[0]) == "Type family instance Swap<boolean> is uninhabited");
+    // FIXME: table types are constructing a trivial union here.
+    CHECK(toString(requireType("c")) == "{Swap<boolean | boolean | boolean>}");
+    CHECK(toString(result.errors[0]) == "Type family instance Swap<boolean | boolean | boolean> is uninhabited");
 }
 
 TEST_CASE_FIXTURE(FamilyFixture, "function_internal_families")
 {
-    // This test is broken right now, but it's not because of type families. See
-    // CLI-71143.
-
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
 
@@ -391,8 +389,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_errors_if_it_has_nontable_
 
     // FIXME(CLI-95289): we should actually only report the type family being uninhabited error at its first use, I think?
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(toString(result.errors[0]) == "Type family instance keyof<MyObject | boolean> is uninhabited");
-    CHECK(toString(result.errors[1]) == "Type family instance keyof<MyObject | boolean> is uninhabited");
+    CHECK(toString(result.errors[0]) == "Type 'MyObject | boolean' does not have keys, so 'keyof<MyObject | boolean>' is invalid");
+    CHECK(toString(result.errors[1]) == "Type 'MyObject | boolean' does not have keys, so 'keyof<MyObject | boolean>' is invalid");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_string_indexer")
@@ -517,8 +515,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_errors_if_it_has_nontab
 
     // FIXME(CLI-95289): we should actually only report the type family being uninhabited error at its first use, I think?
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(toString(result.errors[0]) == "Type family instance rawkeyof<MyObject | boolean> is uninhabited");
-    CHECK(toString(result.errors[1]) == "Type family instance rawkeyof<MyObject | boolean> is uninhabited");
+    CHECK(toString(result.errors[0]) == "Type 'MyObject | boolean' does not have keys, so 'rawkeyof<MyObject | boolean>' is invalid");
+    CHECK(toString(result.errors[1]) == "Type 'MyObject | boolean' does not have keys, so 'rawkeyof<MyObject | boolean>' is invalid");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_common_subset_if_union_of_differing_tables")
@@ -590,8 +588,8 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_errors_if_it_has_nonclass_par
 
     // FIXME(CLI-95289): we should actually only report the type family being uninhabited error at its first use, I think?
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK(toString(result.errors[0]) == "Type family instance keyof<BaseClass | boolean> is uninhabited");
-    CHECK(toString(result.errors[1]) == "Type family instance keyof<BaseClass | boolean> is uninhabited");
+    CHECK(toString(result.errors[0]) == "Type 'BaseClass | boolean' does not have keys, so 'keyof<BaseClass | boolean>' is invalid");
+    CHECK(toString(result.errors[1]) == "Type 'BaseClass | boolean' does not have keys, so 'keyof<BaseClass | boolean>' is invalid");
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_common_subset_if_union_of_differing_classes")
@@ -699,6 +697,470 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_oss_crash_gh1161")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(get<FunctionExitsWithoutReturning>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(FamilyFixture, "fuzzer_numeric_binop_doesnt_assert_on_generalizeFreeType")
+{
+    CheckResult result = check(R"(
+Module 'l0':
+local _ = (67108864)(_ >= _).insert
+do end
+do end
+_(...,_(_,_(_()),_()))
+(67108864)()()
+_(_ ~= _ // _,l0)(_(_({n0,})),_(_),_)
+_(setmetatable(_,{[...]=_,}))
+
+)");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_concat_family_at_work")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type T = concat<string | T, string>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireTypeAlias("T")) == "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "exceeded_distributivity_limits")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    ScopedFastInt sfi{DFInt::LuauTypeFamilyApplicationCartesianProductLimit, 10};
+
+    loadDefinition(R"(
+        declare class A
+            function __mul(self, rhs: unknown): A
+        end
+
+        declare class B
+            function __mul(self, rhs: unknown): B
+        end
+
+        declare class C
+            function __mul(self, rhs: unknown): C
+        end
+
+        declare class D
+            function __mul(self, rhs: unknown): D
+        end
+    )");
+
+    CheckResult result = check(R"(
+        type T = mul<A | B | C | D, A | B | C | D>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<UninhabitedTypeFamily>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "didnt_quite_exceed_distributivity_limits")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    // We duplicate the test here because we want to make sure the test failed
+    // due to exceeding the limits specifically, rather than any possible reasons.
+    ScopedFastInt sfi{DFInt::LuauTypeFamilyApplicationCartesianProductLimit, 20};
+
+    loadDefinition(R"(
+        declare class A
+            function __mul(self, rhs: unknown): A
+        end
+
+        declare class B
+            function __mul(self, rhs: unknown): B
+        end
+
+        declare class C
+            function __mul(self, rhs: unknown): C
+        end
+
+        declare class D
+            function __mul(self, rhs: unknown): D
+        end
+    )");
+
+    CheckResult result = check(R"(
+        type T = mul<A | B | C | D, A | B | C | D>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "ensure_equivalence_with_distributivity")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    loadDefinition(R"(
+        declare class A
+            function __mul(self, rhs: unknown): A
+        end
+
+        declare class B
+            function __mul(self, rhs: unknown): B
+        end
+
+        declare class C
+            function __mul(self, rhs: unknown): C
+        end
+
+        declare class D
+            function __mul(self, rhs: unknown): D
+        end
+    )");
+
+    CheckResult result = check(R"(
+        type T = mul<A | B, C | D>
+        type U = mul<A, C> | mul<A, D> | mul<B, C> | mul<B, D>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireTypeAlias("T")) == "A | B");
+    CHECK(toString(requireTypeAlias("U")) == "A | A | B | B");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "we_shouldnt_warn_that_a_reducible_type_family_is_uninhabited")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+
+local Debounce = false
+local Active = false
+
+local function Use(Mode)
+
+	if Mode ~= nil then
+
+		if Mode == false and Active == false then
+			return
+		else
+			Active = not Mode
+		end
+
+		Debounce = false
+	end
+	Active = not Active
+
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = {a: string, b: number, c: boolean}
+        type IdxAType = index<MyObject, "a">
+        type IdxBType = index<MyObject, keyof<MyObject>>
+
+        local function ok(idx: IdxAType): string return idx end
+        local function ok2(idx: IdxBType): string | number | boolean return idx end
+        local function err(idx: IdxAType): boolean return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
+    REQUIRE(tpm);
+    CHECK_EQ("boolean", toString(tpm->wantedTp));
+    CHECK_EQ("string", toString(tpm->givenTp));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_array")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local MyObject = {"hello", 1, true}
+        type IdxAType = index<typeof(MyObject), number>
+
+        local function ok(idx: IdxAType): string | number | boolean return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_generic_types")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local function access<T, K>(tbl: T & {}, key: K): index<T, K>
+            return tbl[key]
+        end
+
+        local subjects = {
+            english = "boring",
+            math = "fun"
+        }
+
+        local key: "english" = "english"
+        local a: string = access(subjects, key)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_errors_w_bad_indexer")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = {a: string, b: number, c: boolean}
+        type errType1 = index<MyObject, "d">
+        type errType2 = index<MyObject, boolean>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(toString(result.errors[0]) == "Property '\"d\"' does not exist on type 'MyObject'");
+    CHECK(toString(result.errors[1]) == "Property 'boolean' does not exist on type 'MyObject'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_errors_w_var_indexer")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = {a: string, b: number, c: boolean}
+        local key = "a"
+
+        type errType1 = index<MyObject, key>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(toString(result.errors[0]) == "Second argument to index<MyObject, _> is not a valid index type");
+    CHECK(toString(result.errors[1]) == "Unknown type 'key'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_union_type_indexer")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = {a: string, b: number, c: boolean}
+
+        type idxType = index<MyObject, "a" | "b">
+        local function ok(idx: idxType): string | number return idx end
+
+        type errType = index<MyObject, "a" | "d">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Property '\"a\" | \"d\"' does not exist on type 'MyObject'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_union_type_indexee")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = {a: string, b: number, c: boolean}
+        type MyObject2 = {a: number}
+
+        type idxTypeA = index<MyObject | MyObject2, "a">
+        local function ok(idx: idxTypeA): string | number return idx end
+
+        type errType = index<MyObject | MyObject2, "b">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Property '\"b\"' does not exist on type 'MyObject | MyObject2'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_rfc_alternative_section")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = {a: string}
+        type MyObject2 = {a: string, b: number}
+
+        local function edgeCase(param: MyObject) 
+            type unknownType = index<typeof(param), "b">
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Property '\"b\"' does not exist on type 'MyObject'");
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "index_type_family_works_on_classes")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type KeysOfMyObject = index<BaseClass, "BaseField">
+
+        local function ok(idx: KeysOfMyObject): number return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_index_metatables")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local exampleClass = { Foo = "text", Bar = true }
+
+        local exampleClass2 = setmetatable({ Foo = 8 }, { __index = exampleClass })
+        type exampleTy2 = index<typeof(exampleClass2), "Foo">
+        local function ok(idx: exampleTy2): number return idx end
+
+        local exampleClass3 = setmetatable({ Bar = 5 }, { __index = exampleClass })
+        type exampleTy3 = index<typeof(exampleClass3), "Foo">
+        local function ok2(idx: exampleTy3): string return idx end
+
+        type exampleTy4 = index<typeof(exampleClass3), "Foo" | "Bar">
+        local function ok3(idx: exampleTy4): string | number return idx end
+
+        type errTy = index<typeof(exampleClass2), "Car">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Property '\"Car\"' does not exist on type 'exampleClass2'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = {a: string, b: number, c: boolean}
+        type RawAType = rawget<MyObject, "a">
+        type RawBType = rawget<MyObject, keyof<MyObject>>
+        local function ok(idx: RawAType): string return idx end
+        local function ok2(idx: RawBType): string | number | boolean return idx end
+        local function err(idx: RawAType): boolean return idx end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypePackMismatch* tpm = get<TypePackMismatch>(result.errors[0]);
+    REQUIRE(tpm);
+    CHECK_EQ("boolean", toString(tpm->wantedTp));
+    CHECK_EQ("string", toString(tpm->givenTp));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_array")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local MyObject = {"hello", 1, true}
+        type RawAType = rawget<typeof(MyObject), number>
+        local function ok(idx: RawAType): string | number | boolean return idx end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_errors_w_var_indexer")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = {a: string, b: number, c: boolean}
+        local key = "a"
+        type errType1 = rawget<MyObject, key>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(toString(result.errors[0]) == "Second argument to rawget<MyObject, _> is not a valid index type");
+    CHECK(toString(result.errors[1]) == "Unknown type 'key'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_union_type_indexer")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = {a: string, b: number, c: boolean}
+        type rawType = rawget<MyObject, "a" | "b">
+        local function ok(idx: rawType): string | number return idx end
+        type errType = rawget<MyObject, "a" | "d">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Property '\"a\" | \"d\"' does not exist on type 'MyObject'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_union_type_indexee")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type MyObject = {a: string, b: number, c: boolean}
+        type MyObject2 = {a: number}
+        type rawTypeA = rawget<MyObject | MyObject2, "a">
+        local function ok(idx: rawTypeA): string | number return idx end
+        type errType = rawget<MyObject | MyObject2, "b">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Property '\"b\"' does not exist on type 'MyObject | MyObject2'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_index_metatables")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local exampleClass = { Foo = "text", Bar = true }
+        local exampleClass2 = setmetatable({ Foo = 8 }, { __index = exampleClass })
+        type exampleTy2 = rawget<typeof(exampleClass2), "Foo">
+        local function ok(idx: exampleTy2): number return idx end
+        local exampleClass3 = setmetatable({ Bar = 5 }, { __index = exampleClass })
+        type errType = rawget<typeof(exampleClass3), "Foo">
+        type errType2 = rawget<typeof(exampleClass3), "Bar" | "Foo">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK(toString(result.errors[0]) == "Property '\"Foo\"' does not exist on type 'exampleClass3'");
+    CHECK(toString(result.errors[1]) == "Property '\"Bar\" | \"Foo\"' does not exist on type 'exampleClass3'");
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "rawget_type_family_errors_w_classes")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        type PropsOfMyObject = rawget<BaseClass, "BaseField">
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Property '\"BaseField\"' does not exist on type 'BaseClass'");
 }
 
 TEST_SUITE_END();

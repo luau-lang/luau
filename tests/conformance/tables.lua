@@ -306,10 +306,14 @@ end
 
 
 assert(table.maxn{} == 0)
+assert(table.maxn{[-100] = 1} == 0)
 assert(table.maxn{["1000"] = true} == 0)
 assert(table.maxn{["1000"] = true, [24.5] = 3} == 24.5)
 assert(table.maxn{[1000] = true} == 1000)
 assert(table.maxn{[10] = true, [100*math.pi] = print} == 100*math.pi)
+a = {[10] = 1, [20] = 2}
+a[20] = nil
+assert(table.maxn(a) == 10)
 
 
 -- int overflow
@@ -408,8 +412,36 @@ do
 
   assert(table.find({false, true}, true) == 2)
 
-  -- make sure table.find checks the hash portion as well by constructing a table literal that forces the value into the hash part
-  assert(table.find({[(1)] = true}, true) == 1)
+  -- make sure table.find checks the hash portion as well
+  assert(table.find({[(2)] = true}, true, 2) == 2)
+end
+
+-- test table.concat
+do
+  -- regular usage
+  assert(table.concat({}) == "")
+  assert(table.concat({}, ",") == "")
+  assert(table.concat({"a", "b", "c"}, ",") == "a,b,c")
+  assert(table.concat({"a", "b", "c"}, ",", 2) == "b,c")
+  assert(table.concat({"a", "b", "c"}, ",", 1, 2) == "a,b")
+
+  -- hash elements
+  local t = {}
+  t[123] = "a"
+  t[124] = "b"
+
+  assert(table.concat(t) == "")
+  assert(table.concat(t, ",", 123, 124) == "a,b")
+  assert(table.concat(t, ",", 123, 123) == "a")
+
+  -- numeric values
+  assert(table.concat({1, 2, 3}, ",") == "1,2,3")
+  assert(table.concat({"a", 2, "c"}, ",") == "a,2,c")
+
+  -- error cases
+  assert(pcall(table.concat, "") == false)
+  assert(pcall(table.concat, t, false) == false)
+  assert(pcall(table.concat, t, ",", 1, 100) == false)
 end
 
 -- test indexing with strings that have zeroes embedded in them

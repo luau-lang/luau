@@ -31,7 +31,7 @@ enum
 // * Rn - VM stack register slot, n in 0..254
 // * Kn - VM proto constant slot, n in 0..2^23-1
 // * UPn - VM function upvalue slot, n in 0..199
-// * A, B, C, D, E are instruction arguments
+// * A, B, C, D, E, F, G are instruction arguments
 enum class IrCmd : uint8_t
 {
     NOP,
@@ -179,6 +179,10 @@ enum class IrCmd : uint8_t
     // A: double
     ABS_NUM,
 
+    // Get the sign of the argument (math.sign)
+    // A: double
+    SIGN_NUM,
+
     // Add/Sub/Mul/Div/Idiv two vectors
     // A, B: TValue
     ADD_VEC,
@@ -290,6 +294,11 @@ enum class IrCmd : uint8_t
     // C: block
     TRY_CALL_FASTGETTM,
 
+    // Create new tagged userdata
+    // A: int (size)
+    // B: int (tag)
+    NEW_USERDATA,
+
     // Convert integer into a double number
     // A: int
     INT_TO_NUM,
@@ -321,13 +330,12 @@ enum class IrCmd : uint8_t
     // This is used to recover after calling a variadic function
     ADJUST_STACK_TO_TOP,
 
-    // Execute fastcall builtin function in-place
+    // Execute fastcall builtin function with 1 argument in-place
+    // This is used for a few builtins that can have more than 1 result and cannot be represented as a regular instruction
     // A: unsigned int (builtin id)
     // B: Rn (result start)
-    // C: Rn (argument start)
-    // D: Rn or Kn or undef (optional second argument)
-    // E: int (argument count)
-    // F: int (result count)
+    // C: Rn (first argument)
+    // D: int (result count)
     FASTCALL,
 
     // Call the fastcall builtin function
@@ -335,8 +343,9 @@ enum class IrCmd : uint8_t
     // B: Rn (result start)
     // C: Rn (argument start)
     // D: Rn or Kn or undef (optional second argument)
-    // E: int (argument count or -1 to use all arguments up to stack top)
-    // F: int (result count or -1 to preserve all results and adjust stack top)
+    // E: Rn or Kn or undef (optional third argument)
+    // F: int (argument count or -1 to use all arguments up to stack top)
+    // G: int (result count or -1 to preserve all results and adjust stack top)
     INVOKE_FASTCALL,
 
     // Check that fastcall builtin function invocation was successful (negative result count jumps to fallback)
@@ -459,6 +468,13 @@ enum class IrCmd : uint8_t
     // D: block/vmexit/undef
     // When undef is specified instead of a block, execution is aborted on check failure
     CHECK_BUFFER_LEN,
+
+    // Guard against userdata tag mismatch
+    // A: pointer (userdata)
+    // B: int (tag)
+    // C: block/vmexit/undef
+    // When undef is specified instead of a block, execution is aborted on check failure
+    CHECK_USERDATA_TAG,
 
     // Special operations
 
@@ -857,6 +873,7 @@ struct IrInst
     IrOp d;
     IrOp e;
     IrOp f;
+    IrOp g;
 
     uint32_t lastUse = 0;
     uint16_t useCount = 0;
@@ -911,6 +928,7 @@ struct IrInstHash
         h = mix(h, key.d);
         h = mix(h, key.e);
         h = mix(h, key.f);
+        h = mix(h, key.g);
 
         // MurmurHash2 tail
         h ^= h >> 13;
@@ -925,7 +943,7 @@ struct IrInstEq
 {
     bool operator()(const IrInst& a, const IrInst& b) const
     {
-        return a.cmd == b.cmd && a.a == b.a && a.b == b.b && a.c == b.c && a.d == b.d && a.e == b.e && a.f == b.f;
+        return a.cmd == b.cmd && a.a == b.a && a.b == b.b && a.c == b.c && a.d == b.d && a.e == b.e && a.f == b.f && a.g == b.g;
     }
 };
 

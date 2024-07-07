@@ -1,6 +1,6 @@
 # Security Guarantees
 
-Luau provides a safe sandbox that scripts can not escape from, short of vulnerabilities in custom C functions exposed by the host. This includes the virtual machine and builtin libraries. Notably this currently does *not* include the work-in-progress native code generation facilities.
+Luau provides a safe sandbox that scripts can not escape from, short of vulnerabilities in custom C functions exposed by the host. This includes the virtual machine, builtin libraries and native code generation facilities.
 
 Any source code can not result in memory safety errors or crashes during its compilation or execution. Violations of memory safety are considered vulnerabilities.
 

@@ -6,7 +6,6 @@
 #include "Luau/NotNull.h"
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/TypeFwd.h"
-#include "Luau/Variant.h"
 
 #include <functional>
 #include <string>
@@ -18,22 +17,6 @@ namespace Luau
 struct TypeArena;
 struct TxnLog;
 class Normalizer;
-
-struct TypeFamilyQueue
-{
-    NotNull<VecDeque<TypeId>> queuedTys;
-    NotNull<VecDeque<TypePackId>> queuedTps;
-
-    void add(TypeId instanceTy);
-    void add(TypePackId instanceTp);
-
-    template<typename T>
-    void add(const std::vector<T>& ts)
-    {
-        for (const T& t : ts)
-            enqueue(t);
-    }
-};
 
 struct TypeFamilyContext
 {
@@ -99,8 +82,8 @@ struct TypeFamilyReductionResult
 };
 
 template<typename T>
-using ReducerFunction = std::function<TypeFamilyReductionResult<T>(
-    T, NotNull<TypeFamilyQueue>, const std::vector<TypeId>&, const std::vector<TypePackId>&, NotNull<TypeFamilyContext>)>;
+using ReducerFunction =
+    std::function<TypeFamilyReductionResult<T>(T, const std::vector<TypeId>&, const std::vector<TypePackId>&, NotNull<TypeFamilyContext>)>;
 
 /// Represents a type function that may be applied to map a series of types and
 /// type packs to a single output type.
@@ -196,11 +179,12 @@ struct BuiltinTypeFamilies
     TypeFamily keyofFamily;
     TypeFamily rawkeyofFamily;
 
+    TypeFamily indexFamily;
+    TypeFamily rawgetFamily;
+
     void addToScope(NotNull<TypeArena> arena, NotNull<Scope> scope) const;
 };
 
-
-
-const BuiltinTypeFamilies kBuiltinTypeFamilies{};
+const BuiltinTypeFamilies& builtinTypeFunctions();
 
 } // namespace Luau

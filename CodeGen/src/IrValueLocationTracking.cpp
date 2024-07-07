@@ -3,6 +3,8 @@
 
 #include "Luau/IrUtils.h"
 
+LUAU_FASTFLAG(LuauCodegenFastcall3)
+
 namespace Luau
 {
 namespace CodeGen
@@ -44,11 +46,11 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
         invalidateRestoreVmRegs(vmRegOp(inst.a), -1);
         break;
     case IrCmd::FASTCALL:
-        invalidateRestoreVmRegs(vmRegOp(inst.b), function.intOp(inst.f));
+        invalidateRestoreVmRegs(vmRegOp(inst.b), function.intOp(FFlag::LuauCodegenFastcall3 ? inst.d : inst.f));
         break;
     case IrCmd::INVOKE_FASTCALL:
         // Multiple return sequences (count == -1) are defined by ADJUST_STACK_TO_REG
-        if (int count = function.intOp(inst.f); count != -1)
+        if (int count = function.intOp(FFlag::LuauCodegenFastcall3 ? inst.g : inst.f); count != -1)
             invalidateRestoreVmRegs(vmRegOp(inst.b), count);
         break;
     case IrCmd::DO_ARITH:
@@ -119,7 +121,7 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
         break;
 
         // These instructions read VmReg only after optimizeMemoryOperandsX64
-    case IrCmd::CHECK_TAG: // TODO: remove with FFlagLuauCodegenRemoveDeadStores5
+    case IrCmd::CHECK_TAG:
     case IrCmd::CHECK_TRUTHY:
     case IrCmd::ADD_NUM:
     case IrCmd::SUB_NUM:
@@ -146,6 +148,7 @@ void IrValueLocationTracking::beforeInstLowering(IrInst& inst)
         CODEGEN_ASSERT(inst.d.kind != IrOpKind::VmReg);
         CODEGEN_ASSERT(inst.e.kind != IrOpKind::VmReg);
         CODEGEN_ASSERT(inst.f.kind != IrOpKind::VmReg);
+        CODEGEN_ASSERT(inst.g.kind != IrOpKind::VmReg);
         break;
     }
 }

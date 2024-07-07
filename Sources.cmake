@@ -181,6 +181,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Error.h
     Analysis/include/Luau/FileResolver.h
     Analysis/include/Luau/Frontend.h
+    Analysis/include/Luau/Generalization.h
     Analysis/include/Luau/GlobalTypes.h
     Analysis/include/Luau/InsertionOrderedMap.h
     Analysis/include/Luau/Instantiation.h
@@ -251,6 +252,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/EmbeddedBuiltinDefinitions.cpp
     Analysis/src/Error.cpp
     Analysis/src/Frontend.cpp
+    Analysis/src/Generalization.cpp
     Analysis/src/GlobalTypes.cpp
     Analysis/src/Instantiation.cpp
     Analysis/src/Instantiation2.cpp
@@ -266,7 +268,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Refinement.cpp
     Analysis/src/RequireTracer.cpp
     Analysis/src/Scope.cpp
-    Analysis/src/Set.cpp
     Analysis/src/Simplify.cpp
     Analysis/src/Substitution.cpp
     Analysis/src/Subtyping.cpp
@@ -421,6 +422,7 @@ if(TARGET Luau.UnitTest)
         tests/Fixture.cpp
         tests/Fixture.h
         tests/Frontend.test.cpp
+        tests/Generalization.test.cpp
         tests/InsertionOrderedMap.test.cpp
         tests/Instantiation2.test.cpp
         tests/IostreamOptional.h
@@ -494,6 +496,7 @@ if(TARGET Luau.Conformance)
     target_sources(Luau.Conformance PRIVATE
         tests/RegisterCallbacks.h
         tests/RegisterCallbacks.cpp
+        tests/ConformanceIrHooks.h
         tests/Conformance.test.cpp
         tests/IrLowering.test.cpp
         tests/SharedCodeAllocator.test.cpp

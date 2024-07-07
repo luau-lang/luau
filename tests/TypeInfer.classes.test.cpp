@@ -7,6 +7,7 @@
 #include "Fixture.h"
 #include "ClassFixture.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 using namespace Luau;
@@ -16,6 +17,39 @@ LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
 
 TEST_SUITE_BEGIN("TypeInferClasses");
+
+TEST_CASE_FIXTURE(ClassFixture, "Luau.Analyze.CLI_crashes_on_this_test")
+{
+    CheckResult result = check(R"(
+        local CircularQueue = {}
+CircularQueue.__index = CircularQueue
+
+function CircularQueue:new()
+	local newCircularQueue = {
+		head = nil,
+	}
+	setmetatable(newCircularQueue, CircularQueue)
+
+	return newCircularQueue
+end
+
+function CircularQueue:push()
+	local newListNode
+
+	if self.head then
+		newListNode = {
+			prevNode = self.head.prevNode,
+			nextNode = self.head,
+		}
+		newListNode.prevNode.nextNode = newListNode
+		newListNode.nextNode.prevNode = newListNode
+	end
+end
+
+return CircularQueue
+
+    )");
+}
 
 TEST_CASE_FIXTURE(ClassFixture, "call_method_of_a_class")
 {
@@ -472,6 +506,31 @@ caused by:
 Type 'ChildClass' could not be converted into 'BaseClass' in an invariant context)";
         CHECK_EQ(expected, toString(result.errors.at(0)));
     }
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "optional_class_casts_work_in_new_solver")
+{
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
+
+    CheckResult result = check(R"(
+        type A = { x: ChildClass }
+        type B = { x: BaseClass }
+
+        local a = { x = ChildClass.New() } :: A
+        local opt_a = a :: A?
+        local b = { x = BaseClass.New() } :: B
+        local opt_b = b :: B?
+        local b_from_a = a :: B
+        local b_from_opt_a = opt_a :: B
+        local opt_b_from_a = a :: B?
+        local opt_b_from_opt_a = opt_a :: B?
+        local a_from_b = b :: A
+        local a_from_opt_b = opt_b :: A
+        local opt_a_from_b = b :: A?
+        local opt_a_from_opt_b = opt_b :: A?
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "callable_classes")

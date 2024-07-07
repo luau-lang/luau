@@ -1255,6 +1255,10 @@ TypeId TypeSimplifier::union_(TypeId left, TypeId right)
             case Relation::Coincident:
             case Relation::Superset:
                 return left;
+            case Relation::Subset:
+                newParts.insert(right);
+                changed = true;
+                break;
             default:
                 newParts.insert(part);
                 newParts.insert(right);
@@ -1360,6 +1364,17 @@ SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<
     TypeId res = s.intersect(left, right);
 
     // fprintf(stderr, "Intersect %s and %s -> %s\n", toString(left).c_str(), toString(right).c_str(), toString(res).c_str());
+
+    return SimplifyResult{res, std::move(s.blockedTypes)};
+}
+
+SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, std::set<TypeId> parts)
+{
+    LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
+
+    TypeSimplifier s{builtinTypes, arena};
+
+    TypeId res = s.intersectFromParts(std::move(parts));
 
     return SimplifyResult{res, std::move(s.blockedTypes)};
 }

@@ -13,6 +13,8 @@
 
 #include <stddef.h>
 
+LUAU_FASTFLAGVARIABLE(LuauCodegenInstG, false)
+
 namespace Luau
 {
 namespace CodeGen
@@ -52,6 +54,9 @@ void updateUseCounts(IrFunction& function)
         checkOp(inst.d);
         checkOp(inst.e);
         checkOp(inst.f);
+
+        if (FFlag::LuauCodegenInstG)
+            checkOp(inst.g);
     }
 }
 
@@ -95,6 +100,9 @@ void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& s
             checkOp(inst.d);
             checkOp(inst.e);
             checkOp(inst.f);
+
+            if (FFlag::LuauCodegenInstG)
+                checkOp(inst.g);
         }
     }
 }
@@ -128,6 +136,12 @@ uint32_t getNextInstUse(IrFunction& function, uint32_t targetInstIdx, uint32_t s
 
         if (inst.f.kind == IrOpKind::Inst && inst.f.index == targetInstIdx)
             return i;
+
+        if (FFlag::LuauCodegenInstG)
+        {
+            if (inst.g.kind == IrOpKind::Inst && inst.g.index == targetInstIdx)
+                return i;
+        }
     }
 
     // There must be a next use since there is the last use location
@@ -165,6 +179,9 @@ std::pair<uint32_t, uint32_t> getLiveInOutValueCount(IrFunction& function, IrBlo
         checkOp(inst.d);
         checkOp(inst.e);
         checkOp(inst.f);
+
+        if (FFlag::LuauCodegenInstG)
+            checkOp(inst.g);
     }
 
     return std::make_pair(liveIns, liveOuts);
@@ -488,6 +505,9 @@ static void computeCfgBlockEdges(IrFunction& function)
             checkOp(inst.d);
             checkOp(inst.e);
             checkOp(inst.f);
+
+            if (FFlag::LuauCodegenInstG)
+                checkOp(inst.g);
         }
     }
 

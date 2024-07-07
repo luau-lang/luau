@@ -191,7 +191,7 @@ TEST_CASE("WindowsUnwindCodesX64")
     unwind.finishInfo();
 
     std::vector<char> data;
-    data.resize(unwind.getSize());
+    data.resize(unwind.getUnwindInfoSize());
     unwind.finalize(data.data(), 0, nullptr, 0);
 
     std::vector<uint8_t> expected{0x44, 0x33, 0x22, 0x11, 0x22, 0x33, 0x44, 0x55, 0x0c, 0x00, 0x00, 0x00, 0x01, 0x17, 0x0a, 0x05, 0x17, 0x82, 0x13,
@@ -215,7 +215,7 @@ TEST_CASE("Dwarf2UnwindCodesX64")
     unwind.finishInfo();
 
     std::vector<char> data;
-    data.resize(unwind.getSize());
+    data.resize(unwind.getUnwindInfoSize());
     unwind.finalize(data.data(), 0, nullptr, 0);
 
     std::vector<uint8_t> expected{0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x78, 0x10, 0x0c, 0x07, 0x08, 0x90, 0x01, 0x00,
@@ -241,7 +241,7 @@ TEST_CASE("Dwarf2UnwindCodesA64")
     unwind.finishInfo();
 
     std::vector<char> data;
-    data.resize(unwind.getSize());
+    data.resize(unwind.getUnwindInfoSize());
     unwind.finalize(data.data(), 0, nullptr, 0);
 
     std::vector<uint8_t> expected{0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x78, 0x1e, 0x0c, 0x1f, 0x00, 0x2c, 0x00, 0x00,
@@ -253,7 +253,7 @@ TEST_CASE("Dwarf2UnwindCodesA64")
     CHECK(memcmp(data.data(), expected.data(), expected.size()) == 0);
 }
 
-#if defined(__x86_64__) || defined(_M_X64)
+#if defined(CODEGEN_TARGET_X64)
 
 #if defined(_WIN32)
 // Windows x64 ABI
@@ -774,7 +774,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
 
 #endif
 
-#if defined(__aarch64__)
+#if defined(CODEGEN_TARGET_A64)
 
 TEST_CASE("GeneratedCodeExecutionA64")
 {

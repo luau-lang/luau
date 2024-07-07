@@ -15,7 +15,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauCheckedFunctionSyntax);
+LUAU_FASTFLAG(LuauAttributeSyntax);
 
 #define NONSTRICT_REQUIRE_ERR_AT_POS(pos, result, idx) \
     do \
@@ -69,8 +69,8 @@ struct NonStrictTypeCheckerFixture : Fixture
     CheckResult checkNonStrict(const std::string& code)
     {
         ScopedFastFlag flags[] = {
-            {FFlag::LuauCheckedFunctionSyntax, true},
             {FFlag::DebugLuauDeferredConstraintResolution, true},
+            {FFlag::LuauAttributeSyntax, true},
         };
         LoadDefinitionFileResult res = loadDefinition(definitions);
         LUAU_ASSERT(res.success);
@@ -80,8 +80,8 @@ struct NonStrictTypeCheckerFixture : Fixture
     CheckResult checkNonStrictModule(const std::string& moduleName)
     {
         ScopedFastFlag flags[] = {
-            {FFlag::LuauCheckedFunctionSyntax, true},
             {FFlag::DebugLuauDeferredConstraintResolution, true},
+            {FFlag::LuauAttributeSyntax, true},
         };
         LoadDefinitionFileResult res = loadDefinition(definitions);
         LUAU_ASSERT(res.success);
@@ -89,21 +89,21 @@ struct NonStrictTypeCheckerFixture : Fixture
     }
 
     std::string definitions = R"BUILTIN_SRC(
-declare function @checked abs(n: number): number
-declare function @checked lower(s: string): string
+@checked declare function abs(n: number): number
+@checked declare function lower(s: string): string
 declare function cond() : boolean
-declare function @checked contrived(n : Not<number>) : number
+@checked declare function contrived(n : Not<number>) : number
 
 -- interesting types of things that we would like to mark as checked
-declare function @checked onlyNums(...: number) : number
-declare function @checked mixedArgs(x: string, ...: number) : number
-declare function @checked optionalArg(x: string?) : number
+@checked declare function onlyNums(...: number) : number
+@checked declare function mixedArgs(x: string, ...: number) : number
+@checked declare function optionalArg(x: string?) : number
 declare foo: {
     bar: @checked (number) -> number,
 }
 
-declare function @checked optionalArgsAtTheEnd1(x: string, y: number?, z: number?) : number
-declare function @checked optionalArgsAtTheEnd2(x: string, y: number?, z: string) : number
+@checked declare function optionalArgsAtTheEnd1(x: string, y: number?, z: number?) : number
+@checked declare function optionalArgsAtTheEnd2(x: string, y: number?, z: string) : number
 
 type DateTypeArg = {
     year: number,
@@ -119,7 +119,7 @@ declare os : {
     time: @checked (time: DateTypeArg?) -> number
 }
 
-declare function @checked require(target : any) : any
+@checked declare function require(target : any) : any
 )BUILTIN_SRC";
 };
 
@@ -557,6 +557,28 @@ local E = require(script.Parent.A)
 )";
 
     CheckResult result = checkNonStrictModule("Modules/B");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_shouldnt_warn_on_valid_buffer_use")
+{
+    ScopedFastFlag flags[] = {
+        {FFlag::LuauAttributeSyntax, true},
+    };
+
+    loadDefinition(R"(
+declare buffer: {
+    create: @checked (size: number) -> buffer,
+    readi8: @checked (b: buffer, offset: number) -> number,
+    writef64: @checked (b: buffer, offset: number, value: number) -> (),
+}
+)");
+
+    CheckResult result = checkNonStrict(R"(
+local b = buffer.create(100)
+buffer.writef64(b, 0, 5)
+buffer.readi8(b, 0)
+)");
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
