@@ -13,7 +13,6 @@
 #include "lstate.h"
 #include "ltm.h"
 
-LUAU_FASTFLAG(LuauCodegenUserdataOps)
 LUAU_FASTFLAG(LuauCodegenFastcall3)
 
 namespace Luau
@@ -444,7 +443,7 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
         return;
     }
 
-    if (FFlag::LuauCodegenUserdataOps && (isUserdataBytecodeType(bcTypes.a) || isUserdataBytecodeType(bcTypes.b)))
+    if (isUserdataBytecodeType(bcTypes.a) || isUserdataBytecodeType(bcTypes.b))
     {
         if (build.hostHooks.userdataMetamethod &&
             build.hostHooks.userdataMetamethod(build, bcTypes.a, bcTypes.b, ra, opb, opc, tmToHostMetamethod(tm), pcpos))
@@ -596,7 +595,7 @@ void translateInstMinus(IrBuilder& build, const Instruction* pc, int pcpos)
         return;
     }
 
-    if (FFlag::LuauCodegenUserdataOps && isUserdataBytecodeType(bcTypes.a))
+    if (isUserdataBytecodeType(bcTypes.a))
     {
         if (build.hostHooks.userdataMetamethod &&
             build.hostHooks.userdataMetamethod(build, bcTypes.a, bcTypes.b, ra, build.vmReg(rb), {}, tmToHostMetamethod(TM_UNM), pcpos))
@@ -628,17 +627,7 @@ void translateInstMinus(IrBuilder& build, const Instruction* pc, int pcpos)
         FallbackStreamScope scope(build, fallback, next);
 
         build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
-
-        if (FFlag::LuauCodegenUserdataOps)
-        {
-            build.inst(IrCmd::DO_ARITH, build.vmReg(ra), build.vmReg(rb), build.vmReg(rb), build.constInt(TM_UNM));
-        }
-        else
-        {
-            build.inst(
-                IrCmd::DO_ARITH, build.vmReg(LUAU_INSN_A(*pc)), build.vmReg(LUAU_INSN_B(*pc)), build.vmReg(LUAU_INSN_B(*pc)), build.constInt(TM_UNM));
-        }
-
+        build.inst(IrCmd::DO_ARITH, build.vmReg(ra), build.vmReg(rb), build.vmReg(rb), build.constInt(TM_UNM));
         build.inst(IrCmd::JUMP, next);
     }
 }
@@ -650,7 +639,7 @@ void translateInstLength(IrBuilder& build, const Instruction* pc, int pcpos)
     int ra = LUAU_INSN_A(*pc);
     int rb = LUAU_INSN_B(*pc);
 
-    if (FFlag::LuauCodegenUserdataOps && isUserdataBytecodeType(bcTypes.a))
+    if (isUserdataBytecodeType(bcTypes.a))
     {
         if (build.hostHooks.userdataMetamethod &&
             build.hostHooks.userdataMetamethod(build, bcTypes.a, bcTypes.b, ra, build.vmReg(rb), {}, tmToHostMetamethod(TM_LEN), pcpos))
@@ -680,12 +669,7 @@ void translateInstLength(IrBuilder& build, const Instruction* pc, int pcpos)
     FallbackStreamScope scope(build, fallback, next);
 
     build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + 1));
-
-    if (FFlag::LuauCodegenUserdataOps)
-        build.inst(IrCmd::DO_LEN, build.vmReg(ra), build.vmReg(rb));
-    else
-        build.inst(IrCmd::DO_LEN, build.vmReg(LUAU_INSN_A(*pc)), build.vmReg(LUAU_INSN_B(*pc)));
-
+    build.inst(IrCmd::DO_LEN, build.vmReg(ra), build.vmReg(rb));
     build.inst(IrCmd::JUMP, next);
 }
 
@@ -1293,11 +1277,11 @@ void translateInstGetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
         return;
     }
 
-    if (FFlag::LuauCodegenUserdataOps ? isUserdataBytecodeType(bcTypes.a) : bcTypes.a == LBC_TYPE_USERDATA)
+    if (isUserdataBytecodeType(bcTypes.a))
     {
         build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TUSERDATA), build.vmExit(pcpos));
 
-        if (FFlag::LuauCodegenUserdataOps && build.hostHooks.userdataAccess)
+        if (build.hostHooks.userdataAccess)
         {
             TString* str = gco2ts(build.function.proto->k[aux].value.gc);
             const char* field = getstr(str);
@@ -1340,7 +1324,7 @@ void translateInstSetTableKS(IrBuilder& build, const Instruction* pc, int pcpos)
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
 
-    if (FFlag::LuauCodegenUserdataOps ? isUserdataBytecodeType(bcTypes.a) : bcTypes.a == LBC_TYPE_USERDATA)
+    if (isUserdataBytecodeType(bcTypes.a))
     {
         build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TUSERDATA), build.vmExit(pcpos));
 
@@ -1486,11 +1470,11 @@ bool translateInstNamecall(IrBuilder& build, const Instruction* pc, int pcpos)
         return false;
     }
 
-    if (FFlag::LuauCodegenUserdataOps ? isUserdataBytecodeType(bcTypes.a) : bcTypes.a == LBC_TYPE_USERDATA)
+    if (isUserdataBytecodeType(bcTypes.a))
     {
         build.loadAndCheckTag(build.vmReg(rb), LUA_TUSERDATA, build.vmExit(pcpos));
 
-        if (FFlag::LuauCodegenUserdataOps && build.hostHooks.userdataNamecall)
+        if (build.hostHooks.userdataNamecall)
         {
             Instruction call = pc[2];
             CODEGEN_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);

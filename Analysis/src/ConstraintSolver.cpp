@@ -486,6 +486,9 @@ void ConstraintSolver::run()
             progress |= runSolverPass(true);
     } while (progress);
 
+    if (!unsolvedConstraints.empty())
+        reportError(InternalError{"Type inference failed to complete, you may see some confusing types and type errors."}, Location{});
+
     // After we have run all the constraints, type families should be generalized
     // At this point, we can try to perform one final simplification to suss out
     // whether type families are truly uninhabited or if they can reduce
@@ -1729,7 +1732,10 @@ bool ConstraintSolver::tryDispatch(const AssignPropConstraint& c, NotNull<const 
         if (lhsTable->state == TableState::Unsealed || lhsTable->state == TableState::Free)
         {
             bind(constraint, c.propType, rhsType);
-            lhsTable->props[propName] = Property::rw(rhsType);
+            Property& newProp = lhsTable->props[propName];
+            newProp.readTy = rhsType;
+            newProp.writeTy = rhsType;
+            newProp.location = c.propLocation;
 
             if (lhsTable->state == TableState::Unsealed && c.decrementPropCount)
             {

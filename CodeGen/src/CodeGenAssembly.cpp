@@ -12,7 +12,6 @@
 
 #include "lapi.h"
 
-LUAU_FASTFLAG(LuauLoadUserdataInfo)
 LUAU_FASTFLAG(LuauNativeAttribute)
 
 namespace Luau
@@ -84,53 +83,8 @@ static void logFunctionHeader(AssemblyBuilder& build, Proto* proto)
 }
 
 template<typename AssemblyBuilder>
-static void logFunctionTypes_DEPRECATED(AssemblyBuilder& build, const IrFunction& function)
-{
-    CODEGEN_ASSERT(!FFlag::LuauLoadUserdataInfo);
-
-    const BytecodeTypeInfo& typeInfo = function.bcTypeInfo;
-
-    for (size_t i = 0; i < typeInfo.argumentTypes.size(); i++)
-    {
-        uint8_t ty = typeInfo.argumentTypes[i];
-
-        if (ty != LBC_TYPE_ANY)
-        {
-            if (const char* name = tryFindLocalName(function.proto, int(i), 0))
-                build.logAppend("; R%d: %s [argument '%s']\n", int(i), getBytecodeTypeName_DEPRECATED(ty), name);
-            else
-                build.logAppend("; R%d: %s [argument]\n", int(i), getBytecodeTypeName_DEPRECATED(ty));
-        }
-    }
-
-    for (size_t i = 0; i < typeInfo.upvalueTypes.size(); i++)
-    {
-        uint8_t ty = typeInfo.upvalueTypes[i];
-
-        if (ty != LBC_TYPE_ANY)
-        {
-            if (const char* name = tryFindUpvalueName(function.proto, int(i)))
-                build.logAppend("; U%d: %s ['%s']\n", int(i), getBytecodeTypeName_DEPRECATED(ty), name);
-            else
-                build.logAppend("; U%d: %s\n", int(i), getBytecodeTypeName_DEPRECATED(ty));
-        }
-    }
-
-    for (const BytecodeRegTypeInfo& el : typeInfo.regTypes)
-    {
-        // Using last active position as the PC because 'startpc' for type info is before local is initialized
-        if (const char* name = tryFindLocalName(function.proto, el.reg, el.endpc - 1))
-            build.logAppend("; R%d: %s from %d to %d [local '%s']\n", el.reg, getBytecodeTypeName_DEPRECATED(el.type), el.startpc, el.endpc, name);
-        else
-            build.logAppend("; R%d: %s from %d to %d\n", el.reg, getBytecodeTypeName_DEPRECATED(el.type), el.startpc, el.endpc);
-    }
-}
-
-template<typename AssemblyBuilder>
 static void logFunctionTypes(AssemblyBuilder& build, const IrFunction& function, const char* const* userdataTypes)
 {
-    CODEGEN_ASSERT(FFlag::LuauLoadUserdataInfo);
-
     const BytecodeTypeInfo& typeInfo = function.bcTypeInfo;
 
     for (size_t i = 0; i < typeInfo.argumentTypes.size(); i++)
@@ -238,12 +192,7 @@ static std::string getAssemblyImpl(AssemblyBuilder& build, const TValue* func, A
             logFunctionHeader(build, p);
 
         if (options.includeIrTypes)
-        {
-            if (FFlag::LuauLoadUserdataInfo)
-                logFunctionTypes(build, ir.function, options.compilationOptions.userdataTypes);
-            else
-                logFunctionTypes_DEPRECATED(build, ir.function);
-        }
+            logFunctionTypes(build, ir.function, options.compilationOptions.userdataTypes);
 
         CodeGenCompilationResult result = CodeGenCompilationResult::Success;
 

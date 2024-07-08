@@ -11,9 +11,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenUserdataOps)
-LUAU_FASTFLAGVARIABLE(LuauCodegenUserdataAlloc, false)
-LUAU_FASTFLAGVARIABLE(LuauCodegenUserdataOpsFixA64, false)
 LUAU_FASTFLAG(LuauCodegenFastcall3)
 LUAU_FASTFLAG(LuauCodegenMathSign)
 
@@ -1077,8 +1074,6 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::NEW_USERDATA:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenUserdataAlloc);
-
         regs.spill(build, index);
         build.mov(x0, rState);
         build.mov(x1, intOp(inst.a));
@@ -1708,18 +1703,11 @@ void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CHECK_USERDATA_TAG:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenUserdataOps);
-
         Label fresh; // used when guard aborts execution or jumps to a VM exit
         Label& fail = getTargetLabel(inst.c, fresh);
         RegisterA64 temp = regs.allocTemp(KindA64::w);
         build.ldrb(temp, mem(regOp(inst.a), offsetof(Udata, tag)));
-
-        if (FFlag::LuauCodegenUserdataOpsFixA64)
-            build.cmp(temp, intOp(inst.b));
-        else
-            build.cmp(temp, tagOp(inst.b));
-
+        build.cmp(temp, intOp(inst.b));
         build.b(ConditionA64::NotEqual, fail);
         finalizeTargetLabel(inst.c, fresh);
         break;
@@ -2688,66 +2676,34 @@ AddressA64 IrLoweringA64::tempAddr(IrOp op, int offset)
 
 AddressA64 IrLoweringA64::tempAddrBuffer(IrOp bufferOp, IrOp indexOp, uint8_t tag)
 {
-    if (FFlag::LuauCodegenUserdataOps)
+    CODEGEN_ASSERT(tag == LUA_TUSERDATA || tag == LUA_TBUFFER);
+    int dataOffset = tag == LUA_TBUFFER ? offsetof(Buffer, data) : offsetof(Udata, data);
+
+    if (indexOp.kind == IrOpKind::Inst)
     {
-        CODEGEN_ASSERT(tag == LUA_TUSERDATA || tag == LUA_TBUFFER);
-        int dataOffset = tag == LUA_TBUFFER ? offsetof(Buffer, data) : offsetof(Udata, data);
+        RegisterA64 temp = regs.allocTemp(KindA64::x);
+        build.add(temp, regOp(bufferOp), regOp(indexOp)); // implicit uxtw
+        return mem(temp, dataOffset);
+    }
+    else if (indexOp.kind == IrOpKind::Constant)
+    {
+        // Since the resulting address may be used to load any size, including 1 byte, from an unaligned offset, we are limited by unscaled
+        // encoding
+        if (unsigned(intOp(indexOp)) + dataOffset <= 255)
+            return mem(regOp(bufferOp), int(intOp(indexOp) + dataOffset));
 
-        if (indexOp.kind == IrOpKind::Inst)
-        {
-            RegisterA64 temp = regs.allocTemp(KindA64::x);
-            build.add(temp, regOp(bufferOp), regOp(indexOp)); // implicit uxtw
-            return mem(temp, dataOffset);
-        }
-        else if (indexOp.kind == IrOpKind::Constant)
-        {
-            // Since the resulting address may be used to load any size, including 1 byte, from an unaligned offset, we are limited by unscaled
-            // encoding
-            if (unsigned(intOp(indexOp)) + dataOffset <= 255)
-                return mem(regOp(bufferOp), int(intOp(indexOp) + dataOffset));
+        // indexOp can only be negative in dead code (since offsets are checked); this avoids assertion in emitAddOffset
+        if (intOp(indexOp) < 0)
+            return mem(regOp(bufferOp), dataOffset);
 
-            // indexOp can only be negative in dead code (since offsets are checked); this avoids assertion in emitAddOffset
-            if (intOp(indexOp) < 0)
-                return mem(regOp(bufferOp), dataOffset);
-
-            RegisterA64 temp = regs.allocTemp(KindA64::x);
-            emitAddOffset(build, temp, regOp(bufferOp), size_t(intOp(indexOp)));
-            return mem(temp, dataOffset);
-        }
-        else
-        {
-            CODEGEN_ASSERT(!"Unsupported instruction form");
-            return noreg;
-        }
+        RegisterA64 temp = regs.allocTemp(KindA64::x);
+        emitAddOffset(build, temp, regOp(bufferOp), size_t(intOp(indexOp)));
+        return mem(temp, dataOffset);
     }
     else
     {
-        if (indexOp.kind == IrOpKind::Inst)
-        {
-            RegisterA64 temp = regs.allocTemp(KindA64::x);
-            build.add(temp, regOp(bufferOp), regOp(indexOp)); // implicit uxtw
-            return mem(temp, offsetof(Buffer, data));
-        }
-        else if (indexOp.kind == IrOpKind::Constant)
-        {
-            // Since the resulting address may be used to load any size, including 1 byte, from an unaligned offset, we are limited by unscaled
-            // encoding
-            if (unsigned(intOp(indexOp)) + offsetof(Buffer, data) <= 255)
-                return mem(regOp(bufferOp), int(intOp(indexOp) + offsetof(Buffer, data)));
-
-            // indexOp can only be negative in dead code (since offsets are checked); this avoids assertion in emitAddOffset
-            if (intOp(indexOp) < 0)
-                return mem(regOp(bufferOp), offsetof(Buffer, data));
-
-            RegisterA64 temp = regs.allocTemp(KindA64::x);
-            emitAddOffset(build, temp, regOp(bufferOp), size_t(intOp(indexOp)));
-            return mem(temp, offsetof(Buffer, data));
-        }
-        else
-        {
-            CODEGEN_ASSERT(!"Unsupported instruction form");
-            return noreg;
-        }
+        CODEGEN_ASSERT(!"Unsupported instruction form");
+        return noreg;
     }
 }
 

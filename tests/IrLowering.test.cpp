@@ -16,9 +16,6 @@
 #include <string_view>
 
 LUAU_FASTFLAG(LuauCompileUserdataInfo)
-LUAU_FASTFLAG(LuauLoadUserdataInfo)
-LUAU_FASTFLAG(LuauCodegenUserdataOps)
-LUAU_FASTFLAG(LuauCodegenUserdataAlloc)
 LUAU_FASTFLAG(LuauCompileFastcall3)
 LUAU_FASTFLAG(LuauCodegenFastcall3)
 
@@ -1548,7 +1545,7 @@ TEST_CASE("CustomUserdataTypesTemp")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, false}, {FFlag::LuauLoadUserdataInfo, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, false}};
 
     CHECK_EQ("\n" + getCodegenHeader(R"(
 local function foo(v: vec2, x: mat3)
@@ -1568,7 +1565,7 @@ TEST_CASE("CustomUserdataTypes")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}, {FFlag::LuauLoadUserdataInfo, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
 
     CHECK_EQ("\n" + getCodegenHeader(R"(
 local function foo(v: vec2, x: mat3)
@@ -1588,7 +1585,7 @@ TEST_CASE("CustomUserdataPropertyAccess")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}, {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenUserdataOps, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(v: vec2)
@@ -1623,7 +1620,7 @@ TEST_CASE("CustomUserdataPropertyAccess2")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}, {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenUserdataOps, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: mat3)
@@ -1660,7 +1657,7 @@ TEST_CASE("CustomUserdataNamecall1")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}, {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenUserdataOps, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: vec2, b: vec2)
@@ -1706,8 +1703,7 @@ TEST_CASE("CustomUserdataNamecall2")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}, {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenUserdataOps, true},
-        {FFlag::LuauCodegenUserdataAlloc, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: vec2, b: vec2)
@@ -1756,7 +1752,7 @@ TEST_CASE("CustomUserdataMetamethodDirectFlow")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}, {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenUserdataOps, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: mat3, b: mat3)
@@ -1788,7 +1784,7 @@ TEST_CASE("CustomUserdataMetamethodDirectFlow2")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}, {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenUserdataOps, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: mat3)
@@ -1818,7 +1814,7 @@ TEST_CASE("CustomUserdataMetamethodDirectFlow3")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}, {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenUserdataOps, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: sequence)
@@ -1848,8 +1844,7 @@ TEST_CASE("CustomUserdataMetamethod")
     if (!Luau::CodeGen::isSupported())
         return;
 
-    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}, {FFlag::LuauLoadUserdataInfo, true}, {FFlag::LuauCodegenUserdataOps, true},
-        {FFlag::LuauCodegenUserdataAlloc, true}};
+    ScopedFastFlag sffs[]{{FFlag::LuauCompileUserdataInfo, true}};
 
     CHECK_EQ("\n" + getCodegenAssembly(R"(
 local function foo(a: vec2, b: vec2, c: vec2)

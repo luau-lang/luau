@@ -255,8 +255,10 @@ bool isSubtype(const NormalizedStringType& subStr, const NormalizedStringType& s
 
 void NormalizedClassType::pushPair(TypeId ty, TypeIds negations)
 {
-    ordering.push_back(ty);
-    classes.insert(std::make_pair(ty, std::move(negations)));
+    auto result = classes.insert(std::make_pair(ty, std::move(negations)));
+    if (result.second)
+        ordering.push_back(ty);
+    LUAU_ASSERT(ordering.size() == classes.size());
 }
 
 void NormalizedClassType::resetToNever()

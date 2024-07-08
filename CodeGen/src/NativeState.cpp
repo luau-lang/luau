@@ -14,8 +14,6 @@
 #include <math.h>
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCodegenUserdataAlloc)
-
 namespace Luau
 {
 namespace CodeGen
@@ -91,9 +89,7 @@ void initFunctions(NativeContext& context)
     context.forgPrepXnextFallback = forgPrepXnextFallback;
     context.callProlog = callProlog;
     context.callEpilogC = callEpilogC;
-
-    if (FFlag::LuauCodegenUserdataAlloc)
-        context.newUserdata = newUserdata;
+    context.newUserdata = newUserdata;
 
     context.callFallback = callFallback;
 
