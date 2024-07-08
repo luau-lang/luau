@@ -202,6 +202,10 @@ struct AssignPropConstraint
     std::string propName;
     TypeId rhsType;
 
+    /// If a new property is to be inserted into a table type, it will be
+    /// ascribed this location.
+    std::optional<Location> propLocation;
+
     /// The canonical write type of the property.  It is _solely_ used to
     /// populate astTypes during constraint resolution.  Nothing should ever
     /// block on it.

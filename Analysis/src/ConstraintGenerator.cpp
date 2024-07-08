@@ -1246,6 +1246,9 @@ ControlFlow ConstraintGenerator::visit(const ScopePtr& scope, AstStatTypeAlias* 
         return ControlFlow::None;
     }
 
+    scope->typeAliasLocations[alias->name.value] = alias->location;
+    scope->typeAliasNameLocations[alias->name.value] = alias->nameLocation;
+
     ScopePtr* defnScope = astTypeAliasDefiningScopes.find(alias);
 
     std::unordered_map<Name, TypeFun>* typeBindings;
@@ -2441,7 +2444,7 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexName* e
 
     bool incremented = recordPropertyAssignment(lhsTy);
 
-    auto apc = addConstraint(scope, expr->location, AssignPropConstraint{lhsTy, expr->index.value, rhsType, propTy, incremented});
+    auto apc = addConstraint(scope, expr->location, AssignPropConstraint{lhsTy, expr->index.value, rhsType, expr->indexLocation, propTy, incremented});
     getMutable<BlockedType>(propTy)->setOwner(apc);
 }
 
@@ -2457,7 +2460,7 @@ void ConstraintGenerator::visitLValue(const ScopePtr& scope, AstExprIndexExpr* e
 
         bool incremented = recordPropertyAssignment(lhsTy);
 
-        auto apc = addConstraint(scope, expr->location, AssignPropConstraint{lhsTy, std::move(propName), rhsType, propTy, incremented});
+        auto apc = addConstraint(scope, expr->location, AssignPropConstraint{lhsTy, std::move(propName), rhsType, expr->index->location, propTy, incremented});
         getMutable<BlockedType>(propTy)->setOwner(apc);
 
         return;
@@ -2478,6 +2481,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
     LUAU_ASSERT(ttv);
 
     ttv->state = TableState::Unsealed;
+    ttv->definitionModuleName = module->name;
     ttv->scope = scope.get();
 
     interiorTypes.back().push_back(ty);
@@ -2509,7 +2513,7 @@ Inference ConstraintGenerator::check(const ScopePtr& scope, AstExprTable* expr, 
             if (AstExprConstantString* key = item.key->as<AstExprConstantString>())
             {
                 std::string propName{key->value.data, key->value.size};
-                ttv->props[propName] = {itemTy};
+                ttv->props[propName] = {itemTy, /*deprecated*/ false, {}, key->location};
             }
             else
             {

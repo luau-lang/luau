@@ -4,6 +4,7 @@
 
 #include "doctest.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/AstQuery.h"
 
 using namespace Luau;
 
@@ -929,17 +930,19 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_locations")
     )");
 
     ModulePtr mod = getMainModule();
-    REQUIRE(mod);
-    REQUIRE(mod->scopes.size() == 8);
+    REQUIRE(!mod->scopes.empty());
 
     REQUIRE(mod->scopes[0].second->typeAliasNameLocations.count("T") > 0);
     CHECK(mod->scopes[0].second->typeAliasNameLocations["T"] == Location(Position(1, 13), 1));
 
-    REQUIRE(mod->scopes[3].second->typeAliasNameLocations.count("T") > 0);
-    CHECK(mod->scopes[3].second->typeAliasNameLocations["T"] == Location(Position(4, 17), 1));
+    ScopePtr doScope = findScopeAtPosition(*mod, Position{4, 0});
+    REQUIRE(doScope);
 
-    REQUIRE(mod->scopes[3].second->typeAliasNameLocations.count("X") > 0);
-    CHECK(mod->scopes[3].second->typeAliasNameLocations["X"] == Location(Position(5, 17), 1));
+    REQUIRE(doScope->typeAliasNameLocations.count("T") > 0);
+    CHECK(doScope->typeAliasNameLocations["T"] == Location(Position(4, 17), 1));
+
+    REQUIRE(doScope->typeAliasNameLocations.count("X") > 0);
+    CHECK(doScope->typeAliasNameLocations["X"] == Location(Position(5, 17), 1));
 }
 
 /*

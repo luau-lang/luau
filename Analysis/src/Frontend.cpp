@@ -41,6 +41,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJsonFile, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode, false)
+LUAU_FASTFLAGVARIABLE(LuauSourceModuleUpdatedWithSelectedMode, false)
 
 namespace Luau
 {
@@ -918,6 +919,9 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         mode = Mode::Nonstrict;
     else
         mode = sourceModule.mode.value_or(config.mode);
+
+    if (FFlag::LuauSourceModuleUpdatedWithSelectedMode)
+        item.sourceModule->mode = {mode};
     ScopePtr environmentScope = item.environmentScope;
     double timestamp = getTimestamp();
     const std::vector<RequireCycle>& requireCycles = item.requireCycles;
@@ -1240,9 +1244,7 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
     ModulePtr result = std::make_shared<Module>();
     result->name = sourceModule.name;
     result->humanReadableName = sourceModule.humanReadableName;
-
-    result->mode = sourceModule.mode.value_or(Mode::NoCheck);
-
+    result->mode = mode;
     result->internalTypes.owningModule = result.get();
     result->interfaceTypes.owningModule = result.get();
 
@@ -1323,10 +1325,19 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
     }
     else
     {
-        if (mode == Mode::Nonstrict)
+        switch (mode)
+        {
+        case Mode::Nonstrict:
             Luau::checkNonStrict(builtinTypes, iceHandler, NotNull{&unifierState}, NotNull{&dfg}, NotNull{&limits}, sourceModule, result.get());
-        else
+            break;
+        case Mode::Definition:
+            // fallthrough intentional
+        case Mode::Strict:
             Luau::check(builtinTypes, NotNull{&unifierState}, NotNull{&limits}, logger.get(), sourceModule, result.get());
+            break;
+        case Mode::NoCheck:
+            break;
+        };
     }
 
     unfreeze(result->interfaceTypes);

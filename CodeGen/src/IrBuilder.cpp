@@ -13,7 +13,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauLoadUserdataInfo)
 LUAU_FASTFLAG(LuauCodegenInstG)
 LUAU_FASTFLAG(LuauCodegenFastcall3)
 
@@ -102,16 +101,13 @@ static void buildArgumentTypeChecks(IrBuilder& build)
             build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TBUFFER), build.vmExit(kVmExitEntryGuardPc));
             break;
         default:
-            if (FFlag::LuauLoadUserdataInfo)
+            if (tag >= LBC_TYPE_TAGGED_USERDATA_BASE && tag < LBC_TYPE_TAGGED_USERDATA_END)
             {
-                if (tag >= LBC_TYPE_TAGGED_USERDATA_BASE && tag < LBC_TYPE_TAGGED_USERDATA_END)
-                {
-                    build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TUSERDATA), build.vmExit(kVmExitEntryGuardPc));
-                }
-                else
-                {
-                    CODEGEN_ASSERT(!"unknown argument type tag");
-                }
+                build.inst(IrCmd::CHECK_TAG, load, build.constTag(LUA_TUSERDATA), build.vmExit(kVmExitEntryGuardPc));
+            }
+            else
+            {
+                CODEGEN_ASSERT(!"unknown argument type tag");
             }
             break;
         }

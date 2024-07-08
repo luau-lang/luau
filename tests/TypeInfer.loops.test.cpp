@@ -202,7 +202,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators_dcr")
         for key in no_iter() do end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_check")
@@ -465,7 +465,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "iter_constraint_before_loop_body")
 TEST_CASE_FIXTURE(BuiltinsFixture, "rbxl_place_file_crash_for_wrong_constraints")
 {
     CheckResult result = check(R"(
-local VehicleParameters = { 
+local VehicleParameters = {
     -- These are default values in the case the package structure is broken
 	StrutSpringStiffnessFront = 28000,
 }

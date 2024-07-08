@@ -18,8 +18,6 @@ LUAU_FASTINTVARIABLE(LuauCodeGenMinLinearBlockPath, 3)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseSlotLimit, 64)
 LUAU_FASTINTVARIABLE(LuauCodeGenReuseUdataTagLimit, 64)
 LUAU_FASTFLAGVARIABLE(DebugLuauAbortingChecks, false)
-LUAU_FASTFLAG(LuauCodegenUserdataOps)
-LUAU_FASTFLAG(LuauCodegenUserdataAlloc)
 LUAU_FASTFLAG(LuauCodegenFastcall3)
 LUAU_FASTFLAG(LuauCodegenMathSign)
 
@@ -425,9 +423,7 @@ struct ConstPropState
         invalidateValuePropagation();
         invalidateHeapTableData();
         invalidateHeapBufferData();
-
-        if (FFlag::LuauCodegenUserdataOps)
-            invalidateUserdataData();
+        invalidateUserdataData();
     }
 
     IrFunction& function;
@@ -1051,8 +1047,6 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     }
     case IrCmd::CHECK_USERDATA_TAG:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenUserdataOps);
-
         for (uint32_t prevIdx : state.useradataTagCache)
         {
             IrInst& prev = function.instructions[prevIdx];
@@ -1062,7 +1056,7 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
                 if (prev.a != inst.a || prev.b != inst.b)
                     continue;
             }
-            else if (FFlag::LuauCodegenUserdataAlloc && prev.cmd == IrCmd::NEW_USERDATA)
+            else if (prev.cmd == IrCmd::NEW_USERDATA)
             {
                 if (inst.a.kind != IrOpKind::Inst || prevIdx != inst.a.index || prev.b != inst.b)
                     continue;
@@ -1244,8 +1238,6 @@ static void constPropInInst(ConstPropState& state, IrBuilder& build, IrFunction&
     case IrCmd::TRY_CALL_FASTGETTM:
         break;
     case IrCmd::NEW_USERDATA:
-        CODEGEN_ASSERT(FFlag::LuauCodegenUserdataAlloc);
-
         if (int(state.useradataTagCache.size()) < FInt::LuauCodeGenReuseUdataTagLimit)
             state.useradataTagCache.push_back(index);
         break;
@@ -1532,9 +1524,7 @@ static void constPropInBlockChain(IrBuilder& build, std::vector<uint8_t>& visite
         // Same for table and buffer data propagation
         state.invalidateHeapTableData();
         state.invalidateHeapBufferData();
-
-        if (FFlag::LuauCodegenUserdataOps)
-            state.invalidateUserdataData();
+        state.invalidateUserdataData();
 
         // Blocks in a chain are guaranteed to follow each other
         // We force that by giving all blocks the same sorting key, but consecutive chain keys

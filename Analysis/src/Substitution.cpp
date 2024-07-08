@@ -753,7 +753,12 @@ void Substitution::replaceChildren(TypeId ty)
         for (auto& [name, prop] : ttv->props)
         {
             if (FFlag::DebugLuauDeferredConstraintResolution)
-                prop = Property::create(replace(prop.readTy), replace(prop.writeTy));
+            {
+                if (prop.readTy)
+                    prop.readTy = replace(prop.readTy);
+                if (prop.writeTy)
+                    prop.writeTy = replace(prop.writeTy);
+            }
             else
                 prop.setType(replace(prop.type()));
         }

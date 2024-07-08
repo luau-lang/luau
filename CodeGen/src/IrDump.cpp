@@ -7,7 +7,6 @@
 
 #include <stdarg.h>
 
-LUAU_FASTFLAG(LuauLoadUserdataInfo)
 LUAU_FASTFLAG(LuauCodegenInstG)
 
 namespace Luau
@@ -492,44 +491,8 @@ void toString(std::string& result, IrConst constant)
     }
 }
 
-const char* getBytecodeTypeName_DEPRECATED(uint8_t type)
-{
-    CODEGEN_ASSERT(!FFlag::LuauLoadUserdataInfo);
-
-    switch (type & ~LBC_TYPE_OPTIONAL_BIT)
-    {
-    case LBC_TYPE_NIL:
-        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "nil?" : "nil";
-    case LBC_TYPE_BOOLEAN:
-        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "boolean?" : "boolean";
-    case LBC_TYPE_NUMBER:
-        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "number?" : "number";
-    case LBC_TYPE_STRING:
-        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "string?" : "string";
-    case LBC_TYPE_TABLE:
-        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "table?" : "table";
-    case LBC_TYPE_FUNCTION:
-        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "function?" : "function";
-    case LBC_TYPE_THREAD:
-        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "thread?" : "thread";
-    case LBC_TYPE_USERDATA:
-        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "userdata?" : "userdata";
-    case LBC_TYPE_VECTOR:
-        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "vector?" : "vector";
-    case LBC_TYPE_BUFFER:
-        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "buffer?" : "buffer";
-    case LBC_TYPE_ANY:
-        return (type & LBC_TYPE_OPTIONAL_BIT) != 0 ? "any?" : "any";
-    }
-
-    CODEGEN_ASSERT(!"Unhandled type in getBytecodeTypeName");
-    return nullptr;
-}
-
 const char* getBytecodeTypeName(uint8_t type, const char* const* userdataTypes)
 {
-    CODEGEN_ASSERT(FFlag::LuauLoadUserdataInfo);
-
     // Optional bit should be handled externally
     type = type & ~LBC_TYPE_OPTIONAL_BIT;
 
@@ -571,22 +534,8 @@ const char* getBytecodeTypeName(uint8_t type, const char* const* userdataTypes)
     return nullptr;
 }
 
-void toString_DEPRECATED(std::string& result, const BytecodeTypes& bcTypes)
-{
-    CODEGEN_ASSERT(!FFlag::LuauLoadUserdataInfo);
-
-    if (bcTypes.c != LBC_TYPE_ANY)
-        append(result, "%s <- %s, %s, %s", getBytecodeTypeName_DEPRECATED(bcTypes.result), getBytecodeTypeName_DEPRECATED(bcTypes.a),
-            getBytecodeTypeName_DEPRECATED(bcTypes.b), getBytecodeTypeName_DEPRECATED(bcTypes.c));
-    else
-        append(result, "%s <- %s, %s", getBytecodeTypeName_DEPRECATED(bcTypes.result), getBytecodeTypeName_DEPRECATED(bcTypes.a),
-            getBytecodeTypeName_DEPRECATED(bcTypes.b));
-}
-
 void toString(std::string& result, const BytecodeTypes& bcTypes, const char* const* userdataTypes)
 {
-    CODEGEN_ASSERT(FFlag::LuauLoadUserdataInfo);
-
     append(result, "%s%s", getBytecodeTypeName(bcTypes.result, userdataTypes), (bcTypes.result & LBC_TYPE_OPTIONAL_BIT) != 0 ? "?" : "");
     append(result, " <- ");
     append(result, "%s%s", getBytecodeTypeName(bcTypes.a, userdataTypes), (bcTypes.a & LBC_TYPE_OPTIONAL_BIT) != 0 ? "?" : "");
