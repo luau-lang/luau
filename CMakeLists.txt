@@ -47,56 +47,130 @@ if(LUAU_BUILD_CLI)
     set_target_properties(Luau.Reduce.CLI PROPERTIES OUTPUT_NAME luau-reduce)
     set_target_properties(Luau.Compile.CLI PROPERTIES OUTPUT_NAME luau-compile)
     set_target_properties(Luau.Bytecode.CLI PROPERTIES OUTPUT_NAME luau-bytecode)
+
+    install(TARGETS Luau.Repl.CLI)
+    install(TARGETS Luau.Analyze.CLI)
+    install(TARGETS Luau.Ast.CLI)
+    install(TARGETS Luau.Reduce.CLI)
+    install(TARGETS Luau.Compile.CLI)
+    install(TARGETS Luau.Bytecode.CLI)
 endif()
 
 if(LUAU_BUILD_TESTS)
     add_executable(Luau.UnitTest)
     add_executable(Luau.Conformance)
     add_executable(Luau.CLI.Test)
+
+    # The unit tests aren't `install`ed
 endif()
 
 if(LUAU_BUILD_WEB)
     add_executable(Luau.Web)
+
+    # The web module isn't `install`ed - emscripten builds usually have custom
+    # packaging steps
 endif()
 
 # Proxy target to make it possible to depend on private VM headers
 add_library(Luau.VM.Internals INTERFACE)
 
+include(GNUInstallDirs)  # CMAKE_INSTALL_LIBDIR, _INCLUDEDIR, etc.
 include(Sources.cmake)
 
-target_include_directories(Luau.Common INTERFACE Common/include)
+target_include_directories(Luau.Common INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Common/include>
+    $<INSTALL_INTERFACE:include>
+)
+install(TARGETS Luau.Common EXPORT LuauTargets)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Common/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.h"
+)
 
 target_compile_features(Luau.CLI.lib PUBLIC cxx_std_17)
 target_link_libraries(Luau.CLI.lib PRIVATE Luau.Common)
+install(TARGETS Luau.CLI.lib EXPORT LuauTargets)
 
 target_compile_features(Luau.Ast PUBLIC cxx_std_17)
-target_include_directories(Luau.Ast PUBLIC Ast/include)
+target_include_directories(Luau.Ast PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Ast/include>
+    $<INSTALL_INTERFACE:include>
+)
 target_link_libraries(Luau.Ast PUBLIC Luau.Common Luau.CLI.lib)
+install(TARGETS Luau.Ast EXPORT LuauTargets)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Ast/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.h"
+)
 
 target_compile_features(Luau.Compiler PUBLIC cxx_std_17)
-target_include_directories(Luau.Compiler PUBLIC Compiler/include)
+target_include_directories(Luau.Compiler PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Compiler/include>
+    $<INSTALL_INTERFACE:include>
+)
 target_link_libraries(Luau.Compiler PUBLIC Luau.Ast)
+install(TARGETS Luau.Compiler EXPORT LuauTargets)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Compiler/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.h"
+)
 
 target_compile_features(Luau.Config PUBLIC cxx_std_17)
-target_include_directories(Luau.Config PUBLIC Config/include)
+target_include_directories(Luau.Config PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Config/include>
+    $<INSTALL_INTERFACE:include>
+)
 target_link_libraries(Luau.Config PUBLIC Luau.Ast)
+install(TARGETS Luau.Config EXPORT LuauTargets)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Config/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.h"
+)
 
 target_compile_features(Luau.Analysis PUBLIC cxx_std_17)
-target_include_directories(Luau.Analysis PUBLIC Analysis/include)
+target_include_directories(Luau.Analysis PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Analysis/include>
+    $<INSTALL_INTERFACE:include>
+)
 target_link_libraries(Luau.Analysis PUBLIC Luau.Ast Luau.Config)
+install(TARGETS Luau.Analysis EXPORT LuauTargets)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Analysis/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.h"
+)
 
 target_compile_features(Luau.CodeGen PRIVATE cxx_std_17)
-target_include_directories(Luau.CodeGen PUBLIC CodeGen/include)
+target_include_directories(Luau.CodeGen PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/CodeGen/include>
+    $<INSTALL_INTERFACE:include>
+)
 target_link_libraries(Luau.CodeGen PRIVATE Luau.VM Luau.VM.Internals) # Code generation needs VM internals
 target_link_libraries(Luau.CodeGen PUBLIC Luau.Common)
+install(TARGETS Luau.CodeGen EXPORT LuauTargets)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/CodeGen/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.h"
+)
 
 target_compile_features(Luau.VM PRIVATE cxx_std_11)
-target_include_directories(Luau.VM PUBLIC VM/include)
+target_include_directories(Luau.VM PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/VM/include>
+    $<INSTALL_INTERFACE:include>
+)
 target_link_libraries(Luau.VM PUBLIC Luau.Common)
+install(TARGETS Luau.VM EXPORT LuauTargets)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/VM/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.h"
+)
 
 target_include_directories(isocline PUBLIC extern/isocline/include)
 
-target_include_directories(Luau.VM.Internals INTERFACE VM/src)
+target_include_directories(Luau.VM.Internals INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/VM/src>
+    # no INSTALL_INTERFACE: the `Internals` target really only exists at compile-time
+)
+install(TARGETS Luau.VM.Internals EXPORT LuauTargets)
 
 set(LUAU_OPTIONS)
 
@@ -277,3 +351,25 @@ foreach(LIB Luau.Ast Luau.Compiler Luau.Config Luau.Analysis Luau.CodeGen Luau.V
         endif()
     endif()
 endforeach()
+
+# handle additional installation steps so that `find_package(luau)` works in
+# downstream projects that set the installation root as their `CMAKE_PREFIX_PATH`
+if(TRUE)
+    # install the targets cmake file
+    install(
+        EXPORT LuauTargets
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Luau
+    )
+
+    # configure+install the top-level config file that's loaded by `find_package`
+    include(CMakePackageConfigHelpers)
+    configure_package_config_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/LuauConfig.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/LuauConfig.cmake"
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Luau
+    )
+    install(
+        FILES "${CMAKE_CURRENT_BINARY_DIR}/LuauConfig.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Luau
+    )
+endif()
