@@ -13,8 +13,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauLoadUserdataInfo, false)
-
 // TODO: RAII deallocation doesn't work for longjmp builds if a memory error happens
 template<typename T>
 struct TempBuffer
@@ -189,8 +187,6 @@ static void resolveImportSafe(lua_State* L, Table* env, TValue* k, uint32_t id)
 
 static void remapUserdataTypes(char* data, size_t size, uint8_t* userdataRemapping, uint32_t count)
 {
-    LUAU_ASSERT(FFlag::LuauLoadUserdataInfo);
-
     size_t offset = 0;
 
     uint32_t typeSize = readVarInt(data, size, offset);
@@ -287,16 +283,13 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     {
         typesversion = read<uint8_t>(data, size, offset);
 
-        if (FFlag::LuauLoadUserdataInfo)
+        if (typesversion < LBC_TYPE_VERSION_MIN || typesversion > LBC_TYPE_VERSION_MAX)
         {
-            if (typesversion < LBC_TYPE_VERSION_MIN || typesversion > LBC_TYPE_VERSION_MAX)
-            {
-                char chunkbuf[LUA_IDSIZE];
-                const char* chunkid = luaO_chunkid(chunkbuf, sizeof(chunkbuf), chunkname, strlen(chunkname));
-                lua_pushfstring(L, "%s: bytecode type version mismatch (expected [%d..%d], got %d)", chunkid, LBC_TYPE_VERSION_MIN,
-                    LBC_TYPE_VERSION_MAX, typesversion);
-                return 1;
-            }
+            char chunkbuf[LUA_IDSIZE];
+            const char* chunkid = luaO_chunkid(chunkbuf, sizeof(chunkbuf), chunkname, strlen(chunkname));
+            lua_pushfstring(L, "%s: bytecode type version mismatch (expected [%d..%d], got %d)", chunkid, LBC_TYPE_VERSION_MIN, LBC_TYPE_VERSION_MAX,
+                typesversion);
+            return 1;
         }
     }
 
@@ -317,7 +310,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     const uint32_t userdataTypeLimit = LBC_TYPE_TAGGED_USERDATA_END - LBC_TYPE_TAGGED_USERDATA_BASE;
     uint8_t userdataRemapping[userdataTypeLimit];
 
-    if (FFlag::LuauLoadUserdataInfo && typesversion == 3)
+    if (typesversion == 3)
     {
         memset(userdataRemapping, LBC_TYPE_USERDATA, userdataTypeLimit);
 
@@ -393,7 +386,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
 
                 offset += typesize;
             }
-            else if (typesversion == 2 || (FFlag::LuauLoadUserdataInfo && typesversion == 3))
+            else if (typesversion == 2 || typesversion == 3)
             {
                 uint32_t typesize = readVarInt(data, size, offset);
 
@@ -406,7 +399,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
                     memcpy(p->typeinfo, types, typesize);
                     offset += typesize;
 
-                    if (FFlag::LuauLoadUserdataInfo && typesversion == 3)
+                    if (typesversion == 3)
                     {
                         remapUserdataTypes((char*)(uint8_t*)p->typeinfo, p->sizetypeinfo, userdataRemapping, userdataTypeLimit);
                     }

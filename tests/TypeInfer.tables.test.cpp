@@ -2990,6 +2990,24 @@ c = b
     CHECK(0 == ttv->instantiatedTypeParams.size());
 }
 
+TEST_CASE_FIXTURE(Fixture, "record_location_of_inserted_table_properties")
+{
+    CheckResult result = check(R"(
+        local a = {}
+        a.foo = 1234
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    const TableType* tt = get<TableType>(requireType("a"));
+    REQUIRE(tt);
+
+    REQUIRE(tt->props.count("foo"));
+
+    const Property& prop = tt->props.find("foo")->second;
+    CHECK(Location{{2, 10}, {2, 13}} == prop.location);
+}
+
 TEST_CASE_FIXTURE(Fixture, "table_indexing_error_location")
 {
     CheckResult result = check(R"(

@@ -15,8 +15,6 @@
 #include "lstate.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauCodegenUserdataOps)
-LUAU_FASTFLAG(LuauCodegenUserdataAlloc)
 LUAU_FASTFLAG(LuauCodegenFastcall3)
 LUAU_FASTFLAG(LuauCodegenMathSign)
 
@@ -939,8 +937,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::NEW_USERDATA:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenUserdataAlloc);
-
         IrCallWrapperX64 callWrap(regs, build, index);
         callWrap.addArgument(SizeX64::qword, rState);
         callWrap.addArgument(SizeX64::qword, intOp(inst.a));
@@ -1421,8 +1417,6 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     }
     case IrCmd::CHECK_USERDATA_TAG:
     {
-        CODEGEN_ASSERT(FFlag::LuauCodegenUserdataOps);
-
         build.cmp(byte[regOp(inst.a) + offsetof(Udata, tag)], intOp(inst.b));
         jumpOrAbortOnUndef(ConditionX64::NotEqual, inst.c, next);
         break;
@@ -2269,23 +2263,13 @@ RegisterX64 IrLoweringX64::regOp(IrOp op)
 
 OperandX64 IrLoweringX64::bufferAddrOp(IrOp bufferOp, IrOp indexOp, uint8_t tag)
 {
-    if (FFlag::LuauCodegenUserdataOps)
-    {
-        CODEGEN_ASSERT(tag == LUA_TUSERDATA || tag == LUA_TBUFFER);
-        int dataOffset = tag == LUA_TBUFFER ? offsetof(Buffer, data) : offsetof(Udata, data);
+    CODEGEN_ASSERT(tag == LUA_TUSERDATA || tag == LUA_TBUFFER);
+    int dataOffset = tag == LUA_TBUFFER ? offsetof(Buffer, data) : offsetof(Udata, data);
 
-        if (indexOp.kind == IrOpKind::Inst)
-            return regOp(bufferOp) + qwordReg(regOp(indexOp)) + dataOffset;
-        else if (indexOp.kind == IrOpKind::Constant)
-            return regOp(bufferOp) + intOp(indexOp) + dataOffset;
-    }
-    else
-    {
-        if (indexOp.kind == IrOpKind::Inst)
-            return regOp(bufferOp) + qwordReg(regOp(indexOp)) + offsetof(Buffer, data);
-        else if (indexOp.kind == IrOpKind::Constant)
-            return regOp(bufferOp) + intOp(indexOp) + offsetof(Buffer, data);
-    }
+    if (indexOp.kind == IrOpKind::Inst)
+        return regOp(bufferOp) + qwordReg(regOp(indexOp)) + dataOffset;
+    else if (indexOp.kind == IrOpKind::Constant)
+        return regOp(bufferOp) + intOp(indexOp) + dataOffset;
 
     CODEGEN_ASSERT(!"Unsupported instruction form");
     return noreg;
