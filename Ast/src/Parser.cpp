@@ -22,6 +22,7 @@ LUAU_FASTFLAGVARIABLE(LuauLeadingBarAndAmpersand2, false)
 LUAU_FASTFLAGVARIABLE(LuauNativeAttribute, false)
 LUAU_FASTFLAGVARIABLE(LuauAttributeSyntaxFunExpr, false)
 LUAU_FASTFLAGVARIABLE(LuauDeclarationExtraPropData, false)
+LUAU_FASTFLAGVARIABLE(LuauBracketStringsAreNotProps, false)
 
 namespace Luau
 {
@@ -1536,7 +1537,7 @@ AstType* Parser::parseTableType(bool inDeclarationContext)
             }
         }
 
-        if (lexer.current().type == '[' && (lexer.lookahead().type == Lexeme::RawString || lexer.lookahead().type == Lexeme::QuotedString))
+        if (!FFlag::LuauBracketStringsAreNotProps && lexer.current().type == '[' && (lexer.lookahead().type == Lexeme::RawString || lexer.lookahead().type == Lexeme::QuotedString))
         {
             const Lexeme begin = lexer.current();
             nextLexeme(); // [

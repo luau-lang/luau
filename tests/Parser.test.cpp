@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauAttributeSyntax);
 LUAU_FASTFLAG(LuauLeadingBarAndAmpersand2);
 LUAU_FASTFLAG(LuauAttributeSyntaxFunExpr);
 LUAU_FASTFLAG(LuauDeclarationExtraPropData);
+LUAU_FASTFLAG(LuauBracketStringsAreNotProps);
 
 namespace
 {
@@ -3563,6 +3564,14 @@ TEST_CASE_FIXTURE(Fixture, "mixed_leading_intersection_and_union_not_allowed")
 
     matchParseError("type A = & number | string | boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
     matchParseError("type A = | number & string & boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
+}
+
+TEST_CASE_FIXTURE(Fixture, "can_parse_string_intersection_or_union_in_table_type_indexer_successfully")
+{
+    ScopedFastFlag sff{FFlag::LuauBracketStringsAreNotProps, true};
+
+    parse(R"(type A = { ["foo" | "bar"]: baz })");
+    parse(R"(type A = { ["foo" & "bar"]: baz })");
 }
 
 
