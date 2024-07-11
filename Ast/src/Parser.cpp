@@ -22,6 +22,7 @@ LUAU_FASTFLAGVARIABLE(LuauLeadingBarAndAmpersand2, false)
 LUAU_FASTFLAGVARIABLE(LuauNativeAttribute, false)
 LUAU_FASTFLAGVARIABLE(LuauAttributeSyntaxFunExpr, false)
 LUAU_FASTFLAGVARIABLE(LuauDeclarationExtraPropData, false)
+LUAU_FASTFLAGVARIABLE(LuauDisallowVariadicInReturnParenType, false)
 
 namespace Luau
 {
@@ -1463,7 +1464,7 @@ std::pair<Location, AstTypeList> Parser::parseReturnType()
     if (lexer.current().type != Lexeme::SkinnyArrow && resultNames.empty())
     {
         // If it turns out that it's just '(A)', it's possible that there are unions/intersections to follow, so fold over it.
-        if (result.size() == 1 && !varargAnnotation)
+        if (result.size() == 1 && (!FFlag::LuauDisallowVariadicInReturnParenType || !varargAnnotation))
         {
             AstType* returnType = parseTypeSuffix(result[0], innerBegin);
 
