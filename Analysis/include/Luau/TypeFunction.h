@@ -18,7 +18,7 @@ struct TypeArena;
 struct TxnLog;
 class Normalizer;
 
-struct TypeFamilyContext
+struct TypeFunctionContext
 {
     NotNull<TypeArena> arena;
     NotNull<BuiltinTypes> builtins;
@@ -27,12 +27,12 @@ struct TypeFamilyContext
     NotNull<InternalErrorReporter> ice;
     NotNull<TypeCheckLimits> limits;
 
-    // nullptr if the type family is being reduced outside of the constraint solver.
+    // nullptr if the type function is being reduced outside of the constraint solver.
     ConstraintSolver* solver;
     // The constraint being reduced in this run of the reduction
     const Constraint* constraint;
 
-    TypeFamilyContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint)
+    TypeFunctionContext(NotNull<ConstraintSolver> cs, NotNull<Scope> scope, NotNull<const Constraint> constraint)
         : arena(cs->arena)
         , builtins(cs->builtinTypes)
         , scope(scope)
@@ -44,7 +44,7 @@ struct TypeFamilyContext
     {
     }
 
-    TypeFamilyContext(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, NotNull<Scope> scope, NotNull<Normalizer> normalizer,
+    TypeFunctionContext(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, NotNull<Scope> scope, NotNull<Normalizer> normalizer,
         NotNull<InternalErrorReporter> ice, NotNull<TypeCheckLimits> limits)
         : arena(arena)
         , builtins(builtins)
@@ -64,13 +64,13 @@ struct TypeFamilyContext
 /// may have concretely failed to reduce the type, or may simply be stuck
 /// without more information.
 template<typename Ty>
-struct TypeFamilyReductionResult
+struct TypeFunctionReductionResult
 {
-    /// The result of the reduction, if any. If this is nullopt, the family
+    /// The result of the reduction, if any. If this is nullopt, the type function
     /// could not be reduced.
     std::optional<Ty> result;
     /// Whether the result is uninhabited: whether we know, unambiguously and
-    /// permanently, whether this type family reduction results in an
+    /// permanently, whether this type function reduction results in an
     /// uninhabitable type. This will trigger an error to be reported.
     bool uninhabited;
     /// Any types that need to be progressed or mutated before the reduction may
@@ -83,33 +83,33 @@ struct TypeFamilyReductionResult
 
 template<typename T>
 using ReducerFunction =
-    std::function<TypeFamilyReductionResult<T>(T, const std::vector<TypeId>&, const std::vector<TypePackId>&, NotNull<TypeFamilyContext>)>;
+    std::function<TypeFunctionReductionResult<T>(T, const std::vector<TypeId>&, const std::vector<TypePackId>&, NotNull<TypeFunctionContext>)>;
 
 /// Represents a type function that may be applied to map a series of types and
 /// type packs to a single output type.
-struct TypeFamily
+struct TypeFunction
 {
-    /// The human-readable name of the type family. Used to stringify instance
+    /// The human-readable name of the type function. Used to stringify instance
     /// types.
     std::string name;
 
-    /// The reducer function for the type family.
+    /// The reducer function for the type function.
     ReducerFunction<TypeId> reducer;
 };
 
 /// Represents a type function that may be applied to map a series of types and
 /// type packs to a single output type pack.
-struct TypePackFamily
+struct TypePackFunction
 {
-    /// The human-readable name of the type pack family. Used to stringify
+    /// The human-readable name of the type pack function. Used to stringify
     /// instance packs.
     std::string name;
 
-    /// The reducer function for the type pack family.
+    /// The reducer function for the type pack function.
     ReducerFunction<TypePackId> reducer;
 };
 
-struct FamilyGraphReductionResult
+struct FunctionGraphReductionResult
 {
     ErrorVec errors;
     DenseHashSet<TypeId> blockedTypes{nullptr};
@@ -119,7 +119,7 @@ struct FamilyGraphReductionResult
 };
 
 /**
- * Attempt to reduce all instances of any type or type pack family in the type
+ * Attempt to reduce all instances of any type or type pack functions in the type
  * graph provided.
  *
  * @param entrypoint the entry point to the type graph.
@@ -130,10 +130,10 @@ struct FamilyGraphReductionResult
  * @param normalizer the normalizer to use when normalizing types
  * @param ice the internal error reporter to use for ICEs
  */
-FamilyGraphReductionResult reduceFamilies(TypeId entrypoint, Location location, TypeFamilyContext, bool force = false);
+FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location location, TypeFunctionContext, bool force = false);
 
 /**
- * Attempt to reduce all instances of any type or type pack family in the type
+ * Attempt to reduce all instances of any type or type pack functions in the type
  * graph provided.
  *
  * @param entrypoint the entry point to the type graph.
@@ -144,47 +144,46 @@ FamilyGraphReductionResult reduceFamilies(TypeId entrypoint, Location location, 
  * @param normalizer the normalizer to use when normalizing types
  * @param ice the internal error reporter to use for ICEs
  */
-FamilyGraphReductionResult reduceFamilies(TypePackId entrypoint, Location location, TypeFamilyContext, bool force = false);
+FunctionGraphReductionResult reduceTypeFunctions(TypePackId entrypoint, Location location, TypeFunctionContext, bool force = false);
 
-struct BuiltinTypeFamilies
+struct BuiltinTypeFunctions
 {
-    BuiltinTypeFamilies();
+    BuiltinTypeFunctions();
 
-    TypeFamily notFamily;
-    TypeFamily lenFamily;
-    TypeFamily unmFamily;
+    TypeFunction notFunc;
+    TypeFunction lenFunc;
+    TypeFunction unmFunc;
 
-    TypeFamily addFamily;
-    TypeFamily subFamily;
-    TypeFamily mulFamily;
-    TypeFamily divFamily;
-    TypeFamily idivFamily;
-    TypeFamily powFamily;
-    TypeFamily modFamily;
+    TypeFunction addFunc;
+    TypeFunction subFunc;
+    TypeFunction mulFunc;
+    TypeFunction divFunc;
+    TypeFunction idivFunc;
+    TypeFunction powFunc;
+    TypeFunction modFunc;
 
-    TypeFamily concatFamily;
+    TypeFunction concatFunc;
 
-    TypeFamily andFamily;
-    TypeFamily orFamily;
+    TypeFunction andFunc;
+    TypeFunction orFunc;
 
-    TypeFamily ltFamily;
-    TypeFamily leFamily;
-    TypeFamily eqFamily;
+    TypeFunction ltFunc;
+    TypeFunction leFunc;
+    TypeFunction eqFunc;
 
-    TypeFamily refineFamily;
-    TypeFamily singletonFamily;
-    TypeFamily unionFamily;
-    TypeFamily intersectFamily;
+    TypeFunction refineFunc;
+    TypeFunction singletonFunc;
+    TypeFunction unionFunc;
+    TypeFunction intersectFunc;
 
-    TypeFamily keyofFamily;
-    TypeFamily rawkeyofFamily;
-
-    TypeFamily indexFamily;
-    TypeFamily rawgetFamily;
+    TypeFunction keyofFunc;
+    TypeFunction rawkeyofFunc;
+    TypeFunction indexFunc;
+    TypeFunction rawgetFunc;
 
     void addToScope(NotNull<TypeArena> arena, NotNull<Scope> scope) const;
 };
 
-const BuiltinTypeFamilies& builtinTypeFunctions();
+const BuiltinTypeFunctions& builtinTypeFunctions();
 
 } // namespace Luau

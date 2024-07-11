@@ -32,7 +32,7 @@ struct TypeArena;
 struct Scope;
 using ScopePtr = std::shared_ptr<Scope>;
 
-struct TypeFamily;
+struct TypeFunction;
 struct Constraint;
 
 /**
@@ -528,34 +528,34 @@ struct ClassType
 };
 
 /**
- * An instance of a type family that has not yet been reduced to a more concrete
+ * An instance of a type function that has not yet been reduced to a more concrete
  * type. The constraint solver receives a constraint to reduce each
- * TypeFamilyInstanceType to a concrete type. A design detail is important to
- * note here: the parameters for this instantiation of the type family are
+ * TypeFunctionInstanceType to a concrete type. A design detail is important to
+ * note here: the parameters for this instantiation of the type function are
  * contained within this type, so that they can be substituted.
  */
-struct TypeFamilyInstanceType
+struct TypeFunctionInstanceType
 {
-    NotNull<const TypeFamily> family;
+    NotNull<const TypeFunction> family;
 
     std::vector<TypeId> typeArguments;
     std::vector<TypePackId> packArguments;
 
-    TypeFamilyInstanceType(NotNull<const TypeFamily> family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
+    TypeFunctionInstanceType(NotNull<const TypeFunction> family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
         : family(family)
         , typeArguments(typeArguments)
         , packArguments(packArguments)
     {
     }
 
-    TypeFamilyInstanceType(const TypeFamily& family, std::vector<TypeId> typeArguments)
+    TypeFunctionInstanceType(const TypeFunction& family, std::vector<TypeId> typeArguments)
         : family{&family}
         , typeArguments(typeArguments)
         , packArguments{}
     {
     }
 
-    TypeFamilyInstanceType(const TypeFamily& family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
+    TypeFunctionInstanceType(const TypeFunction& family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
         : family{&family}
         , typeArguments(typeArguments)
         , packArguments(packArguments)
@@ -659,7 +659,7 @@ using ErrorType = Unifiable::Error;
 
 using TypeVariant =
     Unifiable::Variant<TypeId, FreeType, GenericType, PrimitiveType, SingletonType, BlockedType, PendingExpansionType, FunctionType, TableType,
-        MetatableType, ClassType, AnyType, UnionType, IntersectionType, LazyType, UnknownType, NeverType, NegationType, TypeFamilyInstanceType>;
+        MetatableType, ClassType, AnyType, UnionType, IntersectionType, LazyType, UnknownType, NeverType, NegationType, TypeFunctionInstanceType>;
 
 struct Type final
 {

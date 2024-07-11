@@ -386,6 +386,20 @@ stat = stat and tonumber(stat) or stat
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_of_any_calls")
+{
+    CheckResult result = check(R"(
+        local function testFunc(input: {any})
+        end
+
+        local v = {true}
+
+        testFunc(v)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "intersection_of_any_can_have_props")
 {
     // *blocked-130* ~ hasProp any & ~(false?), "_status"

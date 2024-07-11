@@ -10,7 +10,7 @@
 #include "Luau/ConstraintGenerator.h"
 #include "Luau/NotNull.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/TypeFamily.h"
+#include "Luau/TypeFunction.h"
 #include "Luau/TypePack.h"
 #include "Luau/Type.h"
 #include "Luau/TypeUtils.h"
@@ -312,8 +312,8 @@ void registerBuiltinGlobals(Frontend& frontend, GlobalTypes& globals, bool typeC
     {
         // declare function assert<T>(value: T, errorMessage: string?): intersect<T, ~(false?)>
         TypeId genericT = arena.addType(GenericType{"T"});
-        TypeId refinedTy = arena.addType(TypeFamilyInstanceType{
-            NotNull{&builtinTypeFunctions().intersectFamily}, {genericT, arena.addType(NegationType{builtinTypes->falsyType})}, {}});
+        TypeId refinedTy = arena.addType(TypeFunctionInstanceType{
+            NotNull{&builtinTypeFunctions().intersectFunc}, {genericT, arena.addType(NegationType{builtinTypes->falsyType})}, {}});
 
         TypeId assertTy = arena.addType(FunctionType{
             {genericT}, {}, arena.addTypePack(TypePack{{genericT, builtinTypes->optionalStringType}}), arena.addTypePack(TypePack{{refinedTy}})});

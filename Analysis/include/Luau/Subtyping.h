@@ -5,7 +5,7 @@
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePairHash.h"
 #include "Luau/TypePath.h"
-#include "Luau/TypeFamily.h"
+#include "Luau/TypeFunction.h"
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/DenseHash.h"
 
@@ -114,7 +114,7 @@ struct SubtypingEnvironment
     DenseHashMap<std::pair<TypeId, TypeId>, SubtypingResult, TypePairHash> ephemeralCache{{}};
 
     /// Applies `mappedGenerics` to the given type.
-    /// This is used specifically to substitute for generics in type family instances.
+    /// This is used specifically to substitute for generics in type function instances.
     std::optional<TypeId> applyMappedGenerics(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId ty);
 };
 
@@ -219,8 +219,8 @@ private:
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TypeIds& subTypes, const TypeIds& superTypes);
 
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const VariadicTypePack* subVariadic, const VariadicTypePack* superVariadic);
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TypeFamilyInstanceType* subFamilyInstance, const TypeId superTy);
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TypeId subTy, const TypeFamilyInstanceType* superFamilyInstance);
+    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TypeFunctionInstanceType* subFamilyInstance, const TypeId superTy);
+    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TypeId subTy, const TypeFunctionInstanceType* superFamilyInstance);
 
     bool bindGeneric(SubtypingEnvironment& env, TypeId subTp, TypeId superTp);
     bool bindGeneric(SubtypingEnvironment& env, TypePackId subTp, TypePackId superTp);
@@ -228,7 +228,7 @@ private:
     template<typename T, typename Container>
     TypeId makeAggregateType(const Container& container, TypeId orElse);
 
-    std::pair<TypeId, ErrorVec> handleTypeFamilyReductionResult(const TypeFamilyInstanceType* familyInstance);
+    std::pair<TypeId, ErrorVec> handleTypeFunctionReductionResult(const TypeFunctionInstanceType* familyInstance);
 
     [[noreturn]] void unexpected(TypeId ty);
     [[noreturn]] void unexpected(TypePackId tp);

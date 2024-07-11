@@ -12,8 +12,6 @@
 #include <limits.h>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCodegenInstG)
-
 namespace Luau
 {
 namespace CodeGen
@@ -317,9 +315,7 @@ void kill(IrFunction& function, IrInst& inst)
     removeUse(function, inst.d);
     removeUse(function, inst.e);
     removeUse(function, inst.f);
-
-    if (FFlag::LuauCodegenInstG)
-        removeUse(function, inst.g);
+    removeUse(function, inst.g);
 
     inst.a = {};
     inst.b = {};
@@ -327,9 +323,7 @@ void kill(IrFunction& function, IrInst& inst)
     inst.d = {};
     inst.e = {};
     inst.f = {};
-
-    if (FFlag::LuauCodegenInstG)
-        inst.g = {};
+    inst.g = {};
 }
 
 void kill(IrFunction& function, uint32_t start, uint32_t end)
@@ -378,9 +372,7 @@ void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst repl
     addUse(function, replacement.d);
     addUse(function, replacement.e);
     addUse(function, replacement.f);
-
-    if (FFlag::LuauCodegenInstG)
-        addUse(function, replacement.g);
+    addUse(function, replacement.g);
 
     // An extra reference is added so block will not remove itself
     block.useCount++;
@@ -403,9 +395,7 @@ void replace(IrFunction& function, IrBlock& block, uint32_t instIdx, IrInst repl
     removeUse(function, inst.d);
     removeUse(function, inst.e);
     removeUse(function, inst.f);
-
-    if (FFlag::LuauCodegenInstG)
-        removeUse(function, inst.g);
+    removeUse(function, inst.g);
 
     // Inherit existing use count (last use is skipped as it will be defined later)
     replacement.useCount = inst.useCount;
@@ -431,9 +421,7 @@ void substitute(IrFunction& function, IrInst& inst, IrOp replacement)
     removeUse(function, inst.d);
     removeUse(function, inst.e);
     removeUse(function, inst.f);
-
-    if (FFlag::LuauCodegenInstG)
-        removeUse(function, inst.g);
+    removeUse(function, inst.g);
 
     inst.a = replacement;
     inst.b = {};
@@ -441,9 +429,7 @@ void substitute(IrFunction& function, IrInst& inst, IrOp replacement)
     inst.d = {};
     inst.e = {};
     inst.f = {};
-
-    if (FFlag::LuauCodegenInstG)
-        inst.g = {};
+    inst.g = {};
 }
 
 void applySubstitutions(IrFunction& function, IrOp& op)
@@ -487,9 +473,7 @@ void applySubstitutions(IrFunction& function, IrInst& inst)
     applySubstitutions(function, inst.d);
     applySubstitutions(function, inst.e);
     applySubstitutions(function, inst.f);
-
-    if (FFlag::LuauCodegenInstG)
-        applySubstitutions(function, inst.g);
+    applySubstitutions(function, inst.g);
 }
 
 bool compare(double a, double b, IrCondition cond)

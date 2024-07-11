@@ -13,7 +13,7 @@
 #include "Luau/Type.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeCheckLimits.h"
-#include "Luau/TypeFamily.h"
+#include "Luau/TypeFunction.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypePath.h"
 #include "Luau/TypeUtils.h"
@@ -121,9 +121,9 @@ SubtypingResult& SubtypingResult::andAlso(const SubtypingResult& other)
 {
     // If the other result is not a subtype, we want to join all of its
     // reasonings to this one. If this result already has reasonings of its own,
-    // those need to be attributed here.
+    // those need to be attributed here whenever this _also_ failed.
     if (!other.isSubtype)
-        reasoning = mergeReasonings(reasoning, other.reasoning);
+        reasoning = isSubtype ? std::move(other.reasoning) : mergeReasonings(reasoning, other.reasoning);
 
     isSubtype &= other.isSubtype;
     normalizationTooComplex |= other.normalizationTooComplex;
@@ -579,19 +579,19 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
             }
         }
     }
-    else if (auto subTypeFamilyInstance = get<TypeFamilyInstanceType>(subTy))
+    else if (auto subTypeFunctionInstance = get<TypeFunctionInstanceType>(subTy))
     {
         if (auto substSubTy = env.applyMappedGenerics(builtinTypes, arena, subTy))
-            subTypeFamilyInstance = get<TypeFamilyInstanceType>(*substSubTy);
+            subTypeFunctionInstance = get<TypeFunctionInstanceType>(*substSubTy);
 
-        result = isCovariantWith(env, subTypeFamilyInstance, superTy);
+        result = isCovariantWith(env, subTypeFunctionInstance, superTy);
     }
-    else if (auto superTypeFamilyInstance = get<TypeFamilyInstanceType>(superTy))
+    else if (auto superTypeFunctionInstance = get<TypeFunctionInstanceType>(superTy))
     {
         if (auto substSuperTy = env.applyMappedGenerics(builtinTypes, arena, superTy))
-            superTypeFamilyInstance = get<TypeFamilyInstanceType>(*substSuperTy);
+            superTypeFunctionInstance = get<TypeFunctionInstanceType>(*substSuperTy);
 
-        result = isCovariantWith(env, subTy, superTypeFamilyInstance);
+        result = isCovariantWith(env, subTy, superTypeFunctionInstance);
     }
     else if (auto subGeneric = get<GenericType>(subTy); subGeneric && variance == Variance::Covariant)
     {
@@ -1584,19 +1584,19 @@ bool Subtyping::bindGeneric(SubtypingEnvironment& env, TypeId subTy, TypeId supe
     return true;
 }
 
-SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const TypeFamilyInstanceType* subFamilyInstance, const TypeId superTy)
+SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const TypeFunctionInstanceType* subFamilyInstance, const TypeId superTy)
 {
-    // Reduce the typefamily instance
-    auto [ty, errors] = handleTypeFamilyReductionResult(subFamilyInstance);
+    // Reduce the type function instance
+    auto [ty, errors] = handleTypeFunctionReductionResult(subFamilyInstance);
 
-    // If we return optional, that means the type family was irreducible - we can reduce that to never
+    // If we return optional, that means the type function was irreducible - we can reduce that to never
     return isCovariantWith(env, ty, superTy).withErrors(errors).withSubComponent(TypePath::Reduction{ty});
 }
 
-SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const TypeId subTy, const TypeFamilyInstanceType* superFamilyInstance)
+SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const TypeId subTy, const TypeFunctionInstanceType* superFamilyInstance)
 {
-    // Reduce the typefamily instance
-    auto [ty, errors] = handleTypeFamilyReductionResult(superFamilyInstance);
+    // Reduce the type function instance
+    auto [ty, errors] = handleTypeFunctionReductionResult(superFamilyInstance);
     return isCovariantWith(env, subTy, ty).withErrors(errors).withSuperComponent(TypePath::Reduction{ty});
 }
 
@@ -1632,15 +1632,15 @@ TypeId Subtyping::makeAggregateType(const Container& container, TypeId orElse)
         return arena->addType(T{std::vector<TypeId>(begin(container), end(container))});
 }
 
-std::pair<TypeId, ErrorVec> Subtyping::handleTypeFamilyReductionResult(const TypeFamilyInstanceType* familyInstance)
+std::pair<TypeId, ErrorVec> Subtyping::handleTypeFunctionReductionResult(const TypeFunctionInstanceType* familyInstance)
 {
-    TypeFamilyContext context{arena, builtinTypes, scope, normalizer, iceReporter, NotNull{&limits}};
+    TypeFunctionContext context{arena, builtinTypes, scope, normalizer, iceReporter, NotNull{&limits}};
     TypeId family = arena->addType(*familyInstance);
-    FamilyGraphReductionResult result = reduceFamilies(family, {}, context, true);
+    FunctionGraphReductionResult result = reduceTypeFunctions(family, {}, context, true);
     ErrorVec errors;
     if (result.blockedTypes.size() != 0 || result.blockedPacks.size() != 0)
     {
-        errors.push_back(TypeError{{}, UninhabitedTypeFamily{family}});
+        errors.push_back(TypeError{{}, UninhabitedTypeFunction{family}});
         return {builtinTypes->neverType, errors};
     }
     if (result.reducedTypes.contains(family))

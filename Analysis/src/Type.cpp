@@ -9,7 +9,7 @@
 #include "Luau/RecursionCounter.h"
 #include "Luau/StringUtils.h"
 #include "Luau/ToString.h"
-#include "Luau/TypeFamily.h"
+#include "Luau/TypeFunction.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
 #include "Luau/VecDeque.h"
@@ -423,7 +423,7 @@ bool maybeSingleton(TypeId ty)
         for (TypeId part : itv)
             if (maybeSingleton(part)) // will i regret this?
                 return true;
-    if (const TypeFamilyInstanceType* tfit = get<TypeFamilyInstanceType>(ty))
+    if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(ty))
         if (tfit->family->name == "keyof" || tfit->family->name == "rawkeyof")
             return true;
     return false;
@@ -1081,7 +1081,7 @@ void persist(TypeId ty)
         else if (get<GenericType>(t) || get<AnyType>(t) || get<FreeType>(t) || get<SingletonType>(t) || get<PrimitiveType>(t) || get<NegationType>(t))
         {
         }
-        else if (auto tfit = get<TypeFamilyInstanceType>(t))
+        else if (auto tfit = get<TypeFunctionInstanceType>(t))
         {
             for (auto ty : tfit->typeArguments)
                 queue.push_back(ty);
@@ -1117,7 +1117,7 @@ void persist(TypePackId tp)
     else if (get<GenericTypePack>(tp))
     {
     }
-    else if (auto tfitp = get<TypeFamilyInstanceTypePack>(tp))
+    else if (auto tfitp = get<TypeFunctionInstanceTypePack>(tp))
     {
         for (auto ty : tfitp->typeArguments)
             persist(ty);

@@ -343,9 +343,9 @@ private:
     void reportError(Location location, TypeErrorData err);
     void reportCodeTooComplex(Location location);
 
-    // make a union type family of these two types
+    // make a union type function of these two types
     TypeId makeUnion(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs);
-    // make an intersect type family of these two types
+    // make an intersect type function of these two types
     TypeId makeIntersect(const ScopePtr& scope, Location location, TypeId lhs, TypeId rhs);
 
     /** Scan the program for global definitions.
@@ -370,8 +370,8 @@ private:
      */
     std::vector<std::optional<TypeId>> getExpectedCallTypesForFunctionOverloads(const TypeId fnType);
 
-    TypeId createTypeFamilyInstance(
-        const TypeFamily& family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments, const ScopePtr& scope, Location location);
+    TypeId createTypeFunctionInstance(
+        const TypeFunction& family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments, const ScopePtr& scope, Location location);
 };
 
 /** Borrow a vector of pointers from a vector of owning pointers to constraints.

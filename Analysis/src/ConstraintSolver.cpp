@@ -18,7 +18,7 @@
 #include "Luau/TimeTrace.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
-#include "Luau/TypeFamily.h"
+#include "Luau/TypeFunction.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/Unifier2.h"
@@ -298,7 +298,7 @@ struct InstantiationQueuer : TypeOnceVisitor
         return false;
     }
 
-    bool visit(TypeId ty, const TypeFamilyInstanceType&) override
+    bool visit(TypeId ty, const TypeFunctionInstanceType&) override
     {
         solver->pushConstraint(scope, location, ReduceConstraint{ty});
         return true;
@@ -510,10 +510,10 @@ void ConstraintSolver::finalizeTypeFamilies()
     for (auto [t, constraint] : typeFamiliesToFinalize)
     {
         TypeId ty = follow(t);
-        if (get<TypeFamilyInstanceType>(ty))
+        if (get<TypeFunctionInstanceType>(ty))
         {
-            FamilyGraphReductionResult result =
-                reduceFamilies(t, constraint->location, TypeFamilyContext{NotNull{this}, constraint->scope, NotNull{constraint}}, true);
+            FunctionGraphReductionResult result =
+                reduceTypeFunctions(t, constraint->location, TypeFunctionContext{NotNull{this}, constraint->scope, NotNull{constraint}}, true);
 
             for (TypeId r : result.reducedTypes)
                 unblock(r, constraint->location);
@@ -1394,7 +1394,7 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
     LUAU_ASSERT(get<BlockedType>(resultType));
     LUAU_ASSERT(canMutate(resultType, constraint));
 
-    if (isBlocked(subjectType) || get<PendingExpansionType>(subjectType) || get<TypeFamilyInstanceType>(subjectType))
+    if (isBlocked(subjectType) || get<PendingExpansionType>(subjectType) || get<TypeFunctionInstanceType>(subjectType))
         return block(subjectType, constraint);
 
     if (const TableType* subjectTable = getTableType(subjectType))
@@ -1432,6 +1432,12 @@ bool ConstraintSolver::tryDispatchHasIndexer(
 
     LUAU_ASSERT(get<BlockedType>(resultType));
     LUAU_ASSERT(canMutate(resultType, constraint));
+
+    if (get<AnyType>(subjectType))
+    {
+        bind(constraint, resultType, builtinTypes->anyType);
+        return true;
+    }
 
     if (auto ft = get<FreeType>(subjectType))
     {
@@ -1955,8 +1961,8 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
 bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     TypeId ty = follow(c.ty);
-    FamilyGraphReductionResult result =
-        reduceFamilies(ty, constraint->location, TypeFamilyContext{NotNull{this}, constraint->scope, constraint}, force);
+    FunctionGraphReductionResult result =
+        reduceTypeFunctions(ty, constraint->location, TypeFunctionContext{NotNull{this}, constraint->scope, constraint}, force);
 
     for (TypeId r : result.reducedTypes)
         unblock(r, constraint->location);
@@ -1967,8 +1973,8 @@ bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Cons
     bool reductionFinished = result.blockedTypes.empty() && result.blockedPacks.empty();
 
     ty = follow(ty);
-    // If we couldn't reduce this type family, stick it in the set!
-    if (get<TypeFamilyInstanceType>(ty))
+    // If we couldn't reduce this type function, stick it in the set!
+    if (get<TypeFunctionInstanceType>(ty))
         typeFamiliesToFinalize[ty] = constraint;
 
     if (force || reductionFinished)
@@ -1976,9 +1982,9 @@ bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Cons
         // if we're completely dispatching this constraint, we want to record any uninhabited type families to unblock.
         for (auto error : result.errors)
         {
-            if (auto utf = get<UninhabitedTypeFamily>(error))
+            if (auto utf = get<UninhabitedTypeFunction>(error))
                 uninhabitedTypeFamilies.insert(utf->ty);
-            else if (auto utpf = get<UninhabitedTypePackFamily>(error))
+            else if (auto utpf = get<UninhabitedTypePackFunction>(error))
                 uninhabitedTypeFamilies.insert(utpf->tp);
         }
     }
@@ -1998,8 +2004,8 @@ bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Cons
 bool ConstraintSolver::tryDispatch(const ReducePackConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     TypePackId tp = follow(c.tp);
-    FamilyGraphReductionResult result =
-        reduceFamilies(tp, constraint->location, TypeFamilyContext{NotNull{this}, constraint->scope, constraint}, force);
+    FunctionGraphReductionResult result =
+        reduceTypeFunctions(tp, constraint->location, TypeFunctionContext{NotNull{this}, constraint->scope, constraint}, force);
 
     for (TypeId r : result.reducedTypes)
         unblock(r, constraint->location);
@@ -2014,9 +2020,9 @@ bool ConstraintSolver::tryDispatch(const ReducePackConstraint& c, NotNull<const 
         // if we're completely dispatching this constraint, we want to record any uninhabited type families to unblock.
         for (auto error : result.errors)
         {
-            if (auto utf = get<UninhabitedTypeFamily>(error))
+            if (auto utf = get<UninhabitedTypeFunction>(error))
                 uninhabitedTypeFamilies.insert(utf->ty);
-            else if (auto utpf = get<UninhabitedTypePackFamily>(error))
+            else if (auto utpf = get<UninhabitedTypePackFunction>(error))
                 uninhabitedTypeFamilies.insert(utpf->tp);
         }
     }
@@ -2103,7 +2109,7 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
          * it's possible that there are other constraints on the table that will
          * clarify what we should do.
          *
-         * We should eventually introduce a type family to talk about iteration.
+         * We should eventually introduce a type function to talk about iteration.
          */
         if (iteratorTable->state == TableState::Free && !force)
             return block(iteratorTy, constraint);
@@ -2713,13 +2719,13 @@ void ConstraintSolver::reproduceConstraints(NotNull<Scope> scope, const Location
 {
     for (auto [_, newTy] : subst.newTypes)
     {
-        if (get<TypeFamilyInstanceType>(newTy))
+        if (get<TypeFunctionInstanceType>(newTy))
             pushConstraint(scope, location, ReduceConstraint{newTy});
     }
 
     for (auto [_, newPack] : subst.newPacks)
     {
-        if (get<TypeFamilyInstanceTypePack>(newPack))
+        if (get<TypeFunctionInstanceTypePack>(newPack))
             pushConstraint(scope, location, ReducePackConstraint{newPack});
     }
 }
@@ -2728,7 +2734,7 @@ bool ConstraintSolver::isBlocked(TypeId ty)
 {
     ty = follow(ty);
 
-    if (auto tfit = get<TypeFamilyInstanceType>(ty))
+    if (auto tfit = get<TypeFunctionInstanceType>(ty))
         return uninhabitedTypeFamilies.contains(ty) == false;
 
     return nullptr != get<BlockedType>(ty) || nullptr != get<PendingExpansionType>(ty);
@@ -2738,7 +2744,7 @@ bool ConstraintSolver::isBlocked(TypePackId tp)
 {
     tp = follow(tp);
 
-    if (auto tfitp = get<TypeFamilyInstanceTypePack>(tp))
+    if (auto tfitp = get<TypeFunctionInstanceTypePack>(tp))
         return uninhabitedTypeFamilies.contains(tp) == false;
 
     return nullptr != get<BlockedTypePack>(tp);

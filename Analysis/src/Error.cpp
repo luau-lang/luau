@@ -8,7 +8,7 @@
 #include "Luau/StringUtils.h"
 #include "Luau/ToString.h"
 #include "Luau/Type.h"
-#include "Luau/TypeFamily.h"
+#include "Luau/TypeFunction.h"
 
 #include <optional>
 #include <stdexcept>
@@ -64,16 +64,16 @@ static std::string wrongNumberOfArgsString(
 namespace Luau
 {
 
-// this list of binary operator type families is used for better stringification of type families errors
+// this list of binary operator type functions is used for better stringification of type functions errors
 static const std::unordered_map<std::string, const char*> kBinaryOps{{"add", "+"}, {"sub", "-"}, {"mul", "*"}, {"div", "/"}, {"idiv", "//"},
     {"pow", "^"}, {"mod", "%"}, {"concat", ".."}, {"and", "and"}, {"or", "or"}, {"lt", "< or >="}, {"le", "<= or >"}, {"eq", "== or ~="}};
 
-// this list of unary operator type families is used for better stringification of type families errors
+// this list of unary operator type functions is used for better stringification of type functions errors
 static const std::unordered_map<std::string, const char*> kUnaryOps{{"unm", "-"}, {"len", "#"}, {"not", "not"}};
 
-// this list of type families will receive a special error indicating that the user should file a bug on the GitHub repository
-// putting a type family in this list indicates that it is expected to _always_ reduce
-static const std::unordered_set<std::string> kUnreachableTypeFamilies{"refine", "singleton", "union", "intersect"};
+// this list of type functions will receive a special error indicating that the user should file a bug on the GitHub repository
+// putting a type function in this list indicates that it is expected to _always_ reduce
+static const std::unordered_set<std::string> kUnreachableTypeFunctions{"refine", "singleton", "union", "intersect"};
 
 struct ErrorConverter
 {
@@ -577,12 +577,12 @@ struct ErrorConverter
         return "Attempting a dynamic property access on type '" + Luau::toString(e.ty) + "' is unsafe and may cause exceptions at runtime";
     }
 
-    std::string operator()(const UninhabitedTypeFamily& e) const
+    std::string operator()(const UninhabitedTypeFunction& e) const
     {
-        auto tfit = get<TypeFamilyInstanceType>(e.ty);
-        LUAU_ASSERT(tfit); // Luau analysis has actually done something wrong if this type is not a type family.
+        auto tfit = get<TypeFunctionInstanceType>(e.ty);
+        LUAU_ASSERT(tfit); // Luau analysis has actually done something wrong if this type is not a type function.
         if (!tfit)
-            return "Unexpected type " + Luau::toString(e.ty) + " flagged as an uninhabited type family.";
+            return "Unexpected type " + Luau::toString(e.ty) + " flagged as an uninhabited type function.";
 
         // unary operators
         if (auto unaryString = kUnaryOps.find(tfit->family->name); unaryString != kUnaryOps.end())
@@ -658,13 +658,13 @@ struct ErrorConverter
             if (tfit->typeArguments.size() == 1 && tfit->packArguments.empty())
                 return "Type '" + toString(tfit->typeArguments[0]) + "' does not have keys, so '" + Luau::toString(e.ty) + "' is invalid";
             else
-                return "Type family instance " + Luau::toString(e.ty) + " is ill-formed, and thus invalid";
+                return "Type function instance " + Luau::toString(e.ty) + " is ill-formed, and thus invalid";
         }
 
         if ("index" == tfit->family->name || "rawget" == tfit->family->name)
         {
             if (tfit->typeArguments.size() != 2)
-                return "Type family instance " + Luau::toString(e.ty) + " is ill-formed, and thus invalid";
+                return "Type function instance " + Luau::toString(e.ty) + " is ill-formed, and thus invalid";
 
             if (auto errType = get<ErrorType>(tfit->typeArguments[1])) // Second argument to (index | rawget)<_,_> is not a type
                 return "Second argument to " + tfit->family->name + "<" + Luau::toString(tfit->typeArguments[0]) + ", _> is not a valid index type";
@@ -673,15 +673,15 @@ struct ErrorConverter
                        "'";
         }
 
-        if (kUnreachableTypeFamilies.count(tfit->family->name))
+        if (kUnreachableTypeFunctions.count(tfit->family->name))
         {
-            return "Type family instance " + Luau::toString(e.ty) + " is uninhabited\n" +
+            return "Type function instance " + Luau::toString(e.ty) + " is uninhabited\n" +
                    "This is likely to be a bug, please report it at https://github.com/luau-lang/luau/issues";
         }
 
-        // Everything should be specialized above to report a more descriptive error that hopefully does not mention "type families" explicitly.
+        // Everything should be specialized above to report a more descriptive error that hopefully does not mention "type functions" explicitly.
         // If we produce this message, it's an indication that we've missed a specialization and it should be fixed!
-        return "Type family instance " + Luau::toString(e.ty) + " is uninhabited";
+        return "Type function instance " + Luau::toString(e.ty) + " is uninhabited";
     }
 
     std::string operator()(const ExplicitFunctionAnnotationRecommended& r) const
@@ -704,14 +704,14 @@ struct ErrorConverter
         return "Consider placing the following annotations on the arguments: " + argAnnotations + " or instead annotating the return as " + toReturn;
     }
 
-    std::string operator()(const UninhabitedTypePackFamily& e) const
+    std::string operator()(const UninhabitedTypePackFunction& e) const
     {
         return "Type pack family instance " + Luau::toString(e.tp) + " is uninhabited";
     }
 
     std::string operator()(const WhereClauseNeeded& e) const
     {
-        return "Type family instance " + Luau::toString(e.ty) +
+        return "Type function instance " + Luau::toString(e.ty) +
                " depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this "
                "time";
     }
@@ -1092,7 +1092,7 @@ bool DynamicPropertyLookupOnClassesUnsafe::operator==(const DynamicPropertyLooku
     return ty == rhs.ty;
 }
 
-bool UninhabitedTypeFamily::operator==(const UninhabitedTypeFamily& rhs) const
+bool UninhabitedTypeFunction::operator==(const UninhabitedTypeFunction& rhs) const
 {
     return ty == rhs.ty;
 }
@@ -1103,7 +1103,7 @@ bool ExplicitFunctionAnnotationRecommended::operator==(const ExplicitFunctionAnn
     return recommendedReturn == rhs.recommendedReturn && recommendedArgs == rhs.recommendedArgs;
 }
 
-bool UninhabitedTypePackFamily::operator==(const UninhabitedTypePackFamily& rhs) const
+bool UninhabitedTypePackFunction::operator==(const UninhabitedTypePackFunction& rhs) const
 {
     return tp == rhs.tp;
 }
@@ -1316,7 +1316,7 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     }
     else if constexpr (std::is_same_v<T, DynamicPropertyLookupOnClassesUnsafe>)
         e.ty = clone(e.ty);
-    else if constexpr (std::is_same_v<T, UninhabitedTypeFamily>)
+    else if constexpr (std::is_same_v<T, UninhabitedTypeFunction>)
         e.ty = clone(e.ty);
     else if constexpr (std::is_same_v<T, ExplicitFunctionAnnotationRecommended>)
     {
@@ -1324,7 +1324,7 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
         for (auto& [_, t] : e.recommendedArgs)
             t = clone(t);
     }
-    else if constexpr (std::is_same_v<T, UninhabitedTypePackFamily>)
+    else if constexpr (std::is_same_v<T, UninhabitedTypePackFunction>)
         e.tp = clone(e.tp);
     else if constexpr (std::is_same_v<T, WhereClauseNeeded>)
         e.ty = clone(e.ty);

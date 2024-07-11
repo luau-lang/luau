@@ -454,11 +454,11 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     else if (isBlocked(log, superTy))
         blockedTypes.push_back(superTy);
 
-    if (log.get<TypeFamilyInstanceType>(superTy))
-        ice("Unexpected TypeFamilyInstanceType superTy");
+    if (log.get<TypeFunctionInstanceType>(superTy))
+        ice("Unexpected TypeFunctionInstanceType superTy");
 
-    if (log.get<TypeFamilyInstanceType>(subTy))
-        ice("Unexpected TypeFamilyInstanceType subTy");
+    if (log.get<TypeFunctionInstanceType>(subTy))
+        ice("Unexpected TypeFunctionInstanceType subTy");
 
     auto superFree = log.getMutable<FreeType>(superTy);
     auto subFree = log.getMutable<FreeType>(subTy);

@@ -1,9 +1,9 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TypeFamilyReductionGuesser.h"
+#include "Luau/TypeFunctionReductionGuesser.h"
 
 #include "Luau/DenseHash.h"
 #include "Luau/Normalize.h"
-#include "Luau/TypeFamily.h"
+#include "Luau/TypeFunction.h"
 #include "Luau/Type.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
@@ -23,7 +23,7 @@ struct InstanceCollector2 : TypeOnceVisitor
     DenseHashSet<TypeId> cyclicInstance{nullptr};
     DenseHashSet<TypeId> instanceArguments{nullptr};
 
-    bool visit(TypeId ty, const TypeFamilyInstanceType& it) override
+    bool visit(TypeId ty, const TypeFunctionInstanceType& it) override
     {
         // TypeOnceVisitor performs a depth-first traversal in the absence of
         // cycles. This means that by pushing to the front of the queue, we will
@@ -41,7 +41,7 @@ struct InstanceCollector2 : TypeOnceVisitor
     {
         /// Detected cyclic type pack
         TypeId t = follow(ty);
-        if (get<TypeFamilyInstanceType>(t))
+        if (get<TypeFunctionInstanceType>(t))
             cyclicInstance.insert(t);
     }
 
@@ -50,7 +50,7 @@ struct InstanceCollector2 : TypeOnceVisitor
         return false;
     }
 
-    bool visit(TypePackId tp, const TypeFamilyInstanceTypePack&) override
+    bool visit(TypePackId tp, const TypeFunctionInstanceTypePack&) override
     {
         // TypeOnceVisitor performs a depth-first traversal in the absence of
         // cycles. This means that by pushing to the front of the queue, we will
@@ -65,14 +65,14 @@ struct InstanceCollector2 : TypeOnceVisitor
 
 
 
-TypeFamilyReductionGuesser::TypeFamilyReductionGuesser(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, NotNull<Normalizer> normalizer)
+TypeFunctionReductionGuesser::TypeFunctionReductionGuesser(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtins, NotNull<Normalizer> normalizer)
     : arena(arena)
     , builtins(builtins)
     , normalizer(normalizer)
 {
 }
 
-bool TypeFamilyReductionGuesser::isFunctionGenericsSaturated(const FunctionType& ftv, DenseHashSet<TypeId>& argsUsed)
+bool TypeFunctionReductionGuesser::isFunctionGenericsSaturated(const FunctionType& ftv, DenseHashSet<TypeId>& argsUsed)
 {
     bool sameSize = ftv.generics.size() == argsUsed.size();
     bool allGenericsAppear = true;
@@ -81,7 +81,7 @@ bool TypeFamilyReductionGuesser::isFunctionGenericsSaturated(const FunctionType&
     return sameSize && allGenericsAppear;
 }
 
-void TypeFamilyReductionGuesser::dumpGuesses()
+void TypeFunctionReductionGuesser::dumpGuesses()
 {
     for (auto [tf, t] : familyReducesTo)
         printf("Type family %s ~~> %s\n", toString(tf).c_str(), toString(t).c_str());
@@ -89,7 +89,7 @@ void TypeFamilyReductionGuesser::dumpGuesses()
         printf("Substitute %s for %s\n", toString(t).c_str(), toString(t_).c_str());
 }
 
-std::optional<TypeId> TypeFamilyReductionGuesser::guess(TypeId typ)
+std::optional<TypeId> TypeFunctionReductionGuesser::guess(TypeId typ)
 {
     std::optional<TypeId> guessedType = guessType(typ);
 
@@ -97,13 +97,13 @@ std::optional<TypeId> TypeFamilyReductionGuesser::guess(TypeId typ)
         return {};
 
     TypeId guess = follow(*guessedType);
-    if (get<TypeFamilyInstanceType>(guess))
+    if (get<TypeFunctionInstanceType>(guess))
         return {};
 
     return guess;
 }
 
-std::optional<TypePackId> TypeFamilyReductionGuesser::guess(TypePackId tp)
+std::optional<TypePackId> TypeFunctionReductionGuesser::guess(TypePackId tp)
 {
     auto [head, tail] = flatten(tp);
 
@@ -118,7 +118,7 @@ std::optional<TypePackId> TypeFamilyReductionGuesser::guess(TypePackId tp)
             return {};
 
         TypeId guess = follow(*guessedType);
-        if (get<TypeFamilyInstanceType>(guess))
+        if (get<TypeFunctionInstanceType>(guess))
             return {};
 
         guessedHead.push_back(*guessedType);
@@ -127,7 +127,7 @@ std::optional<TypePackId> TypeFamilyReductionGuesser::guess(TypePackId tp)
     return arena->addTypePack(TypePack{guessedHead, tail});
 }
 
-TypeFamilyReductionGuessResult TypeFamilyReductionGuesser::guessTypeFamilyReductionForFunction(
+TypeFunctionReductionGuessResult TypeFunctionReductionGuesser::guessTypeFunctionReductionForFunctionExpr(
     const AstExprFunction& expr, const FunctionType* ftv, TypeId retTy)
 {
     InstanceCollector2 collector;
@@ -136,7 +136,7 @@ TypeFamilyReductionGuessResult TypeFamilyReductionGuesser::guessTypeFamilyReduct
     cyclicInstances = std::move(collector.cyclicInstance);
 
     if (isFunctionGenericsSaturated(*ftv, collector.instanceArguments))
-        return TypeFamilyReductionGuessResult{{}, nullptr, false};
+        return TypeFunctionReductionGuessResult{{}, nullptr, false};
     infer();
 
     std::vector<std::pair<std::string, TypeId>> results;
@@ -157,7 +157,7 @@ TypeFamilyReductionGuessResult TypeFamilyReductionGuesser::guessTypeFamilyReduct
         if (!guessedType.has_value())
             continue;
         TypeId guess = follow(*guessedType);
-        if (get<TypeFamilyInstanceType>(guess))
+        if (get<TypeFunctionInstanceType>(guess))
             continue;
 
         results.push_back({local->name.value, guess});
@@ -170,7 +170,7 @@ TypeFamilyReductionGuessResult TypeFamilyReductionGuesser::guessTypeFamilyReduct
         recommendedAnnotation = builtins->unknownType;
     else
         recommendedAnnotation = follow(*guessedReturnType);
-    if (auto t = get<TypeFamilyInstanceType>(recommendedAnnotation))
+    if (auto t = get<TypeFunctionInstanceType>(recommendedAnnotation))
         recommendedAnnotation = builtins->unknownType;
 
     toInfer.clear();
@@ -178,10 +178,10 @@ TypeFamilyReductionGuessResult TypeFamilyReductionGuesser::guessTypeFamilyReduct
     familyReducesTo.clear();
     substitutable.clear();
 
-    return TypeFamilyReductionGuessResult{results, recommendedAnnotation};
+    return TypeFunctionReductionGuessResult{results, recommendedAnnotation};
 }
 
-std::optional<TypeId> TypeFamilyReductionGuesser::guessType(TypeId arg)
+std::optional<TypeId> TypeFunctionReductionGuesser::guessType(TypeId arg)
 {
     TypeId t = follow(arg);
     if (substitutable.contains(t))
@@ -189,12 +189,12 @@ std::optional<TypeId> TypeFamilyReductionGuesser::guessType(TypeId arg)
         TypeId subst = follow(substitutable[t]);
         if (subst == t || substitutable.contains(subst))
             return subst;
-        else if (!get<TypeFamilyInstanceType>(subst))
+        else if (!get<TypeFunctionInstanceType>(subst))
             return subst;
         else
             return guessType(subst);
     }
-    if (get<TypeFamilyInstanceType>(t))
+    if (get<TypeFunctionInstanceType>(t))
     {
         if (familyReducesTo.contains(t))
             return familyReducesTo[t];
@@ -202,41 +202,41 @@ std::optional<TypeId> TypeFamilyReductionGuesser::guessType(TypeId arg)
     return {};
 }
 
-bool TypeFamilyReductionGuesser::isNumericBinopFamily(const TypeFamilyInstanceType& instance)
+bool TypeFunctionReductionGuesser::isNumericBinopFamily(const TypeFunctionInstanceType& instance)
 {
     return instance.family->name == "add" || instance.family->name == "sub" || instance.family->name == "mul" || instance.family->name == "div" ||
            instance.family->name == "idiv" || instance.family->name == "pow" || instance.family->name == "mod";
 }
 
-bool TypeFamilyReductionGuesser::isComparisonFamily(const TypeFamilyInstanceType& instance)
+bool TypeFunctionReductionGuesser::isComparisonFamily(const TypeFunctionInstanceType& instance)
 {
     return instance.family->name == "lt" || instance.family->name == "le" || instance.family->name == "eq";
 }
 
-bool TypeFamilyReductionGuesser::isOrAndFamily(const TypeFamilyInstanceType& instance)
+bool TypeFunctionReductionGuesser::isOrAndFamily(const TypeFunctionInstanceType& instance)
 {
     return instance.family->name == "or" || instance.family->name == "and";
 }
 
-bool TypeFamilyReductionGuesser::isNotFamily(const TypeFamilyInstanceType& instance)
+bool TypeFunctionReductionGuesser::isNotFamily(const TypeFunctionInstanceType& instance)
 {
     return instance.family->name == "not";
 }
 
-bool TypeFamilyReductionGuesser::isLenFamily(const TypeFamilyInstanceType& instance)
+bool TypeFunctionReductionGuesser::isLenFamily(const TypeFunctionInstanceType& instance)
 {
     return instance.family->name == "len";
 }
 
-bool TypeFamilyReductionGuesser::isUnaryMinus(const TypeFamilyInstanceType& instance)
+bool TypeFunctionReductionGuesser::isUnaryMinus(const TypeFunctionInstanceType& instance)
 {
     return instance.family->name == "unm";
 }
 
 // Operand is assignable if it looks like a cyclic family instance, or a generic type
-bool TypeFamilyReductionGuesser::operandIsAssignable(TypeId ty)
+bool TypeFunctionReductionGuesser::operandIsAssignable(TypeId ty)
 {
-    if (get<TypeFamilyInstanceType>(ty))
+    if (get<TypeFunctionInstanceType>(ty))
         return true;
     if (get<GenericType>(ty))
         return true;
@@ -245,17 +245,17 @@ bool TypeFamilyReductionGuesser::operandIsAssignable(TypeId ty)
     return false;
 }
 
-std::shared_ptr<const NormalizedType> TypeFamilyReductionGuesser::normalize(TypeId ty)
+std::shared_ptr<const NormalizedType> TypeFunctionReductionGuesser::normalize(TypeId ty)
 {
     return normalizer->normalize(ty);
 }
 
 
-std::optional<TypeId> TypeFamilyReductionGuesser::tryAssignOperandType(TypeId ty)
+std::optional<TypeId> TypeFunctionReductionGuesser::tryAssignOperandType(TypeId ty)
 {
-    // Because we collect innermost instances first, if we see a typefamily instance as an operand,
+    // Because we collect innermost instances first, if we see a type function instance as an operand,
     // We try to check if we guessed a type for it
-    if (auto tfit = get<TypeFamilyInstanceType>(ty))
+    if (auto tfit = get<TypeFunctionInstanceType>(ty))
     {
         if (familyReducesTo.contains(ty))
             return {familyReducesTo[ty]};
@@ -272,30 +272,30 @@ std::optional<TypeId> TypeFamilyReductionGuesser::tryAssignOperandType(TypeId ty
     return {};
 }
 
-void TypeFamilyReductionGuesser::step()
+void TypeFunctionReductionGuesser::step()
 {
     TypeId t = toInfer.front();
     toInfer.pop_front();
     t = follow(t);
-    if (auto tf = get<TypeFamilyInstanceType>(t))
-        inferTypeFamilySubstitutions(t, tf);
+    if (auto tf = get<TypeFunctionInstanceType>(t))
+        inferTypeFunctionSubstitutions(t, tf);
 }
 
-void TypeFamilyReductionGuesser::infer()
+void TypeFunctionReductionGuesser::infer()
 {
     while (!done())
         step();
 }
 
-bool TypeFamilyReductionGuesser::done()
+bool TypeFunctionReductionGuesser::done()
 {
     return toInfer.empty();
 }
 
-void TypeFamilyReductionGuesser::inferTypeFamilySubstitutions(TypeId ty, const TypeFamilyInstanceType* instance)
+void TypeFunctionReductionGuesser::inferTypeFunctionSubstitutions(TypeId ty, const TypeFunctionInstanceType* instance)
 {
 
-    TypeFamilyInferenceResult result;
+    TypeFunctionInferenceResult result;
     LUAU_ASSERT(instance);
     // TODO: Make an inexhaustive version of this warn in the compiler?
     if (isNumericBinopFamily(*instance))
@@ -323,7 +323,7 @@ void TypeFamilyReductionGuesser::inferTypeFamilySubstitutions(TypeId ty, const T
         {
             TypeId arg = follow(instance->typeArguments[i]);
             TypeId inference = follow(result.operandInference[i]);
-            if (auto tfit = get<TypeFamilyInstanceType>(arg))
+            if (auto tfit = get<TypeFunctionInstanceType>(arg))
             {
                 if (!familyReducesTo.contains(arg))
                     familyReducesTo.try_insert(arg, inference);
@@ -334,14 +334,14 @@ void TypeFamilyReductionGuesser::inferTypeFamilySubstitutions(TypeId ty, const T
     }
 }
 
-TypeFamilyInferenceResult TypeFamilyReductionGuesser::inferNumericBinopFamily(const TypeFamilyInstanceType* instance)
+TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferNumericBinopFamily(const TypeFunctionInstanceType* instance)
 {
     LUAU_ASSERT(instance->typeArguments.size() == 2);
-    TypeFamilyInferenceResult defaultNumericBinopInference{{builtins->numberType, builtins->numberType}, builtins->numberType};
+    TypeFunctionInferenceResult defaultNumericBinopInference{{builtins->numberType, builtins->numberType}, builtins->numberType};
     return defaultNumericBinopInference;
 }
 
-TypeFamilyInferenceResult TypeFamilyReductionGuesser::inferComparisonFamily(const TypeFamilyInstanceType* instance)
+TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferComparisonFamily(const TypeFunctionInstanceType* instance)
 {
     LUAU_ASSERT(instance->typeArguments.size() == 2);
     // Comparison families are lt/le/eq.
@@ -350,8 +350,8 @@ TypeFamilyInferenceResult TypeFamilyReductionGuesser::inferComparisonFamily(cons
     TypeId lhsTy = follow(instance->typeArguments[0]);
     TypeId rhsTy = follow(instance->typeArguments[1]);
 
-    auto comparisonInference = [&](TypeId op) -> TypeFamilyInferenceResult {
-        return TypeFamilyInferenceResult{{op, op}, builtins->booleanType};
+    auto comparisonInference = [&](TypeId op) -> TypeFunctionInferenceResult {
+        return TypeFunctionInferenceResult{{op, op}, builtins->booleanType};
     };
 
     if (std::optional<TypeId> ty = tryAssignOperandType(lhsTy))
@@ -365,7 +365,7 @@ TypeFamilyInferenceResult TypeFamilyReductionGuesser::inferComparisonFamily(cons
     return comparisonInference(builtins->numberType);
 }
 
-TypeFamilyInferenceResult TypeFamilyReductionGuesser::inferOrAndFamily(const TypeFamilyInstanceType* instance)
+TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferOrAndFamily(const TypeFunctionInstanceType* instance)
 {
 
     LUAU_ASSERT(instance->typeArguments.size() == 2);
@@ -377,7 +377,7 @@ TypeFamilyInferenceResult TypeFamilyReductionGuesser::inferOrAndFamily(const Typ
         lhsTy = follow(*ty);
     if (std::optional<TypeId> ty = tryAssignOperandType(rhsTy))
         rhsTy = follow(*ty);
-    TypeFamilyInferenceResult defaultAndOrInference{{builtins->unknownType, builtins->unknownType}, builtins->booleanType};
+    TypeFunctionInferenceResult defaultAndOrInference{{builtins->unknownType, builtins->unknownType}, builtins->booleanType};
 
     std::shared_ptr<const NormalizedType> lty = normalize(lhsTy);
     std::shared_ptr<const NormalizedType> rty = normalize(lhsTy);
@@ -389,9 +389,9 @@ TypeFamilyInferenceResult TypeFamilyReductionGuesser::inferOrAndFamily(const Typ
         if (operandIsAssignable(lhsTy) && operandIsAssignable(rhsTy))
             return defaultAndOrInference;
         if (operandIsAssignable(lhsTy))
-            return TypeFamilyInferenceResult{{builtins->unknownType, rhsTy}, rhsTy};
+            return TypeFunctionInferenceResult{{builtins->unknownType, rhsTy}, rhsTy};
         if (operandIsAssignable(rhsTy))
-            return TypeFamilyInferenceResult{{lhsTy, builtins->unknownType}, lhsTy};
+            return TypeFunctionInferenceResult{{lhsTy, builtins->unknownType}, lhsTy};
         if (lhsTruthy)
             return {{lhsTy, rhsTy}, lhsTy};
         if (rhsTruthy)
@@ -404,9 +404,9 @@ TypeFamilyInferenceResult TypeFamilyReductionGuesser::inferOrAndFamily(const Typ
         if (operandIsAssignable(lhsTy) && operandIsAssignable(rhsTy))
             return defaultAndOrInference;
         if (operandIsAssignable(lhsTy))
-            return TypeFamilyInferenceResult{{}, rhsTy};
+            return TypeFunctionInferenceResult{{}, rhsTy};
         if (operandIsAssignable(rhsTy))
-            return TypeFamilyInferenceResult{{}, lhsTy};
+            return TypeFunctionInferenceResult{{}, lhsTy};
         if (lhsTruthy)
             return {{lhsTy, rhsTy}, rhsTy};
         else
@@ -416,7 +416,7 @@ TypeFamilyInferenceResult TypeFamilyReductionGuesser::inferOrAndFamily(const Typ
     return defaultAndOrInference;
 }
 
-TypeFamilyInferenceResult TypeFamilyReductionGuesser::inferNotFamily(const TypeFamilyInstanceType* instance)
+TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferNotFamily(const TypeFunctionInstanceType* instance)
 {
     LUAU_ASSERT(instance->typeArguments.size() == 1);
     TypeId opTy = follow(instance->typeArguments[0]);
@@ -425,7 +425,7 @@ TypeFamilyInferenceResult TypeFamilyReductionGuesser::inferNotFamily(const TypeF
     return {{opTy}, builtins->booleanType};
 }
 
-TypeFamilyInferenceResult TypeFamilyReductionGuesser::inferLenFamily(const TypeFamilyInstanceType* instance)
+TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferLenFamily(const TypeFunctionInstanceType* instance)
 {
     LUAU_ASSERT(instance->typeArguments.size() == 1);
     TypeId opTy = follow(instance->typeArguments[0]);
@@ -434,7 +434,7 @@ TypeFamilyInferenceResult TypeFamilyReductionGuesser::inferLenFamily(const TypeF
     return {{opTy}, builtins->numberType};
 }
 
-TypeFamilyInferenceResult TypeFamilyReductionGuesser::inferUnaryMinusFamily(const TypeFamilyInstanceType* instance)
+TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferUnaryMinusFamily(const TypeFunctionInstanceType* instance)
 {
     LUAU_ASSERT(instance->typeArguments.size() == 1);
     TypeId opTy = follow(instance->typeArguments[0]);
