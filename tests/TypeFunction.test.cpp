@@ -1,5 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TypeFamily.h"
+#include "Luau/TypeFunction.h"
 
 #include "Luau/ConstraintSolver.h"
 #include "Luau/NotNull.h"
@@ -17,34 +17,34 @@ LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 
 struct FamilyFixture : Fixture
 {
-    TypeFamily swapFamily;
+    TypeFunction swapFamily;
 
     FamilyFixture()
         : Fixture(true, false)
     {
-        swapFamily = TypeFamily{/* name */ "Swap",
+        swapFamily = TypeFunction{/* name */ "Swap",
             /* reducer */
             [](TypeId instance, const std::vector<TypeId>& tys, const std::vector<TypePackId>& tps,
-                NotNull<TypeFamilyContext> ctx) -> TypeFamilyReductionResult<TypeId> {
+                NotNull<TypeFunctionContext> ctx) -> TypeFunctionReductionResult<TypeId> {
                 LUAU_ASSERT(tys.size() == 1);
                 TypeId param = follow(tys.at(0));
 
                 if (isString(param))
                 {
-                    return TypeFamilyReductionResult<TypeId>{ctx->builtins->numberType, false, {}, {}};
+                    return TypeFunctionReductionResult<TypeId>{ctx->builtins->numberType, false, {}, {}};
                 }
                 else if (isNumber(param))
                 {
-                    return TypeFamilyReductionResult<TypeId>{ctx->builtins->stringType, false, {}, {}};
+                    return TypeFunctionReductionResult<TypeId>{ctx->builtins->stringType, false, {}, {}};
                 }
-                else if (is<BlockedType>(param) || is<PendingExpansionType>(param) || is<TypeFamilyInstanceType>(param) ||
+                else if (is<BlockedType>(param) || is<PendingExpansionType>(param) || is<TypeFunctionInstanceType>(param) ||
                          (ctx->solver && ctx->solver->hasUnresolvedConstraints(param)))
                 {
-                    return TypeFamilyReductionResult<TypeId>{std::nullopt, false, {param}, {}};
+                    return TypeFunctionReductionResult<TypeId>{std::nullopt, false, {param}, {}};
                 }
                 else
                 {
-                    return TypeFamilyReductionResult<TypeId>{std::nullopt, true, {}, {}};
+                    return TypeFunctionReductionResult<TypeId>{std::nullopt, true, {}, {}};
                 }
             }};
 
@@ -54,12 +54,12 @@ struct FamilyFixture : Fixture
 
         ScopePtr globalScope = frontend.globals.globalScope;
         globalScope->exportedTypeBindings["Swap"] =
-            TypeFun{{genericT}, frontend.globals.globalTypes.addType(TypeFamilyInstanceType{NotNull{&swapFamily}, {t}, {}})};
+            TypeFun{{genericT}, frontend.globals.globalTypes.addType(TypeFunctionInstanceType{NotNull{&swapFamily}, {t}, {}})};
         freeze(frontend.globals.globalTypes);
     }
 };
 
-TEST_SUITE_BEGIN("TypeFamilyTests");
+TEST_SUITE_BEGIN("TypeFunctionTests");
 
 TEST_CASE_FIXTURE(FamilyFixture, "basic_type_family")
 {
@@ -80,7 +80,7 @@ TEST_CASE_FIXTURE(FamilyFixture, "basic_type_family")
     CHECK("number" == toString(requireTypeAlias("B")));
     CHECK("Swap<boolean>" == toString(requireTypeAlias("C")));
     CHECK("string" == toString(requireType("y")));
-    CHECK("Type family instance Swap<boolean> is uninhabited" == toString(result.errors[0]));
+    CHECK("Type function instance Swap<boolean> is uninhabited" == toString(result.errors[0]));
 };
 
 TEST_CASE_FIXTURE(FamilyFixture, "family_as_fn_ret")
@@ -99,7 +99,7 @@ TEST_CASE_FIXTURE(FamilyFixture, "family_as_fn_ret")
     CHECK("string" == toString(requireType("a")));
     CHECK("number" == toString(requireType("b")));
     CHECK("Swap<boolean>" == toString(requireType("c")));
-    CHECK("Type family instance Swap<boolean> is uninhabited" == toString(result.errors[0]));
+    CHECK("Type function instance Swap<boolean> is uninhabited" == toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(FamilyFixture, "family_as_fn_arg")
@@ -117,8 +117,8 @@ TEST_CASE_FIXTURE(FamilyFixture, "family_as_fn_arg")
     // FIXME: Can we constrain these to `never` or `unknown`?
     CHECK("a" == toString(requireType("a")));
     CHECK("a" == toString(requireType("b")));
-    CHECK("Type family instance Swap<a> is uninhabited" == toString(result.errors[0]));
-    CHECK("Type family instance Swap<a> is uninhabited" == toString(result.errors[1]));
+    CHECK("Type function instance Swap<a> is uninhabited" == toString(result.errors[0]));
+    CHECK("Type function instance Swap<a> is uninhabited" == toString(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(FamilyFixture, "resolve_deep_families")
@@ -148,7 +148,7 @@ TEST_CASE_FIXTURE(FamilyFixture, "unsolvable_family")
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     for (size_t i = 0; i < 2; ++i)
     {
-        CHECK(toString(result.errors[i]) == "Type family instance Swap<a> is uninhabited");
+        CHECK(toString(result.errors[i]) == "Type function instance Swap<a> is uninhabited");
     }
 }
 
@@ -169,7 +169,7 @@ TEST_CASE_FIXTURE(FamilyFixture, "table_internal_families")
     CHECK(toString(requireType("b")) == "{number}");
     // FIXME: table types are constructing a trivial union here.
     CHECK(toString(requireType("c")) == "{Swap<boolean | boolean | boolean>}");
-    CHECK(toString(result.errors[0]) == "Type family instance Swap<boolean | boolean | boolean> is uninhabited");
+    CHECK(toString(result.errors[0]) == "Type function instance Swap<boolean | boolean | boolean> is uninhabited");
 }
 
 TEST_CASE_FIXTURE(FamilyFixture, "function_internal_families")
@@ -190,7 +190,7 @@ TEST_CASE_FIXTURE(FamilyFixture, "function_internal_families")
     CHECK(toString(requireType("a")) == "() -> string");
     CHECK(toString(requireType("b")) == "() -> number");
     CHECK(toString(requireType("c")) == "() -> Swap<boolean>");
-    CHECK(toString(result.errors[0]) == "Type family instance Swap<boolean> is uninhabited");
+    CHECK(toString(result.errors[0]) == "Type function instance Swap<boolean> is uninhabited");
 }
 
 TEST_CASE_FIXTURE(Fixture, "add_family_at_work")
@@ -212,8 +212,8 @@ TEST_CASE_FIXTURE(Fixture, "add_family_at_work")
     CHECK(toString(requireType("a")) == "number");
     CHECK(toString(requireType("b")) == "Add<number, string>");
     CHECK(toString(requireType("c")) == "Add<string, number>");
-    CHECK(toString(result.errors[0]) == "Type family instance Add<number, string> is uninhabited");
-    CHECK(toString(result.errors[1]) == "Type family instance Add<string, number> is uninhabited");
+    CHECK(toString(result.errors[0]) == "Type function instance Add<number, string> is uninhabited");
+    CHECK(toString(result.errors[1]) == "Type function instance Add<string, number> is uninhabited");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_add_family_at_work")
@@ -284,7 +284,7 @@ TEST_CASE_FIXTURE(Fixture, "internal_families_raise_errors")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(toString(result.errors[0]) == "Type family instance Add<a, b> depends on generic function parameters but does not appear in the function "
+    CHECK(toString(result.errors[0]) == "Type function instance Add<a, b> depends on generic function parameters but does not appear in the function "
                                         "signature; this construct cannot be type-checked at this time");
 }
 
@@ -301,7 +301,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_families_can_be_shadowed")
             return string.format("hi %s", f)
         end
 
-        -- this should still work totally fine (and use the real type family)
+        -- this should still work totally fine (and use the real type function)
         function plus(a, b)
             return a + b
         end
@@ -387,7 +387,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_errors_if_it_has_nontable_
         local function err(idx: KeysOfMyObject): "x" | "y" | "z" return idx end
     )");
 
-    // FIXME(CLI-95289): we should actually only report the type family being uninhabited error at its first use, I think?
+    // FIXME(CLI-95289): we should actually only report the type function being uninhabited error at its first use, I think?
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(toString(result.errors[0]) == "Type 'MyObject | boolean' does not have keys, so 'keyof<MyObject | boolean>' is invalid");
     CHECK(toString(result.errors[1]) == "Type 'MyObject | boolean' does not have keys, so 'keyof<MyObject | boolean>' is invalid");
@@ -513,7 +513,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_errors_if_it_has_nontab
         local function err(idx: KeysOfMyObject): "x" | "y" | "z" return idx end
     )");
 
-    // FIXME(CLI-95289): we should actually only report the type family being uninhabited error at its first use, I think?
+    // FIXME(CLI-95289): we should actually only report the type function being uninhabited error at its first use, I think?
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(toString(result.errors[0]) == "Type 'MyObject | boolean' does not have keys, so 'rawkeyof<MyObject | boolean>' is invalid");
     CHECK(toString(result.errors[1]) == "Type 'MyObject | boolean' does not have keys, so 'rawkeyof<MyObject | boolean>' is invalid");
@@ -586,7 +586,7 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_errors_if_it_has_nonclass_par
         local function err(idx: KeysOfMyObject): "BaseMethod" | "BaseField" return idx end
     )");
 
-    // FIXME(CLI-95289): we should actually only report the type family being uninhabited error at its first use, I think?
+    // FIXME(CLI-95289): we should actually only report the type function being uninhabited error at its first use, I think?
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK(toString(result.errors[0]) == "Type 'BaseClass | boolean' does not have keys, so 'keyof<BaseClass | boolean>' is invalid");
     CHECK(toString(result.errors[1]) == "Type 'BaseClass | boolean' does not have keys, so 'keyof<BaseClass | boolean>' is invalid");
@@ -757,7 +757,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exceeded_distributivity_limits")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(get<UninhabitedTypeFamily>(result.errors[0]));
+    CHECK(get<UninhabitedTypeFunction>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "didnt_quite_exceed_distributivity_limits")

@@ -10,7 +10,7 @@
 #include "Luau/Normalize.h"
 #include "Luau/Error.h"
 #include "Luau/TypeArena.h"
-#include "Luau/TypeFamily.h"
+#include "Luau/TypeFunction.h"
 #include "Luau/Def.h"
 #include "Luau/ToString.h"
 #include "Luau/TypeFwd.h"
@@ -153,7 +153,7 @@ struct NonStrictTypeChecker
     Normalizer normalizer;
     Subtyping subtyping;
     NotNull<const DataFlowGraph> dfg;
-    DenseHashSet<TypeId> noTypeFamilyErrors{nullptr};
+    DenseHashSet<TypeId> noTypeFunctionErrors{nullptr};
     std::vector<NotNull<Scope>> stack;
     DenseHashMap<TypeId, TypeId> cachedNegations{nullptr};
 
@@ -208,14 +208,14 @@ struct NonStrictTypeChecker
 
     TypeId checkForFamilyInhabitance(TypeId instance, Location location)
     {
-        if (noTypeFamilyErrors.find(instance))
+        if (noTypeFunctionErrors.find(instance))
             return instance;
 
         ErrorVec errors =
-            reduceFamilies(instance, location, TypeFamilyContext{arena, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits}, true).errors;
+            reduceTypeFunctions(instance, location, TypeFunctionContext{arena, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits}, true).errors;
 
         if (errors.empty())
-            noTypeFamilyErrors.insert(instance);
+            noTypeFunctionErrors.insert(instance);
         // TODO??
         // if (!isErrorSuppressing(location, instance))
         //     reportErrors(std::move(errors));

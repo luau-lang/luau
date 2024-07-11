@@ -242,7 +242,7 @@ struct UnpackConstraint
 
 // ty ~ reduce ty
 //
-// Try to reduce ty, if it is a TypeFamilyInstanceType. Otherwise, do nothing.
+// Try to reduce ty, if it is a TypeFunctionInstanceType. Otherwise, do nothing.
 struct ReduceConstraint
 {
     TypeId ty;

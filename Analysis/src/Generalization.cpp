@@ -804,7 +804,7 @@ struct TypeCacher : TypeOnceVisitor
         return false;
     }
 
-    bool visit(TypeId ty, const TypeFamilyInstanceType& tfit) override
+    bool visit(TypeId ty, const TypeFunctionInstanceType& tfit) override
     {
         if (isCached(ty) || isUncacheable(ty))
             return false;
@@ -860,7 +860,7 @@ struct TypeCacher : TypeOnceVisitor
         return false;
     }
 
-    bool visit(TypePackId tp, const TypeFamilyInstanceTypePack&) override
+    bool visit(TypePackId tp, const TypeFunctionInstanceTypePack&) override
     {
         markUncacheable(tp);
         return false;

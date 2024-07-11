@@ -13,7 +13,6 @@
 #include <limits.h>
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
-LUAU_FASTFLAG(LuauCodegenInstG)
 LUAU_FASTFLAG(LuauCodegenFastcall3)
 LUAU_FASTFLAG(LuauCodegenMathSign)
 
@@ -1123,8 +1122,6 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "BuiltinFastcallsMayInvalidateMemory")
 {
-    ScopedFastFlag luauCodegenInstG{FFlag::LuauCodegenInstG, true};
-
     IrOp block = build.block(IrBlockKind::Internal);
     IrOp fallback = build.block(IrBlockKind::Fallback);
 
@@ -2814,7 +2811,6 @@ bb_1:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "ExplicitUseOfRegisterInVarargSequence")
 {
-    ScopedFastFlag luauCodegenInstG{FFlag::LuauCodegenInstG, true};
     ScopedFastFlag luauCodegenFastcall3{FFlag::LuauCodegenFastcall3, true};
 
     IrOp entry = build.block(IrBlockKind::Internal);

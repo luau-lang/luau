@@ -131,9 +131,10 @@ static ParseResult parseSourceForModule(std::string_view source, Luau::SourceMod
 
     if (FFlag::LuauStoreCommentsForDefinitionFiles && options.captureComments)
     {
-        sourceModule.hotcomments = std::move(parseResult.hotcomments);
-        sourceModule.commentLocations = std::move(parseResult.commentLocations);
+        sourceModule.hotcomments = parseResult.hotcomments;
+        sourceModule.commentLocations = parseResult.commentLocations;
     }
+
     return parseResult;
 }
 
@@ -1236,7 +1237,7 @@ struct InternalTypeFinder : TypeOnceVisitor
         return false;
     }
 
-    bool visit(TypePackId, const TypeFamilyInstanceTypePack&) override
+    bool visit(TypePackId, const TypeFunctionInstanceTypePack&) override
     {
         LUAU_ASSERT(false);
         return false;

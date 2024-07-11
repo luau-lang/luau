@@ -388,7 +388,7 @@ private:
         t->ty = shallowClone(t->ty);
     }
 
-    void cloneChildren(TypeFamilyInstanceType* t)
+    void cloneChildren(TypeFunctionInstanceType* t)
     {
         for (TypeId& ty : t->typeArguments)
             ty = shallowClone(ty);
@@ -432,7 +432,7 @@ private:
             t->tail = shallowClone(*t->tail);
     }
 
-    void cloneChildren(TypeFamilyInstanceTypePack* t)
+    void cloneChildren(TypeFunctionInstanceTypePack* t)
     {
         for (TypeId& ty : t->typeArguments)
             ty = shallowClone(ty);
