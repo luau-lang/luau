@@ -6,6 +6,8 @@
 #include <vector>
 #include <math.h>
 
+LUAU_FASTFLAGVARIABLE(LuauConstantFoldStringComparisons, false)
+
 namespace Luau
 {
 namespace Compile
@@ -157,6 +159,11 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
             result.type = Constant::Type_Boolean;
             result.valueBoolean = la.valueNumber < ra.valueNumber;
         }
+        else if (FFlag::LuauConstantFoldStringComparisons && la.type == Constant::Type_String && ra.type == Constant::Type_String)
+        {
+            result.type = Constant::Type_Boolean;
+            result.valueBoolean = strcmp(la.valueString, ra.valueString) < 0;
+        }
         break;
 
     case AstExprBinary::CompareLe:
@@ -164,6 +171,11 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         {
             result.type = Constant::Type_Boolean;
             result.valueBoolean = la.valueNumber <= ra.valueNumber;
+        }
+        else if (FFlag::LuauConstantFoldStringComparisons && la.type == Constant::Type_String && ra.type == Constant::Type_String)
+        {
+            result.type = Constant::Type_Boolean;
+            result.valueBoolean = strcmp(la.valueString, ra.valueString) <= 0;
         }
         break;
 
@@ -173,6 +185,11 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
             result.type = Constant::Type_Boolean;
             result.valueBoolean = la.valueNumber > ra.valueNumber;
         }
+        else if (FFlag::LuauConstantFoldStringComparisons && la.type == Constant::Type_String && ra.type == Constant::Type_String)
+        {
+            result.type = Constant::Type_Boolean;
+            result.valueBoolean = strcmp(la.valueString, ra.valueString) > 0;
+        }
         break;
 
     case AstExprBinary::CompareGe:
@@ -180,6 +197,11 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         {
             result.type = Constant::Type_Boolean;
             result.valueBoolean = la.valueNumber >= ra.valueNumber;
+        }
+        else if (FFlag::LuauConstantFoldStringComparisons && la.type == Constant::Type_String && ra.type == Constant::Type_String)
+        {
+            result.type = Constant::Type_Boolean;
+            result.valueBoolean = strcmp(la.valueString, ra.valueString) >= 0;
         }
         break;
 
