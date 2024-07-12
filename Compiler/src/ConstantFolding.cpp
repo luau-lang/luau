@@ -74,6 +74,17 @@ static void foldUnary(Constant& result, AstExprUnary::Op op, const Constant& arg
     }
 }
 
+static int compareStrings(const char* string1, const char* string2, unsigned int size1, unsigned int size2)
+{
+    unsigned int size = std::min(size1, size2);
+
+    int res = memcmp(string1, string2, size);
+    if (res != 0 || size1 == size2)
+        return res;
+
+    return size1 < size2 ? -1 : 1;
+}
+
 static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& la, const Constant& ra)
 {
     switch (op)
@@ -162,7 +173,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         else if (FFlag::LuauConstantFoldStringComparisons && la.type == Constant::Type_String && ra.type == Constant::Type_String)
         {
             result.type = Constant::Type_Boolean;
-            result.valueBoolean = strcmp(la.valueString, ra.valueString) < 0;
+            result.valueBoolean = compareStrings(la.valueString, ra.valueString, la.stringLength, ra.stringLength) < 0;
         }
         break;
 
@@ -175,7 +186,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         else if (FFlag::LuauConstantFoldStringComparisons && la.type == Constant::Type_String && ra.type == Constant::Type_String)
         {
             result.type = Constant::Type_Boolean;
-            result.valueBoolean = strcmp(la.valueString, ra.valueString) <= 0;
+            result.valueBoolean = compareStrings(la.valueString, ra.valueString, la.stringLength, ra.stringLength) <= 0;
         }
         break;
 
@@ -188,7 +199,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         else if (FFlag::LuauConstantFoldStringComparisons && la.type == Constant::Type_String && ra.type == Constant::Type_String)
         {
             result.type = Constant::Type_Boolean;
-            result.valueBoolean = strcmp(la.valueString, ra.valueString) > 0;
+            result.valueBoolean = compareStrings(la.valueString, ra.valueString, la.stringLength, ra.stringLength) > 0;
         }
         break;
 
@@ -201,7 +212,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         else if (FFlag::LuauConstantFoldStringComparisons && la.type == Constant::Type_String && ra.type == Constant::Type_String)
         {
             result.type = Constant::Type_Boolean;
-            result.valueBoolean = strcmp(la.valueString, ra.valueString) >= 0;
+            result.valueBoolean = compareStrings(la.valueString, ra.valueString, la.stringLength, ra.stringLength) >= 0;
         }
         break;
 
