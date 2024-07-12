@@ -9,7 +9,7 @@
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
 #include "Luau/Type.h"
-#include "Luau/TypeFamily.h"
+#include "Luau/TypeFunction.h"
 
 #include <string>
 
@@ -380,7 +380,7 @@ public:
         // FIXME: do the same thing we do with ErrorType
         throw InternalCompilerError("Cannot convert NegationType into AstNode");
     }
-    AstType* operator()(const TypeFamilyInstanceType& tfit)
+    AstType* operator()(const TypeFunctionInstanceType& tfit)
     {
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName{tfit.family->name.c_str()}, std::nullopt, Location());
     }
@@ -454,7 +454,7 @@ public:
         return allocator->alloc<AstTypePackGeneric>(Location(), AstName("Unifiable<Error>"));
     }
 
-    AstTypePack* operator()(const TypeFamilyInstanceTypePack& tfitp) const
+    AstTypePack* operator()(const TypeFunctionInstanceTypePack& tfitp) const
     {
         return allocator->alloc<AstTypePackGeneric>(Location(), AstName(tfitp.family->name.c_str()));
     }

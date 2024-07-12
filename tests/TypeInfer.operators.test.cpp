@@ -264,7 +264,7 @@ TEST_CASE_FIXTURE(Fixture, "cannot_indirectly_compare_types_that_do_not_have_a_m
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        UninhabitedTypeFamily* utf = get<UninhabitedTypeFamily>(result.errors[0]);
+        UninhabitedTypeFunction* utf = get<UninhabitedTypeFunction>(result.errors[0]);
         REQUIRE(utf);
         REQUIRE_EQ(toString(utf->ty), "lt<a, b>");
     }
@@ -294,7 +294,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_indirectly_compare_types_that_do_not_
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        UninhabitedTypeFamily* utf = get<UninhabitedTypeFamily>(result.errors[0]);
+        UninhabitedTypeFunction* utf = get<UninhabitedTypeFunction>(result.errors[0]);
         REQUIRE(utf);
         REQUIRE_EQ(toString(utf->ty), "lt<M, M>");
     }
@@ -557,7 +557,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus")
     {
         LUAU_REQUIRE_ERROR_COUNT(2, result);
 
-        UninhabitedTypeFamily* utf = get<UninhabitedTypeFamily>(result.errors[0]);
+        UninhabitedTypeFunction* utf = get<UninhabitedTypeFunction>(result.errors[0]);
         REQUIRE(utf);
         CHECK_EQ(toString(utf->ty), "unm<bar>");
 
@@ -786,7 +786,7 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        UninhabitedTypeFamily* utf = get<UninhabitedTypeFamily>(result.errors[0]);
+        UninhabitedTypeFunction* utf = get<UninhabitedTypeFunction>(result.errors[0]);
         REQUIRE(utf);
         REQUIRE_EQ(toString(utf->ty), "lt<boolean, boolean>");
     }
@@ -817,7 +817,7 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
-        UninhabitedTypeFamily* utf = get<UninhabitedTypeFamily>(result.errors[0]);
+        UninhabitedTypeFunction* utf = get<UninhabitedTypeFunction>(result.errors[0]);
         REQUIRE(utf);
         REQUIRE_EQ(toString(utf->ty), "lt<number | string, number | string>");
     }

@@ -37,7 +37,7 @@ struct LazyType;
 struct UnknownType;
 struct NeverType;
 struct NegationType;
-struct TypeFamilyInstanceType;
+struct TypeFunctionInstanceType;
 
 struct TypePackVar;
 using TypePackId = const TypePackVar*;
@@ -47,7 +47,7 @@ struct GenericTypePack;
 struct TypePack;
 struct VariadicTypePack;
 struct BlockedTypePack;
-struct TypeFamilyInstanceTypePack;
+struct TypeFunctionInstanceTypePack;
 
 using Name = std::string;
 using ModuleName = std::string;

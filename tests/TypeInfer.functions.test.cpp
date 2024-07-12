@@ -2262,7 +2262,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "regex_benchmark_string_format_minimization")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "subgeneric_typefamily_super_monomorphic")
+TEST_CASE_FIXTURE(BuiltinsFixture, "subgeneric_type_function_super_monomorphic")
 {
     CheckResult result = check(R"(
 local a: (number, number) -> number = function(a, b) return a - b end
@@ -2745,6 +2745,22 @@ end
 _ = _,{}
 
     )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "overload_resolution_crash_when_argExprs_is_smaller_than_type_args")
+{
+    CheckResult result = check(R"(
+--!strict
+local parseError
+type Set<T> = {[T]: any}
+local function captureDependencies(
+	saveToSet: Set<PubTypes.Dependency>,
+	callback: (...any) -> any,
+	...
+)
+	local data = table.pack(xpcall(callback, parseError, ...))
+    end
+)");
 }
 
 

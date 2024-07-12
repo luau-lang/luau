@@ -15,13 +15,13 @@ namespace Luau
 {
 
 struct TypeArena;
-struct TypePackFamily;
+struct TypePackFunction;
 struct TxnLog;
 
 struct TypePack;
 struct VariadicTypePack;
 struct BlockedTypePack;
-struct TypeFamilyInstanceTypePack;
+struct TypeFunctionInstanceTypePack;
 
 struct FreeTypePack
 {
@@ -55,7 +55,7 @@ using BoundTypePack = Unifiable::Bound<TypePackId>;
 using ErrorTypePack = Unifiable::Error;
 
 using TypePackVariant =
-    Unifiable::Variant<TypePackId, FreeTypePack, GenericTypePack, TypePack, VariadicTypePack, BlockedTypePack, TypeFamilyInstanceTypePack>;
+    Unifiable::Variant<TypePackId, FreeTypePack, GenericTypePack, TypePack, VariadicTypePack, BlockedTypePack, TypeFunctionInstanceTypePack>;
 
 /* A TypePack is a rope-like string of TypeIds.  We use this structure to encode
  * notions like packs of unknown length and packs of any length, as well as more
@@ -88,11 +88,11 @@ struct BlockedTypePack
 };
 
 /**
- * Analogous to a TypeFamilyInstanceType.
+ * Analogous to a TypeFunctionInstanceType.
  */
-struct TypeFamilyInstanceTypePack
+struct TypeFunctionInstanceTypePack
 {
-    NotNull<const TypePackFamily> family;
+    NotNull<const TypePackFunction> family;
 
     std::vector<TypeId> typeArguments;
     std::vector<TypePackId> packArguments;

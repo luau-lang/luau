@@ -4,7 +4,7 @@
 #include "Luau/ToString.h"
 #include "Luau/TypePack.h"
 #include "Luau/Type.h"
-#include "Luau/TypeFamily.h"
+#include "Luau/TypeFunction.h"
 #include "Luau/StringUtils.h"
 
 #include <unordered_map>
@@ -343,9 +343,9 @@ void StateDot::visitChildren(TypeId ty, int index)
 
             visitChild(t.ty, index, "[negated]");
         }
-        else if constexpr (std::is_same_v<T, TypeFamilyInstanceType>)
+        else if constexpr (std::is_same_v<T, TypeFunctionInstanceType>)
         {
-            formatAppend(result, "TypeFamilyInstanceType %s %d", t.family->name.c_str(), index);
+            formatAppend(result, "TypeFunctionInstanceType %s %d", t.family->name.c_str(), index);
             finishNodeLabel(ty);
             finishNode();
 

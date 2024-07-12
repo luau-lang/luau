@@ -334,11 +334,11 @@ struct DynamicPropertyLookupOnClassesUnsafe
     bool operator==(const DynamicPropertyLookupOnClassesUnsafe& rhs) const;
 };
 
-struct UninhabitedTypeFamily
+struct UninhabitedTypeFunction
 {
     TypeId ty;
 
-    bool operator==(const UninhabitedTypeFamily& rhs) const;
+    bool operator==(const UninhabitedTypeFunction& rhs) const;
 };
 
 struct ExplicitFunctionAnnotationRecommended
@@ -348,11 +348,11 @@ struct ExplicitFunctionAnnotationRecommended
     bool operator==(const ExplicitFunctionAnnotationRecommended& rhs) const;
 };
 
-struct UninhabitedTypePackFamily
+struct UninhabitedTypePackFunction
 {
     TypePackId tp;
 
-    bool operator==(const UninhabitedTypePackFamily& rhs) const;
+    bool operator==(const UninhabitedTypePackFunction& rhs) const;
 };
 
 struct WhereClauseNeeded
@@ -449,7 +449,7 @@ using TypeErrorData =
         CodeTooComplex, UnificationTooComplex, UnknownPropButFoundLikeProp, GenericError, InternalError, CannotCallNonFunction, ExtraInformation,
         DeprecatedApiUsed, ModuleHasCyclicDependency, IllegalRequire, FunctionExitsWithoutReturning, DuplicateGenericParameter, CannotAssignToNever,
         CannotInferBinaryOperation, MissingProperties, SwappedGenericTypeParameter, OptionalValueAccess, MissingUnionProperty, TypesAreUnrelated,
-        NormalizationTooComplex, TypePackMismatch, DynamicPropertyLookupOnClassesUnsafe, UninhabitedTypeFamily, UninhabitedTypePackFamily,
+        NormalizationTooComplex, TypePackMismatch, DynamicPropertyLookupOnClassesUnsafe, UninhabitedTypeFunction, UninhabitedTypePackFunction,
         WhereClauseNeeded, PackWhereClauseNeeded, CheckedFunctionCallError, NonStrictFunctionDefinitionError, PropertyAccessViolation,
         CheckedFunctionIncorrectArgs, UnexpectedTypeInSubtyping, UnexpectedTypePackInSubtyping, ExplicitFunctionAnnotationRecommended>;
 

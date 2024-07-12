@@ -8,7 +8,7 @@
 #include "Luau/Type.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeCheckLimits.h"
-#include "Luau/TypeFamily.h"
+#include "Luau/TypeFunction.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
@@ -76,13 +76,13 @@ static bool areCompatible(TypeId left, TypeId right)
 // returns `true` if `ty` is irressolvable and should be added to `incompleteSubtypes`.
 static bool isIrresolvable(TypeId ty)
 {
-    return get<BlockedType>(ty) || get<TypeFamilyInstanceType>(ty);
+    return get<BlockedType>(ty) || get<TypeFunctionInstanceType>(ty);
 }
 
 // returns `true` if `tp` is irressolvable and should be added to `incompleteSubtypes`.
 static bool isIrresolvable(TypePackId tp)
 {
-    return get<BlockedTypePack>(tp) || get<TypeFamilyInstanceTypePack>(tp);
+    return get<BlockedTypePack>(tp) || get<TypeFunctionInstanceTypePack>(tp);
 }
 
 Unifier2::Unifier2(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, NotNull<InternalErrorReporter> ice)

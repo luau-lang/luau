@@ -7,8 +7,6 @@
 
 #include <stdarg.h>
 
-LUAU_FASTFLAG(LuauCodegenInstG)
-
 namespace Luau
 {
 namespace CodeGen
@@ -419,9 +417,7 @@ void toString(IrToStringContext& ctx, const IrInst& inst, uint32_t index)
     checkOp(inst.d, ", ");
     checkOp(inst.e, ", ");
     checkOp(inst.f, ", ");
-
-    if (FFlag::LuauCodegenInstG)
-        checkOp(inst.g, ", ");
+    checkOp(inst.g, ", ");
 }
 
 void toString(IrToStringContext& ctx, const IrBlock& block, uint32_t index)
@@ -611,7 +607,7 @@ static RegisterSet getJumpTargetExtraLiveIn(IrToStringContext& ctx, const IrBloc
         op = inst.e;
     else if (inst.f.kind == IrOpKind::Block)
         op = inst.f;
-    else if (FFlag::LuauCodegenInstG && inst.g.kind == IrOpKind::Block)
+    else if (inst.g.kind == IrOpKind::Block)
         op = inst.g;
 
     if (op.kind == IrOpKind::Block && op.index < ctx.cfg.in.size())
@@ -897,9 +893,7 @@ std::string toDot(const IrFunction& function, bool includeInst)
             checkOp(inst.d);
             checkOp(inst.e);
             checkOp(inst.f);
-
-            if (FFlag::LuauCodegenInstG)
-                checkOp(inst.g);
+            checkOp(inst.g);
         }
     }
 

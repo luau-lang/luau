@@ -16,8 +16,8 @@
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
-#include "Luau/TypeFamily.h"
-#include "Luau/TypeFamilyReductionGuesser.h"
+#include "Luau/TypeFunction.h"
+#include "Luau/TypeFunctionReductionGuesser.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypePath.h"
@@ -121,13 +121,13 @@ struct FamilyFinder : TypeOnceVisitor
     DenseHashSet<TypeId> mentionedFamilies{nullptr};
     DenseHashSet<TypePackId> mentionedFamilyPacks{nullptr};
 
-    bool visit(TypeId ty, const TypeFamilyInstanceType&) override
+    bool visit(TypeId ty, const TypeFunctionInstanceType&) override
     {
         mentionedFamilies.insert(ty);
         return true;
     }
 
-    bool visit(TypePackId tp, const TypeFamilyInstanceTypePack&) override
+    bool visit(TypePackId tp, const TypeFunctionInstanceTypePack&) override
     {
         mentionedFamilyPacks.insert(tp);
         return true;
@@ -151,7 +151,7 @@ struct InternalFamilyFinder : TypeOnceVisitor
         mentionedFamilyPacks = std::move(f.mentionedFamilyPacks);
     }
 
-    bool visit(TypeId ty, const TypeFamilyInstanceType& tfit) override
+    bool visit(TypeId ty, const TypeFunctionInstanceType& tfit) override
     {
         bool hasGeneric = false;
 
@@ -177,7 +177,7 @@ struct InternalFamilyFinder : TypeOnceVisitor
         {
             for (TypeId mentioned : mentionedFamilies)
             {
-                const TypeFamilyInstanceType* mentionedTfit = get<TypeFamilyInstanceType>(mentioned);
+                const TypeFunctionInstanceType* mentionedTfit = get<TypeFunctionInstanceType>(mentioned);
                 LUAU_ASSERT(mentionedTfit);
                 if (areEquivalent(tfit, *mentionedTfit))
                 {
@@ -191,7 +191,7 @@ struct InternalFamilyFinder : TypeOnceVisitor
         return true;
     }
 
-    bool visit(TypePackId tp, const TypeFamilyInstanceTypePack& tfitp) override
+    bool visit(TypePackId tp, const TypeFunctionInstanceTypePack& tfitp) override
     {
         bool hasGeneric = false;
 
@@ -217,7 +217,7 @@ struct InternalFamilyFinder : TypeOnceVisitor
         {
             for (TypePackId mentioned : mentionedFamilyPacks)
             {
-                const TypeFamilyInstanceTypePack* mentionedTfitp = get<TypeFamilyInstanceTypePack>(mentioned);
+                const TypeFunctionInstanceTypePack* mentionedTfitp = get<TypeFunctionInstanceTypePack>(mentioned);
                 LUAU_ASSERT(mentionedTfitp);
                 if (areEquivalent(tfitp, *mentionedTfitp))
                 {
@@ -245,7 +245,7 @@ struct TypeChecker2
     std::vector<NotNull<Scope>> stack;
     std::vector<TypeId> functionDeclStack;
 
-    DenseHashSet<TypeId> seenTypeFamilyInstances{nullptr};
+    DenseHashSet<TypeId> seenTypeFunctionInstances{nullptr};
 
     Normalizer normalizer;
     Subtyping _subtyping;
@@ -437,12 +437,12 @@ struct TypeChecker2
 
     TypeId checkForFamilyInhabitance(TypeId instance, Location location)
     {
-        if (seenTypeFamilyInstances.find(instance))
+        if (seenTypeFunctionInstances.find(instance))
             return instance;
-        seenTypeFamilyInstances.insert(instance);
+        seenTypeFunctionInstances.insert(instance);
 
-        ErrorVec errors = reduceFamilies(instance, location,
-            TypeFamilyContext{NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits}, true)
+        ErrorVec errors = reduceTypeFunctions(instance, location,
+            TypeFunctionContext{NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits}, true)
                               .errors;
         if (!isErrorSuppressing(location, instance))
             reportErrors(std::move(errors));
@@ -1731,12 +1731,12 @@ struct TypeChecker2
             const FunctionType* inferredFtv = get<FunctionType>(normalizedFnTy->functions.parts.front());
             LUAU_ASSERT(inferredFtv);
 
-            TypeFamilyReductionGuesser guesser{NotNull{&module->internalTypes}, builtinTypes, NotNull{&normalizer}};
+            TypeFunctionReductionGuesser guesser{NotNull{&module->internalTypes}, builtinTypes, NotNull{&normalizer}};
             for (TypeId retTy : inferredFtv->retTypes)
             {
-                if (get<TypeFamilyInstanceType>(follow(retTy)))
+                if (get<TypeFunctionInstanceType>(follow(retTy)))
                 {
-                    TypeFamilyReductionGuessResult result = guesser.guessTypeFamilyReductionForFunction(*fn, inferredFtv, retTy);
+                    TypeFunctionReductionGuessResult result = guesser.guessTypeFunctionReductionForFunctionExpr(*fn, inferredFtv, retTy);
                     if (result.shouldRecommendAnnotation)
                         reportError(ExplicitFunctionAnnotationRecommended{std::move(result.guessedFunctionAnnotations), result.guessedReturnType},
                             fn->location);
@@ -1853,7 +1853,7 @@ struct TypeChecker2
         TypeId rightType = follow(lookupType(expr->right));
         TypeId expectedResult = follow(lookupType(expr));
 
-        if (get<TypeFamilyInstanceType>(expectedResult))
+        if (get<TypeFunctionInstanceType>(expectedResult))
         {
             checkForInternalFamily(expectedResult, expr->location);
             return expectedResult;
@@ -1954,7 +1954,7 @@ struct TypeChecker2
                 if (!selectedOverloadTy)
                 {
                     // reportError(CodeTooComplex{}, expr->location);
-                    // was handled by a type family
+                    // was handled by a type function
                     return expectedResult;
                 }
 
