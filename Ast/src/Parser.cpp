@@ -797,7 +797,7 @@ AstStat* Parser::parseAttributeStat()
         }
     default:
         return reportStatError(lexer.current().location, {}, {},
-            "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got %s intead",
+            "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got %s instead",
             lexer.current().toString().c_str());
     }
 }
