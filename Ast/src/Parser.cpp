@@ -836,7 +836,7 @@ AstStat* Parser::parseLocal(const AstArray<AstAttr*>& attributes)
     {
         if (FFlag::LuauAttributeSyntax && attributes.size != 0)
         {
-            return reportStatError(lexer.current().location, {}, {}, "Expected 'function' after local declaration with attribute, but got %s intead",
+            return reportStatError(lexer.current().location, {}, {}, "Expected 'function' after local declaration with attribute, but got %s instead",
                 lexer.current().toString().c_str());
         }
 
@@ -981,7 +981,7 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
     // `declare` token is already parsed at this point
 
     if (FFlag::LuauAttributeSyntax && (attributes.size != 0) && (lexer.current().type != Lexeme::ReservedFunction))
-        return reportStatError(lexer.current().location, {}, {}, "Expected a function type declaration after attribute, but got %s intead",
+        return reportStatError(lexer.current().location, {}, {}, "Expected a function type declaration after attribute, but got %s instead",
             lexer.current().toString().c_str());
 
     if (lexer.current().type == Lexeme::ReservedFunction)
@@ -2438,7 +2438,7 @@ AstExpr* Parser::parseSimpleExpr()
         if (lexer.current().type != Lexeme::ReservedFunction)
         {
             return reportExprError(
-                start, {}, "Expected 'function' declaration after attribute, but got %s intead", lexer.current().toString().c_str());
+                start, {}, "Expected 'function' declaration after attribute, but got %s instead", lexer.current().toString().c_str());
         }
     }
 
