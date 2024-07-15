@@ -20,6 +20,7 @@ LUAU_FASTFLAG(LuauAttributeSyntax);
 LUAU_FASTFLAG(LuauLeadingBarAndAmpersand2);
 LUAU_FASTFLAG(LuauAttributeSyntaxFunExpr);
 LUAU_FASTFLAG(LuauDeclarationExtraPropData);
+LUAU_FASTFLAG(LuauDisallowVariadicInReturnParenType);
 
 namespace
 {
@@ -3565,5 +3566,11 @@ TEST_CASE_FIXTURE(Fixture, "mixed_leading_intersection_and_union_not_allowed")
     matchParseError("type A = | number & string & boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
 }
 
+TEXT_CASE_FIXTURE(Fixture, "do_not_parse_variadic_type_in_paren_type_in_returns")
+{
+    ScopedFastFlag sff{FFlag::LuauDisallowVariadicInReturnParenType, true};
+
+    matchParseError("local function f(): (number, ...string) | boolean end", "Expected identifier when parsing expression, got '|'");
+}
 
 TEST_SUITE_END();
