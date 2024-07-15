@@ -7,6 +7,7 @@ if(NOT ${CMAKE_VERSION} VERSION_LESS "3.19")
         Common/include/Luau/BytecodeUtils.h
         Common/include/Luau/DenseHash.h
         Common/include/Luau/ExperimentalFlags.h
+        Common/include/Luau/Variant.h
         Common/include/Luau/VecDeque.h
     )
 endif()
@@ -232,7 +233,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Unifier.h
     Analysis/include/Luau/Unifier2.h
     Analysis/include/Luau/UnifierSharedState.h
-    Analysis/include/Luau/Variant.h
     Analysis/include/Luau/VisitType.h
 
     Analysis/src/Anyification.cpp

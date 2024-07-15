@@ -4,6 +4,7 @@
 #include "Luau/Id.h"
 #include "Luau/LanguageHash.h"
 #include "Luau/Slice.h"
+#include "Luau/Variant.h"
 
 #include <array>
 #include <algorithm>
@@ -222,151 +223,62 @@ public:
 template<typename... Ts>
 class Language final
 {
-    static constexpr size_t bufferSize = std::max({sizeof(Ts)...});
-    static constexpr size_t bufferAlign = std::max({alignof(Ts)...});
+    Variant<Ts...> v;
 
-    const char* tag;
-    alignas(bufferAlign) char buffer[bufferSize];
-
-private:
     template<typename T>
     using WithinDomain = std::disjunction<std::is_same<std::decay_t<T>, Ts>...>;
-
-    using FnCopy = void (*)(void*, const void*);
-    using FnMove = void (*)(void*, void*);
-    using FnDtor = void (*)(void*);
-    using FnPred = bool (*)(const void*, const void*);
-    using FnHash = size_t (*)(const void*);
-
-    template<typename T>
-    using FnSlice = Slice<T> (*)(std::conditional_t<std::is_const_v<T>, const void*, void*>);
-
-    template<typename T>
-    static void fnCopy(void* dst, const void* src) noexcept
-    {
-        new (dst) T(*static_cast<const T*>(src));
-    }
-
-    template<typename T>
-    static void fnMove(void* dst, void* src) noexcept
-    {
-        new (dst) T(static_cast<T&&>(*static_cast<T*>(src)));
-    }
-
-    template<typename T>
-    static void fnDtor(void* dst) noexcept
-    {
-        static_cast<T*>(dst)->~T();
-    }
-
-    template<typename T>
-    static bool fnPred(const void* lhs, const void* rhs) noexcept
-    {
-        return *static_cast<const T*>(lhs) == *static_cast<const T*>(rhs);
-    }
-
-    template<typename T>
-    static size_t fnHash(const void* buffer) noexcept
-    {
-        return typename T::Hash{}(*static_cast<const T*>(buffer));
-    }
-
-    template<typename S, typename T>
-    static Slice<S> fnOperands(std::conditional_t<std::is_const_v<S>, const void*, void*> buffer) noexcept
-    {
-        return static_cast<std::conditional_t<std::is_const_v<S>, const T*, T*>>(buffer)->operands();
-    }
-
-    static constexpr FnCopy tableCopy[sizeof...(Ts)] = {&fnCopy<Ts>...};
-    static constexpr FnMove tableMove[sizeof...(Ts)] = {&fnMove<Ts>...};
-    static constexpr FnDtor tableDtor[sizeof...(Ts)] = {&fnDtor<Ts>...};
-    static constexpr FnPred tablePred[sizeof...(Ts)] = {&fnPred<Ts>...};
-    static constexpr FnHash tableHash[sizeof...(Ts)] = {&fnHash<Ts>...};
-    static constexpr FnSlice<Id> tableSliceId[sizeof...(Ts)] = {&fnOperands<Id, Ts>...};
-    static constexpr FnSlice<const Id> tableSliceConstId[sizeof...(Ts)] = {&fnOperands<const Id, Ts>...};
-
-    static constexpr int getIndexFromTag(const char* tag) noexcept
-    {
-        constexpr int N = sizeof...(Ts);
-        constexpr const char* is[N] = {Ts::tag...};
-
-        for (int i = 0; i < N; ++i)
-            if (is[i] == tag)
-                return i;
-
-        return -1;
-    }
 
 public:
     template<typename T>
     Language(T&& t, std::enable_if_t<WithinDomain<T>::value>* = 0) noexcept
+        : v(std::forward<T>(t))
     {
-        tag = std::decay_t<T>::tag;
-        new (&buffer) std::decay_t<T>(std::forward<T>(t));
     }
 
-    Language(const Language& other) noexcept
-    {
-        tag = other.tag;
-        tableCopy[getIndexFromTag(tag)](&buffer, &other.buffer);
-    }
+    Language(const Language&) noexcept = default;
+    Language& operator=(const Language&) noexcept = default;
 
-    Language(Language&& other) noexcept
-    {
-        tag = other.tag;
-        tableMove[getIndexFromTag(tag)](&buffer, &other.buffer);
-    }
-
-    ~Language() noexcept
-    {
-        tableDtor[getIndexFromTag(tag)](&buffer);
-    }
-
-    Language& operator=(const Language& other) noexcept
-    {
-        Language copy{other};
-        *this = static_cast<Language&&>(copy);
-        return *this;
-    }
-
-    Language& operator=(Language&& other) noexcept
-    {
-        if (this != &other)
-        {
-            tableDtor[getIndexFromTag(tag)](&buffer);
-            tag = other.tag;
-            tableMove[getIndexFromTag(tag)](&buffer, &other.buffer); // nothrow
-        }
-        return *this;
-    }
+    Language(Language&&) noexcept = default;
+    Language& operator=(Language&&) noexcept = default;
 
     int index() const noexcept
     {
-        return getIndexFromTag(tag);
+        return v.index();
     }
 
     /// You should never call this function with the intention of mutating the `Id`.
     /// Reading is ok, but you should also never assume that these `Id`s are stable.
     Slice<Id> operands() noexcept
     {
-        return tableSliceId[getIndexFromTag(tag)](&buffer);
+        return visit([](auto&& v) -> Slice<Id> {
+            return v.operands();
+        }, v);
     }
 
     Slice<const Id> operands() const noexcept
     {
-        return tableSliceConstId[getIndexFromTag(tag)](&buffer);
+        return visit([](auto&& v) -> Slice<const Id> {
+            return v.operands();
+        }, v);
+    }
+
+    template<typename T>
+    T* get() noexcept
+    {
+        static_assert(WithinDomain<T>::value);
+        return v.template get_if<T>();
     }
 
     template<typename T>
     const T* get() const noexcept
     {
         static_assert(WithinDomain<T>::value);
-        return tag == T::tag ? reinterpret_cast<const T*>(&buffer) : nullptr;
+        return v.template get_if<T>();
     }
 
     bool operator==(const Language& rhs) const noexcept
     {
-        return tag == rhs.tag && tablePred[getIndexFromTag(tag)](&buffer, &rhs.buffer);
+        return v == rhs.v;
     }
 
     bool operator!=(const Language& rhs) const noexcept
@@ -379,8 +291,10 @@ public:
     {
         size_t operator()(const Language& language) const
         {
-            size_t seed = std::hash<const char*>{}(language.tag);
-            hashCombine(seed, tableHash[getIndexFromTag(language.tag)](&language.buffer));
+            size_t seed = std::hash<int>{}(language.index());
+            hashCombine(seed, visit([](auto&& v) {
+                return typename std::decay_t<decltype(v)>::Hash{}(v);
+            }, language.v));
             return seed;
         }
     };
