@@ -3566,7 +3566,7 @@ TEST_CASE_FIXTURE(Fixture, "mixed_leading_intersection_and_union_not_allowed")
     matchParseError("type A = | number & string & boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
 }
 
-TEXT_CASE_FIXTURE(Fixture, "do_not_parse_variadic_type_in_paren_type_in_returns")
+TEST_CASE_FIXTURE(Fixture, "do_not_parse_variadic_type_in_paren_type_in_returns")
 {
     ScopedFastFlag sff{FFlag::LuauDisallowVariadicInReturnParenType, true};
 
