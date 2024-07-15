@@ -158,11 +158,9 @@ struct Field : FieldBase
 };
 
 template<typename Phantom, typename... Fields>
-class NodeFields
+struct NodeFields
 {
     static_assert(std::conjunction<std::is_base_of<FieldBase, Fields>...>::value);
-
-    std::array<Id, sizeof...(Fields)> array;
 
     template<typename T>
     static constexpr int getIndex()
@@ -218,17 +216,17 @@ public:
             return languageHash(value.array);
         }
     };
+
+private:
+    std::array<Id, sizeof...(Fields)> array;
 };
 
 template<typename... Ts>
-class Language final
+struct Language final
 {
-    Variant<Ts...> v;
-
     template<typename T>
     using WithinDomain = std::disjunction<std::is_same<std::decay_t<T>, Ts>...>;
 
-public:
     template<typename T>
     Language(T&& t, std::enable_if_t<WithinDomain<T>::value>* = 0) noexcept
         : v(std::forward<T>(t))
@@ -298,6 +296,9 @@ public:
             return seed;
         }
     };
+
+private:
+    Variant<Ts...> v;
 };
 
 } // namespace Luau::EqSat

@@ -15,7 +15,7 @@ namespace Luau::EqSat
 {
 
 template<typename L, typename N>
-class EGraph;
+struct EGraph;
 
 template<typename L, typename N>
 struct Analysis final
@@ -58,8 +58,80 @@ struct EClass final
 
 /// See <https://arxiv.org/pdf/2004.03082>.
 template<typename L, typename N>
-class EGraph final
+struct EGraph final
 {
+    Id find(Id id) const
+    {
+        return unionfind.find(id);
+    }
+
+    std::optional<Id> lookup(const L& enode) const
+    {
+        LUAU_ASSERT(isCanonical(enode));
+
+        if (auto it = hashcons.find(enode); it != hashcons.end())
+            return it->second;
+
+        return std::nullopt;
+    }
+
+    Id add(L enode)
+    {
+        canonicalize(enode);
+
+        if (auto id = lookup(enode))
+            return *id;
+
+        Id id = makeEClass(enode);
+        return id;
+    }
+
+    void merge(Id id1, Id id2)
+    {
+        id1 = find(id1);
+        id2 = find(id2);
+        if (id1 == id2)
+            return;
+
+        unionfind.merge(id1, id2);
+
+        EClass<L, typename N::Data>& eclass1 = get(id1);
+        EClass<L, typename N::Data> eclass2 = std::move(get(id2));
+        classes.erase(id2);
+
+        worklist.reserve(worklist.size() + eclass2.parents.size());
+        for (auto [enode, id] : eclass2.parents)
+            worklist.push_back({std::move(enode), id});
+
+        analysis.join(eclass1.data, eclass2.data);
+    }
+
+    void rebuild()
+    {
+        while (!worklist.empty())
+        {
+            auto [enode, id] = worklist.back();
+            worklist.pop_back();
+            repair(get(find(id)));
+        }
+    }
+
+    size_t size() const
+    {
+        return classes.size();
+    }
+
+    EClass<L, typename N::Data>& operator[](Id id)
+    {
+        return get(find(id));
+    }
+
+    const EClass<L, typename N::Data>& operator[](Id id) const
+    {
+        return const_cast<EGraph*>(this)->get(find(id));
+    }
+
+private:
     Analysis<L, N> analysis;
 
     /// A union-find data structure 𝑈 stores an equivalence relation over e-class ids.
@@ -150,78 +222,6 @@ private:
             auto node = map.extract(it++);
             eclass.parents.emplace_back(std::move(node.key()), node.mapped());
         }
-    }
-
-public:
-    Id find(Id id) const
-    {
-        return unionfind.find(id);
-    }
-
-    std::optional<Id> lookup(const L& enode) const
-    {
-        LUAU_ASSERT(isCanonical(enode));
-
-        if (auto it = hashcons.find(enode); it != hashcons.end())
-            return it->second;
-
-        return std::nullopt;
-    }
-
-    Id add(L enode)
-    {
-        canonicalize(enode);
-
-        if (auto id = lookup(enode))
-            return *id;
-
-        Id id = makeEClass(enode);
-        return id;
-    }
-
-    void merge(Id id1, Id id2)
-    {
-        id1 = find(id1);
-        id2 = find(id2);
-        if (id1 == id2)
-            return;
-
-        unionfind.merge(id1, id2);
-
-        EClass<L, typename N::Data>& eclass1 = get(id1);
-        EClass<L, typename N::Data> eclass2 = std::move(get(id2));
-        classes.erase(id2);
-
-        worklist.reserve(worklist.size() + eclass2.parents.size());
-        for (auto [enode, id] : eclass2.parents)
-            worklist.push_back({std::move(enode), id});
-
-        analysis.join(eclass1.data, eclass2.data);
-    }
-
-    void rebuild()
-    {
-        while (!worklist.empty())
-        {
-            auto [enode, id] = worklist.back();
-            worklist.pop_back();
-            repair(get(find(id)));
-        }
-    }
-
-    size_t size() const
-    {
-        return classes.size();
-    }
-
-    EClass<L, typename N::Data>& operator[](Id id)
-    {
-        return get(find(id));
-    }
-
-    const EClass<L, typename N::Data>& operator[](Id id) const
-    {
-        return const_cast<EGraph*>(this)->get(find(id));
     }
 };
 

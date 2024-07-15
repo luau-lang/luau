@@ -10,12 +10,8 @@ namespace Luau::EqSat
 {
 
 template<typename T>
-class Slice final
+struct Slice final
 {
-    T* _data;
-    size_t _size;
-
-public:
     Slice()
         : _data(nullptr)
         , _size(0)
@@ -62,6 +58,10 @@ public:
         LUAU_ASSERT(i < _size);
         return _data[i];
     }
+
+public:
+    T* _data;
+    size_t _size;
 
 public:
     T* begin() const
