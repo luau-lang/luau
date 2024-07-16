@@ -7,6 +7,7 @@ if(NOT ${CMAKE_VERSION} VERSION_LESS "3.19")
         Common/include/Luau/BytecodeUtils.h
         Common/include/Luau/DenseHash.h
         Common/include/Luau/ExperimentalFlags.h
+        Common/include/Luau/Variant.h
         Common/include/Luau/VecDeque.h
     )
 endif()
@@ -232,7 +233,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Unifier.h
     Analysis/include/Luau/Unifier2.h
     Analysis/include/Luau/UnifierSharedState.h
-    Analysis/include/Luau/Variant.h
     Analysis/include/Luau/VisitType.h
 
     Analysis/src/Anyification.cpp
@@ -293,6 +293,19 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Unifiable.cpp
     Analysis/src/Unifier.cpp
     Analysis/src/Unifier2.cpp
+)
+
+# Luau.Analysis Sources
+target_sources(Luau.EqSat PRIVATE
+    EqSat/include/Luau/EGraph.h
+    EqSat/include/Luau/Id.h
+    EqSat/include/Luau/Language.h
+    EqSat/include/Luau/LanguageHash.h
+    EqSat/include/Luau/Slice.h
+    EqSat/include/Luau/UnionFind.h
+
+    EqSat/src/Id.cpp
+    EqSat/src/UnionFind.cpp
 )
 
 # Luau.VM Sources
@@ -418,6 +431,9 @@ if(TARGET Luau.UnitTest)
         tests/DiffAsserts.cpp
         tests/DiffAsserts.h
         tests/Differ.test.cpp
+        tests/EqSat.language.test.cpp
+        tests/EqSat.propositional.test.cpp
+        tests/EqSat.slice.test.cpp
         tests/Error.test.cpp
         tests/Fixture.cpp
         tests/Fixture.h
