@@ -17,20 +17,14 @@ Id UnionFind::makeSet()
 
 Id UnionFind::find(Id id) const
 {
-    LUAU_ASSERT(size_t(id) < parents.size());
-
-    // An e-class id 𝑎 is canonical iff find(𝑎) = 𝑎.
-    while (id != parents[size_t(id)])
-        id = parents[size_t(id)];
-
-    return id;
+    return canonicalize(id);
 }
 
 Id UnionFind::find(Id id)
 {
     LUAU_ASSERT(size_t(id) < parents.size());
 
-    Id set = const_cast<const UnionFind*>(this)->find(id);
+    Id set = canonicalize(id);
 
     // An e-class id 𝑎 is canonical iff find(𝑎) = 𝑎.
     while (id != parents[size_t(id)])
@@ -60,6 +54,17 @@ void UnionFind::merge(Id a, Id b)
     
     if (ranks[size_t(aSet)] == ranks[size_t(bSet)])
         ranks[size_t(aSet)]++;
+}
+
+Id UnionFind::canonicalize(Id id) const
+{
+    LUAU_ASSERT(size_t(id) < parents.size());
+
+    // An e-class id 𝑎 is canonical iff find(𝑎) = 𝑎.
+    while (id != parents[size_t(id)])
+        id = parents[size_t(id)];
+
+    return id;
 }
 
 } // namespace Luau::EqSat

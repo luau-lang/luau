@@ -19,6 +19,9 @@ struct UnionFind final
 private:
     std::vector<Id> parents;
     std::vector<unsigned int> ranks;
+
+private:
+    Id canonicalize(Id id) const;
 };
 
 } // namespace Luau::EqSat
