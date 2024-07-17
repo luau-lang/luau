@@ -41,9 +41,6 @@ Id UnionFind::find(Id id)
 
 void UnionFind::merge(Id a, Id b)
 {
-    LUAU_ASSERT(size_t(a) < parents.size());
-    LUAU_ASSERT(size_t(b) < parents.size());
-    
     Id aSet = find(a);
     Id bSet = find(b);
     if (aSet == bSet)
