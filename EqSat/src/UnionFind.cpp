@@ -37,8 +37,9 @@ Id UnionFind::find(Id id)
     {
         // Note: we don't update the ranks here since a rank
         // represents the upper bound on the maximum depth of a tree
+        Id parent = parents[size_t(id)];
         parents[size_t(id)] = set;
-        id = parents[size_t(id)];
+        id = parent;
     }
     
     return set;
