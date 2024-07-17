@@ -13,10 +13,12 @@ struct UnionFind final
 {
     Id makeSet();
     Id find(Id id) const;
+    Id find(Id id);
     void merge(Id a, Id b);
 
 private:
     std::vector<Id> parents;
+    std::vector<unsigned int> ranks;
 };
 
 } // namespace Luau::EqSat
