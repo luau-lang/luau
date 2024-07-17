@@ -48,9 +48,9 @@ void UnionFind::merge(Id a, Id b)
 
     // Ensure that the rank of set A is greater than the rank of set B
     if (ranks[size_t(aSet)] < ranks[size_t(bSet)])
-        std::swap(a, b);
+        std::swap(aSet, bSet);
 
-    parents[size_t(b)] = a;
+    parents[size_t(bSet)] = aSet;
     
     if (ranks[size_t(aSet)] == ranks[size_t(bSet)])
         ranks[size_t(aSet)]++;
