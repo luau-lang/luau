@@ -146,7 +146,7 @@ struct SubtypeFixture : Fixture
 
     TypeId cls(const std::string& name, std::optional<TypeId> parent = std::nullopt)
     {
-        return arena.addType(ClassType{name, {}, parent.value_or(builtinTypes->classType), {}, {}, nullptr, ""});
+        return arena.addType(ClassType{name, {}, parent.value_or(builtinTypes->classType), {}, {}, nullptr, "", {}});
     }
 
     TypeId cls(const std::string& name, ClassType::Props&& props)
