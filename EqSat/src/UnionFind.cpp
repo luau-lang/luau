@@ -30,13 +30,18 @@ Id UnionFind::find(Id id)
 {
     LUAU_ASSERT(size_t(id) < parents.size());
 
+    Id set = const_cast<const UnionFind*>(this)->find(id);
+
     // An e-class id 𝑎 is canonical iff find(𝑎) = 𝑎.
-    if (id != parents[size_t(id)])
+    while (id != parents[size_t(id)])
+    {
         // Note: we don't update the ranks here since a rank
         // represents the upper bound on the maximum depth of a tree
-        parents[size_t(id)] = find(parents[size_t(id)]);
+        parents[size_t(id)] = set;
+        id = parents[size_t(id)];
+    }
     
-    return parents[size_t(id)];
+    return set;
 }
 
 void UnionFind::merge(Id a, Id b)
