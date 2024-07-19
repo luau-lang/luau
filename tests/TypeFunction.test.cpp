@@ -15,14 +15,14 @@ using namespace Luau;
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_DYNAMIC_FASTINT(LuauTypeFamilyApplicationCartesianProductLimit)
 
-struct FamilyFixture : Fixture
+struct TypeFunctionFixture : Fixture
 {
-    TypeFunction swapFamily;
+    TypeFunction swapFunction;
 
-    FamilyFixture()
+    TypeFunctionFixture()
         : Fixture(true, false)
     {
-        swapFamily = TypeFunction{/* name */ "Swap",
+        swapFunction = TypeFunction{/* name */ "Swap",
             /* reducer */
             [](TypeId instance, const std::vector<TypeId>& tys, const std::vector<TypePackId>& tps,
                 NotNull<TypeFunctionContext> ctx) -> TypeFunctionReductionResult<TypeId> {
@@ -54,14 +54,14 @@ struct FamilyFixture : Fixture
 
         ScopePtr globalScope = frontend.globals.globalScope;
         globalScope->exportedTypeBindings["Swap"] =
-            TypeFun{{genericT}, frontend.globals.globalTypes.addType(TypeFunctionInstanceType{NotNull{&swapFamily}, {t}, {}})};
+            TypeFun{{genericT}, frontend.globals.globalTypes.addType(TypeFunctionInstanceType{NotNull{&swapFunction}, {t}, {}})};
         freeze(frontend.globals.globalTypes);
     }
 };
 
 TEST_SUITE_BEGIN("TypeFunctionTests");
 
-TEST_CASE_FIXTURE(FamilyFixture, "basic_type_family")
+TEST_CASE_FIXTURE(TypeFunctionFixture, "basic_type_function")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -83,7 +83,7 @@ TEST_CASE_FIXTURE(FamilyFixture, "basic_type_family")
     CHECK("Type function instance Swap<boolean> is uninhabited" == toString(result.errors[0]));
 };
 
-TEST_CASE_FIXTURE(FamilyFixture, "family_as_fn_ret")
+TEST_CASE_FIXTURE(TypeFunctionFixture, "function_as_fn_ret")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -102,7 +102,7 @@ TEST_CASE_FIXTURE(FamilyFixture, "family_as_fn_ret")
     CHECK("Type function instance Swap<boolean> is uninhabited" == toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(FamilyFixture, "family_as_fn_arg")
+TEST_CASE_FIXTURE(TypeFunctionFixture, "function_as_fn_arg")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -121,7 +121,7 @@ TEST_CASE_FIXTURE(FamilyFixture, "family_as_fn_arg")
     CHECK("Type function instance Swap<a> is uninhabited" == toString(result.errors[1]));
 }
 
-TEST_CASE_FIXTURE(FamilyFixture, "resolve_deep_families")
+TEST_CASE_FIXTURE(TypeFunctionFixture, "resolve_deep_functions")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -134,7 +134,7 @@ TEST_CASE_FIXTURE(FamilyFixture, "resolve_deep_families")
     CHECK("number" == toString(requireType("x")));
 }
 
-TEST_CASE_FIXTURE(FamilyFixture, "unsolvable_family")
+TEST_CASE_FIXTURE(TypeFunctionFixture, "unsolvable_function")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -152,7 +152,7 @@ TEST_CASE_FIXTURE(FamilyFixture, "unsolvable_family")
     }
 }
 
-TEST_CASE_FIXTURE(FamilyFixture, "table_internal_families")
+TEST_CASE_FIXTURE(TypeFunctionFixture, "table_internal_functions")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -172,7 +172,7 @@ TEST_CASE_FIXTURE(FamilyFixture, "table_internal_families")
     CHECK(toString(result.errors[0]) == "Type function instance Swap<boolean | boolean | boolean> is uninhabited");
 }
 
-TEST_CASE_FIXTURE(FamilyFixture, "function_internal_families")
+TEST_CASE_FIXTURE(TypeFunctionFixture, "function_internal_functions")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -193,7 +193,7 @@ TEST_CASE_FIXTURE(FamilyFixture, "function_internal_families")
     CHECK(toString(result.errors[0]) == "Type function instance Swap<boolean> is uninhabited");
 }
 
-TEST_CASE_FIXTURE(Fixture, "add_family_at_work")
+TEST_CASE_FIXTURE(Fixture, "add_function_at_work")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -216,7 +216,7 @@ TEST_CASE_FIXTURE(Fixture, "add_family_at_work")
     CHECK(toString(result.errors[1]) == "Type function instance Add<string, number> is uninhabited");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_add_family_at_work")
+TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_add_function_at_work")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -229,7 +229,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_add_family_at_work")
     CHECK(toString(requireTypeAlias("T")) == "number");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "mul_family_with_union_of_multiplicatives")
+TEST_CASE_FIXTURE(BuiltinsFixture, "mul_function_with_union_of_multiplicatives")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -252,7 +252,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "mul_family_with_union_of_multiplicatives")
     CHECK(toString(requireTypeAlias("T")) == "Vec2 | Vec3");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "mul_family_with_union_of_multiplicatives_2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "mul_function_with_union_of_multiplicatives_2")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -272,7 +272,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "mul_family_with_union_of_multiplicatives_2")
     CHECK(toString(requireTypeAlias("T")) == "Vec3");
 }
 
-TEST_CASE_FIXTURE(Fixture, "internal_families_raise_errors")
+TEST_CASE_FIXTURE(Fixture, "internal_functions_raise_errors")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -288,7 +288,7 @@ TEST_CASE_FIXTURE(Fixture, "internal_families_raise_errors")
                                         "signature; this construct cannot be type-checked at this time");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "type_families_can_be_shadowed")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_can_be_shadowed")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -313,7 +313,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_families_can_be_shadowed")
     CHECK(toString(requireType("plus")) == "<a, b>(a, b) -> add<a, b>");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "type_families_inhabited_with_normalization")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_functions_inhabited_with_normalization")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -331,7 +331,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_families_inhabited_with_normalization")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_works")
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -352,7 +352,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_works")
     CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tpm->givenTp));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_works_with_metatables")
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_works_with_metatables")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -375,7 +375,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_works_with_metatables")
     CHECK_EQ("\"w\" | \"x\" | \"y\" | \"z\"", toString(tpm->givenTp));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_errors_if_it_has_nontable_part")
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_errors_if_it_has_nontable_part")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -393,7 +393,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_errors_if_it_has_nontable_
     CHECK(toString(result.errors[1]) == "Type 'MyObject | boolean' does not have keys, so 'keyof<MyObject | boolean>' is invalid");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_string_indexer")
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_string_indexer")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -421,7 +421,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_string_indexer")
     CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tpm->givenTp));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_common_subset_if_union_of_differing_tables")
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_common_subset_if_union_of_differing_tables")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -442,7 +442,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_common_subset_if_union_of_
     CHECK_EQ("\"y\" | \"z\"", toString(tpm->givenTp));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_never_for_empty_table")
+TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_function_never_for_empty_table")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -457,7 +457,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_type_family_never_for_empty_table")
     CHECK(toString(requireType("foo")) == "never");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_works")
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_works")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -478,7 +478,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_works")
     CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tpm->givenTp));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_ignores_metatables")
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_ignores_metatables")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -501,7 +501,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_ignores_metatables")
     CHECK_EQ("\"x\" | \"y\" | \"z\"", toString(tpm->givenTp));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_errors_if_it_has_nontable_part")
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_errors_if_it_has_nontable_part")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -519,7 +519,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_errors_if_it_has_nontab
     CHECK(toString(result.errors[1]) == "Type 'MyObject | boolean' does not have keys, so 'rawkeyof<MyObject | boolean>' is invalid");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_common_subset_if_union_of_differing_tables")
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_common_subset_if_union_of_differing_tables")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -540,7 +540,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_common_subset_if_union_
     CHECK_EQ("\"y\" | \"z\"", toString(tpm->givenTp));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_never_for_empty_table")
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_function_never_for_empty_table")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -555,7 +555,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawkeyof_type_family_never_for_empty_table")
     CHECK(toString(requireType("foo")) == "never");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_works_on_classes")
+TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_works_on_classes")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -575,7 +575,7 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_works_on_classes")
     CHECK_EQ("\"BaseField\" | \"BaseMethod\" | \"Touched\"", toString(tpm->givenTp));
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_errors_if_it_has_nonclass_part")
+TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_errors_if_it_has_nonclass_part")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -592,7 +592,7 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_errors_if_it_has_nonclass_par
     CHECK(toString(result.errors[1]) == "Type 'BaseClass | boolean' does not have keys, so 'keyof<BaseClass | boolean>' is invalid");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_common_subset_if_union_of_differing_classes")
+TEST_CASE_FIXTURE(ClassFixture, "keyof_type_function_common_subset_if_union_of_differing_classes")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -606,7 +606,7 @@ TEST_CASE_FIXTURE(ClassFixture, "keyof_type_family_common_subset_if_union_of_dif
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "binary_type_family_works_with_default_argument")
+TEST_CASE_FIXTURE(ClassFixture, "binary_type_function_works_with_default_argument")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -699,7 +699,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "keyof_oss_crash_gh1161")
     CHECK(get<FunctionExitsWithoutReturning>(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(FamilyFixture, "fuzzer_numeric_binop_doesnt_assert_on_generalizeFreeType")
+TEST_CASE_FIXTURE(TypeFunctionFixture, "fuzzer_numeric_binop_doesnt_assert_on_generalizeFreeType")
 {
     CheckResult result = check(R"(
 Module 'l0':
@@ -714,7 +714,7 @@ _(setmetatable(_,{[...]=_,}))
 )");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_concat_family_at_work")
+TEST_CASE_FIXTURE(BuiltinsFixture, "cyclic_concat_function_at_work")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -827,7 +827,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "ensure_equivalence_with_distributivity")
     CHECK(toString(requireTypeAlias("U")) == "A | A | B | B");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "we_shouldnt_warn_that_a_reducible_type_family_is_uninhabited")
+TEST_CASE_FIXTURE(BuiltinsFixture, "we_shouldnt_warn_that_a_reducible_type_function_is_uninhabited")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -857,7 +857,7 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works")
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -880,7 +880,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works")
     CHECK_EQ("string", toString(tpm->givenTp));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_array")
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_array")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -895,7 +895,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_array")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_generic_types")
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_generic_types")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -917,7 +917,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_generic_types")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_errors_w_bad_indexer")
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_errors_w_bad_indexer")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -933,7 +933,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_errors_w_bad_indexer")
     CHECK(toString(result.errors[1]) == "Property 'boolean' does not exist on type 'MyObject'");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_errors_w_var_indexer")
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_errors_w_var_indexer")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -950,7 +950,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_errors_w_var_indexer")
     CHECK(toString(result.errors[1]) == "Unknown type 'key'");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_union_type_indexer")
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_union_type_indexer")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -968,7 +968,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_union_type_indexer
     CHECK(toString(result.errors[0]) == "Property '\"a\" | \"d\"' does not exist on type 'MyObject'");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_union_type_indexee")
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_union_type_indexee")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -987,7 +987,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_union_type_indexee
     CHECK(toString(result.errors[0]) == "Property '\"b\"' does not exist on type 'MyObject | MyObject2'");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_rfc_alternative_section")
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_rfc_alternative_section")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -1005,7 +1005,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_rfc_alternative_section")
     CHECK(toString(result.errors[0]) == "Property '\"b\"' does not exist on type 'MyObject'");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "index_type_family_works_on_classes")
+TEST_CASE_FIXTURE(ClassFixture, "index_type_function_works_on_classes")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -1019,7 +1019,7 @@ TEST_CASE_FIXTURE(ClassFixture, "index_type_family_works_on_classes")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_index_metatables")
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_function_works_w_index_metatables")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -1045,7 +1045,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_type_family_works_w_index_metatables")
     CHECK(toString(result.errors[0]) == "Property '\"Car\"' does not exist on type 'exampleClass2'");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works")
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -1067,7 +1067,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works")
     CHECK_EQ("string", toString(tpm->givenTp));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_array")
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_array")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -1081,7 +1081,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_array")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_errors_w_var_indexer")
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_errors_w_var_indexer")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -1097,7 +1097,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_errors_w_var_indexer")
     CHECK(toString(result.errors[1]) == "Unknown type 'key'");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_union_type_indexer")
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_union_type_indexer")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -1113,7 +1113,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_union_type_indexe
     CHECK(toString(result.errors[0]) == "Property '\"a\" | \"d\"' does not exist on type 'MyObject'");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_union_type_indexee")
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_union_type_indexee")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -1130,7 +1130,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_union_type_indexe
     CHECK(toString(result.errors[0]) == "Property '\"b\"' does not exist on type 'MyObject | MyObject2'");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_index_metatables")
+TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_function_works_w_index_metatables")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -1150,7 +1150,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "rawget_type_family_works_w_index_metatables"
     CHECK(toString(result.errors[1]) == "Property '\"Bar\" | \"Foo\"' does not exist on type 'exampleClass3'");
 }
 
-TEST_CASE_FIXTURE(ClassFixture, "rawget_type_family_errors_w_classes")
+TEST_CASE_FIXTURE(ClassFixture, "rawget_type_function_errors_w_classes")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;

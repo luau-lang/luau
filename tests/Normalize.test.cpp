@@ -404,8 +404,16 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "error_suppression")
     CHECK(!isSubtype(any, str));
     CHECK(isSubtype(str, any));
 
-    CHECK(!isSubtype(any, unk));
-    CHECK(isSubtype(unk, any));
+    // We have added this as an exception - the set of inhabitants of any is exactly the set of inhabitants of unknown (since error has no
+    // inhabitants). any = err | unknown, so under semantic subtyping, {} U unknown = unknown
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK(isSubtype(any, unk));
+    }
+    else
+    {
+        CHECK(!isSubtype(any, unk));
+    }
 
     CHECK(!isSubtype(err, str));
     CHECK(!isSubtype(str, err));

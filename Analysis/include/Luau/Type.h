@@ -499,10 +499,11 @@ struct ClassType
     Tags tags;
     std::shared_ptr<ClassUserData> userData;
     ModuleName definitionModuleName;
+    std::optional<Location> definitionLocation;
     std::optional<TableIndexer> indexer;
 
     ClassType(Name name, Props props, std::optional<TypeId> parent, std::optional<TypeId> metatable, Tags tags,
-        std::shared_ptr<ClassUserData> userData, ModuleName definitionModuleName)
+        std::shared_ptr<ClassUserData> userData, ModuleName definitionModuleName, std::optional<Location> definitionLocation)
         : name(name)
         , props(props)
         , parent(parent)
@@ -510,11 +511,13 @@ struct ClassType
         , tags(tags)
         , userData(userData)
         , definitionModuleName(definitionModuleName)
+        , definitionLocation(definitionLocation)
     {
     }
 
     ClassType(Name name, Props props, std::optional<TypeId> parent, std::optional<TypeId> metatable, Tags tags,
-        std::shared_ptr<ClassUserData> userData, ModuleName definitionModuleName, std::optional<TableIndexer> indexer)
+        std::shared_ptr<ClassUserData> userData, ModuleName definitionModuleName, std::optional<Location> definitionLocation,
+        std::optional<TableIndexer> indexer)
         : name(name)
         , props(props)
         , parent(parent)
@@ -522,6 +525,7 @@ struct ClassType
         , tags(tags)
         , userData(userData)
         , definitionModuleName(definitionModuleName)
+        , definitionLocation(definitionLocation)
         , indexer(indexer)
     {
     }
@@ -536,27 +540,27 @@ struct ClassType
  */
 struct TypeFunctionInstanceType
 {
-    NotNull<const TypeFunction> family;
+    NotNull<const TypeFunction> function;
 
     std::vector<TypeId> typeArguments;
     std::vector<TypePackId> packArguments;
 
-    TypeFunctionInstanceType(NotNull<const TypeFunction> family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
-        : family(family)
+    TypeFunctionInstanceType(NotNull<const TypeFunction> function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
+        : function(function)
         , typeArguments(typeArguments)
         , packArguments(packArguments)
     {
     }
 
-    TypeFunctionInstanceType(const TypeFunction& family, std::vector<TypeId> typeArguments)
-        : family{&family}
+    TypeFunctionInstanceType(const TypeFunction& function, std::vector<TypeId> typeArguments)
+        : function{&function}
         , typeArguments(typeArguments)
         , packArguments{}
     {
     }
 
-    TypeFunctionInstanceType(const TypeFunction& family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
-        : family{&family}
+    TypeFunctionInstanceType(const TypeFunction& function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
+        : function{&function}
         , typeArguments(typeArguments)
         , packArguments(packArguments)
     {

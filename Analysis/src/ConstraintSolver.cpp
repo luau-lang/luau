@@ -366,6 +366,8 @@ void ConstraintSolver::randomize(unsigned seed)
 
 void ConstraintSolver::run()
 {
+    LUAU_TIMETRACE_SCOPE("ConstraintSolver::run", "Typechecking");
+
     if (isDone())
         return;
 
@@ -489,11 +491,11 @@ void ConstraintSolver::run()
     if (!unsolvedConstraints.empty())
         reportError(InternalError{"Type inference failed to complete, you may see some confusing types and type errors."}, Location{});
 
-    // After we have run all the constraints, type families should be generalized
+    // After we have run all the constraints, type functions should be generalized
     // At this point, we can try to perform one final simplification to suss out
-    // whether type families are truly uninhabited or if they can reduce
+    // whether type functions are truly uninhabited or if they can reduce
 
-    finalizeTypeFamilies();
+    finalizeTypeFunctions();
 
     if (FFlag::DebugLuauLogSolver || FFlag::DebugLuauLogBindings)
         dumpBindings(rootScope, opts);
@@ -504,10 +506,10 @@ void ConstraintSolver::run()
     }
 }
 
-void ConstraintSolver::finalizeTypeFamilies()
+void ConstraintSolver::finalizeTypeFunctions()
 {
     // At this point, we've generalized. Let's try to finish reducing as much as we can, we'll leave warning to the typechecker
-    for (auto [t, constraint] : typeFamiliesToFinalize)
+    for (auto [t, constraint] : typeFunctionsToFinalize)
     {
         TypeId ty = follow(t);
         if (get<TypeFunctionInstanceType>(ty))
@@ -721,7 +723,7 @@ bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Co
      * to figure out which of the above shapes we are actually working with.
      *
      * If `force` is true and we still do not know, we must flag a warning. Type
-     * families are the fix for this.
+     * functions are the fix for this.
      *
      * Since we need to know all of this stuff about the types of the iteratee,
      * we have no choice but for ConstraintSolver to also be the thing that
@@ -1294,7 +1296,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
             ftv = get<FunctionType>(*res);
             LUAU_ASSERT(ftv);
 
-            // we've potentially copied type families here, so we need to reproduce their reduce constraint.
+            // we've potentially copied type functions here, so we need to reproduce their reduce constraint.
             reproduceConstraints(constraint->scope, constraint->location, replacer);
         }
     }
@@ -1975,17 +1977,17 @@ bool ConstraintSolver::tryDispatch(const ReduceConstraint& c, NotNull<const Cons
     ty = follow(ty);
     // If we couldn't reduce this type function, stick it in the set!
     if (get<TypeFunctionInstanceType>(ty))
-        typeFamiliesToFinalize[ty] = constraint;
+        typeFunctionsToFinalize[ty] = constraint;
 
     if (force || reductionFinished)
     {
-        // if we're completely dispatching this constraint, we want to record any uninhabited type families to unblock.
+        // if we're completely dispatching this constraint, we want to record any uninhabited type functions to unblock.
         for (auto error : result.errors)
         {
             if (auto utf = get<UninhabitedTypeFunction>(error))
-                uninhabitedTypeFamilies.insert(utf->ty);
+                uninhabitedTypeFunctions.insert(utf->ty);
             else if (auto utpf = get<UninhabitedTypePackFunction>(error))
-                uninhabitedTypeFamilies.insert(utpf->tp);
+                uninhabitedTypeFunctions.insert(utpf->tp);
         }
     }
 
@@ -2017,13 +2019,13 @@ bool ConstraintSolver::tryDispatch(const ReducePackConstraint& c, NotNull<const 
 
     if (force || reductionFinished)
     {
-        // if we're completely dispatching this constraint, we want to record any uninhabited type families to unblock.
+        // if we're completely dispatching this constraint, we want to record any uninhabited type functions to unblock.
         for (auto error : result.errors)
         {
             if (auto utf = get<UninhabitedTypeFunction>(error))
-                uninhabitedTypeFamilies.insert(utf->ty);
+                uninhabitedTypeFunctions.insert(utf->ty);
             else if (auto utpf = get<UninhabitedTypePackFunction>(error))
-                uninhabitedTypeFamilies.insert(utpf->tp);
+                uninhabitedTypeFunctions.insert(utpf->tp);
         }
     }
 
@@ -2498,7 +2500,7 @@ std::pair<std::vector<TypeId>, std::optional<TypeId>> ConstraintSolver::lookupTa
 template<typename TID>
 bool ConstraintSolver::unify(NotNull<const Constraint> constraint, TID subTy, TID superTy)
 {
-    Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}, &uninhabitedTypeFamilies};
+    Unifier2 u2{NotNull{arena}, builtinTypes, constraint->scope, NotNull{&iceReporter}, &uninhabitedTypeFunctions};
 
     const bool ok = u2.unify(subTy, superTy);
 
@@ -2735,7 +2737,7 @@ bool ConstraintSolver::isBlocked(TypeId ty)
     ty = follow(ty);
 
     if (auto tfit = get<TypeFunctionInstanceType>(ty))
-        return uninhabitedTypeFamilies.contains(ty) == false;
+        return uninhabitedTypeFunctions.contains(ty) == false;
 
     return nullptr != get<BlockedType>(ty) || nullptr != get<PendingExpansionType>(ty);
 }
@@ -2745,7 +2747,7 @@ bool ConstraintSolver::isBlocked(TypePackId tp)
     tp = follow(tp);
 
     if (auto tfitp = get<TypeFunctionInstanceTypePack>(tp))
-        return uninhabitedTypeFamilies.contains(tp) == false;
+        return uninhabitedTypeFunctions.contains(tp) == false;
 
     return nullptr != get<BlockedTypePack>(tp);
 }

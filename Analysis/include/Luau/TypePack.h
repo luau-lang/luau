@@ -92,7 +92,7 @@ struct BlockedTypePack
  */
 struct TypeFunctionInstanceTypePack
 {
-    NotNull<const TypePackFunction> family;
+    NotNull<const TypePackFunction> function;
 
     std::vector<TypeId> typeArguments;
     std::vector<TypePackId> packArguments;

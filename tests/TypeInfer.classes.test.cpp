@@ -706,19 +706,19 @@ TEST_CASE_FIXTURE(Fixture, "read_write_class_properties")
 
     unfreeze(arena);
 
-    TypeId instanceType = arena.addType(ClassType{"Instance", {}, nullopt, nullopt, {}, {}, "Test"});
+    TypeId instanceType = arena.addType(ClassType{"Instance", {}, nullopt, nullopt, {}, {}, "Test", {}});
     getMutable<ClassType>(instanceType)->props = {{"Parent", Property::rw(instanceType)}};
 
     //
 
-    TypeId workspaceType = arena.addType(ClassType{"Workspace", {}, nullopt, nullopt, {}, {}, "Test"});
+    TypeId workspaceType = arena.addType(ClassType{"Workspace", {}, nullopt, nullopt, {}, {}, "Test", {}});
 
     TypeId scriptType =
-        arena.addType(ClassType{"Script", {{"Parent", Property::rw(workspaceType, instanceType)}}, instanceType, nullopt, {}, {}, "Test"});
+        arena.addType(ClassType{"Script", {{"Parent", Property::rw(workspaceType, instanceType)}}, instanceType, nullopt, {}, {}, "Test", {}});
 
     TypeId partType = arena.addType(
         ClassType{"Part", {{"BrickColor", Property::rw(builtinTypes->stringType)}, {"Parent", Property::rw(workspaceType, instanceType)}},
-            instanceType, nullopt, {}, {}, "Test"});
+            instanceType, nullopt, {}, {}, "Test", {}});
 
     getMutable<ClassType>(workspaceType)->props = {{"Script", Property::readonly(scriptType)}, {"Part", Property::readonly(partType)}};
 

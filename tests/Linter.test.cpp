@@ -28,7 +28,7 @@ end
     REQUIRE(0 == result.warnings.size());
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_family_fully_reduces")
+TEST_CASE_FIXTURE(Fixture, "type_function_fully_reduces")
 {
     LintResult result = lint(R"(
 function fib(n)
@@ -1485,7 +1485,7 @@ TEST_CASE_FIXTURE(Fixture, "LintHygieneUAF")
 TEST_CASE_FIXTURE(BuiltinsFixture, "DeprecatedApiTyped")
 {
     unfreeze(frontend.globals.globalTypes);
-    TypeId instanceType = frontend.globals.globalTypes.addType(ClassType{"Instance", {}, std::nullopt, std::nullopt, {}, {}, "Test"});
+    TypeId instanceType = frontend.globals.globalTypes.addType(ClassType{"Instance", {}, std::nullopt, std::nullopt, {}, {}, "Test", {}});
     persist(instanceType);
     frontend.globals.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, instanceType};
 

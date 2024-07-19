@@ -244,13 +244,13 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
         {
             {"__add", {builtinTypes->anyType}},
         },
-        std::nullopt, std::nullopt, {}, {}, "Test"}};
+        std::nullopt, std::nullopt, {}, {}, "Test", {}}};
     Type exampleClass{ClassType{"ExampleClass",
         {
             {"PropOne", {builtinTypes->numberType}},
             {"PropTwo", {builtinTypes->stringType}},
         },
-        std::nullopt, &exampleMetaClass, {}, {}, "Test"}};
+        std::nullopt, &exampleMetaClass, {}, {}, "Test", {}}};
 
     TypeArena dest;
     CloneState cloneState{builtinTypes};

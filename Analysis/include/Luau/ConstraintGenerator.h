@@ -371,7 +371,7 @@ private:
     std::vector<std::optional<TypeId>> getExpectedCallTypesForFunctionOverloads(const TypeId fnType);
 
     TypeId createTypeFunctionInstance(
-        const TypeFunction& family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments, const ScopePtr& scope, Location location);
+        const TypeFunction& function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments, const ScopePtr& scope, Location location);
 };
 
 /** Borrow a vector of pointers from a vector of owning pointers to constraints.

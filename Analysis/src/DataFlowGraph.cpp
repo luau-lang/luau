@@ -5,6 +5,7 @@
 #include "Luau/Def.h"
 #include "Luau/Common.h"
 #include "Luau/Error.h"
+#include "Luau/TimeTrace.h"
 
 #include <optional>
 
@@ -136,6 +137,8 @@ bool DfgScope::canUpdateDefinition(DefId def, const std::string& key) const
 
 DataFlowGraph DataFlowGraphBuilder::build(AstStatBlock* block, NotNull<InternalErrorReporter> handle)
 {
+    LUAU_TIMETRACE_SCOPE("DataFlowGraphBuilder::build", "Typechecking");
+
     LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
 
     DataFlowGraphBuilder builder;

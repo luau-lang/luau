@@ -91,8 +91,8 @@ struct ConstraintSolver
     // A mapping from free types to the number of unresolved constraints that mention them.
     DenseHashMap<TypeId, size_t> unresolvedConstraints{{}};
 
-    // Irreducible/uninhabited type families or type pack families.
-    DenseHashSet<const void*> uninhabitedTypeFamilies{{}};
+    // Irreducible/uninhabited type functions or type pack functions.
+    DenseHashSet<const void*> uninhabitedTypeFunctions{{}};
 
     // The set of types that will definitely be unchanged by generalization.
     DenseHashSet<TypeId> generalizedTypes_{nullptr};
@@ -107,7 +107,7 @@ struct ConstraintSolver
     DcrLogger* logger;
     TypeCheckLimits limits;
 
-    DenseHashMap<TypeId, const Constraint*> typeFamiliesToFinalize{nullptr};
+    DenseHashMap<TypeId, const Constraint*> typeFunctionsToFinalize{nullptr};
 
     explicit ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, std::vector<NotNull<Constraint>> constraints,
         ModuleName moduleName, NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger,
@@ -124,10 +124,10 @@ struct ConstraintSolver
 
 
     /**
-     * Attempts to perform one final reduction on type families after every constraint has been completed
+     * Attempts to perform one final reduction on type functions after every constraint has been completed
      *
      **/
-    void finalizeTypeFamilies();
+    void finalizeTypeFunctions();
 
     bool isDone();
 
@@ -345,7 +345,7 @@ public:
 
     /**
      * Reproduces any constraints necessary for new types that are copied when applying a substitution.
-     * At the time of writing, this pertains only to type families.
+     * At the time of writing, this pertains only to type functions.
      * @param subst the substitution that was applied
      **/
     void reproduceConstraints(NotNull<Scope> scope, const Location& location, const Substitution& subst);

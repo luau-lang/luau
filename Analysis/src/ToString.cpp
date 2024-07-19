@@ -1033,7 +1033,7 @@ struct TypeStringifier
 
     void operator()(TypeId, const TypeFunctionInstanceType& tfitv)
     {
-        state.emit(tfitv.family->name);
+        state.emit(tfitv.function->name);
         state.emit("<");
 
         bool comma = false;
@@ -1234,7 +1234,7 @@ struct TypePackStringifier
 
     void operator()(TypePackId, const TypeFunctionInstanceTypePack& tfitp)
     {
-        state.emit(tfitp.family->name);
+        state.emit(tfitp.function->name);
         state.emit("<");
 
         bool comma = false;
