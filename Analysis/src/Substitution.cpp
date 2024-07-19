@@ -127,7 +127,7 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool a
             return dest.addType(NegationType{a.ty});
         else if constexpr (std::is_same_v<T, TypeFunctionInstanceType>)
         {
-            TypeFunctionInstanceType clone{a.family, a.typeArguments, a.packArguments};
+            TypeFunctionInstanceType clone{a.function, a.typeArguments, a.packArguments};
             return dest.addType(std::move(clone));
         }
         else
@@ -672,7 +672,7 @@ TypePackId Substitution::clone(TypePackId tp)
     else if (const TypeFunctionInstanceTypePack* tfitp = get<TypeFunctionInstanceTypePack>(tp))
     {
         TypeFunctionInstanceTypePack clone{
-            tfitp->family, std::vector<TypeId>(tfitp->typeArguments.size()), std::vector<TypePackId>(tfitp->packArguments.size())};
+            tfitp->function, std::vector<TypeId>(tfitp->typeArguments.size()), std::vector<TypePackId>(tfitp->packArguments.size())};
         clone.typeArguments.assign(tfitp->typeArguments.begin(), tfitp->typeArguments.end());
         clone.packArguments.assign(tfitp->packArguments.begin(), tfitp->packArguments.end());
         return addTypePack(std::move(clone));

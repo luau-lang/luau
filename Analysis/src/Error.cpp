@@ -585,7 +585,7 @@ struct ErrorConverter
             return "Unexpected type " + Luau::toString(e.ty) + " flagged as an uninhabited type function.";
 
         // unary operators
-        if (auto unaryString = kUnaryOps.find(tfit->family->name); unaryString != kUnaryOps.end())
+        if (auto unaryString = kUnaryOps.find(tfit->function->name); unaryString != kUnaryOps.end())
         {
             std::string result = "Operator '" + std::string(unaryString->second) + "' could not be applied to ";
 
@@ -593,8 +593,8 @@ struct ErrorConverter
             {
                 result += "operand of type " + Luau::toString(tfit->typeArguments[0]);
 
-                if (tfit->family->name != "not")
-                    result += "; there is no corresponding overload for __" + tfit->family->name;
+                if (tfit->function->name != "not")
+                    result += "; there is no corresponding overload for __" + tfit->function->name;
             }
             else
             {
@@ -619,7 +619,7 @@ struct ErrorConverter
         }
 
         // binary operators
-        if (auto binaryString = kBinaryOps.find(tfit->family->name); binaryString != kBinaryOps.end())
+        if (auto binaryString = kBinaryOps.find(tfit->function->name); binaryString != kBinaryOps.end())
         {
             std::string result = "Operator '" + std::string(binaryString->second) + "' could not be applied to operands of types ";
 
@@ -646,14 +646,14 @@ struct ErrorConverter
                     result += ", " + Luau::toString(packArg);
             }
 
-            result += "; there is no corresponding overload for __" + tfit->family->name;
+            result += "; there is no corresponding overload for __" + tfit->function->name;
 
             return result;
         }
 
         // miscellaneous
 
-        if ("keyof" == tfit->family->name || "rawkeyof" == tfit->family->name)
+        if ("keyof" == tfit->function->name || "rawkeyof" == tfit->function->name)
         {
             if (tfit->typeArguments.size() == 1 && tfit->packArguments.empty())
                 return "Type '" + toString(tfit->typeArguments[0]) + "' does not have keys, so '" + Luau::toString(e.ty) + "' is invalid";
@@ -661,19 +661,19 @@ struct ErrorConverter
                 return "Type function instance " + Luau::toString(e.ty) + " is ill-formed, and thus invalid";
         }
 
-        if ("index" == tfit->family->name || "rawget" == tfit->family->name)
+        if ("index" == tfit->function->name || "rawget" == tfit->function->name)
         {
             if (tfit->typeArguments.size() != 2)
                 return "Type function instance " + Luau::toString(e.ty) + " is ill-formed, and thus invalid";
 
             if (auto errType = get<ErrorType>(tfit->typeArguments[1])) // Second argument to (index | rawget)<_,_> is not a type
-                return "Second argument to " + tfit->family->name + "<" + Luau::toString(tfit->typeArguments[0]) + ", _> is not a valid index type";
+                return "Second argument to " + tfit->function->name + "<" + Luau::toString(tfit->typeArguments[0]) + ", _> is not a valid index type";
             else // Property `indexer` does not exist on type `indexee`
                 return "Property '" + Luau::toString(tfit->typeArguments[1]) + "' does not exist on type '" + Luau::toString(tfit->typeArguments[0]) +
                        "'";
         }
 
-        if (kUnreachableTypeFunctions.count(tfit->family->name))
+        if (kUnreachableTypeFunctions.count(tfit->function->name))
         {
             return "Type function instance " + Luau::toString(e.ty) + " is uninhabited\n" +
                    "This is likely to be a bug, please report it at https://github.com/luau-lang/luau/issues";
@@ -706,7 +706,7 @@ struct ErrorConverter
 
     std::string operator()(const UninhabitedTypePackFunction& e) const
     {
-        return "Type pack family instance " + Luau::toString(e.tp) + " is uninhabited";
+        return "Type pack function instance " + Luau::toString(e.tp) + " is uninhabited";
     }
 
     std::string operator()(const WhereClauseNeeded& e) const
@@ -718,7 +718,7 @@ struct ErrorConverter
 
     std::string operator()(const PackWhereClauseNeeded& e) const
     {
-        return "Type pack family instance " + Luau::toString(e.tp) +
+        return "Type pack function instance " + Luau::toString(e.tp) +
                " depends on generic function parameters but does not appear in the function signature; this construct cannot be type-checked at this "
                "time";
     }

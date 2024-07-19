@@ -25,7 +25,7 @@ LUAU_DYNAMIC_FASTFLAG(LuauImproveNonFunctionCallError)
 
 TEST_SUITE_BEGIN("TableTests");
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_shouldnt_seal_table_in_len_family_fn")
+TEST_CASE_FIXTURE(BuiltinsFixture, "generalization_shouldnt_seal_table_in_len_function_fn")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -4577,6 +4577,29 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_table_assertion_crash")
             end
         end
     )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table::insert_should_not_report_errors_when_correct_overload_is_picked")
+{
+    CheckResult result = check(R"(
+type cs = { GetTagged : (cs, string) -> any}
+local destroyQueue: {any} = {} -- pair of (time, coin)
+local tick : () -> any
+local CS : cs
+local DESTROY_DELAY
+local function SpawnCoin()
+	local spawns = CS:GetTagged('CoinSpawner')
+	local n : any
+	local StartPos = spawns[n].CFrame
+	local Coin = script.Coin:Clone()
+	Coin.CFrame = StartPos
+	Coin.Parent = workspace.Coins
+
+	table.insert(destroyQueue, {tick() + DESTROY_DELAY, Coin})
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -345,7 +345,7 @@ void StateDot::visitChildren(TypeId ty, int index)
         }
         else if constexpr (std::is_same_v<T, TypeFunctionInstanceType>)
         {
-            formatAppend(result, "TypeFunctionInstanceType %s %d", t.family->name.c_str(), index);
+            formatAppend(result, "TypeFunctionInstanceType %s %d", t.function->name.c_str(), index);
             finishNodeLabel(ty);
             finishNode();
 

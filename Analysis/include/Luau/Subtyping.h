@@ -219,8 +219,8 @@ private:
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TypeIds& subTypes, const TypeIds& superTypes);
 
     SubtypingResult isCovariantWith(SubtypingEnvironment& env, const VariadicTypePack* subVariadic, const VariadicTypePack* superVariadic);
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TypeFunctionInstanceType* subFamilyInstance, const TypeId superTy);
-    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TypeId subTy, const TypeFunctionInstanceType* superFamilyInstance);
+    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TypeFunctionInstanceType* subFunctionInstance, const TypeId superTy);
+    SubtypingResult isCovariantWith(SubtypingEnvironment& env, const TypeId subTy, const TypeFunctionInstanceType* superFunctionInstance);
 
     bool bindGeneric(SubtypingEnvironment& env, TypeId subTp, TypeId superTp);
     bool bindGeneric(SubtypingEnvironment& env, TypePackId subTp, TypePackId superTp);
@@ -228,7 +228,7 @@ private:
     template<typename T, typename Container>
     TypeId makeAggregateType(const Container& container, TypeId orElse);
 
-    std::pair<TypeId, ErrorVec> handleTypeFunctionReductionResult(const TypeFunctionInstanceType* familyInstance);
+    std::pair<TypeId, ErrorVec> handleTypeFunctionReductionResult(const TypeFunctionInstanceType* functionInstance);
 
     [[noreturn]] void unexpected(TypeId ty);
     [[noreturn]] void unexpected(TypePackId tp);

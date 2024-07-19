@@ -11,7 +11,6 @@ Id UnionFind::makeSet()
     Id id{parents.size()};
     parents.push_back(id);
     ranks.push_back(0);
-
     return id;
 }
 

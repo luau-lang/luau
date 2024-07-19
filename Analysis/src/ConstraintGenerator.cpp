@@ -15,6 +15,7 @@
 #include "Luau/Simplify.h"
 #include "Luau/StringUtils.h"
 #include "Luau/TableLiteralInference.h"
+#include "Luau/TimeTrace.h"
 #include "Luau/Type.h"
 #include "Luau/TypeFunction.h"
 #include "Luau/TypePack.h"
@@ -211,6 +212,8 @@ ConstraintGenerator::ConstraintGenerator(ModulePtr module, NotNull<Normalizer> n
 
 void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
 {
+    LUAU_TIMETRACE_SCOPE("ConstraintGenerator::visitModuleRoot", "Typechecking");
+
     LUAU_ASSERT(scopes.empty());
     LUAU_ASSERT(rootScope == nullptr);
     ScopePtr scope = std::make_shared<Scope>(globalScope);
@@ -3356,9 +3359,9 @@ std::vector<std::optional<TypeId>> ConstraintGenerator::getExpectedCallTypesForF
 }
 
 TypeId ConstraintGenerator::createTypeFunctionInstance(
-    const TypeFunction& family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments, const ScopePtr& scope, Location location)
+    const TypeFunction& function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments, const ScopePtr& scope, Location location)
 {
-    TypeId result = arena->addTypeFunction(family, typeArguments, packArguments);
+    TypeId result = arena->addTypeFunction(function, typeArguments, packArguments);
     addConstraint(scope, location, ReduceConstraint{result});
     return result;
 }

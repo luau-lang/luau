@@ -29,13 +29,13 @@ struct TypeFunctionReductionGuessResult
 struct TypeFunctionInferenceResult
 {
     std::vector<TypeId> operandInference;
-    TypeId familyResultInference;
+    TypeId functionResultInference;
 };
 
 struct TypeFunctionReductionGuesser
 {
     // Tracks our hypothesis about what a type function reduces to
-    DenseHashMap<TypeId, TypeId> familyReducesTo{nullptr};
+    DenseHashMap<TypeId, TypeId> functionReducesTo{nullptr};
     // Tracks our constraints on type function operands
     DenseHashMap<TypeId, TypeId> substitutable{nullptr};
     // List of instances to try progress
@@ -57,14 +57,14 @@ private:
     std::optional<TypeId> guessType(TypeId arg);
     void dumpGuesses();
 
-    bool isNumericBinopFamily(const TypeFunctionInstanceType& instance);
-    bool isComparisonFamily(const TypeFunctionInstanceType& instance);
-    bool isOrAndFamily(const TypeFunctionInstanceType& instance);
-    bool isNotFamily(const TypeFunctionInstanceType& instance);
-    bool isLenFamily(const TypeFunctionInstanceType& instance);
+    bool isNumericBinopFunction(const TypeFunctionInstanceType& instance);
+    bool isComparisonFunction(const TypeFunctionInstanceType& instance);
+    bool isOrAndFunction(const TypeFunctionInstanceType& instance);
+    bool isNotFunction(const TypeFunctionInstanceType& instance);
+    bool isLenFunction(const TypeFunctionInstanceType& instance);
     bool isUnaryMinus(const TypeFunctionInstanceType& instance);
 
-    // Operand is assignable if it looks like a cyclic family instance, or a generic type
+    // Operand is assignable if it looks like a cyclic type function instance, or a generic type
     bool operandIsAssignable(TypeId ty);
     std::optional<TypeId> tryAssignOperandType(TypeId ty);
 
@@ -75,11 +75,11 @@ private:
 
     bool isFunctionGenericsSaturated(const FunctionType& ftv, DenseHashSet<TypeId>& instanceArgs);
     void inferTypeFunctionSubstitutions(TypeId ty, const TypeFunctionInstanceType* instance);
-    TypeFunctionInferenceResult inferNumericBinopFamily(const TypeFunctionInstanceType* instance);
-    TypeFunctionInferenceResult inferComparisonFamily(const TypeFunctionInstanceType* instance);
-    TypeFunctionInferenceResult inferOrAndFamily(const TypeFunctionInstanceType* instance);
-    TypeFunctionInferenceResult inferNotFamily(const TypeFunctionInstanceType* instance);
-    TypeFunctionInferenceResult inferLenFamily(const TypeFunctionInstanceType* instance);
-    TypeFunctionInferenceResult inferUnaryMinusFamily(const TypeFunctionInstanceType* instance);
+    TypeFunctionInferenceResult inferNumericBinopFunction(const TypeFunctionInstanceType* instance);
+    TypeFunctionInferenceResult inferComparisonFunction(const TypeFunctionInstanceType* instance);
+    TypeFunctionInferenceResult inferOrAndFunction(const TypeFunctionInstanceType* instance);
+    TypeFunctionInferenceResult inferNotFunction(const TypeFunctionInstanceType* instance);
+    TypeFunctionInferenceResult inferLenFunction(const TypeFunctionInstanceType* instance);
+    TypeFunctionInferenceResult inferUnaryMinusFunction(const TypeFunctionInstanceType* instance);
 };
 } // namespace Luau

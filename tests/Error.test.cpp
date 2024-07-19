@@ -36,7 +36,7 @@ local x: Account = 5
     CHECK_EQ("Type 'number' could not be converted into 'Account'", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "binary_op_type_family_errors")
+TEST_CASE_FIXTURE(BuiltinsFixture, "binary_op_type_function_errors")
 {
     frontend.options.retainFullTypeGraphs = false;
 
@@ -54,7 +54,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "binary_op_type_family_errors")
         CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "unary_op_type_family_errors")
+TEST_CASE_FIXTURE(BuiltinsFixture, "unary_op_type_function_errors")
 {
     frontend.options.retainFullTypeGraphs = false;
 

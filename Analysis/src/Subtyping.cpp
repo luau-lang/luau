@@ -530,6 +530,11 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     }
     else if (get<AnyType>(superTy))
         result = {true};
+
+    // We have added this as an exception - the set of inhabitants of any is exactly the set of inhabitants of unknown (since error has no
+    // inhabitants). any = err | unknown, so under semantic subtyping, {} U unknown = unknown
+    else if (get<AnyType>(subTy) && get<UnknownType>(superTy))
+        result = {true};
     else if (get<AnyType>(subTy))
     {
         // any = unknown | error, so we rewrite this to match.
@@ -1584,19 +1589,19 @@ bool Subtyping::bindGeneric(SubtypingEnvironment& env, TypeId subTy, TypeId supe
     return true;
 }
 
-SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const TypeFunctionInstanceType* subFamilyInstance, const TypeId superTy)
+SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const TypeFunctionInstanceType* subFunctionInstance, const TypeId superTy)
 {
     // Reduce the type function instance
-    auto [ty, errors] = handleTypeFunctionReductionResult(subFamilyInstance);
+    auto [ty, errors] = handleTypeFunctionReductionResult(subFunctionInstance);
 
     // If we return optional, that means the type function was irreducible - we can reduce that to never
     return isCovariantWith(env, ty, superTy).withErrors(errors).withSubComponent(TypePath::Reduction{ty});
 }
 
-SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const TypeId subTy, const TypeFunctionInstanceType* superFamilyInstance)
+SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const TypeId subTy, const TypeFunctionInstanceType* superFunctionInstance)
 {
     // Reduce the type function instance
-    auto [ty, errors] = handleTypeFunctionReductionResult(superFamilyInstance);
+    auto [ty, errors] = handleTypeFunctionReductionResult(superFunctionInstance);
     return isCovariantWith(env, subTy, ty).withErrors(errors).withSuperComponent(TypePath::Reduction{ty});
 }
 
@@ -1632,19 +1637,19 @@ TypeId Subtyping::makeAggregateType(const Container& container, TypeId orElse)
         return arena->addType(T{std::vector<TypeId>(begin(container), end(container))});
 }
 
-std::pair<TypeId, ErrorVec> Subtyping::handleTypeFunctionReductionResult(const TypeFunctionInstanceType* familyInstance)
+std::pair<TypeId, ErrorVec> Subtyping::handleTypeFunctionReductionResult(const TypeFunctionInstanceType* functionInstance)
 {
     TypeFunctionContext context{arena, builtinTypes, scope, normalizer, iceReporter, NotNull{&limits}};
-    TypeId family = arena->addType(*familyInstance);
-    FunctionGraphReductionResult result = reduceTypeFunctions(family, {}, context, true);
+    TypeId function = arena->addType(*functionInstance);
+    FunctionGraphReductionResult result = reduceTypeFunctions(function, {}, context, true);
     ErrorVec errors;
     if (result.blockedTypes.size() != 0 || result.blockedPacks.size() != 0)
     {
-        errors.push_back(TypeError{{}, UninhabitedTypeFunction{family}});
+        errors.push_back(TypeError{{}, UninhabitedTypeFunction{function}});
         return {builtinTypes->neverType, errors};
     }
-    if (result.reducedTypes.contains(family))
-        return {family, errors};
+    if (result.reducedTypes.contains(function))
+        return {function, errors};
     return {builtinTypes->neverType, errors};
 }
 

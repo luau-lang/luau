@@ -311,7 +311,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "nocheck_cycle_used_by_checked")
     REQUIRE(bool(cExports));
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("{ a: any, b: any }", toString(*cExports));
+        CHECK_EQ("{ a: { hello: any }, b: { hello: any } }", toString(*cExports));
     else
         CHECK_EQ("{| a: any, b: any |}", toString(*cExports));
 }

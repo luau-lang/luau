@@ -1249,6 +1249,10 @@ ModulePtr check(const SourceModule& sourceModule, Mode mode, const std::vector<R
     const ScopePtr& parentScope, std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope, FrontendOptions options,
     TypeCheckLimits limits, bool recordJsonLog, std::function<void(const ModuleName&, std::string)> writeJsonLog)
 {
+    LUAU_TIMETRACE_SCOPE("Frontend::check", "Typechecking");
+    LUAU_TIMETRACE_ARGUMENT("module", sourceModule.name.c_str());
+    LUAU_TIMETRACE_ARGUMENT("name", sourceModule.humanReadableName.c_str());
+
     ModulePtr result = std::make_shared<Module>();
     result->name = sourceModule.name;
     result->humanReadableName = sourceModule.humanReadableName;

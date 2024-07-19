@@ -424,7 +424,7 @@ bool maybeSingleton(TypeId ty)
             if (maybeSingleton(part)) // will i regret this?
                 return true;
     if (const TypeFunctionInstanceType* tfit = get<TypeFunctionInstanceType>(ty))
-        if (tfit->family->name == "keyof" || tfit->family->name == "rawkeyof")
+        if (tfit->function->name == "keyof" || tfit->function->name == "rawkeyof")
             return true;
     return false;
 }
