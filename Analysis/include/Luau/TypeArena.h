@@ -49,10 +49,10 @@ struct TypeArena
         return addTypePack(TypePackVar(std::move(tp)));
     }
 
-    TypeId addTypeFunction(const TypeFunction& family, std::initializer_list<TypeId> types);
-    TypeId addTypeFunction(const TypeFunction& family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments = {});
-    TypePackId addTypePackFunction(const TypePackFunction& family, std::initializer_list<TypeId> types);
-    TypePackId addTypePackFunction(const TypePackFunction& family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments = {});
+    TypeId addTypeFunction(const TypeFunction& function, std::initializer_list<TypeId> types);
+    TypeId addTypeFunction(const TypeFunction& function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments = {});
+    TypePackId addTypePackFunction(const TypePackFunction& function, std::initializer_list<TypeId> types);
+    TypePackId addTypePackFunction(const TypePackFunction& function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments = {});
 };
 
 void freeze(TypeArena& arena);

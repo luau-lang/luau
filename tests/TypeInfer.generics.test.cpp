@@ -1424,7 +1424,7 @@ TEST_CASE_FIXTURE(Fixture, "missing_generic_type_parameter")
     REQUIRE(get<UnknownSymbol>(result.errors[1]));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_families_work_in_subtyping")
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_type_functions_work_in_subtyping")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;

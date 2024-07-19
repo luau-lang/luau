@@ -83,7 +83,7 @@ bool TypeFunctionReductionGuesser::isFunctionGenericsSaturated(const FunctionTyp
 
 void TypeFunctionReductionGuesser::dumpGuesses()
 {
-    for (auto [tf, t] : familyReducesTo)
+    for (auto [tf, t] : functionReducesTo)
         printf("Type family %s ~~> %s\n", toString(tf).c_str(), toString(t).c_str());
     for (auto [t, t_] : substitutable)
         printf("Substitute %s for %s\n", toString(t).c_str(), toString(t_).c_str());
@@ -175,7 +175,7 @@ TypeFunctionReductionGuessResult TypeFunctionReductionGuesser::guessTypeFunction
 
     toInfer.clear();
     cyclicInstances.clear();
-    familyReducesTo.clear();
+    functionReducesTo.clear();
     substitutable.clear();
 
     return TypeFunctionReductionGuessResult{results, recommendedAnnotation};
@@ -196,44 +196,44 @@ std::optional<TypeId> TypeFunctionReductionGuesser::guessType(TypeId arg)
     }
     if (get<TypeFunctionInstanceType>(t))
     {
-        if (familyReducesTo.contains(t))
-            return familyReducesTo[t];
+        if (functionReducesTo.contains(t))
+            return functionReducesTo[t];
     }
     return {};
 }
 
-bool TypeFunctionReductionGuesser::isNumericBinopFamily(const TypeFunctionInstanceType& instance)
+bool TypeFunctionReductionGuesser::isNumericBinopFunction(const TypeFunctionInstanceType& instance)
 {
-    return instance.family->name == "add" || instance.family->name == "sub" || instance.family->name == "mul" || instance.family->name == "div" ||
-           instance.family->name == "idiv" || instance.family->name == "pow" || instance.family->name == "mod";
+    return instance.function->name == "add" || instance.function->name == "sub" || instance.function->name == "mul" || instance.function->name == "div" ||
+           instance.function->name == "idiv" || instance.function->name == "pow" || instance.function->name == "mod";
 }
 
-bool TypeFunctionReductionGuesser::isComparisonFamily(const TypeFunctionInstanceType& instance)
+bool TypeFunctionReductionGuesser::isComparisonFunction(const TypeFunctionInstanceType& instance)
 {
-    return instance.family->name == "lt" || instance.family->name == "le" || instance.family->name == "eq";
+    return instance.function->name == "lt" || instance.function->name == "le" || instance.function->name == "eq";
 }
 
-bool TypeFunctionReductionGuesser::isOrAndFamily(const TypeFunctionInstanceType& instance)
+bool TypeFunctionReductionGuesser::isOrAndFunction(const TypeFunctionInstanceType& instance)
 {
-    return instance.family->name == "or" || instance.family->name == "and";
+    return instance.function->name == "or" || instance.function->name == "and";
 }
 
-bool TypeFunctionReductionGuesser::isNotFamily(const TypeFunctionInstanceType& instance)
+bool TypeFunctionReductionGuesser::isNotFunction(const TypeFunctionInstanceType& instance)
 {
-    return instance.family->name == "not";
+    return instance.function->name == "not";
 }
 
-bool TypeFunctionReductionGuesser::isLenFamily(const TypeFunctionInstanceType& instance)
+bool TypeFunctionReductionGuesser::isLenFunction(const TypeFunctionInstanceType& instance)
 {
-    return instance.family->name == "len";
+    return instance.function->name == "len";
 }
 
 bool TypeFunctionReductionGuesser::isUnaryMinus(const TypeFunctionInstanceType& instance)
 {
-    return instance.family->name == "unm";
+    return instance.function->name == "unm";
 }
 
-// Operand is assignable if it looks like a cyclic family instance, or a generic type
+// Operand is assignable if it looks like a cyclic function instance, or a generic type
 bool TypeFunctionReductionGuesser::operandIsAssignable(TypeId ty)
 {
     if (get<TypeFunctionInstanceType>(ty))
@@ -257,8 +257,8 @@ std::optional<TypeId> TypeFunctionReductionGuesser::tryAssignOperandType(TypeId 
     // We try to check if we guessed a type for it
     if (auto tfit = get<TypeFunctionInstanceType>(ty))
     {
-        if (familyReducesTo.contains(ty))
-            return {familyReducesTo[ty]};
+        if (functionReducesTo.contains(ty))
+            return {functionReducesTo[ty]};
     }
 
     // If ty is a generic, we need to check if we inferred a substitution
@@ -298,24 +298,24 @@ void TypeFunctionReductionGuesser::inferTypeFunctionSubstitutions(TypeId ty, con
     TypeFunctionInferenceResult result;
     LUAU_ASSERT(instance);
     // TODO: Make an inexhaustive version of this warn in the compiler?
-    if (isNumericBinopFamily(*instance))
-        result = inferNumericBinopFamily(instance);
-    else if (isComparisonFamily(*instance))
-        result = inferComparisonFamily(instance);
-    else if (isOrAndFamily(*instance))
-        result = inferOrAndFamily(instance);
-    else if (isNotFamily(*instance))
-        result = inferNotFamily(instance);
-    else if (isLenFamily(*instance))
-        result = inferLenFamily(instance);
+    if (isNumericBinopFunction(*instance))
+        result = inferNumericBinopFunction(instance);
+    else if (isComparisonFunction(*instance))
+        result = inferComparisonFunction(instance);
+    else if (isOrAndFunction(*instance))
+        result = inferOrAndFunction(instance);
+    else if (isNotFunction(*instance))
+        result = inferNotFunction(instance);
+    else if (isLenFunction(*instance))
+        result = inferLenFunction(instance);
     else if (isUnaryMinus(*instance))
-        result = inferUnaryMinusFamily(instance);
+        result = inferUnaryMinusFunction(instance);
     else
         result = {{}, builtins->unknownType};
 
-    TypeId resultInference = follow(result.familyResultInference);
-    if (!familyReducesTo.contains(resultInference))
-        familyReducesTo[ty] = resultInference;
+    TypeId resultInference = follow(result.functionResultInference);
+    if (!functionReducesTo.contains(resultInference))
+        functionReducesTo[ty] = resultInference;
 
     for (size_t i = 0; i < instance->typeArguments.size(); i++)
     {
@@ -325,8 +325,8 @@ void TypeFunctionReductionGuesser::inferTypeFunctionSubstitutions(TypeId ty, con
             TypeId inference = follow(result.operandInference[i]);
             if (auto tfit = get<TypeFunctionInstanceType>(arg))
             {
-                if (!familyReducesTo.contains(arg))
-                    familyReducesTo.try_insert(arg, inference);
+                if (!functionReducesTo.contains(arg))
+                    functionReducesTo.try_insert(arg, inference);
             }
             else if (auto gt = get<GenericType>(arg))
                 substitutable[arg] = inference;
@@ -334,17 +334,17 @@ void TypeFunctionReductionGuesser::inferTypeFunctionSubstitutions(TypeId ty, con
     }
 }
 
-TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferNumericBinopFamily(const TypeFunctionInstanceType* instance)
+TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferNumericBinopFunction(const TypeFunctionInstanceType* instance)
 {
     LUAU_ASSERT(instance->typeArguments.size() == 2);
     TypeFunctionInferenceResult defaultNumericBinopInference{{builtins->numberType, builtins->numberType}, builtins->numberType};
     return defaultNumericBinopInference;
 }
 
-TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferComparisonFamily(const TypeFunctionInstanceType* instance)
+TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferComparisonFunction(const TypeFunctionInstanceType* instance)
 {
     LUAU_ASSERT(instance->typeArguments.size() == 2);
-    // Comparison families are lt/le/eq.
+    // Comparison functions are lt/le/eq.
     // Heuristic: these are type functions from t -> t -> bool
 
     TypeId lhsTy = follow(instance->typeArguments[0]);
@@ -365,7 +365,7 @@ TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferComparisonFamily(
     return comparisonInference(builtins->numberType);
 }
 
-TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferOrAndFamily(const TypeFunctionInstanceType* instance)
+TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferOrAndFunction(const TypeFunctionInstanceType* instance)
 {
 
     LUAU_ASSERT(instance->typeArguments.size() == 2);
@@ -384,7 +384,7 @@ TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferOrAndFamily(const
     bool lhsTruthy = lty ? lty->isTruthy() : false;
     bool rhsTruthy = rty ? rty->isTruthy() : false;
     // If at the end, we still don't have good substitutions, return the default type
-    if (instance->family->name == "or")
+    if (instance->function->name == "or")
     {
         if (operandIsAssignable(lhsTy) && operandIsAssignable(rhsTy))
             return defaultAndOrInference;
@@ -398,7 +398,7 @@ TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferOrAndFamily(const
             return {{builtins->unknownType, rhsTy}, rhsTy};
     }
 
-    if (instance->family->name == "and")
+    if (instance->function->name == "and")
     {
 
         if (operandIsAssignable(lhsTy) && operandIsAssignable(rhsTy))
@@ -416,7 +416,7 @@ TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferOrAndFamily(const
     return defaultAndOrInference;
 }
 
-TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferNotFamily(const TypeFunctionInstanceType* instance)
+TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferNotFunction(const TypeFunctionInstanceType* instance)
 {
     LUAU_ASSERT(instance->typeArguments.size() == 1);
     TypeId opTy = follow(instance->typeArguments[0]);
@@ -425,7 +425,7 @@ TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferNotFamily(const T
     return {{opTy}, builtins->booleanType};
 }
 
-TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferLenFamily(const TypeFunctionInstanceType* instance)
+TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferLenFunction(const TypeFunctionInstanceType* instance)
 {
     LUAU_ASSERT(instance->typeArguments.size() == 1);
     TypeId opTy = follow(instance->typeArguments[0]);
@@ -434,7 +434,7 @@ TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferLenFamily(const T
     return {{opTy}, builtins->numberType};
 }
 
-TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferUnaryMinusFamily(const TypeFunctionInstanceType* instance)
+TypeFunctionInferenceResult TypeFunctionReductionGuesser::inferUnaryMinusFunction(const TypeFunctionInstanceType* instance)
 {
     LUAU_ASSERT(instance->typeArguments.size() == 1);
     TypeId opTy = follow(instance->typeArguments[0]);

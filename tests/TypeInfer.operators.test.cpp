@@ -745,7 +745,7 @@ TEST_CASE_FIXTURE(Fixture, "strict_binary_op_where_lhs_unknown")
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         LUAU_REQUIRE_ERROR_COUNT(ops.size(), result);
-        CHECK_EQ("Type family instance Add<a, b> depends on generic function parameters but does not appear in the function signature; this "
+        CHECK_EQ("Type function instance Add<a, b> depends on generic function parameters but does not appear in the function signature; this "
                  "construct cannot be type-checked at this time",
             toString(result.errors[0]));
         CHECK_EQ("Unknown type used in - operation; consider adding a type annotation to 'a'", toString(result.errors[1]));
@@ -1456,7 +1456,7 @@ return startsWith
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "add_type_family_works")
+TEST_CASE_FIXTURE(Fixture, "add_type_function_works")
 {
     if (!FFlag::DebugLuauDeferredConstraintResolution)
         return;
@@ -1473,7 +1473,7 @@ TEST_CASE_FIXTURE(Fixture, "add_type_family_works")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(requireType("a")) == "number");
     CHECK(toString(requireType("b")) == "Add<string, string>");
-    CHECK(toString(result.errors[0]) == "Type family instance Add<string, string> is uninhabited");
+    CHECK(toString(result.errors[0]) == "Type function instance Add<string, string> is uninhabited");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "normalize_strings_comparison")

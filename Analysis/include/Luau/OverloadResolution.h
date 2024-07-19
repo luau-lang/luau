@@ -85,7 +85,7 @@ struct SolveResult
     DenseHashMap<TypeId, std::vector<TypeId>> expandedFreeTypes{nullptr};
 };
 
-// Helper utility, presently used for binary operator type families.
+// Helper utility, presently used for binary operator type functions.
 //
 // Given a function and a set of arguments, select a suitable overload.
 SolveResult solveFunctionCall(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Normalizer> normalizer,

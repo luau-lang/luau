@@ -28,7 +28,7 @@ end
     REQUIRE(0 == result.warnings.size());
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_family_fully_reduces")
+TEST_CASE_FIXTURE(Fixture, "type_function_fully_reduces")
 {
     LintResult result = lint(R"(
 function fib(n)

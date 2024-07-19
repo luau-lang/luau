@@ -540,27 +540,27 @@ struct ClassType
  */
 struct TypeFunctionInstanceType
 {
-    NotNull<const TypeFunction> family;
+    NotNull<const TypeFunction> function;
 
     std::vector<TypeId> typeArguments;
     std::vector<TypePackId> packArguments;
 
-    TypeFunctionInstanceType(NotNull<const TypeFunction> family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
-        : family(family)
+    TypeFunctionInstanceType(NotNull<const TypeFunction> function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
+        : function(function)
         , typeArguments(typeArguments)
         , packArguments(packArguments)
     {
     }
 
-    TypeFunctionInstanceType(const TypeFunction& family, std::vector<TypeId> typeArguments)
-        : family{&family}
+    TypeFunctionInstanceType(const TypeFunction& function, std::vector<TypeId> typeArguments)
+        : function{&function}
         , typeArguments(typeArguments)
         , packArguments{}
     {
     }
 
-    TypeFunctionInstanceType(const TypeFunction& family, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
-        : family{&family}
+    TypeFunctionInstanceType(const TypeFunction& function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
+        : function{&function}
         , typeArguments(typeArguments)
         , packArguments(packArguments)
     {

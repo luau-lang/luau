@@ -13,6 +13,7 @@
 #include "Luau/Normalize.h"
 #include "Luau/OverloadResolution.h"
 #include "Luau/Subtyping.h"
+#include "Luau/TimeTrace.h"
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
 #include "Luau/Type.h"
@@ -95,7 +96,7 @@ static std::optional<std::string> getIdentifierOfBaseVar(AstExpr* node)
 template<typename T>
 bool areEquivalent(const T& a, const T& b)
 {
-    if (a.family != b.family)
+    if (a.function != b.function)
         return false;
 
     if (a.typeArguments.size() != b.typeArguments.size() || a.packArguments.size() != b.packArguments.size())
@@ -116,39 +117,39 @@ bool areEquivalent(const T& a, const T& b)
     return true;
 }
 
-struct FamilyFinder : TypeOnceVisitor
+struct TypeFunctionFinder : TypeOnceVisitor
 {
-    DenseHashSet<TypeId> mentionedFamilies{nullptr};
-    DenseHashSet<TypePackId> mentionedFamilyPacks{nullptr};
+    DenseHashSet<TypeId> mentionedFunctions{nullptr};
+    DenseHashSet<TypePackId> mentionedFunctionPacks{nullptr};
 
     bool visit(TypeId ty, const TypeFunctionInstanceType&) override
     {
-        mentionedFamilies.insert(ty);
+        mentionedFunctions.insert(ty);
         return true;
     }
 
     bool visit(TypePackId tp, const TypeFunctionInstanceTypePack&) override
     {
-        mentionedFamilyPacks.insert(tp);
+        mentionedFunctionPacks.insert(tp);
         return true;
     }
 };
 
-struct InternalFamilyFinder : TypeOnceVisitor
+struct InternalTypeFunctionFinder : TypeOnceVisitor
 {
-    DenseHashSet<TypeId> internalFamilies{nullptr};
-    DenseHashSet<TypePackId> internalPackFamilies{nullptr};
-    DenseHashSet<TypeId> mentionedFamilies{nullptr};
-    DenseHashSet<TypePackId> mentionedFamilyPacks{nullptr};
+    DenseHashSet<TypeId> internalFunctions{nullptr};
+    DenseHashSet<TypePackId> internalPackFunctions{nullptr};
+    DenseHashSet<TypeId> mentionedFunctions{nullptr};
+    DenseHashSet<TypePackId> mentionedFunctionPacks{nullptr};
 
-    InternalFamilyFinder(std::vector<TypeId>& declStack)
+    InternalTypeFunctionFinder(std::vector<TypeId>& declStack)
     {
-        FamilyFinder f;
+        TypeFunctionFinder f;
         for (TypeId fn : declStack)
             f.traverse(fn);
 
-        mentionedFamilies = std::move(f.mentionedFamilies);
-        mentionedFamilyPacks = std::move(f.mentionedFamilyPacks);
+        mentionedFunctions = std::move(f.mentionedFunctions);
+        mentionedFunctionPacks = std::move(f.mentionedFunctionPacks);
     }
 
     bool visit(TypeId ty, const TypeFunctionInstanceType& tfit) override
@@ -175,7 +176,7 @@ struct InternalFamilyFinder : TypeOnceVisitor
 
         if (hasGeneric)
         {
-            for (TypeId mentioned : mentionedFamilies)
+            for (TypeId mentioned : mentionedFunctions)
             {
                 const TypeFunctionInstanceType* mentionedTfit = get<TypeFunctionInstanceType>(mentioned);
                 LUAU_ASSERT(mentionedTfit);
@@ -185,7 +186,7 @@ struct InternalFamilyFinder : TypeOnceVisitor
                 }
             }
 
-            internalFamilies.insert(ty);
+            internalFunctions.insert(ty);
         }
 
         return true;
@@ -215,7 +216,7 @@ struct InternalFamilyFinder : TypeOnceVisitor
 
         if (hasGeneric)
         {
-            for (TypePackId mentioned : mentionedFamilyPacks)
+            for (TypePackId mentioned : mentionedFunctionPacks)
             {
                 const TypeFunctionInstanceTypePack* mentionedTfitp = get<TypeFunctionInstanceTypePack>(mentioned);
                 LUAU_ASSERT(mentionedTfitp);
@@ -225,7 +226,7 @@ struct InternalFamilyFinder : TypeOnceVisitor
                 }
             }
 
-            internalPackFamilies.insert(tp);
+            internalPackFunctions.insert(tp);
         }
 
         return true;
@@ -423,19 +424,19 @@ struct TypeChecker2
             return std::nullopt;
     }
 
-    void checkForInternalFamily(TypeId ty, Location location)
+    void checkForInternalTypeFunction(TypeId ty, Location location)
     {
-        InternalFamilyFinder finder(functionDeclStack);
+        InternalTypeFunctionFinder finder(functionDeclStack);
         finder.traverse(ty);
 
-        for (TypeId internal : finder.internalFamilies)
+        for (TypeId internal : finder.internalFunctions)
             reportError(WhereClauseNeeded{internal}, location);
 
-        for (TypePackId internal : finder.internalPackFamilies)
+        for (TypePackId internal : finder.internalPackFunctions)
             reportError(PackWhereClauseNeeded{internal}, location);
     }
 
-    TypeId checkForFamilyInhabitance(TypeId instance, Location location)
+    TypeId checkForTypeFunctionInhabitance(TypeId instance, Location location)
     {
         if (seenTypeFunctionInstances.find(instance))
             return instance;
@@ -468,11 +469,11 @@ struct TypeChecker2
         // allows us not to think about this very much in the actual typechecking logic.
         TypeId* ty = module->astTypes.find(expr);
         if (ty)
-            return checkForFamilyInhabitance(follow(*ty), expr->location);
+            return checkForTypeFunctionInhabitance(follow(*ty), expr->location);
 
         TypePackId* tp = module->astTypePacks.find(expr);
         if (tp)
-            return checkForFamilyInhabitance(flattenPack(*tp), expr->location);
+            return checkForTypeFunctionInhabitance(flattenPack(*tp), expr->location);
 
         return builtinTypes->anyType;
     }
@@ -495,7 +496,7 @@ struct TypeChecker2
 
         TypeId* ty = module->astResolvedTypes.find(annotation);
         LUAU_ASSERT(ty);
-        return checkForFamilyInhabitance(follow(*ty), annotation->location);
+        return checkForTypeFunctionInhabitance(follow(*ty), annotation->location);
     }
 
     std::optional<TypePackId> lookupPackAnnotation(AstTypePack* annotation)
@@ -1725,7 +1726,7 @@ struct TypeChecker2
             visit(*fn->returnAnnotation);
 
 
-        // If the function type has a family annotation, we need to see if we can suggest an annotation
+        // If the function type has a function annotation, we need to see if we can suggest an annotation
         if (normalizedFnTy)
         {
             const FunctionType* inferredFtv = get<FunctionType>(normalizedFnTy->functions.parts.front());
@@ -1855,7 +1856,7 @@ struct TypeChecker2
 
         if (get<TypeFunctionInstanceType>(expectedResult))
         {
-            checkForInternalFamily(expectedResult, expr->location);
+            checkForInternalTypeFunction(expectedResult, expr->location);
             return expectedResult;
         }
 
@@ -2254,7 +2255,7 @@ struct TypeChecker2
     {
         TypeId* resolvedTy = module->astResolvedTypes.find(ty);
         if (resolvedTy)
-            checkForFamilyInhabitance(follow(*resolvedTy), ty->location);
+            checkForTypeFunctionInhabitance(follow(*resolvedTy), ty->location);
 
         if (auto t = ty->as<AstTypeReference>())
             return visit(t);
@@ -3057,6 +3058,8 @@ struct TypeChecker2
 void check(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, NotNull<TypeCheckLimits> limits, DcrLogger* logger,
     const SourceModule& sourceModule, Module* module)
 {
+    LUAU_TIMETRACE_SCOPE("check", "Typechecking");
+
     TypeChecker2 typeChecker{builtinTypes, unifierState, limits, logger, &sourceModule, module};
 
     typeChecker.visit(sourceModule.root);

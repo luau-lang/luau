@@ -382,7 +382,7 @@ public:
     }
     AstType* operator()(const TypeFunctionInstanceType& tfit)
     {
-        return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName{tfit.family->name.c_str()}, std::nullopt, Location());
+        return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName{tfit.function->name.c_str()}, std::nullopt, Location());
     }
 
 private:
@@ -456,7 +456,7 @@ public:
 
     AstTypePack* operator()(const TypeFunctionInstanceTypePack& tfitp) const
     {
-        return allocator->alloc<AstTypePackGeneric>(Location(), AstName(tfitp.family->name.c_str()));
+        return allocator->alloc<AstTypePackGeneric>(Location(), AstName(tfitp.function->name.c_str()));
     }
 
 private:

@@ -9,6 +9,7 @@
 #include "Luau/Subtyping.h"
 #include "Luau/Normalize.h"
 #include "Luau/Error.h"
+#include "Luau/TimeTrace.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeFunction.h"
 #include "Luau/Def.h"
@@ -206,7 +207,7 @@ struct NonStrictTypeChecker
     }
 
 
-    TypeId checkForFamilyInhabitance(TypeId instance, Location location)
+    TypeId checkForTypeFunctionInhabitance(TypeId instance, Location location)
     {
         if (noTypeFunctionErrors.find(instance))
             return instance;
@@ -227,11 +228,11 @@ struct NonStrictTypeChecker
     {
         TypeId* ty = module->astTypes.find(expr);
         if (ty)
-            return checkForFamilyInhabitance(follow(*ty), expr->location);
+            return checkForTypeFunctionInhabitance(follow(*ty), expr->location);
 
         TypePackId* tp = module->astTypePacks.find(expr);
         if (tp)
-            return checkForFamilyInhabitance(flattenPack(*tp), expr->location);
+            return checkForTypeFunctionInhabitance(flattenPack(*tp), expr->location);
         return builtinTypes->anyType;
     }
 
@@ -728,6 +729,8 @@ private:
 void checkNonStrict(NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> ice, NotNull<UnifierSharedState> unifierState,
     NotNull<const DataFlowGraph> dfg, NotNull<TypeCheckLimits> limits, const SourceModule& sourceModule, Module* module)
 {
+    LUAU_TIMETRACE_SCOPE("checkNonStrict", "Typechecking");
+
     NonStrictTypeChecker typeChecker{NotNull{&module->internalTypes}, builtinTypes, ice, unifierState, dfg, limits, module};
     typeChecker.visit(sourceModule.root);
     unfreeze(module->interfaceTypes);
