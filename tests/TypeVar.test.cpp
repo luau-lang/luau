@@ -314,7 +314,7 @@ TEST_CASE("tagging_tables")
 
 TEST_CASE("tagging_classes")
 {
-    Type base{ClassType{"Base", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"}};
+    Type base{ClassType{"Base", {}, std::nullopt, std::nullopt, {}, nullptr, "Test", {}}};
     CHECK(!Luau::hasTag(&base, "foo"));
     Luau::attachTag(&base, "foo");
     CHECK(Luau::hasTag(&base, "foo"));
@@ -322,8 +322,8 @@ TEST_CASE("tagging_classes")
 
 TEST_CASE("tagging_subclasses")
 {
-    Type base{ClassType{"Base", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"}};
-    Type derived{ClassType{"Derived", {}, &base, std::nullopt, {}, nullptr, "Test"}};
+    Type base{ClassType{"Base", {}, std::nullopt, std::nullopt, {}, nullptr, "Test", {}}};
+    Type derived{ClassType{"Derived", {}, &base, std::nullopt, {}, nullptr, "Test", {}}};
 
     CHECK(!Luau::hasTag(&base, "foo"));
     CHECK(!Luau::hasTag(&derived, "foo"));
