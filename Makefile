@@ -181,6 +181,9 @@ coverage: $(TESTS_TARGET) $(COMPILE_CLI_TARGET)
 	mv default.profraw tests.profraw
 	$(TESTS_TARGET) --fflags=true
 	mv default.profraw tests-flags.profraw
+	# new solver is expected to fail tests at the moment, remove '!' once tests are fixed and this starts to fail
+	! $(TESTS_TARGET) --fflags=true,DebugLuauDeferredConstraintResolution=true
+	mv default.profraw tests-dcr.profraw
 	$(TESTS_TARGET) -ts=Conformance --codegen
 	mv default.profraw codegen.profraw
 	$(TESTS_TARGET) -ts=Conformance --codegen --fflags=true
