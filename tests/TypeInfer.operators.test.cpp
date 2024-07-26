@@ -1472,8 +1472,8 @@ TEST_CASE_FIXTURE(Fixture, "add_type_function_works")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(toString(requireType("a")) == "number");
-    CHECK(toString(requireType("b")) == "Add<string, string>");
-    CHECK(toString(result.errors[0]) == "Type function instance Add<string, string> is uninhabited");
+    CHECK(toString(requireType("b")) == "add<string, string>");
+    CHECK(toString(result.errors[0]) == "Operator '+' could not be applied to operands of types string and string; there is no corresponding overload for __add");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "normalize_strings_comparison")

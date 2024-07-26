@@ -10,6 +10,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauPreserveLudataRenaming, false)
+
 // clang-format off
 const char* const luaT_typenames[] = {
     // ORDER TYPE
@@ -122,34 +124,74 @@ const TValue* luaT_gettmbyobj(lua_State* L, const TValue* o, TMS event)
 
 const TString* luaT_objtypenamestr(lua_State* L, const TValue* o)
 {
-    if (ttisuserdata(o) && uvalue(o)->tag != UTAG_PROXY && uvalue(o)->metatable)
+    if (FFlag::LuauPreserveLudataRenaming)
     {
-        const TValue* type = luaH_getstr(uvalue(o)->metatable, L->global->tmname[TM_TYPE]);
-
-        if (ttisstring(type))
-            return tsvalue(type);
-    }
-    else if (ttislightuserdata(o))
-    {
-        int tag = lightuserdatatag(o);
-
-        if (unsigned(tag) < LUA_LUTAG_LIMIT)
+        // Userdata created by the environment can have a custom type name set in the individual metatable
+        // If there is no custom name, 'userdata' is returned
+        if (ttisuserdata(o) && uvalue(o)->tag != UTAG_PROXY && uvalue(o)->metatable)
         {
-            const TString* name = L->global->lightuserdataname[tag];
+            const TValue* type = luaH_getstr(uvalue(o)->metatable, L->global->tmname[TM_TYPE]);
 
-            if (name)
-                return name;
+            if (ttisstring(type))
+                return tsvalue(type);
+
+            return L->global->ttname[ttype(o)];
         }
+
+        // Tagged lightuserdata can be named using lua_setlightuserdataname
+        if (ttislightuserdata(o))
+        {
+            int tag = lightuserdatatag(o);
+
+            if (unsigned(tag) < LUA_LUTAG_LIMIT)
+            {
+                if (const TString* name = L->global->lightuserdataname[tag])
+                    return name;
+            }
+        }
+
+        // For all types except userdata and table, a global metatable can be set with a global name override
+        if (Table* mt = L->global->mt[ttype(o)])
+        {
+            const TValue* type = luaH_getstr(mt, L->global->tmname[TM_TYPE]);
+
+            if (ttisstring(type))
+                return tsvalue(type);
+        }
+
+        return L->global->ttname[ttype(o)];
     }
-    else if (Table* mt = L->global->mt[ttype(o)])
+    else
     {
-        const TValue* type = luaH_getstr(mt, L->global->tmname[TM_TYPE]);
+        if (ttisuserdata(o) && uvalue(o)->tag != UTAG_PROXY && uvalue(o)->metatable)
+        {
+            const TValue* type = luaH_getstr(uvalue(o)->metatable, L->global->tmname[TM_TYPE]);
 
-        if (ttisstring(type))
-            return tsvalue(type);
+            if (ttisstring(type))
+                return tsvalue(type);
+        }
+        else if (ttislightuserdata(o))
+        {
+            int tag = lightuserdatatag(o);
+
+            if (unsigned(tag) < LUA_LUTAG_LIMIT)
+            {
+                const TString* name = L->global->lightuserdataname[tag];
+
+                if (name)
+                    return name;
+            }
+        }
+        else if (Table* mt = L->global->mt[ttype(o)])
+        {
+            const TValue* type = luaH_getstr(mt, L->global->tmname[TM_TYPE]);
+
+            if (ttisstring(type))
+                return tsvalue(type);
+        }
+
+        return L->global->ttname[ttype(o)];
     }
-
-    return L->global->ttname[ttype(o)];
 }
 
 const char* luaT_objtypename(lua_State* L, const TValue* o)

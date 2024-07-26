@@ -9,6 +9,7 @@
 #include "Luau/Scope.h"
 #include "Luau/TypeCheckLimits.h"
 #include "Luau/Variant.h"
+#include "Luau/AnyTypeSummary.h"
 
 #include <mutex>
 #include <string>
@@ -31,6 +32,7 @@ struct ParseResult;
 struct HotComment;
 struct BuildQueueItem;
 struct FrontendCancellationToken;
+struct AnyTypeSummary;
 
 struct LoadDefinitionFileResult
 {

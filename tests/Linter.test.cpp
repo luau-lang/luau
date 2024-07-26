@@ -8,7 +8,6 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauAttributeSyntax);
 LUAU_FASTFLAG(LuauNativeAttribute);
 LUAU_FASTFLAG(LintRedundantNativeAttribute);
 
@@ -1960,7 +1959,7 @@ local _ = a <= (b == 0)
 
 TEST_CASE_FIXTURE(Fixture, "RedundantNativeAttribute")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauAttributeSyntax, true}, {FFlag::LuauNativeAttribute, true}, {FFlag::LintRedundantNativeAttribute, true}};
+    ScopedFastFlag sff[] = {{FFlag::LuauNativeAttribute, true}, {FFlag::LintRedundantNativeAttribute, true}};
 
     LintResult result = lint(R"(
 --!native

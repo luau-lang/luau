@@ -515,4 +515,35 @@ TEST_CASE_FIXTURE(Fixture, "method_should_not_create_cyclic_type")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "cross_module_metatable")
+{
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        local cls = {}
+        cls.__index = cls
+        function cls:abc() return 4 end
+        return cls
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        --!strict
+        local cls = require(game.A)
+        local tbl = {}
+        setmetatable(tbl, cls)
+    )";
+
+    CheckResult result = frontend.check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    ModulePtr b = frontend.moduleResolver.getModule("game/B");
+    REQUIRE(b);
+
+    std::optional<Binding> clsBinding = b->getModuleScope()->linearSearchForBinding("tbl");
+    REQUIRE(clsBinding);
+
+    TypeId clsType = clsBinding->typeId;
+
+    CHECK("{ @metatable cls, tbl }" == toString(clsType));
+}
+
 TEST_SUITE_END();

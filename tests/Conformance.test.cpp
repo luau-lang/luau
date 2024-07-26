@@ -33,8 +33,8 @@ void luaC_validate(lua_State* L);
 
 LUAU_FASTFLAG(DebugLuauAbortingChecks)
 LUAU_FASTINT(CodegenHeuristicsInstructionLimit)
-LUAU_FASTFLAG(LuauAttributeSyntax)
 LUAU_FASTFLAG(LuauNativeAttribute)
+LUAU_FASTFLAG(LuauPreserveLudataRenaming)
 
 static lua_CompileOptions defaultOptions()
 {
@@ -2114,6 +2114,21 @@ TEST_CASE("LightuserdataApi")
 
     lua_pop(L, 1);
 
+    if (FFlag::LuauPreserveLudataRenaming)
+    {
+        // Still possible to rename the global lightuserdata name using a metatable
+        lua_pushlightuserdata(L, value);
+        CHECK(strcmp(luaL_typename(L, -1), "userdata") == 0);
+
+        lua_createtable(L, 0, 1);
+        lua_pushstring(L, "luserdata");
+        lua_setfield(L, -2, "__type");
+        lua_setmetatable(L, -2);
+
+        CHECK(strcmp(luaL_typename(L, -1), "luserdata") == 0);
+        lua_pop(L, 1);
+    }
+
     globalState.reset();
 }
 
@@ -2711,7 +2726,7 @@ TEST_CASE("NativeAttribute")
     if (!codegen || !luau_codegen_supported())
         return;
 
-    ScopedFastFlag sffs[] = {{FFlag::LuauAttributeSyntax, true}, {FFlag::LuauNativeAttribute, true}};
+    ScopedFastFlag sffs[] = {{FFlag::LuauNativeAttribute, true}};
 
     std::string source = R"R(
         @native

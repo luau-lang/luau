@@ -4,14 +4,10 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauTinyControlFlowAnalysis);
-
 TEST_SUITE_BEGIN("ControlFlowAnalysis");
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: string?)
             if not x then
@@ -28,8 +24,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
             for _, record in x do
@@ -48,8 +42,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
             for _, record in x do
@@ -68,8 +60,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_y_return")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: string?, y: string?)
             if not x then
@@ -90,8 +80,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_y_return")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_not_y_break")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
             for i, recordX in x do
@@ -115,8 +103,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_not_y_break")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_not_y_continue")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
             for i, recordX in x do
@@ -140,8 +126,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_not_y_continue")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_y_break")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
             for i, recordX in x do
@@ -165,8 +149,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_y_break")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_not_y_continue")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
             for i, recordX in x do
@@ -190,8 +172,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_not_y_continue")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_rand_return_elif_not_y_return")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: string?, y: string?)
             if not x then
@@ -214,8 +194,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_rand_return_elif_not_y_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_rand_break_elif_not_y_break")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
             for i, recordX in x do
@@ -241,8 +219,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_rand_break_elif_not_y_br
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_rand_continue_elif_not_y_continue")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
             for i, recordX in x do
@@ -268,8 +244,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_rand_continue_elif_no
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_rand_return_elif_not_y_fallthrough")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: string?, y: string?)
             if not x then
@@ -292,8 +266,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_rand_return_elif_no
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_rand_break_elif_not_y_fallthrough")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
             for i, recordX in x do
@@ -319,8 +291,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_rand_break_elif_not_y_fa
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_rand_continue_elif_not_y_fallthrough")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
             for i, recordX in x do
@@ -346,8 +316,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_rand_continue_elif_no
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_y_fallthrough_elif_not_z_return")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: string?, y: string?, z: string?)
             if not x then
@@ -372,8 +340,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_y_fallthrough_elif_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_not_y_fallthrough_elif_not_z_break")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}}, z: {{value: string?}})
             for i, recordX in x do
@@ -402,8 +368,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_elif_not_y_fallthrough_elif_n
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_not_y_fallthrough_elif_not_z_continue")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}}, z: {{value: string?}})
             for i, recordX in x do
@@ -432,8 +396,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_not_y_fallthrough_eli
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_not_y_throw_elif_not_z_fallthrough")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}}, z: {{value: string?}})
             for i, recordX in x do
@@ -462,8 +424,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_elif_not_y_throw_elif_not_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_y_fallthrough_elif_not_z_break")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}}, z: {{value: string?}})
             for i, recordX in x do
@@ -492,8 +452,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_elif_not_y_fallthrough_elif_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_if_not_x_return")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: string?)
             do
@@ -512,8 +470,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_if_not_x_return")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_record_do_if_not_x_break")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
             for _, record in x do
@@ -534,8 +490,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_record_do_if_not_x_break")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_record_do_if_not_x_continue")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
             for _, record in x do
@@ -556,8 +510,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_record_do_if_not_x_continue")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "early_return_in_a_loop_which_isnt_guaranteed_to_run_first")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: string?)
             while math.random() > 0.5 do
@@ -579,8 +531,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "early_return_in_a_loop_which_isnt_guaranteed
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "early_return_in_a_loop_which_is_guaranteed_to_run_first")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: string?)
             repeat
@@ -602,8 +552,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "early_return_in_a_loop_which_is_guaranteed_t
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "early_return_in_a_loop_which_is_guaranteed_to_run_first_2")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: string?)
             for i = 1, 10 do
@@ -625,8 +573,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "early_return_in_a_loop_which_is_guaranteed_t
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_then_error")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: string?)
             if not x then
@@ -643,8 +589,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_then_error")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_then_assert_false")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: string?)
             if not x then
@@ -661,8 +605,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_then_assert_false")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_if_not_y_return")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: string?, y: string?)
             if not x then
@@ -685,8 +627,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_return_if_not_y_return")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_if_not_y_break")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
             for i, recordX in x do
@@ -712,8 +652,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_if_not_y_break")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_if_not_y_continue")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
             for i, recordX in x do
@@ -739,8 +677,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_if_not_y_continue")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_if_not_y_throw")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
             for i, recordX in x do
@@ -766,8 +702,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_continue_if_not_y_throw")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_if_not_y_continue")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}}, y: {{value: string?}})
             for i, recordX in x do
@@ -793,8 +727,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "if_not_x_break_if_not_y_continue")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_does_not_leak_out")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: string?)
             if typeof(x) == "string" then
@@ -816,8 +748,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_does_not_leak_out")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_does_not_leak_out_breaking")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
             for _, record in x do
@@ -841,8 +771,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_does_not_leak_out_breaking")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_does_not_leak_out_continuing")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
             for _, record in x do
@@ -866,8 +794,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_does_not_leak_out_continuing")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "prototyping_and_visiting_alias_has_the_same_scope")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     // In CG, we walk the block to prototype aliases. We then visit the block in-order, which will resolve the prototype to a real type.
     // That second walk assumes that the name occurs in the same `Scope` that the prototype walk had. If we arbitrarily change scope midway
     // through, we'd invoke UB.
@@ -892,8 +818,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prototyping_and_visiting_alias_has_the_same_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "prototyping_and_visiting_alias_has_the_same_scope_breaking")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
             for _, record in x do
@@ -917,8 +841,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prototyping_and_visiting_alias_has_the_same_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "prototyping_and_visiting_alias_has_the_same_scope_continuing")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: {{value: string?}})
             for _, record in x do
@@ -942,8 +864,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "prototyping_and_visiting_alias_has_the_same_
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tagged_unions")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         type Ok<T> = { tag: "ok", value: T }
         type Err<E> = { tag: "err", error: E }
@@ -977,8 +897,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tagged_unions")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tagged_unions_breaking")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         type Ok<T> = { tag: "ok", value: T }
         type Err<E> = { tag: "err", error: E }
@@ -1010,8 +928,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tagged_unions_breaking")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tagged_unions_continuing")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         type Ok<T> = { tag: "ok", value: T }
         type Err<E> = { tag: "err", error: E }
@@ -1043,8 +959,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tagged_unions_continuing")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_assert_x")
 {
-    ScopedFastFlag sff{FFlag::LuauTinyControlFlowAnalysis, true};
-
     CheckResult result = check(R"(
         local function f(x: string?)
             do

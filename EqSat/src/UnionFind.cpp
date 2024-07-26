@@ -32,7 +32,6 @@ Id UnionFind::find(Id id)
         parents[size_t(id)] = set;
         id = parent;
     }
-    
     return set;
 }
 
@@ -48,7 +47,6 @@ void UnionFind::merge(Id a, Id b)
         std::swap(aSet, bSet);
 
     parents[size_t(bSet)] = aSet;
-    
     if (ranks[size_t(aSet)] == ranks[size_t(bSet)])
         ranks[size_t(aSet)]++;
 }
