@@ -1836,7 +1836,7 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
     }
     case Constant::Type_Import:
     {
-        int id0 = -1, id1 = -1, id2 = -1;
+        int32_t id0 = -1, id1 = -1, id2 = -1;
         if (int count = decomposeImportId(data.valueImport, id0, id1, id2))
         {
             {
