@@ -19,7 +19,6 @@
 LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
-LUAU_FASTFLAG(LuauLeadingBarAndAmpersand2)
 LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTINT(LuauNormalizeCacheLimit);
 LUAU_FASTINT(LuauRecursionLimit);
@@ -1575,7 +1574,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_iter_metamethod")
 
 TEST_CASE_FIXTURE(Fixture, "leading_bar")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
     CheckResult result = check(R"(
         type Bar = | number
     )");
@@ -1586,7 +1584,6 @@ TEST_CASE_FIXTURE(Fixture, "leading_bar")
 
 TEST_CASE_FIXTURE(Fixture, "leading_bar_question_mark")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
     CheckResult result = check(R"(
         type Bar = |?
     )");
@@ -1598,7 +1595,6 @@ TEST_CASE_FIXTURE(Fixture, "leading_bar_question_mark")
 
 TEST_CASE_FIXTURE(Fixture, "leading_ampersand")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
     CheckResult result = check(R"(
         type Amp = & string
     )");
@@ -1609,7 +1605,6 @@ TEST_CASE_FIXTURE(Fixture, "leading_ampersand")
 
 TEST_CASE_FIXTURE(Fixture, "leading_bar_no_type")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
     CheckResult result = check(R"(
         type Bar = |
     )");
@@ -1621,7 +1616,6 @@ TEST_CASE_FIXTURE(Fixture, "leading_bar_no_type")
 
 TEST_CASE_FIXTURE(Fixture, "leading_ampersand_no_type")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
     CheckResult result = check(R"(
         type Amp = &
     )");

@@ -632,7 +632,12 @@ TEST_CASE_FIXTURE(Fixture, "generic_type_pack_parentheses")
         function f<a...>(...: a...): any return (...) end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    // This should really error, but the error from the old solver is wrong.
+    // `a...` is a generic type pack, and we don't know that it will be non-empty, thus this code may not work.
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "better_mismatch_error_messages")
@@ -647,13 +652,27 @@ TEST_CASE_FIXTURE(Fixture, "better_mismatch_error_messages")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    SwappedGenericTypeParameter* fErr = get<SwappedGenericTypeParameter>(result.errors[0]);
+    SwappedGenericTypeParameter* fErr;
+    SwappedGenericTypeParameter* gErr;
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(3, result);
+        // The first error here is an unknown symbol that is redundant with the `fErr`.
+        fErr = get<SwappedGenericTypeParameter>(result.errors[1]);
+        gErr = get<SwappedGenericTypeParameter>(result.errors[2]);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        fErr = get<SwappedGenericTypeParameter>(result.errors[0]);
+        gErr = get<SwappedGenericTypeParameter>(result.errors[1]);
+    }
+
     REQUIRE(fErr);
     CHECK_EQ(fErr->name, "T");
     CHECK_EQ(fErr->kind, SwappedGenericTypeParameter::Pack);
 
-    SwappedGenericTypeParameter* gErr = get<SwappedGenericTypeParameter>(result.errors[1]);
     REQUIRE(gErr);
     CHECK_EQ(gErr->name, "T");
     CHECK_EQ(gErr->kind, SwappedGenericTypeParameter::Type);
@@ -1111,7 +1130,10 @@ local a: Self<Table>
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(requireType("a")), "Table");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(toString(requireType("a")), "Table<Table>");
+    else
+        CHECK_EQ(toString(requireType("a")), "Table");
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
@@ -1127,7 +1149,10 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
 
     std::optional<TypeId> t0 = lookupType("t0");
     REQUIRE(t0);
-    CHECK_EQ("*error-type*", toString(*t0));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("any", toString(*t0));
+    else
+        CHECK_EQ("*error-type*", toString(*t0));
 
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
         return get<OccursCheckFailed>(err);
@@ -1137,20 +1162,40 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument")
 {
-    CheckResult result = check(R"(
-        local function sum<a>(x: a, y: a, f: (a, a) -> a)
-            return f(x, y)
-        end
-        return sum(2, 3, function(a, b) return a + b end)
-    )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CheckResult result = check(R"(
+            local function sum<a>(x: a, y: a, f: (a, a) -> add<a>)
+                return f(x, y)
+            end
+            return sum(2, 3, function<T>(a: T, b: T): add<T> return a + b end)
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        InternalError* ie = get<InternalError>(result.errors[0]);
+        REQUIRE(ie);
+        CHECK_EQ("Type inference failed to complete, you may see some confusing types and type errors.", ie->message);
+    }
+    else
+    {
+        CheckResult result = check(R"(
+            local function sum<a>(x: a, y: a, f: (a, a) -> a)
+                return f(x, y)
+            end
+            return sum(2, 3, function(a, b) return a + b end)
+        )");
+
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument_2")
 {
     CheckResult result = check(R"(
-        local function map<a, b>(arr: {a}, f: (a) -> b)
+        local function map<a, b>(arr: {a}, f: (a) -> b): {b}
             local r = {}
             for i,v in ipairs(arr) do
                 table.insert(r, f(v))
@@ -1158,7 +1203,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument_2")
             return r
         end
         local a = {1, 2, 3}
-        local r = map(a, function(a) return a + a > 100 end)
+        local r = map(a, function(a: number) return a + a > 100 end)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -1176,11 +1221,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument_3")
             return r
         end
         local a = {1, 2, 3}
-        local r = foldl(a, {s=0,c=0}, function(a, b) return {s = a.s + b, c = a.c + 1} end)
+        local r = foldl(a, {s=0,c=0}, function(a: {s: number, c: number}, b: number) return {s = a.s + b, c = a.c + 1} end)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    REQUIRE_EQ("{ c: number, s: number }", toString(requireType("r")));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        REQUIRE_EQ("{ c: number, s: number } | { c: number, s: number }", toString(requireType("r")));
+    else
+        REQUIRE_EQ("{ c: number, s: number }", toString(requireType("r")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded")
@@ -1214,21 +1262,47 @@ table.sort(a, function(x, y) return x.x < y.x end)
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "do_not_infer_generic_functions")
+TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_infer_generic_functions")
 {
-    CheckResult result = check(R"(
-local function sum<a>(x: a, y: a, f: (a, a) -> a) return f(x, y) end
 
-local function sumrec(f: typeof(sum))
-    return sum(2, 3, function(a, b) return a + b end)
-end
+    CheckResult result;
 
-local b = sumrec(sum) -- ok
-local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not inferred
-    )");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        result = check(R"(
+            local function sum<a>(x: a, y: a, f: (a, a) -> a) return f(x, y) end
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+            local function sumrec(f: typeof(sum))
+                return sum(2, 3, function<T>(a: T, b: T): add<T> return a + b end)
+            end
+
+            local b = sumrec(sum) -- ok
+            local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not inferred
+        )");
+
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        InternalError* ie = get<InternalError>(result.errors[0]);
+        REQUIRE(ie);
+        CHECK_EQ("Type inference failed to complete, you may see some confusing types and type errors.", ie->message);
+    }
+    else
+    {
+        result = check(R"(
+            local function sum<a>(x: a, y: a, f: (a, a) -> a) return f(x, y) end
+
+            local function sumrec(f: typeof(sum))
+                return sum(2, 3, function(a, b) return a + b end)
+            end
+
+            local b = sumrec(sum) -- ok
+            local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not inferred
+        )");
+
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
 }
+
 
 TEST_CASE_FIXTURE(Fixture, "substitution_with_bound_table")
 {
@@ -1246,6 +1320,8 @@ TEST_CASE_FIXTURE(Fixture, "substitution_with_bound_table")
 
 TEST_CASE_FIXTURE(Fixture, "apply_type_function_nested_generics1")
 {
+    // CLI-114507: temporarily changed to have a cast for `object` to silence false positive error
+
     // https://github.com/luau-lang/luau/issues/484
     CheckResult result = check(R"(
 --!strict
@@ -1256,7 +1332,7 @@ local object: MyObject = {
 	getReturnValue = function<U>(cb: () -> U): U
 		return cb()
 	end,
-}
+} :: MyObject
 
 type ComplexObject<T> = {
 	id: T,

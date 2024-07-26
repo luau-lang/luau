@@ -345,4 +345,34 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "find_binding_at_position_global_start_of_fil
     CHECK_EQ(binding->location, Location{Position{0, 0}, Position{0, 0}});
 }
 
+TEST_CASE_FIXTURE(Fixture, "interior_binding_location_is_consistent_with_exterior_binding")
+{
+    CheckResult result = check(R"(
+        local function abcd(arg)
+            abcd(arg)
+        end
+
+        abcd(0)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // FIXME CLI-114385: findBindingByPosition does not properly handle AstStatLocalFunction.
+
+    // std::optional<Binding> declBinding = findBindingAtPosition(*getMainModule(), *getMainSourceModule(), {1, 26});
+    // REQUIRE(declBinding);
+
+    // CHECK(declBinding->location == Location{{1, 25}, {1, 28}});
+
+    std::optional<Binding> innerCallBinding = findBindingAtPosition(*getMainModule(), *getMainSourceModule(), {2, 15});
+    REQUIRE(innerCallBinding);
+
+    CHECK(innerCallBinding->location == Location{{1, 23}, {1, 27}});
+
+    std::optional<Binding> outerCallBinding = findBindingAtPosition(*getMainModule(), *getMainSourceModule(), {5, 8});
+    REQUIRE(outerCallBinding);
+
+    CHECK(outerCallBinding->location == Location{{1, 23}, {1, 27}});
+}
+
 TEST_SUITE_END();

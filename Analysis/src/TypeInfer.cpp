@@ -33,7 +33,6 @@ LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAGVARIABLE(LuauTinyControlFlowAnalysis, false)
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCommitInferencesOfFunctionCalls, false)
 LUAU_FASTFLAGVARIABLE(LuauRemoveBadRelationalOperatorWarning, false)
 LUAU_FASTFLAGVARIABLE(LuauOkWithIteratingOverTableProperties, false)
@@ -350,20 +349,17 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStat& program)
     else if (auto repeat = program.as<AstStatRepeat>())
         return check(scope, *repeat);
     else if (program.is<AstStatBreak>())
-        return FFlag::LuauTinyControlFlowAnalysis ? ControlFlow::Breaks : ControlFlow::None;
+        return ControlFlow::Breaks;
     else if (program.is<AstStatContinue>())
-        return FFlag::LuauTinyControlFlowAnalysis ? ControlFlow::Continues : ControlFlow::None;
+        return ControlFlow::Continues;
     else if (auto return_ = program.as<AstStatReturn>())
         return check(scope, *return_);
     else if (auto expr = program.as<AstStatExpr>())
     {
         checkExprPack(scope, *expr->expr);
 
-        if (FFlag::LuauTinyControlFlowAnalysis)
-        {
-            if (auto call = expr->expr->as<AstExprCall>(); call && doesCallError(call))
-                return ControlFlow::Throws;
-        }
+        if (auto call = expr->expr->as<AstExprCall>(); call && doesCallError(call))
+            return ControlFlow::Throws;
 
         return ControlFlow::None;
     }
@@ -740,41 +736,25 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatIf& statement
     ScopePtr thenScope = childScope(scope, statement.thenbody->location);
     resolve(result.predicates, thenScope, true);
 
-    if (FFlag::LuauTinyControlFlowAnalysis)
-    {
-        ScopePtr elseScope = childScope(scope, statement.elsebody ? statement.elsebody->location : statement.location);
-        resolve(result.predicates, elseScope, false);
+    ScopePtr elseScope = childScope(scope, statement.elsebody ? statement.elsebody->location : statement.location);
+    resolve(result.predicates, elseScope, false);
 
-        ControlFlow thencf = check(thenScope, *statement.thenbody);
-        ControlFlow elsecf = ControlFlow::None;
-        if (statement.elsebody)
-            elsecf = check(elseScope, *statement.elsebody);
+    ControlFlow thencf = check(thenScope, *statement.thenbody);
+    ControlFlow elsecf = ControlFlow::None;
+    if (statement.elsebody)
+        elsecf = check(elseScope, *statement.elsebody);
 
-        if (thencf != ControlFlow::None && elsecf == ControlFlow::None)
-            scope->inheritRefinements(elseScope);
-        else if (thencf == ControlFlow::None && elsecf != ControlFlow::None)
-            scope->inheritRefinements(thenScope);
+    if (thencf != ControlFlow::None && elsecf == ControlFlow::None)
+        scope->inheritRefinements(elseScope);
+    else if (thencf == ControlFlow::None && elsecf != ControlFlow::None)
+        scope->inheritRefinements(thenScope);
 
-        if (FFlag::LuauTinyControlFlowAnalysis && thencf == elsecf)
-            return thencf;
-        else if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
-            return ControlFlow::Returns;
-        else
-            return ControlFlow::None;
-    }
+    if (thencf == elsecf)
+        return thencf;
+    else if (matches(thencf, ControlFlow::Returns | ControlFlow::Throws) && matches(elsecf, ControlFlow::Returns | ControlFlow::Throws))
+        return ControlFlow::Returns;
     else
-    {
-        check(thenScope, *statement.thenbody);
-
-        if (statement.elsebody)
-        {
-            ScopePtr elseScope = childScope(scope, statement.elsebody->location);
-            resolve(result.predicates, elseScope, false);
-            check(elseScope, *statement.elsebody);
-        }
-
         return ControlFlow::None;
-    }
 }
 
 template<typename Id>
@@ -906,12 +886,12 @@ ControlFlow TypeChecker::check(const ScopePtr& scope, const AstStatReturn& retur
         if (!errors.empty())
             currentModule->getModuleScope()->returnType = addTypePack({anyType});
 
-        return FFlag::LuauTinyControlFlowAnalysis ? ControlFlow::Returns : ControlFlow::None;
+        return ControlFlow::Returns;
     }
 
     unify(retPack, scope->returnType, scope, return_.location, CountMismatch::Context::Return);
 
-    return FFlag::LuauTinyControlFlowAnalysis ? ControlFlow::Returns : ControlFlow::None;
+    return ControlFlow::Returns;
 }
 
 template<typename Id>

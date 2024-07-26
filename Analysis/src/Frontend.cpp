@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Frontend.h"
 
+#include "Luau/AnyTypeSummary.h"
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
@@ -10,13 +11,15 @@
 #include "Luau/DataFlowGraph.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/FileResolver.h"
+#include "Luau/NonStrictTypeChecker.h"
 #include "Luau/Parser.h"
 #include "Luau/Scope.h"
 #include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
+#include "Luau/ToString.h"
+#include "Luau/Transpiler.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeChecker2.h"
-#include "Luau/NonStrictTypeChecker.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Variant.h"
 #include "Luau/VisitType.h"
@@ -43,6 +46,8 @@ LUAU_FASTFLAGVARIABLE(DebugLuauForbidInternalTypes, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceStrictMode, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauForceNonStrictMode, false)
 LUAU_FASTFLAGVARIABLE(LuauSourceModuleUpdatedWithSelectedMode, false)
+
+LUAU_FASTFLAG(StudioReportLuauAny)
 
 namespace Luau
 {
@@ -488,6 +493,20 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
         if (item.name == name)
             checkResult.lintResult = item.module->lintResult;
+
+        if (FFlag::StudioReportLuauAny && item.options.retainFullTypeGraphs)
+        {
+            if (item.module)
+            {
+                const SourceModule& sourceModule = *item.sourceModule;
+                if (sourceModule.mode == Luau::Mode::Strict)
+                {
+                    item.module->ats.root = toString(sourceModule.root);
+                }
+
+                item.module->ats.traverse(item.module.get(), sourceModule.root, NotNull{&builtinTypes_});
+            }
+        }
     }
 
     return checkResult;

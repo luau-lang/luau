@@ -8,7 +8,6 @@
 #include <limits.h>
 
 LUAU_FASTFLAGVARIABLE(LuauLexerLookaheadRemembersBraceType, false)
-LUAU_FASTFLAGVARIABLE(LuauAttributeSyntax, false)
 
 namespace Luau
 {
@@ -201,7 +200,6 @@ std::string Lexeme::toString() const
         return "comment";
 
     case Attribute:
-        LUAU_ASSERT(FFlag::LuauAttributeSyntax);
         return name ? format("'%s'", name) : "attribute";
 
     case BrokenString:
@@ -1007,11 +1005,8 @@ Lexeme Lexer::readNext()
     }
     case '@':
     {
-        if (FFlag::LuauAttributeSyntax)
-        {
-            std::pair<AstName, Lexeme::Type> attribute = readName();
-            return Lexeme(Location(start, position()), Lexeme::Attribute, attribute.first.value);
-        }
+        std::pair<AstName, Lexeme::Type> attribute = readName();
+        return Lexeme(Location(start, position()), Lexeme::Attribute, attribute.first.value);
     }
     default:
         if (isDigit(peekch()))

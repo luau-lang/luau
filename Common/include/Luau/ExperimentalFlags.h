@@ -12,8 +12,8 @@ inline bool isFlagExperimental(const char* flag)
     // or critical bugs that are found after the code has been submitted.
     static const char* const kList[] = {
         "LuauInstantiateInSubtyping",      // requires some fixes to lua-apps code
-        "LuauTinyControlFlowAnalysis",     // waiting for updates to packages depended by internal builtin plugins
         "LuauFixIndexerSubtypingOrdering", // requires some small fixes to lua-apps code since this fixes a false negative
+        "StudioReportLuauAny",             // takes telemetry data for usage of any types
         // makes sure we always have at least one entry
         nullptr,
     };

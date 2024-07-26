@@ -115,6 +115,15 @@ TypeIds::iterator TypeIds::erase(TypeIds::const_iterator it)
     return order.erase(it);
 }
 
+void TypeIds::erase(TypeId ty)
+{
+    const_iterator it = std::find(order.begin(), order.end(), ty);
+    if (it == order.end())
+        return;
+
+    erase(it);
+}
+
 size_t TypeIds::size() const
 {
     return order.size();

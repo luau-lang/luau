@@ -51,6 +51,9 @@ static bool skipFastFlag(const char* flagName)
     if (strncmp(flagName, "Debug", 5) == 0)
         return true;
 
+    if (strcmp(flagName, "StudioReportLuauAny") == 0)
+        return true;
+
     return false;
 }
 

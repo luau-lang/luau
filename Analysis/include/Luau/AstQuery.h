@@ -61,6 +61,22 @@ private:
     AstLocal* local = nullptr;
 };
 
+struct FindFullAncestry final : public AstVisitor
+{
+    std::vector<AstNode*> nodes;
+    Position pos;
+    Position documentEnd;
+    bool includeTypes = false;
+
+    explicit FindFullAncestry(Position pos, Position documentEnd, bool includeTypes = false);
+
+    bool visit(AstType* type) override;
+
+    bool visit(AstStatFunction* node) override;
+
+    bool visit(AstNode* node) override;
+};
+
 std::vector<AstNode*> findAncestryAtPositionForAutocomplete(const SourceModule& source, Position pos);
 std::vector<AstNode*> findAncestryAtPositionForAutocomplete(AstStatBlock* root, Position pos);
 std::vector<AstNode*> findAstAncestryOfPosition(const SourceModule& source, Position pos, bool includeTypes = false);

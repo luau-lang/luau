@@ -13,7 +13,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(DebugLuauSharedSelf);
-LUAU_FASTFLAG(LuauAttributeSyntax);
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -977,7 +976,6 @@ TEST_CASE_FIXTURE(Fixture, "checked_fn_toString")
 {
     ScopedFastFlag flags[] = {
         {FFlag::DebugLuauDeferredConstraintResolution, true},
-        {FFlag::LuauAttributeSyntax, true},
     };
 
     auto _result = loadDefinition(R"(

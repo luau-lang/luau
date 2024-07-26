@@ -177,60 +177,52 @@ struct FindNode : public AstVisitor
     }
 };
 
-struct FindFullAncestry final : public AstVisitor
-{
-    std::vector<AstNode*> nodes;
-    Position pos;
-    Position documentEnd;
-    bool includeTypes = false;
-
-    explicit FindFullAncestry(Position pos, Position documentEnd, bool includeTypes = false)
-        : pos(pos)
-        , documentEnd(documentEnd)
-        , includeTypes(includeTypes)
-    {
-    }
-
-    bool visit(AstType* type) override
-    {
-        if (includeTypes)
-            return visit(static_cast<AstNode*>(type));
-        else
-            return false;
-    }
-
-    bool visit(AstStatFunction* node) override
-    {
-        visit(static_cast<AstNode*>(node));
-        if (node->name->location.contains(pos))
-            node->name->visit(this);
-        else if (node->func->location.contains(pos))
-            node->func->visit(this);
-        return false;
-    }
-
-    bool visit(AstNode* node) override
-    {
-        if (node->location.contains(pos))
-        {
-            nodes.push_back(node);
-            return true;
-        }
-
-        // Edge case: If we ask for the node at the position that is the very end of the document
-        // return the innermost AST element that ends at that position.
-
-        if (node->location.end == documentEnd && pos >= documentEnd)
-        {
-            nodes.push_back(node);
-            return true;
-        }
-
-        return false;
-    }
-};
-
 } // namespace
+
+FindFullAncestry::FindFullAncestry(Position pos, Position documentEnd, bool includeTypes)
+    : pos(pos)
+    , documentEnd(documentEnd)
+    , includeTypes(includeTypes)
+{
+}
+
+bool FindFullAncestry::visit(AstType* type)
+{
+    if (includeTypes)
+        return visit(static_cast<AstNode*>(type));
+    else
+        return false;
+}
+
+bool FindFullAncestry::visit(AstStatFunction* node)
+{
+    visit(static_cast<AstNode*>(node));
+    if (node->name->location.contains(pos))
+        node->name->visit(this);
+    else if (node->func->location.contains(pos))
+        node->func->visit(this);
+    return false;
+}
+
+bool FindFullAncestry::visit(AstNode* node)
+{
+    if (node->location.contains(pos))
+    {
+        nodes.push_back(node);
+        return true;
+    }
+
+    // Edge case: If we ask for the node at the position that is the very end of the document
+    // return the innermost AST element that ends at that position.
+
+    if (node->location.end == documentEnd && pos >= documentEnd)
+    {
+        nodes.push_back(node);
+        return true;
+    }
+
+    return false;
+}
 
 std::vector<AstNode*> findAncestryAtPositionForAutocomplete(const SourceModule& source, Position pos)
 {
