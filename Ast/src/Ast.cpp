@@ -3,7 +3,6 @@
 
 #include "Luau/Common.h"
 
-LUAU_FASTFLAG(LuauAttributeSyntax);
 LUAU_FASTFLAG(LuauNativeAttribute);
 
 namespace Luau
@@ -764,8 +763,6 @@ void AstStatDeclareFunction::visit(AstVisitor* visitor)
 
 bool AstStatDeclareFunction::isCheckedFunction() const
 {
-    LUAU_ASSERT(FFlag::LuauAttributeSyntax);
-
     for (const AstAttr* attr : attributes)
     {
         if (attr->type == AstAttr::Type::Checked)
@@ -901,8 +898,6 @@ void AstTypeFunction::visit(AstVisitor* visitor)
 
 bool AstTypeFunction::isCheckedFunction() const
 {
-    LUAU_ASSERT(FFlag::LuauAttributeSyntax);
-
     for (const AstAttr* attr : attributes)
     {
         if (attr->type == AstAttr::Type::Checked)

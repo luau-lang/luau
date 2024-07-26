@@ -8,6 +8,7 @@
 #include "Luau/ParseResult.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeArena.h"
+#include "Luau/AnyTypeSummary.h"
 
 #include <memory>
 #include <vector>
@@ -18,6 +19,7 @@ namespace Luau
 {
 
 struct Module;
+struct AnyTypeSummary;
 
 using ScopePtr = std::shared_ptr<struct Scope>;
 using ModulePtr = std::shared_ptr<Module>;
@@ -70,6 +72,10 @@ struct Module
 
     TypeArena interfaceTypes;
     TypeArena internalTypes;
+
+    // Summary of Ast Nodes that either contain
+    // user annotated anys or typechecker inferred anys
+    AnyTypeSummary ats{};
 
     // Scopes and AST types refer to parse data, so we need to keep that alive
     std::shared_ptr<Allocator> allocator;

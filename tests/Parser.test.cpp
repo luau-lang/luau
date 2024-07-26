@@ -16,8 +16,6 @@ LUAU_FASTINT(LuauRecursionLimit);
 LUAU_FASTINT(LuauTypeLengthLimit);
 LUAU_FASTINT(LuauParseErrorLimit);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauAttributeSyntax);
-LUAU_FASTFLAG(LuauLeadingBarAndAmpersand2);
 LUAU_FASTFLAG(LuauAttributeSyntaxFunExpr);
 LUAU_FASTFLAG(LuauDeclarationExtraPropData);
 
@@ -3070,7 +3068,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_top_level_checked_fn")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
 
     std::string src = R"BUILTIN_SRC(
 @checked declare function abs(n: number): number
@@ -3090,7 +3087,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_declared_table_checked_member")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
 
     const std::string src = R"BUILTIN_SRC(
     declare math : {
@@ -3118,7 +3114,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_checked_outside_decl_fails")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
 
     ParseResult pr = tryParse(R"(
     local @checked = 3
@@ -3132,7 +3127,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_checked_in_and_out_of_decl_fails")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
 
     auto pr = tryParse(R"(
     local @checked = 3
@@ -3148,7 +3142,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_checked_as_function_name_fails")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
 
     auto pr = tryParse(R"(
     @checked function(x: number) : number
@@ -3162,7 +3155,6 @@ TEST_CASE_FIXTURE(Fixture, "cannot_use_@_as_variable_name")
 {
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
-    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
 
     auto pr = tryParse(R"(
     local @blah = 3
@@ -3210,7 +3202,6 @@ void checkFirstErrorForAttributes(const std::vector<ParseError>& errors, const s
 
 TEST_CASE_FIXTURE(Fixture, "parse_attribute_on_function_stat")
 {
-    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
 
     AstStatBlock* stat = parse(R"(
 @checked
@@ -3232,7 +3223,7 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "parse_attribute_for_function_expression")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauAttributeSyntax, true}, {FFlag::LuauAttributeSyntaxFunExpr, true}};
+    ScopedFastFlag sff[] = {{FFlag::LuauAttributeSyntaxFunExpr, true}};
 
     AstStatBlock* stat1 = parse(R"(
 local function invoker(f)
@@ -3271,8 +3262,6 @@ local f = @checked function(x) return (x + 2) end
 
 TEST_CASE_FIXTURE(Fixture, "parse_attribute_on_local_function_stat")
 {
-    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
-
     AstStatBlock* stat = parse(R"(
     @checked
 local function hello(x, y)
@@ -3293,8 +3282,6 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "empty_attribute_name_is_not_allowed")
 {
-    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
-
     ParseResult result = tryParse(R"(
 @
 function hello(x, y)
@@ -3306,13 +3293,11 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "dont_parse_attributes_on_non_function_stat")
 {
-    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
-
     ParseResult pr1 = tryParse(R"(
 @checked
 if a<0 then a = 0 end)");
     checkFirstErrorForAttributes(pr1.errors, 1, Location(Position(2, 0), Position(2, 2)),
-        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'if' intead");
+        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'if' instead");
 
     ParseResult pr2 = tryParse(R"(
 local i = 1
@@ -3322,7 +3307,7 @@ while a[i] do
     i = i + 1
 end)");
     checkFirstErrorForAttributes(pr2.errors, 1, Location(Position(3, 0), Position(3, 5)),
-        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'while' intead");
+        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'while' instead");
 
     ParseResult pr3 = tryParse(R"(
 @checked
@@ -3333,14 +3318,14 @@ do
     x2 = (-b - d)/a2
 end)");
     checkFirstErrorForAttributes(pr3.errors, 1, Location(Position(2, 0), Position(2, 2)),
-        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'do' intead");
+        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'do' instead");
 
     ParseResult pr4 = tryParse(R"(
 @checked
 for i=1,10 do print(i) end
 )");
     checkFirstErrorForAttributes(pr4.errors, 1, Location(Position(2, 0), Position(2, 3)),
-        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'for' intead");
+        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'for' instead");
 
     ParseResult pr5 = tryParse(R"(
 @checked
@@ -3349,7 +3334,7 @@ repeat
 until line ~= ""
 )");
     checkFirstErrorForAttributes(pr5.errors, 1, Location(Position(2, 0), Position(2, 6)),
-        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'repeat' intead");
+        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'repeat' instead");
 
 
     ParseResult pr6 = tryParse(R"(
@@ -3357,7 +3342,7 @@ until line ~= ""
 local x = 10
 )");
     checkFirstErrorForAttributes(
-        pr6.errors, 1, Location(Position(2, 6), Position(2, 7)), "Expected 'function' after local declaration with attribute, but got 'x' intead");
+        pr6.errors, 1, Location(Position(2, 6), Position(2, 7)), "Expected 'function' after local declaration with attribute, but got 'x' instead");
 
     ParseResult pr7 = tryParse(R"(
 local i = 1
@@ -3367,19 +3352,19 @@ while a[i] do
 end
 )");
     checkFirstErrorForAttributes(pr7.errors, 1, Location(Position(3, 31), Position(3, 36)),
-        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'break' intead");
+        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'break' instead");
 
 
     ParseResult pr8 = tryParse(R"(
 function foo1 () @checked return 'a' end
 )");
     checkFirstErrorForAttributes(pr8.errors, 1, Location(Position(1, 26), Position(1, 32)),
-        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'return' intead");
+        "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got 'return' instead");
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_parse_attribute_on_argument_non_function")
 {
-    ScopedFastFlag sff[] = {{FFlag::LuauAttributeSyntax, true}, {FFlag::LuauAttributeSyntaxFunExpr, true}};
+    ScopedFastFlag sff[] = {{FFlag::LuauAttributeSyntaxFunExpr, true}};
 
     ParseResult pr = tryParse(R"(
 local function invoker(f, y)
@@ -3390,13 +3375,11 @@ invoker(function(x) return (x + 2) end, @checked 1)
 )");
 
     checkFirstErrorForAttributes(
-        pr.errors, 1, Location(Position(5, 40), Position(5, 48)), "Expected 'function' declaration after attribute, but got '1' intead");
+        pr.errors, 1, Location(Position(5, 40), Position(5, 48)), "Expected 'function' declaration after attribute, but got '1' instead");
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_attribute_on_function_type_declaration")
 {
-    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
-
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
 
@@ -3423,8 +3406,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_attribute_on_function_type_declaration")
 
 TEST_CASE_FIXTURE(Fixture, "parse_attributes_on_function_type_declaration_in_table")
 {
-    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
-
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
 
@@ -3460,8 +3441,6 @@ declare bit32: {
 
 TEST_CASE_FIXTURE(Fixture, "dont_parse_attributes_on_non_function_type_declarations")
 {
-    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
-
     ParseOptions opts;
     opts.allowDeclarationSyntax = true;
 
@@ -3471,7 +3450,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_parse_attributes_on_non_function_type_declarati
         opts);
 
     checkFirstErrorForAttributes(
-        pr1.errors, 1, Location(Position(1, 17), Position(1, 20)), "Expected a function type declaration after attribute, but got 'foo' intead");
+        pr1.errors, 1, Location(Position(1, 17), Position(1, 20)), "Expected a function type declaration after attribute, but got 'foo' instead");
 
     ParseResult pr2 = tryParse(R"(
 @checked declare class Foo
@@ -3481,7 +3460,7 @@ end)",
         opts);
 
     checkFirstErrorForAttributes(
-        pr2.errors, 1, Location(Position(1, 17), Position(1, 22)), "Expected a function type declaration after attribute, but got 'class' intead");
+        pr2.errors, 1, Location(Position(1, 17), Position(1, 22)), "Expected a function type declaration after attribute, but got 'class' instead");
 
     ParseResult pr3 = tryParse(R"(
 declare bit32: {
@@ -3495,8 +3474,6 @@ declare bit32: {
 
 TEST_CASE_FIXTURE(Fixture, "attributes_cannot_be_duplicated")
 {
-    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
-
     ParseResult result = tryParse(R"(
 @checked
     @checked
@@ -3509,8 +3486,6 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "unsupported_attributes_are_not_allowed")
 {
-    ScopedFastFlag luauAttributeSyntax{FFlag::LuauAttributeSyntax, true};
-
     ParseResult result = tryParse(R"(
 @checked
     @cool_attribute
@@ -3523,22 +3498,16 @@ end)");
 
 TEST_CASE_FIXTURE(Fixture, "can_parse_leading_bar_unions_successfully")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
-
     parse(R"(type A = | "Hello" | "World")");
 }
 
 TEST_CASE_FIXTURE(Fixture, "can_parse_leading_ampersand_intersections_successfully")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
-
     parse(R"(type A = & { string } & { number })");
 }
 
 TEST_CASE_FIXTURE(Fixture, "mixed_leading_intersection_and_union_not_allowed")
 {
-    ScopedFastFlag sff{FFlag::LuauLeadingBarAndAmpersand2, true};
-
     matchParseError("type A = & number | string | boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
     matchParseError("type A = | number & string & boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
 }

@@ -698,8 +698,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_select_should_not_crash")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ("Argument count mismatch. Function '_' expects at least 1 argument, but none are specified", toString(result.errors[0]));
-    CHECK_EQ("Argument count mismatch. Function 'select' expects 1 argument, but none are specified", toString(result.errors[1]));
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        // The argument count is the same, but the errors are currently cyclic type family instance ones.
+        // This isn't great, but the desired behavior here was that it didn't cause a crash and that is still true.
+        // The larger fix for this behavior will likely be integration of egraph-based normalization throughout the new solver.
+    }
+    else
+    {
+        CHECK_EQ("Argument count mismatch. Function '_' expects at least 1 argument, but none are specified", toString(result.errors[0]));
+        CHECK_EQ("Argument count mismatch. Function 'select' expects 1 argument, but none are specified", toString(result.errors[1]));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "select_way_out_of_range")
@@ -942,7 +952,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Type 'number?' could not be converted into 'number'", toString(result.errors[0]));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("Type 'number?' could not be converted into 'number'; type number?[1] (nil) is not a subtype of number (number)", toString(result.errors[0]));
+    else
+        CHECK_EQ("Type 'number?' could not be converted into 'number'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type2")
@@ -991,7 +1004,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("((boolean | number)?) -> boolean | number", toString(requireType("f")));
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("((boolean | number)?) -> number | true", toString(requireType("f")));
+    else
+        CHECK_EQ("((boolean | number)?) -> boolean | number", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types2")

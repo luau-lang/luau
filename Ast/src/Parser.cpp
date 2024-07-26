@@ -17,8 +17,6 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 // flag so that we don't break production games by reverting syntax changes.
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
-LUAU_FASTFLAG(LuauAttributeSyntax)
-LUAU_FASTFLAGVARIABLE(LuauLeadingBarAndAmpersand2, false)
 LUAU_FASTFLAGVARIABLE(LuauNativeAttribute, false)
 LUAU_FASTFLAGVARIABLE(LuauAttributeSyntaxFunExpr, false)
 LUAU_FASTFLAGVARIABLE(LuauDeclarationExtraPropData, false)
@@ -321,8 +319,7 @@ AstStat* Parser::parseStat()
     case Lexeme::ReservedBreak:
         return parseBreak();
     case Lexeme::Attribute:
-        if (FFlag::LuauAttributeSyntax)
-            return parseAttributeStat();
+        return parseAttributeStat();
     default:;
     }
 
@@ -692,8 +689,6 @@ AstStat* Parser::parseFunctionStat(const AstArray<AstAttr*>& attributes)
 
 std::pair<bool, AstAttr::Type> Parser::validateAttribute(const char* attributeName, const TempVector<AstAttr*>& attributes)
 {
-    LUAU_ASSERT(FFlag::LuauAttributeSyntax);
-
     AstAttr::Type type;
 
     // check if the attribute name is valid
@@ -739,8 +734,6 @@ std::pair<bool, AstAttr::Type> Parser::validateAttribute(const char* attributeNa
 // attribute ::= '@' NAME
 void Parser::parseAttribute(TempVector<AstAttr*>& attributes)
 {
-    LUAU_ASSERT(FFlag::LuauAttributeSyntax);
-
     LUAU_ASSERT(lexer.current().type == Lexeme::Type::Attribute);
 
     Location loc = lexer.current().location;
@@ -757,8 +750,6 @@ void Parser::parseAttribute(TempVector<AstAttr*>& attributes)
 // attributes ::= {attribute}
 AstArray<AstAttr*> Parser::parseAttributes()
 {
-    LUAU_ASSERT(FFlag::LuauAttributeSyntax);
-
     Lexeme::Type type = lexer.current().type;
 
     LUAU_ASSERT(type == Lexeme::Attribute);
@@ -777,8 +768,6 @@ AstArray<AstAttr*> Parser::parseAttributes()
 // declare Name '{' Name ':' attributes `(' [parlist] `)' [`:` Type] '}'
 AstStat* Parser::parseAttributeStat()
 {
-    LUAU_ASSERT(FFlag::LuauAttributeSyntax);
-
     AstArray<AstAttr*> attributes = parseAttributes();
 
     Lexeme::Type type = lexer.current().type;
@@ -797,7 +786,7 @@ AstStat* Parser::parseAttributeStat()
         }
     default:
         return reportStatError(lexer.current().location, {}, {},
-            "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got %s intead",
+            "Expected 'function', 'local function', 'declare function' or a function type declaration after attribute, but got %s instead",
             lexer.current().toString().c_str());
     }
 }
@@ -834,9 +823,9 @@ AstStat* Parser::parseLocal(const AstArray<AstAttr*>& attributes)
     }
     else
     {
-        if (FFlag::LuauAttributeSyntax && attributes.size != 0)
+        if (attributes.size != 0)
         {
-            return reportStatError(lexer.current().location, {}, {}, "Expected 'function' after local declaration with attribute, but got %s intead",
+            return reportStatError(lexer.current().location, {}, {}, "Expected 'function' after local declaration with attribute, but got %s instead",
                 lexer.current().toString().c_str());
         }
 
@@ -980,8 +969,8 @@ AstStat* Parser::parseDeclaration(const Location& start, const AstArray<AstAttr*
 {
     // `declare` token is already parsed at this point
 
-    if (FFlag::LuauAttributeSyntax && (attributes.size != 0) && (lexer.current().type != Lexeme::ReservedFunction))
-        return reportStatError(lexer.current().location, {}, {}, "Expected a function type declaration after attribute, but got %s intead",
+    if ((attributes.size != 0) && (lexer.current().type != Lexeme::ReservedFunction))
+        return reportStatError(lexer.current().location, {}, {}, "Expected a function type declaration after attribute, but got %s instead",
             lexer.current().toString().c_str());
 
     if (lexer.current().type == Lexeme::ReservedFunction)
@@ -1707,10 +1696,8 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
 {
     TempVector<AstType*> parts(scratchType);
 
-    if (!FFlag::LuauLeadingBarAndAmpersand2 || type != nullptr)
-    {
+    if (type != nullptr)
         parts.push_back(type);
-    }
 
     incrementRecursionCounter("type annotation");
 
@@ -1769,7 +1756,7 @@ AstType* Parser::parseTypeSuffix(AstType* type, const Location& begin)
     }
 
     if (parts.size() == 1)
-        return FFlag::LuauLeadingBarAndAmpersand2 ? parts[0] : type;
+        return parts[0];
 
     if (isUnion && isIntersection)
     {
@@ -1816,30 +1803,19 @@ AstType* Parser::parseType(bool inDeclarationContext)
 
     Location begin = lexer.current().location;
 
-    if (FFlag::LuauLeadingBarAndAmpersand2)
+    AstType* type = nullptr;
+
+    Lexeme::Type c = lexer.current().type;
+    if (c != '|' && c != '&')
     {
-        AstType* type = nullptr;
-
-        Lexeme::Type c = lexer.current().type;
-        if (c != '|' && c != '&')
-        {
-            type = parseSimpleType(/* allowPack= */ false, /* in declaration context */ inDeclarationContext).type;
-            recursionCounter = oldRecursionCount;
-        }
-
-        AstType* typeWithSuffix = parseTypeSuffix(type, begin);
+        type = parseSimpleType(/* allowPack= */ false, /* in declaration context */ inDeclarationContext).type;
         recursionCounter = oldRecursionCount;
-
-        return typeWithSuffix;
     }
-    else
-    {
-        AstType* type = parseSimpleType(/* allowPack= */ false, /* in declaration context */ inDeclarationContext).type;
 
-        recursionCounter = oldRecursionCount;
+    AstType* typeWithSuffix = parseTypeSuffix(type, begin);
+    recursionCounter = oldRecursionCount;
 
-        return parseTypeSuffix(type, begin);
-    }
+    return typeWithSuffix;
 }
 
 // Type ::= nil | Name[`.' Name] [ `<' Type [`,' ...] `>' ] | `typeof' `(' expr `)' | `{' [PropList] `}'
@@ -1854,7 +1830,7 @@ AstTypeOrPack Parser::parseSimpleType(bool allowPack, bool inDeclarationContext)
 
     if (lexer.current().type == Lexeme::Attribute)
     {
-        if (!inDeclarationContext || !FFlag::LuauAttributeSyntax)
+        if (!inDeclarationContext)
         {
             return {reportTypeError(start, {}, "attributes are not allowed in declaration context")};
         }
@@ -2431,14 +2407,14 @@ AstExpr* Parser::parseSimpleExpr()
 
     AstArray<AstAttr*> attributes{nullptr, 0};
 
-    if (FFlag::LuauAttributeSyntax && FFlag::LuauAttributeSyntaxFunExpr && lexer.current().type == Lexeme::Attribute)
+    if (FFlag::LuauAttributeSyntaxFunExpr && lexer.current().type == Lexeme::Attribute)
     {
         attributes = parseAttributes();
 
         if (lexer.current().type != Lexeme::ReservedFunction)
         {
             return reportExprError(
-                start, {}, "Expected 'function' declaration after attribute, but got %s intead", lexer.current().toString().c_str());
+                start, {}, "Expected 'function' declaration after attribute, but got %s instead", lexer.current().toString().c_str());
         }
     }
 

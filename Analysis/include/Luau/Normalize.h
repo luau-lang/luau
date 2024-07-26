@@ -59,6 +59,7 @@ public:
     const_iterator begin() const;
     const_iterator end() const;
     iterator erase(const_iterator it);
+    void erase(TypeId ty);
 
     size_t size() const;
     bool empty() const;

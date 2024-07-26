@@ -15,8 +15,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauAttributeSyntax);
-
 #define NONSTRICT_REQUIRE_ERR_AT_POS(pos, result, idx) \
     do \
     { \
@@ -70,7 +68,6 @@ struct NonStrictTypeCheckerFixture : Fixture
     {
         ScopedFastFlag flags[] = {
             {FFlag::DebugLuauDeferredConstraintResolution, true},
-            {FFlag::LuauAttributeSyntax, true},
         };
         LoadDefinitionFileResult res = loadDefinition(definitions);
         LUAU_ASSERT(res.success);
@@ -81,7 +78,6 @@ struct NonStrictTypeCheckerFixture : Fixture
     {
         ScopedFastFlag flags[] = {
             {FFlag::DebugLuauDeferredConstraintResolution, true},
-            {FFlag::LuauAttributeSyntax, true},
         };
         LoadDefinitionFileResult res = loadDefinition(definitions);
         LUAU_ASSERT(res.success);
@@ -562,10 +558,6 @@ local E = require(script.Parent.A)
 
 TEST_CASE_FIXTURE(NonStrictTypeCheckerFixture, "nonstrict_shouldnt_warn_on_valid_buffer_use")
 {
-    ScopedFastFlag flags[] = {
-        {FFlag::LuauAttributeSyntax, true},
-    };
-
     loadDefinition(R"(
 declare buffer: {
     create: @checked (size: number) -> buffer,

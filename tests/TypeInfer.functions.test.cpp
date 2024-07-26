@@ -2763,5 +2763,18 @@ local function captureDependencies(
 )");
 }
 
+TEST_CASE_FIXTURE(Fixture, "unpack_depends_on_rhs_pack_to_be_fully_resolved")
+{
+    CheckResult result = check(R"(
+--!strict
+local function id(x)
+    return x
+end
+local u,v = id(3), id(id(44))
+)");
+
+    CHECK_EQ(builtinTypes->numberType, requireType("v"));
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
 
 TEST_SUITE_END();

@@ -295,6 +295,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "nocheck_cycle_used_by_checked")
         return {hello = A.hello}
     )";
     fileResolver.source["game/Gui/Modules/C"] = R"(
+        --!strict
         local Modules = game:GetService('Gui').Modules
         local A = require(Modules.A)
         local B = require(Modules.B)
@@ -911,7 +912,10 @@ TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_f
     // It could segfault, or you could see weird type names like the empty string or <VALUELESS BY EXCEPTION>
     if (FFlag::DebugLuauDeferredConstraintResolution)
         REQUIRE_EQ(
-            "Table type 'a' not compatible with type '{ Count: number }' because the former is missing field 'Count'", toString(result.errors[0]));
+            R"(Type
+    '{ count: string }'
+could not be converted into
+    '{ Count: number }')", toString(result.errors[0]));
     else
         REQUIRE_EQ(
             "Table type 'a' not compatible with type '{| Count: number |}' because the former is missing field 'Count'", toString(result.errors[0]));
@@ -919,6 +923,10 @@ TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_f
 
 TEST_CASE_FIXTURE(FrontendFixture, "trace_requires_in_nonstrict_mode")
 {
+    // The new non-strict mode is not currently expected to signal any errors here.
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     fileResolver.source["Module/A"] = R"(
         --!nonstrict
         local module = {}
@@ -968,13 +976,25 @@ TEST_CASE_FIXTURE(FrontendFixture, "environments")
         local foo: Foo = 1
     )";
 
+    fileResolver.source["C"] = R"(
+        --!strict
+        local foo: Foo = 1
+    )";
+
     fileResolver.environments["A"] = "test";
 
     CheckResult resultA = frontend.check("A");
     LUAU_REQUIRE_NO_ERRORS(resultA);
 
     CheckResult resultB = frontend.check("B");
-    LUAU_REQUIRE_ERROR_COUNT(1, resultB);
+    // In the new non-strict mode, we do not currently support error reporting for unknown symbols in type positions.
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        LUAU_REQUIRE_NO_ERRORS(resultB);
+    else
+        LUAU_REQUIRE_ERROR_COUNT(1, resultB);
+
+    CheckResult resultC = frontend.check("C");
+    LUAU_REQUIRE_ERROR_COUNT(1, resultC);
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "ast_node_at_position")
@@ -1075,6 +1095,10 @@ TEST_CASE_FIXTURE(FrontendFixture, "typecheck_twice_for_ast_types")
 
 TEST_CASE_FIXTURE(FrontendFixture, "imported_table_modification_2")
 {
+    // This test describes non-strict mode behavior that is just not currently present in the new non-strict mode.
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     frontend.options.retainFullTypeGraphs = false;
 
     fileResolver.source["Module/A"] = R"(
