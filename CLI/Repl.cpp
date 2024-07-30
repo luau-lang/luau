@@ -656,6 +656,7 @@ static bool runFile(const char* name, lua_State* GL, bool repl)
 
 static void displayHelp(const char* argv0)
 {
+    printf("%s\n", LUAU_VERSION);
     printf("Usage: %s [options] [file list] [-a] [arg list]\n", argv0);
     printf("\n");
     printf("When file list is omitted, an interactive REPL is started instead.\n");
@@ -664,6 +665,7 @@ static void displayHelp(const char* argv0)
     printf("  --coverage: collect code coverage while running the code and output results to coverage.out\n");
     printf("  -h, --help: Display this usage message.\n");
     printf("  -i, --interactive: Run an interactive REPL after executing the last script specified.\n");
+    printf("  -v, --version: Display version.\n");
     printf("  -O<n>: compile with optimization level n (default 1, n should be between 0 and 2).\n");
     printf("  -g<n>: compile with debug level n (default 1, n should be between 0 and 2).\n");
     printf("  --profile[=N]: profile the code using N Hz sampling (default 10000) and output results to profile.out\n");
@@ -704,6 +706,11 @@ int replMain(int argc, char** argv)
         else if (strcmp(argv[i], "-i") == 0 || strcmp(argv[i], "--interactive") == 0)
         {
             interactive = true;
+        }
+        else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--version") == 0)
+        {
+            printf("%s\n", LUAU_VERSION);
+            return 0;
         }
         else if (strncmp(argv[i], "-O", 2) == 0)
         {

@@ -12,6 +12,7 @@
 
 static void displayHelp(const char* argv0)
 {
+    printf("%s\n", LUAU_VERSION);
     printf("Usage: %s [file]\n", argv0);
 }
 
@@ -32,6 +33,11 @@ int main(int argc, char** argv)
     if (argc >= 2 && strcmp(argv[1], "--help") == 0)
     {
         displayHelp(argv[0]);
+        return 0;
+    }
+    else if (argc >= 2 && (strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0))
+    {
+        printf("%s\n", LUAU_VERSION);
         return 0;
     }
     else if (argc < 2)

@@ -402,6 +402,7 @@ static bool compileFile(const char* name, CompileFormat format, Luau::CodeGen::A
 
 static void displayHelp(const char* argv0)
 {
+    printf("%s\n", LUAU_VERSION);
     printf("Usage: %s [--mode] [options] [file list]\n", argv0);
     printf("\n");
     printf("Available modes:\n");
@@ -409,6 +410,7 @@ static void displayHelp(const char* argv0)
     printf("\n");
     printf("Available options:\n");
     printf("  -h, --help: Display this usage message.\n");
+    printf("  -v, --version: Display version.\n");
     printf("  -O<n>: compile with optimization level n (default 1, n should be between 0 and 2).\n");
     printf("  -g<n>: compile with debug level n (default 1, n should be between 0 and 2).\n");
     printf("  --target=<target>: compile code for specific architecture (a64, x64, a64_nf, x64_ms).\n");
@@ -468,6 +470,11 @@ int main(int argc, char** argv)
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
         {
             displayHelp(argv[0]);
+            return 0;
+        }
+        else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--version") == 0)
+        {
+            printf("%s\n", LUAU_VERSION);
             return 0;
         }
         else if (strncmp(argv[i], "-O", 2) == 0)

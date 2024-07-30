@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#define LUAU_VERSION "Luau 0.636"
+
 // Compiler codegen control macros
 #ifdef _MSC_VER
 #define LUAU_NORETURN __declspec(noreturn)

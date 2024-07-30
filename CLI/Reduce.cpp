@@ -470,6 +470,7 @@ struct Reducer
 
 [[noreturn]] void help(const std::vector<std::string_view>& args)
 {
+    printf("%s\n", LUAU_VERSION);
     printf("Syntax: %s script command \"search text\"\n", args[0].data());
     printf("    Within command, use {} as a stand-in for the script being reduced\n");
     exit(1);
@@ -481,6 +482,9 @@ int main(int argc, char** argv)
 
     if (args.size() != 4)
         help(args);
+
+    if (args[1] == "-v" || args[1] == "--version")
+        printf("%s\n", LUAU_VERSION);
 
     for (size_t i = 1; i < args.size(); ++i)
     {
