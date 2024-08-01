@@ -125,8 +125,9 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "cache_fully_generalized_types")
 {
     CHECK(generalizedTypes->empty());
 
-    TypeId tinyTable = arena.addType(TableType{
-        TableType::Props{{"one", builtinTypes.numberType}, {"two", builtinTypes.stringType}}, std::nullopt, TypeLevel{}, TableState::Sealed});
+    TypeId tinyTable = arena.addType(
+        TableType{TableType::Props{{"one", builtinTypes.numberType}, {"two", builtinTypes.stringType}}, std::nullopt, TypeLevel{}, TableState::Sealed}
+    );
 
     generalize(tinyTable);
 
@@ -141,8 +142,9 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "dont_cache_types_that_arent_done_yet")
 
     TypeId fnTy = arena.addType(FunctionType{builtinTypes.emptyTypePack, arena.addTypePack(TypePack{{builtinTypes.numberType}})});
 
-    TypeId tableTy = arena.addType(TableType{
-        TableType::Props{{"one", builtinTypes.numberType}, {"two", freeTy}, {"three", fnTy}}, std::nullopt, TypeLevel{}, TableState::Sealed});
+    TypeId tableTy = arena.addType(
+        TableType{TableType::Props{{"one", builtinTypes.numberType}, {"two", freeTy}, {"three", fnTy}}, std::nullopt, TypeLevel{}, TableState::Sealed}
+    );
 
     generalize(tableTy);
 
@@ -164,7 +166,8 @@ TEST_CASE_FIXTURE(GeneralizationFixture, "functions_containing_cyclic_tables_can
     });
 
     asMutable(selfTy)->ty.emplace<TableType>(
-        TableType::Props{{"count", builtinTypes.numberType}, {"method", methodTy}}, std::nullopt, TypeLevel{}, TableState::Sealed);
+        TableType::Props{{"count", builtinTypes.numberType}, {"method", methodTy}}, std::nullopt, TypeLevel{}, TableState::Sealed
+    );
 
     generalize(methodTy);
 

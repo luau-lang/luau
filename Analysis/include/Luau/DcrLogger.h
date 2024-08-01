@@ -126,7 +126,11 @@ struct DcrLogger
 
     void captureInitialSolverState(const Scope* rootScope, const std::vector<NotNull<const Constraint>>& unsolvedConstraints);
     StepSnapshot prepareStepSnapshot(
-        const Scope* rootScope, NotNull<const Constraint> current, bool force, const std::vector<NotNull<const Constraint>>& unsolvedConstraints);
+        const Scope* rootScope,
+        NotNull<const Constraint> current,
+        bool force,
+        const std::vector<NotNull<const Constraint>>& unsolvedConstraints
+    );
     void commitStepSnapshot(StepSnapshot snapshot);
     void captureFinalSolverState(const Scope* rootScope, const std::vector<NotNull<const Constraint>>& unsolvedConstraints);
 

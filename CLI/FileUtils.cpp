@@ -442,12 +442,16 @@ std::vector<std::string> getSourceFiles(int argc, char** argv)
 
         if (isDirectory(argv[i]))
         {
-            traverseDirectory(argv[i], [&](const std::string& name) {
-                std::string ext = getExtension(name);
+            traverseDirectory(
+                argv[i],
+                [&](const std::string& name)
+                {
+                    std::string ext = getExtension(name);
 
-                if (ext == ".lua" || ext == ".luau")
-                    files.push_back(name);
-            });
+                    if (ext == ".lua" || ext == ".luau")
+                        files.push_back(name);
+                }
+            );
         }
         else
         {

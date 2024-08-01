@@ -963,21 +963,26 @@ std::vector<uint32_t> getSortedBlockOrder(IrFunction& function)
     for (uint32_t i = 0; i < function.blocks.size(); i++)
         sortedBlocks.push_back(i);
 
-    std::sort(sortedBlocks.begin(), sortedBlocks.end(), [&](uint32_t idxA, uint32_t idxB) {
-        const IrBlock& a = function.blocks[idxA];
-        const IrBlock& b = function.blocks[idxB];
+    std::sort(
+        sortedBlocks.begin(),
+        sortedBlocks.end(),
+        [&](uint32_t idxA, uint32_t idxB)
+        {
+            const IrBlock& a = function.blocks[idxA];
+            const IrBlock& b = function.blocks[idxB];
 
-        // Place fallback blocks at the end
-        if ((a.kind == IrBlockKind::Fallback) != (b.kind == IrBlockKind::Fallback))
-            return (a.kind == IrBlockKind::Fallback) < (b.kind == IrBlockKind::Fallback);
+            // Place fallback blocks at the end
+            if ((a.kind == IrBlockKind::Fallback) != (b.kind == IrBlockKind::Fallback))
+                return (a.kind == IrBlockKind::Fallback) < (b.kind == IrBlockKind::Fallback);
 
-        // Try to order by instruction order
-        if (a.sortkey != b.sortkey)
-            return a.sortkey < b.sortkey;
+            // Try to order by instruction order
+            if (a.sortkey != b.sortkey)
+                return a.sortkey < b.sortkey;
 
-        // Chains of blocks are merged together by having the same sort key and consecutive chain key
-        return a.chainkey < b.chainkey;
-    });
+            // Chains of blocks are merged together by having the same sort key and consecutive chain key
+            return a.chainkey < b.chainkey;
+        }
+    );
 
     return sortedBlocks;
 }

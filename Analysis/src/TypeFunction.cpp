@@ -112,8 +112,15 @@ struct TypeFunctionReducer
     // Local to the constraint being reduced.
     Location location;
 
-    TypeFunctionReducer(VecDeque<TypeId> queuedTys, VecDeque<TypePackId> queuedTps, TypeOrTypePackIdSet shouldGuess, std::vector<TypeId> cyclicTypes,
-        Location location, TypeFunctionContext ctx, bool force = false)
+    TypeFunctionReducer(
+        VecDeque<TypeId> queuedTys,
+        VecDeque<TypePackId> queuedTps,
+        TypeOrTypePackIdSet shouldGuess,
+        std::vector<TypeId> cyclicTypes,
+        Location location,
+        TypeFunctionContext ctx,
+        bool force = false
+    )
         : ctx(ctx)
         , queuedTys(std::move(queuedTys))
         , queuedTps(std::move(queuedTps))
@@ -218,8 +225,12 @@ struct TypeFunctionReducer
             else if (!reduction.uninhabited && !force)
             {
                 if (FFlag::DebugLuauLogTypeFamilies)
-                    printf("%s is irreducible; blocked on %zu types, %zu packs\n", toString(subject, {true}).c_str(), reduction.blockedTypes.size(),
-                        reduction.blockedPacks.size());
+                    printf(
+                        "%s is irreducible; blocked on %zu types, %zu packs\n",
+                        toString(subject, {true}).c_str(),
+                        reduction.blockedTypes.size(),
+                        reduction.blockedPacks.size()
+                    );
 
                 for (TypeId b : reduction.blockedTypes)
                     result.blockedTypes.insert(b);
@@ -371,7 +382,8 @@ struct TypeFunctionReducer
             if (tryGuessing(subject))
                 return;
 
-            TypeFunctionReductionResult<TypePackId> result = tfit->function->reducer(subject, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
+            TypeFunctionReductionResult<TypePackId> result =
+                tfit->function->reducer(subject, tfit->typeArguments, tfit->packArguments, NotNull{&ctx});
             handleTypeFunctionReduction(subject, result);
         }
     }
@@ -385,8 +397,15 @@ struct TypeFunctionReducer
     }
 };
 
-static FunctionGraphReductionResult reduceFunctionsInternal(VecDeque<TypeId> queuedTys, VecDeque<TypePackId> queuedTps, TypeOrTypePackIdSet shouldGuess,
-    std::vector<TypeId> cyclics, Location location, TypeFunctionContext ctx, bool force)
+static FunctionGraphReductionResult reduceFunctionsInternal(
+    VecDeque<TypeId> queuedTys,
+    VecDeque<TypePackId> queuedTps,
+    TypeOrTypePackIdSet shouldGuess,
+    std::vector<TypeId> cyclics,
+    Location location,
+    TypeFunctionContext ctx,
+    bool force
+)
 {
     TypeFunctionReducer reducer{std::move(queuedTys), std::move(queuedTps), std::move(shouldGuess), std::move(cyclics), location, ctx, force};
     int iterationCount = 0;
@@ -422,8 +441,15 @@ FunctionGraphReductionResult reduceTypeFunctions(TypeId entrypoint, Location loc
     if (collector.tys.empty() && collector.tps.empty())
         return {};
 
-    return reduceFunctionsInternal(std::move(collector.tys), std::move(collector.tps), std::move(collector.shouldGuess),
-        std::move(collector.cyclicInstance), location, ctx, force);
+    return reduceFunctionsInternal(
+        std::move(collector.tys),
+        std::move(collector.tps),
+        std::move(collector.shouldGuess),
+        std::move(collector.cyclicInstance),
+        location,
+        ctx,
+        force
+    );
 }
 
 FunctionGraphReductionResult reduceTypeFunctions(TypePackId entrypoint, Location location, TypeFunctionContext ctx, bool force)
@@ -442,8 +468,15 @@ FunctionGraphReductionResult reduceTypeFunctions(TypePackId entrypoint, Location
     if (collector.tys.empty() && collector.tps.empty())
         return {};
 
-    return reduceFunctionsInternal(std::move(collector.tys), std::move(collector.tps), std::move(collector.shouldGuess),
-        std::move(collector.cyclicInstance), location, ctx, force);
+    return reduceFunctionsInternal(
+        std::move(collector.tys),
+        std::move(collector.tps),
+        std::move(collector.shouldGuess),
+        std::move(collector.cyclicInstance),
+        location,
+        ctx,
+        force
+    );
 }
 
 bool isPending(TypeId ty, ConstraintSolver* solver)
@@ -452,8 +485,14 @@ bool isPending(TypeId ty, ConstraintSolver* solver)
 }
 
 template<typename F, typename... Args>
-static std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunctionApp(F f, TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx, Args&&... args)
+static std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunctionApp(
+    F f,
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx,
+    Args&&... args
+)
 {
     // op (a | b) (c | d) ~ (op a (c | d)) | (op b (c | d)) ~ (op a c) | (op a d) | (op b c) | (op b d)
     bool uninhabited = false;
@@ -529,7 +568,11 @@ static std::optional<TypeFunctionReductionResult<TypeId>> tryDistributeTypeFunct
 }
 
 TypeFunctionReductionResult<TypeId> notTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 1 || !packParams.empty())
     {
@@ -553,7 +596,11 @@ TypeFunctionReductionResult<TypeId> notTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> lenTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 1 || !packParams.empty())
     {
@@ -645,7 +692,11 @@ TypeFunctionReductionResult<TypeId> lenTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> unmTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 1 || !packParams.empty())
     {
@@ -744,8 +795,13 @@ NotNull<Constraint> TypeFunctionContext::pushConstraint(ConstraintV&& c)
     return newConstraint;
 }
 
-TypeFunctionReductionResult<TypeId> numericBinopTypeFunction(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx, const std::string metamethod)
+TypeFunctionReductionResult<TypeId> numericBinopTypeFunction(
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx,
+    const std::string metamethod
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -848,7 +904,11 @@ TypeFunctionReductionResult<TypeId> numericBinopTypeFunction(TypeId instance, co
 }
 
 TypeFunctionReductionResult<TypeId> addTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -860,7 +920,11 @@ TypeFunctionReductionResult<TypeId> addTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> subTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -872,7 +936,11 @@ TypeFunctionReductionResult<TypeId> subTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> mulTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -884,7 +952,11 @@ TypeFunctionReductionResult<TypeId> mulTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> divTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -896,7 +968,11 @@ TypeFunctionReductionResult<TypeId> divTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> idivTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -908,7 +984,11 @@ TypeFunctionReductionResult<TypeId> idivTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> powTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -920,7 +1000,11 @@ TypeFunctionReductionResult<TypeId> powTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> modTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -932,7 +1016,11 @@ TypeFunctionReductionResult<TypeId> modTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> concatTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -1040,7 +1128,11 @@ TypeFunctionReductionResult<TypeId> concatTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> andTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -1091,7 +1183,11 @@ TypeFunctionReductionResult<TypeId> andTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> orTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -1141,8 +1237,13 @@ TypeFunctionReductionResult<TypeId> orTypeFunction(
     return {overallResult.result, false, std::move(blockedTypes), {}};
 }
 
-static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(TypeId instance, const std::vector<TypeId>& typeParams,
-    const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx, const std::string metamethod)
+static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx,
+    const std::string metamethod
+)
 {
 
     if (typeParams.size() != 2 || !packParams.empty())
@@ -1281,7 +1382,11 @@ static TypeFunctionReductionResult<TypeId> comparisonTypeFunction(TypeId instanc
 }
 
 TypeFunctionReductionResult<TypeId> ltTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -1293,7 +1398,11 @@ TypeFunctionReductionResult<TypeId> ltTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> leTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -1305,7 +1414,11 @@ TypeFunctionReductionResult<TypeId> leTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> eqTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -1436,7 +1549,11 @@ struct FindRefinementBlockers : TypeOnceVisitor
 
 
 TypeFunctionReductionResult<TypeId> refineTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -1521,7 +1638,11 @@ TypeFunctionReductionResult<TypeId> refineTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> singletonTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 1 || !packParams.empty())
     {
@@ -1558,7 +1679,11 @@ TypeFunctionReductionResult<TypeId> singletonTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> unionTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (!packParams.empty())
     {
@@ -1619,7 +1744,11 @@ TypeFunctionReductionResult<TypeId> unionTypeFunction(
 
 
 TypeFunctionReductionResult<TypeId> intersectTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (!packParams.empty())
     {
@@ -1726,7 +1855,11 @@ bool computeKeysOf(TypeId ty, Set<std::string>& result, DenseHashSet<TypeId>& se
 }
 
 TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
-    const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx, bool isRaw)
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx,
+    bool isRaw
+)
 {
     if (typeParams.size() != 1 || !packParams.empty())
     {
@@ -1843,7 +1976,11 @@ TypeFunctionReductionResult<TypeId> keyofFunctionImpl(
 }
 
 TypeFunctionReductionResult<TypeId> keyofTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 1 || !packParams.empty())
     {
@@ -1855,7 +1992,11 @@ TypeFunctionReductionResult<TypeId> keyofTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> rawkeyofTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 1 || !packParams.empty())
     {
@@ -1870,7 +2011,12 @@ TypeFunctionReductionResult<TypeId> rawkeyofTypeFunction(
    If found, appends that property to `result` and returns true
    Else, returns false */
 bool searchPropsAndIndexer(
-    TypeId ty, TableType::Props tblProps, std::optional<TableIndexer> tblIndexer, DenseHashSet<TypeId>& result, NotNull<TypeFunctionContext> ctx)
+    TypeId ty,
+    TableType::Props tblProps,
+    std::optional<TableIndexer> tblIndexer,
+    DenseHashSet<TypeId>& result,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     ty = follow(ty);
 
@@ -1961,7 +2107,11 @@ bool tblIndexInto(TypeId indexer, TypeId indexee, DenseHashSet<TypeId>& result, 
                     indexer refers to the type that is used to access indexee
    Example:         index<Person, "name"> => `Person` is the indexee and `"name"` is the indexer */
 TypeFunctionReductionResult<TypeId> indexFunctionImpl(
-    const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx, bool isRaw)
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx,
+    bool isRaw
+)
 {
     TypeId indexeeTy = follow(typeParams.at(0));
     std::shared_ptr<const NormalizedType> indexeeNormTy = ctx->normalizer->normalize(indexeeTy);
@@ -2053,9 +2203,15 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
     }
 
     // Call `follow()` on each element to resolve all Bound types before returning
-    std::transform(properties.begin(), properties.end(), properties.begin(), [](TypeId ty) {
-        return follow(ty);
-    });
+    std::transform(
+        properties.begin(),
+        properties.end(),
+        properties.begin(),
+        [](TypeId ty)
+        {
+            return follow(ty);
+        }
+    );
 
     // If the type being reduced to is a single type, no need to union
     if (properties.size() == 1)
@@ -2065,7 +2221,11 @@ TypeFunctionReductionResult<TypeId> indexFunctionImpl(
 }
 
 TypeFunctionReductionResult<TypeId> indexTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -2077,7 +2237,11 @@ TypeFunctionReductionResult<TypeId> indexTypeFunction(
 }
 
 TypeFunctionReductionResult<TypeId> rawgetTypeFunction(
-    TypeId instance, const std::vector<TypeId>& typeParams, const std::vector<TypePackId>& packParams, NotNull<TypeFunctionContext> ctx)
+    TypeId instance,
+    const std::vector<TypeId>& typeParams,
+    const std::vector<TypePackId>& packParams,
+    NotNull<TypeFunctionContext> ctx
+)
 {
     if (typeParams.size() != 2 || !packParams.empty())
     {
@@ -2119,7 +2283,8 @@ BuiltinTypeFunctions::BuiltinTypeFunctions()
 void BuiltinTypeFunctions::addToScope(NotNull<TypeArena> arena, NotNull<Scope> scope) const
 {
     // make a type function for a one-argument type function
-    auto mkUnaryTypeFunction = [&](const TypeFunction* tf) {
+    auto mkUnaryTypeFunction = [&](const TypeFunction* tf)
+    {
         TypeId t = arena->addType(GenericType{"T"});
         GenericTypeDefinition genericT{t};
 
@@ -2127,7 +2292,8 @@ void BuiltinTypeFunctions::addToScope(NotNull<TypeArena> arena, NotNull<Scope> s
     };
 
     // make a type function for a two-argument type function
-    auto mkBinaryTypeFunction = [&](const TypeFunction* tf) {
+    auto mkBinaryTypeFunction = [&](const TypeFunction* tf)
+    {
         TypeId t = arena->addType(GenericType{"T"});
         TypeId u = arena->addType(GenericType{"U"});
         GenericTypeDefinition genericT{t};

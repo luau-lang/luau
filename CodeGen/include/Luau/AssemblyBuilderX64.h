@@ -212,8 +212,19 @@ public:
 
 private:
     // Instruction archetypes
-    void placeBinary(const char* name, OperandX64 lhs, OperandX64 rhs, uint8_t codeimm8, uint8_t codeimm, uint8_t codeimmImm8, uint8_t code8rev,
-        uint8_t coderev, uint8_t code8, uint8_t code, uint8_t opreg);
+    void placeBinary(
+        const char* name,
+        OperandX64 lhs,
+        OperandX64 rhs,
+        uint8_t codeimm8,
+        uint8_t codeimm,
+        uint8_t codeimmImm8,
+        uint8_t code8rev,
+        uint8_t coderev,
+        uint8_t code8,
+        uint8_t code,
+        uint8_t opreg
+    );
     void placeBinaryRegMemAndImm(OperandX64 lhs, OperandX64 rhs, uint8_t code8, uint8_t code, uint8_t codeImm8, uint8_t opreg);
     void placeBinaryRegAndRegMem(OperandX64 lhs, OperandX64 rhs, uint8_t code8, uint8_t code);
     void placeBinaryRegMemAndReg(OperandX64 lhs, OperandX64 rhs, uint8_t code8, uint8_t code);
@@ -228,7 +239,16 @@ private:
     void placeAvx(const char* name, OperandX64 dst, OperandX64 src, uint8_t code, uint8_t coderev, bool setW, uint8_t mode, uint8_t prefix);
     void placeAvx(const char* name, OperandX64 dst, OperandX64 src1, OperandX64 src2, uint8_t code, bool setW, uint8_t mode, uint8_t prefix);
     void placeAvx(
-        const char* name, OperandX64 dst, OperandX64 src1, OperandX64 src2, uint8_t imm8, uint8_t code, bool setW, uint8_t mode, uint8_t prefix);
+        const char* name,
+        OperandX64 dst,
+        OperandX64 src1,
+        OperandX64 src2,
+        uint8_t imm8,
+        uint8_t code,
+        bool setW,
+        uint8_t mode,
+        uint8_t prefix
+    );
 
     // Instruction components
     void placeRegAndModRegMem(OperandX64 lhs, OperandX64 rhs, int32_t extraCodeBytes = 0);

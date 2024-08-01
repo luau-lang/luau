@@ -58,9 +58,15 @@ TypeId follow(TypeId t)
 
 TypeId follow(TypeId t, FollowOption followOption)
 {
-    return follow(t, followOption, nullptr, [](const void*, TypeId t) -> TypeId {
-        return t;
-    });
+    return follow(
+        t,
+        followOption,
+        nullptr,
+        [](const void*, TypeId t) -> TypeId
+        {
+            return t;
+        }
+    );
 }
 
 TypeId follow(TypeId t, const void* context, TypeId (*mapper)(const void*, TypeId))
@@ -70,7 +76,8 @@ TypeId follow(TypeId t, const void* context, TypeId (*mapper)(const void*, TypeI
 
 TypeId follow(TypeId t, FollowOption followOption, const void* context, TypeId (*mapper)(const void*, TypeId))
 {
-    auto advance = [followOption, context, mapper](TypeId ty) -> std::optional<TypeId> {
+    auto advance = [followOption, context, mapper](TypeId ty) -> std::optional<TypeId>
+    {
         TypeId mapped = mapper(context, ty);
 
         if (auto btv = get<Unifiable::Bound<TypeId>>(mapped))
@@ -259,7 +266,8 @@ bool isOverloadedFunction(TypeId ty)
     if (!get<IntersectionType>(follow(ty)))
         return false;
 
-    auto isFunction = [](TypeId part) -> bool {
+    auto isFunction = [](TypeId part) -> bool
+    {
         return get<FunctionType>(part);
     };
 
@@ -567,7 +575,11 @@ void BlockedType::replaceOwner(Constraint* newOwner)
 }
 
 PendingExpansionType::PendingExpansionType(
-    std::optional<AstName> prefix, AstName name, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
+    std::optional<AstName> prefix,
+    AstName name,
+    std::vector<TypeId> typeArguments,
+    std::vector<TypePackId> packArguments
+)
     : prefix(prefix)
     , name(name)
     , typeArguments(typeArguments)
@@ -596,7 +608,13 @@ FunctionType::FunctionType(TypeLevel level, TypePackId argTypes, TypePackId retT
 }
 
 FunctionType::FunctionType(
-    TypeLevel level, Scope* scope, TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
+    TypeLevel level,
+    Scope* scope,
+    TypePackId argTypes,
+    TypePackId retTypes,
+    std::optional<FunctionDefinition> defn,
+    bool hasSelf
+)
     : definition(std::move(defn))
     , level(level)
     , scope(scope)
@@ -606,8 +624,14 @@ FunctionType::FunctionType(
 {
 }
 
-FunctionType::FunctionType(std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes, TypePackId retTypes,
-    std::optional<FunctionDefinition> defn, bool hasSelf)
+FunctionType::FunctionType(
+    std::vector<TypeId> generics,
+    std::vector<TypePackId> genericPacks,
+    TypePackId argTypes,
+    TypePackId retTypes,
+    std::optional<FunctionDefinition> defn,
+    bool hasSelf
+)
     : definition(std::move(defn))
     , generics(generics)
     , genericPacks(genericPacks)
@@ -617,8 +641,15 @@ FunctionType::FunctionType(std::vector<TypeId> generics, std::vector<TypePackId>
 {
 }
 
-FunctionType::FunctionType(TypeLevel level, std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes,
-    TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
+FunctionType::FunctionType(
+    TypeLevel level,
+    std::vector<TypeId> generics,
+    std::vector<TypePackId> genericPacks,
+    TypePackId argTypes,
+    TypePackId retTypes,
+    std::optional<FunctionDefinition> defn,
+    bool hasSelf
+)
     : definition(std::move(defn))
     , generics(generics)
     , genericPacks(genericPacks)
@@ -629,8 +660,16 @@ FunctionType::FunctionType(TypeLevel level, std::vector<TypeId> generics, std::v
 {
 }
 
-FunctionType::FunctionType(TypeLevel level, Scope* scope, std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes,
-    TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
+FunctionType::FunctionType(
+    TypeLevel level,
+    Scope* scope,
+    std::vector<TypeId> generics,
+    std::vector<TypePackId> genericPacks,
+    TypePackId argTypes,
+    TypePackId retTypes,
+    std::optional<FunctionDefinition> defn,
+    bool hasSelf
+)
     : definition(std::move(defn))
     , generics(generics)
     , genericPacks(genericPacks)
@@ -644,8 +683,15 @@ FunctionType::FunctionType(TypeLevel level, Scope* scope, std::vector<TypeId> ge
 
 Property::Property() {}
 
-Property::Property(TypeId readTy, bool deprecated, const std::string& deprecatedSuggestion, std::optional<Location> location, const Tags& tags,
-    const std::optional<std::string>& documentationSymbol, std::optional<Location> typeLocation)
+Property::Property(
+    TypeId readTy,
+    bool deprecated,
+    const std::string& deprecatedSuggestion,
+    std::optional<Location> location,
+    const Tags& tags,
+    const std::optional<std::string>& documentationSymbol,
+    std::optional<Location> typeLocation
+)
     : deprecated(deprecated)
     , deprecatedSuggestion(deprecatedSuggestion)
     , location(location)
@@ -953,9 +999,15 @@ Type& Type::operator=(const Type& rhs)
     return *this;
 }
 
-TypeId makeFunction(TypeArena& arena, std::optional<TypeId> selfType, std::initializer_list<TypeId> generics,
-    std::initializer_list<TypePackId> genericPacks, std::initializer_list<TypeId> paramTypes, std::initializer_list<std::string> paramNames,
-    std::initializer_list<TypeId> retTypes);
+TypeId makeFunction(
+    TypeArena& arena,
+    std::optional<TypeId> selfType,
+    std::initializer_list<TypeId> generics,
+    std::initializer_list<TypePackId> genericPacks,
+    std::initializer_list<TypeId> paramTypes,
+    std::initializer_list<std::string> paramNames,
+    std::initializer_list<TypeId> retTypes
+);
 
 TypeId makeStringMetatable(NotNull<BuiltinTypes> builtinTypes); // BuiltinDefinitions.cpp
 

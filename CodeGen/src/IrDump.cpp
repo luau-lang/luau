@@ -12,8 +12,8 @@ namespace Luau
 namespace CodeGen
 {
 
-static const char* textForCondition[] = {
-    "eq", "not_eq", "lt", "not_lt", "le", "not_le", "gt", "not_gt", "ge", "not_ge", "u_lt", "u_le", "u_gt", "u_ge"};
+static const char* textForCondition[] =
+    {"eq", "not_eq", "lt", "not_lt", "le", "not_le", "gt", "not_gt", "ge", "not_ge", "u_lt", "u_le", "u_gt", "u_ge"};
 static_assert(sizeof(textForCondition) / sizeof(textForCondition[0]) == size_t(IrCondition::Count), "all conditions have to be covered");
 
 const int kDetailsAlignColumn = 60;
@@ -403,7 +403,8 @@ void toString(IrToStringContext& ctx, const IrInst& inst, uint32_t index)
 
     ctx.result.append(getCmdName(inst.cmd));
 
-    auto checkOp = [&ctx](IrOp op, const char* sep) {
+    auto checkOp = [&ctx](IrOp op, const char* sep)
+    {
         if (op.kind != IrOpKind::None)
         {
             ctx.result.append(sep);
@@ -624,7 +625,13 @@ static RegisterSet getJumpTargetExtraLiveIn(IrToStringContext& ctx, const IrBloc
 }
 
 void toStringDetailed(
-    IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, const IrInst& inst, uint32_t instIdx, IncludeUseInfo includeUseInfo)
+    IrToStringContext& ctx,
+    const IrBlock& block,
+    uint32_t blockIdx,
+    const IrInst& inst,
+    uint32_t instIdx,
+    IncludeUseInfo includeUseInfo
+)
 {
     size_t start = ctx.result.size();
 
@@ -667,8 +674,14 @@ void toStringDetailed(
     }
 }
 
-void toStringDetailed(IrToStringContext& ctx, const IrBlock& block, uint32_t blockIdx, IncludeUseInfo includeUseInfo, IncludeCfgInfo includeCfgInfo,
-    IncludeRegFlowInfo includeRegFlowInfo)
+void toStringDetailed(
+    IrToStringContext& ctx,
+    const IrBlock& block,
+    uint32_t blockIdx,
+    IncludeUseInfo includeUseInfo,
+    IncludeCfgInfo includeCfgInfo,
+    IncludeRegFlowInfo includeRegFlowInfo
+)
 {
     // Report captured registers for entry block
     if (includeRegFlowInfo == IncludeRegFlowInfo::Yes && block.useCount == 0 && block.kind != IrBlockKind::Dead && ctx.cfg.captured.regs.any())
@@ -877,7 +890,8 @@ std::string toDot(const IrFunction& function, bool includeInst)
         {
             const IrInst& inst = function.instructions[instIdx];
 
-            auto checkOp = [&](IrOp op) {
+            auto checkOp = [&](IrOp op)
+            {
                 if (op.kind == IrOpKind::Block)
                 {
                     if (function.blocks[op.index].kind != IrBlockKind::Fallback)

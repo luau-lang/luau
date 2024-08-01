@@ -177,15 +177,19 @@ TEST_CASE("Visit")
     // void-returning visitor, const variants
     std::string r1;
     visit(
-        [&](const auto& v) {
+        [&](const auto& v)
+        {
             r1 += ToStringVisitor()(v);
         },
-        v1c);
+        v1c
+    );
     visit(
-        [&](const auto& v) {
+        [&](const auto& v)
+        {
             r1 += ToStringVisitor()(v);
         },
-        v2c);
+        v2c
+    );
     CHECK(r1 == "12345");
 
     // value-returning visitor, const variants
@@ -203,17 +207,21 @@ TEST_CASE("Visit")
     // value-returning visitor, mutable variant
     std::string r3;
     r3 += visit(
-        [&](auto& v) {
+        [&](auto& v)
+        {
             IncrementVisitor()(v);
             return ToStringVisitor()(v);
         },
-        v1);
+        v1
+    );
     r3 += visit(
-        [&](auto& v) {
+        [&](auto& v)
+        {
             IncrementVisitor()(v);
             return ToStringVisitor()(v);
         },
-        v2);
+        v2
+    );
     CHECK(r3 == "1231147");
 }
 

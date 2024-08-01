@@ -714,9 +714,14 @@ TEST_CASE_FIXTURE(FrontendFixture, "report_syntax_error_in_required_file")
 
     CHECK_EQ("Modules/A", result.errors[0].moduleName);
 
-    bool b = std::any_of(begin(result.errors), end(result.errors), [](auto&& e) -> bool {
-        return get<SyntaxError>(e);
-    });
+    bool b = std::any_of(
+        begin(result.errors),
+        end(result.errors),
+        [](auto&& e) -> bool
+        {
+            return get<SyntaxError>(e);
+        }
+    );
     if (!b)
     {
         CHECK_MESSAGE(false, "Expected a syntax error!");
@@ -809,8 +814,10 @@ TEST_CASE_FIXTURE(FrontendFixture, "accumulate_cached_errors_in_consistent_order
 
 TEST_CASE_FIXTURE(FrontendFixture, "test_pruneParentSegments")
 {
-    CHECK_EQ(std::optional<std::string>{"Modules/Enum/ButtonState"},
-        pathExprToModuleName("", {"Modules", "LuaApp", "DeprecatedDarkTheme", "Parent", "Parent", "Enum", "ButtonState"}));
+    CHECK_EQ(
+        std::optional<std::string>{"Modules/Enum/ButtonState"},
+        pathExprToModuleName("", {"Modules", "LuaApp", "DeprecatedDarkTheme", "Parent", "Parent", "Enum", "ButtonState"})
+    );
     CHECK_EQ(std::optional<std::string>{"workspace/Foo/Bar/Baz"}, pathExprToModuleName("workspace/Foo/Quux", {"script", "Parent", "Bar", "Baz"}));
     CHECK_EQ(std::nullopt, pathExprToModuleName("", {}));
     CHECK_EQ(std::optional<std::string>{"script"}, pathExprToModuleName("", {"script"}));
@@ -915,10 +922,13 @@ TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_f
             R"(Type
     '{ count: string }'
 could not be converted into
-    '{ Count: number }')", toString(result.errors[0]));
+    '{ Count: number }')",
+            toString(result.errors[0])
+        );
     else
         REQUIRE_EQ(
-            "Table type 'a' not compatible with type '{| Count: number |}' because the former is missing field 'Count'", toString(result.errors[0]));
+            "Table type 'a' not compatible with type '{| Count: number |}' because the former is missing field 'Count'", toString(result.errors[0])
+        );
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "trace_requires_in_nonstrict_mode")
@@ -960,10 +970,15 @@ TEST_CASE_FIXTURE(FrontendFixture, "environments")
     ScopePtr testScope = frontend.addEnvironment("test");
 
     unfreeze(frontend.globals.globalTypes);
-    frontend.loadDefinitionFile(frontend.globals, testScope, R"(
+    frontend.loadDefinitionFile(
+        frontend.globals,
+        testScope,
+        R"(
         export type Foo = number | string
     )",
-        "@test", /* captureComments */ false);
+        "@test",
+        /* captureComments */ false
+    );
     freeze(frontend.globals.globalTypes);
 
     fileResolver.source["A"] = R"(
@@ -1230,7 +1245,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_type_alias")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "module_scope_check")
 {
-    frontend.prepareModuleScope = [this](const ModuleName& name, const ScopePtr& scope, bool forAutocomplete) {
+    frontend.prepareModuleScope = [this](const ModuleName& name, const ScopePtr& scope, bool forAutocomplete)
+    {
         scope->bindings[Luau::AstName{"x"}] = Luau::Binding{frontend.globals.builtinTypes->numberType};
     };
 

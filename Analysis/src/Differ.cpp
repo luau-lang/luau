@@ -286,15 +286,22 @@ struct FindSeteqCounterexampleResult
     bool inLeft;
 };
 static FindSeteqCounterexampleResult findSeteqCounterexample(
-    DifferEnvironment& env, const std::vector<TypeId>& left, const std::vector<TypeId>& right);
+    DifferEnvironment& env,
+    const std::vector<TypeId>& left,
+    const std::vector<TypeId>& right
+);
 static DifferResult diffUnion(DifferEnvironment& env, TypeId left, TypeId right);
 static DifferResult diffIntersection(DifferEnvironment& env, TypeId left, TypeId right);
 /**
  * The last argument gives context info on which complex type contained the TypePack.
  */
 static DifferResult diffTpi(DifferEnvironment& env, DiffError::Kind possibleNonNormalErrorKind, TypePackId left, TypePackId right);
-static DifferResult diffCanonicalTpShape(DifferEnvironment& env, DiffError::Kind possibleNonNormalErrorKind,
-    const std::pair<std::vector<TypeId>, std::optional<TypePackId>>& left, const std::pair<std::vector<TypeId>, std::optional<TypePackId>>& right);
+static DifferResult diffCanonicalTpShape(
+    DifferEnvironment& env,
+    DiffError::Kind possibleNonNormalErrorKind,
+    const std::pair<std::vector<TypeId>, std::optional<TypePackId>>& left,
+    const std::pair<std::vector<TypeId>, std::optional<TypePackId>>& right
+);
 static DifferResult diffHandleFlattenedTail(DifferEnvironment& env, DiffError::Kind possibleNonNormalErrorKind, TypePackId left, TypePackId right);
 static DifferResult diffGenericTp(DifferEnvironment& env, TypePackId left, TypePackId right);
 
@@ -324,8 +331,13 @@ static DifferResult diffTable(DifferEnvironment& env, TypeId left, TypeId right)
         if (leftTable->props.find(field) == leftTable->props.end())
         {
             // right has a field the left doesn't
-            return DifferResult{DiffError{DiffError::Kind::MissingTableProperty, DiffPathNodeLeaf::nullopts(),
-                DiffPathNodeLeaf::detailsTableProperty(value.type(), field), env.getDevFixFriendlyNameLeft(), env.getDevFixFriendlyNameRight()}};
+            return DifferResult{DiffError{
+                DiffError::Kind::MissingTableProperty,
+                DiffPathNodeLeaf::nullopts(),
+                DiffPathNodeLeaf::detailsTableProperty(value.type(), field),
+                env.getDevFixFriendlyNameLeft(),
+                env.getDevFixFriendlyNameRight()
+            }};
         }
     }
     // left and right have the same set of keys
@@ -491,7 +503,10 @@ static DifferResult diffClass(DifferEnvironment& env, TypeId left, TypeId right)
 }
 
 static FindSeteqCounterexampleResult findSeteqCounterexample(
-    DifferEnvironment& env, const std::vector<TypeId>& left, const std::vector<TypeId>& right)
+    DifferEnvironment& env,
+    const std::vector<TypeId>& left,
+    const std::vector<TypeId>& right
+)
 {
     std::unordered_set<size_t> unmatchedRightIdxes;
     for (size_t i = 0; i < right.size(); i++)
@@ -760,8 +775,12 @@ static DifferResult diffTpi(DifferEnvironment& env, DiffError::Kind possibleNonN
     return diffHandleFlattenedTail(env, possibleNonNormalErrorKind, *leftFlatTpi.second, *rightFlatTpi.second);
 }
 
-static DifferResult diffCanonicalTpShape(DifferEnvironment& env, DiffError::Kind possibleNonNormalErrorKind,
-    const std::pair<std::vector<TypeId>, std::optional<TypePackId>>& left, const std::pair<std::vector<TypeId>, std::optional<TypePackId>>& right)
+static DifferResult diffCanonicalTpShape(
+    DifferEnvironment& env,
+    DiffError::Kind possibleNonNormalErrorKind,
+    const std::pair<std::vector<TypeId>, std::optional<TypePackId>>& left,
+    const std::pair<std::vector<TypeId>, std::optional<TypePackId>>& right
+)
 {
     if (left.first.size() == right.first.size() && left.second.has_value() == right.second.has_value())
         return DifferResult{};

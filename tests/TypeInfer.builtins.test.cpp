@@ -9,7 +9,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauAlwaysCommitInferencesOfFunctionCalls);
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -133,10 +132,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_predicate")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
 {
-    ScopedFastFlag sff[] = {
-        {FFlag::LuauAlwaysCommitInferencesOfFunctionCalls, true},
-    };
-
     CheckResult result = check(R"(
         --!strict
         local t = {'one', 'two', 'three'}
@@ -953,7 +948,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("Type 'number?' could not be converted into 'number'; type number?[1] (nil) is not a subtype of number (number)", toString(result.errors[0]));
+        CHECK_EQ(
+            "Type 'number?' could not be converted into 'number'; type number?[1] (nil) is not a subtype of number (number)",
+            toString(result.errors[0])
+        );
     else
         CHECK_EQ("Type 'number?' could not be converted into 'number'", toString(result.errors[0]));
 }

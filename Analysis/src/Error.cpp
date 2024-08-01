@@ -21,7 +21,12 @@ LUAU_FASTINTVARIABLE(LuauIndentTypeMismatchMaxTypeLength, 10)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauImproveNonFunctionCallError, false)
 
 static std::string wrongNumberOfArgsString(
-    size_t expectedCount, std::optional<size_t> maximumCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
+    size_t expectedCount,
+    std::optional<size_t> maximumCount,
+    size_t actualCount,
+    const char* argPrefix = nullptr,
+    bool isVariadic = false
+)
 {
     std::string s = "expects ";
 
@@ -65,8 +70,21 @@ namespace Luau
 {
 
 // this list of binary operator type functions is used for better stringification of type functions errors
-static const std::unordered_map<std::string, const char*> kBinaryOps{{"add", "+"}, {"sub", "-"}, {"mul", "*"}, {"div", "/"}, {"idiv", "//"},
-    {"pow", "^"}, {"mod", "%"}, {"concat", ".."}, {"and", "and"}, {"or", "or"}, {"lt", "< or >="}, {"le", "<= or >"}, {"eq", "== or ~="}};
+static const std::unordered_map<std::string, const char*> kBinaryOps{
+    {"add", "+"},
+    {"sub", "-"},
+    {"mul", "*"},
+    {"div", "/"},
+    {"idiv", "//"},
+    {"pow", "^"},
+    {"mod", "%"},
+    {"concat", ".."},
+    {"and", "and"},
+    {"or", "or"},
+    {"lt", "< or >="},
+    {"le", "<= or >"},
+    {"eq", "== or ~="}
+};
 
 // this list of unary operator type functions is used for better stringification of type functions errors
 static const std::unordered_map<std::string, const char*> kUnaryOps{{"unm", "-"}, {"len", "#"}, {"not", "not"}};
@@ -86,12 +104,15 @@ struct ErrorConverter
 
         std::string result;
 
-        auto quote = [&](std::string s) {
+        auto quote = [&](std::string s)
+        {
             return "'" + s + "'";
         };
 
-        auto constructErrorMessage = [&](std::string givenType, std::string wantedType, std::optional<std::string> givenModule,
-                                         std::optional<std::string> wantedModule) -> std::string {
+        auto constructErrorMessage =
+            [&](std::string givenType, std::string wantedType, std::optional<std::string> givenModule, std::optional<std::string> wantedModule
+            ) -> std::string
+        {
             std::string given = givenModule ? quote(givenType) + " from " + quote(*givenModule) : quote(givenType);
             std::string wanted = wantedModule ? quote(wantedType) + " from " + quote(*wantedModule) : quote(wantedType);
             size_t luauIndentTypeMismatchMaxTypeLength = size_t(FInt::LuauIndentTypeMismatchMaxTypeLength);
@@ -349,6 +370,11 @@ struct ErrorConverter
     std::string operator()(const Luau::InternalError& e) const
     {
         return e.message;
+    }
+
+    std::string operator()(const Luau::ConstraintSolvingIncompleteError& e) const
+    {
+        return "Type inference failed to complete, you may see some confusing types and type errors.";
     }
 
     std::optional<TypeId> findCallMetamethod(TypeId type) const
@@ -987,6 +1013,11 @@ bool InternalError::operator==(const InternalError& rhs) const
     return message == rhs.message;
 }
 
+bool ConstraintSolvingIncompleteError::operator==(const ConstraintSolvingIncompleteError& rhs) const
+{
+    return true;
+}
+
 bool CannotCallNonFunction::operator==(const CannotCallNonFunction& rhs) const
 {
     return ty == rhs.ty;
@@ -1177,11 +1208,13 @@ bool containsParseErrorName(const TypeError& error)
 template<typename T>
 void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
 {
-    auto clone = [&](auto&& ty) {
+    auto clone = [&](auto&& ty)
+    {
         return ::Luau::clone(ty, destArena, cloneState);
     };
 
-    auto visitErrorData = [&](auto&& e) {
+    auto visitErrorData = [&](auto&& e)
+    {
         copyError(e, destArena, cloneState);
     };
 
@@ -1254,6 +1287,9 @@ void copyError(T& e, TypeArena& destArena, CloneState& cloneState)
     {
     }
     else if constexpr (std::is_same_v<T, InternalError>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, ConstraintSolvingIncompleteError>)
     {
     }
     else if constexpr (std::is_same_v<T, CannotCallNonFunction>)
@@ -1363,7 +1399,8 @@ void copyErrors(ErrorVec& errors, TypeArena& destArena, NotNull<BuiltinTypes> bu
 {
     CloneState cloneState{builtinTypes};
 
-    auto visitErrorData = [&](auto&& e) {
+    auto visitErrorData = [&](auto&& e)
+    {
         copyError(e, destArena, cloneState);
     };
 

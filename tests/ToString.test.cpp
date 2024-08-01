@@ -12,7 +12,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(DebugLuauSharedSelf);
+LUAU_FASTFLAG(LuauAttributeSyntax);
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -97,19 +97,23 @@ TEST_CASE_FIXTURE(Fixture, "table_respects_use_line_break")
 
     //clang-format off
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("{\n"
-                 "    anotherProp: number,\n"
-                 "    prop: string,\n"
-                 "    thirdProp: boolean\n"
-                 "}",
-            toString(requireType("a"), opts));
+        CHECK_EQ(
+            "{\n"
+            "    anotherProp: number,\n"
+            "    prop: string,\n"
+            "    thirdProp: boolean\n"
+            "}",
+            toString(requireType("a"), opts)
+        );
     else
-        CHECK_EQ("{|\n"
-                 "    anotherProp: number,\n"
-                 "    prop: string,\n"
-                 "    thirdProp: boolean\n"
-                 "|}",
-            toString(requireType("a"), opts));
+        CHECK_EQ(
+            "{|\n"
+            "    anotherProp: number,\n"
+            "    prop: string,\n"
+            "    thirdProp: boolean\n"
+            "|}",
+            toString(requireType("a"), opts)
+        );
     //clang-format on
 }
 
@@ -196,10 +200,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
     CHECK_EQ(std::string::npos, a.find("TRUNCATED"));
 
     //clang-format off
-    CHECK_EQ("t2 where "
-             "t1 = { __index: t1, __mul: ((t2, number) -> t2) & ((t2, t2) -> t2), new: () -> t2 } ; "
-             "t2 = { @metatable t1, {| x: number, y: number, z: number |} }",
-        a);
+    CHECK_EQ(
+        "t2 where "
+        "t1 = { __index: t1, __mul: ((t2, number) -> t2) & ((t2, t2) -> t2), new: () -> t2 } ; "
+        "t2 = { @metatable t1, {| x: number, y: number, z: number |} }",
+        a
+    );
     //clang-format on
 }
 
@@ -258,10 +264,12 @@ TEST_CASE_FIXTURE(Fixture, "complex_intersections_printed_on_multiple_lines")
     opts.compositeTypesSingleLineLimit = 2;
 
     //clang-format off
-    CHECK_EQ("boolean\n"
-             "& number\n"
-             "& string",
-        toString(requireType("a"), opts));
+    CHECK_EQ(
+        "boolean\n"
+        "& number\n"
+        "& string",
+        toString(requireType("a"), opts)
+    );
     //clang-format on
 }
 
@@ -275,9 +283,11 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_always_printed_on_multiple_line
     opts.useLineBreaks = true;
 
     //clang-format off
-    CHECK_EQ("((number) -> number)\n"
-             "& ((string) -> string)",
-        toString(requireType("a"), opts));
+    CHECK_EQ(
+        "((number) -> number)\n"
+        "& ((string) -> string)",
+        toString(requireType("a"), opts)
+    );
     //clang-format on
 }
 
@@ -304,10 +314,12 @@ TEST_CASE_FIXTURE(Fixture, "complex_unions_printed_on_multiple_lines")
     opts.useLineBreaks = true;
 
     //clang-format off
-    CHECK_EQ("boolean\n"
-             "| number\n"
-             "| string",
-        toString(requireType("a"), opts));
+    CHECK_EQ(
+        "boolean\n"
+        "| number\n"
+        "| string",
+        toString(requireType("a"), opts)
+    );
     //clang-format on
 }
 
@@ -530,10 +542,12 @@ TEST_CASE_FIXTURE(Fixture, "generate_friendly_names_for_inferred_generics")
 
     CHECK_EQ("<a>(a) -> a", toString(requireType("id")));
 
-    CHECK_EQ("<a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z, a1, b1, c1, d1>(a, b, c, d, e, f, g, h, i, j, k, l, "
-             "m, n, o, p, q, r, s, t, u, v, w, x, y, z, a1, b1, c1, d1) -> (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, "
-             "x, y, z, a1, b1, c1, d1)",
-        toString(requireType("id2")));
+    CHECK_EQ(
+        "<a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z, a1, b1, c1, d1>(a, b, c, d, e, f, g, h, i, j, k, l, "
+        "m, n, o, p, q, r, s, t, u, v, w, x, y, z, a1, b1, c1, d1) -> (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, "
+        "x, y, z, a1, b1, c1, d1)",
+        toString(requireType("id2"))
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
@@ -564,62 +578,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
     CHECK("a" == toString(params[0], opts));
     CHECK("b" == toString(params[1], opts));
     CHECK("c" == toString(params[2], opts));
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
-{
-    ScopedFastFlag sff[] = {
-        {FFlag::DebugLuauSharedSelf, true},
-    };
-
-    CheckResult result = check(R"(
-        local base = {}
-        function base:one() return 1 end
-
-        local child = {}
-        setmetatable(child, {__index=base})
-        function child:two() return 2 end
-
-        local inst = {}
-        setmetatable(inst, {__index=child})
-    )");
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    ToStringOptions opts;
-
-    TypeId tType = requireType("inst");
-    ToStringResult r = toStringDetailed(tType, opts);
-    CHECK_EQ("{ @metatable { __index: { @metatable {| __index: base |}, child } }, inst }", r.name);
-    CHECK(0 == opts.nameMap.types.size());
-
-    const MetatableType* tMeta = get<MetatableType>(follow(tType));
-    REQUIRE(tMeta);
-
-    TableType* tMeta2 = getMutable<TableType>(follow(tMeta->metatable));
-    REQUIRE(tMeta2);
-    REQUIRE(tMeta2->props.count("__index"));
-
-    const MetatableType* tMeta3 = get<MetatableType>(follow(tMeta2->props["__index"].type()));
-    REQUIRE(tMeta3);
-
-    TableType* tMeta4 = getMutable<TableType>(follow(tMeta3->metatable));
-    REQUIRE(tMeta4);
-    REQUIRE(tMeta4->props.count("__index"));
-
-    TableType* tMeta5 = getMutable<TableType>(follow(tMeta4->props["__index"].type()));
-    REQUIRE(tMeta5);
-    REQUIRE(tMeta5->props.count("one") > 0);
-
-    TableType* tMeta6 = getMutable<TableType>(follow(tMeta3->table));
-    REQUIRE(tMeta6);
-    REQUIRE(tMeta6->props.count("two") > 0);
-
-    ToStringResult oneResult = toStringDetailed(tMeta5->props["one"].type(), opts);
-
-    std::string twoResult = toString(tMeta6->props["two"].type(), opts);
-
-    CHECK_EQ("<a>(a) -> number", oneResult.name);
-    CHECK_EQ("<b>(b) -> number", twoResult);
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringErrorPack")
@@ -869,60 +827,6 @@ TEST_CASE_FIXTURE(Fixture, "pick_distinct_names_for_mixed_explicit_and_implicit_
     CHECK("<a, b>(a, b) -> ()" == toString(requireType("foo")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_include_self_param")
-{
-    ScopedFastFlag sff[]{
-        {FFlag::DebugLuauSharedSelf, true},
-    };
-
-    CheckResult result = check(R"(
-        local foo = {}
-        function foo:method(arg: string): ()
-        end
-    )");
-
-    TypeId parentTy = requireType("foo");
-    auto ttv = get<TableType>(follow(parentTy));
-    REQUIRE(ttv);
-
-    TypeId methodTy = ttv->props.at("method").type();
-    auto ftv = get<FunctionType>(follow(methodTy));
-    REQUIRE_MESSAGE(ftv, methodTy);
-
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("foo:method(self: unknown, arg: string): ()", toStringNamedFunction("foo:method", *ftv));
-    else
-        CHECK_EQ("foo:method<a>(self: a, arg: string): ()", toStringNamedFunction("foo:method", *ftv));
-}
-
-TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_self_param")
-{
-    ScopedFastFlag sff[]{
-        {FFlag::DebugLuauSharedSelf, true},
-    };
-
-    CheckResult result = check(R"(
-        local foo = {}
-        function foo:method(arg: string): ()
-        end
-    )");
-
-    ToStringOptions opts;
-    opts.hideFunctionSelfArgument = true;
-
-    TypeId parentTy = requireType("foo");
-    auto ttv = get<TableType>(follow(parentTy));
-    REQUIRE_MESSAGE(ttv, "Expected a table but got " << toString(parentTy, opts));
-    TypeId methodTy = follow(ttv->props.at("method").type());
-    auto ftv = get<FunctionType>(methodTy);
-    REQUIRE_MESSAGE(ftv, "Expected a function but got " << toString(methodTy, opts));
-
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK_EQ("foo:method(arg: string): ()", toStringNamedFunction("foo:method", *ftv, opts));
-    else
-        CHECK_EQ("foo:method<a>(arg: string): ()", toStringNamedFunction("foo:method", *ftv, opts));
-}
-
 TEST_CASE_FIXTURE(Fixture, "tostring_unsee_ttv_if_array")
 {
     CheckResult result = check(R"(
@@ -1015,8 +919,10 @@ TEST_CASE_FIXTURE(Fixture, "cycle_rooted_in_a_pack")
     TypePack* packPtr = getMutable<TypePack>(thePack);
     REQUIRE(packPtr);
 
-    const TableType::Props theProps = {{"BaseField", Property::readonly(builtinTypes->unknownType)},
-        {"BaseMethod", Property::readonly(arena.addType(FunctionType{thePack, arena.addTypePack({})}))}};
+    const TableType::Props theProps = {
+        {"BaseField", Property::readonly(builtinTypes->unknownType)},
+        {"BaseMethod", Property::readonly(arena.addType(FunctionType{thePack, arena.addTypePack({})}))}
+    };
 
     TypeId theTable = arena.addType(TableType{theProps, {}, TypeLevel{}, TableState::Sealed});
 

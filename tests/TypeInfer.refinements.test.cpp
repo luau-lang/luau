@@ -14,7 +14,11 @@ using namespace Luau;
 namespace
 {
 std::optional<WithPredicate<TypePackId>> magicFunctionInstanceIsA(
-    TypeChecker& typeChecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate)
+    TypeChecker& typeChecker,
+    const ScopePtr& scope,
+    const AstExprCall& expr,
+    WithPredicate<TypePackId> withPredicate
+)
 {
     if (expr.args.size != 1)
         return std::nullopt;
@@ -591,7 +595,7 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_not_nil")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "number | string");    // a ~= nil
+    CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "number | string"); // a ~= nil
     if (FFlag::DebugLuauDeferredConstraintResolution)
         CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "nil"); // a == nil :)
     else
@@ -630,7 +634,7 @@ TEST_CASE_FIXTURE(Fixture, "unknown_lvalue_is_not_synonymous_with_other_on_not_e
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "any");              // a ~= b
+    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "any"); // a ~= b
     if (FFlag::DebugLuauDeferredConstraintResolution)
         CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "{ x: number }?"); // a ~= b
     else
@@ -761,7 +765,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_narrows_for_table")
         CHECK_EQ("{ x: number } | { y: boolean }", toString(requireTypeAtPosition({3, 28}))); // type(x) == "table"
     else
         CHECK_EQ("{| x: number |} | {| y: boolean |}", toString(requireTypeAtPosition({3, 28}))); // type(x) == "table"
-    CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));                             // type(x) ~= "table"
+    CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));                                 // type(x) ~= "table"
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_narrows_for_functions")
@@ -1951,14 +1955,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_annotations_arent_relevant_when_doing_d
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_call_with_colon_after_refining_not_to_be_nil")
 {
-    // don't run this test at all without DCR
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
-        return;
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
     CheckResult result = check(R"(
         --!strict
         export type Observer<T> = {
-            complete: ((self: Observer<T>) -> ())?,
+            read complete: ((self: Observer<T>) -> ())?,
         }
 
         local function _f(handler: Observer<any>)
@@ -2172,4 +2174,43 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "ensure_t_after_return_references_all_reachab
     CHECK_EQ("{ [string]: number }", toString(requireTypeAtPosition({8, 12}), {true}));
 }
 
+TEST_CASE_FIXTURE(Fixture, "long_disjunction_of_refinements_should_not_trip_recursion_counter")
+{
+    CHECK_NOTHROW(check(R"(
+function(obj)
+    if script.Parent.SeatNumber.Value == "1D" or
+    script.Parent.SeatNumber.Value == "2D" or
+    script.Parent.SeatNumber.Value == "3D" or
+    script.Parent.SeatNumber.Value == "4D" or
+    script.Parent.SeatNumber.Value == "5D" or
+    script.Parent.SeatNumber.Value == "6D" or
+    script.Parent.SeatNumber.Value == "7D" or
+    script.Parent.SeatNumber.Value == "8D" or
+    script.Parent.SeatNumber.Value == "9D" or
+    script.Parent.SeatNumber.Value == "10D" or
+    script.Parent.SeatNumber.Value == "11D" or
+    script.Parent.SeatNumber.Value == "12D" or
+    script.Parent.SeatNumber.Value == "13D" or
+    script.Parent.SeatNumber.Value == "14D" or
+    script.Parent.SeatNumber.Value == "15D" or
+    script.Parent.SeatNumber.Value == "16D" or
+    script.Parent.SeatNumber.Value == "1C" or
+    script.Parent.SeatNumber.Value == "2C" or
+    script.Parent.SeatNumber.Value == "3C" or
+    script.Parent.SeatNumber.Value == "4C" or
+    script.Parent.SeatNumber.Value == "5C" or
+    script.Parent.SeatNumber.Value == "6C" or
+    script.Parent.SeatNumber.Value == "7C" or
+    script.Parent.SeatNumber.Value == "8C" or
+    script.Parent.SeatNumber.Value == "9C" or
+    script.Parent.SeatNumber.Value == "10C" or
+    script.Parent.SeatNumber.Value == "11C" or
+    script.Parent.SeatNumber.Value == "12C" or
+    script.Parent.SeatNumber.Value == "13C" or
+    script.Parent.SeatNumber.Value == "14C" or
+    script.Parent.SeatNumber.Value == "15C" or
+    script.Parent.SeatNumber.Value == "16C" then
+end
+)"));
+}
 TEST_SUITE_END();

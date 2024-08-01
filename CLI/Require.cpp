@@ -223,9 +223,15 @@ void RequireResolver::substituteAliasIfPresent(std::string& path)
 
 std::optional<std::string> RequireResolver::getAlias(std::string alias)
 {
-    std::transform(alias.begin(), alias.end(), alias.begin(), [](unsigned char c) {
-        return ('A' <= c && c <= 'Z') ? (c + ('a' - 'A')) : c;
-    });
+    std::transform(
+        alias.begin(),
+        alias.end(),
+        alias.begin(),
+        [](unsigned char c)
+        {
+            return ('A' <= c && c <= 'Z') ? (c + ('a' - 'A')) : c;
+        }
+    );
     while (!config.aliases.count(alias) && !isConfigFullyResolved)
     {
         parseNextConfig();

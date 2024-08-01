@@ -273,9 +273,14 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(class AstExprGroup* node)
     {
-        writeNode(node, "AstExprGroup", [&]() {
-            write("expr", node->expr);
-        });
+        writeNode(
+            node,
+            "AstExprGroup",
+            [&]()
+            {
+                write("expr", node->expr);
+            }
+        );
     }
 
     void write(class AstExprConstantNil* node)
@@ -285,37 +290,62 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(class AstExprConstantBool* node)
     {
-        writeNode(node, "AstExprConstantBool", [&]() {
-            write("value", node->value);
-        });
+        writeNode(
+            node,
+            "AstExprConstantBool",
+            [&]()
+            {
+                write("value", node->value);
+            }
+        );
     }
 
     void write(class AstExprConstantNumber* node)
     {
-        writeNode(node, "AstExprConstantNumber", [&]() {
-            write("value", node->value);
-        });
+        writeNode(
+            node,
+            "AstExprConstantNumber",
+            [&]()
+            {
+                write("value", node->value);
+            }
+        );
     }
 
     void write(class AstExprConstantString* node)
     {
-        writeNode(node, "AstExprConstantString", [&]() {
-            write("value", node->value);
-        });
+        writeNode(
+            node,
+            "AstExprConstantString",
+            [&]()
+            {
+                write("value", node->value);
+            }
+        );
     }
 
     void write(class AstExprLocal* node)
     {
-        writeNode(node, "AstExprLocal", [&]() {
-            write("local", node->local);
-        });
+        writeNode(
+            node,
+            "AstExprLocal",
+            [&]()
+            {
+                write("local", node->local);
+            }
+        );
     }
 
     void write(class AstExprGlobal* node)
     {
-        writeNode(node, "AstExprGlobal", [&]() {
-            write("global", node->name);
-        });
+        writeNode(
+            node,
+            "AstExprGlobal",
+            [&]()
+            {
+                write("global", node->name);
+            }
+        );
     }
 
     void write(class AstExprVarargs* node)
@@ -349,51 +379,71 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(class AstExprCall* node)
     {
-        writeNode(node, "AstExprCall", [&]() {
-            PROP(func);
-            PROP(args);
-            PROP(self);
-            PROP(argLocation);
-        });
+        writeNode(
+            node,
+            "AstExprCall",
+            [&]()
+            {
+                PROP(func);
+                PROP(args);
+                PROP(self);
+                PROP(argLocation);
+            }
+        );
     }
 
     void write(class AstExprIndexName* node)
     {
-        writeNode(node, "AstExprIndexName", [&]() {
-            PROP(expr);
-            PROP(index);
-            PROP(indexLocation);
-            PROP(op);
-        });
+        writeNode(
+            node,
+            "AstExprIndexName",
+            [&]()
+            {
+                PROP(expr);
+                PROP(index);
+                PROP(indexLocation);
+                PROP(op);
+            }
+        );
     }
 
     void write(class AstExprIndexExpr* node)
     {
-        writeNode(node, "AstExprIndexExpr", [&]() {
-            PROP(expr);
-            PROP(index);
-        });
+        writeNode(
+            node,
+            "AstExprIndexExpr",
+            [&]()
+            {
+                PROP(expr);
+                PROP(index);
+            }
+        );
     }
 
     void write(class AstExprFunction* node)
     {
-        writeNode(node, "AstExprFunction", [&]() {
-            PROP(generics);
-            PROP(genericPacks);
-            if (node->self)
-                PROP(self);
-            PROP(args);
-            if (node->returnAnnotation)
-                PROP(returnAnnotation);
-            PROP(vararg);
-            PROP(varargLocation);
-            if (node->varargAnnotation)
-                PROP(varargAnnotation);
+        writeNode(
+            node,
+            "AstExprFunction",
+            [&]()
+            {
+                PROP(generics);
+                PROP(genericPacks);
+                if (node->self)
+                    PROP(self);
+                PROP(args);
+                if (node->returnAnnotation)
+                    PROP(returnAnnotation);
+                PROP(vararg);
+                PROP(varargLocation);
+                if (node->varargAnnotation)
+                    PROP(varargAnnotation);
 
-            PROP(body);
-            PROP(functionDepth);
-            PROP(debugname);
-        });
+                PROP(body);
+                PROP(functionDepth);
+                PROP(debugname);
+            }
+        );
     }
 
     void write(const std::optional<AstTypeList>& typeList)
@@ -475,28 +525,43 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(class AstExprIfElse* node)
     {
-        writeNode(node, "AstExprIfElse", [&]() {
-            PROP(condition);
-            PROP(hasThen);
-            PROP(trueExpr);
-            PROP(hasElse);
-            PROP(falseExpr);
-        });
+        writeNode(
+            node,
+            "AstExprIfElse",
+            [&]()
+            {
+                PROP(condition);
+                PROP(hasThen);
+                PROP(trueExpr);
+                PROP(hasElse);
+                PROP(falseExpr);
+            }
+        );
     }
 
     void write(class AstExprInterpString* node)
     {
-        writeNode(node, "AstExprInterpString", [&]() {
-            PROP(strings);
-            PROP(expressions);
-        });
+        writeNode(
+            node,
+            "AstExprInterpString",
+            [&]()
+            {
+                PROP(strings);
+                PROP(expressions);
+            }
+        );
     }
 
     void write(class AstExprTable* node)
     {
-        writeNode(node, "AstExprTable", [&]() {
-            PROP(items);
-        });
+        writeNode(
+            node,
+            "AstExprTable",
+            [&]()
+            {
+                PROP(items);
+            }
+        );
     }
 
     void write(AstExprUnary::Op op)
@@ -514,10 +579,15 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(class AstExprUnary* node)
     {
-        writeNode(node, "AstExprUnary", [&]() {
-            PROP(op);
-            PROP(expr);
-        });
+        writeNode(
+            node,
+            "AstExprUnary",
+            [&]()
+            {
+                PROP(op);
+                PROP(expr);
+            }
+        );
     }
 
     void write(AstExprBinary::Op op)
@@ -563,75 +633,110 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(class AstExprBinary* node)
     {
-        writeNode(node, "AstExprBinary", [&]() {
-            PROP(op);
-            PROP(left);
-            PROP(right);
-        });
+        writeNode(
+            node,
+            "AstExprBinary",
+            [&]()
+            {
+                PROP(op);
+                PROP(left);
+                PROP(right);
+            }
+        );
     }
 
     void write(class AstExprTypeAssertion* node)
     {
-        writeNode(node, "AstExprTypeAssertion", [&]() {
-            PROP(expr);
-            PROP(annotation);
-        });
+        writeNode(
+            node,
+            "AstExprTypeAssertion",
+            [&]()
+            {
+                PROP(expr);
+                PROP(annotation);
+            }
+        );
     }
 
     void write(class AstExprError* node)
     {
-        writeNode(node, "AstExprError", [&]() {
-            PROP(expressions);
-            PROP(messageIndex);
-        });
+        writeNode(
+            node,
+            "AstExprError",
+            [&]()
+            {
+                PROP(expressions);
+                PROP(messageIndex);
+            }
+        );
     }
 
     void write(class AstStatBlock* node)
     {
-        writeNode(node, "AstStatBlock", [&]() {
-            writeRaw(",\"hasEnd\":");
-            write(node->hasEnd);
-            writeRaw(",\"body\":[");
-            bool comma = false;
-            for (AstStat* stat : node->body)
+        writeNode(
+            node,
+            "AstStatBlock",
+            [&]()
             {
-                if (comma)
-                    writeRaw(",");
-                else
-                    comma = true;
+                writeRaw(",\"hasEnd\":");
+                write(node->hasEnd);
+                writeRaw(",\"body\":[");
+                bool comma = false;
+                for (AstStat* stat : node->body)
+                {
+                    if (comma)
+                        writeRaw(",");
+                    else
+                        comma = true;
 
-                write(stat);
+                    write(stat);
+                }
+                writeRaw("]");
             }
-            writeRaw("]");
-        });
+        );
     }
 
     void write(class AstStatIf* node)
     {
-        writeNode(node, "AstStatIf", [&]() {
-            PROP(condition);
-            PROP(thenbody);
-            if (node->elsebody)
-                PROP(elsebody);
-            write("hasThen", node->thenLocation.has_value());
-        });
+        writeNode(
+            node,
+            "AstStatIf",
+            [&]()
+            {
+                PROP(condition);
+                PROP(thenbody);
+                if (node->elsebody)
+                    PROP(elsebody);
+                write("hasThen", node->thenLocation.has_value());
+            }
+        );
     }
 
     void write(class AstStatWhile* node)
     {
-        writeNode(node, "AstStatWhile", [&]() {
-            PROP(condition);
-            PROP(body);
-            PROP(hasDo);
-        });
+        writeNode(
+            node,
+            "AstStatWhile",
+            [&]()
+            {
+                PROP(condition);
+                PROP(body);
+                PROP(hasDo);
+            }
+        );
     }
 
     void write(class AstStatRepeat* node)
     {
-        writeNode(node, "AstStatRepeat", [&]() {
-            PROP(condition);
-            PROP(body);
-        });
+        writeNode(
+            node,
+            "AstStatRepeat",
+            [&]()
+            {
+                PROP(condition);
+                PROP(body);
+            }
+        );
     }
 
     void write(class AstStatBreak* node)
@@ -646,128 +751,188 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(class AstStatReturn* node)
     {
-        writeNode(node, "AstStatReturn", [&]() {
-            PROP(list);
-        });
+        writeNode(
+            node,
+            "AstStatReturn",
+            [&]()
+            {
+                PROP(list);
+            }
+        );
     }
 
     void write(class AstStatExpr* node)
     {
-        writeNode(node, "AstStatExpr", [&]() {
-            PROP(expr);
-        });
+        writeNode(
+            node,
+            "AstStatExpr",
+            [&]()
+            {
+                PROP(expr);
+            }
+        );
     }
 
     void write(class AstStatLocal* node)
     {
-        writeNode(node, "AstStatLocal", [&]() {
-            PROP(vars);
-            PROP(values);
-        });
+        writeNode(
+            node,
+            "AstStatLocal",
+            [&]()
+            {
+                PROP(vars);
+                PROP(values);
+            }
+        );
     }
 
     void write(class AstStatFor* node)
     {
-        writeNode(node, "AstStatFor", [&]() {
-            PROP(var);
-            PROP(from);
-            PROP(to);
-            if (node->step)
-                PROP(step);
-            PROP(body);
-            PROP(hasDo);
-        });
+        writeNode(
+            node,
+            "AstStatFor",
+            [&]()
+            {
+                PROP(var);
+                PROP(from);
+                PROP(to);
+                if (node->step)
+                    PROP(step);
+                PROP(body);
+                PROP(hasDo);
+            }
+        );
     }
 
     void write(class AstStatForIn* node)
     {
-        writeNode(node, "AstStatForIn", [&]() {
-            PROP(vars);
-            PROP(values);
-            PROP(body);
-            PROP(hasIn);
-            PROP(hasDo);
-        });
+        writeNode(
+            node,
+            "AstStatForIn",
+            [&]()
+            {
+                PROP(vars);
+                PROP(values);
+                PROP(body);
+                PROP(hasIn);
+                PROP(hasDo);
+            }
+        );
     }
 
     void write(class AstStatAssign* node)
     {
-        writeNode(node, "AstStatAssign", [&]() {
-            PROP(vars);
-            PROP(values);
-        });
+        writeNode(
+            node,
+            "AstStatAssign",
+            [&]()
+            {
+                PROP(vars);
+                PROP(values);
+            }
+        );
     }
 
     void write(class AstStatCompoundAssign* node)
     {
-        writeNode(node, "AstStatCompoundAssign", [&]() {
-            PROP(op);
-            PROP(var);
-            PROP(value);
-        });
+        writeNode(
+            node,
+            "AstStatCompoundAssign",
+            [&]()
+            {
+                PROP(op);
+                PROP(var);
+                PROP(value);
+            }
+        );
     }
 
     void write(class AstStatFunction* node)
     {
-        writeNode(node, "AstStatFunction", [&]() {
-            PROP(name);
-            PROP(func);
-        });
+        writeNode(
+            node,
+            "AstStatFunction",
+            [&]()
+            {
+                PROP(name);
+                PROP(func);
+            }
+        );
     }
 
     void write(class AstStatLocalFunction* node)
     {
-        writeNode(node, "AstStatLocalFunction", [&]() {
-            PROP(name);
-            PROP(func);
-        });
+        writeNode(
+            node,
+            "AstStatLocalFunction",
+            [&]()
+            {
+                PROP(name);
+                PROP(func);
+            }
+        );
     }
 
     void write(class AstStatTypeAlias* node)
     {
-        writeNode(node, "AstStatTypeAlias", [&]() {
-            PROP(name);
-            PROP(generics);
-            PROP(genericPacks);
-            PROP(type);
-            PROP(exported);
-        });
+        writeNode(
+            node,
+            "AstStatTypeAlias",
+            [&]()
+            {
+                PROP(name);
+                PROP(generics);
+                PROP(genericPacks);
+                PROP(type);
+                PROP(exported);
+            }
+        );
     }
 
     void write(class AstStatDeclareFunction* node)
     {
-        writeNode(node, "AstStatDeclareFunction", [&]() {
-            // TODO: attributes
-            PROP(name);
-
-            if (FFlag::LuauDeclarationExtraPropData)
-                PROP(nameLocation);
-
-            PROP(params);
-
-            if (FFlag::LuauDeclarationExtraPropData)
+        writeNode(
+            node,
+            "AstStatDeclareFunction",
+            [&]()
             {
-                PROP(paramNames);
-                PROP(vararg);
-                PROP(varargLocation);
-            }
+                // TODO: attributes
+                PROP(name);
 
-            PROP(retTypes);
-            PROP(generics);
-            PROP(genericPacks);
-        });
+                if (FFlag::LuauDeclarationExtraPropData)
+                    PROP(nameLocation);
+
+                PROP(params);
+
+                if (FFlag::LuauDeclarationExtraPropData)
+                {
+                    PROP(paramNames);
+                    PROP(vararg);
+                    PROP(varargLocation);
+                }
+
+                PROP(retTypes);
+                PROP(generics);
+                PROP(genericPacks);
+            }
+        );
     }
 
     void write(class AstStatDeclareGlobal* node)
     {
-        writeNode(node, "AstStatDeclareGlobal", [&]() {
-            PROP(name);
+        writeNode(
+            node,
+            "AstStatDeclareGlobal",
+            [&]()
+            {
+                PROP(name);
 
-            if (FFlag::LuauDeclarationExtraPropData)
-                PROP(nameLocation);
+                if (FFlag::LuauDeclarationExtraPropData)
+                    PROP(nameLocation);
 
-            PROP(type);
-        });
+                PROP(type);
+            }
+        );
     }
 
     void write(const AstDeclaredClassProp& prop)
@@ -791,21 +956,31 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(class AstStatDeclareClass* node)
     {
-        writeNode(node, "AstStatDeclareClass", [&]() {
-            PROP(name);
-            if (node->superName)
-                write("superName", *node->superName);
-            PROP(props);
-            PROP(indexer);
-        });
+        writeNode(
+            node,
+            "AstStatDeclareClass",
+            [&]()
+            {
+                PROP(name);
+                if (node->superName)
+                    write("superName", *node->superName);
+                PROP(props);
+                PROP(indexer);
+            }
+        );
     }
 
     void write(class AstStatError* node)
     {
-        writeNode(node, "AstStatError", [&]() {
-            PROP(expressions);
-            PROP(statements);
-        });
+        writeNode(
+            node,
+            "AstStatError",
+            [&]()
+            {
+                PROP(expressions);
+                PROP(statements);
+            }
+        );
     }
 
     void write(struct AstTypeOrPack node)
@@ -818,15 +993,20 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(class AstTypeReference* node)
     {
-        writeNode(node, "AstTypeReference", [&]() {
-            if (node->prefix)
-                PROP(prefix);
-            if (node->prefixLocation)
-                write("prefixLocation", *node->prefixLocation);
-            PROP(name);
-            PROP(nameLocation);
-            PROP(parameters);
-        });
+        writeNode(
+            node,
+            "AstTypeReference",
+            [&]()
+            {
+                if (node->prefix)
+                    PROP(prefix);
+                if (node->prefixLocation)
+                    write("prefixLocation", *node->prefixLocation);
+                PROP(name);
+                PROP(nameLocation);
+                PROP(parameters);
+            }
+        );
     }
 
     void write(const AstTableProp& prop)
@@ -845,10 +1025,15 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(class AstTypeTable* node)
     {
-        writeNode(node, "AstTypeTable", [&]() {
-            PROP(props);
-            PROP(indexer);
-        });
+        writeNode(
+            node,
+            "AstTypeTable",
+            [&]()
+            {
+                PROP(props);
+                PROP(indexer);
+            }
+        );
     }
 
     void write(struct AstTableIndexer* indexer)
@@ -871,78 +1056,128 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(class AstTypeFunction* node)
     {
-        writeNode(node, "AstTypeFunction", [&]() {
-            PROP(generics);
-            PROP(genericPacks);
-            PROP(argTypes);
-            PROP(argNames);
-            PROP(returnTypes);
-        });
+        writeNode(
+            node,
+            "AstTypeFunction",
+            [&]()
+            {
+                PROP(generics);
+                PROP(genericPacks);
+                PROP(argTypes);
+                PROP(argNames);
+                PROP(returnTypes);
+            }
+        );
     }
 
     void write(class AstTypeTypeof* node)
     {
-        writeNode(node, "AstTypeTypeof", [&]() {
-            PROP(expr);
-        });
+        writeNode(
+            node,
+            "AstTypeTypeof",
+            [&]()
+            {
+                PROP(expr);
+            }
+        );
     }
 
     void write(class AstTypeUnion* node)
     {
-        writeNode(node, "AstTypeUnion", [&]() {
-            PROP(types);
-        });
+        writeNode(
+            node,
+            "AstTypeUnion",
+            [&]()
+            {
+                PROP(types);
+            }
+        );
     }
 
     void write(class AstTypeIntersection* node)
     {
-        writeNode(node, "AstTypeIntersection", [&]() {
-            PROP(types);
-        });
+        writeNode(
+            node,
+            "AstTypeIntersection",
+            [&]()
+            {
+                PROP(types);
+            }
+        );
     }
 
     void write(class AstTypeError* node)
     {
-        writeNode(node, "AstTypeError", [&]() {
-            PROP(types);
-            PROP(messageIndex);
-        });
+        writeNode(
+            node,
+            "AstTypeError",
+            [&]()
+            {
+                PROP(types);
+                PROP(messageIndex);
+            }
+        );
     }
 
     void write(class AstTypePackExplicit* node)
     {
-        writeNode(node, "AstTypePackExplicit", [&]() {
-            PROP(typeList);
-        });
+        writeNode(
+            node,
+            "AstTypePackExplicit",
+            [&]()
+            {
+                PROP(typeList);
+            }
+        );
     }
 
     void write(class AstTypePackVariadic* node)
     {
-        writeNode(node, "AstTypePackVariadic", [&]() {
-            PROP(variadicType);
-        });
+        writeNode(
+            node,
+            "AstTypePackVariadic",
+            [&]()
+            {
+                PROP(variadicType);
+            }
+        );
     }
 
     void write(class AstTypePackGeneric* node)
     {
-        writeNode(node, "AstTypePackGeneric", [&]() {
-            PROP(genericName);
-        });
+        writeNode(
+            node,
+            "AstTypePackGeneric",
+            [&]()
+            {
+                PROP(genericName);
+            }
+        );
     }
 
     bool visit(class AstTypeSingletonBool* node) override
     {
-        writeNode(node, "AstTypeSingletonBool", [&]() {
-            write("value", node->value);
-        });
+        writeNode(
+            node,
+            "AstTypeSingletonBool",
+            [&]()
+            {
+                write("value", node->value);
+            }
+        );
         return false;
     }
 
     bool visit(class AstTypeSingletonString* node) override
     {
-        writeNode(node, "AstTypeSingletonString", [&]() {
-            write("value", node->value);
-        });
+        writeNode(
+            node,
+            "AstTypeSingletonString",
+            [&]()
+            {
+                write("value", node->value);
+            }
+        );
         return false;
     }
 

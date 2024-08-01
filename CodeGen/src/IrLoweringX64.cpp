@@ -34,9 +34,13 @@ IrLoweringX64::IrLoweringX64(AssemblyBuilderX64& build, ModuleHelpers& helpers, 
     , valueTracker(function)
     , exitHandlerMap(~0u)
 {
-    valueTracker.setRestoreCallack(&regs, [](void* context, IrInst& inst) {
-        ((IrRegAllocX64*)context)->restore(inst, false);
-    });
+    valueTracker.setRestoreCallack(
+        &regs,
+        [](void* context, IrInst& inst)
+        {
+            ((IrRegAllocX64*)context)->restore(inst, false);
+        }
+    );
 
     build.align(kFunctionAlignment, X64::AlignmentDataX64::Ud2);
 }
@@ -118,7 +122,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
             build.vcvtss2sd(inst.regX64, inst.regX64, dword[rBase + vmRegOp(inst.a) * sizeof(TValue) + offsetof(TValue, value) + intOp(inst.b)]);
         else if (inst.a.kind == IrOpKind::VmConst)
             build.vcvtss2sd(
-                inst.regX64, inst.regX64, dword[rConstants + vmConstOp(inst.a) * sizeof(TValue) + offsetof(TValue, value) + intOp(inst.b)]);
+                inst.regX64, inst.regX64, dword[rConstants + vmConstOp(inst.a) * sizeof(TValue) + offsetof(TValue, value) + intOp(inst.b)]
+            );
         else
             CODEGEN_ASSERT(!"Unsupported instruction form");
         break;
@@ -1522,7 +1527,8 @@ void IrLoweringX64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)
     case IrCmd::SETLIST:
         regs.assertAllFree();
         emitInstSetList(
-            regs, build, vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.d), uintOp(inst.e), inst.f.kind == IrOpKind::Undef ? -1 : int(uintOp(inst.f)));
+            regs, build, vmRegOp(inst.b), vmRegOp(inst.c), intOp(inst.d), uintOp(inst.e), inst.f.kind == IrOpKind::Undef ? -1 : int(uintOp(inst.f))
+        );
         break;
     case IrCmd::CALL:
         regs.assertAllFree();

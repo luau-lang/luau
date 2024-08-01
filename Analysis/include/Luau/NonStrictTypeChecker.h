@@ -12,8 +12,15 @@ struct BuiltinTypes;
 struct UnifierSharedState;
 struct TypeCheckLimits;
 
-void checkNonStrict(NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> ice, NotNull<UnifierSharedState> unifierState,
-    NotNull<const DataFlowGraph> dfg, NotNull<TypeCheckLimits> limits, const SourceModule& sourceModule, Module* module);
+void checkNonStrict(
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<InternalErrorReporter> ice,
+    NotNull<UnifierSharedState> unifierState,
+    NotNull<const DataFlowGraph> dfg,
+    NotNull<TypeCheckLimits> limits,
+    const SourceModule& sourceModule,
+    Module* module
+);
 
 
 } // namespace Luau

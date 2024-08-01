@@ -213,7 +213,8 @@ RETURN R0 0
 
 TEST_CASE("ReflectionBytecode")
 {
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local part = Instance.new('Part', workspace)
 part.Size = Vector3.new(1, 2, 3)
 return part.Size.Z * part:GetMass()
@@ -235,7 +236,8 @@ NAMECALL R3 R0 K10 ['GetMass']
 CALL R3 1 1
 MUL R1 R2 R3
 RETURN R1 1
-)");
+)"
+    );
 }
 
 TEST_CASE("ImportCall")
@@ -693,7 +695,8 @@ RETURN R0 1
 TEST_CASE("TableLiteralsIndexConstant")
 {
     // validate that we use SETTTABLEKS for constant variable keys
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local a, b = "key", "value"
         return {[a] = 42, [b] = 0}
 )"),
@@ -704,10 +707,12 @@ SETTABLEKS R1 R0 K0 ['key']
 LOADN R1 0
 SETTABLEKS R1 R0 K1 ['value']
 RETURN R0 1
-)");
+)"
+    );
 
     // validate that we use SETTABLEN for constant variable keys *and* that we predict array size
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local a, b = 1, 2
         return {[a] = 42, [b] = 0}
 )"),
@@ -718,12 +723,14 @@ SETTABLEN R1 R0 1
 LOADN R1 0
 SETTABLEN R1 R0 2
 RETURN R0 1
-)");
+)"
+    );
 }
 
 TEST_CASE("TableSizePredictionBasic")
 {
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local t = {}
 t.a = 1
 t.b = 1
@@ -756,9 +763,11 @@ SETTABLEKS R1 R0 K7 ['h']
 LOADN R1 1
 SETTABLEKS R1 R0 K8 ['i']
 RETURN R0 0
-)");
+)"
+    );
 
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local t = {}
 t.x = 1
 t.x = 2
@@ -791,9 +800,11 @@ SETTABLEKS R1 R0 K0 ['x']
 LOADN R1 9
 SETTABLEKS R1 R0 K0 ['x']
 RETURN R0 0
-)");
+)"
+    );
 
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local t = {}
 t[1] = 1
 t[2] = 1
@@ -829,12 +840,15 @@ SETTABLEN R1 R0 9
 LOADN R1 1
 SETTABLEN R1 R0 10
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("TableSizePredictionObject")
 {
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local t = {}
 t.field = 1
 function t:getfield()
@@ -842,7 +856,8 @@ function t:getfield()
 end
 return t
 )",
-                        1),
+                   1
+               ),
         R"(
 NEWTABLE R0 2 0
 LOADN R1 1
@@ -850,12 +865,14 @@ SETTABLEKS R1 R0 K0 ['field']
 DUPCLOSURE R1 K1 ['getfield']
 SETTABLEKS R1 R0 K2 ['getfield']
 RETURN R0 1
-)");
+)"
+    );
 }
 
 TEST_CASE("TableSizePredictionSetMetatable")
 {
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local t = setmetatable({}, nil)
 t.field1 = 1
 t.field2 = 2
@@ -872,12 +889,14 @@ SETTABLEKS R1 R0 K3 ['field1']
 LOADN R1 2
 SETTABLEKS R1 R0 K4 ['field2']
 RETURN R0 1
-)");
+)"
+    );
 }
 
 TEST_CASE("TableSizePredictionLoop")
 {
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local t = {}
 for i=1,4 do
     t[i] = 0
@@ -894,7 +913,8 @@ L0: LOADN R4 0
 SETTABLE R4 R0 R3
 FORNLOOP R1 L0
 L1: RETURN R0 1
-)");
+)"
+    );
 }
 
 TEST_CASE("ReflectionEnums")
@@ -1330,7 +1350,8 @@ TEST_CASE("InterpStringWithNoExpressions")
 
 TEST_CASE("InterpStringZeroCost")
 {
-    CHECK_EQ("\n" + compileFunction0(R"(local _ = `hello, {"world"}!`)"),
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(local _ = `hello, {"world"}!`)"),
         R"(
 LOADK R1 K0 ['hello, %*!']
 LOADK R3 K1 ['world']
@@ -1338,12 +1359,14 @@ NAMECALL R1 R1 K2 ['format']
 CALL R1 2 1
 MOVE R0 R1
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("InterpStringRegisterCleanup")
 {
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
             local a, b, c = nil, "um", "uh oh"
             a = `foo{"bar"}`
             print(a)
@@ -1362,7 +1385,8 @@ GETIMPORT R3 6 [print]
 MOVE R4 R0
 CALL R3 1 0
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("InterpStringRegisterLimit")
@@ -1814,13 +1838,15 @@ until rr < 0.5
     {
         CHECK_EQ(e.getLocation().begin.line + 1, 8);
         CHECK_EQ(
-            std::string(e.what()), "Local rr used in the repeat..until condition is undefined because continue statement on line 5 jumps over it");
+            std::string(e.what()), "Local rr used in the repeat..until condition is undefined because continue statement on line 5 jumps over it"
+        );
     }
 
     // but it's okay if continue is inside a non-repeat..until loop, or inside a loop that doesn't use the local (here `continue` just terminates
     // inner loop)
-    CHECK_EQ("\n" + compileFunction0(
-                        "repeat local r = math.random() repeat if r > 0.5 then continue end r = r - 0.1 until true r = r + 0.3 until r < 0.5"),
+    CHECK_EQ(
+        "\n" +
+            compileFunction0("repeat local r = math.random() repeat if r > 0.5 then continue end r = r - 0.1 until true r = r + 0.3 until r < 0.5"),
         R"(
 L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
@@ -1832,12 +1858,14 @@ LOADK R1 K3 [0.5]
 JUMPIFLT R0 R1 L2
 JUMPBACK L0
 L2: RETURN R0 0
-)");
+)"
+    );
 
     // and it's also okay to use a local defined in the until expression as long as it's inside a function!
     CHECK_EQ(
         "\n" + compileFunction(
-                   "repeat local r = math.random() if r > 0.5 then continue end r = r + 0.3 until (function() local a = r return a < 0.5 end)()", 1),
+                   "repeat local r = math.random() if r > 0.5 then continue end r = r + 0.3 until (function() local a = r return a < 0.5 end)()", 1
+               ),
         R"(
 L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
@@ -1852,7 +1880,8 @@ CLOSEUPVALS R0
 JUMPBACK L0
 L2: CLOSEUPVALS R0
 RETURN R0 0
-)");
+)"
+    );
 
     // but not if the function just refers to an upvalue
     try
@@ -1874,12 +1903,14 @@ until (function() return rr end)() < 0.5
     {
         CHECK_EQ(e.getLocation().begin.line + 1, 8);
         CHECK_EQ(
-            std::string(e.what()), "Local rr used in the repeat..until condition is undefined because continue statement on line 5 jumps over it");
+            std::string(e.what()), "Local rr used in the repeat..until condition is undefined because continue statement on line 5 jumps over it"
+        );
     }
 
     // unless that upvalue is from an outer scope
-    CHECK_EQ("\n" + compileFunction0("local stop = false stop = true function test() repeat local r = math.random() if r > 0.5 then "
-                                     "continue end r = r + 0.3 until stop or r < 0.5 end"),
+    CHECK_EQ(
+        "\n" + compileFunction0("local stop = false stop = true function test() repeat local r = math.random() if r > 0.5 then "
+                                "continue end r = r + 0.3 until stop or r < 0.5 end"),
         R"(
 L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
@@ -1892,12 +1923,16 @@ LOADK R1 K3 [0.5]
 JUMPIFLT R0 R1 L2
 JUMPBACK L0
 L2: RETURN R0 0
-)");
+)"
+    );
 
     // including upvalue references from a function expression
-    CHECK_EQ("\n" + compileFunction("local stop = false stop = true function test() repeat local r = math.random() if r > 0.5 then continue "
-                                    "end r = r + 0.3 until (function() return stop or r < 0.5 end)() end",
-                        1),
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   "local stop = false stop = true function test() repeat local r = math.random() if r > 0.5 then continue "
+                   "end r = r + 0.3 until (function() return stop or r < 0.5 end)() end",
+                   1
+               ),
         R"(
 L0: GETIMPORT R0 2 [math.random]
 CALL R0 0 1
@@ -1913,13 +1948,15 @@ CLOSEUPVALS R0
 JUMPBACK L0
 L2: CLOSEUPVALS R0
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("LoopContinueIgnoresImplicitConstant")
 {
     // this used to crash the compiler :(
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local _
 repeat
 continue
@@ -1928,13 +1965,15 @@ until not _
         R"(
 RETURN R0 0
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("LoopContinueIgnoresExplicitConstant")
 {
     // Constants do not allocate locals and 'continue' validation should skip them if their lifetime already started
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local c = true
 repeat
     continue
@@ -1943,7 +1982,8 @@ until c
         R"(
 RETURN R0 0
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("LoopContinueRespectsExplicitConstant")
@@ -1966,14 +2006,17 @@ until c
     {
         CHECK_EQ(e.getLocation().begin.line + 1, 6);
         CHECK_EQ(
-            std::string(e.what()), "Local c used in the repeat..until condition is undefined because continue statement on line 3 jumps over it");
+            std::string(e.what()), "Local c used in the repeat..until condition is undefined because continue statement on line 3 jumps over it"
+        );
     }
 }
 
 TEST_CASE("LoopContinueIgnoresImplicitConstantAfterInline")
 {
     // Inlining might also replace some locals with constants instead of allocating them
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function inline(f)
     repeat
         continue
@@ -1986,11 +2029,14 @@ end
 
 test()
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 RETURN R0 0
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("LoopContinueCorrectlyHandlesImplicitConstantAfterUnroll")
@@ -2000,7 +2046,8 @@ TEST_CASE("LoopContinueCorrectlyHandlesImplicitConstantAfterUnroll")
     // access to implicit constant that depends on the unrolled loop constant is still invalid even though we can constant-propagate it
     try
     {
-        compileFunction(R"(
+        compileFunction(
+            R"(
 for i = 1, 2 do
     s()
     repeat
@@ -2011,7 +2058,9 @@ for i = 1, 2 do
     until f(x)
 end
 )",
-            0, 2);
+            0,
+            2
+        );
 
         CHECK(!"Expected CompileError");
     }
@@ -2019,7 +2068,8 @@ end
     {
         CHECK_EQ(e.getLocation().begin.line + 1, 9);
         CHECK_EQ(
-            std::string(e.what()), "Local x used in the repeat..until condition is undefined because continue statement on line 6 jumps over it");
+            std::string(e.what()), "Local x used in the repeat..until condition is undefined because continue statement on line 6 jumps over it"
+        );
     }
 }
 
@@ -2028,7 +2078,9 @@ TEST_CASE("LoopContinueUntilCapture")
     // validate continue upvalue closing behavior: continue must close locals defined in the nested scopes
     // but can't close locals defined in the loop scope - these are visible to the condition and will be closed
     // when evaluating the condition instead.
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local a a = 0
 repeat
     local b b = 0
@@ -2045,7 +2097,8 @@ until function() a = 0 b = 0 end
 -- must close b on loop exit
 -- must close a
 )",
-                        2),
+                   2
+               ),
         R"(
 LOADNIL R0
 LOADN R0 0
@@ -2070,10 +2123,13 @@ JUMPBACK L0
 L3: CLOSEUPVALS R1
 CLOSEUPVALS R0
 RETURN R0 0
-)");
+)"
+    );
 
     // a simpler version of the above test doesn't need to close anything when evaluating continue
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local a a = 0
 repeat
     local b b = 0
@@ -2085,7 +2141,8 @@ until function() a = 0 b = 0 end
 -- must close b on loop exit
 -- must close a
 )",
-                        1),
+                   1
+               ),
         R"(
 LOADNIL R0
 LOADN R0 0
@@ -2101,13 +2158,16 @@ JUMPBACK L0
 L2: CLOSEUPVALS R1
 CLOSEUPVALS R0
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("LoopContinueEarlyCleanup")
 {
     // locals after a potential 'continue' are not accessible inside the condition and can be closed at the end of a block
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local y
 repeat
     local a, b
@@ -2123,7 +2183,8 @@ repeat
     y = x
 until a
 )",
-                        1),
+                   1
+               ),
         R"(
 LOADNIL R0
 L0: LOADNIL R1
@@ -2143,20 +2204,24 @@ CLOSEUPVALS R1
 JUMPBACK L0
 L2: CLOSEUPVALS R1
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("AndOrOptimizations")
 {
     // the OR/ORK optimization triggers for cutoff since lhs is simple
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function advancedRidgedFilter(value, cutoff)
     local cutoff = cutoff or .5
     value = value - cutoff
     return 1 - (value < 0 and -value or value) * 1 / (1 - cutoff)
 end
 )",
-                        0),
+                   0
+               ),
         R"(
 ORK R2 R1 K0 [0.5]
 SUB R0 R0 R2
@@ -2170,15 +2235,19 @@ SUBRK R6 K1 [1] R2
 DIV R4 R5 R6
 SUBRK R3 K1 [1] R4
 RETURN R3 1
-)");
+)"
+    );
 
     // sometimes we need to compute a boolean; this uses LOADB with an offset
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function thinSurface(surfaceGradient, surfaceThickness)
     return surfaceGradient > .5 - surfaceThickness*.4 and surfaceGradient < .5 + surfaceThickness*.4
 end
 )",
-                        0),
+                   0
+               ),
         R"(
 LOADB R2 0
 MULK R4 R1 K1 [0.40000000000000002]
@@ -2191,15 +2260,19 @@ JUMPIFLT R0 R3 L0
 LOADB R2 0 +1
 L0: LOADB R2 1
 L1: RETURN R2 1
-)");
+)"
+    );
 
     // sometimes we need to compute a boolean; this uses LOADB with an offset for the last op, note that first op is compiled better
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function thickSurface(surfaceGradient, surfaceThickness)
     return surfaceGradient < .5 - surfaceThickness*.4 or surfaceGradient > .5 + surfaceThickness*.4
 end
 )",
-                        0),
+                   0
+               ),
         R"(
 LOADB R2 1
 MULK R4 R1 K1 [0.40000000000000002]
@@ -2212,30 +2285,38 @@ JUMPIFLT R3 R0 L0
 LOADB R2 0 +1
 L0: LOADB R2 1
 L1: RETURN R2 1
-)");
+)"
+    );
 
     // trivial ternary if with constants
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function testSurface(surface)
     return surface and 1 or 0
 end
 )",
-                        0),
+                   0
+               ),
         R"(
 JUMPIFNOT R0 L0
 LOADN R1 1
 RETURN R1 1
 L0: LOADN R1 0
 RETURN R1 1
-)");
+)"
+    );
 
     // canonical saturate
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function saturate(x)
     return x < 0 and 0 or x > 1 and 1 or x
 end
 )",
-                        0),
+                   0
+               ),
         R"(
 LOADN R2 0
 JUMPIFNOTLT R0 R2 L0
@@ -2247,7 +2328,8 @@ LOADN R1 1
 RETURN R1 1
 L1: MOVE R1 R0
 RETURN R1 1
-)");
+)"
+    );
 }
 
 TEST_CASE("JumpFold")
@@ -2292,7 +2374,9 @@ L0: RETURN R0 0
 
     // in this example, we do *not* have a JUMP after RETURN in the if branch
     // this is important since, even though this jump is never reached, jump folding needs to be able to analyze it
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function getPerlin(x, y, z, seed, scale, raw)
 local seed = seed or 0
 local scale = scale or 1
@@ -2303,7 +2387,8 @@ return math.noise(x / scale + (seed * 17) + masterSeed, y / scale - masterSeed, 
 end
 end
 )",
-                        0),
+                   0
+               ),
         R"(
 ORK R6 R3 K0 [0]
 ORK R7 R4 K1 [1]
@@ -2338,7 +2423,8 @@ MUL R13 R6 R6
 SUB R11 R12 R13
 CALL R8 3 -1
 RETURN R8 -1
-)");
+)"
+    );
 }
 
 TEST_CASE("RecursionParse")
@@ -2548,7 +2634,9 @@ L1: RETURN R3 -1
 
 TEST_CASE("UpvaluesLoopsBytecode")
 {
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function test()
     for i=1,10 do
         i = i
@@ -2560,7 +2648,8 @@ function test()
     return 0
 end
 )",
-                        1),
+                   1
+               ),
         R"(
 LOADN R2 1
 LOADN R0 10
@@ -2579,9 +2668,12 @@ L1: CLOSEUPVALS R3
 FORNLOOP R0 L0
 L2: LOADN R0 0
 RETURN R0 1
-)");
+)"
+    );
 
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function test()
     for i in ipairs(data) do
         i = i
@@ -2593,7 +2685,8 @@ function test()
     return 0
 end
 )",
-                        1),
+                   1
+               ),
         R"(
 GETIMPORT R0 1 [ipairs]
 GETIMPORT R1 3 [data]
@@ -2611,9 +2704,12 @@ L1: CLOSEUPVALS R3
 L2: FORGLOOP R0 L0 1 [inext]
 L3: LOADN R0 0
 RETURN R0 1
-)");
+)"
+    );
 
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function test()
     local i = 0
     while i < 5 do
@@ -2628,7 +2724,8 @@ function test()
     return 0
 end
 )",
-                        1),
+                   1
+               ),
         R"(
 LOADN R0 0
 L0: LOADN R1 5
@@ -2648,9 +2745,12 @@ L1: CLOSEUPVALS R1
 JUMPBACK L0
 L2: LOADN R1 0
 RETURN R1 1
-)");
+)"
+    );
 
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function test()
     local i = 0
     repeat
@@ -2665,7 +2765,8 @@ function test()
     return 0
 end
 )",
-                        1),
+                   1
+               ),
         R"(
 LOADN R0 0
 L0: LOADNIL R1
@@ -2686,7 +2787,8 @@ JUMPBACK L0
 L2: CLOSEUPVALS R1
 L3: LOADN R1 0
 RETURN R1 1
-)");
+)"
+    );
 }
 
 TEST_CASE("TypeAliasing")
@@ -2815,7 +2917,9 @@ end
 
 TEST_CASE("DebugLineInfoRepeatUntil")
 {
-    CHECK_EQ("\n" + compileFunction0Coverage(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0Coverage(
+                   R"(
 local f = 0
 repeat
     f += 1
@@ -2826,7 +2930,8 @@ repeat
     end
 until f == 0
 )",
-                        0),
+                   0
+               ),
         R"(
 2: LOADN R0 0
 4: L0: ADDK R0 R0 K0 [1]
@@ -2839,7 +2944,8 @@ until f == 0
 10: L2: JUMPXEQKN R0 K3 L3 [0]
 10: JUMPBACK L0
 11: L3: RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("DebugLineInfoSubTable")
@@ -3487,7 +3593,8 @@ TEST_CASE("Fastcall3")
 {
     ScopedFastFlag luauCompileFastcall3{FFlag::LuauCompileFastcall3, true};
 
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local a, b, c = ...
 return math.min(a, b, c) + math.clamp(a, b, c)
 )"),
@@ -3507,7 +3614,8 @@ GETIMPORT R5 4 [math.clamp]
 CALL R5 3 1
 L1: ADD R3 R4 R5
 RETURN R3 1
-)");
+)"
+    );
 }
 
 TEST_CASE("FastcallSelect")
@@ -3523,7 +3631,8 @@ L0: RETURN R0 1
 )");
 
     // more complex example: select inside a for loop bound + select from a iterator
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local sum = 0
 for i=1, select('#', ...) do
     sum += select(i, ...)
@@ -3549,7 +3658,8 @@ CALL R4 -1 1
 L2: ADD R0 R0 R4
 FORNLOOP R1 L1
 L3: RETURN R0 1
-)");
+)"
+    );
 
     // currently we assume a single value return to avoid dealing with stack resizing
     CHECK_EQ("\n" + compileFunction0("return select('#', ...)"), R"(
@@ -3717,19 +3827,23 @@ RETURN R0 1
 
     // multi-level recursive capture where function isn't top-level
     // note: this should probably be optimized to DUPCLOSURE but doing that requires a different upval tracking flow in the compiler
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo()
     local function bar()
         return function() return bar() end
     end
 end
 )",
-                        1),
+                   1
+               ),
         R"(
 NEWCLOSURE R0 P0
 CAPTURE UPVAL U0
 RETURN R0 1
-)");
+)"
+    );
 }
 
 TEST_CASE("OutOfLocals")
@@ -4077,7 +4191,8 @@ TEST_CASE("CompileBytecode")
 
 TEST_CASE("NestedNamecall")
 {
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local obj = ...
 return obj:Method(1):Method(2):Method(3)
 )"),
@@ -4093,23 +4208,27 @@ LOADN R3 3
 NAMECALL R1 R1 K0 ['Method']
 CALL R1 2 -1
 RETURN R1 -1
-)");
+)"
+    );
 }
 
 TEST_CASE("ElideLocals")
 {
     // simple local elision: all locals are constant
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local a, b = 1, 2
 return a + b
 )"),
         R"(
 LOADN R0 3
 RETURN R0 1
-)");
+)"
+    );
 
     // side effecting expressions block local elision
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local a = g()
 return a
 )"),
@@ -4117,10 +4236,12 @@ return a
 GETIMPORT R0 1 [g]
 CALL R0 0 1
 RETURN R0 1
-)");
+)"
+    );
 
     // ... even if they are not used
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local a = 1, g()
 return a
 )"),
@@ -4129,12 +4250,14 @@ LOADN R0 1
 GETIMPORT R1 1 [g]
 CALL R1 0 1
 RETURN R0 1
-)");
+)"
+    );
 }
 
 TEST_CASE("ConstantJumpCompare")
 {
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local obj = ...
 local b = obj == 1
 )"),
@@ -4144,9 +4267,11 @@ JUMPXEQKN R0 K0 L0 [1]
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
-)");
+)"
+    );
 
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local obj = ...
 local b = 1 == obj
 )"),
@@ -4156,9 +4281,11 @@ JUMPXEQKN R0 K0 L0 [1]
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
-)");
+)"
+    );
 
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local obj = ...
 local b = "Hello, Sailor!" == obj
 )"),
@@ -4168,9 +4295,11 @@ JUMPXEQKS R0 K0 L0 ['Hello, Sailor!']
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
-)");
+)"
+    );
 
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local obj = ...
 local b = nil == obj
 )"),
@@ -4180,9 +4309,11 @@ JUMPXEQKNIL R0 L0
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
-)");
+)"
+    );
 
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local obj = ...
 local b = true == obj
 )"),
@@ -4192,9 +4323,11 @@ JUMPXEQKB R0 1 L0
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
-)");
+)"
+    );
 
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local obj = ...
 local b = nil ~= obj
 )"),
@@ -4204,10 +4337,12 @@ JUMPXEQKNIL R0 L0 NOT
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
-)");
+)"
+    );
 
     // table literals should not generate IFEQK variants
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local obj = ...
 local b = obj == {}
 )"),
@@ -4218,12 +4353,14 @@ JUMPIFEQ R0 R2 L0
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("TableConstantStringIndex")
 {
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local t = { a = 2 }
 return t['a']
 )"),
@@ -4233,9 +4370,11 @@ LOADN R1 2
 SETTABLEKS R1 R0 K0 ['a']
 GETTABLEKS R1 R0 K0 ['a']
 RETURN R1 1
-)");
+)"
+    );
 
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local t = {}
 t['a'] = 2
 )"),
@@ -4244,17 +4383,21 @@ NEWTABLE R0 0 0
 LOADN R1 2
 SETTABLEKS R1 R0 K0 ['a']
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("Coverage")
 {
     // basic statement coverage
-    CHECK_EQ("\n" + compileFunction0Coverage(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0Coverage(
+                   R"(
 print(1)
 print(2)
 )",
-                        1),
+                   1
+               ),
         R"(
 2: COVERAGE
 2: GETIMPORT R0 1 [print]
@@ -4265,17 +4408,21 @@ print(2)
 3: LOADN R1 2
 3: CALL R0 1 0
 4: RETURN R0 0
-)");
+)"
+    );
 
     // branching
-    CHECK_EQ("\n" + compileFunction0Coverage(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0Coverage(
+                   R"(
 if x then
     print(1)
 else
     print(2)
 end
 )",
-                        1),
+                   1
+               ),
         R"(
 2: COVERAGE
 2: GETIMPORT R0 1 [x]
@@ -4290,11 +4437,14 @@ end
 5: LOADN R1 2
 5: CALL R0 1 0
 7: RETURN R0 0
-)");
+)"
+    );
 
     // branching with comments
     // note that commented lines don't have COVERAGE insns!
-    CHECK_EQ("\n" + compileFunction0Coverage(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0Coverage(
+                   R"(
 if x then
     -- first
     print(1)
@@ -4303,7 +4453,8 @@ else
     print(2)
 end
 )",
-                        1),
+                   1
+               ),
         R"(
 2: COVERAGE
 2: GETIMPORT R0 1 [x]
@@ -4318,11 +4469,14 @@ end
 7: LOADN R1 2
 7: CALL R0 1 0
 9: RETURN R0 0
-)");
+)"
+    );
 
     // expression coverage for table literals
     // note: duplicate COVERAGE instructions are there since we don't deduplicate expr/stat
-    CHECK_EQ("\n" + compileFunction0Coverage(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0Coverage(
+                   R"(
 local c = ...
 local t = {
     a = 1,
@@ -4330,7 +4484,8 @@ local t = {
     c = c
 }
 )",
-                        2),
+                   2
+               ),
         R"(
 2: COVERAGE
 2: COVERAGE
@@ -4349,52 +4504,68 @@ local t = {
 6: COVERAGE
 6: SETTABLEKS R0 R1 K2 ['c']
 8: RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("ConstantClosure")
 {
     // closures without upvalues are created when bytecode is loaded
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 return function() end
 )",
-                        1),
+                   1
+               ),
         R"(
 DUPCLOSURE R0 K0 []
 RETURN R0 1
-)");
+)"
+    );
 
     // they can access globals just fine
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 return function() print("hi") end
 )",
-                        1),
+                   1
+               ),
         R"(
 DUPCLOSURE R0 K0 []
 RETURN R0 1
-)");
+)"
+    );
 
     // if they need upvalues, we can't create them before running the code (but see SharedClosure test)
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function test()
     local print = print
     return function() print("hi") end
 end
 )",
-                        1),
+                   1
+               ),
         R"(
 GETIMPORT R0 1 [print]
 NEWCLOSURE R1 P0
 CAPTURE VAL R0
 RETURN R1 1
-)");
+)"
+    );
 
     // if they don't need upvalues but we sense that environment may be modified, we disable this to avoid fenv-related identity confusion
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 setfenv(1, {})
 return function() print("hi") end
 )",
-                        1),
+                   1
+               ),
         R"(
 GETIMPORT R0 1 [setfenv]
 LOADN R1 1
@@ -4402,39 +4573,50 @@ NEWTABLE R2 0 0
 CALL R0 2 0
 NEWCLOSURE R0 P0
 RETURN R0 1
-)");
+)"
+    );
 
     // note that fenv analysis isn't flow-sensitive right now, which is sort of a feature
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 if false then setfenv(1, {}) end
 return function() print("hi") end
 )",
-                        1),
+                   1
+               ),
         R"(
 NEWCLOSURE R0 P0
 RETURN R0 1
-)");
+)"
+    );
 }
 
 TEST_CASE("SharedClosure")
 {
     // closures can be shared even if functions refer to upvalues, as long as upvalues are top-level
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local val = ...
 
 local function foo()
     return function() return val end
 end
 )",
-                        1),
+                   1
+               ),
         R"(
 DUPCLOSURE R0 K0 []
 CAPTURE UPVAL U0
 RETURN R0 1
-)");
+)"
+    );
 
     // ... as long as the values aren't mutated.
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local val = ...
 
 local function foo()
@@ -4443,28 +4625,36 @@ end
 
 val = 5
 )",
-                        1),
+                   1
+               ),
         R"(
 NEWCLOSURE R0 P0
 CAPTURE UPVAL U0
 RETURN R0 1
-)");
+)"
+    );
 
     // making the upvalue non-toplevel disables the optimization since it's likely that it will change
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(val)
     return function() return val end
 end
 )",
-                        1),
+                   1
+               ),
         R"(
 NEWCLOSURE R1 P0
 CAPTURE VAL R0
 RETURN R1 1
-)");
+)"
+    );
 
     // the upvalue analysis is transitive through local functions, which allows for code reuse to not defeat the optimization
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local val = ...
 
 local function foo()
@@ -4475,17 +4665,21 @@ local function foo()
     return function() return bar() end
 end
 )",
-                        2),
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['bar']
 CAPTURE UPVAL U0
 DUPCLOSURE R1 K1 []
 CAPTURE VAL R0
 RETURN R1 1
-)");
+)"
+    );
 
     // as such, if the upvalue that we reach transitively isn't top-level we fall back to newclosure
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(val)
     local function bar()
         return val
@@ -4494,14 +4688,16 @@ local function foo(val)
     return function() return bar() end
 end
 )",
-                        2),
+                   2
+               ),
         R"(
 NEWCLOSURE R1 P0
 CAPTURE VAL R0
 NEWCLOSURE R2 P1
 CAPTURE VAL R1
 RETURN R2 1
-)");
+)"
+    );
 
     // we also allow recursive function captures to share the object, even when it's not top-level
     CHECK_EQ("\n" + compileFunction("function test() local function foo() return foo() end end", 1), R"(
@@ -4512,22 +4708,28 @@ RETURN R0 0
 
     // multi-level recursive capture where function isn't top-level fails however.
     // note: this should probably be optimized to DUPCLOSURE but doing that requires a different upval tracking flow in the compiler
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo()
     local function bar()
         return function() return bar() end
     end
 end
 )",
-                        1),
+                   1
+               ),
         R"(
 NEWCLOSURE R0 P0
 CAPTURE UPVAL U0
 RETURN R0 1
-)");
+)"
+    );
 
     // top level upvalues inside loops should not be shared -- note that the bytecode below only uses NEWCLOSURE
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 for i=1,10 do
     print(function() return i end)
 end
@@ -4541,7 +4743,8 @@ for i=1,10 do
     print(function() return j end)
 end
 )",
-                        3),
+                   3
+               ),
         R"(
 LOADN R2 1
 LOADN R0 10
@@ -4571,7 +4774,8 @@ CAPTURE VAL R2
 CALL R3 1 0
 FORNLOOP R0 L4
 L5: RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("MutableGlobals")
@@ -4756,7 +4960,8 @@ RETURN R0 1
 TEST_CASE("TypeAssertion")
 {
     // validate that type assertions work with the compiler and that the code inside type assertion isn't evaluated
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 print(foo() :: typeof(error("compile time")))
 )"),
         R"(
@@ -4765,10 +4970,12 @@ GETIMPORT R1 3 [foo]
 CALL R1 0 1
 CALL R0 1 0
 RETURN R0 0
-)");
+)"
+    );
 
     // note that above, foo() is treated as single-arg function; removing type assertion changes the bytecode
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 print(foo())
 )"),
         R"(
@@ -4777,13 +4984,15 @@ GETIMPORT R1 3 [foo]
 CALL R1 0 -1
 CALL R0 -1 0
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("Arithmetics")
 {
     // basic arithmetics codegen with non-constants
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local a, b = ...
 return a + b, a - b, a / b, a * b, a % b, a ^ b
 )"),
@@ -4796,11 +5005,13 @@ MUL R5 R0 R1
 MOD R6 R0 R1
 POW R7 R0 R1
 RETURN R2 6
-)");
+)"
+    );
 
     // basic arithmetics codegen with constants on the right side
     // note that we don't simplify these expressions as we don't know the type of a
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local a = ...
 return a + 1, a - 1, a / 1, a * 1, a % 1, a ^ 1
 )"),
@@ -4813,20 +5024,25 @@ MULK R4 R0 K0 [1]
 MODK R5 R0 K0 [1]
 POWK R6 R0 K0 [1]
 RETURN R1 6
-)");
+)"
+    );
 }
 
 TEST_CASE("LoopUnrollBasic")
 {
     // forward loops
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local t = {}
 for i=1,2 do
     t[i] = i
 end
 return t
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 NEWTABLE R0 0 2
 LOADN R1 1
@@ -4834,17 +5050,22 @@ SETTABLEN R1 R0 1
 LOADN R1 2
 SETTABLEN R1 R0 2
 RETURN R0 1
-)");
+)"
+    );
 
     // backward loops
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local t = {}
 for i=2,1,-1 do
     t[i] = i
 end
 return t
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 NEWTABLE R0 0 0
 LOADN R1 2
@@ -4852,17 +5073,22 @@ SETTABLEN R1 R0 2
 LOADN R1 1
 SETTABLEN R1 R0 1
 RETURN R0 1
-)");
+)"
+    );
 
     // loops with step that doesn't divide to-from
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local t = {}
 for i=1,4,2 do
     t[i] = i
 end
 return t
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 NEWTABLE R0 0 0
 LOADN R1 1
@@ -4870,23 +5096,31 @@ SETTABLEN R1 R0 1
 LOADN R1 3
 SETTABLEN R1 R0 3
 RETURN R0 1
-)");
+)"
+    );
 
     // empty loops
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 for i=2,1 do
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("LoopUnrollNested")
 {
     // we can unroll nested loops just fine
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local t = {}
 for i=0,1 do
     for j=0,1 do
@@ -4894,7 +5128,9 @@ for i=0,1 do
     end
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 NEWTABLE R0 0 0
 LOADN R1 0
@@ -4906,10 +5142,13 @@ SETTABLEN R1 R0 3
 LOADN R1 0
 SETTABLEN R1 R0 4
 RETURN R0 0
-)");
+)"
+    );
 
     // if the inner loop is too expensive, we won't unroll the outer loop though, but we'll still unroll the inner loop!
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local t = {}
 for i=0,3 do
     for j=0,3 do
@@ -4917,7 +5156,9 @@ for i=0,3 do
     end
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 NEWTABLE R0 0 0
 LOADN R3 0
@@ -4942,10 +5183,13 @@ LOADN R5 0
 SETTABLE R5 R0 R4
 FORNLOOP R1 L0
 L1: RETURN R0 0
-)");
+)"
+    );
 
     // note, we sometimes can even unroll a loop with varying internal iterations
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local t = {}
 for i=0,1 do
     for j=0,i do
@@ -4953,7 +5197,9 @@ for i=0,1 do
     end
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 NEWTABLE R0 0 0
 LOADN R1 0
@@ -4963,17 +5209,22 @@ SETTABLEN R1 R0 3
 LOADN R1 0
 SETTABLEN R1 R0 4
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("LoopUnrollUnsupported")
 {
     // can't unroll loops with non-constant bounds
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 for i=x,y,z do
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 GETIMPORT R2 1 [x]
 GETIMPORT R0 3 [y]
@@ -4981,14 +5232,19 @@ GETIMPORT R1 5 [z]
 FORNPREP R0 L1
 L0: FORNLOOP R0 L0
 L1: RETURN R0 0
-)");
+)"
+    );
 
     // can't unroll loops with bounds where we can't compute trip count
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 for i=1,1,0 do
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 LOADN R2 1
 LOADN R0 1
@@ -4996,14 +5252,19 @@ LOADN R1 0
 FORNPREP R0 L1
 L0: FORNLOOP R0 L0
 L1: RETURN R0 0
-)");
+)"
+    );
 
     // can't unroll loops with bounds that might be imprecise (non-integer)
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 for i=1,2,0.1 do
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 LOADN R2 1
 LOADN R0 2
@@ -5011,14 +5272,19 @@ LOADK R1 K0 [0.10000000000000001]
 FORNPREP R0 L1
 L0: FORNLOOP R0 L0
 L1: RETURN R0 0
-)");
+)"
+    );
 
     // can't unroll loops if the bounds are too large, as it might overflow trip count math
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 for i=4294967295,4294967296 do
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 LOADK R2 K0 [4294967295]
 LOADK R0 K1 [4294967296]
@@ -5026,7 +5292,8 @@ LOADN R1 1
 FORNPREP R0 L1
 L0: FORNLOOP R0 L0
 L1: RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("LoopUnrollControlFlow")
@@ -5037,14 +5304,18 @@ TEST_CASE("LoopUnrollControlFlow")
     };
 
     // break jumps to the end
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 for i=1,3 do
     if math.random() < 0.5 then
         break
     end
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 GETIMPORT R0 2 [math.random]
 CALL R0 0 1
@@ -5059,10 +5330,13 @@ CALL R0 0 1
 LOADK R1 K3 [0.5]
 JUMPIFLT R0 R1 L0
 L0: RETURN R0 0
-)");
+)"
+    );
 
     // continue jumps to the next iteration
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 for i=1,3 do
     if math.random() < 0.5 then
         continue
@@ -5070,7 +5344,9 @@ for i=1,3 do
     print(i)
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 GETIMPORT R0 2 [math.random]
 CALL R0 0 1
@@ -5094,10 +5370,13 @@ GETIMPORT R0 5 [print]
 LOADN R1 3
 CALL R0 1 0
 L2: RETURN R0 0
-)");
+)"
+    );
 
     // continue needs to properly close upvalues
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 for i=1,1 do
     local j = global(i)
     print(function() return j end)
@@ -5107,7 +5386,9 @@ for i=1,1 do
     j += 1
 end
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 GETIMPORT R0 1 [global]
 LOADN R1 1
@@ -5125,10 +5406,13 @@ RETURN R0 0
 L0: ADDK R0 R0 K8 [1]
 CLOSEUPVALS R0
 RETURN R0 0
-)");
+)"
+    );
 
     // this weird contraption just disappears
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 for i=1,1 do
     for j=1,1 do
         if i == 1 then
@@ -5139,22 +5423,29 @@ for i=1,1 do
     end
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 RETURN R0 0
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("LoopUnrollNestedClosure")
 {
     // if the body has functions that refer to loop variables, we unroll the loop and use MOVE+CAPTURE for upvalues
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 for i=1,2 do
     local x = function() return i end
 end
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 LOADN R1 1
 NEWCLOSURE R0 P0
@@ -5163,7 +5454,8 @@ LOADN R1 2
 NEWCLOSURE R0 P0
 CAPTURE VAL R1
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("LoopUnrollCost")
@@ -5174,14 +5466,18 @@ TEST_CASE("LoopUnrollCost")
     };
 
     // loops with short body
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local t = {}
 for i=1,10 do
     t[i] = i
 end
 return t
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 NEWTABLE R0 0 10
 LOADN R1 1
@@ -5205,17 +5501,22 @@ SETTABLEN R1 R0 9
 LOADN R1 10
 SETTABLEN R1 R0 10
 RETURN R0 1
-)");
+)"
+    );
 
     // loops with body that's too long
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local t = {}
 for i=1,100 do
     t[i] = i
 end
 return t
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 NEWTABLE R0 0 0
 LOADN R3 1
@@ -5225,17 +5526,22 @@ FORNPREP R1 L1
 L0: SETTABLE R3 R0 R3
 FORNLOOP R1 L0
 L1: RETURN R0 1
-)");
+)"
+    );
 
     // loops with body that's long but has a high boost factor due to constant folding
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local t = {}
 for i=1,25 do
     t[i] = i * i * i
 end
 return t
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 NEWTABLE R0 0 0
 LOADN R1 1
@@ -5289,17 +5595,22 @@ SETTABLEN R1 R0 24
 LOADN R1 15625
 SETTABLEN R1 R0 25
 RETURN R0 1
-)");
+)"
+    );
 
     // loops with body that's long and doesn't have a high boost factor
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local t = {}
 for i=1,10 do
     t[i] = math.abs(math.sin(i))
 end
 return t
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 NEWTABLE R0 0 10
 LOADN R3 1
@@ -5316,19 +5627,24 @@ CALL R4 1 1
 L2: SETTABLE R4 R0 R3
 FORNLOOP R1 L0
 L3: RETURN R0 1
-)");
+)"
+    );
 }
 
 TEST_CASE("LoopUnrollMutable")
 {
     // can't unroll loops that mutate iteration variable
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 for i=1,3 do
     i = 3
     print(i) -- should print 3 three times in a row
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 LOADN R2 1
 LOADN R0 3
@@ -5341,7 +5657,8 @@ MOVE R5 R3
 CALL R4 1 0
 FORNLOOP R0 L0
 L1: RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("LoopUnrollCostBuiltins")
@@ -5352,14 +5669,18 @@ TEST_CASE("LoopUnrollCostBuiltins")
     };
 
     // this loop uses builtins and is close to the cost budget so it's important that we model builtins as cheaper than regular calls
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function cipher(block, nonce)
     for i = 0,3 do
         block[i + 1] = bit32.band(bit32.rshift(nonce, i * 8), 0xff)
     end
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 FASTCALL2K 39 R1 K0 L0 [0]
 MOVE R4 R1
@@ -5402,10 +5723,13 @@ GETIMPORT R2 6 [bit32.band]
 CALL R2 2 1
 L7: SETTABLEN R2 R0 4
 RETURN R0 0
-)");
+)"
+    );
 
     // note that if we break compiler's ability to reason about bit32 builtin the loop is no longer unrolled as it's too expensive
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 bit32 = {}
 
 function cipher(block, nonce)
@@ -5414,7 +5738,9 @@ function cipher(block, nonce)
     end
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 LOADN R4 0
 LOADN R2 3
@@ -5433,17 +5759,22 @@ CALL R6 2 1
 SETTABLE R6 R0 R5
 FORNLOOP R2 L0
 L1: RETURN R0 0
-)");
+)"
+    );
 
     // additionally, if we pass too many constants the builtin stops being cheap because of argument setup
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function cipher(block, nonce)
     for i = 0,3 do
         block[i + 1] = bit32.band(bit32.rshift(nonce, i * 8), 0xff, 0xff, 0xff, 0xff, 0xff)
     end
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 LOADN R4 0
 LOADN R2 3
@@ -5466,13 +5797,16 @@ CALL R6 6 1
 L2: SETTABLE R6 R0 R5
 FORNLOOP R2 L0
 L3: RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineBasic")
 {
     // inline function that returns a constant
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo()
     return 42
 end
@@ -5480,15 +5814,20 @@ end
 local x = foo()
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADN R1 42
 RETURN R1 1
-)");
+)"
+    );
 
     // inline function that returns the argument
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return a
 end
@@ -5496,15 +5835,20 @@ end
 local x = foo(42)
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADN R1 42
 RETURN R1 1
-)");
+)"
+    );
 
     // inline function that returns one of the two arguments
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a, b, c)
     if a then
         return b
@@ -5516,7 +5860,9 @@ end
 local x = foo(true, math.random(), 5)
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETIMPORT R2 3 [math.random]
@@ -5524,10 +5870,13 @@ CALL R2 0 1
 MOVE R1 R2
 RETURN R1 1
 RETURN R1 1
-)");
+)"
+    );
 
     // inline function that returns one of the two arguments
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a, b, c)
     if a then
         return b
@@ -5539,7 +5888,9 @@ end
 local x = foo(true, 5, math.random())
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETIMPORT R2 3 [math.random]
@@ -5547,13 +5898,16 @@ CALL R2 0 1
 LOADN R1 5
 RETURN R1 1
 RETURN R1 1
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineProhibited")
 {
     // we can't inline variadic functions
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(...)
     return 42
 end
@@ -5561,16 +5915,21 @@ end
 local x = foo()
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 CALL R1 0 1
 RETURN R1 1
-)");
+)"
+    );
 
     // we can't inline any functions in modules with getfenv/setfenv
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo()
     return 42
 end
@@ -5579,7 +5938,9 @@ local x = foo()
 getfenv()
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
@@ -5587,7 +5948,8 @@ CALL R1 0 1
 GETIMPORT R2 2 [getfenv]
 CALL R2 0 0
 RETURN R1 1
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineProhibitedRecursion")
@@ -5596,14 +5958,18 @@ TEST_CASE("InlineProhibitedRecursion")
     // this is actually profitable in certain cases, but it complicates the compiler as it means a local has multiple registers/values
 
     // in this example, inlining is blocked because we're compiling fact() and we don't yet have the cost model / profitability data for fact()
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function fact(n)
     return if n <= 1 then 1 else fact(n-1)*n
 end
 
 return fact
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 LOADN R2 1
 JUMPIFNOTLE R0 R2 L0
@@ -5614,10 +5980,13 @@ SUBK R3 R0 K0 [1]
 CALL R2 1 1
 MUL R1 R2 R0
 RETURN R1 1
-)");
+)"
+    );
 
     // in this example, inlining of fact() succeeds, but the nested call to fact() fails since fact is already on the inline stack
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function fact(n)
     return if n <= 1 then 1 else fact(n-1)*n
 end
@@ -5629,7 +5998,9 @@ end
 
 return factsafe
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 LOADN R3 1
 JUMPIFLE R3 R0 L0
@@ -5647,13 +6018,16 @@ SUBK R3 R0 K2 [1]
 CALL R2 1 1
 MUL R1 R2 R0
 RETURN R1 1
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineNestedLoops")
 {
     // functions with basic loops get inlined
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(t)
     for i=1,3 do
         t[i] = i
@@ -5664,7 +6038,9 @@ end
 local x = foo({})
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 NEWTABLE R2 0 0
@@ -5676,10 +6052,13 @@ LOADN R3 3
 SETTABLEN R3 R2 3
 MOVE R1 R2
 RETURN R1 1
-)");
+)"
+    );
 
     // we can even unroll the loops based on inline argument
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(t, n)
     for i=1, n do
         t[i] = i
@@ -5690,7 +6069,9 @@ end
 local x = foo({}, 3)
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 NEWTABLE R2 0 0
@@ -5702,13 +6083,16 @@ LOADN R3 3
 SETTABLEN R3 R2 3
 MOVE R1 R2
 RETURN R1 1
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineNestedClosures")
 {
     // we can inline functions that contain/return functions
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(x)
     return function(y) return x + y end
 end
@@ -5716,7 +6100,9 @@ end
 local x = foo(1)(2)
 return x
 )",
-                        2, 2),
+                   2,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADN R2 1
@@ -5725,13 +6111,16 @@ CAPTURE VAL R2
 LOADN R2 2
 CALL R1 1 1
 RETURN R1 1
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineMutate")
 {
     // if the argument is mutated, it gets a register even if the value is constant
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     a = a or 5
     return a
@@ -5740,17 +6129,22 @@ end
 local x = foo(42)
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADN R2 42
 ORK R2 R2 K1 [5]
 MOVE R1 R2
 RETURN R1 1
-)");
+)"
+    );
 
     // if the argument is a local, it can be used directly
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return a
 end
@@ -5759,16 +6153,21 @@ local x = ...
 local y = foo(x)
 return y
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
 MOVE R2 R1
 RETURN R2 1
-)");
+)"
+    );
 
     // ... but if it's mutated, we move it in case it is mutated through a capture during the inlined function
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return a
 end
@@ -5778,7 +6177,9 @@ x = nil
 local y = foo(x)
 return y
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
@@ -5786,10 +6187,13 @@ LOADNIL R1
 MOVE R3 R1
 MOVE R2 R3
 RETURN R2 1
-)");
+)"
+    );
 
     // we also don't inline functions if they have been assigned to
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return a
 end
@@ -5799,20 +6203,25 @@ foo = foo
 local x = foo(42)
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 LOADN R2 42
 CALL R1 1 1
 RETURN R1 1
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineUpval")
 {
     // if the argument is an upvalue, we naturally need to copy it to a local
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return a
 end
@@ -5824,15 +6233,20 @@ function bar()
     return x
 end
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 GETUPVAL R1 0
 MOVE R0 R1
 RETURN R0 1
-)");
+)"
+    );
 
     // if the function uses an upvalue it's more complicated, because the lexical upvalue may become a local
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local b = ...
 
 local function foo(a)
@@ -5842,7 +6256,9 @@ end
 local x = foo(42)
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 GETVARARGS R0 1
 DUPCLOSURE R1 K0 ['foo']
@@ -5850,10 +6266,13 @@ CAPTURE VAL R0
 LOADN R3 42
 ADD R2 R3 R0
 RETURN R2 1
-)");
+)"
+    );
 
     // sometimes the lexical upvalue is deep enough that it's still an upvalue though
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local b = ...
 
 function bar()
@@ -5865,7 +6284,9 @@ function bar()
     return x
 end
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 CAPTURE UPVAL U0
@@ -5873,13 +6294,16 @@ LOADN R2 42
 GETUPVAL R3 0
 ADD R1 R2 R3
 RETURN R1 1
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineCapture")
 {
     // if the argument is captured by a nested closure, normally we can rely on capture by value
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return function() return a end
 end
@@ -5888,17 +6312,22 @@ local x = ...
 local y = foo(x)
 return y
 )",
-                        2, 2),
+                   2,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
 NEWCLOSURE R2 P1
 CAPTURE VAL R1
 RETURN R2 1
-)");
+)"
+    );
 
     // if the argument is a constant, we move it to a register so that capture by value can happen
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return function() return a end
 end
@@ -5906,17 +6335,22 @@ end
 local y = foo(42)
 return y
 )",
-                        2, 2),
+                   2,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADN R2 42
 NEWCLOSURE R1 P1
 CAPTURE VAL R2
 RETURN R1 1
-)");
+)"
+    );
 
     // if the argument is an externally mutated variable, we copy it to an argument and capture it by value
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return function() return a end
 end
@@ -5925,7 +6359,9 @@ local x x = 42
 local y = foo(x)
 return y
 )",
-                        2, 2),
+                   2,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADNIL R1
@@ -5934,10 +6370,13 @@ MOVE R3 R1
 NEWCLOSURE R2 P1
 CAPTURE VAL R3
 RETURN R2 1
-)");
+)"
+    );
 
     // finally, if the argument is mutated internally, we must capture it by reference and close the upvalue
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     a = a or 42
     return function() return a end
@@ -5946,7 +6385,9 @@ end
 local y = foo()
 return y
 )",
-                        2, 2),
+                   2,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADNIL R2
@@ -5955,10 +6396,13 @@ NEWCLOSURE R1 P1
 CAPTURE REF R2
 CLOSEUPVALS R2
 RETURN R1 1
-)");
+)"
+    );
 
     // note that capture might need to be performed during the fallthrough block
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     a = a or 42
     print(function() return a end)
@@ -5968,7 +6412,9 @@ local x = ...
 local y = foo(x)
 return y
 )",
-                        2, 2),
+                   2,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
@@ -5981,12 +6427,15 @@ CALL R4 1 0
 LOADNIL R2
 CLOSEUPVALS R3
 RETURN R2 1
-)");
+)"
+    );
 
     // note that mutation and capture might be inside internal control flow
     // TODO: this has an oddly redundant CLOSEUPVALS after JUMP; it's not due to inlining, and is an artifact of how StatBlock/StatReturn interact
     // fixing this would reduce the number of redundant CLOSEUPVALS a bit but it only affects bytecode size as these instructions aren't executed
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     if not a then
         local b b = 42
@@ -5998,7 +6447,9 @@ local x = ...
 local y = foo(x)
 return y, x
 )",
-                        2, 2),
+                   2,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
@@ -6014,29 +6465,37 @@ L0: LOADNIL R2
 L1: MOVE R3 R2
 MOVE R4 R1
 RETURN R3 2
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineFallthrough")
 {
     // if the function doesn't return, we still fill the results with nil
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo()
 end
 
 local a, b = foo()
 return a, b
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADNIL R1
 LOADNIL R2
 RETURN R1 2
-)");
+)"
+    );
 
     // this happens even if the function returns conditionally
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     if a then return 42 end
 end
@@ -6044,29 +6503,37 @@ end
 local a, b = foo(false)
 return a, b
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADNIL R1
 LOADNIL R2
 RETURN R1 2
-)");
+)"
+    );
 
     // note though that we can't inline a function like this in multret context
     // this is because we don't have a SETTOP instruction
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo()
 end
 
 return foo()
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 CALL R1 0 -1
 RETURN R1 -1
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineArgMismatch")
@@ -6074,7 +6541,9 @@ TEST_CASE("InlineArgMismatch")
     // when inlining a function, we must respect all the usual rules
 
     // caller might not have enough arguments
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return a
 end
@@ -6082,15 +6551,20 @@ end
 local x = foo()
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADNIL R1
 RETURN R1 1
-)");
+)"
+    );
 
     // caller might be using multret for arguments
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a, b)
     return a + b
 end
@@ -6098,7 +6572,9 @@ end
 local x = foo(math.modf(1.5))
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADK R3 K1 [1.5]
@@ -6107,10 +6583,13 @@ GETIMPORT R2 4 [math.modf]
 CALL R2 1 2
 L0: ADD R1 R2 R3
 RETURN R1 1
-)");
+)"
+    );
 
     // caller might be using varargs for arguments
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a, b)
     return a + b
 end
@@ -6118,16 +6597,21 @@ end
 local x = foo(...)
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R2 2
 ADD R1 R2 R3
 RETURN R1 1
-)");
+)"
+    );
 
     // caller might have too many arguments, but we still need to compute them for side effects
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return a
 end
@@ -6135,17 +6619,22 @@ end
 local x = foo(42, print())
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETIMPORT R2 2 [print]
 CALL R2 0 1
 LOADN R1 42
 RETURN R1 1
-)");
+)"
+    );
 
     // caller might not have enough arguments, and the arg might be mutated so it needs a register
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     a = 42
     return a
@@ -6154,20 +6643,25 @@ end
 local x = foo()
 return x
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADNIL R2
 LOADN R2 42
 MOVE R1 R2
 RETURN R1 1
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineMultiple")
 {
     // we call this with a different set of variable/constant args
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a, b)
     return a + b
 end
@@ -6179,7 +6673,9 @@ local c = foo(1, 2)
 local d = foo(x, y)
 return a, b, c, d
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 2
@@ -6189,13 +6685,16 @@ ADD R4 R5 R1
 LOADN R5 3
 ADD R6 R1 R2
 RETURN R3 4
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineChain")
 {
     // inline a chain of functions
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a, b)
     return a + b
 end
@@ -6210,7 +6709,9 @@ end
 
 return (baz())
 )",
-                        3, 2),
+                   3,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 DUPCLOSURE R1 K1 ['bar']
@@ -6219,7 +6720,8 @@ LOADN R4 43
 LOADN R5 41
 MUL R3 R4 R5
 RETURN R3 1
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineThresholds")
@@ -6231,39 +6733,51 @@ TEST_CASE("InlineThresholds")
     };
 
     // this function has enormous register pressure (50 regs) so we choose not to inline it
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo()
     return {{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 end
 
 return (foo())
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 CALL R1 0 1
 RETURN R1 1
-)");
+)"
+    );
 
     // this function has less register pressure but a large cost
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo()
     return {},{},{},{},{}
 end
 
 return (foo())
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 CALL R1 0 1
 RETURN R1 1
-)");
+)"
+    );
 
     // this chain of function is of length 3 but our limit in this test is 2, so we call foo twice
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a, b)
     return a + b
 end
@@ -6278,7 +6792,9 @@ end
 
 return (baz())
 )",
-                        3, 2),
+                   3,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 DUPCLOSURE R1 K1 ['bar']
@@ -6293,18 +6809,23 @@ LOADN R7 -1
 CALL R5 2 1
 MUL R3 R4 R5
 RETURN R3 1
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineIIFE")
 {
     // IIFE with arguments
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function choose(a, b, c)
     return ((function(a, b, c) if a then return b else return c end end)(a, b, c))
 end
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 JUMPIFNOT R0 L0
 MOVE R3 R1
@@ -6312,15 +6833,20 @@ RETURN R3 1
 L0: MOVE R3 R2
 RETURN R3 1
 RETURN R3 1
-)");
+)"
+    );
 
     // IIFE with upvalues
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function choose(a, b, c)
     return ((function() if a then return b else return c end end)())
 end
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 JUMPIFNOT R0 L0
 MOVE R3 R1
@@ -6328,28 +6854,36 @@ RETURN R3 1
 L0: MOVE R3 R2
 RETURN R3 1
 RETURN R3 1
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineRecurseArguments")
 {
     // the example looks silly but we preserve it verbatim as it was found by fuzzer for a previous version of the compiler
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a, b)
 end
 foo(foo(foo,foo(foo,foo))[foo])
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADNIL R3
 LOADNIL R2
 GETTABLE R1 R2 R0
 RETURN R0 0
-)");
+)"
+    );
 
     // verify that invocations of the inlined function in any position for computing the arguments to itself compile
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a, b)
     return a + b
 end
@@ -6358,7 +6892,9 @@ local x, y, z = ...
 
 return foo(foo(x, y), foo(z, 1))
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 3
@@ -6366,11 +6902,14 @@ ADD R5 R1 R2
 ADDK R6 R3 K1 [1]
 ADD R4 R5 R6
 RETURN R4 1
-)");
+)"
+    );
 
     // verify that invocations of the inlined function in any position for computing the arguments to itself compile, including constants and locals
     // note that foo(k1, k2) doesn't get constant folded, so there's still actual math emitted for some of the calls below
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a, b)
     return a + b
 end
@@ -6388,7 +6927,9 @@ return
     foo(x+0, foo(y, z+0)),
     foo(1, foo(x, y))
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 3
@@ -6418,12 +6959,15 @@ ADD R13 R1 R2
 LOADN R14 1
 ADD R12 R14 R13
 RETURN R4 9
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineFastCallK")
 {
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function set(l0)
     rawset({}, l0)
 end
@@ -6431,7 +6975,9 @@ end
 set(false)
 set({})
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['set']
 NEWTABLE R2 0 0
@@ -6446,12 +6992,15 @@ MOVE R4 R1
 GETIMPORT R2 3 [rawset]
 CALL R2 2 0
 L1: RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineExprIndexK")
 {
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local _ = function(l0)
 local _ = nil
 while _(_)[_] do
@@ -6472,7 +7021,9 @@ end
 end
 end
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 []
 L0: LOADNIL R4
@@ -6507,13 +7058,16 @@ RETURN R2 1
 LOADB R2 1
 RETURN R2 1
 L3: RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineHiddenMutation")
 {
     // when the argument is assigned inside the function, we can't reuse the local
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     a = 42
     return a
@@ -6523,7 +7077,9 @@ local x = ...
 local y = foo(x :: number)
 return y
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
@@ -6531,10 +7087,13 @@ MOVE R3 R1
 LOADN R3 42
 MOVE R2 R3
 RETURN R2 1
-)");
+)"
+    );
 
     // and neither can we do that when it's assigned outside the function
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     mutator()
     return a
@@ -6546,7 +7105,9 @@ mutator = function() x = 42 end
 local y = foo(x :: number)
 return y
 )",
-                        2, 2),
+                   2,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 GETVARARGS R1 1
@@ -6559,45 +7120,58 @@ CALL R4 0 0
 MOVE R2 R3
 CLOSEUPVALS R1
 RETURN R2 1
-)");
+)"
+    );
 }
 
 TEST_CASE("InlineMultret")
 {
     // inlining a function in multret context is prohibited since we can't adjust L->top outside of CALL/GETVARARGS
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return a()
 end
 
 return foo(42)
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 LOADN R2 42
 CALL R1 1 -1
 RETURN R1 -1
-)");
+)"
+    );
 
     // however, if we can deduce statically that a function always returns a single value, the inlining will work
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return a
 end
 
 return foo(42)
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADN R1 42
 RETURN R1 1
-)");
+)"
+    );
 
     // this analysis will also propagate through other functions
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return a
 end
@@ -6608,23 +7182,30 @@ end
 
 return bar(42)
 )",
-                        2, 2),
+                   2,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 DUPCLOSURE R1 K1 ['bar']
 LOADN R2 42
 RETURN R2 1
-)");
+)"
+    );
 
     // we currently don't do this analysis fully for recursive functions since they can't be inlined anyway
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return foo(a)
 end
 
 return foo(42)
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 CAPTURE VAL R0
@@ -6632,48 +7213,59 @@ MOVE R1 R0
 LOADN R2 42
 CALL R1 1 -1
 RETURN R1 -1
-)");
+)"
+    );
 
     // we do this for builtins though as we assume getfenv is not used or is not changing arity
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return math.abs(a)
 end
 
 return foo(42)
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADN R1 42
 RETURN R1 1
-)");
+)"
+    );
 }
 
 TEST_CASE("ReturnConsecutive")
 {
     // we can return a single local directly
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local x = ...
 return x
 )"),
         R"(
 GETVARARGS R0 1
 RETURN R0 1
-)");
+)"
+    );
 
     // or multiple, when they are allocated in consecutive registers
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local x, y = ...
 return x, y
 )"),
         R"(
 GETVARARGS R0 2
 RETURN R0 2
-)");
+)"
+    );
 
     // but not if it's an expression
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local x, y = ...
 return x, y + 1
 )"),
@@ -6682,10 +7274,12 @@ GETVARARGS R0 2
 MOVE R2 R0
 ADDK R3 R1 K0 [1]
 RETURN R2 2
-)");
+)"
+    );
 
     // or a local with wrong register number
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local x, y = ...
 return y, x
 )"),
@@ -6694,48 +7288,60 @@ GETVARARGS R0 2
 MOVE R2 R1
 MOVE R3 R0
 RETURN R2 2
-)");
+)"
+    );
 
     // also double check the optimization doesn't trip on no-argument return (these are rare)
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 return
 )"),
         R"(
 RETURN R0 0
-)");
+)"
+    );
 
     // this optimization also works in presence of group / type casts
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local x, y = ...
 return (x), y :: number
 )"),
         R"(
 GETVARARGS R0 2
 RETURN R0 2
-)");
+)"
+    );
 }
 
 TEST_CASE("OptimizationLevel")
 {
     // at optimization level 1, no inlining is performed
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return a
 end
 
 return foo(42)
 )",
-                        1, 1),
+                   1,
+                   1
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 LOADN R2 42
 CALL R1 1 -1
 RETURN R1 -1
-)");
+)"
+    );
 
     // you can override the level from 1 to 2 to force it
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 --!optimize 2
 local function foo(a)
     return a
@@ -6743,30 +7349,40 @@ end
 
 return foo(42)
 )",
-                        1, 1),
+                   1,
+                   1
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADN R1 42
 RETURN R1 1
-)");
+)"
+    );
 
     // you can also override it externally
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function foo(a)
     return a
 end
 
 return foo(42)
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 LOADN R1 42
 RETURN R1 1
-)");
+)"
+    );
 
     // ... after which you can downgrade it back via hot comment
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 --!optimize 1
 local function foo(a)
     return a
@@ -6774,19 +7390,24 @@ end
 
 return foo(42)
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['foo']
 MOVE R1 R0
 LOADN R2 42
 CALL R1 1 -1
 RETURN R1 -1
-)");
+)"
+    );
 }
 
 TEST_CASE("BuiltinFolding")
 {
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 return
     math.abs(-42),
     math.acos(1),
@@ -6841,7 +7462,9 @@ return
     typeof(nil),
     (type("fin"))
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 LOADN R0 42
 LOADN R1 0
@@ -6896,12 +7519,15 @@ LOADN R49 2
 LOADK R50 K3 ['nil']
 LOADK R51 K4 ['string']
 RETURN R0 52
-)");
+)"
+    );
 }
 
 TEST_CASE("BuiltinFoldingProhibited")
 {
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 return
     math.abs(),
     math.max(1, true),
@@ -6914,7 +7540,9 @@ return
     bit32.btest(1, true),
     math.min(1, true)
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 FASTCALL 2 L0
 GETIMPORT R0 2 [math.abs]
@@ -6966,55 +7594,18 @@ LOADK R11 K3 [true]
 GETIMPORT R9 26 [math.min]
 CALL R9 2 1
 L9: RETURN R0 10
-)");
+)"
+    );
 }
 
 TEST_CASE("BuiltinFoldingProhibitedCoverage")
 {
     const char* builtins[] = {
-        "math.abs",
-        "math.acos",
-        "math.asin",
-        "math.atan2",
-        "math.atan",
-        "math.ceil",
-        "math.cosh",
-        "math.cos",
-        "math.deg",
-        "math.exp",
-        "math.floor",
-        "math.fmod",
-        "math.ldexp",
-        "math.log10",
-        "math.log",
-        "math.max",
-        "math.min",
-        "math.pow",
-        "math.rad",
-        "math.sinh",
-        "math.sin",
-        "math.sqrt",
-        "math.tanh",
-        "math.tan",
-        "bit32.arshift",
-        "bit32.band",
-        "bit32.bnot",
-        "bit32.bor",
-        "bit32.bxor",
-        "bit32.btest",
-        "bit32.extract",
-        "bit32.lrotate",
-        "bit32.lshift",
-        "bit32.replace",
-        "bit32.rrotate",
-        "bit32.rshift",
-        "type",
-        "string.byte",
-        "string.len",
-        "typeof",
-        "math.clamp",
-        "math.sign",
-        "math.round",
+        "math.abs",  "math.acos",   "math.asin",   "math.atan2",    "math.atan",     "math.ceil",    "math.cosh",     "math.cos",      "math.deg",
+        "math.exp",  "math.floor",  "math.fmod",   "math.ldexp",    "math.log10",    "math.log",     "math.max",      "math.min",      "math.pow",
+        "math.rad",  "math.sinh",   "math.sin",    "math.sqrt",     "math.tanh",     "math.tan",     "bit32.arshift", "bit32.band",    "bit32.bnot",
+        "bit32.bor", "bit32.bxor",  "bit32.btest", "bit32.extract", "bit32.lrotate", "bit32.lshift", "bit32.replace", "bit32.rrotate", "bit32.rshift",
+        "type",      "string.byte", "string.len",  "typeof",        "math.clamp",    "math.sign",    "math.round",
     };
 
     for (const char* func : builtins)
@@ -7031,7 +7622,9 @@ TEST_CASE("BuiltinFoldingProhibitedCoverage")
 
 TEST_CASE("BuiltinFoldingMultret")
 {
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local NoLanes: Lanes = --[[                             ]] 0b0000000000000000000000000000000
 local OffscreenLane: Lane = --[[                        ]] 0b1000000000000000000000000000000
 
@@ -7046,7 +7639,9 @@ local function getLanesToRetrySynchronouslyOnError(root: FiberRoot): Lanes
     return NoLanes
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 GETTABLEKS R2 R0 K0 ['pendingLanes']
 FASTCALL2K 29 R2 K1 L0 [3221225471]
@@ -7065,23 +7660,30 @@ LOADK R2 K6 [1073741824]
 RETURN R2 1
 L3: LOADN R2 0
 RETURN R2 1
-)");
+)"
+    );
 
     // Note: similarly, here we should have folded the return value but haven't because it's the last call in the sequence
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 return math.abs(-42)
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 LOADN R0 42
 RETURN R0 1
-)");
+)"
+    );
 }
 
 TEST_CASE("LocalReassign")
 {
     // locals can be re-assigned and the register gets reused
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local function test(a, b)
     local c = a
     return c + b
@@ -7090,10 +7692,12 @@ end
         R"(
 ADD R2 R0 R1
 RETURN R2 1
-)");
+)"
+    );
 
     // this works if the expression is using type casts or grouping
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local function test(a, b)
     local c = (a :: number)
     return c + b
@@ -7102,10 +7706,12 @@ end
         R"(
 ADD R2 R0 R1
 RETURN R2 1
-)");
+)"
+    );
 
     // the optimization requires that neither local is mutated
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local function test(a, b)
     local c = a
     c += 0
@@ -7121,10 +7727,12 @@ MOVE R3 R1
 ADDK R1 R1 K0 [0]
 ADD R4 R2 R3
 RETURN R4 1
-)");
+)"
+    );
 
     // sanity check for two values
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local function test(a, b)
     local c = a
     local d = b
@@ -7134,10 +7742,12 @@ end
         R"(
 ADD R2 R0 R1
 RETURN R2 1
-)");
+)"
+    );
 
     // note: we currently only support this for single assignments
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local function test(a, b)
     local c, d = a, b
     return c + d
@@ -7148,29 +7758,35 @@ MOVE R2 R0
 MOVE R3 R1
 ADD R4 R2 R3
 RETURN R4 1
-)");
+)"
+    );
 
     // of course, captures capture the original register as well (by value since it's immutable)
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function test(a, b)
     local c = a
     local d = b
     return function() return c + d end
 end
 )",
-                        1),
+                   1
+               ),
         R"(
 NEWCLOSURE R2 P0
 CAPTURE VAL R0
 CAPTURE VAL R1
 RETURN R2 1
-)");
+)"
+    );
 }
 
 TEST_CASE("MultipleAssignments")
 {
     // order of assignments is left to right
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local a, b
         a, b = f(1), f(2)
     )"),
@@ -7186,10 +7802,12 @@ LOADN R3 2
 CALL R2 1 1
 MOVE R1 R2
 RETURN R0 0
-)");
+)"
+    );
 
     // this includes table assignments
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local t
         t[1], t[2] = 3, 4
     )"),
@@ -7201,10 +7819,12 @@ LOADN R3 4
 SETTABLEN R2 R0 1
 SETTABLEN R3 R1 2
 RETURN R0 0
-)");
+)"
+    );
 
     // semantically, we evaluate the right hand side first; this allows us to e.g swap elements in a table easily
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local t = ...
         t[1], t[2] = t[2], t[1]
     )"),
@@ -7215,14 +7835,16 @@ GETTABLEN R2 R0 1
 SETTABLEN R1 R0 1
 SETTABLEN R2 R0 2
 RETURN R0 0
-)");
+)"
+    );
 
     // however, we need to optimize local assignments; to do this well, we need to handle assignment conflicts
     // let's first go through a few cases where there are no conflicts:
 
     // when multiple assignments have no conflicts (all local vars are read after being assigned), codegen is the same as a series of single
     // assignments
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local xm1, x, xp1, xi = ...
 
         xm1,x,xp1,xi = x,xp1,xp1+1,xi-1
@@ -7234,10 +7856,12 @@ MOVE R1 R2
 ADDK R2 R2 K0 [1]
 SUBK R3 R3 K0 [1]
 RETURN R0 0
-)");
+)"
+    );
 
     // similar example to above from a more complex case
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local a, b, c, d, e, f, g, h, t1, t2 = ...
 
         h, g, f, e, d, c, b, a = g, f, e, d + t1, c, b, a, t1 + t2
@@ -7253,11 +7877,13 @@ MOVE R2 R1
 MOVE R1 R0
 ADD R0 R8 R9
 RETURN R0 0
-)");
+)"
+    );
 
     // when locals have a conflict, we assign temporaries instead of locals, and at the end copy the values back
     // the basic example of this is a swap/rotate
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local a, b = ...
         a, b = b, a
     )"),
@@ -7267,9 +7893,11 @@ MOVE R2 R1
 MOVE R1 R0
 MOVE R0 R2
 RETURN R0 0
-)");
+)"
+    );
 
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local a, b, c = ...
         a, b, c = c, a, b
     )"),
@@ -7281,9 +7909,11 @@ MOVE R2 R1
 MOVE R0 R3
 MOVE R1 R4
 RETURN R0 0
-)");
+)"
+    );
 
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local a, b, c = ...
         a, b, c = b, c, a
     )"),
@@ -7294,10 +7924,12 @@ MOVE R1 R2
 MOVE R2 R0
 MOVE R0 R3
 RETURN R0 0
-)");
+)"
+    );
 
     // multiple assignments with multcall handling - foo() evalutes to temporary registers and they are copied out to target
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local a, b, c, d = ...
         a, b, c, d = 1, foo()
     )"),
@@ -7310,10 +7942,12 @@ MOVE R1 R4
 MOVE R2 R5
 MOVE R3 R6
 RETURN R0 0
-)");
+)"
+    );
 
     // note that during this we still need to handle local reassignment, eg when table assignments are performed
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local a, b, c, d = ...
         a, b[a], c[d], d = 1, foo()
     )"),
@@ -7327,11 +7961,13 @@ SETTABLE R7 R2 R3
 MOVE R0 R4
 MOVE R3 R8
 RETURN R0 0
-)");
+)"
+    );
 
     // multiple assignments with multcall handling - foo evaluates to a single argument so all remaining locals are assigned to nil
     // note that here we don't assign the locals directly, as this case is very rare so we use the similar code path as above
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local a, b, c, d = ...
         a, b, c, d = 1, foo
     )"),
@@ -7345,10 +7981,12 @@ MOVE R1 R4
 MOVE R2 R5
 MOVE R3 R6
 RETURN R0 0
-)");
+)"
+    );
 
     // note that we also try to use locals as a source of assignment directly when assigning fields; this works using old local value when possible
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local a, b = ...
         a[1], a[2] = b, b + 1
     )"),
@@ -7358,10 +7996,12 @@ ADDK R2 R1 K0 [1]
 SETTABLEN R1 R0 1
 SETTABLEN R2 R0 2
 RETURN R0 0
-)");
+)"
+    );
 
     // ... of course if the local is reassigned, we defer the assignment until later
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local a, b = ...
         b, a[1] = 42, b
     )"),
@@ -7371,10 +8011,12 @@ LOADN R2 42
 SETTABLEN R1 R0 1
 MOVE R1 R2
 RETURN R0 0
-)");
+)"
+    );
 
     // when there are more expressions when values, we evalute them for side effects, but they also participate in conflict handling
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local a, b = ...
         a, b = 1, 2, a + b
     )"),
@@ -7386,10 +8028,12 @@ ADD R4 R0 R1
 MOVE R0 R2
 MOVE R1 R3
 RETURN R0 0
-)");
+)"
+    );
 
     // because we perform assignments to complex l-values after assignments to locals, we make sure register conflicts are tracked accordingly
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
         local a, b = ...
         a[1], b = b, b + 1
     )"),
@@ -7399,14 +8043,16 @@ ADDK R2 R1 K0 [1]
 SETTABLEN R1 R0 1
 MOVE R1 R2
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("BuiltinExtractK")
 {
     // below, K0 refers to a packed f+w constant for bit32.extractk builtin
     // K1 and K2 refer to 1 and 3 and are only used during fallback path
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local v = ...
 
 return bit32.extract(v, 1, 3)
@@ -7420,7 +8066,8 @@ LOADK R4 K2 [3]
 GETIMPORT R1 5 [bit32.extract]
 CALL R1 3 -1
 L0: RETURN R1 -1
-)");
+)"
+    );
 }
 
 TEST_CASE("SkipSelfAssignment")
@@ -7451,7 +8098,8 @@ RETURN R0 0
 TEST_CASE("ElideJumpAfterIf")
 {
     // break refers to outer loop => we can elide unconditional branches
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local foo, bar = ...
 repeat
     if foo then break
@@ -7471,10 +8119,12 @@ CALL R2 1 0
 JUMPIFEQ R0 R1 L2
 JUMPBACK L0
 L2: RETURN R0 0
-)");
+)"
+    );
 
     // break refers to inner loop => branches remain
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local foo, bar = ...
 repeat
     if foo then while true do break end
@@ -7498,16 +8148,21 @@ CALL R2 1 0
 JUMPIFEQ R0 R1 L3
 JUMPBACK L0
 L3: RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("BuiltinArity")
 {
     // by default we can't assume that we know parameter/result count for builtins as they can be overridden at runtime
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 return math.abs(unknown())
 )",
-                        0, 1),
+                   0,
+                   1
+               ),
         R"(
 GETIMPORT R1 1 [unknown]
 CALL R1 0 -1
@@ -7515,14 +8170,19 @@ FASTCALL 2 L0
 GETIMPORT R0 4 [math.abs]
 CALL R0 -1 -1
 L0: RETURN R0 -1
-)");
+)"
+    );
 
     // however, when using optimization level 2, we assume compile time knowledge about builtin behavior even if we can't deoptimize that with fenv
     // in the test case below, this allows us to synthesize a more efficient FASTCALL1 (and use a fixed-return call to unknown)
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 return math.abs(unknown())
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 GETIMPORT R1 1 [unknown]
 CALL R1 0 1
@@ -7530,13 +8190,18 @@ FASTCALL1 2 R1 L0
 GETIMPORT R0 4 [math.abs]
 CALL R0 1 1
 L0: RETURN R0 1
-)");
+)"
+    );
 
     // some builtins are variadic, and as such they can't use fixed-length fastcall variants
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 return math.max(0, unknown())
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 LOADN R1 0
 GETIMPORT R2 1 [unknown]
@@ -7545,14 +8210,19 @@ FASTCALL 18 L0
 GETIMPORT R0 4 [math.max]
 CALL R0 -1 1
 L0: RETURN R0 1
-)");
+)"
+    );
 
     // some builtins are not variadic but don't have a fixed number of arguments; we currently don't optimize this although we might start to in the
     // future
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 return bit32.extract(0, 1, unknown())
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 LOADN R1 0
 LOADN R2 1
@@ -7562,14 +8232,19 @@ FASTCALL 34 L0
 GETIMPORT R0 4 [bit32.extract]
 CALL R0 -1 1
 L0: RETURN R0 1
-)");
+)"
+    );
 
     // some builtins are not variadic and have a fixed number of arguments but are not none-safe, meaning that we can't replace calls that may
     // return none with calls that will return nil
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 return type(unknown())
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 GETIMPORT R1 1 [unknown]
 CALL R1 0 -1
@@ -7577,17 +8252,22 @@ FASTCALL 40 L0
 GETIMPORT R0 3 [type]
 CALL R0 -1 1
 L0: RETURN R0 1
-)");
+)"
+    );
 
     // importantly, this optimization also helps us get around the multret inlining restriction for builtin wrappers
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function new()
     return setmetatable({}, MT)
 end
 
 return new()
 )",
-                        1, 2),
+                   1,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['new']
 NEWTABLE R2 0 0
@@ -7596,16 +8276,21 @@ FASTCALL2 61 R2 R3 L0
 GETIMPORT R1 4 [setmetatable]
 CALL R1 2 1
 L0: RETURN R1 1
-)");
+)"
+    );
 
     // note that the results of this optimization are benign in fixed-arg contexts which dampens the effect of fenv substitutions on correctness in
     // practice
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local x = ...
 local y, z = type(x)
 return type(y, z)
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 GETVARARGS R0 1
 FASTCALL1 40 R0 L0
@@ -7618,12 +8303,14 @@ MOVE R5 R2
 GETIMPORT R3 1 [type]
 CALL R3 2 1
 L1: RETURN R3 1
-)");
+)"
+    );
 }
 
 TEST_CASE("EncodedTypeTable")
 {
-    CHECK_EQ("\n" + compileTypeTable(R"(
+    CHECK_EQ(
+        "\n" + compileTypeTable(R"(
 function myfunc(test: string, num: number)
     print(test)
 end
@@ -7653,9 +8340,11 @@ myfunc('test')
 2: function(string, number)
 3: function(any, number)
 5: function(function)
-)");
+)"
+    );
 
-    CHECK_EQ("\n" + compileTypeTable(R"(
+    CHECK_EQ(
+        "\n" + compileTypeTable(R"(
 local Str = {
     a = 1
 }
@@ -7669,12 +8358,14 @@ Str:test(234)
 )"),
         R"(
 0: function(table, number)
-)");
+)"
+    );
 }
 
 TEST_CASE("HostTypesAreUserdata")
 {
-    CHECK_EQ("\n" + compileTypeTable(R"(
+    CHECK_EQ(
+        "\n" + compileTypeTable(R"(
 function myfunc(test: string, num: number)
     print(test)
 end
@@ -7695,12 +8386,14 @@ end
 1: function(userdata, number)
 2: function(string, string)
 3: function(any, userdata)
-)");
+)"
+    );
 }
 
 TEST_CASE("HostTypesVector")
 {
-    CHECK_EQ("\n" + compileTypeTable(R"(
+    CHECK_EQ(
+        "\n" + compileTypeTable(R"(
 function myfunc(test: Instance, pos: Vector3)
 end
 
@@ -7718,12 +8411,14 @@ end
 0: function(userdata, vector)
 1: function(userdata, any)
 2: function(userdata, number)
-)");
+)"
+    );
 }
 
 TEST_CASE("TypeAliasScoping")
 {
-    CHECK_EQ("\n" + compileTypeTable(R"(
+    CHECK_EQ(
+        "\n" + compileTypeTable(R"(
 do
     type Part = number
 end
@@ -7752,12 +8447,14 @@ type Instance = string
 1: function(number, number)
 2: function(number, number)
 3: function(string, number)
-)");
+)"
+    );
 }
 
 TEST_CASE("TypeAliasResolve")
 {
-    CHECK_EQ("\n" + compileTypeTable(R"(
+    CHECK_EQ(
+        "\n" + compileTypeTable(R"(
 type Foo1 = number
 type Foo2 = { number }
 type Foo3 = Part
@@ -7774,12 +8471,14 @@ end
         R"(
 0: function(number, table, userdata, any, any)
 1: function(number, any)
-)");
+)"
+    );
 }
 
 TEST_CASE("TypeUnionIntersection")
 {
-    CHECK_EQ("\n" + compileTypeTable(R"(
+    CHECK_EQ(
+        "\n" + compileTypeTable(R"(
 function myfunc(test: string | nil, foo: nil)
 end
 
@@ -7797,64 +8496,84 @@ end
 1: function(any, nil)
 2: function(any, nil)
 3: function(any, nil)
-)");
+)"
+    );
 }
 
 TEST_CASE("BuiltinFoldMathK")
 {
     // we can fold math.pi at optimization level 2
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function test()
     return math.pi * 2
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 LOADK R0 K0 [6.2831853071795862]
 RETURN R0 1
-)");
+)"
+    );
 
     // we don't do this at optimization level 1 because it may interfere with environment substitution
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function test()
     return math.pi * 2
 end
 )",
-                        0, 1),
+                   0,
+                   1
+               ),
         R"(
 GETIMPORT R1 3 [math.pi]
 MULK R0 R1 K0 [2]
 RETURN R0 1
-)");
+)"
+    );
 
     // we also don't do it if math global is assigned to
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 function test()
     return math.pi * 2
 end
 
 math = { pi = 4 }
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 GETGLOBAL R2 K1 ['math']
 GETTABLEKS R1 R2 K2 ['pi']
 MULK R0 R1 K0 [2]
 RETURN R0 1
-)");
+)"
+    );
 }
 
 TEST_CASE("NoBuiltinFoldFenv")
 {
     // builtin folding is disabled when getfenv/setfenv is used in the module
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 getfenv()
 
 function test()
     return math.pi, math.sin(0)
 end
 )",
-                        0, 2),
+                   0,
+                   2
+               ),
         R"(
 GETIMPORT R0 2 [math.pi]
 LOADN R2 0
@@ -7862,13 +8581,15 @@ FASTCALL1 24 R2 L0
 GETIMPORT R1 4 [math.sin]
 CALL R1 1 1
 L0: RETURN R0 2
-)");
+)"
+    );
 }
 
 TEST_CASE("IfThenElseAndOr")
 {
     // if v then v else k can be optimized to ORK
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local x = ...
 return if x then x else 0
 )"),
@@ -7876,10 +8597,12 @@ return if x then x else 0
 GETVARARGS R0 1
 ORK R1 R0 K0 [0]
 RETURN R1 1
-)");
+)"
+    );
 
     // if v then v else l can be optimized to OR
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local x, y = ...
 return if x then x else y
 )"),
@@ -7887,10 +8610,12 @@ return if x then x else y
 GETVARARGS R0 2
 OR R2 R0 R1
 RETURN R2 1
-)");
+)"
+    );
 
     // this also works in presence of type casts
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local x, y = ...
 return if x then x :: number else 0
 )"),
@@ -7898,10 +8623,12 @@ return if x then x :: number else 0
 GETVARARGS R0 2
 ORK R2 R0 K0 [0]
 RETURN R2 1
-)");
+)"
+    );
 
     // if v then k else v can be optimized to ANDK
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local x = ...
 return if x then 0 else x
 )"),
@@ -7909,10 +8636,12 @@ return if x then 0 else x
 GETVARARGS R0 1
 ANDK R1 R0 K0 [0]
 RETURN R1 1
-)");
+)"
+    );
 
     // if v then l else v can be optimized to AND
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local x, y = ...
 return if x then y else x
 )"),
@@ -7920,10 +8649,12 @@ return if x then y else x
 GETVARARGS R0 2
 AND R2 R0 R1
 RETURN R2 1
-)");
+)"
+    );
 
     // this also works in presence of type casts
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local x, y = ...
 return if x then y else x :: number
 )"),
@@ -7931,10 +8662,12 @@ return if x then y else x :: number
 GETVARARGS R0 2
 AND R2 R0 R1
 RETURN R2 1
-)");
+)"
+    );
 
     // all of the above work when the target is a temporary register, which is safe because the value is only mutated once
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local x, y = ...
 x = if x then x else y
 x = if x then y else x
@@ -7944,10 +8677,12 @@ GETVARARGS R0 2
 OR R0 R0 R1
 AND R0 R0 R1
 RETURN R0 0
-)");
+)"
+    );
 
     // note that we can't do this transformation if the expression has possible side effects
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local x = ...
 return if x.data then x.data else 0
 )"),
@@ -7959,13 +8694,15 @@ GETTABLEKS R1 R0 K0 ['data']
 RETURN R1 1
 L0: LOADN R1 0
 RETURN R1 1
-)");
+)"
+    );
 }
 
 TEST_CASE("SideEffects")
 {
     // we do not evaluate expressions in some cases when we know they can't carry side effects
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local x = 5, print
 local y = 5, 42
 local z = 5, table.find -- considered side effecting because of metamethods
@@ -7976,10 +8713,13 @@ LOADN R1 5
 LOADN R2 5
 GETIMPORT R3 2 [table.find]
 RETURN R0 0
-)");
+)"
+    );
 
     // this also applies to returns in cases where a function gets inlined
-    CHECK_EQ("\n" + compileFunction(R"(
+    CHECK_EQ(
+        "\n" + compileFunction(
+                   R"(
 local function test1()
     return 42
 end
@@ -8001,7 +8741,9 @@ test2()
 test3()
 test4()
 )",
-                        5, 2),
+                   5,
+                   2
+               ),
         R"(
 DUPCLOSURE R0 K0 ['test1']
 DUPCLOSURE R1 K1 ['test2']
@@ -8010,7 +8752,8 @@ CAPTURE VAL R2
 DUPCLOSURE R3 K3 ['test4']
 GETIMPORT R4 6 [table.find]
 RETURN R0 0
-)");
+)"
+    );
 }
 
 TEST_CASE("IfElimination")
@@ -8084,7 +8827,8 @@ TEST_CASE("ArithRevK")
 {
     // - and / have special optimized form for reverse constants; in the future, + and * will likely get compiled to ADDK/MULK
     // other operators are not important enough to optimize reverse constant forms for
-    CHECK_EQ("\n" + compileFunction0(R"(
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
 local x: number = unknown
 return 2 + x, 2 - x, 2 * x, 2 / x, 2 % x, 2 // x, 2 ^ x
 )"),
@@ -8103,7 +8847,8 @@ IDIV R6 R7 R0
 LOADN R8 2
 POW R7 R8 R0
 RETURN R1 7
-)");
+)"
+    );
 }
 
 TEST_SUITE_END();

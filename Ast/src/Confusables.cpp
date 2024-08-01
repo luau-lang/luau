@@ -1808,9 +1808,15 @@ static const Confusable kConfusables[] =
 
 const char* findConfusable(uint32_t codepoint)
 {
-    auto it = std::lower_bound(std::begin(kConfusables), std::end(kConfusables), codepoint, [](const Confusable& lhs, uint32_t rhs) {
-        return lhs.codepoint < rhs;
-    });
+    auto it = std::lower_bound(
+        std::begin(kConfusables),
+        std::end(kConfusables),
+        codepoint,
+        [](const Confusable& lhs, uint32_t rhs)
+        {
+            return lhs.codepoint < rhs;
+        }
+    );
 
     return (it != std::end(kConfusables) && it->codepoint == codepoint) ? it->text : nullptr;
 }

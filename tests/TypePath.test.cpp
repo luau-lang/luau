@@ -594,8 +594,10 @@ TEST_CASE("chained")
 {
     ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
-    CHECK(PathBuilder().index(0).readProp("foo").mt().readProp("bar").args().index(1).build() ==
-          Path({Index{0}, TypePath::Property::read("foo"), TypeField::Metatable, TypePath::Property::read("bar"), PackField::Arguments, Index{1}}));
+    CHECK(
+        PathBuilder().index(0).readProp("foo").mt().readProp("bar").args().index(1).build() ==
+        Path({Index{0}, TypePath::Property::read("foo"), TypeField::Metatable, TypePath::Property::read("bar"), PackField::Arguments, Index{1}})
+    );
 }
 
 TEST_SUITE_END(); // TypePathBuilder

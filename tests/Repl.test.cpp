@@ -52,9 +52,14 @@ public:
     {
         CompletionSet result;
         int top = lua_gettop(L);
-        getCompletions(L, inputPrefix, [&result](const std::string& completion, const std::string& display) {
-            result.insert(Completion{completion, display});
-        });
+        getCompletions(
+            L,
+            inputPrefix,
+            [&result](const std::string& completion, const std::string& display)
+            {
+                result.insert(Completion{completion, display});
+            }
+        );
         // Ensure that generating completions doesn't change the position of luau's stack top.
         CHECK(top == lua_gettop(L));
 

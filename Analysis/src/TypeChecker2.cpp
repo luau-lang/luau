@@ -442,8 +442,12 @@ struct TypeChecker2
             return instance;
         seenTypeFunctionInstances.insert(instance);
 
-        ErrorVec errors = reduceTypeFunctions(instance, location,
-            TypeFunctionContext{NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits}, true)
+        ErrorVec errors = reduceTypeFunctions(
+                              instance,
+                              location,
+                              TypeFunctionContext{NotNull{&module->internalTypes}, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits},
+                              true
+        )
                               .errors;
         if (!isErrorSuppressing(location, instance))
             reportErrors(std::move(errors));
@@ -488,7 +492,8 @@ struct TypeChecker2
                 {
                     TypeId argTy = lookupAnnotation(ref->parameters.data[0].type);
                     luauPrintLine(format(
-                        "_luau_print (%d, %d): %s\n", annotation->location.begin.line, annotation->location.begin.column, toString(argTy).c_str()));
+                        "_luau_print (%d, %d): %s\n", annotation->location.begin.line, annotation->location.begin.column, toString(argTy).c_str()
+                    ));
                     return follow(argTy);
                 }
             }
@@ -597,6 +602,8 @@ struct TypeChecker2
             return visit(s);
         else if (auto s = stat->as<AstStatTypeAlias>())
             return visit(s);
+        else if (auto f = stat->as<AstStatTypeFunction>())
+            return visit(f);
         else if (auto s = stat->as<AstStatDeclareFunction>())
             return visit(s);
         else if (auto s = stat->as<AstStatDeclareGlobal>())
@@ -728,7 +735,8 @@ struct TypeChecker2
                             local->values.data[local->values.size - 1]->is<AstExprCall>() ? CountMismatch::FunctionResult
                                                                                           : CountMismatch::ExprListResult,
                         },
-                        errorLocation);
+                        errorLocation
+                    );
                 }
             }
         }
@@ -744,7 +752,8 @@ struct TypeChecker2
             testIsSubtype(builtinTypes->numberType, annotatedType, forStatement->var->location);
         }
 
-        auto checkNumber = [this](AstExpr* expr) {
+        auto checkNumber = [this](AstExpr* expr)
+        {
             if (!expr)
                 return;
 
@@ -839,7 +848,8 @@ struct TypeChecker2
         }
         TypeId iteratorTy = follow(iteratorTypes.head[0]);
 
-        auto checkFunction = [this, &arena, &forInStatement, &variableTypes](const FunctionType* iterFtv, std::vector<TypeId> iterTys, bool isMm) {
+        auto checkFunction = [this, &arena, &forInStatement, &variableTypes](const FunctionType* iterFtv, std::vector<TypeId> iterTys, bool isMm)
+        {
             if (iterTys.size() < 1 || iterTys.size() > 3)
             {
                 if (isMm)
@@ -856,7 +866,8 @@ struct TypeChecker2
             {
                 if (isMm)
                     reportError(
-                        GenericError{"__iter metamethod's next() function does not return enough values"}, getLocation(forInStatement->values));
+                        GenericError{"__iter metamethod's next() function does not return enough values"}, getLocation(forInStatement->values)
+                    );
                 else
                     reportError(GenericError{"next() does not return enough values"}, forInStatement->values.data[0]->location);
             }
@@ -1143,6 +1154,13 @@ struct TypeChecker2
         visit(stat->type);
     }
 
+    void visit(AstStatTypeFunction* stat)
+    {
+        // TODO: add type checking for user-defined type functions
+
+        reportError(TypeError{stat->location, GenericError{"This syntax is not supported"}});
+    }
+
     void visit(AstTypeList types)
     {
         for (AstType* type : types.types)
@@ -1348,11 +1366,6 @@ struct TypeChecker2
 
             args.head.push_back(lookupType(indexExpr->expr));
             argExprs.push_back(indexExpr->expr);
-        }
-        else if (findMetatableEntry(builtinTypes, module->errors, *originalCallTy, "__call", call->func->location))
-        {
-            args.head.insert(args.head.begin(), lookupType(call->func));
-            argExprs.push_back(call->func);
         }
 
         for (size_t i = 0; i < call->args.size; ++i)
@@ -1698,12 +1711,17 @@ struct TypeChecker2
                         // together. For now, this will work.
                         reportError(
                             GenericError{format(
-                                "Parameter '%s' has been reduced to never. This function is not callable with any possible value.", arg->name.value)},
-                            arg->location);
+                                "Parameter '%s' has been reduced to never. This function is not callable with any possible value.", arg->name.value
+                            )},
+                            arg->location
+                        );
                         for (const auto& [site, component] : *contributors)
-                            reportError(ExtraInformation{format("Parameter '%s' is required to be a subtype of '%s' here.", arg->name.value,
-                                            toString(component).c_str())},
-                                site);
+                            reportError(
+                                ExtraInformation{
+                                    format("Parameter '%s' is required to be a subtype of '%s' here.", arg->name.value, toString(component).c_str())
+                                },
+                                site
+                            );
                     }
                 }
 
@@ -1739,8 +1757,10 @@ struct TypeChecker2
                 {
                     TypeFunctionReductionGuessResult result = guesser.guessTypeFunctionReductionForFunctionExpr(*fn, inferredFtv, retTy);
                     if (result.shouldRecommendAnnotation)
-                        reportError(ExplicitFunctionAnnotationRecommended{std::move(result.guessedFunctionAnnotations), result.guessedReturnType},
-                            fn->location);
+                        reportError(
+                            ExplicitFunctionAnnotationRecommended{std::move(result.guessedFunctionAnnotations), result.guessedReturnType},
+                            fn->location
+                        );
                 }
             }
         }
@@ -1881,9 +1901,12 @@ struct TypeChecker2
         if ((get<BlockedType>(leftType) || get<FreeType>(leftType) || get<GenericType>(leftType)) && !isEquality && !isLogical)
         {
             auto name = getIdentifierOfBaseVar(expr->left);
-            reportError(CannotInferBinaryOperation{expr->op, name,
-                            isComparison ? CannotInferBinaryOperation::OpKind::Comparison : CannotInferBinaryOperation::OpKind::Operation},
-                expr->location);
+            reportError(
+                CannotInferBinaryOperation{
+                    expr->op, name, isComparison ? CannotInferBinaryOperation::OpKind::Comparison : CannotInferBinaryOperation::OpKind::Operation
+                },
+                expr->location
+            );
             return leftType;
         }
 
@@ -1897,7 +1920,8 @@ struct TypeChecker2
 
             if (isEquality && !matches)
             {
-                auto testUnion = [&matches, builtinTypes = this->builtinTypes](const UnionType* utv, std::optional<TypeId> otherMt) {
+                auto testUnion = [&matches, builtinTypes = this->builtinTypes](const UnionType* utv, std::optional<TypeId> otherMt)
+                {
                     for (TypeId option : utv)
                     {
                         if (getMetatable(follow(option), builtinTypes) == otherMt)
@@ -1929,9 +1953,15 @@ struct TypeChecker2
 
             if (!matches && isComparison)
             {
-                reportError(GenericError{format("Types %s and %s cannot be compared with %s because they do not have the same metatable",
-                                toString(leftType).c_str(), toString(rightType).c_str(), toString(expr->op).c_str())},
-                    expr->location);
+                reportError(
+                    GenericError{format(
+                        "Types %s and %s cannot be compared with %s because they do not have the same metatable",
+                        toString(leftType).c_str(),
+                        toString(rightType).c_str(),
+                        toString(expr->op).c_str()
+                    )},
+                    expr->location
+                );
 
                 return builtinTypes->errorRecoveryType();
             }
@@ -2034,17 +2064,29 @@ struct TypeChecker2
                 {
                     if (isComparison)
                     {
-                        reportError(GenericError{format(
-                                        "Types '%s' and '%s' cannot be compared with %s because neither type's metatable has a '%s' metamethod",
-                                        toString(leftType).c_str(), toString(rightType).c_str(), toString(expr->op).c_str(), it->second)},
-                            expr->location);
+                        reportError(
+                            GenericError{format(
+                                "Types '%s' and '%s' cannot be compared with %s because neither type's metatable has a '%s' metamethod",
+                                toString(leftType).c_str(),
+                                toString(rightType).c_str(),
+                                toString(expr->op).c_str(),
+                                it->second
+                            )},
+                            expr->location
+                        );
                     }
                     else
                     {
-                        reportError(GenericError{format(
-                                        "Operator %s is not applicable for '%s' and '%s' because neither type's metatable has a '%s' metamethod",
-                                        toString(expr->op).c_str(), toString(leftType).c_str(), toString(rightType).c_str(), it->second)},
-                            expr->location);
+                        reportError(
+                            GenericError{format(
+                                "Operator %s is not applicable for '%s' and '%s' because neither type's metatable has a '%s' metamethod",
+                                toString(expr->op).c_str(),
+                                toString(leftType).c_str(),
+                                toString(rightType).c_str(),
+                                it->second
+                            )},
+                            expr->location
+                        );
                     }
 
                     return builtinTypes->errorRecoveryType();
@@ -2053,15 +2095,27 @@ struct TypeChecker2
                 {
                     if (isComparison)
                     {
-                        reportError(GenericError{format("Types '%s' and '%s' cannot be compared with %s because neither type has a metatable",
-                                        toString(leftType).c_str(), toString(rightType).c_str(), toString(expr->op).c_str())},
-                            expr->location);
+                        reportError(
+                            GenericError{format(
+                                "Types '%s' and '%s' cannot be compared with %s because neither type has a metatable",
+                                toString(leftType).c_str(),
+                                toString(rightType).c_str(),
+                                toString(expr->op).c_str()
+                            )},
+                            expr->location
+                        );
                     }
                     else
                     {
-                        reportError(GenericError{format("Operator %s is not applicable for '%s' and '%s' because neither type has a metatable",
-                                        toString(expr->op).c_str(), toString(leftType).c_str(), toString(rightType).c_str())},
-                            expr->location);
+                        reportError(
+                            GenericError{format(
+                                "Operator %s is not applicable for '%s' and '%s' because neither type has a metatable",
+                                toString(expr->op).c_str(),
+                                toString(leftType).c_str(),
+                                toString(rightType).c_str()
+                            )},
+                            expr->location
+                        );
                     }
 
                     return builtinTypes->errorRecoveryType();
@@ -2111,9 +2165,15 @@ struct TypeChecker2
                 return builtinTypes->booleanType;
             }
 
-            reportError(GenericError{format("Types '%s' and '%s' cannot be compared with relational operator %s", toString(leftType).c_str(),
-                            toString(rightType).c_str(), toString(expr->op).c_str())},
-                expr->location);
+            reportError(
+                GenericError{format(
+                    "Types '%s' and '%s' cannot be compared with relational operator %s",
+                    toString(leftType).c_str(),
+                    toString(rightType).c_str(),
+                    toString(expr->op).c_str()
+                )},
+                expr->location
+            );
             return builtinTypes->errorRecoveryType();
         }
 
@@ -2297,13 +2357,23 @@ struct TypeChecker2
             size_t typesRequired = alias->typeParams.size();
             size_t packsRequired = alias->typePackParams.size();
 
-            bool hasDefaultTypes = std::any_of(alias->typeParams.begin(), alias->typeParams.end(), [](auto&& el) {
-                return el.defaultValue.has_value();
-            });
+            bool hasDefaultTypes = std::any_of(
+                alias->typeParams.begin(),
+                alias->typeParams.end(),
+                [](auto&& el)
+                {
+                    return el.defaultValue.has_value();
+                }
+            );
 
-            bool hasDefaultPacks = std::any_of(alias->typePackParams.begin(), alias->typePackParams.end(), [](auto&& el) {
-                return el.defaultValue.has_value();
-            });
+            bool hasDefaultPacks = std::any_of(
+                alias->typePackParams.begin(),
+                alias->typePackParams.end(),
+                [](auto&& el)
+                {
+                    return el.defaultValue.has_value();
+                }
+            );
 
             if (!ty->hasParameterList)
             {
@@ -2385,13 +2455,15 @@ struct TypeChecker2
 
             if (typesProvided != typesRequired || packsProvided != packsRequired)
             {
-                reportError(IncorrectGenericParameterCount{
-                                /* name */ ty->name.value,
-                                /* typeFun */ *alias,
-                                /* actualParameters */ typesProvided,
-                                /* actualPackParameters */ packsProvided,
-                            },
-                    ty->location);
+                reportError(
+                    IncorrectGenericParameterCount{
+                        /* name */ ty->name.value,
+                        /* typeFun */ *alias,
+                        /* actualParameters */ typesProvided,
+                        /* actualPackParameters */ packsProvided,
+                    },
+                    ty->location
+                );
             }
         }
         else
@@ -2403,7 +2475,8 @@ struct TypeChecker2
                         ty->name.value,
                         SwappedGenericTypeParameter::Kind::Type,
                     },
-                    ty->location);
+                    ty->location
+                );
             }
             else
             {
@@ -2501,7 +2574,8 @@ struct TypeChecker2
                         tp->genericName.value,
                         SwappedGenericTypeParameter::Kind::Pack,
                     },
-                    tp->location);
+                    tp->location
+                );
             }
             else
             {
@@ -2715,8 +2789,14 @@ struct TypeChecker2
      *     contains the prop, and
      * * A vector of types that do not contain the prop.
      */
-    PropertyTypes lookupProp(const NormalizedType* norm, const std::string& prop, ValueContext context, const Location& location,
-        TypeId astIndexExprType, std::vector<TypeError>& errors)
+    PropertyTypes lookupProp(
+        const NormalizedType* norm,
+        const std::string& prop,
+        ValueContext context,
+        const Location& location,
+        TypeId astIndexExprType,
+        std::vector<TypeError>& errors
+    )
     {
         std::vector<TypeId> typesOfProp;
         std::vector<TypeId> typesMissingTheProp;
@@ -2724,7 +2804,8 @@ struct TypeChecker2
         // this is `false` if we ever hit the resource limits during any of our uses of `fetch`.
         bool normValid = true;
 
-        auto fetch = [&](TypeId ty) {
+        auto fetch = [&](TypeId ty)
+        {
             NormalizationResult result = normalizer.isInhabited(ty);
             if (result == NormalizationResult::HitLimits)
                 normValid = false;
@@ -2875,8 +2956,15 @@ struct TypeChecker2
         std::optional<TypeId> result;
     };
 
-    PropertyType hasIndexTypeFromType(TypeId ty, const std::string& prop, ValueContext context, const Location& location, DenseHashSet<TypeId>& seen,
-        TypeId astIndexExprType, std::vector<TypeError>& errors)
+    PropertyType hasIndexTypeFromType(
+        TypeId ty,
+        const std::string& prop,
+        ValueContext context,
+        const Location& location,
+        DenseHashSet<TypeId>& seen,
+        TypeId astIndexExprType,
+        std::vector<TypeError>& errors
+    )
     {
         // If we have already encountered this type, we must assume that some
         // other codepath will do the right thing and signal false if the
@@ -2982,7 +3070,8 @@ struct TypeChecker2
         std::string_view sv(utk->key);
         std::set<Name> candidates;
 
-        auto accumulate = [&](const TableType::Props& props) {
+        auto accumulate = [&](const TableType::Props& props)
+        {
             for (const auto& [name, ty] : props)
             {
                 if (sv != name && equalsLower(sv, name))
@@ -3055,14 +3144,26 @@ struct TypeChecker2
     }
 };
 
-void check(NotNull<BuiltinTypes> builtinTypes, NotNull<UnifierSharedState> unifierState, NotNull<TypeCheckLimits> limits, DcrLogger* logger,
-    const SourceModule& sourceModule, Module* module)
+void check(
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<UnifierSharedState> unifierState,
+    NotNull<TypeCheckLimits> limits,
+    DcrLogger* logger,
+    const SourceModule& sourceModule,
+    Module* module
+)
 {
     LUAU_TIMETRACE_SCOPE("check", "Typechecking");
 
     TypeChecker2 typeChecker{builtinTypes, unifierState, limits, logger, &sourceModule, module};
 
     typeChecker.visit(sourceModule.root);
+
+    // if the only error we're producing is one about constraint solving being incomplete, we can silence it.
+    // this means we won't give this warning if types seem totally nonsensical, but there are no other errors.
+    // this is probably, on the whole, a good decision to not annoy users though.
+    if (module->errors.size() == 1 && get<ConstraintSolvingIncompleteError>(module->errors[0]))
+        module->errors.clear();
 
     unfreeze(module->interfaceTypes);
     copyErrors(module->errors, module->interfaceTypes, builtinTypes);

@@ -60,9 +60,12 @@ TEST_CASE_FIXTURE(DifferFixture, "a_table_missing_property")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
+    compareTypesNe(
+        "foo",
+        "almostFoo",
         "DiffError: these two types are not equal because the left type at foo.y has type number, while the right type at almostFoo is missing "
-        "the property y");
+        "the property y"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "left_table_missing_property")
@@ -73,9 +76,12 @@ TEST_CASE_FIXTURE(DifferFixture, "left_table_missing_property")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
+    compareTypesNe(
+        "foo",
+        "almostFoo",
         "DiffError: these two types are not equal because the left type at foo is missing the property z, while the right type at almostFoo.z "
-        "has type number");
+        "has type number"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "a_table_wrong_type")
@@ -86,9 +92,12 @@ TEST_CASE_FIXTURE(DifferFixture, "a_table_wrong_type")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
+    compareTypesNe(
+        "foo",
+        "almostFoo",
         "DiffError: these two types are not equal because the left type at foo.y has type number, while the right type at almostFoo.y has type "
-        "string");
+        "string"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "a_table_wrong_type")
@@ -99,9 +108,12 @@ TEST_CASE_FIXTURE(DifferFixture, "a_table_wrong_type")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
+    compareTypesNe(
+        "foo",
+        "almostFoo",
         "DiffError: these two types are not equal because the left type at <unlabeled-symbol> has type string, while the right type at "
-        "<unlabeled-symbol> has type number");
+        "<unlabeled-symbol> has type number"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "a_nested_table_wrong_type")
@@ -112,9 +124,12 @@ TEST_CASE_FIXTURE(DifferFixture, "a_nested_table_wrong_type")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
+    compareTypesNe(
+        "foo",
+        "almostFoo",
         "DiffError: these two types are not equal because the left type at foo.inner.table.has.wrong.value has type number, while the right "
-        "type at almostFoo.inner.table.has.wrong.value has type string");
+        "type at almostFoo.inner.table.has.wrong.value has type string"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "a_nested_table_wrong_match")
@@ -125,9 +140,12 @@ TEST_CASE_FIXTURE(DifferFixture, "a_nested_table_wrong_match")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
+    compareTypesNe(
+        "foo",
+        "almostFoo",
         "DiffError: these two types are not equal because the left type at foo.inner.table.has.wrong.variant has type { because: { it: { goes: "
-        "{ on: string } } } }, while the right type at almostFoo.inner.table.has.wrong.variant has type string");
+        "{ on: string } } } }, while the right type at almostFoo.inner.table.has.wrong.variant has type string"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "left_cyclic_table_right_table_missing_property")
@@ -144,8 +162,11 @@ TEST_CASE_FIXTURE(DifferFixture, "left_cyclic_table_right_table_missing_property
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.foo has type t1 where t1 = { foo: t1 }, while the right type at almostFoo is missing the property foo)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.foo has type t1 where t1 = { foo: t1 }, while the right type at almostFoo is missing the property foo)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "left_cyclic_table_right_table_property_wrong")
@@ -162,8 +183,11 @@ TEST_CASE_FIXTURE(DifferFixture, "left_cyclic_table_right_table_property_wrong")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.foo has type t1 where t1 = { foo: t1 }, while the right type at almostFoo.foo has type number)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.foo has type t1 where t1 = { foo: t1 }, while the right type at almostFoo.foo has type number)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "right_cyclic_table_left_table_missing_property")
@@ -180,8 +204,11 @@ TEST_CASE_FIXTURE(DifferFixture, "right_cyclic_table_left_table_missing_property
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("almostFoo", "foo",
-        R"(DiffError: these two types are not equal because the left type at almostFoo.x has type number, while the right type at <unlabeled-symbol> is missing the property x)");
+    compareTypesNe(
+        "almostFoo",
+        "foo",
+        R"(DiffError: these two types are not equal because the left type at almostFoo.x has type number, while the right type at <unlabeled-symbol> is missing the property x)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "right_cyclic_table_left_table_property_wrong")
@@ -198,8 +225,11 @@ TEST_CASE_FIXTURE(DifferFixture, "right_cyclic_table_left_table_property_wrong")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("almostFoo", "foo",
-        R"(DiffError: these two types are not equal because the left type at almostFoo.foo has type number, while the right type at <unlabeled-symbol>.foo has type t1 where t1 = { foo: t1 })");
+    compareTypesNe(
+        "almostFoo",
+        "foo",
+        R"(DiffError: these two types are not equal because the left type at almostFoo.foo has type number, while the right type at <unlabeled-symbol>.foo has type t1 where t1 = { foo: t1 })"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "equal_table_two_cyclic_tables_are_not_different")
@@ -273,8 +303,11 @@ TEST_CASE_FIXTURE(DifferFixture, "table_left_circle_right_measuring_tape")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.foo.foo.foo.foo.foo is missing the property bar, while the right type at <unlabeled-symbol>.foo.foo.foo.foo.foo.bar has type {  })");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.foo.foo.foo.foo.foo is missing the property bar, while the right type at <unlabeled-symbol>.foo.foo.foo.foo.foo.bar has type {  })"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "equal_table_measuring_tapes")
@@ -660,11 +693,17 @@ TEST_CASE_FIXTURE(DifferFixture, "function_table_self_referential_cyclic")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        compareTypesNe("foo", "almostFoo",
-            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Ret[1].bar.Ret[1] has type t1 where t1 = { bar: () -> t1 }, while the right type at <unlabeled-symbol>.Ret[1].bar.Ret[1] has type t1 where t1 = () -> t1)");
+        compareTypesNe(
+            "foo",
+            "almostFoo",
+            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Ret[1].bar.Ret[1] has type t1 where t1 = { bar: () -> t1 }, while the right type at <unlabeled-symbol>.Ret[1].bar.Ret[1] has type t1 where t1 = () -> t1)"
+        );
     else
-        compareTypesNe("foo", "almostFoo",
-            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Ret[1].bar.Ret[1] has type t1 where t1 = {| bar: () -> t1 |}, while the right type at <unlabeled-symbol>.Ret[1].bar.Ret[1] has type t1 where t1 = () -> t1)");
+        compareTypesNe(
+            "foo",
+            "almostFoo",
+            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Ret[1].bar.Ret[1] has type t1 where t1 = {| bar: () -> t1 |}, while the right type at <unlabeled-symbol>.Ret[1].bar.Ret[1] has type t1 where t1 = () -> t1)"
+        );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "equal_union_cyclic")
@@ -730,8 +769,11 @@ TEST_CASE_FIXTURE(DifferFixture, "singleton")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> has type "hello", while the right type at <unlabeled-symbol> has type true)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> has type "hello", while the right type at <unlabeled-symbol> has type true)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "equal_singleton")
@@ -753,8 +795,11 @@ TEST_CASE_FIXTURE(DifferFixture, "singleton_string")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> has type "hello", while the right type at <unlabeled-symbol> has type "world")");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> has type "hello", while the right type at <unlabeled-symbol> has type "world")"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "negation")
@@ -779,15 +824,19 @@ TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "negation")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is a union containing type { x: { y: ~string } }, while the right type at <unlabeled-symbol> is a union missing type { x: { y: ~string } })");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is a union containing type { x: { y: ~string } }, while the right type at <unlabeled-symbol> is a union missing type { x: { y: ~string } })"
+    );
 
     // TODO: a more desirable expected error here is as below, but `Differ` requires improvements to
     // dealing with unions to get something like this (recognizing that the union is identical
     // except in one component where they differ).
     //
     // compareTypesNe("foo", "almostFoo",
-    //    R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.x.y.Negation has type string, while the right type at <unlabeled-symbol>.x.y.Negation has type number)");
+    //    R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.x.y.Negation has type string, while the right type
+    //    at <unlabeled-symbol>.x.y.Negation has type number)");
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "union_missing_right")
@@ -798,8 +847,11 @@ TEST_CASE_FIXTURE(DifferFixture, "union_missing_right")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is a union containing type number, while the right type at <unlabeled-symbol> is a union missing type number)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is a union containing type number, while the right type at <unlabeled-symbol> is a union missing type number)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "union_missing_left")
@@ -810,8 +862,11 @@ TEST_CASE_FIXTURE(DifferFixture, "union_missing_left")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is a union missing type boolean, while the right type at <unlabeled-symbol> is a union containing type boolean)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is a union missing type boolean, while the right type at <unlabeled-symbol> is a union containing type boolean)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "union_missing")
@@ -825,11 +880,17 @@ TEST_CASE_FIXTURE(DifferFixture, "union_missing")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        compareTypesNe("foo", "almostFoo",
-            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is a union containing type { baz: boolean, rot: "singleton" }, while the right type at <unlabeled-symbol> is a union missing type { baz: boolean, rot: "singleton" })");
+        compareTypesNe(
+            "foo",
+            "almostFoo",
+            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is a union containing type { baz: boolean, rot: "singleton" }, while the right type at <unlabeled-symbol> is a union missing type { baz: boolean, rot: "singleton" })"
+        );
     else
-        compareTypesNe("foo", "almostFoo",
-            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is a union containing type {| baz: boolean, rot: "singleton" |}, while the right type at <unlabeled-symbol> is a union missing type {| baz: boolean, rot: "singleton" |})");
+        compareTypesNe(
+            "foo",
+            "almostFoo",
+            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is a union containing type {| baz: boolean, rot: "singleton" |}, while the right type at <unlabeled-symbol> is a union missing type {| baz: boolean, rot: "singleton" |})"
+        );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "intersection_missing_right")
@@ -840,8 +901,11 @@ TEST_CASE_FIXTURE(DifferFixture, "intersection_missing_right")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is an intersection containing type (number) -> (), while the right type at <unlabeled-symbol> is an intersection missing type (number) -> ())");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is an intersection containing type (number) -> (), while the right type at <unlabeled-symbol> is an intersection missing type (number) -> ())"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "intersection_missing_left")
@@ -852,8 +916,11 @@ TEST_CASE_FIXTURE(DifferFixture, "intersection_missing_left")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is an intersection missing type (boolean) -> (), while the right type at <unlabeled-symbol> is an intersection containing type (boolean) -> ())");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is an intersection missing type (boolean) -> (), while the right type at <unlabeled-symbol> is an intersection containing type (boolean) -> ())"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "intersection_tables_missing_right")
@@ -865,11 +932,17 @@ TEST_CASE_FIXTURE(DifferFixture, "intersection_tables_missing_right")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        compareTypesNe("foo", "almostFoo",
-            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is an intersection containing type { x: number }, while the right type at <unlabeled-symbol> is an intersection missing type { x: number })");
+        compareTypesNe(
+            "foo",
+            "almostFoo",
+            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is an intersection containing type { x: number }, while the right type at <unlabeled-symbol> is an intersection missing type { x: number })"
+        );
     else
-        compareTypesNe("foo", "almostFoo",
-            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is an intersection containing type {| x: number |}, while the right type at <unlabeled-symbol> is an intersection missing type {| x: number |})");
+        compareTypesNe(
+            "foo",
+            "almostFoo",
+            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is an intersection containing type {| x: number |}, while the right type at <unlabeled-symbol> is an intersection missing type {| x: number |})"
+        );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "intersection_tables_missing_left")
@@ -881,11 +954,17 @@ TEST_CASE_FIXTURE(DifferFixture, "intersection_tables_missing_left")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        compareTypesNe("foo", "almostFoo",
-            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is an intersection missing type { z: boolean }, while the right type at <unlabeled-symbol> is an intersection containing type { z: boolean })");
+        compareTypesNe(
+            "foo",
+            "almostFoo",
+            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is an intersection missing type { z: boolean }, while the right type at <unlabeled-symbol> is an intersection containing type { z: boolean })"
+        );
     else
-        compareTypesNe("foo", "almostFoo",
-            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is an intersection missing type {| z: boolean |}, while the right type at <unlabeled-symbol> is an intersection containing type {| z: boolean |})");
+        compareTypesNe(
+            "foo",
+            "almostFoo",
+            R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> is an intersection missing type {| z: boolean |}, while the right type at <unlabeled-symbol> is an intersection containing type {| z: boolean |})"
+        );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "equal_function")
@@ -966,8 +1045,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_arg_normal")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Arg[3] has type number, while the right type at <unlabeled-symbol>.Arg[3] has type string)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Arg[3] has type number, while the right type at <unlabeled-symbol>.Arg[3] has type string)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "function_arg_normal_2")
@@ -985,8 +1067,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_arg_normal_2")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Arg[2] has type number, while the right type at <unlabeled-symbol>.Arg[2] has type string)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Arg[2] has type number, while the right type at <unlabeled-symbol>.Arg[2] has type string)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "function_ret_normal")
@@ -1004,8 +1089,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_ret_normal")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Ret[1] has type number, while the right type at <unlabeled-symbol>.Ret[1] has type string)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Ret[1] has type number, while the right type at <unlabeled-symbol>.Ret[1] has type string)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "function_arg_length")
@@ -1023,8 +1111,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_arg_length")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 2 or more arguments, while the right type at <unlabeled-symbol> takes 3 or more arguments)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 2 or more arguments, while the right type at <unlabeled-symbol> takes 3 or more arguments)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "function_arg_length_2")
@@ -1042,8 +1133,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_arg_length_2")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 3 or more arguments, while the right type at <unlabeled-symbol> takes 2 or more arguments)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 3 or more arguments, while the right type at <unlabeled-symbol> takes 2 or more arguments)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "function_arg_length_none")
@@ -1061,8 +1155,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_arg_length_none")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 0 or more arguments, while the right type at <unlabeled-symbol> takes 2 or more arguments)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 0 or more arguments, while the right type at <unlabeled-symbol> takes 2 or more arguments)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "function_arg_length_none_2")
@@ -1080,8 +1177,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_arg_length_none_2")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 1 or more arguments, while the right type at <unlabeled-symbol> takes 0 or more arguments)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 1 or more arguments, while the right type at <unlabeled-symbol> takes 0 or more arguments)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "function_ret_length")
@@ -1099,8 +1199,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_ret_length")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> returns 1 values, while the right type at <unlabeled-symbol> returns 2 values)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> returns 1 values, while the right type at <unlabeled-symbol> returns 2 values)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "function_ret_length_2")
@@ -1118,8 +1221,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_ret_length_2")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> returns 3 values, while the right type at <unlabeled-symbol> returns 2 values)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> returns 3 values, while the right type at <unlabeled-symbol> returns 2 values)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "function_ret_length_none")
@@ -1137,8 +1243,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_ret_length_none")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> returns 0 values, while the right type at <unlabeled-symbol> returns 1 values)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> returns 0 values, while the right type at <unlabeled-symbol> returns 1 values)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "function_ret_length_none_2")
@@ -1156,8 +1265,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_ret_length_none_2")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> returns 1 values, while the right type at <unlabeled-symbol> returns 0 values)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> returns 1 values, while the right type at <unlabeled-symbol> returns 0 values)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "function_variadic_arg_normal")
@@ -1175,8 +1287,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_variadic_arg_normal")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Arg[Variadic] has type number, while the right type at <unlabeled-symbol>.Arg[Variadic] has type string)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Arg[Variadic] has type number, while the right type at <unlabeled-symbol>.Arg[Variadic] has type string)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "function_variadic_arg_missing")
@@ -1194,8 +1309,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_variadic_arg_missing")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Arg[Variadic] has type number, while the right type at <unlabeled-symbol>.Arg[Variadic] has type any)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Arg[Variadic] has type number, while the right type at <unlabeled-symbol>.Arg[Variadic] has type any)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "function_variadic_arg_missing_2")
@@ -1213,8 +1331,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_variadic_arg_missing_2")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Arg[Variadic] has type any, while the right type at <unlabeled-symbol>.Arg[Variadic] has type string)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.Arg[Variadic] has type any, while the right type at <unlabeled-symbol>.Arg[Variadic] has type string)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "function_variadic_oversaturation")
@@ -1232,8 +1353,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_variadic_oversaturation")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 2 or more arguments, while the right type at <unlabeled-symbol> takes 2 arguments)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 2 or more arguments, while the right type at <unlabeled-symbol> takes 2 arguments)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "function_variadic_oversaturation_2")
@@ -1251,8 +1375,11 @@ TEST_CASE_FIXTURE(DifferFixture, "function_variadic_oversaturation_2")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 2 arguments, while the right type at <unlabeled-symbol> takes 2 or more arguments)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> takes 2 arguments, while the right type at <unlabeled-symbol> takes 2 or more arguments)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "generic")
@@ -1270,8 +1397,11 @@ TEST_CASE_FIXTURE(DifferFixture, "generic")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left generic at <unlabeled-symbol>.Ret[1] cannot be the same type parameter as the right generic at <unlabeled-symbol>.Ret[1])");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left generic at <unlabeled-symbol>.Ret[1] cannot be the same type parameter as the right generic at <unlabeled-symbol>.Ret[1])"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "generic_one_vs_two")
@@ -1289,8 +1419,11 @@ TEST_CASE_FIXTURE(DifferFixture, "generic_one_vs_two")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left generic at <unlabeled-symbol>.Arg[2] cannot be the same type parameter as the right generic at <unlabeled-symbol>.Arg[2])");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left generic at <unlabeled-symbol>.Arg[2] cannot be the same type parameter as the right generic at <unlabeled-symbol>.Arg[2])"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "generic_three_or_three")
@@ -1308,8 +1441,11 @@ TEST_CASE_FIXTURE(DifferFixture, "generic_three_or_three")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left generic at <unlabeled-symbol>.Arg[2] cannot be the same type parameter as the right generic at <unlabeled-symbol>.Arg[2])");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left generic at <unlabeled-symbol>.Arg[2] cannot be the same type parameter as the right generic at <unlabeled-symbol>.Arg[2])"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "equal_metatable")
@@ -1357,8 +1493,11 @@ TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "metatable_normal")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.bar has type number, while the right type at <unlabeled-symbol>.bar has type string)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.bar has type number, while the right type at <unlabeled-symbol>.bar has type string)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "metatable_metanormal")
@@ -1381,8 +1520,11 @@ TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "metatable_metanormal")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.__metatable.metaBar has type string, while the right type at <unlabeled-symbol>.__metatable.metaBar has type number)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.__metatable.metaBar has type string, while the right type at <unlabeled-symbol>.__metatable.metaBar has type number)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "metatable_metamissing_left")
@@ -1406,8 +1548,11 @@ TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "metatable_metamissing_left")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.__metatable is missing the property thisIsOnlyInRight, while the right type at <unlabeled-symbol>.__metatable.thisIsOnlyInRight has type number)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.__metatable is missing the property thisIsOnlyInRight, while the right type at <unlabeled-symbol>.__metatable.thisIsOnlyInRight has type number)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "metatable_metamissing_right")
@@ -1431,8 +1576,11 @@ TEST_CASE_FIXTURE(DifferFixtureWithBuiltins, "metatable_metamissing_right")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.__metatable.thisIsOnlyInLeft has type number, while the right type at <unlabeled-symbol>.__metatable is missing the property thisIsOnlyInLeft)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol>.__metatable.thisIsOnlyInLeft has type number, while the right type at <unlabeled-symbol>.__metatable is missing the property thisIsOnlyInLeft)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixtureGeneric<ClassFixture>, "equal_class")
@@ -1454,8 +1602,11 @@ TEST_CASE_FIXTURE(DifferFixtureGeneric<ClassFixture>, "class_normal")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> has type BaseClass, while the right type at <unlabeled-symbol> has type ChildClass)");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> has type BaseClass, while the right type at <unlabeled-symbol> has type ChildClass)"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "equal_generictp")
@@ -1477,8 +1628,11 @@ TEST_CASE_FIXTURE(DifferFixture, "generictp_ne_fn")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> has type <T, U...>(...T) -> (U...), while the right type at <unlabeled-symbol> has type <U...>(U...) -> (U...))");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left type at <unlabeled-symbol> has type <T, U...>(...T) -> (U...), while the right type at <unlabeled-symbol> has type <U...>(U...) -> (U...))"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "generictp_normal")
@@ -1505,8 +1659,11 @@ TEST_CASE_FIXTURE(DifferFixture, "generictp_normal")
     INFO(Luau::toString(requireType("foo")));
     INFO(Luau::toString(requireType("almostFoo")));
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left generic at <unlabeled-symbol>.Arg[1].Ret[Variadic] cannot be the same type parameter as the right generic at <unlabeled-symbol>.Arg[1].Ret[Variadic])");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left generic at <unlabeled-symbol>.Arg[1].Ret[Variadic] cannot be the same type parameter as the right generic at <unlabeled-symbol>.Arg[1].Ret[Variadic])"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "generictp_normal_2")
@@ -1530,8 +1687,11 @@ TEST_CASE_FIXTURE(DifferFixture, "generictp_normal_2")
     INFO(Luau::toString(requireType("foo")));
     INFO(Luau::toString(requireType("almostFoo")));
 
-    compareTypesNe("foo", "almostFoo",
-        R"(DiffError: these two types are not equal because the left generic at <unlabeled-symbol>.Arg[2].Arg[Variadic] cannot be the same type parameter as the right generic at <unlabeled-symbol>.Arg[2].Arg[Variadic])");
+    compareTypesNe(
+        "foo",
+        "almostFoo",
+        R"(DiffError: these two types are not equal because the left generic at <unlabeled-symbol>.Arg[2].Arg[Variadic] cannot be the same type parameter as the right generic at <unlabeled-symbol>.Arg[2].Arg[Variadic])"
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "equal_generictp_cyclic")
@@ -1565,9 +1725,12 @@ TEST_CASE_FIXTURE(DifferFixture, "symbol_forward")
     INFO(Luau::toString(requireType("foo")));
     INFO(Luau::toString(requireType("almostFoo")));
 
-    compareTypesNe("foo", "almostFoo",
+    compareTypesNe(
+        "foo",
+        "almostFoo",
         R"(DiffError: these two types are not equal because the left type at foo has type number, while the right type at almostFoo has type string)",
-        true);
+        true
+    );
 }
 
 TEST_CASE_FIXTURE(DifferFixture, "newlines")
@@ -1581,7 +1744,9 @@ TEST_CASE_FIXTURE(DifferFixture, "newlines")
     INFO(Luau::toString(requireType("foo")));
     INFO(Luau::toString(requireType("almostFoo")));
 
-    compareTypesNe("foo", "almostFoo",
+    compareTypesNe(
+        "foo",
+        "almostFoo",
         R"(DiffError: these two types are not equal because the left type at
     foo
 has type
@@ -1590,7 +1755,9 @@ while the right type at
     almostFoo
 has type
     string)",
-        true, true);
+        true,
+        true
+    );
 }
 
 TEST_SUITE_END();

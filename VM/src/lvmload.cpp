@@ -287,8 +287,9 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
         {
             char chunkbuf[LUA_IDSIZE];
             const char* chunkid = luaO_chunkid(chunkbuf, sizeof(chunkbuf), chunkname, strlen(chunkname));
-            lua_pushfstring(L, "%s: bytecode type version mismatch (expected [%d..%d], got %d)", chunkid, LBC_TYPE_VERSION_MIN, LBC_TYPE_VERSION_MAX,
-                typesversion);
+            lua_pushfstring(
+                L, "%s: bytecode type version mismatch (expected [%d..%d], got %d)", chunkid, LBC_TYPE_VERSION_MIN, LBC_TYPE_VERSION_MAX, typesversion
+            );
             return 1;
         }
     }

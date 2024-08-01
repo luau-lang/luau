@@ -135,7 +135,11 @@ struct IdfContext
 // 'Iterated' comes from the definition where we recompute the IDFn+1 = DF(S) while adding IDFn to S until a fixed point is reached
 // Iterated dominance frontier has been shown to be equal to the set of nodes where phi instructions have to be inserted
 void computeIteratedDominanceFrontierForDefs(
-    IdfContext& ctx, const IrFunction& function, const std::vector<uint32_t>& defBlocks, const std::vector<uint32_t>& liveInBlocks);
+    IdfContext& ctx,
+    const IrFunction& function,
+    const std::vector<uint32_t>& defBlocks,
+    const std::vector<uint32_t>& liveInBlocks
+);
 
 // Function used to update all CFG data
 void computeCfgInfo(IrFunction& function);

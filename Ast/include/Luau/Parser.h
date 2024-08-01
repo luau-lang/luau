@@ -55,7 +55,12 @@ class Parser
 {
 public:
     static ParseResult parse(
-        const char* buffer, std::size_t bufferSize, AstNameTable& names, Allocator& allocator, ParseOptions options = ParseOptions());
+        const char* buffer,
+        std::size_t bufferSize,
+        AstNameTable& names,
+        Allocator& allocator,
+        ParseOptions options = ParseOptions()
+    );
 
 private:
     struct Name;
@@ -140,6 +145,9 @@ private:
     // type Name `=' Type
     AstStat* parseTypeAlias(const Location& start, bool exported);
 
+    // type function Name ... end
+    AstStat* parseTypeFunction(const Location& start);
+
     AstDeclaredClassProp parseDeclaredClassMethod();
 
     // `declare global' Name: Type |
@@ -157,7 +165,12 @@ private:
     // funcbodyhead ::= `(' [namelist [`,' `...'] | `...'] `)' [`:` Type]
     // funcbody ::= funcbodyhead block end
     std::pair<AstExprFunction*, AstLocal*> parseFunctionBody(
-        bool hasself, const Lexeme& matchFunction, const AstName& debugname, const Name* localName, const AstArray<AstAttr*>& attributes);
+        bool hasself,
+        const Lexeme& matchFunction,
+        const AstName& debugname,
+        const Name* localName,
+        const AstArray<AstAttr*>& attributes
+    );
 
     // explist ::= {exp `,'} exp
     void parseExprList(TempVector<AstExpr*>& result);
@@ -191,9 +204,15 @@ private:
     AstTableIndexer* parseTableIndexer(AstTableAccess access, std::optional<Location> accessLocation);
 
     AstTypeOrPack parseFunctionType(bool allowPack, const AstArray<AstAttr*>& attributes);
-    AstType* parseFunctionTypeTail(const Lexeme& begin, const AstArray<AstAttr*>& attributes, AstArray<AstGenericType> generics,
-        AstArray<AstGenericTypePack> genericPacks, AstArray<AstType*> params, AstArray<std::optional<AstArgumentName>> paramNames,
-        AstTypePack* varargAnnotation);
+    AstType* parseFunctionTypeTail(
+        const Lexeme& begin,
+        const AstArray<AstAttr*>& attributes,
+        AstArray<AstGenericType> generics,
+        AstArray<AstGenericTypePack> genericPacks,
+        AstArray<AstType*> params,
+        AstArray<std::optional<AstArgumentName>> paramNames,
+        AstTypePack* varargAnnotation
+    );
 
     AstType* parseTableType(bool inDeclarationContext = false);
     AstTypeOrPack parseSimpleType(bool allowPack, bool inDeclarationContext = false);
@@ -315,8 +334,13 @@ private:
 
     void reportNameError(const char* context);
 
-    AstStatError* reportStatError(const Location& location, const AstArray<AstExpr*>& expressions, const AstArray<AstStat*>& statements,
-        const char* format, ...) LUAU_PRINTF_ATTR(5, 6);
+    AstStatError* reportStatError(
+        const Location& location,
+        const AstArray<AstExpr*>& expressions,
+        const AstArray<AstStat*>& statements,
+        const char* format,
+        ...
+    ) LUAU_PRINTF_ATTR(5, 6);
     AstExprError* reportExprError(const Location& location, const AstArray<AstExpr*>& expressions, const char* format, ...) LUAU_PRINTF_ATTR(4, 5);
     AstTypeError* reportTypeError(const Location& location, const AstArray<AstType*>& types, const char* format, ...) LUAU_PRINTF_ATTR(4, 5);
     // `parseErrorLocation` is associated with the parser error

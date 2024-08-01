@@ -56,14 +56,35 @@ struct InConditionalContext
 using ScopePtr = std::shared_ptr<struct Scope>;
 
 std::optional<Property> findTableProperty(
-    NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId ty, const std::string& name, Location location);
+    NotNull<BuiltinTypes> builtinTypes,
+    ErrorVec& errors,
+    TypeId ty,
+    const std::string& name,
+    Location location
+);
 
 std::optional<TypeId> findMetatableEntry(
-    NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId type, const std::string& entry, Location location);
+    NotNull<BuiltinTypes> builtinTypes,
+    ErrorVec& errors,
+    TypeId type,
+    const std::string& entry,
+    Location location
+);
 std::optional<TypeId> findTablePropertyRespectingMeta(
-    NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId ty, const std::string& name, Location location);
+    NotNull<BuiltinTypes> builtinTypes,
+    ErrorVec& errors,
+    TypeId ty,
+    const std::string& name,
+    Location location
+);
 std::optional<TypeId> findTablePropertyRespectingMeta(
-    NotNull<BuiltinTypes> builtinTypes, ErrorVec& errors, TypeId ty, const std::string& name, ValueContext context, Location location);
+    NotNull<BuiltinTypes> builtinTypes,
+    ErrorVec& errors,
+    TypeId ty,
+    const std::string& name,
+    ValueContext context,
+    Location location
+);
 
 bool occursCheck(TypeId needle, TypeId haystack);
 
@@ -73,7 +94,12 @@ std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, 
 // Extend the provided pack to at least `length` types.
 // Returns a temporary TypePack that contains those types plus a tail.
 TypePack extendTypePack(
-    TypeArena& arena, NotNull<BuiltinTypes> builtinTypes, TypePackId pack, size_t length, std::vector<std::optional<TypeId>> overrides = {});
+    TypeArena& arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    TypePackId pack,
+    size_t length,
+    std::vector<std::optional<TypeId>> overrides = {}
+);
 
 /**
  * Reduces a union by decomposing to the any/error type if it appears in the

@@ -31,8 +31,15 @@ struct OverloadResolver
         OverloadIsNonviable, // Arguments were incompatible with the overloads parameters but were otherwise compatible by arity
     };
 
-    OverloadResolver(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, NotNull<Normalizer> normalizer, NotNull<Scope> scope,
-        NotNull<InternalErrorReporter> reporter, NotNull<TypeCheckLimits> limits, Location callLocation);
+    OverloadResolver(
+        NotNull<BuiltinTypes> builtinTypes,
+        NotNull<TypeArena> arena,
+        NotNull<Normalizer> normalizer,
+        NotNull<Scope> scope,
+        NotNull<InternalErrorReporter> reporter,
+        NotNull<TypeCheckLimits> limits,
+        Location callLocation
+    );
 
     NotNull<BuiltinTypes> builtinTypes;
     NotNull<TypeArena> arena;
@@ -58,11 +65,21 @@ private:
     std::optional<ErrorVec> testIsSubtype(const Location& location, TypeId subTy, TypeId superTy);
     std::optional<ErrorVec> testIsSubtype(const Location& location, TypePackId subTy, TypePackId superTy);
     std::pair<Analysis, ErrorVec> checkOverload(
-        TypeId fnTy, const TypePack* args, AstExpr* fnLoc, const std::vector<AstExpr*>* argExprs, bool callMetamethodOk = true);
+        TypeId fnTy,
+        const TypePack* args,
+        AstExpr* fnLoc,
+        const std::vector<AstExpr*>* argExprs,
+        bool callMetamethodOk = true
+    );
     static bool isLiteral(AstExpr* expr);
     LUAU_NOINLINE
     std::pair<Analysis, ErrorVec> checkOverload_(
-        TypeId fnTy, const FunctionType* fn, const TypePack* args, AstExpr* fnExpr, const std::vector<AstExpr*>* argExprs);
+        TypeId fnTy,
+        const FunctionType* fn,
+        const TypePack* args,
+        AstExpr* fnExpr,
+        const std::vector<AstExpr*>* argExprs
+    );
     size_t indexof(Analysis analysis);
     void add(Analysis analysis, TypeId ty, ErrorVec&& errors);
 };
@@ -88,8 +105,16 @@ struct SolveResult
 // Helper utility, presently used for binary operator type functions.
 //
 // Given a function and a set of arguments, select a suitable overload.
-SolveResult solveFunctionCall(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Normalizer> normalizer,
-    NotNull<InternalErrorReporter> iceReporter, NotNull<TypeCheckLimits> limits, NotNull<Scope> scope, const Location& location, TypeId fn,
-    TypePackId argsPack);
+SolveResult solveFunctionCall(
+    NotNull<TypeArena> arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Normalizer> normalizer,
+    NotNull<InternalErrorReporter> iceReporter,
+    NotNull<TypeCheckLimits> limits,
+    NotNull<Scope> scope,
+    const Location& location,
+    TypeId fn,
+    TypePackId argsPack
+);
 
 } // namespace Luau

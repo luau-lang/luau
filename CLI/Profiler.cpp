@@ -131,8 +131,13 @@ void profilerDump(const char* path)
 
     fclose(f);
 
-    printf("Profiler dump written to %s (total runtime %.3f seconds, %lld samples, %lld stacks)\n", path, double(total) / 1e6,
-        static_cast<long long>(gProfiler.samples.load()), static_cast<long long>(gProfiler.data.size()));
+    printf(
+        "Profiler dump written to %s (total runtime %.3f seconds, %lld samples, %lld stacks)\n",
+        path,
+        double(total) / 1e6,
+        static_cast<long long>(gProfiler.samples.load()),
+        static_cast<long long>(gProfiler.data.size())
+    );
 
     uint64_t totalgc = 0;
     for (uint64_t p : gProfiler.gc)

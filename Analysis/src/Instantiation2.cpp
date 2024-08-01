@@ -8,6 +8,23 @@ bool Instantiation2::ignoreChildren(TypeId ty)
 {
     if (get<ClassType>(ty))
         return true;
+
+    if (auto ftv = get<FunctionType>(ty))
+    {
+        if (ftv->hasNoFreeOrGenericTypes)
+            return false;
+
+        // If this function type quantifies over these generics, we don't want substitution to
+        // go any further into them because it's being shadowed in this case.
+        for (auto generic : ftv->generics)
+            if (genericSubstitutions.contains(generic))
+                return true;
+
+        for (auto generic : ftv->genericPacks)
+            if (genericPackSubstitutions.contains(generic))
+                return true;
+    }
+
     return false;
 }
 
@@ -47,14 +64,22 @@ TypePackId Instantiation2::clean(TypePackId tp)
 }
 
 std::optional<TypeId> instantiate2(
-    TypeArena* arena, DenseHashMap<TypeId, TypeId> genericSubstitutions, DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions, TypeId ty)
+    TypeArena* arena,
+    DenseHashMap<TypeId, TypeId> genericSubstitutions,
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions,
+    TypeId ty
+)
 {
     Instantiation2 instantiation{arena, std::move(genericSubstitutions), std::move(genericPackSubstitutions)};
     return instantiation.substitute(ty);
 }
 
 std::optional<TypePackId> instantiate2(
-    TypeArena* arena, DenseHashMap<TypeId, TypeId> genericSubstitutions, DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions, TypePackId tp)
+    TypeArena* arena,
+    DenseHashMap<TypeId, TypeId> genericSubstitutions,
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions,
+    TypePackId tp
+)
 {
     Instantiation2 instantiation{arena, std::move(genericSubstitutions), std::move(genericPackSubstitutions)};
     return instantiation.substitute(tp);

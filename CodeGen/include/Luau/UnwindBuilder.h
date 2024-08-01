@@ -49,8 +49,13 @@ public:
     //     mov rbp, rsp
     //   push reg in the order specified in regs
     //   sub rsp, stackSize
-    virtual void prologueX64(uint32_t prologueSize, uint32_t stackSize, bool setupFrame, std::initializer_list<X64::RegisterX64> gpr,
-        const std::vector<X64::RegisterX64>& simd) = 0;
+    virtual void prologueX64(
+        uint32_t prologueSize,
+        uint32_t stackSize,
+        bool setupFrame,
+        std::initializer_list<X64::RegisterX64> gpr,
+        const std::vector<X64::RegisterX64>& simd
+    ) = 0;
 
     virtual size_t getUnwindInfoSize(size_t blockSize) const = 0;
 
