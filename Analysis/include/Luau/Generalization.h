@@ -8,6 +8,12 @@
 namespace Luau
 {
 
-std::optional<TypeId> generalize(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope,
-    NotNull<DenseHashSet<TypeId>> bakedTypes, TypeId ty, /* avoid sealing tables*/ bool avoidSealingTables = false);
+std::optional<TypeId> generalize(
+    NotNull<TypeArena> arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Scope> scope,
+    NotNull<DenseHashSet<TypeId>> bakedTypes,
+    TypeId ty,
+    /* avoid sealing tables*/ bool avoidSealingTables = false
+);
 }

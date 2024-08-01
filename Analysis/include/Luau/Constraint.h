@@ -256,9 +256,24 @@ struct ReducePackConstraint
     TypePackId tp;
 };
 
-using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, IterableConstraint, NameConstraint,
-    TypeAliasExpansionConstraint, FunctionCallConstraint, FunctionCheckConstraint, PrimitiveTypeConstraint, HasPropConstraint, HasIndexerConstraint,
-    AssignPropConstraint, AssignIndexConstraint, UnpackConstraint, ReduceConstraint, ReducePackConstraint, EqualityConstraint>;
+using ConstraintV = Variant<
+    SubtypeConstraint,
+    PackSubtypeConstraint,
+    GeneralizationConstraint,
+    IterableConstraint,
+    NameConstraint,
+    TypeAliasExpansionConstraint,
+    FunctionCallConstraint,
+    FunctionCheckConstraint,
+    PrimitiveTypeConstraint,
+    HasPropConstraint,
+    HasIndexerConstraint,
+    AssignPropConstraint,
+    AssignIndexConstraint,
+    UnpackConstraint,
+    ReduceConstraint,
+    ReducePackConstraint,
+    EqualityConstraint>;
 
 struct Constraint
 {

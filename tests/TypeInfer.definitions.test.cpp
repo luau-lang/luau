@@ -80,21 +80,31 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_loading")
 TEST_CASE_FIXTURE(Fixture, "load_definition_file_errors_do_not_pollute_global_scope")
 {
     unfreeze(frontend.globals.globalTypes);
-    LoadDefinitionFileResult parseFailResult = frontend.loadDefinitionFile(frontend.globals, frontend.globals.globalScope, R"(
+    LoadDefinitionFileResult parseFailResult = frontend.loadDefinitionFile(
+        frontend.globals,
+        frontend.globals.globalScope,
+        R"(
         declare foo
     )",
-        "@test", /* captureComments */ false);
+        "@test",
+        /* captureComments */ false
+    );
     freeze(frontend.globals.globalTypes);
 
     REQUIRE(!parseFailResult.success);
     std::optional<Binding> fooTy = tryGetGlobalBinding(frontend.globals, "foo");
     CHECK(!fooTy.has_value());
 
-    LoadDefinitionFileResult checkFailResult = frontend.loadDefinitionFile(frontend.globals, frontend.globals.globalScope, R"(
+    LoadDefinitionFileResult checkFailResult = frontend.loadDefinitionFile(
+        frontend.globals,
+        frontend.globals.globalScope,
+        R"(
         local foo: string = 123
         declare bar: typeof(foo)
     )",
-        "@test", /* captureComments */ false);
+        "@test",
+        /* captureComments */ false
+    );
 
     REQUIRE(!checkFailResult.success);
     std::optional<Binding> barTy = tryGetGlobalBinding(frontend.globals, "bar");
@@ -142,13 +152,18 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_classes")
 TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_overload_non_function")
 {
     unfreeze(frontend.globals.globalTypes);
-    LoadDefinitionFileResult result = frontend.loadDefinitionFile(frontend.globals, frontend.globals.globalScope, R"(
+    LoadDefinitionFileResult result = frontend.loadDefinitionFile(
+        frontend.globals,
+        frontend.globals.globalScope,
+        R"(
         declare class A
             X: number
             X: string
         end
     )",
-        "@test", /* captureComments */ false);
+        "@test",
+        /* captureComments */ false
+    );
     freeze(frontend.globals.globalTypes);
 
     REQUIRE(!result.success);
@@ -163,13 +178,18 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_overload_non_function")
 TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_extend_non_class")
 {
     unfreeze(frontend.globals.globalTypes);
-    LoadDefinitionFileResult result = frontend.loadDefinitionFile(frontend.globals, frontend.globals.globalScope, R"(
+    LoadDefinitionFileResult result = frontend.loadDefinitionFile(
+        frontend.globals,
+        frontend.globals.globalScope,
+        R"(
         type NotAClass = {}
 
         declare class Foo extends NotAClass
         end
     )",
-        "@test", /* captureComments */ false);
+        "@test",
+        /* captureComments */ false
+    );
     freeze(frontend.globals.globalTypes);
 
     REQUIRE(!result.success);
@@ -184,14 +204,19 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_extend_non_class")
 TEST_CASE_FIXTURE(Fixture, "no_cyclic_defined_classes")
 {
     unfreeze(frontend.globals.globalTypes);
-    LoadDefinitionFileResult result = frontend.loadDefinitionFile(frontend.globals, frontend.globals.globalScope, R"(
+    LoadDefinitionFileResult result = frontend.loadDefinitionFile(
+        frontend.globals,
+        frontend.globals.globalScope,
+        R"(
         declare class Foo extends Bar
         end
 
         declare class Bar extends Foo
         end
     )",
-        "@test", /* captureComments */ false);
+        "@test",
+        /* captureComments */ false
+    );
     freeze(frontend.globals.globalTypes);
 
     REQUIRE(!result.success);
@@ -452,7 +477,10 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_indexer")
 TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
 {
     unfreeze(frontend.globals.globalTypes);
-    LoadDefinitionFileResult result = frontend.loadDefinitionFile(frontend.globals, frontend.globals.globalScope, R"(
+    LoadDefinitionFileResult result = frontend.loadDefinitionFile(
+        frontend.globals,
+        frontend.globals.globalScope,
+        R"(
         declare class Channel
             Messages: { Message }
             OnMessage: (message: Message) -> ()
@@ -463,7 +491,9 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
             Channel: Channel
         end
     )",
-        "@test", /* captureComments */ false);
+        "@test",
+        /* captureComments */ false
+    );
     freeze(frontend.globals.globalTypes);
 
     REQUIRE(result.success);

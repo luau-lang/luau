@@ -241,16 +241,24 @@ struct Language final
     /// Reading is ok, but you should also never assume that these `Id`s are stable.
     Slice<Id> operands() noexcept
     {
-        return visit([](auto&& v) -> Slice<Id> {
-            return v.operands();
-        }, v);
+        return visit(
+            [](auto&& v) -> Slice<Id>
+            {
+                return v.operands();
+            },
+            v
+        );
     }
 
     Slice<const Id> operands() const noexcept
     {
-        return visit([](auto&& v) -> Slice<const Id> {
-            return v.operands();
-        }, v);
+        return visit(
+            [](auto&& v) -> Slice<const Id>
+            {
+                return v.operands();
+            },
+            v
+        );
     }
 
     template<typename T>
@@ -283,9 +291,16 @@ public:
         size_t operator()(const Language& language) const
         {
             size_t seed = std::hash<int>{}(language.index());
-            hashCombine(seed, visit([](auto&& v) {
-                return typename std::decay_t<decltype(v)>::Hash{}(v);
-            }, language.v));
+            hashCombine(
+                seed,
+                visit(
+                    [](auto&& v)
+                    {
+                        return typename std::decay_t<decltype(v)>::Hash{}(v);
+                    },
+                    language.v
+                )
+            );
             return seed;
         }
     };

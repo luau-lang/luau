@@ -25,7 +25,14 @@ struct CodeAllocator
     // To allow allocation while previously allocated code is already running, allocation has page granularity
     // It's important to group functions together so that page alignment won't result in a lot of wasted space
     bool allocate(
-        const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize, uint8_t*& result, size_t& resultSize, uint8_t*& resultCodeStart);
+        const uint8_t* data,
+        size_t dataSize,
+        const uint8_t* code,
+        size_t codeSize,
+        uint8_t*& result,
+        size_t& resultSize,
+        uint8_t*& resultCodeStart
+    );
 
     // Provided to unwind info callbacks
     void* context = nullptr;

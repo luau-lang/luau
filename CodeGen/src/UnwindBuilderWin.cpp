@@ -109,8 +109,13 @@ void UnwindBuilderWin::prologueA64(uint32_t prologueSize, uint32_t stackSize, st
     CODEGEN_ASSERT(!"Not implemented");
 }
 
-void UnwindBuilderWin::prologueX64(uint32_t prologueSize, uint32_t stackSize, bool setupFrame, std::initializer_list<X64::RegisterX64> gpr,
-    const std::vector<X64::RegisterX64>& simd)
+void UnwindBuilderWin::prologueX64(
+    uint32_t prologueSize,
+    uint32_t stackSize,
+    bool setupFrame,
+    std::initializer_list<X64::RegisterX64> gpr,
+    const std::vector<X64::RegisterX64>& simd
+)
 {
     CODEGEN_ASSERT(stackSize > 0 && stackSize < 4096 && stackSize % 8 == 0);
     CODEGEN_ASSERT(prologueSize < 256);

@@ -77,8 +77,8 @@ struct IrOp;
 
 using HostVectorOperationBytecodeType = uint8_t (*)(const char* member, size_t memberLength);
 using HostVectorAccessHandler = bool (*)(IrBuilder& builder, const char* member, size_t memberLength, int resultReg, int sourceReg, int pcpos);
-using HostVectorNamecallHandler = bool (*)(
-    IrBuilder& builder, const char* member, size_t memberLength, int argResReg, int sourceReg, int params, int results, int pcpos);
+using HostVectorNamecallHandler =
+    bool (*)(IrBuilder& builder, const char* member, size_t memberLength, int argResReg, int sourceReg, int params, int results, int pcpos);
 
 enum class HostMetamethod
 {
@@ -99,12 +99,21 @@ enum class HostMetamethod
 
 using HostUserdataOperationBytecodeType = uint8_t (*)(uint8_t type, const char* member, size_t memberLength);
 using HostUserdataMetamethodBytecodeType = uint8_t (*)(uint8_t lhsTy, uint8_t rhsTy, HostMetamethod method);
-using HostUserdataAccessHandler = bool (*)(
-    IrBuilder& builder, uint8_t type, const char* member, size_t memberLength, int resultReg, int sourceReg, int pcpos);
-using HostUserdataMetamethodHandler = bool (*)(
-    IrBuilder& builder, uint8_t lhsTy, uint8_t rhsTy, int resultReg, IrOp lhs, IrOp rhs, HostMetamethod method, int pcpos);
+using HostUserdataAccessHandler =
+    bool (*)(IrBuilder& builder, uint8_t type, const char* member, size_t memberLength, int resultReg, int sourceReg, int pcpos);
+using HostUserdataMetamethodHandler =
+    bool (*)(IrBuilder& builder, uint8_t lhsTy, uint8_t rhsTy, int resultReg, IrOp lhs, IrOp rhs, HostMetamethod method, int pcpos);
 using HostUserdataNamecallHandler = bool (*)(
-    IrBuilder& builder, uint8_t type, const char* member, size_t memberLength, int argResReg, int sourceReg, int params, int results, int pcpos);
+    IrBuilder& builder,
+    uint8_t type,
+    const char* member,
+    size_t memberLength,
+    int argResReg,
+    int sourceReg,
+    int params,
+    int results,
+    int pcpos
+);
 
 struct HostIrHooks
 {
@@ -196,7 +205,11 @@ using UniqueSharedCodeGenContext = std::unique_ptr<SharedCodeGenContext, SharedC
 [[nodiscard]] UniqueSharedCodeGenContext createSharedCodeGenContext(AllocationCallback* allocationCallback, void* allocationCallbackContext);
 
 [[nodiscard]] UniqueSharedCodeGenContext createSharedCodeGenContext(
-    size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext);
+    size_t blockSize,
+    size_t maxTotalSize,
+    AllocationCallback* allocationCallback,
+    void* allocationCallbackContext
+);
 
 // Destroys the provided SharedCodeGenContext.  All Luau VMs using the
 // SharedCodeGenContext must be destroyed before this function is called.

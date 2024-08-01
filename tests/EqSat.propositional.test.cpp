@@ -6,6 +6,7 @@
 #include "Luau/Language.h"
 
 #include <optional>
+#include <string>
 
 LUAU_EQSAT_ATOM(Var, std::string);
 LUAU_EQSAT_ATOM(Bool, bool);

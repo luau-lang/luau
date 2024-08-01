@@ -33,7 +33,8 @@ static bool areCompatible(TypeId left, TypeId right)
     const TableType* rightTable = p.second;
     LUAU_ASSERT(rightTable);
 
-    const auto missingPropIsCompatible = [](const Property& leftProp, const TableType* rightTable) {
+    const auto missingPropIsCompatible = [](const Property& leftProp, const TableType* rightTable)
+    {
         // Two tables may be compatible even if their shapes aren't exactly the
         // same if the extra property is optional, free (and therefore
         // potentially optional), or if the right table has an indexer.  Or if
@@ -96,8 +97,13 @@ Unifier2::Unifier2(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes,
 {
 }
 
-Unifier2::Unifier2(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, NotNull<InternalErrorReporter> ice,
-    DenseHashSet<const void*>* uninhabitedTypeFunctions)
+Unifier2::Unifier2(
+    NotNull<TypeArena> arena,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<Scope> scope,
+    NotNull<InternalErrorReporter> ice,
+    DenseHashSet<const void*>* uninhabitedTypeFunctions
+)
     : arena(arena)
     , builtinTypes(builtinTypes)
     , scope(scope)
@@ -251,7 +257,8 @@ bool Unifier2::unifyFreeWithType(TypeId subTy, TypeId superTy)
     FreeType* subFree = getMutable<FreeType>(subTy);
     LUAU_ASSERT(subFree);
 
-    auto doDefault = [&]() {
+    auto doDefault = [&]()
+    {
         subFree->upperBound = mkIntersection(subFree->upperBound, superTy);
         expandedFreeTypes[subTy].push_back(superTy);
         return true;
@@ -841,7 +848,8 @@ OccursCheckResult Unifier2::occursCheck(DenseHashSet<TypeId>& seen, TypeId needl
 
     OccursCheckResult occurrence = OccursCheckResult::Pass;
 
-    auto check = [&](TypeId ty) {
+    auto check = [&](TypeId ty)
+    {
         if (occursCheck(seen, needle, ty) == OccursCheckResult::Fail)
             occurrence = OccursCheckResult::Fail;
     };

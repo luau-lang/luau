@@ -215,8 +215,13 @@ struct ConstantVisitor : AstVisitor
 
     std::vector<Constant> builtinArgs;
 
-    ConstantVisitor(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables,
-        DenseHashMap<AstLocal*, Constant>& locals, const DenseHashMap<AstExprCall*, int>* builtins, bool foldMathK)
+    ConstantVisitor(
+        DenseHashMap<AstExpr*, Constant>& constants,
+        DenseHashMap<AstLocal*, Variable>& variables,
+        DenseHashMap<AstLocal*, Constant>& locals,
+        const DenseHashMap<AstExprCall*, int>* builtins,
+        bool foldMathK
+    )
         : constants(constants)
         , variables(variables)
         , locals(locals)
@@ -458,8 +463,14 @@ struct ConstantVisitor : AstVisitor
     }
 };
 
-void foldConstants(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables,
-    DenseHashMap<AstLocal*, Constant>& locals, const DenseHashMap<AstExprCall*, int>* builtins, bool foldMathK, AstNode* root)
+void foldConstants(
+    DenseHashMap<AstExpr*, Constant>& constants,
+    DenseHashMap<AstLocal*, Variable>& variables,
+    DenseHashMap<AstLocal*, Constant>& locals,
+    const DenseHashMap<AstExprCall*, int>* builtins,
+    bool foldMathK,
+    AstNode* root
+)
 {
     ConstantVisitor visitor{constants, variables, locals, builtins, foldMathK};
     root->visit(&visitor);

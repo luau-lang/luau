@@ -52,8 +52,13 @@ struct Unifier2
     DenseHashSet<const void*>* uninhabitedTypeFunctions;
 
     Unifier2(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, NotNull<InternalErrorReporter> ice);
-    Unifier2(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, NotNull<Scope> scope, NotNull<InternalErrorReporter> ice,
-        DenseHashSet<const void*>* uninhabitedTypeFunctions);
+    Unifier2(
+        NotNull<TypeArena> arena,
+        NotNull<BuiltinTypes> builtinTypes,
+        NotNull<Scope> scope,
+        NotNull<InternalErrorReporter> ice,
+        DenseHashSet<const void*>* uninhabitedTypeFunctions
+    );
 
     /** Attempt to commit the subtype relation subTy <: superTy to the type
      * graph.

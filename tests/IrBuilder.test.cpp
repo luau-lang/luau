@@ -362,7 +362,8 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "Numeric")
 
     build.inst(IrCmd::STORE_INT, build.vmReg(18), build.inst(IrCmd::NOT_ANY, build.constTag(tnil), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1))));
     build.inst(
-        IrCmd::STORE_INT, build.vmReg(19), build.inst(IrCmd::NOT_ANY, build.constTag(tnumber), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1))));
+        IrCmd::STORE_INT, build.vmReg(19), build.inst(IrCmd::NOT_ANY, build.constTag(tnumber), build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(1)))
+    );
     build.inst(IrCmd::STORE_INT, build.vmReg(20), build.inst(IrCmd::NOT_ANY, build.constTag(tboolean), build.constInt(0)));
     build.inst(IrCmd::STORE_INT, build.vmReg(21), build.inst(IrCmd::NOT_ANY, build.constTag(tboolean), build.constInt(1)));
 
@@ -629,21 +630,33 @@ bb_0:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "ControlFlowEq")
 {
-    withTwoBlocks([this](IrOp a, IrOp b) {
-        build.inst(IrCmd::JUMP_EQ_TAG, build.constTag(tnil), build.constTag(tnil), a, b);
-    });
+    withTwoBlocks(
+        [this](IrOp a, IrOp b)
+        {
+            build.inst(IrCmd::JUMP_EQ_TAG, build.constTag(tnil), build.constTag(tnil), a, b);
+        }
+    );
 
-    withTwoBlocks([this](IrOp a, IrOp b) {
-        build.inst(IrCmd::JUMP_EQ_TAG, build.constTag(tnil), build.constTag(tnumber), a, b);
-    });
+    withTwoBlocks(
+        [this](IrOp a, IrOp b)
+        {
+            build.inst(IrCmd::JUMP_EQ_TAG, build.constTag(tnil), build.constTag(tnumber), a, b);
+        }
+    );
 
-    withTwoBlocks([this](IrOp a, IrOp b) {
-        build.inst(IrCmd::JUMP_CMP_INT, build.constInt(0), build.constInt(0), build.cond(IrCondition::Equal), a, b);
-    });
+    withTwoBlocks(
+        [this](IrOp a, IrOp b)
+        {
+            build.inst(IrCmd::JUMP_CMP_INT, build.constInt(0), build.constInt(0), build.cond(IrCondition::Equal), a, b);
+        }
+    );
 
-    withTwoBlocks([this](IrOp a, IrOp b) {
-        build.inst(IrCmd::JUMP_CMP_INT, build.constInt(0), build.constInt(1), build.cond(IrCondition::Equal), a, b);
-    });
+    withTwoBlocks(
+        [this](IrOp a, IrOp b)
+        {
+            build.inst(IrCmd::JUMP_CMP_INT, build.constInt(0), build.constInt(1), build.cond(IrCondition::Equal), a, b);
+        }
+    );
 
     updateUseCounts(build.function);
     constantFold();
@@ -678,21 +691,30 @@ bb_11:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "NumToIndex")
 {
-    withOneBlock([this](IrOp a) {
-        build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::TRY_NUM_TO_INDEX, build.constDouble(4), a));
-        build.inst(IrCmd::RETURN, build.constUint(0));
-    });
+    withOneBlock(
+        [this](IrOp a)
+        {
+            build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::TRY_NUM_TO_INDEX, build.constDouble(4), a));
+            build.inst(IrCmd::RETURN, build.constUint(0));
+        }
+    );
 
-    withOneBlock([this](IrOp a) {
-        build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::TRY_NUM_TO_INDEX, build.constDouble(1.2), a));
-        build.inst(IrCmd::RETURN, build.constUint(0));
-    });
+    withOneBlock(
+        [this](IrOp a)
+        {
+            build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::TRY_NUM_TO_INDEX, build.constDouble(1.2), a));
+            build.inst(IrCmd::RETURN, build.constUint(0));
+        }
+    );
 
-    withOneBlock([this](IrOp a) {
-        IrOp nan = build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0));
-        build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::TRY_NUM_TO_INDEX, nan, a));
-        build.inst(IrCmd::RETURN, build.constUint(0));
-    });
+    withOneBlock(
+        [this](IrOp a)
+        {
+            IrOp nan = build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0));
+            build.inst(IrCmd::STORE_INT, build.vmReg(0), build.inst(IrCmd::TRY_NUM_TO_INDEX, nan, a));
+            build.inst(IrCmd::RETURN, build.constUint(0));
+        }
+    );
 
     updateUseCounts(build.function);
     constantFold();
@@ -719,15 +741,21 @@ bb_5:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "Guards")
 {
-    withOneBlock([this](IrOp a) {
-        build.inst(IrCmd::CHECK_TAG, build.constTag(tnumber), build.constTag(tnumber), a);
-        build.inst(IrCmd::RETURN, build.constUint(0));
-    });
+    withOneBlock(
+        [this](IrOp a)
+        {
+            build.inst(IrCmd::CHECK_TAG, build.constTag(tnumber), build.constTag(tnumber), a);
+            build.inst(IrCmd::RETURN, build.constUint(0));
+        }
+    );
 
-    withOneBlock([this](IrOp a) {
-        build.inst(IrCmd::CHECK_TAG, build.constTag(tnil), build.constTag(tnumber), a);
-        build.inst(IrCmd::RETURN, build.constUint(0));
-    });
+    withOneBlock(
+        [this](IrOp a)
+        {
+            build.inst(IrCmd::CHECK_TAG, build.constTag(tnil), build.constTag(tnumber), a);
+            build.inst(IrCmd::RETURN, build.constUint(0));
+        }
+    );
 
     updateUseCounts(build.function);
     constantFold();
@@ -747,16 +775,21 @@ bb_3:
 
 TEST_CASE_FIXTURE(IrBuilderFixture, "ControlFlowCmpNum")
 {
-    auto compareFold = [this](IrOp lhs, IrOp rhs, IrCondition cond, bool result) {
+    auto compareFold = [this](IrOp lhs, IrOp rhs, IrCondition cond, bool result)
+    {
         IrOp instOp;
         IrInst instExpected;
 
-        withTwoBlocks([&](IrOp a, IrOp b) {
-            IrOp nan = build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0));
-            instOp = build.inst(
-                IrCmd::JUMP_CMP_NUM, lhs.kind == IrOpKind::None ? nan : lhs, rhs.kind == IrOpKind::None ? nan : rhs, build.cond(cond), a, b);
-            instExpected = IrInst{IrCmd::JUMP, result ? a : b};
-        });
+        withTwoBlocks(
+            [&](IrOp a, IrOp b)
+            {
+                IrOp nan = build.inst(IrCmd::DIV_NUM, build.constDouble(0.0), build.constDouble(0.0));
+                instOp = build.inst(
+                    IrCmd::JUMP_CMP_NUM, lhs.kind == IrOpKind::None ? nan : lhs, rhs.kind == IrOpKind::None ? nan : rhs, build.cond(cond), a, b
+                );
+                instExpected = IrInst{IrCmd::JUMP, result ? a : b};
+            }
+        );
 
         updateUseCounts(build.function);
         constantFold();
@@ -1134,8 +1167,16 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "BuiltinFastcallsMayInvalidateMemory")
     build.inst(IrCmd::CHECK_NO_METATABLE, table, fallback);
     build.inst(IrCmd::CHECK_READONLY, table, fallback);
 
-    build.inst(IrCmd::INVOKE_FASTCALL, build.constUint(LBF_SETMETATABLE), build.vmReg(1), build.vmReg(2), build.vmReg(3), build.undef(),
-        build.constInt(3), build.constInt(1));
+    build.inst(
+        IrCmd::INVOKE_FASTCALL,
+        build.constUint(LBF_SETMETATABLE),
+        build.vmReg(1),
+        build.vmReg(2),
+        build.vmReg(3),
+        build.undef(),
+        build.constInt(3),
+        build.constInt(1)
+    );
 
     build.inst(IrCmd::CHECK_NO_METATABLE, table, fallback);
     build.inst(IrCmd::CHECK_READONLY, table, fallback);
@@ -2818,8 +2859,16 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "ExplicitUseOfRegisterInVarargSequence")
 
     build.beginBlock(entry);
     build.inst(IrCmd::FALLBACK_GETVARARGS, build.constUint(0), build.vmReg(1), build.constInt(-1));
-    IrOp results = build.inst(IrCmd::INVOKE_FASTCALL, build.constUint(0), build.vmReg(0), build.vmReg(1), build.vmReg(2), build.undef(),
-        build.constInt(-1), build.constInt(-1));
+    IrOp results = build.inst(
+        IrCmd::INVOKE_FASTCALL,
+        build.constUint(0),
+        build.vmReg(0),
+        build.vmReg(1),
+        build.vmReg(2),
+        build.undef(),
+        build.constInt(-1),
+        build.constInt(-1)
+    );
     build.inst(IrCmd::ADJUST_STACK_TO_REG, build.vmReg(0), results);
     build.inst(IrCmd::JUMP, exit);
 
@@ -4353,7 +4402,8 @@ TEST_CASE_FIXTURE(IrBuilderFixture, "PartialOverFullValue")
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), build.constDouble(2.0));
     build.inst(IrCmd::STORE_DOUBLE, build.vmReg(0), build.constDouble(4.0));
     build.inst(
-        IrCmd::STORE_SPLIT_TVALUE, build.vmReg(0), build.constTag(ttable), build.inst(IrCmd::NEW_TABLE, build.constUint(16), build.constUint(32)));
+        IrCmd::STORE_SPLIT_TVALUE, build.vmReg(0), build.constTag(ttable), build.inst(IrCmd::NEW_TABLE, build.constUint(16), build.constUint(32))
+    );
     build.inst(IrCmd::STORE_POINTER, build.vmReg(0), build.inst(IrCmd::NEW_TABLE, build.constUint(8), build.constUint(16)));
     build.inst(IrCmd::STORE_POINTER, build.vmReg(0), build.inst(IrCmd::NEW_TABLE, build.constUint(4), build.constUint(8)));
     build.inst(IrCmd::STORE_SPLIT_TVALUE, build.vmReg(0), build.constTag(tnumber), build.constDouble(1.0));

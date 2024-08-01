@@ -109,9 +109,16 @@ struct ConstraintSolver
 
     DenseHashMap<TypeId, const Constraint*> typeFunctionsToFinalize{nullptr};
 
-    explicit ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, std::vector<NotNull<Constraint>> constraints,
-        ModuleName moduleName, NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger,
-        TypeCheckLimits limits);
+    explicit ConstraintSolver(
+        NotNull<Normalizer> normalizer,
+        NotNull<Scope> rootScope,
+        std::vector<NotNull<Constraint>> constraints,
+        ModuleName moduleName,
+        NotNull<ModuleResolver> moduleResolver,
+        std::vector<RequireCycle> requireCycles,
+        DcrLogger* logger,
+        TypeCheckLimits limits
+    );
 
     // Randomize the order in which to dispatch constraints
     void randomize(unsigned seed);
@@ -170,7 +177,13 @@ public:
 
 
     bool tryDispatchHasIndexer(
-        int& recursionDepth, NotNull<const Constraint> constraint, TypeId subjectType, TypeId indexType, TypeId resultType, Set<TypeId>& seen);
+        int& recursionDepth,
+        NotNull<const Constraint> constraint,
+        TypeId subjectType,
+        TypeId indexType,
+        TypeId resultType,
+        Set<TypeId>& seen
+    );
     bool tryDispatch(const HasIndexerConstraint& c, NotNull<const Constraint> constraint);
 
     bool tryDispatch(const AssignPropConstraint& c, NotNull<const Constraint> constraint);
@@ -187,10 +200,23 @@ public:
     // for a, ... in next_function, t, ... do
     bool tryDispatchIterableFunction(TypeId nextTy, TypeId tableTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
 
-    std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(NotNull<const Constraint> constraint, TypeId subjectType,
-        const std::string& propName, ValueContext context, bool inConditional = false, bool suppressSimplification = false);
-    std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(NotNull<const Constraint> constraint, TypeId subjectType,
-        const std::string& propName, ValueContext context, bool inConditional, bool suppressSimplification, DenseHashSet<TypeId>& seen);
+    std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(
+        NotNull<const Constraint> constraint,
+        TypeId subjectType,
+        const std::string& propName,
+        ValueContext context,
+        bool inConditional = false,
+        bool suppressSimplification = false
+    );
+    std::pair<std::vector<TypeId>, std::optional<TypeId>> lookupTableProp(
+        NotNull<const Constraint> constraint,
+        TypeId subjectType,
+        const std::string& propName,
+        ValueContext context,
+        bool inConditional,
+        bool suppressSimplification,
+        DenseHashSet<TypeId>& seen
+    );
 
     /**
      * Generate constraints to unpack the types of srcTypes and assign each

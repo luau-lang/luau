@@ -167,7 +167,8 @@ static void setupFrontend(Luau::Frontend& frontend)
     registerTypes(frontend, frontend.globalsForAutocomplete, true);
     Luau::freeze(frontend.globalsForAutocomplete.globalTypes);
 
-    frontend.iceHandler.onInternalError = [](const char* error) {
+    frontend.iceHandler.onInternalError = [](const char* error)
+    {
         printf("ICE: %s\n", error);
         LUAU_ASSERT(!"ICE");
     };
@@ -394,7 +395,8 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     {
         static lua_State* globalState = createGlobalState();
 
-        auto runCode = [](const std::string& bytecode, bool useCodegen) {
+        auto runCode = [](const std::string& bytecode, bool useCodegen)
+        {
             lua_State* L = lua_newthread(globalState);
             luaL_sandboxthread(L);
 

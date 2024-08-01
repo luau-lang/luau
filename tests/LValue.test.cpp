@@ -10,23 +10,28 @@ using namespace Luau;
 
 static void merge(TypeArena& arena, RefinementMap& l, const RefinementMap& r)
 {
-    Luau::merge(l, r, [&arena](TypeId a, TypeId b) -> TypeId {
-        // TODO: normalize here also.
-        std::unordered_set<TypeId> s;
+    Luau::merge(
+        l,
+        r,
+        [&arena](TypeId a, TypeId b) -> TypeId
+        {
+            // TODO: normalize here also.
+            std::unordered_set<TypeId> s;
 
-        if (auto utv = get<UnionType>(follow(a)))
-            s.insert(begin(utv), end(utv));
-        else
-            s.insert(a);
+            if (auto utv = get<UnionType>(follow(a)))
+                s.insert(begin(utv), end(utv));
+            else
+                s.insert(a);
 
-        if (auto utv = get<UnionType>(follow(b)))
-            s.insert(begin(utv), end(utv));
-        else
-            s.insert(b);
+            if (auto utv = get<UnionType>(follow(b)))
+                s.insert(begin(utv), end(utv));
+            else
+                s.insert(b);
 
-        std::vector<TypeId> options(s.begin(), s.end());
-        return options.size() == 1 ? options[0] : arena.addType(UnionType{std::move(options)});
-    });
+            std::vector<TypeId> options(s.begin(), s.end());
+            return options.size() == 1 ? options[0] : arena.addType(UnionType{std::move(options)});
+        }
+    );
 }
 
 static LValue mkSymbol(const std::string& s)

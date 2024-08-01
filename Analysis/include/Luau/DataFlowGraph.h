@@ -162,6 +162,7 @@ private:
     ControlFlow visit(DfgScope* scope, AstStatFunction* f);
     ControlFlow visit(DfgScope* scope, AstStatLocalFunction* l);
     ControlFlow visit(DfgScope* scope, AstStatTypeAlias* t);
+    ControlFlow visit(DfgScope* scope, AstStatTypeFunction* f);
     ControlFlow visit(DfgScope* scope, AstStatDeclareGlobal* d);
     ControlFlow visit(DfgScope* scope, AstStatDeclareFunction* d);
     ControlFlow visit(DfgScope* scope, AstStatDeclareClass* d);

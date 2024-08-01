@@ -11,13 +11,15 @@
 
 using namespace Luau;
 
+using Pattern = AnyTypeSummary::Pattern;
+
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(DebugLuauFreezeArena);
 LUAU_FASTFLAG(DebugLuauMagicTypes);
 
 LUAU_FASTFLAG(StudioReportLuauAny);
 
-struct ATSFixture: BuiltinsFixture
+struct ATSFixture : BuiltinsFixture
 {
     ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, true};
 
@@ -44,7 +46,8 @@ type A = (number, string) -> ...any
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 1);
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 7); // Alias
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::Alias);
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "type A = (number, string)->( ...any)");
     }
 }
 
@@ -61,6 +64,9 @@ export type t8<t8> =  t0 &(<t0 ...>(true | any)->(''))
 
     if (FFlag::StudioReportLuauAny)
     {
+        LUAU_ASSERT(module->ats.typeInfo.size() == 1);
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::Alias);
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "export type t8<t8> =  t0 &(<t0 ...>(true | any)->(''))");
     }
 }
 
@@ -78,7 +84,8 @@ type Pair<T> = {first: T, second: any}
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 1);
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 7); // Alias
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::Alias);
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "type Pair<T> = {first: T, second: any}");
     }
 }
 
@@ -119,7 +126,30 @@ type Pair<T> = (boolean, T) -> ...any
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 1);
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 7); // Alias
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::Alias); 
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "type Pair<T> = (boolean, T)->( ...any)");
+    }
+}
+
+TEST_CASE_FIXTURE(ATSFixture, "typeof_any_in_func")
+{
+    fileResolver.source["game/Gui/Modules/A"] = R"(
+    local function f()
+        local a: any = 1
+        local b: typeof(a) = 1
+    end
+)";
+
+    CheckResult result1 = frontend.check("game/Gui/Modules/A");
+    LUAU_REQUIRE_NO_ERRORS(result1);
+
+    ModulePtr module = frontend.moduleResolver.getModule("game/Gui/Modules/A");
+
+    if (FFlag::StudioReportLuauAny)
+    {
+        LUAU_ASSERT(module->ats.typeInfo.size() == 2);
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::VarAnnot);
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "local function f()\n        local a: any = 1\n        local b: typeof(a) = 1\n    end");
     }
 }
 
@@ -142,11 +172,12 @@ foo(addNumbers)
     LUAU_REQUIRE_NO_ERRORS(result1);
 
     ModulePtr module = frontend.moduleResolver.getModule("game/Gui/Modules/A");
-    
+
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 3);
-        LUAU_ASSERT((int)module->ats.typeInfo[1].code == 3); // FuncApp
+        LUAU_ASSERT(module->ats.typeInfo[1].code == Pattern::FuncApp);
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "local function foo<A>(a: (...A)->( any),...: A)\n return a(...)\nend");
     }
 }
 
@@ -191,14 +222,15 @@ end
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 1);
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 1); // Func Arg
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::FuncArg);
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "function f(x: any)\nif not x then\nx = {\n    y = math.random(0, 2^31-1),\n    left = nil,\n    right = nil\n}\nelse\n    local expected = x * 5\nend\nend");
     }
 }
 
 TEST_CASE_FIXTURE(ATSFixture, "variadic_any")
 {
     fileResolver.source["game/Gui/Modules/A"] = R"(
-    local function f(): (number, ...any) -- double count "any" ret if varags
+    local function f(): (number, ...any)
     return 1, 5
     end
 
@@ -212,8 +244,9 @@ TEST_CASE_FIXTURE(ATSFixture, "variadic_any")
 
     if (FFlag::StudioReportLuauAny)
     {
-        LUAU_ASSERT(module->ats.typeInfo.size() == 1);       // do we need this to be the var arg pattern?
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 2); // Func Ret
+        LUAU_ASSERT(module->ats.typeInfo.size() == 1); 
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::FuncRet);
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "local function f(): (number, ...any)\n    return 1, 5\n    end");
     }
 }
 
@@ -234,7 +267,8 @@ TEST_CASE_FIXTURE(ATSFixture, "type_alias_intersection")
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 3);
-        LUAU_ASSERT((int)module->ats.typeInfo[2].code == 4); // Variable Annotation
+        LUAU_ASSERT(module->ats.typeInfo[2].code == Pattern::VarAnnot); 
+        LUAU_ASSERT(module->ats.typeInfo[2].node == "local vec2: Vector2 = {x = 1, y = 2}");
     }
 }
 
@@ -259,7 +293,8 @@ TEST_CASE_FIXTURE(ATSFixture, "var_func_arg")
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 4);
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 5); // Variadic Any
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::VarAny); 
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "local function f(...: any)\n    end");
     }
 }
 
@@ -280,7 +315,8 @@ TEST_CASE_FIXTURE(ATSFixture, "var_func_apps")
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 3);
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 5); // Variadic Any
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::VarAny); 
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "local function f(...: any)\n    end");
     }
 }
 
@@ -323,10 +359,12 @@ end
     LUAU_REQUIRE_ERROR_COUNT(2, result1);
 
     ModulePtr module = frontend.moduleResolver.getModule("game/Gui/Modules/A");
-    
+
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 2);
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::FuncArg);
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "local function manageRace(raceContainer: Model)\n RaceManager.new(raceContainer)\nend");
     }
 }
 
@@ -363,7 +401,9 @@ initialize()
 
     if (FFlag::StudioReportLuauAny)
     {
-        LUAU_ASSERT(module->ats.typeInfo.size() == 5); //unknown Model -- why are we inferring so many anys here --prbably something with the data model. worth looking into
+        LUAU_ASSERT(module->ats.typeInfo.size() == 5); 
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::FuncArg);
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "local function manageRace(raceContainer: Model)\n RaceManager.new(raceContainer)\nend");
     }
 }
 
@@ -437,7 +477,8 @@ initialize()
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 11);
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 1); // Func Arg
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::FuncArg); 
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "local function onCharacterAdded(character: Model)\n\n character.DescendantAdded:Connect(function(descendant)\n  if descendant:IsA('BasePart')then\n   descendant.CollisionGroup = CHARACTER_COLLISION_GROUP\n  end\n end)\n\n\n for _, descendant in character:GetDescendants()do\n  if descendant:IsA('BasePart')then\n   descendant.CollisionGroup = CHARACTER_COLLISION_GROUP\n  end\n end\nend");
     }
 }
 
@@ -499,7 +540,8 @@ initialize()
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 7);
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 1); // Func Arg
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::FuncArg); 
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "local function setupKiosk(kiosk: Model)\n local spawnLocation = kiosk:FindFirstChild('SpawnLocation')\n assert(spawnLocation, `{kiosk:GetFullName()} has no SpawnLocation part`)\n local promptPart = kiosk:FindFirstChild('Prompt')\n assert(promptPart, `{kiosk:GetFullName()} has no Prompt part`)\n\n\n spawnLocation.Transparency = 1\n\n\n local spawnPrompt = spawnPromptTemplate:Clone()\n spawnPrompt.Parent = promptPart\n\n spawnPrompt.Triggered:Connect(function(player: Player)\n\n  destroyPlayerCars(player)\n\n  spawnCar(spawnLocation.CFrame, player)\n end)\nend");
     }
 }
 
@@ -517,6 +559,13 @@ TEST_CASE_FIXTURE(ATSFixture, "mutually_recursive_generic")
 
     CheckResult result1 = frontend.check("game/Gui/Modules/A");
     LUAU_REQUIRE_ERROR_COUNT(2, result1);
+
+    ModulePtr module = frontend.moduleResolver.getModule("game/Gui/Modules/A");
+
+    if (FFlag::StudioReportLuauAny)
+    {
+        LUAU_ASSERT(module->ats.typeInfo.size() == 0);
+    }
 }
 
 TEST_CASE_FIXTURE(ATSFixture, "explicit_pack")
@@ -534,7 +583,8 @@ type Bar = Foo<(number, any)>
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 1);
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 7); // Alias
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::Alias);
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "type Bar = Foo<(number, any)>");
     }
 }
 
@@ -555,7 +605,8 @@ local x: number, y: any, z, h: nil = 1, nil
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 3);
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 4); // Variable Annotation
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::VarAnnot);
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "local x: any = 2, 3");
     }
 }
 
@@ -575,7 +626,8 @@ TEST_CASE_FIXTURE(ATSFixture, "table_uses_any")
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 1);
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 4); // Variable Annotation
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::VarAnnot); 
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "local x: any = 0");
     }
 }
 
@@ -595,7 +647,8 @@ TEST_CASE_FIXTURE(ATSFixture, "typeof_any")
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 2);
-        LUAU_ASSERT((int)module->ats.typeInfo[1].code == 1); // Function Arguments
+        LUAU_ASSERT(module->ats.typeInfo[1].code == Pattern::FuncArg);
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "function some1(x: typeof(x))\n    end");
     }
 }
 
@@ -615,8 +668,9 @@ TEST_CASE_FIXTURE(ATSFixture, "table_type_assigned")
 
     if (FFlag::StudioReportLuauAny)
     {
-        LUAU_ASSERT(module->ats.typeInfo.size() == 2);       // double counting variable annot again
-        LUAU_ASSERT((int)module->ats.typeInfo[1].code == 8); // Assign
+        LUAU_ASSERT(module->ats.typeInfo.size() == 2); 
+        LUAU_ASSERT(module->ats.typeInfo[1].code == Pattern::Assign); 
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "local x: { x:  any?} = {x = 1}");
     }
 }
 
@@ -635,13 +689,13 @@ TEST_CASE_FIXTURE(ATSFixture, "simple_func_wo_ret")
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 1);
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 1); // Function Arguments
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::FuncArg); 
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "function some(x: any)\n    end");
     }
 }
 
 TEST_CASE_FIXTURE(ATSFixture, "simple_func_w_ret")
 {
-    // TODO: should only return 1
     fileResolver.source["game/Gui/Modules/A"] = R"(
     function other(y: number): any
     return "gotcha!"
@@ -656,7 +710,8 @@ TEST_CASE_FIXTURE(ATSFixture, "simple_func_w_ret")
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 1);
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 2); // Function Return
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::FuncRet); 
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "function other(y: number): any\n    return 'gotcha!'\n    end");
     }
 }
 
@@ -676,8 +731,9 @@ TEST_CASE_FIXTURE(ATSFixture, "nested_local")
 
     if (FFlag::StudioReportLuauAny)
     {
-        LUAU_ASSERT(module->ats.typeInfo.size() == 1);       // should be one, double counitng annot
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 4); // Variable Annotation
+        LUAU_ASSERT(module->ats.typeInfo.size() == 1); 
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::VarAnnot);
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "function cool(y: number): number\n    local g: any = 'gratatataaa'\n    return y\n    end");
     }
 }
 
@@ -697,7 +753,8 @@ TEST_CASE_FIXTURE(ATSFixture, "generic_func")
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 1);
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 1); // Function Arguments
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::FuncArg); 
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "function reverse<T>(a: {T}, b: any): {T}\n    return a\n    end");
     }
 }
 
@@ -716,7 +773,8 @@ TEST_CASE_FIXTURE(ATSFixture, "type_alias_any")
     if (FFlag::StudioReportLuauAny)
     {
         LUAU_ASSERT(module->ats.typeInfo.size() == 2);
-        LUAU_ASSERT((int)module->ats.typeInfo[0].code == 7); // Alias
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::Alias); 
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "type Clear = any");
     }
 }
 
@@ -740,6 +798,42 @@ TEST_CASE_FIXTURE(ATSFixture, "multi_module_any")
 
     CheckResult result = frontend.check("game/B");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    ModulePtr module = frontend.moduleResolver.getModule("game/B");
+
+    if (FFlag::StudioReportLuauAny)
+    {
+        LUAU_ASSERT(module->ats.typeInfo.size() == 2);
+        LUAU_ASSERT(module->ats.typeInfo[0].code == Pattern::Alias); 
+        LUAU_ASSERT(module->ats.typeInfo[0].node == "type Clear = any");
+    }
 }
+
+TEST_CASE_FIXTURE(ATSFixture, "cast_on_cyclic_req")
+{
+    fileResolver.source["game/A"] = R"(
+    local a = require(script.Parent.B) -- not resolving this module
+    export type MyFunction = (number, string) -> (any)
+)";
+
+    fileResolver.source["game/B"] = R"(
+    local MyFunc = require(script.Parent.A) :: any
+    type Clear = any
+    local z: Clear = "zip"  
+)";
+
+    CheckResult result = frontend.check("game/B");
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
+
+    ModulePtr module = frontend.moduleResolver.getModule("game/B");
+
+    if (FFlag::StudioReportLuauAny)
+    {
+        LUAU_ASSERT(module->ats.typeInfo.size() == 3);
+        LUAU_ASSERT(module->ats.typeInfo[1].code == Pattern::Alias); 
+        LUAU_ASSERT(module->ats.typeInfo[1].node == "type Clear = any");
+    }
+}
+
 
 TEST_SUITE_END();

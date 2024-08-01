@@ -29,7 +29,8 @@ void updateUseCounts(IrFunction& function)
     for (IrInst& inst : instructions)
         inst.useCount = 0;
 
-    auto checkOp = [&](IrOp op) {
+    auto checkOp = [&](IrOp op)
+    {
         if (op.kind == IrOpKind::Inst)
         {
             IrInst& target = instructions[op.index];
@@ -82,7 +83,8 @@ void updateLastUseLocations(IrFunction& function, const std::vector<uint32_t>& s
             CODEGEN_ASSERT(instIdx < function.instructions.size());
             IrInst& inst = instructions[instIdx];
 
-            auto checkOp = [&](IrOp op) {
+            auto checkOp = [&](IrOp op)
+            {
                 if (op.kind == IrOpKind::Inst)
                     instructions[op.index].lastUse = uint32_t(instIdx);
             };
@@ -145,7 +147,8 @@ std::pair<uint32_t, uint32_t> getLiveInOutValueCount(IrFunction& function, IrBlo
     uint32_t liveIns = 0;
     uint32_t liveOuts = 0;
 
-    auto checkOp = [&](IrOp op) {
+    auto checkOp = [&](IrOp op)
+    {
         if (op.kind == IrOpKind::Inst)
         {
             if (op.index >= block.start && op.index <= block.finish)
@@ -477,7 +480,8 @@ static void computeCfgBlockEdges(IrFunction& function)
         {
             const IrInst& inst = function.instructions[instIdx];
 
-            auto checkOp = [&](IrOp op) {
+            auto checkOp = [&](IrOp op)
+            {
                 if (op.kind == IrOpKind::Block)
                 {
                     // We use a trick here, where we use the starting offset of the predecessor list as the position where to write next predecessor
@@ -512,7 +516,11 @@ static void computeCfgBlockEdges(IrFunction& function)
 // Optionally, collect required node order into a vector
 template<auto childIt>
 void computeBlockOrdering(
-    IrFunction& function, std::vector<BlockOrdering>& ordering, std::vector<uint32_t>* preOrder, std::vector<uint32_t>* postOrder)
+    IrFunction& function,
+    std::vector<BlockOrdering>& ordering,
+    std::vector<uint32_t>* preOrder,
+    std::vector<uint32_t>* postOrder
+)
 {
     CfgInfo& info = function.cfg;
 
@@ -712,7 +720,11 @@ void computeCfgDominanceTreeChildren(IrFunction& function)
 // This algorithm is based on 'A Linear Time Algorithm for Placing Phi-Nodes' [Vugranam C.Sreedhar]
 // It uses the optimized form from LLVM that relies an implicit DJ-graph (join edges are edges of the CFG that are not part of the dominance tree)
 void computeIteratedDominanceFrontierForDefs(
-    IdfContext& ctx, const IrFunction& function, const std::vector<uint32_t>& defBlocks, const std::vector<uint32_t>& liveInBlocks)
+    IdfContext& ctx,
+    const IrFunction& function,
+    const std::vector<uint32_t>& defBlocks,
+    const std::vector<uint32_t>& liveInBlocks
+)
 {
     CODEGEN_ASSERT(!function.cfg.domOrdering.empty());
 

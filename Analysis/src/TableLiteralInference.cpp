@@ -13,8 +13,10 @@ namespace Luau
 
 static bool isLiteral(const AstExpr* expr)
 {
-    return (expr->is<AstExprTable>() || expr->is<AstExprFunction>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantString>() ||
-            expr->is<AstExprConstantBool>() || expr->is<AstExprConstantNil>());
+    return (
+        expr->is<AstExprTable>() || expr->is<AstExprFunction>() || expr->is<AstExprConstantNumber>() || expr->is<AstExprConstantString>() ||
+        expr->is<AstExprConstantBool>() || expr->is<AstExprConstantNil>()
+    );
 }
 
 // A fast approximation of subTy <: superTy
@@ -108,9 +110,17 @@ static std::optional<TypeId> extractMatchingTableType(std::vector<TypeId>& table
     return std::nullopt;
 }
 
-TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
-    NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, NotNull<Unifier2> unifier, TypeId expectedType, TypeId exprType,
-    const AstExpr* expr, std::vector<TypeId>& toBlock)
+TypeId matchLiteralType(
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes,
+    NotNull<DenseHashMap<const AstExpr*, TypeId>> astExpectedTypes,
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena,
+    NotNull<Unifier2> unifier,
+    TypeId expectedType,
+    TypeId exprType,
+    const AstExpr* expr,
+    std::vector<TypeId>& toBlock
+)
 {
     /*
      * Table types that arise from literal table expressions have some
@@ -208,7 +218,7 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
 
     if (auto exprTable = expr->as<AstExprTable>())
     {
-        TableType* tableTy = getMutable<TableType>(exprType);
+        TableType* const tableTy = getMutable<TableType>(exprType);
         LUAU_ASSERT(tableTy);
 
         const TableType* expectedTableTy = get<TableType>(expectedType);
@@ -260,8 +270,17 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
                         (*astExpectedTypes)[item.key] = expectedTableTy->indexer->indexType;
                         (*astExpectedTypes)[item.value] = expectedTableTy->indexer->indexResultType;
 
-                        TypeId matchedType = matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier,
-                            expectedTableTy->indexer->indexResultType, propTy, item.value, toBlock);
+                        TypeId matchedType = matchLiteralType(
+                            astTypes,
+                            astExpectedTypes,
+                            builtinTypes,
+                            arena,
+                            unifier,
+                            expectedTableTy->indexer->indexResultType,
+                            propTy,
+                            item.value,
+                            toBlock
+                        );
 
                         if (tableTy->indexer)
                             unifier->unify(matchedType, tableTy->indexer->indexResultType);
@@ -334,8 +353,17 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
                     LUAU_ASSERT(propTy);
 
                     unifier->unify(expectedTableTy->indexer->indexType, builtinTypes->numberType);
-                    TypeId matchedType = matchLiteralType(astTypes, astExpectedTypes, builtinTypes, arena, unifier,
-                        expectedTableTy->indexer->indexResultType, *propTy, item.value, toBlock);
+                    TypeId matchedType = matchLiteralType(
+                        astTypes,
+                        astExpectedTypes,
+                        builtinTypes,
+                        arena,
+                        unifier,
+                        expectedTableTy->indexer->indexResultType,
+                        *propTy,
+                        item.value,
+                        toBlock
+                    );
 
                     // if the index result type is the prop type, we can replace it with the matched type here.
                     if (tableTy->indexer->indexResultType == *propTy)
@@ -409,6 +437,15 @@ TypeId matchLiteralType(NotNull<DenseHashMap<const AstExpr*, TypeId>> astTypes, 
             // If the property isn't actually optional, do nothing.
             if (exprProp.readTy || exprProp.writeTy)
                 tableTy->props[*key] = std::move(exprProp);
+        }
+
+        // If the expected table has an indexer, then the provided table can
+        // have one too.
+        // TODO: If the expected table also has an indexer, we might want to
+        // push the expected indexer's types into it.
+        if (expectedTableTy->indexer && !tableTy->indexer)
+        {
+            tableTy->indexer = expectedTableTy->indexer;
         }
     }
 

@@ -17,8 +17,15 @@ struct TypeCheckLimits;
 // A substitution which replaces generic types in a given set by free types.
 struct ReplaceGenerics : Substitution
 {
-    ReplaceGenerics(const TxnLog* log, TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, TypeLevel level, Scope* scope,
-        const std::vector<TypeId>& generics, const std::vector<TypePackId>& genericPacks)
+    ReplaceGenerics(
+        const TxnLog* log,
+        TypeArena* arena,
+        NotNull<BuiltinTypes> builtinTypes,
+        TypeLevel level,
+        Scope* scope,
+        const std::vector<TypeId>& generics,
+        const std::vector<TypePackId>& genericPacks
+    )
         : Substitution(log, arena)
         , builtinTypes(builtinTypes)
         , level(level)
@@ -28,8 +35,15 @@ struct ReplaceGenerics : Substitution
     {
     }
 
-    void resetState(const TxnLog* log, TypeArena* arena, NotNull<BuiltinTypes> builtinTypes, TypeLevel level, Scope* scope,
-        const std::vector<TypeId>& generics, const std::vector<TypePackId>& genericPacks);
+    void resetState(
+        const TxnLog* log,
+        TypeArena* arena,
+        NotNull<BuiltinTypes> builtinTypes,
+        TypeLevel level,
+        Scope* scope,
+        const std::vector<TypeId>& generics,
+        const std::vector<TypePackId>& genericPacks
+    );
 
     NotNull<BuiltinTypes> builtinTypes;
 
@@ -141,6 +155,11 @@ struct GenericTypeFinder : TypeOnceVisitor
  * limits to be exceeded.
  */
 std::optional<TypeId> instantiate(
-    NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, NotNull<TypeCheckLimits> limits, NotNull<Scope> scope, TypeId ty);
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> arena,
+    NotNull<TypeCheckLimits> limits,
+    NotNull<Scope> scope,
+    TypeId ty
+);
 
 } // namespace Luau

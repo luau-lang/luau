@@ -12,9 +12,9 @@ namespace Luau
 {
 class BytecodeBuilder;
 
-struct BuiltinTypes
+struct BuiltinAstTypes
 {
-    BuiltinTypes(const char* vectorType)
+    BuiltinAstTypes(const char* vectorType)
         : vectorType{{}, std::nullopt, AstName{vectorType}, std::nullopt, {}}
     {
     }
@@ -26,9 +26,17 @@ struct BuiltinTypes
     AstTypeReference vectorType;
 };
 
-void buildTypeMap(DenseHashMap<AstExprFunction*, std::string>& functionTypes, DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes,
-    DenseHashMap<AstExpr*, LuauBytecodeType>& exprTypes, AstNode* root, const char* vectorType, const DenseHashMap<AstName, uint8_t>& userdataTypes,
-    const BuiltinTypes& builtinTypes, const DenseHashMap<AstExprCall*, int>& builtinCalls, const DenseHashMap<AstName, Compile::Global>& globals,
-    BytecodeBuilder& bytecode);
+void buildTypeMap(
+    DenseHashMap<AstExprFunction*, std::string>& functionTypes,
+    DenseHashMap<AstLocal*, LuauBytecodeType>& localTypes,
+    DenseHashMap<AstExpr*, LuauBytecodeType>& exprTypes,
+    AstNode* root,
+    const char* vectorType,
+    const DenseHashMap<AstName, uint8_t>& userdataTypes,
+    const BuiltinAstTypes& builtinTypes,
+    const DenseHashMap<AstExprCall*, int>& builtinCalls,
+    const DenseHashMap<AstName, Compile::Global>& globals,
+    BytecodeBuilder& bytecode
+);
 
 } // namespace Luau

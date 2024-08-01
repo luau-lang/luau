@@ -114,6 +114,8 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "GenericError { " << err.message << " }";
     else if constexpr (std::is_same_v<T, InternalError>)
         stream << "InternalError { " << err.message << " }";
+    else if constexpr (std::is_same_v<T, ConstraintSolvingIncompleteError>)
+        stream << "ConstraintSolvingIncompleteError {}";
     else if constexpr (std::is_same_v<T, CannotCallNonFunction>)
         stream << "CannotCallNonFunction { " << toString(err.ty) << " }";
     else if constexpr (std::is_same_v<T, ExtraInformation>)
@@ -259,7 +261,8 @@ std::ostream& operator<<(std::ostream& stream, const CannotAssignToNever::Reason
 
 std::ostream& operator<<(std::ostream& stream, const TypeErrorData& data)
 {
-    auto cb = [&](const auto& e) {
+    auto cb = [&](const auto& e)
+    {
         return errorToString(stream, e);
     };
     visit(cb, data);

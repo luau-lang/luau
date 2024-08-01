@@ -124,7 +124,8 @@ void write(JsonEmitter& emitter, const ConstraintBlock& block)
     ObjectEmitter o = emitter.writeObject();
     o.writePair("stringification", block.stringification);
 
-    auto go = [&o](auto&& t) {
+    auto go = [&o](auto&& t)
+    {
         using T = std::decay_t<decltype(t)>;
 
         o.writePair("id", toPointerId(t));
@@ -350,8 +351,12 @@ void DcrLogger::popBlock(NotNull<const Constraint> block)
     }
 }
 
-static void snapshotTypeStrings(const std::vector<ExprTypesAtLocation>& interestedExprs,
-    const std::vector<AnnotationTypesAtLocation>& interestedAnnots, DenseHashMap<const void*, std::string>& map, ToStringOptions& opts)
+static void snapshotTypeStrings(
+    const std::vector<ExprTypesAtLocation>& interestedExprs,
+    const std::vector<AnnotationTypesAtLocation>& interestedAnnots,
+    DenseHashMap<const void*, std::string>& map,
+    ToStringOptions& opts
+)
 {
     for (const ExprTypesAtLocation& tys : interestedExprs)
     {
@@ -368,7 +373,10 @@ static void snapshotTypeStrings(const std::vector<ExprTypesAtLocation>& interest
 }
 
 void DcrLogger::captureBoundaryState(
-    BoundarySnapshot& target, const Scope* rootScope, const std::vector<NotNull<const Constraint>>& unsolvedConstraints)
+    BoundarySnapshot& target,
+    const Scope* rootScope,
+    const std::vector<NotNull<const Constraint>>& unsolvedConstraints
+)
 {
     target.rootScope = snapshotScope(rootScope, opts);
     target.unsolvedConstraints.clear();
@@ -391,7 +399,11 @@ void DcrLogger::captureInitialSolverState(const Scope* rootScope, const std::vec
 }
 
 StepSnapshot DcrLogger::prepareStepSnapshot(
-    const Scope* rootScope, NotNull<const Constraint> current, bool force, const std::vector<NotNull<const Constraint>>& unsolvedConstraints)
+    const Scope* rootScope,
+    NotNull<const Constraint> current,
+    bool force,
+    const std::vector<NotNull<const Constraint>>& unsolvedConstraints
+)
 {
     ScopeSnapshot scopeSnapshot = snapshotScope(rootScope, opts);
     DenseHashMap<const Constraint*, ConstraintSnapshot> constraints{nullptr};

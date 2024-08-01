@@ -230,10 +230,12 @@ TEST_CASE_FIXTURE(Fixture, "variadic_packs")
     CHECK(Location{Position{4, 29}, Position{4, 30}} == result.errors[1].location);
 
     CHECK_EQ(
-        result.errors[0], (TypeError{Location(Position{3, 21}, Position{3, 26}), TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}}));
+        result.errors[0], (TypeError{Location(Position{3, 21}, Position{3, 26}), TypeMismatch{builtinTypes->numberType, builtinTypes->stringType}})
+    );
 
     CHECK_EQ(
-        result.errors[1], (TypeError{Location(Position{4, 29}, Position{4, 30}), TypeMismatch{builtinTypes->stringType, builtinTypes->numberType}}));
+        result.errors[1], (TypeError{Location(Position{4, 29}, Position{4, 30}), TypeMismatch{builtinTypes->stringType, builtinTypes->numberType}})
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_pack_syntax")
@@ -459,9 +461,11 @@ type Packed4<T...> = (Packed3<T...>, T...) -> (Packed3<T...>, T...)
 
     auto tf = lookupType("Packed4");
     REQUIRE(tf);
-    CHECK_EQ(toString(*tf),
+    CHECK_EQ(
+        toString(*tf),
         "((((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...) -> (((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...), T...) -> "
-        "((((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...) -> (((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...), T...)");
+        "((((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...) -> (((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...), T...)"
+    );
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_variadic")
@@ -1054,8 +1058,10 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        CHECK(toString(result.errors.at(0)) ==
-              "Type pack '...number' could not be converted into 'boolean'; type ...number.tail() (...number) is not a subtype of boolean (boolean)");
+        CHECK(
+            toString(result.errors.at(0)) ==
+            "Type pack '...number' could not be converted into 'boolean'; type ...number.tail() (...number) is not a subtype of boolean (boolean)"
+        );
     else
         CHECK_EQ(toString(result.errors[0]), "Type 'number' could not be converted into 'boolean'");
 }

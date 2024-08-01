@@ -75,8 +75,16 @@ struct Instantiation2 : Substitution
 };
 
 std::optional<TypeId> instantiate2(
-    TypeArena* arena, DenseHashMap<TypeId, TypeId> genericSubstitutions, DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions, TypeId ty);
-std::optional<TypePackId> instantiate2(TypeArena* arena, DenseHashMap<TypeId, TypeId> genericSubstitutions,
-    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions, TypePackId tp);
+    TypeArena* arena,
+    DenseHashMap<TypeId, TypeId> genericSubstitutions,
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions,
+    TypeId ty
+);
+std::optional<TypePackId> instantiate2(
+    TypeArena* arena,
+    DenseHashMap<TypeId, TypeId> genericSubstitutions,
+    DenseHashMap<TypePackId, TypePackId> genericPackSubstitutions,
+    TypePackId tp
+);
 
 } // namespace Luau

@@ -231,7 +231,10 @@ static void serializeScriptSummary(const std::string& file, const std::vector<Fu
 }
 
 static bool serializeSummaries(
-    const std::vector<std::string>& files, const std::vector<std::vector<FunctionBytecodeSummary>>& scriptSummaries, const std::string& summaryFile)
+    const std::vector<std::string>& files,
+    const std::vector<std::vector<FunctionBytecodeSummary>>& scriptSummaries,
+    const std::string& summaryFile
+)
 {
 
     FILE* fp = fopen(summaryFile.c_str(), "w");

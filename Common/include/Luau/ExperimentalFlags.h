@@ -13,6 +13,7 @@ inline bool isFlagExperimental(const char* flag)
     static const char* const kList[] = {
         "LuauInstantiateInSubtyping",      // requires some fixes to lua-apps code
         "LuauFixIndexerSubtypingOrdering", // requires some small fixes to lua-apps code since this fixes a false negative
+        "StudioReportLuauAny",             // takes telemetry data for usage of any types
         // makes sure we always have at least one entry
         nullptr,
     };

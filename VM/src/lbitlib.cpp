@@ -9,7 +9,7 @@
 #define NBITS int(8 * sizeof(unsigned))
 
 // macro to trim extra bits
-#define trim(x) ((x)&ALLONES)
+#define trim(x) ((x) & ALLONES)
 
 // builds a number with 'n' ones (1 <= n <= NBITS)
 #define mask(n) (~((ALLONES << 1) << ((n)-1)))

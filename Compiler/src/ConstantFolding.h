@@ -44,8 +44,14 @@ struct Constant
     }
 };
 
-void foldConstants(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables,
-    DenseHashMap<AstLocal*, Constant>& locals, const DenseHashMap<AstExprCall*, int>* builtins, bool foldMathK, AstNode* root);
+void foldConstants(
+    DenseHashMap<AstExpr*, Constant>& constants,
+    DenseHashMap<AstLocal*, Variable>& variables,
+    DenseHashMap<AstLocal*, Constant>& locals,
+    const DenseHashMap<AstExprCall*, int>* builtins,
+    bool foldMathK,
+    AstNode* root
+);
 
 } // namespace Compile
 } // namespace Luau

@@ -1678,8 +1678,13 @@ reentry:
                 {
                     const float* vb = vvalue(rb);
                     float vc = cast_to(float, nvalue(rc));
-                    setvvalue(ra, float(luai_numidiv(vb[0], vc)), float(luai_numidiv(vb[1], vc)), float(luai_numidiv(vb[2], vc)),
-                        float(luai_numidiv(vb[3], vc)));
+                    setvvalue(
+                        ra,
+                        float(luai_numidiv(vb[0], vc)),
+                        float(luai_numidiv(vb[1], vc)),
+                        float(luai_numidiv(vb[2], vc)),
+                        float(luai_numidiv(vb[3], vc))
+                    );
                     VM_NEXT();
                 }
                 else
@@ -1904,8 +1909,13 @@ reentry:
                 {
                     const float* vb = vvalue(rb);
                     float vc = cast_to(float, nvalue(kv));
-                    setvvalue(ra, float(luai_numidiv(vb[0], vc)), float(luai_numidiv(vb[1], vc)), float(luai_numidiv(vb[2], vc)),
-                        float(luai_numidiv(vb[3], vc)));
+                    setvvalue(
+                        ra,
+                        float(luai_numidiv(vb[0], vc)),
+                        float(luai_numidiv(vb[1], vc)),
+                        float(luai_numidiv(vb[2], vc)),
+                        float(luai_numidiv(vb[3], vc))
+                    );
                     VM_NEXT();
                 }
                 else

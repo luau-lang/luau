@@ -5,6 +5,7 @@
 
 #include "Fixture.h"
 
+#include "ScopedFlags.h"
 #include "doctest.h"
 
 #include <algorithm>
@@ -15,6 +16,7 @@ TEST_SUITE_BEGIN("NonstrictModeTests");
 
 TEST_CASE_FIXTURE(Fixture, "infer_nullary_function")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
     CheckResult result = check(R"(
         --!nonstrict
         function foo(x, y) end
@@ -37,6 +39,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_nullary_function")
 
 TEST_CASE_FIXTURE(Fixture, "infer_the_maximum_number_of_values_the_function_could_return")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
     CheckResult result = check(R"(
         --!nonstrict
         function getMinCardCountForWidth(width)
@@ -100,6 +103,7 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_return_types_are_ok")
 
 TEST_CASE_FIXTURE(Fixture, "locals_are_any_by_default")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
     CheckResult result = check(R"(
         --!nonstrict
         local m = 55
@@ -126,6 +130,7 @@ TEST_CASE_FIXTURE(Fixture, "parameters_having_type_any_are_optional")
 
 TEST_CASE_FIXTURE(Fixture, "local_tables_are_not_any")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
@@ -143,6 +148,7 @@ TEST_CASE_FIXTURE(Fixture, "local_tables_are_not_any")
 
 TEST_CASE_FIXTURE(Fixture, "offer_a_hint_if_you_use_a_dot_instead_of_a_colon")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
@@ -157,6 +163,7 @@ TEST_CASE_FIXTURE(Fixture, "offer_a_hint_if_you_use_a_dot_instead_of_a_colon")
 
 TEST_CASE_FIXTURE(Fixture, "table_props_are_any")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
@@ -178,6 +185,7 @@ TEST_CASE_FIXTURE(Fixture, "table_props_are_any")
 
 TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
     CheckResult result = check(R"(
         --!nonstrict
         local T = {
@@ -253,6 +261,7 @@ TEST_CASE_FIXTURE(Fixture, "delay_function_does_not_require_its_argument_to_retu
 
 TEST_CASE_FIXTURE(Fixture, "inconsistent_module_return_types_are_ok")
 {
+    ScopedFastFlag sff{FFlag::DebugLuauDeferredConstraintResolution, false};
     CheckResult result = check(R"(
         --!nonstrict
 

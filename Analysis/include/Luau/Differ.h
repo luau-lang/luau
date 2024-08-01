@@ -62,7 +62,12 @@ struct DiffPathNodeLeaf
     // TODO: Rename to anonymousIndex, for both union and Intersection
     std::optional<size_t> unionIndex;
     DiffPathNodeLeaf(
-        std::optional<TypeId> ty, std::optional<Name> tableProperty, std::optional<int> minLength, bool isVariadic, std::optional<size_t> unionIndex)
+        std::optional<TypeId> ty,
+        std::optional<Name> tableProperty,
+        std::optional<int> minLength,
+        bool isVariadic,
+        std::optional<size_t> unionIndex
+    )
         : ty(ty)
         , tableProperty(tableProperty)
         , minLength(minLength)
@@ -159,7 +164,11 @@ struct DifferEnvironment
     DenseHashMap<TypePackId, TypePackId> genericTpMatchedPairs;
 
     DifferEnvironment(
-        TypeId rootLeft, TypeId rootRight, std::optional<std::string> externalSymbolLeft, std::optional<std::string> externalSymbolRight)
+        TypeId rootLeft,
+        TypeId rootRight,
+        std::optional<std::string> externalSymbolLeft,
+        std::optional<std::string> externalSymbolRight
+    )
         : rootLeft(rootLeft)
         , rootRight(rootRight)
         , externalSymbolLeft(externalSymbolLeft)

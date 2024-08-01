@@ -25,8 +25,14 @@ struct LintResult
     std::vector<LintWarning> warnings;
 };
 
-std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const ScopePtr& env, const Module* module,
-    const std::vector<HotComment>& hotcomments, const LintOptions& options);
+std::vector<LintWarning> lint(
+    AstStat* root,
+    const AstNameTable& names,
+    const ScopePtr& env,
+    const Module* module,
+    const std::vector<HotComment>& hotcomments,
+    const LintOptions& options
+);
 
 std::vector<AstName> getDeprecatedGlobals(const AstNameTable& names);
 

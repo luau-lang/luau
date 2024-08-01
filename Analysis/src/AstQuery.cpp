@@ -331,9 +331,14 @@ static std::optional<AstStatLocal*> findBindingLocalStatement(const SourceModule
         return std::nullopt;
 
     std::vector<AstNode*> nodes = findAstAncestryOfPosition(source, binding.location.begin);
-    auto iter = std::find_if(nodes.rbegin(), nodes.rend(), [](AstNode* node) {
-        return node->is<AstStatLocal>();
-    });
+    auto iter = std::find_if(
+        nodes.rbegin(),
+        nodes.rend(),
+        [](AstNode* node)
+        {
+            return node->is<AstStatLocal>();
+        }
+    );
     return iter != nodes.rend() ? std::make_optional((*iter)->as<AstStatLocal>()) : std::nullopt;
 }
 
@@ -472,7 +477,11 @@ ExprOrLocal findExprOrLocalAtPosition(const SourceModule& source, Position pos)
 }
 
 static std::optional<DocumentationSymbol> checkOverloadedDocumentationSymbol(
-    const Module& module, const TypeId ty, const AstExpr* parentExpr, const std::optional<DocumentationSymbol> documentationSymbol)
+    const Module& module,
+    const TypeId ty,
+    const AstExpr* parentExpr,
+    const std::optional<DocumentationSymbol> documentationSymbol
+)
 {
     if (!documentationSymbol)
         return std::nullopt;

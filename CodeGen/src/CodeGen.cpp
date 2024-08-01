@@ -109,29 +109,34 @@ void onDisable(lua_State* L, Proto* proto)
 
     // walk all thread call stacks and clear the LUA_CALLINFO_NATIVE flag from any
     // entries pointing to the current proto that has native code enabled.
-    luaM_visitgco(L, proto, [](void* context, lua_Page* page, GCObject* gco) {
-        Proto* proto = (Proto*)context;
-
-        if (gco->gch.tt != LUA_TTHREAD)
-            return false;
-
-        lua_State* th = gco2th(gco);
-
-        for (CallInfo* ci = th->ci; ci > th->base_ci; ci--)
+    luaM_visitgco(
+        L,
+        proto,
+        [](void* context, lua_Page* page, GCObject* gco)
         {
-            if (isLua(ci))
-            {
-                Proto* p = clvalue(ci->func)->l.p;
+            Proto* proto = (Proto*)context;
 
-                if (p == proto)
+            if (gco->gch.tt != LUA_TTHREAD)
+                return false;
+
+            lua_State* th = gco2th(gco);
+
+            for (CallInfo* ci = th->ci; ci > th->base_ci; ci--)
+            {
+                if (isLua(ci))
                 {
-                    ci->flags &= ~LUA_CALLINFO_NATIVE;
+                    Proto* p = clvalue(ci->func)->l.p;
+
+                    if (p == proto)
+                    {
+                        ci->flags &= ~LUA_CALLINFO_NATIVE;
+                    }
                 }
             }
-        }
 
-        return false;
-    });
+            return false;
+        }
+    );
 }
 
 #if defined(CODEGEN_TARGET_A64)
@@ -161,7 +166,7 @@ bool isSupported()
     if (sizeof(LuaNode) != 32)
         return false;
 
-    // Windows CRT uses stack unwinding in longjmp so we have to use unwind data; on other platforms, it's only necessary for C++ EH.
+        // Windows CRT uses stack unwinding in longjmp so we have to use unwind data; on other platforms, it's only necessary for C++ EH.
 #if defined(_WIN32)
     if (!isUnwindSupported())
         return false;

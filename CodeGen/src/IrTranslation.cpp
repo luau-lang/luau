@@ -460,15 +460,23 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
     if (rb != -1)
     {
         IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-        build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TNUMBER),
-            bcTypes.a == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback));
+        build.inst(
+            IrCmd::CHECK_TAG,
+            tb,
+            build.constTag(LUA_TNUMBER),
+            bcTypes.a == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback)
+        );
     }
 
     if (rc != -1 && rc != rb)
     {
         IrOp tc = build.inst(IrCmd::LOAD_TAG, build.vmReg(rc));
-        build.inst(IrCmd::CHECK_TAG, tc, build.constTag(LUA_TNUMBER),
-            bcTypes.b == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback));
+        build.inst(
+            IrCmd::CHECK_TAG,
+            tc,
+            build.constTag(LUA_TNUMBER),
+            bcTypes.b == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback)
+        );
     }
 
     IrOp vb = loadDoubleOrConstant(build, opb);
@@ -548,19 +556,22 @@ static void translateInstBinaryNumeric(IrBuilder& build, int ra, int rb, int rc,
 void translateInstBinary(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm)
 {
     translateInstBinaryNumeric(
-        build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), LUAU_INSN_C(*pc), build.vmReg(LUAU_INSN_B(*pc)), build.vmReg(LUAU_INSN_C(*pc)), pcpos, tm);
+        build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), LUAU_INSN_C(*pc), build.vmReg(LUAU_INSN_B(*pc)), build.vmReg(LUAU_INSN_C(*pc)), pcpos, tm
+    );
 }
 
 void translateInstBinaryK(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm)
 {
     translateInstBinaryNumeric(
-        build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), -1, build.vmReg(LUAU_INSN_B(*pc)), build.vmConst(LUAU_INSN_C(*pc)), pcpos, tm);
+        build, LUAU_INSN_A(*pc), LUAU_INSN_B(*pc), -1, build.vmReg(LUAU_INSN_B(*pc)), build.vmConst(LUAU_INSN_C(*pc)), pcpos, tm
+    );
 }
 
 void translateInstBinaryRK(IrBuilder& build, const Instruction* pc, int pcpos, TMS tm)
 {
     translateInstBinaryNumeric(
-        build, LUAU_INSN_A(*pc), -1, LUAU_INSN_C(*pc), build.vmConst(LUAU_INSN_B(*pc)), build.vmReg(LUAU_INSN_C(*pc)), pcpos, tm);
+        build, LUAU_INSN_A(*pc), -1, LUAU_INSN_C(*pc), build.vmConst(LUAU_INSN_B(*pc)), build.vmReg(LUAU_INSN_C(*pc)), pcpos, tm
+    );
 }
 
 void translateInstNot(IrBuilder& build, const Instruction* pc)
@@ -609,8 +620,12 @@ void translateInstMinus(IrBuilder& build, const Instruction* pc, int pcpos)
     IrOp fallback;
 
     IrOp tb = build.inst(IrCmd::LOAD_TAG, build.vmReg(rb));
-    build.inst(IrCmd::CHECK_TAG, tb, build.constTag(LUA_TNUMBER),
-        bcTypes.a == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback));
+    build.inst(
+        IrCmd::CHECK_TAG,
+        tb,
+        build.constTag(LUA_TNUMBER),
+        bcTypes.a == LBC_TYPE_NUMBER ? build.vmExit(pcpos) : getInitializedFallback(build, fallback)
+    );
 
     // fast-path: number
     IrOp vb = build.inst(IrCmd::LOAD_DOUBLE, build.vmReg(rb));
@@ -760,7 +775,8 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
     build.inst(IrCmd::CHECK_SAFE_ENV, build.vmExit(pcpos + getOpLength(opcode)));
 
     BuiltinImplResult br = translateBuiltin(
-        build, LuauBuiltinFunction(bfid), ra, arg, builtinArgs, builtinArg3, nparams, nresults, fallback, pcpos + getOpLength(opcode));
+        build, LuauBuiltinFunction(bfid), ra, arg, builtinArgs, builtinArg3, nparams, nresults, fallback, pcpos + getOpLength(opcode)
+    );
 
     if (br.type != BuiltinImplType::None)
     {
@@ -784,8 +800,16 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
         // TODO: we can skip saving pc for some well-behaved builtins which we didn't inline
         build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + getOpLength(opcode)));
 
-        IrOp res = build.inst(IrCmd::INVOKE_FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), args, arg3, build.constInt(nparams),
-            build.constInt(nresults));
+        IrOp res = build.inst(
+            IrCmd::INVOKE_FASTCALL,
+            build.constUint(bfid),
+            build.vmReg(ra),
+            build.vmReg(arg),
+            args,
+            arg3,
+            build.constInt(nparams),
+            build.constInt(nresults)
+        );
         build.inst(IrCmd::CHECK_FASTCALL_RES, res, fallback);
 
         if (nresults == LUA_MULTRET)
@@ -798,8 +822,9 @@ IrOp translateFastCallN(IrBuilder& build, const Instruction* pc, int pcpos, bool
         // TODO: we can skip saving pc for some well-behaved builtins which we didn't inline
         build.inst(IrCmd::SET_SAVEDPC, build.constUint(pcpos + getOpLength(opcode)));
 
-        IrOp res = build.inst(IrCmd::INVOKE_FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), args, build.constInt(nparams),
-            build.constInt(nresults));
+        IrOp res = build.inst(
+            IrCmd::INVOKE_FASTCALL, build.constUint(bfid), build.vmReg(ra), build.vmReg(arg), args, build.constInt(nparams), build.constInt(nresults)
+        );
         build.inst(IrCmd::CHECK_FASTCALL_RES, res, fallback);
 
         if (nresults == LUA_MULTRET)

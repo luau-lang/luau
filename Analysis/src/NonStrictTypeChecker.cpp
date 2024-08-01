@@ -69,7 +69,11 @@ struct NonStrictContext
     NonStrictContext& operator=(NonStrictContext&&) = default;
 
     static NonStrictContext disjunction(
-        NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, const NonStrictContext& left, const NonStrictContext& right)
+        NotNull<BuiltinTypes> builtinTypes,
+        NotNull<TypeArena> arena,
+        const NonStrictContext& left,
+        const NonStrictContext& right
+    )
     {
         // disjunction implements union over the domain of keys
         // if the default value for a defId not in the map is `never`
@@ -94,7 +98,11 @@ struct NonStrictContext
     }
 
     static NonStrictContext conjunction(
-        NotNull<BuiltinTypes> builtins, NotNull<TypeArena> arena, const NonStrictContext& left, const NonStrictContext& right)
+        NotNull<BuiltinTypes> builtins,
+        NotNull<TypeArena> arena,
+        const NonStrictContext& left,
+        const NonStrictContext& right
+    )
     {
         NonStrictContext conj{};
 
@@ -160,8 +168,15 @@ struct NonStrictTypeChecker
 
     const NotNull<TypeCheckLimits> limits;
 
-    NonStrictTypeChecker(NotNull<TypeArena> arena, NotNull<BuiltinTypes> builtinTypes, const NotNull<InternalErrorReporter> ice,
-        NotNull<UnifierSharedState> unifierState, NotNull<const DataFlowGraph> dfg, NotNull<TypeCheckLimits> limits, Module* module)
+    NonStrictTypeChecker(
+        NotNull<TypeArena> arena,
+        NotNull<BuiltinTypes> builtinTypes,
+        const NotNull<InternalErrorReporter> ice,
+        NotNull<UnifierSharedState> unifierState,
+        NotNull<const DataFlowGraph> dfg,
+        NotNull<TypeCheckLimits> limits,
+        Module* module
+    )
         : builtinTypes(builtinTypes)
         , ice(ice)
         , arena(arena)
@@ -213,7 +228,8 @@ struct NonStrictTypeChecker
             return instance;
 
         ErrorVec errors =
-            reduceTypeFunctions(instance, location, TypeFunctionContext{arena, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits}, true).errors;
+            reduceTypeFunctions(instance, location, TypeFunctionContext{arena, builtinTypes, stack.back(), NotNull{&normalizer}, ice, limits}, true)
+                .errors;
 
         if (errors.empty())
             noTypeFunctionErrors.insert(instance);
@@ -271,6 +287,8 @@ struct NonStrictTypeChecker
             return visit(s);
         else if (auto s = stat->as<AstStatTypeAlias>())
             return visit(s);
+        else if (auto f = stat->as<AstStatTypeFunction>())
+            return visit(f);
         else if (auto s = stat->as<AstStatDeclareFunction>())
             return visit(s);
         else if (auto s = stat->as<AstStatDeclareGlobal>())
@@ -392,6 +410,12 @@ struct NonStrictTypeChecker
 
     NonStrictContext visit(AstStatTypeAlias* typeAlias)
     {
+        return {};
+    }
+
+    NonStrictContext visit(AstStatTypeFunction* typeFunc)
+    {
+        reportError(GenericError{"This syntax is not supported"}, typeFunc->location);
         return {};
     }
 
@@ -726,8 +750,15 @@ private:
     };
 };
 
-void checkNonStrict(NotNull<BuiltinTypes> builtinTypes, NotNull<InternalErrorReporter> ice, NotNull<UnifierSharedState> unifierState,
-    NotNull<const DataFlowGraph> dfg, NotNull<TypeCheckLimits> limits, const SourceModule& sourceModule, Module* module)
+void checkNonStrict(
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<InternalErrorReporter> ice,
+    NotNull<UnifierSharedState> unifierState,
+    NotNull<const DataFlowGraph> dfg,
+    NotNull<TypeCheckLimits> limits,
+    const SourceModule& sourceModule,
+    Module* module
+)
 {
     LUAU_TIMETRACE_SCOPE("checkNonStrict", "Typechecking");
 

@@ -12,6 +12,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauUserDefinedTypeFunctions);
+
 TEST_SUITE_BEGIN("TranspilerTests");
 
 TEST_CASE("test_1")
@@ -690,6 +692,15 @@ TEST_CASE_FIXTURE(Fixture, "transpile_string_interp")
 TEST_CASE_FIXTURE(Fixture, "transpile_string_literal_escape")
 {
     std::string code = R"( local _ = ` bracket = \{, backtick = \` = {'ok'} ` )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_type_functions")
+{
+    ScopedFastFlag sff{FFlag::LuauUserDefinedTypeFunctions, true};
+
+    std::string code = R"( type function foo(arg1, arg2) if arg1 == arg2 then return arg1 end return arg2 end )";
 
     CHECK_EQ(code, transpile(code, {}, true).code);
 }

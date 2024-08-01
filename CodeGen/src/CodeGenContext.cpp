@@ -50,14 +50,21 @@ static void logPerfFunction(Proto* p, uintptr_t addr, unsigned size)
 }
 
 static void logPerfFunctions(
-    const std::vector<Proto*>& moduleProtos, const uint8_t* nativeModuleBaseAddress, const std::vector<NativeProtoExecDataPtr>& nativeProtos)
+    const std::vector<Proto*>& moduleProtos,
+    const uint8_t* nativeModuleBaseAddress,
+    const std::vector<NativeProtoExecDataPtr>& nativeProtos
+)
 {
     if (gPerfLogFn == nullptr)
         return;
 
     if (nativeProtos.size() > 0)
-        gPerfLogFn(gPerfLogContext, uintptr_t(nativeModuleBaseAddress),
-            unsigned(getNativeProtoExecDataHeader(nativeProtos[0].get()).entryOffsetOrAddress - nativeModuleBaseAddress), "<luau helpers>");
+        gPerfLogFn(
+            gPerfLogContext,
+            uintptr_t(nativeModuleBaseAddress),
+            unsigned(getNativeProtoExecDataHeader(nativeProtos[0].get()).entryOffsetOrAddress - nativeModuleBaseAddress),
+            "<luau helpers>"
+        );
 
     auto protoIt = moduleProtos.begin();
 
@@ -156,7 +163,11 @@ BaseCodeGenContext::BaseCodeGenContext(size_t blockSize, size_t maxTotalSize, Al
 
 
 StandaloneCodeGenContext::StandaloneCodeGenContext(
-    size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext)
+    size_t blockSize,
+    size_t maxTotalSize,
+    AllocationCallback* allocationCallback,
+    void* allocationCallbackContext
+)
     : BaseCodeGenContext{blockSize, maxTotalSize, allocationCallback, allocationCallbackContext}
 {
 }
@@ -167,8 +178,15 @@ StandaloneCodeGenContext::StandaloneCodeGenContext(
     return {};
 }
 
-[[nodiscard]] ModuleBindResult StandaloneCodeGenContext::bindModule(const std::optional<ModuleId>&, const std::vector<Proto*>& moduleProtos,
-    std::vector<NativeProtoExecDataPtr> nativeProtos, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize)
+[[nodiscard]] ModuleBindResult StandaloneCodeGenContext::bindModule(
+    const std::optional<ModuleId>&,
+    const std::vector<Proto*>& moduleProtos,
+    std::vector<NativeProtoExecDataPtr> nativeProtos,
+    const uint8_t* data,
+    size_t dataSize,
+    const uint8_t* code,
+    size_t codeSize
+)
 {
     uint8_t* nativeData = nullptr;
     size_t sizeNativeData = 0;
@@ -207,14 +225,20 @@ void StandaloneCodeGenContext::onDestroyFunction(void* execdata) noexcept
 
 
 SharedCodeGenContext::SharedCodeGenContext(
-    size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext)
+    size_t blockSize,
+    size_t maxTotalSize,
+    AllocationCallback* allocationCallback,
+    void* allocationCallbackContext
+)
     : BaseCodeGenContext{blockSize, maxTotalSize, allocationCallback, allocationCallbackContext}
     , sharedAllocator{&codeAllocator}
 {
 }
 
 [[nodiscard]] std::optional<ModuleBindResult> SharedCodeGenContext::tryBindExistingModule(
-    const ModuleId& moduleId, const std::vector<Proto*>& moduleProtos)
+    const ModuleId& moduleId,
+    const std::vector<Proto*>& moduleProtos
+)
 {
     NativeModuleRef nativeModule = sharedAllocator.tryGetNativeModule(moduleId);
     if (nativeModule.empty())
@@ -229,10 +253,18 @@ SharedCodeGenContext::SharedCodeGenContext(
     return {{CodeGenCompilationResult::Success, protosBound}};
 }
 
-[[nodiscard]] ModuleBindResult SharedCodeGenContext::bindModule(const std::optional<ModuleId>& moduleId, const std::vector<Proto*>& moduleProtos,
-    std::vector<NativeProtoExecDataPtr> nativeProtos, const uint8_t* data, size_t dataSize, const uint8_t* code, size_t codeSize)
+[[nodiscard]] ModuleBindResult SharedCodeGenContext::bindModule(
+    const std::optional<ModuleId>& moduleId,
+    const std::vector<Proto*>& moduleProtos,
+    std::vector<NativeProtoExecDataPtr> nativeProtos,
+    const uint8_t* data,
+    size_t dataSize,
+    const uint8_t* code,
+    size_t codeSize
+)
 {
-    const std::pair<NativeModuleRef, bool> insertionResult = [&]() -> std::pair<NativeModuleRef, bool> {
+    const std::pair<NativeModuleRef, bool> insertionResult = [&]() -> std::pair<NativeModuleRef, bool>
+    {
         if (moduleId.has_value())
         {
             return sharedAllocator.getOrInsertNativeModule(*moduleId, std::move(nativeProtos), data, dataSize, code, codeSize);
@@ -279,11 +311,16 @@ void SharedCodeGenContext::onDestroyFunction(void* execdata) noexcept
 [[nodiscard]] UniqueSharedCodeGenContext createSharedCodeGenContext(AllocationCallback* allocationCallback, void* allocationCallbackContext)
 {
     return createSharedCodeGenContext(
-        size_t(FInt::LuauCodeGenBlockSize), size_t(FInt::LuauCodeGenMaxTotalSize), allocationCallback, allocationCallbackContext);
+        size_t(FInt::LuauCodeGenBlockSize), size_t(FInt::LuauCodeGenMaxTotalSize), allocationCallback, allocationCallbackContext
+    );
 }
 
 [[nodiscard]] UniqueSharedCodeGenContext createSharedCodeGenContext(
-    size_t blockSize, size_t maxTotalSize, AllocationCallback* allocationCallback, void* allocationCallbackContext)
+    size_t blockSize,
+    size_t maxTotalSize,
+    AllocationCallback* allocationCallback,
+    void* allocationCallbackContext
+)
 {
     UniqueSharedCodeGenContext codeGenContext{new SharedCodeGenContext{blockSize, maxTotalSize, nullptr, nullptr}};
 
@@ -422,8 +459,14 @@ void create(lua_State* L, SharedCodeGenContext* codeGenContext)
 }
 
 template<typename AssemblyBuilder>
-[[nodiscard]] static NativeProtoExecDataPtr createNativeFunction(AssemblyBuilder& build, ModuleHelpers& helpers, Proto* proto,
-    uint32_t& totalIrInstCount, const HostIrHooks& hooks, CodeGenCompilationResult& result)
+[[nodiscard]] static NativeProtoExecDataPtr createNativeFunction(
+    AssemblyBuilder& build,
+    ModuleHelpers& helpers,
+    Proto* proto,
+    uint32_t& totalIrInstCount,
+    const HostIrHooks& hooks,
+    CodeGenCompilationResult& result
+)
 {
     IrBuilder ir(hooks);
     ir.buildFunctionIr(proto);
@@ -447,7 +490,12 @@ template<typename AssemblyBuilder>
 }
 
 [[nodiscard]] static CompilationResult compileInternal(
-    const std::optional<ModuleId>& moduleId, lua_State* L, int idx, const CompilationOptions& options, CompilationStats* stats)
+    const std::optional<ModuleId>& moduleId,
+    lua_State* L,
+    int idx,
+    const CompilationOptions& options,
+    CompilationStats* stats
+)
 {
     CODEGEN_ASSERT(lua_isLfunction(L, idx));
     const TValue* func = luaA_toobject(L, idx);
@@ -468,11 +516,17 @@ template<typename AssemblyBuilder>
         gatherFunctions_DEPRECATED(protos, root, options.flags);
 
     // Skip protos that have been compiled during previous invocations of CodeGen::compile
-    protos.erase(std::remove_if(protos.begin(), protos.end(),
-                     [](Proto* p) {
-                         return p == nullptr || p->execdata != nullptr;
-                     }),
-        protos.end());
+    protos.erase(
+        std::remove_if(
+            protos.begin(),
+            protos.end(),
+            [](Proto* p)
+            {
+                return p == nullptr || p->execdata != nullptr;
+            }
+        ),
+        protos.end()
+    );
 
     if (protos.empty())
         return CompilationResult{CodeGenCompilationResult::NothingToCompile};
@@ -523,8 +577,8 @@ template<typename AssemblyBuilder>
         }
         else
         {
-            compilationResult.protoFailures.push_back(
-                {protoResult, protos[i]->debugname ? getstr(protos[i]->debugname) : "", protos[i]->linedefined});
+            compilationResult.protoFailures.push_back({protoResult, protos[i]->debugname ? getstr(protos[i]->debugname) : "", protos[i]->linedefined}
+            );
         }
     }
 
@@ -570,9 +624,15 @@ template<typename AssemblyBuilder>
         header.nativeCodeSize = end - begin;
     }
 
-    const ModuleBindResult bindResult =
-        codeGenContext->bindModule(moduleId, protos, std::move(nativeProtos), reinterpret_cast<const uint8_t*>(build.data.data()), build.data.size(),
-            reinterpret_cast<const uint8_t*>(build.code.data()), build.code.size() * sizeof(build.code[0]));
+    const ModuleBindResult bindResult = codeGenContext->bindModule(
+        moduleId,
+        protos,
+        std::move(nativeProtos),
+        reinterpret_cast<const uint8_t*>(build.data.data()),
+        build.data.size(),
+        reinterpret_cast<const uint8_t*>(build.code.data()),
+        build.code.size() * sizeof(build.code[0])
+    );
 
     if (stats != nullptr)
         stats->functionsBound = bindResult.functionsBound;

@@ -51,10 +51,12 @@ TEST_SUITE_BEGIN("x64Assembly");
 
 #define SINGLE_COMPARE(inst, ...) \
     CHECK(check( \
-        [](AssemblyBuilderX64& build) { \
+        [](AssemblyBuilderX64& build) \
+        { \
             build.inst; \
         }, \
-        {__VA_ARGS__}))
+        {__VA_ARGS__} \
+    ))
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "BaseBinaryInstructionForms")
 {
@@ -318,33 +320,41 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "NopForms")
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AlignmentForms")
 {
     CHECK(check(
-        [](AssemblyBuilderX64& build) {
+        [](AssemblyBuilderX64& build)
+        {
             build.ret();
             build.align(8, AlignmentDataX64::Nop);
         },
-        {0xc3, 0x0f, 0x1f, 0x80, 0x00, 0x00, 0x00, 0x00}));
+        {0xc3, 0x0f, 0x1f, 0x80, 0x00, 0x00, 0x00, 0x00}
+    ));
 
     CHECK(check(
-        [](AssemblyBuilderX64& build) {
+        [](AssemblyBuilderX64& build)
+        {
             build.ret();
             build.align(32, AlignmentDataX64::Nop);
         },
-        {0xc3, 0x66, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x66, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x66, 0x0f, 0x1f, 0x84,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x1f, 0x40, 0x00}));
+        {0xc3, 0x66, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x66, 0x0f, 0x1f, 0x84, 0x00, 0x00,
+         0x00, 0x00, 0x00, 0x66, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x1f, 0x40, 0x00}
+    ));
 
     CHECK(check(
-        [](AssemblyBuilderX64& build) {
+        [](AssemblyBuilderX64& build)
+        {
             build.ret();
             build.align(8, AlignmentDataX64::Int3);
         },
-        {0xc3, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc}));
+        {0xc3, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc}
+    ));
 
     CHECK(check(
-        [](AssemblyBuilderX64& build) {
+        [](AssemblyBuilderX64& build)
+        {
             build.ret();
             build.align(8, AlignmentDataX64::Ud2);
         },
-        {0xc3, 0x0f, 0x0b, 0x0f, 0x0b, 0x0f, 0x0b, 0xcc}));
+        {0xc3, 0x0f, 0x0b, 0x0f, 0x0b, 0x0f, 0x0b, 0xcc}
+    ));
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AlignmentOverflow")
@@ -387,28 +397,33 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "ControlFlow")
 {
     // Jump back
     CHECK(check(
-        [](AssemblyBuilderX64& build) {
+        [](AssemblyBuilderX64& build)
+        {
             Label start = build.setLabel();
             build.add(rsi, 1);
             build.cmp(rsi, rdi);
             build.jcc(ConditionX64::Equal, start);
         },
-        {0x48, 0x83, 0xc6, 0x01, 0x48, 0x3b, 0xf7, 0x0f, 0x84, 0xf3, 0xff, 0xff, 0xff}));
+        {0x48, 0x83, 0xc6, 0x01, 0x48, 0x3b, 0xf7, 0x0f, 0x84, 0xf3, 0xff, 0xff, 0xff}
+    ));
 
     // Jump back, but the label is set before use
     CHECK(check(
-        [](AssemblyBuilderX64& build) {
+        [](AssemblyBuilderX64& build)
+        {
             Label start;
             build.add(rsi, 1);
             build.setLabel(start);
             build.cmp(rsi, rdi);
             build.jcc(ConditionX64::Equal, start);
         },
-        {0x48, 0x83, 0xc6, 0x01, 0x48, 0x3b, 0xf7, 0x0f, 0x84, 0xf7, 0xff, 0xff, 0xff}));
+        {0x48, 0x83, 0xc6, 0x01, 0x48, 0x3b, 0xf7, 0x0f, 0x84, 0xf7, 0xff, 0xff, 0xff}
+    ));
 
     // Jump forward
     CHECK(check(
-        [](AssemblyBuilderX64& build) {
+        [](AssemblyBuilderX64& build)
+        {
             Label skip;
 
             build.cmp(rsi, rdi);
@@ -416,24 +431,28 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "ControlFlow")
             build.or_(rdi, 0x3e);
             build.setLabel(skip);
         },
-        {0x48, 0x3b, 0xf7, 0x0f, 0x8f, 0x04, 0x00, 0x00, 0x00, 0x48, 0x83, 0xcf, 0x3e}));
+        {0x48, 0x3b, 0xf7, 0x0f, 0x8f, 0x04, 0x00, 0x00, 0x00, 0x48, 0x83, 0xcf, 0x3e}
+    ));
 
     // Regular jump
     CHECK(check(
-        [](AssemblyBuilderX64& build) {
+        [](AssemblyBuilderX64& build)
+        {
             Label skip;
 
             build.jmp(skip);
             build.and_(rdi, 0x3e);
             build.setLabel(skip);
         },
-        {0xe9, 0x04, 0x00, 0x00, 0x00, 0x48, 0x83, 0xe7, 0x3e}));
+        {0xe9, 0x04, 0x00, 0x00, 0x00, 0x48, 0x83, 0xe7, 0x3e}
+    ));
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "LabelCall")
 {
     CHECK(check(
-        [](AssemblyBuilderX64& build) {
+        [](AssemblyBuilderX64& build)
+        {
             Label fnB;
 
             build.and_(rcx, 0x3e);
@@ -444,7 +463,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "LabelCall")
             build.lea(rax, addr[rcx + 0x1f]);
             build.ret();
         },
-        {0x48, 0x83, 0xe1, 0x3e, 0xe8, 0x01, 0x00, 0x00, 0x00, 0xc3, 0x48, 0x8d, 0x41, 0x1f, 0xc3}));
+        {0x48, 0x83, 0xe1, 0x3e, 0xe8, 0x01, 0x00, 0x00, 0x00, 0xc3, 0x48, 0x8d, 0x41, 0x1f, 0xc3}
+    ));
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXBinaryInstructionForms")
@@ -550,7 +570,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXTernaryInstructionForms")
 {
     SINGLE_COMPARE(vroundsd(xmm7, xmm12, xmm3, RoundingModeX64::RoundToNegativeInfinity), 0xc4, 0xe3, 0x19, 0x0b, 0xfb, 0x09);
     SINGLE_COMPARE(
-        vroundsd(xmm8, xmm13, xmmword[r13 + rdx], RoundingModeX64::RoundToPositiveInfinity), 0xc4, 0x43, 0x11, 0x0b, 0x44, 0x15, 0x00, 0x0a);
+        vroundsd(xmm8, xmm13, xmmword[r13 + rdx], RoundingModeX64::RoundToPositiveInfinity), 0xc4, 0x43, 0x11, 0x0b, 0x44, 0x15, 0x00, 0x0a
+    );
     SINGLE_COMPARE(vroundsd(xmm9, xmm14, xmmword[rcx + r10], RoundingModeX64::RoundToZero), 0xc4, 0x23, 0x09, 0x0b, 0x0c, 0x11, 0x0b);
     SINGLE_COMPARE(vblendvpd(xmm7, xmm12, xmmword[rcx + r10], xmm5), 0xc4, 0xa3, 0x19, 0x4b, 0x3c, 0x11, 0x50);
 
@@ -573,7 +594,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "MiscInstructions")
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "LabelLea")
 {
     CHECK(check(
-        [](AssemblyBuilderX64& build) {
+        [](AssemblyBuilderX64& build)
+        {
             Label fn;
             build.lea(rax, fn);
             build.ret();
@@ -581,7 +603,8 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "LabelLea")
             build.setLabel(fn);
             build.ret();
         },
-        {0x48, 0x8d, 0x05, 0x01, 0x00, 0x00, 0x00, 0xc3, 0xc3}));
+        {0x48, 0x8d, 0x05, 0x01, 0x00, 0x00, 0x00, 0xc3, 0xc3}
+    ));
 }
 
 TEST_CASE("LogTest")

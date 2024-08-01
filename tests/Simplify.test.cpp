@@ -385,9 +385,36 @@ TEST_CASE_FIXTURE(SimplifyFixture, "tables")
     CHECK(t2 == intersect(t2, t1));
 
     TypeId t3 = mkTable({});
-    // {tag : string} intersect {{}}
+    // {tag : string} intersect {}
     CHECK(t1 == intersect(t1, t3));
     CHECK(t1 == intersect(t3, t1));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "combine_disjoint_sealed_tables")
+{
+    TypeId t1 = mkTable({{"prop", stringTy}});
+    TypeId t2 = mkTable({{"second_prop", numberTy}});
+
+    CHECK("{ prop: string, second_prop: number }" == toString(intersect(t1, t2)));
+}
+
+TEST_CASE_FIXTURE(SimplifyFixture, "non_disjoint_tables_do_not_simplify")
+{
+    TypeId t1 = mkTable({{"prop", stringTy}});
+    TypeId t2 = mkTable({{"prop", unknownTy}, {"second_prop", numberTy}});
+
+    CHECK("{ prop: string } & { prop: unknown, second_prop: number }" == toString(intersect(t1, t2)));
+}
+
+// Simplification has an extra code path especially for intersections with
+// single-property tables, so it's worthwhile to separately test the case where
+// both tables have multiple properties.
+TEST_CASE_FIXTURE(SimplifyFixture, "non_disjoint_tables_do_not_simplify_2")
+{
+    TypeId t1 = mkTable({{"prop", stringTy}, {"third_prop", numberTy}});
+    TypeId t2 = mkTable({{"prop", unknownTy}, {"second_prop", numberTy}});
+
+    CHECK("{ prop: string, third_prop: number } & { prop: unknown, second_prop: number }" == toString(intersect(t1, t2)));
 }
 
 TEST_CASE_FIXTURE(SimplifyFixture, "tables_and_top_table")
@@ -424,16 +451,18 @@ TEST_CASE_FIXTURE(SimplifyFixture, "table_with_a_tag")
 TEST_CASE_FIXTURE(SimplifyFixture, "nested_table_tag_test")
 {
     TypeId t1 = mkTable({
-        {"subtable", mkTable({
-                         {"tag", helloTy},
-                         {"subprop", numberTy},
-                     })},
+        {"subtable",
+         mkTable({
+             {"tag", helloTy},
+             {"subprop", numberTy},
+         })},
         {"prop", stringTy},
     });
     TypeId t2 = mkTable({
-        {"subtable", mkTable({
-                         {"tag", helloTy},
-                     })},
+        {"subtable",
+         mkTable({
+             {"tag", helloTy},
+         })},
     });
 
     CHECK(t1 == intersect(t1, t2));

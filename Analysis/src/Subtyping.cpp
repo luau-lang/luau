@@ -91,7 +91,8 @@ static SubtypingReasonings mergeReasonings(const SubtypingReasonings& a, const S
         else if (r.variance == SubtypingVariance::Covariant || r.variance == SubtypingVariance::Contravariant)
         {
             SubtypingReasoning inverseReasoning = SubtypingReasoning{
-                r.subPath, r.superPath, r.variance == SubtypingVariance::Covariant ? SubtypingVariance::Contravariant : SubtypingVariance::Covariant};
+                r.subPath, r.superPath, r.variance == SubtypingVariance::Covariant ? SubtypingVariance::Contravariant : SubtypingVariance::Covariant
+            };
             if (b.contains(inverseReasoning))
                 result.insert(SubtypingReasoning{r.subPath, r.superPath, SubtypingVariance::Invariant});
             else
@@ -106,7 +107,8 @@ static SubtypingReasonings mergeReasonings(const SubtypingReasonings& a, const S
         else if (r.variance == SubtypingVariance::Covariant || r.variance == SubtypingVariance::Contravariant)
         {
             SubtypingReasoning inverseReasoning = SubtypingReasoning{
-                r.subPath, r.superPath, r.variance == SubtypingVariance::Covariant ? SubtypingVariance::Contravariant : SubtypingVariance::Covariant};
+                r.subPath, r.superPath, r.variance == SubtypingVariance::Covariant ? SubtypingVariance::Contravariant : SubtypingVariance::Covariant
+            };
             if (a.contains(inverseReasoning))
                 result.insert(SubtypingReasoning{r.subPath, r.superPath, SubtypingVariance::Invariant});
             else
@@ -267,7 +269,11 @@ struct ApplyMappedGenerics : Substitution
 
 
     ApplyMappedGenerics(
-        NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, MappedGenerics& mappedGenerics, MappedGenericPacks& mappedGenericPacks)
+        NotNull<BuiltinTypes> builtinTypes,
+        NotNull<TypeArena> arena,
+        MappedGenerics& mappedGenerics,
+        MappedGenericPacks& mappedGenericPacks
+    )
         : Substitution(TxnLog::empty(), arena)
         , builtinTypes(builtinTypes)
         , arena(arena)
@@ -323,8 +329,13 @@ std::optional<TypeId> SubtypingEnvironment::applyMappedGenerics(NotNull<BuiltinT
     return amg.substitute(ty);
 }
 
-Subtyping::Subtyping(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> typeArena, NotNull<Normalizer> normalizer,
-    NotNull<InternalErrorReporter> iceReporter, NotNull<Scope> scope)
+Subtyping::Subtyping(
+    NotNull<BuiltinTypes> builtinTypes,
+    NotNull<TypeArena> typeArena,
+    NotNull<Normalizer> normalizer,
+    NotNull<InternalErrorReporter> iceReporter,
+    NotNull<Scope> scope
+)
     : builtinTypes(builtinTypes)
     , arena(typeArena)
     , normalizer(normalizer)
@@ -1243,8 +1254,7 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Tabl
         std::vector<SubtypingResult> results;
         if (auto subIter = subTable->props.find(name); subIter != subTable->props.end())
             results.push_back(isCovariantWith(env, subIter->second, superProp, name));
-
-        if (subTable->indexer)
+        else if (subTable->indexer)
         {
             if (isCovariantWith(env, builtinTypes->stringType, subTable->indexer->indexType).isSubtype)
             {
@@ -1317,7 +1327,12 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Clas
 }
 
 SubtypingResult Subtyping::isCovariantWith(
-    SubtypingEnvironment& env, TypeId subTy, const ClassType* subClass, TypeId superTy, const TableType* superTable)
+    SubtypingEnvironment& env,
+    TypeId subTy,
+    const ClassType* subClass,
+    TypeId superTy,
+    const TableType* superTable
+)
 {
     SubtypingResult result{true};
 
@@ -1366,7 +1381,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Prim
                 {
                     if (auto stringTable = get<TableType>(it->second.type()))
                         result.orElse(
-                            isCovariantWith(env, stringTable, superTable).withSubPath(TypePath::PathBuilder().mt().readProp("__index").build()));
+                            isCovariantWith(env, stringTable, superTable).withSubPath(TypePath::PathBuilder().mt().readProp("__index").build())
+                        );
                 }
             }
         }
@@ -1388,7 +1404,8 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Sing
                 {
                     if (auto stringTable = get<TableType>(it->second.type()))
                         result.orElse(
-                            isCovariantWith(env, stringTable, superTable).withSubPath(TypePath::PathBuilder().mt().readProp("__index").build()));
+                            isCovariantWith(env, stringTable, superTable).withSubPath(TypePath::PathBuilder().mt().readProp("__index").build())
+                        );
                 }
             }
         }
@@ -1429,7 +1446,10 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Prop
 }
 
 SubtypingResult Subtyping::isCovariantWith(
-    SubtypingEnvironment& env, const std::shared_ptr<const NormalizedType>& subNorm, const std::shared_ptr<const NormalizedType>& superNorm)
+    SubtypingEnvironment& env,
+    const std::shared_ptr<const NormalizedType>& subNorm,
+    const std::shared_ptr<const NormalizedType>& superNorm
+)
 {
     if (!subNorm || !superNorm)
         return {false, true};
@@ -1540,7 +1560,10 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, const Norm
 }
 
 SubtypingResult Subtyping::isCovariantWith(
-    SubtypingEnvironment& env, const NormalizedFunctionType& subFunction, const NormalizedFunctionType& superFunction)
+    SubtypingEnvironment& env,
+    const NormalizedFunctionType& subFunction,
+    const NormalizedFunctionType& superFunction
+)
 {
     if (subFunction.isNever())
         return {true};

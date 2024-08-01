@@ -278,10 +278,14 @@ IrLoweringA64::IrLoweringA64(AssemblyBuilderA64& build, ModuleHelpers& helpers, 
     , valueTracker(function)
     , exitHandlerMap(~0u)
 {
-    valueTracker.setRestoreCallack(this, [](void* context, IrInst& inst) {
-        IrLoweringA64* self = static_cast<IrLoweringA64*>(context);
-        self->regs.restoreReg(self->build, inst);
-    });
+    valueTracker.setRestoreCallack(
+        this,
+        [](void* context, IrInst& inst)
+        {
+            IrLoweringA64* self = static_cast<IrLoweringA64*>(context);
+            self->regs.restoreReg(self->build, inst);
+        }
+    );
 }
 
 void IrLoweringA64::lowerInst(IrInst& inst, uint32_t index, const IrBlock& next)

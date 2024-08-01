@@ -388,8 +388,13 @@ static void safeGetTable(lua_State* L, int tableIndex)
 
 // completePartialMatches finds keys that match the specified 'prefix'
 // Note: the table/object to be searched must be on the top of the Lua stack
-static void completePartialMatches(lua_State* L, bool completeOnlyFunctions, const std::string& editBuffer, std::string_view prefix,
-    const AddCompletionCallback& addCompletionCallback)
+static void completePartialMatches(
+    lua_State* L,
+    bool completeOnlyFunctions,
+    const std::string& editBuffer,
+    std::string_view prefix,
+    const AddCompletionCallback& addCompletionCallback
+)
 {
     for (int i = 0; i < MaxTraversalLimit && lua_istable(L, -1); i++)
     {
@@ -483,9 +488,14 @@ static void icGetCompletions(ic_completion_env_t* cenv, const char* editBuffer)
 {
     auto* L = reinterpret_cast<lua_State*>(ic_completion_arg(cenv));
 
-    getCompletions(L, std::string(editBuffer), [cenv](const std::string& completion, const std::string& display) {
-        ic_add_completion_ex(cenv, completion.data(), display.data(), nullptr);
-    });
+    getCompletions(
+        L,
+        std::string(editBuffer),
+        [cenv](const std::string& completion, const std::string& display)
+        {
+            ic_add_completion_ex(cenv, completion.data(), display.data(), nullptr);
+        }
+    );
 }
 
 static bool isMethodOrFunctionChar(const char* s, long len)
@@ -788,9 +798,13 @@ int replMain(int argc, char** argv)
         // note, there's no need to close the log explicitly as it will be closed when the process exits
         FILE* codegenPerfLog = fopen(path, "w");
 
-        Luau::CodeGen::setPerfLog(codegenPerfLog, [](void* context, uintptr_t addr, unsigned size, const char* symbol) {
-            fprintf(static_cast<FILE*>(context), "%016lx %08x %s\n", long(addr), size, symbol);
-        });
+        Luau::CodeGen::setPerfLog(
+            codegenPerfLog,
+            [](void* context, uintptr_t addr, unsigned size, const char* symbol)
+            {
+                fprintf(static_cast<FILE*>(context), "%016lx %08x %s\n", long(addr), size, symbol);
+            }
+        );
 #else
         fprintf(stderr, "--codegen-perf option is only supported on Linux\n");
         return 1;

@@ -534,7 +534,8 @@ std::string toString(const TypePath::Path& path, bool prefixDot)
     std::stringstream result;
     bool first = true;
 
-    auto strComponent = [&](auto&& c) {
+    auto strComponent = [&](auto&& c)
+    {
         using T = std::decay_t<decltype(c)>;
         if constexpr (std::is_same_v<T, TypePath::Property>)
         {
@@ -626,7 +627,8 @@ std::string toString(const TypePath::Path& path, bool prefixDot)
 
 static bool traverse(TraversalState& state, const Path& path)
 {
-    auto step = [&state](auto&& c) {
+    auto step = [&state](auto&& c)
+    {
         return state.traverse(c);
     };
 

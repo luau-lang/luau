@@ -383,7 +383,8 @@ int32_t BytecodeBuilder::addConstantVector(float x, float y, float z, float w)
 
     ConstantKey k = {Constant::Type_Vector};
     static_assert(
-        sizeof(k.value) == sizeof(x) + sizeof(y) && sizeof(k.extra) == sizeof(z) + sizeof(w), "Expecting vector to have four 32-bit components");
+        sizeof(k.value) == sizeof(x) + sizeof(y) && sizeof(k.extra) == sizeof(z) + sizeof(w), "Expecting vector to have four 32-bit components"
+    );
     memcpy(&k.value, &x, sizeof(x));
     memcpy((char*)&k.value + sizeof(x), &y, sizeof(y));
     memcpy(&k.extra, &z, sizeof(z));
@@ -1107,9 +1108,14 @@ void BytecodeBuilder::expandJumps()
     const int kMaxJumpDistanceConservative = 32767 / 3;
 
     // we will need to process jumps in order
-    std::sort(jumps.begin(), jumps.end(), [](const Jump& lhs, const Jump& rhs) {
-        return lhs.source < rhs.source;
-    });
+    std::sort(
+        jumps.begin(),
+        jumps.end(),
+        [](const Jump& lhs, const Jump& rhs)
+        {
+            return lhs.source < rhs.source;
+        }
+    );
 
     // first, let's add jump thunks for every jump with a distance that's too big
     // we will create new instruction buffers, with remap table keeping track of the moves: remap[oldpc] = newpc
@@ -1767,8 +1773,7 @@ void BytecodeBuilder::validateVariadic() const
             // variadic sequence since they are never executed if FASTCALL does anything, so it's okay to skip their validation until CALL
             // (we can't simply start a variadic sequence here because that would trigger assertions during linked CALL validation)
         }
-        else if (op == LOP_CLOSEUPVALS || op == LOP_NAMECALL || op == LOP_GETIMPORT || op == LOP_MOVE || op == LOP_GETUPVAL || op == LOP_GETGLOBAL ||
-                 op == LOP_GETTABLEKS || op == LOP_COVERAGE)
+        else if (op == LOP_CLOSEUPVALS || op == LOP_NAMECALL || op == LOP_GETIMPORT || op == LOP_MOVE || op == LOP_GETUPVAL || op == LOP_GETGLOBAL || op == LOP_GETTABLEKS || op == LOP_COVERAGE)
         {
             // instructions inside a variadic sequence must be neutral (can't change L->top)
             // while there are many neutral instructions like this, here we check that the instruction is one of the few
@@ -1836,7 +1841,7 @@ void BytecodeBuilder::dumpConstant(std::string& result, int k) const
     }
     case Constant::Type_Import:
     {
-        int id0 = -1, id1 = -1, id2 = -1;
+        int32_t id0 = -1, id1 = -1, id2 = -1;
         if (int count = decomposeImportId(data.valueImport, id0, id1, id2))
         {
             {
@@ -2246,12 +2251,16 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_CAPTURE:
-        formatAppend(result, "CAPTURE %s %c%d\n",
+        formatAppend(
+            result,
+            "CAPTURE %s %c%d\n",
             LUAU_INSN_A(insn) == LCT_UPVAL ? "UPVAL"
             : LUAU_INSN_A(insn) == LCT_REF ? "REF"
             : LUAU_INSN_A(insn) == LCT_VAL ? "VAL"
                                            : "",
-            LUAU_INSN_A(insn) == LCT_UPVAL ? 'U' : 'R', LUAU_INSN_B(insn));
+            LUAU_INSN_A(insn) == LCT_UPVAL ? 'U' : 'R',
+            LUAU_INSN_B(insn)
+        );
         break;
 
     case LOP_JUMPXEQKNIL:
@@ -2346,8 +2355,16 @@ std::string BytecodeBuilder::dumpCurrentFunction(std::vector<int>& dumpinstoffs)
                 LUAU_ASSERT(l.endpc <= lines.size()); // endpc is exclusive in the debug info, but it's more intuitive to print inclusive data
 
                 // it would be nice to emit name as well but it requires reverse lookup through stringtable
-                formatAppend(result, "local %d: reg %d, start pc %d line %d, end pc %d line %d\n", int(i), l.reg, l.startpc, lines[l.startpc],
-                    l.endpc - 1, lines[l.endpc - 1]);
+                formatAppend(
+                    result,
+                    "local %d: reg %d, start pc %d line %d, end pc %d line %d\n",
+                    int(i),
+                    l.reg,
+                    l.startpc,
+                    lines[l.startpc],
+                    l.endpc - 1,
+                    lines[l.endpc - 1]
+                );
             }
         }
     }

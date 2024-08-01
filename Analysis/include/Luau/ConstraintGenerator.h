@@ -122,9 +122,18 @@ struct ConstraintGenerator
 
     DcrLogger* logger;
 
-    ConstraintGenerator(ModulePtr module, NotNull<Normalizer> normalizer, NotNull<ModuleResolver> moduleResolver, NotNull<BuiltinTypes> builtinTypes,
-        NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope, std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
-        DcrLogger* logger, NotNull<DataFlowGraph> dfg, std::vector<RequireCycle> requireCycles);
+    ConstraintGenerator(
+        ModulePtr module,
+        NotNull<Normalizer> normalizer,
+        NotNull<ModuleResolver> moduleResolver,
+        NotNull<BuiltinTypes> builtinTypes,
+        NotNull<InternalErrorReporter> ice,
+        const ScopePtr& globalScope,
+        std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope,
+        DcrLogger* logger,
+        NotNull<DataFlowGraph> dfg,
+        std::vector<RequireCycle> requireCycles
+    );
 
     /**
      * The entry point to the ConstraintGenerator. This will construct a set
@@ -195,10 +204,23 @@ private:
     };
 
     using RefinementContext = InsertionOrderedMap<DefId, RefinementPartition>;
-    void unionRefinements(const ScopePtr& scope, Location location, const RefinementContext& lhs, const RefinementContext& rhs,
-        RefinementContext& dest, std::vector<ConstraintV>* constraints);
-    void computeRefinement(const ScopePtr& scope, Location location, RefinementId refinement, RefinementContext* refis, bool sense, bool eq,
-        std::vector<ConstraintV>* constraints);
+    void unionRefinements(
+        const ScopePtr& scope,
+        Location location,
+        const RefinementContext& lhs,
+        const RefinementContext& rhs,
+        RefinementContext& dest,
+        std::vector<ConstraintV>* constraints
+    );
+    void computeRefinement(
+        const ScopePtr& scope,
+        Location location,
+        RefinementId refinement,
+        RefinementContext* refis,
+        bool sense,
+        bool eq,
+        std::vector<ConstraintV>* constraints
+    );
     void applyRefinements(const ScopePtr& scope, Location location, RefinementId refinement);
 
     ControlFlow visitBlockWithoutChildScope(const ScopePtr& scope, AstStatBlock* block);
@@ -217,6 +239,7 @@ private:
     ControlFlow visit(const ScopePtr& scope, AstStatCompoundAssign* assign);
     ControlFlow visit(const ScopePtr& scope, AstStatIf* ifStatement);
     ControlFlow visit(const ScopePtr& scope, AstStatTypeAlias* alias);
+    ControlFlow visit(const ScopePtr& scope, AstStatTypeFunction* function);
     ControlFlow visit(const ScopePtr& scope, AstStatDeclareGlobal* declareGlobal);
     ControlFlow visit(const ScopePtr& scope, AstStatDeclareClass* declareClass);
     ControlFlow visit(const ScopePtr& scope, AstStatDeclareFunction* declareFunction);
@@ -224,7 +247,11 @@ private:
 
     InferencePack checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<std::optional<TypeId>>& expectedTypes = {});
     InferencePack checkPack(
-        const ScopePtr& scope, AstExpr* expr, const std::vector<std::optional<TypeId>>& expectedTypes = {}, bool generalize = true);
+        const ScopePtr& scope,
+        AstExpr* expr,
+        const std::vector<std::optional<TypeId>>& expectedTypes = {},
+        bool generalize = true
+    );
 
     InferencePack checkPack(const ScopePtr& scope, AstExprCall* call);
 
@@ -238,7 +265,12 @@ private:
      * @return the type of the expression.
      */
     Inference check(
-        const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType = {}, bool forceSingleton = false, bool generalize = true);
+        const ScopePtr& scope,
+        AstExpr* expr,
+        std::optional<TypeId> expectedType = {},
+        bool forceSingleton = false,
+        bool generalize = true
+    );
 
     Inference check(const ScopePtr& scope, AstExprConstantString* string, std::optional<TypeId> expectedType, bool forceSingleton);
     Inference check(const ScopePtr& scope, AstExprConstantBool* bool_, std::optional<TypeId> expectedType, bool forceSingleton);
@@ -276,7 +308,11 @@ private:
     };
 
     FunctionSignature checkFunctionSignature(
-        const ScopePtr& parent, AstExprFunction* fn, std::optional<TypeId> expectedType = {}, std::optional<Location> originalName = {});
+        const ScopePtr& parent,
+        AstExprFunction* fn,
+        std::optional<TypeId> expectedType = {},
+        std::optional<Location> originalName = {}
+    );
 
     /**
      * Checks the body of a function expression.
@@ -323,7 +359,11 @@ private:
      * privateTypeBindings map.
      **/
     std::vector<std::pair<Name, GenericTypeDefinition>> createGenerics(
-        const ScopePtr& scope, AstArray<AstGenericType> generics, bool useCache = false, bool addTypes = true);
+        const ScopePtr& scope,
+        AstArray<AstGenericType> generics,
+        bool useCache = false,
+        bool addTypes = true
+    );
 
     /**
      * Creates generic type packs given a list of AST definitions, resolving
@@ -336,7 +376,11 @@ private:
      * privateTypePackBindings map.
      **/
     std::vector<std::pair<Name, GenericTypePackDefinition>> createGenericPacks(
-        const ScopePtr& scope, AstArray<AstGenericTypePack> packs, bool useCache = false, bool addTypes = true);
+        const ScopePtr& scope,
+        AstArray<AstGenericTypePack> packs,
+        bool useCache = false,
+        bool addTypes = true
+    );
 
     Inference flattenPack(const ScopePtr& scope, Location location, InferencePack pack);
 
@@ -371,7 +415,12 @@ private:
     std::vector<std::optional<TypeId>> getExpectedCallTypesForFunctionOverloads(const TypeId fnType);
 
     TypeId createTypeFunctionInstance(
-        const TypeFunction& function, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments, const ScopePtr& scope, Location location);
+        const TypeFunction& function,
+        std::vector<TypeId> typeArguments,
+        std::vector<TypePackId> packArguments,
+        const ScopePtr& scope,
+        Location location
+    );
 };
 
 /** Borrow a vector of pointers from a vector of owning pointers to constraints.

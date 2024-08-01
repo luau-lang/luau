@@ -404,8 +404,13 @@ void luaV_doarithimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* rc
             setvvalue(ra, vb[0] / vc[0], vb[1] / vc[1], vb[2] / vc[2], vb[3] / vc[3]);
             return;
         case TM_IDIV:
-            setvvalue(ra, float(luai_numidiv(vb[0], vc[0])), float(luai_numidiv(vb[1], vc[1])), float(luai_numidiv(vb[2], vc[2])),
-                float(luai_numidiv(vb[3], vc[3])));
+            setvvalue(
+                ra,
+                float(luai_numidiv(vb[0], vc[0])),
+                float(luai_numidiv(vb[1], vc[1])),
+                float(luai_numidiv(vb[2], vc[2])),
+                float(luai_numidiv(vb[3], vc[3]))
+            );
             return;
         case TM_UNM:
             setvvalue(ra, -vb[0], -vb[1], -vb[2], -vb[3]);
@@ -431,8 +436,9 @@ void luaV_doarithimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* rc
                 setvvalue(ra, vb[0] / nc, vb[1] / nc, vb[2] / nc, vb[3] / nc);
                 return;
             case TM_IDIV:
-                setvvalue(ra, float(luai_numidiv(vb[0], nc)), float(luai_numidiv(vb[1], nc)), float(luai_numidiv(vb[2], nc)),
-                    float(luai_numidiv(vb[3], nc)));
+                setvvalue(
+                    ra, float(luai_numidiv(vb[0], nc)), float(luai_numidiv(vb[1], nc)), float(luai_numidiv(vb[2], nc)), float(luai_numidiv(vb[3], nc))
+                );
                 return;
             default:
                 break;
@@ -456,8 +462,9 @@ void luaV_doarithimpl(lua_State* L, StkId ra, const TValue* rb, const TValue* rc
                 setvvalue(ra, nb / vc[0], nb / vc[1], nb / vc[2], nb / vc[3]);
                 return;
             case TM_IDIV:
-                setvvalue(ra, float(luai_numidiv(nb, vc[0])), float(luai_numidiv(nb, vc[1])), float(luai_numidiv(nb, vc[2])),
-                    float(luai_numidiv(nb, vc[3])));
+                setvvalue(
+                    ra, float(luai_numidiv(nb, vc[0])), float(luai_numidiv(nb, vc[1])), float(luai_numidiv(nb, vc[2])), float(luai_numidiv(nb, vc[3]))
+                );
                 return;
             default:
                 break;

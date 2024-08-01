@@ -469,34 +469,44 @@ std::optional<TypeLevel> TxnLog::getLevel(TypeId ty) const
 
 TypeId TxnLog::follow(TypeId ty) const
 {
-    return Luau::follow(ty, this, [](const void* ctx, TypeId ty) -> TypeId {
-        const TxnLog* self = static_cast<const TxnLog*>(ctx);
-        PendingType* state = self->pending(ty);
+    return Luau::follow(
+        ty,
+        this,
+        [](const void* ctx, TypeId ty) -> TypeId
+        {
+            const TxnLog* self = static_cast<const TxnLog*>(ctx);
+            PendingType* state = self->pending(ty);
 
-        if (state == nullptr)
-            return ty;
+            if (state == nullptr)
+                return ty;
 
-        // Ugly: Fabricate a TypeId that doesn't adhere to most of the invariants
-        // that normally apply. This is safe because follow will only call get<>
-        // on the returned pointer.
-        return const_cast<const Type*>(&state->pending);
-    });
+            // Ugly: Fabricate a TypeId that doesn't adhere to most of the invariants
+            // that normally apply. This is safe because follow will only call get<>
+            // on the returned pointer.
+            return const_cast<const Type*>(&state->pending);
+        }
+    );
 }
 
 TypePackId TxnLog::follow(TypePackId tp) const
 {
-    return Luau::follow(tp, this, [](const void* ctx, TypePackId tp) -> TypePackId {
-        const TxnLog* self = static_cast<const TxnLog*>(ctx);
-        PendingTypePack* state = self->pending(tp);
+    return Luau::follow(
+        tp,
+        this,
+        [](const void* ctx, TypePackId tp) -> TypePackId
+        {
+            const TxnLog* self = static_cast<const TxnLog*>(ctx);
+            PendingTypePack* state = self->pending(tp);
 
-        if (state == nullptr)
-            return tp;
+            if (state == nullptr)
+                return tp;
 
-        // Ugly: Fabricate a TypePackId that doesn't adhere to most of the
-        // invariants that normally apply. This is safe because follow will
-        // only call get<> on the returned pointer.
-        return const_cast<const TypePackVar*>(&state->pending);
-    });
+            // Ugly: Fabricate a TypePackId that doesn't adhere to most of the
+            // invariants that normally apply. This is safe because follow will
+            // only call get<> on the returned pointer.
+            return const_cast<const TypePackVar*>(&state->pending);
+        }
+    );
 }
 
 std::pair<std::vector<TypeId>, std::vector<TypePackId>> TxnLog::getChanges() const
